@@ -159,6 +159,13 @@ export const RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT = 25;
 */
 export const RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET = 2000;
 
+/*
+    The reader's place the panel keeps through vscodeApi.setState (#222). The version is the shape:
+    a place saved in any other shape is not read, rather than read as something it was not.
+*/
+export const RECIPE_COCKPIT_PANEL_PLACE_VERSION = 1;
+export const RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY = 200;
+
 // THE FIELD TYPES WHOSE ROWS EXPAND TO THEIR VALUES IN THE STRUCTURE TAB
 export const RECIPE_COCKPIT_PICKLIST_FIELD_TYPES: readonly string[] = ['Picklist', 'MultiselectPicklist'];
 
@@ -817,8 +824,16 @@ export type RecipeCockpitPanelAction =
     | { kind: 'addIterationFriend'; treeKey: string; objectApiName: string; iterationNickname: string; friendObjectApiName: string; recipeFilePath: string }
     | { kind: 'postAddFriendState'; hostMessage: IRecipeCockpitAddFriendStateMessage };
 
+// WHAT A REOPEN OF THE PANEL CARRIES INTO ITS RELOAD (#222): THE MODEL ON SCREEN, AND THE COMPARISONS DRAWN OVER IT
+export interface IRecipeCockpitCarriedPanelState {
+    recipeDataMessage: IRecipeCockpitRecipeDataMessage;
+    orgDescribeMessagesByTreeKey: Map<string, IRecipeCockpitOrgDescribeMessage>;
+}
+
 /*
-    Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened.
+    Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened --
+    a reopen keeps only the run on screen, its comparisons when the reload draws the same rows, and
+    Data-by-Org's Create results and request sequence.
 
     Two generations of allow-list: the PENDING pair is built when a model is posted, and only the
     panel's "rendered" acknowledgement promotes it to ACTIVE. A post succeeding says the message
@@ -1022,6 +1037,23 @@ export class RecipeCockpitService {
         const existingCockpitPanel = this.recipeCockpitPanel;
         this.recipeCockpitWorkspaceState = workspaceState;
 
+        /*
+            Re-running the command on an open panel reloads what it SHOWS (#222): the run the reader
+            picked, rather than the newest, and the comparisons drawn over it if the reload reads
+            back exactly the model they were drawn against.
+        */
+        const previousPanelState = existingCockpitPanel && this.recipeCockpitPanelState.workspaceRoot === workspaceRoot
+            ? this.recipeCockpitPanelState
+            : undefined;
+        const carriedRunFolderName = previousPanelState?.recipeDataMessage?.recipe.selectedRunFolderName || undefined;
+        // THE OLD MODEL IS HELD THROUGH THE RELOAD ONLY WHEN A COMPARISON NEEDS IT TO BE CHECKED AGAINST -- AT SCALE IT IS TENS OF MB
+        const carriedPanelState = previousPanelState?.recipeDataMessage && previousPanelState.orgDescribeMessagesByTreeKey.size > 0
+            ? {
+                recipeDataMessage: previousPanelState.recipeDataMessage,
+                orgDescribeMessagesByTreeKey: previousPanelState.orgDescribeMessagesByTreeKey
+            }
+            : undefined;
+
         const cockpitPanel = existingCockpitPanel
             ?? vscode.window.createWebviewPanel(
                 RECIPE_COCKPIT_VIEW_TYPE,
@@ -1042,6 +1074,12 @@ export class RecipeCockpitService {
         this.recipeCockpitPanel = cockpitPanel;
         this.recipeCockpitPanelState = this.buildInitialPanelState(workspaceRoot);
 
+        if ( previousPanelState ) {
+            // WHAT A "View errors" LINK OPENS, AND THE SEQUENCE A NEW SELECTION MUST STAY ABOVE
+            this.recipeCockpitPanelState.dataOrgCreateResults = previousPanelState.dataOrgCreateResults;
+            this.recipeCockpitPanelState.dataOrgRequestSequence = previousPanelState.dataOrgRequestSequence;
+        }
+
         if ( !existingCockpitPanel ) {
 
             cockpitPanel.onDidDispose(() => {
@@ -1060,7 +1098,14 @@ export class RecipeCockpitService {
 
         cockpitPanel.reveal(vscode.ViewColumn.One);
 
-        await this.loadRecipeIntoPanel(cockpitPanel, workspaceRoot);
+        // A RUN THAT IS GONE FALLS BACK TO THE NEWEST, AS loadRecipeRunByRuns DOES FOR ANY RUN IT CANNOT FIND
+        await this.loadRecipeIntoPanel(
+            cockpitPanel,
+            workspaceRoot,
+            carriedRunFolderName,
+            undefined,
+            carriedPanelState
+        );
 
         return cockpitPanel;
 
@@ -1075,7 +1120,8 @@ export class RecipeCockpitService {
     private static async loadRecipeIntoPanel(cockpitPanel: vscode.WebviewPanel,
                                                 workspaceRoot: string,
                                                 requestedRunFolderName?: string,
-                                                focusTree?: IRecipeCockpitTreeFocus): Promise<void> {
+                                                focusTree?: IRecipeCockpitTreeFocus,
+                                                carriedPanelState?: IRecipeCockpitCarriedPanelState): Promise<void> {
 
         const loadSequence = ++this.recipeCockpitLoadSequence;
 
@@ -1106,7 +1152,7 @@ export class RecipeCockpitService {
                 return;
             }
 
-            this.renderRecipeModel(cockpitPanel, loadedRecipe, focusTree);
+            this.renderRecipeModel(cockpitPanel, loadedRecipe, focusTree, carriedPanelState);
 
         } catch (loadError) {
 
@@ -1173,7 +1219,51 @@ export class RecipeCockpitService {
 
     }
 
-    private static renderRecipeModel(cockpitPanel: vscode.WebviewPanel, loadedRecipe: IRecipeCockpitLoadedRecipe, focusTree?: IRecipeCockpitTreeFocus) {
+    /*
+        A comparison is about the ROWS it was drawn over, so it is carried to a reloaded model only
+        when that model draws the same rows -- the same run, the same objects field for field, and
+        the same objects in each card -- because re-labelling a comparison of different rows with
+        the new model's renderSequence would be a false claim about them. What a card's history
+        lists, and which runs the selector offers, are not rows: a data set made since does not
+        un-compare anything. Compared by serializing both, which costs a reopen a few hundred
+        milliseconds at the largest model and nothing anywhere else.
+    */
+    static buildComparedRowsSignature(recipeViewModel: IRecipeCockpitRecipeViewModel): string {
+
+        return JSON.stringify({
+            selectedRunFolderName: recipeViewModel.selectedRunFolderName,
+            objects: recipeViewModel.objects,
+            trees: recipeViewModel.trees.map(tree => ({ treeKey: tree.treeKey, objects: tree.objects }))
+        });
+
+    }
+
+    static carryOrgDescribeMessages(carriedPanelState: IRecipeCockpitCarriedPanelState | undefined,
+                                        recipeViewModel: IRecipeCockpitRecipeViewModel,
+                                        renderSequence: number): Map<string, IRecipeCockpitOrgDescribeMessage> {
+
+        const carriedOrgDescribeMessages = new Map<string, IRecipeCockpitOrgDescribeMessage>();
+
+        if ( !carriedPanelState || carriedPanelState.orgDescribeMessagesByTreeKey.size === 0 ) {
+            return carriedOrgDescribeMessages;
+        }
+
+        if ( this.buildComparedRowsSignature(carriedPanelState.recipeDataMessage.recipe) !== this.buildComparedRowsSignature(recipeViewModel) ) {
+            return carriedOrgDescribeMessages;
+        }
+
+        carriedPanelState.orgDescribeMessagesByTreeKey.forEach((orgDescribeMessage, treeKey) => {
+            carriedOrgDescribeMessages.set(treeKey, { ...orgDescribeMessage, renderSequence: renderSequence });
+        });
+
+        return carriedOrgDescribeMessages;
+
+    }
+
+    private static renderRecipeModel(cockpitPanel: vscode.WebviewPanel,
+                                        loadedRecipe: IRecipeCockpitLoadedRecipe,
+                                        focusTree?: IRecipeCockpitTreeFocus,
+                                        carriedPanelState?: IRecipeCockpitCarriedPanelState) {
 
         const panelState = this.recipeCockpitPanelState;
         const recipeViewModel = loadedRecipe.recipeViewModel;
@@ -1190,7 +1280,7 @@ export class RecipeCockpitService {
         panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
         panelState.loadFailedMessage = undefined;
         // A COMPARISON ANSWERED FOR THE PREVIOUS MODEL'S OBJECTS, WHICH ARE NOT NECESSARILY THIS ONE'S
-        panelState.orgDescribeMessagesByTreeKey = new Map();
+        panelState.orgDescribeMessagesByTreeKey = this.carryOrgDescribeMessages(carriedPanelState, recipeViewModel, recipeDataMessage.renderSequence);
         panelState.orgProgressMessage = undefined;
         panelState.loadPhaseMessage = '';
         panelState.reportedFailureDescriptions = new Set();
@@ -4900,6 +4990,9 @@ ${this.buildPaletteCustomProperties()}
     const ADD_FRIEND_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL)};
     const CREATE_MAX_COUNT = ${RECIPE_COCKPIT_CREATE_MAX_COUNT};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
+    const PANEL_PLACE_VERSION = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION};
+    const PANEL_PLACE_SCROLL_SAVE_DELAY = ${RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY};
+    const PANEL_PLACE_TABS = ['structure', 'dataByOrg', 'versions', 'datasets'];
 
     let treeStates = [];
     let treesViewElement = null;
@@ -4937,6 +5030,17 @@ ${this.buildPaletteCustomProperties()}
     let dataOrgCreateResultsByKey = Object.create(null);
     // THE ROW WHOSE CREATE IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE CREATE ENDED
     let createRunningKey = null;
+    /*
+        Where the reader was when this document was last on screen (#222). A hidden tab's document
+        is thrown away, so the place is read ONCE, here, and spent on the first model drawn -- and
+        only if that model is the run it was saved for. Nothing is saved until it is spent, or the
+        default view drawn first would overwrite the place before it is read.
+    */
+    let restorablePlace = readSavedPanelPlace();
+    let isPlaceRestoreSettled = false;
+    // EACH TAB A RESTORE SELECTS WOULD SAVE A HALF-RESTORED PLACE, WALKING EVERY CARD; THE RENDER SAVES ONCE AFTER IT
+    let isRestoringPlace = false;
+    let scrollSaveTimer = null;
 
     /*
         Every node the panel draws is made here and filled through textContent, so nothing from the
@@ -5140,10 +5244,12 @@ ${this.buildPaletteCustomProperties()}
         inputElement.setAttribute('type', 'search');
         inputElement.setAttribute('placeholder', placeholderText);
         inputElement.setAttribute('aria-label', placeholderText + ' (' + treeState.tree.title + ')');
-        inputElement.value = treeState.searchQueries[tabName];
+        inputElement.value = treeState.searchTexts[tabName];
         inputElement.addEventListener('input', function () {
-            treeState.searchQueries[tabName] = String(inputElement.value || '').trim().toLowerCase();
+            treeState.searchTexts[tabName] = String(inputElement.value || '');
+            treeState.searchQueries[tabName] = treeState.searchTexts[tabName].trim().toLowerCase();
             applySearch(treeState);
+            savePanelPlace();
         });
 
         searchElement.appendChild(inputElement);
@@ -5179,7 +5285,8 @@ ${this.buildPaletteCustomProperties()}
             field: field,
             typeSearchText: String(field.fieldTypeWithSize || field.fieldType || '').toLowerCase(),
             isMatch: true,
-            rowElement: null
+            rowElement: null,
+            isPicklistExpanded: false
         };
 
     }
@@ -5253,19 +5360,28 @@ ${this.buildPaletteCustomProperties()}
             const picklistToggleElement = createElement('button', 'picklistToggle', '▸');
             let picklistValuesElement = null;
 
-            picklistToggleElement.setAttribute('aria-expanded', 'false');
-            picklistToggleElement.setAttribute('aria-label', 'Show or hide the values of ' + field.fieldApiName);
-            picklistToggleElement.addEventListener('click', function () {
-                const isExpanding = !picklistValuesElement || picklistValuesElement.classList.contains('hidden');
-                if (!picklistValuesElement) {
+            const setPicklistExpanded = function (isExpanding) {
+                if (isExpanding && !picklistValuesElement) {
                     picklistValuesElement = createElement('div', 'picklistValues');
                     fieldRowElement.appendChild(picklistValuesElement);
                     requestPicklistValues(treeObjectState.object.objectApiName, field.fieldApiName, picklistValuesElement);
                 }
-                if (isExpanding) { picklistValuesElement.classList.remove('hidden'); } else { picklistValuesElement.classList.add('hidden'); }
+                if (picklistValuesElement) {
+                    if (isExpanding) { picklistValuesElement.classList.remove('hidden'); } else { picklistValuesElement.classList.add('hidden'); }
+                }
+                fieldState.isPicklistExpanded = isExpanding;
                 picklistToggleElement.textContent = isExpanding ? '▾' : '▸';
                 picklistToggleElement.setAttribute('aria-expanded', isExpanding ? 'true' : 'false');
+            };
+
+            picklistToggleElement.setAttribute('aria-label', 'Show or hide the values of ' + field.fieldApiName);
+            picklistToggleElement.addEventListener('click', function () {
+                setPicklistExpanded(!fieldState.isPicklistExpanded);
+                savePanelPlace();
             });
+
+            // THE OPEN STATE LIVES ON THE FIELD, SO A ROW BUILT FROM A RESTORED PLACE OPENS AS IT WAS -- ASKING THE HOST AGAIN
+            setPicklistExpanded(!!fieldState.isPicklistExpanded);
 
             fieldHeaderElement.appendChild(picklistToggleElement);
 
@@ -5421,6 +5537,7 @@ ${this.buildPaletteCustomProperties()}
         toggleElement.addEventListener('click', function () {
             treeObjectState.isExpandedByReader = !treeObjectState.isExpanded;
             setTreeObjectExpanded(treeObjectState, treeObjectState.isExpandedByReader);
+            savePanelPlace();
         });
 
         objectHeaderElement.appendChild(toggleElement);
@@ -5542,6 +5659,8 @@ ${this.buildPaletteCustomProperties()}
 
         // AFTER THE MODEL'S "rendered" -- A CLICK CAN ONLY COME FROM A DRAWN PANEL, AND renderPanelGuarded ASKS AGAIN ITSELF
         if (tabName === 'dataByOrg' && renderedSequence !== null) { requestDataOrgs(); }
+
+        savePanelPlace();
 
     }
 
@@ -5758,7 +5877,10 @@ ${this.buildPaletteCustomProperties()}
 
         toggleElement.setAttribute('aria-expanded', 'false');
         toggleElement.setAttribute('aria-label', 'Show or hide the data sets made from the version of ' + version.generatedAtLabel);
-        toggleElement.addEventListener('click', function () { setVersionExpanded(treeState, versionState, !versionState.isExpanded); });
+        toggleElement.addEventListener('click', function () {
+            setVersionExpanded(treeState, versionState, !versionState.isExpanded);
+            savePanelPlace();
+        });
 
         versionHeaderElement.appendChild(toggleElement);
         versionHeaderElement.appendChild(createElement('span', 'treeVersionDate', version.generatedAtLabel));
@@ -5940,7 +6062,16 @@ ${this.buildPaletteCustomProperties()}
             dataTab: null,
             comparison: null,
             searchQueries: { structure: '', dataByOrg: '', versions: '', datasets: '' },
+            // WHAT THE READER TYPED IN EACH BOX, AS TYPED -- searchQueries IS ITS TRIMMED, LOWERCASED FORM
+            searchTexts: { structure: '', dataByOrg: '', versions: '', datasets: '' },
             statusFilter: 'all',
+            /*
+                What a restored place asks of the card's comparison (#222): its status filter and the
+                Data-by-Org rows the reader had opened. Applied before the comparison is drawn, the
+                filter would hide every row and the rows could not open, so they wait for it.
+            */
+            pendingStatusFilter: null,
+            pendingDataExpandedObjectApiNames: null,
             compare: null
         };
 
@@ -5964,6 +6095,7 @@ ${this.buildPaletteCustomProperties()}
         treeHeaderElement.addEventListener('click', function () {
             treeState.isExpandedByReader = !treeState.isExpanded;
             setTreeExpanded(treeState, treeState.isExpandedByReader);
+            savePanelPlace();
         });
 
         treeHeaderElement.appendChild(toggleElement);
@@ -6217,6 +6349,7 @@ ${this.buildPaletteCustomProperties()}
         toggleElement.addEventListener('click', function () {
             dataObjectRowState.isExpandedByReader = !dataObjectRowState.isExpanded;
             setDataObjectExpanded(dataObjectRowState, dataObjectRowState.isExpandedByReader);
+            savePanelPlace();
         });
 
         objectHeaderElement.appendChild(toggleElement);
@@ -6636,6 +6769,7 @@ ${this.buildPaletteCustomProperties()}
         if (!dataOrgSelectElement || renderedSequence === null || dataOrgRequestedSequence === renderedSequence) { return; }
 
         isDataOrgPickerInUse = true;
+        savePanelPlace();
         dataOrgRequestedSequence = renderedSequence;
         dataOrgLoadElement.classList.add('hidden');
         dataOrgSelectElement.classList.add('hidden');
@@ -6776,6 +6910,285 @@ ${this.buildPaletteCustomProperties()}
         the cards cannot say themselves: notices about entries that could not be read. Each card
         carries its own searches (#217), so there is no find box above them.
     */
+    /*
+        The reader's place (#222), kept with vscodeApi.setState so it outlives the document VS Code
+        throws away when the tab is hidden. It holds NAMES only -- tree keys, object api names and
+        nicknames, field api names, run folder names, tab names -- each tab's search as the panel
+        holds it, whether the toolbar's org picker was in use, and a scroll offset: nothing the host
+        keeps to itself, no path, no picklist value, no org label or username.
+    */
+    function readSavedPanelPlace() {
+
+        // A PLACE THAT CANNOT BE READ IS NO PLACE: THE PANEL DRAWS ITS DEFAULT RATHER THAN NOTHING
+        try {
+
+            const savedState = typeof vscodeApi.getState === 'function' ? vscodeApi.getState() : null;
+
+            if (!savedState || typeof savedState !== 'object' || savedState.version !== PANEL_PLACE_VERSION || typeof savedState.runFolderName !== 'string') {
+                return null;
+            }
+
+            return savedState;
+
+        } catch (getStateError) {
+            return null;
+        }
+
+    }
+
+    function buildObjectPlaceKey(treeObjectState) {
+        return treeObjectState.object.objectApiName + '\\n' + (treeObjectState.object.nickname || '');
+    }
+
+    function buildFieldPlaceKey(treeObjectState, fieldState) {
+        return buildObjectPlaceKey(treeObjectState) + '\\n' + fieldState.field.fieldApiName;
+    }
+
+    function buildTreePlace(treeState) {
+
+        const expandedObjectKeys = [];
+        const openPicklistKeys = [];
+        const expandedDataObjectApiNames = [];
+        const expandedVersionRunFolderNames = [];
+        const searchQueries = {};
+        let hasSearch = false;
+
+        treeState.objectStates.forEach(function (treeObjectState) {
+            if (treeObjectState.isExpandedByReader) { expandedObjectKeys.push(buildObjectPlaceKey(treeObjectState)); }
+            // ONLY A BUILT ROW CAN HAVE BEEN OPENED, SO AN OBJECT NOBODY EXPANDED COSTS NOTHING HERE
+            if (!treeObjectState.isBodyBuilt) { return; }
+            treeObjectState.fieldStates.forEach(function (fieldState) {
+                if (fieldState.isPicklistExpanded) { openPicklistKeys.push(buildFieldPlaceKey(treeObjectState, fieldState)); }
+            });
+        });
+
+        if (treeState.dataTab) {
+            treeState.dataTab.objectRowStates.forEach(function (dataObjectRowState) {
+                if (dataObjectRowState.isExpandedByReader) { expandedDataObjectApiNames.push(dataObjectRowState.objectApiName); }
+            });
+        }
+        // STILL WAITING FOR THE COMPARISON THEY WERE SAVED UNDER, SO STILL THE READER'S
+        if (treeState.pendingDataExpandedObjectApiNames) {
+            Object.keys(treeState.pendingDataExpandedObjectApiNames).forEach(function (objectApiName) {
+                if (expandedDataObjectApiNames.indexOf(objectApiName) === -1) { expandedDataObjectApiNames.push(objectApiName); }
+            });
+        }
+
+        if (treeState.versionStatesByRunFolderName) {
+            Object.keys(treeState.versionStatesByRunFolderName).forEach(function (runFolderName) {
+                if (treeState.versionStatesByRunFolderName[runFolderName].isExpanded) { expandedVersionRunFolderNames.push(runFolderName); }
+            });
+        }
+
+        PANEL_PLACE_TABS.forEach(function (tabName) {
+            searchQueries[tabName] = treeState.searchTexts[tabName] || '';
+            if (treeState.searchQueries[tabName]) { hasSearch = true; }
+        });
+
+        const statusFilter = treeState.statusFilter !== 'all' ? treeState.statusFilter : (treeState.pendingStatusFilter || 'all');
+        const selectedTab = treeState.selectedTab || 'structure';
+
+        if (!treeState.isExpandedByReader && selectedTab === 'structure' && statusFilter === 'all' && !hasSearch
+                && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0
+                && expandedDataObjectApiNames.length === 0 && expandedVersionRunFolderNames.length === 0) {
+            return null;
+        }
+
+        return {
+            treeKey: treeState.tree.treeKey,
+            isExpanded: !!treeState.isExpandedByReader,
+            selectedTab: selectedTab,
+            searchQueries: searchQueries,
+            statusFilter: statusFilter,
+            expandedObjectKeys: expandedObjectKeys,
+            openPicklistKeys: openPicklistKeys,
+            expandedDataObjectApiNames: expandedDataObjectApiNames,
+            expandedVersionRunFolderNames: expandedVersionRunFolderNames
+        };
+
+    }
+
+    function savePanelPlace() {
+
+        // NOTHING IS SAVED UNTIL THE SAVED PLACE IS SPENT, NOR FOR A PANEL WITH NO MODEL DRAWN
+        if (!isPlaceRestoreSettled || isRestoringPlace || renderedSequence === null || typeof vscodeApi.setState !== 'function') { return; }
+
+        try {
+            vscodeApi.setState({
+                version: PANEL_PLACE_VERSION,
+                runFolderName: renderedRunFolderName,
+                isOrgPickerInUse: isDataOrgPickerInUse,
+                scrollY: typeof window.scrollY === 'number' ? window.scrollY : 0,
+                trees: treeStates.map(buildTreePlace).filter(Boolean)
+            });
+        } catch (setStateError) {
+            // A PLACE THAT COULD NOT BE KEPT COSTS THE READER A RE-OPEN, NEVER THE PANEL
+        }
+
+    }
+
+    function takeRestorablePlace(recipe) {
+
+        if (isPlaceRestoreSettled) { return null; }
+
+        const savedPlace = restorablePlace;
+        restorablePlace = null;
+        isPlaceRestoreSettled = true;
+
+        return savedPlace && recipe && savedPlace.runFolderName === recipe.selectedRunFolderName && recipe.objects.length > 0 ? savedPlace : null;
+
+    }
+
+    // BEFORE THE DRAW: A PICKER THE READER HAD USED ASKS FOR ITS ORGS AGAIN ONCE THE MODEL IS DRAWN, AS IT DOES FOR ANY NEW MODEL
+    function applyPlaceBeforeRender(savedPlace) {
+
+        if (savedPlace && savedPlace.isOrgPickerInUse === true) { isDataOrgPickerInUse = true; }
+
+    }
+
+    function toStringSet(candidateList) {
+
+        // KEYED BY NAMES FROM FILES, SO NO PROTOTYPE
+        const stringSet = Object.create(null);
+        if (Array.isArray(candidateList)) {
+            candidateList.forEach(function (candidate) { if (typeof candidate === 'string') { stringSet[candidate] = true; } });
+        }
+        return stringSet;
+
+    }
+
+    function hasString(stringSet, candidate) {
+        return Object.prototype.hasOwnProperty.call(stringSet, candidate);
+    }
+
+    function hasAnyString(stringSet) {
+        return Object.keys(stringSet).length > 0;
+    }
+
+    /*
+        The rest of the place, AFTER "rendered": opening a picklist row, a Data-by-Org tab or a
+        Previous Versions tab asks the host, which answers only once the ack has activated this
+        model's allow-lists. An entry naming a card, object, tab or option this model does not have
+        is passed over on its own -- the rest of the place still comes back.
+    */
+    function restorePlaceAfterRender(savedPlace) {
+
+        if (!savedPlace) { return; }
+
+        isRestoringPlace = true;
+
+        try {
+            restoreSavedTrees(savedPlace);
+        } finally {
+            isRestoringPlace = false;
+        }
+
+    }
+
+    function restoreSavedTrees(savedPlace) {
+
+        const statusFilterOptions = toStringSet(DIFF_STATUSES.filter(function (diffStatus) { return diffStatus !== 'unchanged'; }));
+        const savedTrees = Array.isArray(savedPlace.trees) ? savedPlace.trees : [];
+
+        savedTrees.forEach(function (savedTree) {
+
+            if (!savedTree || typeof savedTree !== 'object' || typeof savedTree.treeKey !== 'string') { return; }
+
+            const treeState = findTreeState(savedTree.treeKey);
+            if (!treeState) { return; }
+
+            const expandedObjectKeys = toStringSet(savedTree.expandedObjectKeys);
+            const openPicklistKeys = toStringSet(savedTree.openPicklistKeys);
+            const expandedDataObjectApiNames = toStringSet(savedTree.expandedDataObjectApiNames);
+            const expandedVersionRunFolderNames = toStringSet(savedTree.expandedVersionRunFolderNames);
+            const savedSearchQueries = savedTree.searchQueries && typeof savedTree.searchQueries === 'object' ? savedTree.searchQueries : {};
+
+            // BEFORE ANY TAB IS BUILT: A TAB READS ITS SEARCH, AND APPLIES IT, WHEN IT IS BUILT
+            PANEL_PLACE_TABS.forEach(function (tabName) {
+                const savedQuery = Object.prototype.hasOwnProperty.call(savedSearchQueries, tabName) ? savedSearchQueries[tabName] : '';
+                if (typeof savedQuery === 'string') {
+                    treeState.searchTexts[tabName] = savedQuery;
+                    treeState.searchQueries[tabName] = savedQuery.trim().toLowerCase();
+                }
+            });
+
+            const hasOpenPicklists = hasAnyString(openPicklistKeys);
+
+            treeState.objectStates.forEach(function (treeObjectState) {
+                if (hasString(expandedObjectKeys, buildObjectPlaceKey(treeObjectState))) { treeObjectState.isExpandedByReader = true; }
+                // A PICKLIST KEY IS BUILT PER FIELD, SO A PLACE THAT OPENED NONE BUILDS NONE
+                if (!hasOpenPicklists) { return; }
+                treeObjectState.fieldStates.forEach(function (fieldState) {
+                    if (fieldState.field.isPicklist && hasString(openPicklistKeys, buildFieldPlaceKey(treeObjectState, fieldState))) { fieldState.isPicklistExpanded = true; }
+                });
+            });
+
+            if (treeState.compare && typeof savedTree.statusFilter === 'string' && hasString(statusFilterOptions, savedTree.statusFilter)) {
+                treeState.pendingStatusFilter = savedTree.statusFilter;
+            }
+
+            /*
+                A tab is built FOR ITS SAVED ROWS only when one of them is this card's: building
+                Data-by-Org lists orgs, which runs the CLI, and a stale name must not cause that. A
+                tab the reader had SELECTED is selected below whatever its rows, as it was on screen.
+            */
+            const dataObjectApiNamesToOpen = toStringSet(treeState.dataObjectApiNames.filter(function (objectApiName) {
+                return hasString(expandedDataObjectApiNames, objectApiName);
+            }));
+            const versionRunFolderNamesToOpen = treeState.tree.history
+                ? treeState.tree.history.versions
+                    .map(function (version) { return version.runFolderName; })
+                    .filter(function (runFolderName) { return hasString(expandedVersionRunFolderNames, runFolderName); })
+                : [];
+
+            if (hasAnyString(dataObjectApiNamesToOpen)) {
+                treeState.pendingDataExpandedObjectApiNames = dataObjectApiNamesToOpen;
+                selectTreeTab(treeState, 'dataByOrg');
+            }
+
+            if (versionRunFolderNamesToOpen.length > 0) {
+                selectTreeTab(treeState, 'versions');
+                versionRunFolderNamesToOpen.forEach(function (runFolderName) {
+                    setVersionExpanded(treeState, treeState.versionStatesByRunFolderName[runFolderName], true);
+                });
+            }
+
+            if (typeof savedTree.selectedTab === 'string' && PANEL_PLACE_TABS.indexOf(savedTree.selectedTab) !== -1) {
+                selectTreeTab(treeState, savedTree.selectedTab);
+            }
+
+            if (savedTree.isExpanded === true) {
+                treeState.isExpandedByReader = true;
+                setTreeExpanded(treeState, true);
+            }
+
+            // A STRUCTURE TAB BUILT BEFORE ITS OBJECTS WERE MARKED OPEN APPLIES THEM NOW; ONE NOT YET BUILT APPLIES THEM WHEN IT IS
+            applyStructureFilter(treeState);
+
+        });
+
+    }
+
+    /*
+        What a restored place left waiting is for the comparison it was SAVED under, which only a
+        replay brings back. A comparison the reader asks for is a new one, and is not narrowed by a
+        filter the reader set on an old one -- possibly several reloads ago.
+    */
+    function dropPendingComparisonPlace(treeState) {
+
+        treeState.pendingStatusFilter = null;
+        treeState.pendingDataExpandedObjectApiNames = null;
+        savePanelPlace();
+
+    }
+
+    function restoreScroll(savedPlace) {
+
+        if (!savedPlace || typeof savedPlace.scrollY !== 'number' || !isFinite(savedPlace.scrollY) || savedPlace.scrollY <= 0) { return; }
+        if (typeof window.scrollTo === 'function') { window.scrollTo(0, savedPlace.scrollY); }
+
+    }
+
     function renderPanel(recipe) {
 
         resetPanelState();
@@ -6872,8 +7285,12 @@ ${this.buildPaletteCustomProperties()}
 
     function renderPanelGuarded(recipe, renderSequence, focusTree) {
 
+        // SPENT ON THIS DOCUMENT'S FIRST MODEL WHETHER OR NOT IT APPLIES; A LATER MODEL KEEPS WHAT IS IN MEMORY, AS IT ALWAYS DID
+        const savedPlace = takeRestorablePlace(recipe);
+
         try {
 
+            applyPlaceBeforeRender(savedPlace);
             renderPanel(recipe);
             renderedSequence = renderSequence;
             vscodeApi.postMessage({ command: 'rendered', renderSequence: renderSequence });
@@ -6892,10 +7309,15 @@ ${this.buildPaletteCustomProperties()}
 
         // AFTER "rendered": A FOCUSED VERSIONS TAB ASKS FOR ITS SUMMARIES, WHICH THE HOST ANSWERS ONLY ONCE THE ACK HAS ACTIVATED THEM
         try {
+            restorePlaceAfterRender(savedPlace);
+            // A FOCUS IS WHAT THE READER JUST ASKED FOR, SO IT WINS OVER WHERE THEY LAST WERE
             applyTreeFocus(focusTree);
+            restoreScroll(savedPlace);
         } catch (focusError) {
             postRenderFailure('runtime', focusError);
         }
+
+        savePanelPlace();
 
         return true;
 
@@ -6926,12 +7348,14 @@ ${this.buildPaletteCustomProperties()}
         chooseOrgButtonElement.setAttribute('title', 'Choose any connected org, production included, and compare the objects of this tree with it');
         chooseOrgButtonElement.setAttribute('aria-label', CHOOSE_ORG_ACTION_LABEL + ' (' + treeState.tree.title + ')');
         chooseOrgButtonElement.addEventListener('click', function () {
+            dropPendingComparisonPlace(treeState);
             vscodeApi.postMessage({ command: 'selectOrg', treeKey: treeState.tree.treeKey, chooseOrg: true });
         });
 
         describeButtonElement.setAttribute('title', 'Describe the objects of this tree in the org picked in the toolbar (or one you choose), and list each field that differs');
         describeButtonElement.setAttribute('aria-label', DESCRIBE_ACTION_LABEL + ' (' + treeState.tree.title + ')');
         describeButtonElement.addEventListener('click', function () {
+            dropPendingComparisonPlace(treeState);
             vscodeApi.postMessage({ command: 'selectOrg', treeKey: treeState.tree.treeKey });
         });
 
@@ -6950,6 +7374,7 @@ ${this.buildPaletteCustomProperties()}
         statusFilterElement.addEventListener('change', function () {
             treeState.statusFilter = String(statusFilterElement.value || 'all');
             applyDataFilter(treeState);
+            savePanelPlace();
         });
 
         controlsElement.appendChild(describeButtonElement);
@@ -7085,15 +7510,33 @@ ${this.buildPaletteCustomProperties()}
 
         const statusFilterElement = treeState.compare.statusFilterElement;
 
-        if (diff.objects.length > 0 && isComparisonShown) {
+        const isComparisonDrawn = diff.objects.length > 0 && isComparisonShown;
+
+        if (isComparisonDrawn) {
             statusFilterElement.classList.remove('hidden');
+            if (treeState.pendingStatusFilter) {
+                treeState.statusFilter = treeState.pendingStatusFilter;
+                statusFilterElement.value = treeState.pendingStatusFilter;
+            }
         } else {
             statusFilterElement.classList.add('hidden');
             treeState.statusFilter = 'all';
             statusFilterElement.value = 'all';
         }
 
+        if (isComparisonDrawn && treeState.pendingDataExpandedObjectApiNames && treeState.dataTab) {
+            const pendingObjectApiNames = treeState.pendingDataExpandedObjectApiNames;
+            treeState.dataTab.objectRowStates.forEach(function (dataObjectRowState) {
+                if (hasString(pendingObjectApiNames, dataObjectRowState.objectApiName)) { dataObjectRowState.isExpandedByReader = true; }
+            });
+        }
+
+        // ONE COMPARISON SPENDS WHAT WAITED FOR IT EITHER WAY: A FAILED ONE HAS NOTHING FOR IT TO FILTER OR OPEN
+        treeState.pendingStatusFilter = null;
+        treeState.pendingDataExpandedObjectApiNames = null;
+
         drawDataComparison(treeState);
+        savePanelPlace();
 
     }
 
@@ -7227,6 +7670,18 @@ ${this.buildPaletteCustomProperties()}
 
     window.addEventListener('unhandledrejection', function (rejectionEvent) {
         postRenderFailure('runtime', rejectionEvent && rejectionEvent.reason);
+    });
+
+    // A SCROLL FIRES PER FRAME, AND A SAVE WALKS EVERY CARD, SO A RUN OF THEM IS SAVED ONCE
+    window.addEventListener('scroll', function () {
+
+        if (scrollSaveTimer !== null) { return; }
+
+        scrollSaveTimer = setTimeout(function () {
+            scrollSaveTimer = null;
+            savePanelPlace();
+        }, PANEL_PLACE_SCROLL_SAVE_DELAY);
+
     });
 
     /*
