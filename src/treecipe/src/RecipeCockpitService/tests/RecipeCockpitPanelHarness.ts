@@ -133,6 +133,11 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
     const objectHeaderOf = (objectElement: any) => objectElement.children[0];
     const objectBodyOf = (objectElement: any) => objectElement.children[1];
     const treeCards = () => findAll(cockpitBodyElement, 'treeCard');
+    const typeIntoSearch = (panelElement: any, searchText: string) => {
+        const searchInputElement = findAll(panelElement, 'tabSearchInput')[0];
+        searchInputElement.value = searchText;
+        searchInputElement.dispatch('input');
+    };
 
     return {
         postedHostMessages,
@@ -157,11 +162,16 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
         expandObject: (objectElement: any) => findAll(objectHeaderOf(objectElement), 'treeObjectToggle')[0].dispatch('click'),
         // EVERY CARD OPENED BY ITS TOGGLE, AS A READER WOULD, SO ITS STRUCTURE TAB IS ATTACHED
         expandAllTrees: () => treeCards().forEach(treeCard => findAll(treeCard, 'treeToggle')[0].dispatch('click')),
-        typeIntoFilter: (filterText: string) => {
-            const filterInputElement = findAll(cockpitBodyElement, 'filterInput')[0];
-            filterInputElement.value = filterText;
-            filterInputElement.dispatch('input');
-        },
+        // A CARD'S TAB, BY THE LABEL ITS BUTTON DRAWS; ITS PANEL, BY THE CLASS THE PANEL CARRIES
+        openTab: (treeCard: any, tabLabel: string) => findAll(treeCard, 'treeTab')
+            .find((candidateElement: any) => candidateElement.textContent === tabLabel).dispatch('click'),
+        tabPanelOf: (treeCard: any, panelClassName: string) => findAll(treeCard, panelClassName)[0],
+        // EVERY TAB HAS ITS OWN SEARCH BOX (#217); THE CARD MUST BE OPEN AND THE TAB BUILT
+        typeIntoTabSearch: (treeCard: any, panelClassName: string, searchText: string) => typeIntoSearch(findAll(treeCard, panelClassName)[0], searchText),
+        // THE STRUCTURE TAB'S SEARCH OF ONE CARD -- THE FIRST, UNLESS ONE IS NAMED
+        typeIntoFilter: (searchText: string, treeCard?: any) => typeIntoSearch(findAll(treeCard || treeCards()[0], 'treeStructure')[0], searchText),
+        // THE DATA-BY-ORG TAB'S OBJECT ROWS, OF EVERY CARD WHOSE TAB IS BUILT
+        dataObjectElements: (rootElement?: any) => findAll(rootElement || cockpitBodyElement, 'dataObject'),
         postToPanel: (hostMessage: any) => windowListenersByType['message']({ data: hostMessage }),
         raiseWindowError: (errorEvent: any) => windowListenersByType['error'](errorEvent)
     };

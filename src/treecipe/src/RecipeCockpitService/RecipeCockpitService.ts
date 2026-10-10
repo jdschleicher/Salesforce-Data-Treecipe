@@ -165,7 +165,6 @@ export const RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET = 2000;
 */
 export const RECIPE_COCKPIT_PANEL_PLACE_VERSION = 1;
 export const RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY = 200;
-export const RECIPE_COCKPIT_PANEL_PLACE_MAX_FILTER_LENGTH = 1000;
 
 // THE FIELD TYPES WHOSE ROWS EXPAND TO THEIR VALUES IN THE STRUCTURE TAB
 export const RECIPE_COCKPIT_PICKLIST_FIELD_TYPES: readonly string[] = ['Picklist', 'MultiselectPicklist'];
@@ -185,7 +184,8 @@ export const RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL = 'Running Faker…';
 export const RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = '+';
 export const RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL = 'Add';
 
-export const RECIPE_COCKPIT_TREE_TABS = ['structure', 'versions', 'datasets'] as const;
+// IN THE ORDER A CARD DRAWS THEM; STRUCTURE IS SELECTED BY DEFAULT, AND THE HISTORY TABS ARE DRAWN ONLY FOR A CARD WITH A HISTORY
+export const RECIPE_COCKPIT_TREE_TABS = ['structure', 'dataByOrg', 'versions', 'datasets'] as const;
 
 export type RecipeCockpitTreeTab = typeof RECIPE_COCKPIT_TREE_TABS[number];
 
@@ -2830,8 +2830,9 @@ export class RecipeCockpitService {
 
             panelState.createStateMessage = undefined;
 
+            // BACK ON THE CARD'S DATA-BY-ORG TAB THE CREATE WAS CLICKED IN
             if ( isDatasetWritten && isPanelStillCurrent() && panelState.recipeDataMessage ) {
-                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName);
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'dataByOrg' });
             }
 
             if ( isPanelStillCurrent() ) {
@@ -4754,20 +4755,21 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 4px;
     }
     .loadStatus.failed { border-left-color: var(--sdt-removed); color: var(--sdt-removed); }
-    .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0 0.25rem 0; }
-    .toolbar input, .toolbar select {
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.75rem 0 0.25rem 0; }
+    .toolbar select, .tabSearchInput {
         color: var(--sdt-text);
         background-color: var(--sdt-surface);
         border: 1px solid var(--sdt-border);
         border-radius: 4px;
     }
-    .toolbar input {
+    .toolbar select { padding: 0.3rem; }
+    .tabSearch { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; padding: 0.4rem 0.6rem; }
+    .tabSearchInput {
         flex: 1 1 16rem;
         min-width: 0;
         padding: 0.3rem 0.5rem;
     }
-    .toolbar input::placeholder { color: var(--sdt-muted); opacity: 1; }
-    .toolbar select { padding: 0.3rem; }
+    .tabSearchInput::placeholder { color: var(--sdt-muted); opacity: 1; }
     .emptyStateActions { margin-top: 0.5rem; }
     .treeCompare { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
     .treeCompareControls { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
@@ -4828,23 +4830,6 @@ ${this.buildPaletteCustomProperties()}
     .diff-picklist-changed { color: var(--sdt-changed); }
     .diff-unchanged { color: var(--sdt-muted); }
     .diffDetail { margin: 0.15rem 0 0 0; color: var(--sdt-muted); word-break: break-word; }
-    .toolbar .viewButton {
-        color: var(--sdt-text);
-        background-color: var(--sdt-surface);
-        border-color: var(--sdt-border);
-    }
-    .toolbar .viewButton.selected {
-        color: var(--sdt-on-accent);
-        background-color: var(--sdt-accent);
-        border-color: var(--sdt-accent);
-    }
-    .treeScopeStatus {
-        border-left: 3px solid var(--sdt-accent);
-        padding: 0.3rem 0.6rem;
-        margin: 0.4rem 0;
-        background-color: var(--sdt-surface);
-        border-radius: 4px;
-    }
     .treeCard {
         background-color: var(--sdt-surface);
         border: 1px solid var(--sdt-border);
@@ -4868,7 +4853,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader:hover { box-shadow: inset 4px 0 0 var(--sdt-accent); }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeScope, .treeRunFaker, .treeScopeClear, .treeTab, .treeVersionToggle, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .treeCompare button, .emptyStateActions button, .dataOrgRefresh, .dataTreeToggle, .dataCreate, .dataCreateErrors {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeTab, .treeVersionToggle, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .treeCompare button, .emptyStateActions button, .dataOrgRefresh, .dataObjectToggle, .dataCreate, .dataCreateErrors {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
@@ -4879,11 +4864,10 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeScope:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeScopeClear:hover:not(:disabled), .treeTab:hover:not(:disabled), .treeVersionToggle:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .dataTreeToggle:hover:not(:disabled), .dataCreateErrors:hover:not(:disabled) {
+    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeTab:hover:not(:disabled), .treeVersionToggle:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .dataObjectToggle:hover:not(:disabled), .dataCreateErrors:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeVersionToggle, .dataTreeToggle, .dataOrgRefresh { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
-    .treeScope { font-size: 1.1em; }
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeVersionToggle, .dataObjectToggle, .dataOrgRefresh { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .treeRunFaker, .toolbar button, .treeCompare button, .emptyStateActions button, .dataCreate {
         color: var(--sdt-on-accent);
         background-color: var(--sdt-accent);
@@ -4892,7 +4876,7 @@ ${this.buildPaletteCustomProperties()}
     }
     .treeAddFriend { font-weight: 600; }
     .treeAddFriendChoice, .historyAction, .dataCreateErrors { text-decoration: underline; }
-    .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .treeCompare button:disabled, .emptyStateActions button:disabled, .dataCreate:disabled, .dataOrgRefresh:disabled, .treeScope:disabled, .treeTab:disabled, .historyAction:disabled {
+    .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .treeCompare button:disabled, .emptyStateActions button:disabled, .dataCreate:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
         border-color: var(--sdt-border);
@@ -4900,7 +4884,6 @@ ${this.buildPaletteCustomProperties()}
         opacity: 1;
     }
     .treeAddFriends { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding-left: 1.5rem; }
-    .treeScope.selected { outline: 2px solid var(--sdt-accent); }
     .treeBody { border-top: 1px solid var(--sdt-border); }
     .treeTabs { display: flex; gap: 0.5rem; padding: 0.4rem 0.6rem 0 0.6rem; border-bottom: 1px solid var(--sdt-border); }
     .treeTab { color: var(--sdt-muted); border-color: transparent; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; }
@@ -4911,7 +4894,7 @@ ${this.buildPaletteCustomProperties()}
     .treeObjectName { font-weight: 600; }
     .treeObjectBody { padding-bottom: 0.25rem; }
     .treeField { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
-    .treeFieldHeader .fieldType {
+    .treeFieldHeader .fieldType, .dataFieldHeader .fieldType {
         font-size: 0.85em;
         padding: 0 0.4rem;
         color: var(--sdt-chip-text);
@@ -4931,7 +4914,7 @@ ${this.buildPaletteCustomProperties()}
     }
     .treeVersionBody { padding-left: 1.4rem; }
     .treeDatasetCounts { margin: 0.1rem 0 0 0; word-break: break-word; }
-    .dataOrgControls { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; margin: 0.5rem 0; }
+    .dataOrgControls { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
     .dataOrgSelect {
         padding: 0.3rem;
         color: var(--sdt-text);
@@ -4948,19 +4931,13 @@ ${this.buildPaletteCustomProperties()}
     }
     .dataOrgStatus { margin: 0.4rem 0; }
     .dataOrgStatus.failed { color: var(--sdt-removed); }
-    .dataTreeCard {
-        background-color: var(--sdt-surface);
-        border: 1px solid var(--sdt-border);
-        border-radius: 8px;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.08);
-        margin: 0.6rem 0;
-        overflow: hidden;
-    }
-    .dataTreeHeader, .dataObjectHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
-    .dataTreeHeader { padding: 0.5rem 0.6rem; background-color: var(--sdt-header); }
-    .dataTreeTitle, .dataObjectName { font-weight: 600; }
-    .dataTreeBody { border-top: 1px solid var(--sdt-border); }
-    .dataObject { padding: 0.3rem 0.6rem 0.3rem 2.1rem; }
+    .dataTreeCount { padding: 0.4rem 0.6rem 0 0.6rem; }
+    .dataObjectHeader, .dataFieldHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .dataObjectName, .dataFieldName { font-weight: 600; }
+    .dataObject { padding: 0.3rem 0.6rem; }
+    .dataObjectBody { padding: 0.2rem 0 0.25rem 1.5rem; }
+    .dataField { padding: 0.25rem 0.6rem; }
+    .dataField:hover { background-color: var(--sdt-row-hover); }
     .dataCreateControls { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; margin-top: 0.2rem; }
     .dataCreateCount {
         width: 4.5rem;
@@ -5013,17 +4990,10 @@ ${this.buildPaletteCustomProperties()}
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
     const PANEL_PLACE_VERSION = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION};
     const PANEL_PLACE_SCROLL_SAVE_DELAY = ${RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY};
-    const PANEL_PLACE_MAX_FILTER_LENGTH = ${RECIPE_COCKPIT_PANEL_PLACE_MAX_FILTER_LENGTH};
+    const PANEL_PLACE_TABS = ['structure', 'dataByOrg', 'versions', 'datasets'];
 
-    // WHICH VIEW IS ON SCREEN OUTLIVES A MODEL, SO SWITCHING RUNS DOES NOT THROW THE READER BACK TO THE DEFAULT
-    let viewMode = 'trees';
     let treeStates = [];
-    let treeScopeKey = null;
     let treesViewElement = null;
-    let treeMatchCountElement = null;
-    let treeScopeStatusElement = null;
-    let viewButtonStates = [];
-    let filterQuery = '';
     let runSelectElement = null;
     let renderedRunFolderName = '';
     let renderedSequence = null;
@@ -5033,15 +5003,15 @@ ${this.buildPaletteCustomProperties()}
     let isAddFriendRunning = false;
     // EVERY "+" AND FRIEND CHOICE DRAWN FOR THIS MODEL, SO ONE CLICK CAN DISABLE THEM ALL
     let addFriendButtonElements = [];
-    let filterInputElement = null;
-    let dataOrgViewElement = null;
+    // WHETHER THE READER HAS USED THE TOOLBAR'S ORG PICKER; IT OUTLIVES A MODEL, SO A RELOAD COUNTS IN THE SAME ORG AGAIN
+    let isDataOrgPickerInUse = false;
+    let dataOrgLoadElement = null;
     let dataOrgSelectElement = null;
     let dataOrgTypeElement = null;
     let dataOrgRefreshElement = null;
     let dataOrgStatusElement = null;
     let dataOrgHiddenNoteElement = null;
-    let dataTreeStates = [];
-    // THE renderSequence DATA-BY-ORG ASKED FOR ITS ORGS UNDER -- ONE ASK PER MODEL, MADE WHEN THE VIEW IS FIRST SHOWN
+    // THE renderSequence THE PICKER ASKED FOR ITS ORGS UNDER -- ONE ASK PER MODEL, MADE THE FIRST TIME A DATA-BY-ORG TAB OPENS OR THE PICKER IS USED
     let dataOrgRequestedSequence = null;
     // THE LATEST SELECTION THE HOST NAMED; COUNTS FOR ANY OTHER ARE A DIFFERENT ORG'S, OR AN OLDER ASK OF THIS ONE
     let dataOrgRequestSequence = null;
@@ -5058,8 +5028,6 @@ ${this.buildPaletteCustomProperties()}
     let dataOrgCreateResultsByKey = Object.create(null);
     // THE ROW WHOSE CREATE IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE CREATE ENDED
     let createRunningKey = null;
-    // WHAT THE READER TYPED, AS TYPED -- filterQuery IS ITS TRIMMED, LOWERCASED FORM
-    let filterInputText = '';
     /*
         Where the reader was when this document was last on screen (#222). A hidden tab's document
         is thrown away, so the place is read ONCE, here, and spent on the first model drawn -- and
@@ -5152,32 +5120,15 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    /*
+        The run selector, and -- when there are trees -- the ONE org picker every card's Data-by-Org
+        tab counts in. The picker asks the host for its orgs only when it is first used, or when a
+        Data-by-Org tab first opens: listing orgs runs the CLI's connection check, which no panel
+        open should pay for.
+    */
     function renderToolbar(recipe, hasObjects) {
 
         const toolbarElement = createElement('div', 'toolbar');
-
-        if (hasObjects) {
-
-            [['trees', 'Recipe Trees'], ['org', 'Data-by-Org']].forEach(function (viewOption) {
-                const viewButtonElement = createElement('button', 'viewButton', viewOption[1]);
-                viewButtonElement.addEventListener('click', function () { setViewMode(viewOption[0]); });
-                viewButtonStates.push({ viewMode: viewOption[0], element: viewButtonElement });
-                toolbarElement.appendChild(viewButtonElement);
-            });
-
-            filterInputElement = createElement('input', 'filterInput');
-            filterInputElement.setAttribute('type', 'search');
-            filterInputElement.setAttribute('placeholder', 'Filter objects, fields and faker expressions');
-            filterInputElement.setAttribute('aria-label', 'Filter objects, fields and faker expressions');
-            filterInputElement.value = filterInputText;
-            filterInputElement.addEventListener('input', function () {
-                setFilterText(filterInputElement.value);
-                applyTreeFilter();
-                savePanelPlace();
-            });
-            toolbarElement.appendChild(filterInputElement);
-
-        }
 
         if (recipe.runs.length > 0) {
 
@@ -5201,6 +5152,54 @@ ${this.buildPaletteCustomProperties()}
 
         cockpitBodyElement.appendChild(toolbarElement);
 
+        if (hasObjects && (recipe.trees || []).length > 0) {
+            renderDataOrgPicker(toolbarElement);
+        }
+
+    }
+
+    /*
+        The dropdown is a native select of the LABELS the host posted, and the panel posts back only
+        the chosen option's index -- the host holds the usernames.
+    */
+    function renderDataOrgPicker(toolbarElement) {
+
+        const pickerElement = createElement('span', 'dataOrgControls');
+
+        dataOrgLoadElement = createElement('button', 'dataOrgLoad', 'Choose an org…');
+        dataOrgLoadElement.setAttribute('title', 'List the connected sandbox and scratch orgs to count the records of every tree in');
+        dataOrgLoadElement.addEventListener('click', function () { requestDataOrgs(); });
+
+        dataOrgSelectElement = createElement('select', 'dataOrgSelect hidden');
+        dataOrgSelectElement.setAttribute('aria-label', 'Salesforce org to count records in');
+        dataOrgSelectElement.addEventListener('change', function () {
+            const selectedValue = String(dataOrgSelectElement.value || '');
+            if (!selectedValue) { return; }
+            vscodeApi.postMessage({ command: 'selectDataOrg', orgIndex: Number(selectedValue) });
+        });
+
+        dataOrgTypeElement = createElement('span', 'dataOrgType hidden');
+
+        dataOrgRefreshElement = createElement('button', 'dataOrgRefresh hidden', '⟳');
+        dataOrgRefreshElement.setAttribute('title', 'Check the org connections again and count the records again');
+        dataOrgRefreshElement.setAttribute('aria-label', 'Check the org connections again and count the records again');
+        dataOrgRefreshElement.addEventListener('click', function () {
+            showDataOrgConnectionCheck();
+            vscodeApi.postMessage({ command: 'refreshDataOrgCounts' });
+        });
+
+        pickerElement.appendChild(dataOrgLoadElement);
+        pickerElement.appendChild(dataOrgSelectElement);
+        pickerElement.appendChild(dataOrgTypeElement);
+        pickerElement.appendChild(dataOrgRefreshElement);
+        toolbarElement.appendChild(pickerElement);
+
+        dataOrgHiddenNoteElement = createElement('div', 'dataOrgHiddenNote muted hidden');
+        cockpitBodyElement.appendChild(dataOrgHiddenNoteElement);
+
+        dataOrgStatusElement = createElement('div', 'dataOrgStatus muted hidden');
+        cockpitBodyElement.appendChild(dataOrgStatusElement);
+
     }
 
     /*
@@ -5223,37 +5222,35 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function setFilterText(nextFilterText) {
-        filterInputText = String(nextFilterText || '');
-        filterQuery = filterInputText.trim().toLowerCase();
+    function isFieldTextMatch(fieldState, searchQuery) {
+        return searchTextOf(fieldState.field).indexOf(searchQuery) !== -1 || fieldState.typeSearchText.indexOf(searchQuery) !== -1;
     }
 
-    function isFieldTextMatch(fieldState) {
-        return searchTextOf(fieldState.field).indexOf(filterQuery) !== -1 || fieldState.typeSearchText.indexOf(filterQuery) !== -1;
-    }
+    /*
+        Every tab of every card has its own search box (#217). Its text lives in the card's state
+        and its element stays in the tab's panel, so switching tabs or collapsing the card keeps
+        it; a new model draws new cards, which starts every box empty.
+    */
+    function buildTabSearch(treeState, tabName, placeholderText, applySearch) {
 
-    function setViewMode(nextViewMode) {
+        const searchElement = createElement('div', 'tabSearch');
+        const inputElement = createElement('input', 'tabSearchInput');
+        const matchCountElement = createElement('span', 'tabMatchCount muted');
 
-        viewMode = nextViewMode === 'org' ? nextViewMode : 'trees';
-
-        // THE FIND BOX SEARCHES RECIPES, AND DATA-BY-ORG LISTS NO FIELDS FOR IT TO FIND
-        if (treesViewElement && dataOrgViewElement) {
-            [[treesViewElement, viewMode === 'trees'], [dataOrgViewElement, viewMode === 'org'], [filterInputElement, viewMode !== 'org']].forEach(function (viewPart) {
-                if (!viewPart[0]) { return; }
-                if (viewPart[1]) { viewPart[0].classList.remove('hidden'); } else { viewPart[0].classList.add('hidden'); }
-            });
-        }
-
-        // AFTER THE MODEL'S "rendered" -- A CLICK CAN ONLY COME FROM A DRAWN PANEL, AND renderPanelGuarded ASKS FOR A FRESH DRAW ITSELF
-        if (viewMode === 'org' && renderedSequence !== null) { requestDataOrgs(); }
-
-        viewButtonStates.forEach(function (viewButtonState) {
-            const isSelected = viewButtonState.viewMode === viewMode;
-            viewButtonState.element.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
-            if (isSelected) { viewButtonState.element.classList.add('selected'); } else { viewButtonState.element.classList.remove('selected'); }
+        inputElement.setAttribute('type', 'search');
+        inputElement.setAttribute('placeholder', placeholderText);
+        inputElement.setAttribute('aria-label', placeholderText + ' (' + treeState.tree.title + ')');
+        inputElement.value = treeState.searchQueries[tabName];
+        inputElement.addEventListener('input', function () {
+            treeState.searchQueries[tabName] = String(inputElement.value || '').trim().toLowerCase();
+            applySearch(treeState);
+            savePanelPlace();
         });
 
-        savePanelPlace();
+        searchElement.appendChild(inputElement);
+        searchElement.appendChild(matchCountElement);
+
+        return { element: searchElement, inputElement: inputElement, matchCountElement: matchCountElement };
 
     }
 
@@ -5284,8 +5281,6 @@ ${this.buildPaletteCustomProperties()}
             typeSearchText: String(field.fieldTypeWithSize || field.fieldType || '').toLowerCase(),
             isMatch: true,
             rowElement: null,
-            diff: null,
-            diffStatus: null,
             isPicklistExpanded: false
         };
 
@@ -5380,11 +5375,7 @@ ${this.buildPaletteCustomProperties()}
                 savePanelPlace();
             });
 
-            /*
-                The open state lives on the FIELD, not the row: a comparison rebuilds an object's rows
-                and a reload rebuilds the whole panel, and a list the reader opened stays open
-                through both -- asking the host again, under the allow-list of the model on screen.
-            */
+            // THE OPEN STATE LIVES ON THE FIELD, SO A ROW BUILT FROM A RESTORED PLACE OPENS AS IT WAS -- ASKING THE HOST AGAIN
             setPicklistExpanded(!!fieldState.isPicklistExpanded);
 
             fieldHeaderElement.appendChild(picklistToggleElement);
@@ -5409,15 +5400,9 @@ ${this.buildPaletteCustomProperties()}
             fieldHeaderElement.appendChild(buildSourceLink('treeFieldSource', '↗ yml', treeObjectState.object.recipeFilePath, field.lineNumber));
         }
 
-        if (fieldState.diffStatus) {
-            fieldHeaderElement.appendChild(createElement('span', 'diffBadge diff-' + fieldState.diffStatus, DIFF_STATUS_LABELS[fieldState.diffStatus]));
-        }
-
         fieldRowElement.appendChild(fieldHeaderElement);
 
-        appendDiffDetail(fieldRowElement, fieldState.diff);
-
-        // THE FIND BOX MATCHES A FIELD BY ITS FAKER EXPRESSION, SO THE EXPRESSION IS ON SCREEN WITH THE ROW
+        // THE SEARCH BOX MATCHES A FIELD BY ITS FAKER EXPRESSION, SO THE EXPRESSION IS ON SCREEN WITH THE ROW
         if (field.recipeValue) {
             fieldRowElement.appendChild(createElement('pre', 'expression', field.recipeValue));
         }
@@ -5518,8 +5503,7 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        An object's header is made with its tree, because the filter writes its count whether or
-        not the card is open; its ROWS wait for the object's own first expand.
+        An object's header is made with its tree; its ROWS wait for the object's own first expand.
     */
     function buildTreeObjectState(treeObject, object, treeKey) {
 
@@ -5540,9 +5524,7 @@ ${this.buildPaletteCustomProperties()}
             element: objectElement,
             toggleElement: toggleElement,
             bodyElement: createElement('div', 'treeObjectBody hidden'),
-            countElement: createElement('span', 'treeObjectCount muted'),
-            orgDescribeElement: createElement('span', 'orgDescribeStatus muted hidden'),
-            diffElement: createElement('span', 'objectDiff hidden')
+            countElement: createElement('span', 'treeObjectCount muted')
         };
 
         toggleElement.setAttribute('aria-expanded', 'false');
@@ -5569,8 +5551,6 @@ ${this.buildPaletteCustomProperties()}
         }
 
         objectHeaderElement.appendChild(treeObjectState.countElement);
-        objectHeaderElement.appendChild(treeObjectState.orgDescribeElement);
-        objectHeaderElement.appendChild(treeObjectState.diffElement);
 
         if (object.iteration) { appendAddFriendControls(treeKey, object, objectHeaderElement); }
 
@@ -5582,10 +5562,11 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        The tab strip and the Structure tab's objects, made on the card's first expand. The history
-        tabs are drawn only for a card whose model carries a history, and their rows wait for the
-        tab's own first open -- that is also when Previous Versions asks for its summaries, which
-        the host reads from each run's wrapper.
+        The tab strip and the Structure tab's objects, made on the card's first expand. Data-by-Org
+        and the history tabs build their rows on their own first open -- Data-by-Org is also when
+        the toolbar's picker asks for its orgs, and Previous Versions when it asks for summaries,
+        which the host reads from each run's wrapper. The history tabs are drawn only for a card
+        whose model carries a history.
     */
     function ensureTreeBodyBuilt(treeState) {
 
@@ -5596,9 +5577,8 @@ ${this.buildPaletteCustomProperties()}
 
         tabsElement.setAttribute('role', 'tablist');
 
-        if (treeState.compare) {
-            structureElement.appendChild(treeState.compare.element);
-        }
+        treeState.structureSearch = buildTabSearch(treeState, 'structure', 'Search objects, fields and faker expressions', applyStructureFilter);
+        structureElement.appendChild(treeState.structureSearch.element);
 
         treeState.objectStates.forEach(function (treeObjectState) {
             structureElement.appendChild(treeObjectState.element);
@@ -5611,6 +5591,7 @@ ${this.buildPaletteCustomProperties()}
         treeState.tabStates = [];
         treeState.selectedTab = 'structure';
         addTreeTab(treeState, tabsElement, 'structure', 'Structure', structureElement);
+        addTreeTab(treeState, tabsElement, 'dataByOrg', 'Data-by-Org', createElement('div', 'treeDataByOrg hidden'));
 
         if (treeState.tree.history) {
             addTreeTab(treeState, tabsElement, 'versions', 'Previous Versions', createElement('div', 'treeVersions hidden'));
@@ -5620,6 +5601,7 @@ ${this.buildPaletteCustomProperties()}
         treeState.bodyElement.appendChild(tabsElement);
         treeState.tabStates.forEach(function (tabState) { treeState.bodyElement.appendChild(tabState.panelElement); });
         treeState.isBodyBuilt = true;
+        applyStructureFilter(treeState);
 
     }
 
@@ -5663,11 +5645,15 @@ ${this.buildPaletteCustomProperties()}
 
             if (isSelected && !tabState.isBuilt) {
                 tabState.isBuilt = true;
+                if (tabState.tabName === 'dataByOrg') { buildDataByOrgTab(treeState, tabState.panelElement); }
                 if (tabState.tabName === 'versions') { buildVersionsTab(treeState, tabState.panelElement); }
                 if (tabState.tabName === 'datasets') { buildDatasetsTab(treeState, tabState.panelElement); }
             }
 
         });
+
+        // AFTER THE MODEL'S "rendered" -- A CLICK CAN ONLY COME FROM A DRAWN PANEL, AND renderPanelGuarded ASKS AGAIN ITSELF
+        if (tabName === 'dataByOrg' && renderedSequence !== null) { requestDataOrgs(); }
 
         savePanelPlace();
 
@@ -5803,8 +5789,44 @@ ${this.buildPaletteCustomProperties()}
             return;
         }
 
-        datasets.forEach(function (dataset) { panelElement.appendChild(buildDatasetRow(treeState, dataset, 'datasets')); });
+        treeState.datasetsSearch = buildTabSearch(treeState, 'datasets', 'Search data set folders', applyDatasetsFilter);
+        panelElement.appendChild(treeState.datasetsSearch.element);
 
+        treeState.datasetRowStates = datasets.map(function (dataset) {
+            const rowElement = buildDatasetRow(treeState, dataset, 'datasets');
+            panelElement.appendChild(rowElement);
+            return { element: rowElement, searchText: dataset.datasetFolderName.toLowerCase() };
+        });
+
+        applyDatasetsFilter(treeState);
+
+    }
+
+    /*
+        The history tabs list rows, not objects, so a search hides the rows it does not match --
+        and says how many it left, so an empty tab never reads as a tree with no history.
+    */
+    function applyRowSearch(rowStates, searchQuery, search, singular, plural) {
+
+        let matchingRowCount = 0;
+
+        rowStates.forEach(function (rowState) {
+            const isMatch = !searchQuery || rowState.searchText.indexOf(searchQuery) !== -1;
+            if (isMatch) { matchingRowCount++; rowState.element.classList.remove('hidden'); } else { rowState.element.classList.add('hidden'); }
+        });
+
+        search.matchCountElement.textContent = !searchQuery
+            ? pluralize(rowStates.length, singular, plural)
+            : matchingRowCount > 0 ? matchingRowCount + ' of ' + pluralize(rowStates.length, singular, plural) : 'no matches';
+
+    }
+
+    function applyDatasetsFilter(treeState) {
+        applyRowSearch(treeState.datasetRowStates, treeState.searchQueries.datasets, treeState.datasetsSearch, 'data set', 'data sets');
+    }
+
+    function applyVersionsFilter(treeState) {
+        applyRowSearch(treeState.versionStates, treeState.searchQueries.versions, treeState.versionsSearch, 'version', 'versions');
     }
 
     function setVersionExpanded(treeState, versionState, isExpanded) {
@@ -5839,6 +5861,7 @@ ${this.buildPaletteCustomProperties()}
         const versionState = {
             version: version,
             element: versionElement,
+            searchText: [version.runFolderName, version.generatedAtLabel].join('\\n').toLowerCase(),
             toggleElement: toggleElement,
             bodyElement: createElement('div', 'treeVersionBody hidden'),
             fieldsElement: createElement('span', 'treeVersionFields muted', 'Loading summary…'),
@@ -5857,6 +5880,7 @@ ${this.buildPaletteCustomProperties()}
         versionHeaderElement.appendChild(toggleElement);
         versionHeaderElement.appendChild(createElement('span', 'treeVersionDate', version.generatedAtLabel));
         versionHeaderElement.appendChild(createElement('span', 'treeVersionBackend muted', version.fakerService));
+        versionHeaderElement.appendChild(createElement('span', 'treeVersionFolder muted', version.runFolderName));
         versionHeaderElement.appendChild(versionState.fieldsElement);
         versionHeaderElement.appendChild(versionState.changeElement);
 
@@ -5884,12 +5908,18 @@ ${this.buildPaletteCustomProperties()}
 
         // KEYED BY RUN FOLDER NAMES FROM DISK, SO NO PROTOTYPE
         treeState.versionStatesByRunFolderName = Object.create(null);
+        treeState.versionsSearch = buildTabSearch(treeState, 'versions', 'Search run folders and dates', applyVersionsFilter);
+        treeState.versionStates = [];
+        panelElement.appendChild(treeState.versionsSearch.element);
 
         treeState.tree.history.versions.forEach(function (version) {
             const versionState = buildVersionRow(treeState, version);
             treeState.versionStatesByRunFolderName[version.runFolderName] = versionState;
+            treeState.versionStates.push(versionState);
             panelElement.appendChild(versionState.element);
         });
+
+        applyVersionsFilter(treeState);
 
         vscodeApi.postMessage({ command: 'loadVersionSummaries', treeKey: treeState.tree.treeKey });
 
@@ -5915,10 +5945,10 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // A RELOAD THE HOST MADE AFTER A DATA SET WENT MISSING RE-OPENS THE CARD AND TAB THE READER ACTED FROM
+    // A RELOAD THE HOST MADE AFTER A DATA SET WENT MISSING, OR A CREATE, RE-OPENS THE CARD AND TAB THE READER ACTED FROM
     function applyTreeFocus(focusTree) {
 
-        if (!focusTree || viewMode !== 'trees') { return; }
+        if (!focusTree) { return; }
 
         const treeState = treeStates.find(function (candidateTreeState) { return candidateTreeState.tree.treeKey === focusTree.treeKey; });
 
@@ -5942,38 +5972,6 @@ ${this.buildPaletteCustomProperties()}
         treeState.isExpanded = isExpanded;
         treeState.toggleElement.textContent = isExpanded ? '▾' : '▸';
         treeState.toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
-
-    }
-
-    function setTreeScope(nextTreeScopeKey) {
-
-        treeScopeKey = nextTreeScopeKey;
-
-        let scopedTreeState = null;
-
-        treeStates.forEach(function (treeState) {
-            const isScoped = treeState.tree.treeKey === treeScopeKey;
-            if (isScoped) { scopedTreeState = treeState; }
-            treeState.scopeElement.setAttribute('aria-pressed', isScoped ? 'true' : 'false');
-            if (isScoped) { treeState.scopeElement.classList.add('selected'); } else { treeState.scopeElement.classList.remove('selected'); }
-        });
-
-        treeScopeStatusElement.textContent = '';
-
-        if (!scopedTreeState) {
-            treeScopeKey = null;
-            treeScopeStatusElement.classList.add('hidden');
-        } else {
-            const scopedTree = scopedTreeState.tree;
-            treeScopeStatusElement.appendChild(createElement('span', 'treeScopeText', 'Searching only ' + scopedTree.title + (scopedTree.folderName ? ' (' + scopedTree.folderName + ')' : '') + ' '));
-            const clearScopeElement = createElement('button', 'treeScopeClear', 'Search every tree');
-            clearScopeElement.addEventListener('click', function () { setTreeScope(null); });
-            treeScopeStatusElement.appendChild(clearScopeElement);
-            treeScopeStatusElement.classList.remove('hidden');
-        }
-
-        applyTreeFilter();
-        savePanelPlace();
 
     }
 
@@ -6039,7 +6037,6 @@ ${this.buildPaletteCustomProperties()}
         const treeElement = createElement('div', 'treeCard');
         const treeHeaderElement = createElement('div', 'treeHeader');
         const toggleElement = createElement('button', 'treeToggle', '▸');
-        const scopeElement = createElement('button', 'treeScope', '🔍');
 
         const treeState = {
             tree: tree,
@@ -6052,12 +6049,22 @@ ${this.buildPaletteCustomProperties()}
             isExpandedByReader: false,
             element: treeElement,
             toggleElement: toggleElement,
-            scopeElement: scopeElement,
             bodyElement: createElement('div', 'treeBody hidden'),
-            matchElement: createElement('span', 'treeMatch muted hidden'),
+            // THE OBJECTS DATA-BY-ORG COUNTS: THE TREE'S OWN, ONCE EACH, IN INSERT ORDER -- A SELF-LOOKUP'S ITERATION IS THE SAME OBJECT
+            dataObjectApiNames: tree.objects
+                .filter(function (treeObject) { return treeObject.iterationNickname === undefined; })
+                .map(function (treeObject) { return treeObject.objectApiName; }),
+            dataTab: null,
+            comparison: null,
+            searchQueries: { structure: '', dataByOrg: '', versions: '', datasets: '' },
             statusFilter: 'all',
-            // A RESTORED STATUS FILTER WAITS FOR THIS CARD'S COMPARISON: APPLIED BEFORE IT, IT WOULD HIDE EVERY ROW
+            /*
+                What a restored place asks of the card's comparison (#222): its status filter and the
+                Data-by-Org rows the reader had opened. Applied before the comparison is drawn, the
+                filter would hide every row and the rows could not open, so they wait for it.
+            */
             pendingStatusFilter: null,
+            pendingDataExpandedObjectApiNames: null,
             compare: null
         };
 
@@ -6084,13 +6091,6 @@ ${this.buildPaletteCustomProperties()}
             savePanelPlace();
         });
 
-        scopeElement.setAttribute('title', 'Search only this tree');
-        scopeElement.setAttribute('aria-label', 'Search only ' + tree.title);
-        scopeElement.setAttribute('aria-pressed', 'false');
-        scopeElement.addEventListener('click', function () {
-            setTreeScope(treeScopeKey === tree.treeKey ? null : tree.treeKey);
-        });
-
         treeHeaderElement.appendChild(toggleElement);
         treeHeaderElement.appendChild(createElement('span', 'treeTitle', tree.title));
 
@@ -6100,7 +6100,6 @@ ${this.buildPaletteCustomProperties()}
 
         treeHeaderElement.appendChild(createElement('span', 'treeCount muted',
             pluralize(objectStatesCounted.length, 'object', 'objects') + ' · ' + pluralize(treeFieldCount, 'field', 'fields')));
-        treeHeaderElement.appendChild(treeState.matchElement);
 
         /*
             The actions sit at the END of the row and never toggle it. The click is stopped on the
@@ -6110,7 +6109,6 @@ ${this.buildPaletteCustomProperties()}
         */
         const actionsElement = createElement('span', 'treeHeaderActions');
         actionsElement.addEventListener('click', function (event) { event.stopPropagation(); });
-        actionsElement.appendChild(scopeElement);
 
         if (tree.runFakerRecipeFileName) {
             treeState.runFakerElement = buildRunFakerElement(tree);
@@ -6173,11 +6171,6 @@ ${this.buildPaletteCustomProperties()}
         const objectsByApiName = Object.create(null);
         recipe.objects.forEach(function (object) { objectsByApiName[object.objectApiName] = object; });
 
-        treeMatchCountElement = createElement('div', 'treeMatchCount muted');
-        treeScopeStatusElement = createElement('div', 'treeScopeStatus hidden');
-        treesViewElement.appendChild(treeMatchCountElement);
-        treesViewElement.appendChild(treeScopeStatusElement);
-
         const trees = recipe.trees || [];
 
         if (trees.length === 0) {
@@ -6190,251 +6183,365 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        A row of an object the card's comparison did not cover has no status, so it matches no
-        status filter: a row that says nothing about the org is not one the reader asked to see by
-        its status.
+        What a search may open, under the RECIPE_COCKPIT_AUTO_EXPAND_* limits. Each search box
+        spends its own budget, so a keystroke's cost is bounded by what it expands rather than by
+        what it matches. A row with no match is closed.
     */
-    function isStatusMatch(treeState, fieldState) {
+    function expandMatchesWithinBudget(rowStates, matchCountOf, rowCountOf, setExpanded) {
 
-        if (treeState.statusFilter === 'all') { return true; }
-        if (treeState.statusFilter === 'changed') { return !!fieldState.diffStatus && fieldState.diffStatus !== 'unchanged'; }
+        let expandedObjectCount = 0;
+        let expandedRowCount = 0;
+        let isBudgetSpent = false;
 
-        return fieldState.diffStatus === treeState.statusFilter;
+        rowStates.forEach(function (rowState) {
 
-    }
-
-    /*
-        The find box across every tree, or across the one the reader scoped it to with 🔍, and each
-        card's own status filter within that card.
-
-        It narrows rows and never hides a CARD or an OBJECT: a tree or object with no match stays on
-        screen, collapsed and labelled, because hiding it would make a filter look like a truncation
-        -- the reader could not tell "not in the recipe" from "filtered away". A card opens only for
-        an object the filter opens (a card under a status filter stays open: the filter is in it),
-        and objects open under the RECIPE_COCKPIT_AUTO_EXPAND_* limits, so a keystroke's cost is
-        bounded by what it expands, across every tree together.
-    */
-    function applyTreeFilter() {
-
-        if (!treeMatchCountElement) { return; }
-
-        const isTextFiltering = !!filterQuery;
-        const isAnyStatusFiltering = treeStates.some(function (treeState) { return treeState.statusFilter !== 'all'; });
-
-        let totalFieldCount = 0;
-        let matchingFieldCount = 0;
-        let searchedTreeCount = 0;
-        let matchingTreeCount = 0;
-        let autoExpandedObjectCount = 0;
-        let autoExpandedRowCount = 0;
-        let isAutoExpandBudgetSpent = false;
-
-        treeStates.forEach(function (treeState) {
-
-            const isStatusFiltering = treeState.statusFilter !== 'all';
-            // A CARD OUTSIDE THE 🔍 SCOPE IS STILL COUNTED WHILE ITS OWN STATUS FILTER NARROWS IT, SINCE ITS MATCHES ARE ON SCREEN
-            const isInScope = treeScopeKey === null || treeState.tree.treeKey === treeScopeKey;
-            const isSearched = isInScope || isStatusFiltering;
-            const isTreeTextFiltering = isTextFiltering && isInScope;
-            const isTreeFiltering = isTreeTextFiltering || isStatusFiltering;
-            let treeMatchingFieldCount = 0;
-
-            treeState.objectStates.forEach(function (treeObjectState) {
-
-                const isObjectNameMatch = !isTreeTextFiltering || treeObjectState.objectSearchText.indexOf(filterQuery) !== -1;
-                let objectMatchingFieldCount = 0;
-
-                treeObjectState.fieldStates.forEach(function (fieldState) {
-                    fieldState.isMatch = (isObjectNameMatch || isFieldTextMatch(fieldState)) && isStatusMatch(treeState, fieldState);
-                    if (fieldState.isMatch) { objectMatchingFieldCount++; }
-                    applyTreeFieldVisibility(fieldState);
-                });
-
-                const objectFieldCount = treeObjectState.fieldStates.length;
-                treeObjectState.matchingFieldCount = objectMatchingFieldCount;
-
-                if (isSearched) {
-                    totalFieldCount += objectFieldCount;
-                    matchingFieldCount += objectMatchingFieldCount;
-                    treeMatchingFieldCount += objectMatchingFieldCount;
-                }
-
-                if (!isTreeFiltering || (isObjectNameMatch && !isStatusFiltering)) {
-                    treeObjectState.countElement.textContent = pluralize(objectFieldCount, 'field', 'fields');
-                } else if (objectMatchingFieldCount > 0) {
-                    treeObjectState.countElement.textContent = objectMatchingFieldCount + ' of ' + pluralize(objectFieldCount, 'field', 'fields');
-                } else {
-                    treeObjectState.countElement.textContent = 'no matching fields';
-                }
-
-            });
-
-            if (isSearched) { searchedTreeCount++; }
-            if (isSearched && treeMatchingFieldCount > 0) { matchingTreeCount++; }
-
-            // A CLEARED FILTER, OR A TREE OUTSIDE THE SCOPE WITH NO STATUS FILTER, GIVES BACK WHAT THE READER HAD OPENED
-            if (!isTreeFiltering) {
-                treeState.matchElement.textContent = isTextFiltering ? 'not searched' : '';
-                if (isTextFiltering) { treeState.matchElement.classList.remove('hidden'); } else { treeState.matchElement.classList.add('hidden'); }
-                setTreeExpanded(treeState, treeState.isExpandedByReader);
-                treeState.objectStates.forEach(function (treeObjectState) { setTreeObjectExpanded(treeObjectState, treeObjectState.isExpandedByReader); });
+            if (matchCountOf(rowState) === 0 || isBudgetSpent) {
+                setExpanded(rowState, false);
                 return;
             }
 
-            treeState.matchElement.textContent = treeMatchingFieldCount > 0 ? pluralize(treeMatchingFieldCount, 'matching field', 'matching fields') : 'no matches';
-            treeState.matchElement.classList.remove('hidden');
+            const rowCount = rowCountOf(rowState);
+            const fitsRowBudget = expandedObjectCount === 0 || expandedRowCount + rowCount <= AUTO_EXPAND_ROW_BUDGET;
 
-            let isAnyObjectOpened = false;
-
-            treeState.objectStates.forEach(function (treeObjectState) {
-
-                if (treeObjectState.matchingFieldCount === 0 || isAutoExpandBudgetSpent) {
-                    setTreeObjectExpanded(treeObjectState, false);
-                    return;
-                }
-
-                const objectFieldCount = treeObjectState.fieldStates.length;
-                const fitsRowBudget = autoExpandedObjectCount === 0 || autoExpandedRowCount + objectFieldCount <= AUTO_EXPAND_ROW_BUDGET;
-
-                if (autoExpandedObjectCount >= AUTO_EXPAND_OBJECT_LIMIT || !fitsRowBudget) {
-                    isAutoExpandBudgetSpent = true;
-                    setTreeObjectExpanded(treeObjectState, false);
-                    return;
-                }
-
-                autoExpandedObjectCount++;
-                autoExpandedRowCount += objectFieldCount;
-                isAnyObjectOpened = true;
-                setTreeObjectExpanded(treeObjectState, true);
-
-            });
-
-            setTreeExpanded(treeState, isAnyObjectOpened || isStatusFiltering);
-
-            // THE ROWS A FILTER OPENED ARE ON THE STRUCTURE TAB, SO A CARD SHOWING A HISTORY TAB SWITCHES TO IT
-            if (isAnyObjectOpened && treeState.selectedTab && treeState.selectedTab !== 'structure') {
-                selectTreeTab(treeState, 'structure');
+            if (expandedObjectCount >= AUTO_EXPAND_OBJECT_LIMIT || !fitsRowBudget) {
+                isBudgetSpent = true;
+                setExpanded(rowState, false);
+                return;
             }
 
-        });
+            expandedObjectCount++;
+            expandedRowCount += rowCount;
+            setExpanded(rowState, true);
 
-        treeMatchCountElement.textContent = isTextFiltering || isAnyStatusFiltering
-            ? matchingFieldCount + ' of ' + pluralize(totalFieldCount, 'field', 'fields') + ' · ' + matchingTreeCount + ' of ' + pluralize(searchedTreeCount, 'tree', 'trees')
-            : pluralize(totalFieldCount, 'field', 'fields') + ' · ' + pluralize(searchedTreeCount, 'tree', 'trees');
+        });
 
     }
 
     /*
-        Data-by-Org: every tree in Recipe Trees order, and each object's record count in the org the
-        reader chose. The dropdown is a native select of the LABELS the host posted, and the panel
-        posts back only the chosen option's index -- the host holds the usernames.
+        The Structure tab's search, over its own card only. It narrows rows and never hides an
+        OBJECT: one with no match stays on screen, collapsed and labelled, because hiding it would
+        make a search look like a truncation -- the reader could not tell "not in the recipe" from
+        "filtered away". A cleared search gives back what the reader had opened.
     */
-    function renderDataOrgView(recipe) {
+    function applyStructureFilter(treeState) {
 
-        const controlsElement = createElement('div', 'dataOrgControls');
+        if (!treeState.structureSearch) { return; }
 
-        dataOrgSelectElement = createElement('select', 'dataOrgSelect hidden');
-        dataOrgSelectElement.setAttribute('aria-label', 'Salesforce org to count records in');
-        dataOrgSelectElement.addEventListener('change', function () {
-            const selectedValue = String(dataOrgSelectElement.value || '');
-            if (!selectedValue) { return; }
-            vscodeApi.postMessage({ command: 'selectDataOrg', orgIndex: Number(selectedValue) });
+        const searchQuery = treeState.searchQueries.structure;
+        let totalFieldCount = 0;
+        let matchingFieldCount = 0;
+
+        treeState.objectStates.forEach(function (treeObjectState) {
+
+            const isObjectNameMatch = !searchQuery || treeObjectState.objectSearchText.indexOf(searchQuery) !== -1;
+            let objectMatchingFieldCount = 0;
+
+            treeObjectState.fieldStates.forEach(function (fieldState) {
+                fieldState.isMatch = isObjectNameMatch || isFieldTextMatch(fieldState, searchQuery);
+                if (fieldState.isMatch) { objectMatchingFieldCount++; }
+                applyTreeFieldVisibility(fieldState);
+            });
+
+            const objectFieldCount = treeObjectState.fieldStates.length;
+            treeObjectState.matchingFieldCount = objectMatchingFieldCount;
+            totalFieldCount += objectFieldCount;
+            matchingFieldCount += objectMatchingFieldCount;
+
+            if (isObjectNameMatch) {
+                treeObjectState.countElement.textContent = pluralize(objectFieldCount, 'field', 'fields');
+            } else if (objectMatchingFieldCount > 0) {
+                treeObjectState.countElement.textContent = objectMatchingFieldCount + ' of ' + pluralize(objectFieldCount, 'field', 'fields');
+            } else {
+                treeObjectState.countElement.textContent = 'no matching fields';
+            }
+
         });
 
-        dataOrgTypeElement = createElement('span', 'dataOrgType hidden');
+        treeState.structureSearch.matchCountElement.textContent = !searchQuery
+            ? pluralize(totalFieldCount, 'field', 'fields')
+            : matchingFieldCount > 0 ? matchingFieldCount + ' of ' + pluralize(totalFieldCount, 'field', 'fields') : 'no matches';
 
-        dataOrgRefreshElement = createElement('button', 'dataOrgRefresh hidden', '⟳');
-        dataOrgRefreshElement.setAttribute('title', 'Check the org connections again and count the records again');
-        dataOrgRefreshElement.setAttribute('aria-label', 'Check the org connections again and count the records again');
-        dataOrgRefreshElement.addEventListener('click', function () {
-            showDataOrgConnectionCheck();
-            vscodeApi.postMessage({ command: 'refreshDataOrgCounts' });
-        });
-
-        controlsElement.appendChild(dataOrgSelectElement);
-        controlsElement.appendChild(dataOrgTypeElement);
-        controlsElement.appendChild(dataOrgRefreshElement);
-        dataOrgViewElement.appendChild(controlsElement);
-
-        dataOrgHiddenNoteElement = createElement('div', 'dataOrgHiddenNote muted hidden');
-        dataOrgViewElement.appendChild(dataOrgHiddenNoteElement);
-
-        dataOrgStatusElement = createElement('div', 'dataOrgStatus muted', DATA_ORG_CONNECTION_CHECK_TEXT);
-        dataOrgViewElement.appendChild(dataOrgStatusElement);
-
-        const trees = recipe.trees || [];
-
-        if (trees.length === 0) {
-            dataOrgViewElement.appendChild(createElement('div', 'emptyState', 'This run has no relationship trees to count records for.'));
+        if (!searchQuery) {
+            treeState.objectStates.forEach(function (treeObjectState) { setTreeObjectExpanded(treeObjectState, treeObjectState.isExpandedByReader); });
             return;
         }
 
-        trees.forEach(renderDataTree);
+        expandMatchesWithinBudget(treeState.objectStates,
+            function (treeObjectState) { return treeObjectState.matchingFieldCount; },
+            function (treeObjectState) { return treeObjectState.fieldStates.length; },
+            setTreeObjectExpanded);
 
     }
 
-    function renderDataTree(tree) {
+    /*
+        A card's Data-by-Org tab (#217): the comparison's controls, the tree's records in the
+        toolbar's org, and one row per object -- its count, + Create and, once compared, what
+        differs. Built on the tab's first open. What it draws lives in panel-wide state until then,
+        so an org picked, or a comparison answered, before the tab opens is drawn when it does.
+    */
+    function buildDataByOrgTab(treeState, panelElement) {
 
-        const treeElement = createElement('div', 'dataTreeCard');
-        const headerElement = createElement('div', 'dataTreeHeader');
-        const toggleElement = createElement('button', 'dataTreeToggle', '▸');
-        const bodyElement = createElement('div', 'dataTreeBody hidden');
+        const dataTab = {
+            countElement: createElement('div', 'dataTreeCount muted'),
+            search: null,
+            objectRowStates: []
+        };
 
-        const dataTreeState = {
-            tree: tree,
-            objectApiNames: tree.objects
-                .filter(function (treeObject) { return treeObject.iterationNickname === undefined; })
-                .map(function (treeObject) { return treeObject.objectApiName; }),
-            element: treeElement,
+        treeState.dataTab = dataTab;
+
+        if (treeState.compare) { panelElement.appendChild(treeState.compare.element); }
+        panelElement.appendChild(dataTab.countElement);
+
+        if (treeState.dataObjectApiNames.length === 0) {
+            panelElement.appendChild(createElement('div', 'treeEmpty muted', 'This tree has no objects with a recipe.'));
+            drawDataTreeCounts(treeState);
+            return;
+        }
+
+        dataTab.search = buildTabSearch(treeState, 'dataByOrg', 'Search objects, and the fields that differ once compared', applyDataFilter);
+        panelElement.appendChild(dataTab.search.element);
+
+        // IN INSERT ORDER, AS THE TREE LISTS THEM
+        treeState.dataObjectApiNames.forEach(function (objectApiName) {
+            const dataObjectRowState = buildDataObjectRow(treeState, objectApiName);
+            dataTab.objectRowStates.push(dataObjectRowState);
+            panelElement.appendChild(dataObjectRowState.element);
+        });
+
+        drawDataTreeCounts(treeState);
+        drawDataComparison(treeState);
+
+    }
+
+    function buildDataObjectRow(treeState, objectApiName) {
+
+        const objectElement = createElement('div', 'dataObject');
+        const objectHeaderElement = createElement('div', 'dataObjectHeader');
+        const toggleElement = createElement('button', 'dataObjectToggle hidden', '▸');
+
+        const dataObjectRowState = {
+            objectApiName: objectApiName,
+            searchText: objectApiName.toLowerCase(),
+            element: objectElement,
             toggleElement: toggleElement,
-            bodyElement: bodyElement,
-            countElement: createElement('span', 'dataTreeCount muted'),
-            objectCountElements: Object.create(null),
-            isExpanded: false
+            bodyElement: createElement('div', 'dataObjectBody hidden'),
+            countElement: createElement('span', 'dataObjectCount muted'),
+            describeElement: createElement('span', 'orgDescribeStatus muted hidden'),
+            diffElement: createElement('span', 'objectDiff hidden'),
+            matchElement: createElement('span', 'dataObjectMatch muted hidden'),
+            fieldDiffStates: [],
+            isCompared: false,
+            matchingFieldCount: 0,
+            isBodyBuilt: false,
+            isExpanded: false,
+            isExpandedByReader: false
         };
 
         toggleElement.setAttribute('aria-expanded', 'false');
-        toggleElement.setAttribute('aria-label', 'Show or hide the objects of ' + tree.title);
+        toggleElement.setAttribute('aria-label', 'Show or hide the fields of ' + objectApiName + ' that differ from the org');
         toggleElement.addEventListener('click', function () {
-            dataTreeState.isExpanded = !dataTreeState.isExpanded;
-            if (dataTreeState.isExpanded) { bodyElement.classList.remove('hidden'); } else { bodyElement.classList.add('hidden'); }
-            toggleElement.textContent = dataTreeState.isExpanded ? '▾' : '▸';
-            toggleElement.setAttribute('aria-expanded', dataTreeState.isExpanded ? 'true' : 'false');
+            dataObjectRowState.isExpandedByReader = !dataObjectRowState.isExpanded;
+            setDataObjectExpanded(dataObjectRowState, dataObjectRowState.isExpandedByReader);
+            savePanelPlace();
         });
 
-        headerElement.appendChild(toggleElement);
-        headerElement.appendChild(createElement('span', 'dataTreeTitle', tree.title));
-        if (tree.folderName) {
-            headerElement.appendChild(createElement('span', 'dataTreeFolder muted', tree.folderName));
-        }
-        headerElement.appendChild(dataTreeState.countElement);
+        objectHeaderElement.appendChild(toggleElement);
+        objectHeaderElement.appendChild(createElement('span', 'dataObjectName', objectApiName));
+        objectHeaderElement.appendChild(dataObjectRowState.countElement);
+        objectHeaderElement.appendChild(dataObjectRowState.describeElement);
+        objectHeaderElement.appendChild(dataObjectRowState.diffElement);
+        objectHeaderElement.appendChild(dataObjectRowState.matchElement);
 
-        // IN INSERT ORDER, AS THE TREE LISTS THEM -- ROWS ARE A NAME AND A NUMBER, SO THEY ARE BUILT WITH THE CARD
-        dataTreeState.objectApiNames.forEach(function (objectApiName) {
-            const objectElement = createElement('div', 'dataObject');
-            const objectHeaderElement = createElement('div', 'dataObjectHeader');
-            const countElement = createElement('span', 'dataObjectCount muted');
-            objectHeaderElement.appendChild(createElement('span', 'dataObjectName', objectApiName));
-            objectHeaderElement.appendChild(countElement);
-            objectElement.appendChild(objectHeaderElement);
-            objectElement.appendChild(buildCreateControls(tree, objectApiName));
-            bodyElement.appendChild(objectElement);
-            if (!Object.prototype.hasOwnProperty.call(dataTreeState.objectCountElements, objectApiName)) {
-                dataTreeState.objectCountElements[objectApiName] = [];
+        objectElement.appendChild(objectHeaderElement);
+        objectElement.appendChild(buildCreateControls(treeState.tree, objectApiName));
+        objectElement.appendChild(dataObjectRowState.bodyElement);
+
+        return dataObjectRowState;
+
+    }
+
+    function applyDataFieldVisibility(fieldDiffState) {
+
+        if (!fieldDiffState.rowElement) { return; }
+
+        if (fieldDiffState.isMatch) {
+            fieldDiffState.rowElement.classList.remove('hidden');
+        } else {
+            fieldDiffState.rowElement.classList.add('hidden');
+        }
+
+    }
+
+    // ONLY A FIELD THAT DIFFERS IS POSTED, SO ONLY ONE IS DRAWN: ITS NAME, ITS TYPE, ITS BADGE AND WHAT THE BADGE CANNOT SAY
+    function buildDataFieldRow(fieldDiffState) {
+
+        const fieldDiff = fieldDiffState.fieldDiff;
+        const fieldRowElement = createElement('div', 'dataField');
+        const fieldHeaderElement = createElement('div', 'dataFieldHeader');
+        const fieldType = fieldDiff.status === 'new-in-org' ? fieldDiff.orgFieldType : (fieldDiff.recipeFieldType || fieldDiff.orgFieldType);
+
+        fieldHeaderElement.appendChild(createElement('span', 'dataFieldName', fieldDiff.fieldApiName));
+
+        if (fieldType) {
+            fieldHeaderElement.appendChild(createElement('span', 'fieldType', fieldType));
+        }
+
+        fieldHeaderElement.appendChild(createElement('span', 'diffBadge diff-' + fieldDiff.status, DIFF_STATUS_LABELS[fieldDiff.status]));
+        fieldRowElement.appendChild(fieldHeaderElement);
+        appendDiffDetail(fieldRowElement, fieldDiff);
+
+        return fieldRowElement;
+
+    }
+
+    function setDataObjectExpanded(dataObjectRowState, isExpanded) {
+
+        const canExpand = isExpanded && dataObjectRowState.isCompared;
+
+        if (canExpand && !dataObjectRowState.isBodyBuilt) {
+
+            if (dataObjectRowState.fieldDiffStates.length === 0) {
+                dataObjectRowState.bodyElement.appendChild(createElement('div', 'treeEmpty muted', 'No field differs from the org.'));
             }
-            dataTreeState.objectCountElements[objectApiName].push(countElement);
-        });
 
-        if (dataTreeState.objectApiNames.length === 0) {
-            bodyElement.appendChild(createElement('div', 'treeEmpty muted', 'This tree has no objects with a recipe.'));
+            dataObjectRowState.fieldDiffStates.forEach(function (fieldDiffState) {
+                fieldDiffState.rowElement = buildDataFieldRow(fieldDiffState);
+                applyDataFieldVisibility(fieldDiffState);
+                dataObjectRowState.bodyElement.appendChild(fieldDiffState.rowElement);
+            });
+
+            dataObjectRowState.isBodyBuilt = true;
+
         }
 
-        treeElement.appendChild(headerElement);
-        treeElement.appendChild(bodyElement);
-        dataOrgViewElement.appendChild(treeElement);
+        if (canExpand) { dataObjectRowState.bodyElement.classList.remove('hidden'); } else { dataObjectRowState.bodyElement.classList.add('hidden'); }
 
-        dataTreeStates.push(dataTreeState);
-        drawDataTreeCounts(dataTreeState);
+        dataObjectRowState.isExpanded = canExpand;
+        dataObjectRowState.toggleElement.textContent = canExpand ? '▾' : '▸';
+        dataObjectRowState.toggleElement.setAttribute('aria-expanded', canExpand ? 'true' : 'false');
+
+    }
+
+    /*
+        Lays the card's comparison over its Data-by-Org rows. A compared object's row says what
+        differs and expands to those fields; an object the comparison did not cover says so rather
+        than showing statuses it has none of. Rows from an earlier comparison are rebuilt from this
+        one, so a field only an OLDER org had does not survive into a newer answer.
+    */
+    function drawDataComparison(treeState) {
+
+        const dataTab = treeState.dataTab;
+
+        if (!dataTab) { return; }
+
+        const comparison = treeState.comparison;
+        const isComparisonShown = !!comparison && comparison.isShown;
+
+        dataTab.objectRowStates.forEach(function (dataObjectRowState) {
+
+            const objectApiName = dataObjectRowState.objectApiName;
+            const objectDiff = isComparisonShown && Object.prototype.hasOwnProperty.call(comparison.objectDiffsByApiName, objectApiName)
+                ? comparison.objectDiffsByApiName[objectApiName]
+                : null;
+            const objectSummary = isComparisonShown && Object.prototype.hasOwnProperty.call(comparison.summariesByObjectApiName, objectApiName)
+                ? comparison.summariesByObjectApiName[objectApiName]
+                : null;
+
+            if (!objectSummary) {
+                dataObjectRowState.describeElement.classList.add('hidden');
+            } else {
+                dataObjectRowState.describeElement.textContent = objectSummary.isDescribed
+                    ? 'org: ' + pluralize(objectSummary.describedFieldCount, 'field', 'fields')
+                    : 'not described in the org';
+                dataObjectRowState.describeElement.classList.remove('hidden');
+            }
+
+            if (!isComparisonShown) {
+                dataObjectRowState.diffElement.classList.add('hidden');
+            } else {
+                dataObjectRowState.diffElement.textContent = objectDiff ? describeStatusCounts(objectDiff.statusCounts, false) : 'not compared';
+                // THE DESCRIBE'S OWN REASON -- A CANCELLED DESCRIBE IS NOT ONE THE ORG COULD NOT ANSWER
+                dataObjectRowState.diffElement.setAttribute('title', objectDiff
+                    ? pluralize(objectDiff.uncreateableOrgOnlyFieldCount, 'org field', 'org fields') + ' a recipe cannot write (system and formula fields) are not listed'
+                    : 'Not compared: ' + (objectSummary && objectSummary.failureMessage ? objectSummary.failureMessage : 'this object was not described in the org'));
+                dataObjectRowState.diffElement.classList.remove('hidden');
+            }
+
+            dataObjectRowState.isCompared = !!objectDiff;
+            dataObjectRowState.fieldDiffStates = (objectDiff ? objectDiff.changedFields : []).map(function (fieldDiff) {
+                return { fieldDiff: fieldDiff, searchText: fieldDiff.fieldApiName.toLowerCase(), isMatch: true, rowElement: null };
+            });
+            dataObjectRowState.bodyElement.textContent = '';
+            dataObjectRowState.isBodyBuilt = false;
+
+            if (objectDiff) { dataObjectRowState.toggleElement.classList.remove('hidden'); } else { dataObjectRowState.toggleElement.classList.add('hidden'); }
+            if (!objectDiff) { dataObjectRowState.isExpandedByReader = false; }
+
+            setDataObjectExpanded(dataObjectRowState, dataObjectRowState.isExpanded);
+
+        });
+
+        applyDataFilter(treeState);
+
+    }
+
+    /*
+        The Data-by-Org tab's search and its status filter, over its own card only. The search
+        matches what the tab draws: an object's name, and the name of each field that differs once
+        compared. Like the Structure search, it never hides an OBJECT.
+    */
+    function applyDataFilter(treeState) {
+
+        const dataTab = treeState.dataTab;
+
+        if (!dataTab || !dataTab.search) { return; }
+
+        const searchQuery = treeState.searchQueries.dataByOrg;
+        const statusFilter = treeState.statusFilter;
+        const isFiltering = !!searchQuery || statusFilter !== 'all';
+        let matchingObjectCount = 0;
+
+        dataTab.objectRowStates.forEach(function (dataObjectRowState) {
+
+            const isObjectNameMatch = !searchQuery || dataObjectRowState.searchText.indexOf(searchQuery) !== -1;
+            let matchingFieldCount = 0;
+
+            dataObjectRowState.fieldDiffStates.forEach(function (fieldDiffState) {
+                fieldDiffState.isMatch = (isObjectNameMatch || fieldDiffState.searchText.indexOf(searchQuery) !== -1)
+                    && (statusFilter === 'all' || fieldDiffState.fieldDiff.status === statusFilter);
+                if (fieldDiffState.isMatch) { matchingFieldCount++; }
+                applyDataFieldVisibility(fieldDiffState);
+            });
+
+            dataObjectRowState.matchingFieldCount = matchingFieldCount;
+
+            const isObjectMatch = !isFiltering || matchingFieldCount > 0 || (isObjectNameMatch && statusFilter === 'all');
+            if (isObjectMatch) { matchingObjectCount++; }
+
+            if (!isFiltering || (isObjectMatch && matchingFieldCount === 0)) {
+                dataObjectRowState.matchElement.classList.add('hidden');
+            } else {
+                dataObjectRowState.matchElement.textContent = matchingFieldCount > 0 ? pluralize(matchingFieldCount, 'matching field', 'matching fields') : 'no matches';
+                dataObjectRowState.matchElement.classList.remove('hidden');
+            }
+
+        });
+
+        const objectCount = dataTab.objectRowStates.length;
+
+        dataTab.search.matchCountElement.textContent = !isFiltering
+            ? pluralize(objectCount, 'object', 'objects')
+            : matchingObjectCount > 0 ? matchingObjectCount + ' of ' + pluralize(objectCount, 'object', 'objects') : 'no matches';
+
+        if (!isFiltering) {
+            dataTab.objectRowStates.forEach(function (dataObjectRowState) { setDataObjectExpanded(dataObjectRowState, dataObjectRowState.isExpandedByReader); });
+            return;
+        }
+
+        expandMatchesWithinBudget(dataTab.objectRowStates,
+            function (dataObjectRowState) { return dataObjectRowState.matchingFieldCount; },
+            function (dataObjectRowState) { return dataObjectRowState.fieldDiffStates.length; },
+            setDataObjectExpanded);
 
     }
 
@@ -6453,34 +6560,41 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function drawDataTreeCounts(dataTreeState) {
+    // A TAB NOT YET OPENED HAS NOTHING TO DRAW: WHAT IT WILL DRAW IS IN dataOrgCountsByObject, AND ITS FIRST OPEN DRAWS IT
+    function drawDataTreeCounts(treeState) {
+
+        const dataTab = treeState.dataTab;
+
+        if (!dataTab) { return; }
 
         let totalRecordCount = 0;
         let pendingCount = 0;
         let uncountedCount = 0;
 
-        dataTreeState.objectApiNames.forEach(function (objectApiName) {
+        const countViewModelOf = function (objectApiName) {
+            return Object.prototype.hasOwnProperty.call(dataOrgCountsByObject, objectApiName) ? dataOrgCountsByObject[objectApiName] : null;
+        };
 
-            const countViewModel = Object.prototype.hasOwnProperty.call(dataOrgCountsByObject, objectApiName) ? dataOrgCountsByObject[objectApiName] : null;
-
-            dataTreeState.objectCountElements[objectApiName].forEach(function (countElement) {
-                countElement.textContent = describeDataOrgCount(countViewModel);
-                countElement.setAttribute('title', countViewModel && countViewModel.failureMessage ? countViewModel.failureMessage : '');
-            });
-
-            if (!countViewModel) { pendingCount++; return; }
-            if (countViewModel.status === 'count') { totalRecordCount += countViewModel.recordCount; } else { uncountedCount++; }
-
+        dataTab.objectRowStates.forEach(function (dataObjectRowState) {
+            const countViewModel = countViewModelOf(dataObjectRowState.objectApiName);
+            dataObjectRowState.countElement.textContent = describeDataOrgCount(countViewModel);
+            dataObjectRowState.countElement.setAttribute('title', countViewModel && countViewModel.failureMessage ? countViewModel.failureMessage : '');
         });
 
-        const objectCountText = pluralize(dataTreeState.objectApiNames.length, 'object', 'objects');
+        treeState.dataObjectApiNames.forEach(function (objectApiName) {
+            const countViewModel = countViewModelOf(objectApiName);
+            if (!countViewModel) { pendingCount++; return; }
+            if (countViewModel.status === 'count') { totalRecordCount += countViewModel.recordCount; } else { uncountedCount++; }
+        });
+
+        const objectCountText = pluralize(treeState.dataObjectApiNames.length, 'object', 'objects');
 
         if (dataOrgRequestSequence === null) {
-            dataTreeState.countElement.textContent = objectCountText;
+            dataTab.countElement.textContent = objectCountText + (dataOrgSelectElement ? ' · choose an org in the toolbar to count their records' : '');
             return;
         }
 
-        dataTreeState.countElement.textContent = objectCountText + ' · '
+        dataTab.countElement.textContent = objectCountText + ' · '
             + (pendingCount > 0 ? 'counting…' : formatRecordCount(totalRecordCount) + ' in the org')
             + (uncountedCount > 0 ? ' · ' + uncountedCount + ' not counted' : '');
 
@@ -6642,11 +6756,17 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    // THE FIRST USE OF THE PICKER, OR THE FIRST OPEN OF ANY CARD'S DATA-BY-ORG TAB -- NEVER THE PANEL'S OWN OPEN
     function requestDataOrgs() {
 
-        if (!dataOrgViewElement || dataOrgRequestedSequence === renderedSequence) { return; }
+        if (!dataOrgSelectElement || renderedSequence === null || dataOrgRequestedSequence === renderedSequence) { return; }
 
+        isDataOrgPickerInUse = true;
+        savePanelPlace();
         dataOrgRequestedSequence = renderedSequence;
+        dataOrgLoadElement.classList.add('hidden');
+        dataOrgSelectElement.classList.add('hidden');
+        setDataOrgStatus(DATA_ORG_CONNECTION_CHECK_TEXT, false);
         vscodeApi.postMessage({ command: 'loadDataOrgs' });
 
     }
@@ -6656,6 +6776,7 @@ ${this.buildPaletteCustomProperties()}
         if (!dataOrgSelectElement || dataOrgList.renderSequence !== renderedSequence) { return; }
 
         dataOrgSelectElement.textContent = '';
+        dataOrgLoadElement.classList.add('hidden');
         clearDataOrgSelection();
         // ⟳ IS HOW A READER WHO JUST RE-AUTHORIZED AN ORG SEES IT LISTED, SO IT STAYS EVEN WITH NOTHING LISTED
         dataOrgRefreshElement.classList.remove('hidden');
@@ -6706,7 +6827,7 @@ ${this.buildPaletteCustomProperties()}
         dataOrgReadinessByCreateKey = Object.create(null);
         dataOrgCreateResultsByKey = Object.create(null);
         dataOrgTypeElement.classList.add('hidden');
-        dataTreeStates.forEach(drawDataTreeCounts);
+        treeStates.forEach(drawDataTreeCounts);
         dataObjectStates.forEach(drawCreateControls);
 
     }
@@ -6745,7 +6866,7 @@ ${this.buildPaletteCustomProperties()}
         dataOrgTypeElement.classList.remove('hidden');
         dataOrgRefreshElement.classList.remove('hidden');
 
-        dataTreeStates.forEach(drawDataTreeCounts);
+        treeStates.forEach(drawDataTreeCounts);
         dataObjectStates.forEach(drawCreateControls);
 
     }
@@ -6762,8 +6883,8 @@ ${this.buildPaletteCustomProperties()}
             setDataOrgStatus(dataOrgCounts.connectionFailureMessage, true);
             // A FAILED CONNECTION COUNTED NOTHING, SO NO ROW IS LEFT SAYING "counting…"
             dataOrgRequestSequence = dataOrgCounts.requestSequence;
-            dataTreeStates.forEach(function (dataTreeState) {
-                dataTreeState.objectApiNames.forEach(function (objectApiName) {
+            treeStates.forEach(function (treeState) {
+                treeState.dataObjectApiNames.forEach(function (objectApiName) {
                     if (!Object.prototype.hasOwnProperty.call(dataOrgCountsByObject, objectApiName)) {
                         dataOrgCountsByObject[objectApiName] = { objectApiName: objectApiName, status: 'failed', recordCount: 0, failureMessage: dataOrgCounts.connectionFailureMessage };
                     }
@@ -6773,15 +6894,21 @@ ${this.buildPaletteCustomProperties()}
             setDataOrgStatus(dataOrgCounts.isComplete ? '' : 'Counted ' + dataOrgCounts.completedCount + ' of ' + pluralize(dataOrgCounts.requestedCount, 'object', 'objects') + '…', false);
         }
 
-        dataTreeStates.forEach(drawDataTreeCounts);
+        treeStates.forEach(drawDataTreeCounts);
 
     }
 
     /*
+        The toolbar is the FIRST thing drawn, and what sits between it and the cards is only what
+        the cards cannot say themselves: notices about entries that could not be read. Each card
+        carries its own searches (#217), so there is no find box above them.
+    */
+    /*
         The reader's place (#222), kept with vscodeApi.setState so it outlives the document VS Code
         throws away when the tab is hidden. It holds NAMES only -- tree keys, object api names and
-        nicknames, field api names, run folder names, tab and view names -- plus the find text and
-        a scroll offset: nothing the host keeps to itself, no path, no value, no username.
+        nicknames, field api names, run folder names, tab names -- each tab's search as the panel
+        holds it, whether the toolbar's org picker was in use, and a scroll offset: nothing the host
+        keeps to itself, no path, no picklist value, no org label or username.
     */
     function readSavedPanelPlace() {
 
@@ -6814,7 +6941,10 @@ ${this.buildPaletteCustomProperties()}
 
         const expandedObjectKeys = [];
         const openPicklistKeys = [];
+        const expandedDataObjectApiNames = [];
         const expandedVersionRunFolderNames = [];
+        const searchQueries = {};
+        let hasSearch = false;
 
         treeState.objectStates.forEach(function (treeObjectState) {
             if (treeObjectState.isExpandedByReader) { expandedObjectKeys.push(buildObjectPlaceKey(treeObjectState)); }
@@ -6825,17 +6955,35 @@ ${this.buildPaletteCustomProperties()}
             });
         });
 
+        if (treeState.dataTab) {
+            treeState.dataTab.objectRowStates.forEach(function (dataObjectRowState) {
+                if (dataObjectRowState.isExpandedByReader) { expandedDataObjectApiNames.push(dataObjectRowState.objectApiName); }
+            });
+        }
+        // STILL WAITING FOR THE COMPARISON THEY WERE SAVED UNDER, SO STILL THE READER'S
+        if (treeState.pendingDataExpandedObjectApiNames) {
+            Object.keys(treeState.pendingDataExpandedObjectApiNames).forEach(function (objectApiName) {
+                if (expandedDataObjectApiNames.indexOf(objectApiName) === -1) { expandedDataObjectApiNames.push(objectApiName); }
+            });
+        }
+
         if (treeState.versionStatesByRunFolderName) {
             Object.keys(treeState.versionStatesByRunFolderName).forEach(function (runFolderName) {
                 if (treeState.versionStatesByRunFolderName[runFolderName].isExpanded) { expandedVersionRunFolderNames.push(runFolderName); }
             });
         }
 
+        PANEL_PLACE_TABS.forEach(function (tabName) {
+            searchQueries[tabName] = treeState.searchQueries[tabName] || '';
+            if (searchQueries[tabName]) { hasSearch = true; }
+        });
+
         const statusFilter = treeState.statusFilter !== 'all' ? treeState.statusFilter : (treeState.pendingStatusFilter || 'all');
         const selectedTab = treeState.selectedTab || 'structure';
 
-        if (!treeState.isExpandedByReader && selectedTab === 'structure' && statusFilter === 'all'
-                && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0 && expandedVersionRunFolderNames.length === 0) {
+        if (!treeState.isExpandedByReader && selectedTab === 'structure' && statusFilter === 'all' && !hasSearch
+                && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0
+                && expandedDataObjectApiNames.length === 0 && expandedVersionRunFolderNames.length === 0) {
             return null;
         }
 
@@ -6843,9 +6991,11 @@ ${this.buildPaletteCustomProperties()}
             treeKey: treeState.tree.treeKey,
             isExpanded: !!treeState.isExpandedByReader,
             selectedTab: selectedTab,
+            searchQueries: searchQueries,
             statusFilter: statusFilter,
             expandedObjectKeys: expandedObjectKeys,
             openPicklistKeys: openPicklistKeys,
+            expandedDataObjectApiNames: expandedDataObjectApiNames,
             expandedVersionRunFolderNames: expandedVersionRunFolderNames
         };
 
@@ -6860,9 +7010,7 @@ ${this.buildPaletteCustomProperties()}
             vscodeApi.setState({
                 version: PANEL_PLACE_VERSION,
                 runFolderName: renderedRunFolderName,
-                viewMode: viewMode,
-                filterText: filterInputText,
-                treeScopeKey: treeScopeKey,
+                isOrgPickerInUse: isDataOrgPickerInUse,
                 scrollY: typeof window.scrollY === 'number' ? window.scrollY : 0,
                 trees: treeStates.map(buildTreePlace).filter(Boolean)
             });
@@ -6884,13 +7032,10 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // WHAT THE PANEL DRAWS BEFORE THE MODEL: THE VIEW, AND THE FIND TEXT THE TOOLBAR SHOWS AND THE FIRST FILTER APPLIES
+    // BEFORE THE DRAW: A PICKER THE READER HAD USED ASKS FOR ITS ORGS AGAIN ONCE THE MODEL IS DRAWN, AS IT DOES FOR ANY NEW MODEL
     function applyPlaceBeforeRender(savedPlace) {
 
-        if (!savedPlace) { return; }
-
-        if (savedPlace.viewMode === 'org' || savedPlace.viewMode === 'trees') { viewMode = savedPlace.viewMode; }
-        if (typeof savedPlace.filterText === 'string') { setFilterText(savedPlace.filterText.slice(0, PANEL_PLACE_MAX_FILTER_LENGTH)); }
+        if (savedPlace && savedPlace.isOrgPickerInUse === true) { isDataOrgPickerInUse = true; }
 
     }
 
@@ -6909,17 +7054,21 @@ ${this.buildPaletteCustomProperties()}
         return Object.prototype.hasOwnProperty.call(stringSet, candidate);
     }
 
+    function hasAnyString(stringSet) {
+        return Object.keys(stringSet).length > 0;
+    }
+
     /*
-        The rest of the place, AFTER "rendered": opening a picklist row or a Previous Versions tab
-        asks the host, which answers only once the ack has activated this model's allow-lists. An
-        entry naming a card, object, tab or option this model does not have is passed over on its
-        own -- the rest of the place still comes back.
+        The rest of the place, AFTER "rendered": opening a picklist row, a Data-by-Org tab or a
+        Previous Versions tab asks the host, which answers only once the ack has activated this
+        model's allow-lists. An entry naming a card, object, tab or option this model does not have
+        is passed over on its own -- the rest of the place still comes back.
     */
     function restorePlaceAfterRender(savedPlace) {
 
         if (!savedPlace) { return; }
 
-        const statusFilterOptions = toStringSet(['changed'].concat(DIFF_STATUSES));
+        const statusFilterOptions = toStringSet(DIFF_STATUSES.filter(function (diffStatus) { return diffStatus !== 'unchanged'; }));
         const savedTrees = Array.isArray(savedPlace.trees) ? savedPlace.trees : [];
 
         savedTrees.forEach(function (savedTree) {
@@ -6931,7 +7080,15 @@ ${this.buildPaletteCustomProperties()}
 
             const expandedObjectKeys = toStringSet(savedTree.expandedObjectKeys);
             const openPicklistKeys = toStringSet(savedTree.openPicklistKeys);
+            const expandedDataObjectApiNames = toStringSet(savedTree.expandedDataObjectApiNames);
             const expandedVersionRunFolderNames = toStringSet(savedTree.expandedVersionRunFolderNames);
+            const savedSearchQueries = savedTree.searchQueries && typeof savedTree.searchQueries === 'object' ? savedTree.searchQueries : {};
+
+            // BEFORE ANY TAB IS BUILT: A TAB READS ITS SEARCH, AND APPLIES IT, WHEN IT IS BUILT
+            PANEL_PLACE_TABS.forEach(function (tabName) {
+                const savedQuery = Object.prototype.hasOwnProperty.call(savedSearchQueries, tabName) ? savedSearchQueries[tabName] : '';
+                if (typeof savedQuery === 'string') { treeState.searchQueries[tabName] = savedQuery.trim().toLowerCase(); }
+            });
 
             treeState.objectStates.forEach(function (treeObjectState) {
                 if (hasString(expandedObjectKeys, buildObjectPlaceKey(treeObjectState))) { treeObjectState.isExpandedByReader = true; }
@@ -6940,29 +7097,45 @@ ${this.buildPaletteCustomProperties()}
                 });
             });
 
-            if (savedTree.isExpanded === true) { treeState.isExpandedByReader = true; }
-
-            if (typeof savedTree.statusFilter === 'string' && hasString(statusFilterOptions, savedTree.statusFilter) && treeState.compare) {
+            if (treeState.compare && typeof savedTree.statusFilter === 'string' && hasString(statusFilterOptions, savedTree.statusFilter)) {
                 treeState.pendingStatusFilter = savedTree.statusFilter;
             }
 
-            if (Object.keys(expandedVersionRunFolderNames).length > 0) {
-                selectTreeTab(treeState, 'versions');
-                if (treeState.versionStatesByRunFolderName) {
-                    Object.keys(expandedVersionRunFolderNames).forEach(function (runFolderName) {
-                        if (hasString(treeState.versionStatesByRunFolderName, runFolderName)) {
-                            setVersionExpanded(treeState, treeState.versionStatesByRunFolderName[runFolderName], true);
-                        }
-                    });
-                }
+            // A TAB IS BUILT FOR ITS ROWS ONLY WHEN ONE OF THEM IS THIS CARD'S -- BUILDING DATA-BY-ORG LISTS ORGS, WHICH RUNS THE CLI
+            const dataObjectApiNamesToOpen = toStringSet(treeState.dataObjectApiNames.filter(function (objectApiName) {
+                return hasString(expandedDataObjectApiNames, objectApiName);
+            }));
+            const versionRunFolderNamesToOpen = treeState.tree.history
+                ? treeState.tree.history.versions
+                    .map(function (version) { return version.runFolderName; })
+                    .filter(function (runFolderName) { return hasString(expandedVersionRunFolderNames, runFolderName); })
+                : [];
+
+            if (hasAnyString(dataObjectApiNamesToOpen)) {
+                treeState.pendingDataExpandedObjectApiNames = dataObjectApiNamesToOpen;
+                selectTreeTab(treeState, 'dataByOrg');
             }
 
-            if (typeof savedTree.selectedTab === 'string') { selectTreeTab(treeState, savedTree.selectedTab); }
+            if (versionRunFolderNamesToOpen.length > 0) {
+                selectTreeTab(treeState, 'versions');
+                versionRunFolderNamesToOpen.forEach(function (runFolderName) {
+                    setVersionExpanded(treeState, treeState.versionStatesByRunFolderName[runFolderName], true);
+                });
+            }
+
+            if (typeof savedTree.selectedTab === 'string' && PANEL_PLACE_TABS.indexOf(savedTree.selectedTab) !== -1) {
+                selectTreeTab(treeState, savedTree.selectedTab);
+            }
+
+            if (savedTree.isExpanded === true) {
+                treeState.isExpandedByReader = true;
+                setTreeExpanded(treeState, true);
+            }
+
+            // A STRUCTURE TAB BUILT BEFORE ITS OBJECTS WERE MARKED OPEN APPLIES THEM NOW; ONE NOT YET BUILT APPLIES THEM WHEN IT IS
+            applyStructureFilter(treeState);
 
         });
-
-        // setTreeScope APPLIES THE FILTER, WHICH OPENS EVERY CARD AND OBJECT THE READER HAD OPENED
-        setTreeScope(typeof savedPlace.treeScopeKey === 'string' ? savedPlace.treeScopeKey : null);
 
     }
 
@@ -6973,10 +7146,6 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    /*
-        The find box is the FIRST thing drawn, and what sits between it and the rows is only what
-        the rows cannot say themselves: notices about entries that could not be read.
-    */
     function renderPanel(recipe) {
 
         resetPanelState();
@@ -6985,7 +7154,6 @@ ${this.buildPaletteCustomProperties()}
         const hasObjects = recipe.objects.length > 0;
 
         treesViewElement = createElement('div', 'treesView');
-        dataOrgViewElement = createElement('div', 'dataOrgView');
 
         renderToolbar(recipe, hasObjects);
 
@@ -7003,13 +7171,8 @@ ${this.buildPaletteCustomProperties()}
         }
 
         cockpitBodyElement.appendChild(treesViewElement);
-        cockpitBodyElement.appendChild(dataOrgViewElement);
 
         renderTrees(recipe);
-        renderDataOrgView(recipe);
-
-        setViewMode(viewMode);
-        applyTreeFilter();
 
     }
 
@@ -7018,19 +7181,13 @@ ${this.buildPaletteCustomProperties()}
 
         cockpitBodyElement.textContent = '';
         treeStates = [];
-        treeScopeKey = null;
         treesViewElement = null;
-        treeMatchCountElement = null;
-        treeScopeStatusElement = null;
-        viewButtonStates = [];
-        filterInputElement = null;
-        dataOrgViewElement = null;
+        dataOrgLoadElement = null;
         dataOrgSelectElement = null;
         dataOrgTypeElement = null;
         dataOrgRefreshElement = null;
         dataOrgStatusElement = null;
         dataOrgHiddenNoteElement = null;
-        dataTreeStates = [];
         dataOrgRequestedSequence = null;
         dataOrgRequestSequence = null;
         dataOrgClearedRequestSequence = null;
@@ -7095,8 +7252,8 @@ ${this.buildPaletteCustomProperties()}
             renderedSequence = renderSequence;
             vscodeApi.postMessage({ command: 'rendered', renderSequence: renderSequence });
 
-            // A NEW MODEL DRAWN WHILE DATA-BY-ORG IS ON SCREEN COUNTS ITS OBJECTS IN THE SAME ORG
-            if (viewMode === 'org') { requestDataOrgs(); }
+            // ONCE THE READER HAS USED THE PICKER, A NEW MODEL COUNTS ITS OBJECTS IN THE SAME ORG
+            if (isDataOrgPickerInUse) { requestDataOrgs(); }
 
         } catch (renderError) {
 
@@ -7130,11 +7287,12 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        The comparison's controls, at the top of a card's Structure tab: Compare, the status filter
-        (shown once a comparison is drawn -- before that no row has a status to filter by), where a
-        comparison is while it runs, and what it said. Made with the card, because an answer can
-        arrive for a card the reader has since collapsed; attached when the Structure tab is built.
-        The panel names only the TREE -- which objects, and in which org, the host decides.
+        The comparison's controls, at the top of a card's Data-by-Org tab: Compare, the status
+        filter (shown once a comparison is drawn -- before that no row has a status to filter by),
+        where a comparison is while it runs, and what it said. Made with the card, because an
+        answer can arrive for a card whose tab the reader has not opened; attached when the tab is
+        built. The panel names only the TREE -- which objects, and in which org, the host decides:
+        Compare uses the toolbar's org, and Choose another org… never changes it.
     */
     function buildTreeCompareElement(treeState) {
 
@@ -7150,15 +7308,16 @@ ${this.buildPaletteCustomProperties()}
             vscodeApi.postMessage({ command: 'selectOrg', treeKey: treeState.tree.treeKey, chooseOrg: true });
         });
 
-        describeButtonElement.setAttribute('title', 'Describe the objects of this tree in the org picked in Data-by-Org (or one you choose), and mark each field with how it compares');
+        describeButtonElement.setAttribute('title', 'Describe the objects of this tree in the org picked in the toolbar (or one you choose), and list each field that differs');
         describeButtonElement.setAttribute('aria-label', DESCRIBE_ACTION_LABEL + ' (' + treeState.tree.title + ')');
         describeButtonElement.addEventListener('click', function () {
             vscodeApi.postMessage({ command: 'selectOrg', treeKey: treeState.tree.treeKey });
         });
 
-        statusFilterElement.setAttribute('aria-label', 'Show the fields of ' + treeState.tree.title + ' by their comparison with the org');
+        statusFilterElement.setAttribute('aria-label', 'Show the fields of ' + treeState.tree.title + ' that differ from the org, by how they differ');
 
-        [['all', 'All fields'], ['changed', 'Changed fields only']].concat(DIFF_STATUSES.map(function (diffStatus) {
+        // ONLY A FIELD THAT DIFFERS IS DRAWN, SO "UNCHANGED" WOULD FILTER TO NOTHING
+        [['all', 'Every difference']].concat(DIFF_STATUSES.filter(function (diffStatus) { return diffStatus !== 'unchanged'; }).map(function (diffStatus) {
             return [diffStatus, 'Only ' + DIFF_STATUS_LABELS[diffStatus]];
         })).forEach(function (statusOption) {
             const statusOptionElement = createElement('option', '', statusOption[1]);
@@ -7169,7 +7328,7 @@ ${this.buildPaletteCustomProperties()}
         statusFilterElement.value = 'all';
         statusFilterElement.addEventListener('change', function () {
             treeState.statusFilter = String(statusFilterElement.value || 'all');
-            applyTreeFilter();
+            applyDataFilter(treeState);
             savePanelPlace();
         });
 
@@ -7291,94 +7450,24 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    /*
-        Lays a comparison over one card's rows. Every row of a compared object gets a status -- one
-        with no entry in the diff is unchanged, which the host does not post -- a field only the org
-        has becomes a row of its own (on the object's first occurrence, which is the one the card
-        counts), and an object that was not compared says so rather than showing statuses it has
-        none of. Rows built from an earlier comparison are rebuilt from this one, so a field only an
-        OLDER org had does not survive into a newer answer.
-    */
+    // KEPT ON THE CARD, SO A DATA-BY-ORG TAB OPENED AFTER THE ANSWER DRAWS IT; A FAILED CONNECTION COMPARED NOTHING
     function applyTreeDiff(treeState, diff, isComparisonShown, summariesByObjectApiName) {
 
-        // KEYED BY OBJECT AND FIELD NAMES FROM FILES, SO NO PROTOTYPE
+        // KEYED BY OBJECT NAMES FROM FILES, SO NO PROTOTYPE
         const objectDiffsByApiName = Object.create(null);
         diff.objects.forEach(function (objectDiff) { objectDiffsByApiName[objectDiff.objectApiName] = objectDiff; });
 
-        treeState.objectStates.forEach(function (treeObjectState) {
-
-            const objectApiName = treeObjectState.object.objectApiName;
-            const objectDiff = isComparisonShown && Object.prototype.hasOwnProperty.call(objectDiffsByApiName, objectApiName)
-                ? objectDiffsByApiName[objectApiName]
-                : null;
-
-            const changedFieldsByApiName = Object.create(null);
-            (objectDiff ? objectDiff.changedFields : []).forEach(function (fieldDiff) { changedFieldsByApiName[fieldDiff.fieldApiName] = fieldDiff; });
-
-            treeObjectState.fieldStates = treeObjectState.fieldStates.filter(function (fieldState) { return !fieldState.field.isOnlyInOrg; });
-
-            treeObjectState.fieldStates.forEach(function (fieldState) {
-                const fieldDiff = Object.prototype.hasOwnProperty.call(changedFieldsByApiName, fieldState.field.fieldApiName)
-                    ? changedFieldsByApiName[fieldState.field.fieldApiName]
-                    : null;
-                fieldState.diff = fieldDiff;
-                fieldState.diffStatus = objectDiff ? (fieldDiff ? fieldDiff.status : 'unchanged') : null;
-            });
-
-            if (!treeObjectState.isIteration) {
-                (objectDiff ? objectDiff.changedFields : []).filter(function (fieldDiff) { return fieldDiff.status === 'new-in-org'; }).forEach(function (fieldDiff) {
-                    const orgFieldState = buildTreeFieldState({
-                        fieldApiName: fieldDiff.fieldApiName,
-                        fieldLabel: '',
-                        fieldType: fieldDiff.orgFieldType,
-                        fieldTypeWithSize: '',
-                        recipeValue: '',
-                        controllingField: '',
-                        isOnlyInRecipeFile: false,
-                        isOnlyInOrg: true
-                    });
-                    orgFieldState.diff = fieldDiff;
-                    orgFieldState.diffStatus = fieldDiff.status;
-                    treeObjectState.fieldStates.push(orgFieldState);
-                });
-            }
-
-            const objectSummary = isComparisonShown && Object.prototype.hasOwnProperty.call(summariesByObjectApiName, objectApiName)
-                ? summariesByObjectApiName[objectApiName]
-                : null;
-
-            if (!objectSummary) {
-                treeObjectState.orgDescribeElement.classList.add('hidden');
-            } else {
-                treeObjectState.orgDescribeElement.textContent = objectSummary.isDescribed
-                    ? 'org: ' + pluralize(objectSummary.describedFieldCount, 'field', 'fields')
-                    : 'not described in the org';
-                treeObjectState.orgDescribeElement.classList.remove('hidden');
-            }
-
-            if (!isComparisonShown) {
-                treeObjectState.diffElement.classList.add('hidden');
-            } else {
-                treeObjectState.diffElement.textContent = objectDiff ? describeStatusCounts(objectDiff.statusCounts, false) : 'not compared';
-                // THE DESCRIBE'S OWN REASON -- A CANCELLED DESCRIBE IS NOT ONE THE ORG COULD NOT ANSWER
-                treeObjectState.diffElement.setAttribute('title', objectDiff
-                    ? pluralize(objectDiff.uncreateableOrgOnlyFieldCount, 'org field', 'org fields') + ' a recipe cannot write (system and formula fields) are not listed'
-                    : 'Not compared: ' + (objectSummary && objectSummary.failureMessage ? objectSummary.failureMessage : 'this object was not described in the org'));
-                treeObjectState.diffElement.classList.remove('hidden');
-            }
-
-            treeObjectState.bodyElement.textContent = '';
-            treeObjectState.isBodyBuilt = false;
-
-            if (treeObjectState.isExpanded) {
-                setTreeObjectExpanded(treeObjectState, true);
-            }
-
-        });
+        treeState.comparison = {
+            isShown: isComparisonShown,
+            objectDiffsByApiName: objectDiffsByApiName,
+            summariesByObjectApiName: summariesByObjectApiName
+        };
 
         const statusFilterElement = treeState.compare.statusFilterElement;
 
-        if (diff.objects.length > 0 && isComparisonShown) {
+        const isComparisonDrawn = diff.objects.length > 0 && isComparisonShown;
+
+        if (isComparisonDrawn) {
             statusFilterElement.classList.remove('hidden');
             if (treeState.pendingStatusFilter) {
                 treeState.statusFilter = treeState.pendingStatusFilter;
@@ -7390,10 +7479,18 @@ ${this.buildPaletteCustomProperties()}
             statusFilterElement.value = 'all';
         }
 
-        // ONE COMPARISON SPENDS IT EITHER WAY: A FAILED ONE HAS NO STATUSES FOR IT TO FILTER BY
-        treeState.pendingStatusFilter = null;
+        if (isComparisonDrawn && treeState.pendingDataExpandedObjectApiNames && treeState.dataTab) {
+            const pendingObjectApiNames = treeState.pendingDataExpandedObjectApiNames;
+            treeState.dataTab.objectRowStates.forEach(function (dataObjectRowState) {
+                if (hasString(pendingObjectApiNames, dataObjectRowState.objectApiName)) { dataObjectRowState.isExpandedByReader = true; }
+            });
+        }
 
-        applyTreeFilter();
+        // ONE COMPARISON SPENDS WHAT WAITED FOR IT EITHER WAY: A FAILED ONE HAS NOTHING FOR IT TO FILTER OR OPEN
+        treeState.pendingStatusFilter = null;
+        treeState.pendingDataExpandedObjectApiNames = null;
+
+        drawDataComparison(treeState);
         savePanelPlace();
 
     }

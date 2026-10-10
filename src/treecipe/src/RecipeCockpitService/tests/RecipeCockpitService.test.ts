@@ -31,6 +31,7 @@ import {
     RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL,
     RECIPE_COCKPIT_LOAD_PHASES,
     RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT,
+    RECIPE_COCKPIT_TREE_TABS,
     RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET,
     RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL,
     RECIPE_COCKPIT_CHOOSE_ORG_ACTION_LABEL,
@@ -382,9 +383,9 @@ describe('RecipeCockpitService', () => {
         });
 
         const COCKPIT_BUTTON_SELECTORS = [
-            '.treeToggle', '.treeObjectToggle', '.picklistToggle', '.treeScope', '.treeRunFaker', '.treeScopeClear',
+            '.treeToggle', '.treeObjectToggle', '.picklistToggle', '.treeRunFaker',
             '.treeTab', '.treeVersionToggle', '.historyAction', '.treeAddFriend', '.treeAddFriendChoice',
-            '.toolbar button', '.treeCompare button', '.emptyStateActions button', '.dataOrgRefresh', '.dataTreeToggle', '.dataCreate', '.dataCreateErrors'
+            '.toolbar button', '.treeCompare button', '.emptyStateActions button', '.dataOrgRefresh', '.dataObjectToggle', '.dataCreate', '.dataCreateErrors'
         ];
 
         const ruleFor = (styleSheet: string, selectorPattern: string): string =>
@@ -403,6 +404,8 @@ describe('RecipeCockpitService', () => {
             expect((sharedButtonRule as RegExpMatchArray)[2]).toMatch(/padding: 0\.4rem 0\.8rem;/);
             expect((sharedButtonRule as RegExpMatchArray)[2]).toContain('border: 1px solid var(--sdt-border);');
             expect(styleSheet).not.toMatch(/\.treeRunFaker \{ padding: 0 /);
+            // #217: 🔍, ITS CLEAR BUTTON, THE VIEW SWITCH AND THE DATA-BY-ORG VIEW'S CARDS ARE GONE, WITH THEIR RULES
+            expect(styleSheet).not.toMatch(/\.treeScope|\.viewButton|\.dataTreeCard|\.dataTreeToggle|\.filterInput/);
 
         });
 
@@ -443,7 +446,7 @@ describe('RecipeCockpitService', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
 
-            expect(styleSheet).toMatch(/\.treeFieldHeader \.fieldType \{[^}]*color: var\(--sdt-chip-text\);[^}]*background-color: var\(--sdt-chip-bg\);/);
+            expect(styleSheet).toMatch(/\.treeFieldHeader \.fieldType, \.dataFieldHeader \.fieldType \{[^}]*color: var\(--sdt-chip-text\);[^}]*background-color: var\(--sdt-chip-bg\);/);
 
         });
 
@@ -2225,33 +2228,35 @@ describe('RecipeCockpitService', () => {
         const expandTree = (panel: any, treeCard: any) => panel.findAll(treeCard, 'treeToggle')[0].dispatch('click');
         const expandTreeObject = (panel: any, objectElement: any) => panel.findAll(objectElement, 'treeObjectToggle')[0].dispatch('click');
 
-        it('opens on Recipe Trees, and the view switch offers only Recipe Trees and Data-by-Org', () => {
+        it('draws a toolbar with no view switch, and no global find box, match count or 🔍 scope (#217)', () => {
 
             const { panel } = renderTreeRecipe();
 
             expect(panel.isHidden(viewOf(panel, 'treesView'))).toBe(false);
-            expect(panel.isHidden(viewOf(panel, 'dataOrgView'))).toBe(true);
-            expect(textOf(panel, panel.cockpitBodyElement.children[0], 'viewButton')).toEqual(['Recipe Trees', 'Data-by-Org']);
-            expect(panel.findAll(panel.cockpitBodyElement.children[0], 'selected').map((element: any) => element.textContent)).toEqual(['Recipe Trees']);
-            // THE CLASSIC LIST IS GONE, WITH EVERY NODE IT DREW
-            ['classicView', 'classicControls', 'object', 'field', 'matchCount'].forEach(className => {
+            // THE VIEW SWITCH, THE GLOBAL FIND BOX AND 🔍 ARE GONE, WITH EVERY NODE THEY DREW; SO IS THE CLASSIC LIST
+            ['viewButton', 'dataOrgView', 'dataTreeCard', 'filterInput', 'treeMatchCount', 'treeMatch', 'treeScope', 'treeScopeStatus', 'treeScopeClear',
+                'classicView', 'classicControls', 'object', 'field', 'matchCount'].forEach(className => {
                 expect(panel.findAll(panel.cockpitBodyElement, className)).toEqual([]);
             });
             // THE COMPARISON'S CONTROLS ARE IN THE CARDS, NOT IN THE TOOLBAR
             expect(panel.findAll(panel.cockpitBodyElement.children[0], 'describeInOrg')).toEqual([]);
             expect(panel.findAll(panel.cockpitBodyElement.children[0], 'statusFilter')).toEqual([]);
+            expect(panel.findAll(panel.cockpitBodyElement.children[0], 'tabSearchInput')).toEqual([]);
 
         });
 
-        it('keeps the chosen view when the next model is drawn', () => {
+        it('starts every search box empty when the next model is drawn', () => {
 
             const { panel, recipe } = renderTreeRecipe();
+            panel.expandAllTrees();
+            panel.typeIntoFilter('rating');
 
-            clickNamed(panel, panel.cockpitBodyElement, 'viewButton', 'Data-by-Org');
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 2 });
+            panel.expandAllTrees();
 
-            expect(panel.isHidden(viewOf(panel, 'dataOrgView'))).toBe(false);
-            expect(panel.isHidden(viewOf(panel, 'treesView'))).toBe(true);
+            expect(panel.findAll(panel.cockpitBodyElement, 'tabSearchInput').map((inputElement: any) => inputElement.value)).toEqual(['', '']);
+            expect(panel.visibleFieldNamesOf(treeObjectNamed(panel, treeCardsOf(panel)[0], 'Account'))).toEqual([]);
+            expect(textOf(panel, treeCardsOf(panel)[0], 'treeObjectCount')).toEqual(['8 fields', '2 fields', '3 fields']);
 
         });
 
@@ -2268,7 +2273,6 @@ describe('RecipeCockpitService', () => {
             // THE BODY IS BUILT ON FIRST EXPAND, SO A COLLAPSED CARD HAS NO TAB STRIP AND NO ROWS YET
             expect(panel.findAll(panel.cockpitBodyElement, 'treeTab')).toEqual([]);
             expect(panel.findAll(panel.cockpitBodyElement, 'treeField')).toEqual([]);
-            expect(viewOf(panel, 'treeMatchCount').textContent).toBe('15 fields · 2 trees');
 
         });
 
@@ -2280,8 +2284,12 @@ describe('RecipeCockpitService', () => {
             expandTree(panel, firstTreeCard);
 
             expect(panel.isHidden(treeBodyOf(firstTreeCard))).toBe(false);
-            expect(textOf(panel, firstTreeCard, 'treeTab')).toEqual(['Structure', 'Previous Versions', 'Previous Fake Sets']);
-            expect(panel.findAll(firstTreeCard, 'treeTab').map((tabElement: any) => tabElement.attributes['aria-selected'])).toEqual(['true', 'false', 'false']);
+            expect(textOf(panel, firstTreeCard, 'treeTab')).toEqual(['Structure', 'Data-by-Org', 'Previous Versions', 'Previous Fake Sets']);
+            expect(panel.findAll(firstTreeCard, 'treeTab').map((tabElement: any) => tabElement.attributes['aria-selected'])).toEqual(['true', 'false', 'false', 'false']);
+            expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['structure', 'dataByOrg', 'versions', 'datasets']);
+            // ONLY STRUCTURE IS BUILT: THE OTHER TABS BUILD THEIR ROWS ON THEIR OWN FIRST OPEN
+            expect(panel.findAll(firstTreeCard, 'dataObject')).toEqual([]);
+            expect(panel.findAll(firstTreeCard, 'treeVersion')).toEqual([]);
             expect(textOf(panel, firstTreeCard, 'treeObjectName')).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
             expect(textOf(panel, firstTreeCard, 'treeLookups')).toEqual(['(ParentId, OwnerId → User)', '(AccountId → Account)', '(Contact__c → Contact)']);
 
@@ -2496,94 +2504,102 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('given a search, opens the trees and objects that match and labels a tree with none rather than hiding it', () => {
+        it('given a search in one card\'s Structure tab, narrows only that card, and labels an object with no match rather than hiding it', () => {
 
             const { panel } = renderTreeRecipe();
             const [firstTreeCard, secondTreeCard] = treeCardsOf(panel);
+            panel.expandAllTrees();
 
-            panel.typeIntoFilter('status');
-
-            expect(panel.isHidden(secondTreeCard)).toBe(false);
-            expect(panel.isHidden(treeBodyOf(secondTreeCard))).toBe(false);
-            expect(textOf(panel, secondTreeCard, 'treeMatch')).toEqual(['1 matching field']);
-
-            expect(panel.isHidden(firstTreeCard)).toBe(false);
-            expect(panel.isHidden(treeBodyOf(firstTreeCard))).toBe(true);
-            expect(textOf(panel, firstTreeCard, 'treeMatch')).toEqual(['no matches']);
-
-            expect(viewOf(panel, 'treeMatchCount').textContent).toBe('1 of 15 fields · 1 of 2 trees');
+            panel.typeIntoFilter('status', secondTreeCard);
 
             const leadElement = treeObjectNamed(panel, secondTreeCard, 'Lead');
-            expect(panel.findAll(leadElement, 'treeField').filter((fieldElement: any) => !panel.isHidden(fieldElement))
-                .map((fieldElement: any) => panel.findAll(fieldElement, 'treeFieldName')[0].textContent)).toEqual(['Status']);
+            expect(panel.visibleFieldNamesOf(leadElement)).toEqual(['Status']);
+            expect(textOf(panel, secondTreeCard, 'tabMatchCount')).toEqual(['1 of 2 fields']);
+            // THE OTHER CARD'S STRUCTURE TAB IS AS IT WAS
+            expect(textOf(panel, firstTreeCard, 'tabMatchCount')).toEqual(['13 fields']);
+            expect(textOf(panel, firstTreeCard, 'treeObjectCount')).toEqual(['8 fields', '2 fields', '3 fields']);
+            expect(panel.findAll(firstTreeCard, 'treeObjectBody').every((bodyElement: any) => panel.isHidden(bodyElement))).toBe(true);
 
-        });
+            panel.typeIntoFilter('status', firstTreeCard);
 
-        it('given the 🔍 on a tree, searches only that tree and says so, and gives the rest back as the reader left them', () => {
-
-            const { panel } = renderTreeRecipe();
-            const [firstTreeCard, secondTreeCard] = treeCardsOf(panel);
-
-            expandTree(panel, secondTreeCard);
-            panel.findAll(firstTreeCard, 'treeScope')[0].dispatch('click');
-            panel.typeIntoFilter('a');
-
-            expect(panel.findAll(firstTreeCard, 'treeScope')[0].attributes['aria-pressed']).toBe('true');
-            expect(panel.isHidden(viewOf(panel, 'treeScopeStatus'))).toBe(false);
-            expect(textOf(panel, viewOf(panel, 'treeScopeStatus'), 'treeScopeText')).toEqual(['Searching only Relationship Tree 1 (Account-thru-OtherChildObject__c) ']);
-            expect(textOf(panel, secondTreeCard, 'treeMatch')).toEqual(['not searched']);
-            expect(panel.isHidden(treeBodyOf(secondTreeCard))).toBe(false);
-            expect(viewOf(panel, 'treeMatchCount').textContent).toMatch(/^13 of 13 fields · 1 of 1 tree$/);
-
-            panel.findAll(viewOf(panel, 'treeScopeStatus'), 'treeScopeClear')[0].dispatch('click');
-
-            expect(panel.isHidden(viewOf(panel, 'treeScopeStatus'))).toBe(true);
-            expect(panel.findAll(firstTreeCard, 'treeScope')[0].attributes['aria-pressed']).toBe('false');
-            expect(viewOf(panel, 'treeMatchCount').textContent).toMatch(/ of 15 fields · 2 of 2 trees$/);
-
-        });
-
-        it('given the search is cleared, puts back the cards and objects the reader had open', () => {
-
-            const { panel } = renderTreeRecipe();
-            const [firstTreeCard, secondTreeCard] = treeCardsOf(panel);
-
-            expandTree(panel, secondTreeCard);
-            panel.typeIntoFilter('rating');
             expect(panel.isHidden(treeBodyOf(firstTreeCard))).toBe(false);
-            expect(panel.isHidden(treeBodyOf(secondTreeCard))).toBe(true);
+            expect(textOf(panel, firstTreeCard, 'treeObjectName')).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+            expect(textOf(panel, firstTreeCard, 'treeObjectCount')).toEqual(['no matching fields', 'no matching fields', 'no matching fields']);
+            expect(textOf(panel, firstTreeCard, 'tabMatchCount')).toEqual(['no matches']);
+
+        });
+
+        it('keeps each search box\'s text when the reader switches tabs or collapses the card', () => {
+
+            const { panel } = renderTreeRecipe();
+            const [firstTreeCard] = treeCardsOf(panel);
+            expandTree(panel, firstTreeCard);
+
+            panel.typeIntoFilter('rating');
+            panel.openTab(firstTreeCard, 'Data-by-Org');
+            panel.typeIntoTabSearch(firstTreeCard, 'treeDataByOrg', 'contact');
+            panel.openTab(firstTreeCard, 'Structure');
+            expandTree(panel, firstTreeCard);
+            expandTree(panel, firstTreeCard);
+
+            const [structureSearch, dataSearch] = panel.findAll(firstTreeCard, 'tabSearchInput');
+            expect([structureSearch.value, dataSearch.value]).toEqual(['rating', 'contact']);
+            expect(panel.visibleFieldNamesOf(treeObjectNamed(panel, firstTreeCard, 'Account'))).toEqual(['Rating__c', 'Sub_Rating__c']);
+            expect(textOf(panel, panel.tabPanelOf(firstTreeCard, 'treeDataByOrg'), 'tabMatchCount')).toEqual(['1 of 3 objects']);
+
+        });
+
+        it('given the search is cleared, puts back the objects the reader had open', () => {
+
+            const { panel } = renderTreeRecipe();
+            const [firstTreeCard] = treeCardsOf(panel);
+            expandTree(panel, firstTreeCard);
+            const accountElement = treeObjectNamed(panel, firstTreeCard, 'Account');
+            const contactElement = treeObjectNamed(panel, firstTreeCard, 'Contact');
+            expandTreeObject(panel, contactElement);
+
+            panel.typeIntoFilter('rating');
+            expect(panel.isHidden(panel.objectBodyOf(accountElement))).toBe(false);
+            expect(panel.isHidden(panel.objectBodyOf(contactElement))).toBe(true);
 
             panel.typeIntoFilter('');
 
-            expect(panel.isHidden(treeBodyOf(firstTreeCard))).toBe(true);
-            expect(panel.isHidden(treeBodyOf(secondTreeCard))).toBe(false);
-            expect(panel.findAll(panel.cockpitBodyElement, 'treeMatch').every((element: any) => panel.isHidden(element))).toBe(true);
+            expect(panel.isHidden(panel.objectBodyOf(accountElement))).toBe(true);
+            expect(panel.isHidden(panel.objectBodyOf(contactElement))).toBe(false);
+            expect(textOf(panel, firstTreeCard, 'tabMatchCount')).toEqual(['13 fields']);
 
         });
 
-        it('opens at most the auto-expand limit of matching objects across every tree', () => {
+        it('opens at most the auto-expand limit of matching objects, and each card\'s search box spends its own budget', () => {
 
-            const manyObjects = Array.from({ length: RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT + 5 }, (unusedValue, objectIndex) => ({
-                objectApiName: `Object${objectIndex}__c`,
+            const buildManyObjects = (prefix: string) => Array.from({ length: RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT + 5 }, (unusedValue, objectIndex) => ({
+                objectApiName: `${prefix}${objectIndex}__c`,
                 recipeFilePath: '',
                 fields: [{ fieldApiName: 'Shared__c', fieldLabel: '', fieldType: 'Text', fieldTypeWithSize: 'Text', recipeValue: '', controllingField: '', isOnlyInRecipeFile: false }]
             }));
-            const manyTrees = manyObjects.map(objectViewModel => ({
-                treeKey: `${objectViewModel.objectApiName}-ONLY`,
-                title: 'Relationship Tree',
-                folderName: `${objectViewModel.objectApiName}-ONLY`,
-                objects: [{ objectApiName: objectViewModel.objectApiName, parentLookups: [] }],
-                fieldCount: 1
-            }));
+            const firstObjects = buildManyObjects('First');
+            const secondObjects = buildManyObjects('Second');
+            const buildTree = (treeKey: string, objects: any[]) => ({
+                treeKey: treeKey, title: 'Relationship Tree', folderName: treeKey, fieldCount: objects.length,
+                objects: objects.map(objectViewModel => ({ objectApiName: objectViewModel.objectApiName, parentLookups: [] as any[] }))
+            });
 
             const panel = runPanelScript();
-            panel.postToPanel({ command: 'recipeData', renderSequence: 1, recipe: buildRecipeViewModel({ objects: manyObjects, trees: manyTrees }) });
+            panel.postToPanel({ command: 'recipeData', renderSequence: 1, recipe: buildRecipeViewModel({
+                objects: [...firstObjects, ...secondObjects],
+                trees: [buildTree('First', firstObjects), buildTree('Second', secondObjects)]
+            }) });
+            panel.expandAllTrees();
+            const [firstTreeCard, secondTreeCard] = treeCardsOf(panel);
 
-            panel.typeIntoFilter('shared');
+            panel.typeIntoFilter('shared', firstTreeCard);
+            panel.typeIntoFilter('shared', secondTreeCard);
 
-            const openedTreeCards = treeCardsOf(panel).filter((treeCard: any) => !panel.isHidden(treeBodyOf(treeCard)));
-            expect(openedTreeCards).toHaveLength(RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT);
-            expect(textOf(panel, treeCardsOf(panel)[RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT], 'treeMatch')).toEqual(['1 matching field']);
+            [firstTreeCard, secondTreeCard].forEach(treeCard => {
+                const openedBodies = panel.findAll(treeCard, 'treeObjectBody').filter((bodyElement: any) => !panel.isHidden(bodyElement));
+                expect(openedBodies).toHaveLength(RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT);
+                expect(textOf(panel, treeCard, 'treeObjectCount').slice(RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT)).toEqual(Array(5).fill('1 of 1 field'));
+            });
 
         });
 
@@ -2605,6 +2621,7 @@ describe('RecipeCockpitService', () => {
                           objects: wideObjects.map(objectViewModel => ({ objectApiName: objectViewModel.objectApiName, parentLookups: [] })) }]
             }) });
 
+            panel.expandAllTrees();
             panel.typeIntoFilter('shared');
 
             const [treeCard] = treeCardsOf(panel);
@@ -2648,32 +2665,27 @@ describe('RecipeCockpitService', () => {
         it('matches a field by the sized type the Structure tab draws', () => {
 
             const { panel } = renderTreeRecipe();
+            panel.expandAllTrees();
 
             panel.typeIntoFilter('text(50)');
-            expect(viewOf(panel, 'treeMatchCount').textContent).toBe('1 of 15 fields · 1 of 2 trees');
+            expect(textOf(panel, treeCardsOf(panel)[0], 'tabMatchCount')).toEqual(['1 of 13 fields']);
 
         });
 
-        it('builds no rows in Data-by-Org for a keystroke, and draws the matches when the reader switches back', () => {
+        it('filters only its own tab: a Structure search leaves the same card\'s Data-by-Org rows as they were', () => {
 
             const { panel } = renderTreeRecipe();
+            const [firstTreeCard] = treeCardsOf(panel);
+            expandTree(panel, firstTreeCard);
+            panel.openTab(firstTreeCard, 'Data-by-Org');
+            panel.openTab(firstTreeCard, 'Structure');
 
-            clickNamed(panel, panel.cockpitBodyElement, 'viewButton', 'Data-by-Org');
-            clickNamed(panel, panel.cockpitBodyElement, 'viewButton', 'Recipe Trees');
             panel.typeIntoFilter('rating');
 
-            expect(viewOf(panel, 'treeMatchCount').textContent).toBe('2 of 15 fields · 1 of 2 trees');
-            expect(panel.visibleFieldNamesOf(treeObjectNamed(panel, treeCardsOf(panel)[0], 'Account'))).toEqual(['Rating__c', 'Sub_Rating__c']);
-
-        });
-
-        it('given a 🔍 scope and an empty find box, counts the scoped tree only', () => {
-
-            const { panel } = renderTreeRecipe();
-
-            panel.findAll(treeCardsOf(panel)[0], 'treeScope')[0].dispatch('click');
-
-            expect(viewOf(panel, 'treeMatchCount').textContent).toBe('13 fields · 1 tree');
+            expect(panel.visibleFieldNamesOf(treeObjectNamed(panel, firstTreeCard, 'Account'))).toEqual(['Rating__c', 'Sub_Rating__c']);
+            const dataPanelElement = panel.tabPanelOf(firstTreeCard, 'treeDataByOrg');
+            expect(textOf(panel, dataPanelElement, 'tabMatchCount')).toEqual(['3 objects']);
+            expect(panel.findAll(dataPanelElement, 'dataObjectMatch').every((element: any) => panel.isHidden(element))).toBe(true);
 
         });
 
@@ -2713,7 +2725,29 @@ describe('RecipeCockpitService', () => {
             expect(panel.isHidden(treeBodyOf(firstTreeCard))).toBe(true);
             expect(panel.isHidden(treeBodyOf(leadTreeCard))).toBe(false);
             expect(panel.findAll(leadTreeCard, 'selected').map((element: any) => element.textContent)).toEqual(['Structure']);
+            // COMPARE IS ON THE DATA-BY-ORG TAB, WHICH IS NOT BUILT UNTIL IT OPENS
+            expect(panel.findAll(leadTreeCard, 'describeInOrg')).toEqual([]);
+            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadDataOrgs')).toEqual([]);
+
+        });
+
+        // A CREATE RELOADS INTO THE CARD IT WAS CLICKED IN, ON ITS DATA-BY-ORG TAB, AND COUNTS IN THE SAME ORG
+        it('given a reload focused on a card\'s Data-by-Org tab, opens that card there and asks for the orgs after the ack', () => {
+
+            const panel = runPanelScript();
+            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+            const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1, focusTree: { treeKey: 'Lead-ONLY', tab: 'dataByOrg' } });
+
+            const [, leadTreeCard] = treeCardsOf(panel);
+
+            expect(panel.isHidden(treeBodyOf(leadTreeCard))).toBe(false);
+            expect(panel.findAll(leadTreeCard, 'selected').map((element: any) => element.textContent)).toEqual(['Data-by-Org']);
             expect(panel.findAll(leadTreeCard, 'describeInOrg')).toHaveLength(1);
+            expect(textOf(panel, leadTreeCard, 'dataObjectName')).toEqual(['Lead']);
+            const postedCommands = panel.postedHostMessages.map((hostMessage: any) => hostMessage.command);
+            expect(postedCommands.filter((command: string) => command === 'loadDataOrgs')).toHaveLength(1);
+            expect(postedCommands.indexOf('loadDataOrgs')).toBeGreaterThan(postedCommands.indexOf('rendered'));
 
         });
 
@@ -2759,19 +2793,23 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('given the recipe, draws the find box first, one collapsed card per tree, and acknowledges the draw', () => {
+        it('given the recipe, draws the toolbar first, one collapsed card per tree, and acknowledges the draw', () => {
 
             const panel = renderFixtureRecipe();
 
             expect(panel.cockpitBodyElement.children[0].classList.contains('toolbar')).toBe(true);
-            expect(panel.findAll(panel.cockpitBodyElement.children[0], 'filterInput')).toHaveLength(1);
+            expect(panel.findAll(panel.cockpitBodyElement, 'filterInput')).toEqual([]);
 
             expect(panel.treeCards()).toHaveLength(1);
-            expect(panel.findAll(panel.cockpitBodyElement, 'treeMatchCount')[0].textContent).toBe('7 fields · 1 tree');
-            // A CARD'S OBJECTS ARE ATTACHED ON ITS FIRST EXPAND, AND THEIR ROWS ON THEIR OWN
+            // A CARD'S OBJECTS, AND ITS STRUCTURE TAB'S SEARCH BOX, ARE ATTACHED ON ITS FIRST EXPAND, AND THEIR ROWS ON THEIR OWN
             expect(panel.objectElements()).toEqual([]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'tabSearchInput')).toEqual([]);
 
             panel.expandAllTrees();
+
+            const structureElement = panel.tabPanelOf(panel.treeCards()[0], 'treeStructure');
+            expect(structureElement.children[0].classList.contains('tabSearch')).toBe(true);
+            expect(panel.findAll(structureElement, 'tabMatchCount')[0].textContent).toBe('7 fields');
 
             expect(panel.objectElements().map(panel.objectNameOf)).toEqual(['Account', 'Contact']);
             expect(panel.objectElements().map(panel.objectCountOf)).toEqual(['5 fields', '2 fields']);
@@ -2813,6 +2851,7 @@ describe('RecipeCockpitService', () => {
         it('given a filter, narrows fields live and labels an object with no match rather than hiding it', () => {
 
             const panel = renderFixtureRecipe();
+            panel.expandAllTrees();
 
             panel.typeIntoFilter('industry');
 
@@ -2826,13 +2865,14 @@ describe('RecipeCockpitService', () => {
             expect(panel.isHidden(panel.objectBodyOf(contactElement))).toBe(true);
             expect(panel.objectCountOf(contactElement)).toBe('no matching fields');
 
-            expect(panel.findAll(panel.cockpitBodyElement, 'treeMatchCount')[0].textContent).toBe('2 of 7 fields · 1 of 1 tree');
+            expect(panel.findAll(panel.cockpitBodyElement, 'tabMatchCount')[0].textContent).toBe('2 of 7 fields');
 
         });
 
         it('given a filter naming an object, shows all of that object\'s fields', () => {
 
             const panel = renderFixtureRecipe();
+            panel.expandAllTrees();
 
             panel.typeIntoFilter('  CONTACT ');
 
@@ -2845,6 +2885,7 @@ describe('RecipeCockpitService', () => {
         it('matches a field by its faker expression, which the row draws', () => {
 
             const panel = renderFixtureRecipe();
+            panel.expandAllTrees();
 
             panel.typeIntoFilter('random_number');
 
@@ -2890,6 +2931,7 @@ describe('RecipeCockpitService', () => {
 
             const panel = runPanelScript();
             panel.postToPanel({ command: 'recipeData', recipe: buildOneTreeRecipe(manyObjects) });
+            panel.expandAllTrees();
 
             panel.typeIntoFilter('shared');
 
@@ -2919,6 +2961,7 @@ describe('RecipeCockpitService', () => {
                 buildWideObject('Narrow__c', 1),
                 buildWideObject('AlsoNarrow__c', 1)
             ]) });
+            panel.expandAllTrees();
 
             panel.typeIntoFilter('shared');
 
@@ -2973,14 +3016,15 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('given no generated run, shows the empty state naming Generate Treecipe and no find box', () => {
+        it('given no generated run, shows the empty state naming Generate Treecipe, no search box and no org picker', () => {
 
             const panel = runPanelScript();
 
             panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist')) });
 
             expect(panel.findAll(panel.cockpitBodyElement, 'emptyState')[0].textContent).toBe(RECIPE_COCKPIT_NO_RUN_MESSAGE);
-            expect(panel.findAll(panel.cockpitBodyElement, 'filterInput')).toEqual([]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'tabSearchInput')).toEqual([]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataOrgControls')).toEqual([]);
             expect(panel.findAll(panel.cockpitBodyElement, 'runSelect')).toEqual([]);
 
         });
@@ -3105,10 +3149,12 @@ describe('RecipeCockpitService', () => {
 
     describe('the panel script, describing in an org', () => {
 
+        // COMPARE LIVES ON EACH CARD'S DATA-BY-ORG TAB (#217), SO EVERY CARD IS OPENED THERE
         const renderFixtureRecipe = (renderSequence = 1) => {
             const panel = runPanelScript();
             panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence });
             panel.expandAllTrees();
+            panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Data-by-Org'));
             return panel;
         };
 
@@ -3122,28 +3168,38 @@ describe('RecipeCockpitService', () => {
 
         const orgDescribeStatusOf = (panel: any, objectElement: any) => panel.findAll(objectElement.children[0], 'orgDescribeStatus')[0];
 
-        it('offers the describe at the top of the card\'s Structure tab, and asks the host for that tree by its key alone', () => {
+        it('offers the describe at the top of the card\'s Data-by-Org tab rather than on Structure, and asks the host for that tree by its key alone', () => {
 
-            const panel = renderFixtureRecipe();
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 1 });
+            panel.expandAllTrees();
             const [treeCard] = panel.treeCards();
-            const structureElement = panel.findAll(treeCard, 'treeStructure')[0];
+
+            expect(panel.findAll(panel.cockpitBodyElement, 'describeInOrg')).toEqual([]);
+            expect(panel.findAll(panel.tabPanelOf(treeCard, 'treeStructure'), 'treeCompare')).toEqual([]);
+
+            panel.openTab(treeCard, 'Data-by-Org');
+
+            const dataPanelElement = panel.tabPanelOf(treeCard, 'treeDataByOrg');
             const describeButtons = panel.findAll(panel.cockpitBodyElement, 'describeInOrg');
 
             expect(describeButtons).toHaveLength(1);
             expect(describeButtons[0].textContent).toBe(RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL);
-            expect(structureElement.children[0].classList.contains('treeCompare')).toBe(true);
-            expect(panel.findAll(structureElement.children[0], 'describeInOrg')).toEqual(describeButtons);
+            expect(dataPanelElement.children[0].classList.contains('treeCompare')).toBe(true);
+            expect(panel.findAll(dataPanelElement.children[0], 'describeInOrg')).toEqual(describeButtons);
 
             describeButtons[0].dispatch('click');
 
             expect(panel.postedHostMessages[panel.postedHostMessages.length - 1]).toEqual({ command: 'selectOrg', treeKey: 'Account-thru-Contact' });
 
-            const [chooseOrgButton] = panel.findAll(structureElement.children[0], 'describeInChosenOrg');
+            const [chooseOrgButton] = panel.findAll(dataPanelElement.children[0], 'describeInChosenOrg');
             expect(chooseOrgButton.textContent).toBe(RECIPE_COCKPIT_CHOOSE_ORG_ACTION_LABEL);
 
             chooseOrgButton.dispatch('click');
 
+            // THE FULL PICKER IS THE HOST'S, AND THE PANEL POSTS NO ORG -- SO THE TOOLBAR'S PICK IS NOT CHANGED BY IT
             expect(panel.postedHostMessages[panel.postedHostMessages.length - 1]).toEqual({ command: 'selectOrg', treeKey: 'Account-thru-Contact', chooseOrg: true });
+            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'selectDataOrg')).toEqual([]);
 
         });
 
@@ -3161,11 +3217,11 @@ describe('RecipeCockpitService', () => {
             const panel = renderFixtureRecipe();
 
             expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'orgStatus')[0])).toBe(true);
-            expect(panel.objectElements().every((objectElement: any) => panel.isHidden(orgDescribeStatusOf(panel, objectElement)))).toBe(true);
+            expect(panel.dataObjectElements().every((objectElement: any) => panel.isHidden(orgDescribeStatusOf(panel, objectElement)))).toBe(true);
 
         });
 
-        it('given a describe of the rows on screen, draws its summary, each failure, and each object\'s answer on its header', () => {
+        it('given a describe of the rows on screen, draws its summary, each failure, and each object\'s answer on its Data-by-Org row', () => {
 
             const panel = renderFixtureRecipe(4);
             panel.postToPanel(describedFixture(4));
@@ -3179,9 +3235,11 @@ describe('RecipeCockpitService', () => {
             expect(panel.findAll(orgStatusElement, 'orgDescribeFailure').map((failureElement: any) => failureElement.textContent))
                 .toEqual(['Contact: NOT_FOUND: The requested resource does not exist']);
 
-            expect(panel.objectElements().map((objectElement: any) => orgDescribeStatusOf(panel, objectElement).textContent))
+            expect(panel.dataObjectElements().map((objectElement: any) => orgDescribeStatusOf(panel, objectElement).textContent))
                 .toEqual(['org: 3 fields', 'not described in the org']);
-            expect(panel.objectElements().every((objectElement: any) => !panel.isHidden(orgDescribeStatusOf(panel, objectElement)))).toBe(true);
+            expect(panel.dataObjectElements().every((objectElement: any) => !panel.isHidden(orgDescribeStatusOf(panel, objectElement)))).toBe(true);
+            // THE STRUCTURE TAB SAYS NOTHING ABOUT THE ORG
+            expect(panel.findAll(panel.cockpitBodyElement, 'treeStructure').flatMap((structureElement: any) => panel.findAll(structureElement, 'orgDescribeStatus'))).toEqual([]);
 
         });
 
@@ -3193,7 +3251,7 @@ describe('RecipeCockpitService', () => {
             const orgStatusElement = panel.findAll(panel.cockpitBodyElement, 'orgStatus')[0];
 
             expect(orgStatusElement.classList.contains('failed')).toBe(true);
-            expect(panel.objectElements().every((objectElement: any) => panel.isHidden(orgDescribeStatusOf(panel, objectElement)))).toBe(true);
+            expect(panel.dataObjectElements().every((objectElement: any) => panel.isHidden(orgDescribeStatusOf(panel, objectElement)))).toBe(true);
 
         });
 
@@ -3204,7 +3262,7 @@ describe('RecipeCockpitService', () => {
             panel.postToPanel(describedFixture(4));
 
             expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'orgStatus')[0])).toBe(true);
-            expect(panel.objectElements().every((objectElement: any) => panel.isHidden(orgDescribeStatusOf(panel, objectElement)))).toBe(true);
+            expect(panel.dataObjectElements().every((objectElement: any) => panel.isHidden(orgDescribeStatusOf(panel, objectElement)))).toBe(true);
 
         });
 
@@ -3224,10 +3282,15 @@ describe('RecipeCockpitService', () => {
         const COMPARED_ORG_LABEL = 'devhub (jd@example.com)';
         const COMPARED_TREE_KEY = 'Account-thru-Contact';
 
+        const openDataTabs = (panel: any) => {
+            panel.expandAllTrees();
+            panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Data-by-Org'));
+        };
+
         const renderFixture = (renderSequence = 1) => {
             const panel = runPanelScript();
             panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: renderSequence });
-            panel.expandAllTrees();
+            openDataTabs(panel);
             return panel;
         };
 
@@ -3256,62 +3319,76 @@ describe('RecipeCockpitService', () => {
             return panel;
         };
 
-        const expand = (panel: any, objectElement: any) => panel.expandObject(objectElement);
+        // A DATA-BY-ORG ROW: ITS HEADER, ITS CREATE CONTROLS, AND THE BODY LISTING WHAT DIFFERS
+        const dataBodyOf = (panel: any, objectElement: any) => panel.findAll(objectElement, 'dataObjectBody')[0];
+        const expand = (panel: any, objectElement: any) => panel.findAll(objectElement, 'dataObjectToggle')[0].dispatch('click');
+        const isOpen = (panel: any, objectElement: any) => !panel.isHidden(dataBodyOf(panel, objectElement));
+        const matchTextOf = (panel: any, objectElement: any) => {
+            const matchElement = panel.findAll(objectElement, 'dataObjectMatch')[0];
+            return panel.isHidden(matchElement) ? '' : matchElement.textContent;
+        };
 
-        const badgesOf = (panel: any, objectElement: any) => panel.findAll(panel.objectBodyOf(objectElement), 'treeField')
+        const badgesOf = (panel: any, objectElement: any) => panel.findAll(dataBodyOf(panel, objectElement), 'dataField')
             .filter((fieldElement: any) => !panel.isHidden(fieldElement))
             .map((fieldElement: any) => [
-                panel.findAll(fieldElement, 'treeFieldName')[0].textContent,
+                panel.findAll(fieldElement, 'dataFieldName')[0].textContent,
                 panel.findAll(fieldElement, 'diffBadge').map((badgeElement: any) => badgeElement.textContent).join('')
             ]);
+        const visibleDifferencesOf = (panel: any, objectElement: any) => badgesOf(panel, objectElement).map(([fieldApiName]: string[]) => fieldApiName);
 
-        const chooseStatus = (panel: any, statusValue: string) => {
-            const statusFilterElement = panel.findAll(panel.cockpitBodyElement, 'statusFilter')[0];
+        const chooseStatus = (panel: any, statusValue: string, rootElement?: any) => {
+            const statusFilterElement = panel.findAll(rootElement || panel.cockpitBodyElement, 'statusFilter')[0];
             statusFilterElement.value = statusValue;
             statusFilterElement.dispatch('change');
         };
 
+        const searchData = (panel: any, searchText: string, treeCard?: any) => panel.typeIntoTabSearch(treeCard || panel.treeCards()[0], 'treeDataByOrg', searchText);
+        const dataMatchCountOf = (panel: any, treeCard?: any) => panel.findAll(panel.tabPanelOf(treeCard || panel.treeCards()[0], 'treeDataByOrg'), 'tabMatchCount')[0].textContent;
+
         const objectDiffTextOf = (panel: any, objectElement: any) => panel.findAll(objectElement.children[0], 'objectDiff')[0];
 
-        it('marks every row of a compared object with its status, and adds a row for each field only the org has', () => {
+        it('lists only the fields that differ under a compared object, each with its badge, and leaves the Structure tab without badges', () => {
 
             const panel = renderComparedRecipe();
-            const [accountElement] = panel.objectElements();
+            const [accountElement] = panel.dataObjectElements();
 
             expand(panel, accountElement);
 
             expect(badgesOf(panel, accountElement)).toEqual([
-                ['Name', 'unchanged'],
                 ['Industry', 'picklist changed'],
-                ['Industry_Group__c', 'unchanged'],
-                ['Number_of_Contacts__c', 'type changed'],
                 ['Legacy_Code__c', 'removed from org'],
+                ['Number_of_Contacts__c', 'type changed'],
                 ['Rating__c', 'new in org']
             ]);
 
-            // A FIELD ONLY THE ORG HAS IS NOT IN ANY RECIPE FILE, SO THERE IS NO LINE TO OPEN
-            const ratingRow = panel.findAll(accountElement, 'treeField')[5];
-            expect(panel.findAll(ratingRow, 'treeFieldSource')).toEqual([]);
-            expect(panel.findAll(ratingRow, 'picklistToggle')).toEqual([]);
+            // A FIELD ONLY THE ORG HAS IS DRAWN WITH THE ORG'S TYPE, AND IS NOT A RECIPE LINE TO OPEN
+            const ratingRow = panel.findAll(accountElement, 'dataField')[3];
             expect(panel.findAll(ratingRow, 'fieldType')[0].textContent).toBe('picklist');
+            expect(panel.findAll(ratingRow, 'sourceLink')).toEqual([]);
+
+            const [structureAccountElement] = panel.objectElements();
+            panel.expandObject(structureAccountElement);
+            expect(panel.findAll(panel.cockpitBodyElement, 'treeStructure').flatMap((structureElement: any) => panel.findAll(structureElement, 'diffBadge'))).toEqual([]);
+            expect(panel.visibleFieldNamesOf(structureAccountElement)).toEqual(['Name', 'Industry', 'Industry_Group__c', 'Number_of_Contacts__c', 'Legacy_Code__c']);
+            expect(panel.objectCountOf(structureAccountElement)).toBe('5 fields');
 
         });
 
         it('says what changed on a row, not only that something did', () => {
 
             const panel = renderComparedRecipe();
-            const [accountElement] = panel.objectElements();
+            const [accountElement] = panel.dataObjectElements();
 
             expand(panel, accountElement);
 
-            const detailsOf = (rowIndex: number) => panel.findAll(panel.findAll(accountElement, 'treeField')[rowIndex], 'diffDetail').map((detailElement: any) => detailElement.textContent);
+            const detailsOf = (rowIndex: number) => panel.findAll(panel.findAll(accountElement, 'dataField')[rowIndex], 'diffDetail').map((detailElement: any) => detailElement.textContent);
 
-            expect(detailsOf(1)).toEqual([
+            expect(detailsOf(0)).toEqual([
                 '1 value active in the org and not in the recipe: Retail',
                 '1 value in the recipe and not active in the org: Banking'
             ]);
-            expect(detailsOf(3)).toEqual(['recipe: Number · org: string']);
-            expect(detailsOf(0)).toEqual([]);
+            expect(detailsOf(2)).toEqual(['recipe: Number · org: string']);
+            expect(detailsOf(1)).toEqual([]);
 
         });
 
@@ -3326,9 +3403,9 @@ describe('RecipeCockpitService', () => {
                     : orgField)
             }));
 
-            const [accountElement] = panel.objectElements();
+            const [accountElement] = panel.dataObjectElements();
             expand(panel, accountElement);
-            const [industryDetail] = panel.findAll(panel.findAll(accountElement, 'treeField')[1], 'diffDetail');
+            const [industryDetail] = panel.findAll(panel.findAll(accountElement, 'dataField')[0], 'diffDetail');
 
             expect(industryDetail.textContent).toStartWith(`${manyValues.length} values active in the org and not in the recipe: Value_00, `);
             expect(industryDetail.textContent).toEndWith(`Value_${String(RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN - 1).padStart(2, '0')} and 3 more`);
@@ -3336,17 +3413,31 @@ describe('RecipeCockpitService', () => {
         });
 
         // A FAILED DESCRIBE IS NOT AN ORG WITHOUT THE OBJECT
-        it('says an object that could not be described was not compared, and marks none of its rows', () => {
+        it('says an object that could not be described was not compared, and offers no fields to expand', () => {
 
             const panel = renderComparedRecipe();
-            const [accountElement, contactElement] = panel.objectElements();
+            const [accountElement, contactElement] = panel.dataObjectElements();
 
             expect(objectDiffTextOf(panel, accountElement).textContent).toBe('1 new in org · 1 removed from org · 1 type changed · 1 picklist changed');
             expect(objectDiffTextOf(panel, accountElement).attributes.title).toBe('1 org field a recipe cannot write (system and formula fields) are not listed');
             expect(objectDiffTextOf(panel, contactElement).textContent).toBe('not compared');
 
-            expand(panel, contactElement);
+            expect(panel.isHidden(panel.findAll(accountElement, 'dataObjectToggle')[0])).toBe(false);
+            expect(panel.isHidden(panel.findAll(contactElement, 'dataObjectToggle')[0])).toBe(true);
             expect(panel.findAll(contactElement, 'diffBadge')).toEqual([]);
+
+        });
+
+        it('says so when a compared object has no field that differs', () => {
+
+            const panel = renderFixture();
+            const comparison = buildComparison(1);
+            panel.postToPanel({ ...comparison, diff: { ...comparison.diff, objects: comparison.diff.objects.map(objectDiff => ({ ...objectDiff, changedFields: [] })) } });
+            const [accountElement] = panel.dataObjectElements();
+
+            expand(panel, accountElement);
+
+            expect(panel.findAll(dataBodyOf(panel, accountElement), 'treeEmpty').map((element: any) => element.textContent)).toContain('No field differs from the org.');
 
         });
 
@@ -3355,6 +3446,7 @@ describe('RecipeCockpitService', () => {
             const panel = renderComparedRecipe();
             const orgStatusElement = panel.findAll(panel.cockpitBodyElement, 'orgStatus')[0];
 
+            expect(panel.findAll(panel.tabPanelOf(panel.treeCards()[0], 'treeDataByOrg'), 'orgStatus')).toEqual([orgStatusElement]);
             expect(panel.findAll(orgStatusElement, 'diffSummary')[0].textContent)
                 .toBe('Compared 1 object: 1 new in org · 1 removed from org · 1 type changed · 1 picklist changed · 2 unchanged');
 
@@ -3370,116 +3462,145 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('offers no status filter and no regenerate until something has been compared', () => {
+        it('offers no status filter and no regenerate until something has been compared, and no "unchanged" choice once it has', () => {
 
             const panel = renderFixture();
+            const statusFilterElement = panel.findAll(panel.cockpitBodyElement, 'statusFilter')[0];
 
-            expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'statusFilter')[0])).toBe(true);
+            expect(panel.isHidden(statusFilterElement)).toBe(true);
+            // ONLY A FIELD THAT DIFFERS IS DRAWN, SO "UNCHANGED" WOULD FILTER TO NOTHING
+            expect(statusFilterElement.children.map((optionElement: any) => optionElement.value)).toEqual(['all', 'new-in-org', 'removed-from-org', 'type-changed', 'picklist-changed']);
 
             panel.postToPanel(RecipeCockpitService.buildOrgDescribeMessage(COMPARED_TREE_KEY, COMPARED_ORG_LABEL, {
                 outcomes: accountOnlyDescribeResult.outcomes.map(describeOutcome => ({ objectApiName: describeOutcome.objectApiName, failureMessage: 'NOT_FOUND', wasCached: false })),
                 wasCancelled: false
             }, 1));
 
-            expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'statusFilter')[0])).toBe(true);
+            expect(panel.isHidden(statusFilterElement)).toBe(true);
             expect(panel.findAll(panel.cockpitBodyElement, 'regenerateRecipe')).toEqual([]);
-            expect(panel.objectElements().map((objectElement: any) => objectDiffTextOf(panel, objectElement).textContent)).toEqual(['not compared', 'not compared']);
+            expect(panel.dataObjectElements().map((objectElement: any) => objectDiffTextOf(panel, objectElement).textContent)).toEqual(['not compared', 'not compared']);
 
         });
 
-        it('given "changed fields only", shows only the rows that differ, and hides every row of an object not compared', () => {
+        it('given a status, opens the rows that have one and labels a row with none rather than hiding it', () => {
 
             const panel = renderComparedRecipe();
-            const [accountElement, contactElement] = panel.objectElements();
+            const [accountElement, contactElement] = panel.dataObjectElements();
 
             expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'statusFilter')[0])).toBe(false);
 
-            chooseStatus(panel, 'changed');
-
-            expect(panel.visibleFieldNamesOf(accountElement)).toEqual(['Industry', 'Number_of_Contacts__c', 'Legacy_Code__c', 'Rating__c']);
-            expect(panel.objectCountOf(accountElement)).toBe('4 of 6 fields');
-            expect(panel.objectCountOf(contactElement)).toBe('no matching fields');
-            expect(panel.isHidden(contactElement)).toBe(false);
-            expect(panel.findAll(panel.cockpitBodyElement, 'treeMatchCount')[0].textContent).toBe('4 of 8 fields · 1 of 1 tree');
-
-        });
-
-        it('narrows to one status, and combines with the text filter', () => {
-
-            const panel = renderComparedRecipe();
-            const [accountElement] = panel.objectElements();
-
             chooseStatus(panel, 'removed-from-org');
-            expect(panel.visibleFieldNamesOf(accountElement)).toEqual(['Legacy_Code__c']);
 
-            chooseStatus(panel, 'unchanged');
-            panel.typeIntoFilter('industry');
-            expect(panel.visibleFieldNamesOf(accountElement)).toEqual(['Industry_Group__c']);
-
-            // A STATUS STILL NARROWS AN OBJECT NAMED IN THE FIND BOX
-            panel.typeIntoFilter('account');
-            expect(panel.visibleFieldNamesOf(accountElement)).toEqual(['Name', 'Industry_Group__c']);
-            expect(panel.objectCountOf(accountElement)).toBe('2 of 6 fields');
+            expect(isOpen(panel, accountElement)).toBe(true);
+            expect(visibleDifferencesOf(panel, accountElement)).toEqual(['Legacy_Code__c']);
+            expect(matchTextOf(panel, accountElement)).toBe('1 matching field');
+            expect(panel.isHidden(contactElement)).toBe(false);
+            expect(isOpen(panel, contactElement)).toBe(false);
+            expect(matchTextOf(panel, contactElement)).toBe('no matches');
+            expect(dataMatchCountOf(panel)).toBe('1 of 2 objects');
 
         });
 
-        it('given every filter is cleared, shows every row and puts back what the reader had open', () => {
+        it('searches object names, and the names of the fields that differ once compared, combined with the status', () => {
+
+            const panel = renderFixture();
+            const [accountElement, contactElement] = panel.dataObjectElements();
+
+            // BEFORE A COMPARISON THE TAB DRAWS NO FIELD, SO ONLY AN OBJECT NAME CAN MATCH
+            searchData(panel, 'legacy');
+            expect(dataMatchCountOf(panel)).toBe('no matches');
+            searchData(panel, 'contact');
+            expect(dataMatchCountOf(panel)).toBe('1 of 2 objects');
+            expect(matchTextOf(panel, contactElement)).toBe('');
+            expect(matchTextOf(panel, accountElement)).toBe('no matches');
+
+            panel.postToPanel(buildComparison(1));
+
+            searchData(panel, 'legacy');
+            expect(isOpen(panel, accountElement)).toBe(true);
+            expect(visibleDifferencesOf(panel, accountElement)).toEqual(['Legacy_Code__c']);
+            expect(dataMatchCountOf(panel)).toBe('1 of 2 objects');
+
+            // A FIELD THAT DOES NOT DIFFER IS NOT DRAWN, SO IT IS NOT FOUND
+            searchData(panel, 'industry_group');
+            expect(dataMatchCountOf(panel)).toBe('no matches');
+
+            // AN OBJECT NAMED IN THE SEARCH SHOWS EVERY DIFFERENCE, AND A STATUS STILL NARROWS IT
+            searchData(panel, 'account');
+            expect(visibleDifferencesOf(panel, accountElement)).toEqual(['Industry', 'Legacy_Code__c', 'Number_of_Contacts__c', 'Rating__c']);
+            chooseStatus(panel, 'type-changed');
+            expect(visibleDifferencesOf(panel, accountElement)).toEqual(['Number_of_Contacts__c']);
+
+            searchData(panel, 'rating');
+            expect(dataMatchCountOf(panel)).toBe('no matches');
+            expect(isOpen(panel, accountElement)).toBe(false);
+
+        });
+
+        it('given every filter is cleared, shows every difference and puts back what the reader had open', () => {
 
             const panel = renderComparedRecipe();
-            const [accountElement, contactElement] = panel.objectElements();
+            const [accountElement] = panel.dataObjectElements();
 
-            expand(panel, contactElement);
-            chooseStatus(panel, 'changed');
+            chooseStatus(panel, 'type-changed');
+            expect(isOpen(panel, accountElement)).toBe(true);
             chooseStatus(panel, 'all');
 
-            expect(panel.isHidden(panel.objectBodyOf(accountElement))).toBe(true);
-            expect(panel.isHidden(panel.objectBodyOf(contactElement))).toBe(false);
-            expect(panel.objectCountOf(accountElement)).toBe('6 fields');
+            expect(isOpen(panel, accountElement)).toBe(false);
+
+            expand(panel, accountElement);
+            searchData(panel, 'lead');
+            expect(isOpen(panel, accountElement)).toBe(false);
+            searchData(panel, '');
+
+            expect(isOpen(panel, accountElement)).toBe(true);
+            expect(visibleDifferencesOf(panel, accountElement)).toHaveLength(4);
+            expect(dataMatchCountOf(panel)).toBe('2 objects');
 
         });
 
         it('given a later comparison, rebuilds the rows from it rather than keeping the previous org\'s', () => {
 
             const panel = renderComparedRecipe();
-            const [accountElement] = panel.objectElements();
+            const [accountElement] = panel.dataObjectElements();
             expand(panel, accountElement);
 
             panel.postToPanel(buildComparison(1, { ...ACCOUNT_ORG_DESCRIBE, fields: ACCOUNT_ORG_DESCRIBE.fields.filter(orgField => orgField.fieldApiName !== 'Rating__c') }));
 
-            expect(badgesOf(panel, accountElement).map(([fieldApiName]: string[]) => fieldApiName)).not.toContain('Rating__c');
-            expect(panel.findAll(accountElement, 'treeField')).toHaveLength(5);
+            expect(visibleDifferencesOf(panel, accountElement)).not.toContain('Rating__c');
+            expect(panel.findAll(accountElement, 'dataField')).toHaveLength(3);
 
         });
 
         it('given the next comparison cannot connect, clears every status and the filter rather than leaving the old answer', () => {
 
             const panel = renderComparedRecipe();
-            const [accountElement] = panel.objectElements();
-            chooseStatus(panel, 'changed');
+            const [accountElement] = panel.dataObjectElements();
+            chooseStatus(panel, 'type-changed');
 
             panel.postToPanel(RecipeCockpitService.buildOrgConnectionFailureMessage(COMPARED_TREE_KEY, COMPARED_ORG_LABEL, new Error('expired'), 1));
 
-            expand(panel, accountElement);
             expect(panel.findAll(accountElement, 'diffBadge')).toEqual([]);
-            expect(panel.visibleFieldNamesOf(accountElement)).toHaveLength(5);
+            expect(isOpen(panel, accountElement)).toBe(false);
+            expect(panel.isHidden(panel.findAll(accountElement, 'dataObjectToggle')[0])).toBe(true);
             expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'statusFilter')[0])).toBe(true);
             expect(panel.isHidden(objectDiffTextOf(panel, accountElement))).toBe(true);
             expect(panel.findAll(panel.cockpitBodyElement, 'regenerateRecipe')).toEqual([]);
+            expect(dataMatchCountOf(panel)).toBe('2 objects');
 
         });
 
-        it('given a new model, starts it with every field shown whatever status was chosen before', () => {
+        it('given a new model, starts it with no status chosen whatever was chosen before', () => {
 
             const panel = renderComparedRecipe();
             chooseStatus(panel, 'new-in-org');
 
             panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 2 });
-            panel.expandAllTrees();
+            openDataTabs(panel);
 
-            const [accountElement] = panel.objectElements();
-            expand(panel, accountElement);
-            expect(panel.visibleFieldNamesOf(accountElement)).toHaveLength(5);
             expect(panel.findAll(panel.cockpitBodyElement, 'statusFilter')[0].value).toBe('all');
+            expect(panel.findAll(panel.cockpitBodyElement, 'diffBadge')).toEqual([]);
+            expect(dataMatchCountOf(panel)).toBe('2 objects');
 
         });
 
@@ -3524,7 +3645,7 @@ describe('RecipeCockpitService', () => {
             panel.postToPanel(RecipeCockpitService.buildOrgDescribeMessage(COMPARED_TREE_KEY, COMPARED_ORG_LABEL, cancelledDescribeResult, 1,
                 RecipeCockpitService.buildRecipeDiffViewModel(RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT).objects, cancelledDescribeResult, new Map())));
 
-            const [, contactElement] = panel.objectElements();
+            const [, contactElement] = panel.dataObjectElements();
 
             expect(objectDiffTextOf(panel, contactElement).attributes.title).toBe(`Not compared: ${ORG_DESCRIBE_CANCELLED_MESSAGE}`);
 
@@ -3542,15 +3663,18 @@ describe('RecipeCockpitService', () => {
         });
 
 
-        // A CARD COLLAPSED WHEN ITS ANSWER ARRIVES STILL HAS IT WHEN THE READER OPENS IT
-        it('given a comparison of a card that is not open, draws it when the card is opened', () => {
+        // A TAB NOT YET OPENED WHEN ITS ANSWER ARRIVES STILL HAS IT WHEN THE READER OPENS IT
+        it('given a comparison of a card whose Data-by-Org tab has not opened, draws it when the tab opens', () => {
 
             const panel = runPanelScript();
             panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 1 });
             panel.postToPanel(buildComparison(1));
-
             panel.expandAllTrees();
-            const [accountElement] = panel.objectElements();
+
+            expect(panel.findAll(panel.cockpitBodyElement, 'diffSummary')).toEqual([]);
+
+            panel.openTab(panel.treeCards()[0], 'Data-by-Org');
+            const [accountElement] = panel.dataObjectElements();
             expand(panel, accountElement);
 
             expect(panel.findAll(panel.findAll(panel.cockpitBodyElement, 'orgStatus')[0], 'diffSummary')).toHaveLength(1);
@@ -3559,8 +3683,8 @@ describe('RecipeCockpitService', () => {
         });
 
         /*
-            The model split into two cards, Account's and Contact's: a comparison and a status filter
-            belong to the card they were asked from, and the other card's rows are left as they were.
+            The model split into two cards, Account's and Contact's: a comparison, a status filter
+            and a search belong to the card they were made in, and the other card is left as it was.
         */
         describe('given two cards', () => {
 
@@ -3575,7 +3699,7 @@ describe('RecipeCockpitService', () => {
             const renderTwoTrees = () => {
                 const panel = runPanelScript();
                 panel.postToPanel({ command: 'recipeData', recipe: buildTwoTreeRecipe(), renderSequence: 1 });
-                panel.expandAllTrees();
+                openDataTabs(panel);
                 panel.postToPanel({ ...buildComparison(1), treeKey: 'Account-ONLY' });
                 return panel;
             };
@@ -3584,7 +3708,7 @@ describe('RecipeCockpitService', () => {
 
                 const panel = renderTwoTrees();
                 const [accountCard, contactCard] = panel.treeCards();
-                const [accountElement, contactElement] = panel.objectElements();
+                const [accountElement, contactElement] = panel.dataObjectElements();
 
                 expect(panel.findAll(panel.cockpitBodyElement, 'describeInOrg')).toHaveLength(2);
                 expect(panel.isHidden(panel.findAll(accountCard, 'orgStatus')[0])).toBe(false);
@@ -3599,31 +3723,40 @@ describe('RecipeCockpitService', () => {
 
             });
 
-            it('narrows only the card whose status filter was chosen, and keeps that card open', () => {
+            it('narrows only the card whose status filter was chosen', () => {
 
                 const panel = renderTwoTrees();
                 const [accountCard, contactCard] = panel.treeCards();
-                const [accountElement, contactElement] = panel.objectElements();
-                expand(panel, contactElement);
+                const [accountElement, contactElement] = panel.dataObjectElements();
 
-                const statusFilterElement = panel.findAll(accountCard, 'statusFilter')[0];
-                statusFilterElement.value = 'removed-from-org';
-                statusFilterElement.dispatch('change');
+                chooseStatus(panel, 'removed-from-org', accountCard);
 
-                expect(panel.visibleFieldNamesOf(accountElement)).toEqual(['Legacy_Code__c']);
-                expect(panel.isHidden(panel.findAll(accountCard, 'treeBody')[0])).toBe(false);
-                expect(panel.visibleFieldNamesOf(contactElement)).toEqual(['LastName', 'AccountId']);
-                expect(panel.objectCountOf(contactElement)).toBe('2 fields');
+                expect(visibleDifferencesOf(panel, accountElement)).toEqual(['Legacy_Code__c']);
+                expect(matchTextOf(panel, contactElement)).toBe('');
+                expect(dataMatchCountOf(panel, contactCard)).toBe('1 object');
 
-                // A STATUS NO ROW HAS STILL LEAVES THE CARD THE FILTER IS IN ON SCREEN
-                statusFilterElement.value = 'new-in-org';
-                statusFilterElement.dispatch('change');
-                statusFilterElement.value = 'type-changed';
-                statusFilterElement.dispatch('change');
+                // A NEWER COMPARISON KEEPS THE STATUS CHOSEN WHILE IT STILL HAS SOMETHING TO FILTER
+                chooseStatus(panel, 'type-changed', accountCard);
                 panel.postToPanel({ ...buildComparison(1, { ...ACCOUNT_ORG_DESCRIBE, fields: ACCOUNT_ORG_DESCRIBE.fields.filter(orgField => orgField.fieldApiName !== 'Number_of_Contacts__c') }), treeKey: 'Account-ONLY' });
-                expect(statusFilterElement.value).toBe('type-changed');
+                expect(panel.findAll(accountCard, 'statusFilter')[0].value).toBe('type-changed');
+                expect(matchTextOf(panel, accountElement)).toBe('no matches');
                 expect(panel.isHidden(panel.findAll(accountCard, 'treeBody')[0])).toBe(false);
-                expect(panel.isHidden(panel.findAll(contactCard, 'treeBody')[0])).toBe(false);
+
+            });
+
+            it('searches only the card it was typed in', () => {
+
+                const panel = renderTwoTrees();
+                const [accountCard, contactCard] = panel.treeCards();
+                const [accountElement, contactElement] = panel.dataObjectElements();
+
+                searchData(panel, 'legacy', accountCard);
+
+                expect(visibleDifferencesOf(panel, accountElement)).toEqual(['Legacy_Code__c']);
+                expect(dataMatchCountOf(panel, accountCard)).toBe('1 of 1 object');
+                expect(dataMatchCountOf(panel, contactCard)).toBe('1 object');
+                expect(matchTextOf(panel, contactElement)).toBe('');
+                expect(panel.findAll(contactCard, 'tabSearchInput').map((inputElement: any) => inputElement.value)).toEqual(['', '']);
 
             });
 
@@ -3643,21 +3776,6 @@ describe('RecipeCockpitService', () => {
                 expect(contactRegenerate.disabled).toBe(true);
                 expect(contactRegenerate.textContent).toBe(RECIPE_COCKPIT_REGENERATE_ACTION_LABEL);
                 expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'regenerateRecipe')).toEqual([{ command: 'regenerateRecipe', treeKey: 'Account-ONLY' }]);
-
-            });
-
-            it('given the find box is scoped to one card, still counts another card its own status filter narrows', () => {
-
-                const panel = renderTwoTrees();
-                const [accountCard, contactCard] = panel.treeCards();
-
-                panel.findAll(contactCard, 'treeScope')[0].dispatch('click');
-                const statusFilterElement = panel.findAll(accountCard, 'statusFilter')[0];
-                statusFilterElement.value = 'removed-from-org';
-                statusFilterElement.dispatch('change');
-
-                expect(panel.findAll(accountCard, 'treeMatch')[0].textContent).toBe('1 matching field');
-                expect(panel.findAll(panel.cockpitBodyElement, 'treeMatchCount')[0].textContent).toBe('3 of 8 fields · 2 of 2 trees');
 
             });
 
@@ -4370,7 +4488,7 @@ describe('RecipeCockpitService', () => {
 
                 const bareCard = treeCardFolded(panel, 'Lead-ONLY');
                 panel.findAll(bareCard, 'treeToggle')[0].dispatch('click');
-                expect(textOf(panel, bareCard, 'treeTab')).toEqual(['Structure']);
+                expect(textOf(panel, bareCard, 'treeTab')).toEqual(['Structure', 'Data-by-Org']);
 
             });
 
@@ -4397,15 +4515,56 @@ describe('RecipeCockpitService', () => {
 
             });
 
-            it('switches a card back to Structure when a search opens its rows', () => {
+            it('searches Previous Versions by run folder or date, which each row draws, hiding the rows it does not match', () => {
 
                 const { panel } = renderHistoryRecipe();
                 const leadCard = openTab(panel, 'Lead-ONLY', 'Previous Versions');
+                const versionsElement = panel.tabPanelOf(leadCard, 'treeVersions');
+                const visibleVersionDates = () => panel.findAll(versionsElement, 'treeVersion')
+                    .filter((versionElement: any) => !panel.isHidden(versionElement))
+                    .map((versionElement: any) => panel.findAll(versionElement, 'treeVersionDate')[0].textContent);
 
-                panel.typeIntoFilter('company');
+                expect(textOf(panel, versionsElement, 'treeVersionFolder')).toEqual([HISTORY_CURRENT_RUN, 'recipe-fakerjs-2026-09-10T00-00-00', 'recipe-2026-09-01T00-00-00']);
+                expect(textOf(panel, versionsElement, 'tabMatchCount')).toEqual(['3 versions']);
 
-                expect(panel.isHidden(panel.findAll(leadCard, 'treeStructure')[0])).toBe(false);
-                expect(panel.isHidden(panel.findAll(leadCard, 'treeVersions')[0])).toBe(true);
+                panel.typeIntoTabSearch(leadCard, 'treeVersions', 'FAKERJS');
+                expect(visibleVersionDates()).toEqual(['2026-09-10 00:00:00 UTC']);
+                expect(textOf(panel, versionsElement, 'tabMatchCount')).toEqual(['1 of 3 versions']);
+
+                panel.typeIntoTabSearch(leadCard, 'treeVersions', '2026-09-01 00:00');
+                expect(visibleVersionDates()).toEqual(['2026-09-01 00:00:00 UTC']);
+
+                panel.typeIntoTabSearch(leadCard, 'treeVersions', 'nothing like it');
+                expect(visibleVersionDates()).toEqual([]);
+                expect(textOf(panel, versionsElement, 'tabMatchCount')).toEqual(['no matches']);
+
+                // A SEARCH NEVER SWITCHES THE TAB IT WAS TYPED IN
+                expect(panel.isHidden(versionsElement)).toBe(false);
+
+            });
+
+            it('searches Previous Fake Sets by data set folder, and leaves the card\'s other tabs as they were', () => {
+
+                const { panel } = renderHistoryRecipe();
+                const leadCard = openTab(panel, 'Lead-ONLY', 'Previous Fake Sets');
+                const datasetsElement = panel.tabPanelOf(leadCard, 'treeDatasets');
+                const visibleDatasetFolders = () => panel.findAll(datasetsElement, 'treeDataset')
+                    .filter((datasetElement: any) => !panel.isHidden(datasetElement))
+                    .map((datasetElement: any) => panel.findAll(datasetElement, 'treeDatasetFolder')[0].textContent);
+
+                panel.typeIntoTabSearch(leadCard, 'treeDatasets', '09-21');
+
+                expect(visibleDatasetFolders()).toEqual(['dataset-2026-09-21T00-00-00']);
+                expect(textOf(panel, datasetsElement, 'tabMatchCount')).toEqual(['1 of 3 data sets']);
+
+                // A DATE THE ROW DRAWS ONLY AS A LABEL IS NOT IN ITS FOLDER NAME, AND THE SEARCH SAYS WHAT IT MATCHES
+                panel.typeIntoTabSearch(leadCard, 'treeDatasets', 'utc');
+                expect(visibleDatasetFolders()).toEqual([]);
+
+                clickNamed(panel, leadCard, 'treeTab', 'Structure');
+                expect(textOf(panel, panel.tabPanelOf(leadCard, 'treeStructure'), 'tabMatchCount')).toEqual(['2 fields']);
+                clickNamed(panel, leadCard, 'treeTab', 'Previous Fake Sets');
+                expect(panel.findAll(datasetsElement, 'tabSearchInput')[0].value).toBe('utc');
 
             });
 
@@ -4496,33 +4655,16 @@ describe('RecipeCockpitService', () => {
 
                 });
 
-                it('puts 🔍 and ▶ Run Faker at the END of the row, in one action group', () => {
+                // #217 TOOK 🔍 OUT: EACH TAB HAS ITS OWN SEARCH, SO THERE IS NO PANEL-WIDE ONE TO SCOPE
+                it('puts ▶ Run Faker at the END of the row, in the action group, and draws no 🔍', () => {
 
                     const { panel } = renderHistoryRecipe();
                     const headerChildren = headerOf(treeCardFolded(panel, 'Lead-ONLY')).children;
                     const actionGroup = headerChildren[headerChildren.length - 1];
 
                     expect(actionGroup.classList.contains('treeHeaderActions')).toBe(true);
-                    expect(actionGroup.children.map((actionElement: any) => actionElement.className)).toEqual(['treeScope', 'treeRunFaker']);
-
-                });
-
-                it('scopes the search from 🔍 without opening or closing the card', () => {
-
-                    const { panel } = renderHistoryRecipe();
-                    const leadCard = treeCardFolded(panel, 'Lead-ONLY');
-                    const scopeElement = panel.findAll(leadCard, 'treeScope')[0];
-
-                    scopeElement.dispatch('click');
-
-                    expect(scopeElement.attributes['aria-pressed']).toBe('true');
-                    expect(isOpen(panel, leadCard)).toBe(false);
-
-                    headerOf(leadCard).dispatch('click');
-                    scopeElement.dispatch('click');
-
-                    expect(scopeElement.attributes['aria-pressed']).toBe('false');
-                    expect(isOpen(panel, leadCard)).toBe(true);
+                    expect(actionGroup.children.map((actionElement: any) => actionElement.className)).toEqual(['treeRunFaker']);
+                    expect(panel.findAll(panel.cockpitBodyElement, 'treeScope')).toEqual([]);
 
                 });
 

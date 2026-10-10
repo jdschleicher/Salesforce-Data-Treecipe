@@ -626,7 +626,8 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
                 recordCountsByObject: { Contact: 3 }
             });
 
-            // THE RELOAD LISTS IT IN THE TREE'S PREVIOUS FAKE SETS
+            // THE RELOAD LISTS IT IN THE TREE'S PREVIOUS FAKE SETS, AND OPENS THE CARD ON THE DATA-BY-ORG TAB THE CREATE WAS CLICKED IN (#217)
+            expect(postedNamed('recipeData').at(-1).focusTree).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'dataByOrg' });
             const reloadedTree = postedNamed('recipeData').at(-1).recipe.trees.find((tree: any) => tree.treeKey === ACCOUNT_TREE_KEY);
             expect(reloadedTree.history.datasets.map((dataset: any) => dataset.datasetFolderName)).toContain(datasetFolderName);
             expect(postedNamed('createState').map(createState => createState.isRunning)).toEqual([true, false]);
@@ -942,10 +943,17 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
             const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
             const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1 });
+            openEveryDataTab(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Sandbox', isSandbox: true, requestSequence: 3, renderSequence: 1 });
             return panel;
         };
+
+        // CREATE LIVES ON EACH CARD'S DATA-BY-ORG TAB (#217)
+        function openEveryDataTab(panel: any) {
+            panel.expandAllTrees();
+            panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Data-by-Org'));
+        }
 
         const postReadiness = (panel: any, contactReason = '', createResults: any[] = []) => panel.postToPanel({
             command: 'dataOrgReadiness',
@@ -1076,6 +1084,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
             const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
             panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel, renderSequence: 2 });
+            openEveryDataTab(panel);
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Sandbox', isSandbox: true, requestSequence: 4, renderSequence: 2 });
             panel.postToPanel({ command: 'dataOrgReadiness', objects: [{ objectApiName: 'Lead', disabledReason: '', requiredLookups: [] }], createResults: [], requestSequence: 4, renderSequence: 2 });
 
