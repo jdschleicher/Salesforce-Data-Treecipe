@@ -249,6 +249,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 version: RECIPE_COCKPIT_PANEL_PLACE_VERSION,
                 runFolderName: CURRENT_RUN_FOLDER_NAME,
                 isOrgPickerInUse: false,
+                isFavoritesOnly: false,
                 scrollY: 0,
                 trees: []
             });
@@ -491,7 +492,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             expect(savedText).not.toContain('Hot');
             expect(savedText).not.toContain(ORG_USERNAME);
             expect(savedText).not.toContain('devhub');
-            expect(Object.keys(panel.savedState()).sort()).toEqual(['isOrgPickerInUse', 'runFolderName', 'scrollY', 'trees', 'version']);
+            expect(Object.keys(panel.savedState()).sort()).toEqual(['isFavoritesOnly', 'isOrgPickerInUse', 'runFolderName', 'scrollY', 'trees', 'version']);
             panel.savedState().trees.forEach((savedTree: any) => {
                 expect(Object.keys(savedTree).sort()).toEqual(['expandedDataObjectApiNames', 'expandedObjectKeys', 'expandedVersionRunFolderNames',
                     'isExpanded', 'openPicklistKeys', 'searchQueries', 'selectedTab', 'statusFilter', 'treeKey']);
