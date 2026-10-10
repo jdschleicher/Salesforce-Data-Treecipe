@@ -37,12 +37,25 @@ import {
 import { SalesforceOrgService } from '../SalesforceOrgService/SalesforceOrgService';
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as yaml from 'js-yaml';
 import * as vscode from 'vscode';
 import path = require("path");
 
 export const RECORD_TYPE_OPTIONS_TODO_MARKER = '### TODO: -- RecordType Options --';
 const RECIPE_EXPRESSION_OPENING = '${{';
+
+export const FILTERED_RECIPE_FILE_PREFIX = 'filteredRecipe-';
+
+/*
+    What the Recipe Cockpit hands Run Faker for a tree with excluded objects (#219): the filtered
+    copy the host built from the tree's recipe, and the objects it leaves out. The recipe file itself
+    is never written; the copy is what the processor runs and what the data set keeps.
+*/
+export interface IRunFakerFilteredRecipe {
+    recipeText: string;
+    excludedObjectApiNames: string[];
+}
 export const MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES = 20;
 
 // SHARED WITH THE TESTS SO THE BUTTON LABEL CANNOT DRIFT FROM WHAT IS ASSERTED
@@ -139,9 +152,17 @@ export class ExtensionCommandService {
         the recipe file of the tree it was clicked on -- but the command is callable by id, so a
         path is held to what the picker could have offered before anything reads it.
     */
-    async runFakerGenerationByRecipeFile(recipeFilePath?: string) {
+    async runFakerGenerationByRecipeFile(recipeFilePath?: string, filteredRecipe?: IRunFakerFilteredRecipe) {
+
+        let filteredRecipeDirectoryPath: string | undefined;
 
         try {
+
+            // THE COMMAND IS CALLABLE BY ID: A FILTERED COPY ONLY EVER RIDES WITH A RECIPE PATH, AND IS TYPE-CHECKED
+            if ( filteredRecipe !== undefined && ( recipeFilePath === undefined || !ExtensionCommandService.isRunFakerFilteredRecipe(filteredRecipe) ) ) {
+                VSCodeWorkspaceService.showWarningMessage('Run Faker was handed a filtered recipe it could not use, so nothing was generated.');
+                return;
+            }
             
             const expectedGeneratedRecipesFolderPath = ConfigurationService.getGeneratedRecipesFolderPath();
             let recipeFullFileNamePath: string;
@@ -185,6 +206,16 @@ export class ExtensionCommandService {
                 await ExtensionCommandService.showRecipeLoadFailure(recipeFullFileNamePath, recipeYamlContent, recipeLoadError);
                 return;
             }
+
+            // THE RECIPE LOADED, SO A COPY THAT DOES NOT IS THE COCKPIT'S FAULT, NOT A LINE FOR THE READER TO FIX
+            let generationRecipeFilePath = recipeFullFileNamePath;
+            if ( filteredRecipe ) {
+                parsedRecipeYaml = yaml.load(filteredRecipe.recipeText) as any[];
+                filteredRecipeDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-filtered-recipe-'));
+                generationRecipeFilePath = path.join(filteredRecipeDirectoryPath, `${FILTERED_RECIPE_FILE_PREFIX}${path.basename(recipeFullFileNamePath)}`);
+                fs.writeFileSync(generationRecipeFilePath, filteredRecipe.recipeText, { encoding: 'utf8', flag: 'wx' });
+            }
+
             const dataStructureSummary = FakerJSRecipeProcessor.buildRecipeDataStructureSummary(parsedRecipeYaml);
 
             const confirmed = await vscode.window.showInformationMessage(
@@ -202,7 +233,7 @@ export class ExtensionCommandService {
 
             let fakerRecipeProcessor:IFakerRecipeProcessor = ConfigurationService.getFakerRecipeProcessorByExtensionConfigSelection();
 
-            const fakerJsonResult:string = await fakerRecipeProcessor.generateFakeDataBySelectedRecipeFile(recipeFullFileNamePath) as string;
+            const fakerJsonResult:string = await fakerRecipeProcessor.generateFakeDataBySelectedRecipeFile(generationRecipeFilePath) as string;
 
             const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
             const uniqueTimeStampedFakeDataSetsFolderName = VSCodeWorkspaceService.createFakeDatasetsTimeStampedFolderName(isoDateTimestamp);
@@ -226,6 +257,9 @@ export class ExtensionCommandService {
             const fullPathToBaseArtifactsFolder = `${fullPathToUniqueTimeStampedFakeDataSetsFolder}/${baseArtifactsFoldername}`;
             fs.mkdirSync(fullPathToBaseArtifactsFolder);
             fs.copyFileSync(recipeFullFileNamePath, `${fullPathToBaseArtifactsFolder}/originalRecipe-${path.basename(recipeFullFileNamePath)}`);
+            if ( generationRecipeFilePath !== recipeFullFileNamePath ) {
+                fs.copyFileSync(generationRecipeFilePath, path.join(fullPathToBaseArtifactsFolder, path.basename(generationRecipeFilePath)));
+            }
 
             /* 
                 The below lines get the timestamped parent recipe folder 
@@ -258,7 +292,8 @@ export class ExtensionCommandService {
                 recipeSourceNames,
                 ConfigurationService.getSelectedDataFakerServiceConfig() === 'faker-js' ? 'faker-js' : 'snowfakery',
                 new Date().toISOString(),
-                DatasetSourceService.countRecordsByObject(mappedSObjectApiToRecords)
+                DatasetSourceService.countRecordsByObject(mappedSObjectApiToRecords),
+                filteredRecipe?.excludedObjectApiNames ?? []
             );
             DatasetSourceService.writeDatasetSourceFile(fullPathToBaseArtifactsFolder, datasetSource);
        
@@ -268,7 +303,28 @@ export class ExtensionCommandService {
             const commandName = 'runFakerGenerationByRecipeFile';
             ErrorHandlingService.handleCapturedError(error, commandName);
 
+        } finally {
+
+            if ( filteredRecipeDirectoryPath ) {
+                fs.rmSync(filteredRecipeDirectoryPath, { recursive: true, force: true });
+            }
+
         }
+
+    }
+
+    static isRunFakerFilteredRecipe(candidate: unknown): candidate is IRunFakerFilteredRecipe {
+
+        if ( typeof candidate !== 'object' || candidate === null || Array.isArray(candidate) ) {
+            return false;
+        }
+
+        const { recipeText, excludedObjectApiNames } = candidate as Record<string, unknown>;
+
+        return typeof recipeText === 'string'
+                && Array.isArray(excludedObjectApiNames)
+                && excludedObjectApiNames.length > 0
+                && excludedObjectApiNames.every(excludedObjectApiName => typeof excludedObjectApiName === 'string');
 
     }
 

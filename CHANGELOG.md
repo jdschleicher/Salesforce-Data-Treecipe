@@ -1,5 +1,64 @@
 # Change Log
 
+## [3.54.0] - Recipe Cockpit: a tree icon includes or excludes an object and its children from generation
+
+Closes [#219](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/219), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+To leave a branch of a relationship tree out of ▶ Run Faker, you had to hand-edit nested YAML or delete recipe blocks, and that edit could not be undone cleanly. You can now switch an object off on its card's Structure tab. Its children follow, and the recipe file is never written.
+
+- **A tree icon before each object's name** on the Structure tab. It is a real `<button>` with `aria-pressed` and a title, and it never expands or collapses the row. The icon is one small tree drawn as **inline SVG** by the panel script (`createElementNS`, one `<path>`, `RECIPE_COCKPIT_TREE_GLYPH_PATH`), coloured by CSS from the palette only. It is the cockpit's first SVG glyph. It fetches nothing, so the CSP, the nonce-only shell builder and `localResourceRoots: []` are unchanged. The three states are told apart by shape, `aria-pressed`, title and label, never by colour alone:
+  - **Included:** filled in `--sdt-accent`, `aria-pressed="true"`, title `Included — click to exclude`.
+  - **Excluded** by the reader: an outline in `--sdt-muted`, `aria-pressed="false"`, title `Excluded — click to include`, labelled `excluded`.
+  - **Auto-excluded:** a dashed outline, `disabled`, title `Excluded because parent <Object> is excluded`, labelled `auto-excluded — parent <Object> excluded`.
+- **The cascade is computed on the host** (`RecipeCockpitObjectSelection`, a new file that imports nothing) and posted to the panel, so the panel never decides what is generated.
+  - Excluding an object also excludes every descendant with no other included parent in the same tree.
+  - Including the parent again brings back exactly what it auto-excluded. Objects you excluded yourself stay excluded.
+  - A descendant that still has another included parent stays included. Its lookup to the excluded parent is drawn as `AccountId → Opportunity · parent excluded` and left out of what is generated.
+  - A self-lookup is never "another parent", and an object's `<Object>_child_NickName` iteration (#188) follows it and gets no icon of its own.
+  - Excluding a tree's only root is allowed. ▶ Run Faker then refuses, because nothing is left to generate.
+- **Excluded rows are dimmed, not hidden.** An excluded or auto-excluded row, and its field rows when expanded, are covered by a gray translucent layer: the new palette token `--sdt-excluded-overlay` (`rgba(148, 163, 184, 0.40)`), drawn by the `.excluded` class (`::after`, `pointer-events: none`) and never by inline style. The row can still be expanded, read, searched and scrolled. The tree icon sits above the layer, crisp and clickable.
+  - **Measured contrast:** `--sdt-text` under the overlay is 10.44:1 on the surface and 9.85:1 on the hover, well above 4.5:1 (the issue's 5.01:1 was a lower estimate). Muted text under it falls to about 4:1. The overlay appears and disappears instantly until #227's motion lands.
+- **The header reads `1 of 3 objects`** when anything in the card is excluded. The count is over the objects the card draws (those with a recipe), so a lookup target with no recipe, such as `User`, is not counted.
+- **The selection is kept per tree folder name** in `workspaceState` (`treecipe.recipeCockpit.objectSelection`, version 1). Only what you excluded directly is stored. It survives closing the panel, a reload and a regeneration that writes the same folder. A tree or object no longer in the run is dropped silently, and the ungrouped card, which has no folder, draws no icon.
+- **The toggle is gated like every other panel action.** The panel posts `setObjectIncluded {treeKey, objectApiName, nickname?, included}`, matched against `selectableObjectKeys`: a pending/active list built at post, promoted on `rendered`, and emptied on `ready`, a new post and a failure to draw. A nickname, when sent, must be the one the object is drawn with. An object written twice with no nickname to tell the occurrences apart (`hasIndistinctOccurrences`, from `parseRecipeSource`) gets a disabled icon whose title says why, and the host refuses its toggle. The host writes the selection, updates the stored model, and posts `objectSelection` tagged with its `renderSequence`. The panel redraws that card in place.
+- **What generation sees**
+  - **▶ Run Faker on a card with exclusions generates from a filtered copy, not the recipe.** `RecipeCockpitRecipeWriter.buildFilteredRecipe` (still pure, still no imports) drops each excluded object's block, header comment included, along with every later occurrence nested under it.
+  - **The rest of the copy matches the recipe byte for byte**, line endings included, apart from these changes:
+    - A comment line at the top names what was left out.
+    - A kept object's lookups that point at an excluded object are left out. They are found through the wrapper's lookups, or by a value that is exactly an excluded occurrence's nickname.
+    - A `friends:` block left empty is dropped.
+  - **faker-js (nested):** a kept friend whose `friends:` parent was excluded moves, with everything under it, under its closest remaining parent that has a recipe. That is the #46 rule: deepest level by RelationshipService's levels (now read from the wrapper), ties broken by `<`, and only a parent at a strictly lower level, never one of its own friends. Its lookup to that parent is written as the parent's nickname, so `count` still means records per parent record. If no parent qualifies, it moves to the top level and its remaining lookups resolve by nickname (#189).
+  - **snowfakery (flat):** excluded blocks and the lookup lines that point at them are dropped.
+  - **Read-back:** the copy is read back through `scanRecipeObjects` and refused unless it reads as exactly the kept occurrences, nested where intended.
+  - **Refusals:** a recipe that cannot be read, scanned or cut, a move that would close a loop (possible only with a hand-edited wrapper), a line that cannot be re-indented exactly (a lone CR, U+0085, U+2028 or U+2029), or nothing left to generate. Each makes Run Faker refuse with a warning naming the tree (`Run Faker did not run on <tree>: …`) instead of generating the whole tree.
+  - **A card with nothing excluded** runs `treecipe.runFakerByRecipe` with only its recipe path, exactly as before.
+- **`runFakerGenerationByRecipeFile(recipeFilePath, filteredRecipe?)`** takes the copy as `{ recipeText, excludedObjectApiNames }`.
+  - **Type-checked, with a path:** the command is callable by id, so the copy is type-checked and accepted only together with a recipe path. Anything else warns and generates nothing.
+  - **Loading:** the recipe itself is still loaded first, so a YAML error still opens the recipe at the line to fix.
+  - **Generating:** the copy is written to a temporary folder outside the workspace and run through the configured processor unchanged. The modal summarizes the copy.
+  - **What the data set keeps:** the copy is saved as `filteredRecipe-<recipe>.yml` in the data set's `BaseArtifactFiles/`, beside `originalRecipe-*`. The temporary folder is removed whether generation succeeds or fails.
+- **`datasetSource.json` records `excludedObjectApiNames`** when anything was left out. `DatasetSourceService` type-checks it (a list of strings, or the file is unreadable), and a file written before this version reads exactly as before. `excludedFieldApiNamesByObject` waits for #220.
+- **Data-by-Org Create on an excluded object is disabled** with the reason `excluded in Structure`, and the host refuses a `createRecords` for it whatever the panel posts. Including the object again gives Create back without a new readiness check.
+- **Not changed:**
+  - The recipe `.yml`, which is never written.
+  - Insert Data Set by Directory.
+  - The cockpit's text glyphs (▸, ▶).
+  - Structure rows carry no generation control yet, so nothing on them takes `aria-disabled`. Count editing (#151) should disable its input for an excluded object when it lands.
+- **Tests**
+  - **`RecipeCockpitRecipeFilter.test.ts`** covers the filtered copy:
+    - byte fidelity and CRLF;
+    - moves, wiring, the closest-parent rule, moves to the top level, self-lookup iterations and emptied `friends:`;
+    - every refusal;
+    - faker-js: the copy runs through the real `FakerJSRecipeProcessor`, with no record of or reference to an excluded object;
+    - snowfakery: the copy is handed to `SnowfakeryRecipeProcessor` as the file it runs (with `execFile` stubbed, since the CI image has no snowfakery) and loaded in PyYAML through the `PythonTestHarness` gate.
+  - **`RecipeCockpitObjectSelection.test.ts`** covers the cascade, re-including, more than one parent, self-lookups, cycles, and parents outside the tree.
+  - **`RecipeCockpitExcludeObjects.test.ts`** covers:
+    - the store, the allow-list and the router;
+    - Create refusals;
+    - Run Faker with and without exclusions, and its refusals;
+    - `runPanelScript` drawing the three icon states (`aria-pressed`, `disabled`, title), the overlay class, the icon outside the row body, the header count, disabled lookups, iteration rows and the Create reason.
+  - **`RecipeCockpitService.test.ts`** composites the overlay over `--sdt-surface` and `--sdt-row-hover`, holds the icon's colours to 3:1 on both, and pins the CSS. Its external-asset check now allows exactly one URL, the SVG namespace, which `createElementNS` uses as a name and never fetches.
+  - **Also:** `ExtensionCommandService.test.ts` and `DatasetSourceService.test.ts` cover the filtered copy and the new field. The panel harness gains `createElementNS`.
 ## [3.53.1] - Recipe Cockpit: bigger expand/collapse triangles on the relationship tree
 
 Closes [#244](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/244).

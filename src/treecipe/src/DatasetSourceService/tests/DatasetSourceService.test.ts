@@ -476,7 +476,9 @@ describe('DatasetSourceService', () => {
             ['record counts as an array', { ...validDatasetSource, recordCountsByObject: [1] }],
             ['a negative record count', { ...validDatasetSource, recordCountsByObject: { Account: -1 } }],
             ['a fractional record count', { ...validDatasetSource, recordCountsByObject: { Account: 1.5 } }],
-            ['a string record count', { ...validDatasetSource, recordCountsByObject: { Account: '1' } }]
+            ['a string record count', { ...validDatasetSource, recordCountsByObject: { Account: '1' } }],
+            ['excluded objects as a string', { ...validDatasetSource, excludedObjectApiNames: 'Opportunity' }],
+            ['an excluded object that is not a string', { ...validDatasetSource, excludedObjectApiNames: ['Opportunity', 7] }]
         ])('refuses %s', (_description, candidate) => {
 
             expect(DatasetSourceService.typeCheckDatasetSource(candidate)).toBeUndefined();
@@ -495,6 +497,26 @@ describe('DatasetSourceService', () => {
 
             expect(DatasetSourceService.typeCheckDatasetSource(createInOrgSource)).toEqual(createInOrgSource);
             expect(DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, orgUsername: 'x', createdRecordIds: ['y'] })).toEqual(validDatasetSource);
+
+        });
+
+        test('accepts the objects the Recipe Cockpit excluded (#219), and reads a source written before them unchanged', () => {
+
+            const excludingSource: IDatasetSource = { ...validDatasetSource, excludedObjectApiNames: ['Opportunity', 'OpportunityLineItem'] };
+
+            expect(DatasetSourceService.typeCheckDatasetSource(excludingSource)).toEqual(excludingSource);
+            expect(DatasetSourceService.typeCheckDatasetSource(validDatasetSource)).not.toHaveProperty('excludedObjectApiNames');
+
+        });
+
+        test('buildDatasetSource records excluded objects only when there are some', () => {
+
+            const recipeSourceNames = { recipeRunFolderName: fakerJsRunFolderName, recipeTreeFolderName: 'Account-thru-Contact', recipeFileName: 'recipe.yml' };
+
+            expect(DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 1 }))
+                .not.toHaveProperty('excludedObjectApiNames');
+            expect(DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 1 }, ['Opportunity']))
+                .toMatchObject({ excludedObjectApiNames: ['Opportunity'] });
 
         });
 

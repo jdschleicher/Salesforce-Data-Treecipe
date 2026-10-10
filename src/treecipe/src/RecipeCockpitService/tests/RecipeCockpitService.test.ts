@@ -202,7 +202,9 @@ describe('RecipeCockpitService', () => {
 
             expect(actualShellHtml).not.toMatch(/\ssrc="/);
             expect(actualShellHtml).not.toMatch(/<link\b/);
-            expect(actualShellHtml).not.toMatch(/https?:\/\//);
+            // THE ONE URL IS THE SVG NAMESPACE createElementNS NAMES THE TREE GLYPH BY (#219) -- AN IDENTIFIER, NEVER FETCHED
+            expect(actualShellHtml.match(/https?:\/\/[^'"\s]*/g)).toEqual(['http://www.w3.org/2000/svg']);
+            expect(actualShellHtml).toContain("const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';");
 
         });
 
@@ -291,7 +293,8 @@ describe('RecipeCockpitService', () => {
                 text: '#1F2937', muted: '#5B6472', accent: '#2563EB', onAccent: '#FFFFFF',
                 rowHover: '#F1F5FF', chipBg: '#EEF2FF', chipText: '#3730A3',
                 added: '#15803D', removed: '#B91C1C', changed: '#B45309',
-                disabledBg: '#E5E7EB', disabledText: '#4B5563'
+                disabledBg: '#E5E7EB', disabledText: '#4B5563',
+                excludedOverlay: 'rgba(148, 163, 184, 0.40)'
             });
             expect(rootBlock).toContain('--sdt-page: #F4F6F9;');
             expect(rootBlock).toContain('--sdt-on-accent: #FFFFFF;');
@@ -471,6 +474,79 @@ describe('RecipeCockpitService', () => {
 
             expect(TEXT_ON_BACKGROUND_PAIRS).toHaveLength(27);
             expect(findContrastFailures(RECIPE_COCKPIT_PALETTE)).toEqual([]);
+
+        });
+
+        /*
+            #219: the tree icon is drawn in --sdt-accent (included) or --sdt-muted (excluded) on the
+            row's surface or its hover; a graphic needs 3:1 (WCAG 1.4.11), and these hold text's 4.5.
+            An excluded row's overlay is composited over both backgrounds, and its names in
+            --sdt-text must still read at 4.5:1 through it.
+        */
+        describe('the excluded-object overlay and the tree icon (#219)', () => {
+
+            const parseRgba = (rgbaColour: string): [number, number, number, number] => {
+                const [red, green, blue, alpha] = (rgbaColour.match(/^rgba\((\d+), (\d+), (\d+), (0?\.\d+|1|0)\)$/) ?? []).slice(1).map(Number);
+                return [red, green, blue, alpha];
+            };
+
+            const compositeOver = (overlayColour: string, backgroundHexColour: string): string => {
+                const [red, green, blue, alpha] = parseRgba(overlayColour);
+                const background = [1, 3, 5].map(offset => parseInt(backgroundHexColour.substring(offset, offset + 2), 16));
+                return '#' + [red, green, blue]
+                    .map((channel, index) => Math.round(channel * alpha + background[index] * (1 - alpha)).toString(16).padStart(2, '0'))
+                    .join('');
+            };
+
+            it('is slate gray at 40%, an rgba the parser reads', () => {
+
+                expect(RECIPE_COCKPIT_PALETTE.excludedOverlay).toBe('rgba(148, 163, 184, 0.40)');
+                expect(parseRgba(RECIPE_COCKPIT_PALETTE.excludedOverlay)).toEqual([148, 163, 184, 0.4]);
+
+            });
+
+            it.each(['surface', 'rowHover'] as RecipeCockpitPaletteToken[])('keeps --sdt-text at 4.5:1 or more under the overlay on --sdt-%s', (backgroundToken) => {
+
+                const overlaidBackground = compositeOver(RECIPE_COCKPIT_PALETTE.excludedOverlay, RECIPE_COCKPIT_PALETTE[backgroundToken]);
+
+                expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.text, overlaidBackground)).toBeGreaterThanOrEqual(MINIMUM_TEXT_CONTRAST_RATIO);
+
+            });
+
+            // MEASURED, NOT ESTIMATED: THE ISSUE'S 5.01:1 WAS A LOWER BOUND; THIS PALETTE GIVES 10.44:1 AND 9.85:1
+            it('measures --sdt-text at 10.44:1 on the overlaid surface and 9.85:1 on the overlaid hover', () => {
+
+                expect(compositeOver(RECIPE_COCKPIT_PALETTE.excludedOverlay, RECIPE_COCKPIT_PALETTE.surface)).toBe('#d4dae3');
+                expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.text, compositeOver(RECIPE_COCKPIT_PALETTE.excludedOverlay, RECIPE_COCKPIT_PALETTE.surface)).toFixed(2)).toBe('10.44');
+                expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.text, compositeOver(RECIPE_COCKPIT_PALETTE.excludedOverlay, RECIPE_COCKPIT_PALETTE.rowHover)).toFixed(2)).toBe('9.85');
+
+            });
+
+            const ICON_ON_BACKGROUND_PAIRS: [RecipeCockpitPaletteToken, RecipeCockpitPaletteToken][] = [
+                ['accent', 'surface'], ['accent', 'rowHover'], ['muted', 'surface'], ['muted', 'rowHover']
+            ];
+
+            it.each(ICON_ON_BACKGROUND_PAIRS)('draws the icon in --sdt-%s on --sdt-%s at 3:1 or more', (iconToken, backgroundToken) => {
+
+                expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE[iconToken], RECIPE_COCKPIT_PALETTE[backgroundToken])).toBeGreaterThanOrEqual(3);
+
+            });
+
+            it('colours the icon only from those two tokens, and lays the overlay with a class rather than inline style', () => {
+
+                const shellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+                const styleSheet = styleSheetOf(shellHtml);
+
+                expect(styleSheet).toContain('.treeGlyph path { fill: var(--sdt-accent); stroke: var(--sdt-accent);');
+                expect(styleSheet).toContain('.treeGlyph.excluded path, .treeGlyph.autoExcluded path { fill: none; stroke: var(--sdt-muted);');
+                expect(styleSheet).toMatch(/\.treeGlyph\.autoExcluded path \{ stroke-dasharray: [^;]+; \}/);
+                expect(styleSheet).toMatch(/\.treeObject\.excluded::after \{[^}]*background-color: var\(--sdt-excluded-overlay\);[^}]*pointer-events: none;[^}]*z-index: 1;/);
+                // THE ICON SITS ABOVE THE OVERLAY, SO IT STAYS CRISP AND CLICKABLE
+                expect(styleSheet).toMatch(/\.treeObjectInclude \{[^}]*position: relative;[^}]*z-index: 2;/);
+                expect(shellHtml).not.toMatch(/\.style\.|setAttribute\('style'/);
+                expect(findThemeColourReads(shellHtml)).toEqual([]);
+
+            });
 
         });
 

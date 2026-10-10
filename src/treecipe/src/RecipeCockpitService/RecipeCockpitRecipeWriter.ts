@@ -53,7 +53,9 @@ export type RecipeWriterRefusalReason =
     | 'duplicate-friend'
     | 'friend-already-exists'
     | 'duplicate-friends-block'
-    | 'unsupported-friend-layout';
+    | 'unsupported-friend-layout'
+    | 'all-objects-excluded'
+    | 'unsupported-filter-layout';
 
 export interface IRecipeWriterRefusal {
     reason: RecipeWriterRefusalReason;
@@ -97,6 +99,40 @@ export interface ICreateBlockFieldListRequest {
 export type RecipeBlockFieldListResult =
     | { isListed: true; fieldApiNames: string[] }
     | { isListed: false; refusal: IRecipeWriterRefusal };
+
+// ONE LOOKUP OF AN OBJECT AND THE OBJECT IT POINTS AT
+export interface IRecipeFilterLookup {
+    fieldApiName: string;
+    parentObjectApiName: string;
+}
+
+/*
+    What buildFilteredRecipe leaves out (#219). excludedObjectApiNames is EVERY object left out, the
+    ones the reader excluded and the ones that followed a parent. The lookups are what tell a
+    snowfakery "### TODO" lookup apart from any other field, and what a moved friend is wired by.
+    Levels are RelationshipService's; without one, an object's nesting depth in the recipe stands in.
+*/
+export interface IRecipeFilterRequest {
+    excludedObjectApiNames: readonly string[];
+    parentLookupsByObjectApiName: ReadonlyMap<string, readonly IRecipeFilterLookup[]>;
+    levelsByObjectApiName?: ReadonlyMap<string, number>;
+}
+
+// A KEPT FRIEND WHOSE friends: PARENT WAS LEFT OUT; NO newParentObjectApiName MEANS IT WAS MOVED TO THE TOP LEVEL
+export interface IRecipeFilterMove {
+    objectApiName: string;
+    newParentObjectApiName?: string;
+}
+
+export type RecipeFilterResult =
+    | {
+        isFiltered: true;
+        recipeText: string;
+        droppedObjectApiNames: string[];
+        droppedLookups: IRecipeFilterLookup[];
+        movedObjects: IRecipeFilterMove[];
+    }
+    | { isFiltered: false; refusal: IRecipeWriterRefusal };
 
 export type RecipeWriterResult =
     | { isApplied: true; recipeText: string; edit: IRecipeWriterEdit }
@@ -814,6 +850,396 @@ export class RecipeCockpitRecipeWriter {
         }
 
         return blockLineIndexes;
+
+    }
+
+    /*
+        A copy of a tree's recipe without the objects the Recipe Cockpit's Structure tab excluded
+        (#219): what ▶ Run Faker generates from, so the recipe file itself is never written.
+
+        An excluded object's block is dropped -- its header comment, its own block and its friends:
+        block -- and so is every later occurrence of any object nested under it (a copy under a
+        self-lookup iteration goes with what it was copied under). Every other line is copied byte
+        for byte, its line ending included, except for three kinds of change:
+
+        - a lookup field of a kept object that points at a dropped object -- by the lookups handed
+          in, or by a value that is exactly a dropped occurrence's nickname -- is left out;
+        - a kept friend whose friends: parent was dropped is moved, with everything nested under it,
+          under its CLOSEST remaining parent that has a recipe: deepest level, ties by "<", and only a
+          parent at a strictly lower level, which is RelationshipService's rule (#46), so moves can
+          never form a cycle. Its lookup to that parent is written as the parent's nickname, so a
+          count still means records per parent record. With no such parent it moves to the top level
+          and its remaining lookups are nicknames the processor resolves as non-ancestors (#189);
+        - a friends: block left with no friend is dropped rather than written as "friends:" alone.
+
+        A flat recipe -- snowfakery's, or a tree nothing nests in -- has no friends to move, so only
+        blocks and lookups are dropped. The copy is read back through scanRecipeObjects and refused
+        unless it reads as exactly the kept occurrences, moved where this said.
+    */
+    static buildFilteredRecipe(recipeText: string, filterRequest: IRecipeFilterRequest): RecipeFilterResult {
+
+        const excludedObjectApiNames = new Set(filterRequest.excludedObjectApiNames);
+        const refuseFilter = (reason: RecipeWriterRefusalReason, message: string, objectApiName = filterRequest.excludedObjectApiNames[0] ?? ''): RecipeFilterResult => ({
+            isFiltered: false,
+            refusal: { reason: reason, message: message, objectApiName: objectApiName }
+        });
+
+        const invalidObjectApiName = filterRequest.excludedObjectApiNames.find(excludedObjectApiName => !API_NAME_PATTERN.test(excludedObjectApiName));
+        if ( invalidObjectApiName !== undefined ) {
+            return refuseFilter('invalid-object-api-name', `"${invalidObjectApiName}" is not an object api name.`, invalidObjectApiName);
+        }
+
+        const recipeLines = this.splitRecipeLines(recipeText);
+        const { lines } = recipeLines;
+        const scannedObjects = this.scanRecipeObjects(lines);
+
+        if ( scannedObjects.length === 0 ) {
+            return refuseFilter('object-not-found', 'The recipe has no "- object:" line, so it could not be filtered.');
+        }
+
+        // NOTHING EXCLUDED IS THE RECIPE ITSELF, BYTE FOR BYTE
+        if ( excludedObjectApiNames.size === 0 ) {
+            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [] };
+        }
+
+        const friendIndex = this.buildScannedFriendIndex(scannedObjects);
+        const spansByHeaderIndex = new Map<number, ILineSpan>(scannedObjects.map(scannedObject => [scannedObject.headerIndex, {
+            startIndex: this.findHeaderCommentStartIndex(lines, scannedObject),
+            endIndex: this.findLastLineIndexOfObject(lines, scannedObject) + 1
+        }]));
+
+        const firstOccurrencesByApiName = new Map<string, IScannedObject>();
+        scannedObjects.forEach(scannedObject => {
+            if ( !firstOccurrencesByApiName.has(scannedObject.objectApiName) ) {
+                firstOccurrencesByApiName.set(scannedObject.objectApiName, scannedObject);
+            }
+        });
+
+        // FILE ORDER IS PARENTS BEFORE FRIENDS, SO A PARENT'S FATE IS DECIDED BEFORE ITS FRIENDS ASK
+        const droppedHeaderIndexes = new Set<number>();
+        const objectsToMove: IScannedObject[] = [];
+        scannedObjects.forEach(scannedObject => {
+            const isParentDropped = scannedObject.parentHeaderIndex !== undefined && droppedHeaderIndexes.has(scannedObject.parentHeaderIndex);
+            if ( excludedObjectApiNames.has(scannedObject.objectApiName) || ( isParentDropped && firstOccurrencesByApiName.get(scannedObject.objectApiName) !== scannedObject ) ) {
+                droppedHeaderIndexes.add(scannedObject.headerIndex);
+            } else if ( isParentDropped ) {
+                objectsToMove.push(scannedObject);
+            }
+        });
+
+        const keptObjects = scannedObjects.filter(scannedObject => !droppedHeaderIndexes.has(scannedObject.headerIndex));
+        const hasLookupToDrop = keptObjects.some(keptObject => ( filterRequest.parentLookupsByObjectApiName.get(keptObject.objectApiName) ?? [] )
+            .some(lookup => excludedObjectApiNames.has(lookup.parentObjectApiName)));
+
+        // NOTHING IN THIS RECIPE IS LEFT OUT: THE RECIPE ITSELF, BYTE FOR BYTE
+        if ( droppedHeaderIndexes.size === 0 && !hasLookupToDrop ) {
+            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [] };
+        }
+
+        if ( keptObjects.length === 0 ) {
+            return refuseFilter('all-objects-excluded', 'Every object in the recipe is excluded, so there is nothing to generate.');
+        }
+
+        const levelOf = (scannedObject: IScannedObject) => filterRequest.levelsByObjectApiName?.get(scannedObject.objectApiName) ?? scannedObject.objectIndent / FRIENDS_INDENT_STEP;
+        const isNestedUnder = (candidate: IScannedObject, ancestorHeaderIndex: number) => {
+            for ( let parentHeaderIndex = candidate.parentHeaderIndex; parentHeaderIndex !== undefined; parentHeaderIndex = friendIndex.objectsByHeaderIndex.get(parentHeaderIndex)?.parentHeaderIndex ) {
+                if ( parentHeaderIndex === ancestorHeaderIndex ) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        const lookupsOf = (objectApiName: string) => filterRequest.parentLookupsByObjectApiName.get(objectApiName) ?? [];
+
+        const finalParentHeaderIndexes = new Map<number, number | undefined>(keptObjects.map(keptObject => [keptObject.headerIndex, keptObject.parentHeaderIndex]));
+        const newParentsByMovedHeaderIndex = new Map<number, IScannedObject | undefined>();
+        const movedInObjectsByParentHeaderIndex = new Map<number | undefined, IScannedObject[]>();
+
+        for ( const objectToMove of objectsToMove ) {
+
+            const [newParent] = lookupsOf(objectToMove.objectApiName)
+                .map(lookup => lookup.parentObjectApiName)
+                .filter(parentObjectApiName => parentObjectApiName !== objectToMove.objectApiName && !excludedObjectApiNames.has(parentObjectApiName))
+                .map(parentObjectApiName => firstOccurrencesByApiName.get(parentObjectApiName))
+                .filter((candidate): candidate is IScannedObject => !!candidate
+                                                                    && !droppedHeaderIndexes.has(candidate.headerIndex)
+                                                                    && !isNestedUnder(candidate, objectToMove.headerIndex)
+                                                                    && levelOf(candidate) < levelOf(objectToMove))
+                .sort((left, right) => levelOf(right) - levelOf(left) || ( left.objectApiName < right.objectApiName ? -1 : left.objectApiName > right.objectApiName ? 1 : 0 ));
+
+            if ( newParent && newParent.nicknames.length !== 1 ) {
+                return refuseFilter('unsupported-filter-layout', `${newParent.objectApiName} has ${newParent.nicknames.length === 0 ? 'no' : 'more than one'} "nickname:" line, so ${objectToMove.objectApiName} could not be moved under it.`, objectToMove.objectApiName);
+            }
+            if ( newParent && newParent.friendsLineIndexes.length > 1 ) {
+                return refuseFilter('unsupported-filter-layout', `${newParent.objectApiName} has more than one "friends:" line, so ${objectToMove.objectApiName} could not be moved under it.`, objectToMove.objectApiName);
+            }
+
+            newParentsByMovedHeaderIndex.set(objectToMove.headerIndex, newParent);
+            finalParentHeaderIndexes.set(objectToMove.headerIndex, newParent?.headerIndex);
+            const movedInObjects = movedInObjectsByParentHeaderIndex.get(newParent?.headerIndex) ?? [];
+            movedInObjects.push(objectToMove);
+            movedInObjectsByParentHeaderIndex.set(newParent?.headerIndex, movedInObjects);
+
+        }
+
+        // A HAND-EDITED RECIPE CAN NEST AGAINST ITS LEVELS; A MOVE THAT WOULD CLOSE A LOOP IS REFUSED RATHER THAN WRITTEN
+        const isInCycle = keptObjects.some(keptObject => {
+            let parentHeaderIndex = finalParentHeaderIndexes.get(keptObject.headerIndex);
+            for ( let step = 0; parentHeaderIndex !== undefined; step++ ) {
+                if ( step > keptObjects.length ) {
+                    return true;
+                }
+                parentHeaderIndex = finalParentHeaderIndexes.get(parentHeaderIndex);
+            }
+            return false;
+        });
+        if ( isInCycle ) {
+            return refuseFilter('unsupported-filter-layout', 'Moving the kept objects under their remaining parents would nest an object under itself.');
+        }
+
+        const keptNicknames = new Set(keptObjects.flatMap(keptObject => keptObject.nicknames));
+        const droppedNicknames = new Set(scannedObjects
+            .filter(scannedObject => droppedHeaderIndexes.has(scannedObject.headerIndex))
+            .flatMap(scannedObject => scannedObject.nicknames)
+            .filter(nickname => !keptNicknames.has(nickname)));
+
+        const removedLineIndexes = new Set<number>();
+        const rewiredFieldsByLineIndex = new Map<number, { fieldApiName: string; nickname: string }>();
+        const droppedLookups: IRecipeFilterLookup[] = [];
+
+        keptObjects.forEach(keptObject => {
+
+            const fieldIndent = this.getObjectLayout(keptObject.objectIndent).fieldIndent;
+            const parentsByFieldApiName = new Map(lookupsOf(keptObject.objectApiName).map(lookup => [lookup.fieldApiName, lookup.parentObjectApiName]));
+            const newParent = newParentsByMovedHeaderIndex.get(keptObject.headerIndex);
+
+            keptObject.fields.forEach(scannedField => {
+
+                const parentObjectApiName = parentsByFieldApiName.get(scannedField.fieldApiName);
+                const isSingleLine = scannedField.endIndex === scannedField.startIndex + 1;
+                const fieldValue = isSingleLine ? lines[scannedField.startIndex].slice(fieldIndent.length + scannedField.fieldApiName.length + 1).trim() : undefined;
+
+                if ( newParent && isSingleLine && parentObjectApiName === newParent.objectApiName ) {
+                    rewiredFieldsByLineIndex.set(scannedField.startIndex, { fieldApiName: scannedField.fieldApiName, nickname: newParent.nicknames[0] });
+                    return;
+                }
+
+                const isDroppedParentByLookup = parentObjectApiName !== undefined && excludedObjectApiNames.has(parentObjectApiName);
+                const isDroppedParentByNickname = fieldValue !== undefined && droppedNicknames.has(fieldValue);
+
+                if ( isDroppedParentByLookup || isDroppedParentByNickname ) {
+                    for ( let lineIndex = scannedField.startIndex; lineIndex < scannedField.endIndex; lineIndex++ ) {
+                        removedLineIndexes.add(lineIndex);
+                    }
+                    droppedLookups.push({
+                        fieldApiName: scannedField.fieldApiName,
+                        parentObjectApiName: parentObjectApiName ?? scannedObjects.find(scannedObject => scannedObject.nicknames.includes(fieldValue as string))?.objectApiName ?? ''
+                    });
+                }
+
+            });
+
+        });
+
+        const movedHeaderIndexes = new Set(objectsToMove.map(objectToMove => objectToMove.headerIndex));
+        const renderedLines: Array<{ text: string; ending: string }> = [];
+        const defaultLineEnding = recipeLines.lineEndings.find(lineEnding => lineEnding !== '') ?? '\n';
+        const emit = (text: string, lineIndex?: number) => renderedLines.push({ text: text, ending: ( lineIndex === undefined ? '' : recipeLines.lineEndings[lineIndex] ) || defaultLineEnding });
+        const isLastEmittedBlank = () => renderedLines.length === 0 || !renderedLines[renderedLines.length - 1].text.trim();
+        const skipBlankLines = (fromIndex: number, toIndex: number) => {
+            let lineIndex = fromIndex;
+            while ( lineIndex < toIndex && !lines[lineIndex].trim() && isLastEmittedBlank() ) {
+                lineIndex++;
+            }
+            return lineIndex;
+        };
+
+        const reindent = (recipeLine: string, indentDelta: number): string | undefined => {
+            if ( indentDelta === 0 || !recipeLine.trim() ) {
+                return recipeLine;
+            }
+            // AS FOR insertFriend: TEXT AFTER A BREAK THE JS SPLIT DOES NOT SEE WOULD KEEP ITS OLD COLUMN
+            if ( /[\r\u0085\u2028\u2029]/.test(recipeLine) ) {
+                return undefined;
+            }
+            if ( indentDelta > 0 ) {
+                return `${' '.repeat(indentDelta)}${recipeLine}`;
+            }
+            return recipeLine.startsWith(' '.repeat(-indentDelta)) ? recipeLine.slice(-indentDelta) : undefined;
+        };
+
+        // EMITS ONE KEPT OBJECT WITH EVERYTHING KEPT UNDER IT, ITS "- object:" AT newObjectIndent; A MESSAGE WHEN IT COULD NOT BE MOVED EXACTLY
+        const renderObject = (scannedObject: IScannedObject, newObjectIndent: number): string | undefined => {
+
+            const indentDelta = newObjectIndent - scannedObject.objectIndent;
+            const span = spansByHeaderIndex.get(scannedObject.headerIndex) as ILineSpan;
+            const friends = friendIndex.friendsByParentHeaderIndex.get(scannedObject.headerIndex) ?? [];
+            const friendsBySpanStart = new Map(friends.map(friend => [( spansByHeaderIndex.get(friend.headerIndex) as ILineSpan ).startIndex, friend]));
+            const keptFriendCount = friends.filter(friend => !droppedHeaderIndexes.has(friend.headerIndex) && !movedHeaderIndexes.has(friend.headerIndex)).length;
+            const movedInObjects = movedInObjectsByParentHeaderIndex.get(scannedObject.headerIndex) ?? [];
+            const ownBlockLineIndexes = new Set(this.collectOwnBlockLineIndexes(lines, scannedObject));
+            const isFriendsBlockEmptied = keptFriendCount + movedInObjects.length === 0;
+
+            for ( let lineIndex = span.startIndex; lineIndex < span.endIndex; ) {
+
+                const friend = friendsBySpanStart.get(lineIndex);
+                if ( friend ) {
+                    const friendSpan = spansByHeaderIndex.get(friend.headerIndex) as ILineSpan;
+                    if ( droppedHeaderIndexes.has(friend.headerIndex) || movedHeaderIndexes.has(friend.headerIndex) ) {
+                        lineIndex = skipBlankLines(friendSpan.endIndex, span.endIndex);
+                        continue;
+                    }
+                    const friendRefusal = renderObject(friend, newObjectIndent + FRIENDS_INDENT_STEP);
+                    if ( friendRefusal ) {
+                        return friendRefusal;
+                    }
+                    lineIndex = friendSpan.endIndex;
+                    continue;
+                }
+
+                const isFriendsBlockLine = lineIndex > scannedObject.headerIndex && !ownBlockLineIndexes.has(lineIndex);
+                if ( removedLineIndexes.has(lineIndex) || ( isFriendsBlockEmptied && isFriendsBlockLine ) ) {
+                    lineIndex++;
+                    continue;
+                }
+
+                const rewiredField = rewiredFieldsByLineIndex.get(lineIndex);
+                const renderedLine = rewiredField
+                    ? `${this.getObjectLayout(newObjectIndent).fieldIndent}${rewiredField.fieldApiName}: ${rewiredField.nickname}`
+                    : reindent(lines[lineIndex], indentDelta);
+                if ( renderedLine === undefined ) {
+                    return `${scannedObject.objectApiName} has a line that could not be moved to its new depth exactly (a lone carriage return, U+0085, U+2028 or U+2029 inside it, or a line indented less than its object).`;
+                }
+                emit(renderedLine, lineIndex);
+                lineIndex++;
+
+            }
+
+            if ( movedInObjects.length > 0 && scannedObject.friendsLineIndexes.length === 0 ) {
+                emit(`${this.getObjectLayout(newObjectIndent).propertyIndent}friends:`);
+            }
+
+            for ( const movedInObject of movedInObjects ) {
+                const movedRefusal = renderObject(movedInObject, newObjectIndent + FRIENDS_INDENT_STEP);
+                if ( movedRefusal ) {
+                    return movedRefusal;
+                }
+            }
+
+            return undefined;
+
+        };
+
+        const droppedObjectApiNames = [...new Set(scannedObjects
+            .filter(scannedObject => droppedHeaderIndexes.has(scannedObject.headerIndex))
+            .map(scannedObject => scannedObject.objectApiName))];
+
+        emit(`# Recipe Cockpit -- a filtered copy of this tree's recipe, leaving out: ${droppedObjectApiNames.join(', ')}`);
+
+        // A FILE THAT ENDS WITH A LINE BREAK SPLITS INTO A LAST EMPTY LINE, WHICH STAYS LAST
+        const hasFinalEmptyLine = lines.length > 1 && lines[lines.length - 1] === '';
+        const topLevelEndIndex = hasFinalEmptyLine ? lines.length - 1 : lines.length;
+        const topLevelObjectsBySpanStart = new Map(scannedObjects
+            .filter(scannedObject => scannedObject.parentHeaderIndex === undefined)
+            .map(scannedObject => [( spansByHeaderIndex.get(scannedObject.headerIndex) as ILineSpan ).startIndex, scannedObject]));
+
+        for ( let lineIndex = 0; lineIndex < topLevelEndIndex; ) {
+
+            const topLevelObject = topLevelObjectsBySpanStart.get(lineIndex);
+            if ( !topLevelObject ) {
+                emit(lines[lineIndex], lineIndex);
+                lineIndex++;
+                continue;
+            }
+
+            const topLevelSpan = spansByHeaderIndex.get(topLevelObject.headerIndex) as ILineSpan;
+            if ( droppedHeaderIndexes.has(topLevelObject.headerIndex) ) {
+                lineIndex = skipBlankLines(topLevelSpan.endIndex, topLevelEndIndex);
+                continue;
+            }
+
+            const renderRefusal = renderObject(topLevelObject, 0);
+            if ( renderRefusal ) {
+                return refuseFilter('unsupported-filter-layout', renderRefusal, topLevelObject.objectApiName);
+            }
+            lineIndex = topLevelSpan.endIndex;
+
+        }
+
+        for ( const movedToTopObject of movedInObjectsByParentHeaderIndex.get(undefined) ?? [] ) {
+            if ( !isLastEmittedBlank() ) {
+                emit('');
+            }
+            const movedRefusal = renderObject(movedToTopObject, 0);
+            if ( movedRefusal ) {
+                return refuseFilter('unsupported-filter-layout', movedRefusal, movedToTopObject.objectApiName);
+            }
+        }
+
+        if ( hasFinalEmptyLine ) {
+            emit('');
+        }
+        renderedLines[renderedLines.length - 1].ending = '';
+
+        const filteredRecipeText = renderedLines.map(renderedLine => `${renderedLine.text}${renderedLine.ending}`).join('');
+
+        const movedObjects: IRecipeFilterMove[] = objectsToMove.map(movedObject => {
+            const newParent = newParentsByMovedHeaderIndex.get(movedObject.headerIndex);
+            return { objectApiName: movedObject.objectApiName, ...( newParent ? { newParentObjectApiName: newParent.objectApiName } : {} ) };
+        });
+
+        if ( !this.isFilteredRecipeReadBack(filteredRecipeText, keptObjects, finalParentHeaderIndexes, friendIndex, excludedObjectApiNames) ) {
+            return refuseFilter('unsupported-filter-layout', 'The filtered copy did not read back as the kept objects nested where they were meant to be, so it was not used.');
+        }
+
+        return {
+            isFiltered: true,
+            recipeText: filteredRecipeText,
+            droppedObjectApiNames: droppedObjectApiNames,
+            droppedLookups: droppedLookups,
+            movedObjects: movedObjects
+        };
+
+    }
+
+    // EVERY KEPT OCCURRENCE, IN THE SAME ORDER OF NAMES AND NICKNAMES, UNDER THE PARENT THE FILTER CHOSE; NOTHING EXCLUDED
+    private static isFilteredRecipeReadBack(filteredRecipeText: string,
+                                            keptObjects: IScannedObject[],
+                                            finalParentHeaderIndexes: Map<number, number | undefined>,
+                                            friendIndex: IScannedFriendIndex,
+                                            excludedObjectApiNames: Set<string>): boolean {
+
+        const describeOccurrence = (scannedObject: IScannedObject | undefined) => scannedObject ? `${scannedObject.objectApiName}\u0000${scannedObject.nicknames.join('\u0000')}` : '';
+        const describeExpected = (keptObject: IScannedObject) => {
+            const parentHeaderIndex = finalParentHeaderIndexes.get(keptObject.headerIndex);
+            return `${describeOccurrence(keptObject)}\u0001${describeOccurrence(parentHeaderIndex === undefined ? undefined : friendIndex.objectsByHeaderIndex.get(parentHeaderIndex))}`;
+        };
+
+        const filteredObjects = this.scanRecipeObjects(this.splitRecipeLines(filteredRecipeText).lines);
+        const filteredIndex = this.buildScannedFriendIndex(filteredObjects);
+        const describeFiltered = (filteredObject: IScannedObject) => `${describeOccurrence(filteredObject)}\u0001${describeOccurrence(filteredObject.parentHeaderIndex === undefined ? undefined : filteredIndex.objectsByHeaderIndex.get(filteredObject.parentHeaderIndex))}`;
+
+        const expected = keptObjects.map(describeExpected).sort();
+        const actual = filteredObjects.map(describeFiltered).sort();
+
+        return !filteredObjects.some(filteredObject => excludedObjectApiNames.has(filteredObject.objectApiName))
+                && expected.length === actual.length
+                && expected.every((description, index) => description === actual[index]);
+
+    }
+
+    // THE "# Object (...)" COMMENT LINES DIRECTLY ABOVE AN OBJECT'S HEADER, AT ITS COLUMN, BELONG TO IT
+    private static findHeaderCommentStartIndex(lines: string[], scannedObject: IScannedObject): number {
+
+        let startIndex = scannedObject.headerIndex;
+
+        while ( startIndex > 0
+                && lines[startIndex - 1].trimStart().startsWith('#')
+                && lines[startIndex - 1].length - lines[startIndex - 1].trimStart().length === scannedObject.objectIndent ) {
+            startIndex--;
+        }
+
+        return startIndex;
 
     }
 

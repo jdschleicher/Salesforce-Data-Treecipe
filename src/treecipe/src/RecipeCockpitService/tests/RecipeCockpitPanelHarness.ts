@@ -86,7 +86,9 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
 
     const fakeDocument = {
         getElementById: (elementId: string) => ({ loadStatus: loadStatusElement, cockpitBody: cockpitBodyElement } as any)[elementId],
-        createElement: (tagName: string) => buildFakeElement(tagName)
+        createElement: (tagName: string) => buildFakeElement(tagName),
+        // THE TREE GLYPH IS INLINE SVG (#219); ITS NAMESPACE IS KEPT SO A TEST CAN SAY IT WAS NOT AN HTML ELEMENT
+        createElementNS: (namespaceUri: string, tagName: string) => Object.assign(buildFakeElement(tagName), { namespaceURI: namespaceUri })
     };
 
     const scrollToCalls: number[] = [];

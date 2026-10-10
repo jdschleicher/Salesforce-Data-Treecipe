@@ -2,7 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { ConfigurationService } from './treecipe/src/ConfigurationService/ConfigurationService';
-import { ExtensionCommandService } from './treecipe/src/ExtensionCommandService/ExtensionCommandService';
+import { ExtensionCommandService, IRunFakerFilteredRecipe } from './treecipe/src/ExtensionCommandService/ExtensionCommandService';
 import { VSCodeWorkspaceService } from './treecipe/src/VSCodeWorkspace/VSCodeWorkspaceService';
 
 // This method is called when your extension is activated
@@ -39,14 +39,16 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	/*
 		The Recipe Cockpit's Run Faker passes the recipe file of its tree; the palette passes nothing
-		and gets the recipe picker. Returned so executeCommand settles when the data set is written,
+		and gets the recipe picker. A tree with excluded objects also passes its filtered copy (#219),
+		which the handler type-checks. Returned so executeCommand settles when the data set is written,
 		which is when the cockpit reloads the tree's history.
 	*/
-	const runFakerByRecipe = vscode.commands.registerCommand('treecipe.runFakerByRecipe', (recipeFilePath?: unknown) => {
+	const runFakerByRecipe = vscode.commands.registerCommand('treecipe.runFakerByRecipe', (recipeFilePath?: unknown, filteredRecipe?: unknown) => {
 
 		const extensionCommandService = new ExtensionCommandService();
 		return extensionCommandService.runFakerGenerationByRecipeFile(
-			typeof recipeFilePath === 'string' ? recipeFilePath : undefined
+			typeof recipeFilePath === 'string' ? recipeFilePath : undefined,
+			filteredRecipe as IRunFakerFilteredRecipe | undefined
 		);
 
 	});

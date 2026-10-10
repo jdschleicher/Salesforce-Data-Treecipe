@@ -54,6 +54,8 @@ export interface IDatasetSource {
     orgUsername?: string;
     createdObjectApiName?: string;
     createdRecordIds?: string[];
+    // THE OBJECTS THE RECIPE COCKPIT LEFT OUT OF THE RUN (#219); ABSENT WHEN NOTHING WAS
+    excludedObjectApiNames?: string[];
 }
 
 export interface IRecipeSourceNames {
@@ -162,7 +164,8 @@ export class DatasetSourceService {
     static buildDatasetSource(recipeSourceNames: IRecipeSourceNames,
                                 fakerService: DatasetSourceFakerService,
                                 generatedAt: string,
-                                recordCountsByObject: Record<string, number>): IDatasetSource {
+                                recordCountsByObject: Record<string, number>,
+                                excludedObjectApiNames: string[] = []): IDatasetSource {
 
         return {
             schemaVersion: DATASET_SOURCE_SCHEMA_VERSION,
@@ -172,7 +175,8 @@ export class DatasetSourceService {
             recipeFileName: recipeSourceNames.recipeFileName,
             fakerService: fakerService,
             generatedAt: generatedAt,
-            recordCountsByObject: recordCountsByObject
+            recordCountsByObject: recordCountsByObject,
+            ...( excludedObjectApiNames.length > 0 ? { excludedObjectApiNames: [...excludedObjectApiNames] } : {} )
         };
 
     }
@@ -323,9 +327,17 @@ export class DatasetSourceService {
             && candidate.createdRecordIds.every(createdRecordId => typeof createdRecordId === 'string')
         );
 
+        // OPTIONAL, SO A FILE WRITTEN BEFORE #219 READS AS IT ALWAYS DID; PRESENT, IT MUST BE A LIST OF NAMES
+        const excludedObjectApiNames = candidate.excludedObjectApiNames;
+        const isExcludedObjectListValid = excludedObjectApiNames === undefined || (
+            Array.isArray(excludedObjectApiNames)
+            && excludedObjectApiNames.every(excludedObjectApiName => typeof excludedObjectApiName === 'string')
+        );
+
         const isValid = candidate.schemaVersion === DATASET_SOURCE_SCHEMA_VERSION
                         && (candidate.origin === 'runFaker' || isCreateInOrg)
                         && isCreateInOrgDetailValid
+                        && isExcludedObjectListValid
                         && isStringOrNull(candidate.recipeRunFolderName)
                         && isStringOrNull(candidate.recipeTreeFolderName)
                         && typeof candidate.recipeFileName === 'string'
@@ -355,7 +367,8 @@ export class DatasetSourceService {
                 orgUsername: candidate.orgUsername as string,
                 createdObjectApiName: candidate.createdObjectApiName as string,
                 createdRecordIds: [...(candidate.createdRecordIds as string[])]
-            } : {} )
+            } : {} ),
+            ...( Array.isArray(excludedObjectApiNames) ? { excludedObjectApiNames: [...(excludedObjectApiNames as string[])] } : {} )
         };
 
     }

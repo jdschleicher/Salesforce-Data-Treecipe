@@ -1963,6 +1963,106 @@ describe('ExtensionCommandService', () => {
 
         });
 
+        /*
+            #219: a Recipe Cockpit tree with excluded objects hands Run Faker a filtered copy. The copy
+            is what the processor runs and what the data set keeps beside the original recipe; the
+            recipe file is never written, and datasetSource.json names what was left out.
+        */
+        describe('given a filtered copy from the Recipe Cockpit (#219)', () => {
+
+            const filteredRecipeText = '# Recipe Cockpit -- a filtered copy of this tree\'s recipe, leaving out: Contact\n- object: Account\n  nickname: Account_1\n  count: 1\n  fields:\n    Name: Acme\n';
+
+            test.each(backendCases)('given $fakerService, generates from the copy, keeps it beside the original and records the excluded objects', async (backendCase) => {
+
+                arrangeRun(backendCase, `treecipe/GeneratedRecipes/${backendCase.runFolderName}/Account-thru-Contact`);
+                const recipeFilePath = path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', backendCase.runFolderName, 'Account-thru-Contact', backendCase.recipeFileName);
+                const recipeContent = fs.readFileSync(recipeFilePath, 'utf8');
+                let generatedFromText: string | undefined;
+                let generatedFromPath: string | undefined;
+                ( backendCase.processorPrototype.generateFakeDataBySelectedRecipeFile as jest.Mock ).mockImplementation(async (generationRecipeFilePath: string) => {
+                    generatedFromPath = generationRecipeFilePath;
+                    generatedFromText = fs.readFileSync(generationRecipeFilePath, 'utf8');
+                    return backendCase.fakerOutput;
+                });
+
+                await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath, { recipeText: filteredRecipeText, excludedObjectApiNames: ['Contact'] });
+
+                expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+                expect(generatedFromText).toBe(filteredRecipeText);
+                expect(path.basename(generatedFromPath as string)).toBe(`filteredRecipe-${backendCase.recipeFileName}`);
+                // THE TEMPORARY COPY IS GONE, AND IT WAS NEVER IN THE WORKSPACE
+                expect(fs.existsSync(generatedFromPath as string)).toBeFalse();
+                expect(( generatedFromPath as string ).startsWith(workspaceRoot)).toBeFalse();
+                expect(fs.readFileSync(recipeFilePath, 'utf8')).toBe(recipeContent);
+
+                const [datasetFolderName] = readDatasetFolderNames();
+                const baseArtifactsPath = path.join(workspaceRoot, 'treecipe', 'FakeDataSets', datasetFolderName, 'BaseArtifactFiles');
+                expect(fs.readFileSync(path.join(baseArtifactsPath, `originalRecipe-${backendCase.recipeFileName}`), 'utf8')).toBe(recipeContent);
+                expect(fs.readFileSync(path.join(baseArtifactsPath, `filteredRecipe-${backendCase.recipeFileName}`), 'utf8')).toBe(filteredRecipeText);
+                expect(readWrittenDatasetSource(datasetFolderName)).toMatchObject({
+                    recipeTreeFolderName: 'Account-thru-Contact',
+                    recipeFileName: backendCase.recipeFileName,
+                    excludedObjectApiNames: ['Contact']
+                });
+
+            });
+
+            test('the modal summarizes the copy, not the recipe', async () => {
+
+                const [fakerJsCase] = backendCases;
+                arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
+                const recipeFilePath = path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', fakerJsCase.runFolderName, 'Account-thru-Contact', fakerJsCase.recipeFileName);
+                fs.writeFileSync(recipeFilePath, '- object: Account\n  nickname: Account_1\n  count: 1\n  fields:\n    Name: Acme\n- object: Contact\n  nickname: Contact_1\n  count: 1\n  fields:\n    LastName: One\n');
+                const summarySpy = jest.spyOn(FakerJSRecipeProcessor, 'buildRecipeDataStructureSummary');
+
+                await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath, { recipeText: filteredRecipeText, excludedObjectApiNames: ['Contact'] });
+
+                expect(summarySpy).toHaveBeenCalledTimes(1);
+                expect(( summarySpy.mock.calls[0][0] as Array<{ object: string }> ).map(entry => entry.object)).toEqual(['Account']);
+
+            });
+
+            test.each([
+                ['no recipe path', undefined, { recipeText: filteredRecipeText, excludedObjectApiNames: ['Contact'] }],
+                ['a copy with no text', 'PATH', { excludedObjectApiNames: ['Contact'] }],
+                ['a copy naming no excluded object', 'PATH', { recipeText: filteredRecipeText, excludedObjectApiNames: [] }],
+                ['a copy naming an object that is not a string', 'PATH', { recipeText: filteredRecipeText, excludedObjectApiNames: [7] }],
+                ['a copy that is an array', 'PATH', [filteredRecipeText]]
+            ])('refuses %s before generating anything', async (_description, recipePathMarker, filteredRecipe) => {
+
+                const [fakerJsCase] = backendCases;
+                arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
+                const recipeFilePath = path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', fakerJsCase.runFolderName, 'Account-thru-Contact', fakerJsCase.recipeFileName);
+                const showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+
+                await extensionCommandService.runFakerGenerationByRecipeFile(recipePathMarker === undefined ? undefined : recipeFilePath, filteredRecipe as any);
+
+                expect(showWarningMessageSpy).toHaveBeenCalledWith('Run Faker was handed a filtered recipe it could not use, so nothing was generated.');
+                expect(fakerJsCase.processorPrototype.generateFakeDataBySelectedRecipeFile).not.toHaveBeenCalled();
+                expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets'))).toBeFalse();
+
+            });
+
+            test('removes the temporary copy when generation fails', async () => {
+
+                const [fakerJsCase] = backendCases;
+                arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
+                const recipeFilePath = path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', fakerJsCase.runFolderName, 'Account-thru-Contact', fakerJsCase.recipeFileName);
+                let generatedFromPath: string | undefined;
+                ( fakerJsCase.processorPrototype.generateFakeDataBySelectedRecipeFile as jest.Mock ).mockImplementation(async (generationRecipeFilePath: string) => {
+                    generatedFromPath = generationRecipeFilePath;
+                    throw new Error('faker failed');
+                });
+
+                await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath, { recipeText: filteredRecipeText, excludedObjectApiNames: ['Contact'] });
+
+                expect(ErrorHandlingService.handleCapturedError).toHaveBeenCalledWith(expect.objectContaining({ message: 'faker failed' }), 'runFakerGenerationByRecipeFile');
+                expect(fs.existsSync(path.dirname(generatedFromPath as string))).toBeFalse();
+
+            });
+
+        });
+
         // #186: A js-yaml PARSE ERROR QUOTES THE RECIPE LINE IT FAILED ON, AND THAT LINE IS THE REPOSITORY AUTHOR'S
         test('given a recipe whose YAML fails to parse on a command-link line, warns with no link and no error template', async () => {
 
