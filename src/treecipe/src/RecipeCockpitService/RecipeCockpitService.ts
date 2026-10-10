@@ -176,6 +176,8 @@ export const RECIPE_COCKPIT_PANEL_PLACE_PERSIST_DELAY = 500;
 // WHAT A PLACE READ BACK FROM workspaceState MAY HOLD -- AN ENTRY PAST EITHER BOUND IS DROPPED, NEVER CUT TO FIT
 export const RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES = 10000;
 export const RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH = 1000;
+// THE WHOLE PLACE, SERIALIZED: THE BOUNDS ABOVE ARE PER LIST AND MULTIPLY. A REAL ONE IS A FEW KB, 1,000 OBJECTS OPENED IN 10 CARDS ABOUT 1.5 MB
+export const RECIPE_COCKPIT_PANEL_PLACE_MAX_SERIALIZED_LENGTH = 4000000;
 
 // THE FIELD TYPES WHOSE ROWS EXPAND TO THEIR VALUES IN THE STRUCTURE TAB
 export const RECIPE_COCKPIT_PICKLIST_FIELD_TYPES: readonly string[] = ['Picklist', 'MultiselectPicklist'];
@@ -1041,13 +1043,16 @@ export class RecipeCockpitService {
 
         });
 
-        return {
+        const normalizedPlace: IRecipeCockpitPanelPlace = {
             version: RECIPE_COCKPIT_PANEL_PLACE_VERSION,
             runFolderName: runFolderName,
             isOrgPickerInUse: candidatePlace.isOrgPickerInUse === true,
             scrollY: typeof scrollY === 'number' && Number.isFinite(scrollY) && scrollY > 0 ? scrollY : 0,
             trees: trees
         };
+
+        // TOO LARGE TO BE A PLACE A READER MADE BY HAND, SO NOT ONE TO KEEP OR RESTORE
+        return JSON.stringify(normalizedPlace).length <= RECIPE_COCKPIT_PANEL_PLACE_MAX_SERIALIZED_LENGTH ? normalizedPlace : undefined;
 
     }
 
@@ -1264,7 +1269,8 @@ export class RecipeCockpitService {
             runs on disk like any other requested run, and the place itself is handed to the panel
             with the model only if that run is the one loaded.
         */
-        const persistedPanelPlace = previousPanelState ? undefined : this.readPersistedPanelPlace(workspaceState);
+        // A PANEL WHOSE FIRST LOAD HAS NOT DRAWN YET (THE COMMAND RUN TWICE) HAS NOTHING OF ITS OWN TO CARRY EITHER
+        const persistedPanelPlace = previousPanelState?.recipeDataMessage ? undefined : this.readPersistedPanelPlace(workspaceState);
         const carriedRunFolderName = previousPanelState?.recipeDataMessage?.recipe.selectedRunFolderName
             || persistedPanelPlace?.runFolderName
             || undefined;
@@ -3460,11 +3466,17 @@ export class RecipeCockpitService {
             */
             case 'savePlace': {
 
-                const savedPlace = this.normalizePanelPlace(panelMessage.place);
                 const drawnRunFolderName = panelState.recipeDataMessage?.recipe.selectedRunFolderName;
+                const postedRunFolderName = this.isPlainRecord(panelMessage.place) ? panelMessage.place.runFolderName : undefined;
 
-                if ( !savedPlace || !drawnRunFolderName || savedPlace.runFolderName !== drawnRunFolderName
-                        || !panelState.selectableRunFolderNames.has(drawnRunFolderName) ) {
+                // THE CHEAP CHECKS FIRST: A PLACE OF ANOTHER RUN IS REFUSED WITHOUT BEING NORMALIZED
+                if ( !drawnRunFolderName || postedRunFolderName !== drawnRunFolderName || !panelState.selectableRunFolderNames.has(drawnRunFolderName) ) {
+                    return undefined;
+                }
+
+                const savedPlace = this.normalizePanelPlace(panelMessage.place);
+
+                if ( !savedPlace ) {
                     return undefined;
                 }
 

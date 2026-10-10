@@ -19,7 +19,9 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY,
     RECIPE_COCKPIT_PANEL_PLACE_PERSIST_DELAY,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
-    RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH
+    RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH,
+    RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES,
+    RECIPE_COCKPIT_PANEL_PLACE_MAX_SERIALIZED_LENGTH
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -163,6 +165,21 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
         });
 
+        // EVERY LIST WITHIN ITS OWN BOUND, AND THE WHOLE STILL TOO LARGE: THE PER-LIST BOUNDS MULTIPLY
+        it('given a place past the total size bound, reads no place', () => {
+
+            const longName = 'n'.repeat(RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH);
+            const fullList = Array.from({ length: RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES }, () => longName);
+            const treeCount = Math.ceil(RECIPE_COCKPIT_PANEL_PLACE_MAX_SERIALIZED_LENGTH / (fullList.length * longName.length)) + 1;
+            const oversizedPlace = buildPlace({
+                trees: Array.from({ length: treeCount }, (_unused, treeIndex) => ({ ...buildPlace().trees[0], treeKey: `Tree-${treeIndex}`, expandedObjectKeys: fullList }))
+            });
+
+            expect(RecipeCockpitService.normalizePanelPlace(oversizedPlace)).toBeUndefined();
+            expect(RecipeCockpitService.normalizePanelPlace(buildPlace({ trees: [{ ...buildPlace().trees[0], expandedObjectKeys: fullList.slice(0, 100) }] }))).toBeDefined();
+
+        });
+
         it('accepts each status the status filter offers and each tab', () => {
 
             ['all', 'new-in-org', 'removed-from-org', 'type-changed', 'picklist-changed'].forEach(statusFilter => {
@@ -208,6 +225,8 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             expect(RecipeCockpitService.routePanelMessage({ command: 'savePlace', place: buildPlace({ runFolderName: CURRENT_RUN_FOLDER_NAME }) }, buildDrawnPanelState())).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'savePlace', place: 'not a place' }, buildDrawnPanelState())).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'savePlace' }, buildDrawnPanelState())).toBeUndefined();
+            // THE DRAWN RUN, IN ANOTHER SHAPE: PAST THE CHEAP CHECKS, REFUSED BY NORMALIZATION
+            expect(RecipeCockpitService.routePanelMessage({ command: 'savePlace', place: { ...buildPlace(), version: RECIPE_COCKPIT_PANEL_PLACE_VERSION + 1 } }, buildDrawnPanelState())).toBeUndefined();
 
         });
 
@@ -488,6 +507,38 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             await saveThroughHost(buildPlace());
             disposeHandler!();
             expect(workspaceState.update).not.toHaveBeenCalled();
+
+        });
+
+        // THE COMMAND RUN AGAIN BEFORE ITS FIRST LOAD DREW: THE SECOND LOAD IS THE ONE THAT RENDERS, SO IT IS THE ONE THAT NEEDS THE PLACE
+        it('given the command is run twice before the first load is drawn, still restores the saved place', async () => {
+
+            const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY]: buildPlace({ runFolderName: OLDER_RUN_FOLDER_NAME }) });
+
+            const firstOpen = RecipeCockpitService.openRecipeCockpitPanel(HISTORY_WORKSPACE_ROOT, workspaceState);
+            const secondOpen = RecipeCockpitService.openRecipeCockpitPanel(HISTORY_WORKSPACE_ROOT, workspaceState);
+            await Promise.all([firstOpen, secondOpen]);
+            await receivedMessageHandler({ command: 'ready' });
+
+            const recipeDataMessage = lastPosted('recipeData');
+            expect(recipeDataMessage.recipe.selectedRunFolderName).toBe(OLDER_RUN_FOLDER_NAME);
+            expect(recipeDataMessage.restorePlace).toEqual(buildPlace({ runFolderName: OLDER_RUN_FOLDER_NAME }));
+
+        });
+
+        it('given a write still waiting when the panel is opened with another workspace state, writes it to the one it was saved under', async () => {
+
+            jest.useFakeTimers({ doNotFake: ['setImmediate'] });
+            const firstWorkspaceState = buildWorkspaceState();
+            const secondWorkspaceState = buildWorkspaceState();
+            await openAndDraw(firstWorkspaceState);
+            await saveThroughHost(buildPlace({ runFolderName: CURRENT_RUN_FOLDER_NAME }));
+
+            await RecipeCockpitService.openRecipeCockpitPanel(HISTORY_WORKSPACE_ROOT, secondWorkspaceState);
+            jest.advanceTimersByTime(RECIPE_COCKPIT_PANEL_PLACE_PERSIST_DELAY);
+
+            expect(firstWorkspaceState.storedValues.get(RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY)).toEqual(buildPlace({ runFolderName: CURRENT_RUN_FOLDER_NAME }));
+            expect(secondWorkspaceState.update).not.toHaveBeenCalled();
 
         });
 
