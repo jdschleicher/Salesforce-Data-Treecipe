@@ -182,6 +182,27 @@ describe('RecipeCockpitService', () => {
 
         });
 
+        it('draws the tree card and Structure object triangles three times the size of the other toggles (#244)', () => {
+
+            const stylesheet = RecipeCockpitService.buildWebviewShellHtml('testNonce').match(/<style nonce="testNonce">([\s\S]*?)<\/style>/)?.[1] ?? '';
+            const fontSizesBySelector = new Map<string, string[]>();
+            for ( const ruleMatch of stylesheet.matchAll(/([^{}]+)\{([^{}]*)\}/g) ) {
+                const fontSize = /(?:^|;)\s*font-size:\s*([^;]+)/.exec(ruleMatch[2])?.[1].trim();
+                ruleMatch[1].replace(/\/\*[\s\S]*?\*\//g, '').split(',').map(selector => selector.trim()).forEach(selector => {
+                    if ( fontSize ) {
+                        fontSizesBySelector.set(selector, [...( fontSizesBySelector.get(selector) ?? [] ), fontSize]);
+                    }
+                });
+            }
+
+            expect(fontSizesBySelector.get('.treeToggle')).toEqual(['3.3em']);
+            expect(fontSizesBySelector.get('.treeObjectToggle')).toEqual(['3.3em']);
+            ['.picklistToggle', '.treeVersionToggle', '.dataObjectToggle', '.dataOrgRefresh'].forEach(selector => {
+                expect(fontSizesBySelector.get(selector)).toEqual(['1.1em']);
+            });
+
+        });
+
         // AN UN-NONCED INLINE BLOCK IS SILENTLY DEAD UNDER THE CSP, SO EVERY ONE IS COUNTED RATHER THAN SPOT CHECKED
         it('emits no inline style or script block without a nonce', () => {
 

@@ -49,6 +49,7 @@ import {
     RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
     RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL,
+    RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER,
     RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -197,9 +198,9 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
 
     describe('the preview warning', () => {
 
-        it('says Data-by-Org can create a scratch org through the configured Dev Hub', () => {
+        it('says Data-by-Org can create a scratch org through the Dev Hub the reader picks', () => {
 
-            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('"+ New scratch org" creates a scratch org through the Dev Hub the Salesforce CLI has configured as its default (target-dev-hub)');
+            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('"+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one)');
 
         });
 
@@ -214,6 +215,10 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
         let receivedMessageHandler: (panelMessage: any) => Promise<void>;
         let postedPanelMessages: any[];
         let cliCalls: string[][];
+        let devHubListingSpy: jest.SpyInstance;
+        let devHubPromptSpy: jest.SpyInstance;
+        const DEFAULT_DEV_HUB = { targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub', configSource: 'project' as const };
+        const OTHER_DEV_HUB = { targetOrgIdentifier: 'otherHub', username: 'other-hub@example.com', alias: 'otherHub' };
         let cliHandlers: Partial<Record<'create' | 'deploy', CliHandler>>;
         let isNewOrgListedByCli: boolean;
         let isNewOrgAuthorized: boolean;
@@ -330,6 +335,14 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
 
             jest.spyOn(VSCodeWorkspaceService, 'createStatusBarPhaseItem').mockImplementation(() => ({ text: '', dispose: jest.fn() }) as any);
             notificationWarningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+            // THE LISTING ITSELF IS SalesforceOrgService's TO TEST; HERE THE READER PICKS THE FIRST DEV HUB IT OFFERS
+            devHubListingSpy = jest.spyOn(SalesforceOrgService, 'listDevHubOrgDetailsForPicker').mockResolvedValue({
+                orgDetails: [DEFAULT_DEV_HUB, OTHER_DEV_HUB],
+                defaultUsername: DEFAULT_DEV_HUB.username,
+                emptyListMessage: ''
+            });
+            devHubPromptSpy = jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed')
+                .mockImplementation(async (orgListing: Promise<any>) => (await orgListing).orgDetails[0]);
             openFileSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
             jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async () => buildFakeConnection() as any);
 
@@ -362,7 +375,7 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
             const [modalMessage, modalOptions, modalAction] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
             expect(modalMessage).toBe('Create a scratch org through the Dev Hub devhub (hub@example.com) and deploy this project\'s source to it?');
             expect(modalOptions.modal).toBe(true);
-            expect(modalOptions.detail).toContain('Dev Hub: devhub (hub@example.com) — set by this project\'s .sf or .sfdx config');
+            expect(modalOptions.detail).toContain('Dev Hub: devhub (hub@example.com) — the Salesforce CLI\'s default, set by this project\'s .sf or .sfdx config');
             expect(modalOptions.detail).toContain('  Edition: Developer');
             expect(modalOptions.detail).toContain('This deploys metadata authored in this repository, and the definition file decides who administers the new org.');
             expect(modalOptions.detail).not.toContain('replacements');
@@ -397,7 +410,7 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
                 '--definition-file', path.join('config', 'project-scratch-def.json'),
                 '--alias', alias,
                 '--duration-days', '7',
-                '--target-dev-hub', 'devhub',
+                '--target-dev-hub', 'hub@example.com',
                 '--json'
             ]);
             expect(deployArguments).toEqual(['project', 'deploy', 'start', '--target-org', alias, '--json']);
@@ -478,17 +491,76 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
 
         });
 
-        it('refuses before any process when no default Dev Hub is set, naming "sf config set target-dev-hub"', async () => {
+        it('asks which Dev Hub to use before the modal, listing the connected Dev Hubs for this workspace (#243)', async () => {
 
-            fs.rmSync(path.join(workspaceRoot, '.sf'), { recursive: true });
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
             await openRenderedCockpit();
 
             await receivedMessageHandler({ command: 'createScratchOrg' });
 
-            expect(execFile).not.toHaveBeenCalled();
+            expect(devHubListingSpy).toHaveBeenCalledWith(path.resolve(workspaceRoot));
+            expect(devHubPromptSpy).toHaveBeenCalledTimes(1);
+            expect(devHubPromptSpy.mock.calls[0][1]).toBe(RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER);
+            expect(devHubPromptSpy.mock.invocationCallOrder[0]).toBeLessThan((vscode.window.showWarningMessage as jest.Mock).mock.invocationCallOrder[0]);
+
+        });
+
+        it('asks even when only one Dev Hub is connected, and never answers it for the reader (#243)', async () => {
+
+            devHubListingSpy.mockResolvedValue({ orgDetails: [DEFAULT_DEV_HUB], defaultUsername: DEFAULT_DEV_HUB.username, emptyListMessage: '' });
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            expect(devHubPromptSpy).toHaveBeenCalledTimes(1);
+            expect(await devHubPromptSpy.mock.calls[0][0]).toEqual({ orgDetails: [DEFAULT_DEV_HUB], defaultUsername: 'hub@example.com', emptyListMessage: '' });
+
+        });
+
+        it('ends the run quietly when the Dev Hub picker is dismissed: no modal, no create, no result file, the button back (#243)', async () => {
+
+            devHubPromptSpy.mockResolvedValue(undefined);
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
             expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
-            expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining('sf config set target-dev-hub'));
+            expect(cliCallKinds()).not.toContain('org create');
+            expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'OrgOperations'))).toBe(false);
+            expect(lastScratchOrgState()).toMatchObject({ isRunning: false, isFailure: false, statusText: '' });
+            expect(notificationWarningSpy).not.toHaveBeenCalled();
+
+        });
+
+        it('checks the project before asking for a Dev Hub, so an undeployable project opens no picker', async () => {
+
+            fs.rmSync(path.join(workspaceRoot, 'config', 'project-scratch-def.json'));
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            expect(devHubPromptSpy).not.toHaveBeenCalled();
+            expect(execFile).not.toHaveBeenCalled();
+            expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining('No scratch org definition file found'));
             expect(lastScratchOrgState()).toMatchObject({ isRunning: false, isFailure: true });
+
+        });
+
+        it('names a Dev Hub that is not the default without a "set by" line, and creates through its USERNAME (#243)', async () => {
+
+            devHubPromptSpy.mockImplementation(async (orgListing: Promise<any>) => (await orgListing).orgDetails[1]);
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            const [modalMessage, modalOptions] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
+            expect(modalMessage).toBe('Create a scratch org through the Dev Hub otherHub (other-hub@example.com) and deploy this project\'s source to it?');
+            expect(modalOptions.detail).toContain('Dev Hub: otherHub (other-hub@example.com)\n');
+            expect(modalOptions.detail).not.toContain('default');
+            expect(modalOptions.detail).not.toContain('set by');
+            const createArguments = cliCalls.find(argumentList => argumentList[1] === 'create') as string[];
+            expect(createArguments[createArguments.indexOf('--target-dev-hub') + 1]).toBe('other-hub@example.com');
 
         });
 

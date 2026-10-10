@@ -7,6 +7,7 @@ import { ConfigurationService } from '../ConfigurationService/ConfigurationServi
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
 import { IAuthenticatedOrgDetail } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import {
+    DevHubConfigSource,
     IOrgDescribeRequestResult,
     IOrgDescribeSource,
     IOrgQuerySource,
@@ -253,7 +254,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, compares its fields with an org you choose and counts that org's records, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: Data-by-Org's "+ Create" inserts records into the org you select. Data-by-Org never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and it is offered only for an org that reports itself as a sandbox, asks you to confirm each time, and never deletes or rolls back what it inserted. Data-by-Org's "+ New scratch org" creates a scratch org through the Dev Hub the Salesforce CLI has configured as its default (target-dev-hub) and deploys this project's source to it, after you confirm; the cockpit never deletes an org.
+It CAN WRITE TO AN ORG: Data-by-Org's "+ Create" inserts records into the org you select. Data-by-Org never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and it is offered only for an org that reports itself as a sandbox, asks you to confirm each time, and never deletes or rolls back what it inserted. Data-by-Org's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -814,6 +815,8 @@ export interface IRecipeCockpitScratchOrgStateMessage {
 }
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL = 'Create scratch org';
+
+export const RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER = 'Choose the Dev Hub to create the scratch org through';
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL = 'View output';
 
@@ -3111,14 +3114,22 @@ export class RecipeCockpitService {
 
     private static async performScratchOrgSetup(workspaceRoot: string): Promise<{ statusText: string; isFailure: boolean; outputFilePath?: string }> {
 
-        let scratchOrgPlan: IScratchOrgPlan;
+        let scratchOrgPlan: IScratchOrgPlan | undefined;
 
         try {
-            scratchOrgPlan = await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot);
+            scratchOrgPlan = await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, () => VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(
+                SalesforceOrgService.listDevHubOrgDetailsForPicker(workspaceRoot),
+                RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER
+            ));
         } catch (planError) {
             const refusalMessage = String(planError?.message ?? planError);
             VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(refusalMessage));
             return { statusText: refusalMessage, isFailure: true };
+        }
+
+        // NO DEV HUB PICKED -- DISMISSED, OR NONE TO OFFER, WHICH THE PICKER HAS ALREADY SAID -- IS A CANCEL
+        if ( !scratchOrgPlan ) {
+            return { statusText: '', isFailure: false };
         }
 
         const devHubLabel = this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan));
@@ -3243,7 +3254,7 @@ export class RecipeCockpitService {
     */
     static buildScratchOrgConfirmationDetail(scratchOrgPlan: IScratchOrgPlan): string {
 
-        const devHubSourceText: Record<IScratchOrgPlan['devHub']['configSource'], string> = {
+        const devHubSourceText: Record<DevHubConfigSource, string> = {
             environment: 'set by an environment variable',
             project: 'set by this project\'s .sf or .sfdx config',
             global: 'your global Salesforce CLI setting'
@@ -3256,7 +3267,10 @@ export class RecipeCockpitService {
         ].filter(Boolean).map(definitionLine => this.toSingleLine(definitionLine));
 
         return [
-            `Dev Hub: ${this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan))} — ${devHubSourceText[scratchOrgPlan.devHub.configSource]}`,
+            // WHERE THE SETTING CAME FROM IS SAID ONLY OF THE DEFAULT: ANY OTHER DEV HUB WAS NAMED BY THE READER ALONE
+            scratchOrgPlan.devHub.configSource
+                ? `Dev Hub: ${this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan))} — the Salesforce CLI's default, ${devHubSourceText[scratchOrgPlan.devHub.configSource]}`
+                : `Dev Hub: ${this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan))}`,
             `Definition file: ${scratchOrgPlan.definitionFileRelativePath}`,
             ...definitionLines,
             `Package directories to deploy: ${scratchOrgPlan.packageDirectoryPaths.map(packageDirectoryPath => this.toSingleLine(packageDirectoryPath)).join(', ')}`,
@@ -5871,7 +5885,10 @@ ${this.buildPaletteCustomProperties()}
     .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .treeVersionToggle:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .dataObjectToggle:hover:not(:disabled), .dataCreateErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeVersionToggle, .dataObjectToggle, .dataOrgRefresh { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
+    .picklistToggle, .treeVersionToggle, .dataObjectToggle, .dataOrgRefresh { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
+    /* A TREE'S AND AN OBJECT'S OPEN STATE IS READ AT A GLANCE (#244): THREE TIMES THE OTHER TOGGLES, ON A LINE NO TALLER THAN THE GLYPH */
+    .treeToggle, .treeObjectToggle { padding: 0 0.3rem; font-size: 3.3em; line-height: 0.8; }
+    .treeObjectHeader { align-items: center; }
     .treeRunFaker, .toolbar button, .treeCompare button, .emptyStateActions button, .dataCreate {
         color: var(--sdt-on-accent);
         background-color: var(--sdt-accent);
@@ -6281,7 +6298,7 @@ ${this.buildPaletteCustomProperties()}
 
         // THE MESSAGE CARRIES NOTHING: THE DEV HUB, THE DEFINITION FILE, WHAT IS DEPLOYED AND THE ALIAS ARE ALL THE HOST'S
         dataOrgNewScratchElement = createElement('button', 'dataOrgNewScratch', '+ New scratch org');
-        dataOrgNewScratchElement.setAttribute('title', 'Create a scratch org through the default Dev Hub of the Salesforce CLI, deploy the source of this project to it and select it');
+        dataOrgNewScratchElement.setAttribute('title', 'Choose a Dev Hub, create a scratch org through it, deploy the source of this project to it and select it');
         dataOrgNewScratchElement.addEventListener('click', function () {
             if (isScratchOrgRunning || createRunningKey !== null || renderedSequence === null) { return; }
             isDataOrgPickerInUse = true;

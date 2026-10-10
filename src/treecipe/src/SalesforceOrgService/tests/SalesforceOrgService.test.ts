@@ -31,7 +31,7 @@ import {
     IOrgQuerySource,
     OrgConnectionStatusUnavailableError,
     SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS,
-    NO_DEFAULT_DEV_HUB_MESSAGE,
+    NO_AUTHORIZED_DEV_HUB_MESSAGE,
     TARGET_DEV_HUB_ENVIRONMENT_VARIABLE
 } from '../SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -1236,15 +1236,6 @@ describe('SalesforceOrgService', () => {
 
         });
 
-        it('refuses an authorization with no username, and skips one with no aliases', async () => {
-
-            writeConfig(workspaceRoot, JSON.stringify({ 'target-dev-hub': 'devhub' }));
-            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([{ username: 'qa@example.com.qa' }, { aliases: ['devhub'] }]);
-
-            await expect(SalesforceOrgService.resolveDefaultDevHub(workspaceRoot, homeDirectoryPath, {})).rejects.toThrow('is not an authorized org here');
-
-        });
-
         it('reads the legacy sfdx names after their sf counterparts, at each level', () => {
 
             const writeLegacyConfig = (rootPath: string, configContent: string) => {
@@ -1275,42 +1266,171 @@ describe('SalesforceOrgService', () => {
 
         });
 
-        it('resolves the alias to its authorization', async () => {
+    });
 
-            writeConfig(workspaceRoot, JSON.stringify({ 'target-dev-hub': 'devhub' }));
+    describe('the Dev Hubs a scratch org can be created through (#243)', () => {
+
+        let temporaryRoot: string;
+        let workspaceRoot: string;
+        let homeDirectoryPath: string;
+
+        const HUB = { username: 'hub@example.com', aliases: ['devhub'], isDevHub: true, isExpired: false };
+        const OTHER_HUB = { username: 'other-hub@example.com', aliases: [], isDevHub: true, isExpired: false };
+        const SANDBOX = { username: 'qa@example.com.qa', aliases: ['qa'], isDevHub: false, isSandbox: true, isExpired: false };
+
+        const answerConnected = (connectedStatusByUsername: Record<string, string>) => answerOrgList({ stdout: buildOrgListStdout({
+            nonScratchOrgs: Object.entries(connectedStatusByUsername).map(([username, connectedStatus]) => ({ username, connectedStatus }))
+        }) });
+
+        const writeProjectDefault = (devHubIdentifier: string) => {
+            fs.mkdirSync(path.join(workspaceRoot, '.sf'), { recursive: true });
+            fs.writeFileSync(path.join(workspaceRoot, '.sf', 'config.json'), JSON.stringify({ 'target-dev-hub': devHubIdentifier }));
+        };
+
+        beforeEach(() => {
+            temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-dev-hubs-'));
+            workspaceRoot = path.join(temporaryRoot, 'workspace');
+            homeDirectoryPath = path.join(temporaryRoot, 'home');
+            fs.mkdirSync(workspaceRoot);
+            fs.mkdirSync(homeDirectoryPath);
+            SalesforceOrgService.clearConnectedOrgStatusCache();
+            (execFile as unknown as jest.Mock).mockReset();
+        });
+
+        afterEach(() => {
+            fs.rmSync(temporaryRoot, { recursive: true, force: true });
+        });
+
+        it('lists only authorizations whose isDevHub is exactly true -- never a missing, string or false one', async () => {
+
             (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([
-                { username: 'qa@example.com.qa', aliases: ['qa'] },
-                { username: 'hub@example.com', aliases: ['devhub'] }
+                HUB,
+                SANDBOX,
+                { username: 'missing@example.com', aliases: [], isExpired: false },
+                { username: 'string@example.com', aliases: [], isDevHub: 'true', isExpired: false },
+                OTHER_HUB
             ]);
+            answerConnected({ 'hub@example.com': 'Connected', 'qa@example.com.qa': 'Connected', 'missing@example.com': 'Connected', 'string@example.com': 'Connected', 'other-hub@example.com': 'Connected' });
 
-            await expect(SalesforceOrgService.resolveDefaultDevHub(workspaceRoot, homeDirectoryPath, {}))
-                .resolves.toEqual({ targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub', configSource: 'project' });
+            const devHubListing = await SalesforceOrgService.listDevHubOrgDetails(workspaceRoot, homeDirectoryPath, {});
 
-        });
-
-        it('resolves a username to its authorization', async () => {
-
-            writeConfig(workspaceRoot, JSON.stringify({ 'target-dev-hub': 'hub@example.com' }));
-            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([{ username: 'hub@example.com', aliases: [] }]);
-
-            await expect(SalesforceOrgService.resolveDefaultDevHub(workspaceRoot, homeDirectoryPath, {}))
-                .resolves.toEqual({ targetOrgIdentifier: 'hub@example.com', username: 'hub@example.com', alias: undefined, configSource: 'project' });
+            expect(devHubListing.orgDetails).toEqual([
+                { targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub' },
+                { targetOrgIdentifier: 'other-hub@example.com', username: 'other-hub@example.com', alias: undefined }
+            ]);
+            expect(devHubListing.defaultUsername).toBeUndefined();
 
         });
 
-        it('refuses with no default Dev Hub, naming "sf config set target-dev-hub"', async () => {
+        it('leaves out a Dev Hub the CLI does not report connected, and says how many and why', async () => {
 
-            await expect(SalesforceOrgService.resolveDefaultDevHub(workspaceRoot, homeDirectoryPath, {})).rejects.toThrow(NO_DEFAULT_DEV_HUB_MESSAGE);
-            expect(NO_DEFAULT_DEV_HUB_MESSAGE).toContain('sf config set target-dev-hub');
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([HUB, OTHER_HUB]);
+            answerConnected({ 'hub@example.com': 'RefreshTokenAuthError' });
+
+            const pickerListing = await SalesforceOrgService.listDevHubOrgDetailsForPicker(workspaceRoot);
+
+            expect(pickerListing.orgDetails).toEqual([]);
+            expect(pickerListing.emptyListMessage).toBe('No connected Dev Hub is authorized, so no scratch org was created: 2 authorized Dev Hubs are not listed (2 not connected). Authorize one with "sf org login web --set-default-dev-hub" and try again.');
 
         });
 
-        it('refuses a default Dev Hub that is not authorized here', async () => {
+        it('lists the default first, carrying where it was set, without choosing it', async () => {
 
-            writeConfig(workspaceRoot, JSON.stringify({ 'target-dev-hub': 'goneHub' }));
-            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([{ username: 'qa@example.com.qa', aliases: ['qa'] }]);
+            writeProjectDefault('hub@example.com');
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([OTHER_HUB, HUB]);
+            answerConnected({ 'hub@example.com': 'Connected', 'other-hub@example.com': 'Connected' });
 
-            await expect(SalesforceOrgService.resolveDefaultDevHub(workspaceRoot, homeDirectoryPath, {})).rejects.toThrow('The default Dev Hub "goneHub" is not an authorized org here');
+            const devHubListing = await SalesforceOrgService.listDevHubOrgDetails(workspaceRoot, homeDirectoryPath, {});
+
+            expect(devHubListing.orgDetails).toEqual([
+                { targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub', configSource: 'project' },
+                { targetOrgIdentifier: 'other-hub@example.com', username: 'other-hub@example.com', alias: undefined }
+            ]);
+            expect(devHubListing.defaultUsername).toBe('hub@example.com');
+
+        });
+
+        it('matches the default by alias as well as by username', async () => {
+
+            writeProjectDefault('devhub');
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([OTHER_HUB, HUB]);
+            answerConnected({ 'hub@example.com': 'Connected', 'other-hub@example.com': 'Connected' });
+
+            expect(( await SalesforceOrgService.listDevHubOrgDetails(workspaceRoot, homeDirectoryPath, {}) ).defaultUsername).toBe('hub@example.com');
+
+        });
+
+        it('marks nothing as the default when the default is not a connected Dev Hub', async () => {
+
+            writeProjectDefault('qa');
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([HUB, SANDBOX]);
+            answerConnected({ 'hub@example.com': 'Connected', 'qa@example.com.qa': 'Connected' });
+
+            const devHubListing = await SalesforceOrgService.listDevHubOrgDetails(workspaceRoot, homeDirectoryPath, {});
+
+            expect(devHubListing.orgDetails).toEqual([{ targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub' }]);
+            expect(devHubListing.defaultUsername).toBeUndefined();
+
+            writeProjectDefault('hub@example.com');
+            answerConnected({ 'qa@example.com.qa': 'Connected' });
+            SalesforceOrgService.clearConnectedOrgStatusCache();
+
+            const disconnectedListing = await SalesforceOrgService.listDevHubOrgDetails(workspaceRoot, homeDirectoryPath, {});
+
+            expect(disconnectedListing.orgDetails).toEqual([]);
+            expect(disconnectedListing.defaultUsername).toBeUndefined();
+
+        });
+
+        it('still lists a lone Dev Hub for the reader to pick, rather than answering it', async () => {
+
+            writeProjectDefault('devhub');
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([HUB]);
+            answerConnected({ 'hub@example.com': 'Connected' });
+
+            const pickerListing = await SalesforceOrgService.listDevHubOrgDetailsForPicker(workspaceRoot);
+
+            expect(pickerListing.orgDetails).toHaveLength(1);
+            expect(pickerListing.defaultUsername).toBe('hub@example.com');
+
+        });
+
+        it('with no Dev Hub authorized at all, names "sf org login web --set-default-dev-hub"', async () => {
+
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([SANDBOX]);
+            answerConnected({ 'qa@example.com.qa': 'Connected' });
+
+            expect(await SalesforceOrgService.listDevHubOrgDetailsForPicker(workspaceRoot)).toEqual({
+                orgDetails: [],
+                defaultUsername: undefined,
+                emptyListMessage: NO_AUTHORIZED_DEV_HUB_MESSAGE
+            });
+            expect(NO_AUTHORIZED_DEV_HUB_MESSAGE).toContain('sf org login web --set-default-dev-hub');
+
+        });
+
+        it('given a CLI that cannot answer, lists nothing -- never every Dev Hub unchecked', async () => {
+
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([HUB]);
+            answerOrgList({ error: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) });
+
+            const pickerListing = await SalesforceOrgService.listDevHubOrgDetailsForPicker(workspaceRoot);
+
+            expect(pickerListing.orgDetails).toEqual([]);
+            expect(pickerListing.emptyListMessage).toContain('could not report which authorized orgs are connected, so no org is listed');
+
+        });
+
+        it('asks the CLI again once when a cached answer leaves no Dev Hub, so a Dev Hub just re-authorized is listed', async () => {
+
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([HUB]);
+            answerConnected({ 'hub@example.com': 'RefreshTokenAuthError' });
+            await SalesforceOrgService.listConnectedOrgAuthorizations();
+
+            answerConnected({ 'hub@example.com': 'Connected' });
+
+            expect(( await SalesforceOrgService.listDevHubOrgDetails(workspaceRoot, homeDirectoryPath, {}) ).orgDetails).toHaveLength(1);
+            expect(execFile).toHaveBeenCalledTimes(2);
 
         });
 

@@ -1,5 +1,33 @@
 # Change Log
 
+## [3.53.0] - The Recipe Cockpit asks which Dev Hub a new scratch org comes from, and draws its tree triangles larger
+
+Closes [#243](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/243) and [#244](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/244).
+
+### "+ New scratch org" asks for the Dev Hub every time (#243)
+
+**+ New scratch org** used the Salesforce CLI's default Dev Hub (`target-dev-hub`) without asking. The only place it said which Dev Hub that was, was one line of the confirmation, so a reader could spend a Dev Hub's daily and active scratch org limits without knowing whose they were.
+
+- **A Dev Hub quick pick** now opens after the project is checked and before the confirmation. It opens even when only one Dev Hub qualifies. It is the same busy quick pick as the other org pickers: nothing can be selected until the Salesforce CLI has answered.
+- **Which Dev Hubs it lists.** Only authorizations whose `isDevHub` is exactly `true` (a missing, string or `false` value is left out) and that `sf org list` reports as connected. If a cached answer leaves none, the CLI is asked once more, so a Dev Hub you just re-authorized is listed. If the CLI cannot answer, nothing is listed: it never falls back to listing every authorization unchecked.
+- **The CLI's default Dev Hub** is listed first and labelled **(default)**. It is never chosen for you. The confirmation says where that setting came from ("the Salesforce CLI's default, set by …") only when you picked it. Any other Dev Hub is named by its alias and username alone.
+- **`--target-dev-hub` is the picked Dev Hub's username**, not its alias, because an alias can be re-pointed between the pick and the run.
+- **Dismissing the quick pick** cancels quietly: no confirmation, no CLI process, no result file, and the button is enabled again.
+- **With no connected Dev Hub**, the quick pick closes and says why, naming `sf org login web --set-default-dev-hub`. If some Dev Hubs were left out, it says how many and why (expired, deleted, not connected).
+- **The project is checked first.** A missing `sfdx-project.json` or `config/project-scratch-def.json` refuses before the quick pick opens.
+- **Code changes:**
+  - `SalesforceOrgService.resolveDefaultDevHub` and `NO_DEFAULT_DEV_HUB_MESSAGE` are replaced by `listDevHubOrgDetails` and `listDevHubOrgDetailsForPicker`. `readDefaultDevHubIdentifier` is unchanged.
+  - `ScratchOrgService.resolveScratchOrgPlan` takes the Dev Hub chooser and answers `undefined` when no Dev Hub is chosen.
+  - `VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed` is now generic over the org detail it returns, and a listing may name a `defaultUsername` to label.
+- **Unchanged.** The panel's `createScratchOrg` message still carries nothing, the picker is the host's, and the cockpit still never deletes an org. The tooltip, the preview warning and the README now say you pick the Dev Hub.
+
+### Larger tree triangles (#244)
+
+- The ▸/▾ on a tree card's header (`.treeToggle`) and on each object in the Structure tab (`.treeObjectToggle`) are drawn at `3.3em`, three times the `1.1em` they shared with the other toggles. Their line height and padding were tightened so a card header stays on one line, with the title, ☆, ✎ and ▶ Run Faker vertically centred. The Structure object row is centred too.
+- The picklist, Previous Versions and Data-by-Org row triangles, and ⟳, keep `1.1em`.
+- A test reads the panel's stylesheet and pins both sizes.
+- Clicking a card header still toggles it (#209), and colours still come only from `RECIPE_COCKPIT_PALETTE`.
+
 ## [3.52.0] - The Recipe Cockpit creates a scratch org, deploys the project's source to it, and selects it in Data-by-Org
 
 Closes [#200](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/200), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
