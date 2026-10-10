@@ -12,8 +12,17 @@ import { RecipeCockpitService, RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT } from '..
     click does, because the tree card's header answers clicks on everything inside it. A DISABLED
     element runs none of its own listeners but the event still reaches its ancestors -- the worst
     case a browser can give, so a panel that holds up against it holds up against them all.
+
+    savedState is what vscodeApi.getState answers, as VS Code answers it for a document it reloaded
+    after the tab was hidden; savedState() returns whatever the panel last handed to setState, so a
+    test can save in one run of the script and restore in the next.
 */
-export function runPanelScript() {
+export interface IPanelScriptOptions {
+    savedState?: any;
+    isStateApiMissing?: boolean;
+}
+
+export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
 
     const postedHostMessages: any[] = [];
     const windowListenersByType: Record<string, Function> = {};
@@ -80,11 +89,23 @@ export function runPanelScript() {
         createElement: (tagName: string) => buildFakeElement(tagName)
     };
 
+    const scrollToCalls: number[] = [];
     const fakeWindow = {
+        scrollY: 0,
+        scrollTo(scrollX: number, scrollY: number) { scrollToCalls.push(scrollY); this.scrollY = scrollY; },
         addEventListener: (eventType: string, listener: Function) => { windowListenersByType[eventType] = listener; }
     };
 
-    const acquireVsCodeApi = () => ({ postMessage: (hostMessage: any) => { postedHostMessages.push(hostMessage); } });
+    let savedState: any = panelScriptOptions.savedState;
+    const setStateCalls: any[] = [];
+    const acquireVsCodeApi = () => (panelScriptOptions.isStateApiMissing
+        ? { postMessage: (hostMessage: any) => { postedHostMessages.push(hostMessage); } }
+        : {
+            postMessage: (hostMessage: any) => { postedHostMessages.push(hostMessage); },
+            getState: () => savedState,
+            // VS CODE KEEPS A SERIALIZED COPY, SO THE PANEL CANNOT REACH BACK INTO WHAT IT SAVED
+            setState: (nextState: any) => { savedState = JSON.parse(JSON.stringify(nextState)); setStateCalls.push(savedState); return nextState; }
+        });
 
     const shellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
     const panelScript = shellHtml.substring(
@@ -115,6 +136,10 @@ export function runPanelScript() {
 
     return {
         postedHostMessages,
+        savedState: () => savedState,
+        setStateCalls,
+        scrollToCalls,
+        scrollTo: (scrollY: number) => { fakeWindow.scrollY = scrollY; windowListenersByType['scroll']({ type: 'scroll' }); },
         loadStatusElement,
         cockpitBodyElement,
         findAll,

@@ -1,0 +1,675 @@
+import * as matchers from 'jest-extended';
+expect.extend(matchers);
+
+import * as path from 'path';
+import * as vscode from 'vscode';
+
+jest.mock('vscode', () => ({
+    window: { createWebviewPanel: jest.fn(), withProgress: jest.fn() },
+    commands: { executeCommand: jest.fn() },
+    ViewColumn: { One: 1 },
+    ProgressLocation: { Notification: 15 },
+    Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
+}), { virtual: true });
+
+import {
+    RecipeCockpitService,
+    IRecipeCockpitCarriedPanelState,
+    IRecipeCockpitRecipeViewModel,
+    RECIPE_COCKPIT_PANEL_PLACE_VERSION,
+    RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY
+} from '../RecipeCockpitService';
+import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { INormalizedOrgObjectDescribe } from '../../SalesforceOrgService/SalesforceOrgService';
+import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+
+/*
+    The reader's place (#222): a hidden Recipe Cockpit tab's document is thrown away and rebuilt on
+    reveal, and re-running the command reloads the panel. Every panel test here runs the REAL panel
+    script twice -- once to save, once, from what it saved, to restore -- as VS Code does.
+*/
+
+const HISTORY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'historyWorkspace');
+const HISTORY_GENERATED_RECIPES_PATH = path.join(HISTORY_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes');
+const CURRENT_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
+const FAKER_JS_RUN_FOLDER_NAME = 'recipe-fakerjs-2026-09-10T00-00-00';
+const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
+const LEAD_TREE_KEY = 'Lead-ONLY';
+const ORG_USERNAME = 'jd@example.com';
+
+const loadHistoryRecipe = (runFolderName?: string) => RecipeCockpitService.loadRecipeRunByRuns(
+    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+    HISTORY_WORKSPACE_ROOT,
+    runFolderName
+);
+
+// AN ACCOUNT THE ORG HAS WITH ONE FIELD THE RECIPE DOES NOT, SO A COMPARISON HAS A ROW OF EVERY KIND TO FILTER
+const ACCOUNT_ORG_DESCRIBE: INormalizedOrgObjectDescribe = {
+    objectApiName: 'Account',
+    objectLabel: 'Account',
+    isCreateable: true,
+    fields: [{
+        fieldApiName: 'Brand_New__c',
+        fieldLabel: 'Brand New',
+        fieldType: 'string',
+        length: 10,
+        precision: 0,
+        scale: 0,
+        picklistValues: [],
+        controllingField: '',
+        referenceTo: [],
+        isNillable: true,
+        isCreateable: true,
+        isCalculated: false,
+        isDefaultedOnCreate: false
+    }]
+};
+
+const buildAccountComparison = (recipe: IRecipeCockpitRecipeViewModel, renderSequence: number) => {
+    const describeResult = { outcomes: [{ objectApiName: 'Account', describe: ACCOUNT_ORG_DESCRIBE, wasCached: false }], wasCancelled: false };
+    return RecipeCockpitService.buildOrgDescribeMessage(ACCOUNT_TREE_KEY, `devhub (${ORG_USERNAME})`, describeResult, renderSequence,
+        RecipeCockpitService.buildRecipeDiffViewModel(recipe.objects, describeResult, new Map()));
+};
+
+describe('RecipeCockpitService, the reader\'s place', () => {
+
+    describe('the panel script', () => {
+
+        type Panel = ReturnType<typeof runPanelScript>;
+
+        const treeCardOf = (panel: Panel, treeKey: string) => panel.treeCards()
+            .find((treeCard: any) => panel.findAll(treeCard, 'treeFolder')[0]?.textContent === treeKey);
+        const isCardOpen = (panel: Panel, treeKey: string) => !panel.isHidden(panel.findAll(treeCardOf(panel, treeKey), 'treeBody')[0]);
+        const openCard = (panel: Panel, treeKey: string) => panel.findAll(treeCardOf(panel, treeKey), 'treeToggle')[0].dispatch('click');
+        const clickTab = (panel: Panel, treeKey: string, tabLabel: string) => panel.findAll(treeCardOf(panel, treeKey), 'treeTab')
+            .find((tabElement: any) => tabElement.textContent === tabLabel).dispatch('click');
+        const selectedTabOf = (panel: Panel, treeKey: string) => panel.findAll(treeCardOf(panel, treeKey), 'treeTab')
+            .find((tabElement: any) => tabElement.classList.contains('selected'))?.textContent;
+        const objectNamed = (panel: Panel, treeKey: string, objectApiName: string) => panel.findAll(treeCardOf(panel, treeKey), 'treeObject')
+            .find((objectElement: any) => panel.objectNameOf(objectElement) === objectApiName);
+        const isObjectOpen = (panel: Panel, treeKey: string, objectApiName: string) => !panel.isHidden(panel.objectBodyOf(objectNamed(panel, treeKey, objectApiName)));
+        const picklistToggleOf = (panel: Panel, treeKey: string, objectApiName: string, fieldApiName: string) =>
+            panel.findAll(panel.fieldRowNamed(objectNamed(panel, treeKey, objectApiName), fieldApiName), 'picklistToggle')[0];
+        const versionToggles = (panel: Panel, treeKey: string) => panel.findAll(treeCardOf(panel, treeKey), 'treeVersionToggle');
+        const commandsPosted = (panel: Panel) => panel.postedHostMessages.map((hostMessage: any) => hostMessage.command);
+        const indexOfCommand = (panel: Panel, command: string) => commandsPosted(panel).indexOf(command);
+
+        const render = (panel: Panel, recipe: IRecipeCockpitRecipeViewModel, renderSequence = 1, focusTree?: any) =>
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: renderSequence, ...( focusTree ? { focusTree } : {} ) });
+
+        // THE READER'S SESSION: TWO CARDS OPEN, AN OBJECT AND A PICKLIST OPENED, A HISTORY TAB AND A VERSION OPENED, THE SEARCH SCOPED, SCROLLED
+        const buildReaderSession = () => {
+
+            jest.useFakeTimers();
+
+            const recipe = loadHistoryRecipe().recipeViewModel;
+            const panel = runPanelScript();
+            render(panel, recipe);
+
+            openCard(panel, ACCOUNT_TREE_KEY);
+            panel.expandObject(objectNamed(panel, ACCOUNT_TREE_KEY, 'Account'));
+            picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').dispatch('click');
+
+            openCard(panel, LEAD_TREE_KEY);
+            clickTab(panel, LEAD_TREE_KEY, 'Previous Versions');
+            versionToggles(panel, LEAD_TREE_KEY)[1].dispatch('click');
+            panel.findAll(treeCardOf(panel, LEAD_TREE_KEY), 'treeScope')[0].dispatch('click');
+
+            panel.scrollTo(480);
+            jest.advanceTimersByTime(RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY);
+
+            return { panel, recipe };
+
+        };
+
+        afterEach(() => {
+            jest.useRealTimers();
+        });
+
+        it('given the document is rebuilt, puts back every card, tab, object, picklist and version the reader opened, the scope and the scroll', () => {
+
+            const { panel: hiddenPanel, recipe } = buildReaderSession();
+
+            const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
+            render(panel, recipe);
+
+            expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
+            expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Structure');
+            expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Account')).toBe(true);
+            expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Contact')).toBe(false);
+            expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').attributes['aria-expanded']).toBe('true');
+            expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Regions__c').attributes['aria-expanded']).toBe('false');
+
+            expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(true);
+            expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previous Versions');
+            expect(versionToggles(panel, LEAD_TREE_KEY).map((toggleElement: any) => toggleElement.attributes['aria-expanded'])).toEqual(['false', 'true', 'false']);
+
+            expect(panel.findAll(treeCardOf(panel, LEAD_TREE_KEY), 'treeScope')[0].attributes['aria-pressed']).toBe('true');
+            expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'treeScopeStatus')[0])).toBe(false);
+
+            expect(panel.scrollToCalls).toEqual([480]);
+
+        });
+
+        // THE HOST HONOURS loadPicklistValues AND loadVersionSummaries ONLY ONCE "rendered" HAS ACTIVATED THIS MODEL'S ALLOW-LISTS
+        it('asks the host for the values and summaries it re-opens only after acknowledging the draw', () => {
+
+            const { panel: hiddenPanel, recipe } = buildReaderSession();
+
+            const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
+            render(panel, recipe);
+
+            expect(indexOfCommand(panel, 'rendered')).toBeGreaterThan(-1);
+            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadPicklistValues'))
+                .toEqual([{ command: 'loadPicklistValues', objectApiName: 'Account', fieldApiName: 'Rating__c' }]);
+            expect(indexOfCommand(panel, 'loadPicklistValues')).toBeGreaterThan(indexOfCommand(panel, 'rendered'));
+            expect(indexOfCommand(panel, 'loadVersionSummaries')).toBeGreaterThan(indexOfCommand(panel, 'rendered'));
+
+        });
+
+        it('given the reader was in Data-by-Org with a search typed, comes back to Data-by-Org with the search as typed', () => {
+
+            const recipe = loadHistoryRecipe().recipeViewModel;
+            const hiddenPanel = runPanelScript();
+            render(hiddenPanel, recipe);
+            hiddenPanel.typeIntoFilter('  Rating ');
+            hiddenPanel.findAll(hiddenPanel.cockpitBodyElement, 'viewButton')[1].dispatch('click');
+
+            const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
+            render(panel, recipe);
+
+            expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'dataOrgView')[0])).toBe(false);
+            expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'treesView')[0])).toBe(true);
+            expect(panel.findAll(panel.cockpitBodyElement, 'filterInput')[0].value).toBe('  Rating ');
+            expect(indexOfCommand(panel, 'loadDataOrgs')).toBeGreaterThan(indexOfCommand(panel, 'rendered'));
+
+            // THE FIND TEXT FILTERS THE TREES IT RESTORED INTO, NOT ONLY THE BOX
+            const typedPanel = runPanelScript();
+            render(typedPanel, recipe);
+            typedPanel.typeIntoFilter('  Rating ');
+            panel.findAll(panel.cockpitBodyElement, 'viewButton')[0].dispatch('click');
+
+            expect(panel.findAll(panel.cockpitBodyElement, 'treeMatchCount')[0].textContent)
+                .toBe(typedPanel.findAll(typedPanel.cockpitBodyElement, 'treeMatchCount')[0].textContent);
+            expect(panel.findAll(panel.cockpitBodyElement, 'treeMatchCount')[0].textContent).toStartWith('2 of 15 fields');
+
+        });
+
+        it('given the reader opened nothing, saves the default place and restores it as the default', () => {
+
+            const recipe = loadHistoryRecipe().recipeViewModel;
+            const hiddenPanel = runPanelScript();
+            render(hiddenPanel, recipe);
+
+            expect(hiddenPanel.savedState()).toEqual({
+                version: RECIPE_COCKPIT_PANEL_PLACE_VERSION,
+                runFolderName: CURRENT_RUN_FOLDER_NAME,
+                viewMode: 'trees',
+                filterText: '',
+                treeScopeKey: null,
+                scrollY: 0,
+                trees: []
+            });
+
+            const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
+            render(panel, recipe);
+
+            expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
+            expect(panel.scrollToCalls).toEqual([]);
+
+        });
+
+        it('given the first model drawn is another run, restores nothing and saves the place of the run on screen', () => {
+
+            const { panel: hiddenPanel, recipe } = buildReaderSession();
+            // THE SAME CARDS UNDER ANOTHER RUN'S NAME, SO ONLY THE RUN DECIDES WHETHER THE PLACE APPLIES
+            const otherRecipe = { ...recipe, selectedRunFolderName: FAKER_JS_RUN_FOLDER_NAME };
+
+            const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
+            render(panel, otherRecipe);
+
+            expect(panel.treeCards()).toHaveLength(2);
+            expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
+            expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
+            expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'treeScopeStatus')[0])).toBe(true);
+            expect(panel.scrollToCalls).toEqual([]);
+            expect(panel.savedState().runFolderName).toBe(FAKER_JS_RUN_FOLDER_NAME);
+            expect(panel.savedState().trees).toEqual([]);
+
+        });
+
+        // A RELOAD AFTER Regenerate, Run Faker OR Create IS A NEW MODEL IN THE SAME DOCUMENT, AND KEEPS TODAY'S BEHAVIOUR
+        it('spends the place on the document\'s first model only, so a later model in the same document is drawn as before', () => {
+
+            const { panel: hiddenPanel, recipe } = buildReaderSession();
+
+            const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
+            render(panel, recipe, 1);
+            render(panel, recipe, 2);
+
+            expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
+            expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
+
+        });
+
+        it('given a focus posted with the model, opens the focused card on its tab over the saved one', () => {
+
+            const { panel: hiddenPanel, recipe } = buildReaderSession();
+
+            const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
+            render(panel, recipe, 1, { treeKey: LEAD_TREE_KEY, tab: 'datasets' });
+
+            expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previous Fake Sets');
+            // THE REST OF THE PLACE STILL COMES BACK
+            expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Account')).toBe(true);
+
+        });
+
+        it('keeps saving the place after a restore, so a second reload finds the latest one', () => {
+
+            const { panel: hiddenPanel, recipe } = buildReaderSession();
+
+            const secondPanel = runPanelScript({ savedState: hiddenPanel.savedState() });
+            render(secondPanel, recipe);
+            openCard(secondPanel, ACCOUNT_TREE_KEY);
+
+            const thirdPanel = runPanelScript({ savedState: secondPanel.savedState() });
+            render(thirdPanel, recipe);
+
+            expect(isCardOpen(thirdPanel, ACCOUNT_TREE_KEY)).toBe(false);
+            expect(isCardOpen(thirdPanel, LEAD_TREE_KEY)).toBe(true);
+
+        });
+
+        it('given a run of scroll events, saves once when they stop', () => {
+
+            jest.useFakeTimers();
+
+            const panel = runPanelScript();
+            render(panel, loadHistoryRecipe().recipeViewModel);
+            const savesBeforeScrolling = panel.setStateCalls.length;
+
+            [100, 200, 300].forEach(scrollY => panel.scrollTo(scrollY));
+            expect(panel.setStateCalls).toHaveLength(savesBeforeScrolling);
+
+            jest.advanceTimersByTime(RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY);
+
+            expect(panel.setStateCalls).toHaveLength(savesBeforeScrolling + 1);
+            expect(panel.savedState().scrollY).toBe(300);
+
+        });
+
+        it('saves nothing before a model is drawn', () => {
+
+            const panel = runPanelScript({ savedState: { version: RECIPE_COCKPIT_PANEL_PLACE_VERSION, runFolderName: CURRENT_RUN_FOLDER_NAME, trees: [] } });
+            panel.postToPanel({ command: 'loadPhase', message: 'Reading the run…' });
+
+            expect(panel.setStateCalls).toEqual([]);
+
+        });
+
+        describe('given a status filter', () => {
+
+            const buildFilteredSession = () => {
+                const recipe = loadHistoryRecipe().recipeViewModel;
+                const hiddenPanel = runPanelScript();
+                render(hiddenPanel, recipe);
+                hiddenPanel.postToPanel(buildAccountComparison(recipe, 1));
+                openCard(hiddenPanel, ACCOUNT_TREE_KEY);
+                const statusFilterElement = hiddenPanel.findAll(treeCardOf(hiddenPanel, ACCOUNT_TREE_KEY), 'statusFilter')[0];
+                statusFilterElement.value = 'new-in-org';
+                statusFilterElement.dispatch('change');
+                return { recipe, savedState: hiddenPanel.savedState() };
+            };
+
+            const statusFilterOf = (panel: Panel) => panel.findAll(treeCardOf(panel, ACCOUNT_TREE_KEY), 'statusFilter')[0];
+
+            it('holds it until the card\'s comparison is drawn again, then narrows the rows to it', () => {
+
+                const { recipe, savedState } = buildFilteredSession();
+                expect(savedState.trees.find((savedTree: any) => savedTree.treeKey === ACCOUNT_TREE_KEY).statusFilter).toBe('new-in-org');
+
+                const panel = runPanelScript({ savedState: savedState });
+                render(panel, recipe);
+
+                // NO COMPARISON YET: NO ROW HAS A STATUS, SO APPLYING IT NOW WOULD HIDE EVERY ROW
+                expect(statusFilterOf(panel).value).toBe('all');
+                expect(panel.visibleFieldNamesOf(objectNamed(panel, ACCOUNT_TREE_KEY, 'Account'))).toHaveLength(0);
+                expect(panel.findAll(panel.cockpitBodyElement, 'treeMatchCount')[0].textContent).not.toContain(' of ');
+
+                panel.postToPanel(buildAccountComparison(recipe, 1));
+
+                expect(statusFilterOf(panel).value).toBe('new-in-org');
+                expect(panel.visibleFieldNamesOf(objectNamed(panel, ACCOUNT_TREE_KEY, 'Account'))).toEqual(['Brand_New__c']);
+
+            });
+
+            it('given the comparison comes back failed, drops it rather than keeping it for a later one', () => {
+
+                const { recipe, savedState } = buildFilteredSession();
+
+                const panel = runPanelScript({ savedState: savedState });
+                render(panel, recipe);
+                panel.postToPanel(RecipeCockpitService.buildOrgConnectionFailureMessage(ACCOUNT_TREE_KEY, 'devhub', 'ECONNRESET', 1));
+                panel.postToPanel(buildAccountComparison(recipe, 1));
+
+                expect(statusFilterOf(panel).value).toBe('all');
+
+            });
+
+            it('keeps it saved while it waits, so a reload before the comparison arrives does not lose it', () => {
+
+                const { recipe, savedState } = buildFilteredSession();
+
+                const waitingPanel = runPanelScript({ savedState: savedState });
+                render(waitingPanel, recipe);
+
+                expect(waitingPanel.savedState().trees.find((savedTree: any) => savedTree.treeKey === ACCOUNT_TREE_KEY).statusFilter).toBe('new-in-org');
+
+            });
+
+        });
+
+        // A COMPARISON REBUILDS AN OBJECT'S ROWS, AND A LIST THE READER OPENED STAYS OPEN THROUGH IT
+        it('keeps an open picklist open through a comparison, asking for its values again', () => {
+
+            const recipe = loadHistoryRecipe().recipeViewModel;
+            const panel = runPanelScript();
+            render(panel, recipe);
+            openCard(panel, ACCOUNT_TREE_KEY);
+            panel.expandObject(objectNamed(panel, ACCOUNT_TREE_KEY, 'Account'));
+            picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').dispatch('click');
+
+            panel.postToPanel(buildAccountComparison(recipe, 1));
+
+            expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').attributes['aria-expanded']).toBe('true');
+            expect(commandsPosted(panel).filter(command => command === 'loadPicklistValues')).toHaveLength(2);
+
+            picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').dispatch('click');
+            expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').attributes['aria-expanded']).toBe('false');
+
+        });
+
+        /*
+            The place is the panel's own state, but what it names came from files on disk; it must
+            hold only names, never a path, a picklist value or anything that names an org.
+        */
+        it('saves names only: no path, no picklist value, no org', () => {
+
+            const { panel, recipe } = buildReaderSession();
+            panel.postToPanel({ command: 'picklistValues', objectApiName: 'Account', fieldApiName: 'Rating__c', picklistValues: ['Hot', 'Warm'], recordTypePicklistValues: [], renderSequence: 1 });
+            panel.postToPanel(buildAccountComparison(recipe, 1));
+            panel.findAll(panel.cockpitBodyElement, 'viewButton')[0].dispatch('click');
+
+            const savedText = JSON.stringify(panel.savedState());
+
+            expect(savedText).not.toContain(HISTORY_WORKSPACE_ROOT);
+            expect(savedText).not.toContain('.yml');
+            expect(savedText).not.toContain('Hot');
+            expect(savedText).not.toContain(ORG_USERNAME);
+            expect(savedText).not.toContain('devhub');
+            expect(Object.keys(panel.savedState()).sort()).toEqual(['filterText', 'runFolderName', 'scrollY', 'treeScopeKey', 'trees', 'version', 'viewMode']);
+            panel.savedState().trees.forEach((savedTree: any) => {
+                expect(Object.keys(savedTree).sort()).toEqual(['expandedObjectKeys', 'expandedVersionRunFolderNames', 'isExpanded', 'openPicklistKeys', 'selectedTab', 'statusFilter', 'treeKey']);
+            });
+
+        });
+
+        describe('given a saved place the panel cannot use as it is', () => {
+
+            const renderFrom = (savedState: any) => {
+                const recipe = loadHistoryRecipe().recipeViewModel;
+                const panel = runPanelScript({ savedState: savedState });
+                render(panel, recipe);
+                return panel;
+            };
+
+            it('passes over each entry naming nothing on screen and restores the rest, without throwing', () => {
+
+                const panel = renderFrom({
+                    version: RECIPE_COCKPIT_PANEL_PLACE_VERSION,
+                    runFolderName: CURRENT_RUN_FOLDER_NAME,
+                    viewMode: 'evil',
+                    filterText: 7,
+                    treeScopeKey: 42,
+                    scrollY: 'far',
+                    trees: [
+                        null,
+                        5,
+                        { treeKey: '__proto__', isExpanded: true },
+                        { treeKey: 'Gone-ONLY', isExpanded: true },
+                        { treeKey: LEAD_TREE_KEY, selectedTab: 'nope', statusFilter: 'constructor', expandedObjectKeys: 'Lead', openPicklistKeys: [7], expandedVersionRunFolderNames: ['__proto__'] },
+                        { treeKey: ACCOUNT_TREE_KEY, isExpanded: true, expandedObjectKeys: ['toString', 'Account\nAccount_Ref_1'] }
+                    ]
+                });
+
+                expect(commandsPosted(panel)).not.toContain('renderFailed');
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
+                expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
+                expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previous Versions');
+                expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'treesView')[0])).toBe(false);
+                expect(panel.findAll(panel.cockpitBodyElement, 'filterInput')[0].value).toBe('');
+                expect(panel.scrollToCalls).toEqual([]);
+
+            });
+
+            it.each([
+                ['a place saved in another shape', { version: RECIPE_COCKPIT_PANEL_PLACE_VERSION + 1, runFolderName: CURRENT_RUN_FOLDER_NAME, trees: [{ treeKey: ACCOUNT_TREE_KEY, isExpanded: true }] }],
+                ['a place with no run', { version: RECIPE_COCKPIT_PANEL_PLACE_VERSION, trees: [{ treeKey: ACCOUNT_TREE_KEY, isExpanded: true }] }],
+                ['a place that is not an object', 'Account'],
+                ['nothing at all', undefined]
+            ])('given %s, draws the default place', (_description, savedState) => {
+
+                const panel = renderFrom(savedState);
+
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
+                expect(commandsPosted(panel)).not.toContain('renderFailed');
+
+            });
+
+            it('given a webview whose state api throws or is missing, draws and works as before', () => {
+
+                const recipe = loadHistoryRecipe().recipeViewModel;
+                const panelWithoutStateApi = runPanelScript({ isStateApiMissing: true });
+                render(panelWithoutStateApi, recipe);
+                openCard(panelWithoutStateApi, ACCOUNT_TREE_KEY);
+
+                expect(isCardOpen(panelWithoutStateApi, ACCOUNT_TREE_KEY)).toBe(true);
+                expect(commandsPosted(panelWithoutStateApi)).not.toContain('renderFailed');
+
+                const throwingState = { get version(): number { throw new Error('state is gone'); } };
+                const panelWithThrowingState = renderFrom(throwingState);
+
+                expect(isCardOpen(panelWithThrowingState, ACCOUNT_TREE_KEY)).toBe(false);
+                expect(commandsPosted(panelWithThrowingState)).not.toContain('renderFailed');
+
+            });
+
+        });
+
+    });
+
+    describe('carryOrgDescribeMessages', () => {
+
+        const recipe = loadHistoryRecipe().recipeViewModel;
+        const carriedFrom = (recipeOnScreen: IRecipeCockpitRecipeViewModel): IRecipeCockpitCarriedPanelState => ({
+            recipeDataMessage: { command: 'recipeData', recipe: recipeOnScreen, renderSequence: 3 },
+            orgDescribeMessagesByTreeKey: new Map([[ACCOUNT_TREE_KEY, buildAccountComparison(recipeOnScreen, 3)]])
+        });
+
+        it('given the reload draws the same rows, carries every comparison under the new model\'s renderSequence', () => {
+
+            const carriedMessages = RecipeCockpitService.carryOrgDescribeMessages(carriedFrom(recipe), loadHistoryRecipe().recipeViewModel, 9);
+
+            expect([...carriedMessages.keys()]).toEqual([ACCOUNT_TREE_KEY]);
+            expect(carriedMessages.get(ACCOUNT_TREE_KEY)).toEqual({ ...buildAccountComparison(recipe, 3), renderSequence: 9 });
+
+        });
+
+        it('given only the history or the run list changed, still carries them: those are not rows', () => {
+
+            const reloadedRecipe = {
+                ...recipe,
+                runs: [...recipe.runs, { runFolderName: 'recipe-2026-10-01T00-00-00', label: 'newer' }],
+                trees: recipe.trees.map(tree => ({ ...tree, history: undefined }))
+            };
+
+            expect(RecipeCockpitService.carryOrgDescribeMessages(carriedFrom(recipe), reloadedRecipe, 9).size).toBe(1);
+
+        });
+
+        it.each([
+            ['a field changed', (reloaded: IRecipeCockpitRecipeViewModel) => ({ ...reloaded, objects: reloaded.objects.map((object, objectIndex) => objectIndex === 0 ? { ...object, fields: object.fields.slice(1) } : object) })],
+            ['a card lists other objects', (reloaded: IRecipeCockpitRecipeViewModel) => ({ ...reloaded, trees: reloaded.trees.map(tree => ({ ...tree, objects: tree.objects.slice(1) })) })],
+            ['another run is shown', (reloaded: IRecipeCockpitRecipeViewModel) => ({ ...reloaded, selectedRunFolderName: FAKER_JS_RUN_FOLDER_NAME })]
+        ])('given %s, carries nothing', (_description, changeModel) => {
+
+            expect(RecipeCockpitService.carryOrgDescribeMessages(carriedFrom(recipe), changeModel(loadHistoryRecipe().recipeViewModel), 9).size).toBe(0);
+
+        });
+
+        it('given nothing to carry, carries nothing', () => {
+
+            expect(RecipeCockpitService.carryOrgDescribeMessages(undefined, recipe, 9).size).toBe(0);
+
+        });
+
+    });
+
+    describe('openRecipeCockpitPanel, run again on an open panel', () => {
+
+        let createdWebviewPanel: any;
+        let receivedMessageHandler: (panelMessage: any) => Promise<void>;
+        let postedPanelMessages: any[];
+
+        const lastPosted = (command: string) => [...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === command);
+        const panelState = () => (RecipeCockpitService as any).recipeCockpitPanelState;
+
+        const openAndDraw = async (workspaceRoot = HISTORY_WORKSPACE_ROOT) => {
+            await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot);
+            await receivedMessageHandler({ command: 'ready' });
+            await receivedMessageHandler({ command: 'rendered', renderSequence: lastPosted('recipeData')?.renderSequence });
+        };
+
+        beforeEach(() => {
+
+            postedPanelMessages = [];
+            createdWebviewPanel = {
+                reveal: jest.fn(),
+                dispose: jest.fn(),
+                onDidDispose: jest.fn().mockReturnValue({ dispose: jest.fn() }),
+                webview: {
+                    html: '',
+                    postMessage: jest.fn().mockImplementation((hostMessage: any) => {
+                        postedPanelMessages.push(hostMessage);
+                        return Promise.resolve(true);
+                    }),
+                    onDidReceiveMessage: jest.fn().mockImplementation((messageHandler: (panelMessage: any) => Promise<void>) => {
+                        receivedMessageHandler = messageHandler;
+                        return { dispose: jest.fn() };
+                    })
+                }
+            };
+
+            (vscode.window.createWebviewPanel as jest.Mock).mockClear();
+            (vscode.window.createWebviewPanel as jest.Mock).mockImplementation(() => createdWebviewPanel);
+            jest.spyOn(VSCodeWorkspaceService, 'createStatusBarPhaseItem').mockImplementation((initialMessage: string) => ({ text: initialMessage, dispose: jest.fn() }) as any);
+
+            (RecipeCockpitService as any).recipeCockpitPanel = undefined;
+            (RecipeCockpitService as any).recipeCockpitMessageSubscription = undefined;
+
+        });
+
+        it('reloads the run the reader picked rather than the newest', async () => {
+
+            await openAndDraw();
+            await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
+
+            await openAndDraw();
+
+            expect(vscode.window.createWebviewPanel).toHaveBeenCalledTimes(1);
+            expect(lastPosted('recipeData').recipe.selectedRunFolderName).toBe(FAKER_JS_RUN_FOLDER_NAME);
+
+        });
+
+        it('given the picked run is gone, reloads the newest, as any run that cannot be found does', async () => {
+
+            await openAndDraw();
+            await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
+
+            const findGeneratedRecipeRuns = RecipeCockpitService.findGeneratedRecipeRuns.bind(RecipeCockpitService);
+            jest.spyOn(RecipeCockpitService, 'findGeneratedRecipeRuns').mockImplementation((generatedRecipesFolderPath: string) =>
+                findGeneratedRecipeRuns(generatedRecipesFolderPath).filter(recipeRun => recipeRun.runFolderName !== FAKER_JS_RUN_FOLDER_NAME));
+
+            await openAndDraw();
+
+            expect(lastPosted('recipeData').recipe.selectedRunFolderName).toBe(CURRENT_RUN_FOLDER_NAME);
+
+        });
+
+        it('given the panel is opened for another workspace, carries nothing over', async () => {
+
+            await openAndDraw();
+            await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
+            panelState().dataOrgCreateResults.set('key', { resultsFilePath: '/x' });
+
+            await openAndDraw(path.join(__dirname, 'mocks', 'treeWorkspace'));
+
+            expect(lastPosted('recipeData').recipe.selectedRunFolderName).not.toBe(FAKER_JS_RUN_FOLDER_NAME);
+            expect(panelState().dataOrgCreateResults.size).toBe(0);
+
+        });
+
+        it('replays the comparisons drawn over the same rows, under the reloaded model\'s renderSequence', async () => {
+
+            await openAndDraw();
+            const drawnRecipeData = lastPosted('recipeData');
+            panelState().orgDescribeMessagesByTreeKey.set(ACCOUNT_TREE_KEY, buildAccountComparison(drawnRecipeData.recipe, drawnRecipeData.renderSequence));
+
+            await openAndDraw();
+
+            const reloadedRecipeData = lastPosted('recipeData');
+            expect(reloadedRecipeData.renderSequence).not.toBe(drawnRecipeData.renderSequence);
+            expect(lastPosted('orgDescribe')).toEqual({ ...buildAccountComparison(drawnRecipeData.recipe, 0), renderSequence: reloadedRecipeData.renderSequence });
+            expect(postedPanelMessages.map(hostMessage => hostMessage.command).slice(-2)).toEqual(['recipeData', 'orgDescribe']);
+
+        });
+
+        it('given the reload reads back different rows, drops the comparisons as before', async () => {
+
+            await openAndDraw();
+            const drawnRecipeData = lastPosted('recipeData');
+            panelState().orgDescribeMessagesByTreeKey.set(ACCOUNT_TREE_KEY, buildAccountComparison(drawnRecipeData.recipe, drawnRecipeData.renderSequence));
+
+            const loadRecipeRunByRuns = RecipeCockpitService.loadRecipeRunByRuns.bind(RecipeCockpitService);
+            jest.spyOn(RecipeCockpitService, 'loadRecipeRunByRuns').mockImplementation((recipeRuns, workspaceRoot, requestedRunFolderName) => {
+                const loadedRecipe = loadRecipeRunByRuns(recipeRuns, workspaceRoot, requestedRunFolderName);
+                loadedRecipe.recipeViewModel.objects = loadedRecipe.recipeViewModel.objects.slice(1);
+                return loadedRecipe;
+            });
+            postedPanelMessages.length = 0;
+
+            await openAndDraw();
+
+            expect(postedPanelMessages.map(hostMessage => hostMessage.command)).not.toContain('orgDescribe');
+            expect(panelState().orgDescribeMessagesByTreeKey.size).toBe(0);
+
+        });
+
+        it('keeps the Create results a "View errors" link opens', async () => {
+
+            await openAndDraw();
+            const storedCreateResult = { resultsFilePath: path.join(HISTORY_WORKSPACE_ROOT, 'results.json') };
+            panelState().dataOrgCreateResults.set('jd@example.com\nLead-ONLY\nLead', storedCreateResult);
+            const dataOrgRequestSequence = panelState().dataOrgRequestSequence;
+
+            await openAndDraw();
+
+            expect(panelState().dataOrgCreateResults.get('jd@example.com\nLead-ONLY\nLead')).toBe(storedCreateResult);
+            expect(panelState().dataOrgRequestSequence).toBeGreaterThan(dataOrgRequestSequence);
+
+        });
+
+    });
+
+});

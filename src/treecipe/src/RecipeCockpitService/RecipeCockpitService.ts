@@ -159,6 +159,14 @@ export const RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT = 25;
 */
 export const RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET = 2000;
 
+/*
+    The reader's place the panel keeps through vscodeApi.setState (#222). The version is the shape:
+    a place saved in any other shape is not read, rather than read as something it was not.
+*/
+export const RECIPE_COCKPIT_PANEL_PLACE_VERSION = 1;
+export const RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY = 200;
+export const RECIPE_COCKPIT_PANEL_PLACE_MAX_FILTER_LENGTH = 1000;
+
 // THE FIELD TYPES WHOSE ROWS EXPAND TO THEIR VALUES IN THE STRUCTURE TAB
 export const RECIPE_COCKPIT_PICKLIST_FIELD_TYPES: readonly string[] = ['Picklist', 'MultiselectPicklist'];
 
@@ -816,8 +824,16 @@ export type RecipeCockpitPanelAction =
     | { kind: 'addIterationFriend'; treeKey: string; objectApiName: string; iterationNickname: string; friendObjectApiName: string; recipeFilePath: string }
     | { kind: 'postAddFriendState'; hostMessage: IRecipeCockpitAddFriendStateMessage };
 
+// WHAT A REOPEN OF THE PANEL CARRIES INTO ITS RELOAD (#222): THE MODEL ON SCREEN, AND THE COMPARISONS DRAWN OVER IT
+export interface IRecipeCockpitCarriedPanelState {
+    recipeDataMessage: IRecipeCockpitRecipeDataMessage;
+    orgDescribeMessagesByTreeKey: Map<string, IRecipeCockpitOrgDescribeMessage>;
+}
+
 /*
-    Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened.
+    Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened --
+    a reopen keeps only the run on screen, its comparisons when the reload draws the same rows, and
+    Data-by-Org's Create results and request sequence.
 
     Two generations of allow-list: the PENDING pair is built when a model is posted, and only the
     panel's "rendered" acknowledgement promotes it to ACTIVE. A post succeeding says the message
@@ -1021,6 +1037,21 @@ export class RecipeCockpitService {
         const existingCockpitPanel = this.recipeCockpitPanel;
         this.recipeCockpitWorkspaceState = workspaceState;
 
+        /*
+            Re-running the command on an open panel reloads what it SHOWS (#222): the run the reader
+            picked, rather than the newest, and the comparisons drawn over it if the reload reads
+            back exactly the model they were drawn against.
+        */
+        const previousPanelState = existingCockpitPanel && this.recipeCockpitPanelState.workspaceRoot === workspaceRoot
+            ? this.recipeCockpitPanelState
+            : undefined;
+        const carriedPanelState = previousPanelState?.recipeDataMessage
+            ? {
+                recipeDataMessage: previousPanelState.recipeDataMessage,
+                orgDescribeMessagesByTreeKey: previousPanelState.orgDescribeMessagesByTreeKey
+            }
+            : undefined;
+
         const cockpitPanel = existingCockpitPanel
             ?? vscode.window.createWebviewPanel(
                 RECIPE_COCKPIT_VIEW_TYPE,
@@ -1041,6 +1072,12 @@ export class RecipeCockpitService {
         this.recipeCockpitPanel = cockpitPanel;
         this.recipeCockpitPanelState = this.buildInitialPanelState(workspaceRoot);
 
+        if ( previousPanelState ) {
+            // WHAT A "View errors" LINK OPENS, AND THE SEQUENCE A NEW SELECTION MUST STAY ABOVE
+            this.recipeCockpitPanelState.dataOrgCreateResults = previousPanelState.dataOrgCreateResults;
+            this.recipeCockpitPanelState.dataOrgRequestSequence = previousPanelState.dataOrgRequestSequence;
+        }
+
         if ( !existingCockpitPanel ) {
 
             cockpitPanel.onDidDispose(() => {
@@ -1059,7 +1096,14 @@ export class RecipeCockpitService {
 
         cockpitPanel.reveal(vscode.ViewColumn.One);
 
-        await this.loadRecipeIntoPanel(cockpitPanel, workspaceRoot);
+        // A RUN THAT IS GONE FALLS BACK TO THE NEWEST, AS loadRecipeRunByRuns DOES FOR ANY RUN IT CANNOT FIND
+        await this.loadRecipeIntoPanel(
+            cockpitPanel,
+            workspaceRoot,
+            carriedPanelState?.recipeDataMessage.recipe.selectedRunFolderName || undefined,
+            undefined,
+            carriedPanelState
+        );
 
         return cockpitPanel;
 
@@ -1074,7 +1118,8 @@ export class RecipeCockpitService {
     private static async loadRecipeIntoPanel(cockpitPanel: vscode.WebviewPanel,
                                                 workspaceRoot: string,
                                                 requestedRunFolderName?: string,
-                                                focusTree?: IRecipeCockpitTreeFocus): Promise<void> {
+                                                focusTree?: IRecipeCockpitTreeFocus,
+                                                carriedPanelState?: IRecipeCockpitCarriedPanelState): Promise<void> {
 
         const loadSequence = ++this.recipeCockpitLoadSequence;
 
@@ -1105,7 +1150,7 @@ export class RecipeCockpitService {
                 return;
             }
 
-            this.renderRecipeModel(cockpitPanel, loadedRecipe, focusTree);
+            this.renderRecipeModel(cockpitPanel, loadedRecipe, focusTree, carriedPanelState);
 
         } catch (loadError) {
 
@@ -1172,7 +1217,51 @@ export class RecipeCockpitService {
 
     }
 
-    private static renderRecipeModel(cockpitPanel: vscode.WebviewPanel, loadedRecipe: IRecipeCockpitLoadedRecipe, focusTree?: IRecipeCockpitTreeFocus) {
+    /*
+        A comparison is about the ROWS it was drawn over, so it is carried to a reloaded model only
+        when that model draws the same rows -- the same run, the same objects field for field, and
+        the same objects in each card -- because re-labelling a comparison of different rows with
+        the new model's renderSequence would be a false claim about them. What a card's history
+        lists, and which runs the selector offers, are not rows: a data set made since does not
+        un-compare anything. Compared by serializing both, which costs a reopen a few hundred
+        milliseconds at the largest model and nothing anywhere else.
+    */
+    static buildComparedRowsSignature(recipeViewModel: IRecipeCockpitRecipeViewModel): string {
+
+        return JSON.stringify({
+            selectedRunFolderName: recipeViewModel.selectedRunFolderName,
+            objects: recipeViewModel.objects,
+            trees: recipeViewModel.trees.map(tree => ({ treeKey: tree.treeKey, objects: tree.objects }))
+        });
+
+    }
+
+    static carryOrgDescribeMessages(carriedPanelState: IRecipeCockpitCarriedPanelState | undefined,
+                                        recipeViewModel: IRecipeCockpitRecipeViewModel,
+                                        renderSequence: number): Map<string, IRecipeCockpitOrgDescribeMessage> {
+
+        const carriedOrgDescribeMessages = new Map<string, IRecipeCockpitOrgDescribeMessage>();
+
+        if ( !carriedPanelState || carriedPanelState.orgDescribeMessagesByTreeKey.size === 0 ) {
+            return carriedOrgDescribeMessages;
+        }
+
+        if ( this.buildComparedRowsSignature(carriedPanelState.recipeDataMessage.recipe) !== this.buildComparedRowsSignature(recipeViewModel) ) {
+            return carriedOrgDescribeMessages;
+        }
+
+        carriedPanelState.orgDescribeMessagesByTreeKey.forEach((orgDescribeMessage, treeKey) => {
+            carriedOrgDescribeMessages.set(treeKey, { ...orgDescribeMessage, renderSequence: renderSequence });
+        });
+
+        return carriedOrgDescribeMessages;
+
+    }
+
+    private static renderRecipeModel(cockpitPanel: vscode.WebviewPanel,
+                                        loadedRecipe: IRecipeCockpitLoadedRecipe,
+                                        focusTree?: IRecipeCockpitTreeFocus,
+                                        carriedPanelState?: IRecipeCockpitCarriedPanelState) {
 
         const panelState = this.recipeCockpitPanelState;
         const recipeViewModel = loadedRecipe.recipeViewModel;
@@ -1189,7 +1278,7 @@ export class RecipeCockpitService {
         panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
         panelState.loadFailedMessage = undefined;
         // A COMPARISON ANSWERED FOR THE PREVIOUS MODEL'S OBJECTS, WHICH ARE NOT NECESSARILY THIS ONE'S
-        panelState.orgDescribeMessagesByTreeKey = new Map();
+        panelState.orgDescribeMessagesByTreeKey = this.carryOrgDescribeMessages(carriedPanelState, recipeViewModel, recipeDataMessage.renderSequence);
         panelState.orgProgressMessage = undefined;
         panelState.loadPhaseMessage = '';
         panelState.reportedFailureDescriptions = new Set();
@@ -4922,6 +5011,9 @@ ${this.buildPaletteCustomProperties()}
     const ADD_FRIEND_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL)};
     const CREATE_MAX_COUNT = ${RECIPE_COCKPIT_CREATE_MAX_COUNT};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
+    const PANEL_PLACE_VERSION = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION};
+    const PANEL_PLACE_SCROLL_SAVE_DELAY = ${RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY};
+    const PANEL_PLACE_MAX_FILTER_LENGTH = ${RECIPE_COCKPIT_PANEL_PLACE_MAX_FILTER_LENGTH};
 
     // WHICH VIEW IS ON SCREEN OUTLIVES A MODEL, SO SWITCHING RUNS DOES NOT THROW THE READER BACK TO THE DEFAULT
     let viewMode = 'trees';
@@ -4966,6 +5058,17 @@ ${this.buildPaletteCustomProperties()}
     let dataOrgCreateResultsByKey = Object.create(null);
     // THE ROW WHOSE CREATE IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE CREATE ENDED
     let createRunningKey = null;
+    // WHAT THE READER TYPED, AS TYPED -- filterQuery IS ITS TRIMMED, LOWERCASED FORM
+    let filterInputText = '';
+    /*
+        Where the reader was when this document was last on screen (#222). A hidden tab's document
+        is thrown away, so the place is read ONCE, here, and spent on the first model drawn -- and
+        only if that model is the run it was saved for. Nothing is saved until it is spent, or the
+        default view drawn first would overwrite the place before it is read.
+    */
+    let restorablePlace = readSavedPanelPlace();
+    let isPlaceRestoreSettled = false;
+    let scrollSaveTimer = null;
 
     /*
         Every node the panel draws is made here and filled through textContent, so nothing from the
@@ -5066,10 +5169,11 @@ ${this.buildPaletteCustomProperties()}
             filterInputElement.setAttribute('type', 'search');
             filterInputElement.setAttribute('placeholder', 'Filter objects, fields and faker expressions');
             filterInputElement.setAttribute('aria-label', 'Filter objects, fields and faker expressions');
-            filterInputElement.value = filterQuery;
+            filterInputElement.value = filterInputText;
             filterInputElement.addEventListener('input', function () {
-                filterQuery = String(filterInputElement.value || '').trim().toLowerCase();
+                setFilterText(filterInputElement.value);
                 applyTreeFilter();
+                savePanelPlace();
             });
             toolbarElement.appendChild(filterInputElement);
 
@@ -5119,6 +5223,11 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    function setFilterText(nextFilterText) {
+        filterInputText = String(nextFilterText || '');
+        filterQuery = filterInputText.trim().toLowerCase();
+    }
+
     function isFieldTextMatch(fieldState) {
         return searchTextOf(fieldState.field).indexOf(filterQuery) !== -1 || fieldState.typeSearchText.indexOf(filterQuery) !== -1;
     }
@@ -5143,6 +5252,8 @@ ${this.buildPaletteCustomProperties()}
             viewButtonState.element.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
             if (isSelected) { viewButtonState.element.classList.add('selected'); } else { viewButtonState.element.classList.remove('selected'); }
         });
+
+        savePanelPlace();
 
     }
 
@@ -5174,7 +5285,8 @@ ${this.buildPaletteCustomProperties()}
             isMatch: true,
             rowElement: null,
             diff: null,
-            diffStatus: null
+            diffStatus: null,
+            isPicklistExpanded: false
         };
 
     }
@@ -5248,19 +5360,32 @@ ${this.buildPaletteCustomProperties()}
             const picklistToggleElement = createElement('button', 'picklistToggle', '▸');
             let picklistValuesElement = null;
 
-            picklistToggleElement.setAttribute('aria-expanded', 'false');
-            picklistToggleElement.setAttribute('aria-label', 'Show or hide the values of ' + field.fieldApiName);
-            picklistToggleElement.addEventListener('click', function () {
-                const isExpanding = !picklistValuesElement || picklistValuesElement.classList.contains('hidden');
-                if (!picklistValuesElement) {
+            const setPicklistExpanded = function (isExpanding) {
+                if (isExpanding && !picklistValuesElement) {
                     picklistValuesElement = createElement('div', 'picklistValues');
                     fieldRowElement.appendChild(picklistValuesElement);
                     requestPicklistValues(treeObjectState.object.objectApiName, field.fieldApiName, picklistValuesElement);
                 }
-                if (isExpanding) { picklistValuesElement.classList.remove('hidden'); } else { picklistValuesElement.classList.add('hidden'); }
+                if (picklistValuesElement) {
+                    if (isExpanding) { picklistValuesElement.classList.remove('hidden'); } else { picklistValuesElement.classList.add('hidden'); }
+                }
+                fieldState.isPicklistExpanded = isExpanding;
                 picklistToggleElement.textContent = isExpanding ? '▾' : '▸';
                 picklistToggleElement.setAttribute('aria-expanded', isExpanding ? 'true' : 'false');
+            };
+
+            picklistToggleElement.setAttribute('aria-label', 'Show or hide the values of ' + field.fieldApiName);
+            picklistToggleElement.addEventListener('click', function () {
+                setPicklistExpanded(!fieldState.isPicklistExpanded);
+                savePanelPlace();
             });
+
+            /*
+                The open state lives on the FIELD, not the row: a comparison rebuilds an object's rows
+                and a reload rebuilds the whole panel, and a list the reader opened stays open
+                through both -- asking the host again, under the allow-list of the model on screen.
+            */
+            setPicklistExpanded(!!fieldState.isPicklistExpanded);
 
             fieldHeaderElement.appendChild(picklistToggleElement);
 
@@ -5425,6 +5550,7 @@ ${this.buildPaletteCustomProperties()}
         toggleElement.addEventListener('click', function () {
             treeObjectState.isExpandedByReader = !treeObjectState.isExpanded;
             setTreeObjectExpanded(treeObjectState, treeObjectState.isExpandedByReader);
+            savePanelPlace();
         });
 
         objectHeaderElement.appendChild(toggleElement);
@@ -5542,6 +5668,8 @@ ${this.buildPaletteCustomProperties()}
             }
 
         });
+
+        savePanelPlace();
 
     }
 
@@ -5721,7 +5849,10 @@ ${this.buildPaletteCustomProperties()}
 
         toggleElement.setAttribute('aria-expanded', 'false');
         toggleElement.setAttribute('aria-label', 'Show or hide the data sets made from the version of ' + version.generatedAtLabel);
-        toggleElement.addEventListener('click', function () { setVersionExpanded(treeState, versionState, !versionState.isExpanded); });
+        toggleElement.addEventListener('click', function () {
+            setVersionExpanded(treeState, versionState, !versionState.isExpanded);
+            savePanelPlace();
+        });
 
         versionHeaderElement.appendChild(toggleElement);
         versionHeaderElement.appendChild(createElement('span', 'treeVersionDate', version.generatedAtLabel));
@@ -5842,6 +5973,7 @@ ${this.buildPaletteCustomProperties()}
         }
 
         applyTreeFilter();
+        savePanelPlace();
 
     }
 
@@ -5924,6 +6056,8 @@ ${this.buildPaletteCustomProperties()}
             bodyElement: createElement('div', 'treeBody hidden'),
             matchElement: createElement('span', 'treeMatch muted hidden'),
             statusFilter: 'all',
+            // A RESTORED STATUS FILTER WAITS FOR THIS CARD'S COMPARISON: APPLIED BEFORE IT, IT WOULD HIDE EVERY ROW
+            pendingStatusFilter: null,
             compare: null
         };
 
@@ -5947,6 +6081,7 @@ ${this.buildPaletteCustomProperties()}
         treeHeaderElement.addEventListener('click', function () {
             treeState.isExpandedByReader = !treeState.isExpanded;
             setTreeExpanded(treeState, treeState.isExpandedByReader);
+            savePanelPlace();
         });
 
         scopeElement.setAttribute('title', 'Search only this tree');
@@ -6643,6 +6778,202 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
+        The reader's place (#222), kept with vscodeApi.setState so it outlives the document VS Code
+        throws away when the tab is hidden. It holds NAMES only -- tree keys, object api names and
+        nicknames, field api names, run folder names, tab and view names -- plus the find text and
+        a scroll offset: nothing the host keeps to itself, no path, no value, no username.
+    */
+    function readSavedPanelPlace() {
+
+        // A PLACE THAT CANNOT BE READ IS NO PLACE: THE PANEL DRAWS ITS DEFAULT RATHER THAN NOTHING
+        try {
+
+            const savedState = typeof vscodeApi.getState === 'function' ? vscodeApi.getState() : null;
+
+            if (!savedState || typeof savedState !== 'object' || savedState.version !== PANEL_PLACE_VERSION || typeof savedState.runFolderName !== 'string') {
+                return null;
+            }
+
+            return savedState;
+
+        } catch (getStateError) {
+            return null;
+        }
+
+    }
+
+    function buildObjectPlaceKey(treeObjectState) {
+        return treeObjectState.object.objectApiName + '\\n' + (treeObjectState.object.nickname || '');
+    }
+
+    function buildFieldPlaceKey(treeObjectState, fieldState) {
+        return buildObjectPlaceKey(treeObjectState) + '\\n' + fieldState.field.fieldApiName;
+    }
+
+    function buildTreePlace(treeState) {
+
+        const expandedObjectKeys = [];
+        const openPicklistKeys = [];
+        const expandedVersionRunFolderNames = [];
+
+        treeState.objectStates.forEach(function (treeObjectState) {
+            if (treeObjectState.isExpandedByReader) { expandedObjectKeys.push(buildObjectPlaceKey(treeObjectState)); }
+            // ONLY A BUILT ROW CAN HAVE BEEN OPENED, SO AN OBJECT NOBODY EXPANDED COSTS NOTHING HERE
+            if (!treeObjectState.isBodyBuilt) { return; }
+            treeObjectState.fieldStates.forEach(function (fieldState) {
+                if (fieldState.isPicklistExpanded) { openPicklistKeys.push(buildFieldPlaceKey(treeObjectState, fieldState)); }
+            });
+        });
+
+        if (treeState.versionStatesByRunFolderName) {
+            Object.keys(treeState.versionStatesByRunFolderName).forEach(function (runFolderName) {
+                if (treeState.versionStatesByRunFolderName[runFolderName].isExpanded) { expandedVersionRunFolderNames.push(runFolderName); }
+            });
+        }
+
+        const statusFilter = treeState.statusFilter !== 'all' ? treeState.statusFilter : (treeState.pendingStatusFilter || 'all');
+        const selectedTab = treeState.selectedTab || 'structure';
+
+        if (!treeState.isExpandedByReader && selectedTab === 'structure' && statusFilter === 'all'
+                && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0 && expandedVersionRunFolderNames.length === 0) {
+            return null;
+        }
+
+        return {
+            treeKey: treeState.tree.treeKey,
+            isExpanded: !!treeState.isExpandedByReader,
+            selectedTab: selectedTab,
+            statusFilter: statusFilter,
+            expandedObjectKeys: expandedObjectKeys,
+            openPicklistKeys: openPicklistKeys,
+            expandedVersionRunFolderNames: expandedVersionRunFolderNames
+        };
+
+    }
+
+    function savePanelPlace() {
+
+        // NOTHING IS SAVED UNTIL THE SAVED PLACE IS SPENT, NOR FOR A PANEL WITH NO MODEL DRAWN
+        if (!isPlaceRestoreSettled || renderedSequence === null || typeof vscodeApi.setState !== 'function') { return; }
+
+        try {
+            vscodeApi.setState({
+                version: PANEL_PLACE_VERSION,
+                runFolderName: renderedRunFolderName,
+                viewMode: viewMode,
+                filterText: filterInputText,
+                treeScopeKey: treeScopeKey,
+                scrollY: typeof window.scrollY === 'number' ? window.scrollY : 0,
+                trees: treeStates.map(buildTreePlace).filter(Boolean)
+            });
+        } catch (setStateError) {
+            // A PLACE THAT COULD NOT BE KEPT COSTS THE READER A RE-OPEN, NEVER THE PANEL
+        }
+
+    }
+
+    function takeRestorablePlace(recipe) {
+
+        if (isPlaceRestoreSettled) { return null; }
+
+        const savedPlace = restorablePlace;
+        restorablePlace = null;
+        isPlaceRestoreSettled = true;
+
+        return savedPlace && recipe && savedPlace.runFolderName === recipe.selectedRunFolderName && recipe.objects.length > 0 ? savedPlace : null;
+
+    }
+
+    // WHAT THE PANEL DRAWS BEFORE THE MODEL: THE VIEW, AND THE FIND TEXT THE TOOLBAR SHOWS AND THE FIRST FILTER APPLIES
+    function applyPlaceBeforeRender(savedPlace) {
+
+        if (!savedPlace) { return; }
+
+        if (savedPlace.viewMode === 'org' || savedPlace.viewMode === 'trees') { viewMode = savedPlace.viewMode; }
+        if (typeof savedPlace.filterText === 'string') { setFilterText(savedPlace.filterText.slice(0, PANEL_PLACE_MAX_FILTER_LENGTH)); }
+
+    }
+
+    function toStringSet(candidateList) {
+
+        // KEYED BY NAMES FROM FILES, SO NO PROTOTYPE
+        const stringSet = Object.create(null);
+        if (Array.isArray(candidateList)) {
+            candidateList.forEach(function (candidate) { if (typeof candidate === 'string') { stringSet[candidate] = true; } });
+        }
+        return stringSet;
+
+    }
+
+    function hasString(stringSet, candidate) {
+        return Object.prototype.hasOwnProperty.call(stringSet, candidate);
+    }
+
+    /*
+        The rest of the place, AFTER "rendered": opening a picklist row or a Previous Versions tab
+        asks the host, which answers only once the ack has activated this model's allow-lists. An
+        entry naming a card, object, tab or option this model does not have is passed over on its
+        own -- the rest of the place still comes back.
+    */
+    function restorePlaceAfterRender(savedPlace) {
+
+        if (!savedPlace) { return; }
+
+        const statusFilterOptions = toStringSet(['changed'].concat(DIFF_STATUSES));
+        const savedTrees = Array.isArray(savedPlace.trees) ? savedPlace.trees : [];
+
+        savedTrees.forEach(function (savedTree) {
+
+            if (!savedTree || typeof savedTree !== 'object' || typeof savedTree.treeKey !== 'string') { return; }
+
+            const treeState = findTreeState(savedTree.treeKey);
+            if (!treeState) { return; }
+
+            const expandedObjectKeys = toStringSet(savedTree.expandedObjectKeys);
+            const openPicklistKeys = toStringSet(savedTree.openPicklistKeys);
+            const expandedVersionRunFolderNames = toStringSet(savedTree.expandedVersionRunFolderNames);
+
+            treeState.objectStates.forEach(function (treeObjectState) {
+                if (hasString(expandedObjectKeys, buildObjectPlaceKey(treeObjectState))) { treeObjectState.isExpandedByReader = true; }
+                treeObjectState.fieldStates.forEach(function (fieldState) {
+                    if (fieldState.field.isPicklist && hasString(openPicklistKeys, buildFieldPlaceKey(treeObjectState, fieldState))) { fieldState.isPicklistExpanded = true; }
+                });
+            });
+
+            if (savedTree.isExpanded === true) { treeState.isExpandedByReader = true; }
+
+            if (typeof savedTree.statusFilter === 'string' && hasString(statusFilterOptions, savedTree.statusFilter) && treeState.compare) {
+                treeState.pendingStatusFilter = savedTree.statusFilter;
+            }
+
+            if (Object.keys(expandedVersionRunFolderNames).length > 0) {
+                selectTreeTab(treeState, 'versions');
+                if (treeState.versionStatesByRunFolderName) {
+                    Object.keys(expandedVersionRunFolderNames).forEach(function (runFolderName) {
+                        if (hasString(treeState.versionStatesByRunFolderName, runFolderName)) {
+                            setVersionExpanded(treeState, treeState.versionStatesByRunFolderName[runFolderName], true);
+                        }
+                    });
+                }
+            }
+
+            if (typeof savedTree.selectedTab === 'string') { selectTreeTab(treeState, savedTree.selectedTab); }
+
+        });
+
+        // setTreeScope APPLIES THE FILTER, WHICH OPENS EVERY CARD AND OBJECT THE READER HAD OPENED
+        setTreeScope(typeof savedPlace.treeScopeKey === 'string' ? savedPlace.treeScopeKey : null);
+
+    }
+
+    function restoreScroll(savedPlace) {
+
+        if (!savedPlace || typeof savedPlace.scrollY !== 'number' || !isFinite(savedPlace.scrollY) || savedPlace.scrollY <= 0) { return; }
+        if (typeof window.scrollTo === 'function') { window.scrollTo(0, savedPlace.scrollY); }
+
+    }
+
+    /*
         The find box is the FIRST thing drawn, and what sits between it and the rows is only what
         the rows cannot say themselves: notices about entries that could not be read.
     */
@@ -6754,8 +7085,12 @@ ${this.buildPaletteCustomProperties()}
 
     function renderPanelGuarded(recipe, renderSequence, focusTree) {
 
+        // SPENT ON THIS DOCUMENT'S FIRST MODEL WHETHER OR NOT IT APPLIES; A LATER MODEL KEEPS WHAT IS IN MEMORY, AS IT ALWAYS DID
+        const savedPlace = takeRestorablePlace(recipe);
+
         try {
 
+            applyPlaceBeforeRender(savedPlace);
             renderPanel(recipe);
             renderedSequence = renderSequence;
             vscodeApi.postMessage({ command: 'rendered', renderSequence: renderSequence });
@@ -6774,10 +7109,15 @@ ${this.buildPaletteCustomProperties()}
 
         // AFTER "rendered": A FOCUSED VERSIONS TAB ASKS FOR ITS SUMMARIES, WHICH THE HOST ANSWERS ONLY ONCE THE ACK HAS ACTIVATED THEM
         try {
+            restorePlaceAfterRender(savedPlace);
+            // A FOCUS IS WHAT THE READER JUST ASKED FOR, SO IT WINS OVER WHERE THEY LAST WERE
             applyTreeFocus(focusTree);
+            restoreScroll(savedPlace);
         } catch (focusError) {
             postRenderFailure('runtime', focusError);
         }
+
+        savePanelPlace();
 
         return true;
 
@@ -6830,6 +7170,7 @@ ${this.buildPaletteCustomProperties()}
         statusFilterElement.addEventListener('change', function () {
             treeState.statusFilter = String(statusFilterElement.value || 'all');
             applyTreeFilter();
+            savePanelPlace();
         });
 
         controlsElement.appendChild(describeButtonElement);
@@ -7039,13 +7380,21 @@ ${this.buildPaletteCustomProperties()}
 
         if (diff.objects.length > 0 && isComparisonShown) {
             statusFilterElement.classList.remove('hidden');
+            if (treeState.pendingStatusFilter) {
+                treeState.statusFilter = treeState.pendingStatusFilter;
+                statusFilterElement.value = treeState.pendingStatusFilter;
+            }
         } else {
             statusFilterElement.classList.add('hidden');
             treeState.statusFilter = 'all';
             statusFilterElement.value = 'all';
         }
 
+        // ONE COMPARISON SPENDS IT EITHER WAY: A FAILED ONE HAS NO STATUSES FOR IT TO FILTER BY
+        treeState.pendingStatusFilter = null;
+
         applyTreeFilter();
+        savePanelPlace();
 
     }
 
@@ -7179,6 +7528,18 @@ ${this.buildPaletteCustomProperties()}
 
     window.addEventListener('unhandledrejection', function (rejectionEvent) {
         postRenderFailure('runtime', rejectionEvent && rejectionEvent.reason);
+    });
+
+    // A SCROLL FIRES PER FRAME, AND A SAVE WALKS EVERY CARD, SO A RUN OF THEM IS SAVED ONCE
+    window.addEventListener('scroll', function () {
+
+        if (scrollSaveTimer !== null) { return; }
+
+        scrollSaveTimer = setTimeout(function () {
+            scrollSaveTimer = null;
+            savePanelPlace();
+        }, PANEL_PLACE_SCROLL_SAVE_DELAY);
+
     });
 
     /*
