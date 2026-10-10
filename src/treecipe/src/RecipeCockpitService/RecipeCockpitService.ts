@@ -1045,7 +1045,9 @@ export class RecipeCockpitService {
         const previousPanelState = existingCockpitPanel && this.recipeCockpitPanelState.workspaceRoot === workspaceRoot
             ? this.recipeCockpitPanelState
             : undefined;
-        const carriedPanelState = previousPanelState?.recipeDataMessage
+        const carriedRunFolderName = previousPanelState?.recipeDataMessage?.recipe.selectedRunFolderName || undefined;
+        // THE OLD MODEL IS HELD THROUGH THE RELOAD ONLY WHEN A COMPARISON NEEDS IT TO BE CHECKED AGAINST -- AT SCALE IT IS TENS OF MB
+        const carriedPanelState = previousPanelState?.recipeDataMessage && previousPanelState.orgDescribeMessagesByTreeKey.size > 0
             ? {
                 recipeDataMessage: previousPanelState.recipeDataMessage,
                 orgDescribeMessagesByTreeKey: previousPanelState.orgDescribeMessagesByTreeKey
@@ -1100,7 +1102,7 @@ export class RecipeCockpitService {
         await this.loadRecipeIntoPanel(
             cockpitPanel,
             workspaceRoot,
-            carriedPanelState?.recipeDataMessage.recipe.selectedRunFolderName || undefined,
+            carriedRunFolderName,
             undefined,
             carriedPanelState
         );
@@ -5036,6 +5038,8 @@ ${this.buildPaletteCustomProperties()}
     */
     let restorablePlace = readSavedPanelPlace();
     let isPlaceRestoreSettled = false;
+    // EACH TAB A RESTORE SELECTS WOULD SAVE A HALF-RESTORED PLACE, WALKING EVERY CARD; THE RENDER SAVES ONCE AFTER IT
+    let isRestoringPlace = false;
     let scrollSaveTimer = null;
 
     /*
@@ -5240,9 +5244,10 @@ ${this.buildPaletteCustomProperties()}
         inputElement.setAttribute('type', 'search');
         inputElement.setAttribute('placeholder', placeholderText);
         inputElement.setAttribute('aria-label', placeholderText + ' (' + treeState.tree.title + ')');
-        inputElement.value = treeState.searchQueries[tabName];
+        inputElement.value = treeState.searchTexts[tabName];
         inputElement.addEventListener('input', function () {
-            treeState.searchQueries[tabName] = String(inputElement.value || '').trim().toLowerCase();
+            treeState.searchTexts[tabName] = String(inputElement.value || '');
+            treeState.searchQueries[tabName] = treeState.searchTexts[tabName].trim().toLowerCase();
             applySearch(treeState);
             savePanelPlace();
         });
@@ -6057,6 +6062,8 @@ ${this.buildPaletteCustomProperties()}
             dataTab: null,
             comparison: null,
             searchQueries: { structure: '', dataByOrg: '', versions: '', datasets: '' },
+            // WHAT THE READER TYPED IN EACH BOX, AS TYPED -- searchQueries IS ITS TRIMMED, LOWERCASED FORM
+            searchTexts: { structure: '', dataByOrg: '', versions: '', datasets: '' },
             statusFilter: 'all',
             /*
                 What a restored place asks of the card's comparison (#222): its status filter and the
@@ -6974,8 +6981,8 @@ ${this.buildPaletteCustomProperties()}
         }
 
         PANEL_PLACE_TABS.forEach(function (tabName) {
-            searchQueries[tabName] = treeState.searchQueries[tabName] || '';
-            if (searchQueries[tabName]) { hasSearch = true; }
+            searchQueries[tabName] = treeState.searchTexts[tabName] || '';
+            if (treeState.searchQueries[tabName]) { hasSearch = true; }
         });
 
         const statusFilter = treeState.statusFilter !== 'all' ? treeState.statusFilter : (treeState.pendingStatusFilter || 'all');
@@ -7004,7 +7011,7 @@ ${this.buildPaletteCustomProperties()}
     function savePanelPlace() {
 
         // NOTHING IS SAVED UNTIL THE SAVED PLACE IS SPENT, NOR FOR A PANEL WITH NO MODEL DRAWN
-        if (!isPlaceRestoreSettled || renderedSequence === null || typeof vscodeApi.setState !== 'function') { return; }
+        if (!isPlaceRestoreSettled || isRestoringPlace || renderedSequence === null || typeof vscodeApi.setState !== 'function') { return; }
 
         try {
             vscodeApi.setState({
@@ -7068,6 +7075,18 @@ ${this.buildPaletteCustomProperties()}
 
         if (!savedPlace) { return; }
 
+        isRestoringPlace = true;
+
+        try {
+            restoreSavedTrees(savedPlace);
+        } finally {
+            isRestoringPlace = false;
+        }
+
+    }
+
+    function restoreSavedTrees(savedPlace) {
+
         const statusFilterOptions = toStringSet(DIFF_STATUSES.filter(function (diffStatus) { return diffStatus !== 'unchanged'; }));
         const savedTrees = Array.isArray(savedPlace.trees) ? savedPlace.trees : [];
 
@@ -7087,11 +7106,18 @@ ${this.buildPaletteCustomProperties()}
             // BEFORE ANY TAB IS BUILT: A TAB READS ITS SEARCH, AND APPLIES IT, WHEN IT IS BUILT
             PANEL_PLACE_TABS.forEach(function (tabName) {
                 const savedQuery = Object.prototype.hasOwnProperty.call(savedSearchQueries, tabName) ? savedSearchQueries[tabName] : '';
-                if (typeof savedQuery === 'string') { treeState.searchQueries[tabName] = savedQuery.trim().toLowerCase(); }
+                if (typeof savedQuery === 'string') {
+                    treeState.searchTexts[tabName] = savedQuery;
+                    treeState.searchQueries[tabName] = savedQuery.trim().toLowerCase();
+                }
             });
+
+            const hasOpenPicklists = hasAnyString(openPicklistKeys);
 
             treeState.objectStates.forEach(function (treeObjectState) {
                 if (hasString(expandedObjectKeys, buildObjectPlaceKey(treeObjectState))) { treeObjectState.isExpandedByReader = true; }
+                // A PICKLIST KEY IS BUILT PER FIELD, SO A PLACE THAT OPENED NONE BUILDS NONE
+                if (!hasOpenPicklists) { return; }
                 treeObjectState.fieldStates.forEach(function (fieldState) {
                     if (fieldState.field.isPicklist && hasString(openPicklistKeys, buildFieldPlaceKey(treeObjectState, fieldState))) { fieldState.isPicklistExpanded = true; }
                 });
@@ -7101,7 +7127,11 @@ ${this.buildPaletteCustomProperties()}
                 treeState.pendingStatusFilter = savedTree.statusFilter;
             }
 
-            // A TAB IS BUILT FOR ITS ROWS ONLY WHEN ONE OF THEM IS THIS CARD'S -- BUILDING DATA-BY-ORG LISTS ORGS, WHICH RUNS THE CLI
+            /*
+                A tab is built FOR ITS SAVED ROWS only when one of them is this card's: building
+                Data-by-Org lists orgs, which runs the CLI, and a stale name must not cause that. A
+                tab the reader had SELECTED is selected below whatever its rows, as it was on screen.
+            */
             const dataObjectApiNamesToOpen = toStringSet(treeState.dataObjectApiNames.filter(function (objectApiName) {
                 return hasString(expandedDataObjectApiNames, objectApiName);
             }));
@@ -7136,6 +7166,19 @@ ${this.buildPaletteCustomProperties()}
             applyStructureFilter(treeState);
 
         });
+
+    }
+
+    /*
+        What a restored place left waiting is for the comparison it was SAVED under, which only a
+        replay brings back. A comparison the reader asks for is a new one, and is not narrowed by a
+        filter the reader set on an old one -- possibly several reloads ago.
+    */
+    function dropPendingComparisonPlace(treeState) {
+
+        treeState.pendingStatusFilter = null;
+        treeState.pendingDataExpandedObjectApiNames = null;
+        savePanelPlace();
 
     }
 
@@ -7305,12 +7348,14 @@ ${this.buildPaletteCustomProperties()}
         chooseOrgButtonElement.setAttribute('title', 'Choose any connected org, production included, and compare the objects of this tree with it');
         chooseOrgButtonElement.setAttribute('aria-label', CHOOSE_ORG_ACTION_LABEL + ' (' + treeState.tree.title + ')');
         chooseOrgButtonElement.addEventListener('click', function () {
+            dropPendingComparisonPlace(treeState);
             vscodeApi.postMessage({ command: 'selectOrg', treeKey: treeState.tree.treeKey, chooseOrg: true });
         });
 
         describeButtonElement.setAttribute('title', 'Describe the objects of this tree in the org picked in the toolbar (or one you choose), and list each field that differs');
         describeButtonElement.setAttribute('aria-label', DESCRIBE_ACTION_LABEL + ' (' + treeState.tree.title + ')');
         describeButtonElement.addEventListener('click', function () {
+            dropPendingComparisonPlace(treeState);
             vscodeApi.postMessage({ command: 'selectOrg', treeKey: treeState.tree.treeKey });
         });
 

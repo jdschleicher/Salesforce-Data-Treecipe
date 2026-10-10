@@ -154,7 +154,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(true);
             expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previous Versions');
             expect(versionToggles(panel, LEAD_TREE_KEY).map((toggleElement: any) => toggleElement.attributes['aria-expanded'])).toEqual(['false', 'true', 'false']);
-            expect(searchInputOf(panel, LEAD_TREE_KEY, 'treeVersions').value).toBe('fakerjs');
+            expect(searchInputOf(panel, LEAD_TREE_KEY, 'treeVersions').value).toBe('FakerJS');
             expect(visibleVersionCount(panel, LEAD_TREE_KEY)).toBe(1);
 
             expect(panel.scrollToCalls).toEqual([480]);
@@ -177,7 +177,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
         });
 
-        it('given a Structure search, restores it and the rows it narrowed to', () => {
+        it('given a Structure search, restores it as typed and the rows it narrowed to', () => {
 
             const recipe = loadHistoryRecipe().recipeViewModel;
             const hiddenPanel = runPanelScript();
@@ -188,7 +188,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
             render(panel, recipe);
 
-            expect(searchInputOf(panel, ACCOUNT_TREE_KEY, 'treeStructure').value).toBe('rating');
+            expect(searchInputOf(panel, ACCOUNT_TREE_KEY, 'treeStructure').value).toBe('  Rating ');
             expect(matchCountOf(panel, ACCOUNT_TREE_KEY, 'treeStructure')).toBe(matchCountOf(hiddenPanel, ACCOUNT_TREE_KEY, 'treeStructure'));
             expect(panel.visibleFieldNamesOf(objectNamed(panel, ACCOUNT_TREE_KEY, 'Account')))
                 .toEqual(hiddenPanel.visibleFieldNamesOf(objectNamed(hiddenPanel, ACCOUNT_TREE_KEY, 'Account')));
@@ -340,6 +340,19 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
         });
 
+        // EACH TAB A RESTORE SELECTS WOULD OTHERWISE SAVE A HALF-RESTORED PLACE, WALKING EVERY CARD
+        it('saves the restored place once, after the restore, rather than per tab it selects', () => {
+
+            const { panel: hiddenPanel, recipe } = buildReaderSession();
+
+            const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
+            render(panel, recipe);
+
+            expect(panel.setStateCalls).toHaveLength(1);
+            expect(panel.savedState()).toEqual(hiddenPanel.savedState());
+
+        });
+
         it('saves nothing before a model is drawn', () => {
 
             const panel = runPanelScript({ savedState: { version: RECIPE_COCKPIT_PANEL_PLACE_VERSION, runFolderName: CURRENT_RUN_FOLDER_NAME, trees: [] } });
@@ -412,6 +425,30 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 const panel = runPanelScript({ savedState: savedState });
                 render(panel, recipe);
                 panel.postToPanel(RecipeCockpitService.buildOrgConnectionFailureMessage(ACCOUNT_TREE_KEY, 'devhub', 'ECONNRESET', 1));
+                panel.postToPanel(buildAccountComparison(recipe, 1));
+
+                expect(statusFilterOf(panel, ACCOUNT_TREE_KEY).value).toBe('all');
+                expect(visibleDataFieldNamesOf(panel, dataObjectNamed(panel, ACCOUNT_TREE_KEY, 'Account'))).toEqual([]);
+
+            });
+
+            /*
+                The comparison a filter was saved under comes back only as a replay. One the reader
+                asks for is new, and must not open already narrowed by a filter set on an old one --
+                which a reopen whose rows changed, and so carried nothing, would otherwise leave.
+            */
+            it.each([['Compare', 'describeInOrg'], ['Choose another org…', 'describeInChosenOrg']])('given the reader asks for a comparison with %s before any is replayed, drops both', (_label, buttonClassName) => {
+
+                const { recipe, savedState } = buildComparedSession();
+
+                const panel = runPanelScript({ savedState: savedState });
+                render(panel, recipe);
+                panel.findAll(treeCardOf(panel, ACCOUNT_TREE_KEY), buttonClassName)[0].dispatch('click');
+
+                const droppedTree = panel.savedState().trees.find((savedTree: any) => savedTree.treeKey === ACCOUNT_TREE_KEY);
+                expect(droppedTree.statusFilter).toBe('all');
+                expect(droppedTree.expandedDataObjectApiNames).toEqual([]);
+
                 panel.postToPanel(buildAccountComparison(recipe, 1));
 
                 expect(statusFilterOf(panel, ACCOUNT_TREE_KEY).value).toBe('all');
@@ -675,6 +712,18 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
             expect(lastPosted('recipeData').recipe.selectedRunFolderName).not.toBe(FAKER_JS_RUN_FOLDER_NAME);
             expect(panelState().dataOrgCreateResults.size).toBe(0);
+
+        });
+
+        // AT SCALE THE OLD MODEL IS TENS OF MB, SO IT IS NOT HELD THROUGH A RELOAD THAT HAS NOTHING TO CHECK AGAINST IT
+        it('given no comparison to carry, carries the run alone', async () => {
+
+            await openAndDraw();
+            const carryOrgDescribeMessagesSpy = jest.spyOn(RecipeCockpitService, 'carryOrgDescribeMessages');
+
+            await openAndDraw();
+
+            expect(carryOrgDescribeMessagesSpy).toHaveBeenCalledWith(undefined, expect.anything(), expect.any(Number));
 
         });
 
