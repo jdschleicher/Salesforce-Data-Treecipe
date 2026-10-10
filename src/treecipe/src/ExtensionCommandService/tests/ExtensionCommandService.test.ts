@@ -24,6 +24,7 @@ jest.mock('vscode', () => ({
     window: {
         showWarningMessage: jest.fn(),
         showInformationMessage: jest.fn(),
+        showErrorMessage: jest.fn(),
         showQuickPick: jest.fn(),
         showTextDocument: jest.fn(),
         createOutputChannel: jest.fn(),
@@ -111,6 +112,7 @@ function buildFakeOrgQuickPick(fakeOptions: { acceptLabel?: string } = {}) {
 import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL, VIEW_GENERATION_SUMMARY_ACTION_LABEL, OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL, REVEAL_IN_EXPLORER_ACTION_LABEL, OPEN_CONFIGURATION_FILE_ACTION_LABEL, OPEN_RECIPE_ACTION_LABEL, GENERATE_TREECIPE_PROGRESS_TITLE, GENERATE_TREECIPE_CANCELLED_MESSAGE } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
+import { RecipeYamlScalar } from "../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
 import { GlobalValueSetSingleton } from "../../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { PicklistDependencyTestService, IPicklistDependencySpecDetail, IRecordTypePicklistDependencySpecDetail, IPicklistDependencySkippedField, IFrameworkScaffoldResult } from "../../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService } from "../../PicklistDependencyCheckService/PicklistDependencyCheckService";
@@ -1912,6 +1914,38 @@ describe('ExtensionCommandService', () => {
             const [datasetFolderName] = readDatasetFolderNames();
             expect(fs.readdirSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets', datasetFolderName, 'BaseArtifactFiles')))
                 .not.toContain('datasetSource.json');
+
+        });
+
+        // #186: A js-yaml PARSE ERROR QUOTES THE RECIPE LINE IT FAILED ON, AND THAT LINE IS THE REPOSITORY AUTHOR'S
+        test('given a recipe whose YAML fails to parse on a command-link line, shows the error with no link', async () => {
+
+            const [fakerJsCase] = backendCases;
+            arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
+            const commandLinkPayload = '[x](command:git.push)';
+            const hostileRecipeFilePath = writeWorkspaceFile(
+                `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact/${fakerJsCase.recipeFileName}`,
+                `- object: Account\n  nickname: Account_1\n${commandLinkPayload}\n`
+            );
+            (ErrorHandlingService.handleCapturedError as jest.Mock).mockRestore();
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError');
+            const showErrorMessageSpy = jest.spyOn(vscode.window, 'showErrorMessage').mockResolvedValue(undefined);
+
+            await extensionCommandService.runFakerGenerationByRecipeFile(hostileRecipeFilePath);
+
+            // THE PAYLOAD REACHES THE HANDLER AS A WHOLE LINK, SO THE ASSERTIONS BELOW ARE ABOUT THE ESCAPE AND NOT ABOUT js-yaml TRUNCATING IT
+            const [[capturedError]] = handleCapturedErrorSpy.mock.calls;
+            expect(capturedError.name).toBe('YAMLException');
+            expect(capturedError.message).toContain(commandLinkPayload);
+
+            expect(showErrorMessageSpy).toHaveBeenCalledTimes(1);
+            const [shownText, ...shownButtons] = showErrorMessageSpy.mock.calls[0] as unknown as string[];
+            expect(shownText).toContain('runFakerGenerationByRecipeFile: end of the stream or a document separator is expected');
+            expect(shownText).toContain(RecipeYamlScalar.escapeForNotification(commandLinkPayload));
+            expect(shownText).not.toContain('](command:');
+            expect(shownText).not.toMatch(/[[\]()]/);
+            expect(shownButtons).toEqual([ErrorHandlingService.reportIssueButton, 'Review Troubleshooting From README']);
+            expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets'))).toBeFalse();
 
         });
 
