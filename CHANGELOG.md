@@ -1,5 +1,14 @@
 # Change Log
 
+## [3.50.2] - A test that a saved Recipe Cockpit place keeps a run name containing ".."
+
+Follow-up to [#237](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/237) (3.50.1), which closed [#185](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/185), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+3.50.1 relaxed `DatasetSourceService.isSafeFolderOrFileName` to refuse only a name that is exactly `.` or `..` instead of any name containing `..`. The Recipe Cockpit's `normalizePanelPlace` checks a saved place's run name with the same function, so that change applies to it too, but no cockpit test covered it. The code review on #237 [flagged it](https://github.com/jdschleicher/Salesforce-Data-Treecipe/pull/237#issuecomment-6101369283) as a LOW finding. The fix was pushed after #237 merged, so it never reached `main`.
+
+- **Tests.** `RecipeCockpitPlacePersistence.test.ts` asserts that `normalizePanelPlace` keeps a saved place whose run is `recipe-2026..v2`. A run that is exactly `..` is still refused, as before.
+- **Not changed:** no source code changed.
+
 ## [3.50.1] - A recipe whose name merely contains ".." runs again under Run Faker
 
 Closes [#185](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/185), a follow-up to [#176](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/176) / [#183](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/183), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

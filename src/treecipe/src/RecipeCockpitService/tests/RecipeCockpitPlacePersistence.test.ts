@@ -105,6 +105,13 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
         });
 
+        // #185: ".." INSIDE A NAME IS A NAME; ONLY A WHOLE ".." SEGMENT CLIMBS
+        it('given a run whose name only contains "..", keeps it as a name', () => {
+
+            expect(RecipeCockpitService.normalizePanelPlace(buildPlace({ runFolderName: 'recipe-2026..v2' }))?.runFolderName).toBe('recipe-2026..v2');
+
+        });
+
         it('drops each malformed entry on its own and keeps the rest', () => {
 
             const normalizedPlace = RecipeCockpitService.normalizePanelPlace({
