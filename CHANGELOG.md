@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.53.1] - Recipe Cockpit: bigger expand/collapse triangles on the relationship tree
+
+Closes [#244](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/244).
+
+At `1.1em` the ▸/▾ on the relationship tree was too small to tell at a glance whether a card or object was open.
+
+- **The tree card header triangle (`.treeToggle`) and each Structure object's triangle (`.treeObjectToggle`) are drawn at `3.3em`**, about three times their old size. They have their own rule after the shared toggle rule, with less vertical padding so the larger glyph doesn't make the row taller than it needs to be.
+- **A Structure object's header row centres its items** (`align-items: center`) instead of aligning them on the baseline, so the object name sits beside the larger triangle rather than at its foot. The card header was already centred, so the title, ☆, ✎ and ▶ Run Faker stay on one centred line.
+- **Not changed:** the ▸/▾ characters, the click behaviour (the card header is still the toggle and the triangle still has no listener of its own, #209), the colours, which still come only from `RECIPE_COCKPIT_PALETTE`, and the picklist, Previous Versions and Data-by-Org triangles and ⟳, which stay at `1.1em`.
+- **Tests.** `RecipeCockpitService.test.ts` asserts the `3.3em` rule for the two triangles, that it comes after the shared `1.1em` toggle rule (so the cascade picks it), that no other rule uses `3.3em`, and that both header rows centre their items.
 ## [3.53.0] - Recipe Cockpit Data-by-Org no longer counts records
 
 Closes [#238](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/238), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
