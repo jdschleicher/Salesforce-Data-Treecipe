@@ -133,6 +133,18 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
         });
 
+        it('keeps the name of a folder named __proto__, which a plain object would take as its prototype', async () => {
+
+            const workspaceState = buildWorkspaceState();
+
+            await RecipeCockpitService.writeTreePreferences(workspaceState, buildPreferences({ ['__proto__']: 'Prototype tree', [LEAD_TREE_KEY]: 'Leads' }));
+
+            expect([...RecipeCockpitService.readTreePreferences(workspaceState).customNamesByFolderName.entries()])
+                .toEqual([['__proto__', 'Prototype tree'], [LEAD_TREE_KEY, 'Leads']]);
+            expect(Object.getPrototypeOf(workspaceState.storedValues.get(RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY))).toBe(Object.prototype);
+
+        });
+
         it('given no workspace state, or a write that fails, says so and answers false', async () => {
 
             const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
@@ -358,6 +370,22 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             postedPanelMessages = [];
             await receivedMessageHandler({ command: 'ready' });
             expect(treeOf(lastPosted('recipeData'), LEAD_TREE_KEY).customName).toBe('Sales leads');
+
+        });
+
+        it('escapes a folder name in the prompt, which the input box would draw as a link that runs a command', async () => {
+
+            await openAndDraw(buildWorkspaceState());
+            const forgedFolderName = '[Click](command:workbench.action.terminal.new)';
+            const leadTree = treeOf((RecipeCockpitService as any).recipeCockpitPanelState.recipeDataMessage, LEAD_TREE_KEY);
+            leadTree.folderName = forgedFolderName;
+            showInputBox.mockResolvedValue(undefined);
+
+            await receivedMessageHandler({ command: 'renameTree', treeKey: LEAD_TREE_KEY });
+
+            const prompt = showInputBox.mock.calls[0][0].prompt;
+            expect(prompt).not.toContain(forgedFolderName);
+            expect(prompt).not.toMatch(/[[\]()]/);
 
         });
 
@@ -625,6 +653,21 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             expect(favoritesToggleOf(panel).attributes['aria-pressed']).toBe('false');
             expect(panel.isHidden(panel.findAll(cardOf(panel, LEAD_TREE_KEY), 'treeBody')[0])).toBe(false);
             expect(panel.savedState().isFavoritesOnly).toBe(false);
+
+        });
+
+        it('given the filter on and a new model with no tree to mark, shows its card rather than hiding it with no toggle to undo', () => {
+
+            const panel = drawRecipe(recipe => { recipe.trees[0].isFavorite = true; });
+            favoritesToggleOf(panel).dispatch('click');
+
+            const recipe = loadRecipe();
+            recipe.trees = [buildUngroupedTree()];
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 4 });
+
+            expect(favoritesToggleOf(panel)).toBeUndefined();
+            expect(panel.isHidden(panel.treeCards()[0])).toBe(false);
+            expect(panel.isHidden(noFavoritesOf(panel))).toBe(true);
 
         });
 

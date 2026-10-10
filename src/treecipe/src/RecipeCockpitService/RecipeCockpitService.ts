@@ -1242,8 +1242,8 @@ export class RecipeCockpitService {
             return false;
         }
 
-        const customNames: Record<string, string> = {};
-        treePreferences.customNamesByFolderName.forEach((customName, folderName) => { customNames[folderName] = customName; });
+        // fromEntries DEFINES EACH KEY, SO A FOLDER NAMED __proto__ IS STORED RATHER THAN SET AS A PROTOTYPE
+        const customNames: Record<string, string> = Object.fromEntries(treePreferences.customNamesByFolderName);
 
         try {
             await workspaceState.update(RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY, {
@@ -2096,10 +2096,13 @@ export class RecipeCockpitService {
         const shownTrees = panelState.recipeDataMessage?.recipe.trees ?? [];
         const shownTree = shownTrees.find(tree => tree.folderName === folderName);
         const treePreferences = this.readTreePreferences(this.recipeCockpitWorkspaceState);
+        // THE INPUT BOX DRAWS [label](command:...) IN ITS PROMPT AS A LINK THAT RUNS THE COMMAND, AND THE FOLDER NAME COMES FROM DISK
+        const folderLabel = RecipeYamlScalar.escapeForNotification(folderName);
+        const defaultTitleLabel = RecipeYamlScalar.escapeForNotification(shownTree?.title ?? folderName);
 
         const enteredName = await vscode.window.showInputBox({
             title: 'Rename relationship tree',
-            prompt: `A name for the tree in "${folderName}", unique in this workspace. Leave it empty to go back to "${shownTree?.title ?? folderName}".`,
+            prompt: `A name for the tree in "${folderLabel}", unique in this workspace. Leave it empty to go back to "${defaultTitleLabel}".`,
             placeHolder: shownTree?.title ?? '',
             value: treePreferences.customNamesByFolderName.get(folderName) ?? '',
             validateInput: candidateName => this.validateTreeName(candidateName, folderName, treePreferences, shownTrees)
@@ -5808,8 +5811,9 @@ ${this.buildPaletteCustomProperties()}
         return tree.customName || tree.title;
     }
 
+    // ONLY WHILE ITS TOGGLE IS DRAWN: A MODEL WITH NO CARD TO MARK WOULD OTHERWISE HIDE EVERY CARD WITH NO WAY TO TURN IT OFF
     function isHiddenByFavorites(treeState) {
-        return isFavoritesOnly && treeState.tree.isFavorite !== true;
+        return isFavoritesOnly && favoritesToggleElement !== null && treeState.tree.isFavorite !== true;
     }
 
     function applyFavoritesFilter() {
@@ -5836,7 +5840,7 @@ ${this.buildPaletteCustomProperties()}
         }
 
         if (noFavoritesElement) {
-            if (isFavoritesOnly && shownCount === 0) { noFavoritesElement.classList.remove('hidden'); } else { noFavoritesElement.classList.add('hidden'); }
+            if (isFavoritesOnly && favoritesToggleElement !== null && shownCount === 0) { noFavoritesElement.classList.remove('hidden'); } else { noFavoritesElement.classList.add('hidden'); }
         }
 
     }
