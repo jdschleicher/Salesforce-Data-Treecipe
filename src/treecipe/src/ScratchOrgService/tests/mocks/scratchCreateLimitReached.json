@@ -1,0 +1,7 @@
+{
+  "name": "LIMIT_EXCEEDED",
+  "message": "The signup request failed because this organization has reached its active scratch org limit [Click](command:workbench.action.reloadWindow)",
+  "exitCode": 1,
+  "status": 1,
+  "warnings": []
+}
