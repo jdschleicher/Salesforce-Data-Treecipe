@@ -317,6 +317,42 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
     });
 
+    describe('runSalesforceCli working directory', () => {
+
+        const captureExecFileOptions = () => {
+            const capturedOptions: Record<string, unknown>[] = [];
+            jest.spyOn(childProcess, 'execFile').mockImplementation(((
+                _command: string, _args: string[], options: Record<string, unknown>, callback: (...callbackArguments: unknown[]) => void
+            ) => {
+                capturedOptions.push(options);
+                callback(null, '{}', '');
+                return { pid: 1, kill: jest.fn() } as any;
+            }) as any);
+            return capturedOptions;
+        };
+
+        it('runs in the directory it is handed, for a command that reads sfdx-project.json', async () => {
+
+            const capturedOptions = captureExecFileOptions();
+
+            await PicklistDependencyCheckService.runSalesforceCli(['project', 'deploy', 'start', '--json'], undefined, undefined, '/workspace/project');
+
+            expect(capturedOptions[0].cwd).toBe('/workspace/project');
+
+        });
+
+        it('sets no working directory when none is handed in, as before', async () => {
+
+            const capturedOptions = captureExecFileOptions();
+
+            await PicklistDependencyCheckService.runSalesforceCli(['org', 'list', '--json']);
+
+            expect(capturedOptions[0]).not.toHaveProperty('cwd');
+
+        });
+
+    });
+
     describe('runSalesforceCli timeout', () => {
 
         // A CLI THAT NEVER ANSWERS: execFile HOLDS ITS CALLBACK, AS IT DOES WHILE A GRANDCHILD KEEPS THE PIPES OPEN

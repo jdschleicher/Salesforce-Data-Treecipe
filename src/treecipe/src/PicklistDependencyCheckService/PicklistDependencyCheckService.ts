@@ -179,9 +179,14 @@ export class PicklistDependencyCheckService {
         stdio the orphaned node still holds -- so a hung CLI outlived the timeout. A timeout now kills
         the whole tree and resolves at once as timedOut, whatever the pipes are still doing.
     */
+    /*
+        workingDirectoryPath is for a command that reads sfdx-project.json, such as a deploy with no
+        --source-dir: the extension host's own working directory is not the workspace.
+    */
     static runSalesforceCli(salesforceCliArguments: string[],
                             registerCancellation?: (killChildProcess: () => void) => void,
-                            timeoutMilliseconds?: number): Promise<ISalesforceCliInvocationResult> {
+                            timeoutMilliseconds?: number,
+                            workingDirectoryPath?: string): Promise<ISalesforceCliInvocationResult> {
 
         const invocation = this.buildSalesforceCliInvocation(salesforceCliArguments);
 
@@ -189,7 +194,8 @@ export class PicklistDependencyCheckService {
             encoding: 'utf8',
             maxBuffer: 1024 * 1024 * 8,
             shell: invocation.useShell,
-            windowsHide: true
+            windowsHide: true,
+            ...( workingDirectoryPath !== undefined ? { cwd: workingDirectoryPath } : {} )
         };
 
         return new Promise<ISalesforceCliInvocationResult>(resolve => {

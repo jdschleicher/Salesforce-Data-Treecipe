@@ -351,4 +351,46 @@ describe('SfdxProjectService', () => {
 
     });
 
+    describe('resolveDeployablePackageDirectoryPaths', () => {
+
+        test('answers every packageDirectories path as the file declares it, in file order', () => {
+
+            mockSfdxProjectJson(JSON.stringify({ packageDirectories: [{ path: 'force-app', default: true }, { path: 'unpackaged' }] }));
+
+            expect(SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot)).toEqual(['force-app', 'unpackaged']);
+
+        });
+
+        test('refuses a missing sfdx-project.json', () => {
+
+            jest.spyOn(SfdxProjectService, 'isExistingFile').mockReturnValue(false);
+
+            expect(() => SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot)).toThrow('No "sfdx-project.json" found at');
+
+        });
+
+        test('refuses an unparseable sfdx-project.json with the parser\'s message', () => {
+
+            mockSfdxProjectJson('{ "packageDirectories": [');
+
+            expect(() => SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot)).toThrow('Could not parse');
+
+        });
+
+        test.each([
+            ['no packageDirectories', '{}', 'No "packageDirectories" entries found'],
+            ['an empty packageDirectories', '{ "packageDirectories": [] }', 'No "packageDirectories" entries found'],
+            ['an entry with no path', '{ "packageDirectories": [{ "path": "force-app" }, { "default": true }] }', 'has no "path" value'],
+            ['an absolute path', '{ "packageDirectories": [{ "path": "/etc" }] }', 'is an absolute path'],
+            ['a path out of the workspace', '{ "packageDirectories": [{ "path": "../elsewhere" }] }', 'which is outside the workspace']
+        ])('refuses %s', (_label, sfdxProjectJsonContent, expectedMessage) => {
+
+            mockSfdxProjectJson(sfdxProjectJsonContent);
+
+            expect(() => SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot)).toThrow(expectedMessage);
+
+        });
+
+    });
+
 });

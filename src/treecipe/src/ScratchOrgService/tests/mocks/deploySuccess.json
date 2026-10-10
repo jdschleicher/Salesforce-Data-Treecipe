@@ -1,0 +1,17 @@
+{
+  "status": 0,
+  "result": {
+    "status": "Succeeded",
+    "success": true,
+    "numberComponentsDeployed": 3,
+    "numberComponentErrors": 0,
+    "details": {
+      "componentSuccesses": [
+        { "fullName": "Account.Score__c", "componentType": "CustomField", "success": true },
+        { "fullName": "Lead.Rating__c", "componentType": "CustomField", "success": true },
+        { "fullName": "package.xml", "componentType": "", "success": true }
+      ]
+    }
+  },
+  "warnings": []
+}

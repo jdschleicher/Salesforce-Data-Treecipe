@@ -1,0 +1,22 @@
+{
+  "name": "FailedDeployError",
+  "message": "Deploy failed.",
+  "exitCode": 1,
+  "status": 1,
+  "result": {
+    "status": "Failed",
+    "success": false,
+    "numberComponentsDeployed": 0,
+    "numberComponentErrors": 1,
+    "details": {
+      "componentSuccesses": [
+        { "fullName": "Account.Score__c", "componentType": "CustomField", "success": true },
+        { "fullName": "package.xml", "componentType": "", "success": true }
+      ],
+      "componentFailures": [
+        { "fullName": "Lead.Rating__c", "componentType": "CustomField", "problem": "Invalid field type", "problemType": "Error", "success": false }
+      ]
+    }
+  },
+  "warnings": []
+}
