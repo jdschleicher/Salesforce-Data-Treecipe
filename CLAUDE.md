@@ -109,7 +109,9 @@ src/
     │   ├── ErrorHandlingService.ts          # try-catch wrappers, GitHub Issue template generation
     │   └── tests/
     ├── ExtensionCommandService/
-    │   └── ExtensionCommandService.ts       # VS Code command handler implementations
+    │   ├── ExtensionCommandService.ts       # VS Code command handler implementations; Run Faker opens a recipe that fails to load at the line to fix, naming pre-3.29.1 bare record-type variants
+    │   └── tests/
+    │       └── mocks/                       # A pre-3.29.1 recipe per backend (bare record-type variants) and a recipe with an unrelated YAML error
     ├── FakerRecipeProcessor/
     │   ├── IFakerRecipeProcessor.ts         # Interface both processors implement
     │   ├── FakerJSRecipeProcessor/

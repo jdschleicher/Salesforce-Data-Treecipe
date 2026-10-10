@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.50.2] - Run Faker opens a recipe that will not load at the line to fix
+
+Closes [#232](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/232).
+
+A recipe that was not valid YAML made **Run Faker by Recipe** (and the Recipe Cockpit's ▶ Run Faker) fail inside `yaml.load` and show the GitHub-issue error template with a stack trace, leaving the reader to find the file and count to the line. The usual cause is a recipe generated before v3.29.1 (#153), whose record-type picklist and multi-select picklist variants are bare `${{ … }}` lines under their `### TODO: -- RecordType Options --` comment.
+
+- **The recipe opens at the failing line.** When `yaml.load` throws a `YAMLException`, `runFakerGenerationByRecipeFile` opens the recipe with the cursor on the line and column from the exception's `mark`, centered (`VSCodeWorkspaceService.openFileInEditorAtSelection`), and returns without the error template.
+- **A warning names the file, the line, the column and the parser's reason.** The file name and the reason go through `RecipeYamlScalar.escapeForNotification`.
+- **A recipe from before v3.29.1 is named as one.** `ExtensionCommandService.findBareRecordTypeVariantLineNumbers` flags each line that opens an expression (`${{`) directly under a `### TODO: -- RecordType Options --` line. The warning says the recipe was generated before v3.29.1, lists those line numbers (the first 20, then how many more), and says to put `# ` in front of each or regenerate. The editor selects the first one. The current pipeline only puts comments and `- ` choice items under such a TODO, and `DirectoryProcessor.generatedRecipeYaml.test.ts` asserts that no file it generates, in either backend, has a flagged line.
+- **An error at the very end of a file with no final line break names the file's last line.** js-yaml appends a line break before parsing, so its `mark` can name a line one past the last. The warning and the cursor use the last line, with the cursor at its end.
+- **Nothing is written to the recipe.** No data set folder is created either.
+- **Both entry points, both backends.** The `yaml.load` runs before either backend, from the palette and from the cockpit. The command returns normally, so the cockpit still reloads focused on Previous Fake Sets with its Run Faker buttons enabled again.
+- **Not changed:** any other error (an unreadable file, a missing objects wrapper, a backend failure) is reported through `ErrorHandlingService` exactly as before.
+- **Tests.** `ExtensionCommandService/tests/mocks/` holds a pre-3.29.1 recipe per backend (the Recipe Cockpit's current writer fixture with its variants uncommented, which a test pins line for line) and a recipe with an unrelated indentation error. `ExtensionCommandService.test.ts` runs each from the picker and from a recipe file path, and covers the selection, the warning text, the file left unchanged, an unreadable path still reaching the error template, the escaping, the singular and capped line lists, an error at the end of a file with no final line break, and a non-`YAMLException` from `yaml.load` still reaching the error template. The #186 command-link test now asserts the warning instead of the error template. `VSCodeWorkspaceService.test.ts` covers `openFileInEditorAtSelection`.
+
 ## [3.50.1] - A recipe whose name merely contains ".." runs again under Run Faker
 
 Closes [#185](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/185), a follow-up to [#176](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/176) / [#183](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/183), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
