@@ -11,7 +11,8 @@ jest.mock('vscode', () => ({
     window: {
         showErrorMessage: jest.fn(),
         showWarningMessage: jest.fn(),
-        createOutputChannel: jest.fn()
+        createOutputChannel: jest.fn(),
+        registerWebviewPanelSerializer: jest.fn().mockReturnValue({ dispose: jest.fn() })
     },
     commands: { registerCommand: jest.fn().mockReturnValue({ dispose: jest.fn() }) },
     Uri: { file: (filePath: string) => ({ fsPath: filePath }), joinPath: jest.fn(), parse: jest.fn() },
@@ -93,6 +94,25 @@ describe('activate', () => {
         expect(registeredCommandIds).toContain('treecipe.openRecipeCockpit');
         expect(registeredCommandIds).toContain('treecipe.generateTreecipe');
         expect(registeredCommandIds).toHaveLength(require('../../package.json').contributes.commands.length);
+
+    });
+
+    /*
+        The Recipe Cockpit is never reopened by VS Code itself (#230): a window reload leaves it
+        closed, and its place comes back only when the reader runs Open Recipe Cockpit. A serializer
+        or an onWebviewPanel: activation event would make every reload load a run on its own.
+    */
+    it('registers no webview panel serializer, and the manifest declares no webview panel activation event', async () => {
+
+        (vscode.workspace as { workspaceFolders: unknown }).workspaceFolders = undefined;
+        jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
+        (vscode.window.registerWebviewPanelSerializer as jest.Mock).mockClear();
+
+        await activate(buildExtensionContext() as never);
+
+        expect(vscode.window.registerWebviewPanelSerializer).not.toHaveBeenCalled();
+        const activationEvents: string[] = require('../../package.json').activationEvents ?? [];
+        expect(activationEvents.filter(activationEvent => activationEvent.startsWith('onWebviewPanel:'))).toEqual([]);
 
     });
 
