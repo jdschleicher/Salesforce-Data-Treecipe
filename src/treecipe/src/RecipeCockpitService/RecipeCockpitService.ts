@@ -496,6 +496,8 @@ export interface IRecipeCockpitRecipeDataMessage {
     recipe: IRecipeCockpitRecipeViewModel;
     renderSequence: number;
     focusTree?: IRecipeCockpitTreeFocus;
+    // SET ONLY ON Regenerate's RELOAD (#225): IT LANDS ON THE RUN IT JUST WROTE, AND THE READER'S PLACE GOES WITH IT
+    carryPlaceAcrossRuns?: boolean;
     // A PLACE KEPT IN workspaceState (#230), FOR A DOCUMENT WHOSE OWN getState HAS NONE: A PANEL OPENED AFTER A CLOSE OR A WINDOW RELOAD
     restorePlace?: IRecipeCockpitPanelPlace;
 }
@@ -1353,7 +1355,8 @@ export class RecipeCockpitService {
                                                 requestedRunFolderName?: string,
                                                 focusTree?: IRecipeCockpitTreeFocus,
                                                 carriedPanelState?: IRecipeCockpitCarriedPanelState,
-                                                persistedPanelPlace?: IRecipeCockpitPanelPlace): Promise<void> {
+                                                persistedPanelPlace?: IRecipeCockpitPanelPlace,
+                                                carryPlaceAcrossRuns = false): Promise<void> {
 
         const loadSequence = ++this.recipeCockpitLoadSequence;
 
@@ -1384,7 +1387,7 @@ export class RecipeCockpitService {
                 return;
             }
 
-            this.renderRecipeModel(cockpitPanel, loadedRecipe, focusTree, carriedPanelState, persistedPanelPlace);
+            this.renderRecipeModel(cockpitPanel, loadedRecipe, focusTree, carriedPanelState, persistedPanelPlace, carryPlaceAcrossRuns);
 
         } catch (loadError) {
 
@@ -1496,7 +1499,8 @@ export class RecipeCockpitService {
                                         loadedRecipe: IRecipeCockpitLoadedRecipe,
                                         focusTree?: IRecipeCockpitTreeFocus,
                                         carriedPanelState?: IRecipeCockpitCarriedPanelState,
-                                        persistedPanelPlace?: IRecipeCockpitPanelPlace) {
+                                        persistedPanelPlace?: IRecipeCockpitPanelPlace,
+                                        carryPlaceAcrossRuns = false) {
 
         const panelState = this.recipeCockpitPanelState;
         const recipeViewModel = loadedRecipe.recipeViewModel;
@@ -1566,7 +1570,9 @@ export class RecipeCockpitService {
         */
         this.postToPanel(cockpitPanel, {
             ...this.withRestorePlace(recipeDataMessage, panelState),
-            ...( isFocusOnScreen ? { focusTree: focusTree } : {} )
+            ...( isFocusOnScreen ? { focusTree: focusTree } : {} ),
+            // THE POSTED COPY ONLY, LIKE THE FOCUS: A REPLAY IS A NEW DOCUMENT, WHICH HAS ITS OWN SAVED PLACE
+            ...( carryPlaceAcrossRuns ? { carryPlaceAcrossRuns: true } : {} )
         });
 
     }
@@ -2494,7 +2500,8 @@ export class RecipeCockpitService {
             }
 
             if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState ) {
-                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, undefined, focusTree);
+                // A SUCCESSFUL GENERATION WRITES A NEW RUN, SO THE PLACE IS CARRIED ACROSS RATHER THAN MATCHED BY RUN NAME
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, undefined, focusTree, undefined, undefined, true);
             }
 
         } finally {
@@ -7332,12 +7339,14 @@ ${this.buildPaletteCustomProperties()}
         A reload in the same document (#225) -- Regenerate, Run Faker, Create, Add friend -- redraws
         every card from scratch. When it is the run already on screen, the place on screen is taken
         BEFORE the redraw drops it and restored like a saved one; a run switch, or a reload that
-        landed on another run, starts fresh. A model that failed to draw left nothing to take.
+        landed on another run, starts fresh. Regenerate is the one exception the host marks: it
+        lands on the run it just WROTE, whose cards carry the same tree folder names, so its place
+        goes with it. A model that failed to draw left nothing to take.
     */
-    function takeSameRunPlace(recipe) {
+    function takeSameRunPlace(recipe, carryPlaceAcrossRuns) {
 
         if (!isPlaceRestoreSettled || renderedSequence === null || !recipe || recipe.objects.length === 0
-                || renderedRunFolderName !== recipe.selectedRunFolderName) {
+                || (renderedRunFolderName !== recipe.selectedRunFolderName && !carryPlaceAcrossRuns)) {
             return null;
         }
 
@@ -7616,10 +7625,10 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function renderPanelGuarded(recipe, renderSequence, focusTree, hostPlace) {
+    function renderPanelGuarded(recipe, renderSequence, focusTree, hostPlace, carryPlaceAcrossRuns) {
 
         // THE SAVED PLACE IS SPENT ON THIS DOCUMENT'S FIRST MODEL WHETHER OR NOT IT APPLIES; A LATER MODEL OF THE SAME RUN KEEPS THE PLACE ON SCREEN
-        const savedPlace = takeRestorablePlace(recipe, hostPlace) || takeSameRunPlace(recipe);
+        const savedPlace = takeRestorablePlace(recipe, hostPlace) || takeSameRunPlace(recipe, carryPlaceAcrossRuns);
 
         try {
 
@@ -7907,7 +7916,7 @@ ${this.buildPaletteCustomProperties()}
         if (hostMessage.command === 'recipeData') {
 
             // THE STATUS LINE IS LEFT ALONE WHEN THE RENDER FAILED -- CLEARING IT WOULD READ AS FINISHED
-            if (renderPanelGuarded(hostMessage.recipe, hostMessage.renderSequence, hostMessage.focusTree, hostMessage.restorePlace)) {
+            if (renderPanelGuarded(hostMessage.recipe, hostMessage.renderSequence, hostMessage.focusTree, hostMessage.restorePlace, hostMessage.carryPlaceAcrossRuns === true)) {
                 setLoadStatus('', false);
             }
 

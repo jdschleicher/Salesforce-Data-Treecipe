@@ -317,7 +317,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             it.each([
                 ['Run Faker', { treeKey: LEAD_TREE_KEY, tab: 'datasets' }, LEAD_TREE_KEY, 'Previous Fake Sets'],
                 ['Create', { treeKey: ACCOUNT_TREE_KEY, tab: 'dataByOrg' }, ACCOUNT_TREE_KEY, 'Data-by-Org'],
-                ['Add friend or Regenerate', { treeKey: LEAD_TREE_KEY, tab: 'structure' }, LEAD_TREE_KEY, 'Structure']
+                ['Add friend, or a Regenerate that failed and reloaded the same run', { treeKey: LEAD_TREE_KEY, tab: 'structure' }, LEAD_TREE_KEY, 'Structure']
             ])('given %s\'s focus, opens its card on its tab and restores everything else', (_action, focusTree, focusedTreeKey, focusedTabLabel) => {
 
                 const { panel, recipe } = buildReaderSession();
@@ -358,6 +358,37 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 expect(scrollCalls).toEqual([]);
                 expect(panel.savedState().runFolderName).toBe(FAKER_JS_RUN_FOLDER_NAME);
                 expect(panel.savedState().trees).toEqual([]);
+
+            });
+
+            // Regenerate WRITES A NEW RUN FOLDER WHOSE CARDS CARRY THE SAME TREE FOLDER NAMES, AND THE HOST SAYS SO
+            it('given Regenerate\'s marker, restores every card, tab, search and the scroll on the new run, its focus winning for its card', () => {
+
+                const { panel, recipe } = buildReaderSession();
+                const regeneratedRunFolderName = 'recipe-2026-10-10T12-00-00';
+                const scrollCallsBefore = panel.scrollToCalls.length;
+
+                panel.postToPanel({ command: 'recipeData', recipe: { ...recipe, selectedRunFolderName: regeneratedRunFolderName }, renderSequence: 2,
+                    focusTree: { treeKey: LEAD_TREE_KEY, tab: 'structure' }, carryPlaceAcrossRuns: true });
+
+                expectReaderSessionRestored(panel);
+                expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Structure');
+                expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Structure');
+                expect(panel.scrollToCalls.slice(scrollCallsBefore)).toEqual([480]);
+                // SAVED UNDER THE RUN NOW ON SCREEN, SO A LATER HIDE AND REVEAL RESTORES IT THERE
+                expect(panel.savedState().runFolderName).toBe(regeneratedRunFolderName);
+                expect(panel.savedState().trees.map((savedTree: any) => savedTree.treeKey)).toEqual([ACCOUNT_TREE_KEY, LEAD_TREE_KEY]);
+
+            });
+
+            it('honours the marker only as a literal true', () => {
+
+                const { panel, recipe } = buildReaderSession();
+
+                panel.postToPanel({ command: 'recipeData', recipe: { ...recipe, selectedRunFolderName: FAKER_JS_RUN_FOLDER_NAME }, renderSequence: 2, carryPlaceAcrossRuns: 'true' });
+
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
+                expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
 
             });
 

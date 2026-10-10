@@ -5615,11 +5615,15 @@ describe('RecipeCockpitService', () => {
                     expect(lastRenderSequence()).toBeGreaterThan(comparedRenderSequence);
                     expect([...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData').focusTree)
                         .toEqual({ treeKey: 'Account-thru-Contact', tab: 'structure' });
+                    // THE REGENERATED RUN IS A NEW FOLDER, SO THE READER'S PLACE IS CARRIED ACROSS TO IT RATHER THAN MATCHED BY NAME (#225)
+                    expect([...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData').carryPlaceAcrossRuns).toBe(true);
 
                     // THE COMPARISON WAS OF THE PREVIOUS RUN, SO IT IS NOT REPLAYED OVER THE REGENERATED ONE
                     postedPanelMessages.length = 0;
                     await receivedMessageHandler({ command: 'ready' });
                     expect(postedPanelMessages.map(hostMessage => hostMessage.command)).toEqual(['recipeData']);
+                    // A REPLAY IS A NEW DOCUMENT WITH ITS OWN SAVED PLACE; THE MARKER RODE ON THE POSTED COPY ONLY
+                    expect(postedPanelMessages[0].carryPlaceAcrossRuns).toBeUndefined();
 
                 });
 
@@ -5912,6 +5916,8 @@ describe('RecipeCockpitService', () => {
                 const reloadedLeadTree = reloadedRecipeData.recipe.trees.find((tree: any) => tree.treeKey === LEAD_TREE_KEY);
 
                 expect(reloadedRecipeData.focusTree).toEqual({ treeKey: LEAD_TREE_KEY, tab: 'datasets' });
+                // THE SAME RUN, SO THE PANEL MATCHES THE PLACE BY RUN NAME; ONLY Regenerate CARRIES IT ACROSS RUNS
+                expect(reloadedRecipeData.carryPlaceAcrossRuns).toBeUndefined();
                 expect(reloadedRecipeData.recipe.selectedRunFolderName).toBe(HISTORY_CURRENT_RUN);
                 expect(reloadedLeadTree.history.datasets.map((dataset: any) => dataset.datasetFolderName)).not.toContain(RECORDED_DATASET);
 
