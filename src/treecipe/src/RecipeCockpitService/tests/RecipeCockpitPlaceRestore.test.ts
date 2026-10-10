@@ -280,17 +280,238 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
         });
 
-        // A RELOAD AFTER Regenerate, Run Faker OR Create IS A NEW MODEL IN THE SAME DOCUMENT, AND KEEPS TODAY'S BEHAVIOUR
-        it('spends the place on the document\'s first model only, so a later model in the same document is drawn as before', () => {
+        describe('given a later model of the same run in the same document (#225)', () => {
 
-            const { panel: hiddenPanel, recipe } = buildReaderSession();
+            // WHAT Regenerate, Run Faker, Create AND Add friend DO: THE HOST RELOADS THE RUN ON SCREEN AND POSTS IT AGAIN
+            const reload = (panel: Panel, recipe: IRecipeCockpitRecipeViewModel, focusTree?: any) => {
+                const scrollCallsBefore = panel.scrollToCalls.length;
+                render(panel, recipe, 2, focusTree);
+                return panel.scrollToCalls.slice(scrollCallsBefore);
+            };
 
-            const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
-            render(panel, recipe, 1);
-            render(panel, recipe, 2);
+            const expectReaderSessionRestored = (panel: Panel) => {
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
+                expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Account')).toBe(true);
+                expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Contact')).toBe(false);
+                expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').attributes['aria-expanded']).toBe('true');
+                expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Regions__c').attributes['aria-expanded']).toBe('false');
+                expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(true);
+                expect(searchInputOf(panel, LEAD_TREE_KEY, 'treeVersions').value).toBe('FakerJS');
+                expect(versionToggles(panel, LEAD_TREE_KEY).map((toggleElement: any) => toggleElement.attributes['aria-expanded'])).toEqual(['false', 'true', 'false']);
+            };
 
-            expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
-            expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
+            it('puts back every card, tab, object, picklist, version and search the reader had, and the scroll', () => {
+
+                const { panel, recipe } = buildReaderSession();
+
+                const scrollCalls = reload(panel, recipe);
+
+                expectReaderSessionRestored(panel);
+                expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Structure');
+                expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previous Versions');
+                expect(visibleVersionCount(panel, LEAD_TREE_KEY)).toBe(1);
+                expect(scrollCalls).toEqual([480]);
+                expect(commandsPosted(panel)).not.toContain('renderFailed');
+
+            });
+
+            it.each([
+                ['Run Faker', { treeKey: LEAD_TREE_KEY, tab: 'datasets' }, LEAD_TREE_KEY, 'Previous Fake Sets'],
+                ['Create', { treeKey: ACCOUNT_TREE_KEY, tab: 'dataByOrg' }, ACCOUNT_TREE_KEY, 'Data-by-Org'],
+                ['Add friend, or a Regenerate that failed and reloaded the same run', { treeKey: LEAD_TREE_KEY, tab: 'structure' }, LEAD_TREE_KEY, 'Structure']
+            ])('given %s\'s focus, opens its card on its tab and restores everything else', (_action, focusTree, focusedTreeKey, focusedTabLabel) => {
+
+                const { panel, recipe } = buildReaderSession();
+
+                reload(panel, recipe, focusTree);
+
+                expect(selectedTabOf(panel, focusedTreeKey)).toBe(focusedTabLabel);
+                expectReaderSessionRestored(panel);
+                const otherTreeKey = focusedTreeKey === ACCOUNT_TREE_KEY ? LEAD_TREE_KEY : ACCOUNT_TREE_KEY;
+                expect(selectedTabOf(panel, otherTreeKey)).toBe(otherTreeKey === LEAD_TREE_KEY ? 'Previous Versions' : 'Structure');
+
+            });
+
+            it('given a focus on a card the reader had closed, opens it and leaves the open cards open', () => {
+
+                jest.useFakeTimers();
+                const recipe = loadHistoryRecipe().recipeViewModel;
+                const panel = runPanelScript();
+                render(panel, recipe);
+                openCard(panel, ACCOUNT_TREE_KEY);
+
+                reload(panel, recipe, { treeKey: LEAD_TREE_KEY, tab: 'datasets' });
+
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
+                expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(true);
+                expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previous Fake Sets');
+
+            });
+
+            it('given the reload landed on another run, starts fresh', () => {
+
+                const { panel, recipe } = buildReaderSession();
+
+                const scrollCalls = reload(panel, { ...recipe, selectedRunFolderName: FAKER_JS_RUN_FOLDER_NAME });
+
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
+                expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
+                expect(scrollCalls).toEqual([]);
+                expect(panel.savedState().runFolderName).toBe(FAKER_JS_RUN_FOLDER_NAME);
+                expect(panel.savedState().trees).toEqual([]);
+
+            });
+
+            // Regenerate WRITES A NEW RUN FOLDER WHOSE CARDS CARRY THE SAME TREE FOLDER NAMES, AND THE HOST SAYS SO
+            it('given Regenerate\'s marker, restores every card, tab, search and the scroll on the new run, its focus winning for its card', () => {
+
+                const { panel, recipe } = buildReaderSession();
+                const regeneratedRunFolderName = 'recipe-2026-10-10T12-00-00';
+                const scrollCallsBefore = panel.scrollToCalls.length;
+
+                panel.postToPanel({ command: 'recipeData', recipe: { ...recipe, selectedRunFolderName: regeneratedRunFolderName }, renderSequence: 2,
+                    focusTree: { treeKey: LEAD_TREE_KEY, tab: 'structure' }, carryPlaceAcrossRuns: true });
+
+                expectReaderSessionRestored(panel);
+                expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Structure');
+                expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Structure');
+                expect(panel.scrollToCalls.slice(scrollCallsBefore)).toEqual([480]);
+                // SAVED UNDER THE RUN NOW ON SCREEN, SO A LATER HIDE AND REVEAL RESTORES IT THERE
+                expect(panel.savedState().runFolderName).toBe(regeneratedRunFolderName);
+                expect(panel.savedState().trees.map((savedTree: any) => savedTree.treeKey)).toEqual([ACCOUNT_TREE_KEY, LEAD_TREE_KEY]);
+
+            });
+
+            it('honours the marker only as a literal true', () => {
+
+                const { panel, recipe } = buildReaderSession();
+
+                panel.postToPanel({ command: 'recipeData', recipe: { ...recipe, selectedRunFolderName: FAKER_JS_RUN_FOLDER_NAME }, renderSequence: 2, carryPlaceAcrossRuns: 'true' });
+
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
+                expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
+
+            });
+
+            it('given the reader switched runs, starts fresh, and switching back starts fresh too', () => {
+
+                const { panel, recipe } = buildReaderSession();
+
+                render(panel, { ...recipe, selectedRunFolderName: FAKER_JS_RUN_FOLDER_NAME }, 2);
+                render(panel, recipe, 3);
+
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
+                expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
+
+            });
+
+            it('given the model before it failed to draw, starts fresh', () => {
+
+                const { panel, recipe } = buildReaderSession();
+
+                // AN OBJECT WITH NO FIELDS LIST IS A MODEL THE PANEL CANNOT DRAW
+                render(panel, { ...recipe, objects: recipe.objects.map(object => object.objectApiName === 'Account' ? { objectApiName: 'Account' } : object) } as any, 2);
+                expect(commandsPosted(panel)).toContain('renderFailed');
+                render(panel, recipe, 3);
+
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
+                expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
+
+            });
+
+            // A Regenerate THAT RENAMED A TREE FOLDER, AND AN Add friend THAT ADDED A NICKNAME
+            it('passes over a card, object or version the reloaded model no longer has and restores the rest, without throwing', () => {
+
+                const { panel, recipe } = buildReaderSession();
+                const reloadedRecipe = {
+                    ...recipe,
+                    objects: recipe.objects.map(object => object.objectApiName === 'Account' ? { ...object, nickname: 'Account_Ref_2' } : object),
+                    trees: recipe.trees.map(tree => tree.treeKey === LEAD_TREE_KEY
+                        ? { ...tree, treeKey: 'Lead-thru-Task', folderName: 'Lead-thru-Task', history: undefined }
+                        : tree)
+                };
+
+                const postedBeforeReload = panel.postedHostMessages.length;
+
+                reload(panel, reloadedRecipe);
+
+                expect(commandsPosted(panel)).not.toContain('renderFailed');
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
+                // THE OBJECT'S PLACE IS KEYED BY ITS NICKNAME, SO THE RENAMED OCCURRENCE IS NOT THE ONE THE READER OPENED
+                expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Account')).toBe(false);
+                expect(commandsPosted(panel).slice(postedBeforeReload)).not.toContain('loadPicklistValues');
+                expect(isCardOpen(panel, 'Lead-thru-Task')).toBe(false);
+                expect(panel.savedState().trees.map((savedTree: any) => savedTree.treeKey)).toEqual([ACCOUNT_TREE_KEY]);
+
+            });
+
+            it('asks the host for the values and summaries it re-opens only after acknowledging the new draw', () => {
+
+                const { panel, recipe } = buildReaderSession();
+                const postedBeforeReload = panel.postedHostMessages.length;
+
+                reload(panel, recipe);
+
+                const postedByReload = commandsPosted(panel).slice(postedBeforeReload);
+                expect(postedByReload).toContain('rendered');
+                expect(postedByReload.indexOf('loadPicklistValues')).toBeGreaterThan(postedByReload.indexOf('rendered'));
+                expect(postedByReload.indexOf('loadVersionSummaries')).toBeGreaterThan(postedByReload.indexOf('rendered'));
+                expect(panel.postedHostMessages.slice(postedBeforeReload).find((hostMessage: any) => hostMessage.command === 'rendered').renderSequence).toBe(2);
+
+            });
+
+            it('saves the restored place once, after the restore', () => {
+
+                const { panel, recipe } = buildReaderSession();
+                const placeBeforeReload = panel.savedState();
+                const savesBeforeReload = panel.setStateCalls.length;
+
+                reload(panel, recipe);
+
+                expect(panel.setStateCalls).toHaveLength(savesBeforeReload + 1);
+                expect(panel.savedState()).toEqual(placeBeforeReload);
+
+            });
+
+            it('given a compared Data-by-Org tab with a status filter and an opened row, holds both until the card\'s comparison is drawn again', () => {
+
+                const recipe = loadHistoryRecipe().recipeViewModel;
+                const panel = runPanelScript();
+                render(panel, recipe);
+                openCard(panel, ACCOUNT_TREE_KEY);
+                clickTab(panel, ACCOUNT_TREE_KEY, 'Data-by-Org');
+                panel.postToPanel(buildAccountComparison(recipe, 1));
+                panel.findAll(dataObjectNamed(panel, ACCOUNT_TREE_KEY, 'Account'), 'dataObjectToggle')[0].dispatch('click');
+                const statusFilterElement = statusFilterOf(panel, ACCOUNT_TREE_KEY);
+                statusFilterElement.value = 'new-in-org';
+                statusFilterElement.dispatch('change');
+
+                reload(panel, recipe, { treeKey: ACCOUNT_TREE_KEY, tab: 'dataByOrg' });
+
+                expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Data-by-Org');
+                expect(statusFilterOf(panel, ACCOUNT_TREE_KEY).value).toBe('all');
+                expect(visibleDataFieldNamesOf(panel, dataObjectNamed(panel, ACCOUNT_TREE_KEY, 'Account'))).toEqual([]);
+
+                panel.postToPanel(buildAccountComparison(recipe, 2));
+
+                expect(statusFilterOf(panel, ACCOUNT_TREE_KEY).value).toBe('new-in-org');
+                expect(visibleDataFieldNamesOf(panel, dataObjectNamed(panel, ACCOUNT_TREE_KEY, 'Account'))).toEqual(['Brand_New__c']);
+
+            });
+
+            it('given the document\'s saved place was spent on its first model, restores the place on screen rather than the saved one', () => {
+
+                const { panel: hiddenPanel, recipe } = buildReaderSession();
+
+                const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
+                render(panel, recipe, 1);
+                openCard(panel, LEAD_TREE_KEY);
+                render(panel, recipe, 2);
+
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
+                expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
+
+            });
 
         });
 

@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.50.0] - Recipe Cockpit: name a tree card, mark it a favorite, and show only the favorites
+## [3.51.0] - Recipe Cockpit: name a tree card, mark it a favorite, and show only the favorites
 
 Closes [#235](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/235), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
 
@@ -24,6 +24,48 @@ Tree cards were titled "Relationship Tree 1, 2, 3…". The number is only the ca
   - the real panel script: titles and stars, no buttons on the ungrouped card, clicks posting only the key without toggling the card, in-place redraw and the stale-update drop, the filter with its count and empty state, restoring it from `getState` and from the host's place, a pre-#235 place, keeping it across a new model, a model with nothing to mark, and a focus turning it off.
 
   The existing place tests assert the new `isFavoritesOnly` field, and the header test asserts the action group's order: ☆, ✎, ▶ Run Faker.
+## [3.50.2] - Run Faker opens a recipe that will not load at the line to fix
+
+Closes [#232](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/232).
+
+A recipe that was not valid YAML made **Run Faker by Recipe** (and the Recipe Cockpit's ▶ Run Faker) fail inside `yaml.load` and show the GitHub-issue error template with a stack trace, leaving the reader to find the file and count to the line. The usual cause is a recipe generated before v3.29.1 (#153), whose record-type picklist and multi-select picklist variants are bare `${{ … }}` lines under their `### TODO: -- RecordType Options --` comment.
+
+- **The recipe opens at the failing line.** When `yaml.load` throws a `YAMLException`, `runFakerGenerationByRecipeFile` opens the recipe with the cursor on the line and column from the exception's `mark`, centered (`VSCodeWorkspaceService.openFileInEditorAtSelection`), and returns without the error template.
+- **A warning names the file, the line, the column and the parser's reason.** The file name and the reason go through `RecipeYamlScalar.escapeForNotification`.
+- **A recipe from before v3.29.1 is named as one.** `ExtensionCommandService.findBareRecordTypeVariantLineNumbers` flags each line that opens an expression (`${{`) directly under a `### TODO: -- RecordType Options --` line. The warning says the recipe was generated before v3.29.1, lists those line numbers (the first 20, then how many more), and says to put `# ` in front of each or regenerate. The editor selects the first one. The current pipeline only puts comments and `- ` choice items under such a TODO, and `DirectoryProcessor.generatedRecipeYaml.test.ts` asserts that no file it generates, in either backend, has a flagged line.
+- **An error at the very end of a file with no final line break names the file's last line.** js-yaml appends a line break before parsing, so its `mark` can name a line one past the last. The warning and the cursor use the last line, with the cursor at its end.
+- **Nothing is written to the recipe.** No data set folder is created either.
+- **Both entry points, both backends.** The `yaml.load` runs before either backend, from the palette and from the cockpit. The command returns normally, so the cockpit still reloads focused on Previous Fake Sets with its Run Faker buttons enabled again.
+- **Not changed:** any other error (an unreadable file, a missing objects wrapper, a backend failure) is reported through `ErrorHandlingService` exactly as before.
+- **Tests.** `ExtensionCommandService/tests/mocks/` holds a pre-3.29.1 recipe per backend (the Recipe Cockpit's current writer fixture with its variants uncommented, which a test pins line for line) and a recipe with an unrelated indentation error. `ExtensionCommandService.test.ts` runs each from the picker and from a recipe file path, and covers the selection, the warning text, the file left unchanged, an unreadable path still reaching the error template, the escaping, the singular and capped line lists, an error at the end of a file with no final line break, and a non-`YAMLException` from `yaml.load` still reaching the error template. The #186 command-link test now asserts the warning instead of the error template. `VSCodeWorkspaceService.test.ts` covers `openFileInEditorAtSelection`.
+
+## [3.50.1] - A recipe whose name merely contains ".." runs again under Run Faker
+
+Closes [#185](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/185), a follow-up to [#176](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/176) / [#183](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/183), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Since 3.30.0, `DatasetSourceService.isSafeFolderOrFileName` refused any name that *contained* `..`, so **Run Faker by Recipe** failed for hand-placed recipes that ran before, such as `GeneratedRecipes/my..recipe.yml` or a recipe under a `team..v2/` folder. A name with no separator can only act as a path when it is exactly `..` or `.`.
+
+- **Exact segments only.** `isSafeFolderOrFileName` now refuses an empty name, a name that is exactly `.` or `..`, and any name with `/` or `\`. `a..b`, `my..recipe.yml` and `..hidden` are accepted.
+- **Write side.** Run Faker on `GeneratedRecipes/my..recipe.yml` generates data and records `recipeFileName: "my..recipe.yml"` with a `null` run and tree. A tree folder named `team..v2` is recorded as the tree, and the reader links it.
+- **Read side.** A recorded `"../../etc"` is still `unknown` (it has a separator), and so is a recorded `".."`. A recorded `"a..b"` is `linked` only when a run folder with that name is known. Legacy inference applies the same rule to the tree name it reads from the recipe copy.
+- **Outside the folder.** A recipe outside `GeneratedRecipes/` still fails before any data is generated: its path relative to the folder starts with a `..` segment. The error still names no part of the path (#183); its wording now says "is not a plain name" instead of "contains \"..\"".
+- **The Recipe Cockpit's saved place** reads its run name through the same rule, so a place naming a run with `..` inside its name is read, and the run is still looked up among the runs on disk.
+- **Not changed:** what Run Faker accepts outside `GeneratedRecipes/`, and recorded names are still never joined into paths.
+- **Tests.** The `isSafeFolderOrFileName` table covers the accepted and refused names. The `DatasetSourceService` fixture gains a `team..v2` tree folder holding `my..recipe.yml`, a data set recording it (`linked`) and a data set recording a `".."` run (`unknown`). New cases cover a recorded `"a..b"` run with and without a matching run, legacy inference of a `team..v2` tree, and a copied tree name of exactly `..`. The command-link refusal test now refuses by a path outside the folder instead of an `a..b` folder. `ExtensionCommandService.test.ts` runs `my..recipe.yml` and a `team..v2` tree through both backends, and asserts the outside-the-folder error names none of `elsewhere`, `team..v2`, `my..recipe.yml` or the workspace root.
+
+## [3.50.0] - The Recipe Cockpit keeps the reader's place when an action reloads the run
+
+Closes [#225](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/225), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Regenerate recipe, ▶ Run Faker, Data-by-Org Create and the self-lookup **+** Add friend each reload the run and redraw every card. 3.48.0 restored the reader's place only on a document's first model, so after any of these actions every other card collapsed, every tab went back to Structure, every search emptied and the scroll went to the top. Only the action's own `focusTree` came back.
+
+- **A later model of the same run keeps the place on screen.** When a model arrives in a document that has already drawn one, and its `selectedRunFolderName` is the run on screen, the panel builds the place from what is on screen before `resetPanelState` clears it (`takeSameRunPlace`, using the same `buildPanelPlace` that `savePanelPlace` uses). It then restores it through the 3.48.0 path: open cards, each card's tab, each tab's search as typed, status filters, opened Structure objects, picklist rows, Data-by-Org rows, expanded versions, and the scroll.
+- **Regenerate carries the place to the run it wrote.** A successful Regenerate writes a NEW timestamped run folder, so a match by run name would never keep its place. Its reload posts `carryPlaceAcrossRuns: true` on the posted copy of the model (never the stored one, so a replay to a rebuilt document does not carry it), and the panel takes the place on screen whatever the run name. The cards keep their keys across runs, because a tree key is the tree's folder name. Only a literal `true` counts. The place is then saved under the new run.
+- **The action's focus still wins for its own card.** `focusTree` is applied after the restore, so Run Faker lands on Previous Fake Sets, Create on Data-by-Org, and Add friend and Regenerate on Structure, while the other cards stay as the reader left them.
+- **Another run starts fresh.** A run switch, or any other reload that lands on another run, restores nothing, as before. So does a model that follows one the panel failed to draw.
+- **Entries the new model lacks are skipped one by one.** A tree folder that Regenerate renamed, or an object occurrence under a nickname that changed, is passed over and the rest is restored, without throwing.
+- **Nothing new reaches the host.** Picklist values, version summaries and the org listing are still requested only after the new model's `rendered`, through the same pending/active allow-lists. A restored status filter and opened Data-by-Org rows still wait for that card's next `orgDescribe`. The restore saves once, after it finishes.
+- **Tests.** `RecipeCockpitPlaceRestore.test.ts` runs the real panel script in one document: draw, open things, post a second model of the same run with and without each action's `focusTree`, and assert the restored DOM and scroll. It also covers Regenerate's marker carrying the place onto a new run name (and only a literal `true`), a reload onto another run, a run switch and back, a model after a failed draw, a renamed tree and nickname, requests ordered after the new `rendered`, a single save, a status filter and opened row waiting for the comparison, and a document whose saved place was already spent. Two `RecipeCockpitService.test.ts` cases that asserted a fresh draw now post another run, and its host tests assert that Regenerate's reload posts the marker, its replay does not, and Run Faker's reload never does.
 
 ## [3.49.0] - The Recipe Cockpit brings the reader back to their place after a close or a window reload
 
