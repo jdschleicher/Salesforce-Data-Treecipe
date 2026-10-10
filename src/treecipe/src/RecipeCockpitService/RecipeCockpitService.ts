@@ -7305,13 +7305,7 @@ ${this.buildPaletteCustomProperties()}
         let panelPlace = null;
 
         try {
-            panelPlace = {
-                version: PANEL_PLACE_VERSION,
-                runFolderName: renderedRunFolderName,
-                isOrgPickerInUse: isDataOrgPickerInUse,
-                scrollY: typeof window.scrollY === 'number' ? window.scrollY : 0,
-                trees: treeStates.map(buildTreePlace).filter(Boolean)
-            };
+            panelPlace = buildPanelPlace();
             vscodeApi.setState(panelPlace);
         } catch (setStateError) {
             // A PLACE THAT COULD NOT BE KEPT COSTS THE READER A RE-OPEN, NEVER THE PANEL
@@ -7319,6 +7313,40 @@ ${this.buildPaletteCustomProperties()}
 
         // THE HOST KEEPS IT IN workspaceState TOO, SO IT OUTLIVES A CLOSE OR A WINDOW RELOAD (#230); IT THROTTLES THE WRITES
         if (panelPlace) { vscodeApi.postMessage({ command: 'savePlace', place: panelPlace }); }
+
+    }
+
+    function buildPanelPlace() {
+
+        return {
+            version: PANEL_PLACE_VERSION,
+            runFolderName: renderedRunFolderName,
+            isOrgPickerInUse: isDataOrgPickerInUse,
+            scrollY: typeof window.scrollY === 'number' ? window.scrollY : 0,
+            trees: treeStates.map(buildTreePlace).filter(Boolean)
+        };
+
+    }
+
+    /*
+        A reload in the same document (#225) -- Regenerate, Run Faker, Create, Add friend -- redraws
+        every card from scratch. When it is the run already on screen, the place on screen is taken
+        BEFORE the redraw drops it and restored like a saved one; a run switch, or a reload that
+        landed on another run, starts fresh. A model that failed to draw left nothing to take.
+    */
+    function takeSameRunPlace(recipe) {
+
+        if (!isPlaceRestoreSettled || renderedSequence === null || !recipe || recipe.objects.length === 0
+                || renderedRunFolderName !== recipe.selectedRunFolderName) {
+            return null;
+        }
+
+        // A PLACE THAT CANNOT BE TAKEN COSTS THE READER THEIR PLACE, NEVER THE DRAW
+        try {
+            return buildPanelPlace();
+        } catch (placeError) {
+            return null;
+        }
 
     }
 
@@ -7590,8 +7618,8 @@ ${this.buildPaletteCustomProperties()}
 
     function renderPanelGuarded(recipe, renderSequence, focusTree, hostPlace) {
 
-        // SPENT ON THIS DOCUMENT'S FIRST MODEL WHETHER OR NOT IT APPLIES; A LATER MODEL KEEPS WHAT IS IN MEMORY, AS IT ALWAYS DID
-        const savedPlace = takeRestorablePlace(recipe, hostPlace);
+        // THE SAVED PLACE IS SPENT ON THIS DOCUMENT'S FIRST MODEL WHETHER OR NOT IT APPLIES; A LATER MODEL OF THE SAME RUN KEEPS THE PLACE ON SCREEN
+        const savedPlace = takeRestorablePlace(recipe, hostPlace) || takeSameRunPlace(recipe);
 
         try {
 

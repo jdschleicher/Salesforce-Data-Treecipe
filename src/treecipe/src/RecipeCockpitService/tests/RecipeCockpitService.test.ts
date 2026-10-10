@@ -2245,13 +2245,14 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('starts every search box empty when the next model is drawn', () => {
+        // A MODEL OF THE SAME RUN KEEPS THE READER'S PLACE (#225); ANOTHER RUN STARTS FRESH
+        it('starts every search box empty when the next model drawn is another run', () => {
 
             const { panel, recipe } = renderTreeRecipe();
             panel.expandAllTrees();
             panel.typeIntoFilter('rating');
 
-            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 2 });
+            panel.postToPanel({ command: 'recipeData', recipe: { ...recipe, selectedRunFolderName: 'recipe-2001-01-01T00-00-00' }, renderSequence: 2 });
             panel.expandAllTrees();
 
             expect(panel.findAll(panel.cockpitBodyElement, 'tabSearchInput').map((inputElement: any) => inputElement.value)).toEqual(['', '']);
@@ -2479,8 +2480,8 @@ describe('RecipeCockpitService', () => {
             expect(textOf(panel, ratingRow, 'picklistLoading')).toEqual(['Loading values…']);
             expect(textOf(panel, panel.cockpitBodyElement, 'picklistValue')).toEqual([]);
 
-            // A NEWER MODEL DROPS THE OLD ROW'S REQUEST, SO ITS LATE ANSWER DRAWS NOTHING EITHER
-            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 2 });
+            // A NEWER MODEL OF ANOTHER RUN DROPS THE OLD ROW'S REQUEST, SO ITS LATE ANSWER DRAWS NOTHING EITHER
+            panel.postToPanel({ command: 'recipeData', recipe: { ...recipe, selectedRunFolderName: 'recipe-2001-01-01T00-00-00' }, renderSequence: 2 });
             answerLastPicklistRequest(panel, loadedRecipe, 2);
             expect(textOf(panel, panel.cockpitBodyElement, 'picklistValue')).toEqual([]);
 
