@@ -931,7 +931,7 @@ export interface IRecipeCockpitCreateReadinessByTarget {
 export interface IRecipeCockpitDataOrgReadinessMessage {
     command: 'dataOrgReadiness';
     objects: IRecipeCockpitCreateReadinessViewModel[];
-    // ONE PER TREE AND OBJECT, WITH THAT TREE'S BLOCK'S FIELDS CHECKED (#210); A ROW READS ITS OWN BEFORE ITS OBJECT'S
+    // ONE PER TREE AND OBJECT, FOR THAT TREE'S BLOCK (#210); A ROW READS ITS OWN BEFORE ITS OBJECT'S
     createTargets: IRecipeCockpitCreateReadinessViewModel[];
     insertResults: IRecipeCockpitInsertResultViewModel[];
     requestSequence: number;
@@ -5229,10 +5229,11 @@ export class RecipeCockpitService {
     }
 
     /*
-        The same, plus one readiness per tree and object (#210): the object's guards, then the fields
-        of the block that tree's Create would cut, checked against the describe the guards already
-        loaded -- so no target costs a request of its own. A target whose object was not asked about
-        gets no readiness.
+        The same, plus one readiness per tree and object (#210): the object's guards, then whether
+        that tree's block could be cut and whether it leaves out a field the org requires, against
+        the describe the guards already loaded -- so no target costs a request of its own. A block
+        field the org lacks is not a reason (#264). A target whose object was not asked about gets
+        no readiness.
     */
     static async computeCreateReadinessByTarget(orgUsername: string,
                                                 describeSource: IOrgDescribeSource | (() => Promise<IOrgDescribeSource>),
@@ -8489,7 +8490,7 @@ ${this.buildPaletteCustomProperties()}
     let dataOrgSelectionFailureMessage = '';
     // KEYED BY OBJECT NAMES, AND BY TREE KEY AND OBJECT NAME -- NAMES FROM FILES, SO NO PROTOTYPE
     let dataOrgReadinessByObject = Object.create(null);
-    // AN OBJECT'S READINESS IN ONE TREE, ITS BLOCK'S FIELDS CHECKED (#210); THE OBJECT'S ANSWERS WHEN THERE IS NONE
+    // AN OBJECT'S READINESS IN ONE TREE, FOR ITS BLOCK (#210); THE OBJECT'S ANSWERS WHEN THERE IS NONE
     let dataOrgReadinessByTreeObjectKey = Object.create(null);
     let dataOrgInsertResultsByTreeKey = Object.create(null);
     // THE TREE WHOSE INSERT IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE INSERT ENDED

@@ -823,9 +823,10 @@ export class RecipeCockpitRecipeWriter {
     }
 
     /*
-        The field keys of the block extractObjectBlock would cut, read back from the cut itself, so a
-        Create's readiness checks exactly the fields its insert would send (#210): no friend's field,
-        no commented-out field, and a block that cannot be cut is that refusal rather than a list.
+        The field keys of the block extractObjectBlock would cut, read back from the cut itself, so
+        the parent picker and a deploy target read exactly the fields the insert would send: no
+        friend's field, no commented-out field, and a block that cannot be cut is that refusal
+        rather than a list.
     */
     static listCreateBlockFieldApiNames(recipeText: string, objectApiName: string, objectNickname?: string, excludedFieldApiNames: readonly string[] = []): RecipeBlockFieldListResult {
 
