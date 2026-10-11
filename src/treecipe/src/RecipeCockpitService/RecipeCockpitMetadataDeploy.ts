@@ -7,7 +7,7 @@ import { ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 
 /*
-    "Deploy missing metadata…" (#211): what one object of one tree is missing from the selected
+    "Deploy this metadata…" (#211): what one object of one tree is missing from the selected
     sandbox, turned into the --metadata members of one "sf project deploy start", and the CLI's
     answer read back. It imports no vscode: the cockpit owns the confirmation, the progress and the
     panel, and this file owns the member list, the local-source lookup, the argv and the parse.
@@ -84,8 +84,7 @@ interface IPlanReadCache {
 
 export type MetadataDeployOutcome =
     { kind: 'deployed'; deployedComponentCount: number }
-    // SOME COMPONENTS FAILED AND SOME DID NOT: A WARNING, NEVER AN ERROR
-    | { kind: 'partiallyFailed'; failedComponentCount: number; componentCount: number; failureDetail: string }
+    // ALL OR NOTHING, AS THE CLI REPORTS IT: ANY COMPONENT FAILURE IS THE WHOLE DEPLOY'S
     | { kind: 'failed'; failureMessage: string }
     | { kind: 'cliNotInstalled'; failureMessage: string }
     // THE DEPLOY RAN BUT ITS ANSWER COULD NOT BE READ, OR IT WAS CUT SHORT: WHETHER IT APPLIED IS UNKNOWN
@@ -418,7 +417,6 @@ export class RecipeCockpitMetadataDeploy {
         that is not JSON is a failure, never a success.
     */
     static parseMetadataDeployOutput(invocationResult: ISalesforceCliInvocationResult,
-                                        requestedMemberCount: number,
                                         payload: Record<string, unknown> | undefined = ScratchOrgService.readCliJsonPayload(invocationResult)): MetadataDeployOutcome {
 
         if ( invocationResult.spawnError ) {
@@ -432,7 +430,7 @@ export class RecipeCockpitMetadataDeploy {
         }
 
         if ( invocationResult.timedOut ) {
-            return { kind: 'unconfirmed', failureMessage: 'The deploy did not finish in time and was stopped, so it may have partly applied.' };
+            return { kind: 'unconfirmed', failureMessage: 'The deploy did not finish in time and was stopped, so whether it applied is unknown.' };
         }
 
         if ( !payload ) {
@@ -445,15 +443,7 @@ export class RecipeCockpitMetadataDeploy {
             return { kind: 'deployed', deployedComponentCount: deployComponentCounts.numberComponentsDeployed ?? deployComponentCounts.componentSuccessCount };
         }
 
-        const failedComponentCount = deployComponentCounts.componentFailureCount;
-        const componentCount = Math.max(requestedMemberCount, failedComponentCount + deployComponentCounts.componentSuccessCount);
-        const failureDetail = deployComponentCounts.componentFailureProblems.join('; ') || ScratchOrgService.buildCliFailureDetail(payload, invocationResult);
-
-        if ( failedComponentCount > 0 && failedComponentCount < componentCount ) {
-            return { kind: 'partiallyFailed', failedComponentCount: failedComponentCount, componentCount: componentCount, failureDetail: failureDetail };
-        }
-
-        return { kind: 'failed', failureMessage: failureDetail };
+        return { kind: 'failed', failureMessage: deployComponentCounts.componentFailureProblems.join('; ') || ScratchOrgService.buildCliFailureDetail(payload, invocationResult) };
 
     }
 

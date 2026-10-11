@@ -107,7 +107,7 @@ const buildOrgDescribes = (): Record<string, any> => ({
     ] }
 });
 
-describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab (#211)', () => {
+describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#211, #270)', () => {
 
     describe('RecipeCockpitRecordCreation marks only what a deploy can fix', () => {
 
@@ -135,6 +135,16 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
             expect(RecipeCockpitRecordCreation.buildCreateReadiness({ objectApiName: 'Gone__c', orgTypeDetail: { isSandbox: false, organizationType: 'Enterprise Edition' }, isObjectNotFound: true })).not.toHaveProperty('isMetadataDeployable');
             expect(RecipeCockpitRecordCreation.buildCreateReadiness({ objectApiName: 'Gone__c', orgTypeDetail: undefined, isObjectNotFound: true })).not.toHaveProperty('isMetadataDeployable');
             expect(RecipeCockpitRecordCreation.buildCreateReadiness({ objectApiName: 'Account', orgTypeDetail: sandbox, describe })).not.toHaveProperty('isMetadataDeployable');
+
+        });
+
+        it('makes a deployed object ready from the deploy\'s answer alone, keeping only a reason about the recipe itself (#270)', () => {
+
+            expect(RecipeCockpitRecordCreation.buildDeployedObjectReadiness('Gone__c'))
+                .toEqual({ objectApiName: 'Gone__c', disabledReason: '', requiredLookups: [] });
+            expect(RecipeCockpitRecordCreation.buildDeployedObjectReadiness('Gone__c', 'The recipe file for this tree could not be read.'))
+                .toEqual({ objectApiName: 'Gone__c', disabledReason: 'The recipe file for this tree could not be read.', requiredLookups: [] });
+            expect(RecipeCockpitRecordCreation.buildDeployedObjectReadiness('Gone__c')).not.toHaveProperty('isMetadataDeployable');
 
         });
 
@@ -311,19 +321,19 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
 
         });
 
-        it('reads the CLI\'s --json: success, some failed, all failed, malformed, and a CLI that is not installed', () => {
+        it('reads the CLI\'s --json as all or nothing: success, any component failed, malformed, and a CLI that is not installed', () => {
 
             const invocation = (stdout: string) => ({ stdout: stdout, stderr: '', exitCode: 0 });
 
-            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(invocation(buildDeployAnswer(['Account.A__c', 'Account.B__c'], [])), 2))
+            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(invocation(buildDeployAnswer(['Account.A__c', 'Account.B__c'], []))))
                 .toEqual({ kind: 'deployed', deployedComponentCount: 2 });
-            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(invocation(buildDeployAnswer(['Account.A__c'], [{ fullName: 'Account.B__c', problem: 'Value set Regions not found' }])), 2))
-                .toEqual({ kind: 'partiallyFailed', failedComponentCount: 1, componentCount: 2, failureDetail: 'Account.B__c: Value set Regions not found' });
-            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(invocation(buildDeployAnswer([], [{ fullName: 'Account.A__c', problem: 'p' }, { fullName: 'Account.B__c', problem: 'q' }])), 2))
+            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(invocation(buildDeployAnswer(['Account.A__c'], [{ fullName: 'Account.B__c', problem: 'Value set Regions not found' }]))))
+                .toEqual({ kind: 'failed', failureMessage: 'Account.B__c: Value set Regions not found' });
+            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(invocation(buildDeployAnswer([], [{ fullName: 'Account.A__c', problem: 'p' }, { fullName: 'Account.B__c', problem: 'q' }]))))
                 .toEqual({ kind: 'failed', failureMessage: 'Account.A__c: p; Account.B__c: q' });
-            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(invocation('Deployed! (not json)'), 2).kind).toBe('failed');
-            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(invocation(JSON.stringify({ status: 0, result: { success: 'yes' } })), 2).kind).toBe('failed');
-            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput({ stdout: '', stderr: '', exitCode: null, spawnError: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) }, 2))
+            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(invocation('Deployed! (not json)')).kind).toBe('failed');
+            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(invocation(JSON.stringify({ status: 0, result: { success: 'yes' } }))).kind).toBe('failed');
+            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput({ stdout: '', stderr: '', exitCode: null, spawnError: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) }))
                 .toEqual({ kind: 'cliNotInstalled', failureMessage: RecipeCockpitMetadataDeploy.buildCliRequiredMessage() });
 
         });
@@ -343,10 +353,10 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
 
         it('reports a CLI that could not start, an answer too large to read and a timeout as never a success', () => {
 
-            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput({ stdout: '', stderr: '', exitCode: null, spawnError: Object.assign(new Error('spawn EACCES'), { code: 'EACCES' }) }, 1))
+            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput({ stdout: '', stderr: '', exitCode: null, spawnError: Object.assign(new Error('spawn EACCES'), { code: 'EACCES' }) }))
                 .toEqual({ kind: 'failed', failureMessage: 'The Salesforce CLI could not be started: spawn EACCES' });
-            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput({ stdout: '', stderr: '', exitCode: null, isOutputTooLarge: true }, 1).kind).toBe('unconfirmed');
-            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput({ stdout: '', stderr: '', exitCode: null, timedOut: true }, 1)).toEqual({ kind: 'unconfirmed', failureMessage: expect.stringContaining('may have partly applied') });
+            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput({ stdout: '', stderr: '', exitCode: null, isOutputTooLarge: true }).kind).toBe('unconfirmed');
+            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput({ stdout: '', stderr: '', exitCode: null, timedOut: true })).toEqual({ kind: 'unconfirmed', failureMessage: expect.stringContaining('whether it applied is unknown') });
             expect(RecipeCockpitMetadataDeploy.isDeployableMember(42)).toBe(false);
 
         });
@@ -671,9 +681,16 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
             fs.rmSync(temporaryRoot, { recursive: true, force: true });
         });
 
-        it('offers the deploy for an object the org lacks, never for fields it lacks (#264), names the org and every member in a modal, deploys them, clears that describe and rebuilds readiness until the tree can be inserted', async () => {
+        it('offers the deploy for an object the org lacks, never for fields it lacks (#264), names the org and every member in a modal, deploys them, and makes the tree insertable from the CLI\'s answer without describing anything again (#270)', async () => {
 
             await openCockpitWithQaSelected();
+            const readinessPostsBefore = postedNamed('dataOrgReadiness').length;
+            let connectionsWhenCliRan = -1;
+            const landingDeploy = deployHandler;
+            deployHandler = (argumentList: string[]) => {
+                connectionsWhenCliRan = (SalesforceOrgService.getConnection as jest.Mock).mock.calls.length;
+                return landingDeploy(argumentList);
+            };
 
             // Account LACKS Legacy_Code__c, Rating__c AND MORE OF THE RECIPE'S FIELDS: THAT NO LONGER STOPS THE INSERT OR OFFERS A DEPLOY
             expect(treeReadiness(ACCOUNT_TREE_KEY, 'Account')).toEqual({ objectApiName: 'Account', treeKey: ACCOUNT_TREE_KEY, disabledReason: '', requiredLookups: [] });
@@ -708,14 +725,24 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
 
             expect(postedNamed('metadataDeployState').map(deployState => deployState.statusText)).toContain('Deploying 3 components of OtherChildObject__c…');
             expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: false, hasOutput: true, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'OtherChildObject__c' });
-            expect(notificationInformationSpy).toHaveBeenCalledWith(expect.stringContaining('Deployed 3 components of OtherChildObject__c'));
+            expect(lastDeployState().statusText).toBe(`Deployed 3 components of OtherChildObject__c to qa · ${QA_USERNAME}.`);
+            expect(postedNamed('metadataDeployState').map(deployState => deployState.statusText).join('\n')).not.toMatch(/checking (the tree )?again/i);
+            expect(notificationInformationSpy).toHaveBeenCalledWith(`Deployed 3 components of OtherChildObject__c to qa · ${QA_USERNAME}.`);
             expect(JSON.stringify(postedNamed('metadataDeployState'))).not.toContain(workspaceRoot);
 
-            // ONLY OtherChildObject__c WAS DESCRIBED AGAIN: THE OTHERS WERE ANSWERED FROM THE CACHE
-            expect(describeCalls.filter(objectApiName => objectApiName === 'OtherChildObject__c')).toHaveLength(2);
+            // THE CLI'S ANSWER IS THE RESULT: NO DESCRIBE, NO CONNECTION AND NO REFRESH ONCE IT RETURNED
+            expect(connectionsWhenCliRan).toBeGreaterThan(0);
+            expect((SalesforceOrgService.getConnection as jest.Mock).mock.calls.length).toBe(connectionsWhenCliRan);
+            expect(describeCalls.filter(objectApiName => objectApiName === 'OtherChildObject__c')).toHaveLength(1);
             expect(describeCalls.filter(objectApiName => objectApiName === 'Contact')).toHaveLength(1);
+            expect(postedNamed('dataOrgReadiness')).toHaveLength(readinessPostsBefore + 1);
+            expect(postedNamed('dataOrgReadiness').at(-1).objects).toEqual([{ objectApiName: 'OtherChildObject__c', disabledReason: '', requiredLookups: [] }]);
+            expect(treeReadiness(ACCOUNT_TREE_KEY, 'OtherChildObject__c')).toEqual({ objectApiName: 'OtherChildObject__c', treeKey: ACCOUNT_TREE_KEY, disabledReason: '', requiredLookups: [] });
             // Ratio__c IS STILL NOT IN THE ORG, AND THE INSERT IS OFFERED ANYWAY: THAT RECORD FAILS AT INSERT TIME, IF AT ALL
             ['Account', 'Contact', 'OtherChildObject__c'].forEach(objectApiName => expect(treeReadiness(ACCOUNT_TREE_KEY, objectApiName)).toMatchObject({ disabledReason: '' }));
+            // THE DEPLOYED TARGET IS NOT OFFERED AGAIN
+            await acknowledgeReadiness();
+            expect(panelState().deployTargets.has(RecipeCockpitService.buildTreeObjectKey(ACCOUNT_TREE_KEY, 'OtherChildObject__c'))).toBe(false);
             // THE BUTTONS COME BACK ONLY AFTER THE READINESS THE DEPLOY CHANGED HAS BEEN POSTED
             expect(postedPanelMessages.indexOf(lastDeployState())).toBeGreaterThan(postedPanelMessages.indexOf(postedNamed('dataOrgReadiness').at(-1)));
 
@@ -737,31 +764,76 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
 
         });
 
-        it('holds the deploy in flight until the readiness it changed is checked again, and never offers the deployed target in between', async () => {
+        it('holds the deploy in flight until the readiness its answer changed is posted, never refreshes the trees, and never offers the deployed target in between', async () => {
 
             await openCockpitWithQaSelected();
-            let releaseRefresh: () => void = () => undefined;
-            const refreshHeld = new Promise<void>(resolve => { releaseRefresh = resolve; });
-            const refreshSpy = jest.spyOn(RecipeCockpitService as any, 'refreshDataOrgReadinessForTrees').mockImplementationOnce(async () => { await refreshHeld; });
+            let releasePost: () => void = () => undefined;
+            const postHeld = new Promise<void>(resolve => { releasePost = resolve; });
+            const refreshSpy = jest.spyOn(RecipeCockpitService as any, 'refreshDataOrgReadinessForTrees');
+            const postSpy = jest.spyOn(RecipeCockpitService as any, 'postDeployedObjectReadiness').mockImplementationOnce(async () => { await postHeld; });
 
             const deployInFlight = deploy(ACCOUNT_TREE_KEY, 'OtherChildObject__c');
             for ( let turn = 0; turn < 6; turn++ ) {
                 await flushAsyncWork();
             }
 
-            expect(refreshSpy).toHaveBeenCalledTimes(1);
+            expect(postSpy).toHaveBeenCalledTimes(1);
             expect(lastDeployState()).toMatchObject({ isRunning: true });
-            expect(lastDeployState().statusText).toContain('Checking the tree again…');
             expect(panelState().deployTargets.has(RecipeCockpitService.buildTreeObjectKey(ACCOUNT_TREE_KEY, 'OtherChildObject__c'))).toBe(false);
             expect(RecipeCockpitService.routePanelMessage({ command: 'deployMissingMetadata', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'OtherChildObject__c' }, panelState())).toBeUndefined();
 
-            releaseRefresh();
+            releasePost();
             await deployInFlight;
 
             expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: false });
-            // THE TARGET IS GONE UNTIL A READINESS POSTED AFTER THE DEPLOY OFFERS IT AGAIN
-            expect(RecipeCockpitService.routePanelMessage({ command: 'deployMissingMetadata', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'OtherChildObject__c' }, panelState())?.kind).toBe('postMetadataDeployState');
+            expect(refreshSpy).not.toHaveBeenCalled();
+            expect(postedNamed('metadataDeployState').map(deployState => deployState.statusText).join('\n')).not.toMatch(/checking (the tree )?again/i);
             expect(deployCalls()).toHaveLength(1);
+
+        });
+
+        it('marks nothing ready when the reader chose another org while the deploy ran', async () => {
+
+            await openCockpitWithQaSelected();
+            let answerDeploy: (stdout: string) => void = () => undefined;
+            jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockImplementation(() => new Promise(resolve => {
+                answerDeploy = (stdout: string) => resolve({ stdout: stdout, stderr: '', exitCode: 0 });
+            }));
+
+            const deployInFlight = deploy(ACCOUNT_TREE_KEY, 'OtherChildObject__c');
+            await flushAsyncWork();
+            await flushAsyncWork();
+
+            // A NEW SELECTION, EVEN OF THE SAME ORG, IS NOT THE ONE THE DEPLOY STARTED UNDER
+            const startedSelection = panelState().dataOrgSelection;
+            panelState().dataOrgSelection = { ...startedSelection, requestSequence: startedSelection.requestSequence + 1 };
+            panelState().dataOrgRequestSequence = startedSelection.requestSequence + 1;
+            const readinessPostsBefore = postedNamed('dataOrgReadiness').length;
+
+            answerDeploy(buildDeployAnswer(['OtherChildObject__c', 'OtherChildObject__c.Score__c', 'OtherChildObject__c.Contact__c'], []));
+            await deployInFlight;
+            await flushAsyncWork();
+
+            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: false });
+            expect(postedNamed('dataOrgReadiness')).toHaveLength(readinessPostsBefore);
+
+        });
+
+        it('tells every card that lists the object, from one deploy, and keeps a card\'s reason about its own unreadable recipe', async () => {
+
+            await openCockpitWithQaSelected();
+            const deployedState = panelState();
+            // A SECOND CARD LISTING THE OBJECT WHOSE RECIPE FOLDER IS NOT ON DISK
+            const otherTreeKey = 'Other-tree';
+            const accountTree = deployedState.recipeDataMessage.recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY);
+            deployedState.recipeDataMessage.recipe.trees.push({ ...accountTree, treeKey: otherTreeKey, folderName: 'Gone-folder' });
+
+            await deploy(ACCOUNT_TREE_KEY, 'OtherChildObject__c');
+
+            expect(postedNamed('dataOrgReadiness').at(-1).createTargets.map((readiness: any) => readiness.treeKey).sort()).toEqual([ACCOUNT_TREE_KEY, otherTreeKey].sort());
+            expect(treeReadiness(ACCOUNT_TREE_KEY, 'OtherChildObject__c')).toMatchObject({ disabledReason: '' });
+            expect(treeReadiness(otherTreeKey, 'OtherChildObject__c').disabledReason).toContain('could not be read');
+            expect(treeReadiness(otherTreeKey, 'OtherChildObject__c')).not.toHaveProperty('isMetadataDeployable');
 
         });
 
@@ -783,16 +855,20 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
 
         });
 
-        it('still describes the object afresh when something throws after the CLI started', async () => {
+        it('drops the cached describe but marks nothing ready when something throws after the CLI started', async () => {
 
             jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
             jest.spyOn(ScratchOrgService, 'readCliJsonPayload').mockImplementation(() => { throw new Error('parse exploded'); });
             await openCockpitWithQaSelected();
+            const clearSpy = jest.spyOn(SalesforceOrgService, 'clearDescribeCache');
+            const readinessPostsBefore = postedNamed('dataOrgReadiness').length;
 
             await deploy(ACCOUNT_TREE_KEY, 'OtherChildObject__c');
 
             expect(deployCalls()).toHaveLength(1);
-            expect(describeCalls.filter(objectApiName => objectApiName === 'OtherChildObject__c')).toHaveLength(2);
+            expect(clearSpy).toHaveBeenCalledWith(QA_USERNAME, 'OtherChildObject__c');
+            expect(postedNamed('dataOrgReadiness')).toHaveLength(readinessPostsBefore);
+            expect(describeCalls.filter(objectApiName => objectApiName === 'OtherChildObject__c')).toHaveLength(1);
             expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true, statusText: 'The deploy of OtherChildObject__c stopped: parse exploded' });
 
         });
@@ -860,29 +936,30 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
 
         });
 
-        it('warns -- never an error -- with "N of M components failed" and View output when part of the deploy fails, and still clears the describe and rebuilds readiness', async () => {
+        it('reads any component failure as the whole deploy failing -- an error with View output -- and leaves the readiness and the deploy as they were (#270)', async () => {
 
             deployHandler = () => ({ stdout: buildDeployAnswer(['OtherChildObject__c', 'OtherChildObject__c.Score__c'], [{ fullName: 'OtherChildObject__c.Contact__c', problem: 'Contact not found' }]), error: Object.assign(new Error('exit 1'), { code: 1 }) });
-            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => options?.modal ? RECIPE_COCKPIT_METADATA_DEPLOY_CONFIRM_LABEL : RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL);
+            (vscode.window.showErrorMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL);
             await openCockpitWithQaSelected();
             const readinessPostsBefore = postedNamed('dataOrgReadiness').length;
 
             await deploy(ACCOUNT_TREE_KEY, 'OtherChildObject__c');
             await flushAsyncWork();
 
-            const [warningText, warningAction] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[1];
-            expect(warningText).toContain('1 of 3 components failed to deploy to qa');
-            expect(warningText).toContain('so none was applied');
-            expect(warningText).toContain('OtherChildObject__c.Contact__c: Contact not found');
-            expect(warningAction).toBe(RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL);
-            expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+            const [errorText, errorAction] = (vscode.window.showErrorMessage as jest.Mock).mock.calls[0];
+            expect(errorText).toBe(`The deploy of OtherChildObject__c to qa · ${QA_USERNAME} failed: OtherChildObject__c.Contact__c: Contact not found`);
+            expect(errorAction).toBe(RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL);
+            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls).toHaveLength(1);
 
             const operationsFolderPath = path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME);
             const resultFilePath = path.join(operationsFolderPath, fs.readdirSync(operationsFolderPath).find(fileName => fileName.endsWith('-metadata-deploy.json')));
             expect(openFileSpy).toHaveBeenCalledWith(resultFilePath);
-            expect(describeCalls.filter(objectApiName => objectApiName === 'OtherChildObject__c')).toHaveLength(2);
-            expect(postedNamed('dataOrgReadiness').length).toBeGreaterThan(readinessPostsBefore);
+            expect(describeCalls.filter(objectApiName => objectApiName === 'OtherChildObject__c')).toHaveLength(1);
+            expect(postedNamed('dataOrgReadiness')).toHaveLength(readinessPostsBefore);
+            expect(treeReadiness(ACCOUNT_TREE_KEY, 'OtherChildObject__c')).toMatchObject({ isMetadataDeployable: true });
             expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true, hasOutput: true });
+            // OFFERED AGAIN: THE TARGET IS STILL THE HOST'S
+            expect(RecipeCockpitService.routePanelMessage({ command: 'deployMissingMetadata', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'OtherChildObject__c' }, panelState())?.kind).toBe('deployMissingMetadata');
 
             openFileSpy.mockClear();
             await receivedMessageHandler({ command: 'viewMetadataDeployOutput', filePath: '/etc/passwd' });
@@ -901,7 +978,7 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
                 expect.stringContaining('The deploy of OtherChildObject__c to qa'),
                 RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL
             ]);
-            expect(describeCalls.filter(objectApiName => objectApiName === 'OtherChildObject__c')).toHaveLength(2);
+            expect(describeCalls.filter(objectApiName => objectApiName === 'OtherChildObject__c')).toHaveLength(1);
 
             deployHandler = () => ({ stdout: 'Deploy Succeeded.' });
             await acknowledgeReadiness();
@@ -951,16 +1028,20 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
 
         });
 
-        it('warns that a deploy which timed out may have partly applied, and still describes the object afresh', async () => {
+        it('warns that a deploy which timed out may or may not have applied, drops the cached describe and marks nothing ready', async () => {
 
             await openCockpitWithQaSelected();
             jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockResolvedValue({ stdout: '', stderr: '', exitCode: null, timedOut: true });
+            const clearSpy = jest.spyOn(SalesforceOrgService, 'clearDescribeCache');
+            const readinessPostsBefore = postedNamed('dataOrgReadiness').length;
 
             await deploy(ACCOUNT_TREE_KEY, 'OtherChildObject__c');
 
-            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[1][0]).toContain('may have partly applied');
+            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[1][0]).toContain('whether it applied is unknown');
             expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[1][0]).toContain('sf project deploy report --target-org qa@example.com.qa');
-            expect(describeCalls.filter(objectApiName => objectApiName === 'OtherChildObject__c')).toHaveLength(2);
+            expect(clearSpy).toHaveBeenCalledWith(QA_USERNAME, 'OtherChildObject__c');
+            expect(postedNamed('dataOrgReadiness')).toHaveLength(readinessPostsBefore);
+            expect(describeCalls.filter(objectApiName => objectApiName === 'OtherChildObject__c')).toHaveLength(1);
 
         });
 
@@ -1014,7 +1095,7 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
 
         });
 
-        it('kills the process tree on cancel, says the deploy may have partly applied, and refuses a second deploy meanwhile', async () => {
+        it('kills the process tree on cancel, says whether the deploy applied is unknown, and refuses a second deploy meanwhile', async () => {
 
             deployHandler = () => 'hold';
             await openCockpitWithQaSelected();
@@ -1037,9 +1118,9 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
 
             expect(killSpy).toHaveBeenCalled();
             expect(childKill).toHaveBeenCalled();
-            expect(notificationInformationSpy).toHaveBeenCalledWith(expect.stringContaining('was cancelled and may have partly applied'));
+            expect(notificationInformationSpy).toHaveBeenCalledWith(expect.stringContaining('was cancelled, so whether it applied is unknown'));
             expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true });
-            expect(lastDeployState().statusText).toContain('may have partly applied');
+            expect(lastDeployState().statusText).toContain('whether it applied is unknown');
 
         });
 
@@ -1140,7 +1221,7 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
 
         it('is named in the preview warning, which says what the cockpit can write to an org', () => {
 
-            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('"Deploy missing metadata…", shown under an insert stopped by an object the selected sandbox lacks, deploys only that custom object and its recipe\'s custom fields');
+            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('"Deploy this metadata…", shown under an insert stopped by an object the selected sandbox lacks, deploys only that custom object and its recipe\'s custom fields');
 
         });
 

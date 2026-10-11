@@ -1,5 +1,16 @@
 # Change Log
 
+## [3.65.0] - Recipe Cockpit: "Deploy this metadata…" takes the CLI's answer as the result
+
+Closes [#270](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/270), following [#211](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/211).
+
+- **Renamed:** the button under an insert stopped by an object the selected sandbox lacks is now **Deploy this metadata…** (was **Deploy missing metadata…**). It still asks for confirmation first.
+- **No check after the deploy.** `sf project deploy start --json` answers with the result, so the cockpit no longer shows "Checking the tree again…", describes the object again or re-checks the trees once the CLI returns. On success, **Generate fake data and insert** is offered straight away on every card that lists the object; a card whose recipe block cannot be read keeps that reason. The insert's own check when you click it still describes the object afresh, because the deploy drops the cached describe.
+- **All or nothing, as the CLI reports it.** A deploy with any component failure is one failure: an error naming what failed, with **View output**. The "N of M components failed" warning and the `partiallyFailed` outcome are gone. A failed deploy leaves the card as it was and offers **Deploy this metadata…** again.
+- A cancelled or timed-out deploy now says whether it applied is unknown, rather than that it may have partly applied.
+- Only a deploy that succeeded under the org selection still on screen changes readiness; choosing another org meanwhile leaves the new selection's readiness alone.
+- **Unchanged:** the sandbox-only guards (when the org is selected, and again after the confirmation), the `deployTargets` allow-list, what is deployed, one deploy per window, recipe generation and both faker backends.
+
 ## [3.64.0] - Recipe Cockpit: the tree insert no longer refuses a sandbox that lacks recipe fields
 
 Closes [#264](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/264), slice B of [#261](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/261).
