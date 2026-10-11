@@ -94,6 +94,13 @@ export interface IRecipeCockpitTreeHistoryBuild {
     targets: IRecipeCockpitTreeHistoryTargets;
 }
 
+// ONE DATA SET AN ACTION JUST WROTE, AS EVERY CARD IT JOINS LISTS IT (#226)
+export interface IRecipeCockpitAddedDataset {
+    dataset: IRecipeCockpitTreeDatasetViewModel;
+    treeKeys: string[];
+    datasetFolderPath: string;
+}
+
 export interface IRecipeCockpitTreeVersionSummary {
     runFolderName: string;
     isSummaryAvailable: boolean;
@@ -372,6 +379,52 @@ export class RecipeCockpitTreeHistory {
             historiesByTreeKey: groupedHistories.historiesByTreeKey,
             unmatchedDatasetCount: groupedHistories.unmatchedDatasetCount,
             targets: targets
+        };
+
+    }
+
+    /*
+        One data set folder an action just wrote, placed by groupTreeHistories -- the rule a reload
+        places it by -- so a partial update and a reload cannot disagree on which cards list it.
+        Undefined when the folder is not a data set name, is not a folder inside the workspace, or
+        joins none of these cards: the caller reloads the run instead.
+    */
+    static buildAddedDataset(datasetFolderPath: string,
+                                generatedRecipesFolderPath: string,
+                                workspaceRoot: string,
+                                currentRunFolderName: string,
+                                trees: IRecipeCockpitTreeHistoryTree[]): IRecipeCockpitAddedDataset | undefined {
+
+        const datasetFolderName = path.basename(datasetFolderPath);
+        const folderNameDetail = DatasetSourceService.parseDatasetFolderName(datasetFolderName);
+        const isContainedFolder = SfdxProjectService.isExistingDirectory(datasetFolderPath)
+                                    && SfdxProjectService.isPathContainedInWorkspace(path.resolve(datasetFolderPath), path.resolve(workspaceRoot));
+
+        if ( !folderNameDetail || !isContainedFolder ) {
+            return undefined;
+        }
+
+        const knownRecipeRuns = DatasetSourceService.findKnownRecipeRuns(generatedRecipesFolderPath);
+        const datasetListing: IDatasetListing = {
+            datasetFolderName: datasetFolderName,
+            datasetFolderPath: datasetFolderPath,
+            folderNameDetail: folderNameDetail,
+            source: DatasetSourceService.readDatasetSource(datasetFolderPath, knownRecipeRuns)
+        };
+
+        const { historiesByTreeKey } = this.groupTreeHistories(knownRecipeRuns, [datasetListing], trees, currentRunFolderName);
+        const treeKeys = trees
+            .map(tree => tree.treeKey)
+            .filter(treeKey => historiesByTreeKey.get(treeKey)?.datasets.length === 1);
+
+        if ( treeKeys.length === 0 ) {
+            return undefined;
+        }
+
+        return {
+            dataset: historiesByTreeKey.get(treeKeys[0]).datasets[0],
+            treeKeys: treeKeys,
+            datasetFolderPath: datasetFolderPath
         };
 
     }
