@@ -4839,7 +4839,8 @@ export class RecipeCockpitService {
         is described again once it returns. A success makes the object ready on every card that
         lists it, for the selection the deploy started under; a failure leaves the readiness, and
         the deploy, as they were. Once the CLI has run, that org's describe of the object is dropped
-        from the session cache either way, so the insert's own check on the click describes it afresh.
+        from the session cache either way, so no describe from before the deploy outlives it; the
+        insert's own check on the click describes the object afresh.
     */
     private static async deployMissingMetadataFromPanel(cockpitPanel: vscode.WebviewPanel, deployTarget: IMetadataDeployTarget) {
 

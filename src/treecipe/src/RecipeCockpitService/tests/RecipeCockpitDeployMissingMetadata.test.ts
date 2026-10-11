@@ -59,6 +59,7 @@ import { ORG_OPERATIONS_FOLDER_NAME, ScratchOrgService } from '../../ScratchOrgS
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
+import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const METADATA_DEPLOY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'metadataDeployWorkspace');
@@ -816,6 +817,29 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
             expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: false });
             expect(postedNamed('dataOrgReadiness')).toHaveLength(readinessPostsBefore);
+
+        });
+
+        it('still describes the deployed object afresh when the insert is clicked, and refuses on a reason only that describe can give', async () => {
+
+            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockImplementation(() => 'snowfakery');
+            await openCockpitWithQaSelected();
+
+            await deploy(ACCOUNT_TREE_KEY, 'OtherChildObject__c');
+            expect(treeReadiness(ACCOUNT_TREE_KEY, 'OtherChildObject__c')).toMatchObject({ disabledReason: '' });
+            await acknowledgeReadiness();
+
+            // THE DEPLOYED OBJECT TURNS OUT NOT TO BE CREATEABLE: ONLY A DESCRIBE CAN SAY SO
+            orgDescribes.OtherChildObject__c.createable = false;
+            (vscode.window.showWarningMessage as jest.Mock).mockClear();
+
+            await receivedMessageHandler({ command: 'insertTree', treeKey: ACCOUNT_TREE_KEY });
+            await flushAsyncWork();
+
+            expect(describeCalls.filter(objectApiName => objectApiName === 'OtherChildObject__c')).toHaveLength(2);
+            expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining('OtherChildObject__c is not createable in this org.'));
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+            expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
 
         });
 
