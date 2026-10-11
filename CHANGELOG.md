@@ -4,7 +4,7 @@
 
 Closes [#262](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/262), building on [#219](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/219), [#220](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/220) and [#255](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/255).
 
-Some fields need the same value on every generated record: a region, a test marker, a fixed status. Until now the only way to get one was to edit the generated `.yml` by hand, and the next Regenerate threw that edit away.
+Some fields need the same value on every generated record: a region, a test marker, a fixed status. Until now the only way to get one was to edit the generated `.yml` by hand, and the next **Generate Treecipe** threw that edit away.
 
 - **A pin beside each field's checkbox.** On a tree card's Treecipe tab, each field with a recipe line gets a pin to the right of its checkbox. Clicking it opens a VS Code input box, not a panel field. Whatever you type becomes the field's value on every record that ▶ Run Faker and **Generate fake data and insert** generate, in both backends. The row then shows the value, in place of the faker expression, with a `fixed` badge. To go back to the faker expression, leave the box empty.
 - **The recipe file is never written.** Fixed values are stored in the workspace, per tree folder, next to the excluded objects, unticked fields and record counts. The selection's storage version goes from 3 to 4, and an entry from an older version reads as having no fixed values. They are applied only to the copy Run Faker generates from: `RecipeCockpitRecipeWriter.buildFilteredRecipe` takes `fixedValuesByObject` and:
