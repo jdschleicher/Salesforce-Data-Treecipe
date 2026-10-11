@@ -448,4 +448,114 @@ describe('RecipeCockpitRecordCreation', () => {
 
     });
 
+    describe('choosing parents per lookup (#254)', () => {
+
+        it('asks about each single-object, writable lookup the cut block carries, in the block\'s order, matching names case-insensitively', () => {
+
+            expect(RecipeCockpitRecordCreation.findPickableLookups(CONTACT_DESCRIBE, ['LastName', 'reportstoid', 'AccountId', 'Master__c'])).toEqual([
+                { fieldApiName: 'ReportsToId', parentObjectApiName: 'Contact', isRequired: false },
+                { fieldApiName: 'AccountId', parentObjectApiName: 'Account', isRequired: true },
+                { fieldApiName: 'Master__c', parentObjectApiName: 'Master__c', isRequired: true }
+            ]);
+
+        });
+
+        it('asks nothing about a polymorphic, unwritable, record-type or unknown lookup, or a lookup the block does not carry, and asks once per field', () => {
+
+            expect(RecipeCockpitRecordCreation.findPickableLookups(CONTACT_DESCRIBE, ['OwnerId', 'CreatedById', 'RecordTypeId', 'Unknown__c', 'LastName'])).toEqual([]);
+            expect(RecipeCockpitRecordCreation.findPickableLookups(CONTACT_DESCRIBE, ['AccountId', 'accountid']).map(pickableLookup => pickableLookup.fieldApiName)).toEqual(['AccountId']);
+
+        });
+
+        const OUTSIDE_LOOKUPS = [
+            { fieldApiName: 'AccountId', parentObjectApiName: 'Account', isRequired: true },
+            { fieldApiName: 'Master__c', parentObjectApiName: 'Master__c', isRequired: true },
+            { fieldApiName: 'ReportsToId', parentObjectApiName: 'Contact', isRequired: false }
+        ];
+        const buildOutsideContext = (outsideParents: Array<[string, any]>) => ({
+            isRunReference: () => false,
+            runRecordIdsByObject: new Map<string, string[]>(),
+            orgRecordIdsByObject: new Map<string, string[]>([['Account', ['001RANDOM']]]),
+            inTreeObjectApiNames: new Set<string>(),
+            outsideParentsByFieldApiName: new Map(outsideParents)
+        });
+
+        it('gives record i the parent at i mod K for a lookup whose parents were chosen in its picker (#254), and never asks for randomness', () => {
+
+            const records = Array.from({ length: 7 }, (_record, recordIndex) => ({ LastName: `L${recordIndex}`, AccountId: 'Account_NickName' }));
+            const pickIndex = jest.fn();
+
+            const preparedRecords = RecipeCockpitRecordCreation.prepareTreeInsertRecords(
+                records,
+                [OUTSIDE_LOOKUPS[0]],
+                buildOutsideContext([['AccountId', { assignment: 'roundRobin', parentRecordIds: ['001P1', '001P2', '001P3'] }]]),
+                pickIndex
+            ) as Array<Record<string, unknown>>;
+
+            expect(preparedRecords.map(preparedRecord => preparedRecord.AccountId)).toEqual(['001P1', '001P2', '001P3', '001P1', '001P2', '001P3', '001P1']);
+            expect(pickIndex).not.toHaveBeenCalled();
+
+        });
+
+        it('gives every record the one parent chosen, a random one of a Random lookup\'s Ids, and leaves a Leave blank lookup blank rather than falling back to the org', () => {
+
+            const preparedRecords = RecipeCockpitRecordCreation.prepareTreeInsertRecords(
+                [{ LastName: 'A', ReportsToId: 'Contact_NickName' }, { LastName: 'B' }],
+                OUTSIDE_LOOKUPS,
+                buildOutsideContext([
+                    ['AccountId', { assignment: 'roundRobin', parentRecordIds: ['001ONLY'] }],
+                    ['Master__c', { assignment: 'random', parentRecordIds: ['a00A', 'a00B'] }],
+                    ['ReportsToId', { assignment: 'blank' }]
+                ]),
+                () => 1
+            );
+
+            expect(preparedRecords).toEqual([{ LastName: 'A', AccountId: '001ONLY', Master__c: 'a00B' }, { LastName: 'B', AccountId: '001ONLY', Master__c: 'a00B' }]);
+
+        });
+
+        it('prefers a parent this run inserted over the picker\'s answer, and keeps a value that already names a record of the run', () => {
+
+            const preparedRecords = RecipeCockpitRecordCreation.prepareTreeInsertRecords(
+                [{ AccountId: '001RUN' }, { AccountId: 'TODO' }],
+                [OUTSIDE_LOOKUPS[0]],
+                {
+                    ...buildOutsideContext([['AccountId', { assignment: 'roundRobin', parentRecordIds: ['001PICKED'] }]]),
+                    isRunReference: (value: string) => value === '001RUN',
+                    runRecordIdsByObject: new Map([['Account', ['001RUN']]]),
+                    inTreeObjectApiNames: new Set(['Account'])
+                },
+                () => 0
+            );
+
+            expect(preparedRecords).toEqual([{ AccountId: '001RUN' }, { AccountId: '001RUN' }]);
+
+        });
+
+        it('accepts chosen Ids only when each is a Salesforce Id the lookup\'s own search returned', () => {
+
+            const returnedIds = new Set(['001000000000001AAA', '001000000000002AAA']);
+
+            expect(RecipeCockpitRecordCreation.areChosenParentIdsReturnedBySearch(['001000000000002AAA', '001000000000001AAA'], returnedIds)).toBe(true);
+            expect(RecipeCockpitRecordCreation.areChosenParentIdsReturnedBySearch([], returnedIds)).toBe(false);
+            expect(RecipeCockpitRecordCreation.areChosenParentIdsReturnedBySearch(['001000000000003AAA'], returnedIds)).toBe(false);
+            expect(RecipeCockpitRecordCreation.areChosenParentIdsReturnedBySearch(['001000000000001AAA', '001000000000003AAA'], returnedIds)).toBe(false);
+            expect(RecipeCockpitRecordCreation.areChosenParentIdsReturnedBySearch(['not an id'], new Set(['not an id']))).toBe(false);
+
+        });
+
+        it('records a choice as "random", "blank" or a copy of the chosen Ids', () => {
+
+            const chosenIds = ['001000000000001AAA'];
+            const recorded = RecipeCockpitRecordCreation.toRecordedLookupParentChoice({ kind: 'chosen', parentRecordIds: chosenIds });
+
+            expect(RecipeCockpitRecordCreation.toRecordedLookupParentChoice({ kind: 'random' })).toBe('random');
+            expect(RecipeCockpitRecordCreation.toRecordedLookupParentChoice({ kind: 'blank' })).toBe('blank');
+            expect(recorded).toEqual(chosenIds);
+            expect(recorded).not.toBe(chosenIds);
+
+        });
+
+    });
+
 });

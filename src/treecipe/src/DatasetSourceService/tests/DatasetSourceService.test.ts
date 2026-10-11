@@ -482,7 +482,11 @@ describe('DatasetSourceService', () => {
             ['excluded fields as an array', { ...validDatasetSource, excludedFieldApiNamesByObject: [['Account', ['Phone']]] }],
             ['excluded fields as null', { ...validDatasetSource, excludedFieldApiNamesByObject: null }],
             ['an object\'s excluded fields as a string', { ...validDatasetSource, excludedFieldApiNamesByObject: { Account: 'Phone' } }],
-            ['an excluded field that is not a string', { ...validDatasetSource, excludedFieldApiNamesByObject: { Account: ['Phone', 7] } }]
+            ['an excluded field that is not a string', { ...validDatasetSource, excludedFieldApiNamesByObject: { Account: ['Phone', 7] } }],
+            ['lookup parents on a runFaker source', { ...validDatasetSource, lookupParentsByField: { AccountId: 'random' } }],
+            ['lookup parents as an array', { ...{ ...validDatasetSource, origin: 'createInOrg', orgUsername: 'qa@example.com', createdObjectApiName: 'Contact', createdRecordIds: [] }, lookupParentsByField: [['AccountId', 'random']] }],
+            ['a lookup parent that is neither random, blank nor a list', { ...{ ...validDatasetSource, origin: 'createInOrg', orgUsername: 'qa@example.com', createdObjectApiName: 'Contact', createdRecordIds: [] }, lookupParentsByField: { AccountId: 'first' } }],
+            ['a lookup parent list with a number', { ...{ ...validDatasetSource, origin: 'createInOrg', orgUsername: 'qa@example.com', createdObjectApiName: 'Contact', createdRecordIds: [] }, lookupParentsByField: { AccountId: ['001000000000001AAA', 7] } }]
         ])('refuses %s', (_description, candidate) => {
 
             expect(DatasetSourceService.typeCheckDatasetSource(candidate)).toBeUndefined();
@@ -501,6 +505,42 @@ describe('DatasetSourceService', () => {
 
             expect(DatasetSourceService.typeCheckDatasetSource(createInOrgSource)).toEqual(createInOrgSource);
             expect(DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, orgUsername: 'x', createdRecordIds: ['y'] })).toEqual(validDatasetSource);
+
+        });
+
+        test('accepts what each lookup of a Create was given (#254), with no prototype, and reads a source written before it unchanged', () => {
+
+            const choosingSource: IDatasetSource = {
+                ...validDatasetSource,
+                origin: 'createInOrg',
+                orgUsername: 'qa@example.com.qa',
+                createdObjectApiName: 'Contact',
+                createdRecordIds: ['003000000000001AAA'],
+                lookupParentsByField: { AccountId: ['001000000000001AAA', '001000000000002AAA'], ReportsToId: 'blank', Master__c: 'random' }
+            };
+
+            // BUILT AS TEXT: AN OBJECT LITERAL OR A SPREAD WOULD SET THE PROTOTYPE RATHER THAN ADD THE KEY
+            const writtenText = JSON.stringify(choosingSource).replace('"Master__c":"random"', '"Master__c":"random","__proto__":"random"');
+            const readSource = DatasetSourceService.typeCheckDatasetSource(JSON.parse(writtenText));
+
+            expect(readSource?.lookupParentsByField?.AccountId).toEqual(['001000000000001AAA', '001000000000002AAA']);
+            expect(readSource?.lookupParentsByField?.ReportsToId).toBe('blank');
+            expect(Object.getPrototypeOf(readSource?.lookupParentsByField)).toBeNull();
+            expect(Object.prototype.hasOwnProperty.call(readSource?.lookupParentsByField, '__proto__')).toBe(true);
+            expect(DatasetSourceService.typeCheckDatasetSource({ ...choosingSource, lookupParentsByField: undefined })).not.toHaveProperty('lookupParentsByField');
+
+        });
+
+        test('writes lookup parents only when a lookup was asked about, copying the chosen Ids', () => {
+
+            const chosenIds = ['001000000000001AAA'];
+            const recipeSourceNames = { recipeRunFolderName: null, recipeTreeFolderName: null, recipeFileName: 'r.yml' };
+            const withChoices = DatasetSourceService.buildCreateInOrgDatasetSource(recipeSourceNames, 'faker-js', 'now', { Contact: 1 }, 'qa', 'Contact', [], { AccountId: chosenIds });
+            const withoutChoices = DatasetSourceService.buildCreateInOrgDatasetSource(recipeSourceNames, 'faker-js', 'now', { Contact: 1 }, 'qa', 'Contact', []);
+
+            expect(withChoices.lookupParentsByField).toEqual({ AccountId: chosenIds });
+            expect(withChoices.lookupParentsByField?.AccountId).not.toBe(chosenIds);
+            expect(withoutChoices).not.toHaveProperty('lookupParentsByField');
 
         });
 

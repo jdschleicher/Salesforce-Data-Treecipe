@@ -16,6 +16,7 @@ import {
     IHiddenOrgReasonCounts,
     NO_AUTHORIZED_ORGS_MESSAGE,
     OrgConnectionStatusUnavailableError,
+    ORG_PARENT_SEARCH_RESULT_LIMIT,
     SalesforceOrgService
 } from '../SalesforceOrgService/SalesforceOrgService';
 import {
@@ -31,6 +32,9 @@ import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelecti
 import {
     ICreateReadinessInput,
     IRecipeCockpitCreateReadinessViewModel,
+    IOutsideLookupParents,
+    IPickableLookup,
+    LookupParentChoice,
     RecipeCockpitRecordCreation,
     RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD
 } from './RecipeCockpitRecordCreation';
@@ -49,7 +53,7 @@ import {
 } from './RecipeCockpitTreeHistory';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { IScratchOrgPlan, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
-import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
+import { PARENT_PICKER_RANDOM_LABEL, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 
 // SHARED WITH THE TESTS SO THE PANEL'S VIEW TYPE CANNOT DRIFT FROM WHAT IS ASSERTED
 export const RECIPE_COCKPIT_VIEW_TYPE = 'treecipe.recipeCockpit';
@@ -1146,6 +1150,12 @@ export interface IRecipeCockpitRunFieldCounts {
     fieldCountsByObjectApiName: Map<string, number>;
     fieldCountsByTreeFolderName: Map<string, number>;
     hasTreeData: boolean;
+}
+
+// ONE LOOKUP'S ANSWER, WITH EVERY Id ITS OWN SEARCHES RETURNED: ONLY THOSE MAY BE WRITTEN (#254)
+interface ILookupParentChoiceWithSearch {
+    choice: LookupParentChoice;
+    searchReturnedRecordIds: ReadonlySet<string>;
 }
 
 export class RecipeCockpitService {
@@ -4678,23 +4688,41 @@ export class RecipeCockpitService {
             return refuse(`Nothing was inserted into ${orgLabel}: ${RecipeYamlScalar.escapeForNotification(unreadyEntry[1]?.disabledReason ?? `${unreadyEntry[0]} could not be checked.`)}`);
         }
 
-        // A REQUIRED LOOKUP TO A PARENT THIS TREE DOES NOT INSERT IS FILLED FROM THE ORG'S EXISTING RECORDS
+        /*
+            A lookup of an object's block to a parent the tree does not insert is asked about in its own
+            parent picker (#254), as the per-object Create asked; a required lookup the block does not
+            carry still gets a random existing parent, from the org's records.
+        */
+        const outsidePickableLookups = this.listOutsidePickableLookups(orgDetail.username, treeTargets, insertObjectApiNameSet);
+        const pickedLookupKeys = new Set(outsidePickableLookups.map(outsideLookup => `${outsideLookup.objectApiName}\n${outsideLookup.lookup.fieldApiName}`));
         const outsideParentObjectApiNames = [...new Set([...readinessByObjectApiName.values()]
-            .flatMap(readiness => readiness.requiredLookups)
-            .map(requiredLookup => requiredLookup.parentObjectApiName)
-            .filter(parentObjectApiName => !insertObjectApiNameSet.has(parentObjectApiName)))];
+            .flatMap(readiness => readiness.requiredLookups.map(requiredLookup => ({ objectApiName: readiness.objectApiName, requiredLookup: requiredLookup })))
+            .filter(({ objectApiName, requiredLookup }) => !insertObjectApiNameSet.has(requiredLookup.parentObjectApiName) && !pickedLookupKeys.has(`${objectApiName}\n${requiredLookup.fieldApiName}`))
+            .map(({ requiredLookup }) => requiredLookup.parentObjectApiName))];
 
         const recordTotalsByObject = new Map([...RecipeCockpitRecipeWriter.countRecipeRecordsByObject(generationRecipeText)]
             .filter(([objectApiName]) => insertObjectApiNameSet.has(objectApiName)));
 
         const confirmation = await vscode.window.showWarningMessage(
             `Generate ${treeLabel} and insert it into ${orgLabel}?`,
-            { modal: true, detail: this.buildInsertConfirmationDetail(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel) },
+            { modal: true, detail: this.buildInsertConfirmationDetail(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, outsidePickableLookups) },
             RECIPE_COCKPIT_INSERT_CONFIRM_LABEL
         );
 
         if ( confirmation !== RECIPE_COCKPIT_INSERT_CONFIRM_LABEL ) {
             return false;
+        }
+
+        // ONE PICKER PER OUTSIDE LOOKUP, BEFORE ANYTHING IS GENERATED; A CANCEL OF ANY ONE ENDS THE INSERT HERE
+        const outsideChoicesByObject = new Map<string, Map<string, ILookupParentChoiceWithSearch>>();
+        for ( const objectApiName of [...new Set(outsidePickableLookups.map(outsideLookup => outsideLookup.objectApiName))] ) {
+            const objectLookups = outsidePickableLookups.filter(outsideLookup => outsideLookup.objectApiName === objectApiName).map(outsideLookup => outsideLookup.lookup);
+            const lookupParentPrompt = await this.promptForLookupParentChoices(orgDetail.username, connection, querySource, objectLookups);
+            if ( 'cancelledLookup' in lookupParentPrompt ) {
+                const { fieldApiName, parentObjectApiName } = lookupParentPrompt.cancelledLookup;
+                return refuse(`Nothing was generated or inserted for ${treeLabel}: no ${RecipeYamlScalar.escapeForNotification(parentObjectApiName)} parent was chosen for ${RecipeYamlScalar.escapeForNotification(objectApiName)}.${RecipeYamlScalar.escapeForNotification(fieldApiName)}. Check ${PARENT_PICKER_RANDOM_LABEL} or the records to use, then accept.`);
+            }
+            outsideChoicesByObject.set(objectApiName, lookupParentPrompt.choices);
         }
 
         // THE SAME QUESTION INSERT DATA SET BY DIRECTORY ASKS: EVERY INSERT CHOOSES ALL-OR-NONE THE SAME WAY
@@ -4723,12 +4751,39 @@ export class RecipeCockpitService {
         }
 
         const orgRecordIdsByObject = new Map<string, string[]>();
+        const queryOrgRecordIds = async (parentObjectApiName: string) => {
+            if ( !orgRecordIdsByObject.has(parentObjectApiName) ) {
+                orgRecordIdsByObject.set(parentObjectApiName, await SalesforceOrgService.queryRecordIds(querySource, parentObjectApiName));
+            }
+            return orgRecordIdsByObject.get(parentObjectApiName) as string[];
+        };
+
         for ( const parentObjectApiName of outsideParentObjectApiNames ) {
-            const parentRecordIds = await SalesforceOrgService.queryRecordIds(querySource, parentObjectApiName);
-            if ( parentRecordIds.length === 0 ) {
+            if ( ( await queryOrgRecordIds(parentObjectApiName) ).length === 0 ) {
                 return refuse(`${treeLabel} needs an existing ${RecipeYamlScalar.escapeForNotification(parentObjectApiName)} record for a required lookup, and ${orgLabel} returned none, so nothing was generated or inserted.`);
             }
-            orgRecordIdsByObject.set(parentObjectApiName, parentRecordIds);
+        }
+
+        // WHAT EACH PICKER ANSWERED, AS THE INSERT GIVES IT OUT; ONLY Ids A LOOKUP'S OWN SEARCH RETURNED MAY BE WRITTEN
+        const outsideParentsByObject = new Map<string, Map<string, IOutsideLookupParents>>();
+        for ( const { objectApiName, lookup } of outsidePickableLookups ) {
+            const { choice, searchReturnedRecordIds } = outsideChoicesByObject.get(objectApiName)?.get(lookup.fieldApiName) as ILookupParentChoiceWithSearch;
+            const objectParents = outsideParentsByObject.get(objectApiName) ?? new Map<string, IOutsideLookupParents>();
+            if ( choice.kind === 'blank' ) {
+                objectParents.set(lookup.fieldApiName, { assignment: 'blank' });
+            } else if ( choice.kind === 'chosen' ) {
+                if ( !RecipeCockpitRecordCreation.areChosenParentIdsReturnedBySearch(choice.parentRecordIds, searchReturnedRecordIds) ) {
+                    return refuse(`The ${RecipeYamlScalar.escapeForNotification(lookup.parentObjectApiName)} records chosen for ${RecipeYamlScalar.escapeForNotification(objectApiName)}.${RecipeYamlScalar.escapeForNotification(lookup.fieldApiName)} are not ones its search returned, so nothing was generated or inserted.`);
+                }
+                objectParents.set(lookup.fieldApiName, { assignment: 'roundRobin', parentRecordIds: [...choice.parentRecordIds] });
+            } else {
+                const parentRecordIds = await queryOrgRecordIds(lookup.parentObjectApiName);
+                if ( parentRecordIds.length === 0 ) {
+                    return refuse(`${RecipeYamlScalar.escapeForNotification(objectApiName)}.${RecipeYamlScalar.escapeForNotification(lookup.fieldApiName)} needs a ${RecipeYamlScalar.escapeForNotification(lookup.parentObjectApiName)} record, and ${orgLabel} returned none, so nothing was generated or inserted.`);
+                }
+                objectParents.set(lookup.fieldApiName, { assignment: 'random', parentRecordIds: parentRecordIds });
+            }
+            outsideParentsByObject.set(objectApiName, objectParents);
         }
 
         // THE SAME COMMAND ▶ Run Faker RUNS, WITH ITS MODAL ALREADY ANSWERED BY THIS ONE
@@ -4740,7 +4795,7 @@ export class RecipeCockpitService {
         onDatasetFolderMade();
 
         const insertResult = await CollectionsApiService.insertDataSetFolderIntoOrg(datasetFolderPath, connection, allOrNoneSelection, {
-            prepareRecords: this.buildTreeInsertRecordPreparer(orgDetail.username, insertObjectApiNameSet, orgRecordIdsByObject, choiceCount => Math.floor(Math.random() * choiceCount))
+            prepareRecords: this.buildTreeInsertRecordPreparer(orgDetail.username, insertObjectApiNameSet, orgRecordIdsByObject, choiceCount => Math.floor(Math.random() * choiceCount), outsideParentsByObject)
         });
 
         this.storeInsertResult(panelState, orgDetail.username, treeKey, insertResult);
@@ -4750,6 +4805,27 @@ export class RecipeCockpitService {
         }
 
         return true;
+
+    }
+
+    /*
+        Every lookup of an inserted object's block (#210's field list, so unticked fields are left out)
+        that points at exactly one parent the tree does NOT insert, in the tree's order: what the
+        insert asks about in a parent picker (#254). A lookup to a parent the tree inserts is wired to
+        this run's records instead, and an object the describe cache does not hold asks nothing.
+    */
+    static listOutsidePickableLookups(orgUsername: string,
+                                        treeTargets: IRecipeCockpitCreateTarget[],
+                                        insertObjectApiNames: ReadonlySet<string>): Array<{ objectApiName: string; lookup: IPickableLookup }> {
+
+        return treeTargets.flatMap(treeTarget => {
+            const describe = SalesforceOrgService.getCachedDescribe(orgUsername, treeTarget.objectApiName);
+            return describe && treeTarget.recipeFieldApiNames
+                ? RecipeCockpitRecordCreation.findPickableLookups(describe, treeTarget.recipeFieldApiNames)
+                    .filter(pickableLookup => !insertObjectApiNames.has(pickableLookup.parentObjectApiName))
+                    .map(pickableLookup => ({ objectApiName: treeTarget.objectApiName, lookup: pickableLookup }))
+                : [];
+        });
 
     }
 
@@ -4776,7 +4852,8 @@ export class RecipeCockpitService {
     static buildTreeInsertRecordPreparer(orgUsername: string,
                                             insertObjectApiNames: ReadonlySet<string>,
                                             orgRecordIdsByObject: ReadonlyMap<string, readonly string[]>,
-                                            pickIndex: (choiceCount: number) => number): DataSetRecordPreparer {
+                                            pickIndex: (choiceCount: number) => number,
+                                            outsideParentsByObject: ReadonlyMap<string, ReadonlyMap<string, IOutsideLookupParents>> = new Map()): DataSetRecordPreparer {
 
         return (objectApiName, records, createdRecordIdsByReferenceId) => {
 
@@ -4810,10 +4887,65 @@ export class RecipeCockpitService {
                 isRunReference: value => runRecordIds.has(value) || sameFileNicknames.has(value),
                 runRecordIdsByObject: runRecordIdsByObject,
                 orgRecordIdsByObject: orgRecordIdsByObject,
-                inTreeObjectApiNames: insertObjectApiNames
+                inTreeObjectApiNames: insertObjectApiNames,
+                outsideParentsByFieldApiName: outsideParentsByObject.get(objectApiName) ?? new Map()
             }, pickIndex);
 
         };
+
+    }
+
+    /*
+        One picker per lookup of the cut block (#254), in the block's order, each answered before the
+        next opens. The search runs on the host against the parent's name field from its describe,
+        and every Id a search returns is remembered PER LOOKUP, so the Ids written can be checked
+        against what that lookup's own searches answered. A cancel of any one picker names that lookup
+        and opens no later picker.
+    */
+    private static async promptForLookupParentChoices(orgUsername: string,
+                                                        connection: Connection,
+                                                        querySource: IOrgQuerySource,
+                                                        pickableLookups: IPickableLookup[]): Promise<{ choices: Map<string, ILookupParentChoiceWithSearch> } | { cancelledLookup: IPickableLookup }> {
+
+        const choicesByFieldApiName = new Map<string, ILookupParentChoiceWithSearch>();
+
+        for ( const pickableLookup of pickableLookups ) {
+
+            const parentDescribeResult = await SalesforceOrgService.describeObjects(orgUsername, [pickableLookup.parentObjectApiName], async () => connection as unknown as IOrgDescribeSource);
+            const parentOutcome = parentDescribeResult.outcomes[0];
+            const nameFieldApiName = parentOutcome?.describe ? SalesforceOrgService.findNameFieldApiName(parentOutcome.describe) : undefined;
+            const searchUnavailableReason = !parentOutcome?.describe
+                ? `${pickableLookup.parentObjectApiName} could not be described (${parentOutcome?.failureMessage ?? 'no answer'}), so it cannot be searched`
+                : nameFieldApiName ? undefined : `${pickableLookup.parentObjectApiName} has no name field in its describe, so it cannot be searched`;
+            const searchReturnedRecordIds = new Set<string>();
+
+            const pickerAnswer = await VSCodeWorkspaceService.promptForParentRecords({
+                fieldApiName: pickableLookup.fieldApiName,
+                parentObjectApiName: pickableLookup.parentObjectApiName,
+                isRequired: pickableLookup.isRequired,
+                nameFieldApiName: nameFieldApiName,
+                searchUnavailableReason: searchUnavailableReason,
+                resultLimit: ORG_PARENT_SEARCH_RESULT_LIMIT,
+                search: async searchText => {
+                    const searchResult = await SalesforceOrgService.searchParentRecords(querySource, pickableLookup.parentObjectApiName, nameFieldApiName as string, searchText);
+                    searchResult.matches.forEach(parentMatch => searchReturnedRecordIds.add(parentMatch.recordId));
+                    return searchResult;
+                }
+            });
+
+            if ( !pickerAnswer || ( pickerAnswer.kind === 'blank' && pickableLookup.isRequired ) ) {
+                return { cancelledLookup: pickableLookup };
+            }
+
+            const choice: LookupParentChoice = pickerAnswer.kind === 'chosen'
+                ? { kind: 'chosen', parentRecordIds: pickerAnswer.records.map(parentRecord => parentRecord.recordId) }
+                : { kind: pickerAnswer.kind };
+
+            choicesByFieldApiName.set(pickableLookup.fieldApiName, { choice: choice, searchReturnedRecordIds: searchReturnedRecordIds });
+
+        }
+
+        return { choices: choicesByFieldApiName };
 
     }
 
@@ -4824,7 +4956,8 @@ export class RecipeCockpitService {
                                             recordTotalsByObject: ReadonlyMap<string, number>,
                                             outsideParentObjectApiNames: string[],
                                             fakerService: string,
-                                            recipeFileLabel: string): string {
+                                            recipeFileLabel: string,
+                                            outsidePickableLookups: Array<{ objectApiName: string; lookup: IPickableLookup }> = []): string {
 
         const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
         const objectCountsByObject = this.listObjectCountsByObject(tree);
@@ -4850,6 +4983,12 @@ export class RecipeCockpitService {
             ...objectLines,
             ...( excludedFieldApiNamesByObject.size > 0
                 ? [`Unticked, not sent: ${[...excludedFieldApiNamesByObject].map(([objectApiName, fieldApiNames]) => fieldApiNames.map(fieldApiName => `${objectApiName}.${fieldApiName}`).join(', ')).map(fieldText => RecipeYamlScalar.escapeForNotification(fieldText)).join(', ')}`]
+                : [] ),
+            ...( outsidePickableLookups.length > 0
+                ? [
+                    'Lookups to objects this tree does not insert, each chosen next (Random parent, or parent records you search for; cancelling inserts nothing):',
+                    ...outsidePickableLookups.map(({ objectApiName, lookup }) => `  ${RecipeYamlScalar.escapeForNotification(objectApiName)}.${RecipeYamlScalar.escapeForNotification(lookup.fieldApiName)} → ${RecipeYamlScalar.escapeForNotification(lookup.parentObjectApiName)} (${lookup.isRequired ? 'required' : 'optional, or leave blank'})`)
+                ]
                 : [] ),
             ...( outsideParentObjectApiNames.length > 0
                 ? [`Required lookups to objects this tree does not insert get a random existing record of: ${outsideParentObjectApiNames.map(parentObjectApiName => RecipeYamlScalar.escapeForNotification(parentObjectApiName)).join(', ')} (none means nothing is inserted).`]

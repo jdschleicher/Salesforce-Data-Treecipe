@@ -37,6 +37,8 @@ export type DatasetSourceStatus = 'linked' | 'unreadable' | 'absent' | 'unknown'
 
 export type DatasetSourceOrigin = 'runFaker' | 'createInOrg';
 
+export type LookupParentRecord = 'random' | 'blank' | string[];
+
 /*
     origin "createInOrg" is a data set the Recipe Cockpit's Create made and INSERTED (#180): it also
     names the org (by username), the one object created, and the Ids the insert returned. Those three
@@ -54,6 +56,12 @@ export interface IDatasetSource {
     orgUsername?: string;
     createdObjectApiName?: string;
     createdRecordIds?: string[];
+    /*
+        createInOrg only (#254): what each lookup of the created records was given -- "random",
+        "blank", or the parent Ids the reader chose, in the order they were assigned round-robin.
+        Absent on a file written before it, and read back with no prototype.
+    */
+    lookupParentsByField?: Record<string, LookupParentRecord>;
     // THE OBJECTS THE RECIPE COCKPIT LEFT OUT OF THE RUN (#219); ABSENT WHEN NOTHING WAS
     excludedObjectApiNames?: string[];
     // THE FIELDS THE RECIPE COCKPIT UNTICKED (#220), BY OBJECT; ABSENT WHEN NOTHING WAS. READ BACK WITH NO PROTOTYPE
@@ -201,14 +209,21 @@ export class DatasetSourceService {
                                             recordCountsByObject: Record<string, number>,
                                             orgUsername: string,
                                             createdObjectApiName: string,
-                                            createdRecordIds: string[]): IDatasetSource {
+                                            createdRecordIds: string[],
+                                            lookupParentsByField: Record<string, LookupParentRecord> = {}): IDatasetSource {
+
+        const recordedLookupParents = Object.entries(lookupParentsByField);
+
 
         return {
             ...this.buildDatasetSource(recipeSourceNames, fakerService, generatedAt, recordCountsByObject),
             origin: 'createInOrg',
             orgUsername: orgUsername,
             createdObjectApiName: createdObjectApiName,
-            createdRecordIds: [...createdRecordIds]
+            createdRecordIds: [...createdRecordIds],
+            ...( recordedLookupParents.length > 0
+                ? { lookupParentsByField: Object.fromEntries(recordedLookupParents.map(([fieldApiName, lookupParent]) => [fieldApiName, Array.isArray(lookupParent) ? [...lookupParent] : lookupParent])) }
+                : {} )
         };
 
     }
@@ -368,12 +383,27 @@ export class DatasetSourceService {
             && Object.values(objectCountsByObject).every(objectCount => typeof objectCount === 'number' && Number.isSafeInteger(objectCount) && objectCount >= 1)
         );
 
+        // OPTIONAL, AND ONLY ON A createInOrg FILE (#254); PRESENT, EACH VALUE IS "random", "blank" OR A LIST OF Ids
+        const lookupParentsByField = candidate.lookupParentsByField;
+        const isLookupParentMapValid = lookupParentsByField === undefined || (
+            isCreateInOrg
+            && typeof lookupParentsByField === 'object'
+            && lookupParentsByField !== null
+            && !Array.isArray(lookupParentsByField)
+            && Object.values(lookupParentsByField).every(lookupParent => (
+                lookupParent === 'random'
+                || lookupParent === 'blank'
+                || ( Array.isArray(lookupParent) && lookupParent.every(parentRecordId => typeof parentRecordId === 'string') )
+            ))
+        );
+
         const isValid = candidate.schemaVersion === DATASET_SOURCE_SCHEMA_VERSION
                         && (candidate.origin === 'runFaker' || isCreateInOrg)
                         && isCreateInOrgDetailValid
                         && isExcludedObjectListValid
                         && isExcludedFieldMapValid
                         && isObjectCountMapValid
+                        && isLookupParentMapValid
                         && isStringOrNull(candidate.recipeRunFolderName)
                         && isStringOrNull(candidate.recipeTreeFolderName)
                         && typeof candidate.recipeFileName === 'string'
@@ -406,6 +436,14 @@ export class DatasetSourceService {
             });
         }
 
+        let readLookupParents: Record<string, LookupParentRecord> | undefined;
+        if ( lookupParentsByField !== undefined ) {
+            readLookupParents = Object.create(null) as Record<string, LookupParentRecord>;
+            Object.entries(lookupParentsByField as Record<string, LookupParentRecord>).forEach(([fieldApiName, lookupParent]) => {
+                ( readLookupParents as Record<string, LookupParentRecord> )[fieldApiName] = Array.isArray(lookupParent) ? [...lookupParent] : lookupParent;
+            });
+        }
+
         return {
             schemaVersion: DATASET_SOURCE_SCHEMA_VERSION,
             origin: isCreateInOrg ? 'createInOrg' : 'runFaker',
@@ -418,7 +456,8 @@ export class DatasetSourceService {
             ...( isCreateInOrg ? {
                 orgUsername: candidate.orgUsername as string,
                 createdObjectApiName: candidate.createdObjectApiName as string,
-                createdRecordIds: [...(candidate.createdRecordIds as string[])]
+                createdRecordIds: [...(candidate.createdRecordIds as string[])],
+                ...( readLookupParents ? { lookupParentsByField: readLookupParents } : {} )
             } : {} ),
             ...( Array.isArray(excludedObjectApiNames) ? { excludedObjectApiNames: [...(excludedObjectApiNames as string[])] } : {} ),
             ...( readFieldExclusions ? { excludedFieldApiNamesByObject: readFieldExclusions } : {} ),

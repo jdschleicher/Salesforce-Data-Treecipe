@@ -614,6 +614,112 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         });
 
+        describe('a parent picker for each lookup of the tree to a parent it does not insert (#254)', () => {
+
+            const CHOSEN_REGION_IDS = ['a05000000000007AAA', 'a05000000000008AAA'];
+            const recipeWithRegion = () => buildFakerJsAccountRecipe(2, 3).replace(
+                '        AccountId: Account_NickName\n',
+                '        AccountId: Account_NickName\n        Region__c: ### TODO -- REFERENCE ID REQUIRED -- Region__c\n'
+            );
+            const answerPickers = (answerPicker: (pickerOptions: any) => Promise<any>) =>
+                jest.spyOn(VSCodeWorkspaceService, 'promptForParentRecords').mockImplementation(answerPicker);
+
+            beforeEach(() => {
+                buildWorkspace(recipeWithRegion());
+                jest.spyOn(SalesforceOrgService, 'searchParentRecords').mockResolvedValue({
+                    matches: CHOSEN_REGION_IDS.map((recordId, matchIndex) => ({ recordId: recordId, recordName: `Region ${matchIndex}` })),
+                    hasMoreMatches: false
+                });
+            });
+
+            it('asks after the confirm, only about the outside lookup, and gives the chosen parents out round-robin', async () => {
+
+                const connection = buildFakeConnection({ withOutsideParent: true });
+                useConnection(connection);
+                const askedOrder: string[] = [];
+                (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => { askedOrder.push('confirm'); return RECIPE_COCKPIT_INSERT_CONFIRM_LABEL; });
+                allOrNoneSpy.mockImplementation(async () => { askedOrder.push('allOrNone'); return false; });
+                const pickerSpy = answerPickers(async (pickerOptions: any) => {
+                    askedOrder.push(`picker:${pickerOptions.fieldApiName}`);
+                    await pickerOptions.search('Region');
+                    return { kind: 'chosen', records: CHOSEN_REGION_IDS.map(recordId => ({ recordId: recordId, recordName: recordId })) };
+                });
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                await insertAccountTree();
+
+                expect(askedOrder).toEqual(['confirm', 'picker:Region__c', 'allOrNone']);
+                expect(pickerSpy).toHaveBeenCalledTimes(1);
+                expect(pickerSpy.mock.calls[0][0]).toMatchObject({ fieldApiName: 'Region__c', parentObjectApiName: 'Region__c', isRequired: true });
+                expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0][1].detail).toContain('  Contact.Region__c → Region__c (required)');
+                expect(connection.sentQueries).not.toContain('SELECT Id FROM Region__c LIMIT 2000');
+                const contacts = insertedOf(connection, 'Contact');
+                expect(contacts).toHaveLength(6);
+                expect(contacts.map(contact => contact.Region__c)).toEqual([0, 1, 2, 3, 4, 5].map(contactIndex => CHOSEN_REGION_IDS[contactIndex % 2]));
+
+            });
+
+            it('gives each record a random existing parent when Random parent is chosen', async () => {
+
+                const connection = buildFakeConnection({ withOutsideParent: true });
+                useConnection(connection);
+                answerPickers(async () => ({ kind: 'random' }));
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                await insertAccountTree();
+
+                expect(connection.sentQueries).toContain('SELECT Id FROM Region__c LIMIT 2000');
+                insertedOf(connection, 'Contact').forEach(contact => expect(OUTSIDE_REGION_IDS).toContain(contact.Region__c));
+
+            });
+
+            it('generates and inserts nothing when a picker is cancelled, and says which lookup had no parent', async () => {
+
+                const connection = buildFakeConnection({ withOutsideParent: true });
+                useConnection(connection);
+                answerPickers(async () => undefined);
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                await insertAccountTree();
+
+                expect(showWarningMessageSpy.mock.calls.at(-1)[0]).toContain('no Region__c parent was chosen for Contact.Region__c');
+                expect(allOrNoneSpy).not.toHaveBeenCalled();
+                expect(runFakerCalls()).toEqual([]);
+                expect(connection.insertCalls).toEqual([]);
+                expect(datasetFolderNames()).toEqual([]);
+
+            });
+
+            it('refuses Ids its own search did not return, before anything is written', async () => {
+
+                const connection = buildFakeConnection({ withOutsideParent: true });
+                useConnection(connection);
+                answerPickers(async () => ({ kind: 'chosen', records: [{ recordId: 'a05000000000099AAA', recordName: 'forged' }] }));
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                await insertAccountTree();
+
+                expect(showWarningMessageSpy.mock.calls.at(-1)[0]).toContain('are not ones its search returned');
+                expect(runFakerCalls()).toEqual([]);
+                expect(connection.insertCalls).toEqual([]);
+
+            });
+
+            it('never asks about a lookup to a parent the tree inserts', async () => {
+
+                buildWorkspace(buildFakerJsAccountRecipe(2, 3));
+                useConnection(buildFakeConnection());
+                const pickerSpy = answerPickers(async () => ({ kind: 'random' }));
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                await insertAccountTree();
+
+                expect(pickerSpy).not.toHaveBeenCalled();
+
+            });
+
+        });
+
         it('refuses before writing anything when the parent outside the tree has no records', async () => {
 
             const connection = buildFakeConnection({ withOutsideParent: true, outsideParentIds: [] });

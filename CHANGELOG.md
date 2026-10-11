@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.58.0] - Recipe Cockpit: one Treecipe tab with per-object counts and a whole-tree insert; the comparison becomes a Compare tab
+## [3.59.0] - Recipe Cockpit: one Treecipe tab with per-object counts and a whole-tree insert; the comparison becomes a Compare tab
 
 Closes [#255](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/255), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173). Supersedes the count editor of [#151](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/151).
 
@@ -31,10 +31,31 @@ Building a data set for one relationship tree took two tabs: **Structure** decid
   - **Progress:** the cancellable progress notification now names each file and each insert round (`Inserting Contact: round 1 of 2`), and a cancel stops between rounds too, for Insert Data Set as well.
   - **Lookups:** a child's lookup that already names a record of the same run is kept. Any other lookup to a parent the tree inserts (a snowfakery `### TODO`) is pointed at a random parent record inserted in the same run. A required lookup to an object outside the tree gets a random existing record of that object, and the insert is refused before anything is written when the org has none. Any other lookup is left blank. The rules are `RecipeCockpitRecordCreation.prepareTreeInsertRecords` and `findTreeInsertLookups`.
   - **Results:** a partial failure keeps what was inserted. **View errors** opens the results file. The panel reloads onto the card's Treecipe tab however the insert ended, once a data set folder exists.
+- **The parent picker from 3.58.0 (#254) moves into the insert.** After the confirmation, each lookup in an inserted object's block that points at exactly one object the tree does **not** insert (or one it excludes) gets its own searchable picker, as + Create gave it: **Random parent**, the parent records you search for (given out round-robin across the records), or **Leave blank** for an optional lookup. Cancelling any picker generates and inserts nothing. Only Ids that lookup's own search returned are written. A required lookup to an outside parent that the block does not carry still gets a random existing record. A lookup to a parent the tree inserts never asks: it is wired to that run's records. The tree insert writes a `runFaker` data set, so `lookupParentsByField` is not recorded for it.
 - **Data-by-Org's per-object + Create is removed**, with its count input, the `createRecords` message, `creatableObjectKeys`, the per-object block cut and `CollectionsApiService.insertRecordsWithoutRollback`. Readiness per tree and object (#210) is unchanged, and is now what decides the tree's insert.
 - **The Compare tab holds only the metadata comparison:** Compare with an org…, Choose another org…, the status filter, progress, the summary and the field-diff rows, moved as they were, with the same org resolution, payloads and replay. A comparison answered for a card whose Compare tab never opened is drawn when it opens. It sends only describes and the Organization query.
 - **Saved places:** the place shape is now version 2. A version 1 place, from `setState` or `workspaceState`, is read through `RECIPE_COCKPIT_TREE_TAB_RENAMES`: `structure` opens the Treecipe tab, and `dataByOrg` opens Compare with its status filter and opened rows. Every reload that focused `structure` or `dataByOrg` now focuses `treecipe`.
 - **Run Faker by Recipe** resolves to the data set folder it wrote, so the insert inserts exactly what was generated. `CollectionsApiService.createCollectionsApiFile` now writes synchronously, so the files are on disk when generation returns.
+
+## [3.58.0] - Recipe Cockpit Create: search for and pick each lookup's parent records, or choose Random
+
+Closes [#254](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/254), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Data-by-Org **+ Create** always gave each new record a random existing parent, so putting new Contacts under the Account you were testing with meant fixing their lookups by hand in the org. You can now search for and pick the parents.
+
+- **One picker per lookup in the cut recipe block.** After the Create confirmation, and before anything is written, the host opens a searchable quick pick for each lookup of the block the describe says points at exactly one object and can be written (`RecipeCockpitRecordCreation.findPickableLookups`), in the block's order. A polymorphic lookup (`WhoId`) gets no picker: a required one still blocks Create and an optional one is still left blank. A required lookup the block does not carry still gets a random parent, as before.
+- **Nothing is chosen for you.** A required lookup's picker offers **Random parent** first, and an optional lookup's picker offers **Leave blank** and then **Random parent**. Nothing starts checked. Accepting with nothing checked, or dismissing the picker, cancels the Create: no data set folder, no file, no insert, and no later picker opens. A warning says which lookup had no parent chosen, since pressing Enter on a row that is only highlighted checks nothing.
+- **VS Code's own check-all** checks every listed record, never Random or Leave blank. While a search's status lines are drawn as separator rows, they are also shown in the picker's title, because a separator can be hidden while the input filters.
+- **Random parent** clears the search and keeps it cleared while it stays checked. It is today's behaviour: a random Id from `SELECT Id FROM <Parent> LIMIT 2000` per record, and the Create is refused when the parent has no records. Random now applies to an optional lookup too, when you check it.
+- **Typing searches** the parent's name field, the one its describe marks `nameField` (`Name` for Account, `CaseNumber` for Case), after a short pause. Only the newest search is drawn. Matches are listed by name and Id, at most 200 (`ORG_PARENT_SEARCH_RESULT_LIMIT`; past that the picker says to refine the search). A search with no matches says so. Check one or several, or **Select all matches**. Records checked in an earlier search stay checked.
+- **Several parents are assigned round-robin**: record *i* gets parent *i mod K*, in the order checked (`assignLookupIds` with `assignment: 'roundRobin'`).
+- **The search is built safely** (`SalesforceOrgService.buildParentSearchQuery`): the object and name field must be api names, `\`, `'`, `"`, `%` and `_` are escaped so they match literally, and text carrying a control character, U+2028 or U+2029 is refused rather than sent. The query asks for records, never a `COUNT()`.
+- **Only Ids the picker's own search returned are written.** Each returned Id is type-checked as a Salesforce Id when the search answers, and checked again against that lookup's search results (`areChosenParentIdsReturnedBySearch`) before it goes into a record. Anything else refuses the Create before anything is written.
+- **A parent that cannot be searched**, because its describe marks no name field or it could not be described, gets a picker offering Random (and Leave blank) only, saying why.
+- **The production guards are unchanged.** Sandbox and scratch orgs only, the org type asked again on the insert connection, and the org selection compared again after the confirmation and again after the last picker closes.
+- **What was chosen is recorded.** The Create confirmation lists the lookups you will be asked about. `datasetSource.json` gains `lookupParentsByField` on a `createInOrg` data set: `"random"`, `"blank"` or the chosen Ids for each lookup. It is optional and read back type-checked with no prototype.
+- **The search runs on the host.** The panel's `createRecords` message is unchanged, so no record Id or search text ever comes from the panel.
+- Chosen parents are not remembered between Creates.
 
 ## [3.57.0] - Insert Data Set by Directory refuses a production org
 

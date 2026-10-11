@@ -62,7 +62,8 @@ const ACCOUNT_ORG_DESCRIBE: INormalizedOrgObjectDescribe = {
         isNillable: true,
         isCreateable: true,
         isCalculated: false,
-        isDefaultedOnCreate: false
+        isDefaultedOnCreate: false,
+        isNameField: false
     }]
 };
 
