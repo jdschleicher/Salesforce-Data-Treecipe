@@ -611,6 +611,107 @@ describe('DatasetSourceService', () => {
 
         });
 
+        describe('the record counts the Recipe Cockpit set (#255)', () => {
+
+            const recipeSourceNames = { recipeRunFolderName: fakerJsRunFolderName, recipeTreeFolderName: 'Account-thru-Contact', recipeFileName: 'recipe.yml' };
+
+            test('buildDatasetSource records them only when there are some', () => {
+
+                expect(DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 1 }))
+                    .not.toHaveProperty('objectCountsByObject');
+                expect(DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 1 }, [], {}, {}))
+                    .not.toHaveProperty('objectCountsByObject');
+                expect(DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 2, Contact: 6 }, [], {}, { Account: 2, Contact: 3 }))
+                    .toMatchObject({ objectCountsByObject: { Account: 2, Contact: 3 } });
+
+            });
+
+            test('buildDatasetSource records an object named __proto__ as a key', () => {
+
+                const objectCounts: Record<string, number> = Object.create(null);
+                objectCounts['__proto__'] = 4;
+
+                const written = JSON.parse(JSON.stringify(DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 1 }, [], {}, objectCounts)));
+
+                expect(Object.keys(written.objectCountsByObject)).toEqual(['__proto__']);
+                expect(written).not.toHaveProperty('excludedObjectApiNames');
+                expect(written).not.toHaveProperty('excludedFieldApiNamesByObject');
+
+            });
+
+            test('accepts them, and reads a source written before them unchanged', () => {
+
+                const countingSource: IDatasetSource = { ...validDatasetSource, objectCountsByObject: { Account: 2, Contact: Number.MAX_SAFE_INTEGER } };
+
+                expect(DatasetSourceService.typeCheckDatasetSource(countingSource)).toEqual(countingSource);
+                expect(DatasetSourceService.typeCheckDatasetSource(validDatasetSource)).toEqual(validDatasetSource);
+                expect(DatasetSourceService.typeCheckDatasetSource(validDatasetSource)).not.toHaveProperty('objectCountsByObject');
+
+            });
+
+            test('reads them back with no prototype, an object named __proto__ an own entry', () => {
+
+                const parsedDatasetSource = JSON.parse(JSON.stringify({ ...validDatasetSource, objectCountsByObject: { Placeholder: 3, Contact: 2 } }).replace('"Placeholder"', '"__proto__"'));
+
+                const objectCountsByObject = DatasetSourceService.typeCheckDatasetSource(parsedDatasetSource)?.objectCountsByObject as Record<string, number>;
+
+                expect(Object.getPrototypeOf(objectCountsByObject)).toBeNull();
+                expect(Object.keys(objectCountsByObject)).toEqual(['__proto__', 'Contact']);
+                expect(objectCountsByObject['__proto__']).toBe(3);
+                expect(objectCountsByObject['toString']).toBeUndefined();
+
+            });
+
+            test.each([
+                ['counts as an array', [['Account', 2]]],
+                ['counts as null', null],
+                ['counts as a string', 'Account: 2'],
+                ['a count of zero', { Account: 0 }],
+                ['a negative count', { Account: -1 }],
+                ['a fractional count', { Account: 2.5 }],
+                ['a string count', { Account: '2' }],
+                ['a count past MAX_SAFE_INTEGER', { Account: Number.MAX_SAFE_INTEGER + 1 }],
+                ['a null count', { Account: null }]
+            ])('refuses the whole file for %s', (_description, objectCountsByObject) => {
+
+                expect(DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, objectCountsByObject })).toBeUndefined();
+
+            });
+
+            test('a data set whose datasetSource.json carries an invalid count reads as unreadable', () => {
+
+                const datasetFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'dataset-source-counts-'));
+
+                try {
+                    fs.mkdirSync(path.join(datasetFolderPath, 'BaseArtifactFiles'));
+                    fs.writeFileSync(path.join(datasetFolderPath, 'BaseArtifactFiles', DATASET_SOURCE_FILE_NAME), JSON.stringify({ ...validDatasetSource, objectCountsByObject: { Account: 0 } }));
+
+                    expect(DatasetSourceService.readDatasetSource(datasetFolderPath, DatasetSourceService.findKnownRecipeRuns(mockGeneratedRecipesPath))).toMatchObject({ status: 'unreadable' });
+                } finally {
+                    fs.rmSync(datasetFolderPath, { recursive: true, force: true });
+                }
+
+            });
+
+            test('a written file reads back with its counts', () => {
+
+                const datasetFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'dataset-source-counts-'));
+
+                try {
+                    const baseArtifactsPath = path.join(datasetFolderPath, 'BaseArtifactFiles');
+                    fs.mkdirSync(baseArtifactsPath);
+                    DatasetSourceService.writeDatasetSourceFile(baseArtifactsPath, DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 2, Contact: 6 }, [], {}, { Contact: 3 }));
+
+                    const readSource = DatasetSourceService.typeCheckDatasetSource(JSON.parse(fs.readFileSync(path.join(baseArtifactsPath, DATASET_SOURCE_FILE_NAME), 'utf8')));
+                    expect({ ...readSource?.objectCountsByObject }).toEqual({ Contact: 3 });
+                } finally {
+                    fs.rmSync(datasetFolderPath, { recursive: true, force: true });
+                }
+
+            });
+
+        });
+
     });
 
     describe('readDatasetSource -- a data set written before datasetSource.json', () => {

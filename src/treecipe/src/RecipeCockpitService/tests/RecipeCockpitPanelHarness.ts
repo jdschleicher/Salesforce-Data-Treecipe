@@ -64,16 +64,6 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
             },
             setAttribute(attributeName: string, attributeValue: string) { this.attributes[attributeName] = String(attributeValue); },
             appendChild(childElement: any) { this.children.push(childElement); childElement.parentNode = this; return childElement; },
-            // A ROW ADDED IN PLACE (#226) GOES ABOVE THE ROWS ALREADY THERE; A REFERENCE THAT IS NOT A CHILD THROWS, AS THE DOM'S DOES
-            insertBefore(childElement: any, referenceElement: any) {
-                if ( referenceElement === null ) { return this.appendChild(childElement); }
-                const referenceIndex = this.children.indexOf(referenceElement);
-                if ( referenceIndex === -1 ) { throw new Error('insertBefore: the reference element is not a child of this element'); }
-                this.children.splice(referenceIndex, 0, childElement);
-                childElement.parentNode = this;
-                return childElement;
-            },
-            get firstChild() { return this.children[0] ?? null; },
             addEventListener(eventType: string, listener: Function) {
                 (listenersByEventType[eventType] = listenersByEventType[eventType] || []).push(listener);
             },

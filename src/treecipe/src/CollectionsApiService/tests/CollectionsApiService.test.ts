@@ -9,6 +9,7 @@ import { MockDirectoryService } from '../../DirectoryProcessingService/tests/moc
 import { MockCollectionsApiService } from './mocks/MockCollectionsApiService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
+import { RecordTypeService } from '../../RecordTypeService/RecordTypeService';
 
 jest.mock('vscode', () => ({
     workspace: {
@@ -23,9 +24,12 @@ jest.mock('vscode', () => ({
     window: {
         showErrorMessage: jest.fn(),
         showWarningMessage: jest.fn(),
+        showInformationMessage: jest.fn(),
         showQuickPick: jest.fn(),
-        showInputBox: jest.fn()
+        showInputBox: jest.fn(),
+        withProgress: jest.fn()
     },
+    ProgressLocation: { Notification: 15 },
     ThemeIcon: jest.fn().mockImplementation(
         (name) => ({ id: name })
     )
@@ -1285,7 +1289,7 @@ describe('Shared tests for CollectionsApiService', () => {
             const expectedObjectName = 'Account';
             const mockUniqueTimeStampedFakeDataSetsFolderName = '/mock/workspace/treecipe/FakeDataSets/dataset-2024-11-25T16-24-15';
 
-            jest.spyOn(fs, 'writeFile').mockReturnValue();
+            jest.spyOn(fs, 'writeFileSync').mockReturnValue();
             
             CollectionsApiService.createCollectionsApiFile(
                 expectedObjectName,
@@ -1297,10 +1301,9 @@ describe('Shared tests for CollectionsApiService', () => {
             const expectedFullPathWithFileName = `${mockUniqueTimeStampedFakeDataSetsFolderName}/${expectedFileName}`;
 
             const jsonMockCollectionsApiFormattedRecords = JSON.stringify(mockCollectionsApiFormattedRecords, null, 2);
-            expect(fs.writeFile).toHaveBeenCalledWith(
+            expect(fs.writeFileSync).toHaveBeenCalledWith(
                 expectedFullPathWithFileName,
-                jsonMockCollectionsApiFormattedRecords,
-                expect.any(Function)
+                jsonMockCollectionsApiFormattedRecords
             );
 
         });
@@ -1323,82 +1326,406 @@ describe('Shared tests for CollectionsApiService', () => {
     
 });
 
-describe('insertRecordsWithoutRollback, the Recipe Cockpit Create insert (#180)', () => {
+describe('the one data set insert, shared by Insert Data Set by Directory and the Recipe Cockpit (#255)', () => {
 
     let datasetFolderPath: string;
+    let isCancelled: boolean;
+    let progressReport: jest.Mock;
+
+    const record = (objectApiName: string, referenceIndex: number, nickname: string, fields: Record<string, unknown> = {}) => ({
+        attributes: { type: objectApiName, referenceId: `${objectApiName}_Reference_${referenceIndex}__${nickname}` },
+        Name: `${objectApiName} ${nickname} ${referenceIndex}`,
+        ...fields
+    });
+
+    // A DATA SET FOLDER AS RUN FAKER WRITES IT: THE WRAPPER COPY IN BaseArtifactFiles, ONE COLLECTIONS API FILE PER OBJECT
+    const writeDataSetFolder = (recordsByObject: Record<string, unknown[]>, levelsByObject: Record<string, number>) => {
+        fs.mkdirSync(path.join(datasetFolderPath, 'BaseArtifactFiles'), { recursive: true });
+        fs.mkdirSync(path.join(datasetFolderPath, 'DatasetFilesForCollectionsApi'), { recursive: true });
+        fs.writeFileSync(path.join(datasetFolderPath, 'BaseArtifactFiles', 'originalTreecipeWrapper-2026-10-07T12-00-00.json'), JSON.stringify({
+            ObjectToObjectInfoMap: Object.fromEntries(Object.entries(levelsByObject).map(([objectApiName, level]) => [objectApiName, { RelationshipDetail: { level: level } }]))
+        }));
+        Object.entries(recordsByObject).forEach(([objectApiName, records]) => {
+            fs.writeFileSync(path.join(datasetFolderPath, 'DatasetFilesForCollectionsApi', `collectionsApi-${objectApiName}.json`), JSON.stringify({ allOrNone: true, records: records }));
+        });
+    };
+
+    // EACH INSERT ANSWERS SUCCESS PER RECORD WITH AN Id NAMED BY ITS OBJECT AND ORDER, UNLESS A TEST SAYS OTHERWISE
+    const buildConnection = (insertAnswer?: (objectApiName: string, records: any[]) => unknown) => {
+        const insertedBatches: Array<{ objectApiName: string; records: any[]; options: unknown }> = [];
+        const deleteMock = jest.fn().mockResolvedValue([]);
+        const connection = {
+            instanceUrl: 'https://qa.my.salesforce.com',
+            insertedBatches,
+            deleteMock,
+            sobject: jest.fn().mockImplementation((objectApiName: string) => ({
+                insert: jest.fn().mockImplementation(async (records: any[], options: unknown) => {
+                    insertedBatches.push({ objectApiName, records, options });
+                    return insertAnswer
+                        ? insertAnswer(objectApiName, records)
+                        : records.map((_record, recordIndex) => ({ id: `${objectApiName}-${insertedBatches.length}-${recordIndex}`, success: true, errors: [] }));
+                }),
+                delete: deleteMock
+            }))
+        };
+        return connection;
+    };
 
     beforeEach(() => {
-        datasetFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-create-insert-'));
+        datasetFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-dataset-insert-'));
+        isCancelled = false;
+        progressReport = jest.fn();
         jest.spyOn(VSCodeWorkspaceService, 'getNowIsoDateTimestamp').mockReturnValue('2026-10-07T12-00-00');
+        jest.spyOn(VSCodeWorkspaceService, 'getFileContentByPath').mockImplementation(async (filePath: string) => fs.readFileSync(filePath, 'utf8'));
+        (vscode.window.withProgress as jest.Mock).mockImplementation(async (_options: unknown, task: Function) => task(
+            { report: progressReport },
+            { get isCancellationRequested() { return isCancelled; }, onCancellationRequested: jest.fn() }
+        ));
+        (vscode.window.showWarningMessage as jest.Mock).mockClear();
+        (vscode.window.showInformationMessage as jest.Mock).mockClear();
     });
 
     afterEach(() => {
         fs.rmSync(datasetFolderPath, { recursive: true, force: true });
     });
 
-    const buildConnection = (insert: jest.Mock) => ({
-        instanceUrl: 'https://qa.my.salesforce.com',
-        sobject: jest.fn().mockReturnValue({ insert: insert, delete: jest.fn() })
+    describe('insertDataSetFolderIntoOrg', () => {
+
+        test('maps the folder, reads the org\'s record type Ids for every object of the wrapper, and inserts with the options it was given', async () => {
+
+            writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')] }, { Account: 0, Contact: 1 });
+            const connection = buildConnection();
+            const recordTypeDetail = { records: [{ Id: '012000000000001AAA', DeveloperName: 'Business', SobjectType: 'Account' }] };
+            const recordTypeSpy = jest.spyOn(RecordTypeService, 'getRecordTypeIdsByConnection').mockResolvedValue(recordTypeDetail);
+            const insertResult = { outcome: 'completed' as const, isRolledBack: false, resultsFilePath: '/results.json', savedRecordCount: 1, failedRecordCount: 0 };
+            const upsertSpy = jest.spyOn(CollectionsApiService, 'upsertDataSetToSelectedOrg').mockResolvedValue(insertResult);
+            const prepareRecords = jest.fn((_objectApiName: string, records: unknown[]) => records);
+
+            const answered = await CollectionsApiService.insertDataSetFolderIntoOrg(datasetFolderPath, connection as any, false, { prepareRecords });
+
+            expect(answered).toBe(insertResult);
+            expect(recordTypeSpy).toHaveBeenCalledWith(connection, ['Account', 'Contact']);
+            expect(upsertSpy).toHaveBeenCalledTimes(1);
+            const [folderPath, childFoldersToFiles, passedRecordTypeDetail, passedConnection, allOrNone, insertOptions] = upsertSpy.mock.calls[0];
+            expect(folderPath).toBe(datasetFolderPath);
+            expect(childFoldersToFiles).toEqual({
+                BaseArtifactFiles: [path.join(datasetFolderPath, 'BaseArtifactFiles', 'originalTreecipeWrapper-2026-10-07T12-00-00.json')],
+                DatasetFilesForCollectionsApi: [path.join(datasetFolderPath, 'DatasetFilesForCollectionsApi', 'collectionsApi-Account.json')]
+            });
+            expect(passedRecordTypeDetail).toBe(recordTypeDetail);
+            expect(passedConnection).toBe(connection);
+            expect(allOrNone).toBe(false);
+            expect(insertOptions).toEqual({ prepareRecords });
+
+        });
+
+        test('defaults to no options, and inserts end to end parents first', async () => {
+
+            writeDataSetFolder({
+                Contact: [record('Contact', 1, 'Contact_NickName', { AccountId: 'Account_NickName' })],
+                Account: [record('Account', 1, 'Account_NickName')]
+            }, { Contact: 1, Account: 0 });
+            const connection = buildConnection();
+            jest.spyOn(RecordTypeService, 'getRecordTypeIdsByConnection').mockResolvedValue({ records: [] });
+
+            const insertResult = await CollectionsApiService.insertDataSetFolderIntoOrg(datasetFolderPath, connection as any, true);
+
+            expect(connection.insertedBatches.map(insertedBatch => insertedBatch.objectApiName)).toEqual(['Account', 'Contact']);
+            expect(connection.insertedBatches[1].records[0].AccountId).toBe('Account-1-0');
+            expect(insertResult).toMatchObject({ outcome: 'completed', savedRecordCount: 2, failedRecordCount: 0 });
+
+        });
+
     });
 
-    const records = (recordCount: number) => Array.from({ length: recordCount }, (_record, recordIndex) => ({
-        attributes: { type: 'Contact', referenceId: `Contact_Reference_${recordIndex + 1}__Contact_NickName` },
-        LastName: `Name ${recordIndex}`
-    }));
+    describe('upsertDataSetToSelectedOrg', () => {
 
-    test('inserts with allOrNone false, reports each rejected record, deletes nothing, and writes the results to InsertAttempts', async () => {
+        const insertFolder = async (connection: ReturnType<typeof buildConnection>, allOrNone: boolean, prepareRecords?: any) => CollectionsApiService.upsertDataSetToSelectedOrg(
+            datasetFolderPath,
+            await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(datasetFolderPath),
+            { records: [] },
+            connection as any,
+            allOrNone,
+            prepareRecords ? { prepareRecords } : undefined
+        );
 
-        const insert = jest.fn().mockResolvedValue([
-            { id: '003000000000001AAA', success: true, errors: [] },
-            { success: false, errors: [{ statusCode: 'ENTITY_IS_DELETED', message: 'entity is deleted' }] },
-            { id: '003000000000003AAA', success: true, errors: [] }
-        ]);
-        const connection = buildConnection(insert);
+        test('answers completed with what was saved and the results file it wrote', async () => {
 
-        const insertResult = await CollectionsApiService.insertRecordsWithoutRollback(datasetFolderPath, 'Contact', records(3), connection as any);
+            writeDataSetFolder({
+                Account: [record('Account', 1, 'Account_NickName'), record('Account', 2, 'Account_NickName_2')],
+                Contact: [record('Contact', 1, 'Contact_NickName', { AccountId: 'Account_NickName' })]
+            }, { Account: 0, Contact: 1 });
+            const connection = buildConnection();
 
-        expect(insert).toHaveBeenCalledWith(records(3), { allowRecursive: false, allOrNone: false });
-        expect(connection.sobject('Contact').delete).not.toHaveBeenCalled();
-        expect(insertResult.createdRecordIds).toEqual(['003000000000001AAA', '003000000000003AAA']);
-        expect(insertResult.failures).toEqual([{ recordIndex: 1, message: 'ENTITY_IS_DELETED: entity is deleted' }]);
-        expect(insertResult.resultsFilePath).toBe(path.join(datasetFolderPath, 'InsertAttempts', 'insertAttempt-2026-10-07T12-00-00', 'insertAttemptResults-2026-10-07T12-00-00.json'));
+            const insertResult = await insertFolder(connection, true);
 
-        const writtenResults = JSON.parse(fs.readFileSync(insertResult.resultsFilePath, 'utf8'));
-        expect(writtenResults.SuccessResults.Contact).toHaveLength(2);
-        expect(writtenResults.FailureResults.Contact).toHaveLength(1);
+            expect(insertResult).toEqual({
+                outcome: 'completed',
+                isRolledBack: false,
+                resultsFilePath: path.join(datasetFolderPath, 'InsertAttempts', 'insertAttempt-2026-10-07T12-00-00', 'insertAttemptResults-2026-10-07T12-00-00.json'),
+                savedRecordCount: 3,
+                failedRecordCount: 0
+            });
+            expect(fs.existsSync(insertResult.resultsFilePath)).toBe(true);
+            expect(connection.insertedBatches.map(insertedBatch => insertedBatch.options)).toEqual([{ allowRecursive: false, allOrNone: true }, { allowRecursive: false, allOrNone: true }]);
+            expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('All files processed.');
+            expect(progressReport).toHaveBeenCalledWith({ message: 'Processing file 1 of 2: collectionsApi-Account.json', increment: 50 });
+            expect(progressReport).toHaveBeenCalledWith({ message: 'Inserting Contact: round 1 of 1' });
+
+        });
+
+        test('hands each file\'s records to prepareRecords with every Id this insert created so far', async () => {
+
+            writeDataSetFolder({
+                Account: [record('Account', 1, 'Account_NickName')],
+                Contact: [record('Contact', 1, 'Contact_NickName', { AccountId: 'Account_NickName', OwnerId: '### TODO' })]
+            }, { Account: 0, Contact: 1 });
+            const connection = buildConnection();
+            const createdIdsSeen: Array<Record<string, string>> = [];
+            const prepareRecords = jest.fn((objectApiName: string, records: any[], createdRecordIdsByReferenceId: Readonly<Record<string, string>>) => {
+                createdIdsSeen.push({ ...createdRecordIdsByReferenceId });
+                return objectApiName === 'Contact' ? records.map(contact => { const { OwnerId, ...kept } = contact; return { ...kept, OwnerId: '005000000000001AAA' }; }) : records;
+            });
+
+            await insertFolder(connection, false, prepareRecords);
+
+            expect(prepareRecords.mock.calls.map(call => call[0])).toEqual(['Account', 'Contact']);
+            expect(createdIdsSeen).toEqual([{}, { 'Account_Reference_1__Account_NickName': 'Account-1-0' }]);
+            // THE LOOKUP TO AN EARLIER FILE IS ALREADY AN Id WHEN prepareRecords SEES IT
+            expect(prepareRecords.mock.calls[1][1][0].AccountId).toBe('Account-1-0');
+            expect(connection.insertedBatches[1].records[0].OwnerId).toBe('005000000000001AAA');
+
+        });
+
+        test('a cancel rolls back what was saved through deletePreviouslySavedRecords and answers cancelled', async () => {
+
+            writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')], Contact: [record('Contact', 1, 'Contact_NickName')] }, { Account: 0, Contact: 1 });
+            const connection = buildConnection((objectApiName, records) => {
+                isCancelled = true;
+                return records.map((_record, recordIndex) => ({ id: `${objectApiName}-${recordIndex}`, success: true, errors: [] }));
+            });
+            const deleteSpy = jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockResolvedValue(undefined);
+
+            const insertResult = await insertFolder(connection, false);
+
+            expect(connection.insertedBatches.map(insertedBatch => insertedBatch.objectApiName)).toEqual(['Account']);
+            expect(deleteSpy).toHaveBeenCalledWith(insertResult.resultsFilePath, connection);
+            expect(insertResult).toMatchObject({ outcome: 'cancelled', savedRecordCount: 0, failedRecordCount: 0 });
+            expect(vscode.window.showWarningMessage).toHaveBeenCalledWith('Import cancelled by user. Deleting any previously saved records...');
+            expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+
+        });
+
+        test('a cancel before anything was saved deletes nothing, since there is no results file', async () => {
+
+            writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')] }, { Account: 0 });
+            isCancelled = true;
+            const connection = buildConnection();
+            const deleteSpy = jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockResolvedValue(undefined);
+
+            const insertResult = await insertFolder(connection, false);
+
+            expect(connection.insertedBatches).toEqual([]);
+            expect(deleteSpy).not.toHaveBeenCalled();
+            expect(insertResult.outcome).toBe('cancelled');
+
+        });
+
+        test('a cancel between two rounds of one file rolls back too', async () => {
+
+            writeDataSetFolder({ Account: [record('Account', 1, 'Top'), record('Account', 1, 'Child', { ParentId: 'Top' })] }, { Account: 0 });
+            const connection = buildConnection((objectApiName, records) => {
+                isCancelled = true;
+                return records.map((_record, recordIndex) => ({ id: `${objectApiName}-${recordIndex}`, success: true, errors: [] }));
+            });
+            const deleteSpy = jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockResolvedValue(undefined);
+
+            const insertResult = await insertFolder(connection, false);
+
+            expect(connection.insertedBatches).toHaveLength(1);
+            expect(deleteSpy).toHaveBeenCalledTimes(1);
+            expect(insertResult.outcome).toBe('cancelled');
+
+        });
+
+        test('an all-or-none failure stops at that file, rolled back, and answers stopped with what failed', async () => {
+
+            writeDataSetFolder({
+                Account: [record('Account', 1, 'Account_NickName')],
+                Contact: [record('Contact', 1, 'Contact_NickName')],
+                Opportunity: [record('Opportunity', 1, 'Opportunity_NickName')]
+            }, { Account: 0, Contact: 1, Opportunity: 2 });
+            const connection = buildConnection((objectApiName, records) => objectApiName === 'Contact'
+                ? records.map(() => ({ success: false, errors: [{ statusCode: 'REQUIRED_FIELD_MISSING', message: 'LastName' }] }))
+                : records.map((_record, recordIndex) => ({ id: `${objectApiName}-${recordIndex}`, success: true, errors: [] })));
+            const deleteSpy = jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockResolvedValue(undefined);
+
+            const insertResult = await insertFolder(connection, true);
+
+            expect(connection.insertedBatches.map(insertedBatch => insertedBatch.objectApiName)).toEqual(['Account', 'Contact']);
+            expect(deleteSpy).toHaveBeenCalledTimes(1);
+            expect(insertResult).toMatchObject({ outcome: 'stopped', savedRecordCount: 0, failedRecordCount: 1 });
+            expect(vscode.window.showWarningMessage).toHaveBeenCalledWith('Failed to process collectionsApi-Contact.json');
+            expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+
+        });
+
+        const throwOnContact = () => buildConnection((objectApiName, records) => {
+            if ( objectApiName === 'Contact' ) {
+                throw new Error('INVALID_SESSION_ID: Session expired');
+            }
+            return records.map((_record, recordIndex) => ({ id: `${objectApiName}-${recordIndex}`, success: true, errors: [] }));
+        });
+        const writeThreeFiles = () => writeDataSetFolder({
+            Account: [record('Account', 1, 'Account_NickName')],
+            Contact: [record('Contact', 1, 'Contact_NickName')],
+            Opportunity: [record('Opportunity', 1, 'Opportunity_NickName')]
+        }, { Account: 0, Contact: 1, Opportunity: 2 });
+
+        test('a request that throws under all-or-none stops there, rolls back what was saved, and never answers completed (#259 review)', async () => {
+
+            writeThreeFiles();
+            const connection = throwOnContact();
+            const deleteSpy = jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockResolvedValue(undefined);
+
+            const insertResult = await insertFolder(connection, true);
+
+            // THE CONTACT REQUEST WAS SENT AND THREW; NOTHING AFTER IT IS SENT
+            expect(connection.insertedBatches.map(insertedBatch => insertedBatch.objectApiName)).toEqual(['Account', 'Contact']);
+            expect(deleteSpy).toHaveBeenCalledTimes(1);
+            expect(insertResult).toMatchObject({ outcome: 'stopped', isRolledBack: true, savedRecordCount: 0 });
+            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls.at(-1)[0]).toContain('Failed to process collectionsApi-Contact.json: ');
+            expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+
+        });
+
+        test('a request that throws without all-or-none stops there and keeps what was saved, saying so', async () => {
+
+            writeThreeFiles();
+            const connection = throwOnContact();
+            const deleteSpy = jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockResolvedValue(undefined);
+
+            const insertResult = await insertFolder(connection, false);
+
+            expect(connection.insertedBatches.map(insertedBatch => insertedBatch.objectApiName)).toEqual(['Account', 'Contact']);
+            expect(deleteSpy).not.toHaveBeenCalled();
+            expect(insertResult).toMatchObject({ outcome: 'stopped', isRolledBack: false, savedRecordCount: 1 });
+
+        });
+
+        test('an all-or-none failure seen together with a cancel is rolled back once, not twice', async () => {
+
+            writeThreeFiles();
+            const connection = buildConnection((objectApiName, records) => {
+                if ( objectApiName === 'Contact' ) {
+                    isCancelled = true;
+                    return records.map(() => ({ success: false, errors: [{ statusCode: 'REQUIRED_FIELD_MISSING', message: 'LastName' }] }));
+                }
+                return records.map((_record, recordIndex) => ({ id: `${objectApiName}-${recordIndex}`, success: true, errors: [] }));
+            });
+            const deleteSpy = jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockResolvedValue(undefined);
+
+            const insertResult = await insertFolder(connection, true);
+
+            expect(deleteSpy).toHaveBeenCalledTimes(1);
+            expect(insertResult).toMatchObject({ outcome: 'stopped', isRolledBack: true });
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalledWith('Import cancelled by user. Deleting any previously saved records...');
+
+        });
+
+        test('without all-or-none, keeps going past a rejected record and counts it', async () => {
+
+            writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName'), record('Account', 2, 'Account_NickName')] }, { Account: 0 });
+            const connection = buildConnection(() => [{ id: '001A', success: true, errors: [] }, { success: false, errors: [{ message: 'bad' }] }]);
+
+            const insertResult = await insertFolder(connection, false);
+
+            expect(insertResult).toMatchObject({ outcome: 'completed', savedRecordCount: 1, failedRecordCount: 1 });
+
+        });
 
     });
 
-    test('sends 200 records a request, and records a request that failed outright as a failure of each of its records', async () => {
+    describe('processAndInsertCollectionFile', () => {
 
-        const insert = jest.fn()
-            .mockRejectedValueOnce(new Error('socket hang up'))
-            .mockImplementationOnce(async (batch: unknown[]) => batch.map((_record, recordIndex) => ({ id: `003${String(recordIndex).padStart(15, '0')}`, success: true, errors: [] })));
+        const insertFile = async (records: unknown[], connection: ReturnType<typeof buildConnection>, prepareRecords?: any, createdIds: Record<string, string> = {}) => {
+            writeDataSetFolder({ Account: records }, { Account: 0 });
+            fs.mkdirSync(path.join(datasetFolderPath, 'InsertAttempts'), { recursive: true });
+            return CollectionsApiService.processAndInsertCollectionFile(
+                path.join(datasetFolderPath, 'DatasetFilesForCollectionsApi', 'collectionsApi-Account.json'),
+                { records: [] },
+                createdIds,
+                connection,
+                false,
+                { SuccessResults: {}, FailureResults: {} },
+                path.join(datasetFolderPath, 'InsertAttempts', 'results.json'),
+                { get isCancellationRequested() { return isCancelled; } } as any,
+                { report: progressReport },
+                prepareRecords
+            );
+        };
 
-        const insertResult = await CollectionsApiService.insertRecordsWithoutRollback(datasetFolderPath, 'Contact', records(250), buildConnection(insert) as any);
+        test('reports each round through the progress it was handed', async () => {
 
-        expect(insert.mock.calls.map(insertCall => insertCall[0].length)).toEqual([200, 50]);
-        expect(insertResult.failures).toHaveLength(200);
-        expect(insertResult.failures[0].message).toContain('socket hang up');
-        expect(insertResult.createdRecordIds).toHaveLength(50);
+            const connection = buildConnection();
 
-    });
+            const isInserted = await insertFile([record('Account', 1, 'Top'), record('Account', 1, 'Child', { ParentId: 'Top' })], connection);
 
-    test('reads an answer that is not a list, and a result with no errors as per-record failures', async () => {
+            expect(isInserted).toBe(true);
+            expect(progressReport.mock.calls.map(call => call[0])).toEqual([
+                { message: 'Inserting Account: round 1 of 2' },
+                { message: 'Inserting Account: round 2 of 2' }
+            ]);
+            expect(connection.insertedBatches[1].records[0].ParentId).toBe('Account-1-0');
 
-        const insert = jest.fn()
-            .mockResolvedValueOnce({ success: false })
-            .mockRejectedValueOnce('timed out');
+        });
 
-        const insertResult = await CollectionsApiService.insertRecordsWithoutRollback(datasetFolderPath, 'Contact', records(201), buildConnection(insert) as any);
+        test('applies prepareRecords, with the created-Ids map, before the records are split into rounds', async () => {
 
-        expect(insertResult.createdRecordIds).toEqual([]);
-        expect(insertResult.failures[0]).toEqual({ recordIndex: 0, message: 'no result was returned for this record' });
-        expect(insertResult.failures[1]).toEqual({ recordIndex: 1, message: 'no result was returned for this record' });
-        // THE REQUEST FAILED, SO THE RECORDS' FATE IS UNKNOWN RATHER THAN A KNOWN FAILURE
-        expect(insertResult.failures[200]).toEqual({ recordIndex: 200, message: 'The insert request failed, so whether this record was saved is unknown: Error importing records: timed out' });
+            const connection = buildConnection();
+            const createdIds = { 'Contact_Reference_1__Contact_NickName': '003000000000001AAA' };
+            // THE PREPARER WIRES A SAME-FILE LOOKUP THE FILE DID NOT HAVE, SO THE FILE NEEDS TWO ROUNDS
+            const prepareRecords = jest.fn((_objectApiName: string, records: any[], _createdRecordIdsByReferenceId: Readonly<Record<string, string>>) => [records[0], { ...records[1], ParentId: 'Top' }]);
+
+            await insertFile([record('Account', 1, 'Top'), record('Account', 1, 'Child')], connection, prepareRecords, createdIds);
+
+            expect(prepareRecords).toHaveBeenCalledTimes(1);
+            expect(prepareRecords.mock.calls[0][0]).toBe('Account');
+            expect(prepareRecords.mock.calls[0][2]).toBe(createdIds);
+            expect(connection.insertedBatches.map(insertedBatch => insertedBatch.records.map((insertedRecord: any) => insertedRecord.Name))).toEqual([['Account Top 1'], ['Account Child 1']]);
+            expect(progressReport).toHaveBeenCalledWith({ message: 'Inserting Account: round 2 of 2' });
+
+        });
+
+        test('answers false, sending no further request, when the token is cancelled between rounds', async () => {
+
+            const connection = buildConnection((objectApiName, records) => {
+                isCancelled = true;
+                return records.map((_record, recordIndex) => ({ id: `${objectApiName}-${recordIndex}`, success: true, errors: [] }));
+            });
+
+            const isInserted = await insertFile([record('Account', 1, 'Top'), record('Account', 1, 'Child', { ParentId: 'Top' })], connection);
+
+            expect(isInserted).toBe(false);
+            expect(connection.insertedBatches).toHaveLength(1);
+            expect(progressReport).toHaveBeenCalledTimes(1);
+
+        });
+
+        test('sends a 300-record file in 200-record requests', async () => {
+
+            const connection = buildConnection();
+            const records = Array.from({ length: 300 }, (_unused, recordIndex) => record('Account', recordIndex + 1, 'Account_NickName'));
+
+            const isInserted = await insertFile(records, connection);
+
+            expect(isInserted).toBe(true);
+            expect(connection.insertedBatches.map(insertedBatch => insertedBatch.records.length)).toEqual([200, 100]);
+            expect(CollectionsApiService.collectionsApiRecordBatchSizeLimit).toBe(200);
+            expect(progressReport).toHaveBeenCalledWith({ message: 'Inserting Account: round 1 of 1' });
+
+        });
 
     });
 
 });
-

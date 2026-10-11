@@ -36,6 +36,7 @@ import {
 } from "../RecipeCockpitService/RecipeCockpitService";
 
 import { SalesforceOrgService, IOrgTypeDetail } from '../SalesforceOrgService/SalesforceOrgService';
+import { RunFakerConfirmation } from './RunFakerConfirmation';
 
 import * as fs from 'fs';
 import * as os from 'os';
@@ -50,14 +51,25 @@ export const FILTERED_RECIPE_FILE_PREFIX = 'filteredRecipe-';
 
 /*
     What the Recipe Cockpit hands Run Faker for a tree with excluded objects (#219) or unticked
-    fields (#220): the filtered copy the host built from the tree's recipe, and what it leaves out.
-    The recipe file itself is never written; the copy is what the processor runs and what the data
-    set keeps. At least one object or field is left out, or there would be no copy.
+    fields (#220), or with record counts the reader set (#255): the filtered copy the host built
+    from the tree's recipe, what it leaves out and the counts it carries. The recipe file itself is
+    never written; the copy is what the processor runs and what the data set keeps. At least one
+    object or field is left out, or one count set, or there would be no copy.
 */
 export interface IRunFakerFilteredRecipe {
     recipeText: string;
     excludedObjectApiNames: string[];
     excludedFieldApiNamesByObject?: Record<string, string[]>;
+    objectCountsByObject?: Record<string, number>;
+}
+/*
+    isConfirmed is set by the Recipe Cockpit's tree insert (#255), whose own host modal already named
+    what is generated and where it goes: the "Generate Data" question is not asked a second time.
+    It is honoured only with a recipe path, and readRunFakerOptions sets it only for a one-time
+    token RunFakerConfirmation issued -- never for anything a caller can write into the arguments.
+*/
+export interface IRunFakerOptions {
+    isConfirmed?: true;
 }
 export const MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES = 20;
 
@@ -154,14 +166,15 @@ export class ExtensionCommandService {
         The palette passes nothing and gets the recipe picker. The Recipe Cockpit's Run Faker passes
         the recipe file of the tree it was clicked on -- but the command is callable by id, so a
         path is held to what the picker could have offered before anything reads it.
-
-        Answers the data set folder it wrote, once its datasetSource.json is written, so the Recipe
-        Cockpit can add that one data set in place and insert it (#226); undefined for a run that
-        wrote no complete data set -- refused, cancelled, or failed.
     */
-    async runFakerGenerationByRecipeFile(recipeFilePath?: string, filteredRecipe?: IRunFakerFilteredRecipe): Promise<string | undefined> {
+    /*
+        Resolves to the data set folder it wrote, or undefined when it wrote none -- refused, cancelled
+        at its modal, or failed -- so the cockpit's tree insert can insert exactly what was generated.
+    */
+    async runFakerGenerationByRecipeFile(recipeFilePath?: string, filteredRecipe?: IRunFakerFilteredRecipe, runOptions: IRunFakerOptions = {}): Promise<string | undefined> {
 
         let filteredRecipeDirectoryPath: string | undefined;
+        let datasetFolderPath: string | undefined;
 
         try {
 
@@ -223,16 +236,20 @@ export class ExtensionCommandService {
                 fs.writeFileSync(generationRecipeFilePath, filteredRecipe.recipeText, { encoding: 'utf8', flag: 'wx' });
             }
 
-            const dataStructureSummary = FakerJSRecipeProcessor.buildRecipeDataStructureSummary(parsedRecipeYaml);
+            if ( runOptions.isConfirmed !== true || recipeFilePath === undefined ) {
 
-            const confirmed = await vscode.window.showInformationMessage(
-                dataStructureSummary,
-                { modal: true },
-                'Generate Data'
-            );
+                const dataStructureSummary = FakerJSRecipeProcessor.buildRecipeDataStructureSummary(parsedRecipeYaml);
 
-            if (confirmed !== 'Generate Data') {
-                return;
+                const confirmed = await vscode.window.showInformationMessage(
+                    dataStructureSummary,
+                    { modal: true },
+                    'Generate Data'
+                );
+
+                if (confirmed !== 'Generate Data') {
+                    return;
+                }
+
             }
 
             const generatedRecipesFolderFullPath = path.join(VSCodeWorkspaceService.getWorkspaceRoot(), expectedGeneratedRecipesFolderPath);
@@ -301,17 +318,17 @@ export class ExtensionCommandService {
                 new Date().toISOString(),
                 DatasetSourceService.countRecordsByObject(mappedSObjectApiToRecords),
                 filteredRecipe?.excludedObjectApiNames ?? [],
-                filteredRecipe?.excludedFieldApiNamesByObject ?? {}
+                filteredRecipe?.excludedFieldApiNamesByObject ?? {},
+                filteredRecipe?.objectCountsByObject ?? {}
             );
             DatasetSourceService.writeDatasetSourceFile(fullPathToBaseArtifactsFolder, datasetSource);
-
-            return fullPathToUniqueTimeStampedFakeDataSetsFolder;
+            datasetFolderPath = fullPathToUniqueTimeStampedFakeDataSetsFolder;
+       
 
         } catch(error) {
 
             const commandName = 'runFakerGenerationByRecipeFile';
             ErrorHandlingService.handleCapturedError(error, commandName);
-            return undefined;
 
         } finally {
 
@@ -321,6 +338,17 @@ export class ExtensionCommandService {
 
         }
 
+        return datasetFolderPath;
+
+    }
+
+    // THE COMMAND IS CALLABLE BY ID: ONLY A { confirmationToken } THE HOST ISSUED, AND ONCE, EVER SKIPS THE MODAL
+    static readRunFakerOptions(candidate: unknown): IRunFakerOptions {
+
+        return typeof candidate === 'object' && candidate !== null && RunFakerConfirmation.spend(( candidate as { confirmationToken?: unknown } ).confirmationToken)
+            ? { isConfirmed: true }
+            : {};
+
     }
 
     static isRunFakerFilteredRecipe(candidate: unknown): candidate is IRunFakerFilteredRecipe {
@@ -329,7 +357,7 @@ export class ExtensionCommandService {
             return false;
         }
 
-        const { recipeText, excludedObjectApiNames, excludedFieldApiNamesByObject } = candidate as Record<string, unknown>;
+        const { recipeText, excludedObjectApiNames, excludedFieldApiNamesByObject, objectCountsByObject } = candidate as Record<string, unknown>;
 
         const isFieldMap = excludedFieldApiNamesByObject === undefined || (
             typeof excludedFieldApiNamesByObject === 'object'
@@ -344,12 +372,25 @@ export class ExtensionCommandService {
         const excludedFieldCount = isFieldMap && excludedFieldApiNamesByObject
             ? Object.values(excludedFieldApiNamesByObject as Record<string, string[]>).reduce((fieldCount, fieldApiNames) => fieldCount + fieldApiNames.length, 0)
             : 0;
+        const isCountMap = objectCountsByObject === undefined || (
+            typeof objectCountsByObject === 'object'
+            && objectCountsByObject !== null
+            && !Array.isArray(objectCountsByObject)
+            && Object.entries(objectCountsByObject).every(([objectApiName, objectCount]) => (
+                SalesforceApiName.isApiName(objectApiName)
+                && typeof objectCount === 'number'
+                && Number.isSafeInteger(objectCount)
+                && objectCount >= 1
+            ))
+        );
+        const objectCountCount = isCountMap && objectCountsByObject ? Object.keys(objectCountsByObject).length : 0;
 
         return typeof recipeText === 'string'
                 && Array.isArray(excludedObjectApiNames)
                 && excludedObjectApiNames.every(excludedObjectApiName => SalesforceApiName.isApiName(excludedObjectApiName))
                 && isFieldMap
-                && excludedObjectApiNames.length + excludedFieldCount > 0;
+                && isCountMap
+                && excludedObjectApiNames.length + excludedFieldCount + objectCountCount > 0;
 
     }
 
@@ -2537,19 +2578,7 @@ export class ExtensionCommandService {
                 return;
             }
 
-            const datasetChildFoldersToFilesMap = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(selectedDataSetFullDirectoryPath);
-            
-            const treecipeObjectWrapperDetail = await CollectionsApiService.getTreecipeObjectsWrapperDetailByDataSetDirectoriesToFilesMap(datasetChildFoldersToFilesMap);
-            
-            const objectApiNamesToGetRecordTypeInfoFrom = Object.keys(treecipeObjectWrapperDetail.ObjectToObjectInfoMap);
-
-            const recordTypeDetailFromOrg = await RecordTypeService.getRecordTypeIdsByConnection(aliasAuthenticationConnection, objectApiNamesToGetRecordTypeInfoFrom);
-
-            await CollectionsApiService.upsertDataSetToSelectedOrg(selectedDataSetFullDirectoryPath,
-                                                                    datasetChildFoldersToFilesMap, 
-                                                                    recordTypeDetailFromOrg, 
-                                                                    aliasAuthenticationConnection,
-                                                                    allOrNoneSelection);                  
+            await CollectionsApiService.insertDataSetFolderIntoOrg(selectedDataSetFullDirectoryPath, aliasAuthenticationConnection, allOrNoneSelection);
 
         } catch(error) {
 

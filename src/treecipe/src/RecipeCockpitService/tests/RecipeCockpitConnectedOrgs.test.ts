@@ -49,7 +49,7 @@ import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceSer
 
 /*
     One "sf org list --json --verbose" answer, read by all four org pickers through the real
-    SalesforceOrgService: Data-by-Org's dropdown, the Classic list's Compare with an org…, Insert
+    SalesforceOrgService: the Treecipe tab's org dropdown, the Classic list's Compare with an org…, Insert
     Data Set by Directory and Run Picklist Dependency Check. Only execFile and the authorization
     files are stood in for.
 */
@@ -154,7 +154,7 @@ describe('RecipeCockpitService, every org picker lists only the orgs the Salesfo
 
     });
 
-    it('runs "sf org list" again on Data-by-Org\'s ⟳, and every picker after it reads the new answer', async () => {
+    it('runs "sf org list" again on the Treecipe tab\'s ⟳, and every picker after it reads the new answer', async () => {
 
         await openRenderedCockpit();
         await receivedMessageHandler({ command: 'loadDataOrgs' });

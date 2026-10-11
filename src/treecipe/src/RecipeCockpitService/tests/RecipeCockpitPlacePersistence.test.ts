@@ -19,6 +19,7 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY,
     RECIPE_COCKPIT_PANEL_PLACE_PERSIST_DELAY,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
+    RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB,
     RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH,
     RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES,
     RECIPE_COCKPIT_PANEL_PLACE_MAX_SERIALIZED_LENGTH
@@ -52,8 +53,8 @@ const buildPlace = (overrides: Partial<IRecipeCockpitPanelPlace> = {}): IRecipeC
     trees: [{
         treeKey: ACCOUNT_TREE_KEY,
         isExpanded: true,
-        selectedTab: 'structure',
-        searchQueries: { structure: '', dataByOrg: '', versions: '', datasets: '' },
+        selectedTab: 'treecipe',
+        searchQueries: { treecipe: '', compare: '', versions: '', datasets: '' },
         statusFilter: 'all',
         expandedObjectKeys: ['Account\n'],
         openPicklistKeys: [],
@@ -93,6 +94,9 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             ['an array', [buildPlace()]],
             ['a string', JSON.stringify(buildPlace())],
             ['another shape', { ...buildPlace(), version: RECIPE_COCKPIT_PANEL_PLACE_VERSION + 1 }],
+            ['a shape older than any kept', { ...buildPlace(), version: RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB - 1 }],
+            ['a version that is text', { ...buildPlace(), version: String(RECIPE_COCKPIT_PANEL_PLACE_VERSION) }],
+            ['no version', { ...buildPlace(), version: undefined }],
             ['no run', { ...buildPlace(), runFolderName: undefined }],
             ['an empty run', { ...buildPlace(), runFolderName: '' }],
             ['a run that is not text', { ...buildPlace(), runFolderName: 7 }],
@@ -128,7 +132,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
                         treeKey: LEAD_TREE_KEY,
                         isExpanded: 'true',
                         selectedTab: 'constructor',
-                        searchQueries: { structure: 42, versions: 'FakerJS', toString: 'x' },
+                        searchQueries: { treecipe: 42, versions: 'FakerJS', toString: 'x' },
                         statusFilter: 'unchanged',
                         expandedObjectKeys: ['Lead\n', 3, '', null, 'x'.repeat(RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH + 1)],
                         openPicklistKeys: 'Lead\n\nStatus',
@@ -147,8 +151,8 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
                 trees: [{
                     treeKey: LEAD_TREE_KEY,
                     isExpanded: false,
-                    selectedTab: 'structure',
-                    searchQueries: { structure: '', dataByOrg: '', versions: 'FakerJS', datasets: '' },
+                    selectedTab: 'treecipe',
+                    searchQueries: { treecipe: '', compare: '', versions: 'FakerJS', datasets: '' },
                     statusFilter: 'all',
                     expandedObjectKeys: ['Lead\n'],
                     openPicklistKeys: [],
@@ -189,12 +193,83 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
         });
 
+        it('given a version 2 place, round-trips it unchanged', () => {
+
+            const versionTwoPlace = buildPlace({ trees: [{ ...buildPlace().trees[0], selectedTab: 'compare', statusFilter: 'new-in-org',
+                searchQueries: { treecipe: 'Rating', compare: 'Brand', versions: 'FakerJS', datasets: 'set' }, expandedDataObjectApiNames: ['Account'] }] });
+
+            expect(RECIPE_COCKPIT_PANEL_PLACE_VERSION).toBe(2);
+            expect(RecipeCockpitService.normalizePanelPlace(versionTwoPlace)).toEqual(versionTwoPlace);
+            expect(RecipeCockpitService.normalizePanelPlace(JSON.parse(JSON.stringify(RecipeCockpitService.normalizePanelPlace(versionTwoPlace))))).toEqual(versionTwoPlace);
+
+        });
+
+        // A VERSION 2 PLACE NAMING A VERSION 1 TAB IS NOT RENAMED: ONLY AN OLDER PLACE IS READ THROUGH THE RENAMES
+        it('given a version 2 place naming the old tab names, does not rename them', () => {
+
+            const normalizedPlace = RecipeCockpitService.normalizePanelPlace({ ...buildPlace(), trees: [{ ...buildPlace().trees[0],
+                selectedTab: 'dataByOrg', searchQueries: { structure: 'Rating', dataByOrg: 'Brand' } }] });
+
+            expect(normalizedPlace!.trees[0].selectedTab).toBe('treecipe');
+            expect(normalizedPlace!.trees[0].searchQueries).toEqual({ treecipe: '', compare: '', versions: '', datasets: '' });
+
+        });
+
+        describe('given a place saved before the Treecipe tab (version 1)', () => {
+
+            const buildVersionOnePlace = (treeOverrides: Record<string, unknown>) => ({
+                ...buildPlace(),
+                version: RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB,
+                trees: [{ ...buildPlace().trees[0], ...treeOverrides }]
+            });
+
+            it.each([
+                ['structure', 'treecipe'],
+                ['dataByOrg', 'compare'],
+                ['versions', 'versions'],
+                ['datasets', 'datasets']
+            ])('reads its %s tab as the %s tab, and returns a version 2 place', (savedTabName, expectedTabName) => {
+
+                const normalizedPlace = RecipeCockpitService.normalizePanelPlace(buildVersionOnePlace({ selectedTab: savedTabName }));
+
+                expect(normalizedPlace!.version).toBe(RECIPE_COCKPIT_PANEL_PLACE_VERSION);
+                expect(normalizedPlace!.trees[0].selectedTab).toBe(expectedTabName);
+
+            });
+
+            it('reads its search keys as the tabs they became, and keeps its status filter and opened rows for the Compare tab', () => {
+
+                const normalizedPlace = RecipeCockpitService.normalizePanelPlace(buildVersionOnePlace({
+                    selectedTab: 'dataByOrg',
+                    statusFilter: 'type-changed',
+                    expandedDataObjectApiNames: ['Account'],
+                    searchQueries: { structure: 'Rating', dataByOrg: 'Brand', versions: 'FakerJS', datasets: 'set' }
+                }));
+
+                expect(normalizedPlace).toEqual(buildPlace({ trees: [{
+                    ...buildPlace().trees[0],
+                    selectedTab: 'compare',
+                    statusFilter: 'type-changed',
+                    expandedDataObjectApiNames: ['Account'],
+                    searchQueries: { treecipe: 'Rating', compare: 'Brand', versions: 'FakerJS', datasets: 'set' }
+                }] }));
+
+            });
+
+            it('given a tab name it does not know, opens the Treecipe tab', () => {
+
+                expect(RecipeCockpitService.normalizePanelPlace(buildVersionOnePlace({ selectedTab: 'constructor' }))!.trees[0].selectedTab).toBe('treecipe');
+
+            });
+
+        });
+
         it('accepts each status the status filter offers and each tab', () => {
 
             ['all', 'new-in-org', 'removed-from-org', 'type-changed', 'picklist-changed'].forEach(statusFilter => {
                 expect(RecipeCockpitService.normalizePanelPlace(buildPlace({ trees: [{ ...buildPlace().trees[0], statusFilter }] }))!.trees[0].statusFilter).toBe(statusFilter);
             });
-            (['structure', 'dataByOrg', 'versions', 'datasets'] as const).forEach(selectedTab => {
+            (['treecipe', 'compare', 'versions', 'datasets'] as const).forEach(selectedTab => {
                 expect(RecipeCockpitService.normalizePanelPlace(buildPlace({ trees: [{ ...buildPlace().trees[0], selectedTab }] }))!.trees[0].selectedTab).toBe(selectedTab);
             });
 
@@ -439,6 +514,48 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             expect(lastPosted('recipeData').restorePlace).toBeUndefined();
             // THE STORED MESSAGE ITSELF NEVER CARRIES IT
             expect((RecipeCockpitService as any).recipeCockpitPanelState.recipeDataMessage.restorePlace).toBeUndefined();
+
+        });
+
+        it('given a version 1 place naming the Structure tab, hands the panel a version 2 place, which opens that card on its Treecipe tab', async () => {
+
+            const versionOnePlace = {
+                ...buildPlace({ runFolderName: CURRENT_RUN_FOLDER_NAME }),
+                version: RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB,
+                trees: [{ ...buildPlace().trees[0], selectedTab: 'structure', searchQueries: { structure: 'Rating', dataByOrg: '', versions: '', datasets: '' } }]
+            };
+            const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY]: versionOnePlace });
+
+            await RecipeCockpitService.openRecipeCockpitPanel(HISTORY_WORKSPACE_ROOT, workspaceState);
+            await receivedMessageHandler({ command: 'ready' });
+            const recipeDataMessage = lastPosted('recipeData');
+
+            expect(recipeDataMessage.restorePlace.version).toBe(RECIPE_COCKPIT_PANEL_PLACE_VERSION);
+            expect(recipeDataMessage.restorePlace.trees[0]).toMatchObject({ selectedTab: 'treecipe', searchQueries: { treecipe: 'Rating', compare: '' } });
+
+            const panel = runPanelScript();
+            panel.postToPanel(recipeDataMessage);
+
+            expect(isCardOpenIn(panel, ACCOUNT_TREE_KEY)).toBe(true);
+            const accountCard = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeFolder')[0]?.textContent === ACCOUNT_TREE_KEY);
+            expect(panel.findAll(accountCard, 'treeTab').find((tabElement: any) => tabElement.classList.contains('selected'))?.textContent).toBe('Treecipe');
+            expect(panel.findAll(panel.tabPanelOf(accountCard, 'treeStructure'), 'tabSearchInput')[0].value).toBe('Rating');
+
+        });
+
+        it('given a version 1 place naming the Data-by-Org tab, hands the panel its status filter and opened rows on the Compare tab', async () => {
+
+            const versionOnePlace = {
+                ...buildPlace({ runFolderName: CURRENT_RUN_FOLDER_NAME }),
+                version: RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB,
+                trees: [{ ...buildPlace().trees[0], selectedTab: 'dataByOrg', statusFilter: 'new-in-org', expandedDataObjectApiNames: ['Account'] }]
+            };
+            const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY]: versionOnePlace });
+
+            await RecipeCockpitService.openRecipeCockpitPanel(HISTORY_WORKSPACE_ROOT, workspaceState);
+            await receivedMessageHandler({ command: 'ready' });
+
+            expect(lastPosted('recipeData').restorePlace.trees[0]).toMatchObject({ selectedTab: 'compare', statusFilter: 'new-in-org', expandedDataObjectApiNames: ['Account'] });
 
         });
 
