@@ -4673,7 +4673,7 @@ describe('RecipeCockpitService', () => {
                 const leadButtons = panel.findAll(treeCardFolded(panel, 'Lead-ONLY'), 'treeRunFaker');
 
                 expect(leadButtons.map((button: any) => button.textContent)).toEqual([RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL]);
-                expect(leadButtons[0].attributes.title).toBe('Run Faker by Recipe on recipe--Lead-ONLY-2026-09-20T10-00-00.yml');
+                expect(leadButtons[0].attributes.title).toBe('Run Faker by Recipe on recipe--Lead-ONLY-2026-09-20T10-00-00.yml, then choose an org to insert the new data set into');
                 expect(panel.findAll(treeCardFolded(panel, ACCOUNT_TREE_KEY), 'treeRunFaker')).toEqual([]);
 
             });
@@ -6129,38 +6129,110 @@ describe('RecipeCockpitService', () => {
                 const reloadedLeadTree = () => postedPanelMessages.filter(hostMessage => hostMessage.command === 'recipeData').at(-1)
                     .recipe.trees.find((tree: any) => tree.treeKey === LEAD_TREE_KEY);
 
-                it('hands the tree\'s recipe file to Run Faker by Recipe, then reloads the run on the card\'s Previous Fake Sets with the new data set', async () => {
+                it('hands the tree\'s recipe file to Run Faker by Recipe, adds the data set it wrote to the card in place, then inserts that folder (#226)', async () => {
 
                     const temporaryWorkspaceRoot = copyHistoryWorkspace();
                     const leadRecipeFilePath = path.join(temporaryWorkspaceRoot, 'treecipe', 'GeneratedRecipes', HISTORY_CURRENT_RUN, LEAD_TREE_KEY, 'recipe--Lead-ONLY-2026-09-20T10-00-00.yml');
+                    const writtenDatasetFolderPath = path.join(temporaryWorkspaceRoot, 'treecipe', 'FakeDataSets', 'dataset-2026-09-22T00-00-00');
+                    let wasAddedBeforeInsert = false;
                     (vscode.commands.executeCommand as jest.Mock).mockImplementation(async (commandName: string, recipeFilePath: string) => {
                         if ( commandName === RECIPE_COCKPIT_RUN_FAKER_COMMAND ) {
                             writeDatasetMadeBy(temporaryWorkspaceRoot, recipeFilePath);
+                            return writtenDatasetFolderPath;
                         }
+                        if ( commandName === RECIPE_COCKPIT_INSERT_DATASET_COMMAND ) {
+                            wasAddedBeforeInsert = postedPanelMessages.some(hostMessage => hostMessage.command === 'datasetAdded');
+                        }
+                        return undefined;
                     });
+
+                    await openRenderedHistoryCockpit(temporaryWorkspaceRoot);
+                    const renderSequence = lastRenderSequence();
+                    postedPanelMessages.length = 0;
+
+                    await receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
+
+                    expect(executedCommandsNamed(RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toEqual([[RECIPE_COCKPIT_RUN_FAKER_COMMAND, leadRecipeFilePath]]);
+                    expect(executedCommandsNamed(RECIPE_COCKPIT_INSERT_DATASET_COMMAND)).toEqual([[RECIPE_COCKPIT_INSERT_DATASET_COMMAND, writtenDatasetFolderPath]]);
+                    expect(wasAddedBeforeInsert).toBe(true);
+                    expect(postedPanelMessages.map(hostMessage => hostMessage.command).filter(command => ['runFakerState', 'recipeData', 'datasetAdded'].includes(command)))
+                        .toEqual(['runFakerState', 'datasetAdded', 'runFakerState']);
+                    expect(runFakerStates()).toEqual([
+                        { command: 'runFakerState', isRunning: true, treeKey: LEAD_TREE_KEY },
+                        { command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY }
+                    ]);
+                    const datasetAdded = postedPanelMessages.find(hostMessage => hostMessage.command === 'datasetAdded');
+                    expect(datasetAdded).toEqual({
+                        command: 'datasetAdded',
+                        treeKeys: [LEAD_TREE_KEY],
+                        dataset: {
+                            datasetFolderName: 'dataset-2026-09-22T00-00-00',
+                            generatedAtLabel: '2026-09-22 00:00:00 UTC',
+                            fakerService: 'snowfakery',
+                            runFolderName: HISTORY_CURRENT_RUN,
+                            recordCounts: [{ objectApiName: 'Lead', recordCount: 1 }]
+                        },
+                        renderSequence: renderSequence,
+                        updateSequence: 1
+                    });
+
+                    // NOTHING IS LEFT IN FLIGHT: A REVEAL REPLAYS NO RUN BUT THE NEW DATA SET, AND A SECOND RUN IS ROUTED ONCE IT IS DRAWN
+                    postedPanelMessages.length = 0;
+                    await receivedMessageHandler({ command: 'ready' });
+                    expect(runFakerStates()).toEqual([]);
+                    expect(reloadedLeadTree().history.datasets[0]).toMatchObject({ datasetFolderName: 'dataset-2026-09-22T00-00-00', runFolderName: HISTORY_CURRENT_RUN });
+                    await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+                    await receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
+                    expect(executedCommandsNamed(RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toHaveLength(2);
+
+                });
+
+                it('given a data set the cockpit cannot place on a card, reloads the run on Previous Fake Sets and still inserts it', async () => {
+
+                    const temporaryWorkspaceRoot = copyHistoryWorkspace();
+                    const looseDatasetFolderPath = path.join(temporaryWorkspaceRoot, 'treecipe', 'FakeDataSets', 'dataset-2026-09-16T00-00-00');
+                    (vscode.commands.executeCommand as jest.Mock).mockImplementation(async (commandName: string) => (
+                        commandName === RECIPE_COCKPIT_RUN_FAKER_COMMAND ? looseDatasetFolderPath : undefined
+                    ));
 
                     await openRenderedHistoryCockpit(temporaryWorkspaceRoot);
                     postedPanelMessages.length = 0;
 
                     await receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
 
-                    expect(executedCommandsNamed(RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toEqual([[RECIPE_COCKPIT_RUN_FAKER_COMMAND, leadRecipeFilePath]]);
-                    expect(postedPanelMessages.map(hostMessage => hostMessage.command).filter(command => ['runFakerState', 'recipeData'].includes(command)))
-                        .toEqual(['runFakerState', 'recipeData', 'runFakerState']);
-                    expect(runFakerStates()).toEqual([
-                        { command: 'runFakerState', isRunning: true, treeKey: LEAD_TREE_KEY },
-                        { command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY }
-                    ]);
+                    expect(postedPanelMessages.some(hostMessage => hostMessage.command === 'datasetAdded')).toBe(false);
                     expect(postedPanelMessages.find(hostMessage => hostMessage.command === 'recipeData').focusTree).toEqual({ treeKey: LEAD_TREE_KEY, tab: 'datasets' });
-                    expect(reloadedLeadTree().history.datasets[0]).toMatchObject({ datasetFolderName: 'dataset-2026-09-22T00-00-00', runFolderName: HISTORY_CURRENT_RUN });
+                    expect(executedCommandsNamed(RECIPE_COCKPIT_INSERT_DATASET_COMMAND)).toEqual([[RECIPE_COCKPIT_INSERT_DATASET_COMMAND, looseDatasetFolderPath]]);
+                    expect(runFakerStates().at(-1)).toEqual({ command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY });
 
-                    // NOTHING IS LEFT IN FLIGHT: A REVEAL REPLAYS NO RUN, AND A SECOND RUN IS ROUTED ONCE THE RELOAD IS DRAWN
+                });
+
+                it('holds every Run Faker disabled until the insert has ended', async () => {
+
+                    const temporaryWorkspaceRoot = copyHistoryWorkspace();
+                    let finishInsert: () => void;
+                    (vscode.commands.executeCommand as jest.Mock).mockImplementation((commandName: string, recipeFilePath: string) => {
+                        if ( commandName === RECIPE_COCKPIT_RUN_FAKER_COMMAND ) {
+                            writeDatasetMadeBy(temporaryWorkspaceRoot, recipeFilePath);
+                            return Promise.resolve(path.join(temporaryWorkspaceRoot, 'treecipe', 'FakeDataSets', 'dataset-2026-09-22T00-00-00'));
+                        }
+                        return new Promise<void>(resolveInsert => { finishInsert = resolveInsert; });
+                    });
+
+                    await openRenderedHistoryCockpit(temporaryWorkspaceRoot);
                     postedPanelMessages.length = 0;
-                    await receivedMessageHandler({ command: 'ready' });
-                    expect(runFakerStates()).toEqual([]);
-                    await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
-                    await receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
-                    expect(executedCommandsNamed(RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toHaveLength(2);
+
+                    const run = receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
+                    await new Promise(resolveTurn => setImmediate(resolveTurn));
+
+                    expect(runFakerStates()).toEqual([{ command: 'runFakerState', isRunning: true, treeKey: LEAD_TREE_KEY }]);
+                    await receivedMessageHandler({ command: 'runFaker', treeKey: ACCOUNT_TREE_KEY });
+                    expect(executedCommandsNamed(RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toHaveLength(1);
+
+                    finishInsert();
+                    await run;
+
+                    expect(runFakerStates().at(-1)).toEqual({ command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY });
 
                 });
 
@@ -6205,10 +6277,11 @@ describe('RecipeCockpitService', () => {
                     expect(postedPanelMessages.some(hostMessage => hostMessage.command === 'recipeData')).toBe(true);
                     expect(runFakerStates().at(-1)).toEqual({ command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY });
                     expect(handleCapturedErrorSpy).toHaveBeenCalledWith(expect.objectContaining({ message: 'snowfakery is not installed' }), 'openRecipeCockpit');
+                    expect(executedCommandsNamed(RECIPE_COCKPIT_INSERT_DATASET_COMMAND)).toEqual([]);
 
                 });
 
-                it('given the modal is cancelled, writes no data set and still reloads with the buttons re-enabled', async () => {
+                it('given the modal is cancelled, writes no data set, inserts nothing, and still reloads with the buttons re-enabled', async () => {
 
                     (vscode.commands.executeCommand as jest.Mock).mockResolvedValue(undefined);
 
@@ -6221,6 +6294,7 @@ describe('RecipeCockpitService', () => {
 
                     expect(reloadedLeadTree().history.datasets).toEqual(leadDatasetsBefore);
                     expect(runFakerStates().at(-1)).toEqual({ command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY });
+                    expect(executedCommandsNamed(RECIPE_COCKPIT_INSERT_DATASET_COMMAND)).toEqual([]);
 
                 });
 

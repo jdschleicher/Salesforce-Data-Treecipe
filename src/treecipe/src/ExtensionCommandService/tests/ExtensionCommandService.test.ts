@@ -1831,12 +1831,14 @@ describe('ExtensionCommandService', () => {
 
             arrangeRun(backendCase, `treecipe/GeneratedRecipes/${backendCase.runFolderName}/Account-thru-Contact`);
 
-            await extensionCommandService.runFakerGenerationByRecipeFile();
+            const answeredDatasetFolderPath = await extensionCommandService.runFakerGenerationByRecipeFile();
 
             expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
 
             const [datasetFolderName] = readDatasetFolderNames();
             expect(datasetFolderName.startsWith(backendCase.datasetFolderPrefix)).toBeTrue();
+            // THE FOLDER IT WROTE, WHICH THE RECIPE COCKPIT ADDS IN PLACE AND INSERTS (#226)
+            expect(path.resolve(answeredDatasetFolderPath)).toBe(path.join(workspaceRoot, 'treecipe', 'FakeDataSets', datasetFolderName));
 
             const writtenDatasetSource = readWrittenDatasetSource(datasetFolderName);
             expect(writtenDatasetSource).toEqual({
@@ -1955,7 +1957,8 @@ describe('ExtensionCommandService', () => {
             arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
             fs.unlinkSync(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', fakerJsCase.runFolderName, `treecipeObjectsWrapper-${runTimestamp}.json`));
 
-            await extensionCommandService.runFakerGenerationByRecipeFile();
+            // NO FOLDER ANSWERED FOR A DATA SET WITH NO SOURCE FILE: THE COCKPIT RELOADS RATHER THAN INSERTING IT (#226)
+            expect(await extensionCommandService.runFakerGenerationByRecipeFile()).toBeUndefined();
 
             expect(ErrorHandlingService.handleCapturedError).toHaveBeenCalledWith(expect.any(Error), 'runFakerGenerationByRecipeFile');
             const [datasetFolderName] = readDatasetFolderNames();
@@ -2357,7 +2360,7 @@ describe('ExtensionCommandService', () => {
             arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
             jest.spyOn(vscode.window, 'showInformationMessage').mockResolvedValue(undefined);
 
-            await extensionCommandService.runFakerGenerationByRecipeFile();
+            expect(await extensionCommandService.runFakerGenerationByRecipeFile()).toBeUndefined();
 
             expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets'))).toBeFalse();
             expect(FakerJSRecipeProcessor.prototype.generateFakeDataBySelectedRecipeFile).not.toHaveBeenCalled();

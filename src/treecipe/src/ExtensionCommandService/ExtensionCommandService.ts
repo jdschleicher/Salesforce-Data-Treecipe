@@ -154,8 +154,12 @@ export class ExtensionCommandService {
         The palette passes nothing and gets the recipe picker. The Recipe Cockpit's Run Faker passes
         the recipe file of the tree it was clicked on -- but the command is callable by id, so a
         path is held to what the picker could have offered before anything reads it.
+
+        Answers the data set folder it wrote, once its datasetSource.json is written, so the Recipe
+        Cockpit can add that one data set in place and insert it (#226); undefined for a run that
+        wrote no complete data set -- refused, cancelled, or failed.
     */
-    async runFakerGenerationByRecipeFile(recipeFilePath?: string, filteredRecipe?: IRunFakerFilteredRecipe) {
+    async runFakerGenerationByRecipeFile(recipeFilePath?: string, filteredRecipe?: IRunFakerFilteredRecipe): Promise<string | undefined> {
 
         let filteredRecipeDirectoryPath: string | undefined;
 
@@ -300,12 +304,14 @@ export class ExtensionCommandService {
                 filteredRecipe?.excludedFieldApiNamesByObject ?? {}
             );
             DatasetSourceService.writeDatasetSourceFile(fullPathToBaseArtifactsFolder, datasetSource);
-       
+
+            return fullPathToUniqueTimeStampedFakeDataSetsFolder;
 
         } catch(error) {
 
             const commandName = 'runFakerGenerationByRecipeFile';
             ErrorHandlingService.handleCapturedError(error, commandName);
+            return undefined;
 
         } finally {
 

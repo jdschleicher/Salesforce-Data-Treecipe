@@ -177,7 +177,7 @@ describe('activate', () => {
     it('passes a recipe file to Run Faker by Recipe and returns the run, and passes nothing that is not a path', async () => {
 
         jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
-        const fakerRun = Promise.resolve();
+        const fakerRun = Promise.resolve('/workspace/treecipe/FakeDataSets/dataset-2026-09-21T00-00-00');
         const runFakerSpy = jest.spyOn(ExtensionCommandService.prototype, 'runFakerGenerationByRecipeFile').mockReturnValue(fakerRun);
 
         await activate(buildExtensionContext() as never);

@@ -567,6 +567,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
             jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
 
             await openSelectedCockpit(runFolderName);
+            const recipeDataPostsBefore = postedNamed('recipeData').length;
             await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 3 });
 
             // THE HOST-SIDE MODAL, WITH WHAT THE HOST CHECKED
@@ -620,11 +621,18 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
                 recordCountsByObject: { Contact: 3 }
             });
 
-            // THE RELOAD LISTS IT IN THE TREE'S PREVIOUS FAKE SETS, AND OPENS THE CARD ON THE DATA-BY-ORG TAB THE CREATE WAS CLICKED IN (#217)
-            expect(postedNamed('recipeData').at(-1).focusTree).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'dataByOrg' });
-            const reloadedTree = postedNamed('recipeData').at(-1).recipe.trees.find((tree: any) => tree.treeKey === ACCOUNT_TREE_KEY);
-            expect(reloadedTree.history.datasets.map((dataset: any) => dataset.datasetFolderName)).toContain(datasetFolderName);
+            // NO RELOAD (#226): THE ROW'S RESULT AND THE TREE'S NEW DATA SET ARRIVE IN PLACE, OVER THE MODEL ON SCREEN
+            const [datasetAdded] = postedNamed('datasetAdded');
+            expect(postedNamed('recipeData')).toHaveLength(recipeDataPostsBefore);
+            expect(datasetAdded).toMatchObject({
+                treeKeys: [ACCOUNT_TREE_KEY],
+                dataset: { datasetFolderName: datasetFolderName, fakerService: fakerService, runFolderName: runFolderName, recordCounts: [{ objectApiName: 'Contact', recordCount: 3 }] },
+                createResult: { treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', createdCount: 3, failedCount: 0, message: '' },
+                renderSequence: lastRenderSequence(),
+                updateSequence: 1
+            });
             expect(postedNamed('createState').map(createState => createState.isRunning)).toEqual([true, false]);
+            expect(postedPanelMessages.indexOf(datasetAdded)).toBeLessThan(postedPanelMessages.indexOf(postedNamed('createState').at(-1)));
 
             if ( fakerService === 'snowfakery' ) {
                 expect(snowfakeryCalls).toHaveLength(1);
@@ -635,7 +643,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
         });
 
-        it('shows the result on the row after the reload, and sends no COUNT() query from select to insert', async () => {
+        it('keeps the result for the org it was made in, which a later readiness replays, and sends no COUNT() query from select to insert', async () => {
 
             const connection = buildFakeConnection({ rejectedRecordIndexes: [1] });
             jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
@@ -644,8 +652,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
             await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 3 });
 
-            // THE RELOADED PANEL ASKS AGAIN, AS THE REAL ONE DOES ON ITS NEXT DRAW
-            await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+            // A REVEALED PANEL ASKS AGAIN, AS THE REAL ONE DOES ON ITS NEXT DRAW
             await receivedMessageHandler({ command: 'loadDataOrgs' });
 
             const readinessMessage = postedNamed('dataOrgReadiness').at(-1);
@@ -924,6 +931,119 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
             expect(postedNamed('recipeData')).toHaveLength(recipeDataPostsBefore + 1);
             expect(postedNamed('createState').at(-1).isRunning).toBe(false);
             expect(handleCapturedErrorSpy).toHaveBeenCalledWith(expect.objectContaining({ message: 'snowfakery exited 1' }), 'openRecipeCockpit');
+
+        });
+
+
+        describe('updating only what the Create changed (#226)', () => {
+
+            const panelState = (): IRecipeCockpitPanelState => (RecipeCockpitService as any).recipeCockpitPanelState;
+            const createdDatasetFolderName = 'dataset-2026-10-07T12-00-00';
+
+            it('keeps the org selection, so nothing is listed, selected or described again', async () => {
+
+                const connection = buildFakeConnection();
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
+
+                await openSelectedCockpit(SNOWFAKERY_RUN);
+                const selectionBefore = panelState().dataOrgSelection;
+                const [listsBefore, readinessBefore] = [postedNamed('dataOrgList').length, postedNamed('dataOrgReadiness').length];
+
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 2 });
+
+                expect(panelState().dataOrgSelection).toBe(selectionBefore);
+                expect(postedNamed('dataOrgList')).toHaveLength(listsBefore);
+                expect(postedNamed('dataOrgReadiness')).toHaveLength(readinessBefore);
+                expect(postedNamed('datasetAdded')).toHaveLength(1);
+
+            });
+
+            it('offers Open and Insert… on the new data set only once the panel says it drew it', async () => {
+
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
+
+                await openSelectedCockpit(SNOWFAKERY_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 2 });
+
+                const { renderSequence, updateSequence } = postedNamed('datasetAdded')[0];
+                const openMessage = { command: 'openDataset', datasetFolderName: createdDatasetFolderName };
+                const insertMessage = { command: 'insertDataset', datasetFolderName: createdDatasetFolderName };
+
+                expect(RecipeCockpitService.routePanelMessage(openMessage, panelState())).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage(insertMessage, panelState())).toBeUndefined();
+
+                // AN ACK OF ANOTHER POST, OR OF ANOTHER MODEL, PROMOTES NOTHING
+                expect(RecipeCockpitService.routePanelMessage({ command: 'partialRendered', renderSequence, updateSequence: updateSequence + 1 }, panelState())).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage({ command: 'partialRendered', renderSequence: renderSequence - 1, updateSequence }, panelState())).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage({ command: 'partialRendered', renderSequence, updateSequence: String(updateSequence) }, panelState())).toBeUndefined();
+
+                await receivedMessageHandler({ command: 'partialRendered', renderSequence, updateSequence });
+
+                const datasetFolderPath = path.join(fakeDataSetsFolderPath(), createdDatasetFolderName);
+                expect(RecipeCockpitService.routePanelMessage(openMessage, panelState())).toEqual({ kind: 'openDataset', datasetFolderName: createdDatasetFolderName, datasetFolderPath: datasetFolderPath });
+                expect(RecipeCockpitService.routePanelMessage(insertMessage, panelState())).toEqual({ kind: 'insertDataset', datasetFolderName: createdDatasetFolderName, datasetFolderPath: datasetFolderPath });
+
+            });
+
+            it('adds the data set to the stored model, so a revealed panel draws it and its "rendered" offers it', async () => {
+
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
+
+                await openSelectedCockpit(SNOWFAKERY_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 2 });
+
+                await receivedMessageHandler({ command: 'ready' });
+
+                const replayedRecipeData = postedNamed('recipeData').at(-1);
+                const replayedTree = replayedRecipeData.recipe.trees.find((tree: any) => tree.treeKey === ACCOUNT_TREE_KEY);
+                expect(replayedTree.history.datasets[0].datasetFolderName).toBe(createdDatasetFolderName);
+                expect(RecipeCockpitService.routePanelMessage({ command: 'openDataset', datasetFolderName: createdDatasetFolderName }, panelState())).toBeUndefined();
+
+                await receivedMessageHandler({ command: 'rendered', renderSequence: replayedRecipeData.renderSequence });
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'openDataset', datasetFolderName: createdDatasetFolderName }, panelState())).toMatchObject({ kind: 'openDataset' });
+
+            });
+
+            it('reloads the run as before when the data set cannot be placed on a card', async () => {
+
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
+                const recipeCockpitTreeHistory = jest.requireActual('../RecipeCockpitTreeHistory').RecipeCockpitTreeHistory;
+                jest.spyOn(recipeCockpitTreeHistory, 'buildAddedDataset').mockReturnValue(undefined);
+
+                await openSelectedCockpit(SNOWFAKERY_RUN);
+                const recipeDataPostsBefore = postedNamed('recipeData').length;
+
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 2 });
+
+                expect(postedNamed('datasetAdded')).toEqual([]);
+                expect(postedNamed('recipeData')).toHaveLength(recipeDataPostsBefore + 1);
+                expect(postedNamed('recipeData').at(-1).focusTree).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'dataByOrg' });
+
+            });
+
+            it('reloads the run as before when the run on screen changed while the Create ran', async () => {
+
+                const connection = buildFakeConnection();
+                const fakeSobject = connection.sobject;
+                connection.sobject = jest.fn().mockImplementation((objectApiName: string) => {
+                    const sobjectApi = fakeSobject(objectApiName);
+                    const insert = sobjectApi.insert;
+                    sobjectApi.insert = jest.fn().mockImplementation(async (records: any[], insertOptions: unknown) => {
+                        await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN });
+                        return insert(records, insertOptions);
+                    });
+                    return sobjectApi;
+                });
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
+
+                await openSelectedCockpit(SNOWFAKERY_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 2 });
+
+                expect(postedNamed('datasetAdded')).toEqual([]);
+                expect(postedNamed('recipeData').at(-1).focusTree).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'dataByOrg' });
+
+            });
 
         });
 

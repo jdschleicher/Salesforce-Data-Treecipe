@@ -43,6 +43,7 @@ import { DATASET_COLLECTIONS_API_FOLDER_NAME, DatasetSourceService } from '../Da
 import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 import {
     IRecipeCockpitDatasetRecordCountViewModel,
+    IRecipeCockpitTreeDatasetViewModel,
     IRecipeCockpitTreeHistoryTargets,
     IRecipeCockpitTreeHistoryViewModel,
     IRecipeCockpitTreeSummarySource,
@@ -233,10 +234,14 @@ export const RECIPE_COCKPIT_NO_FAVORITES_MESSAGE = 'No favorite trees in this ru
 
 export const RECIPE_COCKPIT_INSERT_DATASET_COMMAND = 'treecipe.insertDataSetBySelectedDirectory';
 
-// A TREE CARD'S ▶ Run Faker HANDS ITS RECIPE FILE TO THIS COMMAND, WHICH KEEPS ITS CONFIRMATION AND BACKEND CHECK
+/*
+    A TREE CARD'S ▶ BUTTON HANDS ITS RECIPE FILE TO THIS COMMAND, WHICH KEEPS ITS CONFIRMATION AND
+    BACKEND CHECK, AND THEN THE DATA SET IT WROTE TO Insert Data Set by Directory, WHICH ASKS FOR THE
+    ORG (#226)
+*/
 export const RECIPE_COCKPIT_RUN_FAKER_COMMAND = 'treecipe.runFakerByRecipe';
-export const RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL = '▶ Run Faker';
-export const RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL = 'Running Faker…';
+export const RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL = '▶ Run Faker Data and Insert into Org';
+export const RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL = 'Running Faker and inserting…';
 
 // A SELF-LOOKUP ITERATION'S "+" ADDS ONE OF ITS OBJECT'S FRIENDS BENEATH IT (#197)
 export const RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = '+';
@@ -607,6 +612,7 @@ export interface IRecipeCockpitPanelMessage {
     place?: unknown;
     nickname?: unknown;
     included?: unknown;
+    updateSequence?: unknown;
 }
 
 export interface IRecipeCockpitLoadPhaseMessage {
@@ -933,7 +939,24 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitAddFriendStateMessage
                                         | IRecipeCockpitTreePreferencesMessage
                                         | IRecipeCockpitObjectSelectionMessage
-                                        | IRecipeCockpitScratchOrgStateMessage;
+                                        | IRecipeCockpitScratchOrgStateMessage
+                                        | IRecipeCockpitDatasetAddedMessage;
+
+/*
+    One data set an action just wrote, posted IN PLACE of a reload (#226): the cards it joins, its
+    history row, and -- when a Create wrote it -- the row's new result. renderSequence names the
+    model it was added to, and the panel drops it for any other. updateSequence is this post's own
+    number, echoed back in "partialRendered" once the row is drawn: only that acknowledgement makes
+    the new row's Open and Insert… usable, as "rendered" does for a whole model.
+*/
+export interface IRecipeCockpitDatasetAddedMessage {
+    command: 'datasetAdded';
+    treeKeys: string[];
+    dataset: IRecipeCockpitTreeDatasetViewModel;
+    createResult?: IRecipeCockpitCreateResultViewModel;
+    renderSequence: number;
+    updateSequence: number;
+}
 
 export const RECIPE_COCKPIT_CREATE_CONFIRM_LABEL = 'Create';
 
@@ -1001,6 +1024,7 @@ export interface IRecipeCockpitTreeHistoryAllowLists {
 export type RecipeCockpitPanelAction =
     { kind: 'replay'; hostMessages: RecipeCockpitHostMessage[] }
     | { kind: 'activateActions' }
+    | { kind: 'activateDatasetActions' }
     | { kind: 'reportRenderFailure'; failureDescription: string; failureStack: string; invalidatesPanel: boolean }
     | { kind: 'openSource'; filePath: string; lineNumber: number }
     | { kind: 'selectRun'; runFolderName: string }
@@ -1109,6 +1133,8 @@ export interface IRecipeCockpitPanelState {
     restorePlace?: IRecipeCockpitPanelPlace;
     // HOST-ONLY, REPLACED WITH THE MODEL: WHAT A FILTERED COPY NESTS A KEPT FRIEND BY (#219)
     objectLevelsByApiName?: Map<string, number>;
+    // THE LAST datasetAdded POSTED (#226): ONLY ITS "partialRendered" PROMOTES THE PENDING HISTORY ALLOW-LISTS
+    datasetUpdateSequence: number;
 }
 
 /*
@@ -2130,17 +2156,40 @@ export class RecipeCockpitService {
                 .filter(version => version.isDiffable)
                 .forEach(version => treeHistoryAllowLists.diffKeys.add(RecipeCockpitTreeHistory.buildDiffKey(tree.treeKey, version.runFolderName)));
 
-            tree.history.datasets.forEach(dataset => {
-                treeHistoryAllowLists.openableDatasetFolderNames.add(dataset.datasetFolderName);
-                treeHistoryAllowLists.insertableDatasetFolderNames.add(dataset.datasetFolderName);
-                if ( dataset.recordCounts === null ) {
-                    treeHistoryAllowLists.countableDatasetFolderNames.add(dataset.datasetFolderName);
-                }
-            });
+            tree.history.datasets.forEach(dataset => this.addDatasetToAllowLists(treeHistoryAllowLists, dataset));
 
         });
 
         return treeHistoryAllowLists;
+
+    }
+
+    // WHAT ONE DATA SET ROW OFFERS: THE ONE RULE A WHOLE MODEL AND A datasetAdded (#226) BOTH USE
+    static addDatasetToAllowLists(treeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists, dataset: IRecipeCockpitTreeDatasetViewModel) {
+
+        treeHistoryAllowLists.openableDatasetFolderNames.add(dataset.datasetFolderName);
+        treeHistoryAllowLists.insertableDatasetFolderNames.add(dataset.datasetFolderName);
+
+        if ( dataset.recordCounts === null ) {
+            treeHistoryAllowLists.countableDatasetFolderNames.add(dataset.datasetFolderName);
+        }
+
+    }
+
+    /*
+        A COPY, never the same sets: once a model is acknowledged its pending and active lists ARE
+        the same objects, so adding a new row's names to "pending" in place would make them usable
+        before the panel has drawn the row.
+    */
+    static cloneTreeHistoryAllowLists(treeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists): IRecipeCockpitTreeHistoryAllowLists {
+
+        const clonedAllowLists = this.buildEmptyTreeHistoryAllowLists();
+
+        (Object.keys(clonedAllowLists) as Array<keyof IRecipeCockpitTreeHistoryAllowLists>).forEach(allowListName => {
+            clonedAllowLists[allowListName] = new Set(treeHistoryAllowLists[allowListName]);
+        });
+
+        return clonedAllowLists;
 
     }
 
@@ -2177,7 +2226,8 @@ export class RecipeCockpitService {
             creatableObjectKeys: new Set(),
             dataOrgCreateResults: new Map(),
             pendingInsertableFriendTargets: new Map(),
-            insertableFriendTargets: new Map()
+            insertableFriendTargets: new Map(),
+            datasetUpdateSequence: 0
         };
 
     }
@@ -2622,6 +2672,11 @@ export class RecipeCockpitService {
                 panelState.insertableFriendTargets = panelState.pendingInsertableFriendTargets;
                 return;
 
+            case 'activateDatasetActions':
+
+                panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists;
+                return;
+
             case 'reportRenderFailure': {
 
                 panelState.reportedFailureDescriptions.add(panelAction.failureDescription);
@@ -3055,13 +3110,13 @@ export class RecipeCockpitService {
     }
 
     /*
-        Runs one tree's recipe through Run Faker by Recipe, then reloads the run on screen with the
-        card on its Previous Fake Sets tab, so the data set it wrote is listed there.
+        Runs one tree's recipe through Run Faker by Recipe, adds the data set it wrote to the card's
+        Previous Fake Sets in place (#226), then inserts it through Insert Data Set by Directory.
 
-        The reload happens however the command ends -- written, failed, refused or cancelled at its
-        modal -- because the panel disabled every Run Faker button on the click, and a run that left
-        them disabled would leave a card that can never be run again. The state message is posted
-        once more after the reload, for a reload that could not render a model to re-enable them.
+        A run that wrote no data set -- failed, refused or cancelled at its modal -- reloads the run on
+        the card's Previous Fake Sets, as every run used to. Either way the state message is posted
+        once the insert has ended, because the panel disabled every Run Faker button on the click,
+        and a run that left them disabled would leave a card that can never be run again.
 
         A recipe file gone since the model was drawn is said so here and nothing runs; the command
         checks again on its own, since it is callable by id.
@@ -3076,6 +3131,8 @@ export class RecipeCockpitService {
         panelState.runFakerStateMessage = { command: 'runFakerState', isRunning: true, treeKey: treeKey };
         this.postToPanel(cockpitPanel, panelState.runFakerStateMessage);
 
+        const clickedRecipeDataMessage = panelState.recipeDataMessage;
+        let writtenDatasetFolderPath: unknown;
         let hasRunFailed = false;
         let runError: unknown;
 
@@ -3090,7 +3147,7 @@ export class RecipeCockpitService {
             } else if ( this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot) ) {
                 try {
                     // A CARD WITH NOTHING EXCLUDED RUNS ITS RECIPE EXACTLY AS IT ALWAYS DID
-                    await vscode.commands.executeCommand(RECIPE_COCKPIT_RUN_FAKER_COMMAND, recipeFilePath, ...( filteredRecipe ? [filteredRecipe] : [] ));
+                    writtenDatasetFolderPath = await vscode.commands.executeCommand(RECIPE_COCKPIT_RUN_FAKER_COMMAND, recipeFilePath, ...( filteredRecipe ? [filteredRecipe] : [] ));
                 } catch (commandError) {
                     hasRunFailed = true;
                     runError = commandError;
@@ -3099,9 +3156,30 @@ export class RecipeCockpitService {
                 VSCodeWorkspaceService.showWarningMessage(`The recipe file "${RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath))}" no longer exists in this workspace, so Run Faker did not run. The Recipe Cockpit has reloaded the run.`);
             }
 
-            // THE RUN ON SCREEN NOW, NOT AT THE CLICK -- THE READER CAN SWITCH RUNS WHILE GENERATION RUNS
+            const isDatasetWritten = typeof writtenDatasetFolderPath === 'string';
+
+            /*
+                A data set written over the model it was clicked on is added in place (#226); anything
+                else -- nothing written, a run switched meanwhile, a data set the host cannot place --
+                reloads the run on screen NOW, not at the click, on the card's Previous Fake Sets.
+            */
             if ( isPanelStillCurrent() ) {
-                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'datasets' });
+                const isAddedInPlace = isDatasetWritten
+                                        && panelState.recipeDataMessage === clickedRecipeDataMessage
+                                        && this.postAddedDataset(cockpitPanel, panelState, clickedRecipeDataMessage, writtenDatasetFolderPath as string);
+                if ( !isAddedInPlace ) {
+                    await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'datasets' });
+                }
+            }
+
+            /*
+                The button says "and Insert into Org": the data set just written goes to Insert Data
+                Set by Directory, which asks for the org, refuses production on the connection it
+                inserts with (#204) and asks All or None. Dismissing its picker inserts nothing and
+                keeps the data set, which its row's Insert… still offers.
+            */
+            if ( isDatasetWritten ) {
+                await vscode.commands.executeCommand(RECIPE_COCKPIT_INSERT_DATASET_COMMAND, writtenDatasetFolderPath);
             }
 
         } finally {
@@ -4432,6 +4510,65 @@ export class RecipeCockpitService {
     }
 
     /*
+        Adds one data set an action just wrote to the model on screen, IN PLACE of a reload (#226):
+        to the STORED model, so a reveal's replay draws it, and to the panel through datasetAdded.
+        Its row's names go into a COPY of the pending history allow-lists, never the active ones,
+        so Open and Insert… stay refused until the panel's "partialRendered" says the row is drawn.
+        recipeDataMessage is the model on screen, which the caller has checked is still the one the
+        action was clicked on. False when the data set cannot be placed on a card of it: the caller
+        reloads.
+    */
+    static postAddedDataset(cockpitPanel: vscode.WebviewPanel,
+                            panelState: IRecipeCockpitPanelState,
+                            recipeDataMessage: IRecipeCockpitRecipeDataMessage,
+                            datasetFolderPath: string,
+                            createResult?: IRecipeCockpitCreateResultViewModel): boolean {
+
+        const recipeViewModel = recipeDataMessage.recipe;
+        const historyTrees = recipeViewModel.trees.filter(tree => tree.folderName !== '' && !!tree.history);
+        const addedDataset = RecipeCockpitTreeHistory.buildAddedDataset(
+            datasetFolderPath,
+            path.join(panelState.workspaceRoot, ConfigurationService.getGeneratedRecipesFolderPath()),
+            panelState.workspaceRoot,
+            recipeViewModel.selectedRunFolderName,
+            historyTrees.map(tree => ({ treeKey: tree.treeKey, folderName: tree.folderName }))
+        );
+
+        const datasetFolderName = addedDataset?.dataset.datasetFolderName;
+
+        // A NAME THE MODEL ALREADY LISTS IS NOT A NEW ROW -- A RELOAD SAYS WHAT IS ON DISK
+        if ( !addedDataset || historyTrees.some(tree => tree.history.datasets.some(dataset => dataset.datasetFolderName === datasetFolderName)) ) {
+            return false;
+        }
+
+        // NEWEST FIRST, AS A RELOAD ORDERS THEM: THE FOLDER WAS NAMED FROM THE TIME IT WAS WRITTEN
+        historyTrees
+            .filter(tree => addedDataset.treeKeys.includes(tree.treeKey))
+            .forEach(tree => tree.history.datasets.unshift(addedDataset.dataset));
+
+        panelState.treeHistoryTargets.datasetFolderPathsByName.set(datasetFolderName, addedDataset.datasetFolderPath);
+        panelState.pendingTreeHistoryAllowLists = this.cloneTreeHistoryAllowLists(panelState.pendingTreeHistoryAllowLists);
+        this.addDatasetToAllowLists(panelState.pendingTreeHistoryAllowLists, addedDataset.dataset);
+
+        const datasetAddedMessage: IRecipeCockpitDatasetAddedMessage = {
+            command: 'datasetAdded',
+            treeKeys: addedDataset.treeKeys,
+            dataset: addedDataset.dataset,
+            renderSequence: recipeDataMessage.renderSequence,
+            updateSequence: ++panelState.datasetUpdateSequence
+        };
+
+        if ( createResult ) {
+            datasetAddedMessage.createResult = createResult;
+        }
+
+        this.postToPanel(cockpitPanel, datasetAddedMessage);
+
+        return true;
+
+    }
+
+    /*
         Create: N records of one object, cut from its tree's recipe, generated by the configured
         backend and inserted into the selected sandbox with every required lookup set to a random
         existing parent.
@@ -4442,9 +4579,11 @@ export class RecipeCockpitService {
         said. Cancel writes nothing and contacts the org no further. After it, the selection is
         checked again: an org the reader changed while the modal was open is not the one confirmed.
 
-        Like Run Faker, the run on screen is reloaded once a data set folder was made, however the
-        Create ended, and the state message is posted last, because the panel disabled every
-        "+ Create" on the click.
+        Once a data set folder was made, the panel is told: a Create that finished on the model it
+        was clicked on posts only its row's result and the new data set (#226), so every other card,
+        the org selection and every comparison stay on screen. Anything else -- a Create that threw,
+        a run switched meanwhile, a data set the host cannot place -- reloads the run, as before.
+        The state message is posted last, because the panel disabled every "+ Create" on the click.
     */
     private static async createRecordsInOrg(cockpitPanel: vscode.WebviewPanel,
                                             panelState: IRecipeCockpitPanelState,
@@ -4456,13 +4595,19 @@ export class RecipeCockpitService {
         panelState.createStateMessage = { command: 'createState', isRunning: true, treeKey: treeKey, objectApiName: objectApiName };
         this.postToPanel(cockpitPanel, panelState.createStateMessage);
 
+        const clickedRecipeDataMessage = panelState.recipeDataMessage;
         let isDatasetWritten = false;
+        let createdDatasetFolderPath = '';
+        let createResult: IRecipeCockpitCreateResultViewModel | undefined;
         let hasCreateFailed = false;
         let createError: unknown;
 
         try {
 
-            isDatasetWritten = await this.performCreate(cockpitPanel, panelState, createAction, () => { isDatasetWritten = true; });
+            isDatasetWritten = await this.performCreate(cockpitPanel, panelState, createAction, datasetFolderPath => {
+                isDatasetWritten = true;
+                createdDatasetFolderPath = datasetFolderPath;
+            }, insertedCreateResult => { createResult = insertedCreateResult; });
 
         } catch (thrownError) {
 
@@ -4473,9 +4618,18 @@ export class RecipeCockpitService {
 
             panelState.createStateMessage = undefined;
 
-            // BACK ON THE CARD'S DATA-BY-ORG TAB THE CREATE WAS CLICKED IN
             if ( isDatasetWritten && isPanelStillCurrent() && panelState.recipeDataMessage ) {
-                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'dataByOrg' });
+
+                // A RESULT IS REPORTED ONLY BY A CREATE THAT REACHED THE END, SO ONE THAT THREW HAS NONE
+                const isAddedInPlace = !!createResult
+                                        && panelState.recipeDataMessage === clickedRecipeDataMessage
+                                        && this.postAddedDataset(cockpitPanel, panelState, clickedRecipeDataMessage, createdDatasetFolderPath, createResult);
+
+                // BACK ON THE CARD'S DATA-BY-ORG TAB THE CREATE WAS CLICKED IN
+                if ( !isAddedInPlace ) {
+                    await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'dataByOrg' });
+                }
+
             }
 
             if ( isPanelStillCurrent() ) {
@@ -4494,7 +4648,8 @@ export class RecipeCockpitService {
     private static async performCreate(cockpitPanel: vscode.WebviewPanel,
                                         panelState: IRecipeCockpitPanelState,
                                         createAction: Extract<RecipeCockpitPanelAction, { kind: 'createRecords' }>,
-                                        onDatasetFolderMade: () => void): Promise<boolean> {
+                                        onDatasetFolderMade: (datasetFolderPath: string) => void,
+                                        onCreateResult: (createResult: IRecipeCockpitCreateResultViewModel) => void): Promise<boolean> {
 
         const { treeKey, objectApiName, recordCount, recipeFilePath } = createAction;
         const dataOrgSelection = panelState.dataOrgSelection;
@@ -4580,7 +4735,7 @@ export class RecipeCockpitService {
         const datasetFolderPath = VSCodeWorkspaceService.createUniqueTimeStampedFakeDataSetsFolderName(
             VSCodeWorkspaceService.createFakeDatasetsTimeStampedFolderName(VSCodeWorkspaceService.getNowIsoDateTimestamp())
         );
-        onDatasetFolderMade();
+        onDatasetFolderMade(datasetFolderPath);
 
         const baseArtifactsFolderPath = path.join(datasetFolderPath, ConfigurationService.getBaseArtifactsFolderName());
         const collectionsApiFolderPath = path.join(datasetFolderPath, ConfigurationService.getDatasetFilesForCollectionsApiFolderName());
@@ -4637,16 +4792,19 @@ export class RecipeCockpitService {
         const createdCount = insertResult.createdRecordIds.length;
         const failedCount = insertResult.failures.length;
 
+        const createResultViewModel: IRecipeCockpitCreateResultViewModel = {
+            treeKey: treeKey,
+            objectApiName: objectApiName,
+            createdCount: createdCount,
+            failedCount: failedCount,
+            message: failedCount > 0 ? insertResult.failures.slice(0, 3).map(failure => failure.message).join(' · ') : ''
+        };
+
         panelState.dataOrgCreateResults.set(this.buildCreateResultKey(orgDetail.username, treeKey, objectApiName), {
-            viewModel: {
-                treeKey: treeKey,
-                objectApiName: objectApiName,
-                createdCount: createdCount,
-                failedCount: failedCount,
-                message: failedCount > 0 ? insertResult.failures.slice(0, 3).map(failure => failure.message).join(' · ') : ''
-            },
+            viewModel: createResultViewModel,
             resultsFilePath: insertResult.resultsFilePath
         });
+        onCreateResult(createResultViewModel);
 
         if ( failedCount > 0 ) {
             VSCodeWorkspaceService.showWarningMessage(`${createdCount} ${objectLabel} ${createdCount === 1 ? 'record was' : 'records were'} created in ${orgLabel} and ${failedCount} failed. Nothing was rolled back; "View errors" on the row opens the results.`);
@@ -4877,6 +5035,21 @@ export class RecipeCockpitService {
                 }
 
                 return { kind: 'activateActions' };
+
+            /*
+                A datasetAdded drawn (#226): only the LAST one posted, and only over the model it was
+                added to. Its row's names are already in the pending lists; this makes them active.
+            */
+            case 'partialRendered':
+
+                if ( !panelState.recipeDataMessage
+                        || panelMessage.renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || panelMessage.updateSequence !== panelState.datasetUpdateSequence
+                        || panelState.datasetUpdateSequence === 0 ) {
+                    return undefined;
+                }
+
+                return { kind: 'activateDatasetActions' };
 
             case 'renderFailed': {
 
@@ -8244,6 +8417,80 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    /*
+        One data set an action just wrote (#226), added to the card IN PLACE rather than by redrawing
+        the panel: to the model the card draws from, so a tab built later lists it, and to whichever
+        of its history tabs are already built, at the top, as a reload orders it. Only this card's
+        history rows are touched; every other node on the page is the one that was there before.
+    */
+    function addDatasetToTree(treeState, dataset) {
+
+        const treeHistory = treeState.tree.history;
+
+        if (!treeHistory || treeHistory.datasets.some(function (listedDataset) { return listedDataset.datasetFolderName === dataset.datasetFolderName; })) { return; }
+
+        treeHistory.datasets.unshift(dataset);
+
+        const datasetsTabState = (treeState.tabStates || []).find(function (tabState) { return tabState.tabName === 'datasets'; });
+
+        if (datasetsTabState && datasetsTabState.isBuilt) {
+            if (treeState.datasetRowStates && treeState.datasetRowStates.length > 0) {
+                const datasetRowElement = buildDatasetRow(treeState, dataset, 'datasets');
+                datasetsTabState.panelElement.insertBefore(datasetRowElement, treeState.datasetRowStates[0].element);
+                treeState.datasetRowStates.unshift({ element: datasetRowElement, searchText: dataset.datasetFolderName.toLowerCase() });
+                applyDatasetsFilter(treeState);
+            } else {
+                // A TAB BUILT EMPTY HAS NO SEARCH BOX YET: BUILT AGAIN, IT GETS ONE
+                datasetsTabState.panelElement.textContent = '';
+                buildDatasetsTab(treeState, datasetsTabState.panelElement);
+            }
+        }
+
+        const versionState = dataset.runFolderName !== null && treeState.versionStatesByRunFolderName
+            ? treeState.versionStatesByRunFolderName[dataset.runFolderName]
+            : undefined;
+
+        if (versionState && versionState.isBodyBuilt) {
+            const versionDatasetRowElement = buildDatasetRow(treeState, dataset, 'versions');
+            if (versionState.hasDatasetRows) {
+                versionState.bodyElement.insertBefore(versionDatasetRowElement, versionState.bodyElement.firstChild);
+            } else {
+                versionState.bodyElement.textContent = '';
+                versionState.bodyElement.appendChild(versionDatasetRowElement);
+                versionState.hasDatasetRows = true;
+            }
+        }
+
+    }
+
+    /*
+        datasetAdded (#226): drawn only over the model it was added to, then acknowledged with its
+        own updateSequence -- the host offers the new row's Open and Insert… only after that.
+    */
+    function renderDatasetAdded(datasetAddedMessage) {
+
+        if (renderedSequence === null || datasetAddedMessage.renderSequence !== renderedSequence || !Array.isArray(datasetAddedMessage.treeKeys)) { return; }
+
+        datasetAddedMessage.treeKeys.forEach(function (treeKey) {
+            treeStates
+                .filter(function (treeState) { return treeState.tree.treeKey === treeKey; })
+                .forEach(function (treeState) { addDatasetToTree(treeState, datasetAddedMessage.dataset); });
+        });
+
+        const createResult = datasetAddedMessage.createResult;
+
+        if (createResult) {
+            const createKey = buildCreateKey(createResult.treeKey, createResult.objectApiName);
+            dataOrgCreateResultsByKey[createKey] = createResult;
+            dataObjectStates
+                .filter(function (dataObjectState) { return dataObjectState.createKey === createKey; })
+                .forEach(drawCreateControls);
+        }
+
+        vscodeApi.postMessage({ command: 'partialRendered', renderSequence: renderedSequence, updateSequence: datasetAddedMessage.updateSequence });
+
+    }
+
     function applyDatasetsFilter(treeState) {
         applyRowSearch(treeState.datasetRowStates, treeState.searchQueries.datasets, treeState.datasetsSearch, 'data set', 'data sets');
     }
@@ -8263,6 +8510,7 @@ ${this.buildPaletteCustomProperties()}
             }
 
             versionDatasets.forEach(function (dataset) { versionState.bodyElement.appendChild(buildDatasetRow(treeState, dataset, 'versions')); });
+            versionState.hasDatasetRows = versionDatasets.length > 0;
             versionState.isBodyBuilt = true;
 
         }
@@ -8643,8 +8891,8 @@ ${this.buildPaletteCustomProperties()}
 
         const runFakerElement = createElement('button', 'treeRunFaker', RUN_FAKER_ACTION_LABEL);
 
-        runFakerElement.setAttribute('title', 'Run Faker by Recipe on ' + tree.runFakerRecipeFileName);
-        runFakerElement.setAttribute('aria-label', 'Run Faker on ' + displayTitleOf(tree) + ' (' + tree.runFakerRecipeFileName + ')');
+        runFakerElement.setAttribute('title', 'Run Faker by Recipe on ' + tree.runFakerRecipeFileName + ', then choose an org to insert the new data set into');
+        runFakerElement.setAttribute('aria-label', 'Run Faker data on ' + displayTitleOf(tree) + ' (' + tree.runFakerRecipeFileName + ') and insert it into an org');
         runFakerElement.addEventListener('click', function () {
             if (runFakerRunningTreeKey !== null) { return; }
             setRunFakerRunning(tree.treeKey);
@@ -10212,6 +10460,11 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'runFakerState') {
             setRunFakerRunning(hostMessage.isRunning ? hostMessage.treeKey : null);
+            return;
+        }
+
+        if (hostMessage.command === 'datasetAdded') {
+            renderDatasetAdded(hostMessage);
             return;
         }
 

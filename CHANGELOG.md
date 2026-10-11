@@ -1,5 +1,33 @@
 # Change Log
 
+## [3.58.0] - Recipe Cockpit updates only what a Create or Run Faker changed, and Run Faker inserts what it generates
+
+Closes [#226](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/226), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+A Create of 10 Contacts used to reload the whole run: the host re-read it, posted the whole model again, and the panel rebuilt every card, tab and expanded row to change one result line. The reload also dropped the org selection, so the panel listed the orgs again, re-selected the org, asked it again whether it is a sandbox and checked every object again. It also dropped every card's comparison. Now an action that only adds a data set changes only the rows it affected.
+
+- **`datasetAdded`, in place of a reload.** After a Create, the host posts one small message: the cards the new data set belongs to, its Previous Fake Sets row, and the Create's result for that object's row. The panel shows the result on that row, puts the data set at the top of the card's Previous Fake Sets, and puts it under its version in Previous Versions if that version is expanded. Every other node on the page is the one that was there before, and a test checks this by object identity across every card. The org selection, readiness and comparisons stay as they were.
+- **Placed by the reload's own rule.** `RecipeCockpitTreeHistory.buildAddedDataset` reads the one new folder and places it through `groupTreeHistories`, the function a reload uses. A partial update and a reload therefore cannot disagree on which cards list it.
+- **Falls back to the reload.** The run is reloaded, as before, when:
+  - the data set cannot be placed: not a data set folder name, not a folder inside the workspace, an unreadable `datasetSource.json`, or no card on screen;
+  - the run on screen changed while the action ran;
+  - the Create threw after its folder was made.
+- **Allow-lists still decide what the panel can act on.** The new row's **Open** and **Insert…** go into a *copy* of the pending history allow-lists (`cloneTreeHistoryAllowLists`). Once a model is acknowledged, its pending and active lists are the same sets, so adding to them in place would make the row usable before it was drawn. The panel answers `partialRendered {renderSequence, updateSequence}` once it has drawn the row. Only that answer, for the latest `updateSequence` and the model on screen, promotes the copy. The host also adds the data set to its stored model, so a hidden tab that is shown again draws it, and that model's `rendered` offers it. The panel drops a `datasetAdded` for any other `renderSequence`. Data set rows still use one rule (`addDatasetToAllowLists`).
+- **▶ Run Faker is now ▶ Run Faker Data and Insert into Org.** It still runs **Run Faker by Recipe** on the tree's recipe, with its confirmation. `runFakerGenerationByRecipeFile` now returns the data set folder it wrote, or `undefined` when it wrote no complete data set. The cockpit adds that data set in place and then runs **Insert Data Set by Directory** on the folder. That command asks for the org, refuses production on the connection it inserts with (#204) and asks All or None. Dismissing its picker inserts nothing; the data set stays, and its row's **Insert…** still offers it. Every card's button stays disabled until the insert has ended. A run that wrote no data set (cancelled, refused, failed) inserts nothing and reloads on Previous Fake Sets, as before. The palette's **Run Faker by Recipe** is unchanged.
+- **Unchanged:** Regenerate, Add friend and switching runs still redraw the whole panel.
+
+### Measured
+
+The 3.25.0 method: a synthetic run written to disk (1,000 objects in 100 trees of 10, 12 fields each with a third of them 15-value picklists, so 12,000 fields, and 500 data sets) and pushed through the real `loadRecipeRunByRuns` and the real panel script. Times are medians of 7. Panel times come from the test harness's fake DOM, not a browser, so compare them with each other rather than with a real webview.
+
+| after a Create | before: reload | after: `datasetAdded` |
+|---|---|---|
+| host work | 114 ms (re-read the run) | 0.28 ms (read one data set) |
+| posted to the panel | 3.39 MB | 465 bytes |
+| panel draw | 69 ms | 0.05 ms |
+
+The reload's cost did not stop there: it also re-listed the orgs, re-connected, re-asked the org whether it is a sandbox and re-checked every object's readiness. None of that happens now.
+
 ## [3.57.0] - Insert Data Set by Directory refuses a production org
 
 Closes [#204](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/204), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

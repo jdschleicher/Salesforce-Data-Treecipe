@@ -41,7 +41,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		The Recipe Cockpit's Run Faker passes the recipe file of its tree; the palette passes nothing
 		and gets the recipe picker. A tree with excluded objects also passes its filtered copy (#219),
 		which the handler type-checks. Returned so executeCommand settles when the data set is written,
-		which is when the cockpit reloads the tree's history.
+		and answers with its folder, which the cockpit adds to the tree's history and inserts (#226).
 	*/
 	const runFakerByRecipe = vscode.commands.registerCommand('treecipe.runFakerByRecipe', (recipeFilePath?: unknown, filteredRecipe?: unknown) => {
 
