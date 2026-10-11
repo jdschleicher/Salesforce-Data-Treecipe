@@ -36,6 +36,7 @@ import {
 } from "../RecipeCockpitService/RecipeCockpitService";
 
 import { SalesforceOrgService, IOrgTypeDetail } from '../SalesforceOrgService/SalesforceOrgService';
+import { RunFakerConfirmation } from './RunFakerConfirmation';
 
 import * as fs from 'fs';
 import * as os from 'os';
@@ -64,7 +65,8 @@ export interface IRunFakerFilteredRecipe {
 /*
     isConfirmed is set by the Recipe Cockpit's tree insert (#255), whose own host modal already named
     what is generated and where it goes: the "Generate Data" question is not asked a second time.
-    It is honoured only with a recipe path, and only as a literal true.
+    It is honoured only with a recipe path, and readRunFakerOptions sets it only for a one-time
+    token RunFakerConfirmation issued -- never for anything a caller can write into the arguments.
 */
 export interface IRunFakerOptions {
     isConfirmed?: true;
@@ -340,10 +342,10 @@ export class ExtensionCommandService {
 
     }
 
-    // THE COMMAND IS CALLABLE BY ID: ONLY { isConfirmed: true } IS EVER READ FROM WHAT IT WAS HANDED
+    // THE COMMAND IS CALLABLE BY ID: ONLY A { confirmationToken } THE HOST ISSUED, AND ONCE, EVER SKIPS THE MODAL
     static readRunFakerOptions(candidate: unknown): IRunFakerOptions {
 
-        return typeof candidate === 'object' && candidate !== null && ( candidate as { isConfirmed?: unknown } ).isConfirmed === true
+        return typeof candidate === 'object' && candidate !== null && RunFakerConfirmation.spend(( candidate as { confirmationToken?: unknown } ).confirmationToken)
             ? { isConfirmed: true }
             : {};
 

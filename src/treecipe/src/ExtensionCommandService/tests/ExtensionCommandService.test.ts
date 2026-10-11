@@ -109,6 +109,7 @@ function buildFakeOrgQuickPick(fakeOptions: { acceptLabel?: string } = {}) {
 
 }
 
+import { RunFakerConfirmation } from '../RunFakerConfirmation';
 import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL, VIEW_GENERATION_SUMMARY_ACTION_LABEL, OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL, REVEAL_IN_EXPLORER_ACTION_LABEL, OPEN_CONFIGURATION_FILE_ACTION_LABEL, OPEN_RECIPE_ACTION_LABEL, GENERATE_TREECIPE_PROGRESS_TITLE, GENERATE_TREECIPE_CANCELLED_MESSAGE, RECORD_TYPE_OPTIONS_TODO_MARKER, MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
@@ -2228,9 +2229,18 @@ describe('ExtensionCommandService', () => {
 
             describe('readRunFakerOptions', () => {
 
-                test('reads only a literal true', () => {
-                    expect(ExtensionCommandService.readRunFakerOptions({ isConfirmed: true })).toEqual({ isConfirmed: true });
-                    expect(ExtensionCommandService.readRunFakerOptions({ isConfirmed: true, other: 'x' })).toEqual({ isConfirmed: true });
+                test('confirms only for a token the host issued, and only once', () => {
+                    const confirmationToken = RunFakerConfirmation.issue();
+                    expect(ExtensionCommandService.readRunFakerOptions({ confirmationToken: confirmationToken, other: 'x' })).toEqual({ isConfirmed: true });
+                    expect(ExtensionCommandService.readRunFakerOptions({ confirmationToken: confirmationToken })).toEqual({});
+                });
+
+                test('confirms nothing for a revoked token, or for a flag a caller wrote into the arguments (#255 security review)', () => {
+                    const confirmationToken = RunFakerConfirmation.issue();
+                    RunFakerConfirmation.revoke(confirmationToken);
+                    expect(ExtensionCommandService.readRunFakerOptions({ confirmationToken: confirmationToken })).toEqual({});
+                    expect(ExtensionCommandService.readRunFakerOptions({ isConfirmed: true })).toEqual({});
+                    expect(ExtensionCommandService.readRunFakerOptions({ confirmationToken: 'a'.repeat(64) })).toEqual({});
                 });
 
                 test.each([
@@ -2238,6 +2248,7 @@ describe('ExtensionCommandService', () => {
                     ['null', null],
                     ['true itself', true],
                     ['a string', 'isConfirmed'],
+                    ['isConfirmed true', { isConfirmed: true }],
                     ['isConfirmed "true"', { isConfirmed: 'true' }],
                     ['isConfirmed 1', { isConfirmed: 1 }],
                     ['isConfirmed false', { isConfirmed: false }],

@@ -31,6 +31,7 @@ jest.mock('@salesforce/core', () => ({
 import { activate } from '../extension';
 import { ConfigurationService } from '../treecipe/src/ConfigurationService/ConfigurationService';
 import { VSCodeWorkspaceService } from '../treecipe/src/VSCodeWorkspace/VSCodeWorkspaceService';
+import { RunFakerConfirmation } from '../treecipe/src/ExtensionCommandService/RunFakerConfirmation';
 import { ExtensionCommandService } from '../treecipe/src/ExtensionCommandService/ExtensionCommandService';
 
 /*
@@ -190,10 +191,10 @@ describe('activate', () => {
         runFakerHandler({ fsPath: '/elsewhere' });
 
         const filteredRecipe = { recipeText: '- object: Lead\n', excludedObjectApiNames: [], objectCountsByObject: { Lead: 3 } };
-        runFakerHandler('/workspace/recipe.yml', filteredRecipe, { isConfirmed: true });
-        runFakerHandler('/workspace/recipe.yml', undefined, { isConfirmed: 'yes' });
+        runFakerHandler('/workspace/recipe.yml', filteredRecipe, { confirmationToken: RunFakerConfirmation.issue() });
+        runFakerHandler('/workspace/recipe.yml', undefined, { isConfirmed: true });
 
-        // ONLY A LITERAL isConfirmed: true REACHES THE COMMAND (#255)
+        // ONLY A TOKEN THE HOST ISSUED SKIPS THE MODAL; A FLAG A CALLER WRITES DOES NOT (#255)
         expect(runFakerSpy.mock.calls).toEqual([
             ['/workspace/treecipe/GeneratedRecipes/recipe-2026-09-20T10-00-00/Lead-ONLY/recipe--Lead-ONLY-2026-09-20T10-00-00.yml', undefined, {}],
             [undefined, undefined, {}],

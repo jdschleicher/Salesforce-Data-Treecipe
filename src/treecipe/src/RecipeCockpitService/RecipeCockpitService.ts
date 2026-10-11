@@ -52,6 +52,7 @@ import {
     RecipeCockpitTreeHistory
 } from './RecipeCockpitTreeHistory';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
+import { RunFakerConfirmation } from '../ExtensionCommandService/RunFakerConfirmation';
 import { IScratchOrgPlan, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
 import { PARENT_PICKER_RANDOM_LABEL, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 
@@ -2059,7 +2060,8 @@ export class RecipeCockpitService {
         }
         treeSelections.objectCountsByFolderName.set(panelAction.folderName, countsByObject);
 
-        await this.saveAndPostTreeSelections(cockpitPanel, panelState, panelAction.folderName, treeSelections);
+        // A COUNT CHANGES NO FIELD AND NO OBJECT THE INSERT SENDS, SO THE ORG'S READINESS NEED NOT BE CHECKED AGAIN
+        await this.saveAndPostTreeSelections(cockpitPanel, panelState, panelAction.folderName, treeSelections, false);
 
     }
 
@@ -2104,7 +2106,8 @@ export class RecipeCockpitService {
     private static async saveAndPostTreeSelections(cockpitPanel: vscode.WebviewPanel,
                                                     panelState: IRecipeCockpitPanelState,
                                                     folderName: string,
-                                                    treeSelections: IRecipeCockpitTreeSelections) {
+                                                    treeSelections: IRecipeCockpitTreeSelections,
+                                                    isReadinessAffected = true) {
 
         const isWritten = await this.writeTreeSelections(this.recipeCockpitWorkspaceState, treeSelections);
         const recipeDataMessage = panelState.recipeDataMessage;
@@ -2128,7 +2131,7 @@ export class RecipeCockpitService {
             }));
 
         const isOrgCheckIdle = !panelState.scratchOrgStateMessage?.isRunning && !panelState.insertStateMessage?.isRunning;
-        if ( isOrgCheckIdle ) {
+        if ( isOrgCheckIdle && isReadinessAffected ) {
             await this.refreshDataOrgReadinessForFolder(cockpitPanel, panelState, folderName);
         }
 
@@ -4787,7 +4790,13 @@ export class RecipeCockpitService {
         }
 
         // THE SAME COMMAND ▶ Run Faker RUNS, WITH ITS MODAL ALREADY ANSWERED BY THIS ONE
-        const datasetFolderPath: unknown = await vscode.commands.executeCommand(RECIPE_COCKPIT_RUN_FAKER_COMMAND, recipeFilePath, filteredRecipe, { isConfirmed: true });
+        const confirmationToken = RunFakerConfirmation.issue();
+        let datasetFolderPath: unknown;
+        try {
+            datasetFolderPath = await vscode.commands.executeCommand(RECIPE_COCKPIT_RUN_FAKER_COMMAND, recipeFilePath, filteredRecipe, { confirmationToken: confirmationToken });
+        } finally {
+            RunFakerConfirmation.revoke(confirmationToken);
+        }
 
         if ( typeof datasetFolderPath !== 'string' || !SfdxProjectService.isExistingDirectory(datasetFolderPath) || !this.isUsableWorkspacePath(datasetFolderPath, panelState.workspaceRoot) ) {
             return refuse(`${treeLabel} was not generated, so nothing was inserted into ${orgLabel}.`);
@@ -4855,26 +4864,35 @@ export class RecipeCockpitService {
                                             pickIndex: (choiceCount: number) => number,
                                             outsideParentsByObject: ReadonlyMap<string, ReadonlyMap<string, IOutsideLookupParents>> = new Map()): DataSetRecordPreparer {
 
+        // BUILT AS THE INSERT GOES: THE CREATED-Id MAP ONLY GROWS, SO EACH FILE ADDS ONLY WHAT THE FILES BEFORE IT CREATED
+        const runRecordIds = new Set<string>();
+        const runRecordIdsByObject = new Map<string, string[]>();
+        const indexedReferenceIds = new Set<string>();
+
         return (objectApiName, records, createdRecordIdsByReferenceId) => {
+
+            Object.entries(createdRecordIdsByReferenceId).forEach(([referenceId, recordId]) => {
+                if ( indexedReferenceIds.has(referenceId) || typeof recordId !== 'string' ) {
+                    return;
+                }
+                indexedReferenceIds.add(referenceId);
+                runRecordIds.add(recordId);
+                // "<Object>_Reference_<n>", WITH "__<nickname>" ONLY WHEN THE RECORD HAD ONE
+                const referencedObjectApiName = /^(.+?)_Reference_\d+(?:__|$)/.exec(referenceId)?.[1];
+                if ( referencedObjectApiName ) {
+                    const objectRecordIds = runRecordIdsByObject.get(referencedObjectApiName);
+                    if ( objectRecordIds ) {
+                        objectRecordIds.push(recordId);
+                    } else {
+                        runRecordIdsByObject.set(referencedObjectApiName, [recordId]);
+                    }
+                }
+            });
 
             const describe = SalesforceOrgService.getCachedDescribe(orgUsername, objectApiName);
             if ( !describe ) {
                 return records;
             }
-
-            const runRecordIds = new Set<string>();
-            const runRecordIdsByObject = new Map<string, string[]>();
-            Object.entries(createdRecordIdsByReferenceId).forEach(([referenceId, recordId]) => {
-                if ( typeof recordId !== 'string' ) {
-                    return;
-                }
-                runRecordIds.add(recordId);
-                // "<Object>_Reference_<n>", WITH "__<nickname>" ONLY WHEN THE RECORD HAD ONE
-                const referencedObjectApiName = /^(.+?)_Reference_\d+(?:__|$)/.exec(referenceId)?.[1];
-                if ( referencedObjectApiName ) {
-                    runRecordIdsByObject.set(referencedObjectApiName, [...( runRecordIdsByObject.get(referencedObjectApiName) ?? [] ), recordId]);
-                }
-            });
 
             // A NICKNAME OF A RECORD OF THIS SAME FILE IS RESOLVED BY A LATER INSERT ROUND
             const sameFileNicknames = new Set(records

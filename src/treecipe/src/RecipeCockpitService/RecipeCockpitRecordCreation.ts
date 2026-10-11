@@ -349,11 +349,16 @@ export class RecipeCockpitRecordCreation {
 
             const preparedRecord: Record<string, unknown> = { ...(record as Record<string, unknown>) };
 
+            // SALESFORCE READS FIELD NAMES CASE-INSENSITIVELY, SO "accountid:" IN A HAND-EDITED RECIPE IS AccountId TOO; INDEXED ONCE PER RECORD
+            const recordKeysByLowerName = new Map<string, string[]>();
+            Object.keys(preparedRecord).forEach(recordKey => {
+                const lowerRecordKey = recordKey.toLowerCase();
+                recordKeysByLowerName.set(lowerRecordKey, [...( recordKeysByLowerName.get(lowerRecordKey) ?? [] ), recordKey]);
+            });
+
             lookups.forEach(lookup => {
 
-                // SALESFORCE READS FIELD NAMES CASE-INSENSITIVELY, SO "accountid:" IN A HAND-EDITED RECIPE IS AccountId TOO
-                const lowerFieldApiName = lookup.fieldApiName.toLowerCase();
-                const recordKeys = Object.keys(preparedRecord).filter(recordKey => recordKey.toLowerCase() === lowerFieldApiName);
+                const recordKeys = recordKeysByLowerName.get(lookup.fieldApiName.toLowerCase()) ?? [];
                 const keptKey = recordKeys.find(recordKey => typeof preparedRecord[recordKey] === 'string' && lookupContext.isRunReference(preparedRecord[recordKey] as string));
 
                 if ( keptKey !== undefined ) {
