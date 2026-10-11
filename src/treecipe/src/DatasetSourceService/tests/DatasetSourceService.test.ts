@@ -478,7 +478,11 @@ describe('DatasetSourceService', () => {
             ['a fractional record count', { ...validDatasetSource, recordCountsByObject: { Account: 1.5 } }],
             ['a string record count', { ...validDatasetSource, recordCountsByObject: { Account: '1' } }],
             ['excluded objects as a string', { ...validDatasetSource, excludedObjectApiNames: 'Opportunity' }],
-            ['an excluded object that is not a string', { ...validDatasetSource, excludedObjectApiNames: ['Opportunity', 7] }]
+            ['an excluded object that is not a string', { ...validDatasetSource, excludedObjectApiNames: ['Opportunity', 7] }],
+            ['excluded fields as an array', { ...validDatasetSource, excludedFieldApiNamesByObject: [['Account', ['Phone']]] }],
+            ['excluded fields as null', { ...validDatasetSource, excludedFieldApiNamesByObject: null }],
+            ['an object\'s excluded fields as a string', { ...validDatasetSource, excludedFieldApiNamesByObject: { Account: 'Phone' } }],
+            ['an excluded field that is not a string', { ...validDatasetSource, excludedFieldApiNamesByObject: { Account: ['Phone', 7] } }]
         ])('refuses %s', (_description, candidate) => {
 
             expect(DatasetSourceService.typeCheckDatasetSource(candidate)).toBeUndefined();
@@ -506,6 +510,42 @@ describe('DatasetSourceService', () => {
 
             expect(DatasetSourceService.typeCheckDatasetSource(excludingSource)).toEqual(excludingSource);
             expect(DatasetSourceService.typeCheckDatasetSource(validDatasetSource)).not.toHaveProperty('excludedObjectApiNames');
+
+        });
+
+        test('accepts the fields the Recipe Cockpit unticked (#220), and reads a source written before them unchanged', () => {
+
+            const excludingSource: IDatasetSource = { ...validDatasetSource, excludedFieldApiNamesByObject: { Account: ['Phone', 'Site'], Contact: ['Email'] } };
+
+            expect(DatasetSourceService.typeCheckDatasetSource(excludingSource)).toEqual(excludingSource);
+            expect(DatasetSourceService.typeCheckDatasetSource(validDatasetSource)).not.toHaveProperty('excludedFieldApiNamesByObject');
+
+        });
+
+        test('reads unticked fields of an object named __proto__ as an own entry, never a prototype', () => {
+
+            const parsedDatasetSource = JSON.parse(JSON.stringify({ ...validDatasetSource, excludedFieldApiNamesByObject: { Placeholder: ['Phone'] } }).replace('"Placeholder"', '"__proto__"'));
+
+            const excludedFieldApiNamesByObject = DatasetSourceService.typeCheckDatasetSource(parsedDatasetSource)?.excludedFieldApiNamesByObject as Record<string, string[]>;
+
+            expect(Object.getPrototypeOf(excludedFieldApiNamesByObject)).toBeNull();
+            expect(Object.keys(excludedFieldApiNamesByObject)).toEqual(['__proto__']);
+            expect(excludedFieldApiNamesByObject['__proto__']).toEqual(['Phone']);
+
+        });
+
+        test('buildDatasetSource records unticked fields only for objects that have some, and an object named __proto__ as a key', () => {
+
+            const recipeSourceNames = { recipeRunFolderName: fakerJsRunFolderName, recipeTreeFolderName: 'Account-thru-Contact', recipeFileName: 'recipe.yml' };
+            const fieldExclusions: Record<string, string[]> = Object.create(null);
+            fieldExclusions['__proto__'] = ['Phone'];
+            fieldExclusions.Contact = [];
+
+            expect(DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 1 }, [], { Contact: [] }))
+                .not.toHaveProperty('excludedFieldApiNamesByObject');
+            const written = JSON.parse(JSON.stringify(DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 1 }, [], fieldExclusions)));
+            expect(Object.keys(written.excludedFieldApiNamesByObject)).toEqual(['__proto__']);
+            expect(written).not.toHaveProperty('excludedObjectApiNames');
 
         });
 

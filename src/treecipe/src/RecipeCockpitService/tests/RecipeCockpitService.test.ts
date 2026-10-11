@@ -4758,7 +4758,7 @@ describe('RecipeCockpitService', () => {
                     const actionGroup = headerChildren[headerChildren.length - 1];
 
                     expect(actionGroup.classList.contains('treeHeaderActions')).toBe(true);
-                    expect(actionGroup.children.map((actionElement: any) => actionElement.className)).toEqual(['treeFavorite', 'treeRename', 'treeRunFaker']);
+                    expect(actionGroup.children.map((actionElement: any) => actionElement.className)).toEqual(['treeFavorite', 'treeRename', 'treeResetSelection hidden', 'treeRunFaker']);
                     expect(panel.findAll(panel.cockpitBodyElement, 'treeScope')).toEqual([]);
 
                 });
@@ -4903,9 +4903,11 @@ describe('RecipeCockpitService', () => {
 
             await receivedMessageHandler({ command: 'ready' });
 
+            const expectedRecipe = RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT);
+            RecipeCockpitService.applyObjectSelections(expectedRecipe, new Map());
             expect(postedPanelMessages).toEqual([{
                 command: 'recipeData',
-                recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT),
+                recipe: expectedRecipe,
                 renderSequence: expect.any(Number)
             }]);
 

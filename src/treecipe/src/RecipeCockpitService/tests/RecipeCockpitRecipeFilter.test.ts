@@ -6,7 +6,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 
-import { RecipeCockpitRecipeWriter, RecipeFilterResult, IRecipeFilterLookup, RecipeWriterRefusalReason } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitRecipeWriter, RecipeFilterResult, IRecipeFilterLookup, RecipeWriterRefusalReason, IScannedObject } from '../RecipeCockpitRecipeWriter';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
 import { SnowfakeryRecipeProcessor } from '../../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
 import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
@@ -595,3 +595,362 @@ function expectInserted(result: ReturnType<typeof RecipeCockpitRecipeWriter.inse
     }
     return result.recipeText;
 }
+
+// THE SOURCE'S LINES WITHOUT THE NAMED FIELDS' OWN LINES AND CONTINUATION LINES, IN EVERY OCCURRENCE OF THEIR OBJECT
+function linesWithoutFields(recipeText: string, excludedFieldApiNamesByObject: Map<string, string[]>): string[] {
+    const recipeLines = RecipeCockpitRecipeWriter.splitRecipeLines(recipeText).lines;
+    const removedLineIndexes = new Set<number>();
+    RecipeCockpitRecipeWriter.scanRecipeObjects(recipeLines).forEach(scannedObject => scannedObject.fields
+        .filter(scannedField => excludedFieldApiNamesByObject.get(scannedObject.objectApiName)?.includes(scannedField.fieldApiName))
+        .forEach(scannedField => {
+            for ( let lineIndex = scannedField.startIndex; lineIndex < scannedField.endIndex; lineIndex++ ) {
+                removedLineIndexes.add(lineIndex);
+            }
+        }));
+    return recipeLines.filter((_recipeLine, lineIndex) => !removedLineIndexes.has(lineIndex));
+}
+
+describe('RecipeCockpitRecipeWriter.buildFilteredRecipe -- unticked fields (#220)', () => {
+
+    test('an empty field map is the recipe itself, byte for byte', () => {
+
+        const recipeText = readFixture(SNOWFAKERY_FIXTURE);
+
+        const filtered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(recipeText, {
+            excludedObjectApiNames: [],
+            parentLookupsByObjectApiName: FIXTURE_LOOKUPS,
+            excludedFieldApiNamesByObject: new Map([['Account', []]])
+        }));
+
+        expect(filtered.recipeText).toBe(recipeText);
+        expect(filtered.droppedFields).toEqual([]);
+
+    });
+
+    test('a field the recipe does not carry leaves the recipe as it is', () => {
+
+        const recipeText = readFixture(SNOWFAKERY_FIXTURE);
+
+        const filtered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(recipeText, {
+            excludedObjectApiNames: [],
+            parentLookupsByObjectApiName: FIXTURE_LOOKUPS,
+            excludedFieldApiNamesByObject: new Map([['Account', ['NotInTheRecipe__c']]])
+        }));
+
+        expect(filtered.recipeText).toBe(recipeText);
+
+    });
+
+    test('snowfakery: drops each unticked field and its continuation lines, and every other line is byte for byte', () => {
+
+        const recipeText = readFixture(SNOWFAKERY_FIXTURE);
+        const excludedFieldApiNamesByObject = new Map([['Account', ['Description', 'Phone']], ['Example_Everything__c', ['DependentPicklist__c']]]);
+
+        const filtered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(recipeText, {
+            excludedObjectApiNames: [],
+            parentLookupsByObjectApiName: FIXTURE_LOOKUPS,
+            excludedFieldApiNamesByObject: excludedFieldApiNamesByObject
+        }));
+
+        const [headerComment, ...filteredLines] = filtered.recipeText.split('\n');
+        expect(headerComment).toBe('# Recipe Cockpit -- a filtered copy of this tree\'s recipe, leaving out: fields Account.Description, Account.Phone, Example_Everything__c.DependentPicklist__c');
+        expect(filteredLines).toEqual(linesWithoutFields(recipeText, excludedFieldApiNamesByObject));
+        expect(filtered.droppedFields).toEqual([
+            { objectApiName: 'Account', fieldApiName: 'Description' },
+            { objectApiName: 'Account', fieldApiName: 'Phone' },
+            { objectApiName: 'Example_Everything__c', fieldApiName: 'DependentPicklist__c' }
+        ]);
+        expect(filtered.droppedObjectApiNames).toEqual([]);
+        expect(filtered.droppedLookups).toEqual([]);
+
+        const occurrences = scanOccurrences(filtered.recipeText);
+        expect(occurrences.find(occurrence => occurrence.objectApiName === 'Account')?.fieldApiNames).not.toIncludeAnyMembers(['Description', 'Phone']);
+        expect(occurrences.find(occurrence => occurrence.objectApiName === 'Account')?.fieldApiNames).toContain('Name');
+
+    });
+
+    test('faker-js: drops unticked fields at every friends: depth, and every other line is byte for byte', () => {
+
+        const recipeText = readFixture(NESTED_FIXTURE);
+        const excludedFieldApiNamesByObject = new Map([
+            ['Account', ['Site']],
+            ['Contact', ['Phone', 'Email']],
+            ['Product__c', ['MSRP__c']],
+            ['Order_Item__c', ['Qty_M__c']]
+        ]);
+
+        const filtered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(recipeText, {
+            excludedObjectApiNames: [],
+            parentLookupsByObjectApiName: FIXTURE_LOOKUPS,
+            excludedFieldApiNamesByObject: excludedFieldApiNamesByObject
+        }));
+
+        const [, ...filteredLines] = filtered.recipeText.split('\n');
+        expect(filteredLines).toEqual(linesWithoutFields(recipeText, excludedFieldApiNamesByObject));
+        expect(scanOccurrences(filtered.recipeText).map(occurrence => [occurrence.objectApiName, occurrence.parentObjectApiName]))
+            .toEqual(scanOccurrences(recipeText).map(occurrence => [occurrence.objectApiName, occurrence.parentObjectApiName]));
+        scanOccurrences(filtered.recipeText).forEach(occurrence => {
+            expect(occurrence.fieldApiNames).not.toIncludeAnyMembers(excludedFieldApiNamesByObject.get(occurrence.objectApiName) ?? []);
+        });
+
+    });
+
+    test('drops the field from every occurrence of its object, a self-lookup iteration included', () => {
+
+        const recipeText = readFixture(NESTED_FIXTURE);
+
+        const filtered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(recipeText, {
+            excludedObjectApiNames: [],
+            parentLookupsByObjectApiName: FIXTURE_LOOKUPS,
+            excludedFieldApiNamesByObject: new Map([['Example_Everything__c', ['Checkbox__c']]])
+        }));
+
+        const everythingOccurrences = scanOccurrences(filtered.recipeText).filter(occurrence => occurrence.objectApiName === 'Example_Everything__c');
+        expect(everythingOccurrences).toHaveLength(2);
+        everythingOccurrences.forEach(occurrence => expect(occurrence.fieldApiNames).not.toContain('Checkbox__c'));
+        expect(filtered.droppedFields).toEqual([{ objectApiName: 'Example_Everything__c', fieldApiName: 'Checkbox__c' }]);
+
+    });
+
+    test('names both what it left out when objects and fields are excluded together', () => {
+
+        const filtered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(readFixture(NESTED_FIXTURE), {
+            excludedObjectApiNames: ['Opportunity'],
+            parentLookupsByObjectApiName: FIXTURE_LOOKUPS,
+            excludedFieldApiNamesByObject: new Map([['Account', ['Site']]])
+        }));
+
+        expect(filtered.recipeText.split('\n')[0]).toBe('# Recipe Cockpit -- a filtered copy of this tree\'s recipe, leaving out: Opportunity; fields Account.Site');
+        expect(scanOccurrences(filtered.recipeText).map(occurrence => occurrence.objectApiName)).not.toContain('Opportunity');
+
+    });
+
+    test('an unticked lookup of a moved friend is dropped rather than re-wired to its new parent', () => {
+
+        const filtered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(readFixture(NESTED_FIXTURE), {
+            excludedObjectApiNames: ['Contact', 'Order__c'],
+            parentLookupsByObjectApiName: FIXTURE_LOOKUPS,
+            excludedFieldApiNamesByObject: new Map([['Order_Item__c', ['Product__c']]])
+        }));
+
+        const orderItem = scanOccurrences(filtered.recipeText).find(occurrence => occurrence.objectApiName === 'Order_Item__c');
+        expect(orderItem).toMatchObject({ parentObjectApiName: 'Product__c' });
+        expect(orderItem?.fieldApiNames).not.toContain('Product__c');
+        expect(filtered.recipeText).not.toContain('Product__c: Product__c_NickName');
+
+    });
+
+    test('unticking every field keeps the object, with no "fields:" line left to load as null', () => {
+
+        const recipeText = readFixture(NESTED_FIXTURE);
+        const productFamilyFields = scanOccurrences(recipeText).find(occurrence => occurrence.objectApiName === 'Product_Family__c')?.fieldApiNames ?? [];
+
+        const filtered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(recipeText, {
+            excludedObjectApiNames: [],
+            parentLookupsByObjectApiName: FIXTURE_LOOKUPS,
+            excludedFieldApiNamesByObject: new Map([['Product_Family__c', productFamilyFields]])
+        }));
+
+        const productFamily = (yaml.load(filtered.recipeText) as Array<{ object: string; fields?: unknown; friends?: unknown[] }>).find(entry => entry.object === 'Product_Family__c');
+        expect(productFamily).toBeDefined();
+        expect(productFamily).not.toHaveProperty('fields');
+        expect(productFamily?.friends).toHaveLength(1);
+
+    });
+
+    test('keeps CRLF line endings', () => {
+
+        const recipeText = readFixture(SNOWFAKERY_FIXTURE).replace(/\n/g, '\r\n');
+
+        const filtered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(recipeText, {
+            excludedObjectApiNames: [],
+            parentLookupsByObjectApiName: FIXTURE_LOOKUPS,
+            excludedFieldApiNamesByObject: new Map([['Account', ['Description']]])
+        }));
+
+        expect(filtered.recipeText).not.toMatch(/[^\r]\n/);
+        expect(scanOccurrences(filtered.recipeText).find(occurrence => occurrence.objectApiName === 'Account')?.fieldApiNames).not.toContain('Description');
+
+    });
+
+    test.each([
+        ['a field name with a line break', new Map([['Account', ['Name\n- object: Evil']]]), 'invalid-field-api-name'],
+        ['a field name with a space', new Map([['Account', ['Bad Name']]]), 'invalid-field-api-name'],
+        ['an object name that is not an api name', new Map([['Bad Object', ['Name']]]), 'invalid-object-api-name']
+    ] as Array<[string, Map<string, string[]>, RecipeWriterRefusalReason]>)('refuses %s before writing anything', (_caseName, excludedFieldApiNamesByObject, reason) => {
+        expectRefused(RecipeCockpitRecipeWriter.buildFilteredRecipe(readFixture(SNOWFAKERY_FIXTURE), {
+            excludedObjectApiNames: [],
+            parentLookupsByObjectApiName: FIXTURE_LOOKUPS,
+            excludedFieldApiNamesByObject: excludedFieldApiNamesByObject
+        }), reason);
+    });
+
+    test('generates through the faker-js processor with exactly the unticked fields missing', async () => {
+
+        // Example_Everything__c's dependent picklist names a controlling field the fixture does not carry, so it is left out
+        const excludedFieldApiNamesByObject = new Map([['Account', ['Phone', 'Site']], ['Contact', ['Email', 'Title']], ['Product__c', ['MSRP__c']]]);
+        const filtered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(readFixture(NESTED_FIXTURE), {
+            excludedObjectApiNames: ['Example_Everything__c'],
+            parentLookupsByObjectApiName: FIXTURE_LOOKUPS,
+            excludedFieldApiNamesByObject: excludedFieldApiNamesByObject
+        }));
+        const unfiltered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(readFixture(NESTED_FIXTURE), {
+            excludedObjectApiNames: ['Example_Everything__c'],
+            parentLookupsByObjectApiName: FIXTURE_LOOKUPS
+        }));
+        const filteredFilePath = writeTemporaryRecipe(filtered.recipeText);
+        const unfilteredFilePath = writeTemporaryRecipe(unfiltered.recipeText);
+
+        const fakerJsProcessor = new FakerJSRecipeProcessor();
+        const generatedRecords = JSON.parse(await fakerJsProcessor.generateFakeDataBySelectedRecipeFile(filteredFilePath) as string) as Array<{ object: string; fields: Record<string, unknown> }>;
+        const unfilteredRecords = JSON.parse(await fakerJsProcessor.generateFakeDataBySelectedRecipeFile(unfilteredFilePath) as string) as Array<{ object: string; fields: Record<string, unknown> }>;
+
+        const fieldNamesByObject = (records: Array<{ object: string; fields: Record<string, unknown> }>) => {
+            const namesByObject = new Map<string, Set<string>>();
+            records.forEach(record => namesByObject.set(record.object, new Set([...( namesByObject.get(record.object) ?? [] ), ...Object.keys(record.fields ?? {})])));
+            return namesByObject;
+        };
+        const filteredNames = fieldNamesByObject(generatedRecords);
+        const unfilteredNames = fieldNamesByObject(unfilteredRecords);
+
+        expect([...filteredNames.keys()].sort()).toEqual([...unfilteredNames.keys()].sort());
+        unfilteredNames.forEach((fieldApiNames, objectApiName) => {
+            const excludedFieldApiNames = excludedFieldApiNamesByObject.get(objectApiName) ?? [];
+            expect([...( filteredNames.get(objectApiName) ?? [] )].sort()).toEqual([...fieldApiNames].filter(fieldApiName => !excludedFieldApiNames.includes(fieldApiName)).sort());
+        });
+
+        fs.rmSync(path.dirname(filteredFilePath), { recursive: true, force: true });
+        fs.rmSync(path.dirname(unfilteredFilePath), { recursive: true, force: true });
+
+    });
+
+    test('generates records with no fields set for an object whose every field is unticked, through the faker-js processor', async () => {
+
+        const recipeText = readFixture(NESTED_FIXTURE);
+        const productFamilyFields = scanOccurrences(recipeText).find(occurrence => occurrence.objectApiName === 'Product_Family__c')?.fieldApiNames ?? [];
+        const filtered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(recipeText, {
+            excludedObjectApiNames: ['Example_Everything__c'],
+            parentLookupsByObjectApiName: FIXTURE_LOOKUPS,
+            excludedFieldApiNamesByObject: new Map([['Product_Family__c', productFamilyFields]])
+        }));
+        const recipeFilePath = writeTemporaryRecipe(filtered.recipeText);
+
+        const generatedRecords = JSON.parse(await new FakerJSRecipeProcessor().generateFakeDataBySelectedRecipeFile(recipeFilePath) as string) as Array<{ object: string; fields?: Record<string, unknown> }>;
+        const productFamilies = generatedRecords.filter(record => record.object === 'Product_Family__c');
+
+        expect(productFamilies).not.toBeEmpty();
+        productFamilies.forEach(productFamily => expect(Object.keys(productFamily.fields ?? {})).toEqual([]));
+        expect(generatedRecords.some(record => record.object === 'Product__c')).toBeTrue();
+
+        fs.rmSync(path.dirname(recipeFilePath), { recursive: true, force: true });
+
+    });
+
+    test('runs through the snowfakery processor as the filtered file, which lacks exactly the unticked fields', async () => {
+
+        const excludedFieldApiNamesByObject = new Map([['Account', ['Phone', 'Description']], ['Contact', ['Email']]]);
+        const recipeText = readFixture(SNOWFAKERY_FIXTURE);
+        const filtered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(recipeText, {
+            excludedObjectApiNames: [],
+            parentLookupsByObjectApiName: FIXTURE_LOOKUPS,
+            excludedFieldApiNamesByObject: excludedFieldApiNamesByObject
+        }));
+        const recipeFilePath = writeTemporaryRecipe(filtered.recipeText);
+        const execFileMock = childProcess.execFile as unknown as jest.Mock;
+        execFileMock.mockClear();
+        execFileMock.mockImplementation((_command: string, _argv: string[], _options: unknown, callback: (error: null, stdout: string) => void) => callback(null, '[]'));
+
+        await new SnowfakeryRecipeProcessor().generateFakeDataBySelectedRecipeFile(recipeFilePath);
+
+        expect(execFileMock.mock.calls[0][1][0]).toBe(recipeFilePath);
+        const ranRecipe = yaml.load(fs.readFileSync(recipeFilePath, 'utf8')) as Array<{ object: string; fields?: Record<string, unknown> }>;
+        const sourceRecipe = yaml.load(recipeText) as Array<{ object: string; fields?: Record<string, unknown> }>;
+        expect(ranRecipe.map(entry => entry.object)).toEqual(sourceRecipe.map(entry => entry.object));
+        ranRecipe.forEach((entry, index) => {
+            const excludedFieldApiNames = excludedFieldApiNamesByObject.get(entry.object) ?? [];
+            expect(Object.keys(entry.fields ?? {})).toEqual(Object.keys(sourceRecipe[index].fields ?? {}).filter(fieldApiName => !excludedFieldApiNames.includes(fieldApiName)));
+        });
+
+        fs.rmSync(path.dirname(recipeFilePath), { recursive: true, force: true });
+
+    });
+
+    PythonTestHarness.testRequiringModules('yaml')('loads in PyYAML, snowfakery\'s parser, without the unticked fields and with no null fields block', () => {
+
+        const recipeText = readFixture(SNOWFAKERY_FIXTURE);
+        const accountFields = scanOccurrences(recipeText).find(occurrence => occurrence.objectApiName === 'Account')?.fieldApiNames ?? [];
+        const filtered = expectFiltered(RecipeCockpitRecipeWriter.buildFilteredRecipe(recipeText, {
+            excludedObjectApiNames: [],
+            parentLookupsByObjectApiName: FIXTURE_LOOKUPS,
+            excludedFieldApiNamesByObject: new Map([['Account', accountFields], ['Contact', ['Email']]])
+        }));
+
+        const [loadedRecipe] = PythonTestHarness.loadWithPyYaml([filtered.recipeText]) as Array<Array<{ object: string; fields?: Record<string, unknown> }>>;
+
+        expect(loadedRecipe.find(entry => entry.object === 'Account')).not.toHaveProperty('fields');
+        loadedRecipe.filter(entry => entry.object === 'Contact').forEach(entry => expect(entry.fields ?? {}).not.toHaveProperty('Email'));
+
+    });
+
+});
+
+describe('RecipeCockpitRecipeWriter -- the Create cut honours unticked fields (#220)', () => {
+
+    test('extractObjectBlock leaves an unticked field and its continuation lines out of the cut', () => {
+
+        const extraction = RecipeCockpitRecipeWriter.extractObjectBlock(readFixture(NESTED_FIXTURE), 'Contact', 3, undefined, ['Phone', 'Email']);
+        if ( 'refusal' in extraction ) {
+            throw new Error(extraction.refusal.message);
+        }
+
+        const [cutObject] = scanOccurrences(extraction.recipeText);
+        expect(cutObject.fieldApiNames).not.toIncludeAnyMembers(['Phone', 'Email']);
+        expect(cutObject.fieldApiNames).toContain('MobilePhone');
+        expect(extraction.recipeText).not.toContain('${{faker.internet.email()}}');
+
+    });
+
+    test('listCreateBlockFieldApiNames and its one-scan batch leave the unticked fields out alike', () => {
+
+        const recipeText = readFixture(NESTED_FIXTURE);
+
+        const single = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames(recipeText, 'Contact', undefined, ['Phone']);
+        const [batched] = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(recipeText, [{ objectApiName: 'Contact', excludedFieldApiNames: ['Phone'] }]);
+
+        expect(single).toEqual(batched);
+        expect(single.isListed && single.fieldApiNames).not.toContain('Phone');
+        expect(single.isListed && single.fieldApiNames).toContain('LastName');
+
+    });
+
+});
+
+describe('RecipeCockpitRecipeWriter.hasRecordTypeSections (#220)', () => {
+
+    test('is true for an object whose other fields carry a record-type section, and false otherwise', () => {
+
+        const recipeLines = RecipeCockpitRecipeWriter.splitRecipeLines(readFixture(NESTED_FIXTURE)).lines;
+        const scannedObjects = RecipeCockpitRecipeWriter.scanRecipeObjects(recipeLines);
+
+        expect(RecipeCockpitRecipeWriter.hasRecordTypeSections(recipeLines, scannedObjects.find(scannedObject => scannedObject.objectApiName === 'Example_Everything__c') as IScannedObject)).toBeTrue();
+        expect(RecipeCockpitRecipeWriter.hasRecordTypeSections(recipeLines, scannedObjects.find(scannedObject => scannedObject.objectApiName === 'Account') as IScannedObject)).toBeFalse();
+
+    });
+
+    test('does not count RecordTypeId\'s own "RecordType Options" line', () => {
+
+        const recipeLines = [
+            '- object: Thing__c',
+            '  fields:',
+            '    RecordTypeId: Thing__c.One',
+            '                        ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name',
+            '                        # Thing__c.Two',
+            '    Name: x',
+            ''
+        ];
+
+        expect(RecipeCockpitRecipeWriter.hasRecordTypeSections(recipeLines, RecipeCockpitRecipeWriter.scanRecipeObjects(recipeLines)[0])).toBeFalse();
+
+    });
+
+});

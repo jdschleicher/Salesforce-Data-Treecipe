@@ -83,6 +83,8 @@ export interface ICreateReadinessInput {
     recipeFieldApiNames?: readonly string[];
     // WHY THAT BLOCK COULD NOT BE READ: A REASON IN ITS OWN RIGHT, NEVER A BLOCK WITH NO FIELDS
     recipeFieldRefusalReason?: string;
+    // THE FIELDS THE STRUCTURE TAB UNTICKED (#220): NOT SENT, SO ONE THE ORG REQUIRES IS A REASON
+    excludedFieldApiNames?: readonly string[];
 }
 
 export interface IRecipeFieldCheck {
@@ -104,6 +106,19 @@ export class RecipeCockpitRecordCreation {
                 && Number.isInteger(candidateCount)
                 && candidateCount >= 1
                 && candidateCount <= RECIPE_COCKPIT_CREATE_MAX_COUNT;
+
+    }
+
+    /*
+        The fields a record cannot be inserted without and the user must send: not nillable,
+        createable, and not one the org fills itself (defaultedOnCreate -- a checkbox, OwnerId). The
+        Structure tab marks such a field "required in <org>" when it is unticked (#220).
+    */
+    static findRequiredFieldApiNames(describe: Pick<ICreateObjectDescribe, 'fields'>): string[] {
+
+        return describe.fields
+            .filter(describeField => !describeField.isNillable && describeField.isCreateable && !describeField.isDefaultedOnCreate)
+            .map(describeField => describeField.fieldApiName);
 
     }
 
@@ -172,6 +187,12 @@ export class RecipeCockpitRecordCreation {
 
         if ( fieldReason ) {
             return withFieldCheck(notReady(fieldReason, requiredLookups));
+        }
+
+        const uncheckedRequiredReason = this.buildUntickedRequiredFieldReason(objectApiName, describe, readinessInput.excludedFieldApiNames ?? []);
+
+        if ( uncheckedRequiredReason ) {
+            return withFieldCheck(notReady(uncheckedRequiredReason, requiredLookups));
         }
 
         const polymorphicLookup = this.findRequiredLookups(describe).find(requiredLookup => requiredLookup.referenceTo.length !== 1);
@@ -251,6 +272,23 @@ export class RecipeCockpitRecordCreation {
         });
 
         return fieldCheck;
+
+    }
+
+    // AN UNTICKED FIELD IS NOT SENT, AND NOT FILLED EITHER: ONE THE ORG REQUIRES WOULD FAIL EVERY RECORD, SO IT IS SAID BEFORE ANYTHING IS INSERTED
+    static buildUntickedRequiredFieldReason(objectApiName: string, describe: ICreateObjectDescribe, excludedFieldApiNames: readonly string[]): string {
+
+        const excludedLowerNames = new Set(excludedFieldApiNames.map(fieldApiName => fieldApiName.toLowerCase()));
+        const untickedRequired = this.findRequiredFieldApiNames(describe).filter(fieldApiName => excludedLowerNames.has(fieldApiName.toLowerCase()));
+
+        if ( untickedRequired.length === 0 ) {
+            return '';
+        }
+
+        const shownNames = untickedRequired.slice(0, RECIPE_COCKPIT_CREATE_REASON_FIELD_LIMIT).join(', ');
+        const hiddenCount = untickedRequired.length - RECIPE_COCKPIT_CREATE_REASON_FIELD_LIMIT;
+
+        return `${objectApiName} has ${untickedRequired.length} unticked ${untickedRequired.length === 1 ? 'field' : 'fields'} this org requires: ${hiddenCount > 0 ? `${shownNames} and ${hiddenCount} more` : shownNames}. Tick ${untickedRequired.length === 1 ? 'it' : 'them'} in Structure to create records.`;
 
     }
 
