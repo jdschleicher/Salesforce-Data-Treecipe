@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.60.1] - Recipe Cockpit: the tree's include/exclude icon is a chain link, at the front of the row
+
+Closes [#257](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/257), a follow-up to [#219](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/219).
+
+The icon that includes or excludes an object on a tree card's Treecipe tab (Structure before [#255](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/255)) was an upward arrow, drawn just after the enlarged `▸` that shows the fields, so the row read as two arrows side by side.
+
+- **A chain link.** Included is a joined link (`RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH`) in `--sdt-accent`. Excluded is the same link pulled apart, with a spark either side of the gap (`RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH`), in `--sdt-muted`. Auto-excluded is the broken link dashed. The path itself changes when the host redraws the selection, so the state is a shape, not only a colour.
+- **At the front of the row.** The button now comes first, then `▸`, then the object's name. A row with no button (a self-lookup's iteration, or the ungrouped card) keeps an empty slot of the same width, so every `▸` and name in a card lines up.
+- **Larger.** The glyph is sized to stand beside the 3.3em `▸` from [#244](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/244).
+- **Unchanged.** What a click does (`setObjectIncluded`), the cascade, the stored exclusions, the overlay on an excluded row and the field checkboxes from #220. The glyph is still built with `createElementNS` and palette CSS and fetches nothing, so the CSP and the shell builder are untouched.
 ## [3.60.0] - Recipe Cockpit updates only what ▶ Run Faker or a tree insert changed
 
 Closes [#226](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/226), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

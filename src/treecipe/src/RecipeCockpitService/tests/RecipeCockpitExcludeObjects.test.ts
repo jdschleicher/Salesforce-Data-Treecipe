@@ -21,7 +21,9 @@ import {
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
-    RECIPE_COCKPIT_TREE_GLYPH_PATH,
+    RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH,
+    RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM,
+    RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -553,22 +555,47 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
         const labelOf = (panel: ReturnType<typeof runPanelScript>, objectApiName: string) => panel.findAll(objectNamed(panel, objectApiName).children[0], 'treeExclusion')[0];
         const countOf = (panel: ReturnType<typeof runPanelScript>, cardIndex: number) => panel.findAll(panel.treeCards()[cardIndex], 'treeCount')[0].textContent;
 
-        it('draws every object included, a real button before its name, with the tree as inline SVG', () => {
+        const pathOf = (includeElement: any) => glyphOf(includeElement).children[0].attributes.d;
+        const leadingClassesOf = (panel: ReturnType<typeof runPanelScript>, objectElement: any) => objectElement.children[0].children.slice(0, 3)
+            .map((child: any) => ['treeObjectInclude', 'treeObjectIncludeSpacer', 'treeObjectToggle', 'treeObjectName'].find(className => child.classList.contains(className)));
+
+        it('draws every object included, a real button leading its row, with a joined chain link as inline SVG', () => {
 
             const panel = drawRecipe();
             const accountInclude = includeOf(panel, 'Account');
             const headerChildren = objectNamed(panel, 'Account').children[0].children;
 
             expect(accountInclude.tagName).toBe('button');
-            expect(headerChildren.indexOf(accountInclude)).toBeLessThan(headerChildren.findIndex((child: any) => child.classList.contains('treeObjectName')));
+            // #257: THE LINK IS THE FIRST THING ON THE ROW, IN FRONT OF THE ▸ THAT SHOWS THE FIELDS
+            expect(headerChildren[0]).toBe(accountInclude);
+            expect(leadingClassesOf(panel, objectNamed(panel, 'Account'))).toEqual(['treeObjectInclude', 'treeObjectToggle', 'treeObjectName']);
             expect(accountInclude.attributes).toMatchObject({ 'aria-pressed': 'true', title: 'Included — click to exclude' });
             expect(accountInclude.disabled).toBeFalse();
             expect(glyphOf(accountInclude)).toMatchObject({ tagName: 'svg', namespaceURI: 'http://www.w3.org/2000/svg' });
-            expect(glyphOf(accountInclude).attributes).toMatchObject({ class: 'treeGlyph included', 'aria-hidden': 'true', viewBox: '0 0 16 16' });
+            expect(glyphOf(accountInclude).attributes).toMatchObject({ class: 'treeGlyph included', 'aria-hidden': 'true', viewBox: '0 0 24 24' });
+            expect(glyphOf(accountInclude).children).toHaveLength(1);
             expect(glyphOf(accountInclude).children[0]).toMatchObject({ tagName: 'path', namespaceURI: 'http://www.w3.org/2000/svg' });
-            expect(glyphOf(accountInclude).children[0].attributes.d).toBe(RECIPE_COCKPIT_TREE_GLYPH_PATH);
+            expect(glyphOf(accountInclude).children[0].attributes).toMatchObject({ d: RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH, transform: RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM });
             expect(panel.objectElements().some(objectElement => objectElement.classList.contains('excluded'))).toBeFalse();
             expect(countOf(panel, 0)).toBe('3 objects · 13 fields');
+
+        });
+
+        it('keeps the link and the ▸ in front of it apart: one includes, the other only expands', () => {
+
+            const panel = drawRecipe();
+            const accountElement = objectNamed(panel, 'Account');
+            const [toggleElement] = panel.findAll(accountElement.children[0], 'treeObjectToggle');
+
+            toggleElement.dispatch('click');
+
+            expect(panel.isHidden(panel.objectBodyOf(accountElement))).toBeFalse();
+            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'setObjectIncluded')).toEqual([]);
+
+            includeOf(panel, 'Account').dispatch('click');
+
+            expect(panel.isHidden(panel.objectBodyOf(accountElement))).toBeFalse();
+            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'setObjectIncluded')).toHaveLength(1);
 
         });
 
@@ -582,6 +609,10 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             const ungroupedCard = panel.treeCards()[2];
             expect(panel.findAll(ungroupedCard, 'treeObject')).toHaveLength(1);
             expect(panel.findAll(ungroupedCard, 'treeObjectInclude')).toEqual([]);
+            // THE SLOT STAYS, SO ITS ▸ LINES UP WITH EVERY OTHER CARD'S (#257)
+            const [leadObject] = panel.findAll(ungroupedCard, 'treeObject');
+            expect(leadingClassesOf(panel, leadObject)).toEqual(['treeObjectIncludeSpacer', 'treeObjectToggle', 'treeObjectName']);
+            expect(leadObject.children[0].children[0].attributes['aria-hidden']).toBe('true');
 
         });
 
@@ -589,14 +620,18 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
 
             const panel = drawRecipe(excludeContact);
 
+            expect(pathOf(includeOf(panel, 'Account'))).toBe(RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH);
+
             const contactInclude = includeOf(panel, 'Contact');
             expect(glyphOf(contactInclude).attributes.class).toBe('treeGlyph excluded');
+            expect(pathOf(contactInclude)).toBe(RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH);
             expect(contactInclude.attributes).toMatchObject({ 'aria-pressed': 'false', title: 'Excluded — click to include' });
             expect(contactInclude.disabled).toBeFalse();
             expect(labelOf(panel, 'Contact').textContent).toBe('excluded');
 
             const otherInclude = includeOf(panel, 'OtherChildObject__c');
             expect(glyphOf(otherInclude).attributes.class).toBe('treeGlyph autoExcluded');
+            expect(pathOf(otherInclude)).toBe(RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH);
             expect(otherInclude.attributes).toMatchObject({ 'aria-pressed': 'false', title: 'Excluded because parent Contact is excluded' });
             expect(otherInclude.disabled).toBeTrue();
             expect(labelOf(panel, 'OtherChildObject__c').textContent).toBe('auto-excluded — parent Contact excluded');
@@ -652,6 +687,8 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
 
             panel.postToPanel({ command: 'objectSelection', renderSequence: 3, treeKey: ACCOUNT_TREE_KEY, objectSelection: objectSelection });
             expect(objectNamed(panel, 'Contact').classList.contains('excluded')).toBeTrue();
+            // THE LINK BREAKS ON THE REDRAW -- A SHAPE, NOT ONLY A COLOUR (#257)
+            expect(pathOf(includeOf(panel, 'Contact'))).toBe(RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH);
             expect(countOf(panel, 0)).toBe('1 of 3 objects · 13 fields');
             // REDRAWN IN PLACE: THE CARD THE READER OPENED IS STILL OPEN
             expect(panel.isHidden(panel.findAll(panel.treeCards()[0], 'treeBody')[0])).toBeFalse();
@@ -659,6 +696,8 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             panel.postToPanel({ command: 'objectSelection', renderSequence: 3, treeKey: ACCOUNT_TREE_KEY });
             expect(objectNamed(panel, 'Contact').classList.contains('excluded')).toBeFalse();
             expect(includeOf(panel, 'OtherChildObject__c').disabled).toBeFalse();
+            expect(['Contact', 'OtherChildObject__c'].map(objectApiName => pathOf(includeOf(panel, objectApiName))))
+                .toEqual([RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH, RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH]);
             expect(countOf(panel, 0)).toBe('3 objects · 13 fields');
 
         });
@@ -680,6 +719,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             expect(accountElements).toHaveLength(2);
             expect(accountElements.map(objectElement => objectElement.classList.contains('excluded'))).toEqual([true, true]);
             expect(accountElements.map(objectElement => panel.findAll(objectElement.children[0], 'treeObjectInclude').length)).toEqual([1, 0]);
+            expect(accountElements.map(objectElement => leadingClassesOf(panel, objectElement)[0])).toEqual(['treeObjectInclude', 'treeObjectIncludeSpacer']);
             // THE ICON POSTS THE NICKNAME THE OBJECT IS DRAWN WITH
             panel.findAll(accountElements[0].children[0], 'treeObjectInclude')[0].dispatch('click');
             expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'setObjectIncluded')).toEqual([

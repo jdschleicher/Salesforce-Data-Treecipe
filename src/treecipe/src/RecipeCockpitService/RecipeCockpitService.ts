@@ -227,12 +227,17 @@ export const RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH = 80;
 export const RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL = '✎';
 
 /*
-    The cockpit's first SVG glyph (#219): one small tree, one path, drawn by the panel script with
-    createElementNS and coloured only from the --sdt-* palette by CSS. Filled is included, an outline
-    is excluded and a dashed outline is excluded because a parent is. It fetches nothing, so the CSP,
-    the nonce-only shell builder and localResourceRoots: [] are unchanged.
+    The cockpit's first SVG glyphs (#219, #257): a chain link, one path per state, drawn by the panel
+    script with createElementNS and coloured only from the --sdt-* palette by CSS. Joined is included;
+    broken -- the links pulled apart, a spark either side of the gap -- is excluded, and a dashed broken
+    link is excluded because a parent is. The SHAPE says the state, never the colour alone. Both are
+    stroked in a 24x24 box and turned to the familiar diagonal. They fetch nothing, so the CSP, the
+    nonce-only shell builder and localResourceRoots: [] are unchanged.
 */
-export const RECIPE_COCKPIT_TREE_GLYPH_PATH = 'M8 1.5 L13.5 10 L9 10 L9 14.5 L7 14.5 L7 10 L2.5 10 Z';
+export const RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX = '0 0 24 24';
+export const RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM = 'rotate(-45 12 12)';
+export const RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH = 'M6 8 H10 A4 4 0 0 1 10 16 H6 A4 4 0 0 1 6 8 Z M14 8 H18 A4 4 0 0 1 18 16 H14 A4 4 0 0 1 14 8 Z';
+export const RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH = 'M4.5 8 H6.5 A4 4 0 0 1 6.5 16 H4.5 A4 4 0 0 1 4.5 8 Z M17.5 8 H19.5 A4 4 0 0 1 19.5 16 H17.5 A4 4 0 0 1 17.5 8 Z M12 3.5 V6 M12 18 V20.5';
 export const RECIPE_COCKPIT_FAVORITE_TREE_LABEL = '★';
 export const RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL = '☆';
 export const RECIPE_COCKPIT_FAVORITES_ONLY_LABEL = 'Favorites only';
@@ -7264,11 +7269,18 @@ ${this.buildPaletteCustomProperties()}
         pointer-events: none;
         z-index: 1;
     }
+    .treeObjectInclude, .treeObjectIncludeSpacer {
+        box-sizing: border-box;
+        flex: none;
+        width: 2.6rem;
+        height: 2.6rem;
+    }
     .treeObjectInclude {
         position: relative;
         z-index: 2;
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         padding: 0.15rem;
         color: var(--sdt-text);
         background-color: transparent;
@@ -7276,12 +7288,13 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 4px;
         cursor: pointer;
     }
+    .treeObjectIncludeSpacer { display: inline-block; }
     .treeObjectInclude:hover:not(:disabled) { background-color: var(--sdt-row-hover); border-color: var(--sdt-border); }
     .treeObjectInclude:disabled { cursor: not-allowed; }
-    .treeGlyph { display: block; width: 1.5em; height: 1.5em; }
-    .treeGlyph path { fill: var(--sdt-accent); stroke: var(--sdt-accent); stroke-width: 1; stroke-linejoin: round; }
-    .treeGlyph.excluded path, .treeGlyph.autoExcluded path { fill: none; stroke: var(--sdt-muted); stroke-width: 1.4; }
-    .treeGlyph.autoExcluded path { stroke-dasharray: 2 1.5; }
+    .treeGlyph { display: block; width: 2.1rem; height: 2.1rem; }
+    .treeGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .treeGlyph.excluded path, .treeGlyph.autoExcluded path { stroke: var(--sdt-muted); }
+    .treeGlyph.autoExcluded path { stroke-dasharray: 2 2.5; }
     .treeExclusion { font-size: 0.85em; }
     .treeField { position: relative; }
     .treeField.fieldExcluded::after {
@@ -7444,7 +7457,10 @@ ${this.buildPaletteCustomProperties()}
     const FAVORITES_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITES_ONLY_LABEL)};
     const NO_FAVORITES_MESSAGE = ${JSON.stringify(RECIPE_COCKPIT_NO_FAVORITES_MESSAGE)};
     const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
-    const TREE_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_GLYPH_PATH)};
+    const TREE_GLYPH_VIEW_BOX = ${JSON.stringify(RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX)};
+    const TREE_GLYPH_TRANSFORM = ${JSON.stringify(RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM)};
+    const TREE_LINKED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH)};
+    const TREE_BROKEN_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH)};
     const FIELD_PARENT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON)};
     const EVERY_FIELD_UNTICKED_WARNING = ${JSON.stringify(RECIPE_COCKPIT_EVERY_FIELD_UNTICKED_WARNING)};
     const RESET_SELECTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RESET_SELECTION_LABEL)};
@@ -7909,17 +7925,19 @@ ${this.buildPaletteCustomProperties()}
         is built node by node -- no markup string -- and coloured by CSS from the palette alone.
         A click posts what the reader asked for; what that excludes comes back from the host.
     */
-    function buildTreeGlyph() {
+    function buildTreeGlyph(treeObjectState) {
 
         const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
         const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
 
         glyphElement.setAttribute('class', 'treeGlyph');
-        glyphElement.setAttribute('viewBox', '0 0 16 16');
+        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
         glyphElement.setAttribute('aria-hidden', 'true');
         glyphElement.setAttribute('focusable', 'false');
-        pathElement.setAttribute('d', TREE_GLYPH_PATH);
+        pathElement.setAttribute('d', TREE_LINKED_GLYPH_PATH);
+        pathElement.setAttribute('transform', TREE_GLYPH_TRANSFORM);
         glyphElement.appendChild(pathElement);
+        treeObjectState.glyphPathElement = pathElement;
 
         return glyphElement;
 
@@ -7930,7 +7948,7 @@ ${this.buildPaletteCustomProperties()}
         const includeElement = createElement('button', 'treeObjectInclude');
         const object = treeObjectState.object;
 
-        treeObjectState.glyphElement = buildTreeGlyph();
+        treeObjectState.glyphElement = buildTreeGlyph(treeObjectState);
         treeObjectState.includeElement = includeElement;
         includeElement.appendChild(treeObjectState.glyphElement);
         includeElement.addEventListener('click', function () {
@@ -8035,6 +8053,7 @@ ${this.buildPaletteCustomProperties()}
 
             treeObjectState.isIncluded = !exclusion;
             treeObjectState.glyphElement.setAttribute('class', 'treeGlyph ' + glyphKind);
+            treeObjectState.glyphPathElement.setAttribute('d', exclusion ? TREE_BROKEN_GLYPH_PATH : TREE_LINKED_GLYPH_PATH);
             includeElement.setAttribute('aria-pressed', exclusion ? 'false' : 'true');
             includeElement.disabled = isAutoExcluded || isRefused;
 
@@ -8590,6 +8609,7 @@ ${this.buildPaletteCustomProperties()}
             fieldWarningElement: createElement('span', 'treeFieldWarning hidden'),
             includeElement: null,
             glyphElement: null,
+            glyphPathElement: null,
             tree: tree,
             // A CARD WITH A FOLDER KEEPS ITS UNTICKED FIELDS (#220); AN ITERATION'S BOXES FOLLOW ITS OBJECT AND ARE DRAWN DISABLED
             canSelectFields: !!tree.folderName && !object.hasIndistinctOccurrences,
@@ -8606,13 +8626,18 @@ ${this.buildPaletteCustomProperties()}
             savePanelPlace();
         });
 
-        objectHeaderElement.appendChild(toggleElement);
-
         // A CARD WITH A FOLDER KEEPS ITS EXCLUSIONS; AN ITERATION FOLLOWS ITS OBJECT AND HAS NO ICON OF ITS OWN (#219)
+        // THE LINK LEADS THE ROW, AND A ROW WITHOUT ONE KEEPS ITS SLOT, SO EVERY ▸ AND NAME OF A CARD LINES UP (#257)
         if (tree.folderName && !object.iteration) {
             buildIncludeElement(treeObjectState, treeKey);
             objectHeaderElement.appendChild(treeObjectState.includeElement);
+        } else {
+            const spacerElement = createElement('span', 'treeObjectIncludeSpacer');
+            spacerElement.setAttribute('aria-hidden', 'true');
+            objectHeaderElement.appendChild(spacerElement);
         }
+
+        objectHeaderElement.appendChild(toggleElement);
 
         objectHeaderElement.appendChild(buildSourceLink('treeObjectName', object.objectApiName, object.recipeFilePath, object.lineNumber));
 
