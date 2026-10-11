@@ -37,8 +37,7 @@ import {
     RECIPE_COCKPIT_CHOOSE_ORG_ACTION_LABEL,
     RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER,
     RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND,
-    RECIPE_COCKPIT_REGENERATE_ACTION_LABEL,
-    RECIPE_COCKPIT_REGENERATE_NOTE,
+    RECIPE_COCKPIT_REFRESH_ORGS_LABEL,
     RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN,
     RECIPE_COCKPIT_PALETTE,
     RECIPE_COCKPIT_INSERT_DATASET_COMMAND,
@@ -377,7 +376,7 @@ describe('RecipeCockpitService', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
 
-            expect(styleSheet).toMatch(/\.treeRunFaker, \.toolbar button, \.treeCompare button, \.emptyStateActions button, \.treeInsert, \.dataOrgLoad, \.dataOrgNewScratch, \.regenerateRecipe \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
+            expect(styleSheet).toMatch(/\.treeRunFaker, \.toolbar button, \.treeCompare button, \.emptyStateActions button, \.treeInsert, \.dataOrgLoad, \.dataOrgNewScratch \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
             expect(styleSheet).toContain('.diff-new-in-org { color: var(--sdt-added); }');
             expect(styleSheet).toContain('.diff-removed-from-org { color: var(--sdt-removed); }');
             expect(styleSheet).toContain('.diff-type-changed { color: var(--sdt-changed); }');
@@ -390,7 +389,7 @@ describe('RecipeCockpitService', () => {
             '.treeToggle', '.treeObjectToggle', '.picklistToggle', '.treeRunFaker',
             '.treeTab', '.treeVersionToggle', '.historyAction', '.treeAddFriend', '.treeAddFriendChoice',
             '.toolbar button', '.treeCompare button', '.emptyStateActions button', '.dataOrgRefresh', '.dataObjectToggle',
-            '.treeInsert', '.treeInsertErrors', '.scratchOrgViewOutput', '.dataOrgLoad', '.dataOrgNewScratch', '.regenerateRecipe'
+            '.treeInsert', '.treeInsertErrors', '.scratchOrgViewOutput', '.dataOrgLoad', '.dataOrgNewScratch'
         ];
 
         const ruleFor = (styleSheet: string, selectorPattern: string): string =>
@@ -408,6 +407,14 @@ describe('RecipeCockpitService', () => {
             expect((sharedButtonRule as RegExpMatchArray)[2]).toContain('min-height: 2.25rem;');
             expect((sharedButtonRule as RegExpMatchArray)[2]).toMatch(/padding: 0\.4rem 0\.8rem;/);
             expect((sharedButtonRule as RegExpMatchArray)[2]).toContain('border: 1px solid var(--sdt-border);');
+            // #263: THE FAVORITE (☆) BUTTON'S SIZE IS EVERY BUTTON'S DEFAULT, SET AFTER font: inherit SO IT IS NOT RESET
+            expect((sharedButtonRule as RegExpMatchArray)[2]).toMatch(/font: inherit;\s*font-size: 1\.1em;/);
+            expect(ruleFor(styleSheet, '\\.treeFieldBulk button, \\.treeResetSelection')).toMatch(/font: inherit;\s*font-size: 1\.1em;/);
+            expect(ruleFor(styleSheet, '\\.treeFavorite, \\.treeRename')).toContain('font-size: 1.1em;');
+            // #263: THE ⟳ GLYPH DRAWS SMALL IN MOST FONTS, SO IT IS SIZED ABOVE THE BUTTON'S OWN 1.1em
+            expect(ruleFor(styleSheet, '\\.dataOrgRefreshIcon')).toContain('font-size: 1.5em;');
+            // #263: REGENERATE RECIPE AND ITS NOTE ARE GONE, WITH THEIR RULES
+            expect(styleSheet).not.toMatch(/\.regenerate/);
             expect(styleSheet).not.toMatch(/\.treeRunFaker \{ padding: 0 /);
             // #217: 🔍, ITS CLEAR BUTTON, THE VIEW SWITCH AND THE DATA-BY-ORG VIEW'S CARDS ARE GONE, WITH THEIR RULES
             expect(styleSheet).not.toMatch(/\.treeScope|\.viewButton|\.dataTreeCard|\.dataTreeToggle|\.filterInput/);
@@ -431,7 +438,7 @@ describe('RecipeCockpitService', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
             const triangleRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle');
-            const otherToggleRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle, \\.picklistToggle, \\.treeVersionToggle, \\.dataObjectToggle, \\.dataOrgRefresh');
+            const otherToggleRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle, \\.picklistToggle, \\.treeVersionToggle, \\.dataObjectToggle');
 
             expect(triangleRule).toContain('font-size: 3.3em;');
             expect(triangleRule).toContain('line-height: 1;');
@@ -453,7 +460,7 @@ describe('RecipeCockpitService', () => {
             const disabledSelectors = (disabledRule as RegExpMatchArray)[1].split(',').map(selector => selector.trim());
             ['.treeRunFaker:disabled', '.treeAddFriend:disabled', '.treeAddFriendChoice:disabled', '.toolbar button:disabled',
                 '.treeCompare button:disabled', '.emptyStateActions button:disabled', '.treeInsert:disabled', '.dataOrgRefresh:disabled',
-                '.dataOrgLoad:disabled', '.dataOrgNewScratch:disabled', '.regenerateRecipe:disabled', '.treeRecordCountInput:disabled'].forEach(selector => expect(disabledSelectors).toContain(selector));
+                '.dataOrgLoad:disabled', '.dataOrgNewScratch:disabled', '.treeRecordCountInput:disabled'].forEach(selector => expect(disabledSelectors).toContain(selector));
             expect((disabledRule as RegExpMatchArray)[2]).toContain('color: var(--sdt-disabled-text);');
             expect((disabledRule as RegExpMatchArray)[2]).toContain('background-color: var(--sdt-disabled-bg);');
             expect((disabledRule as RegExpMatchArray)[2]).toContain('cursor: not-allowed;');
@@ -2071,7 +2078,7 @@ describe('RecipeCockpitService', () => {
 
     });
 
-    describe('routePanelMessage, regenerateRecipe', () => {
+    describe('routePanelMessage, regenerateRecipe (#263)', () => {
 
         const COMPARED_TREE_KEY = 'Account-thru-Contact';
 
@@ -2091,54 +2098,14 @@ describe('RecipeCockpitService', () => {
             orgDescribeMessagesByTreeKey: new Map([[COMPARED_TREE_KEY, comparedDescribe(2)]])
         });
 
-        it('given a card on screen, regenerates from that card, ignoring any other payload', () => {
-
-            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY, filePath: '/etc/passwd' }, buildComparedPanelState()))
-                .toEqual({ kind: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY });
-
-        });
-
-        it('given the panel has not confirmed drawing the model, regenerates nothing', () => {
-
-            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY }, {
-                ...buildComparedPanelState(),
-                describableObjectApiNamesByTreeKey: new Map()
-            })).toBeUndefined();
-
-        });
-
-        // #255: REGENERATE IS DRAWN IN EVERY CARD'S TREECIPE TAB, SO IT NO LONGER WAITS FOR A COMPARISON
-        it('given nothing has been compared in that card, still regenerates from a card the panel drew', () => {
+        // THE BUTTON IS GONE, SO A POSTED regenerateRecipe IS A MESSAGE NO RENDERED CONTROL COULD HAVE SENT
+        it('refuses a posted regenerateRecipe for any card, drawn or not', () => {
 
             const panelState = buildComparedPanelState();
 
-            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY }, { ...panelState, orgDescribeMessagesByTreeKey: new Map() }))
-                .toEqual({ kind: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY });
-            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY }, {
-                ...panelState,
-                orgDescribeMessagesByTreeKey: new Map([[COMPARED_TREE_KEY, RecipeCockpitService.buildOrgConnectionFailureMessage(COMPARED_TREE_KEY, 'devhub', new Error('expired'), 2)]])
-            })).toEqual({ kind: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY });
-            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: 'Lead-ONLY' }, panelState))
-                .toEqual({ kind: 'regenerateRecipe', treeKey: 'Lead-ONLY' });
-
-        });
-
-        it('given a tree key the drawn model does not hold, or none, regenerates nothing', () => {
-
-            const panelState = buildComparedPanelState();
-
-            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: 'Unknown-ONLY' }, panelState)).toBeUndefined();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: 7 }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: 'Lead-ONLY' }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe' }, panelState)).toBeUndefined();
-
-        });
-
-        it('given a regeneration is already running, starts no second one', () => {
-
-            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY }, {
-                ...buildComparedPanelState(),
-                isRegenerateInFlight: true
-            })).toBeUndefined();
 
         });
 
@@ -2184,9 +2151,9 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('given a generation or regeneration is already running, starts no second one', () => {
+        it('given a generation is already running, starts no second one', () => {
 
-            expect(RecipeCockpitService.routePanelMessage({ command: 'generateTreecipe' }, { ...buildNoRunPanelState(), isRegenerateInFlight: true })).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'generateTreecipe' }, { ...buildNoRunPanelState(), isGenerateTreecipeInFlight: true })).toBeUndefined();
 
         });
 
@@ -2396,7 +2363,7 @@ describe('RecipeCockpitService', () => {
             expandTree(panel, firstTreeCard);
 
             expect(panel.isHidden(treeBodyOf(firstTreeCard))).toBe(false);
-            expect(textOf(panel, firstTreeCard, 'treeTab')).toEqual(['Treecipe', 'Compare', 'Previous Versions', 'Previous Fake Sets']);
+            expect(textOf(panel, firstTreeCard, 'treeTab')).toEqual(['Treecipe', 'Compare', 'Previous Versions', 'Previously Used Data Sets']);
             expect(panel.findAll(firstTreeCard, 'treeTab').map((tabElement: any) => tabElement.attributes['aria-selected'])).toEqual(['true', 'false', 'false', 'false']);
             expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['treecipe', 'compare', 'versions', 'datasets']);
             // ONLY STRUCTURE IS BUILT: THE OTHER TABS BUILD THEIR ROWS ON THEIR OWN FIRST OPEN
@@ -2825,7 +2792,7 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        // A REGENERATE OR AN INSERT RELOADS INTO THE CARDS WITH THE CARD IT WAS ASKED FROM OPEN ON ITS TREECIPE TAB, WHOSE ORG PICKER ASKS FOR ITS ORGS (#255)
+        // AN INSERT RELOADS INTO THE CARDS WITH THE CARD IT WAS ASKED FROM OPEN ON ITS TREECIPE TAB, WHOSE ORG PICKER ASKS FOR ITS ORGS (#255)
         it('given a reload focused on a card\'s Treecipe tab, opens that card on Treecipe and asks for the orgs after the ack', () => {
 
             const panel = runPanelScript();
@@ -3556,8 +3523,8 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        // #255: REGENERATE IS NO LONGER DRAWN AFTER A COMPARISON -- IT IS AT THE TOP OF EVERY CARD'S TREECIPE TAB
-        it('sums the comparison under the describe summary, and leaves Regenerate in the Treecipe tab rather than beside it', () => {
+        // #263: REGENERATE RECIPE IS GONE FROM BOTH TABS
+        it('sums the comparison under the describe summary, and draws no Regenerate in either tab', () => {
 
             const panel = renderComparedRecipe();
             const orgStatusElement = panel.findAll(panel.cockpitBodyElement, 'orgStatus')[0];
@@ -3566,17 +3533,8 @@ describe('RecipeCockpitService', () => {
             expect(panel.findAll(orgStatusElement, 'diffSummary')[0].textContent)
                 .toBe('Compared 1 object: 1 new in org · 1 removed from org · 1 type changed · 1 picklist changed · 2 unchanged');
 
-            expect(panel.findAll(panel.tabPanelOf(panel.treeCards()[0], 'treeCompareTab'), 'regenerateRecipe')).toEqual([]);
-
-            const [regenerateButton] = panel.findAll(panel.findAll(panel.treeCards()[0], 'treecipeActions')[0], 'regenerateRecipe');
-            expect(regenerateButton.textContent).toBe(RECIPE_COCKPIT_REGENERATE_ACTION_LABEL);
-            expect(regenerateButton.attributes.title).toBe(RECIPE_COCKPIT_REGENERATE_NOTE);
-            expect(RECIPE_COCKPIT_REGENERATE_NOTE).toContain('not from the org');
-
-            regenerateButton.dispatch('click');
-
-            expect(panel.postedHostMessages[panel.postedHostMessages.length - 1]).toEqual({ command: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY });
-            expect(regenerateButton.disabled).toBe(true);
+            expect(panel.findAll(panel.treeCards()[0], 'regenerateRecipe')).toEqual([]);
+            expect(panel.findAll(panel.treeCards()[0], 'regenerateNote')).toEqual([]);
 
         });
 
@@ -3875,25 +3833,6 @@ describe('RecipeCockpitService', () => {
                 expect(dataMatchCountOf(panel, contactCard)).toBe('1 object');
                 expect(matchTextOf(panel, contactElement)).toBe('');
                 expect(panel.findAll(contactCard, 'tabSearchInput').map((inputElement: any) => inputElement.value)).toEqual(['', '']);
-
-            });
-
-            // THE HOST RUNS ONE REGENERATE AT A TIME, SO A SECOND CARD'S CLICK WOULD BE REFUSED AND ITS BUTTON LEFT "Regenerating…"
-            it('given Regenerate is clicked in one card, disables Regenerate in every card', () => {
-
-                const panel = renderTwoTrees();
-                const [accountCard, contactCard] = panel.treeCards();
-                panel.postToPanel({ ...buildComparison(1), treeKey: 'Contact-ONLY', objects: [], diff: { ...buildComparison(1).diff } });
-
-                const [accountRegenerate] = panel.findAll(accountCard, 'regenerateRecipe');
-                const [contactRegenerate] = panel.findAll(contactCard, 'regenerateRecipe');
-                accountRegenerate.dispatch('click');
-
-                expect(accountRegenerate.disabled).toBe(true);
-                expect(accountRegenerate.textContent).toBe('Regenerating…');
-                expect(contactRegenerate.disabled).toBe(true);
-                expect(contactRegenerate.textContent).toBe(RECIPE_COCKPIT_REGENERATE_ACTION_LABEL);
-                expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'regenerateRecipe')).toEqual([{ command: 'regenerateRecipe', treeKey: 'Account-ONLY' }]);
 
             });
 
@@ -4459,7 +4398,7 @@ describe('RecipeCockpitService', () => {
                 return treeCard;
             };
             const postedNamed = (panel: any, command: string) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === command);
-            // ▶ RUN FAKER, RESET SELECTION AND REGENERATE SIT AT THE TOP OF THE TREECIPE TAB (#255), BUILT ON THE CARD'S FIRST EXPAND
+            // ▶ RUN FAKER AND RESET SELECTION SIT AT THE TOP OF THE TREECIPE TAB (#255), BUILT ON THE CARD'S FIRST EXPAND
             const expandCard = (panel: any, folderName: string) => {
                 const treeCard = treeCardFolded(panel, folderName);
                 panel.findAll(treeCard, 'treeToggle')[0].dispatch('click');
@@ -4537,10 +4476,10 @@ describe('RecipeCockpitService', () => {
 
             });
 
-            it('lists every data set of the tree newest first on Previous Fake Sets, tagged with its version or "version unknown"', () => {
+            it('lists every data set of the tree newest first on Previously Used Data Sets, tagged with its version or "version unknown"', () => {
 
                 const { panel } = renderHistoryRecipe();
-                const leadCard = openTab(panel, 'Lead-ONLY', 'Previous Fake Sets');
+                const leadCard = openTab(panel, 'Lead-ONLY', 'Previously Used Data Sets');
 
                 expect(textOf(panel, leadCard, 'treeDatasetDate')).toEqual(['2026-09-21 00:00:00 UTC', '2026-09-15 00:00:00 UTC', '2026-09-02 00:00:00 UTC']);
                 expect(textOf(panel, leadCard, 'treeDatasetVersion')).toEqual(['current version', 'version unknown', 'version of 2026-09-01 00:00:00 UTC']);
@@ -4551,7 +4490,7 @@ describe('RecipeCockpitService', () => {
             it('reads a legacy data set\'s counts on the Fake Sets tab only when the reader asks for them', () => {
 
                 const { panel } = renderHistoryRecipe(3);
-                const leadCard = openTab(panel, 'Lead-ONLY', 'Previous Fake Sets');
+                const leadCard = openTab(panel, 'Lead-ONLY', 'Previously Used Data Sets');
 
                 expect(postedNamed(panel, 'loadDatasetRecordCounts')).toEqual([]);
                 expect(textOf(panel, leadCard, 'treeDatasetCountsLoad')).toEqual(['Show record counts']);
@@ -4570,7 +4509,7 @@ describe('RecipeCockpitService', () => {
             it('posts Open and Insert by data set name, with the card and tab they came from', () => {
 
                 const { panel } = renderHistoryRecipe();
-                const accountCard = openTab(panel, ACCOUNT_TREE_KEY, 'Previous Fake Sets');
+                const accountCard = openTab(panel, ACCOUNT_TREE_KEY, 'Previously Used Data Sets');
 
                 panel.findAll(accountCard, 'treeDatasetOpen')[0].dispatch('click');
                 panel.findAll(accountCard, 'treeDatasetInsert')[0].dispatch('click');
@@ -4584,7 +4523,7 @@ describe('RecipeCockpitService', () => {
             it('asks for a legacy data set\'s counts once, however many rows show it, and answers every one', () => {
 
                 const { panel } = renderHistoryRecipe(5);
-                const leadCard = openTab(panel, 'Lead-ONLY', 'Previous Fake Sets');
+                const leadCard = openTab(panel, 'Lead-ONLY', 'Previously Used Data Sets');
                 panel.findAll(leadCard, 'treeDatasetCountsLoad')[0].dispatch('click');
                 clickNamed(panel, leadCard, 'treeTab', 'Previous Versions');
                 panel.findAll(leadCard, 'treeVersionToggle')[2].dispatch('click');
@@ -4603,7 +4542,7 @@ describe('RecipeCockpitService', () => {
                 const loadedRecipe = loadHistoryRecipe('recipe-2026-09-01T00-00-00');
                 panel.postToPanel({ command: 'recipeData', recipe: loadedRecipe.recipeViewModel, renderSequence: 1 });
 
-                const leadCard = openTab(panel, 'Lead-ONLY', 'Previous Fake Sets');
+                const leadCard = openTab(panel, 'Lead-ONLY', 'Previously Used Data Sets');
                 expect(textOf(panel, leadCard, 'treeDatasetVersion')).toEqual(['version of 2026-09-20 10:00:00 UTC', 'version unknown', 'current version']);
 
                 const withoutHistory = JSON.parse(JSON.stringify(loadedRecipe.recipeViewModel));
@@ -4623,7 +4562,7 @@ describe('RecipeCockpitService', () => {
                 loadedRecipe.recipeViewModel.trees.forEach(tree => { tree.history.datasets = []; });
                 panel.postToPanel({ command: 'recipeData', recipe: loadedRecipe.recipeViewModel, renderSequence: 1 });
 
-                const leadCard = openTab(panel, 'Lead-ONLY', 'Previous Fake Sets');
+                const leadCard = openTab(panel, 'Lead-ONLY', 'Previously Used Data Sets');
                 expect(textOf(panel, leadCard, 'treeEmpty')).toEqual(['No data sets were made from this tree.']);
 
             });
@@ -4667,10 +4606,10 @@ describe('RecipeCockpitService', () => {
 
             });
 
-            it('searches Previous Fake Sets by data set folder, and leaves the card\'s other tabs as they were', () => {
+            it('searches Previously Used Data Sets by data set folder, and leaves the card\'s other tabs as they were', () => {
 
                 const { panel } = renderHistoryRecipe();
-                const leadCard = openTab(panel, 'Lead-ONLY', 'Previous Fake Sets');
+                const leadCard = openTab(panel, 'Lead-ONLY', 'Previously Used Data Sets');
                 const datasetsElement = panel.tabPanelOf(leadCard, 'treeDatasets');
                 const visibleDatasetFolders = () => panel.findAll(datasetsElement, 'treeDataset')
                     .filter((datasetElement: any) => !panel.isHidden(datasetElement))
@@ -4687,7 +4626,7 @@ describe('RecipeCockpitService', () => {
 
                 clickNamed(panel, leadCard, 'treeTab', 'Treecipe');
                 expect(textOf(panel, panel.tabPanelOf(leadCard, 'treeStructure'), 'tabMatchCount')).toEqual(['2 fields']);
-                clickNamed(panel, leadCard, 'treeTab', 'Previous Fake Sets');
+                clickNamed(panel, leadCard, 'treeTab', 'Previously Used Data Sets');
                 expect(panel.findAll(datasetsElement, 'tabSearchInput')[0].value).toBe('utc');
 
             });
@@ -4789,8 +4728,8 @@ describe('RecipeCockpitService', () => {
                 });
 
                 // #217 TOOK 🔍 OUT: EACH TAB HAS ITS OWN SEARCH, SO THERE IS NO PANEL-WIDE ONE TO SCOPE
-                // #255 MOVED ▶ RUN FAKER AND RESET SELECTION INTO THE TREECIPE TAB, BESIDE REGENERATE
-                it('keeps only ☆ and ✎ in the row\'s action group, and puts ▶ Run Faker, Reset selection and Regenerate at the top of the Treecipe tab', () => {
+                // #255 MOVED ▶ RUN FAKER AND RESET SELECTION INTO THE TREECIPE TAB; #263 TOOK REGENERATE OUT OF IT
+                it('keeps only ☆ and ✎ in the row\'s action group, and puts ▶ Run Faker and Reset selection at the top of the Treecipe tab', () => {
 
                     const { panel } = renderHistoryRecipe();
                     const leadCard = treeCardFolded(panel, 'Lead-ONLY');
@@ -4807,29 +4746,20 @@ describe('RecipeCockpitService', () => {
                     expect(panel.findAll(actionGroup, 'treeResetSelection')).toEqual([]);
                     const treecipeHeader = panel.findAll(panel.tabPanelOf(leadCard, 'treeStructure'), 'treecipeHeader')[0];
                     const treecipeActions = panel.findAll(treecipeHeader, 'treecipeActions')[0];
-                    expect(treecipeActions.children.map((actionElement: any) => actionElement.className)).toEqual(['treeRunFaker', 'treeResetSelection hidden', 'regenerate']);
-                    expect(textOf(panel, treecipeActions, 'regenerateRecipe')).toEqual([RECIPE_COCKPIT_REGENERATE_ACTION_LABEL]);
-                    expect(textOf(panel, treecipeActions, 'regenerateNote')).toEqual(['from this workspace\'s metadata, not the org']);
+                    expect(treecipeActions.children.map((actionElement: any) => actionElement.className)).toEqual(['treeRunFaker', 'treeResetSelection hidden']);
 
                 });
 
-                it('draws Regenerate in the Treecipe tab of every card, compared or not, and posts that card\'s key', () => {
+                it('draws no Regenerate recipe button or note in any card', () => {
 
                     const { panel } = renderHistoryRecipe();
                     const accountCard = expandCard(panel, ACCOUNT_TREE_KEY);
                     const leadCard = expandCard(panel, 'Lead-ONLY');
 
                     [accountCard, leadCard].forEach((treeCard: any) => {
-                        const regenerateButtons = panel.findAll(panel.findAll(treeCard, 'treecipeActions')[0], 'regenerateRecipe');
-                        expect(regenerateButtons).toHaveLength(1);
-                        expect(regenerateButtons[0].attributes.title).toBe(RECIPE_COCKPIT_REGENERATE_NOTE);
+                        expect(panel.findAll(treeCard, 'regenerateRecipe')).toEqual([]);
+                        expect(panel.findAll(treeCard, 'regenerateNote')).toEqual([]);
                     });
-                    expect(panel.findAll(panel.tabPanelOf(leadCard, 'treeCompareTab'), 'regenerateRecipe')).toEqual([]);
-
-                    panel.findAll(leadCard, 'regenerateRecipe')[0].dispatch('click');
-
-                    expect(postedNamed(panel, 'regenerateRecipe')).toEqual([{ command: 'regenerateRecipe', treeKey: LEAD_TREE_KEY }]);
-                    expect(panel.findAll(accountCard, 'regenerateRecipe')[0].disabled).toBe(true);
 
                 });
 
@@ -4864,7 +4794,7 @@ describe('RecipeCockpitService', () => {
                 leadTree.history.datasets[0].datasetFolderName = '<img src=x onerror=alert(1)>';
                 panel.postToPanel({ command: 'recipeData', recipe: loadedRecipe.recipeViewModel, renderSequence: 1 });
 
-                const leadCard = openTab(panel, 'Lead-ONLY', 'Previous Fake Sets');
+                const leadCard = openTab(panel, 'Lead-ONLY', 'Previously Used Data Sets');
 
                 expect(textOf(panel, leadCard, 'treeDatasetFolder')[0]).toBe('<img src=x onerror=alert(1)>');
                 expect(panel.findAll(leadCard, 'img')).toEqual([]);
@@ -5601,7 +5531,7 @@ describe('RecipeCockpitService', () => {
 
             });
 
-            describe('comparing and regenerating', () => {
+            describe('comparing', () => {
 
                 const postedOrgProgress = () => postedPanelMessages.filter(hostMessage => hostMessage.command === 'orgProgress');
 
@@ -5766,126 +5696,17 @@ describe('RecipeCockpitService', () => {
 
                 });
 
-                it('hands off to Generate Treecipe, then loads the run it wrote into the cards, the card it came from open on Treecipe', async () => {
+                // #263: THE BUTTON IS GONE, SO A FORGED regenerateRecipe RUNS NOTHING AND RELOADS NOTHING
+                it('given a posted regenerateRecipe, after a comparison or not, starts no generation and posts no model', async () => {
 
-                    const executeCommand = vscode.commands.executeCommand as jest.Mock;
                     await openRenderedCockpit();
                     await receivedMessageHandler(selectOrgMessage());
-                    const comparedRenderSequence = lastRenderSequence();
-
-                    await receivedMessageHandler(regenerateMessage());
-
-                    expect(executeCommand).toHaveBeenCalledTimes(1);
-                    expect(executeCommand).toHaveBeenCalledWith(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND, { isCompletionNotificationSuppressed: true });
-                    expect(lastRenderSequence()).toBeGreaterThan(comparedRenderSequence);
-                    expect([...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData').focusTree)
-                        .toEqual({ treeKey: 'Account-thru-Contact', tab: 'treecipe' });
-                    // THE REGENERATED RUN IS A NEW FOLDER, SO THE READER'S PLACE IS CARRIED ACROSS TO IT RATHER THAN MATCHED BY NAME (#225)
-                    expect([...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData').carryPlaceAcrossRuns).toBe(true);
-
-                    // THE COMPARISON WAS OF THE PREVIOUS RUN, SO IT IS NOT REPLAYED OVER THE REGENERATED ONE
-                    postedPanelMessages.length = 0;
-                    await receivedMessageHandler({ command: 'ready' });
-                    expect(postedPanelMessages.map(hostMessage => hostMessage.command)).toEqual(['recipeData']);
-                    // A REPLAY IS A NEW DOCUMENT WITH ITS OWN SAVED PLACE; THE MARKER RODE ON THE POSTED COPY ONLY
-                    expect(postedPanelMessages[0].carryPlaceAcrossRuns).toBeUndefined();
-
-                });
-
-                // #255: REGENERATE IS IN EVERY CARD'S TREECIPE TAB, SO A COMPARISON IS NO LONGER WHAT ROUTES IT
-                it('given nothing has been compared, still regenerates and reopens the card on Treecipe', async () => {
-
-                    await openRenderedCockpit();
                     const renderedSequence = lastRenderSequence();
 
                     await receivedMessageHandler(regenerateMessage());
 
-                    expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(1);
-                    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND, { isCompletionNotificationSuppressed: true });
-                    expect(lastRenderSequence()).toBeGreaterThan(renderedSequence);
-                    expect([...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData').focusTree)
-                        .toEqual({ treeKey: 'Account-thru-Contact', tab: 'treecipe' });
-
-                });
-
-                it('given the panel has not acknowledged drawing the model, does not regenerate', async () => {
-
-                    await RecipeCockpitService.openRecipeCockpitPanel(MOCK_WORKSPACE_ROOT);
-                    await receivedMessageHandler({ command: 'ready' });
-
-                    await receivedMessageHandler(regenerateMessage());
-
                     expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
-
-                });
-
-                it('given a second click while Generate Treecipe runs, regenerates once', async () => {
-
-                    let finishGeneration: () => void = () => undefined;
-                    (vscode.commands.executeCommand as jest.Mock).mockImplementation(() => new Promise<void>(resolvePromise => { finishGeneration = resolvePromise; }));
-                    await openRenderedCockpit();
-                    await receivedMessageHandler(selectOrgMessage());
-
-                    const firstClick = receivedMessageHandler(regenerateMessage());
-                    await receivedMessageHandler(regenerateMessage());
-                    finishGeneration();
-                    await firstClick;
-
-                    expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(1);
-
-                });
-
-                it('given the panel is closed while Generate Treecipe runs, loads nothing into it', async () => {
-
-                    await openRenderedCockpit();
-                    await receivedMessageHandler(selectOrgMessage());
-                    const loadSpy = jest.spyOn(RecipeCockpitService, 'loadRecipeRunByRuns');
-                    const statusBarItemCountBefore = createdStatusBarItems.length;
-                    (vscode.commands.executeCommand as jest.Mock).mockImplementation(async () => { registeredDisposeHandler(); });
-
-                    await receivedMessageHandler(regenerateMessage());
-
-                    // NOT EVEN STARTED: A LOAD WOULD PUT A STATUS BAR ITEM UP FOR A PANEL THAT IS GONE
-                    expect(loadSpy).not.toHaveBeenCalled();
-                    expect(createdStatusBarItems).toHaveLength(statusBarItemCountBefore);
-
-                });
-
-                /*
-                    The panel disables its button on the click and only a render gives one back, so a
-                    failure that skipped the reload would leave a button that can never be pressed.
-                */
-                it('given Generate Treecipe fails, still reloads the panel, and reports the failure once', async () => {
-
-                    const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
-                    (vscode.commands.executeCommand as jest.Mock).mockRejectedValueOnce(new Error('no config'));
-                    await openRenderedCockpit();
-                    await receivedMessageHandler(selectOrgMessage());
-                    const comparedRenderSequence = lastRenderSequence();
-
-                    await receivedMessageHandler(regenerateMessage());
-
-                    expect(lastRenderSequence()).toBeGreaterThan(comparedRenderSequence);
-                    expect(handleCapturedErrorSpy).toHaveBeenCalledTimes(1);
-                    expect(handleCapturedErrorSpy.mock.calls[0][0]).toEqual(new Error('no config'));
-
-                });
-
-                // THE COMPARISON THAT ROUTES THE ACTION IS REPLACED ONLY WHEN THE RELOADED MODEL RENDERS
-                it('given a second request after Generate Treecipe finishes but before the reload has, regenerates once', async () => {
-
-                    await openRenderedCockpit();
-                    await receivedMessageHandler(selectOrgMessage());
-
-                    const loadRecipeRunByRuns = RecipeCockpitService.loadRecipeRunByRuns.bind(RecipeCockpitService);
-                    jest.spyOn(RecipeCockpitService, 'loadRecipeRunByRuns').mockImplementation((recipeRuns, workspaceRoot, requestedRunFolderName) => {
-                        void receivedMessageHandler(regenerateMessage());
-                        return loadRecipeRunByRuns(recipeRuns, workspaceRoot, requestedRunFolderName);
-                    });
-
-                    await receivedMessageHandler(regenerateMessage());
-
-                    expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(1);
+                    expect(lastRenderSequence()).toBe(renderedSequence);
 
                 });
 
@@ -6266,7 +6087,7 @@ describe('RecipeCockpitService', () => {
 
                 });
 
-                it('reloads the run on the card\'s Previous Fake Sets as before when the data set it wrote cannot be placed on a card', async () => {
+                it('reloads the run on the card\'s Previously Used Data Sets as before when the data set it wrote cannot be placed on a card', async () => {
 
                     const temporaryWorkspaceRoot = copyHistoryWorkspace();
                     const looseDatasetFolderPath = path.join(temporaryWorkspaceRoot, 'treecipe', 'FakeDataSets', 'dataset-2026-09-16T00-00-00');
