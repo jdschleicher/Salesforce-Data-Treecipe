@@ -1275,6 +1275,49 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
             });
 
+            /*
+                The real panel cannot send these -- it acks only a datasetAdded it drew over the model it
+                drew -- so each is a forged or late message, and none may activate the model's actions.
+            */
+            it.each([
+                ['a reload of the document', async () => { await receivedMessageHandler({ command: 'ready' }); }],
+                ['a draw that failed', async () => { await receivedMessageHandler({ command: 'renderFailed', message: 'boom', phase: 'render' }); }]
+            ])('refuses a partialRendered after %s, until that model is "rendered" again', async (_description, interrupt) => {
+
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
+                jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+
+                await openSelectedCockpit(SNOWFAKERY_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 2 });
+                const { renderSequence, updateSequence } = postedNamed('datasetAdded')[0];
+
+                await interrupt();
+                await receivedMessageHandler({ command: 'partialRendered', renderSequence, updateSequence });
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'partialRendered', renderSequence, updateSequence }, panelState())).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage({ command: 'openDataset', datasetFolderName: createdDatasetFolderName }, panelState())).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage({ command: 'openDataset', datasetFolderName: 'dataset-2026-10-07T12-00-00' }, panelState())).toBeUndefined();
+
+            });
+
+            it('refuses a partialRendered naming a newer model that has not been "rendered" yet', async () => {
+
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
+
+                await openSelectedCockpit(SNOWFAKERY_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 2 });
+                const { updateSequence } = postedNamed('datasetAdded')[0];
+
+                await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN });
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'partialRendered', renderSequence: lastRenderSequence(), updateSequence }, panelState())).toBeUndefined();
+
+                await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'partialRendered', renderSequence: lastRenderSequence(), updateSequence }, panelState())).toEqual({ kind: 'activateDatasetActions' });
+
+            });
+
             it('adds the data set to the stored model, so a revealed panel draws it and its "rendered" offers it', async () => {
 
                 jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);

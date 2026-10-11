@@ -1140,6 +1140,14 @@ export interface IRecipeCockpitPanelState {
     objectLevelsByApiName?: Map<string, number>;
     // THE LAST datasetAdded POSTED (#226): ONLY ITS "partialRendered" PROMOTES THE PENDING HISTORY ALLOW-LISTS
     datasetUpdateSequence: number;
+    /*
+        The model whose "rendered" arrived since the last ready, post or failure to draw -- null until
+        then. A "partialRendered" is honoured only over that model: promoting the pending lists of one
+        no document has acknowledged would activate its every history action, not just the new row's.
+    */
+    acknowledgedRenderSequence: number | null;
+    // THE FOLDER ▶ Run Faker IS INSERTING NOW (#226): ITS ROW'S Insert… WOULD START A SECOND INSERT OF THE SAME DATA SET
+    autoInsertDatasetFolderName?: string;
 }
 
 /*
@@ -2238,7 +2246,8 @@ export class RecipeCockpitService {
             dataOrgCreateResults: new Map(),
             pendingInsertableFriendTargets: new Map(),
             insertableFriendTargets: new Map(),
-            datasetUpdateSequence: 0
+            datasetUpdateSequence: 0,
+            acknowledgedRenderSequence: null
         };
 
     }
@@ -2570,6 +2579,7 @@ export class RecipeCockpitService {
         // A "+" OF THE OLD MODEL NAMES AN ITERATION THE NEW ONE'S ROWS MAY NOT DRAW WHERE IT WAS
         panelState.pendingInsertableFriendTargets = this.collectInsertableFriendTargets(recipeViewModel);
         panelState.insertableFriendTargets = new Map();
+        panelState.acknowledgedRenderSequence = null;
         panelState.dataOrgSelection = undefined;
         panelState.dataOrgRequestSequence++;
 
@@ -2663,6 +2673,7 @@ export class RecipeCockpitService {
                 panelState.dataOrgObjectApiNames = new Set();
                 panelState.creatableObjectKeys = new Set();
                 panelState.insertableFriendTargets = new Map();
+                panelState.acknowledgedRenderSequence = null;
                 panelState.dataOrgSelection = undefined;
                 panelState.dataOrgRequestSequence++;
                 panelAction.hostMessages.forEach(hostMessage => cockpitPanel.webview.postMessage(hostMessage));
@@ -2681,6 +2692,7 @@ export class RecipeCockpitService {
                 panelState.dataOrgObjectApiNames = panelState.pendingDataOrgObjectApiNames;
                 panelState.creatableObjectKeys = panelState.pendingCreatableObjectKeys;
                 panelState.insertableFriendTargets = panelState.pendingInsertableFriendTargets;
+                panelState.acknowledgedRenderSequence = panelState.recipeDataMessage.renderSequence;
                 return;
 
             case 'activateDatasetActions':
@@ -2703,6 +2715,7 @@ export class RecipeCockpitService {
                     panelState.dataOrgObjectApiNames = new Set();
                     panelState.creatableObjectKeys = new Set();
                     panelState.insertableFriendTargets = new Map();
+                    panelState.acknowledgedRenderSequence = null;
                     // NOTHING IS ON SCREEN TO DRAW AN ANSWER IN, SO A SELECTION STILL BEING CHECKED STOPS ASKING THE ORG
                     panelState.dataOrgSelection = undefined;
                     panelState.dataOrgRequestSequence++;
@@ -3190,12 +3203,14 @@ export class RecipeCockpitService {
                 keeps the data set, which its row's Insert… still offers.
             */
             if ( isDatasetWritten ) {
+                panelState.autoInsertDatasetFolderName = path.basename(writtenDatasetFolderPath as string);
                 await vscode.commands.executeCommand(RECIPE_COCKPIT_INSERT_DATASET_COMMAND, writtenDatasetFolderPath);
             }
 
         } finally {
 
             panelState.runFakerStateMessage = undefined;
+            panelState.autoInsertDatasetFolderName = undefined;
 
             if ( isPanelStillCurrent() ) {
                 this.postToPanel(cockpitPanel, { command: 'runFakerState', isRunning: false, treeKey: treeKey });
@@ -5162,12 +5177,14 @@ export class RecipeCockpitService {
 
             /*
                 A datasetAdded drawn (#226): only the LAST one posted, and only over the model it was
-                added to. Its row's names are already in the pending lists; this makes them active.
+                added to, once that model's own "rendered" has arrived since the last ready, post or
+                failure to draw. Its row's names are already in the pending lists; this makes them active.
             */
             case 'partialRendered':
 
                 if ( !panelState.recipeDataMessage
                         || panelMessage.renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || panelState.acknowledgedRenderSequence !== panelState.recipeDataMessage.renderSequence
                         || panelMessage.updateSequence !== panelState.datasetUpdateSequence
                         || panelState.datasetUpdateSequence === 0 ) {
                     return undefined;
@@ -5377,6 +5394,11 @@ export class RecipeCockpitService {
                     : panelState.treeHistoryAllowLists.insertableDatasetFolderNames;
 
                 if ( typeof datasetFolderName !== 'string' || !allowedDatasetFolderNames.has(datasetFolderName) ) {
+                    return undefined;
+                }
+
+                // ▶ Run Faker IS ALREADY INSERTING THIS ONE: A SECOND INSERT OF THE SAME RECORDS IS NEVER WHAT WAS MEANT
+                if ( panelMessage.command === 'insertDataset' && datasetFolderName === panelState.autoInsertDatasetFolderName ) {
                     return undefined;
                 }
 

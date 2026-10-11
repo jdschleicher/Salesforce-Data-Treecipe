@@ -6208,7 +6208,7 @@ describe('RecipeCockpitService', () => {
 
                 });
 
-                it('holds every Run Faker disabled until the insert has ended', async () => {
+                it('holds every Run Faker disabled, and that data set\'s own Insert… refused, until the insert has ended', async () => {
 
                     const temporaryWorkspaceRoot = copyHistoryWorkspace();
                     let finishInsert: () => void;
@@ -6230,10 +6230,20 @@ describe('RecipeCockpitService', () => {
                     await receivedMessageHandler({ command: 'runFaker', treeKey: ACCOUNT_TREE_KEY });
                     expect(executedCommandsNamed(RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toHaveLength(1);
 
+                    // DRAWN, THE NEW ROW OFFERS Open -- BUT NOT A SECOND INSERT OF THE DATA SET ▶ Run Faker IS STILL INSERTING
+                    const { renderSequence, updateSequence } = postedPanelMessages.find(hostMessage => hostMessage.command === 'datasetAdded');
+                    await receivedMessageHandler({ command: 'partialRendered', renderSequence, updateSequence });
+                    const panelState = (RecipeCockpitService as any).recipeCockpitPanelState;
+                    const insertMessage = { command: 'insertDataset', datasetFolderName: 'dataset-2026-09-22T00-00-00' };
+                    expect(RecipeCockpitService.routePanelMessage({ command: 'openDataset', datasetFolderName: 'dataset-2026-09-22T00-00-00' }, panelState)).toMatchObject({ kind: 'openDataset' });
+                    expect(RecipeCockpitService.routePanelMessage(insertMessage, panelState)).toBeUndefined();
+                    expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00' }, panelState)).toMatchObject({ kind: 'insertDataset' });
+
                     finishInsert();
                     await run;
 
                     expect(runFakerStates().at(-1)).toEqual({ command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY });
+                    expect(RecipeCockpitService.routePanelMessage(insertMessage, panelState)).toMatchObject({ kind: 'insertDataset' });
 
                 });
 
