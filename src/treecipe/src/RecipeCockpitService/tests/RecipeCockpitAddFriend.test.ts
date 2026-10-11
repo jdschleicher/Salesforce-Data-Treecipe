@@ -263,7 +263,7 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
 
         });
 
-        it('on confirmation writes the friend under the iteration, then reloads with the card open on its Structure tab', async () => {
+        it('on confirmation writes the friend under the iteration, then reloads with the card open on its Treecipe tab', async () => {
 
             const originalRecipeText = fs.readFileSync(recipeFilePath, 'utf-8');
             const insertResult = RecipeCockpitRecipeWriter.insertFriend(originalRecipeText, 'Account', ITERATION_NICKNAME, 'Contact');
@@ -281,7 +281,7 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
             expect(showInformationMessageSpy).toHaveBeenCalledWith(expect.stringContaining('Added Contact as Contact_child_NickName under Account_child_NickName'));
             expect(postedCommands().filter(command => ['addFriendState', 'recipeData'].includes(command))).toEqual(['addFriendState', 'recipeData', 'addFriendState']);
             expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'addFriendState').map(hostMessage => hostMessage.isRunning)).toEqual([true, false]);
-            expect(postedPanelMessages.find(hostMessage => hostMessage.command === 'recipeData').focusTree).toEqual({ treeKey: TREE_KEY, tab: 'structure' });
+            expect(postedPanelMessages.find(hostMessage => hostMessage.command === 'recipeData').focusTree).toEqual({ treeKey: TREE_KEY, tab: 'treecipe' });
 
             // THE NEW FRIEND IS DRAWN UNDER THE ITERATION, AND THE ITERATION OFFERS ONLY WHAT IT STILL LACKS
             const reloadedModel = lastModel();

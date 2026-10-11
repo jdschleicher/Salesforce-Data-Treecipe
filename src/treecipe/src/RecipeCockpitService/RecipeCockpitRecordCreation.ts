@@ -1,6 +1,7 @@
 /*
-    The rules of the Recipe Cockpit's Create (#180): whether an object's "+ Create" is offered, which
-    lookups a created record must carry, and how they are filled.
+    The rules of the Recipe Cockpit's tree insert (#255, which replaced #180's per-object Create):
+    whether each object of a tree is ready to be inserted into the selected org, which lookups a
+    record must carry, and how the ones the recipe could not wire are filled.
 
     This file imports NOTHING, like RecipeCockpitMetadataDiff and RecipeCockpitRecipeWriter. Its
     inputs are structural -- SalesforceOrgService's normalized describe and Organization row fit them
@@ -8,10 +9,17 @@
 
     Every guard FAILS CLOSED. An org whose type could not be read is not a sandbox, an object whose
     describe failed is not createable, and a parent that could not be counted has no records -- each
-    is a reason to disable Create, never a default that lets it through.
+    is a reason to disable the insert, never a default that lets it through.
 */
 
-export const RECIPE_COCKPIT_CREATE_MAX_COUNT = 200;
+/*
+    Past this many records in one tree, the insert's confirmation says the run will take time and
+    names the total and the Collections API requests it needs (#255): 2,000 records is ten requests
+    of the API's 200-record limit.
+*/
+export const RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD = 2000;
+
+export const COLLECTIONS_API_RECORDS_PER_REQUEST = 200;
 
 // RecordTypeId IS A LOOKUP TO RecordType, AND ITS VALUE IS A DEVELOPER NAME THE INSERT ALREADY SWAPS FOR AN ID
 const RECORD_TYPE_ID_FIELD_API_NAME = 'RecordTypeId';
@@ -71,7 +79,7 @@ export interface IRecipeCockpitCreateReadinessViewModel {
 /*
     describe is absent when the object could not be described -- the org does not have it, or the
     describe failed -- and describeFailureMessage then says why. Whether a required parent has any
-    record is not asked here: the Create queries the parent Ids after the reader confirms, and
+    record is not asked here: the insert queries the parent Ids after the reader confirms, and
     refuses before anything is written when there are none.
 */
 export interface ICreateReadinessInput {
@@ -92,27 +100,43 @@ export interface IRecipeFieldCheck {
     notCreateableFieldApiNames: string[];
 }
 
-export interface IRequiredLookupParentIds {
+/*
+    One lookup of an object as the tree insert fills it: the object it points at (one only -- a
+    polymorphic lookup has no single parent) and whether the org requires it.
+*/
+export interface ITreeInsertLookup {
     fieldApiName: string;
-    parentRecordIds: string[];
+    parentObjectApiName?: string;
+    isRequired: boolean;
+}
+
+/*
+    What one file's records are filled from. isRunReference says a value already names a record of
+    this insert -- an Id an earlier file created, or the nickname of a record of the same file, which
+    a later round resolves. runRecordIdsByObject is every Id this insert created so far, by object;
+    orgRecordIdsByObject is the existing Ids queried for a REQUIRED lookup whose parent is not
+    inserted by this tree. inTreeObjectApiNames is every object the tree inserts.
+*/
+export interface ITreeInsertLookupContext {
+    isRunReference: (value: string) => boolean;
+    runRecordIdsByObject: ReadonlyMap<string, readonly string[]>;
+    orgRecordIdsByObject: ReadonlyMap<string, readonly string[]>;
+    inTreeObjectApiNames: ReadonlySet<string>;
 }
 
 export class RecipeCockpitRecordCreation {
 
-    // AN INTEGER FROM 1 TO 200, AND NOTHING ELSE: "25", 2.5, 0, 201 AND NaN ARE ALL REFUSED
-    static isValidCreateCount(candidateCount: unknown): candidateCount is number {
+    // THE REQUESTS AN INSERT OF THESE TOTALS NEEDS AT LEAST: EACH OBJECT'S RECORDS GO 200 TO A REQUEST, AND A FILE INSERTED IN ROUNDS NEEDS MORE
+    static countInsertRequests(recordTotalsByObject: ReadonlyMap<string, number>): number {
 
-        return typeof candidateCount === 'number'
-                && Number.isInteger(candidateCount)
-                && candidateCount >= 1
-                && candidateCount <= RECIPE_COCKPIT_CREATE_MAX_COUNT;
+        return [...recordTotalsByObject.values()].reduce((requestCount, recordTotal) => requestCount + Math.ceil(recordTotal / COLLECTIONS_API_RECORDS_PER_REQUEST), 0);
 
     }
 
     /*
         The fields a record cannot be inserted without and the user must send: not nillable,
         createable, and not one the org fills itself (defaultedOnCreate -- a checkbox, OwnerId). The
-        Structure tab marks such a field "required in <org>" when it is unticked (#220).
+        Treecipe tab marks such a field "required in <org>" when it is unticked (#220).
     */
     static findRequiredFieldApiNames(describe: Pick<ICreateObjectDescribe, 'fields'>): string[] {
 
@@ -138,14 +162,18 @@ export class RecipeCockpitRecordCreation {
 
     }
 
-    // EVERY OTHER LOOKUP IS LEFT BLANK: A TODO OR AN ANCESTOR'S NICKNAME IN IT NAMES NO RECORD IN THE ORG
-    static findOptionalLookupFieldApiNames(describe: ICreateObjectDescribe): string[] {
+    // EVERY LOOKUP THE TREE INSERT FILLS OR CLEARS, WITH ITS ONE PARENT WHEN IT HAS ONE
+    static findTreeInsertLookups(describe: ICreateObjectDescribe): ITreeInsertLookup[] {
 
         const requiredFieldApiNames = new Set(this.findRequiredLookups(describe).map(requiredLookup => requiredLookup.fieldApiName));
 
         return describe.fields
-            .filter(describeField => this.isLookupField(describeField) && !requiredFieldApiNames.has(describeField.fieldApiName))
-            .map(describeField => describeField.fieldApiName);
+            .filter(describeField => this.isLookupField(describeField))
+            .map(describeField => ({
+                fieldApiName: describeField.fieldApiName,
+                ...( describeField.referenceTo.length === 1 ? { parentObjectApiName: describeField.referenceTo[0] } : {} ),
+                isRequired: requiredFieldApiNames.has(describeField.fieldApiName)
+            }));
 
     }
 
@@ -155,11 +183,11 @@ export class RecipeCockpitRecordCreation {
         const notReady = (disabledReason: string, requiredLookups: IRecipeCockpitRequiredLookupViewModel[] = []) => ({ objectApiName, disabledReason, requiredLookups });
 
         if ( !orgTypeDetail ) {
-            return notReady('The org\'s type could not be read, so nothing is created in it.');
+            return notReady('The org\'s type could not be read, so nothing is inserted into it.');
         }
 
         if ( orgTypeDetail.isSandbox !== true ) {
-            return notReady(`Records are created only in a sandbox, and this org is Production · ${orgTypeDetail.organizationType || 'type unknown'}.`);
+            return notReady(`Records are inserted only into a sandbox or scratch org, and this org is Production · ${orgTypeDetail.organizationType || 'type unknown'}.`);
         }
 
         if ( !describe ) {
@@ -206,15 +234,21 @@ export class RecipeCockpitRecordCreation {
     }
 
     /*
-        The generated records with every lookup replaced: each required one gets a random existing Id
-        of its parent, and every other lookup is removed, so it is left blank rather than sent as
-        the TODO or nickname the recipe held. pickIndex is the randomness, handed in so a test can
-        name the Id it expects. The records are copied; the ones handed in are not changed.
+        One file's records with every lookup the recipe could not wire filled or cleared (#255). A
+        value that already names a record of this insert is kept -- a faker-js friend's parent, which
+        the insert resolves. Any other value (a TODO, a nickname of nothing inserted, a hand-written
+        Id) is replaced: by a random record THIS insert created of the parent, when the tree inserts
+        that parent, so a snowfakery tree's children still hang off the parents inserted with them;
+        for a required lookup with no such record, by a random existing record of the parent; and
+        otherwise the field is removed and left blank. pickIndex is the randomness, handed in so a
+        test can name the Id it expects. The records are copied; the ones handed in are not changed.
     */
-    static assignLookupIds(records: unknown[],
-                            requiredLookupParentIds: IRequiredLookupParentIds[],
-                            clearedFieldApiNames: string[],
-                            pickIndex: (choiceCount: number) => number): unknown[] {
+    static prepareTreeInsertRecords(records: unknown[],
+                                    lookups: readonly ITreeInsertLookup[],
+                                    lookupContext: ITreeInsertLookupContext,
+                                    pickIndex: (choiceCount: number) => number): unknown[] {
+
+        const pick = (choices: readonly string[]) => choices[Math.min(Math.max(Math.floor(pickIndex(choices.length)), 0), choices.length - 1)];
 
         return records.map(record => {
 
@@ -222,22 +256,38 @@ export class RecipeCockpitRecordCreation {
                 return record;
             }
 
-            const assignedRecord: Record<string, unknown> = { ...(record as Record<string, unknown>) };
+            const preparedRecord: Record<string, unknown> = { ...(record as Record<string, unknown>) };
 
-            // SALESFORCE READS FIELD NAMES CASE-INSENSITIVELY, SO "accountid:" IN A HAND-EDITED RECIPE IS AccountId TOO
-            const replacedFieldApiNames = new Set([...clearedFieldApiNames, ...requiredLookupParentIds.map(requiredLookup => requiredLookup.fieldApiName)]
-                .map(fieldApiName => fieldApiName.toLowerCase()));
-            Object.keys(assignedRecord)
-                .filter(recordKey => replacedFieldApiNames.has(recordKey.toLowerCase()))
-                .forEach(recordKey => { delete assignedRecord[recordKey]; });
+            lookups.forEach(lookup => {
 
-            requiredLookupParentIds.forEach(requiredLookup => {
-                const parentRecordIds = requiredLookup.parentRecordIds;
-                const chosenIndex = Math.min(Math.max(Math.floor(pickIndex(parentRecordIds.length)), 0), parentRecordIds.length - 1);
-                assignedRecord[requiredLookup.fieldApiName] = parentRecordIds[chosenIndex];
+                // SALESFORCE READS FIELD NAMES CASE-INSENSITIVELY, SO "accountid:" IN A HAND-EDITED RECIPE IS AccountId TOO
+                const lowerFieldApiName = lookup.fieldApiName.toLowerCase();
+                const recordKeys = Object.keys(preparedRecord).filter(recordKey => recordKey.toLowerCase() === lowerFieldApiName);
+                const keptKey = recordKeys.find(recordKey => typeof preparedRecord[recordKey] === 'string' && lookupContext.isRunReference(preparedRecord[recordKey] as string));
+
+                if ( keptKey !== undefined ) {
+                    recordKeys.filter(recordKey => recordKey !== keptKey).forEach(recordKey => { delete preparedRecord[recordKey]; });
+                    return;
+                }
+
+                recordKeys.forEach(recordKey => { delete preparedRecord[recordKey]; });
+
+                const parentObjectApiName = lookup.parentObjectApiName;
+                if ( parentObjectApiName === undefined ) {
+                    return;
+                }
+
+                const runRecordIds = lookupContext.inTreeObjectApiNames.has(parentObjectApiName) ? lookupContext.runRecordIdsByObject.get(parentObjectApiName) ?? [] : [];
+                const orgRecordIds = lookup.isRequired ? lookupContext.orgRecordIdsByObject.get(parentObjectApiName) ?? [] : [];
+                const choices = runRecordIds.length > 0 ? runRecordIds : orgRecordIds;
+
+                if ( choices.length > 0 ) {
+                    preparedRecord[lookup.fieldApiName] = pick(choices);
+                }
+
             });
 
-            return assignedRecord;
+            return preparedRecord;
 
         });
 
@@ -247,7 +297,7 @@ export class RecipeCockpitRecordCreation {
         The recipe's fields the insert would fail on: one the describe does not have, and one it has
         but will not let the user set. Names are matched case-insensitively, as Salesforce reads them
         (assignLookupIds does the same), and reported as the recipe writes them. A lookup the describe
-        knows is never "not createable" here -- the Create replaces or removes every one of them --
+        knows is never "not createable" here -- the insert fills or removes every one of them --
         but a lookup it does NOT know stays in the record, so it is missing like any other field.
     */
     static checkRecipeFields(describe: ICreateObjectDescribe, recipeFieldApiNames: readonly string[]): IRecipeFieldCheck {
@@ -291,7 +341,7 @@ export class RecipeCockpitRecordCreation {
         const shownNames = untickedRequired.slice(0, RECIPE_COCKPIT_CREATE_REASON_FIELD_LIMIT).join(', ');
         const hiddenCount = untickedRequired.length - RECIPE_COCKPIT_CREATE_REASON_FIELD_LIMIT;
 
-        return `${objectApiName} has ${untickedRequired.length} unticked ${untickedRequired.length === 1 ? 'field' : 'fields'} this org requires: ${hiddenCount > 0 ? `${shownNames} and ${hiddenCount} more` : shownNames}. Tick ${untickedRequired.length === 1 ? 'it' : 'them'} in Structure to create records.`;
+        return `${objectApiName} has ${untickedRequired.length} unticked ${untickedRequired.length === 1 ? 'field' : 'fields'} this org requires: ${hiddenCount > 0 ? `${shownNames} and ${hiddenCount} more` : shownNames}. Tick ${untickedRequired.length === 1 ? 'it' : 'them'} in the Treecipe tab to insert records.`;
 
     }
 

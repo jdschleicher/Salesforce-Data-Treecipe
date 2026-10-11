@@ -20,7 +20,6 @@ import {
     IRecipeCockpitTreeViewModel,
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
-    RECIPE_COCKPIT_EXCLUDED_IN_STRUCTURE_REASON,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_TREE_GLYPH_PATH,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
@@ -29,9 +28,10 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
 /*
-    #219: a tree icon on each Structure row includes or excludes an object, and its children follow.
+    #219: a tree icon on each Treecipe-tab row includes or excludes an object, and its children follow.
     The HOST keeps what the reader excluded by tree folder in workspaceState, computes the cascade,
-    and posts it; ▶ Run Faker generates from a filtered copy and Create refuses an excluded object.
+    and posts it; ▶ Run Faker generates from a filtered copy and the whole-tree insert (#255) leaves
+    an excluded object out.
 */
 
 const HISTORY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'historyWorkspace');
@@ -70,14 +70,15 @@ const buildWorkspaceState = (initialValues: Record<string, unknown> = {}) => {
 const storedSelections = (excludedObjectApiNamesByFolderName: Record<string, unknown>, excludedFieldApiNamesByFolderName: Record<string, unknown> = {}) => ({
     version: RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     excludedObjectApiNamesByFolderName: excludedObjectApiNamesByFolderName,
-    excludedFieldApiNamesByFolderName: excludedFieldApiNamesByFolderName
+    excludedFieldApiNamesByFolderName: excludedFieldApiNamesByFolderName,
+    objectCountsByFolderName: {}
 });
 
 const ACCOUNT_RATING_LOCK = { objects: [{ objectApiName: 'Account', excludedFieldApiNames: [] as string[], lockedFields: [{ fieldApiName: 'Rating__c', reason: 'controls Sub_Rating__c' }] }] };
 
 const treeOf = (recipe: IRecipeCockpitRecipeViewModel, treeKey: string) => recipe.trees.find(tree => tree.treeKey === treeKey) as IRecipeCockpitTreeViewModel;
 
-describe('RecipeCockpitService, excluding objects in Structure (#219)', () => {
+describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', () => {
 
     describe('parseRecipeSource', () => {
 
@@ -242,6 +243,28 @@ describe('RecipeCockpitService, excluding objects in Structure (#219)', () => {
 
         });
 
+        it('reads a version 2 entry, written before record counts (#255), as the same exclusions and no counts, and keeps the stored counts on a write', async () => {
+
+            const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: {
+                version: RECIPE_COCKPIT_OBJECT_SELECTION_VERSION - 1,
+                excludedObjectApiNamesByFolderName: { [ACCOUNT_TREE_KEY]: ['Contact'] },
+                excludedFieldApiNamesByFolderName: {},
+                objectCountsByFolderName: { [ACCOUNT_TREE_KEY]: { Account: 9 } }
+            } });
+
+            expect(RecipeCockpitService.readObjectSelections(workspaceState)).toEqual(new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
+            expect(RecipeCockpitService.readTreeSelections(workspaceState).objectCountsByFolderName.size).toBe(0);
+
+            workspaceState.storedValues.set(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY, { ...storedSelections({}), objectCountsByFolderName: { [ACCOUNT_TREE_KEY]: { Account: 9 } } });
+            await RecipeCockpitService.writeObjectSelections(workspaceState, new Map([[LEAD_TREE_KEY, new Set(['Lead'])]]));
+
+            expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).toEqual({
+                ...storedSelections({ [LEAD_TREE_KEY]: ['Lead'] }),
+                objectCountsByFolderName: { [ACCOUNT_TREE_KEY]: { Account: 9 } }
+            });
+
+        });
+
         it('given no workspace state, or a write that fails, says so and answers false', async () => {
 
             const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
@@ -323,21 +346,19 @@ describe('RecipeCockpitService, excluding objects in Structure (#219)', () => {
 
         });
 
-        it('refuses a Create of an object the card excludes, whatever the panel posted', () => {
+        it('leaves an excluded object out of the whole-tree insert, the auto-excluded ones and a self-lookup\'s iteration included', () => {
 
             const panelState = buildDrawnPanelState();
-            RecipeCockpitService.applyObjectSelections(panelState.recipeDataMessage!.recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
-            panelState.dataOrgSelection = { orgIndex: 0, orgDetail: { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa' } as any, requestSequence: 1, orgTypeDetail: { isSandbox: true } as any };
-            panelState.creatableObjectKeys = new Set([
-                RecipeCockpitService.buildCreatableObjectKey(ACCOUNT_TREE_KEY, 'Account'),
-                RecipeCockpitService.buildCreatableObjectKey(ACCOUNT_TREE_KEY, 'OtherChildObject__c')
-            ]);
-            panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.set(ACCOUNT_TREE_KEY, ACCOUNT_RECIPE_FILE_PATH);
+            const recipe = panelState.recipeDataMessage!.recipe;
+            treeOf(recipe, ACCOUNT_TREE_KEY).objects.push({ objectApiName: 'Account', parentLookups: [], iterationNickname: 'Account_child_NickName' });
 
-            expect(RecipeCockpitService.routePanelMessage({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', count: 1 }, panelState))
-                .toMatchObject({ kind: 'createRecords' });
-            expect(RecipeCockpitService.routePanelMessage({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'OtherChildObject__c', count: 1 }, panelState))
-                .toMatchObject({ kind: 'postCreateState', hostMessage: { isRunning: false } });
+            // User IS A LOOKUP TARGET WITH NO RECIPE, SO NOTHING INSERTS IT
+            expect(RecipeCockpitService.listTreeInsertObjectApiNames(recipe, treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+
+            RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
+
+            expect(RecipeCockpitService.listTreeInsertObjectApiNames(recipe, treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(['Account']);
+            expect(RecipeCockpitService.listTreeInsertObjectApiNames(recipe, treeOf(recipe, LEAD_TREE_KEY))).toEqual(['Lead']);
 
         });
 
@@ -696,35 +717,43 @@ describe('RecipeCockpitService, excluding objects in Structure (#219)', () => {
 
         });
 
-        it('disables Data-by-Org Create on an excluded object with the reason "excluded in Structure"', () => {
+        it('leaves an excluded object out of the tree\'s insert, and says so when every object is excluded', () => {
 
             const panel = drawRecipe(excludeContact);
             panel.postToPanel({ command: 'rendered' });
-            panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Data-by-Org'));
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 3 });
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Sandbox', isSandbox: true, requestSequence: 5, renderSequence: 3 });
+            // AN EXCLUDED OBJECT'S OWN READINESS NO LONGER MATTERS: THE INSERT NEVER SENDS IT
             panel.postToPanel({
                 command: 'dataOrgReadiness',
-                objects: ['Account', 'Contact', 'OtherChildObject__c', 'Lead'].map(objectApiName => ({ objectApiName: objectApiName, disabledReason: '', requiredLookups: [] })),
-                createResults: [],
+                objects: ['Account', 'Contact', 'OtherChildObject__c', 'Lead'].map(objectApiName => ({
+                    objectApiName: objectApiName,
+                    disabledReason: objectApiName === 'Contact' ? 'Contact is not createable in this org.' : '',
+                    requiredLookups: []
+                })),
+                createTargets: [],
+                insertResults: [],
                 requestSequence: 5,
                 renderSequence: 3
             });
 
-            const dataRowNamed = (objectApiName: string) => panel.dataObjectElements()
-                .find((rowElement: any) => panel.findAll(rowElement, 'dataObjectName')[0].textContent === objectApiName);
-            const createOf = (objectApiName: string) => panel.findAll(dataRowNamed(objectApiName), 'dataCreate')[0];
-            const reasonOf = (objectApiName: string) => panel.findAll(dataRowNamed(objectApiName), 'dataCreateReason')[0].textContent;
+            const insertOf = (cardIndex: number) => panel.findAll(panel.treeCards()[cardIndex], 'treeInsert')[0];
+            const insertReasonOf = (cardIndex: number) => panel.findAll(panel.treeCards()[cardIndex], 'treeInsertReason')[0].textContent;
 
-            expect(createOf('Account').disabled).toBeFalse();
-            expect(createOf('Contact').disabled).toBeTrue();
-            expect(reasonOf('Contact')).toBe(RECIPE_COCKPIT_EXCLUDED_IN_STRUCTURE_REASON);
-            expect(reasonOf('OtherChildObject__c')).toBe('excluded in Structure');
+            expect(insertOf(0).disabled).toBeFalse();
+            expect(insertReasonOf(0)).toBe('');
 
-            // INCLUDING IT AGAIN GIVES CREATE BACK, WITHOUT A NEW READINESS
+            // INCLUDING CONTACT AGAIN PUTS IT BACK IN THE INSERT, WITH ITS OWN READINESS
             panel.postToPanel({ command: 'objectSelection', renderSequence: 3, treeKey: ACCOUNT_TREE_KEY });
-            expect(createOf('Contact').disabled).toBeFalse();
-            expect(reasonOf('Contact')).toBe('');
+            expect(insertOf(0).disabled).toBeTrue();
+            expect(insertReasonOf(0)).toBe('Contact is not createable in this org.');
+
+            const recipe = loadRecipe();
+            RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Account'])]]));
+            panel.postToPanel({ command: 'objectSelection', renderSequence: 3, treeKey: ACCOUNT_TREE_KEY, objectSelection: treeOf(recipe, ACCOUNT_TREE_KEY).objectSelection });
+            expect(insertOf(0).disabled).toBeTrue();
+            expect(insertReasonOf(0)).toBe('Every object of this tree is excluded.');
+            expect(insertOf(1).disabled).toBeFalse();
 
         });
 

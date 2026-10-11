@@ -177,7 +177,7 @@ describe('activate', () => {
     it('passes a recipe file to Run Faker by Recipe and returns the run, and passes nothing that is not a path', async () => {
 
         jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
-        const fakerRun = Promise.resolve();
+        const fakerRun: Promise<string | undefined> = Promise.resolve('/workspace/treecipe/FakeDataSets/dataset-2026-09-21T00-00-00');
         const runFakerSpy = jest.spyOn(ExtensionCommandService.prototype, 'runFakerGenerationByRecipeFile').mockReturnValue(fakerRun);
 
         await activate(buildExtensionContext() as never);
@@ -189,10 +189,17 @@ describe('activate', () => {
         expect(runFakerHandler()).toBe(fakerRun);
         runFakerHandler({ fsPath: '/elsewhere' });
 
+        const filteredRecipe = { recipeText: '- object: Lead\n', excludedObjectApiNames: [], objectCountsByObject: { Lead: 3 } };
+        runFakerHandler('/workspace/recipe.yml', filteredRecipe, { isConfirmed: true });
+        runFakerHandler('/workspace/recipe.yml', undefined, { isConfirmed: 'yes' });
+
+        // ONLY A LITERAL isConfirmed: true REACHES THE COMMAND (#255)
         expect(runFakerSpy.mock.calls).toEqual([
-            ['/workspace/treecipe/GeneratedRecipes/recipe-2026-09-20T10-00-00/Lead-ONLY/recipe--Lead-ONLY-2026-09-20T10-00-00.yml'],
-            [undefined],
-            [undefined]
+            ['/workspace/treecipe/GeneratedRecipes/recipe-2026-09-20T10-00-00/Lead-ONLY/recipe--Lead-ONLY-2026-09-20T10-00-00.yml', undefined, {}],
+            [undefined, undefined, {}],
+            [undefined, undefined, {}],
+            ['/workspace/recipe.yml', filteredRecipe, { isConfirmed: true }],
+            ['/workspace/recipe.yml', undefined, {}]
         ]);
 
     });

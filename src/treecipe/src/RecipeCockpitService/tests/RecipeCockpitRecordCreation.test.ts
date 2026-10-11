@@ -4,7 +4,14 @@ expect.extend(matchers);
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { ICreateDescribeField, ICreateObjectDescribe, RecipeCockpitRecordCreation, RECIPE_COCKPIT_CREATE_MAX_COUNT } from '../RecipeCockpitRecordCreation';
+import {
+    COLLECTIONS_API_RECORDS_PER_REQUEST,
+    ICreateDescribeField,
+    ICreateObjectDescribe,
+    ITreeInsertLookupContext,
+    RecipeCockpitRecordCreation,
+    RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD
+} from '../RecipeCockpitRecordCreation';
 
 function buildField(fieldApiName: string, overrides: Partial<ICreateDescribeField> = {}): ICreateDescribeField {
 
@@ -51,14 +58,23 @@ describe('RecipeCockpitRecordCreation', () => {
 
     });
 
-    describe('isValidCreateCount', () => {
+    describe('countInsertRequests and the large-insert threshold', () => {
 
-        it.each([1, 25, RECIPE_COCKPIT_CREATE_MAX_COUNT])('accepts %p', candidateCount => {
-            expect(RecipeCockpitRecordCreation.isValidCreateCount(candidateCount)).toBe(true);
+        it('is 200 records to a request, per object, rounded up', () => {
+
+            expect(COLLECTIONS_API_RECORDS_PER_REQUEST).toBe(200);
+            expect(RecipeCockpitRecordCreation.countInsertRequests(new Map([['Account', 300], ['Contact', 1500]]))).toBe(2 + 8);
+            expect(RecipeCockpitRecordCreation.countInsertRequests(new Map([['Account', 200]]))).toBe(1);
+            expect(RecipeCockpitRecordCreation.countInsertRequests(new Map([['Account', 1]]))).toBe(1);
+            expect(RecipeCockpitRecordCreation.countInsertRequests(new Map())).toBe(0);
+
         });
 
-        it.each([0, 201, 2.5, -1, Number.NaN, Number.POSITIVE_INFINITY, '25', 'abc', null, undefined, [3], { count: 3 }])('refuses %p', candidateCount => {
-            expect(RecipeCockpitRecordCreation.isValidCreateCount(candidateCount)).toBe(false);
+        it('warns past 2,000 records, ten requests of the API\'s limit', () => {
+
+            expect(RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD).toBe(2000);
+            expect(RecipeCockpitRecordCreation.countInsertRequests(new Map([['Account', RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD]]))).toBe(10);
+
         });
 
     });
@@ -74,9 +90,19 @@ describe('RecipeCockpitRecordCreation', () => {
 
         });
 
-        it('leaves every other lookup to be blanked, RecordTypeId excepted', () => {
+    });
 
-            expect(RecipeCockpitRecordCreation.findOptionalLookupFieldApiNames(CONTACT_DESCRIBE)).toEqual(['OwnerId', 'CreatedById', 'ReportsToId']);
+    describe('findTreeInsertLookups', () => {
+
+        it('is every lookup but RecordTypeId, with its one parent and whether the org requires it', () => {
+
+            expect(RecipeCockpitRecordCreation.findTreeInsertLookups(CONTACT_DESCRIBE)).toEqual([
+                { fieldApiName: 'AccountId', parentObjectApiName: 'Account', isRequired: true },
+                { fieldApiName: 'Master__c', parentObjectApiName: 'Master__c', isRequired: true },
+                { fieldApiName: 'OwnerId', isRequired: false },
+                { fieldApiName: 'CreatedById', parentObjectApiName: 'User', isRequired: false },
+                { fieldApiName: 'ReportsToId', parentObjectApiName: 'Contact', isRequired: false }
+            ]);
 
         });
 
@@ -109,7 +135,7 @@ describe('RecipeCockpitRecordCreation', () => {
                 objectApiName: 'Contact', orgTypeDetail: orgTypeDetail, describe: CONTACT_DESCRIBE
             });
 
-            expect(readiness.disabledReason).toContain('only in a sandbox');
+            expect(readiness.disabledReason).toContain('only into a sandbox or scratch org');
             expect(readiness.disabledReason).toContain(expectedText);
 
         });
@@ -118,7 +144,7 @@ describe('RecipeCockpitRecordCreation', () => {
 
             expect(RecipeCockpitRecordCreation.buildCreateReadiness({
                 objectApiName: 'Contact', orgTypeDetail: undefined, describe: CONTACT_DESCRIBE
-            }).disabledReason).toBe('The org\'s type could not be read, so nothing is created in it.');
+            }).disabledReason).toBe('The org\'s type could not be read, so nothing is inserted into it.');
 
         });
 
@@ -270,10 +296,10 @@ describe('RecipeCockpitRecordCreation', () => {
         it('leaves the production, org-type, missing-object and uncreateable refusals first, with no field lists', () => {
 
             const production = readinessOf(['Region__c'], { orgTypeDetail: { isSandbox: false, organizationType: 'Enterprise Edition' } });
-            expect(production.disabledReason).toContain('only in a sandbox');
+            expect(production.disabledReason).toContain('only into a sandbox or scratch org');
             expect(production.missingFieldApiNames).toBeUndefined();
 
-            expect(readinessOf(['Region__c'], { orgTypeDetail: undefined }).disabledReason).toBe('The org\'s type could not be read, so nothing is created in it.');
+            expect(readinessOf(['Region__c'], { orgTypeDetail: undefined }).disabledReason).toBe('The org\'s type could not be read, so nothing is inserted into it.');
             expect(readinessOf(['Region__c'], { describe: undefined, describeFailureMessage: 'NOT_FOUND' }).disabledReason).toBe('Contact is not in this org (NOT_FOUND).');
             expect(readinessOf(['Region__c'], { describe: { ...contactDescribe, isCreateable: false } }).disabledReason).toBe('Contact is not createable in this org.');
 
@@ -298,74 +324,124 @@ describe('RecipeCockpitRecordCreation', () => {
 
     });
 
-    describe('assignLookupIds, tested pure', () => {
+    describe('prepareTreeInsertRecords, tested pure (#255)', () => {
 
-        const generatedRecords = [
-            { attributes: { type: 'Contact', referenceId: 'Contact_Reference_1__Contact_NickName' }, LastName: 'Ng', AccountId: null, Master__c: 'Master__c_NickName', ReportsToId: 'Contact_NickName', RecordTypeId: 'Contact.Partner' },
-            { attributes: { type: 'Contact', referenceId: 'Contact_Reference_2__Contact_NickName' }, LastName: 'Li', AccountId: 'Account_NickName' }
-        ];
+        const contactLookups = RecipeCockpitRecordCreation.findTreeInsertLookups(CONTACT_DESCRIBE);
+        const buildContext = (overrides: Partial<ITreeInsertLookupContext> = {}): ITreeInsertLookupContext => ({
+            isRunReference: value => value.startsWith('001RUN') || value === 'Contact_child_NickName',
+            runRecordIdsByObject: new Map([['Account', ['001RUN1', '001RUN2']]]),
+            orgRecordIdsByObject: new Map([['Master__c', ['a00ORG1', 'a00ORG2']], ['Account', ['001ORG1']]]),
+            inTreeObjectApiNames: new Set(['Account', 'Contact']),
+            ...overrides
+        });
 
-        it('fills each required lookup with the parent Id the pick names, removes every other lookup, and keeps the rest', () => {
+        it('keeps a value that names a record of this insert, and fills an unwired lookup from the run\'s own parents', () => {
 
-            const pickedChoiceCounts: number[] = [];
-            const picks = [1, 0, 2, 1];
-            const pickIndex = (choiceCount: number) => { pickedChoiceCounts.push(choiceCount); return picks.shift(); };
-
-            const assignedRecords = RecipeCockpitRecordCreation.assignLookupIds(
-                generatedRecords,
+            const prepared = RecipeCockpitRecordCreation.prepareTreeInsertRecords(
                 [
-                    { fieldApiName: 'AccountId', parentRecordIds: ['001A', '001B', '001C'] },
-                    { fieldApiName: 'Master__c', parentRecordIds: ['a00A', 'a00B'] }
+                    { LastName: 'Ng', AccountId: '001RUN2', Master__c: 'TODO', ReportsToId: 'Contact_child_NickName', OwnerId: 'x', RecordTypeId: 'Contact.Partner' },
+                    { LastName: 'Li', AccountId: '### TODO -- REFERENCE ID REQUIRED' }
                 ],
-                ['ReportsToId', 'OwnerId'],
-                pickIndex
+                contactLookups, buildContext(), () => 1
             );
 
-            expect(assignedRecords).toEqual([
-                { attributes: { type: 'Contact', referenceId: 'Contact_Reference_1__Contact_NickName' }, LastName: 'Ng', AccountId: '001B', Master__c: 'a00A', RecordTypeId: 'Contact.Partner' },
-                { attributes: { type: 'Contact', referenceId: 'Contact_Reference_2__Contact_NickName' }, LastName: 'Li', AccountId: '001C', Master__c: 'a00B' }
+            expect(prepared).toEqual([
+                { LastName: 'Ng', AccountId: '001RUN2', Master__c: 'a00ORG2', ReportsToId: 'Contact_child_NickName', RecordTypeId: 'Contact.Partner' },
+                { LastName: 'Li', AccountId: '001RUN2', Master__c: 'a00ORG2' }
             ]);
-            expect(pickedChoiceCounts).toEqual([3, 2, 3, 2]);
 
         });
 
-        it('replaces a lookup whatever case the recipe wrote its key in, as Salesforce reads field names', () => {
+        it('prefers the run\'s Ids of an in-tree parent over existing org records, even for a required lookup', () => {
 
-            const [assignedRecord] = RecipeCockpitRecordCreation.assignLookupIds(
-                [{ LastName: 'Ng', accountid: 'Account_NickName', REPORTSTOID: 'Contact_NickName' }],
-                [{ fieldApiName: 'AccountId', parentRecordIds: ['001A'] }],
-                ['ReportsToId'],
-                () => 0
+            const [prepared] = RecipeCockpitRecordCreation.prepareTreeInsertRecords([{ AccountId: 'Account_NickName' }], contactLookups, buildContext(), () => 0);
+
+            expect((prepared as any).AccountId).toBe('001RUN1');
+
+        });
+
+        it('falls back to org records for a required lookup only when the run created none of that parent', () => {
+
+            const [prepared] = RecipeCockpitRecordCreation.prepareTreeInsertRecords([{ AccountId: 'Account_NickName' }], contactLookups,
+                buildContext({ runRecordIdsByObject: new Map() }), () => 0);
+
+            expect((prepared as any).AccountId).toBe('001ORG1');
+
+        });
+
+        it('fills a lookup the record does not carry at all, so a record with no lookup line still hangs off a run parent', () => {
+
+            const [prepared] = RecipeCockpitRecordCreation.prepareTreeInsertRecords([{ LastName: 'Ng' }],
+                [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account', isRequired: false }], buildContext(), () => 0);
+
+            expect(prepared).toEqual({ LastName: 'Ng', AccountId: '001RUN1' });
+
+        });
+
+        it('never takes a parent the tree does not insert from the run, and removes an optional lookup it cannot fill', () => {
+
+            const [prepared] = RecipeCockpitRecordCreation.prepareTreeInsertRecords([{ AccountId: 'x', ReportsToId: 'Somebody' }], contactLookups,
+                buildContext({ inTreeObjectApiNames: new Set(['Contact']), orgRecordIdsByObject: new Map() }), () => 0);
+
+            expect(prepared).toEqual({});
+
+        });
+
+        it('leaves a required lookup with nothing to fill it blank rather than guessing', () => {
+
+            const [prepared] = RecipeCockpitRecordCreation.prepareTreeInsertRecords([{ LastName: 'Ng', Master__c: 'TODO' }], contactLookups,
+                buildContext({ orgRecordIdsByObject: new Map(), runRecordIdsByObject: new Map() }), () => 0);
+
+            expect(prepared).toEqual({ LastName: 'Ng' });
+
+        });
+
+        it('reads a lookup key in whatever case the recipe wrote it, and keeps one run reference among duplicates', () => {
+
+            const [prepared] = RecipeCockpitRecordCreation.prepareTreeInsertRecords(
+                [{ accountid: 'TODO', ACCOUNTID: '001RUN1', reportstoid: 'nobody' }],
+                contactLookups, buildContext({ orgRecordIdsByObject: new Map([['Master__c', ['a00ORG1']]]) }), () => 0
             );
 
-            expect(assignedRecord).toEqual({ LastName: 'Ng', AccountId: '001A' });
+            expect(prepared).toEqual({ ACCOUNTID: '001RUN1', Master__c: 'a00ORG1' });
 
         });
 
         it('leaves the records it was handed unchanged', () => {
 
-            const handedRecords = JSON.parse(JSON.stringify(generatedRecords));
+            const handed = [{ AccountId: 'TODO', ReportsToId: 'x' }];
+            const copy = JSON.parse(JSON.stringify(handed));
 
-            RecipeCockpitRecordCreation.assignLookupIds(handedRecords, [{ fieldApiName: 'AccountId', parentRecordIds: ['001A'] }], ['ReportsToId'], () => 0);
+            RecipeCockpitRecordCreation.prepareTreeInsertRecords(handed, contactLookups, buildContext(), () => 0);
 
-            expect(handedRecords).toEqual(generatedRecords);
+            expect(handed).toEqual(copy);
 
         });
 
         it('keeps a pick in range whatever the randomness answers', () => {
 
-            const [lowRecord, highRecord] = [-5, 99].map(pickedIndex => RecipeCockpitRecordCreation.assignLookupIds(
-                [{ AccountId: null }], [{ fieldApiName: 'AccountId', parentRecordIds: ['001A', '001B'] }], [], () => pickedIndex
+            const [low, high] = [-5, 99].map(pickedIndex => RecipeCockpitRecordCreation.prepareTreeInsertRecords(
+                [{ AccountId: 'x' }], [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account', isRequired: false }], buildContext(), () => pickedIndex
             )[0]);
 
-            expect(lowRecord).toEqual({ AccountId: '001A' });
-            expect(highRecord).toEqual({ AccountId: '001B' });
+            expect(low).toEqual({ AccountId: '001RUN1' });
+            expect(high).toEqual({ AccountId: '001RUN2' });
+
+        });
+
+        it('hands the randomness the number of choices', () => {
+
+            const choiceCounts: number[] = [];
+            RecipeCockpitRecordCreation.prepareTreeInsertRecords([{ AccountId: 'x', Master__c: 'y' }], contactLookups, buildContext(),
+                choiceCount => { choiceCounts.push(choiceCount); return 0; });
+
+            expect(choiceCounts).toEqual([2, 2]);
 
         });
 
         it('passes anything that is not a record through untouched', () => {
 
-            expect(RecipeCockpitRecordCreation.assignLookupIds([null, 'x', [1]], [{ fieldApiName: 'AccountId', parentRecordIds: ['001A'] }], [], () => 0))
+            expect(RecipeCockpitRecordCreation.prepareTreeInsertRecords([null, 'x', [1]], contactLookups, buildContext(), () => 0))
                 .toEqual([null, 'x', [1]]);
 
         });

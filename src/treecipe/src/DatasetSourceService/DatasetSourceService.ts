@@ -58,6 +58,8 @@ export interface IDatasetSource {
     excludedObjectApiNames?: string[];
     // THE FIELDS THE RECIPE COCKPIT UNTICKED (#220), BY OBJECT; ABSENT WHEN NOTHING WAS. READ BACK WITH NO PROTOTYPE
     excludedFieldApiNamesByObject?: Record<string, string[]>;
+    // THE RECORD COUNTS THE RECIPE COCKPIT SET (#255), BY OBJECT; ABSENT WHEN NONE WAS. A NESTED FRIEND'S IS PER PARENT RECORD. READ BACK WITH NO PROTOTYPE
+    objectCountsByObject?: Record<string, number>;
 }
 
 export interface IRecipeSourceNames {
@@ -168,10 +170,12 @@ export class DatasetSourceService {
                                 generatedAt: string,
                                 recordCountsByObject: Record<string, number>,
                                 excludedObjectApiNames: string[] = [],
-                                excludedFieldApiNamesByObject: Record<string, string[]> = {}): IDatasetSource {
+                                excludedFieldApiNamesByObject: Record<string, string[]> = {},
+                                objectCountsByObject: Record<string, number> = {}): IDatasetSource {
 
         // fromEntries DEFINES EACH KEY, SO AN OBJECT NAMED __proto__ IS RECORDED RATHER THAN SET AS A PROTOTYPE
         const recordedFieldExclusions = Object.entries(excludedFieldApiNamesByObject).filter(([, fieldApiNames]) => fieldApiNames.length > 0);
+        const recordedObjectCounts = Object.entries(objectCountsByObject);
 
         return {
             schemaVersion: DATASET_SOURCE_SCHEMA_VERSION,
@@ -185,7 +189,8 @@ export class DatasetSourceService {
             ...( excludedObjectApiNames.length > 0 ? { excludedObjectApiNames: [...excludedObjectApiNames] } : {} ),
             ...( recordedFieldExclusions.length > 0
                 ? { excludedFieldApiNamesByObject: Object.fromEntries(recordedFieldExclusions.map(([objectApiName, fieldApiNames]) => [objectApiName, [...fieldApiNames]])) }
-                : {} )
+                : {} ),
+            ...( recordedObjectCounts.length > 0 ? { objectCountsByObject: Object.fromEntries(recordedObjectCounts) } : {} )
         };
 
     }
@@ -354,11 +359,21 @@ export class DatasetSourceService {
             ))
         );
 
+        // OPTIONAL TOO (#255); PRESENT, IT MUST MAP EACH NAME TO A WHOLE NUMBER OF ONE OR MORE
+        const objectCountsByObject = candidate.objectCountsByObject;
+        const isObjectCountMapValid = objectCountsByObject === undefined || (
+            typeof objectCountsByObject === 'object'
+            && objectCountsByObject !== null
+            && !Array.isArray(objectCountsByObject)
+            && Object.values(objectCountsByObject).every(objectCount => typeof objectCount === 'number' && Number.isSafeInteger(objectCount) && objectCount >= 1)
+        );
+
         const isValid = candidate.schemaVersion === DATASET_SOURCE_SCHEMA_VERSION
                         && (candidate.origin === 'runFaker' || isCreateInOrg)
                         && isCreateInOrgDetailValid
                         && isExcludedObjectListValid
                         && isExcludedFieldMapValid
+                        && isObjectCountMapValid
                         && isStringOrNull(candidate.recipeRunFolderName)
                         && isStringOrNull(candidate.recipeTreeFolderName)
                         && typeof candidate.recipeFileName === 'string'
@@ -383,6 +398,14 @@ export class DatasetSourceService {
             });
         }
 
+        let readObjectCounts: Record<string, number> | undefined;
+        if ( objectCountsByObject !== undefined ) {
+            readObjectCounts = Object.create(null) as Record<string, number>;
+            Object.entries(objectCountsByObject as Record<string, number>).forEach(([objectApiName, objectCount]) => {
+                ( readObjectCounts as Record<string, number> )[objectApiName] = objectCount;
+            });
+        }
+
         return {
             schemaVersion: DATASET_SOURCE_SCHEMA_VERSION,
             origin: isCreateInOrg ? 'createInOrg' : 'runFaker',
@@ -398,7 +421,8 @@ export class DatasetSourceService {
                 createdRecordIds: [...(candidate.createdRecordIds as string[])]
             } : {} ),
             ...( Array.isArray(excludedObjectApiNames) ? { excludedObjectApiNames: [...(excludedObjectApiNames as string[])] } : {} ),
-            ...( readFieldExclusions ? { excludedFieldApiNamesByObject: readFieldExclusions } : {} )
+            ...( readFieldExclusions ? { excludedFieldApiNamesByObject: readFieldExclusions } : {} ),
+            ...( readObjectCounts ? { objectCountsByObject: readObjectCounts } : {} )
         };
 
     }

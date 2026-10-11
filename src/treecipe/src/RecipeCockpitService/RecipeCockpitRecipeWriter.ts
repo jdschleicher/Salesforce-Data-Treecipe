@@ -115,12 +115,23 @@ export interface IRecipeFilterLookup {
     Levels are RelationshipService's; without one, an object's nesting depth in the recipe stands in.
     excludedFieldApiNamesByObject is the fields the reader unticked (#220), by object; each is left
     out of EVERY kept occurrence of its object, a self-lookup's iteration included.
+    objectCountsByObject is the record count the reader set for an object (#255), written on the
+    "count:" line of its FIRST occurrence -- the one the Recipe Cockpit draws a count box for; a
+    self-lookup's iteration keeps its own. For a nested faker-js friend that is records per parent
+    record, as "count:" always meant there.
 */
 export interface IRecipeFilterRequest {
     excludedObjectApiNames: readonly string[];
     parentLookupsByObjectApiName: ReadonlyMap<string, readonly IRecipeFilterLookup[]>;
     levelsByObjectApiName?: ReadonlyMap<string, number>;
     excludedFieldApiNamesByObject?: ReadonlyMap<string, readonly string[]>;
+    objectCountsByObject?: ReadonlyMap<string, number>;
+}
+
+// ONE COUNT buildFilteredRecipe WROTE, AS IT READ BACK
+export interface IRecipeFilterCount {
+    objectApiName: string;
+    count: number;
 }
 
 // ONE FIELD buildFilteredRecipe LEFT OUT BECAUSE THE READER UNTICKED IT
@@ -143,6 +154,7 @@ export type RecipeFilterResult =
         droppedLookups: IRecipeFilterLookup[];
         movedObjects: IRecipeFilterMove[];
         droppedFields: IRecipeFilterDroppedField[];
+        appliedCounts: IRecipeFilterCount[];
     }
     | { isFiltered: false; refusal: IRecipeWriterRefusal };
 
@@ -949,6 +961,17 @@ export class RecipeCockpitRecipeWriter {
             }
         }
 
+        const countsByObject = new Map<string, number>();
+        for ( const [objectApiName, recordCount] of filterRequest.objectCountsByObject ?? new Map<string, number>() ) {
+            if ( !API_NAME_PATTERN.test(objectApiName) ) {
+                return refuseFilter('invalid-object-api-name', `"${objectApiName}" is not an object api name.`, objectApiName);
+            }
+            if ( !this.isRecordCount(recordCount) ) {
+                return { isFiltered: false, refusal: { reason: 'invalid-value', message: `The count for ${objectApiName} must be a whole number of one or more.`, objectApiName: objectApiName, propertyName: 'count' } };
+            }
+            countsByObject.set(objectApiName, recordCount);
+        }
+
         const recipeLines = this.splitRecipeLines(recipeText);
         const { lines } = recipeLines;
         const scannedObjects = this.scanRecipeObjects(lines);
@@ -957,9 +980,9 @@ export class RecipeCockpitRecipeWriter {
             return refuseFilter('object-not-found', 'The recipe has no "- object:" line, so it could not be filtered.');
         }
 
-        // NOTHING EXCLUDED IS THE RECIPE ITSELF, BYTE FOR BYTE
-        if ( excludedObjectApiNames.size === 0 && excludedFieldsByObject.size === 0 ) {
-            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [] };
+        // NOTHING EXCLUDED AND NO COUNT SET IS THE RECIPE ITSELF, BYTE FOR BYTE
+        if ( excludedObjectApiNames.size === 0 && excludedFieldsByObject.size === 0 && countsByObject.size === 0 ) {
+            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [], appliedCounts: [] };
         }
 
         const friendIndex = this.buildScannedFriendIndex(scannedObjects);
@@ -995,9 +1018,26 @@ export class RecipeCockpitRecipeWriter {
             return !!excludedFieldApiNames && keptObject.fields.some(scannedField => excludedFieldApiNames.has(scannedField.fieldApiName));
         });
 
-        // NOTHING IN THIS RECIPE IS LEFT OUT: THE RECIPE ITSELF, BYTE FOR BYTE
-        if ( droppedHeaderIndexes.size === 0 && !hasLookupToDrop && !hasFieldToDrop ) {
-            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [] };
+        // A COUNT GOES ON THE FIRST OCCURRENCE'S ONE "count:" LINE; ONE ALREADY HOLDING IT CHANGES NOTHING
+        const countOverridesByLineIndex = new Map<number, number>();
+        const appliedCounts: IRecipeFilterCount[] = [];
+        for ( const [objectApiName, recordCount] of countsByObject ) {
+            const countedObject = firstOccurrencesByApiName.get(objectApiName);
+            if ( !countedObject || droppedHeaderIndexes.has(countedObject.headerIndex) ) {
+                continue;
+            }
+            if ( countedObject.propertyLineIndexes.count.length !== 1 ) {
+                return refuseFilter('unsupported-filter-layout', `${objectApiName} has ${countedObject.propertyLineIndexes.count.length === 0 ? 'no' : 'more than one'} "count:" line, so its count could not be set.`, objectApiName);
+            }
+            if ( this.readObjectCount(lines, countedObject) !== recordCount ) {
+                countOverridesByLineIndex.set(countedObject.propertyLineIndexes.count[0], recordCount);
+                appliedCounts.push({ objectApiName: objectApiName, count: recordCount });
+            }
+        }
+
+        // NOTHING IN THIS RECIPE IS LEFT OUT OR RECOUNTED: THE RECIPE ITSELF, BYTE FOR BYTE
+        if ( droppedHeaderIndexes.size === 0 && !hasLookupToDrop && !hasFieldToDrop && countOverridesByLineIndex.size === 0 ) {
+            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [], appliedCounts: [] };
         }
 
         if ( keptObjects.length === 0 ) {
@@ -1193,9 +1233,12 @@ export class RecipeCockpitRecipeWriter {
                 }
 
                 const rewiredField = rewiredFieldsByLineIndex.get(lineIndex);
+                const countOverride = countOverridesByLineIndex.get(lineIndex);
                 const renderedLine = rewiredField
                     ? `${this.getObjectLayout(newObjectIndent).fieldIndent}${rewiredField.fieldApiName}: ${rewiredField.nickname}`
-                    : reindent(lines[lineIndex], indentDelta);
+                    : countOverride !== undefined
+                        ? `${this.getObjectLayout(newObjectIndent).propertyIndent}count: ${countOverride}`
+                        : reindent(lines[lineIndex], indentDelta);
                 if ( renderedLine === undefined ) {
                     return `${scannedObject.objectApiName} has a line that could not be moved to its new depth exactly (a lone carriage return, U+0085, U+2028 or U+2029 inside it, or a line indented less than its object).`;
                 }
@@ -1227,7 +1270,11 @@ export class RecipeCockpitRecipeWriter {
             ...( droppedObjectApiNames.length > 0 ? [droppedObjectApiNames.join(', ')] : [] ),
             ...( droppedFields.length > 0 ? [`fields ${droppedFields.map(droppedField => `${droppedField.objectApiName}.${droppedField.fieldApiName}`).join(', ')}`] : [] )
         ];
-        emit(`# Recipe Cockpit -- a filtered copy of this tree's recipe, leaving out: ${leftOutParts.join('; ')}`);
+        const headerParts = [
+            ...( leftOutParts.length > 0 ? [`leaving out: ${leftOutParts.join('; ')}`] : [] ),
+            ...( appliedCounts.length > 0 ? [`with counts: ${appliedCounts.map(appliedCount => `${appliedCount.objectApiName} ${appliedCount.count}`).join(', ')}`] : [] )
+        ];
+        emit(`# Recipe Cockpit -- a filtered copy of this tree's recipe, ${headerParts.join('; ')}`);
 
         // A FILE THAT ENDS WITH A LINE BREAK SPLITS INTO A LAST EMPTY LINE, WHICH STAYS LAST
         const hasFinalEmptyLine = lines.length > 1 && lines[lines.length - 1] === '';
@@ -1281,8 +1328,8 @@ export class RecipeCockpitRecipeWriter {
             return { objectApiName: movedObject.objectApiName, ...( newParent ? { newParentObjectApiName: newParent.objectApiName } : {} ) };
         });
 
-        if ( !this.isFilteredRecipeReadBack(filteredRecipeText, keptObjects, finalParentHeaderIndexes, friendIndex, excludedObjectApiNames, excludedFieldsByObject) ) {
-            return refuseFilter('unsupported-filter-layout', 'The filtered copy did not read back as the kept objects nested where they were meant to be, so it was not used.');
+        if ( !this.isFilteredRecipeReadBack(filteredRecipeText, keptObjects, finalParentHeaderIndexes, friendIndex, excludedObjectApiNames, excludedFieldsByObject, appliedCounts) ) {
+            return refuseFilter('unsupported-filter-layout', 'The filtered copy did not read back as the kept objects nested where they were meant to be, with the counts that were set, so it was not used.');
         }
 
         return {
@@ -1291,8 +1338,53 @@ export class RecipeCockpitRecipeWriter {
             droppedObjectApiNames: droppedObjectApiNames,
             droppedLookups: droppedLookups,
             movedObjects: movedObjects,
-            droppedFields: droppedFields
+            droppedFields: droppedFields,
+            appliedCounts: appliedCounts
         };
+
+    }
+
+    /*
+        How many records of each object a recipe generates (#255): an occurrence's "count:" times the
+        records of the occurrence whose friends: block holds it -- a nested faker-js friend's count
+        is per parent record -- summed over every occurrence of the object. An occurrence with no
+        readable "count:" generates one per parent record, which is what both backends do with none.
+    */
+    static countRecipeRecordsByObject(recipeText: string): Map<string, number> {
+
+        const { lines } = this.splitRecipeLines(recipeText);
+        const scannedObjects = this.scanRecipeObjects(lines);
+        const recordsByHeaderIndex = new Map<number, number>();
+        const recordTotalsByObject = new Map<string, number>();
+
+        // FILE ORDER PUTS A PARENT BEFORE ITS FRIENDS, SO ITS RECORDS ARE KNOWN WHEN THEY ASK
+        scannedObjects.forEach(scannedObject => {
+            const parentRecords = scannedObject.parentHeaderIndex === undefined ? 1 : recordsByHeaderIndex.get(scannedObject.parentHeaderIndex) ?? 1;
+            const occurrenceRecords = ( this.readObjectCount(lines, scannedObject) ?? 1 ) * parentRecords;
+            recordsByHeaderIndex.set(scannedObject.headerIndex, occurrenceRecords);
+            recordTotalsByObject.set(scannedObject.objectApiName, ( recordTotalsByObject.get(scannedObject.objectApiName) ?? 0 ) + occurrenceRecords);
+        });
+
+        return recordTotalsByObject;
+
+    }
+
+    // A COUNT THE READER CAN SET: A WHOLE NUMBER OF ONE OR MORE, NOTHING PAST WHAT A NUMBER HOLDS EXACTLY
+    static isRecordCount(candidate: unknown): candidate is number {
+        return typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate >= 1;
+    }
+
+    // THE VALUE OF AN OCCURRENCE'S ONE "count:" LINE, OR undefined WHEN IT HAS NONE, SEVERAL, OR ONE THAT IS NOT A PLAIN WHOLE NUMBER
+    static readObjectCount(lines: string[], scannedObject: IScannedObject): number | undefined {
+
+        if ( scannedObject.propertyLineIndexes.count.length !== 1 ) {
+            return undefined;
+        }
+
+        const countMatch = /^ *count:\s*(\d+)\s*$/.exec(lines[scannedObject.propertyLineIndexes.count[0]]);
+        const recordCount = countMatch ? Number(countMatch[1]) : undefined;
+
+        return Number.isSafeInteger(recordCount) ? recordCount : undefined;
 
     }
 
@@ -1302,7 +1394,8 @@ export class RecipeCockpitRecipeWriter {
                                             finalParentHeaderIndexes: Map<number, number | undefined>,
                                             friendIndex: IScannedFriendIndex,
                                             excludedObjectApiNames: Set<string>,
-                                            excludedFieldsByObject: Map<string, Set<string>>): boolean {
+                                            excludedFieldsByObject: Map<string, Set<string>>,
+                                            appliedCounts: IRecipeFilterCount[]): boolean {
 
         const describeOccurrence = (scannedObject: IScannedObject | undefined) => scannedObject ? `${scannedObject.objectApiName}\u0000${scannedObject.nicknames.join('\u0000')}` : '';
         const describeExpected = (keptObject: IScannedObject) => {
@@ -1310,7 +1403,8 @@ export class RecipeCockpitRecipeWriter {
             return `${describeOccurrence(keptObject)}\u0001${describeOccurrence(parentHeaderIndex === undefined ? undefined : friendIndex.objectsByHeaderIndex.get(parentHeaderIndex))}`;
         };
 
-        const filteredObjects = this.scanRecipeObjects(this.splitRecipeLines(filteredRecipeText).lines);
+        const filteredLines = this.splitRecipeLines(filteredRecipeText).lines;
+        const filteredObjects = this.scanRecipeObjects(filteredLines);
         const filteredIndex = this.buildScannedFriendIndex(filteredObjects);
         const describeFiltered = (filteredObject: IScannedObject) => `${describeOccurrence(filteredObject)}\u0001${describeOccurrence(filteredObject.parentHeaderIndex === undefined ? undefined : filteredIndex.objectsByHeaderIndex.get(filteredObject.parentHeaderIndex))}`;
 
@@ -1320,7 +1414,11 @@ export class RecipeCockpitRecipeWriter {
         return !filteredObjects.some(filteredObject => excludedObjectApiNames.has(filteredObject.objectApiName))
                 && !filteredObjects.some(filteredObject => filteredObject.fields.some(scannedField => excludedFieldsByObject.get(filteredObject.objectApiName)?.has(scannedField.fieldApiName)))
                 && expected.length === actual.length
-                && expected.every((description, index) => description === actual[index]);
+                && expected.every((description, index) => description === actual[index])
+                && appliedCounts.every(appliedCount => {
+                    const countedObject = filteredObjects.find(filteredObject => filteredObject.objectApiName === appliedCount.objectApiName);
+                    return !!countedObject && this.readObjectCount(filteredLines, countedObject) === appliedCount.count;
+                });
 
     }
 

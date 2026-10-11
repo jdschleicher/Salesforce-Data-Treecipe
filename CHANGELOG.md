@@ -1,5 +1,41 @@
 # Change Log
 
+## [3.58.0] - Recipe Cockpit: one Treecipe tab with per-object counts and a whole-tree insert; the comparison becomes a Compare tab
+
+Closes [#255](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/255), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173). Supersedes the count editor of [#151](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/151).
+
+Building a data set for one relationship tree took two tabs: **Structure** decided what was generated, and **Data-by-Org**'s **+ Create** inserted one object at a time, with required lookups filled from random existing Ids. There was no way to say "5 Accounts, 3 Contacts each, into this sandbox" in one place.
+
+- **A card's tabs are now Treecipe · Compare · Previous Versions · Previous Fake Sets**, with Treecipe selected (`RECIPE_COCKPIT_TREE_TABS` is `['treecipe', 'compare', 'versions', 'datasets']`). No `structure` or `dataByOrg` tab is drawn.
+- **The top of the Treecipe tab** holds, in order:
+  - **Choose org…**, moved out of the toolbar. It is still one panel-wide selection, drawn in every card's Treecipe tab with its type label, ⟳ and **+ New scratch org**. It uses the same `dataOrgList` / `selectDataOrg {orgIndex}` protocol and lists only `listDataOrgDetails` orgs. It asks for its orgs the first time a Treecipe tab is opened or the picker is used, never on panel open and never from a restored place.
+  - **▶ Run Faker**, **Reset selection** and **Regenerate recipe**, moved here from the card header and from beside the comparison. The rules for when they are enabled, their in-flight state and their modals are unchanged. Regenerate is now routed for any card on screen with an object, and no longer needs a comparison first. Beside it, a note says it regenerates from this workspace's metadata, not the org.
+  - **Generate fake data and insert into \<org\>**.
+  - Below that, the Structure tree itself, unchanged.
+- **The card header** keeps ▸, the title, ✎, ☆ and its counts, and nothing else.
+- **A count box right of each object's name.**
+  - **What it means:** a root object's box is its record count. A nested faker-js friend's box is labelled `per <Parent>`, because `count` there is records per parent record. A snowfakery card's boxes are plain counts. Every box starts at the recipe's own `count`, which the object model now carries as `recordCount`, along with `countParentObjectApiName`.
+  - **What it accepts:** only safe whole numbers of 1 or more, checked in the panel and again on the host. `0`, `-1`, `2.5`, `1e2`, an empty value, `" 5 "` and a value past `Number.MAX_SAFE_INTEGER` are refused, with the reason on the row, and nothing is stored.
+  - **Message:** `setObjectCount {treeKey, objectApiName, nickname?, count}`, matched against `selectableObjectKeys`. A forged key or count writes nothing.
+  - **Storage:** beside the #219/#220 selection in `workspaceState`, now version 3, which adds `objectCountsByFolderName` (folder → object → count). It is written with `Object.fromEntries`, and every name is checked with `SalesforceApiName` on read. A version 1 or 2 entry reads as "no count changed". A count equal to the recipe's own is not stored, so a card with no stored count posts and generates exactly as before.
+  - **Disabled and hidden boxes:** an excluded object's box is disabled, and re-including the object brings its stored count back. An object marked `hasIndistinctOccurrences` draws no box.
+  - **Reset selection** also clears the folder's counts, and its modal says so.
+- **Counts never touch the recipe file.**
+  - **The filtered copy:** `RecipeCockpitRecipeWriter.buildFilteredRecipe` takes `objectCountsByObject` and writes each count on the `count:` line of the object's first occurrence, at that object's own `friends:` depth. The copy is refused unless it reads back with exactly those counts. The header comment says `with counts: Account 5`. The result lists `appliedCounts`.
+  - **Who uses it:** ▶ Run Faker and the insert generate from that copy.
+  - **What is recorded:** `datasetSource.json` records `objectCountsByObject`, only when there are any. `treecipe.runFakerByRecipe` accepts a copy whose only change is a count.
+- **Generate fake data and insert into \<org\>** generates the tree with the card's selection and counts, exactly as ▶ Run Faker does, through the same command with its own modal already answered. Then it inserts every object **parents first**.
+  - **Sandbox and scratch only.** It is offered only while an org whose Organization row answered `IsSandbox: true` is selected and every object the tree inserts is ready for it. It posts only `{treeKey}`, matched against `insertableTreeKeys`, a pending/active allow-list. After the modal, the host asks the Organization row again on the connection it inserts with, and refuses before any folder is written if the answer is not a sandbox.
+  - **The modal** lists each object with its total record count, for example `Contact: 6 (3 per Account)`. Past `RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD` (2,000 records, ten requests) it warns that the run will take time, and names the total and the number of Collections API requests. Cancel generates and writes nothing.
+  - **One insert for every command.** The insert is the one Insert Data Set by Directory uses, now `CollectionsApiService.insertDataSetFolderIntoOrg`, with the same all-or-none question and the same `InsertAttempts/` results file. Cancel, or an all-or-none failure, rolls back what the insert saved (`deletePreviouslySavedRecords`).
+  - **Progress:** the cancellable progress notification now names each file and each insert round (`Inserting Contact: round 1 of 2`), and a cancel stops between rounds too, for Insert Data Set as well.
+  - **Lookups:** a child's lookup that already names a record of the same run is kept. Any other lookup to a parent the tree inserts (a snowfakery `### TODO`) is pointed at a random parent record inserted in the same run. A required lookup to an object outside the tree gets a random existing record of that object, and the insert is refused before anything is written when the org has none. Any other lookup is left blank. The rules are `RecipeCockpitRecordCreation.prepareTreeInsertRecords` and `findTreeInsertLookups`.
+  - **Results:** a partial failure keeps what was inserted. **View errors** opens the results file. The panel reloads onto the card's Treecipe tab however the insert ended, once a data set folder exists.
+- **Data-by-Org's per-object + Create is removed**, with its count input, the `createRecords` message, `creatableObjectKeys`, the per-object block cut and `CollectionsApiService.insertRecordsWithoutRollback`. Readiness per tree and object (#210) is unchanged, and is now what decides the tree's insert.
+- **The Compare tab holds only the metadata comparison:** Compare with an org…, Choose another org…, the status filter, progress, the summary and the field-diff rows, moved as they were, with the same org resolution, payloads and replay. A comparison answered for a card whose Compare tab never opened is drawn when it opens. It sends only describes and the Organization query.
+- **Saved places:** the place shape is now version 2. A version 1 place, from `setState` or `workspaceState`, is read through `RECIPE_COCKPIT_TREE_TAB_RENAMES`: `structure` opens the Treecipe tab, and `dataByOrg` opens Compare with its status filter and opened rows. Every reload that focused `structure` or `dataByOrg` now focuses `treecipe`.
+- **Run Faker by Recipe** resolves to the data set folder it wrote, so the insert inserts exactly what was generated. `CollectionsApiService.createCollectionsApiFile` now writes synchronously, so the files are on disk when generation returns.
+
 ## [3.57.0] - Insert Data Set by Directory refuses a production org
 
 Closes [#204](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/204), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

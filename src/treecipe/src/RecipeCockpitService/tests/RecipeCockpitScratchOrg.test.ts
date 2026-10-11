@@ -95,7 +95,7 @@ function buildFakeConnection() {
         query: jest.fn().mockImplementation(async (soql: string) => (
             soql.includes('FROM Organization')
                 ? { records: [{ IsSandbox: true, OrganizationType: 'Developer Edition' }] }
-                : Promise.reject(new Error(`Data-by-Org sent a query it should not have: ${soql}`))
+                : Promise.reject(new Error(`The Treecipe tab sent a query it should not have: ${soql}`))
         )),
         sobject: jest.fn()
     };
@@ -104,7 +104,7 @@ function buildFakeConnection() {
 
 type CliHandler = (argumentList: string[]) => { stdout: string; error?: unknown } | 'hold';
 
-describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () => {
+describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #255)', () => {
 
     describe('routePanelMessage', () => {
 
@@ -137,32 +137,32 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
 
         });
 
-        it('refuses a second createScratchOrg, and a Create, an org selection or ⟳, while one is running', () => {
+        it('refuses a second createScratchOrg, and an insert, an org selection or ⟳, while one is running', () => {
 
             const panelState = buildRenderedPanelState();
             panelState.scratchOrgStateMessage = runningState;
             panelState.dataOrgSelection = { orgIndex: 0, orgDetail: panelState.dataOrgDetails[0], requestSequence: 1, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' } };
-            panelState.creatableObjectKeys = new Set([`${LEAD_TREE_KEY}\nLead`]);
+            panelState.insertableTreeKeys = new Set([LEAD_TREE_KEY]);
             panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.set(LEAD_TREE_KEY, '/workspace/lead.yml');
 
             expect(RecipeCockpitService.routePanelMessage({ command: 'createScratchOrg' }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'loadDataOrgs' }, panelState)).toBeUndefined();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'createRecords', orgIndex: 0, treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', count: 1 }, panelState))
-                .toMatchObject({ kind: 'postCreateState', hostMessage: { isRunning: false } });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'insertTree', treeKey: LEAD_TREE_KEY }, panelState))
+                .toEqual({ kind: 'postInsertState', hostMessage: { command: 'insertState', isRunning: false, treeKey: LEAD_TREE_KEY } });
 
             panelState.scratchOrgStateMessage = { ...runningState, isRunning: false };
 
-            expect(RecipeCockpitService.routePanelMessage({ command: 'createRecords', orgIndex: 0, treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', count: 1 }, panelState))
-                .toMatchObject({ kind: 'createRecords' });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'insertTree', treeKey: LEAD_TREE_KEY }, panelState))
+                .toEqual({ kind: 'insertTree', treeKey: LEAD_TREE_KEY, recipeFilePath: '/workspace/lead.yml' });
 
         });
 
-        it('refuses a createScratchOrg while a Create is in flight', () => {
+        it('refuses a createScratchOrg while an insert is in flight', () => {
 
             const panelState = buildRenderedPanelState();
-            panelState.createStateMessage = { command: 'createState', isRunning: true, treeKey: LEAD_TREE_KEY, objectApiName: 'Lead' };
+            panelState.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: LEAD_TREE_KEY };
 
             expect(RecipeCockpitService.routePanelMessage({ command: 'createScratchOrg' }, panelState)?.kind).toBe('postScratchOrgState');
 
@@ -198,7 +198,7 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
 
     describe('the preview warning', () => {
 
-        it('says Data-by-Org can create a scratch org through the Dev Hub the reader picks', () => {
+        it('says the Treecipe tab can create a scratch org through the Dev Hub the reader picks', () => {
 
             expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('"+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one)');
 
@@ -390,7 +390,7 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
 
         });
 
-        it('creates, deploys, refreshes the connected-org cache, then selects the new org by username, remembers it, counts it and offers + Create', async () => {
+        it('creates, deploys, refreshes the connected-org cache, then selects the new org by username, remembers it, and checks the tree insert\'s readiness', async () => {
 
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
@@ -429,7 +429,7 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
             const phases = postedNamed('scratchOrgState').map(scratchOrgState => scratchOrgState.statusText);
             expect(phases).toIncludeAllMembers(['Creating scratch org…', 'Deploying source…']);
             expect(lastScratchOrgState()).toMatchObject({ isRunning: false, isFailure: false, hasOutput: true });
-            expect(lastScratchOrgState().statusText).toContain(`Scratch org ${alias} (${NEW_SCRATCH_USERNAME}) is ready: 3 components deployed. It is selected in Data-by-Org.`);
+            expect(lastScratchOrgState().statusText).toContain(`Scratch org ${alias} (${NEW_SCRATCH_USERNAME}) is ready: 3 components deployed. It is selected in the Treecipe tab.`);
             expect(postedPanelMessages.indexOf(lastScratchOrgState())).toBeGreaterThan(postedPanelMessages.indexOf(postedNamed('dataOrgReadiness').at(-1)));
             expect(JSON.stringify(postedNamed('scratchOrgState'))).not.toContain(workspaceRoot);
 
@@ -455,7 +455,7 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
             expect(cliCallKinds().slice(-1)).toEqual(['org list']);
             expect(postedNamed('dataOrgSelection').at(-1).orgLabel).toBe('new');
             expect(lastScratchOrgState()).toMatchObject({ isRunning: false, isFailure: true, hasOutput: true });
-            expect(lastScratchOrgState().statusText).toStartWith(`Deploy to ${alias} failed — 1 component failure. The scratch org is kept, but it has none of the project's metadata until a deploy succeeds. It is selected in Data-by-Org.`);
+            expect(lastScratchOrgState().statusText).toStartWith(`Deploy to ${alias} failed — 1 component failure. The scratch org is kept, but it has none of the project's metadata until a deploy succeeds. It is selected in the Treecipe tab.`);
 
             const operationsFolderPath = path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, NEW_SCRATCH_USERNAME);
             const deployResultFileName = fs.readdirSync(operationsFolderPath).find(fileName => fileName.endsWith('-scratch-deploy.json'));
@@ -975,19 +975,26 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
         const selectOrgWithLeadReady = (panel: ReturnType<typeof runPanelScript>) => {
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', hiddenOrgCount: 0, hiddenOrgNote: '', forgottenOrgNotice: '', renderSequence: 1 });
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Sandbox', isSandbox: true, requestSequence: 5, renderSequence: 1 });
-            panel.postToPanel({ command: 'dataOrgReadiness', objects: [{ objectApiName: 'Lead', disabledReason: '', requiredLookups: [] }], createTargets: [], createResults: [], requestSequence: 5, renderSequence: 1 });
+            panel.postToPanel({ command: 'dataOrgReadiness', objects: [{ objectApiName: 'Lead', disabledReason: '', requiredLookups: [] }], createTargets: [], insertResults: [], requestSequence: 5, renderSequence: 1 });
         };
 
-        const leadCreateButton = (panel: ReturnType<typeof runPanelScript>) => {
+        const leadInsertButton = (panel: ReturnType<typeof runPanelScript>) => {
             const leadCard = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeName').some((nameElement: any) => nameElement.textContent.includes('Lead')))
                 ?? panel.treeCards().at(-1);
-            return panel.findAll(leadCard, 'dataCreate')[0];
+            return panel.findAll(leadCard, 'treeInsert')[0];
         };
 
-        it('draws "+ New scratch org" beside the toolbar\'s org dropdown, and posts a message that carries nothing', () => {
+        it('draws "+ New scratch org" beside the org dropdown at the top of a card\'s Treecipe tab, never in the toolbar, and posts a message that carries nothing', () => {
 
             const panel = renderPanel();
+
+            expect(firstOf(panel, 'dataOrgControls')).toBeUndefined();
+            expect(panel.findAll(firstOf(panel, 'toolbar'), 'dataOrgControls')).toEqual([]);
+
+            panel.expandAllTrees();
             const pickerElement = firstOf(panel, 'dataOrgControls');
+            expect(pickerElement.parentNode.classList.contains('dataOrgView')).toBe(true);
+            expect(pickerElement.parentNode.parentNode.classList.contains('treecipeHeader')).toBe(true);
             const newScratchElement = firstOf(panel, 'dataOrgNewScratch');
 
             expect(newScratchElement.textContent).toBe('+ New scratch org');
@@ -1015,18 +1022,17 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
 
         });
 
-        it('disables the button, the dropdown, ⟳ and every + Create while a run is in flight, and gives them back when it ends', () => {
+        it('disables the button, the dropdown, ⟳ and every tree insert while a run is in flight, and gives them back when it ends', () => {
 
             const panel = renderPanel();
             panel.expandAllTrees();
-            panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Data-by-Org'));
             selectOrgWithLeadReady(panel);
 
-            expect(leadCreateButton(panel).disabled).toBe(false);
+            expect(leadInsertButton(panel).disabled).toBe(false);
 
             panel.postToPanel({ command: 'scratchOrgState', isRunning: true, statusText: 'Deploying source…', isFailure: false, hasOutput: false });
 
-            expect(leadCreateButton(panel).disabled).toBe(true);
+            expect(leadInsertButton(panel).disabled).toBe(true);
             expect(firstOf(panel, 'dataOrgNewScratch').disabled).toBe(true);
             expect(firstOf(panel, 'dataOrgSelect').disabled).toBe(true);
             expect(firstOf(panel, 'dataOrgRefresh').disabled).toBe(true);
@@ -1053,23 +1059,24 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
 
         });
 
-        it('holds the button while a Create runs, and posts no org listing while a run is in flight', () => {
+        it('holds the button while a tree insert runs, and posts no org listing while a run is in flight', () => {
 
             const panel = renderPanel();
             panel.postToPanel({ command: 'rendered' });
-            panel.postToPanel({ command: 'createState', isRunning: true, treeKey: LEAD_TREE_KEY, objectApiName: 'Lead' });
-
-            expect(firstOf(panel, 'dataOrgNewScratch').disabled).toBe(true);
-
-            panel.postToPanel({ command: 'createState', isRunning: false, treeKey: LEAD_TREE_KEY, objectApiName: 'Lead' });
-            expect(firstOf(panel, 'dataOrgNewScratch').disabled).toBe(false);
-
             panel.postToPanel({ command: 'scratchOrgState', isRunning: true, statusText: 'Creating scratch org…', isFailure: false, hasOutput: false });
-            firstOf(panel, 'dataOrgLoad').dispatch('click');
             panel.expandAllTrees();
-            panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Data-by-Org'));
+            firstOf(panel, 'dataOrgLoad').dispatch('click');
+            panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Treecipe'));
 
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'loadDataOrgs')).toHaveLength(0);
+
+            panel.postToPanel({ command: 'scratchOrgState', isRunning: false, statusText: '', isFailure: false, hasOutput: false });
+            panel.postToPanel({ command: 'insertState', isRunning: true, treeKey: LEAD_TREE_KEY });
+
+            panel.findAll(panel.cockpitBodyElement, 'dataOrgNewScratch').forEach((newScratchElement: any) => expect(newScratchElement.disabled).toBe(true));
+
+            panel.postToPanel({ command: 'insertState', isRunning: false, treeKey: LEAD_TREE_KEY });
+            panel.findAll(panel.cockpitBodyElement, 'dataOrgNewScratch').forEach((newScratchElement: any) => expect(newScratchElement.disabled).toBe(false));
 
         });
 
@@ -1078,6 +1085,7 @@ describe('RecipeCockpitService, "+ New scratch org" in Data-by-Org (#200)', () =
             const panel = runPanelScript();
             panel.postToPanel({ command: 'scratchOrgState', isRunning: true, statusText: 'Creating scratch org…', isFailure: false, hasOutput: false });
             panel.postToPanel({ command: 'recipeData', recipe: loadTreeRecipe(), renderSequence: 1 });
+            panel.expandAllTrees();
 
             expect(firstOf(panel, 'dataOrgNewScratch').disabled).toBe(true);
             expect(firstOf(panel, 'scratchOrgStatusText').textContent).toBe('Creating scratch org…');
