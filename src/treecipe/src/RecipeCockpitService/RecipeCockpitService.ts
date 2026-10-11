@@ -7125,7 +7125,7 @@ ${this.buildPaletteCustomProperties()}
     .treeObjectIncludeSpacer { display: inline-block; }
     .treeObjectInclude:hover:not(:disabled) { background-color: var(--sdt-row-hover); border-color: var(--sdt-border); }
     .treeObjectInclude:disabled { cursor: not-allowed; }
-    .treeGlyph { display: block; width: 2.2rem; height: 2.2rem; }
+    .treeGlyph { display: block; width: 2.1rem; height: 2.1rem; }
     .treeGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .treeGlyph.excluded path, .treeGlyph.autoExcluded path { stroke: var(--sdt-muted); }
     .treeGlyph.autoExcluded path { stroke-dasharray: 2 2.5; }
