@@ -43,8 +43,8 @@ export type MetadataDeploySkipReason = 'notAnApiName' | 'standardObject' | 'stan
 
 export const METADATA_DEPLOY_SKIP_REASON_TEXT: Readonly<Record<MetadataDeploySkipReason, string>> = {
     notAnApiName: 'not a Salesforce api name',
-    standardObject: 'a standard object, which cannot be deployed',
-    standardField: 'a standard field, which cannot be deployed',
+    standardObject: 'not a custom object (__c), which this does not deploy',
+    standardField: 'not a custom field (__c), which this does not deploy',
     objectNotDeployable: 'its object cannot be deployed',
     notInLocalSource: 'not in local source',
     outsideWorkspace: 'its source file resolves outside this workspace'
@@ -55,10 +55,30 @@ export interface IMetadataDeploySkippedItem {
     reason: MetadataDeploySkipReason;
 }
 
+/*
+    objectFolderContents is set only for a missing object: in source format a CustomObject member
+    deploys EVERYTHING under the object's folder -- fields the recipe never names, validation rules,
+    record types, list views -- so the confirmation lists those files rather than only the members.
+*/
 export interface IMetadataDeployPlan {
     objectApiName: string;
     members: string[];
     skippedItems: IMetadataDeploySkippedItem[];
+    objectFolderContents?: string[];
+}
+
+// HOW MANY OF A MISSING OBJECT'S SOURCE FILES THE CONFIRMATION SPELLS OUT; THE REST ARE COUNTED
+export const METADATA_DEPLOY_OBJECT_FOLDER_CONTENTS_SHOWN = 40;
+
+/*
+    One plan's reads, made once: a folder's entries, and the workspace root's real path. A plan
+    looks the same folders up once per field, so without this a 500-field object re-read its
+    objects folder 500 times.
+*/
+interface IPlanReadCache {
+    entryNamesByFolderPath: Map<string, string[] | undefined>;
+    resolvedWorkspaceRoot: string;
+    realWorkspaceRoot: string;
 }
 
 export type MetadataDeployOutcome =
@@ -130,14 +150,53 @@ export class RecipeCockpitMetadataDeploy {
     }
 
     // THE ENTRY OF A FOLDER NAMED LIKE apiName, MATCHED CASE-INSENSITIVELY AS SALESFORCE READS NAMES, SPELT AS IT IS ON DISK
-    static findEntryName(folderPath: string, entryName: string): string | undefined {
+    static findEntryName(folderPath: string, entryName: string, readCache?: IPlanReadCache): string | undefined {
 
-        try {
-            const lowerEntryName = entryName.toLowerCase();
-            return fs.readdirSync(folderPath).find(candidateName => candidateName.toLowerCase() === lowerEntryName);
-        } catch {
-            return undefined;
+        const lowerEntryName = entryName.toLowerCase();
+
+        return this.readEntryNames(folderPath, readCache)?.find(candidateName => candidateName.toLowerCase() === lowerEntryName);
+
+    }
+
+    private static readEntryNames(folderPath: string, readCache?: IPlanReadCache): string[] | undefined {
+
+        if ( readCache?.entryNamesByFolderPath.has(folderPath) ) {
+            return readCache.entryNamesByFolderPath.get(folderPath);
         }
+
+        let entryNames: string[] | undefined;
+        try {
+            entryNames = fs.readdirSync(folderPath);
+        } catch {
+            entryNames = undefined;
+        }
+
+        readCache?.entryNamesByFolderPath.set(folderPath, entryNames);
+
+        return entryNames;
+
+    }
+
+    private static buildPlanReadCache(workspaceRoot: string): IPlanReadCache {
+
+        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+
+        return {
+            entryNamesByFolderPath: new Map(),
+            resolvedWorkspaceRoot: resolvedWorkspaceRoot,
+            realWorkspaceRoot: SfdxProjectService.getRealDirectoryPath(resolvedWorkspaceRoot)
+        };
+
+    }
+
+    // STILL A REAL RESOLVER FOR EVERY PATH BUT THE ROOT, WHOSE REAL PATH THE PLAN RESOLVED ONCE
+    private static isContainedInWorkspace(filePath: string, readCache: IPlanReadCache): boolean {
+
+        return SfdxProjectService.isPathContainedInWorkspace(
+            filePath,
+            readCache.resolvedWorkspaceRoot,
+            candidatePath => candidatePath === readCache.resolvedWorkspaceRoot ? readCache.realWorkspaceRoot : SfdxProjectService.getRealDirectoryPath(candidatePath)
+        );
 
     }
 
@@ -146,7 +205,7 @@ export class RecipeCockpitMetadataDeploy {
         through a path that resolves outside the workspace (a symlink), which never reaches the CLI.
     */
     private static findSourceFile(objectsFolderPaths: string[],
-                                    workspaceRoot: string,
+                                    readCache: IPlanReadCache,
                                     objectApiName: string,
                                     subFolderName: string | undefined,
                                     fileSuffix: string,
@@ -156,7 +215,7 @@ export class RecipeCockpitMetadataDeploy {
 
         for ( const objectsFolderPath of objectsFolderPaths ) {
 
-            const objectFolderName = this.findEntryName(objectsFolderPath, objectApiName);
+            const objectFolderName = this.findEntryName(objectsFolderPath, objectApiName, readCache);
             if ( !objectFolderName ) {
                 continue;
             }
@@ -164,13 +223,13 @@ export class RecipeCockpitMetadataDeploy {
             const containingFolderPath = subFolderName
                 ? path.join(objectsFolderPath, objectFolderName, subFolderName)
                 : path.join(objectsFolderPath, objectFolderName);
-            const fileName = this.findEntryName(containingFolderPath, `${apiName}${fileSuffix}`);
+            const fileName = this.findEntryName(containingFolderPath, `${apiName}${fileSuffix}`, readCache);
             if ( !fileName ) {
                 continue;
             }
 
             const filePath = path.join(containingFolderPath, fileName);
-            if ( !SfdxProjectService.isPathContainedInWorkspace(filePath, path.resolve(workspaceRoot)) ) {
+            if ( !this.isContainedInWorkspace(filePath, readCache) ) {
                 isOutsideWorkspace = true;
                 continue;
             }
@@ -205,6 +264,7 @@ export class RecipeCockpitMetadataDeploy {
         }
 
         const objectsFolderPaths = this.findObjectsFolderPaths(workspaceRoot, packageDirectoryPaths);
+        const readCache = this.buildPlanReadCache(workspaceRoot);
         let deployedObjectName = objectApiName;
 
         if ( isObjectMissing ) {
@@ -215,7 +275,7 @@ export class RecipeCockpitMetadataDeploy {
                 return plan;
             }
 
-            const objectSource = this.findSourceFile(objectsFolderPaths, workspaceRoot, objectApiName, undefined, '.object-meta.xml', objectApiName);
+            const objectSource = this.findSourceFile(objectsFolderPaths, readCache, objectApiName, undefined, '.object-meta.xml', objectApiName);
             const objectSourceName = 'fileName' in objectSource ? objectSource.fileName.slice(0, -'.object-meta.xml'.length) : undefined;
 
             if ( !objectSourceName || !SalesforceApiName.isApiName(objectSourceName) ) {
@@ -226,6 +286,7 @@ export class RecipeCockpitMetadataDeploy {
 
             deployedObjectName = objectSourceName;
             plan.members.push(`CustomObject:${deployedObjectName}`);
+            plan.objectFolderContents = this.listObjectFolderContents(objectsFolderPaths, readCache, objectApiName);
 
         }
 
@@ -243,7 +304,7 @@ export class RecipeCockpitMetadataDeploy {
                 return;
             }
 
-            const fieldSource = this.findSourceFile(objectsFolderPaths, workspaceRoot, objectApiName, 'fields', '.field-meta.xml', fieldApiName);
+            const fieldSource = this.findSourceFile(objectsFolderPaths, readCache, objectApiName, 'fields', '.field-meta.xml', fieldApiName);
 
             if ( 'reason' in fieldSource ) {
                 skip(fieldLabel, fieldSource.reason);
@@ -262,6 +323,41 @@ export class RecipeCockpitMetadataDeploy {
         });
 
         return plan;
+
+    }
+
+    /*
+        Every source file under the object's folder in every objects folder, as "<folder>/<file>" --
+        what a CustomObject member sends along with the object. Names come from the repository, so
+        the confirmation writes each on one line.
+    */
+    static listObjectFolderContents(objectsFolderPaths: string[], readCache: IPlanReadCache, objectApiName: string): string[] {
+
+        const contents: string[] = [];
+
+        objectsFolderPaths.forEach(objectsFolderPath => {
+
+            const objectFolderName = this.findEntryName(objectsFolderPath, objectApiName, readCache);
+            if ( !objectFolderName ) {
+                return;
+            }
+
+            const objectFolderPath = path.join(objectsFolderPath, objectFolderName);
+
+            ( this.readEntryNames(objectFolderPath, readCache) ?? [] ).forEach(entryName => {
+
+                const childNames = this.readEntryNames(path.join(objectFolderPath, entryName), readCache);
+                if ( childNames ) {
+                    childNames.forEach(childName => contents.push(`${entryName}/${childName}`));
+                } else if ( !entryName.endsWith('.object-meta.xml') ) {
+                    contents.push(entryName);
+                }
+
+            });
+
+        });
+
+        return [...new Set(contents)].sort();
 
     }
 
@@ -365,16 +461,27 @@ export class RecipeCockpitMetadataDeploy {
 
         const toSingleLine = (text: string) => String(text ?? '').replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');
 
+        const objectFolderContents = plan.objectFolderContents ?? [];
+        const hiddenContentCount = objectFolderContents.length - METADATA_DEPLOY_OBJECT_FOLDER_CONTENTS_SHOWN;
+
         return [
             `Org: ${toSingleLine(orgLabel)}`,
             '',
             `To deploy (${plan.members.length}):`,
             ...plan.members.map(member => `  ${toSingleLine(member)}`),
+            ...( plan.objectFolderContents
+                ? [
+                    '',
+                    `${plan.members[0]} deploys the object with everything in its source folder (${objectFolderContents.length} ${objectFolderContents.length === 1 ? 'file' : 'files'}), not only the fields above:`,
+                    ...objectFolderContents.slice(0, METADATA_DEPLOY_OBJECT_FOLDER_CONTENTS_SHOWN).map(content => `  ${toSingleLine(content)}`),
+                    ...( hiddenContentCount > 0 ? [`  and ${hiddenContentCount} more`] : [] )
+                ]
+                : [] ),
             ...( plan.skippedItems.length > 0
                 ? ['', `Skipped (${plan.skippedItems.length}):`, ...plan.skippedItems.map(skippedItem => `  ${toSingleLine(skippedItem.name)} — ${METADATA_DEPLOY_SKIP_REASON_TEXT[skippedItem.reason]}`)]
                 : [] ),
             '',
-            'Only these members are deployed, from this workspace\'s source. Anything they depend on (a global value set, a record type, a permission) is not deployed with them, and field-level security is not granted.'
+            `${plan.objectFolderContents ? 'Only these members, and the object\'s folder,' : 'Only these members'} are deployed, from this workspace\'s source. The deploy is all or nothing: if any component fails, none is applied. Anything they depend on (a global value set, a permission) is not deployed with them, and field-level security is not granted.`
         ].join('\n');
 
     }

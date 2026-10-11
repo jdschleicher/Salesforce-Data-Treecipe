@@ -642,6 +642,7 @@ export interface IRecipeCockpitPanelMessage {
     included?: unknown;
     updateSequence?: unknown;
     requestSequence?: unknown;
+    readinessSequence?: unknown;
 }
 
 export interface IRecipeCockpitLoadPhaseMessage {
@@ -909,6 +910,8 @@ export interface IRecipeCockpitDataOrgReadinessMessage {
     insertResults: IRecipeCockpitInsertResultViewModel[];
     requestSequence: number;
     renderSequence: number;
+    // SET BY THE HOST AS IT POSTS (#211), AND ECHOED IN "readinessRendered": ONLY THE READINESS DRAWN ACTIVATES ITS DEPLOY TARGETS
+    readinessSequence?: number;
 }
 
 // AN INSERT IN FLIGHT DISABLES EVERY TREE'S INSERT; REPLAYED ON A RELOAD SO A RELOADED DOCUMENT DOES NOT OFFER A SECOND
@@ -1116,7 +1119,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'createScratchOrg' }
     | { kind: 'postScratchOrgState'; hostMessage: IRecipeCockpitScratchOrgStateMessage }
     | { kind: 'viewScratchOrgOutput'; outputFilePath: string }
-    | { kind: 'activateDeployActions' }
+    | { kind: 'activateDeployActions'; readinessSequence: number }
     | { kind: 'deployMissingMetadata'; deployTarget: IMetadataDeployTarget }
     | { kind: 'postMetadataDeployState'; hostMessage: IRecipeCockpitMetadataDeployStateMessage }
     | { kind: 'viewMetadataDeployOutput'; outputFilePath: string };
@@ -1203,6 +1206,9 @@ export interface IRecipeCockpitPanelState {
     */
     pendingDeployTargets: Map<string, IMetadataDeployTarget>;
     pendingDeployTargetsRequestSequence: number | null;
+    // THE PENDING TARGETS AS EACH dataOrgReadiness LEFT THEM, BY ITS readinessSequence: AN ACKNOWLEDGEMENT ACTIVATES ITS OWN, NOT A LATER ONE'S
+    pendingDeployTargetSnapshots: Map<number, Map<string, IMetadataDeployTarget>>;
+    readinessPostSequence: number;
     deployTargets: Map<string, IMetadataDeployTarget>;
     deployTargetsRequestSequence: number | null;
     metadataDeployStateMessage?: IRecipeCockpitMetadataDeployStateMessage;
@@ -2456,6 +2462,8 @@ export class RecipeCockpitService {
             acknowledgedRenderSequence: null,
             pendingDeployTargets: new Map(),
             pendingDeployTargetsRequestSequence: null,
+            pendingDeployTargetSnapshots: new Map(),
+            readinessPostSequence: 0,
             deployTargets: new Map(),
             deployTargetsRequestSequence: null
         };
@@ -2919,7 +2927,7 @@ export class RecipeCockpitService {
             // A COPY: LATER READINESS FOR THE SAME SELECTION KEEPS FILLING PENDING, AND IS NOT ON SCREEN UNTIL ITS OWN ACKNOWLEDGEMENT
             case 'activateDeployActions':
 
-                panelState.deployTargets = new Map(panelState.pendingDeployTargets);
+                panelState.deployTargets = new Map(panelState.pendingDeployTargetSnapshots.get(panelAction.readinessSequence));
                 panelState.deployTargetsRequestSequence = panelState.pendingDeployTargetsRequestSequence;
                 return;
 
@@ -4433,34 +4441,50 @@ export class RecipeCockpitService {
             command: 'metadataDeployState', isRunning, treeKey, objectApiName, statusText, isFailure, hasOutput
         });
         let closingState: IRecipeCockpitMetadataDeployClosingState = { statusText: '', isFailure: false, isDeployRun: false };
+        // SET THE MOMENT THE CLI IS STARTED, SO A THROW AFTER IT STILL DESCRIBES THE OBJECT AFRESH
+        let isCliStarted = false;
 
         this.setMetadataDeployState(buildState(true, `Preparing the deploy of ${objectApiName}…`));
 
         try {
 
-            closingState = await this.performMetadataDeploy(panelState.workspaceRoot, orgDetail, deployTarget, statusText => this.setMetadataDeployState(buildState(true, statusText)));
+            closingState = await this.performMetadataDeploy(panelState.workspaceRoot, orgDetail, deployTarget, statusText => this.setMetadataDeployState(buildState(true, statusText)), () => { isCliStarted = true; });
 
         } catch (deployError) {
 
-            closingState = { statusText: `The deploy of ${objectApiName} stopped: ${this.describeThrown(deployError)}`, isFailure: true, isDeployRun: closingState.isDeployRun };
+            closingState = { statusText: `The deploy of ${objectApiName} stopped: ${this.describeThrown(deployError)}`, isFailure: true, isDeployRun: isCliStarted };
             throw deployError;
 
         } finally {
 
-            this.isMetadataDeployInFlight = false;
+            /*
+                The deploy stays IN FLIGHT -- its button, every insert and the picker held -- until
+                the readiness it changed has been checked again: given back first, the old
+                readiness's button would offer the same deploy a second time meanwhile.
+            */
+            try {
 
-            if ( closingState.isDeployRun ) {
-                SalesforceOrgService.clearDescribeCache(orgDetail.username, objectApiName);
-            }
+                if ( closingState.isDeployRun || isCliStarted ) {
 
-            this.recipeCockpitPanelState.metadataDeployOutputFilePath = closingState.outputFilePath;
-            this.setMetadataDeployState(buildState(false, closingState.statusText, closingState.isFailure, !!closingState.outputFilePath));
+                    SalesforceOrgService.clearDescribeCache(orgDetail.username, objectApiName);
+                    this.forgetDeployTarget(this.recipeCockpitPanelState, deployTarget);
+                    this.setMetadataDeployState(buildState(true, `${closingState.statusText} Checking the tree again…`.trim(), closingState.isFailure));
 
-            const currentPanel = this.recipeCockpitPanel;
-            const currentPanelState = this.recipeCockpitPanelState;
+                    const currentPanel = this.recipeCockpitPanel;
+                    const currentPanelState = this.recipeCockpitPanelState;
 
-            if ( closingState.isDeployRun && currentPanel && currentPanelState.dataOrgSelection?.orgDetail.username === orgDetail.username ) {
-                await this.refreshDataOrgReadinessForTrees(currentPanel, currentPanelState, tree => tree.objects.some(treeObject => treeObject.objectApiName === objectApiName));
+                    if ( currentPanel && currentPanelState.dataOrgSelection?.orgDetail.username === orgDetail.username ) {
+                        await this.refreshDataOrgReadinessForTrees(currentPanel, currentPanelState, tree => tree.objects.some(treeObject => treeObject.objectApiName === objectApiName));
+                    }
+
+                }
+
+            } finally {
+
+                this.isMetadataDeployInFlight = false;
+                this.recipeCockpitPanelState.metadataDeployOutputFilePath = closingState.outputFilePath;
+                this.setMetadataDeployState(buildState(false, closingState.statusText, closingState.isFailure, !!closingState.outputFilePath));
+
             }
 
         }
@@ -4470,7 +4494,8 @@ export class RecipeCockpitService {
     private static async performMetadataDeploy(workspaceRoot: string,
                                                 orgDetail: IAuthenticatedOrgDetail,
                                                 deployTarget: IMetadataDeployTarget,
-                                                reportStatus: (statusText: string) => void): Promise<IRecipeCockpitMetadataDeployClosingState> {
+                                                reportStatus: (statusText: string) => void,
+                                                onCliStarted: () => void): Promise<IRecipeCockpitMetadataDeployClosingState> {
 
         const objectApiName = deployTarget.objectApiName;
         // NO PARENTHESES: A NOTIFICATION ESCAPES THEM, AND THIS LABEL IS IN EVERY ONE THE DEPLOY SHOWS
@@ -4526,6 +4551,7 @@ export class RecipeCockpitService {
         const deployArguments = RecipeCockpitMetadataDeploy.buildMetadataDeployArguments(deployPlan.members, orgDetail.username);
 
         reportStatus(`Deploying ${componentText} of ${objectApiName}…`);
+        onCliStarted();
 
         let isCancelled = false;
 
@@ -4577,7 +4603,8 @@ export class RecipeCockpitService {
             }
 
             case 'partiallyFailed': {
-                const partialText = `${deployOutcome.failedComponentCount} of ${deployOutcome.componentCount} components failed to deploy to ${orgLabel}: ${deployOutcome.failureDetail}`;
+                // NO --ignore-errors: THE DEPLOY ROLLS BACK ON ANY FAILURE, SO THE COMPONENTS THAT DID NOT FAIL WERE NOT APPLIED EITHER
+                const partialText = `${deployOutcome.failedComponentCount} of ${deployOutcome.componentCount} components failed to deploy to ${orgLabel}, so none was applied: ${deployOutcome.failureDetail}`;
                 this.showMetadataDeployNotification('warning', partialText, outputFilePath, workspaceRoot);
                 return { statusText: partialText, isFailure: true, isDeployRun: true, outputFilePath: outputFilePath };
             }
@@ -4924,8 +4951,20 @@ export class RecipeCockpitService {
 
         panelState.pendingDeployTargets = new Map();
         panelState.pendingDeployTargetsRequestSequence = null;
+        panelState.pendingDeployTargetSnapshots = new Map();
         panelState.deployTargets = new Map();
         panelState.deployTargetsRequestSequence = null;
+
+    }
+
+    // A TARGET JUST DEPLOYED IS NOT OFFERED AGAIN UNTIL A FRESH READINESS SAYS IT STILL IS ONE
+    private static forgetDeployTarget(panelState: IRecipeCockpitPanelState, deployTarget: IMetadataDeployTarget) {
+
+        const createKey = this.buildTreeObjectKey(deployTarget.treeKey, deployTarget.objectApiName);
+
+        panelState.pendingDeployTargets.delete(createKey);
+        panelState.deployTargets.delete(createKey);
+        panelState.pendingDeployTargetSnapshots.forEach(snapshot => snapshot.delete(createKey));
 
     }
 
@@ -4941,6 +4980,7 @@ export class RecipeCockpitService {
 
         if ( panelState.pendingDeployTargetsRequestSequence !== readinessMessage.requestSequence ) {
             panelState.pendingDeployTargets = new Map();
+            panelState.pendingDeployTargetSnapshots = new Map();
             panelState.pendingDeployTargetsRequestSequence = readinessMessage.requestSequence;
         }
 
@@ -4955,7 +4995,10 @@ export class RecipeCockpitService {
             }
         });
 
-        this.postToPanel(cockpitPanel, readinessMessage);
+        const readinessSequence = ++panelState.readinessPostSequence;
+        panelState.pendingDeployTargetSnapshots.set(readinessSequence, new Map(panelState.pendingDeployTargets));
+
+        this.postToPanel(cockpitPanel, { ...readinessMessage, readinessSequence: readinessSequence });
 
     }
 
@@ -6365,9 +6408,11 @@ export class RecipeCockpitService {
             */
             case 'readinessRendered': {
 
-                const { renderSequence, requestSequence } = panelMessage;
+                const { renderSequence, requestSequence, readinessSequence } = panelMessage;
 
                 if ( !panelState.recipeDataMessage
+                        || typeof readinessSequence !== 'number'
+                        || !panelState.pendingDeployTargetSnapshots.has(readinessSequence)
                         || renderSequence !== panelState.recipeDataMessage.renderSequence
                         || panelState.acknowledgedRenderSequence !== panelState.recipeDataMessage.renderSequence
                         || !panelState.dataOrgSelection
@@ -6376,7 +6421,7 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                return { kind: 'activateDeployActions' };
+                return { kind: 'activateDeployActions', readinessSequence: readinessSequence };
 
             }
 
@@ -10606,7 +10651,7 @@ ${this.buildPaletteCustomProperties()}
         drawTreeInserts();
 
         // DRAWN: ONLY NOW MAY A "Deploy missing metadata…" OF THIS SELECTION BE HONOURED (#211)
-        vscodeApi.postMessage({ command: 'readinessRendered', renderSequence: dataOrgReadiness.renderSequence, requestSequence: dataOrgReadiness.requestSequence });
+        vscodeApi.postMessage({ command: 'readinessRendered', renderSequence: dataOrgReadiness.renderSequence, requestSequence: dataOrgReadiness.requestSequence, readinessSequence: dataOrgReadiness.readinessSequence });
 
     }
 

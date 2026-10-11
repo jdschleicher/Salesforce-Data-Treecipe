@@ -199,7 +199,8 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
                 skippedItems: [
                     { name: 'OtherChildObject__c.Ratio__c', reason: 'notInLocalSource' },
                     { name: 'OtherChildObject__c.Name', reason: 'standardField' }
-                ]
+                ],
+                objectFolderContents: ['fields/Contact__c.field-meta.xml', 'fields/Score__c.field-meta.xml']
             });
 
         });
@@ -269,6 +270,27 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
             fs.writeFileSync(path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'Account', 'fields', 'Ran\u212Aing__c.field-meta.xml'), '<CustomField/>');
 
             expect(plan({ fieldApiNames: ['Ranking__c'] })).toEqual({ objectApiName: 'Account', members: [], skippedItems: [{ name: 'Account.Ranking__c', reason: 'notAnApiName' }] });
+
+        });
+
+        // A SOURCE-FORMAT CustomObject DEPLOYS ITS WHOLE FOLDER, SO THE CONFIRMATION SAYS SO AND LISTS IT
+        it('lists everything in a missing object\'s source folder in the confirmation, not only the fields it names', () => {
+
+            const objectFolderPath = path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'OtherChildObject__c');
+            fs.mkdirSync(path.join(objectFolderPath, 'validationRules'));
+            fs.writeFileSync(path.join(objectFolderPath, 'validationRules', 'Score_Positive.validationRule-meta.xml'), '<ValidationRule/>');
+
+            const objectPlan = plan({ objectApiName: 'OtherChildObject__c', isObjectMissing: true, fieldApiNames: ['Score__c'] });
+            const detail = RecipeCockpitMetadataDeploy.buildConfirmationDetail(objectPlan, 'qa · qa@example.com.qa');
+
+            expect(objectPlan.objectFolderContents).toEqual(['fields/Contact__c.field-meta.xml', 'fields/Score__c.field-meta.xml', 'validationRules/Score_Positive.validationRule-meta.xml']);
+            expect(detail).toContain('CustomObject:OtherChildObject__c deploys the object with everything in its source folder (3 files), not only the fields above:\n  fields/Contact__c.field-meta.xml\n  fields/Score__c.field-meta.xml\n  validationRules/Score_Positive.validationRule-meta.xml');
+            expect(detail).toContain('Only these members, and the object\'s folder, are deployed');
+            expect(detail).toContain('The deploy is all or nothing');
+            expect(RecipeCockpitMetadataDeploy.buildConfirmationDetail(plan({ fieldApiNames: ['Rating__c'] }), 'qa')).not.toContain('source folder');
+
+            const manyContents = Array.from({ length: 45 }, (unused, contentIndex) => `fields/F${contentIndex}__c.field-meta.xml`);
+            expect(RecipeCockpitMetadataDeploy.buildConfirmationDetail({ ...objectPlan, objectFolderContents: manyContents }, 'qa')).toContain('  and 5 more');
 
         });
 
@@ -363,6 +385,7 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
             panelState.dataOrgDetails = [{ targetOrgIdentifier: 'qa', username: QA_USERNAME, alias: 'qa' }];
             panelState.dataOrgSelection = { orgIndex: 0, orgDetail: panelState.dataOrgDetails[0], requestSequence: 7, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' } };
             panelState.pendingDeployTargets = new Map([[RecipeCockpitService.buildTreeObjectKey(ACCOUNT_TREE_KEY, 'Account'), deployTarget]]);
+            panelState.pendingDeployTargetSnapshots = new Map([[1, new Map(panelState.pendingDeployTargets)]]);
             panelState.pendingDeployTargetsRequestSequence = 7;
             return panelState;
         };
@@ -378,12 +401,14 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
 
             const panelState = buildDeployablePanelState();
 
-            expect(RecipeCockpitService.routePanelMessage({ command: 'readinessRendered', renderSequence: 3, requestSequence: 7 }, panelState)).toEqual({ kind: 'activateDeployActions' });
-            expect(RecipeCockpitService.routePanelMessage({ command: 'readinessRendered', renderSequence: 3, requestSequence: 6 }, panelState)).toBeUndefined();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'readinessRendered', renderSequence: 2, requestSequence: 7 }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'readinessRendered', renderSequence: 3, requestSequence: 7, readinessSequence: 1 }, panelState)).toEqual({ kind: 'activateDeployActions', readinessSequence: 1 });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'readinessRendered', renderSequence: 3, requestSequence: 6, readinessSequence: 1 }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'readinessRendered', renderSequence: 2, requestSequence: 7, readinessSequence: 1 }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'readinessRendered', renderSequence: 3, requestSequence: 7, readinessSequence: 2 }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'readinessRendered', renderSequence: 3, requestSequence: 7 }, panelState)).toBeUndefined();
 
             panelState.acknowledgedRenderSequence = null;
-            expect(RecipeCockpitService.routePanelMessage({ command: 'readinessRendered', renderSequence: 3, requestSequence: 7 }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'readinessRendered', renderSequence: 3, requestSequence: 7, readinessSequence: 1 }, panelState)).toBeUndefined();
 
         });
 
@@ -525,7 +550,7 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
 
         const acknowledgeReadiness = async () => {
             const readinessMessage = postedNamed('dataOrgReadiness').at(-1);
-            await receivedMessageHandler({ command: 'readinessRendered', renderSequence: readinessMessage.renderSequence, requestSequence: readinessMessage.requestSequence });
+            await receivedMessageHandler({ command: 'readinessRendered', renderSequence: readinessMessage.renderSequence, requestSequence: readinessMessage.requestSequence, readinessSequence: readinessMessage.readinessSequence });
         };
 
         const openCockpitWithQaSelected = async () => {
@@ -694,7 +719,8 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
             expect(describeCalls.filter(objectApiName => objectApiName === 'Account')).toHaveLength(2);
             expect(describeCalls.filter(objectApiName => objectApiName === 'Contact')).toHaveLength(1);
             expect(treeReadiness(ACCOUNT_TREE_KEY, 'Account')).toMatchObject({ disabledReason: '' });
-            expect(postedPanelMessages.indexOf(postedNamed('dataOrgReadiness').at(-1))).toBeGreaterThan(postedPanelMessages.indexOf(lastDeployState()));
+            // THE BUTTONS COME BACK ONLY AFTER THE READINESS THE DEPLOY CHANGED HAS BEEN POSTED
+            expect(postedPanelMessages.indexOf(lastDeployState())).toBeGreaterThan(postedPanelMessages.indexOf(postedNamed('dataOrgReadiness').at(-1)));
 
             // THE OBJECT ITSELF IS MISSING NEXT: CustomObject PLUS ITS RECIPE'S CUSTOM FIELDS, Ratio__c SKIPPED FOR HAVING NO SOURCE
             await acknowledgeReadiness();
@@ -703,6 +729,7 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
             const objectModalDetail = (vscode.window.showWarningMessage as jest.Mock).mock.calls[1][1].detail;
             expect(objectModalDetail).toContain('To deploy (3):\n  CustomObject:OtherChildObject__c\n  CustomField:OtherChildObject__c.Score__c\n  CustomField:OtherChildObject__c.Contact__c');
             expect(objectModalDetail).toContain('Skipped (1):\n  OtherChildObject__c.Ratio__c — not in local source');
+            expect(objectModalDetail).toContain('CustomObject:OtherChildObject__c deploys the object with everything in its source folder (2 files)');
             expect(deployCalls()[1]).toEqual([
                 'project', 'deploy', 'start',
                 '--metadata', 'CustomObject:OtherChildObject__c',
@@ -737,6 +764,66 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
             expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0]).toBe(`Deploy 1 component of Account to qa · ${QA_USERNAME}?`);
             expect(postedNamed('metadataDeployState').map(deployState => deployState.statusText)).toContain('Deploying 1 component of Account…');
             expect(notificationInformationSpy).toHaveBeenCalledWith(expect.stringContaining('Deployed 1 component of Account'));
+
+        });
+
+        it('holds the deploy in flight until the readiness it changed is checked again, and never offers the deployed target in between', async () => {
+
+            await openCockpitWithQaSelected();
+            let releaseRefresh: () => void = () => undefined;
+            const refreshHeld = new Promise<void>(resolve => { releaseRefresh = resolve; });
+            const refreshSpy = jest.spyOn(RecipeCockpitService as any, 'refreshDataOrgReadinessForTrees').mockImplementationOnce(async () => { await refreshHeld; });
+
+            const deployInFlight = deploy(ACCOUNT_TREE_KEY, 'Account');
+            for ( let turn = 0; turn < 6; turn++ ) {
+                await flushAsyncWork();
+            }
+
+            expect(refreshSpy).toHaveBeenCalledTimes(1);
+            expect(lastDeployState()).toMatchObject({ isRunning: true });
+            expect(lastDeployState().statusText).toContain('Checking the tree again…');
+            expect(panelState().deployTargets.has(RecipeCockpitService.buildTreeObjectKey(ACCOUNT_TREE_KEY, 'Account'))).toBe(false);
+            expect(RecipeCockpitService.routePanelMessage({ command: 'deployMissingMetadata', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account' }, panelState())).toBeUndefined();
+
+            releaseRefresh();
+            await deployInFlight;
+
+            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: false });
+            // THE TARGET IS GONE UNTIL A READINESS POSTED AFTER THE DEPLOY OFFERS IT AGAIN
+            expect(RecipeCockpitService.routePanelMessage({ command: 'deployMissingMetadata', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account' }, panelState())?.kind).toBe('postMetadataDeployState');
+            expect(deployCalls()).toHaveLength(1);
+
+        });
+
+        it('activates only the targets of the readiness the panel drew, never a later one\'s it has not drawn yet', async () => {
+
+            orgDescribes.Lead.fields = [{ name: 'Company', type: 'string', nillable: false, createable: true }];
+            await openCockpitWithQaSelected();
+            const firstReadiness = postedNamed('dataOrgReadiness').at(-1);
+            const leadKey = RecipeCockpitService.buildTreeObjectKey(LEAD_TREE_KEY, 'Lead');
+
+            // A SECOND READINESS FOR THE SAME SELECTION, POSTED BUT NOT YET DRAWN, ADDS NOTHING TO WHAT IS ACTIVE
+            const state = panelState();
+            state.pendingDeployTargets.set('Extra\nGone__c', { treeKey: 'Extra', objectApiName: 'Gone__c', isObjectMissing: true, fieldApiNames: [] });
+            (RecipeCockpitService as any).postDataOrgReadiness((RecipeCockpitService as any).recipeCockpitPanel, state, { ...firstReadiness, createTargets: [], readinessSequence: undefined });
+            await receivedMessageHandler({ command: 'readinessRendered', renderSequence: firstReadiness.renderSequence, requestSequence: firstReadiness.requestSequence, readinessSequence: firstReadiness.readinessSequence });
+
+            expect(state.deployTargets.has(leadKey)).toBe(true);
+            expect(state.deployTargets.has('Extra\nGone__c')).toBe(false);
+
+        });
+
+        it('still describes the object afresh when something throws after the CLI started', async () => {
+
+            jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+            jest.spyOn(ScratchOrgService, 'readCliJsonPayload').mockImplementation(() => { throw new Error('parse exploded'); });
+            await openCockpitWithQaSelected();
+
+            await deploy(ACCOUNT_TREE_KEY, 'Account');
+
+            expect(deployCalls()).toHaveLength(1);
+            expect(describeCalls.filter(objectApiName => objectApiName === 'Account')).toHaveLength(2);
+            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true, statusText: 'The deploy of Account stopped: parse exploded' });
 
         });
 
@@ -799,7 +886,7 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
 
             expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
             expect(deployCalls()).toEqual([]);
-            expect(notificationWarningSpy).toHaveBeenCalledWith('Nothing of Lead can be deployed: Lead.Status is a standard field, which cannot be deployed.');
+            expect(notificationWarningSpy).toHaveBeenCalledWith('Nothing of Lead can be deployed: Lead.Status is not a custom field \\u0028__c\\u0029, which this does not deploy.');
 
         });
 
@@ -815,6 +902,7 @@ describe('RecipeCockpitService, "Deploy missing metadata…" in the Treecipe tab
 
             const [warningText, warningAction] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[1];
             expect(warningText).toContain('1 of 2 components failed to deploy to qa');
+            expect(warningText).toContain('so none was applied');
             expect(warningText).toContain('Account.Rating__c: Value set Ratings not found');
             expect(warningAction).toBe(RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL);
             expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
