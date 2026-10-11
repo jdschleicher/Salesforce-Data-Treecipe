@@ -310,7 +310,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, compares its fields with an org you choose, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org. "Deploy missing metadata…", shown under an insert stopped by an object or fields the selected sandbox lacks, deploys only those custom objects and fields from this workspace's source to that org, after a confirmation that lists them, and only once the org answers again that it is a sandbox.
+It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org. "Deploy missing metadata…", shown under an insert stopped by an object the selected sandbox lacks, deploys only that custom object and its recipe's custom fields from this workspace's source to that org, after a confirmation that lists them, and only once the org answers again that it is a sandbox.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -931,7 +931,7 @@ export interface IRecipeCockpitCreateReadinessByTarget {
 export interface IRecipeCockpitDataOrgReadinessMessage {
     command: 'dataOrgReadiness';
     objects: IRecipeCockpitCreateReadinessViewModel[];
-    // ONE PER TREE AND OBJECT, WITH THAT TREE'S BLOCK'S FIELDS CHECKED (#210); A ROW READS ITS OWN BEFORE ITS OBJECT'S
+    // ONE PER TREE AND OBJECT, FOR THAT TREE'S BLOCK (#210); A ROW READS ITS OWN BEFORE ITS OBJECT'S
     createTargets: IRecipeCockpitCreateReadinessViewModel[];
     insertResults: IRecipeCockpitInsertResultViewModel[];
     requestSequence: number;
@@ -5229,10 +5229,11 @@ export class RecipeCockpitService {
     }
 
     /*
-        The same, plus one readiness per tree and object (#210): the object's guards, then the fields
-        of the block that tree's Create would cut, checked against the describe the guards already
-        loaded -- so no target costs a request of its own. A target whose object was not asked about
-        gets no readiness.
+        The same, plus one readiness per tree and object (#210): the object's guards, then whether
+        that tree's block could be cut and whether it leaves out a field the org requires, against
+        the describe the guards already loaded -- so no target costs a request of its own. A block
+        field the org lacks is not a reason (#264). A target whose object was not asked about gets
+        no readiness.
     */
     static async computeCreateReadinessByTarget(orgUsername: string,
                                                 describeSource: IOrgDescribeSource | (() => Promise<IOrgDescribeSource>),
@@ -5255,7 +5256,6 @@ export class RecipeCockpitService {
                     const targetReadiness: IRecipeCockpitCreateReadinessViewModel = {
                         ...RecipeCockpitRecordCreation.buildCreateReadiness({
                             ...readinessInput,
-                            recipeFieldApiNames: createTarget.recipeFieldApiNames,
                             recipeFieldRefusalReason: createTarget.recipeFieldRefusalReason,
                             excludedFieldApiNames: createTarget.excludedFieldApiNames
                         }),
@@ -5291,9 +5291,9 @@ export class RecipeCockpitService {
 
     /*
         What a deploy could add for one tree's object (#211), read from the readiness the host just
-        built and never from the panel: the object when the org answered it has none (with the
-        fields of the tree's block), or the block's fields the describe lacks. Undefined for every
-        other reason, a not-createable field or a production org among them.
+        built and never from the panel: the object when the org answered it has none, with the
+        fields of the tree's block. Undefined for every other reason, a production org among them.
+        A field the org lacks is no longer a reason (#264), so it is never deployed on its own.
     */
     static buildDeployTarget(createTarget: IRecipeCockpitCreateTarget, readiness: IRecipeCockpitCreateReadinessViewModel): IMetadataDeployTarget | undefined {
 
@@ -5301,14 +5301,11 @@ export class RecipeCockpitService {
             return undefined;
         }
 
-        const missingFieldApiNames = readiness.missingFieldApiNames ?? [];
-        const isObjectMissing = readiness.missingFieldApiNames === undefined;
-
         return {
             treeKey: createTarget.treeKey,
             objectApiName: createTarget.objectApiName,
-            isObjectMissing: isObjectMissing,
-            fieldApiNames: isObjectMissing ? [...( createTarget.recipeFieldApiNames ?? [] )] : [...missingFieldApiNames]
+            isObjectMissing: true,
+            fieldApiNames: [...( createTarget.recipeFieldApiNames ?? [] )]
         };
 
     }
@@ -5371,7 +5368,7 @@ export class RecipeCockpitService {
 
     private static buildUnreadableRecipeCreateTarget(treeKey: string, objectApiName: string): IRecipeCockpitCreateTarget {
 
-        return { treeKey: treeKey, objectApiName: objectApiName, recipeFieldRefusalReason: `The recipe file for this tree could not be read, so its ${objectApiName} fields could not be checked.` };
+        return { treeKey: treeKey, objectApiName: objectApiName, recipeFieldRefusalReason: `The recipe file for this tree could not be read, so its ${objectApiName} records could not be prepared.` };
 
     }
 
@@ -8493,7 +8490,7 @@ ${this.buildPaletteCustomProperties()}
     let dataOrgSelectionFailureMessage = '';
     // KEYED BY OBJECT NAMES, AND BY TREE KEY AND OBJECT NAME -- NAMES FROM FILES, SO NO PROTOTYPE
     let dataOrgReadinessByObject = Object.create(null);
-    // AN OBJECT'S READINESS IN ONE TREE, ITS BLOCK'S FIELDS CHECKED (#210); THE OBJECT'S ANSWERS WHEN THERE IS NONE
+    // AN OBJECT'S READINESS IN ONE TREE, FOR ITS BLOCK (#210); THE OBJECT'S ANSWERS WHEN THERE IS NONE
     let dataOrgReadinessByTreeObjectKey = Object.create(null);
     let dataOrgInsertResultsByTreeKey = Object.create(null);
     // THE TREE WHOSE INSERT IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE INSERT ENDED

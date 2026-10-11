@@ -30,7 +30,8 @@ const CUSTOM_COMPONENT_SUFFIX_PATTERN = /__c$/i;
 
 /*
     What the host's readiness said one object of one tree is missing: the object itself (and then
-    the recipe's fields of it), or the recipe fields the describe does not have.
+    the recipe's fields of it), or the recipe fields the describe does not have -- which no
+    readiness produces since #264; #266 removes this path with the rest of the deploy.
 */
 export interface IMetadataDeployTarget {
     treeKey: string;

@@ -170,11 +170,22 @@ interface IFakeConnectionOptions {
     withOutsideParent?: boolean;
     outsideParentIds?: string[];
     rejectRecord?: (objectApiName: string, record: any) => boolean;
+    // FIELDS THE ORG DOES NOT HAVE, BY OBJECT: LEFT OUT OF ITS DESCRIBE
+    missingFieldsByObject?: Record<string, string[]>;
+    // FIELDS THE ORG HAS BUT WILL NOT LET THE USER SET, BY OBJECT
+    notCreateableFieldsByObject?: Record<string, string[]>;
 }
 
 function buildFakeConnection(options: IFakeConnectionOptions = {}) {
 
     const rawDescribes = buildRawDescribes(options.withOutsideParent === true);
+    Object.entries(rawDescribes).forEach(([objectApiName, rawDescribe]: [string, any]) => {
+        const missingFields = options.missingFieldsByObject?.[objectApiName] ?? [];
+        const notCreateableFields = options.notCreateableFieldsByObject?.[objectApiName] ?? [];
+        rawDescribe.fields = rawDescribe.fields
+            .filter((field: any) => !missingFields.includes(field.name))
+            .map((field: any) => notCreateableFields.includes(field.name) ? { ...field, createable: false } : field);
+    });
     const sentQueries: string[] = [];
     const insertCalls: Array<{ objectApiName: string; records: any[]; insertOptions: any }> = [];
     const insertedRecordsById = new Map<string, { objectApiName: string; record: any }>();
@@ -893,6 +904,84 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             expect(connection.insertCalls).toEqual([]);
             expect(datasetFolderNames()).toEqual([]);
             expect(postedPanelMessages.at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+
+        });
+
+        describe('a sandbox that lacks some of the recipe\'s fields, or will not let them be set (#264)', () => {
+
+            // THE ORG HAS NO Score__c AND WILL NOT LET Name BE SET, SO IT REJECTS EVERY RECORD CARRYING EITHER, AS A REAL ORG WOULD
+            const buildLackingConnection = () => buildFakeConnection({
+                missingFieldsByObject: { OtherChildObject__c: ['Score__c'] },
+                notCreateableFieldsByObject: { Account: ['Name'] },
+                rejectRecord: (objectApiName, record) => objectApiName === 'OtherChildObject__c' && 'Score__c' in record
+            });
+
+            it('offers the insert, with no sentence naming a missing or unsettable field anywhere', async () => {
+
+                useConnection(buildLackingConnection());
+                await openSelectedCockpit(FAKER_JS_RUN);
+
+                const readinessMessage = postedNamed('dataOrgReadiness').at(-1);
+                const treeTargets = readinessMessage.createTargets.filter((readiness: any) => readiness.treeKey === ACCOUNT_TREE_KEY);
+                expect(treeTargets.map((readiness: any) => readiness.objectApiName).sort()).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+                treeTargets.forEach((readiness: any) => {
+                    expect(readiness.disabledReason).toBe('');
+                    expect(readiness).not.toHaveProperty('missingFieldApiNames');
+                    expect(readiness).not.toHaveProperty('notCreateableFieldApiNames');
+                    expect(readiness).not.toHaveProperty('isMetadataDeployable');
+                });
+                const postedText = JSON.stringify(postedPanelMessages);
+                expect(postedText).not.toMatch(/missing \d+ recipe fields?/);
+                expect(postedText).not.toContain('will not let you set');
+                expect(RecipeCockpitService.routePanelMessage({ command: 'insertTree', treeKey: ACCOUNT_TREE_KEY }, panelState())?.kind).toBe('insertTree');
+
+            });
+
+            it('inserts, and reports each record the org rejected through the insert result and View errors', async () => {
+
+                const connection = buildLackingConnection();
+                useConnection(connection);
+                await openSelectedCockpit(FAKER_JS_RUN);
+
+                await insertAccountTree();
+
+                expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
+                expect(runFakerCalls()).toHaveLength(1);
+                expect(connection.deleteCalls).toEqual([]);
+                expect(insertedOf(connection, 'Account')).toHaveLength(2);
+                expect(insertedOf(connection, 'Contact').length).toBeGreaterThan(0);
+                expect(insertedOf(connection, 'OtherChildObject__c')).toEqual([]);
+                const rejectedCount = connection.insertCalls.filter(insertCall => insertCall.objectApiName === 'OtherChildObject__c')
+                    .reduce((count, insertCall) => count + insertCall.records.length, 0);
+                expect(rejectedCount).toBeGreaterThan(0);
+                expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`^${connection.insertedRecordsById.size} records were inserted into qa \\(qa@example\\.com\\.qa\\) from Relationship Tree 1 and ${rejectedCount} failed\\.`)));
+
+                const insertResult = postedNamed('datasetAdded').at(-1).insertResult;
+                expect(insertResult).toMatchObject({ treeKey: ACCOUNT_TREE_KEY, outcome: 'completed', isRolledBack: false, failedCount: rejectedCount, savedCount: connection.insertedRecordsById.size });
+
+                const openFileSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+                await receivedMessageHandler({ command: 'viewInsertErrors', treeKey: ACCOUNT_TREE_KEY });
+                const resultsFilePath = path.join(fakeDataSetsFolderPath(), datasetFolderNames()[0], 'InsertAttempts', `insertAttempt-${TIMESTAMP}`, `insertAttemptResults-${TIMESTAMP}.json`);
+                expect(openFileSpy).toHaveBeenCalledWith(resultsFilePath);
+                expect(fs.readFileSync(resultsFilePath, 'utf8')).toContain('FIELD_CUSTOM_VALIDATION_EXCEPTION');
+
+            });
+
+            it('rolls back every record it saved when all-or-none is chosen, leaving nothing behind', async () => {
+
+                allOrNoneSpy.mockResolvedValue(true);
+                const connection = buildLackingConnection();
+                useConnection(connection);
+                await openSelectedCockpit(FAKER_JS_RUN);
+
+                await insertAccountTree();
+
+                const savedRecordIds = [...connection.insertedRecordsById.keys()];
+                expect(savedRecordIds.length).toBeGreaterThan(0);
+                expect(connection.deleteCalls.flat().sort()).toEqual(savedRecordIds.sort());
+                expect(postedNamed('datasetAdded').at(-1).insertResult).toMatchObject({ treeKey: ACCOUNT_TREE_KEY, isRolledBack: true });
+
+            });
 
         });
 
