@@ -56,6 +56,8 @@ export interface IDatasetSource {
     createdRecordIds?: string[];
     // THE OBJECTS THE RECIPE COCKPIT LEFT OUT OF THE RUN (#219); ABSENT WHEN NOTHING WAS
     excludedObjectApiNames?: string[];
+    // THE FIELDS THE RECIPE COCKPIT UNTICKED (#220), BY OBJECT; ABSENT WHEN NOTHING WAS. READ BACK WITH NO PROTOTYPE
+    excludedFieldApiNamesByObject?: Record<string, string[]>;
 }
 
 export interface IRecipeSourceNames {
@@ -165,7 +167,11 @@ export class DatasetSourceService {
                                 fakerService: DatasetSourceFakerService,
                                 generatedAt: string,
                                 recordCountsByObject: Record<string, number>,
-                                excludedObjectApiNames: string[] = []): IDatasetSource {
+                                excludedObjectApiNames: string[] = [],
+                                excludedFieldApiNamesByObject: Record<string, string[]> = {}): IDatasetSource {
+
+        // fromEntries DEFINES EACH KEY, SO AN OBJECT NAMED __proto__ IS RECORDED RATHER THAN SET AS A PROTOTYPE
+        const recordedFieldExclusions = Object.entries(excludedFieldApiNamesByObject).filter(([, fieldApiNames]) => fieldApiNames.length > 0);
 
         return {
             schemaVersion: DATASET_SOURCE_SCHEMA_VERSION,
@@ -176,7 +182,10 @@ export class DatasetSourceService {
             fakerService: fakerService,
             generatedAt: generatedAt,
             recordCountsByObject: recordCountsByObject,
-            ...( excludedObjectApiNames.length > 0 ? { excludedObjectApiNames: [...excludedObjectApiNames] } : {} )
+            ...( excludedObjectApiNames.length > 0 ? { excludedObjectApiNames: [...excludedObjectApiNames] } : {} ),
+            ...( recordedFieldExclusions.length > 0
+                ? { excludedFieldApiNamesByObject: Object.fromEntries(recordedFieldExclusions.map(([objectApiName, fieldApiNames]) => [objectApiName, [...fieldApiNames]])) }
+                : {} )
         };
 
     }
@@ -334,10 +343,22 @@ export class DatasetSourceService {
             && excludedObjectApiNames.every(excludedObjectApiName => typeof excludedObjectApiName === 'string')
         );
 
+        // OPTIONAL TOO (#220); PRESENT, IT MUST MAP EACH NAME TO A LIST OF NAMES
+        const excludedFieldApiNamesByObject = candidate.excludedFieldApiNamesByObject;
+        const isExcludedFieldMapValid = excludedFieldApiNamesByObject === undefined || (
+            typeof excludedFieldApiNamesByObject === 'object'
+            && excludedFieldApiNamesByObject !== null
+            && !Array.isArray(excludedFieldApiNamesByObject)
+            && Object.values(excludedFieldApiNamesByObject).every(fieldApiNames => (
+                Array.isArray(fieldApiNames) && fieldApiNames.every(fieldApiName => typeof fieldApiName === 'string')
+            ))
+        );
+
         const isValid = candidate.schemaVersion === DATASET_SOURCE_SCHEMA_VERSION
                         && (candidate.origin === 'runFaker' || isCreateInOrg)
                         && isCreateInOrgDetailValid
                         && isExcludedObjectListValid
+                        && isExcludedFieldMapValid
                         && isStringOrNull(candidate.recipeRunFolderName)
                         && isStringOrNull(candidate.recipeTreeFolderName)
                         && typeof candidate.recipeFileName === 'string'
@@ -354,6 +375,14 @@ export class DatasetSourceService {
             recordCountsByObject[sobjectApiName] = recordCount;
         });
 
+        let readFieldExclusions: Record<string, string[]> | undefined;
+        if ( excludedFieldApiNamesByObject !== undefined ) {
+            readFieldExclusions = Object.create(null) as Record<string, string[]>;
+            Object.entries(excludedFieldApiNamesByObject as Record<string, string[]>).forEach(([objectApiName, fieldApiNames]) => {
+                ( readFieldExclusions as Record<string, string[]> )[objectApiName] = [...fieldApiNames];
+            });
+        }
+
         return {
             schemaVersion: DATASET_SOURCE_SCHEMA_VERSION,
             origin: isCreateInOrg ? 'createInOrg' : 'runFaker',
@@ -368,7 +397,8 @@ export class DatasetSourceService {
                 createdObjectApiName: candidate.createdObjectApiName as string,
                 createdRecordIds: [...(candidate.createdRecordIds as string[])]
             } : {} ),
-            ...( Array.isArray(excludedObjectApiNames) ? { excludedObjectApiNames: [...(excludedObjectApiNames as string[])] } : {} )
+            ...( Array.isArray(excludedObjectApiNames) ? { excludedObjectApiNames: [...(excludedObjectApiNames as string[])] } : {} ),
+            ...( readFieldExclusions ? { excludedFieldApiNamesByObject: readFieldExclusions } : {} )
         };
 
     }

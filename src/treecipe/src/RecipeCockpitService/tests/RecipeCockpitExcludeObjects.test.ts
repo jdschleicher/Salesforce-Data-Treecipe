@@ -67,10 +67,13 @@ const buildWorkspaceState = (initialValues: Record<string, unknown> = {}) => {
     };
 };
 
-const storedSelections = (excludedObjectApiNamesByFolderName: Record<string, unknown>) => ({
+const storedSelections = (excludedObjectApiNamesByFolderName: Record<string, unknown>, excludedFieldApiNamesByFolderName: Record<string, unknown> = {}) => ({
     version: RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
-    excludedObjectApiNamesByFolderName: excludedObjectApiNamesByFolderName
+    excludedObjectApiNamesByFolderName: excludedObjectApiNamesByFolderName,
+    excludedFieldApiNamesByFolderName: excludedFieldApiNamesByFolderName
 });
+
+const ACCOUNT_RATING_LOCK = { objects: [{ objectApiName: 'Account', excludedFieldApiNames: [] as string[], lockedFields: [{ fieldApiName: 'Rating__c', reason: 'controls Sub_Rating__c' }] }] };
 
 const treeOf = (recipe: IRecipeCockpitRecipeViewModel, treeKey: string) => recipe.trees.find(tree => tree.treeKey === treeKey) as IRecipeCockpitTreeViewModel;
 
@@ -96,14 +99,20 @@ describe('RecipeCockpitService, excluding objects in Structure (#219)', () => {
 
     describe('applyObjectSelections', () => {
 
-        it('leaves every card as it was when nothing is excluded', () => {
+        it('leaves every card as it was when nothing is excluded, apart from the field locks #220 adds', () => {
 
             const recipe = loadRecipe();
-            const before = JSON.stringify(recipe);
+            const before = JSON.parse(JSON.stringify(recipe));
 
             RecipeCockpitService.applyObjectSelections(recipe, new Map());
 
-            expect(JSON.stringify(recipe)).toBe(before);
+            const after = JSON.parse(JSON.stringify(recipe));
+            // A DEPENDENT PICKLIST LOCKS ITS CONTROLLING FIELD, WHICH IS ALL A CARD WITH NOTHING UNTICKED SAYS ABOUT FIELDS
+            after.trees.forEach((tree: IRecipeCockpitTreeViewModel) => {
+                ( tree.fieldSelection?.objects ?? [] ).forEach(objectFieldSelection => expect(objectFieldSelection.excludedFieldApiNames).toEqual([]));
+                delete tree.fieldSelection;
+            });
+            expect(after).toEqual(before);
             expect(recipe.trees.every(tree => !('objectSelection' in tree))).toBeTrue();
 
         });
@@ -407,7 +416,9 @@ describe('RecipeCockpitService, excluding objects in Structure (#219)', () => {
                     disabledLookups: [],
                     includedObjectCount: 1,
                     objectCount: 3
-                }
+                },
+                // Sub_Rating__c DEPENDS ON Rating__c, SO THE FIELD LOCK RIDES ALONG (#220)
+                fieldSelection: ACCOUNT_RATING_LOCK
             });
 
             // A REVEAL REPLAYS THE STORED MODEL, WHICH CARRIES THE SELECTION
@@ -420,7 +431,7 @@ describe('RecipeCockpitService, excluding objects in Structure (#219)', () => {
             await receivedMessageHandler({ command: 'setObjectIncluded', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', included: true });
 
             expect(storedOf(workspaceState)).toEqual(storedSelections({}));
-            expect(lastPosted('objectSelection')).toEqual({ command: 'objectSelection', renderSequence: recipeDataMessage.renderSequence, treeKey: ACCOUNT_TREE_KEY });
+            expect(lastPosted('objectSelection')).toEqual({ command: 'objectSelection', renderSequence: recipeDataMessage.renderSequence, treeKey: ACCOUNT_TREE_KEY, fieldSelection: ACCOUNT_RATING_LOCK });
 
         });
 

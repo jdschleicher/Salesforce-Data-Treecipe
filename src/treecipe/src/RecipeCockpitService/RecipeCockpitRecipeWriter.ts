@@ -94,6 +94,8 @@ export type RecipeBlockExtractionResult =
 export interface ICreateBlockFieldListRequest {
     objectApiName: string;
     objectNickname?: string;
+    // THE FIELDS THE STRUCTURE TAB UNTICKED (#220): LEFT OUT OF THE LIST, AS THEY ARE LEFT OUT OF THE CUT
+    excludedFieldApiNames?: readonly string[];
 }
 
 export type RecipeBlockFieldListResult =
@@ -111,11 +113,20 @@ export interface IRecipeFilterLookup {
     ones the reader excluded and the ones that followed a parent. The lookups are what tell a
     snowfakery "### TODO" lookup apart from any other field, and what a moved friend is wired by.
     Levels are RelationshipService's; without one, an object's nesting depth in the recipe stands in.
+    excludedFieldApiNamesByObject is the fields the reader unticked (#220), by object; each is left
+    out of EVERY kept occurrence of its object, a self-lookup's iteration included.
 */
 export interface IRecipeFilterRequest {
     excludedObjectApiNames: readonly string[];
     parentLookupsByObjectApiName: ReadonlyMap<string, readonly IRecipeFilterLookup[]>;
     levelsByObjectApiName?: ReadonlyMap<string, number>;
+    excludedFieldApiNamesByObject?: ReadonlyMap<string, readonly string[]>;
+}
+
+// ONE FIELD buildFilteredRecipe LEFT OUT BECAUSE THE READER UNTICKED IT
+export interface IRecipeFilterDroppedField {
+    objectApiName: string;
+    fieldApiName: string;
 }
 
 // A KEPT FRIEND WHOSE friends: PARENT WAS LEFT OUT; NO newParentObjectApiName MEANS IT WAS MOVED TO THE TOP LEVEL
@@ -131,6 +142,7 @@ export type RecipeFilterResult =
         droppedObjectApiNames: string[];
         droppedLookups: IRecipeFilterLookup[];
         movedObjects: IRecipeFilterMove[];
+        droppedFields: IRecipeFilterDroppedField[];
     }
     | { isFiltered: false; refusal: IRecipeWriterRefusal };
 
@@ -208,6 +220,8 @@ const COMMENTED_OUT_MARKER_TEXT = '### TODO -- RECIPE COCKPIT -- FIELD COMMENTED
 const OBJECT_HEADER_PATTERN = /^( *)- object:\s*(\S+)\s*$/;
 const FRIENDS_INDENT_STEP = 4;
 const API_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
+const RECORD_TYPE_ID_FIELD_API_NAME = 'RecordTypeId';
+const RECORD_TYPE_SECTION_MARKER = '### TODO: -- RecordType Options -- ';
 
 export class RecipeCockpitRecipeWriter {
 
@@ -721,9 +735,10 @@ export class RecipeCockpitRecipeWriter {
         records of this object and nothing beneath it. An object written twice is picked by its
         nickname, as for every other operation. A lookup value that names an ancestor's nickname is
         copied as it is: it is just a string to the processor, and the caller replaces every lookup
-        after generation.
+        after generation. A field in excludedFieldApiNames -- unticked on the Structure tab (#220) --
+        is left out of the cut, its continuation lines with it.
     */
-    static extractObjectBlock(recipeText: string, objectApiName: string, recordCount: number, objectNickname?: string): RecipeBlockExtractionResult {
+    static extractObjectBlock(recipeText: string, objectApiName: string, recordCount: number, objectNickname?: string, excludedFieldApiNames: readonly string[] = []): RecipeBlockExtractionResult {
 
         const located = this.locateObject(recipeText, objectApiName, undefined, objectNickname);
         if ( 'refusal' in located ) {
@@ -744,7 +759,17 @@ export class RecipeCockpitRecipeWriter {
         }
 
         const { recipeLines, scannedObject } = located;
-        const blockLines = this.collectOwnBlockLineIndexes(recipeLines.lines, scannedObject).map(lineIndex => recipeLines.lines[lineIndex]);
+        const excludedFieldSet = new Set(excludedFieldApiNames);
+        const excludedFields = scannedObject.fields.filter(scannedField => excludedFieldSet.has(scannedField.fieldApiName));
+        const excludedLineIndexes = new Set(excludedFields
+            .flatMap(scannedField => Array.from({ length: scannedField.endIndex - scannedField.startIndex }, (_, offset) => scannedField.startIndex + offset)));
+        // AS IN buildFilteredRecipe: A fields: LINE LEFT WITH NOTHING UNDER IT LOADS AS null, WHICH SNOWFAKERY DOES NOT TAKE FOR "NO FIELDS"
+        if ( scannedObject.fields.length > 0 && excludedFields.length === scannedObject.fields.length && scannedObject.fieldsLineIndexes.length === 1 ) {
+            excludedLineIndexes.add(scannedObject.fieldsLineIndexes[0]);
+        }
+        const blockLines = this.collectOwnBlockLineIndexes(recipeLines.lines, scannedObject)
+            .filter(lineIndex => !excludedLineIndexes.has(lineIndex))
+            .map(lineIndex => recipeLines.lines[lineIndex]);
 
         const extractedText = [
             `# Recipe Cockpit -- ${recordCount} ${objectApiName} ${recordCount === 1 ? 'record' : 'records'}, cut from the object's own block in its tree's recipe`,
@@ -766,9 +791,9 @@ export class RecipeCockpitRecipeWriter {
         Create's readiness checks exactly the fields its insert would send (#210): no friend's field,
         no commented-out field, and a block that cannot be cut is that refusal rather than a list.
     */
-    static listCreateBlockFieldApiNames(recipeText: string, objectApiName: string, objectNickname?: string): RecipeBlockFieldListResult {
+    static listCreateBlockFieldApiNames(recipeText: string, objectApiName: string, objectNickname?: string, excludedFieldApiNames: readonly string[] = []): RecipeBlockFieldListResult {
 
-        const extraction = this.extractObjectBlock(recipeText, objectApiName, 1, objectNickname);
+        const extraction = this.extractObjectBlock(recipeText, objectApiName, 1, objectNickname, excludedFieldApiNames);
         if ( 'refusal' in extraction ) {
             return { isListed: false, refusal: extraction.refusal };
         }
@@ -793,7 +818,9 @@ export class RecipeCockpitRecipeWriter {
             scannedObjectsByApiName.set(scannedObject.objectApiName, [...( scannedObjectsByApiName.get(scannedObject.objectApiName) ?? [] ), scannedObject]);
         });
 
-        return requests.map(({ objectApiName, objectNickname }) => {
+        return requests.map(({ objectApiName, objectNickname, excludedFieldApiNames = [] }) => {
+
+            const excludedFieldSet = new Set(excludedFieldApiNames);
 
             const matchingObjects = ( scannedObjectsByApiName.get(objectApiName) ?? [] )
                 .filter(scannedObject => objectNickname === undefined || scannedObject.nicknames.includes(objectNickname));
@@ -803,10 +830,25 @@ export class RecipeCockpitRecipeWriter {
                                         && matchingObjects[0].propertyLineIndexes.count.length === 1;
 
             return isListableFromScan
-                ? { isListed: true, fieldApiNames: matchingObjects[0].fields.map(scannedField => scannedField.fieldApiName) }
-                : this.listCreateBlockFieldApiNames(recipeText, objectApiName, objectNickname);
+                ? { isListed: true, fieldApiNames: matchingObjects[0].fields.map(scannedField => scannedField.fieldApiName).filter(fieldApiName => !excludedFieldSet.has(fieldApiName)) }
+                : this.listCreateBlockFieldApiNames(recipeText, objectApiName, objectNickname, excludedFieldApiNames);
 
         });
+
+    }
+
+    /*
+        Whether a field other than RecordTypeId carries a record-type "### TODO: -- RecordType Options --"
+        section among its continuation lines. Each such section assumes a record type is chosen, so
+        while one exists the Structure tab keeps the RecordTypeId line ticked (#220).
+    */
+    static hasRecordTypeSections(lines: string[], scannedObject: IScannedObject): boolean {
+
+        return scannedObject.fields
+            .filter(scannedField => scannedField.fieldApiName !== RECORD_TYPE_ID_FIELD_API_NAME)
+            .some(scannedField => lines
+                .slice(scannedField.startIndex + 1, scannedField.endIndex)
+                .some(continuationLine => continuationLine.trimStart().startsWith(RECORD_TYPE_SECTION_MARKER)));
 
     }
 
@@ -870,7 +912,10 @@ export class RecipeCockpitRecipeWriter {
           never form a cycle. Its lookup to that parent is written as the parent's nickname, so a
           count still means records per parent record. With no such parent it moves to the top level
           and its remaining lookups are nicknames the processor resolves as non-ancestors (#189);
-        - a friends: block left with no friend is dropped rather than written as "friends:" alone.
+        - a friends: block left with no friend is dropped rather than written as "friends:" alone;
+        - a field the reader unticked (#220) is left out of every kept occurrence of its object, its
+          continuation lines with it. Unticking every field keeps the object, with no field set and
+          no "fields:" line, which would otherwise load as null.
 
         A flat recipe -- snowfakery's, or a tree nothing nests in -- has no friends to move, so only
         blocks and lookups are dropped. The copy is read back through scanRecipeObjects and refused
@@ -889,6 +934,21 @@ export class RecipeCockpitRecipeWriter {
             return refuseFilter('invalid-object-api-name', `"${invalidObjectApiName}" is not an object api name.`, invalidObjectApiName);
         }
 
+        // THE NAMES GO INTO THE COPY'S HEADER COMMENT, SO EACH IS HELD TO THE API NAME RULE BEFORE ANYTHING IS WRITTEN
+        const excludedFieldsByObject = new Map<string, Set<string>>();
+        for ( const [objectApiName, fieldApiNames] of filterRequest.excludedFieldApiNamesByObject ?? new Map<string, readonly string[]>() ) {
+            if ( !API_NAME_PATTERN.test(objectApiName) ) {
+                return refuseFilter('invalid-object-api-name', `"${objectApiName}" is not an object api name.`, objectApiName);
+            }
+            const invalidFieldApiName = fieldApiNames.find(fieldApiName => !API_NAME_PATTERN.test(fieldApiName));
+            if ( invalidFieldApiName !== undefined ) {
+                return { isFiltered: false, refusal: { reason: 'invalid-field-api-name', message: `"${invalidFieldApiName}" is not a field api name.`, objectApiName: objectApiName, fieldApiName: invalidFieldApiName } };
+            }
+            if ( fieldApiNames.length > 0 ) {
+                excludedFieldsByObject.set(objectApiName, new Set(fieldApiNames));
+            }
+        }
+
         const recipeLines = this.splitRecipeLines(recipeText);
         const { lines } = recipeLines;
         const scannedObjects = this.scanRecipeObjects(lines);
@@ -898,8 +958,8 @@ export class RecipeCockpitRecipeWriter {
         }
 
         // NOTHING EXCLUDED IS THE RECIPE ITSELF, BYTE FOR BYTE
-        if ( excludedObjectApiNames.size === 0 ) {
-            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [] };
+        if ( excludedObjectApiNames.size === 0 && excludedFieldsByObject.size === 0 ) {
+            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [] };
         }
 
         const friendIndex = this.buildScannedFriendIndex(scannedObjects);
@@ -930,10 +990,14 @@ export class RecipeCockpitRecipeWriter {
         const keptObjects = scannedObjects.filter(scannedObject => !droppedHeaderIndexes.has(scannedObject.headerIndex));
         const hasLookupToDrop = keptObjects.some(keptObject => ( filterRequest.parentLookupsByObjectApiName.get(keptObject.objectApiName) ?? [] )
             .some(lookup => excludedObjectApiNames.has(lookup.parentObjectApiName)));
+        const hasFieldToDrop = keptObjects.some(keptObject => {
+            const excludedFieldApiNames = excludedFieldsByObject.get(keptObject.objectApiName);
+            return !!excludedFieldApiNames && keptObject.fields.some(scannedField => excludedFieldApiNames.has(scannedField.fieldApiName));
+        });
 
         // NOTHING IN THIS RECIPE IS LEFT OUT: THE RECIPE ITSELF, BYTE FOR BYTE
-        if ( droppedHeaderIndexes.size === 0 && !hasLookupToDrop ) {
-            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [] };
+        if ( droppedHeaderIndexes.size === 0 && !hasLookupToDrop && !hasFieldToDrop ) {
+            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [] };
         }
 
         if ( keptObjects.length === 0 ) {
@@ -1007,14 +1071,33 @@ export class RecipeCockpitRecipeWriter {
         const removedLineIndexes = new Set<number>();
         const rewiredFieldsByLineIndex = new Map<number, { fieldApiName: string; nickname: string }>();
         const droppedLookups: IRecipeFilterLookup[] = [];
+        const droppedFieldKeys = new Set<string>();
+        const droppedFields: IRecipeFilterDroppedField[] = [];
+        const removeFieldLines = (scannedField: IScannedField) => {
+            for ( let lineIndex = scannedField.startIndex; lineIndex < scannedField.endIndex; lineIndex++ ) {
+                removedLineIndexes.add(lineIndex);
+            }
+        };
 
         keptObjects.forEach(keptObject => {
 
             const fieldIndent = this.getObjectLayout(keptObject.objectIndent).fieldIndent;
             const parentsByFieldApiName = new Map(lookupsOf(keptObject.objectApiName).map(lookup => [lookup.fieldApiName, lookup.parentObjectApiName]));
             const newParent = newParentsByMovedHeaderIndex.get(keptObject.headerIndex);
+            const excludedFieldApiNames = excludedFieldsByObject.get(keptObject.objectApiName);
 
             keptObject.fields.forEach(scannedField => {
+
+                // AN UNTICKED FIELD GOES, ITS CONTINUATION LINES WITH IT, BEFORE ANY LOOKUP IS RE-WIRED
+                if ( excludedFieldApiNames?.has(scannedField.fieldApiName) ) {
+                    removeFieldLines(scannedField);
+                    const droppedFieldKey = `${keptObject.objectApiName}\n${scannedField.fieldApiName}`;
+                    if ( !droppedFieldKeys.has(droppedFieldKey) ) {
+                        droppedFieldKeys.add(droppedFieldKey);
+                        droppedFields.push({ objectApiName: keptObject.objectApiName, fieldApiName: scannedField.fieldApiName });
+                    }
+                    return;
+                }
 
                 const parentObjectApiName = parentsByFieldApiName.get(scannedField.fieldApiName);
                 const isSingleLine = scannedField.endIndex === scannedField.startIndex + 1;
@@ -1029,9 +1112,7 @@ export class RecipeCockpitRecipeWriter {
                 const isDroppedParentByNickname = fieldValue !== undefined && droppedNicknames.has(fieldValue);
 
                 if ( isDroppedParentByLookup || isDroppedParentByNickname ) {
-                    for ( let lineIndex = scannedField.startIndex; lineIndex < scannedField.endIndex; lineIndex++ ) {
-                        removedLineIndexes.add(lineIndex);
-                    }
+                    removeFieldLines(scannedField);
                     droppedLookups.push({
                         fieldApiName: scannedField.fieldApiName,
                         parentObjectApiName: parentObjectApiName ?? scannedObjects.find(scannedObject => scannedObject.nicknames.includes(fieldValue as string))?.objectApiName ?? ''
@@ -1039,6 +1120,13 @@ export class RecipeCockpitRecipeWriter {
                 }
 
             });
+
+            // A fields: LINE WITH NOTHING LEFT UNDER IT LOADS AS null, WHICH SNOWFAKERY DOES NOT TAKE FOR "NO FIELDS"; THE OBJECT IS KEPT WITHOUT IT
+            if ( keptObject.fields.length > 0
+                    && keptObject.fieldsLineIndexes.length === 1
+                    && keptObject.fields.every(scannedField => removedLineIndexes.has(scannedField.startIndex)) ) {
+                removedLineIndexes.add(keptObject.fieldsLineIndexes[0]);
+            }
 
         });
 
@@ -1135,7 +1223,11 @@ export class RecipeCockpitRecipeWriter {
             .filter(scannedObject => droppedHeaderIndexes.has(scannedObject.headerIndex))
             .map(scannedObject => scannedObject.objectApiName))];
 
-        emit(`# Recipe Cockpit -- a filtered copy of this tree's recipe, leaving out: ${droppedObjectApiNames.join(', ')}`);
+        const leftOutParts = [
+            ...( droppedObjectApiNames.length > 0 ? [droppedObjectApiNames.join(', ')] : [] ),
+            ...( droppedFields.length > 0 ? [`fields ${droppedFields.map(droppedField => `${droppedField.objectApiName}.${droppedField.fieldApiName}`).join(', ')}`] : [] )
+        ];
+        emit(`# Recipe Cockpit -- a filtered copy of this tree's recipe, leaving out: ${leftOutParts.join('; ')}`);
 
         // A FILE THAT ENDS WITH A LINE BREAK SPLITS INTO A LAST EMPTY LINE, WHICH STAYS LAST
         const hasFinalEmptyLine = lines.length > 1 && lines[lines.length - 1] === '';
@@ -1189,7 +1281,7 @@ export class RecipeCockpitRecipeWriter {
             return { objectApiName: movedObject.objectApiName, ...( newParent ? { newParentObjectApiName: newParent.objectApiName } : {} ) };
         });
 
-        if ( !this.isFilteredRecipeReadBack(filteredRecipeText, keptObjects, finalParentHeaderIndexes, friendIndex, excludedObjectApiNames) ) {
+        if ( !this.isFilteredRecipeReadBack(filteredRecipeText, keptObjects, finalParentHeaderIndexes, friendIndex, excludedObjectApiNames, excludedFieldsByObject) ) {
             return refuseFilter('unsupported-filter-layout', 'The filtered copy did not read back as the kept objects nested where they were meant to be, so it was not used.');
         }
 
@@ -1198,17 +1290,19 @@ export class RecipeCockpitRecipeWriter {
             recipeText: filteredRecipeText,
             droppedObjectApiNames: droppedObjectApiNames,
             droppedLookups: droppedLookups,
-            movedObjects: movedObjects
+            movedObjects: movedObjects,
+            droppedFields: droppedFields
         };
 
     }
 
-    // EVERY KEPT OCCURRENCE, IN THE SAME ORDER OF NAMES AND NICKNAMES, UNDER THE PARENT THE FILTER CHOSE; NOTHING EXCLUDED
+    // EVERY KEPT OCCURRENCE, IN THE SAME ORDER OF NAMES AND NICKNAMES, UNDER THE PARENT THE FILTER CHOSE; NO EXCLUDED OBJECT, AND NO UNTICKED FIELD
     private static isFilteredRecipeReadBack(filteredRecipeText: string,
                                             keptObjects: IScannedObject[],
                                             finalParentHeaderIndexes: Map<number, number | undefined>,
                                             friendIndex: IScannedFriendIndex,
-                                            excludedObjectApiNames: Set<string>): boolean {
+                                            excludedObjectApiNames: Set<string>,
+                                            excludedFieldsByObject: Map<string, Set<string>>): boolean {
 
         const describeOccurrence = (scannedObject: IScannedObject | undefined) => scannedObject ? `${scannedObject.objectApiName}\u0000${scannedObject.nicknames.join('\u0000')}` : '';
         const describeExpected = (keptObject: IScannedObject) => {
@@ -1224,6 +1318,7 @@ export class RecipeCockpitRecipeWriter {
         const actual = filteredObjects.map(describeFiltered).sort();
 
         return !filteredObjects.some(filteredObject => excludedObjectApiNames.has(filteredObject.objectApiName))
+                && !filteredObjects.some(filteredObject => filteredObject.fields.some(scannedField => excludedFieldsByObject.get(filteredObject.objectApiName)?.has(scannedField.fieldApiName)))
                 && expected.length === actual.length
                 && expected.every((description, index) => description === actual[index]);
 
