@@ -49,13 +49,15 @@ const RECIPE_EXPRESSION_OPENING = '${{';
 export const FILTERED_RECIPE_FILE_PREFIX = 'filteredRecipe-';
 
 /*
-    What the Recipe Cockpit hands Run Faker for a tree with excluded objects (#219): the filtered
-    copy the host built from the tree's recipe, and the objects it leaves out. The recipe file itself
-    is never written; the copy is what the processor runs and what the data set keeps.
+    What the Recipe Cockpit hands Run Faker for a tree with excluded objects (#219) or unticked
+    fields (#220): the filtered copy the host built from the tree's recipe, and what it leaves out.
+    The recipe file itself is never written; the copy is what the processor runs and what the data
+    set keeps. At least one object or field is left out, or there would be no copy.
 */
 export interface IRunFakerFilteredRecipe {
     recipeText: string;
     excludedObjectApiNames: string[];
+    excludedFieldApiNamesByObject?: Record<string, string[]>;
 }
 export const MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES = 20;
 
@@ -294,7 +296,8 @@ export class ExtensionCommandService {
                 ConfigurationService.getSelectedDataFakerServiceConfig() === 'faker-js' ? 'faker-js' : 'snowfakery',
                 new Date().toISOString(),
                 DatasetSourceService.countRecordsByObject(mappedSObjectApiToRecords),
-                filteredRecipe?.excludedObjectApiNames ?? []
+                filteredRecipe?.excludedObjectApiNames ?? [],
+                filteredRecipe?.excludedFieldApiNamesByObject ?? {}
             );
             DatasetSourceService.writeDatasetSourceFile(fullPathToBaseArtifactsFolder, datasetSource);
        
@@ -320,12 +323,27 @@ export class ExtensionCommandService {
             return false;
         }
 
-        const { recipeText, excludedObjectApiNames } = candidate as Record<string, unknown>;
+        const { recipeText, excludedObjectApiNames, excludedFieldApiNamesByObject } = candidate as Record<string, unknown>;
+
+        const isFieldMap = excludedFieldApiNamesByObject === undefined || (
+            typeof excludedFieldApiNamesByObject === 'object'
+            && excludedFieldApiNamesByObject !== null
+            && !Array.isArray(excludedFieldApiNamesByObject)
+            && Object.entries(excludedFieldApiNamesByObject).every(([objectApiName, fieldApiNames]) => (
+                SalesforceApiName.isApiName(objectApiName)
+                && Array.isArray(fieldApiNames)
+                && fieldApiNames.every(fieldApiName => SalesforceApiName.isApiName(fieldApiName))
+            ))
+        );
+        const excludedFieldCount = isFieldMap && excludedFieldApiNamesByObject
+            ? Object.values(excludedFieldApiNamesByObject as Record<string, string[]>).reduce((fieldCount, fieldApiNames) => fieldCount + fieldApiNames.length, 0)
+            : 0;
 
         return typeof recipeText === 'string'
                 && Array.isArray(excludedObjectApiNames)
-                && excludedObjectApiNames.length > 0
-                && excludedObjectApiNames.every(excludedObjectApiName => SalesforceApiName.isApiName(excludedObjectApiName));
+                && excludedObjectApiNames.every(excludedObjectApiName => SalesforceApiName.isApiName(excludedObjectApiName))
+                && isFieldMap
+                && excludedObjectApiNames.length + excludedFieldCount > 0;
 
     }
 

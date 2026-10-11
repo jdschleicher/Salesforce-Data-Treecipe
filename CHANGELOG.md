@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.56.0] - Insert Data Set by Directory refuses a production org
+## [3.57.0] - Insert Data Set by Directory refuses a production org
 
 Closes [#204](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/204), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
 
@@ -14,6 +14,54 @@ Insert Data Set by Directory offered every connected org, production included, a
 - **The picker** still lists every org the CLI reports connected (#201), because the CLI's local data cannot tell a Developer Edition org from production. Its placeholder (`INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER`) now says production orgs are refused. `CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst` returns the picked org's detail rather than its username, so the warning can name the alias; the connection is still opened by username.
 - **The same check runs** whether the folder came from the folder picker or from the cockpit's **Insert…**.
 - **Unchanged.** Data-by-Org's Create still requires `IsSandbox: true` and so still refuses a Developer Edition org.
+
+## [3.56.0] - Recipe Cockpit: untick the fields of an object that the faker generates
+
+Closes [#220](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/220), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173). Saving a selection under a name to reuse it is tracked in [#250](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/250).
+
+An object's recipe always generated every field it lists, so leaving fields out of one data set meant commenting out YAML by hand. You can now untick fields on a card's Structure tab. The recipe file is never written.
+
+- **A checkbox on each field row.** It appears on every field that has a line in the recipe, on a card with a folder. It is a real `<button role="checkbox">` with `aria-checked`, a title and a ✓ mark. Every field starts ticked. **All** and **None** sit at the top of the expanded object. A self-lookup's iteration (#188) draws its boxes disabled, because it follows its object. The ungrouped card draws none.
+- **An unticked row is greyed** by the same translucent layer #219 uses for an excluded object (`.fieldExcluded`, `--sdt-excluded-overlay`). Picklist values and `↗ yml` still work under it. The checkbox and the row's note sit above the layer, so they are not dimmed. No new colour token or text/background pair was added.
+- **Fields that cannot be unticked** are drawn disabled, with the reason in the title and as a note on the row:
+  - `parent excluded`: a lookup whose parent #219 excluded. It is left out by the object cascade, so it is drawn unticked.
+  - `record-type sections depend on it`: the `RecordTypeId` line, while another field of the object carries a `### TODO: -- RecordType Options --` section. This answers the issue's open question. Unticking it is allowed once no section depends on it.
+  - `controls <Dependent>`: a controlling field while any of its dependent picklists is ticked. A `when:` naming a field the record does not have chooses nothing. Untick the dependents (or press **None**) and the controlling field is free. A chain (Country → State → City) is followed to the end.
+- **An excluded object's fields are read-only**: every box and All / None is disabled.
+- **Unticking every field keeps the object.** It still generates records, with no fields set, and its row says `every field unticked — records are generated with no fields set`. The filtered copy then drops the object's `fields:` line too, because a `fields:` with nothing under it loads as `null`, which snowfakery does not read as "no fields".
+- **`required in <org>`**: once a card has been compared with an org, an unticked field that the describe marks required (not nillable, createable, not defaulted on create) says so on its row. Generation is not blocked. A failed connection clears it.
+- **Reset selection.** A card with a folder shows a **Reset selection** button in its header while it leaves something out. After a modal confirmation, it includes every object and ticks every field of that card's folder again. This answers the issue's second open question.
+- **What generation sees**
+  - **▶ Run Faker** builds the filtered copy (#219) whenever the card excludes an object *or* unticks a field. `RecipeCockpitRecipeWriter.buildFilteredRecipe` takes `excludedFieldApiNamesByObject` and drops each unticked field's own line and its continuation lines from every kept occurrence of its object, the self-lookup iteration included. Everything else stays byte-identical, line endings included. This holds for nested faker-js friends at any depth and for flat snowfakery.
+  - **The copy's header comment** names what it left out, for example `leaving out: Opportunity; fields Account.Phone`.
+  - **Read-back:** the copy is refused unless it reads back with none of the unticked fields.
+  - **Names are checked:** a field or object name that is not an api name is refused before anything is written.
+  - **An unticked lookup of a moved friend** is dropped rather than re-wired to its new parent.
+  - **Tests** run the copy through the faker-js processor (the records lack exactly the unticked fields, and an object with every field unticked still has records) and through the snowfakery processor and PyYAML.
+- **Data-by-Org Create sends only the ticked fields.**
+  - **The cut:** `extractObjectBlock` leaves the unticked fields out.
+  - **Readiness (#210)** checks only the fields the cut keeps. Unticking a field the org lacks clears that reason.
+  - **The cut with every field unticked** also drops its `fields:` line, as the filtered copy does.
+  - **Required fields:** an unticked field the org requires is a reason of its own: `Contact has 1 unticked field this org requires: LastName. Tick it in Structure to create records.` Without it every record would fail. A required lookup is never this reason, because Create fills every required lookup with a parent Id whether or not it is ticked.
+  - **The modal** lists the unticked fields.
+  - **A change to a card's selection re-checks only that folder's Create targets**, against the org type the selection already answered and the session's describe cache. It connects only for an object the cache does not hold, and asks the Organization row nothing. An answer for a selection, model or request the reader has moved on from is dropped, and the panel merges the rest by key, so other cards' rows do not flicker.
+- **Stored with #219's selection** in `workspaceState` (`treecipe.recipeCockpit.objectSelection`), now version 2, which adds `excludedFieldApiNamesByFolderName` (tree folder → object → fields). A version 1 entry still reads, as nothing unticked. Every name is checked with `SalesforceApiName` on read. The map is written with `Object.fromEntries`, so a folder or object named `__proto__` is a key and never a prototype. A stale name is dropped silently when the selection is applied. #219's `writeObjectSelections` keeps whatever fields are stored.
+- **Recorded in `datasetSource.json`** as `excludedFieldApiNamesByObject` (object → fields), absent when nothing was unticked and in every older file. `DatasetSourceService` type-checks it and reads it back with no prototype. `treecipe.runFakerByRecipe` accepts the copy's new `excludedFieldApiNamesByObject` only as an object of api names, and now accepts a copy that excludes no object as long as it unticks a field.
+- **The messages are gated like every other panel action.**
+  - **One checkbox:** the panel posts `setFieldIncluded {treeKey, objectApiName, nickname?, fieldApiName, included}`, matched against `selectableFieldKeys`. That list is pending/active, built at post, promoted on `rendered`, and emptied on `ready`, a new post and a failure to draw. A field name is only ever matched, never written raw.
+  - **All / None:** posts `setAllFieldsIncluded {treeKey, objectApiName, nickname?, included}`, matched against #219's `selectableObjectKeys`.
+  - **Reset:** posts `resetTreeSelection {treeKey}`, matched against the cards with a folder.
+  - **The host decides:** it re-derives the card's state before it writes anything, so a message for a locked field or an excluded object changes nothing. It posts `objectSelection` with a new `fieldSelection` beside `objectSelection`, and the panel redraws the card in place.
+- **What is posted.** A card carries `fieldSelection` only when one of its objects has a field unticked or locked, and only those objects are listed. A card with a dependent picklist therefore now carries its controlling field's lock. `orgDescribe` carries `requiredFields` (only objects with any). The object model carries `hasRecordTypeSections` only where it is true.
+- **Re-measured** (synthetic models through the real `applyObjectSelections` and `collectTreeHistoryAllowLists`):
+
+  | Shape | Applying selections | Allow-lists | `fieldSelection` posted |
+  |---|---|---|---|
+  | 11,000 single-object cards, 121,000 fields, every object with record-type sections and a dependent picklist every fourth field | 144 ms | 175 ms | 3.18 MB, about 5% on the 59.94 MB model measured in 3.31.0 |
+  | Same, with no locks | 119 ms | 162 ms | 0.06 MB |
+
+  - **`selectableFieldKeys`** holds 121,000 keys, about 11–14 MB of heap.
+  - **A click** recomputes only its folder's cards, which takes under 1 ms.
 
 ## [3.55.0] - The Recipe Cockpit asks which Dev Hub a new scratch org comes from
 

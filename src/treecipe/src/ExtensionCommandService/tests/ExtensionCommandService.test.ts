@@ -2008,6 +2008,31 @@ describe('ExtensionCommandService', () => {
 
             });
 
+            test.each(backendCases)('given $fakerService and only unticked fields (#220), generates from the copy and records the fields by object', async (backendCase) => {
+
+                arrangeRun(backendCase, `treecipe/GeneratedRecipes/${backendCase.runFolderName}/Account-thru-Contact`);
+                const recipeFilePath = path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', backendCase.runFolderName, 'Account-thru-Contact', backendCase.recipeFileName);
+                let generatedFromText: string | undefined;
+                ( backendCase.processorPrototype.generateFakeDataBySelectedRecipeFile as jest.Mock ).mockImplementation(async (generationRecipeFilePath: string) => {
+                    generatedFromText = fs.readFileSync(generationRecipeFilePath, 'utf8');
+                    return backendCase.fakerOutput;
+                });
+
+                await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath, {
+                    recipeText: filteredRecipeText,
+                    excludedObjectApiNames: [],
+                    excludedFieldApiNamesByObject: { Account: ['Phone', 'Site'] }
+                });
+
+                expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+                expect(generatedFromText).toBe(filteredRecipeText);
+                const [datasetFolderName] = readDatasetFolderNames();
+                const writtenSource = readWrittenDatasetSource(datasetFolderName);
+                expect(writtenSource).toMatchObject({ excludedFieldApiNamesByObject: { Account: ['Phone', 'Site'] } });
+                expect(writtenSource).not.toHaveProperty('excludedObjectApiNames');
+
+            });
+
             test('the modal summarizes the copy, not the recipe', async () => {
 
                 const [fakerJsCase] = backendCases;
@@ -2027,6 +2052,11 @@ describe('ExtensionCommandService', () => {
                 ['no recipe path', undefined, { recipeText: filteredRecipeText, excludedObjectApiNames: ['Contact'] }],
                 ['a copy with no text', 'PATH', { excludedObjectApiNames: ['Contact'] }],
                 ['a copy naming no excluded object', 'PATH', { recipeText: filteredRecipeText, excludedObjectApiNames: [] }],
+                ['a copy naming no excluded object and an empty field map', 'PATH', { recipeText: filteredRecipeText, excludedObjectApiNames: [], excludedFieldApiNamesByObject: { Account: [] } }],
+                ['a copy with no excluded-object list', 'PATH', { recipeText: filteredRecipeText, excludedFieldApiNamesByObject: { Account: ['Phone'] } }],
+                ['a field map that is an array', 'PATH', { recipeText: filteredRecipeText, excludedObjectApiNames: [], excludedFieldApiNamesByObject: [['Account', ['Phone']]] }],
+                ['a field map naming an object that is not an api name', 'PATH', { recipeText: filteredRecipeText, excludedObjectApiNames: [], excludedFieldApiNamesByObject: { 'Account\n# x': ['Phone'] } }],
+                ['a field map naming a field that is not an api name', 'PATH', { recipeText: filteredRecipeText, excludedObjectApiNames: [], excludedFieldApiNamesByObject: { Account: ['Phone\n# x'] } }],
                 ['a copy naming an object that is not a string', 'PATH', { recipeText: filteredRecipeText, excludedObjectApiNames: [7] }],
                 ['a copy naming an object that is not an api name', 'PATH', { recipeText: filteredRecipeText, excludedObjectApiNames: ['Contact\n# x'] }],
                 ['a copy that is an array', 'PATH', [filteredRecipeText]]
