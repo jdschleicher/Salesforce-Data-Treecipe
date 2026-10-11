@@ -2057,21 +2057,24 @@ export class RecipeCockpitService {
         }
 
         const sizeMatch = /\((\d+)(?:,(\d+))?\)$/.exec(fieldViewModel.fieldTypeWithSize);
+        // AN INPUT BOX DRAWS ITS VALIDATION MESSAGE LIKE A NOTIFICATION, SO THE TYPE -- WORKSPACE TEXT -- IS ESCAPED UNLESS IT IS PLAINLY A TYPE
+        const typeLabel = this.buildFieldTypeLabel(fieldViewModel);
 
         if ( kind === 'number' && sizeMatch?.[2] !== undefined ) {
             const precision = Number(sizeMatch[1]);
             const scale = Number(sizeMatch[2]);
             const [wholeDigits, decimalDigits = ''] = value.replace(/^-/, '').split('.');
             if ( decimalDigits.length > scale ) {
-                return `${fieldViewModel.fieldTypeWithSize} takes at most ${scale} decimal place${scale === 1 ? '' : 's'}.`;
+                return `${typeLabel} takes at most ${scale} decimal place${scale === 1 ? '' : 's'}.`;
             }
-            if ( wholeDigits.replace(/^0+(?=.)/, '').length > precision - scale ) {
-                return `${fieldViewModel.fieldTypeWithSize} takes at most ${precision - scale} digit${precision - scale === 1 ? '' : 's'} before the decimal point.`;
+            // A LONE 0 BEFORE THE POINT IS NO DIGIT: Number(2,2) TAKES 0.5
+            if ( wholeDigits.replace(/^0+/, '').length > precision - scale ) {
+                return `${typeLabel} takes at most ${precision - scale} digit${precision - scale === 1 ? '' : 's'} before the decimal point.`;
             }
         }
 
         if ( kind === 'text' && sizeMatch && sizeMatch[2] === undefined && value.length > Number(sizeMatch[1]) ) {
-            return `${fieldViewModel.fieldTypeWithSize} takes at most ${sizeMatch[1]} characters.`;
+            return `${typeLabel} takes at most ${sizeMatch[1]} characters.`;
         }
 
         if ( fieldViewModel.fieldType === 'Date' && !this.isIsoDate(value) ) {
@@ -2087,7 +2090,7 @@ export class RecipeCockpitService {
             const typedValues = fieldViewModel.fieldType === 'MultiselectPicklist' ? value.split(';') : [value];
             const undeclaredValue = typedValues.find(typedValue => !declaredValues.has(typedValue));
             if ( undeclaredValue !== undefined ) {
-                return `"${undeclaredValue}" is not a value this picklist declares.`;
+                return `"${RecipeYamlScalar.escapeForNotification(undeclaredValue)}" is not a value this picklist declares.`;
             }
             if ( new Set(typedValues).size !== typedValues.length ) {
                 return 'A multi-select picklist value names each value once.';
@@ -2096,6 +2099,13 @@ export class RecipeCockpitService {
 
         return undefined;
 
+    }
+
+    // "Text(50)" AS IT IS -- NO LINK CAN BE MADE OF IT -- AND ANYTHING ELSE THE WRAPPER SAYS THROUGH escapeForNotification
+    static buildFieldTypeLabel(fieldViewModel: IRecipeCockpitFieldViewModel): string {
+        return /^[A-Za-z]+(?:\(\d+(?:,\d+)?\))?$/.test(fieldViewModel.fieldTypeWithSize)
+            ? fieldViewModel.fieldTypeWithSize
+            : RecipeYamlScalar.escapeForNotification(fieldViewModel.fieldTypeWithSize);
     }
 
     static isIsoDate(value: string): boolean {
@@ -2408,7 +2418,7 @@ export class RecipeCockpitService {
         const declaredPicklistValues = this.listDeclaredPicklistValues(panelState, panelAction.objectApiName, panelAction.fieldApiName);
         const storedValue = this.readTreeSelections(this.recipeCockpitWorkspaceState).fixedValuesByFolderName.get(panelAction.folderName)?.get(panelAction.objectApiName)?.get(panelAction.fieldApiName);
         const fieldLabel = RecipeYamlScalar.escapeForNotification(`${panelAction.objectApiName}.${panelAction.fieldApiName}`);
-        const typeLabel = fieldViewModel.fieldTypeWithSize ? ` (${RecipeYamlScalar.escapeForNotification(fieldViewModel.fieldTypeWithSize)})` : '';
+        const typeLabel = fieldViewModel.fieldTypeWithSize ? ` (${this.buildFieldTypeLabel(fieldViewModel)})` : '';
 
         const typedValue = await vscode.window.showInputBox({
             title: `Fixed value for ${fieldLabel}`,
@@ -8650,6 +8660,23 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    // EVERY LOOKUP OF A CARD, ONCE PER CARD: A ROW ASKS ON EVERY REDRAW, AND SCANNING THE TREE PER ROW WAS O(ROWS x OBJECTS)
+    const lookupFieldIndexesByTree = new WeakMap();
+
+    function indexTreeLookupFields(tree) {
+
+        if (lookupFieldIndexesByTree.has(tree)) { return lookupFieldIndexesByTree.get(tree); }
+
+        const lookupFieldKeys = Object.create(null);
+        tree.objects.forEach(function (treeObject) {
+            treeObject.parentLookups.forEach(function (parentLookup) { lookupFieldKeys[treeObject.objectApiName + '\\n' + parentLookup.fieldApiName] = true; });
+        });
+        lookupFieldIndexesByTree.set(tree, lookupFieldKeys);
+
+        return lookupFieldKeys;
+
+    }
+
     /*
         Why a field's pin is disabled (#262): the host's own rule (findFixedValueLockReason), drawn
         from the model the panel already holds. The host re-derives it before it writes anything.
@@ -8666,9 +8693,7 @@ ${this.buildPaletteCustomProperties()}
         if (objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, field.fieldApiName)) { return FIXED_VALUE_UNTICKED_REASON; }
         if (field.fieldApiName === 'RecordTypeId') { return FIXED_VALUE_RECORD_TYPE_REASON; }
 
-        const isTreeLookup = tree.objects.some(function (treeObject) {
-            return treeObject.objectApiName === objectApiName && treeObject.parentLookups.some(function (parentLookup) { return parentLookup.fieldApiName === field.fieldApiName; });
-        });
+        const isTreeLookup = hasOwnKey(indexTreeLookupFields(tree), objectApiName + '\\n' + field.fieldApiName);
         if (isTreeLookup || FIXED_VALUE_LOOKUP_FIELD_TYPES.indexOf(field.fieldType) !== -1) { return FIXED_VALUE_LOOKUP_REASON; }
         if (field.controllingField) { return FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField; }
 

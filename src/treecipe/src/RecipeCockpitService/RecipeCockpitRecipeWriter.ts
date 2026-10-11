@@ -257,6 +257,7 @@ const RECORD_TYPE_ID_FIELD_API_NAME = 'RecordTypeId';
 const RECORD_TYPE_SECTION_MARKER = '### TODO: -- RecordType Options -- ';
 const FIXED_VALUE_TEMPLATE_OPENERS = ['${', '{{', '{%', '<<', '<%'];
 const FIXED_NUMBER_PATTERN = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
+const FIXED_NUMBER_MAX_EXACT_DIGITS = 15;
 
 export class RecipeCockpitRecipeWriter {
 
@@ -1022,6 +1023,16 @@ export class RecipeCockpitRecipeWriter {
             return refuseFilter('object-not-found', 'The recipe has no "- object:" line, so it could not be filtered.');
         }
 
+        // A VALUE THAT IS EXACTLY A NICKNAME IS READ AS A REFERENCE TO THAT RECORD -- BY faker-js AND BY THE INSERT'S Id SWAP -- SO IT WOULD NOT BE ITSELF
+        const recipeNicknames = new Set(scannedObjects.flatMap(scannedObject => scannedObject.nicknames));
+        for ( const [objectApiName, fixedValuesByField] of fixedValuesByObject ) {
+            for ( const [fieldApiName, fixedValue] of fixedValuesByField ) {
+                if ( recipeNicknames.has(fixedValue.value) ) {
+                    return { isFiltered: false, refusal: { reason: 'invalid-value', message: `The fixed value for ${objectApiName}.${fieldApiName} is the nickname of an object in this recipe, which generation would read as a reference to that record.`, objectApiName: objectApiName, fieldApiName: fieldApiName } };
+                }
+            }
+        }
+
         // NOTHING EXCLUDED, NO COUNT SET AND NO VALUE FIXED IS THE RECIPE ITSELF, BYTE FOR BYTE
         if ( excludedObjectApiNames.size === 0 && excludedFieldsByObject.size === 0 && countsByObject.size === 0 && fixedValuesByObject.size === 0 ) {
             return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [], appliedCounts: [], appliedFixedValues: [] };
@@ -1449,9 +1460,15 @@ export class RecipeCockpitRecipeWriter {
 
     }
 
-    // TEXT IS ALWAYS DOUBLE-QUOTED, WHICH checkFixedValue LEAVES ONLY \ AND " TO ESCAPE; A NUMBER OR BOOLEAN IS WRITTEN PLAIN
+    /*
+        Text is always double-quoted, which checkFixedValue leaves only \ and " to escape; a number or
+        boolean is written plain. A number past what a double holds exactly is quoted too: js-yaml
+        reads 123456789012345678 as 123456789012345680, so faker-js would generate a different number
+        than the one typed, where the string reaches the org as the digits themselves.
+    */
     static toFixedValueScalar(fixedValue: IRecipeFixedValue): string {
-        return fixedValue.kind === 'text'
+        const isExactAsNumber = fixedValue.value.replace(/[-.]/g, '').replace(/^0+/, '').length <= FIXED_NUMBER_MAX_EXACT_DIGITS;
+        return fixedValue.kind === 'text' || ( fixedValue.kind === 'number' && !isExactAsNumber )
             ? `"${fixedValue.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
             : fixedValue.value;
     }

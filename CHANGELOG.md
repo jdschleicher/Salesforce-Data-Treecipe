@@ -12,13 +12,13 @@ Some fields need the same value on every generated record: a region, a test mark
   - reads the copy back to confirm each value landed.
 
   A card with no fixed values generates exactly as before, byte for byte. **Reset selection** clears them too. `datasetSource.json` records them as `fixedValuesByObject`, only when there are any, and the insert's confirmation lists them.
-- **Written as itself in both backends.** Text is always double-quoted, so `Yes`, `007` and `null` stay the strings that were typed. A number (Number, Currency, Percent) or a checkbox value is written plain, so it is generated as its own type. `RecipeCockpitRecipeWriter.checkFixedValue` refuses a value instead of escaping it when either backend could read it as something other than itself:
+- **Written as itself in both backends.** Text is always double-quoted, so `Yes`, `007` and `null` stay the strings that were typed. A number (Number, Currency, Percent) or a checkbox value is written plain, so it is generated as its own type. A number with more than 15 significant digits is quoted instead, because js-yaml reads `123456789012345678` as `123456789012345680`. A text value that is exactly a nickname in the recipe is refused, because faker-js and the insert's Id swap would read it as a reference to that record. `RecipeCockpitRecipeWriter.checkFixedValue` refuses a value instead of escaping it when either backend could read it as something other than itself:
   - a line break either YAML parser sees (CR, LF, U+0085, U+2028, U+2029) or any other control character;
   - any template opener: `${`, `{{`, `{%`, `<<`, `<%`. faker-js runs `${{ }}` with `new Function()`, and snowfakery renders both of its template syntaxes even inside quotes.
 
   Tests load the copy through the faker-js processor and through PyYAML, plus snowfakery's template selection, and check that the value comes back exactly as typed.
 - **Checked against the field.** The input box checks the value as it is typed, and the host checks it again once the box closes:
-  - a number must fit the field's precision and scale;
+  - a number must fit the field's precision and scale (`Number(2,2)` takes `0.5`);
   - a checkbox takes `true` or `false`;
   - Date and DateTime must be ISO 8601, and a DateTime needs a zone;
   - text must fit the field's length;
@@ -32,6 +32,7 @@ Some fields need the same value on every generated record: a region, a test mark
   - every field of an excluded object.
 
   A value stored for a field that is locked is kept and comes back once the field is free again.
+- **The type in a validation message is escaped.** The type comes from workspace metadata. The input box draws its validation message the way a notification draws text, so a `[label](command:…)` there would be a link that runs the command. A type that is not plainly `Name(n)` or `Name(p,s)` goes through `escapeForNotification`, and so does a picklist value the reader typed that is echoed back.
 - **The panel never sends the value.** It posts names only: `setFieldFixedValue {treeKey, objectApiName, nickname?, fieldApiName}`. The router checks them against the same `selectableFieldKeys` allow-list as the checkbox. The value is shown with `textContent`, and the pin's glyph is built with `createElementNS` and palette CSS, so the CSP and the shell builder are unchanged.
 - **Unchanged:** the faker services, `IRecipeFakerService`, the generated recipes, Compare, and Insert Data Set by Directory.
 ## [3.60.1] - Recipe Cockpit: the tree's include/exclude icon is a chain link, at the front of the row

@@ -213,6 +213,13 @@ describe('RecipeCockpitRecipeWriter -- fixed values (#262)', () => {
             expect(RecipeCockpitRecipeWriter.toFixedValueScalar({ value: 'false', kind: 'boolean' })).toBe('false');
         });
 
+        it('quotes a number past 15 significant digits, which a double would not hold exactly, and leaves one of 15 plain', () => {
+            expect(RecipeCockpitRecipeWriter.toFixedValueScalar({ value: '123456789012345', kind: 'number' })).toBe('123456789012345');
+            expect(RecipeCockpitRecipeWriter.toFixedValueScalar({ value: '-0.000123456789012345', kind: 'number' })).toBe('-0.000123456789012345');
+            expect(RecipeCockpitRecipeWriter.toFixedValueScalar({ value: '123456789012345678', kind: 'number' })).toBe('"123456789012345678"');
+            expect(RecipeCockpitRecipeWriter.toFixedValueScalar({ value: '1234567890123456.78', kind: 'number' })).toBe('"1234567890123456.78"');
+        });
+
     });
 
     describe('buildFilteredRecipe with fixedValuesByObject', () => {
@@ -294,6 +301,24 @@ describe('RecipeCockpitRecipeWriter -- fixed values (#262)', () => {
             const result = filterWithFixedValues(readFixture(SELF_LOOKUP_FRIENDS_FIXTURE), fixedValuesOf({ Lead: { LastName: fixedValue } }));
 
             expect('refusal' in result && result.refusal).toMatchObject({ reason: reason, objectApiName: 'Lead', fieldApiName: 'LastName' });
+
+        });
+
+        it('refuses a value that is exactly a nickname in the recipe, which generation would read as a reference to that record', () => {
+
+            const result = filterWithFixedValues(readFixture(SELF_LOOKUP_FRIENDS_FIXTURE), fixedValuesOf({ Opportunity: { Description: text('Account_NickName') } }));
+
+            expect('refusal' in result && result.refusal).toMatchObject({ reason: 'invalid-value', objectApiName: 'Opportunity', fieldApiName: 'Description' });
+            expect(expectFiltered(filterWithFixedValues(readFixture(SELF_LOOKUP_FRIENDS_FIXTURE), fixedValuesOf({ Opportunity: { Description: text('Account_NickName ') } }))).appliedFixedValues).toHaveLength(1);
+
+        });
+
+        it('generates an 18-digit number exactly through the faker-js processor, as its digits', async () => {
+
+            const filtered = expectFiltered(filterWithFixedValues(readFixture(SELF_LOOKUP_FRIENDS_FIXTURE), fixedValuesOf({ Lead: { LastName: { value: '123456789012345678', kind: 'number' } } })));
+            const generatedRecords = await generateWithFakerJs(filtered.recipeText);
+
+            expect(generatedRecords.find(record => record.object === 'Lead')?.fields['LastName']).toBe('123456789012345678');
 
         });
 
@@ -538,6 +563,23 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             expect(validate('OtherChildObject__c', 'Ratio__c', 'lots')).toBe('Type a plain number, such as 42, -7 or 3.25.');
         });
 
+        it('takes a value under 1 for a field whose precision equals its scale', () => {
+            const fraction = { ...fieldOf(recipe, 'OtherChildObject__c', 'Ratio__c'), fieldTypeWithSize: 'Number(2,2)' };
+            expect(RecipeCockpitService.validateFixedValueInput('0.5', fraction, undefined)).toBeUndefined();
+            expect(RecipeCockpitService.validateFixedValueInput('-0.99', fraction, undefined)).toBeUndefined();
+            expect(RecipeCockpitService.validateFixedValueInput('1.5', fraction, undefined)).toBe('Number(2,2) takes at most 0 digits before the decimal point.');
+        });
+
+        it('escapes a type the workspace wrote that could form a link, and the typed text it echoes', () => {
+            const linkType = '[Show allowed values](command:workbench.action.terminal.sendSequence)';
+            const linkField = { ...fieldOf(recipe, 'Account', 'Legacy_Code__c'), fieldType: linkType, fieldTypeWithSize: `${linkType}(1)` };
+
+            const message = RecipeCockpitService.validateFixedValueInput('xy', linkField, undefined) as string;
+            expect(message).toEndWith(' takes at most 1 characters.');
+            expect(message).not.toMatch(/[[\]()]/);
+            expect(validate('Lead', 'Status', '[x](command:y)', ['Open'])).toBe('"\\u005bx\\u005d\\u0028command:y\\u0029" is not a value this picklist declares.');
+        });
+
         it('holds text to its length and refuses what the writer refuses', () => {
             expect(validate('Account', 'Legacy_Code__c', 'x'.repeat(50))).toBeUndefined();
             expect(validate('Account', 'Legacy_Code__c', 'x'.repeat(51))).toBe('Text(50) takes at most 50 characters.');
@@ -696,7 +738,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
             const inputBoxOptions = showInputBox.mock.calls[0][0];
             expect(inputBoxOptions).toMatchObject({ title: 'Fixed value for Account.Legacy_Code__c', value: '', ignoreFocusOut: true });
-            expect(inputBoxOptions.prompt).toContain('Text\\u002850\\u0029');
+            expect(inputBoxOptions.prompt).toContain('(Text(50))');
             expect(inputBoxOptions.validateInput('')).toBeUndefined();
             expect(inputBoxOptions.validateInput('x'.repeat(51))).toBe('Text(50) takes at most 50 characters.');
             expect(storedOf(workspaceState)).toEqual(storedSelections({ [ACCOUNT_TREE_KEY]: { Account: { Legacy_Code__c: 'X-1' } } }));
@@ -883,6 +925,16 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
             panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3, fieldSelection: { objects: [{ objectApiName: 'Account', excludedFieldApiNames: ['Legacy_Code__c'], lockedFields: [] }] } });
             expect(pinOf(panel, account, 'Legacy_Code__c').attributes.title).toBe(`Cannot have a fixed value: ${RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON}`);
+
+        });
+
+        it('locks a field the tree wires as a lookup whatever type the wrapper gives it', () => {
+
+            const panel = drawRecipe(recipe => { treeOf(recipe, ACCOUNT_TREE_KEY).objects.find(treeObject => treeObject.objectApiName === 'Account')?.parentLookups.push({ fieldApiName: 'Legacy_Code__c', parentObjectApiName: 'Account' }); });
+            const account = expanded(panel, 'Account');
+
+            expect(pinOf(panel, account, 'Legacy_Code__c').attributes.title).toBe(`Cannot have a fixed value: ${RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON}`);
+            expect(pinOf(panel, account, 'Annual_Budget__c').disabled).toBeFalse();
 
         });
 
