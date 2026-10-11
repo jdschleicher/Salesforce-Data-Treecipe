@@ -280,13 +280,62 @@ describe('SalesforceOrgService', () => {
             const describeResult = await SalesforceOrgService.describeObjects(ORG_USERNAME, ['Missing__c', 'Account'], async () => describeSource);
 
             expect(describeResult.outcomes).toEqual([
-                { objectApiName: 'Missing__c', failureMessage: 'NOT_FOUND: The requested resource does not exist', wasCached: false },
+                { objectApiName: 'Missing__c', failureMessage: 'NOT_FOUND: The requested resource does not exist', isNotFound: true, wasCached: false },
                 expect.objectContaining({ objectApiName: 'Account', wasCached: false })
             ]);
 
             await SalesforceOrgService.describeObjects(ORG_USERNAME, ['Missing__c'], async () => describeSource);
 
             expect((describeSource.describe as jest.Mock).mock.calls.filter(([objectApiName]) => objectApiName === 'Missing__c')).toHaveLength(2);
+
+        });
+
+        // ONLY THE ORG'S OWN "NO SUCH OBJECT" IS A MISSING OBJECT (#211): A FAILURE TO ASK SAYS NOTHING ABOUT IT
+        it('marks a failure isNotFound only when the org answered NOT_FOUND', async () => {
+
+            const describeSource = { describe: jest.fn().mockRejectedValue(Object.assign(new Error('Session expired or invalid'), { errorCode: 'INVALID_SESSION_ID' })) };
+
+            const describeResult = await SalesforceOrgService.describeObjects(ORG_USERNAME, ['Account'], async () => describeSource);
+
+            expect(describeResult.outcomes[0].failureMessage).toBe('INVALID_SESSION_ID: Session expired or invalid');
+            expect(describeResult.outcomes[0]).not.toHaveProperty('isNotFound');
+            expect(SalesforceOrgService.isNotFoundError(null)).toBe(false);
+            expect(SalesforceOrgService.isNotFoundError(Object.assign(new Error('x'), { errorCode: 'NOT_FOUND' }))).toBe(true);
+
+        });
+
+        describe('clearDescribeCache for one org and object (#211)', () => {
+
+            it('drops only that org\'s describe of that object, matched case-insensitively, so the next request describes it afresh', async () => {
+
+                const { describeSource, describedObjectApiNames } = buildDescribeSource({ Account: ACCOUNT_DESCRIBE, Contact: { fields: [] } });
+
+                await SalesforceOrgService.describeObjects(ORG_USERNAME, ['Account', 'Contact'], async () => describeSource);
+                await SalesforceOrgService.describeObjects('someone.else@example.com', ['Account'], async () => describeSource);
+                describedObjectApiNames.length = 0;
+
+                SalesforceOrgService.clearDescribeCache(ORG_USERNAME, 'account');
+
+                expect(SalesforceOrgService.getCachedDescribe(ORG_USERNAME, 'Account')).toBeUndefined();
+                expect(SalesforceOrgService.getCachedDescribe(ORG_USERNAME, 'Contact')).toBeDefined();
+                expect(SalesforceOrgService.getCachedDescribe('someone.else@example.com', 'Account')).toBeDefined();
+
+                await SalesforceOrgService.describeObjects(ORG_USERNAME, ['Account', 'Contact'], async () => describeSource);
+
+                expect(describedObjectApiNames).toEqual(['Account']);
+
+            });
+
+            it('still clears everything when called with no org or object', async () => {
+
+                const { describeSource } = buildDescribeSource({ Account: ACCOUNT_DESCRIBE });
+
+                await SalesforceOrgService.describeObjects(ORG_USERNAME, ['Account'], async () => describeSource);
+                SalesforceOrgService.clearDescribeCache();
+
+                expect(SalesforceOrgService.getCachedDescribe(ORG_USERNAME, 'Account')).toBeUndefined();
+
+            });
 
         });
 

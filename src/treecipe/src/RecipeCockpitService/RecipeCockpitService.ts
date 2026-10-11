@@ -5,7 +5,8 @@ import * as vscode from 'vscode';
 import type { Connection } from '@salesforce/core';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
-import { IAuthenticatedOrgDetail } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { IAuthenticatedOrgDetail, ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { IMetadataDeployPlan, IMetadataDeployTarget, METADATA_DEPLOY_MAX_BUFFER_BYTES, METADATA_DEPLOY_TIMEOUT_MILLISECONDS, MetadataDeployOutcome, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
 import {
     DevHubConfigSource,
     IOrgDescribeRequestResult,
@@ -309,7 +310,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, compares its fields with an org you choose, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org.
+It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org. "Deploy missing metadata…", shown under an insert stopped by an object or fields the selected sandbox lacks, deploys only those custom objects and fields from this workspace's source to that org, after a confirmation that lists them, and only once the org answers again that it is a sandbox.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -668,6 +669,8 @@ export interface IRecipeCockpitPanelMessage {
     nickname?: unknown;
     included?: unknown;
     updateSequence?: unknown;
+    requestSequence?: unknown;
+    readinessSequence?: unknown;
 }
 
 export interface IRecipeCockpitLoadPhaseMessage {
@@ -916,6 +919,8 @@ export interface IRecipeCockpitCreateReadinessByTarget {
     byObjectApiName: Map<string, IRecipeCockpitCreateReadinessViewModel>;
     // KEYED BY buildTreeObjectKey
     byCreateKey: Map<string, IRecipeCockpitCreateReadinessViewModel>;
+    // HOST-ONLY (#211): WHAT EACH TREE AND OBJECT WHOSE READINESS A DEPLOY CAN FIX IS MISSING, KEYED LIKE byCreateKey
+    deployTargetsByCreateKey: Map<string, IMetadataDeployTarget>;
 }
 
 /*
@@ -931,6 +936,8 @@ export interface IRecipeCockpitDataOrgReadinessMessage {
     insertResults: IRecipeCockpitInsertResultViewModel[];
     requestSequence: number;
     renderSequence: number;
+    // SET BY THE HOST AS IT POSTS (#211), AND ECHOED IN "readinessRendered": ONLY THE READINESS DRAWN ACTIVATES ITS DEPLOY TARGETS
+    readinessSequence?: number;
 }
 
 // AN INSERT IN FLIGHT DISABLES EVERY TREE'S INSERT; REPLAYED ON A RELOAD SO A RELOADED DOCUMENT DOES NOT OFFER A SECOND
@@ -964,6 +971,28 @@ export interface IRecipeCockpitScratchOrgStateMessage {
     hasOutput: boolean;
 }
 
+/*
+    "Deploy missing metadata…" (#211): while isRunning, every tree's insert, every deploy button and
+    the org picker are disabled, and statusText is the phase. Once it ends, statusText is how it
+    ended, and hasOutput says whether "View output" has a result file -- the path stays on the host.
+    treeKey and objectApiName name the card and object the line is drawn for. Stored and replayed.
+*/
+export interface IRecipeCockpitMetadataDeployStateMessage {
+    command: 'metadataDeployState';
+    isRunning: boolean;
+    treeKey: string;
+    objectApiName: string;
+    statusText: string;
+    isFailure: boolean;
+    hasOutput: boolean;
+}
+
+export const RECIPE_COCKPIT_METADATA_DEPLOY_ACTION_LABEL = 'Deploy missing metadata…';
+
+export const RECIPE_COCKPIT_METADATA_DEPLOY_CONFIRM_LABEL = 'Deploy';
+
+export const RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL = 'View output';
+
 export const RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL = 'Create scratch org';
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER = 'Choose the Dev Hub to create the scratch org through';
@@ -993,6 +1022,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitTreePreferencesMessage
                                         | IRecipeCockpitObjectSelectionMessage
                                         | IRecipeCockpitScratchOrgStateMessage
+                                        | IRecipeCockpitMetadataDeployStateMessage
                                         | IRecipeCockpitDatasetAddedMessage;
 
 /*
@@ -1114,7 +1144,11 @@ export type RecipeCockpitPanelAction =
     | { kind: 'persistPlace'; place: IRecipeCockpitPanelPlace }
     | { kind: 'createScratchOrg' }
     | { kind: 'postScratchOrgState'; hostMessage: IRecipeCockpitScratchOrgStateMessage }
-    | { kind: 'viewScratchOrgOutput'; outputFilePath: string };
+    | { kind: 'viewScratchOrgOutput'; outputFilePath: string }
+    | { kind: 'activateDeployActions'; readinessSequence: number }
+    | { kind: 'deployMissingMetadata'; deployTarget: IMetadataDeployTarget }
+    | { kind: 'postMetadataDeployState'; hostMessage: IRecipeCockpitMetadataDeployStateMessage }
+    | { kind: 'viewMetadataDeployOutput'; outputFilePath: string };
 
 // WHAT A REOPEN OF THE PANEL CARRIES INTO ITS RELOAD (#222): THE MODEL ON SCREEN, AND THE COMPARISONS DRAWN OVER IT
 export interface IRecipeCockpitCarriedPanelState {
@@ -1188,6 +1222,23 @@ export interface IRecipeCockpitPanelState {
     // THE "+ New scratch org" RUN, AND THE HOST-ONLY RESULT FILE ITS "View output" OPENS
     scratchOrgStateMessage?: IRecipeCockpitScratchOrgStateMessage;
     scratchOrgOutputFilePath?: string;
+    /*
+        "Deploy missing metadata…" (#211). The deployable objects are an allow-list built from the
+        READINESS posted, not from the model: PENDING is filled as each dataOrgReadiness is posted
+        for one selection (pendingDeployTargetsRequestSequence), and only the panel's
+        "readinessRendered" for that selection, over a model it acknowledged, copies it to ACTIVE.
+        Every ready, new model, failure to draw and new selection leaves ACTIVE answering nothing.
+        The targets are the host's own: what is deployed is read from here, never from the message.
+    */
+    pendingDeployTargets: Map<string, IMetadataDeployTarget>;
+    pendingDeployTargetsRequestSequence: number | null;
+    // THE PENDING TARGETS AS EACH dataOrgReadiness LEFT THEM, BY ITS readinessSequence: AN ACKNOWLEDGEMENT ACTIVATES ITS OWN, NOT A LATER ONE'S
+    pendingDeployTargetSnapshots: Map<number, Map<string, IMetadataDeployTarget>>;
+    readinessPostSequence: number;
+    deployTargets: Map<string, IMetadataDeployTarget>;
+    deployTargetsRequestSequence: number | null;
+    metadataDeployStateMessage?: IRecipeCockpitMetadataDeployStateMessage;
+    metadataDeployOutputFilePath?: string;
     // THE PLACE workspaceState KEPT FOR THIS MODEL (#230), REPLAYED UNTIL THE MODEL'S "rendered" SAYS IT WAS DRAWN
     restorePlace?: IRecipeCockpitPanelPlace;
     // HOST-ONLY, REPLACED WITH THE MODEL: WHAT A FILTERED COPY NESTS A KEPT FRIEND BY (#219)
@@ -1211,6 +1262,14 @@ export interface IRecipeCockpitRunFieldCounts {
     fieldCountsByObjectApiName: Map<string, number>;
     fieldCountsByTreeFolderName: Map<string, number>;
     hasTreeData: boolean;
+}
+
+// HOW A METADATA DEPLOY ENDED (#211): ITS LINE, WHETHER THE CLI RAN (SO THE DESCRIBE IS STALE), AND THE RESULT FILE "View output" OPENS
+interface IRecipeCockpitMetadataDeployClosingState {
+    statusText: string;
+    isFailure: boolean;
+    isDeployRun: boolean;
+    outputFilePath?: string;
 }
 
 // ONE LOOKUP'S ANSWER, WITH EVERY Id ITS OWN SEARCHES RETURNED: ONLY THOSE MAY BE WRITTEN (#254)
@@ -2545,6 +2604,15 @@ export class RecipeCockpitService {
     */
     private static async refreshDataOrgReadinessForFolder(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, folderName: string) {
 
+        await this.refreshDataOrgReadinessForTrees(cockpitPanel, panelState, tree => tree.folderName === folderName);
+
+    }
+
+    // THE SAME FOR THE CARDS ONE PREDICATE PICKS: A FOLDER'S, OR EVERY CARD THAT LISTS AN OBJECT A DEPLOY CHANGED (#211)
+    private static async refreshDataOrgReadinessForTrees(cockpitPanel: vscode.WebviewPanel,
+                                                            panelState: IRecipeCockpitPanelState,
+                                                            isTreeRefreshed: (tree: IRecipeCockpitTreeViewModel) => boolean) {
+
         const dataOrgSelection = panelState.dataOrgSelection;
         const recipeDataMessage = panelState.recipeDataMessage;
 
@@ -2561,7 +2629,7 @@ export class RecipeCockpitService {
 
         const folderRecipeDataMessage: IRecipeCockpitRecipeDataMessage = {
             ...recipeDataMessage,
-            recipe: { ...recipeDataMessage.recipe, trees: recipeDataMessage.recipe.trees.filter(tree => tree.folderName === folderName) }
+            recipe: { ...recipeDataMessage.recipe, trees: recipeDataMessage.recipe.trees.filter(isTreeRefreshed) }
         };
         const createTargets = ( await this.collectCreateTargets(panelState, folderRecipeDataMessage) )
             .filter(createTarget => panelState.dataOrgObjectApiNames.has(createTarget.objectApiName));
@@ -2589,14 +2657,14 @@ export class RecipeCockpitService {
             return;
         }
 
-        this.postToPanel(cockpitPanel, {
+        this.postDataOrgReadiness(cockpitPanel, panelState, {
             command: 'dataOrgReadiness',
             objects: [...readinessByTarget.byObjectApiName.values()],
             createTargets: [...readinessByTarget.byCreateKey.values()],
             insertResults: [],
             requestSequence: requestSequence,
             renderSequence: recipeDataMessage.renderSequence
-        });
+        }, readinessByTarget.deployTargetsByCreateKey);
 
     }
 
@@ -2771,7 +2839,13 @@ export class RecipeCockpitService {
             pendingInsertableFriendTargets: new Map(),
             insertableFriendTargets: new Map(),
             datasetUpdateSequence: 0,
-            acknowledgedRenderSequence: null
+            acknowledgedRenderSequence: null,
+            pendingDeployTargets: new Map(),
+            pendingDeployTargetsRequestSequence: null,
+            pendingDeployTargetSnapshots: new Map(),
+            readinessPostSequence: 0,
+            deployTargets: new Map(),
+            deployTargetsRequestSequence: null
         };
 
     }
@@ -2839,6 +2913,7 @@ export class RecipeCockpitService {
         this.recipeCockpitPanelState = this.buildInitialPanelState(workspaceRoot);
 
         this.adoptScratchOrgRunState(this.recipeCockpitPanelState);
+        this.adoptMetadataDeployRunState(this.recipeCockpitPanelState);
 
         if ( previousPanelState ) {
             // WHAT A "View errors" LINK OPENS, AND THE SEQUENCE A NEW SELECTION MUST STAY ABOVE
@@ -2847,6 +2922,9 @@ export class RecipeCockpitService {
             // A SCRATCH ORG RUN OUTLIVES THE RELOAD, AND ITS LINE AND OUTPUT GO WITH IT
             this.recipeCockpitPanelState.scratchOrgStateMessage = previousPanelState.scratchOrgStateMessage;
             this.recipeCockpitPanelState.scratchOrgOutputFilePath = previousPanelState.scratchOrgOutputFilePath;
+            // SO DOES A METADATA DEPLOY'S (#211)
+            this.recipeCockpitPanelState.metadataDeployStateMessage = previousPanelState.metadataDeployStateMessage;
+            this.recipeCockpitPanelState.metadataDeployOutputFilePath = previousPanelState.metadataDeployOutputFilePath;
         }
 
         if ( !existingCockpitPanel ) {
@@ -3104,6 +3182,7 @@ export class RecipeCockpitService {
         panelState.acknowledgedRenderSequence = null;
         panelState.dataOrgSelection = undefined;
         panelState.dataOrgRequestSequence++;
+        this.clearDeployTargets(panelState);
 
         /*
             The focus rides on the POSTED copy only. The stored message is what every reveal replays,
@@ -3196,6 +3275,7 @@ export class RecipeCockpitService {
                 panelState.acknowledgedRenderSequence = null;
                 panelState.dataOrgSelection = undefined;
                 panelState.dataOrgRequestSequence++;
+                this.clearDeployTargets(panelState);
                 panelAction.hostMessages.forEach(hostMessage => cockpitPanel.webview.postMessage(hostMessage));
                 return;
 
@@ -3220,6 +3300,13 @@ export class RecipeCockpitService {
                 panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists;
                 return;
 
+            // A COPY: LATER READINESS FOR THE SAME SELECTION KEEPS FILLING PENDING, AND IS NOT ON SCREEN UNTIL ITS OWN ACKNOWLEDGEMENT
+            case 'activateDeployActions':
+
+                panelState.deployTargets = new Map(panelState.pendingDeployTargetSnapshots.get(panelAction.readinessSequence));
+                panelState.deployTargetsRequestSequence = panelState.pendingDeployTargetsRequestSequence;
+                return;
+
             case 'reportRenderFailure': {
 
                 panelState.reportedFailureDescriptions.add(panelAction.failureDescription);
@@ -3239,6 +3326,7 @@ export class RecipeCockpitService {
                     // NOTHING IS ON SCREEN TO DRAW AN ANSWER IN, SO A SELECTION STILL BEING CHECKED STOPS ASKING THE ORG
                     panelState.dataOrgSelection = undefined;
                     panelState.dataOrgRequestSequence++;
+                    this.clearDeployTargets(panelState);
                 }
 
                 const renderFailureError = new Error(`The Recipe Cockpit panel could not render the recipe: ${panelAction.failureDescription}`);
@@ -3459,6 +3547,21 @@ export class RecipeCockpitService {
             case 'viewScratchOrgOutput':
 
                 await this.openScratchOrgOutput(panelAction.outputFilePath, panelState.workspaceRoot);
+                return;
+
+            case 'deployMissingMetadata':
+
+                await this.deployMissingMetadataFromPanel(cockpitPanel, panelAction.deployTarget);
+                return;
+
+            case 'postMetadataDeployState':
+
+                this.postToPanel(cockpitPanel, panelAction.hostMessage);
+                return;
+
+            case 'viewMetadataDeployOutput':
+
+                await this.openMetadataDeployOutput(panelAction.outputFilePath, panelState.workspaceRoot);
                 return;
 
         }
@@ -4656,6 +4759,278 @@ export class RecipeCockpitService {
 
     }
 
+    private static isMetadataDeployInFlight = false;
+
+    private static metadataDeployRunStateMessage: IRecipeCockpitMetadataDeployStateMessage | undefined;
+
+    // KEPT FOR THE WINDOW WHILE RUNNING, STORED ON WHICHEVER PANEL STATE IS CURRENT, AND POSTED TO WHICHEVER PANEL IS OPEN
+    private static setMetadataDeployState(metadataDeployStateMessage: IRecipeCockpitMetadataDeployStateMessage) {
+
+        this.metadataDeployRunStateMessage = metadataDeployStateMessage.isRunning ? metadataDeployStateMessage : undefined;
+        this.recipeCockpitPanelState.metadataDeployStateMessage = metadataDeployStateMessage;
+
+        if ( this.recipeCockpitPanel ) {
+            this.postToPanel(this.recipeCockpitPanel, metadataDeployStateMessage);
+        }
+
+    }
+
+    // A PANEL STATE BUILT WHILE A DEPLOY IS GOING STARTS FROM ITS STATE, SO ITS ROUTER REFUSES WHAT THE DEPLOY HOLDS
+    private static adoptMetadataDeployRunState(panelState: IRecipeCockpitPanelState) {
+
+        if ( this.isMetadataDeployInFlight && this.metadataDeployRunStateMessage ) {
+            panelState.metadataDeployStateMessage = this.metadataDeployRunStateMessage;
+        }
+
+    }
+
+    /*
+        "Deploy missing metadata…" (#211), for the org the panel has selected and the target the
+        router matched. One at a time per window. However it ends, once the CLI has run, that org's
+        describe of the object is dropped from the session cache and every card listing the object
+        is checked again, so the insert is offered only if a fresh describe says so.
+    */
+    private static async deployMissingMetadataFromPanel(cockpitPanel: vscode.WebviewPanel, deployTarget: IMetadataDeployTarget) {
+
+        const panelState = this.recipeCockpitPanelState;
+        const orgDetail = panelState.dataOrgSelection?.orgDetail;
+
+        if ( this.isMetadataDeployInFlight || !orgDetail ) {
+            if ( this.metadataDeployRunStateMessage ) {
+                this.postToPanel(cockpitPanel, this.metadataDeployRunStateMessage);
+            }
+            return;
+        }
+
+        this.isMetadataDeployInFlight = true;
+        const { treeKey, objectApiName } = deployTarget;
+        const buildState = (isRunning: boolean, statusText: string, isFailure = false, hasOutput = false): IRecipeCockpitMetadataDeployStateMessage => ({
+            command: 'metadataDeployState', isRunning, treeKey, objectApiName, statusText, isFailure, hasOutput
+        });
+        let closingState: IRecipeCockpitMetadataDeployClosingState = { statusText: '', isFailure: false, isDeployRun: false };
+        // SET THE MOMENT THE CLI IS STARTED, SO A THROW AFTER IT STILL DESCRIBES THE OBJECT AFRESH
+        let isCliStarted = false;
+
+        this.setMetadataDeployState(buildState(true, `Preparing the deploy of ${objectApiName}…`));
+
+        try {
+
+            closingState = await this.performMetadataDeploy(panelState.workspaceRoot, orgDetail, deployTarget, statusText => this.setMetadataDeployState(buildState(true, statusText)), () => { isCliStarted = true; });
+
+        } catch (deployError) {
+
+            closingState = { statusText: `The deploy of ${objectApiName} stopped: ${this.describeThrown(deployError)}`, isFailure: true, isDeployRun: isCliStarted };
+            throw deployError;
+
+        } finally {
+
+            /*
+                The deploy stays IN FLIGHT -- its button, every insert and the picker held -- until
+                the readiness it changed has been checked again: given back first, the old
+                readiness's button would offer the same deploy a second time meanwhile.
+            */
+            try {
+
+                if ( closingState.isDeployRun || isCliStarted ) {
+
+                    SalesforceOrgService.clearDescribeCache(orgDetail.username, objectApiName);
+                    this.forgetDeployTarget(this.recipeCockpitPanelState, deployTarget);
+                    this.setMetadataDeployState(buildState(true, `${closingState.statusText} Checking the tree again…`.trim(), closingState.isFailure));
+
+                    const currentPanel = this.recipeCockpitPanel;
+                    const currentPanelState = this.recipeCockpitPanelState;
+
+                    if ( currentPanel && currentPanelState.dataOrgSelection?.orgDetail.username === orgDetail.username ) {
+                        await this.refreshDataOrgReadinessForTrees(currentPanel, currentPanelState, tree => tree.objects.some(treeObject => treeObject.objectApiName === objectApiName));
+                    }
+
+                }
+
+            } finally {
+
+                this.isMetadataDeployInFlight = false;
+                this.recipeCockpitPanelState.metadataDeployOutputFilePath = closingState.outputFilePath;
+                this.setMetadataDeployState(buildState(false, closingState.statusText, closingState.isFailure, !!closingState.outputFilePath));
+
+            }
+
+        }
+
+    }
+
+    private static async performMetadataDeploy(workspaceRoot: string,
+                                                orgDetail: IAuthenticatedOrgDetail,
+                                                deployTarget: IMetadataDeployTarget,
+                                                reportStatus: (statusText: string) => void,
+                                                onCliStarted: () => void): Promise<IRecipeCockpitMetadataDeployClosingState> {
+
+        const objectApiName = deployTarget.objectApiName;
+        // NO PARENTHESES: A NOTIFICATION ESCAPES THEM, AND THIS LABEL IS IN EVERY ONE THE DEPLOY SHOWS
+        const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
+        const refuse = (refusalText: string): IRecipeCockpitMetadataDeployClosingState => {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(refusalText));
+            return { statusText: refusalText, isFailure: true, isDeployRun: false };
+        };
+
+        let packageDirectoryPaths: string[];
+        try {
+            packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
+        } catch (projectError) {
+            return refuse(`Nothing was deployed: ${this.describeThrown(projectError)}`);
+        }
+
+        const deployPlan: IMetadataDeployPlan = RecipeCockpitMetadataDeploy.planMetadataDeploy(deployTarget, workspaceRoot, packageDirectoryPaths);
+
+        if ( deployPlan.members.length === 0 ) {
+            return refuse(RecipeCockpitMetadataDeploy.buildNothingToDeployMessage(deployPlan));
+        }
+
+        const componentText = `${deployPlan.members.length} ${deployPlan.members.length === 1 ? 'component' : 'components'}`;
+
+        const confirmation = await vscode.window.showWarningMessage(
+            `Deploy ${componentText} of ${objectApiName} to ${this.toSingleLine(orgLabel)}?`,
+            { modal: true, detail: RecipeCockpitMetadataDeploy.buildConfirmationDetail(deployPlan, orgLabel) },
+            RECIPE_COCKPIT_METADATA_DEPLOY_CONFIRM_LABEL
+        );
+
+        if ( confirmation !== RECIPE_COCKPIT_METADATA_DEPLOY_CONFIRM_LABEL ) {
+            return { statusText: '', isFailure: false, isDeployRun: false };
+        }
+
+        /*
+            The org was checked when it was selected; it is asked AGAIN, by username, after the
+            reader confirmed and before any process -- an org that does not answer that it is a
+            sandbox gets no deploy, whatever the selection said.
+        */
+        reportStatus(`Checking that ${orgLabel} is a sandbox…`);
+
+        let orgTypeDetail: IOrgTypeDetail | undefined;
+        try {
+            orgTypeDetail = await SalesforceOrgService.queryOrganizationType(SalesforceOrgService.toQuerySource(await SalesforceOrgService.getConnection(orgDetail.username)));
+        } catch (connectionError) {
+            return refuse(`Nothing was deployed: could not connect to ${orgLabel}: ${this.describeThrown(connectionError)}`);
+        }
+
+        if ( orgTypeDetail?.isSandbox !== true ) {
+            return refuse(`Nothing was deployed: ${orgLabel} ${orgTypeDetail ? `answered that it is ${SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail)}` : 'could not say whether it is a sandbox'}. Metadata is deployed only to a sandbox or scratch org.`);
+        }
+
+        const deployArguments = RecipeCockpitMetadataDeploy.buildMetadataDeployArguments(deployPlan.members, orgDetail.username);
+
+        reportStatus(`Deploying ${componentText} of ${objectApiName}…`);
+        onCliStarted();
+
+        let isCancelled = false;
+
+        const deployInvocation: ISalesforceCliInvocationResult = await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Recipe Cockpit: deploying ${componentText} of ${objectApiName} to ${orgLabel}`,
+            cancellable: true
+        }, async (_progress, cancellationToken) => {
+
+            let killCurrentProcess: (() => void) | undefined;
+            cancellationToken.onCancellationRequested(() => {
+                isCancelled = true;
+                killCurrentProcess?.();
+            });
+
+            return await PicklistDependencyCheckService.runSalesforceCli(
+                deployArguments,
+                (killChildProcess: () => void) => {
+                    killCurrentProcess = killChildProcess;
+                    if ( cancellationToken.isCancellationRequested ) {
+                        isCancelled = true;
+                        killChildProcess();
+                    }
+                },
+                METADATA_DEPLOY_TIMEOUT_MILLISECONDS,
+                { workingDirectoryPath: path.resolve(workspaceRoot), maxBufferBytes: METADATA_DEPLOY_MAX_BUFFER_BYTES }
+            );
+
+        });
+
+        if ( isCancelled ) {
+            const cancelledText = `The deploy of ${objectApiName} to ${orgLabel} was cancelled and may have partly applied.`;
+            VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(cancelledText));
+            return { statusText: cancelledText, isFailure: true, isDeployRun: true };
+        }
+
+        const deployPayload = ScratchOrgService.readCliJsonPayload(deployInvocation);
+        const deployOutcome: MetadataDeployOutcome = RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(deployInvocation, deployPlan.members.length, deployPayload);
+        const outputFilePath = deployInvocation.spawnError || deployInvocation.isOutputTooLarge
+            ? undefined
+            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, 'metadata-deploy', deployInvocation, new Date(), deployPayload);
+
+        switch ( deployOutcome.kind ) {
+
+            case 'deployed': {
+                const deployedText = `Deployed ${deployOutcome.deployedComponentCount} ${deployOutcome.deployedComponentCount === 1 ? 'component' : 'components'} of ${objectApiName} to ${orgLabel}. Checking again whether the tree can be inserted.`;
+                VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(deployedText));
+                return { statusText: deployedText, isFailure: false, isDeployRun: true, outputFilePath: outputFilePath };
+            }
+
+            case 'partiallyFailed': {
+                // NO --ignore-errors: THE DEPLOY ROLLS BACK ON ANY FAILURE, SO THE COMPONENTS THAT DID NOT FAIL WERE NOT APPLIED EITHER
+                const partialText = `${deployOutcome.failedComponentCount} of ${deployOutcome.componentCount} components failed to deploy to ${orgLabel}, so none was applied: ${deployOutcome.failureDetail}`;
+                this.showMetadataDeployNotification('warning', partialText, outputFilePath, workspaceRoot);
+                return { statusText: partialText, isFailure: true, isDeployRun: true, outputFilePath: outputFilePath };
+            }
+
+            case 'cliNotInstalled':
+                this.showMetadataDeployNotification('error', deployOutcome.failureMessage, undefined, workspaceRoot);
+                return { statusText: deployOutcome.failureMessage, isFailure: true, isDeployRun: false };
+
+            case 'unconfirmed': {
+                const unconfirmedText = `${deployOutcome.failureMessage} Check it with "sf project deploy report --target-org ${orgDetail.username}".`;
+                this.showMetadataDeployNotification('warning', unconfirmedText, outputFilePath, workspaceRoot);
+                return { statusText: unconfirmedText, isFailure: true, isDeployRun: true, outputFilePath: outputFilePath };
+            }
+
+            case 'failed': {
+                const failedText = `The deploy of ${objectApiName} to ${orgLabel} failed: ${deployOutcome.failureMessage}`;
+                this.showMetadataDeployNotification('error', failedText, outputFilePath, workspaceRoot);
+                return { statusText: failedText, isFailure: true, isDeployRun: true, outputFilePath: outputFilePath };
+            }
+
+        }
+
+    }
+
+    private static describeThrown(thrownValue: unknown): string {
+
+        return String(( thrownValue as Error | undefined )?.message ?? thrownValue);
+
+    }
+
+    // NOT AWAITED: THE DEPLOY ENDS, AND RE-ENABLES THE PANEL, WITHOUT WAITING FOR THE READER TO DISMISS THE NOTIFICATION
+    private static showMetadataDeployNotification(severity: 'warning' | 'error', notificationText: string, outputFilePath: string | undefined, workspaceRoot: string) {
+
+        const actions = outputFilePath ? [RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL] : [];
+        const escapedText = RecipeYamlScalar.escapeForNotification(notificationText);
+        const shownNotification = severity === 'warning'
+            ? vscode.window.showWarningMessage(escapedText, ...actions)
+            : vscode.window.showErrorMessage(escapedText, ...actions);
+
+        Promise.resolve(shownNotification)
+            .then(chosenAction => chosenAction === RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL && outputFilePath
+                ? this.openMetadataDeployOutput(outputFilePath, workspaceRoot)
+                : undefined)
+            .catch(() => undefined);
+
+    }
+
+    // THE PATH IS THE HOST'S OWN, AND STILL RE-CHECKED: THE FILE CAN HAVE BEEN REPLACED BY A LINK OUT OF THE WORKSPACE SINCE
+    private static async openMetadataDeployOutput(outputFilePath: string, workspaceRoot: string) {
+
+        if ( !this.isUsableWorkspacePath(outputFilePath, workspaceRoot) ) {
+            VSCodeWorkspaceService.showWarningMessage('The deploy result file no longer exists in this workspace.');
+            return;
+        }
+
+        await VSCodeWorkspaceService.openFileInEditor(outputFilePath);
+
+    }
+
     /*
         Remembered by USERNAME first, so the listing selects it, and kept even when it is not listed
         yet -- the next ⟳ selects it then. A window with no drawn picker only remembers it.
@@ -4781,7 +5156,7 @@ export class RecipeCockpitService {
             postSelection(`${orgLabel} ${dataOrgSelection.orgTypeDetail ? `answered that it is ${SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail)}` : 'could not say whether it is a sandbox'}, so the Treecipe tab asked it nothing more. It inserts records only into a sandbox or scratch org.`);
 
             if ( isSelectionCurrent() ) {
-                this.postToPanel(cockpitPanel, {
+                this.postDataOrgReadiness(cockpitPanel, panelState, {
                     command: 'dataOrgReadiness',
                     objects: [...( await this.computeCreateReadiness(orgDetail.username, connection, objectApiNames, dataOrgSelection.orgTypeDetail) ).values()],
                     createTargets: [],
@@ -4800,12 +5175,14 @@ export class RecipeCockpitService {
         // WHETHER A TREE'S INSERT IS OFFERED NEEDS EACH OBJECT'S DESCRIBE, NONE OF WHICH IS ASKED OF AN ORG THAT HAS NOT ANSWERED IT IS A SANDBOX
         let readinessByObjectApiName: Map<string, IRecipeCockpitCreateReadinessViewModel>;
         let readinessByCreateKey = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
+        let deployTargetsByCreateKey = new Map<string, IMetadataDeployTarget>();
 
         try {
             const createTargets = await this.collectCreateTargets(panelState, selectedRecipeDataMessage);
             const readinessByTarget = await this.computeCreateReadinessByTarget(orgDetail.username, connection, objectApiNames, dataOrgSelection.orgTypeDetail, createTargets, () => !isSelectionCurrent());
             readinessByObjectApiName = readinessByTarget.byObjectApiName;
             readinessByCreateKey = readinessByTarget.byCreateKey;
+            deployTargetsByCreateKey = readinessByTarget.deployTargetsByCreateKey;
         } catch (describeError) {
             const describeFailureMessage = String(describeError?.message ?? describeError);
             readinessByObjectApiName = new Map(objectApiNames.map(objectApiName => [objectApiName, {
@@ -4821,7 +5198,7 @@ export class RecipeCockpitService {
 
         const usernamePrefix = `${orgDetail.username}\n`;
 
-        this.postToPanel(cockpitPanel, {
+        this.postDataOrgReadiness(cockpitPanel, panelState, {
             command: 'dataOrgReadiness',
             objects: objectApiNames.map(objectApiName => readinessByObjectApiName.get(objectApiName)).filter(readiness => !!readiness),
             createTargets: [...readinessByCreateKey.values()],
@@ -4830,7 +5207,7 @@ export class RecipeCockpitService {
                 .map(([, storedInsertResult]) => storedInsertResult.viewModel),
             requestSequence: requestSequence,
             renderSequence: renderSequence
-        });
+        }, deployTargetsByCreateKey);
 
     }
 
@@ -4866,26 +5243,35 @@ export class RecipeCockpitService {
 
         const readinessByObjectApiName = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
         const readinessByCreateKey = new Map<string, IRecipeCockpitCreateReadinessViewModel>();
+        const deployTargetsByCreateKey = new Map<string, IMetadataDeployTarget>();
         const createTargetsByObjectApiName = new Map<string, IRecipeCockpitCreateTarget[]>();
         createTargets.forEach(createTarget => createTargetsByObjectApiName.set(createTarget.objectApiName, [...( createTargetsByObjectApiName.get(createTarget.objectApiName) ?? [] ), createTarget]));
 
         const setReadiness = (readinessInput: ICreateReadinessInput) => {
             readinessByObjectApiName.set(readinessInput.objectApiName, RecipeCockpitRecordCreation.buildCreateReadiness(readinessInput));
             ( createTargetsByObjectApiName.get(readinessInput.objectApiName) ?? [] )
-                .forEach(createTarget => readinessByCreateKey.set(this.buildTreeObjectKey(createTarget.treeKey, createTarget.objectApiName), {
-                    ...RecipeCockpitRecordCreation.buildCreateReadiness({
-                        ...readinessInput,
-                        recipeFieldApiNames: createTarget.recipeFieldApiNames,
-                        recipeFieldRefusalReason: createTarget.recipeFieldRefusalReason,
-                        excludedFieldApiNames: createTarget.excludedFieldApiNames
-                    }),
-                    treeKey: createTarget.treeKey
-                }));
+                .forEach(createTarget => {
+                    const createKey = this.buildTreeObjectKey(createTarget.treeKey, createTarget.objectApiName);
+                    const targetReadiness: IRecipeCockpitCreateReadinessViewModel = {
+                        ...RecipeCockpitRecordCreation.buildCreateReadiness({
+                            ...readinessInput,
+                            recipeFieldApiNames: createTarget.recipeFieldApiNames,
+                            recipeFieldRefusalReason: createTarget.recipeFieldRefusalReason,
+                            excludedFieldApiNames: createTarget.excludedFieldApiNames
+                        }),
+                        treeKey: createTarget.treeKey
+                    };
+                    readinessByCreateKey.set(createKey, targetReadiness);
+                    const deployTarget = this.buildDeployTarget(createTarget, targetReadiness);
+                    if ( deployTarget ) {
+                        deployTargetsByCreateKey.set(createKey, deployTarget);
+                    }
+                });
         };
 
         if ( orgTypeDetail?.isSandbox !== true ) {
             objectApiNames.forEach(objectApiName => setReadiness({ objectApiName: objectApiName, orgTypeDetail: orgTypeDetail }));
-            return { byObjectApiName: readinessByObjectApiName, byCreateKey: readinessByCreateKey };
+            return { byObjectApiName: readinessByObjectApiName, byCreateKey: readinessByCreateKey, deployTargetsByCreateKey: deployTargetsByCreateKey };
         }
 
         const describeSourceFactory = typeof describeSource === 'function' ? describeSource : async () => describeSource;
@@ -4895,10 +5281,91 @@ export class RecipeCockpitService {
             objectApiName: describeOutcome.objectApiName,
             orgTypeDetail: orgTypeDetail,
             describe: describeOutcome.describe,
-            describeFailureMessage: describeOutcome.failureMessage
+            describeFailureMessage: describeOutcome.failureMessage,
+            ...( describeOutcome.isNotFound === true ? { isObjectNotFound: true } : {} )
         }));
 
-        return { byObjectApiName: readinessByObjectApiName, byCreateKey: readinessByCreateKey };
+        return { byObjectApiName: readinessByObjectApiName, byCreateKey: readinessByCreateKey, deployTargetsByCreateKey: deployTargetsByCreateKey };
+
+    }
+
+    /*
+        What a deploy could add for one tree's object (#211), read from the readiness the host just
+        built and never from the panel: the object when the org answered it has none (with the
+        fields of the tree's block), or the block's fields the describe lacks. Undefined for every
+        other reason, a not-createable field or a production org among them.
+    */
+    static buildDeployTarget(createTarget: IRecipeCockpitCreateTarget, readiness: IRecipeCockpitCreateReadinessViewModel): IMetadataDeployTarget | undefined {
+
+        if ( readiness.isMetadataDeployable !== true ) {
+            return undefined;
+        }
+
+        const missingFieldApiNames = readiness.missingFieldApiNames ?? [];
+        const isObjectMissing = readiness.missingFieldApiNames === undefined;
+
+        return {
+            treeKey: createTarget.treeKey,
+            objectApiName: createTarget.objectApiName,
+            isObjectMissing: isObjectMissing,
+            fieldApiNames: isObjectMissing ? [...( createTarget.recipeFieldApiNames ?? [] )] : [...missingFieldApiNames]
+        };
+
+    }
+
+    // NOTHING DEPLOYABLE IS ANSWERED FOR UNTIL THE NEXT READINESS IS POSTED AND ACKNOWLEDGED
+    private static clearDeployTargets(panelState: IRecipeCockpitPanelState) {
+
+        panelState.pendingDeployTargets = new Map();
+        panelState.pendingDeployTargetsRequestSequence = null;
+        panelState.pendingDeployTargetSnapshots = new Map();
+        panelState.deployTargets = new Map();
+        panelState.deployTargetsRequestSequence = null;
+
+    }
+
+    // A TARGET JUST DEPLOYED IS NOT OFFERED AGAIN UNTIL A FRESH READINESS SAYS IT STILL IS ONE
+    private static forgetDeployTarget(panelState: IRecipeCockpitPanelState, deployTarget: IMetadataDeployTarget) {
+
+        const createKey = this.buildTreeObjectKey(deployTarget.treeKey, deployTarget.objectApiName);
+
+        panelState.pendingDeployTargets.delete(createKey);
+        panelState.deployTargets.delete(createKey);
+        panelState.pendingDeployTargetSnapshots.forEach(snapshot => snapshot.delete(createKey));
+
+    }
+
+    /*
+        Every dataOrgReadiness goes out through here, so the deploy allow-list is built from exactly
+        what was posted. Answers for one selection MERGE by key, as the panel merges them; the first
+        answer for a new selection starts the pending list afresh.
+    */
+    private static postDataOrgReadiness(cockpitPanel: vscode.WebviewPanel,
+                                        panelState: IRecipeCockpitPanelState,
+                                        readinessMessage: IRecipeCockpitDataOrgReadinessMessage,
+                                        deployTargetsByCreateKey: Map<string, IMetadataDeployTarget> = new Map()) {
+
+        if ( panelState.pendingDeployTargetsRequestSequence !== readinessMessage.requestSequence ) {
+            panelState.pendingDeployTargets = new Map();
+            panelState.pendingDeployTargetSnapshots = new Map();
+            panelState.pendingDeployTargetsRequestSequence = readinessMessage.requestSequence;
+        }
+
+        // EVERY TREE-AND-OBJECT READINESS CARRIES ITS treeKey; ONE WITHOUT CAN NAME NO TARGET, SO IT ONLY CLEARS ''
+        readinessMessage.createTargets.forEach(readiness => {
+            const createKey = this.buildTreeObjectKey(readiness.treeKey ?? '', readiness.objectApiName);
+            const deployTarget = deployTargetsByCreateKey.get(createKey);
+            if ( deployTarget ) {
+                panelState.pendingDeployTargets.set(createKey, deployTarget);
+            } else {
+                panelState.pendingDeployTargets.delete(createKey);
+            }
+        });
+
+        const readinessSequence = ++panelState.readinessPostSequence;
+        panelState.pendingDeployTargetSnapshots.set(readinessSequence, new Map(panelState.pendingDeployTargets));
+
+        this.postToPanel(cockpitPanel, { ...readinessMessage, readinessSequence: readinessSequence });
 
     }
 
@@ -5989,7 +6456,8 @@ export class RecipeCockpitService {
 
                 // A RUN ENDS BY LISTING THE ORGS ITSELF; A SECOND LISTING MEANWHILE WOULD DISCARD ITS ANSWER AND FORGET ITS ORG
                 // AN INSERT IN FLIGHT HOLDS THE SELECTION IT CONFIRMED; ITS RELOAD ASKS AGAIN ONCE IT HAS ENDED
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || panelState.insertStateMessage ) {
+                // A METADATA DEPLOY HOLDS THE SELECTION IT DEPLOYS TO, AND CHECKS IT AGAIN WHEN IT ENDS
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || panelState.insertStateMessage || panelState.metadataDeployStateMessage?.isRunning ) {
                     return undefined;
                 }
 
@@ -6001,6 +6469,7 @@ export class RecipeCockpitService {
 
                 if ( typeof orgIndex !== 'number'
                         || panelState.scratchOrgStateMessage?.isRunning
+                        || panelState.metadataDeployStateMessage?.isRunning
                         || panelState.insertStateMessage
                         || !Number.isInteger(orgIndex)
                         || orgIndex < 0
@@ -6020,7 +6489,7 @@ export class RecipeCockpitService {
             */
             case 'refreshDataOrgs':
 
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || panelState.insertStateMessage ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || panelState.insertStateMessage || panelState.metadataDeployStateMessage?.isRunning ) {
                     return undefined;
                 }
 
@@ -6038,7 +6507,7 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.insertStateMessage ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.insertStateMessage || panelState.metadataDeployStateMessage?.isRunning ) {
                     return {
                         kind: 'postScratchOrgState',
                         hostMessage: panelState.scratchOrgStateMessage ?? { command: 'scratchOrgState', isRunning: false, statusText: '', isFailure: false, hasOutput: false }
@@ -6075,6 +6544,7 @@ export class RecipeCockpitService {
                 const recipeFilePath = typeof treeKey === 'string' ? panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey) : undefined;
                 // A SCRATCH ORG RUN IS ABOUT TO CHANGE THE SELECTION, SO NOTHING IS INSERTED WHILE IT IS IN FLIGHT
                 const isRoutable = !panelState.scratchOrgStateMessage?.isRunning
+                                    && !panelState.metadataDeployStateMessage?.isRunning
                                     && !panelState.runFakerStateMessage
                                     && typeof treeKey === 'string'
                                     && !!panelState.recipeDataMessage
@@ -6312,6 +6782,84 @@ export class RecipeCockpitService {
 
             }
 
+            /*
+                The panel drew a dataOrgReadiness (#211): only for the selection the host is checking
+                now, over the model whose own "rendered" has arrived. It makes that selection's
+                deployable objects -- built as the readiness was posted -- the ones a click is
+                matched against.
+            */
+            case 'readinessRendered': {
+
+                const { renderSequence, requestSequence, readinessSequence } = panelMessage;
+
+                if ( !panelState.recipeDataMessage
+                        || typeof readinessSequence !== 'number'
+                        || !panelState.pendingDeployTargetSnapshots.has(readinessSequence)
+                        || renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || panelState.acknowledgedRenderSequence !== panelState.recipeDataMessage.renderSequence
+                        || !panelState.dataOrgSelection
+                        || requestSequence !== panelState.dataOrgSelection.requestSequence
+                        || requestSequence !== panelState.pendingDeployTargetsRequestSequence ) {
+                    return undefined;
+                }
+
+                return { kind: 'activateDeployActions', readinessSequence: readinessSequence };
+
+            }
+
+            /*
+                "Deploy missing metadata…" (#211) posts NAMES and the INDEX of the org it was drawn
+                for, and none of them decides what is deployed: the tree and object must be a target
+                the panel confirmed drawing for the selection checked NOW, that selection must be the
+                org at that index, and the org must have answered that it is a sandbox. A forged
+                message for a production org, or for an object whose readiness a deploy cannot fix,
+                stops here, before any connection or process. One deploy at a time, and none while
+                an insert or a scratch org run holds the selection.
+            */
+            case 'deployMissingMetadata': {
+
+                const { orgIndex, treeKey, objectApiName } = panelMessage;
+                const dataOrgSelection = panelState.dataOrgSelection;
+
+                if ( panelState.metadataDeployStateMessage?.isRunning ) {
+                    return undefined;
+                }
+
+                const deployTarget = typeof treeKey === 'string'
+                                        && typeof objectApiName === 'string'
+                                        && typeof orgIndex === 'number'
+                                        && !!panelState.recipeDataMessage
+                                        && !!dataOrgSelection
+                                        && dataOrgSelection.orgIndex === orgIndex
+                                        && dataOrgSelection.orgTypeDetail?.isSandbox === true
+                                        && panelState.deployTargetsRequestSequence === dataOrgSelection.requestSequence
+                                        && !panelState.scratchOrgStateMessage?.isRunning
+                                        && !panelState.insertStateMessage
+                    ? panelState.deployTargets.get(this.buildTreeObjectKey(treeKey, objectApiName))
+                    : undefined;
+
+                if ( deployTarget ) {
+                    return { kind: 'deployMissingMetadata', deployTarget: deployTarget };
+                }
+
+                // THE PANEL DISABLED EVERY DEPLOY ON THE CLICK, SO EVEN A REFUSAL ANSWERS THAT NOTHING RUNS
+                return {
+                    kind: 'postMetadataDeployState',
+                    hostMessage: panelState.metadataDeployStateMessage
+                        ?? { command: 'metadataDeployState', isRunning: false, treeKey: '', objectApiName: '', statusText: '', isFailure: false, hasOutput: false }
+                };
+
+            }
+
+            // NO PAYLOAD: THE FILE IS THE ONE THE LAST DEPLOY WROTE, HELD ON THE HOST
+            case 'viewMetadataDeployOutput':
+
+                if ( panelState.metadataDeployStateMessage?.isRunning || !panelState.metadataDeployOutputFilePath ) {
+                    return undefined;
+                }
+
+                return { kind: 'viewMetadataDeployOutput', outputFilePath: panelState.metadataDeployOutputFilePath };
+
             // THE TREE'S KEY ALONE: THE RESULTS FILE IS THE HOST'S, STORED FOR THE ORG SELECTED NOW
             case 'viewInsertErrors': {
 
@@ -6383,6 +6931,10 @@ export class RecipeCockpitService {
 
         if ( panelState.scratchOrgStateMessage ) {
             replayMessages.push(panelState.scratchOrgStateMessage);
+        }
+
+        if ( panelState.metadataDeployStateMessage ) {
+            replayMessages.push(panelState.metadataDeployStateMessage);
         }
 
         if ( panelState.loadFailedMessage ) {
@@ -7600,7 +8152,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader:hover { box-shadow: inset 4px 0 0 var(--sdt-accent); }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeFavorite, .treeRename, .treeTab, .treeVersionToggle, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .treeCompare button, .emptyStateActions button, .dataOrgRefresh, .dataObjectToggle, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeFavorite, .treeRename, .treeTab, .treeVersionToggle, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .treeCompare button, .emptyStateActions button, .dataOrgRefresh, .dataObjectToggle, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .treeInsertDeploy, .metadataDeployViewOutput {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
@@ -7612,7 +8164,7 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .treeVersionToggle:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .dataObjectToggle:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled) {
+    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .treeVersionToggle:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .dataObjectToggle:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treeInsertDeploy:hover:not(:disabled), .metadataDeployViewOutput:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
     .treeToggle, .treeObjectToggle, .picklistToggle, .treeVersionToggle, .dataObjectToggle { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
@@ -7628,8 +8180,8 @@ ${this.buildPaletteCustomProperties()}
     .treeAddFriend { font-weight: 600; }
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
-    .treeAddFriendChoice, .historyAction, .treeInsertErrors, .scratchOrgViewOutput { text-decoration: underline; }
-    .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .treeCompare button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .treeRecordCountInput:disabled {
+    .treeAddFriendChoice, .historyAction, .treeInsertErrors, .scratchOrgViewOutput, .metadataDeployViewOutput { text-decoration: underline; }
+    .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .treeCompare button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .treeRecordCountInput:disabled, .treeInsertDeploy:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
         border-color: var(--sdt-border);
@@ -7805,6 +8357,8 @@ ${this.buildPaletteCustomProperties()}
     .dataOrgStatus.failed { color: var(--sdt-removed); }
     .scratchOrgStatus { margin: 0.4rem 0; }
     .scratchOrgStatus.failed { color: var(--sdt-removed); }
+    .metadataDeployStatus { flex-basis: 100%; }
+    .metadataDeployStatus.failed { color: var(--sdt-removed); }
     .scratchOrgViewOutput { margin-left: 0.5rem; }
     .dataTreeCount { padding: 0.4rem 0.6rem 0 0.6rem; }
     .dataObjectHeader, .dataFieldHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
@@ -7864,6 +8418,7 @@ ${this.buildPaletteCustomProperties()}
     const ADD_FRIEND_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL)};
     const INSERT_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_ACTION_LABEL)};
     const INSERT_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_RUNNING_LABEL)};
+    const METADATA_DEPLOY_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_METADATA_DEPLOY_ACTION_LABEL)};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
     const PANEL_PLACE_VERSION = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION};
     const PANEL_PLACE_SCROLL_SAVE_DELAY = ${RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY};
@@ -7924,6 +8479,9 @@ ${this.buildPaletteCustomProperties()}
     // "+ New scratch org" (#200): THE HOST'S LAST scratchOrgState, AND WHETHER A RUN HOLDS THE PICKER AND EVERY INSERT DISABLED
     let scratchOrgState = null;
     let isScratchOrgRunning = false;
+    // "Deploy missing metadata…" (#211): THE HOST'S LAST metadataDeployState, AND WHETHER A DEPLOY HOLDS THE PICKER, EVERY INSERT AND EVERY DEPLOY DISABLED
+    let metadataDeployState = null;
+    let isMetadataDeployRunning = false;
     // THE renderSequence THE PICKER ASKED FOR ITS ORGS UNDER -- ONE ASK PER MODEL, MADE THE FIRST TIME A TREECIPE TAB OPENS OR THE PICKER IS USED
     let dataOrgRequestedSequence = null;
     // THE LATEST SELECTION THE HOST NAMED; COUNTS FOR ANY OTHER ARE A DIFFERENT ORG'S, OR AN OLDER ASK OF THIS ONE
@@ -8187,7 +8745,7 @@ ${this.buildPaletteCustomProperties()}
         // THE MESSAGE CARRIES NOTHING: THE DEV HUB, THE DEFINITION FILE, WHAT IS DEPLOYED AND THE ALIAS ARE ALL THE HOST'S
         dataOrgView.newScratchElement.setAttribute('title', 'Choose a Dev Hub, create a scratch org through it, deploy the source of this project to it and select it');
         dataOrgView.newScratchElement.addEventListener('click', function () {
-            if (isScratchOrgRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
+            if (isScratchOrgRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
             isDataOrgPickerInUse = true;
             isScratchOrgRunning = true;
             drawDataOrgViews();
@@ -8260,11 +8818,12 @@ ${this.buildPaletteCustomProperties()}
         if (isDataOrgStatusFailure) { dataOrgView.statusElement.classList.add('failed'); } else { dataOrgView.statusElement.classList.remove('failed'); }
 
         // AN INSERT IN FLIGHT HOLDS IT TOO: THE HOST WOULD REFUSE A RUN THAT CHANGES THE SELECTION UNDER IT
-        dataOrgView.newScratchElement.disabled = isScratchOrgRunning || insertRunningTreeKey !== null;
+        dataOrgView.newScratchElement.disabled = isScratchOrgRunning || isMetadataDeployRunning || insertRunningTreeKey !== null;
         dataOrgView.newScratchElement.textContent = isScratchOrgRunning ? 'Setting up scratch org…' : '+ New scratch org';
-        dataOrgView.selectElement.disabled = isScratchOrgRunning;
-        dataOrgView.loadElement.disabled = isScratchOrgRunning;
-        dataOrgView.refreshElement.disabled = isScratchOrgRunning || isDataOrgRefreshDisabled;
+        // A METADATA DEPLOY HOLDS THE PICKER TOO: IT DEPLOYS TO THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
+        dataOrgView.selectElement.disabled = isScratchOrgRunning || isMetadataDeployRunning;
+        dataOrgView.loadElement.disabled = isScratchOrgRunning || isMetadataDeployRunning;
+        dataOrgView.refreshElement.disabled = isScratchOrgRunning || isMetadataDeployRunning || isDataOrgRefreshDisabled;
 
         const scratchStatusText = scratchOrgState ? scratchOrgState.statusText : '';
         dataOrgView.scratchStatusTextElement.textContent = scratchStatusText;
@@ -10011,12 +10570,17 @@ ${this.buildPaletteCustomProperties()}
             buttonElement: createElement('button', 'treeInsert', INSERT_ACTION_LABEL),
             reasonElement: createElement('span', 'treeInsertReason muted'),
             resultElement: createElement('span', 'treeInsertResult'),
-            errorsElement: createElement('button', 'treeInsertErrors hidden', 'View errors')
+            errorsElement: createElement('button', 'treeInsertErrors hidden', 'View errors'),
+            deployElement: createElement('button', 'treeInsertDeploy hidden', METADATA_DEPLOY_ACTION_LABEL),
+            deployStatusElement: createElement('div', 'metadataDeployStatus muted hidden'),
+            deployStatusTextElement: createElement('span', 'metadataDeployStatusText'),
+            deployViewOutputElement: createElement('button', 'metadataDeployViewOutput hidden', 'View output'),
+            deployObjectApiName: null
         };
 
         insert.buttonElement.setAttribute('title', 'Generate this tree with its selection and counts, as ▶ Run Faker does, then insert it into the chosen org, parents first');
         insert.buttonElement.addEventListener('click', function () {
-            if (insertRunningTreeKey !== null || dataOrgSelectedIndex === null || renderedSequence === null) { return; }
+            if (insertRunningTreeKey !== null || isMetadataDeployRunning || dataOrgSelectedIndex === null || renderedSequence === null) { return; }
             setInsertRunning(treeState.tree.treeKey);
             vscodeApi.postMessage({ command: 'insertTree', treeKey: treeState.tree.treeKey });
         });
@@ -10025,10 +10589,32 @@ ${this.buildPaletteCustomProperties()}
             vscodeApi.postMessage({ command: 'viewInsertErrors', treeKey: treeState.tree.treeKey });
         });
 
+        /*
+            Posts NAMES and the index of the org it was drawn for (#211); what is deployed is the
+            host's. Every deploy and insert is disabled on the click, and only the host's
+            metadataDeployState gives them back.
+        */
+        insert.deployElement.setAttribute('title', 'Deploy what this object is missing in the chosen sandbox from the source in this workspace, after a confirmation that lists it');
+        insert.deployElement.addEventListener('click', function () {
+            if (isMetadataDeployRunning || insertRunningTreeKey !== null || isScratchOrgRunning || dataOrgSelectedIndex === null || renderedSequence === null || !insert.deployObjectApiName) { return; }
+            isMetadataDeployRunning = true;
+            drawTreeInserts();
+            drawDataOrgViews();
+            vscodeApi.postMessage({ command: 'deployMissingMetadata', orgIndex: dataOrgSelectedIndex, treeKey: treeState.tree.treeKey, objectApiName: insert.deployObjectApiName });
+        });
+
+        insert.deployViewOutputElement.addEventListener('click', function () {
+            vscodeApi.postMessage({ command: 'viewMetadataDeployOutput' });
+        });
+
         controlsElement.appendChild(insert.buttonElement);
         controlsElement.appendChild(insert.reasonElement);
+        controlsElement.appendChild(insert.deployElement);
         controlsElement.appendChild(insert.resultElement);
         controlsElement.appendChild(insert.errorsElement);
+        insert.deployStatusElement.appendChild(insert.deployStatusTextElement);
+        insert.deployStatusElement.appendChild(insert.deployViewOutputElement);
+        controlsElement.appendChild(insert.deployStatusElement);
 
         treeState.insert = insert;
         drawTreeInsert(treeState);
@@ -10497,12 +11083,17 @@ ${this.buildPaletteCustomProperties()}
         one of them again on the click.
     */
     function findTreeInsertReason(treeState) {
+        return findTreeInsertBlock(treeState).reason;
+    }
 
-        if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) { return 'Choose an org above to insert into.'; }
-        if (dataOrgSelectionFailureMessage) { return dataOrgSelectionFailureMessage; }
+    // THE REASON, AND THE READINESS IT CAME FROM WHEN AN OBJECT'S -- WHICH SAYS WHETHER A DEPLOY CAN FIX IT (#211)
+    function findTreeInsertBlock(treeState) {
+
+        if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) { return { reason: 'Choose an org above to insert into.', readiness: null }; }
+        if (dataOrgSelectionFailureMessage) { return { reason: dataOrgSelectionFailureMessage, readiness: null }; }
 
         const insertObjectApiNames = listTreeInsertObjectApiNames(treeState);
-        if (insertObjectApiNames.length === 0) { return 'Every object of this tree is excluded.'; }
+        if (insertObjectApiNames.length === 0) { return { reason: 'Every object of this tree is excluded.', readiness: null }; }
 
         for (let objectIndex = 0; objectIndex < insertObjectApiNames.length; objectIndex++) {
             const objectApiName = insertObjectApiNames[objectIndex];
@@ -10510,11 +11101,11 @@ ${this.buildPaletteCustomProperties()}
             const readiness = hasOwnKey(dataOrgReadinessByTreeObjectKey, treeObjectKey) ? dataOrgReadinessByTreeObjectKey[treeObjectKey]
                 : hasOwnKey(dataOrgReadinessByObject, objectApiName) ? dataOrgReadinessByObject[objectApiName]
                 : null;
-            if (!readiness) { return 'checking whether this tree can be inserted…'; }
-            if (readiness.disabledReason) { return readiness.disabledReason; }
+            if (!readiness) { return { reason: 'checking whether this tree can be inserted…', readiness: null }; }
+            if (readiness.disabledReason) { return { reason: readiness.disabledReason, readiness: readiness }; }
         }
 
-        return '';
+        return { reason: '', readiness: null };
 
     }
 
@@ -10523,10 +11114,25 @@ ${this.buildPaletteCustomProperties()}
         const insert = treeState.insert;
         if (!insert) { return; }
 
-        const disabledReason = findTreeInsertReason(treeState);
+        const insertBlock = findTreeInsertBlock(treeState);
+        const disabledReason = insertBlock.reason;
         const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : '';
 
-        insert.buttonElement.disabled = insertRunningTreeKey !== null || isScratchOrgRunning || runFakerRunningTreeKey !== null || !!disabledReason;
+        insert.buttonElement.disabled = insertRunningTreeKey !== null || isScratchOrgRunning || isMetadataDeployRunning || runFakerRunningTreeKey !== null || !!disabledReason;
+
+        // ONLY FOR THIS TREE'S OWN READINESS OF THE OBJECT THAT STOPS IT, AND ONLY WHEN THE HOST SAID A DEPLOY CAN FIX IT
+        const deployableReadiness = insertBlock.readiness && insertBlock.readiness.isMetadataDeployable === true && insertBlock.readiness.treeKey === treeState.tree.treeKey
+            ? insertBlock.readiness
+            : null;
+        insert.deployObjectApiName = deployableReadiness ? deployableReadiness.objectApiName : null;
+        setShown(insert.deployElement, !!deployableReadiness);
+        insert.deployElement.disabled = isMetadataDeployRunning || insertRunningTreeKey !== null || isScratchOrgRunning;
+
+        const deployStatusText = metadataDeployState && metadataDeployState.treeKey === treeState.tree.treeKey ? metadataDeployState.statusText : '';
+        insert.deployStatusTextElement.textContent = deployStatusText;
+        setShown(insert.deployStatusElement, !!deployStatusText);
+        if (deployStatusText && metadataDeployState.isFailure) { insert.deployStatusElement.classList.add('failed'); } else { insert.deployStatusElement.classList.remove('failed'); }
+        setShown(insert.deployViewOutputElement, !!deployStatusText && !metadataDeployState.isRunning && !!metadataDeployState.hasOutput);
         insert.buttonElement.textContent = insertRunningTreeKey === treeState.tree.treeKey ? INSERT_RUNNING_LABEL
             : INSERT_ACTION_LABEL + (orgLabel ? ' into ' + orgLabel : '');
         insert.reasonElement.textContent = disabledReason;
@@ -10573,6 +11179,16 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    function renderMetadataDeployState(hostMessage) {
+
+        metadataDeployState = hostMessage;
+        isMetadataDeployRunning = !!hostMessage.isRunning;
+
+        drawDataOrgViews();
+        drawTreeInserts();
+
+    }
+
     function renderScratchOrgState(hostMessage) {
 
         const wasRunning = isScratchOrgRunning;
@@ -10600,6 +11216,9 @@ ${this.buildPaletteCustomProperties()}
         if (!isDataOrgStatusFailure) { setDataOrgStatus('', false); }
 
         drawTreeInserts();
+
+        // DRAWN: ONLY NOW MAY A "Deploy missing metadata…" OF THIS SELECTION BE HONOURED (#211)
+        vscodeApi.postMessage({ command: 'readinessRendered', renderSequence: dataOrgReadiness.renderSequence, requestSequence: dataOrgReadiness.requestSequence, readinessSequence: dataOrgReadiness.readinessSequence });
 
     }
 
@@ -11537,6 +12156,11 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'scratchOrgState') {
             renderScratchOrgState(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'metadataDeployState') {
+            renderMetadataDeployState(hostMessage);
             return;
         }
 
