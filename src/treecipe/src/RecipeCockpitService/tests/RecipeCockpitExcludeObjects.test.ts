@@ -581,6 +581,24 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
 
         });
 
+        it('keeps the link and the ▸ in front of it apart: one includes, the other only expands', () => {
+
+            const panel = drawRecipe();
+            const accountElement = objectNamed(panel, 'Account');
+            const [toggleElement] = panel.findAll(accountElement.children[0], 'treeObjectToggle');
+
+            toggleElement.dispatch('click');
+
+            expect(panel.isHidden(panel.objectBodyOf(accountElement))).toBeFalse();
+            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'setObjectIncluded')).toEqual([]);
+
+            includeOf(panel, 'Account').dispatch('click');
+
+            expect(panel.isHidden(panel.objectBodyOf(accountElement))).toBeFalse();
+            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'setObjectIncluded')).toHaveLength(1);
+
+        });
+
         it('draws no icon on the ungrouped card, which has no folder to keep a selection by', () => {
 
             const panel = drawRecipe(recipe => {
