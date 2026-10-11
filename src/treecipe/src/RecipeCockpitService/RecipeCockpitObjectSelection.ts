@@ -53,11 +53,15 @@ export class RecipeCockpitObjectSelection {
 
     static computeObjectSelection(treeObjects: readonly IObjectSelectionTreeObject[], directlyExcludedObjectApiNames: Iterable<string>): IObjectSelection {
 
+        // EVERY STEP BELOW IS LINEAR IN THE TREE: A WIDE ROOT WITH THOUSANDS OF CHILDREN IS WHAT A GENERATED TREE CAN BE
         const lookupsByObjectApiName = new Map<string, IObjectSelectionLookup[]>();
+        const lookupKeys = new Set<string>();
         treeObjects.forEach(treeObject => {
             const lookups = lookupsByObjectApiName.get(treeObject.objectApiName) ?? [];
             treeObject.parentLookups.forEach(lookup => {
-                if ( !lookups.some(known => known.fieldApiName === lookup.fieldApiName && known.parentObjectApiName === lookup.parentObjectApiName) ) {
+                const lookupKey = `${treeObject.objectApiName}\n${lookup.fieldApiName}\n${lookup.parentObjectApiName}`;
+                if ( !lookupKeys.has(lookupKey) ) {
+                    lookupKeys.add(lookupKey);
                     lookups.push(lookup);
                 }
             });
@@ -67,13 +71,19 @@ export class RecipeCockpitObjectSelection {
         const objectApiNames = [...lookupsByObjectApiName.keys()];
         const directlyExcluded = new Set([...directlyExcludedObjectApiNames].filter(objectApiName => lookupsByObjectApiName.has(objectApiName)));
 
-        const parentsOf = (objectApiName: string) => [...new Set(( lookupsByObjectApiName.get(objectApiName) ?? [] )
+        const parentsByObjectApiName = new Map(objectApiNames.map(objectApiName => [objectApiName, [...new Set(( lookupsByObjectApiName.get(objectApiName) ?? [] )
             .map(lookup => lookup.parentObjectApiName)
-            .filter(parentObjectApiName => parentObjectApiName !== objectApiName && lookupsByObjectApiName.has(parentObjectApiName)))];
+            .filter(parentObjectApiName => parentObjectApiName !== objectApiName && lookupsByObjectApiName.has(parentObjectApiName)))]]));
+        const parentsOf = (objectApiName: string) => parentsByObjectApiName.get(objectApiName) ?? [];
 
         const childrenByParent = new Map<string, string[]>();
         objectApiNames.forEach(objectApiName => parentsOf(objectApiName).forEach(parentObjectApiName => {
-            childrenByParent.set(parentObjectApiName, [...( childrenByParent.get(parentObjectApiName) ?? [] ), objectApiName]);
+            const children = childrenByParent.get(parentObjectApiName);
+            if ( children ) {
+                children.push(objectApiName);
+            } else {
+                childrenByParent.set(parentObjectApiName, [objectApiName]);
+            }
         }));
 
         const descendantsOfExcluded = new Set<string>();
@@ -90,13 +100,13 @@ export class RecipeCockpitObjectSelection {
         // THE LEAST SET REACHABLE FROM WHAT THE EXCLUSION DOES NOT TOUCH: TWO OBJECTS CUT OFF TOGETHER DO NOT KEEP EACH OTHER
         const included = new Set(objectApiNames.filter(objectApiName => !directlyExcluded.has(objectApiName)
                                                                         && ( !descendantsOfExcluded.has(objectApiName) || parentsOf(objectApiName).length === 0 )));
-        let hasGrown = true;
-        while ( hasGrown ) {
-            hasGrown = false;
-            objectApiNames.forEach(objectApiName => {
-                if ( !included.has(objectApiName) && !directlyExcluded.has(objectApiName) && parentsOf(objectApiName).some(parentObjectApiName => included.has(parentObjectApiName)) ) {
-                    included.add(objectApiName);
-                    hasGrown = true;
+        // AN OBJECT WITH ONE INCLUDED PARENT IS INCLUDED: SPREAD FROM WHAT IS INCLUDED, EACH OBJECT ENTERED ONCE
+        const pendingIncluded = [...included];
+        while ( pendingIncluded.length > 0 ) {
+            ( childrenByParent.get(pendingIncluded.pop() as string) ?? [] ).forEach(childObjectApiName => {
+                if ( !included.has(childObjectApiName) && !directlyExcluded.has(childObjectApiName) ) {
+                    included.add(childObjectApiName);
+                    pendingIncluded.push(childObjectApiName);
                 }
             });
         }
@@ -107,7 +117,7 @@ export class RecipeCockpitObjectSelection {
                 if ( directlyExcluded.has(objectApiName) ) {
                     return { objectApiName: objectApiName, kind: 'excluded' };
                 }
-                const [excludedParentObjectApiName] = parentsOf(objectApiName).sort((left, right) => (
+                const [excludedParentObjectApiName] = parentsOf(objectApiName).slice().sort((left, right) => (
                     Number(directlyExcluded.has(right)) - Number(directlyExcluded.has(left)) || ( left < right ? -1 : left > right ? 1 : 0 )
                 ));
                 return { objectApiName: objectApiName, kind: 'autoExcluded', excludedParentObjectApiName: excludedParentObjectApiName };

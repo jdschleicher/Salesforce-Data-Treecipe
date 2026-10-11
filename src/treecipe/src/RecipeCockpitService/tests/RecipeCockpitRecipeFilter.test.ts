@@ -508,7 +508,8 @@ describe('RecipeCockpitRecipeWriter.buildFilteredRecipe (#219)', () => {
         test.each([
             ['no "nickname:" line', ''],
             ['two "nickname:" lines', '  nickname: Contract_NickName\n  nickname: Contract_Other_NickName\n'],
-            ['two "friends:" lines', '  nickname: Contract_NickName\n  friends:\n  friends:\n']
+            ['two "friends:" lines', '  nickname: Contract_NickName\n  friends:\n  friends:\n'],
+            ['a nickname that is not a name', '  nickname: "Contract NickName"\n']
         ])('refuses to move a friend under a parent with %s', (_caseName, contractProperties) => {
 
             const recipeText = '- object: Opportunity\n  nickname: Opportunity_NickName\n  fields:\n    Name: o\n  friends:\n    - object: Quote\n      nickname: Quote_NickName\n      fields:\n        ContractId: ### TODO\n'

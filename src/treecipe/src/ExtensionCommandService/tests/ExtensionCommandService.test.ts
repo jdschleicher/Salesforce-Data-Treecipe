@@ -2027,6 +2027,7 @@ describe('ExtensionCommandService', () => {
                 ['a copy with no text', 'PATH', { excludedObjectApiNames: ['Contact'] }],
                 ['a copy naming no excluded object', 'PATH', { recipeText: filteredRecipeText, excludedObjectApiNames: [] }],
                 ['a copy naming an object that is not a string', 'PATH', { recipeText: filteredRecipeText, excludedObjectApiNames: [7] }],
+                ['a copy naming an object that is not an api name', 'PATH', { recipeText: filteredRecipeText, excludedObjectApiNames: ['Contact\n# x'] }],
                 ['a copy that is an array', 'PATH', [filteredRecipeText]]
             ])('refuses %s before generating anything', async (_description, recipePathMarker, filteredRecipe) => {
 

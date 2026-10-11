@@ -1489,11 +1489,10 @@ export class RecipeCockpitService {
         The objects a card draws a clickable tree icon for: once each, those with a recipe -- what the
         panel resolves a card's objects to -- and never one written twice with no nickname to tell the
         occurrences apart, which the recipe writer refuses as well. A self-lookup's iteration has no
-        icon of its own; it follows its object.
+        icon of its own; it follows its object. The caller builds the name map ONCE per model: rebuilt
+        per tree it made a load O(trees x objects), seconds at the scale the cockpit is measured at.
     */
-    static collectSelectableObjectApiNames(recipeViewModel: IRecipeCockpitRecipeViewModel, tree: IRecipeCockpitTreeViewModel): string[] {
-
-        const objectsByApiName = new Map(recipeViewModel.objects.map(objectViewModel => [objectViewModel.objectApiName, objectViewModel]));
+    static collectSelectableObjectApiNames(objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>, tree: IRecipeCockpitTreeViewModel): string[] {
 
         return [...new Set(tree.objects
             .filter(treeObject => treeObject.iterationNickname === undefined)
@@ -1503,24 +1502,29 @@ export class RecipeCockpitService {
     }
 
     // THE CASCADE OF ONE CARD, OR undefined WHEN NOTHING IN IT IS EXCLUDED -- WHICH LEAVES THE CARD'S MODEL AS IT ALWAYS WAS
-    static buildTreeObjectSelection(recipeViewModel: IRecipeCockpitRecipeViewModel,
+    static buildObjectsByApiName(recipeViewModel: IRecipeCockpitRecipeViewModel): Map<string, IRecipeCockpitObjectViewModel> {
+        return new Map(recipeViewModel.objects.map(objectViewModel => [objectViewModel.objectApiName, objectViewModel]));
+    }
+
+    /*
+        Only objects WITH A RECIPE take part in the cascade: a lookup target with none (User) is never
+        generated, so counting it as an "included parent" kept a child included that then moved to
+        the top level with no parent at all.
+    */
+    static buildTreeObjectSelection(objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>,
                                     tree: IRecipeCockpitTreeViewModel,
                                     directlyExcludedObjectApiNames: ReadonlySet<string> | undefined): IRecipeCockpitTreeObjectSelectionViewModel | undefined {
 
-        const selectableObjectApiNames = this.collectSelectableObjectApiNames(recipeViewModel, tree);
+        const selectableObjectApiNames = this.collectSelectableObjectApiNames(objectsByApiName, tree);
         const directlyExcluded = selectableObjectApiNames.filter(objectApiName => directlyExcludedObjectApiNames?.has(objectApiName));
 
         if ( directlyExcluded.length === 0 ) {
             return undefined;
         }
 
-        const objectSelection = RecipeCockpitObjectSelection.computeObjectSelection(
-            tree.objects.filter(treeObject => treeObject.iterationNickname === undefined),
-            directlyExcluded
-        );
-        const drawnObjectApiNames = new Set(tree.objects
-            .filter(treeObject => treeObject.iterationNickname === undefined && recipeViewModel.objects.some(objectViewModel => objectViewModel.objectApiName === treeObject.objectApiName))
-            .map(treeObject => treeObject.objectApiName));
+        const drawnTreeObjects = tree.objects.filter(treeObject => treeObject.iterationNickname === undefined && objectsByApiName.has(treeObject.objectApiName));
+        const objectSelection = RecipeCockpitObjectSelection.computeObjectSelection(drawnTreeObjects, directlyExcluded);
+        const drawnObjectApiNames = new Set(drawnTreeObjects.map(treeObject => treeObject.objectApiName));
         const excludedObjectApiNames = new Set(objectSelection.exclusions.map(exclusion => exclusion.objectApiName));
 
         return {
@@ -1535,6 +1539,8 @@ export class RecipeCockpitService {
     // ONTO THE CARDS, IN PLACE: A CARD WITH NOTHING EXCLUDED CARRIES NO objectSelection AT ALL
     static applyObjectSelections(recipeViewModel: IRecipeCockpitRecipeViewModel, excludedObjectApiNamesByFolderName: Map<string, Set<string>>): IRecipeCockpitTreeViewModel[] {
 
+        const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
+
         recipeViewModel.trees.forEach(tree => {
 
             delete tree.objectSelection;
@@ -1543,7 +1549,7 @@ export class RecipeCockpitService {
                 return;
             }
 
-            const objectSelection = this.buildTreeObjectSelection(recipeViewModel, tree, excludedObjectApiNamesByFolderName.get(tree.folderName));
+            const objectSelection = this.buildTreeObjectSelection(objectsByApiName, tree, excludedObjectApiNamesByFolderName.get(tree.folderName));
 
             if ( objectSelection ) {
                 tree.objectSelection = objectSelection;
@@ -1640,6 +1646,7 @@ export class RecipeCockpitService {
     static collectTreeHistoryAllowLists(recipeViewModel: IRecipeCockpitRecipeViewModel): IRecipeCockpitTreeHistoryAllowLists {
 
         const treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
+        const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
 
         recipeViewModel.trees.forEach(tree => {
 
@@ -1649,7 +1656,7 @@ export class RecipeCockpitService {
 
             if ( tree.folderName !== '' ) {
                 treeHistoryAllowLists.nameableTreeKeys.add(tree.treeKey);
-                this.collectSelectableObjectApiNames(recipeViewModel, tree)
+                this.collectSelectableObjectApiNames(objectsByApiName, tree)
                     .forEach(objectApiName => treeHistoryAllowLists.selectableObjectKeys.add(this.buildSelectableObjectKey(tree.treeKey, objectApiName)));
             }
 
@@ -2540,18 +2547,6 @@ export class RecipeCockpitService {
     }
 
     /*
-        Runs one tree's recipe through Run Faker by Recipe, then reloads the run on screen with the
-        card on its Previous Fake Sets tab, so the data set it wrote is listed there.
-
-        The reload happens however the command ends -- written, failed, refused or cancelled at its
-        modal -- because the panel disabled every Run Faker button on the click, and a run that left
-        them disabled would leave a card that can never be run again. The state message is posted
-        once more after the reload, for a reload that could not render a model to re-enable them.
-
-        A recipe file gone since the model was drawn is said so here and nothing runs; the command
-        checks again on its own, since it is callable by id.
-    */
-    /*
         undefined when the card excludes nothing; otherwise the filtered copy, or a refusal naming the
         tree. A recipe that cannot be read, scanned or cut refuses rather than generating the whole
         tree the reader narrowed (#219).
@@ -2584,6 +2579,18 @@ export class RecipeCockpitService {
 
     }
 
+    /*
+        Runs one tree's recipe through Run Faker by Recipe, then reloads the run on screen with the
+        card on its Previous Fake Sets tab, so the data set it wrote is listed there.
+
+        The reload happens however the command ends -- written, failed, refused or cancelled at its
+        modal -- because the panel disabled every Run Faker button on the click, and a run that left
+        them disabled would leave a card that can never be run again. The state message is posted
+        once more after the reload, for a reload that could not render a model to re-enable them.
+
+        A recipe file gone since the model was drawn is said so here and nothing runs; the command
+        checks again on its own, since it is callable by id.
+    */
     private static async runFakerForTree(cockpitPanel: vscode.WebviewPanel,
                                             panelState: IRecipeCockpitPanelState,
                                             treeKey: string,
@@ -6707,11 +6714,31 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    // KEYED BY OBJECT NAMES FROM DISK, SO NO PROTOTYPE: AN OBJECT NAMED __proto__ IS A KEY LIKE ANY OTHER
+    // ONE INDEX PER SELECTION THE HOST POSTED, SO EVERY CREATE ROW OF A CARD READS THE SAME ONE
+    const exclusionIndexesBySelection = new WeakMap();
+
+    function indexObjectExclusions(tree) {
+
+        const objectSelection = tree.objectSelection;
+        if (!objectSelection || typeof objectSelection !== 'object') { return Object.create(null); }
+        if (exclusionIndexesBySelection.has(objectSelection)) { return exclusionIndexesBySelection.get(objectSelection); }
+
+        const exclusionsByObjectApiName = Object.create(null);
+        const exclusions = Array.isArray(objectSelection.exclusions) ? objectSelection.exclusions : [];
+
+        exclusions.forEach(function (exclusion) { exclusionsByObjectApiName[exclusion.objectApiName] = exclusion; });
+        exclusionIndexesBySelection.set(objectSelection, exclusionsByObjectApiName);
+
+        return exclusionsByObjectApiName;
+
+    }
+
     function findObjectExclusion(tree, objectApiName) {
 
-        const exclusions = tree.objectSelection && Array.isArray(tree.objectSelection.exclusions) ? tree.objectSelection.exclusions : [];
+        const exclusionsByObjectApiName = indexObjectExclusions(tree);
 
-        return exclusions.find(function (exclusion) { return exclusion.objectApiName === objectApiName; }) || null;
+        return Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
 
     }
 
@@ -6735,11 +6762,20 @@ ${this.buildPaletteCustomProperties()}
 
         const tree = treeState.tree;
         const disabledLookups = tree.objectSelection && Array.isArray(tree.objectSelection.disabledLookups) ? tree.objectSelection.disabledLookups : [];
+        const exclusionsByObjectApiName = indexObjectExclusions(tree);
+        // INDEXED ONCE PER DRAW: A PER-ROW SCAN OF THE LISTS WAS OVER A SECOND AT 11,000 ROWS
+        const disabledFieldApiNamesByObjectApiName = Object.create(null);
+        disabledLookups.forEach(function (disabledLookup) {
+            if (!Object.prototype.hasOwnProperty.call(disabledFieldApiNamesByObjectApiName, disabledLookup.objectApiName)) {
+                disabledFieldApiNamesByObjectApiName[disabledLookup.objectApiName] = [];
+            }
+            disabledFieldApiNamesByObjectApiName[disabledLookup.objectApiName].push(disabledLookup.fieldApiName);
+        });
 
         treeState.objectStates.forEach(function (treeObjectState) {
 
             const objectApiName = treeObjectState.object.objectApiName;
-            const exclusion = findObjectExclusion(tree, objectApiName);
+            const exclusion = Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
             const isAutoExcluded = !!exclusion && exclusion.kind === 'autoExcluded';
 
             if (exclusion) { treeObjectState.element.classList.add('excluded'); } else { treeObjectState.element.classList.remove('excluded'); }
@@ -6749,9 +6785,9 @@ ${this.buildPaletteCustomProperties()}
                 : 'excluded';
             if (exclusion) { treeObjectState.exclusionElement.classList.remove('hidden'); } else { treeObjectState.exclusionElement.classList.add('hidden'); }
 
-            const disabledFieldApiNames = disabledLookups
-                .filter(function (disabledLookup) { return disabledLookup.objectApiName === objectApiName; })
-                .map(function (disabledLookup) { return disabledLookup.fieldApiName; });
+            const disabledFieldApiNames = Object.prototype.hasOwnProperty.call(disabledFieldApiNamesByObjectApiName, objectApiName)
+                ? disabledFieldApiNamesByObjectApiName[objectApiName]
+                : [];
             treeObjectState.lookupsElement.textContent = formatParentLookups(treeObjectState.treeObject, disabledFieldApiNames);
             if (treeObjectState.lookupsElement.textContent) { treeObjectState.lookupsElement.classList.remove('hidden'); } else { treeObjectState.lookupsElement.classList.add('hidden'); }
 

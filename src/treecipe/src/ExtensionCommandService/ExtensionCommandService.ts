@@ -10,6 +10,7 @@ import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipePro
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { DatasetSourceService } from "../DatasetSourceService/DatasetSourceService";
 import { SfdxProjectService } from "../SfdxProjectService/SfdxProjectService";
+import { SalesforceApiName } from "../RecipeService/SalesforceApiName";
 import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
 import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail, IPicklistDependencySkippedField, IPicklistDependencyGenerationProgress, IPicklistDependencyGenerationSummaryDetail } from "../PicklistDependencyTestService/PicklistDependencyTestService";
 import { PicklistDependencyCheckService, PicklistDependencyDeployReason } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
@@ -324,7 +325,7 @@ export class ExtensionCommandService {
         return typeof recipeText === 'string'
                 && Array.isArray(excludedObjectApiNames)
                 && excludedObjectApiNames.length > 0
-                && excludedObjectApiNames.every(excludedObjectApiName => typeof excludedObjectApiName === 'string');
+                && excludedObjectApiNames.every(excludedObjectApiName => SalesforceApiName.isApiName(excludedObjectApiName));
 
     }
 

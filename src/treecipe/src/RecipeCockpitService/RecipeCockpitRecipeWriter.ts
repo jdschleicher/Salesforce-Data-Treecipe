@@ -967,7 +967,8 @@ export class RecipeCockpitRecipeWriter {
                                                                     && levelOf(candidate) < levelOf(objectToMove))
                 .sort((left, right) => levelOf(right) - levelOf(left) || ( left.objectApiName < right.objectApiName ? -1 : left.objectApiName > right.objectApiName ? 1 : 0 ));
 
-            if ( newParent && newParent.nicknames.length !== 1 ) {
+            // THE NICKNAME BECOMES A FIELD VALUE, SO IT IS HELD TO THE SAME NAME RULE insertFriend HOLDS ITS NICKNAMES TO
+            if ( newParent && ( newParent.nicknames.length !== 1 || !API_NAME_PATTERN.test(newParent.nicknames[0]) ) ) {
                 return refuseFilter('unsupported-filter-layout', `${newParent.objectApiName} has ${newParent.nicknames.length === 0 ? 'no' : 'more than one'} "nickname:" line, so ${objectToMove.objectApiName} could not be moved under it.`, objectToMove.objectApiName);
             }
             if ( newParent && newParent.friendsLineIndexes.length > 1 ) {

@@ -128,6 +128,42 @@ describe('RecipeCockpitService, excluding objects in Structure (#219)', () => {
 
         });
 
+        it('never counts a lookup target with no recipe as an included parent, so a child it alone would keep follows its other parent', () => {
+
+            const recipe = loadRecipe();
+            // Contact ALSO LOOKS UP User, WHICH THE TREE LISTS BUT NO RECIPE GENERATES
+            treeOf(recipe, ACCOUNT_TREE_KEY).objects.find(treeObject => treeObject.objectApiName === 'Contact')!.parentLookups.push({ fieldApiName: 'Approver__c', parentObjectApiName: 'User' });
+
+            RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Account'])]]));
+
+            expect(RecipeCockpitService.listExcludedObjectApiNames(treeOf(recipe, ACCOUNT_TREE_KEY))).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+
+        });
+
+        it('builds the cascade and the allow-lists of thousands of cards without a per-card scan of every object', () => {
+
+            const recipe = loadRecipe();
+            const cardCount = 11000;
+            recipe.objects = Array.from({ length: cardCount }, (_, index) => ({ objectApiName: `Object${index}__c`, recipeFilePath: '', fields: [] }));
+            recipe.trees = recipe.objects.map(objectViewModel => ({
+                treeKey: `${objectViewModel.objectApiName}-ONLY`,
+                title: objectViewModel.objectApiName,
+                folderName: `${objectViewModel.objectApiName}-ONLY`,
+                objects: [{ objectApiName: objectViewModel.objectApiName, parentLookups: [] }],
+                fieldCount: 0
+            }));
+            const startedAt = Date.now();
+
+            RecipeCockpitService.applyObjectSelections(recipe, new Map([['Object7__c-ONLY', new Set(['Object7__c'])]]));
+            const allowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+
+            // A PER-CARD REBUILD OF THE NAME MAP TOOK ABOUT 30 s HERE
+            expect(Date.now() - startedAt).toBeLessThan(2000);
+            expect(allowLists.selectableObjectKeys.size).toBe(cardCount);
+            expect(treeOf(recipe, 'Object7__c-ONLY').objectSelection?.includedObjectCount).toBe(0);
+
+        });
+
         it('drops a stale name silently, and never applies a selection to the ungrouped card', () => {
 
             const recipe = loadRecipe();

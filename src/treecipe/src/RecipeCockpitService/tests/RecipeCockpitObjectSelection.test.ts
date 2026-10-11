@@ -157,6 +157,24 @@ describe('RecipeCockpitObjectSelection.computeObjectSelection (#219)', () => {
 
     });
 
+    test('cascades a wide root with tens of thousands of children in linear time', () => {
+
+        const childCount = 30000;
+        const wideTree: IObjectSelectionTreeObject[] = [
+            { objectApiName: 'Root', parentLookups: [] },
+            ...Array.from({ length: childCount }, (_, index) => ({ objectApiName: `Child${index}__c`, parentLookups: [lookup('Root__c', 'Root'), lookup('Root__c', 'Root')] }))
+        ];
+        const startedAt = Date.now();
+
+        const selection = RecipeCockpitObjectSelection.computeObjectSelection(wideTree, ['Root']);
+
+        // ARRAY-SPREAD APPENDS AND A PAIRWISE DEDUP TOOK SECONDS ON THIS SHAPE
+        expect(Date.now() - startedAt).toBeLessThan(1500);
+        expect(selection.exclusions).toHaveLength(childCount + 1);
+        expect(selection.includedObjectCount).toBe(0);
+
+    });
+
     test('an object named like an Object.prototype member is just a name', () => {
 
         const selection = RecipeCockpitObjectSelection.computeObjectSelection([
