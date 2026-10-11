@@ -910,6 +910,22 @@ describe('RecipeCockpitRecipeWriter -- the Create cut honours unticked fields (#
 
     });
 
+    test('extractObjectBlock drops the "fields:" line when every field is unticked, so the cut loads with no null fields', () => {
+
+        const recipeText = readFixture(SNOWFAKERY_FIXTURE);
+        const contactFields = scanOccurrences(recipeText).find(occurrence => occurrence.objectApiName === 'Contact')?.fieldApiNames ?? [];
+
+        const extraction = RecipeCockpitRecipeWriter.extractObjectBlock(recipeText, 'Contact', 2, undefined, contactFields);
+        if ( 'refusal' in extraction ) {
+            throw new Error(extraction.refusal.message);
+        }
+
+        const [cutEntry] = yaml.load(extraction.recipeText) as Array<{ object: string; count: number; fields?: unknown }>;
+        expect(cutEntry).toEqual({ object: 'Contact', nickname: 'Contact_NickName', count: 2 });
+        expect(RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames(recipeText, 'Contact', undefined, contactFields)).toEqual({ isListed: true, fieldApiNames: [] });
+
+    });
+
     test('listCreateBlockFieldApiNames and its one-scan batch leave the unticked fields out alike', () => {
 
         const recipeText = readFixture(NESTED_FIXTURE);

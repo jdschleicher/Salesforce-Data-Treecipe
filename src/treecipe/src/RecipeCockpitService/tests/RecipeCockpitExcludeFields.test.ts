@@ -32,6 +32,7 @@ import {
 import { RecipeCockpitRecordCreation, ICreateObjectDescribe } from '../RecipeCockpitRecordCreation';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 
 /*
     #220: a checkbox on each Structure field row leaves that field out of generation. The HOST keeps
@@ -486,6 +487,18 @@ describe('RecipeCockpitService, unticking fields in Structure (#220)', () => {
 
     describe('readiness (#210) with unticked fields, many at once', () => {
 
+        it('never counts a required lookup, which Create fills with a parent Id whether or not it is ticked', () => {
+
+            const describe = { objectApiName: 'Contact', isCreateable: true, fields: [
+                { fieldApiName: 'AccountId', fieldType: 'reference', referenceTo: ['Account'], isNillable: false, isCreateable: true, isDefaultedOnCreate: false },
+                { fieldApiName: 'LastName', fieldType: 'string', referenceTo: [] as string[], isNillable: false, isCreateable: true, isDefaultedOnCreate: false }
+            ] };
+
+            expect(RecipeCockpitRecordCreation.buildUntickedRequiredFieldReason('Contact', describe, ['AccountId'])).toBe('');
+            expect(RecipeCockpitRecordCreation.buildUntickedRequiredFieldReason('Contact', describe, ['AccountId', 'LastName'])).toContain(': LastName.');
+
+        });
+
         it('counts and shortens a long list of unticked required fields', () => {
 
             const requiredFields = Array.from({ length: 12 }, (_, fieldIndex) => `Required_${fieldIndex}__c`);
@@ -689,22 +702,70 @@ describe('RecipeCockpitService, unticking fields in Structure (#220)', () => {
 
         });
 
-        it('checks the selected Data-by-Org org again after a change, and not while a scratch org run holds the panel', async () => {
+        it('re-checks only the changed folder\'s Create targets, from the cached describes and the answered org type, with no new connection', async () => {
 
             await openAndDraw(buildWorkspaceState());
-            const selectDataOrgSpy = jest.spyOn(RecipeCockpitService as any, 'selectDataOrg').mockImplementation(() => Promise.resolve());
+            const selectDataOrgSpy = jest.spyOn(RecipeCockpitService as any, 'selectDataOrg');
+            const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection');
+            const describeObjectsSpy = jest.spyOn(SalesforceOrgService, 'describeObjects').mockImplementation(async (_username: string, objectApiNames: string[]) => ({
+                wasCancelled: false,
+                outcomes: objectApiNames.map(objectApiName => ({
+                    objectApiName: objectApiName,
+                    wasCached: true,
+                    describe: { objectApiName: objectApiName, objectLabel: objectApiName, isCreateable: true, fields: [
+                        { fieldApiName: 'Company', fieldLabel: '', fieldType: 'string', referenceTo: [], isNillable: false, isCreateable: true, isDefaultedOnCreate: false },
+                        { fieldApiName: 'Status', fieldLabel: '', fieldType: 'picklist', referenceTo: [], isNillable: true, isCreateable: true, isDefaultedOnCreate: false }
+                    ] } as any
+                }))
+            }) as any);
             const panelState = ( RecipeCockpitService as any ).recipeCockpitPanelState as IRecipeCockpitPanelState;
             panelState.dataOrgDetails = [{ targetOrgIdentifier: 'qa', username: 'qa@example.com.qa' } as any];
-            panelState.dataOrgSelection = { orgIndex: 0, orgDetail: panelState.dataOrgDetails[0], requestSequence: 1 };
+            panelState.dataOrgSelection = { orgIndex: 0, orgDetail: panelState.dataOrgDetails[0], requestSequence: 6, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' } as any };
+            panelState.dataOrgRequestSequence = 6;
+            panelState.dataOrgObjectApiNames = new Set(['Account', 'Contact', 'OtherChildObject__c', 'Lead']);
 
             await receivedMessageHandler({ command: 'setFieldIncluded', treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Company', included: false });
-            expect(selectDataOrgSpy).toHaveBeenCalledTimes(1);
-            expect(selectDataOrgSpy.mock.calls[0][2]).toBe(0);
 
+            expect(selectDataOrgSpy).not.toHaveBeenCalled();
+            expect(getConnectionSpy).not.toHaveBeenCalled();
+            expect(describeObjectsSpy.mock.calls[0][1]).toEqual(['Lead']);
+            const readiness = lastPosted('dataOrgReadiness');
+            expect(readiness).toMatchObject({ requestSequence: 6, createResults: [] });
+            expect(readiness.createTargets).toHaveLength(1);
+            expect(readiness.createTargets[0]).toMatchObject({ treeKey: LEAD_TREE_KEY, objectApiName: 'Lead' });
+            expect(readiness.createTargets[0].disabledReason).toBe('Lead has 1 unticked field this org requires: Company. Tick it in Structure to create records.');
+
+            // NOTHING WHILE A SCRATCH ORG RUN HOLDS THE PANEL, AND NOTHING FOR A SELECTION THAT HAS NOT ANSWERED IT IS A SANDBOX
+            describeObjectsSpy.mockClear();
             panelState.scratchOrgStateMessage = { isRunning: true } as any;
             await receivedMessageHandler({ command: 'setFieldIncluded', treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Company', included: true });
-            expect(selectDataOrgSpy).toHaveBeenCalledTimes(1);
             panelState.scratchOrgStateMessage = undefined;
+            panelState.dataOrgSelection.orgTypeDetail = undefined;
+            await receivedMessageHandler({ command: 'setFieldIncluded', treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Company', included: false });
+            expect(describeObjectsSpy).not.toHaveBeenCalled();
+
+        });
+
+        it('drops a re-check the reader moved on from, and one whose describe failed', async () => {
+
+            await openAndDraw(buildWorkspaceState());
+            const panelState = ( RecipeCockpitService as any ).recipeCockpitPanelState as IRecipeCockpitPanelState;
+            panelState.dataOrgDetails = [{ targetOrgIdentifier: 'qa', username: 'qa@example.com.qa' } as any];
+            panelState.dataOrgSelection = { orgIndex: 0, orgDetail: panelState.dataOrgDetails[0], requestSequence: 6, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' } as any };
+            panelState.dataOrgRequestSequence = 6;
+            panelState.dataOrgObjectApiNames = new Set(['Lead']);
+            const describeObjectsSpy = jest.spyOn(SalesforceOrgService, 'describeObjects').mockImplementation(async () => {
+                panelState.dataOrgRequestSequence = 7;
+                return { wasCancelled: true, outcomes: [] } as any;
+            });
+
+            await receivedMessageHandler({ command: 'setFieldIncluded', treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Company', included: false });
+            expect(lastPosted('dataOrgReadiness')).toBeUndefined();
+
+            panelState.dataOrgRequestSequence = 6;
+            describeObjectsSpy.mockImplementation(() => Promise.reject(new Error('offline')));
+            await receivedMessageHandler({ command: 'setFieldIncluded', treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Company', included: true });
+            expect(lastPosted('dataOrgReadiness')).toBeUndefined();
 
         });
 

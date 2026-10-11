@@ -275,11 +275,14 @@ export class RecipeCockpitRecordCreation {
 
     }
 
-    // AN UNTICKED FIELD IS NOT SENT, AND NOT FILLED EITHER: ONE THE ORG REQUIRES WOULD FAIL EVERY RECORD, SO IT IS SAID BEFORE ANYTHING IS INSERTED
+    // AN UNTICKED FIELD IS NOT SENT: ONE THE ORG REQUIRES WOULD FAIL EVERY RECORD, SO IT IS SAID BEFORE ANYTHING IS INSERTED
     static buildUntickedRequiredFieldReason(objectApiName: string, describe: ICreateObjectDescribe, excludedFieldApiNames: readonly string[]): string {
 
         const excludedLowerNames = new Set(excludedFieldApiNames.map(fieldApiName => fieldApiName.toLowerCase()));
-        const untickedRequired = this.findRequiredFieldApiNames(describe).filter(fieldApiName => excludedLowerNames.has(fieldApiName.toLowerCase()));
+        // A REQUIRED LOOKUP IS FILLED WITH A PARENT Id WHETHER OR NOT THE CUT CARRIES IT, SO IT IS NEVER THIS REASON
+        const lookupFieldApiNames = new Set(describe.fields.filter(describeField => this.isLookupField(describeField)).map(describeField => describeField.fieldApiName));
+        const untickedRequired = this.findRequiredFieldApiNames(describe)
+            .filter(fieldApiName => excludedLowerNames.has(fieldApiName.toLowerCase()) && !lookupFieldApiNames.has(fieldApiName));
 
         if ( untickedRequired.length === 0 ) {
             return '';

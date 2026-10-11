@@ -26,8 +26,10 @@ An object's recipe always generated every field it lists, so leaving fields out 
 - **Data-by-Org Create sends only the ticked fields.**
   - **The cut:** `extractObjectBlock` leaves the unticked fields out.
   - **Readiness (#210)** checks only the fields the cut keeps. Unticking a field the org lacks clears that reason.
-  - **Required fields:** an unticked field the org requires is a reason of its own: `Contact has 1 unticked field this org requires: LastName. Tick it in Structure to create records.` Without it every record would fail. An unticked required lookup is not filled with an Id either.
-  - **The modal** lists the unticked fields. A change to a card's selection re-checks the selected org.
+  - **The cut with every field unticked** also drops its `fields:` line, as the filtered copy does.
+  - **Required fields:** an unticked field the org requires is a reason of its own: `Contact has 1 unticked field this org requires: LastName. Tick it in Structure to create records.` Without it every record would fail. A required lookup is never this reason, because Create fills every required lookup with a parent Id whether or not it is ticked.
+  - **The modal** lists the unticked fields.
+  - **A change to a card's selection re-checks only that folder's Create targets**, against the org type the selection already answered and the session's describe cache. It connects only for an object the cache does not hold, and asks the Organization row nothing. An answer for a selection, model or request the reader has moved on from is dropped, and the panel merges the rest by key, so other cards' rows do not flicker.
 - **Stored with #219's selection** in `workspaceState` (`treecipe.recipeCockpit.objectSelection`), now version 2, which adds `excludedFieldApiNamesByFolderName` (tree folder → object → fields). A version 1 entry still reads, as nothing unticked. Every name is checked with `SalesforceApiName` on read. The map is written with `Object.fromEntries`, so a folder or object named `__proto__` is a key and never a prototype. A stale name is dropped silently when the selection is applied. #219's `writeObjectSelections` keeps whatever fields are stored.
 - **Recorded in `datasetSource.json`** as `excludedFieldApiNamesByObject` (object → fields), absent when nothing was unticked and in every older file. `DatasetSourceService` type-checks it and reads it back with no prototype. `treecipe.runFakerByRecipe` accepts the copy's new `excludedFieldApiNamesByObject` only as an object of api names, and now accepts a copy that excludes no object as long as it unticks a field.
 - **The messages are gated like every other panel action.**
@@ -36,6 +38,15 @@ An object's recipe always generated every field it lists, so leaving fields out 
   - **Reset:** posts `resetTreeSelection {treeKey}`, matched against the cards with a folder.
   - **The host decides:** it re-derives the card's state before it writes anything, so a message for a locked field or an excluded object changes nothing. It posts `objectSelection` with a new `fieldSelection` beside `objectSelection`, and the panel redraws the card in place.
 - **What is posted.** A card carries `fieldSelection` only when one of its objects has a field unticked or locked, and only those objects are listed. A card with a dependent picklist therefore now carries its controlling field's lock. `orgDescribe` carries `requiredFields` (only objects with any). The object model carries `hasRecordTypeSections` only where it is true.
+- **Re-measured** (synthetic models through the real `applyObjectSelections` and `collectTreeHistoryAllowLists`):
+
+  | Shape | Applying selections | Allow-lists | `fieldSelection` posted |
+  |---|---|---|---|
+  | 11,000 single-object cards, 121,000 fields, every object with record-type sections and a dependent picklist every fourth field | 144 ms | 175 ms | 3.18 MB, about 5% on the 59.94 MB model measured in 3.31.0 |
+  | Same, with no locks | 119 ms | 162 ms | 0.06 MB |
+
+  - **`selectableFieldKeys`** holds 121,000 keys, about 11–14 MB of heap.
+  - **A click** recomputes only its folder's cards, which takes under 1 ms.
 
 ## [3.55.0] - The Recipe Cockpit asks which Dev Hub a new scratch org comes from
 

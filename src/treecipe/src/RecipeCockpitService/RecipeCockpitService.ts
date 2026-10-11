@@ -1673,11 +1673,16 @@ export class RecipeCockpitService {
     */
     static applyObjectSelections(recipeViewModel: IRecipeCockpitRecipeViewModel,
                                     excludedObjectApiNamesByFolderName: Map<string, Set<string>>,
-                                    excludedFieldApiNamesByFolderName: Map<string, Map<string, Set<string>>> = new Map()): IRecipeCockpitTreeViewModel[] {
+                                    excludedFieldApiNamesByFolderName: Map<string, Map<string, Set<string>>> = new Map(),
+                                    onlyFolderName?: string): IRecipeCockpitTreeViewModel[] {
 
         const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
 
         recipeViewModel.trees.forEach(tree => {
+
+            if ( onlyFolderName !== undefined && tree.folderName !== onlyFolderName ) {
+                return;
+            }
 
             delete tree.objectSelection;
             delete tree.fieldSelection;
@@ -1740,7 +1745,11 @@ export class RecipeCockpitService {
         const dependentsByControllingField = new Map<string, string[]>();
         objectViewModel.fields
             .filter(fieldViewModel => fieldViewModel.controllingField && selectableFieldSet.has(fieldViewModel.fieldApiName) && selectableFieldSet.has(fieldViewModel.controllingField))
-            .forEach(fieldViewModel => dependentsByControllingField.set(fieldViewModel.controllingField, [...( dependentsByControllingField.get(fieldViewModel.controllingField) ?? [] ), fieldViewModel.fieldApiName]));
+            .forEach(fieldViewModel => {
+                const dependentFieldApiNames = dependentsByControllingField.get(fieldViewModel.controllingField) ?? [];
+                dependentFieldApiNames.push(fieldViewModel.fieldApiName);
+                dependentsByControllingField.set(fieldViewModel.controllingField, dependentFieldApiNames);
+            });
 
         const isTickedForGeneration = (fieldApiName: string) => !excludedFieldSet.has(fieldApiName) && !parentExcludedFieldApiNames.has(fieldApiName);
         for ( let isChanged = true; isChanged; ) {
@@ -1779,10 +1788,11 @@ export class RecipeCockpitService {
                                     storedFieldsByObject: ReadonlyMap<string, ReadonlySet<string>> | undefined): IRecipeCockpitTreeFieldSelectionViewModel | undefined {
 
         const parentExcludedFieldsByObject = new Map<string, Set<string>>();
-        ( tree.objectSelection?.disabledLookups ?? [] ).forEach(disabledLookup => parentExcludedFieldsByObject.set(
-            disabledLookup.objectApiName,
-            new Set([...( parentExcludedFieldsByObject.get(disabledLookup.objectApiName) ?? [] ), disabledLookup.fieldApiName])
-        ));
+        ( tree.objectSelection?.disabledLookups ?? [] ).forEach(disabledLookup => {
+            const parentExcludedFieldApiNames = parentExcludedFieldsByObject.get(disabledLookup.objectApiName) ?? new Set<string>();
+            parentExcludedFieldApiNames.add(disabledLookup.fieldApiName);
+            parentExcludedFieldsByObject.set(disabledLookup.objectApiName, parentExcludedFieldApiNames);
+        });
 
         const objectFieldSelections = this.collectSelectableObjectApiNames(objectsByApiName, tree)
             .map(objectApiName => this.buildObjectFieldSelection(
@@ -1955,7 +1965,8 @@ export class RecipeCockpitService {
             return;
         }
 
-        this.applyTreeSelections(recipeDataMessage.recipe, treeSelections);
+        // ONLY THIS FOLDER'S CARDS CHANGED, SO ONLY THEY ARE RECOMPUTED
+        this.applyObjectSelections(recipeDataMessage.recipe, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, folderName);
 
         recipeDataMessage.recipe.trees
             .filter(tree => tree.folderName === folderName)
@@ -1968,9 +1979,73 @@ export class RecipeCockpitService {
             }));
 
         const isOrgCheckIdle = !panelState.scratchOrgStateMessage?.isRunning && !panelState.createStateMessage?.isRunning;
-        if ( panelState.dataOrgSelection && isOrgCheckIdle && panelState.dataOrgDetails[panelState.dataOrgSelection.orgIndex] ) {
-            await this.selectDataOrg(cockpitPanel, panelState, panelState.dataOrgSelection.orgIndex);
+        if ( isOrgCheckIdle ) {
+            await this.refreshDataOrgReadinessForFolder(cockpitPanel, panelState, folderName);
         }
+
+    }
+
+    /*
+        What Create would send for ONE folder's cards changed, so only their targets are checked
+        again -- against the org type the selection already answered and the session's describe
+        cache, connecting only for an object the cache does not hold. A selection that has not
+        answered it is a sandbox has nothing to refresh, and an answer for a selection, model or
+        request the reader has moved on from is dropped. The panel merges it by key.
+    */
+    private static async refreshDataOrgReadinessForFolder(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, folderName: string) {
+
+        const dataOrgSelection = panelState.dataOrgSelection;
+        const recipeDataMessage = panelState.recipeDataMessage;
+
+        if ( !dataOrgSelection || dataOrgSelection.orgTypeDetail?.isSandbox !== true || !recipeDataMessage ) {
+            return;
+        }
+
+        const requestSequence = dataOrgSelection.requestSequence;
+        const isRefreshCurrent = () => this.recipeCockpitPanel === cockpitPanel
+                                        && this.recipeCockpitPanelState === panelState
+                                        && panelState.dataOrgSelection === dataOrgSelection
+                                        && panelState.dataOrgRequestSequence === requestSequence
+                                        && panelState.recipeDataMessage === recipeDataMessage;
+
+        const folderRecipeDataMessage: IRecipeCockpitRecipeDataMessage = {
+            ...recipeDataMessage,
+            recipe: { ...recipeDataMessage.recipe, trees: recipeDataMessage.recipe.trees.filter(tree => tree.folderName === folderName) }
+        };
+        const createTargets = ( await this.collectCreateTargets(panelState, folderRecipeDataMessage) )
+            .filter(createTarget => panelState.dataOrgObjectApiNames.has(createTarget.objectApiName));
+
+        if ( !isRefreshCurrent() || createTargets.length === 0 ) {
+            return;
+        }
+
+        let readinessByTarget: IRecipeCockpitCreateReadinessByTarget;
+        try {
+            readinessByTarget = await this.computeCreateReadinessByTarget(
+                dataOrgSelection.orgDetail.username,
+                () => SalesforceOrgService.getConnection(dataOrgSelection.orgDetail.username),
+                [...new Set(createTargets.map(createTarget => createTarget.objectApiName))],
+                dataOrgSelection.orgTypeDetail,
+                createTargets,
+                () => !isRefreshCurrent()
+            );
+        } catch {
+            // THE NEXT SELECTION OR ⟳ CHECKS AGAIN; A PERFORM-TIME CREATE RE-CHECKS WHATEVER THIS LEFT ON SCREEN
+            return;
+        }
+
+        if ( !isRefreshCurrent() ) {
+            return;
+        }
+
+        this.postToPanel(cockpitPanel, {
+            command: 'dataOrgReadiness',
+            objects: [...readinessByTarget.byObjectApiName.values()],
+            createTargets: [...readinessByTarget.byCreateKey.values()],
+            createResults: [],
+            requestSequence: requestSequence,
+            renderSequence: recipeDataMessage.renderSequence
+        });
 
     }
 
@@ -4181,7 +4256,7 @@ export class RecipeCockpitService {
         gets no readiness.
     */
     static async computeCreateReadinessByTarget(orgUsername: string,
-                                                describeSource: IOrgDescribeSource,
+                                                describeSource: IOrgDescribeSource | (() => Promise<IOrgDescribeSource>),
                                                 objectApiNames: string[],
                                                 orgTypeDetail: IOrgTypeDetail | undefined,
                                                 createTargets: IRecipeCockpitCreateTarget[],
@@ -4211,7 +4286,8 @@ export class RecipeCockpitService {
             return { byObjectApiName: readinessByObjectApiName, byCreateKey: readinessByCreateKey };
         }
 
-        const describeResult = await SalesforceOrgService.describeObjects(orgUsername, objectApiNames, async () => describeSource, { isCancellationRequested });
+        const describeSourceFactory = typeof describeSource === 'function' ? describeSource : async () => describeSource;
+        const describeResult = await SalesforceOrgService.describeObjects(orgUsername, objectApiNames, describeSourceFactory, { isCancellationRequested });
 
         describeResult.outcomes.forEach(describeOutcome => setReadiness({
             objectApiName: describeOutcome.objectApiName,
@@ -5278,7 +5354,7 @@ export class RecipeCockpitService {
 
                 const { treeKey, objectApiName, nickname, fieldApiName, included } = panelMessage;
 
-                if ( typeof treeKey !== 'string' || typeof objectApiName !== 'string' || typeof fieldApiName !== 'string' || typeof included !== 'boolean'
+                if ( typeof treeKey !== 'string' || !SalesforceApiName.isApiName(objectApiName) || !SalesforceApiName.isApiName(fieldApiName) || typeof included !== 'boolean'
                         || ( nickname !== undefined && typeof nickname !== 'string' )
                         || !panelState.recipeDataMessage
                         || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(this.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {

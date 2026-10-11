@@ -760,9 +760,13 @@ export class RecipeCockpitRecipeWriter {
 
         const { recipeLines, scannedObject } = located;
         const excludedFieldSet = new Set(excludedFieldApiNames);
-        const excludedLineIndexes = new Set(scannedObject.fields
-            .filter(scannedField => excludedFieldSet.has(scannedField.fieldApiName))
+        const excludedFields = scannedObject.fields.filter(scannedField => excludedFieldSet.has(scannedField.fieldApiName));
+        const excludedLineIndexes = new Set(excludedFields
             .flatMap(scannedField => Array.from({ length: scannedField.endIndex - scannedField.startIndex }, (_, offset) => scannedField.startIndex + offset)));
+        // AS IN buildFilteredRecipe: A fields: LINE LEFT WITH NOTHING UNDER IT LOADS AS null, WHICH SNOWFAKERY DOES NOT TAKE FOR "NO FIELDS"
+        if ( scannedObject.fields.length > 0 && excludedFields.length === scannedObject.fields.length && scannedObject.fieldsLineIndexes.length === 1 ) {
+            excludedLineIndexes.add(scannedObject.fieldsLineIndexes[0]);
+        }
         const blockLines = this.collectOwnBlockLineIndexes(recipeLines.lines, scannedObject)
             .filter(lineIndex => !excludedLineIndexes.has(lineIndex))
             .map(lineIndex => recipeLines.lines[lineIndex]);
@@ -816,6 +820,8 @@ export class RecipeCockpitRecipeWriter {
 
         return requests.map(({ objectApiName, objectNickname, excludedFieldApiNames = [] }) => {
 
+            const excludedFieldSet = new Set(excludedFieldApiNames);
+
             const matchingObjects = ( scannedObjectsByApiName.get(objectApiName) ?? [] )
                 .filter(scannedObject => objectNickname === undefined || scannedObject.nicknames.includes(objectNickname));
             const isListableFromScan = API_NAME_PATTERN.test(objectApiName)
@@ -824,7 +830,7 @@ export class RecipeCockpitRecipeWriter {
                                         && matchingObjects[0].propertyLineIndexes.count.length === 1;
 
             return isListableFromScan
-                ? { isListed: true, fieldApiNames: matchingObjects[0].fields.map(scannedField => scannedField.fieldApiName).filter(fieldApiName => !excludedFieldApiNames.includes(fieldApiName)) }
+                ? { isListed: true, fieldApiNames: matchingObjects[0].fields.map(scannedField => scannedField.fieldApiName).filter(fieldApiName => !excludedFieldSet.has(fieldApiName)) }
                 : this.listCreateBlockFieldApiNames(recipeText, objectApiName, objectNickname, excludedFieldApiNames);
 
         });
