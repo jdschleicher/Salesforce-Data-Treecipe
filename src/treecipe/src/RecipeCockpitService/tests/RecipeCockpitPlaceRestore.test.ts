@@ -382,7 +382,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
         describe('given a later model of the same run in the same document (#225)', () => {
 
-            // WHAT Regenerate, Run Faker, an insert AND Add friend DO: THE HOST RELOADS THE RUN ON SCREEN AND POSTS IT AGAIN
+            // WHAT Run Faker, an insert AND Add friend DO: THE HOST RELOADS THE RUN ON SCREEN AND POSTS IT AGAIN
             const reload = (panel: Panel, recipe: IRecipeCockpitRecipeViewModel, focusTree?: any) => {
                 const scrollCallsBefore = panel.scrollToCalls.length;
                 render(panel, recipe, 2, focusTree);
@@ -416,10 +416,10 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             });
 
             it.each([
-                ['Run Faker', { treeKey: LEAD_TREE_KEY, tab: 'datasets' }, LEAD_TREE_KEY, 'Previous Fake Sets'],
+                ['Run Faker', { treeKey: LEAD_TREE_KEY, tab: 'datasets' }, LEAD_TREE_KEY, 'Previously Used Data Sets'],
                 ['an insert', { treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe' }, ACCOUNT_TREE_KEY, 'Treecipe'],
                 ['a reload onto Compare', { treeKey: ACCOUNT_TREE_KEY, tab: 'compare' }, ACCOUNT_TREE_KEY, 'Compare'],
-                ['Add friend, or a Regenerate that failed and reloaded the same run', { treeKey: LEAD_TREE_KEY, tab: 'treecipe' }, LEAD_TREE_KEY, 'Treecipe']
+                ['Add friend', { treeKey: LEAD_TREE_KEY, tab: 'treecipe' }, LEAD_TREE_KEY, 'Treecipe']
             ])('given %s\'s focus, opens its card on its tab and restores everything else', (_action, focusTree, focusedTreeKey, focusedTabLabel) => {
 
                 const { panel, recipe } = buildReaderSession();
@@ -445,7 +445,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
                 expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
                 expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(true);
-                expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previous Fake Sets');
+                expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previously Used Data Sets');
 
             });
 
@@ -463,31 +463,12 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
             });
 
-            // Regenerate WRITES A NEW RUN FOLDER WHOSE CARDS CARRY THE SAME TREE FOLDER NAMES, AND THE HOST SAYS SO
-            it('given Regenerate\'s marker, restores every card, tab, search and the scroll on the new run, its focus winning for its card', () => {
-
-                const { panel, recipe } = buildReaderSession();
-                const regeneratedRunFolderName = 'recipe-2026-10-10T12-00-00';
-                const scrollCallsBefore = panel.scrollToCalls.length;
-
-                panel.postToPanel({ command: 'recipeData', recipe: { ...recipe, selectedRunFolderName: regeneratedRunFolderName }, renderSequence: 2,
-                    focusTree: { treeKey: LEAD_TREE_KEY, tab: 'treecipe' }, carryPlaceAcrossRuns: true });
-
-                expectReaderSessionRestored(panel);
-                expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Treecipe');
-                expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Treecipe');
-                expect(panel.scrollToCalls.slice(scrollCallsBefore)).toEqual([480]);
-                // SAVED UNDER THE RUN NOW ON SCREEN, SO A LATER HIDE AND REVEAL RESTORES IT THERE
-                expect(panel.savedState().runFolderName).toBe(regeneratedRunFolderName);
-                expect(panel.savedState().trees.map((savedTree: any) => savedTree.treeKey)).toEqual([ACCOUNT_TREE_KEY, LEAD_TREE_KEY]);
-
-            });
-
-            it('honours the marker only as a literal true', () => {
+            // #263: Regenerate WAS THE ONE RELOAD THAT CARRIED THE PLACE ACROSS RUNS; WITH IT GONE, A STRAY MARKER CARRIES NOTHING
+            it('ignores a carryPlaceAcrossRuns marker, so a model of another run starts fresh', () => {
 
                 const { panel, recipe } = buildReaderSession();
 
-                panel.postToPanel({ command: 'recipeData', recipe: { ...recipe, selectedRunFolderName: FAKER_JS_RUN_FOLDER_NAME }, renderSequence: 2, carryPlaceAcrossRuns: 'true' });
+                panel.postToPanel({ command: 'recipeData', recipe: { ...recipe, selectedRunFolderName: FAKER_JS_RUN_FOLDER_NAME }, renderSequence: 2, carryPlaceAcrossRuns: true });
 
                 expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
                 expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
@@ -520,7 +501,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
             });
 
-            // A Regenerate THAT RENAMED A TREE FOLDER, AND AN Add friend THAT ADDED A NICKNAME
+            // A RELOAD WHOSE RUN LOST A TREE FOLDER, AND AN Add friend THAT ADDED A NICKNAME
             it('passes over a card, object or version the reloaded model no longer has and restores the rest, without throwing', () => {
 
                 const { panel, recipe } = buildReaderSession();
@@ -623,7 +604,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
             render(panel, recipe, 1, { treeKey: LEAD_TREE_KEY, tab: 'datasets' });
 
-            expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previous Fake Sets');
+            expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previously Used Data Sets');
             // THE REST OF THE PLACE STILL COMES BACK
             expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Account')).toBe(true);
 

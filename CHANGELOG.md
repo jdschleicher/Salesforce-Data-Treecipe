@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.61.0] - Recipe Cockpit deploys an object's missing metadata to the selected sandbox
+## [3.62.0] - Recipe Cockpit deploys an object's missing metadata to the selected sandbox
 
 Closes [#211](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/211), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
 
@@ -31,6 +31,14 @@ The issue was written for Data-by-Org's per-object **+ Create**, which [#255](ht
 - **Afterwards, however it ended** (once the CLI started, even if something threw after it): the deploy stays in flight, with its button, every insert and the picker held, until the readiness has been checked again, and the deployed target leaves the allow-list until a fresh readiness offers it again. The new per-org, per-object `SalesforceOrgService.clearDescribeCache(username, object)` drops that describe, and every card listing the object is checked again, connecting only for what the cache no longer holds. The insert is offered only when the fresh describe says so.
 - **Unchanged:** the shell builder still takes only a nonce, and every new text reaches the panel over `postMessage` and is written with `textContent`. Everything ships behind `recipeCockpitEnabled`, whose warning now names the deploy among the things the cockpit can write to an org. Nothing a field depends on (global value sets, record types, permission sets) is deployed with it, and no field-level security is granted.
 
+## [3.61.0] - Recipe Cockpit: no Regenerate recipe button, a labelled ⟳ Refresh orgs, one button size, and Previously Used Data Sets
+
+Closes [#263](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/263), slice A of [#261](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/261).
+
+- **Regenerate recipe is gone.** The button and its "from this workspace's metadata, not the org" note no longer sit at the top of a card's Treecipe tab. To regenerate, run **Generate Treecipe** from the Command Palette, then choose the new run in the cockpit's run selector. The host refuses a posted `regenerateRecipe`. `carryPlaceAcrossRuns` went with it: only Regenerate's reload set it, so every reload now keeps the reader's place only when it is of the run already on screen. The no-run empty state's **Generate Treecipe** button is unchanged.
+- **⟳ Refresh orgs.** The org refresh button now says what it does. The ⟳ sits in its own `aria-hidden` span at 1.5em, because the glyph draws small in most fonts. The tooltip is unchanged. The accessible name now starts with the visible label ("Refresh orgs: check the org connections again"), so a voice-control user can say "click Refresh orgs" (WCAG 2.5.3, Label in Name).
+- **One button size.** Every cockpit button, and **All / None / Reset selection**, now defaults to 1.1em, the size of the favorite (☆) button. The tree and object ▸ toggles keep 3.3em ([#244](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/244)). The field checkbox and the chain-link icon keep their own sizes.
+- **Previously Used Data Sets.** The tab formerly titled Previous Fake Sets has a new name. Its internal key (`datasets`) is unchanged, so a saved place still restores onto it.
 ## [3.60.1] - Recipe Cockpit: the tree's include/exclude icon is a chain link, at the front of the row
 
 Closes [#257](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/257), a follow-up to [#219](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/219).

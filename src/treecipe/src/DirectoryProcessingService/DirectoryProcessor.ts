@@ -579,7 +579,7 @@ export class DirectoryProcessor {
       const objectsInfoWrapperJson = JSON.stringify(objectsInfoWrapper, null, 2);
       pendingFileWrites.push(DirectoryProcessor.writeGeneratedFile(filePathOfOjectsInfoWrapperJson, objectsInfoWrapperJson, `an error occurred when attempting to create the "${objectsInfoWrapperFileName}" file.`));
 
-      // SETTLED BEFORE A FAILURE IS RAISED: Promise.all REJECTS ON THE FIRST ONE WHILE THE REST ARE STILL WRITING, AND THE COCKPIT'S Regenerate RELOADS THE RUN AS SOON AS THE COMMAND SETTLES
+      // SETTLED BEFORE A FAILURE IS RAISED: Promise.all REJECTS ON THE FIRST ONE WHILE THE REST ARE STILL WRITING, AND THE COCKPIT'S Generate Treecipe RELOADS THE RUN AS SOON AS THE COMMAND SETTLES
       const settledFileWrites = await Promise.allSettled(pendingFileWrites);
       const failedFileWrite = settledFileWrites.find((settledFileWrite): settledFileWrite is PromiseRejectedResult => settledFileWrite.status === 'rejected');
       if ( failedFileWrite ) {

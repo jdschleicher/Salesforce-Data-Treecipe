@@ -20,7 +20,8 @@ import {
     RECIPE_COCKPIT_INSERT_ACTION_LABEL,
     RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE,
     RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE,
-    RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT
+    RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT,
+    RECIPE_COCKPIT_REFRESH_ORGS_LABEL
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import {
@@ -953,6 +954,24 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             panel.postToPanel({ command: 'dataOrgList', orgLabels: [], selectedOrgIndex: null, noOrgsMessage: NO_AUTHORIZED_ORGS_MESSAGE, renderSequence: 1 });
 
             expect(panel.isHidden(viewOf(panel, 'dataOrgRefresh'))).toBe(false);
+
+        });
+
+        // #263: THE ⟳ ALONE WAS TOO SMALL TO READ, SO THE BUTTON SAYS WHAT IT DOES AND DRAWS THE GLYPH ON ITS OWN, LARGER
+        it('labels ⟳ "Refresh orgs", with the glyph in its own aria-hidden span and an accessible name that starts with the label', () => {
+
+            const { panel } = renderDataOrgPanel();
+            openTreecipeViews(panel);
+            const refreshElement = viewOf(panel, 'dataOrgRefresh');
+            const [iconElement] = panel.findAll(refreshElement, 'dataOrgRefreshIcon');
+
+            expect(iconElement.textContent).toBe('⟳');
+            expect(iconElement.attributes['aria-hidden']).toBe('true');
+            expect(panel.findAll(refreshElement, 'dataOrgRefreshLabel').map((element: any) => element.textContent)).toEqual([RECIPE_COCKPIT_REFRESH_ORGS_LABEL]);
+            expect(RECIPE_COCKPIT_REFRESH_ORGS_LABEL).toBe('Refresh orgs');
+            expect(refreshElement.attributes['aria-label']).toBe('Refresh orgs: check the org connections again');
+            expect(refreshElement.attributes['aria-label'].startsWith(RECIPE_COCKPIT_REFRESH_ORGS_LABEL)).toBe(true);
+            expect(refreshElement.attributes.title).toBe('Check the org connections again');
 
         });
 
