@@ -7700,7 +7700,8 @@ ${this.buildPaletteCustomProperties()}
         dataOrgView.refreshElement.appendChild(refreshIconElement);
         dataOrgView.refreshElement.appendChild(createElement('span', 'dataOrgRefreshLabel', REFRESH_ORGS_LABEL));
         dataOrgView.refreshElement.setAttribute('title', 'Check the org connections again');
-        dataOrgView.refreshElement.setAttribute('aria-label', 'Check the org connections again');
+        // THE ACCESSIBLE NAME STARTS WITH THE VISIBLE LABEL, SO "CLICK REFRESH ORGS" BY VOICE FINDS IT (WCAG 2.5.3)
+        dataOrgView.refreshElement.setAttribute('aria-label', REFRESH_ORGS_LABEL + ': check the org connections again');
         dataOrgView.refreshElement.addEventListener('click', function () {
             showDataOrgConnectionCheck();
             vscodeApi.postMessage({ command: 'refreshDataOrgs' });
