@@ -3,6 +3,8 @@ import { ConfigurationService } from "../ConfigurationService/ConfigurationServi
 import { DirectoryProcessor } from "../DirectoryProcessingService/DirectoryProcessor";
 import { SalesforceOrgService } from "../SalesforceOrgService/SalesforceOrgService";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceService";
+import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
+import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
 import { IAuthenticatedOrgDetail } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 
 import * as vscode from 'vscode';
@@ -11,24 +13,36 @@ import path = require('path');
 
 export const INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER = 'Select the Salesforce org the data set will be inserted into -- production orgs are refused (sandbox, scratch and Developer Edition orgs are allowed)';
 
-// ONE RECORD THE INSERT REJECTED, BY ITS POSITION IN WHAT WAS SENT, WITH SALESFORCE'S OWN MESSAGES JOINED
-export interface IRecordInsertFailure {
-    recordIndex: number;
-    message: string;
-}
+/*
+    How an insert of a data set ended. "completed" went through every file, "cancelled" was stopped
+    by the reader and rolled back, and "stopped" stopped at a file that could not be inserted -- an
+    all-or-none failure, or a request that threw (a dropped connection, an expired session, a limit).
+    isRolledBack says whether what was saved was deleted again: always for a cancel, and for a stop
+    under all-or-none. savedRecordCount is what is still in the org.
+*/
+export type DataSetInsertOutcome = 'completed' | 'cancelled' | 'stopped';
 
-// ONE RECORD'S ANSWER FROM THE COLLECTIONS API, AS FAR AS IT IS READ -- EVERY PART OPTIONAL, BECAUSE IT CAME OVER THE NETWORK
-interface IRecordSaveResult {
-    success?: unknown;
-    id?: unknown;
-    errors?: Array<{ statusCode?: unknown; message?: unknown } | null>;
-}
-
-export interface IInsertWithoutRollbackResult {
-    createdRecordIds: string[];
-    failures: IRecordInsertFailure[];
+export interface IDataSetInsertResult {
+    outcome: DataSetInsertOutcome;
+    isRolledBack: boolean;
     resultsFilePath: string;
+    savedRecordCount: number;
+    failedRecordCount: number;
 }
+
+/*
+    One file's records just before they are inserted, after every reference to a record an earlier
+    file created was swapped for its Id: what the Recipe Cockpit's tree insert (#255) uses to fill
+    or clear the lookups the recipe could not wire. createdRecordIdsByReferenceId is every Id this
+    insert has created so far, keyed by the referenceId of the record it was created from.
+*/
+export type DataSetRecordPreparer = (objectApiName: string, records: unknown[], createdRecordIdsByReferenceId: Readonly<Record<string, string>>) => unknown[];
+
+export interface IDataSetInsertOptions {
+    prepareRecords?: DataSetRecordPreparer;
+}
+
+type InsertProgress = vscode.Progress<{ message?: string; increment?: number }>;
 
 export class CollectionsApiService {
 
@@ -129,14 +143,42 @@ export class CollectionsApiService {
 
     }
 
+    /*
+        Inserts a data set folder's Collections API files, parents first, into the org the connection
+        names: the one insert every command uses -- Insert Data Set by Directory and the Recipe
+        Cockpit's tree insert (#255) alike. The org's record type Ids replace the developer names the
+        recipe wrote, and each file's lookups to records an earlier file created are swapped for
+        their Ids. It runs in a cancellable progress notification, reporting each file and each insert
+        round; Cancel, or an all-or-none failure, deletes every record this insert saved.
+    */
+    static async insertDataSetFolderIntoOrg(datasetFolderPath: string,
+                                            aliasAuthenticationConnection: Connection,
+                                            allOrNoneSelection: boolean,
+                                            insertOptions: IDataSetInsertOptions = {}): Promise<IDataSetInsertResult> {
+
+        const datasetChildFoldersToFilesMap = await this.getDataSetChildDirectoriesNameToFilesMap(datasetFolderPath);
+        const treecipeObjectWrapperDetail = await this.getTreecipeObjectsWrapperDetailByDataSetDirectoriesToFilesMap(datasetChildFoldersToFilesMap);
+        const objectApiNamesToGetRecordTypeInfoFrom = Object.keys(treecipeObjectWrapperDetail.ObjectToObjectInfoMap);
+        const recordTypeDetailFromOrg = await RecordTypeService.getRecordTypeIdsByConnection(aliasAuthenticationConnection, objectApiNamesToGetRecordTypeInfoFrom);
+
+        return this.upsertDataSetToSelectedOrg(datasetFolderPath,
+                                                datasetChildFoldersToFilesMap,
+                                                recordTypeDetailFromOrg,
+                                                aliasAuthenticationConnection,
+                                                allOrNoneSelection,
+                                                insertOptions);
+
+    }
+
     static async upsertDataSetToSelectedOrg(selectedDataSetFullDirectoryPath: string,
                                             datasetChildFoldersToFilesMap: Record<string, string[]>, 
                                             recordTypeDetailFromTargetOrg: any,
                                             aliasAuthenticationConnection: Connection,
-                                            allOrNoneSelection: boolean) {
+                                            allOrNoneSelection: boolean,
+                                            insertOptions: IDataSetInsertOptions = {}): Promise<IDataSetInsertResult> {
 
         const collectionsApiFilesDirectoryFolderName = ConfigurationService.getDatasetCollectionApiFilesFolderName();
-        let collectionApiFiles = datasetChildFoldersToFilesMap[collectionsApiFilesDirectoryFolderName];
+        let collectionApiFiles = datasetChildFoldersToFilesMap[collectionsApiFilesDirectoryFolderName] ?? [];
 
         // Get the treecipe wrapper to access relationship levels
         const treecipeObjectWrapperDetail = await this.getTreecipeObjectsWrapperDetailByDataSetDirectoriesToFilesMap(datasetChildFoldersToFilesMap);
@@ -144,8 +186,7 @@ export class CollectionsApiService {
         // Sort collection API files based on relationship levels from the wrapper
         collectionApiFiles = this.sortCollectionApiFilesByRelationshipLevel(collectionApiFiles, treecipeObjectWrapperDetail);
 
-        const insertAttemptsDirectoryName = 'InsertAttempts';
-        const pathToInsertAttemptsDirectory = path.join(selectedDataSetFullDirectoryPath, insertAttemptsDirectoryName);
+        const pathToInsertAttemptsDirectory = path.join(selectedDataSetFullDirectoryPath, this.insertAttemptsDirectoryName);
         if (!fs.existsSync(pathToInsertAttemptsDirectory)) {
             fs.mkdirSync(pathToInsertAttemptsDirectory);
         }
@@ -158,11 +199,13 @@ export class CollectionsApiService {
         const resultsFileName = `insertAttemptResults-${isoDateTimestamp}.json`;
         const fullPathToResultsFile = path.join(timestampedInsertAttemptDirectoryFullPath, resultsFileName);
 
-        let allCollectionApiFilesSobjectResults: Record<string, Record<string, any[]>> = {
+        const allCollectionApiFilesSobjectResults: Record<string, Record<string, any[]>> = {
             'SuccessResults' : {},
             'FailureResults' : {}
         };
-        let objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string> = {};
+        const objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string> = {};
+        let outcome: DataSetInsertOutcome = 'completed';
+        let isRolledBack = false;
 
         await vscode.window.withProgress(
             {
@@ -174,12 +217,21 @@ export class CollectionsApiService {
             async (progress, token) => {
 
               const totalFiles = collectionApiFiles.length;
+              const rollBackCancelledInsert = async () => {
+                  outcome = 'cancelled';
+                  isRolledBack = true;
+                  vscode.window.showWarningMessage("Import cancelled by user. Deleting any previously saved records...");
+                  if ( fs.existsSync(fullPathToResultsFile) ) {
+                      await this.deletePreviouslySavedRecords(fullPathToResultsFile, aliasAuthenticationConnection);
+                  }
+              };
+              // processAndInsertCollectionFile ROLLS BACK AN ALL-OR-NONE FAILURE ITSELF, SO A CANCEL SEEN AFTER ONE IS NOT A SECOND DELETE
+              const hasAllOrNoneFailure = () => allOrNoneSelection && Object.keys(allCollectionApiFilesSobjectResults.FailureResults).length > 0;
           
               for (let i = 0; i < totalFiles; i++) {
 
                 if (token.isCancellationRequested) {
-                  vscode.window.showWarningMessage("Import cancelled by user. Deleting any previously saved records...");
-                  await this.deletePreviouslySavedRecords(fullPathToResultsFile, aliasAuthenticationConnection);
+                  await rollBackCancelledInsert();
                   return;
                 }
           
@@ -202,25 +254,59 @@ export class CollectionsApiService {
                                                             allOrNoneSelection,
                                                             allCollectionApiFilesSobjectResults,
                                                             fullPathToResultsFile,
-                                                            token);
+                                                            token,
+                                                            progress,
+                                                            insertOptions.prepareRecords);
+
+                    if ( !successResult && token.isCancellationRequested && !hasAllOrNoneFailure() ) {
+                        await rollBackCancelledInsert();
+                        return;
+                    }
 
                     if (!successResult) {
+                        outcome = 'stopped';
+                        isRolledBack = allOrNoneSelection;
                         vscode.window.showWarningMessage(`Failed to process ${fileName}`);
                         break;                    
                     }
 
                 } catch (error) {
 
-                    vscode.window.showWarningMessage(`Failed to process ${fileName}`);
+                    /*
+                        A request that threw saved nothing it could report, so the files after it --
+                        whose lookups name its records -- stop here too. Under all-or-none what the
+                        earlier files saved is deleted, as an all-or-none failure is.
+                    */
+                    outcome = 'stopped';
+                    vscode.window.showWarningMessage(`Failed to process ${fileName}: ${RecipeYamlScalar.escapeForNotification(String((error as { message?: unknown })?.message ?? error))}`);
+                    if ( allOrNoneSelection ) {
+                        isRolledBack = true;
+                        if ( fs.existsSync(fullPathToResultsFile) ) {
+                            await this.deletePreviouslySavedRecords(fullPathToResultsFile, aliasAuthenticationConnection);
+                        }
+                    }
+                    break;
 
                 }
 
               }
           
-              vscode.window.showInformationMessage("All files processed.");
+              if ( outcome === 'completed' ) {
+                  vscode.window.showInformationMessage("All files processed.");
+              }
 
             }
         );
+
+        const countResults = (resultsByObject: Record<string, any[]> | undefined) => Object.values(resultsByObject ?? {}).reduce((recordCount, objectResults) => recordCount + objectResults.length, 0);
+
+        return {
+            outcome: outcome,
+            isRolledBack: isRolledBack,
+            resultsFilePath: fullPathToResultsFile,
+            savedRecordCount: isRolledBack ? 0 : countResults(allCollectionApiFilesSobjectResults.SuccessResults),
+            failedRecordCount: countResults(allCollectionApiFilesSobjectResults.FailureResults)
+        };
 
     }
 
@@ -231,7 +317,9 @@ export class CollectionsApiService {
                                                 allOrNoneSelection,
                                                 allCollectionApiFilesSobjectResults,
                                                 fullPathToResultsFile,
-                                                token: vscode.CancellationToken): Promise<boolean> {
+                                                token: vscode.CancellationToken,
+                                                progress?: InsertProgress,
+                                                prepareRecords?: DataSetRecordPreparer): Promise<boolean> {
     
             let collectionsApiJson = await VSCodeWorkspaceService.getFileContentByPath(collectionsApiFilePath);
             collectionsApiJson = this.updateCollectionApiJsonContentWithOrgRecordTypeIds(collectionsApiJson, recordTypeDetailFromTargetOrg, path.basename(collectionsApiFilePath));
@@ -239,11 +327,21 @@ export class CollectionsApiService {
             const preparedCollectionsApiDetail = JSON.parse(collectionsApiJson);
 
             const objectNameForFile = this.getObjectNameFromCollectionsApiFilePath(collectionsApiFilePath);
+            if ( prepareRecords && Array.isArray(preparedCollectionsApiDetail.records) ) {
+                preparedCollectionsApiDetail.records = prepareRecords(objectNameForFile, preparedCollectionsApiDetail.records, objectReferenceIdToOrgCreatedRecordIdMap);
+            }
             const insertRounds = this.partitionRecordsIntoInsertRounds(preparedCollectionsApiDetail.records);
             // THE IDS THIS FILE'S OWN ROUNDS CREATED -- EVERY EARLIER FILE'S REFERENCE WAS ALREADY RESOLVED ABOVE, SO A LATER ROUND IS MATCHED AGAINST THESE ALONE
             const referenceIdToOrgIdCreatedByThisFile: Record<string, string> = {};
 
             for ( let insertRoundIndex = 0; insertRoundIndex < insertRounds.length; insertRoundIndex++ ) {
+
+                // A CANCEL BETWEEN ROUNDS STOPS BEFORE THE NEXT REQUEST; THE CALLER ROLLS BACK WHAT WAS SAVED
+                if ( insertRoundIndex > 0 && token?.isCancellationRequested ) {
+                    return false;
+                }
+
+                progress?.report({ message: `Inserting ${objectNameForFile}: round ${insertRoundIndex + 1} of ${insertRounds.length}` });
 
                 // A LATER ROUND'S LOOKUPS NAME RECORDS OF THIS FILE, WHICH ONLY THE ROUNDS BEFORE IT GAVE AN ID
                 const insertRoundDetail = insertRoundIndex === 0
@@ -277,71 +375,6 @@ export class CollectionsApiService {
             return true;
 
     
-    }
-
-    /*
-        One object's records through the same Collections API callout as Insert Data Set by
-        Directory, with allOrNone FALSE, and never rolled back: what Salesforce accepted stays, and
-        what it rejected is reported record by record -- which is how a parent deleted since it
-        was counted surfaces. A batch whose request failed outright, such as a dropped connection,
-        is recorded as a failure of each of its records, and the next batch still goes. Results are
-        written to InsertAttempts/insertAttempt-<ts>/insertAttemptResults-<ts>.json after every
-        batch, in the shape the directory insert writes.
-    */
-    static async insertRecordsWithoutRollback(datasetFolderPath: string,
-                                                objectApiName: string,
-                                                records: unknown[],
-                                                aliasAuthenticationConnection: Connection): Promise<IInsertWithoutRollbackResult> {
-
-        const isoDateTimestamp = VSCodeWorkspaceService.getNowIsoDateTimestamp();
-        const insertAttemptFolderPath = path.join(datasetFolderPath, this.insertAttemptsDirectoryName, `insertAttempt-${isoDateTimestamp}`);
-        fs.mkdirSync(insertAttemptFolderPath, { recursive: true });
-        const resultsFilePath = path.join(insertAttemptFolderPath, `insertAttemptResults-${isoDateTimestamp}.json`);
-
-        let allSobjectResults: Record<string, Record<string, any[]>> = { 'SuccessResults': {}, 'FailureResults': {} };
-        const createdRecordIds: string[] = [];
-        const failures: IRecordInsertFailure[] = [];
-
-        for ( let batchStartIndex = 0; batchStartIndex < records.length; batchStartIndex += this.collectionsApiRecordBatchSizeLimit ) {
-
-            const recordsBatch = records.slice(batchStartIndex, batchStartIndex + this.collectionsApiRecordBatchSizeLimit);
-            let batchResults: unknown[];
-
-            try {
-                const calloutResults: unknown = await this.insertCollectionsApiCallout(recordsBatch, aliasAuthenticationConnection, false, objectApiName);
-                batchResults = Array.isArray(calloutResults) ? calloutResults : [calloutResults];
-            } catch (batchError) {
-                // THE REQUEST FAILED, NOT NECESSARILY THE RECORDS -- SALESFORCE MAY HAVE SAVED THEM BEFORE THE ANSWER WAS LOST
-                const batchFailureMessage = `The insert request failed, so whether this record was saved is unknown: ${(batchError as { message?: unknown })?.message ?? String(batchError)}`;
-                batchResults = recordsBatch.map(() => ({ success: false, errors: [{ message: batchFailureMessage }] }));
-            }
-
-            recordsBatch.forEach((_record, batchRecordIndex) => {
-
-                const recordResult = batchResults[batchRecordIndex] as IRecordSaveResult | null | undefined;
-
-                if ( recordResult?.success === true && typeof recordResult.id === 'string' ) {
-                    createdRecordIds.push(recordResult.id);
-                    return;
-                }
-
-                const errorMessages = Array.isArray(recordResult?.errors)
-                    ? recordResult.errors
-                        .map(recordError => [recordError?.statusCode, recordError?.message].filter(errorPart => typeof errorPart === 'string' && errorPart).join(': '))
-                        .filter(errorMessage => !!errorMessage)
-                    : [];
-
-                failures.push({ recordIndex: batchStartIndex + batchRecordIndex, message: errorMessages.join('; ') || 'no result was returned for this record' });
-
-            });
-
-            allSobjectResults = this.updateCompleteCollectionApiSobjectResults(allSobjectResults, batchResults.filter(recordResult => !!recordResult), objectApiName, aliasAuthenticationConnection);
-            this.appendInsertAttemptsFileWithLatestSobjectResults(allSobjectResults, resultsFilePath);
-
-        }
-
-        return { createdRecordIds, failures, resultsFilePath };
-
     }
 
     static updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults: Record<string, Record<string, any[]>>, 
@@ -444,7 +477,12 @@ export class CollectionsApiService {
         for ( let i = 0; i < sObjectResults.length; i++) {
 
             const referenceName = orderedCollectionsApiRecordsDetailJustUpserted[i].attributes.referenceId;
-            const recordId = sObjectResults[i].id;
+            const recordId = sObjectResults[i]?.id;
+
+            // A RECORD SALESFORCE REJECTED HAS NO Id: MAPPED, ITS CHILDREN'S FILE WOULD BE WRITTEN WITH A BARE undefined AND SKIPPED WHOLE
+            if ( sObjectResults[i]?.success === false || typeof recordId !== 'string' ) {
+                continue;
+            }
 
             if ( !(referenceName in objectReferenceIdToOrgCreatedRecordIdMap) ) {
                 objectReferenceIdToOrgCreatedRecordIdMap[referenceName] = recordId;
@@ -466,7 +504,7 @@ export class CollectionsApiService {
 
         if (recordsToInsert && recordsToInsert.length > 0) {
 
-            const collectionsApiRecordBatchSizeLimitPerRestCall = 200;
+            const collectionsApiRecordBatchSizeLimitPerRestCall = this.collectionsApiRecordBatchSizeLimit;
 
             // INSERTING RECORDS
             if (recordsToInsert.length > 0) {
@@ -788,7 +826,7 @@ export class CollectionsApiService {
 
         for (const [referenceIdKey, orgRecordId] of Object.entries(objectReferenceIdToOrgCreatedRecordIdMap)) {
             const nicknameValue = this.readNicknameFromReferenceId(referenceIdKey);
-            if (nicknameValue) {
+            if (nicknameValue && typeof orgRecordId === 'string') {
                 nicknameToOrgIdEntries.push({ nicknameValue, orgRecordId });
             }
         }
@@ -819,13 +857,8 @@ export class CollectionsApiService {
 
         const jsonStringFormattedRecords = JSON.stringify(collectionsApiFormattedRecords, null, 2);
 
-        fs.writeFile(fullCollectionsApiFilePath, jsonStringFormattedRecords, error => {
-            
-            if (error) {
-                throw new Error(`Error occurred in Collections Api file creation: ${error.message}`);
-            } 
-
-        });
+        // WRITTEN BEFORE THIS RETURNS: THE COCKPIT'S TREE INSERT (#255) READS THE FILES THE MOMENT GENERATION ENDS
+        fs.writeFileSync(fullCollectionsApiFilePath, jsonStringFormattedRecords);
 
     }
 

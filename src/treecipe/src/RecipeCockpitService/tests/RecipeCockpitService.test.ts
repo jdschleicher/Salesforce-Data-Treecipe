@@ -377,7 +377,7 @@ describe('RecipeCockpitService', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
 
-            expect(styleSheet).toMatch(/\.treeRunFaker, \.toolbar button, \.treeCompare button, \.emptyStateActions button, \.dataCreate \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
+            expect(styleSheet).toMatch(/\.treeRunFaker, \.toolbar button, \.treeCompare button, \.emptyStateActions button, \.treeInsert, \.dataOrgLoad, \.dataOrgNewScratch, \.regenerateRecipe \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
             expect(styleSheet).toContain('.diff-new-in-org { color: var(--sdt-added); }');
             expect(styleSheet).toContain('.diff-removed-from-org { color: var(--sdt-removed); }');
             expect(styleSheet).toContain('.diff-type-changed { color: var(--sdt-changed); }');
@@ -389,7 +389,8 @@ describe('RecipeCockpitService', () => {
         const COCKPIT_BUTTON_SELECTORS = [
             '.treeToggle', '.treeObjectToggle', '.picklistToggle', '.treeRunFaker',
             '.treeTab', '.treeVersionToggle', '.historyAction', '.treeAddFriend', '.treeAddFriendChoice',
-            '.toolbar button', '.treeCompare button', '.emptyStateActions button', '.dataOrgRefresh', '.dataObjectToggle', '.dataCreate', '.dataCreateErrors'
+            '.toolbar button', '.treeCompare button', '.emptyStateActions button', '.dataOrgRefresh', '.dataObjectToggle',
+            '.treeInsert', '.treeInsertErrors', '.scratchOrgViewOutput', '.dataOrgLoad', '.dataOrgNewScratch', '.regenerateRecipe'
         ];
 
         const ruleFor = (styleSheet: string, selectorPattern: string): string =>
@@ -426,7 +427,7 @@ describe('RecipeCockpitService', () => {
         });
 
         // #244: AT 1.1em THE ▸/▾ WAS TOO SMALL TO TELL AT A GLANCE WHETHER A CARD OR OBJECT WAS OPEN
-        it('draws the tree card and Structure object triangles at 3.3em, centred in their rows, and no other toggle', () => {
+        it('draws the tree card and Treecipe object triangles at 3.3em, centred in their rows, and no other toggle', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
             const triangleRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle');
@@ -451,7 +452,8 @@ describe('RecipeCockpitService', () => {
             expect(disabledRule).not.toBeNull();
             const disabledSelectors = (disabledRule as RegExpMatchArray)[1].split(',').map(selector => selector.trim());
             ['.treeRunFaker:disabled', '.treeAddFriend:disabled', '.treeAddFriendChoice:disabled', '.toolbar button:disabled',
-                '.treeCompare button:disabled', '.emptyStateActions button:disabled', '.dataCreate:disabled', '.dataOrgRefresh:disabled'].forEach(selector => expect(disabledSelectors).toContain(selector));
+                '.treeCompare button:disabled', '.emptyStateActions button:disabled', '.treeInsert:disabled', '.dataOrgRefresh:disabled',
+                '.dataOrgLoad:disabled', '.dataOrgNewScratch:disabled', '.regenerateRecipe:disabled', '.treeRecordCountInput:disabled'].forEach(selector => expect(disabledSelectors).toContain(selector));
             expect((disabledRule as RegExpMatchArray)[2]).toContain('color: var(--sdt-disabled-text);');
             expect((disabledRule as RegExpMatchArray)[2]).toContain('background-color: var(--sdt-disabled-bg);');
             expect((disabledRule as RegExpMatchArray)[2]).toContain('cursor: not-allowed;');
@@ -2089,7 +2091,7 @@ describe('RecipeCockpitService', () => {
             orgDescribeMessagesByTreeKey: new Map([[COMPARED_TREE_KEY, comparedDescribe(2)]])
         });
 
-        it('given a comparison of the card on screen, regenerates from that card, ignoring any other payload', () => {
+        it('given a card on screen, regenerates from that card, ignoring any other payload', () => {
 
             expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY, filePath: '/etc/passwd' }, buildComparedPanelState()))
                 .toEqual({ kind: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY });
@@ -2105,17 +2107,28 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('given nothing has been compared in that card, regenerates nothing', () => {
+        // #255: REGENERATE IS DRAWN IN EVERY CARD'S TREECIPE TAB, SO IT NO LONGER WAITS FOR A COMPARISON
+        it('given nothing has been compared in that card, still regenerates from a card the panel drew', () => {
 
             const panelState = buildComparedPanelState();
 
-            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY }, { ...panelState, orgDescribeMessagesByTreeKey: new Map() })).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY }, { ...panelState, orgDescribeMessagesByTreeKey: new Map() }))
+                .toEqual({ kind: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY });
             expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY }, {
                 ...panelState,
                 orgDescribeMessagesByTreeKey: new Map([[COMPARED_TREE_KEY, RecipeCockpitService.buildOrgConnectionFailureMessage(COMPARED_TREE_KEY, 'devhub', new Error('expired'), 2)]])
-            })).toBeUndefined();
-            // ANOTHER CARD'S COMPARISON DOES NOT ROUTE A REGENERATE FROM ONE THAT HAS NONE
-            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: 'Lead-ONLY' }, panelState)).toBeUndefined();
+            })).toEqual({ kind: 'regenerateRecipe', treeKey: COMPARED_TREE_KEY });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: 'Lead-ONLY' }, panelState))
+                .toEqual({ kind: 'regenerateRecipe', treeKey: 'Lead-ONLY' });
+
+        });
+
+        it('given a tree key the drawn model does not hold, or none, regenerates nothing', () => {
+
+            const panelState = buildComparedPanelState();
+
+            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: 'Unknown-ONLY' }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe', treeKey: 7 }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'regenerateRecipe' }, panelState)).toBeUndefined();
 
         });
@@ -2336,6 +2349,10 @@ describe('RecipeCockpitService', () => {
             expect(panel.findAll(panel.cockpitBodyElement.children[0], 'describeInOrg')).toEqual([]);
             expect(panel.findAll(panel.cockpitBodyElement.children[0], 'statusFilter')).toEqual([]);
             expect(panel.findAll(panel.cockpitBodyElement.children[0], 'tabSearchInput')).toEqual([]);
+            // #255: THE ORG PICKER IS DRAWN IN EACH CARD'S TREECIPE TAB, NOT IN THE TOOLBAR
+            ['dataOrgControls', 'dataOrgSelect', 'dataOrgLoad', 'dataOrgRefresh'].forEach(className => {
+                expect(panel.findAll(panel.cockpitBodyElement.children[0], className)).toEqual([]);
+            });
 
         });
 
@@ -2371,7 +2388,7 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('given a card is expanded, draws its tabs with Structure selected, and its objects in insert order with their lookups', () => {
+        it('given a card is expanded, draws its tabs with Treecipe selected, and its objects in insert order with their lookups', () => {
 
             const { panel } = renderTreeRecipe();
             const [firstTreeCard] = treeCardsOf(panel);
@@ -2379,9 +2396,9 @@ describe('RecipeCockpitService', () => {
             expandTree(panel, firstTreeCard);
 
             expect(panel.isHidden(treeBodyOf(firstTreeCard))).toBe(false);
-            expect(textOf(panel, firstTreeCard, 'treeTab')).toEqual(['Structure', 'Data-by-Org', 'Previous Versions', 'Previous Fake Sets']);
+            expect(textOf(panel, firstTreeCard, 'treeTab')).toEqual(['Treecipe', 'Compare', 'Previous Versions', 'Previous Fake Sets']);
             expect(panel.findAll(firstTreeCard, 'treeTab').map((tabElement: any) => tabElement.attributes['aria-selected'])).toEqual(['true', 'false', 'false', 'false']);
-            expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['structure', 'dataByOrg', 'versions', 'datasets']);
+            expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['treecipe', 'compare', 'versions', 'datasets']);
             // ONLY STRUCTURE IS BUILT: THE OTHER TABS BUILD THEIR ROWS ON THEIR OWN FIRST OPEN
             expect(panel.findAll(firstTreeCard, 'dataObject')).toEqual([]);
             expect(panel.findAll(firstTreeCard, 'treeVersion')).toEqual([]);
@@ -2600,7 +2617,7 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('given a search in one card\'s Structure tab, narrows only that card, and labels an object with no match rather than hiding it', () => {
+        it('given a search in one card\'s Treecipe tab, narrows only that card, and labels an object with no match rather than hiding it', () => {
 
             const { panel } = renderTreeRecipe();
             const [firstTreeCard, secondTreeCard] = treeCardsOf(panel);
@@ -2632,16 +2649,16 @@ describe('RecipeCockpitService', () => {
             expandTree(panel, firstTreeCard);
 
             panel.typeIntoFilter('rating');
-            panel.openTab(firstTreeCard, 'Data-by-Org');
-            panel.typeIntoTabSearch(firstTreeCard, 'treeDataByOrg', 'contact');
-            panel.openTab(firstTreeCard, 'Structure');
+            panel.openTab(firstTreeCard, 'Compare');
+            panel.typeIntoTabSearch(firstTreeCard, 'treeCompareTab', 'contact');
+            panel.openTab(firstTreeCard, 'Treecipe');
             expandTree(panel, firstTreeCard);
             expandTree(panel, firstTreeCard);
 
             const [structureSearch, dataSearch] = panel.findAll(firstTreeCard, 'tabSearchInput');
             expect([structureSearch.value, dataSearch.value]).toEqual(['rating', 'contact']);
             expect(panel.visibleFieldNamesOf(treeObjectNamed(panel, firstTreeCard, 'Account'))).toEqual(['Rating__c', 'Sub_Rating__c']);
-            expect(textOf(panel, panel.tabPanelOf(firstTreeCard, 'treeDataByOrg'), 'tabMatchCount')).toEqual(['1 of 3 objects']);
+            expect(textOf(panel, panel.tabPanelOf(firstTreeCard, 'treeCompareTab'), 'tabMatchCount')).toEqual(['1 of 3 objects']);
 
         });
 
@@ -2758,7 +2775,7 @@ describe('RecipeCockpitService', () => {
         });
 
         // WHAT IS SEARCHABLE IS WHAT IS ON SCREEN: THE STRUCTURE TAB DRAWS THE TYPE WITH ITS SIZE
-        it('matches a field by the sized type the Structure tab draws', () => {
+        it('matches a field by the sized type the Treecipe tab draws', () => {
 
             const { panel } = renderTreeRecipe();
             panel.expandAllTrees();
@@ -2768,18 +2785,18 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('filters only its own tab: a Structure search leaves the same card\'s Data-by-Org rows as they were', () => {
+        it('filters only its own tab: a Treecipe search leaves the same card\'s Compare rows as they were', () => {
 
             const { panel } = renderTreeRecipe();
             const [firstTreeCard] = treeCardsOf(panel);
             expandTree(panel, firstTreeCard);
-            panel.openTab(firstTreeCard, 'Data-by-Org');
-            panel.openTab(firstTreeCard, 'Structure');
+            panel.openTab(firstTreeCard, 'Compare');
+            panel.openTab(firstTreeCard, 'Treecipe');
 
             panel.typeIntoFilter('rating');
 
             expect(panel.visibleFieldNamesOf(treeObjectNamed(panel, firstTreeCard, 'Account'))).toEqual(['Rating__c', 'Sub_Rating__c']);
-            const dataPanelElement = panel.tabPanelOf(firstTreeCard, 'treeDataByOrg');
+            const dataPanelElement = panel.tabPanelOf(firstTreeCard, 'treeCompareTab');
             expect(textOf(panel, dataPanelElement, 'tabMatchCount')).toEqual(['3 objects']);
             expect(panel.findAll(dataPanelElement, 'dataObjectMatch').every((element: any) => panel.isHidden(element))).toBe(true);
 
@@ -2808,42 +2825,42 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        // A REGENERATE RELOADS INTO THE CARDS WITH THE CARD IT WAS ASKED FROM OPEN ON ITS STRUCTURE TAB
-        it('given a reload focused on a card\'s Structure tab, opens that card on Structure', () => {
+        // A REGENERATE OR AN INSERT RELOADS INTO THE CARDS WITH THE CARD IT WAS ASKED FROM OPEN ON ITS TREECIPE TAB, WHOSE ORG PICKER ASKS FOR ITS ORGS (#255)
+        it('given a reload focused on a card\'s Treecipe tab, opens that card on Treecipe and asks for the orgs after the ack', () => {
 
             const panel = runPanelScript();
             const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
             const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
-            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1, focusTree: { treeKey: 'Lead-ONLY', tab: 'structure' } });
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1, focusTree: { treeKey: 'Lead-ONLY', tab: 'treecipe' } });
 
             const [firstTreeCard, leadTreeCard] = treeCardsOf(panel);
 
             expect(panel.isHidden(treeBodyOf(firstTreeCard))).toBe(true);
             expect(panel.isHidden(treeBodyOf(leadTreeCard))).toBe(false);
-            expect(panel.findAll(leadTreeCard, 'selected').map((element: any) => element.textContent)).toEqual(['Structure']);
-            // COMPARE IS ON THE DATA-BY-ORG TAB, WHICH IS NOT BUILT UNTIL IT OPENS
+            expect(panel.findAll(leadTreeCard, 'selected').map((element: any) => element.textContent)).toEqual(['Treecipe']);
+            // COMPARE IS ITS OWN TAB, WHICH IS NOT BUILT UNTIL IT OPENS
             expect(panel.findAll(leadTreeCard, 'describeInOrg')).toEqual([]);
-            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadDataOrgs')).toEqual([]);
+            const postedCommands = panel.postedHostMessages.map((hostMessage: any) => hostMessage.command);
+            expect(postedCommands.filter((command: string) => command === 'loadDataOrgs')).toHaveLength(1);
+            expect(postedCommands.indexOf('loadDataOrgs')).toBeGreaterThan(postedCommands.indexOf('rendered'));
 
         });
 
-        // A CREATE RELOADS INTO THE CARD IT WAS CLICKED IN, ON ITS DATA-BY-ORG TAB, AND COUNTS IN THE SAME ORG
-        it('given a reload focused on a card\'s Data-by-Org tab, opens that card there and asks for the orgs after the ack', () => {
+        // THE COMPARE TAB DESCRIBES THROUGH ITS OWN BUTTON, SO OPENING IT LISTS NO ORGS (#255)
+        it('given a reload focused on a card\'s Compare tab, opens that card there and asks for no orgs', () => {
 
             const panel = runPanelScript();
             const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
             const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
-            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1, focusTree: { treeKey: 'Lead-ONLY', tab: 'dataByOrg' } });
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1, focusTree: { treeKey: 'Lead-ONLY', tab: 'compare' } });
 
             const [, leadTreeCard] = treeCardsOf(panel);
 
             expect(panel.isHidden(treeBodyOf(leadTreeCard))).toBe(false);
-            expect(panel.findAll(leadTreeCard, 'selected').map((element: any) => element.textContent)).toEqual(['Data-by-Org']);
+            expect(panel.findAll(leadTreeCard, 'selected').map((element: any) => element.textContent)).toEqual(['Compare']);
             expect(panel.findAll(leadTreeCard, 'describeInOrg')).toHaveLength(1);
             expect(textOf(panel, leadTreeCard, 'dataObjectName')).toEqual(['Lead']);
-            const postedCommands = panel.postedHostMessages.map((hostMessage: any) => hostMessage.command);
-            expect(postedCommands.filter((command: string) => command === 'loadDataOrgs')).toHaveLength(1);
-            expect(postedCommands.indexOf('loadDataOrgs')).toBeGreaterThan(postedCommands.indexOf('rendered'));
+            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadDataOrgs')).toEqual([]);
 
         });
 
@@ -2904,7 +2921,9 @@ describe('RecipeCockpitService', () => {
             panel.expandAllTrees();
 
             const structureElement = panel.tabPanelOf(panel.treeCards()[0], 'treeStructure');
-            expect(structureElement.children[0].classList.contains('tabSearch')).toBe(true);
+            // THE TREECIPE TAB OPENS WITH ITS HEADER -- THE ORG PICKER AND THE TREE'S ACTIONS (#255) -- THEN ITS SEARCH BOX
+            expect(structureElement.children[0].classList.contains('treecipeHeader')).toBe(true);
+            expect(structureElement.children[1].classList.contains('tabSearch')).toBe(true);
             expect(panel.findAll(structureElement, 'tabMatchCount')[0].textContent).toBe('7 fields');
 
             expect(panel.objectElements().map(panel.objectNameOf)).toEqual(['Account', 'Contact']);
@@ -3250,7 +3269,7 @@ describe('RecipeCockpitService', () => {
             const panel = runPanelScript();
             panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence });
             panel.expandAllTrees();
-            panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Data-by-Org'));
+            panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Compare'));
             return panel;
         };
 
@@ -3264,7 +3283,7 @@ describe('RecipeCockpitService', () => {
 
         const orgDescribeStatusOf = (panel: any, objectElement: any) => panel.findAll(objectElement.children[0], 'orgDescribeStatus')[0];
 
-        it('offers the describe at the top of the card\'s Data-by-Org tab rather than on Structure, and asks the host for that tree by its key alone', () => {
+        it('offers the describe at the top of the card\'s Compare tab rather than on Treecipe, and asks the host for that tree by its key alone', () => {
 
             const panel = runPanelScript();
             panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(MOCK_WORKSPACE_ROOT), renderSequence: 1 });
@@ -3274,9 +3293,9 @@ describe('RecipeCockpitService', () => {
             expect(panel.findAll(panel.cockpitBodyElement, 'describeInOrg')).toEqual([]);
             expect(panel.findAll(panel.tabPanelOf(treeCard, 'treeStructure'), 'treeCompare')).toEqual([]);
 
-            panel.openTab(treeCard, 'Data-by-Org');
+            panel.openTab(treeCard, 'Compare');
 
-            const dataPanelElement = panel.tabPanelOf(treeCard, 'treeDataByOrg');
+            const dataPanelElement = panel.tabPanelOf(treeCard, 'treeCompareTab');
             const describeButtons = panel.findAll(panel.cockpitBodyElement, 'describeInOrg');
 
             expect(describeButtons).toHaveLength(1);
@@ -3380,7 +3399,7 @@ describe('RecipeCockpitService', () => {
 
         const openDataTabs = (panel: any) => {
             panel.expandAllTrees();
-            panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Data-by-Org'));
+            panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Compare'));
         };
 
         const renderFixture = (renderSequence = 1) => {
@@ -3438,12 +3457,12 @@ describe('RecipeCockpitService', () => {
             statusFilterElement.dispatch('change');
         };
 
-        const searchData = (panel: any, searchText: string, treeCard?: any) => panel.typeIntoTabSearch(treeCard || panel.treeCards()[0], 'treeDataByOrg', searchText);
-        const dataMatchCountOf = (panel: any, treeCard?: any) => panel.findAll(panel.tabPanelOf(treeCard || panel.treeCards()[0], 'treeDataByOrg'), 'tabMatchCount')[0].textContent;
+        const searchData = (panel: any, searchText: string, treeCard?: any) => panel.typeIntoTabSearch(treeCard || panel.treeCards()[0], 'treeCompareTab', searchText);
+        const dataMatchCountOf = (panel: any, treeCard?: any) => panel.findAll(panel.tabPanelOf(treeCard || panel.treeCards()[0], 'treeCompareTab'), 'tabMatchCount')[0].textContent;
 
         const objectDiffTextOf = (panel: any, objectElement: any) => panel.findAll(objectElement.children[0], 'objectDiff')[0];
 
-        it('lists only the fields that differ under a compared object, each with its badge, and leaves the Structure tab without badges', () => {
+        it('lists only the fields that differ under a compared object, each with its badge, and leaves the Treecipe tab without badges', () => {
 
             const panel = renderComparedRecipe();
             const [accountElement] = panel.dataObjectElements();
@@ -3537,18 +3556,21 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('sums the comparison under the describe summary, and offers to regenerate with what that can and cannot do', () => {
+        // #255: REGENERATE IS NO LONGER DRAWN AFTER A COMPARISON -- IT IS AT THE TOP OF EVERY CARD'S TREECIPE TAB
+        it('sums the comparison under the describe summary, and leaves Regenerate in the Treecipe tab rather than beside it', () => {
 
             const panel = renderComparedRecipe();
             const orgStatusElement = panel.findAll(panel.cockpitBodyElement, 'orgStatus')[0];
 
-            expect(panel.findAll(panel.tabPanelOf(panel.treeCards()[0], 'treeDataByOrg'), 'orgStatus')).toEqual([orgStatusElement]);
+            expect(panel.findAll(panel.tabPanelOf(panel.treeCards()[0], 'treeCompareTab'), 'orgStatus')).toEqual([orgStatusElement]);
             expect(panel.findAll(orgStatusElement, 'diffSummary')[0].textContent)
                 .toBe('Compared 1 object: 1 new in org · 1 removed from org · 1 type changed · 1 picklist changed · 2 unchanged');
 
-            const [regenerateButton] = panel.findAll(orgStatusElement, 'regenerateRecipe');
+            expect(panel.findAll(panel.tabPanelOf(panel.treeCards()[0], 'treeCompareTab'), 'regenerateRecipe')).toEqual([]);
+
+            const [regenerateButton] = panel.findAll(panel.findAll(panel.treeCards()[0], 'treecipeActions')[0], 'regenerateRecipe');
             expect(regenerateButton.textContent).toBe(RECIPE_COCKPIT_REGENERATE_ACTION_LABEL);
-            expect(panel.findAll(orgStatusElement, 'regenerateNote')[0].textContent).toBe(RECIPE_COCKPIT_REGENERATE_NOTE);
+            expect(regenerateButton.attributes.title).toBe(RECIPE_COCKPIT_REGENERATE_NOTE);
             expect(RECIPE_COCKPIT_REGENERATE_NOTE).toContain('not from the org');
 
             regenerateButton.dispatch('click');
@@ -3558,7 +3580,7 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('offers no status filter and no regenerate until something has been compared, and no "unchanged" choice once it has', () => {
+        it('offers no status filter until something has been compared, no regenerate in the Compare tab, and no "unchanged" choice once it has', () => {
 
             const panel = renderFixture();
             const statusFilterElement = panel.findAll(panel.cockpitBodyElement, 'statusFilter')[0];
@@ -3573,7 +3595,7 @@ describe('RecipeCockpitService', () => {
             }, 1));
 
             expect(panel.isHidden(statusFilterElement)).toBe(true);
-            expect(panel.findAll(panel.cockpitBodyElement, 'regenerateRecipe')).toEqual([]);
+            expect(panel.findAll(panel.tabPanelOf(panel.treeCards()[0], 'treeCompareTab'), 'regenerateRecipe')).toEqual([]);
             expect(panel.dataObjectElements().map((objectElement: any) => objectDiffTextOf(panel, objectElement).textContent)).toEqual(['not compared', 'not compared']);
 
         });
@@ -3681,7 +3703,7 @@ describe('RecipeCockpitService', () => {
             expect(panel.isHidden(panel.findAll(accountElement, 'dataObjectToggle')[0])).toBe(true);
             expect(panel.isHidden(panel.findAll(panel.cockpitBodyElement, 'statusFilter')[0])).toBe(true);
             expect(panel.isHidden(objectDiffTextOf(panel, accountElement))).toBe(true);
-            expect(panel.findAll(panel.cockpitBodyElement, 'regenerateRecipe')).toEqual([]);
+            expect(panel.findAll(panel.tabPanelOf(panel.treeCards()[0], 'treeCompareTab'), 'regenerateRecipe')).toEqual([]);
             expect(dataMatchCountOf(panel)).toBe('2 objects');
 
         });
@@ -3769,7 +3791,7 @@ describe('RecipeCockpitService', () => {
 
             expect(panel.findAll(panel.cockpitBodyElement, 'diffSummary')).toEqual([]);
 
-            panel.openTab(panel.treeCards()[0], 'Data-by-Org');
+            panel.openTab(panel.treeCards()[0], 'Compare');
             const [accountElement] = panel.dataObjectElements();
             expand(panel, accountElement);
 
@@ -4437,6 +4459,12 @@ describe('RecipeCockpitService', () => {
                 return treeCard;
             };
             const postedNamed = (panel: any, command: string) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === command);
+            // ▶ RUN FAKER, RESET SELECTION AND REGENERATE SIT AT THE TOP OF THE TREECIPE TAB (#255), BUILT ON THE CARD'S FIRST EXPAND
+            const expandCard = (panel: any, folderName: string) => {
+                const treeCard = treeCardFolded(panel, folderName);
+                panel.findAll(treeCard, 'treeToggle')[0].dispatch('click');
+                return treeCard;
+            };
 
             it('draws Previous Versions newest first, with date, backend, the current one marked, a backend change and Diff only where it can', () => {
 
@@ -4462,7 +4490,7 @@ describe('RecipeCockpitService', () => {
 
                 const { panel } = renderHistoryRecipe(4);
                 const leadCard = openTab(panel, 'Lead-ONLY', 'Previous Versions');
-                clickNamed(panel, leadCard, 'treeTab', 'Structure');
+                clickNamed(panel, leadCard, 'treeTab', 'Treecipe');
                 clickNamed(panel, leadCard, 'treeTab', 'Previous Versions');
 
                 expect(postedNamed(panel, 'loadVersionSummaries')).toEqual([{ command: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY }]);
@@ -4584,7 +4612,7 @@ describe('RecipeCockpitService', () => {
 
                 const bareCard = treeCardFolded(panel, 'Lead-ONLY');
                 panel.findAll(bareCard, 'treeToggle')[0].dispatch('click');
-                expect(textOf(panel, bareCard, 'treeTab')).toEqual(['Structure', 'Data-by-Org']);
+                expect(textOf(panel, bareCard, 'treeTab')).toEqual(['Treecipe', 'Compare']);
 
             });
 
@@ -4657,7 +4685,7 @@ describe('RecipeCockpitService', () => {
                 panel.typeIntoTabSearch(leadCard, 'treeDatasets', 'utc');
                 expect(visibleDatasetFolders()).toEqual([]);
 
-                clickNamed(panel, leadCard, 'treeTab', 'Structure');
+                clickNamed(panel, leadCard, 'treeTab', 'Treecipe');
                 expect(textOf(panel, panel.tabPanelOf(leadCard, 'treeStructure'), 'tabMatchCount')).toEqual(['2 fields']);
                 clickNamed(panel, leadCard, 'treeTab', 'Previous Fake Sets');
                 expect(panel.findAll(datasetsElement, 'tabSearchInput')[0].value).toBe('utc');
@@ -4671,19 +4699,22 @@ describe('RecipeCockpitService', () => {
                 delete loadedRecipe.recipeViewModel.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY).runFakerRecipeFileName;
                 panel.postToPanel({ command: 'recipeData', recipe: loadedRecipe.recipeViewModel, renderSequence: 1 });
 
-                const leadButtons = panel.findAll(treeCardFolded(panel, 'Lead-ONLY'), 'treeRunFaker');
+                // A FOLDED CARD HAS NO TREECIPE TAB YET, SO NO BUTTON
+                expect(panel.findAll(treeCardFolded(panel, 'Lead-ONLY'), 'treeRunFaker')).toEqual([]);
+
+                const leadButtons = panel.findAll(panel.findAll(expandCard(panel, 'Lead-ONLY'), 'treecipeActions')[0], 'treeRunFaker');
 
                 expect(leadButtons.map((button: any) => button.textContent)).toEqual([RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL]);
                 expect(leadButtons[0].attributes.title).toBe('Run Faker by Recipe on recipe--Lead-ONLY-2026-09-20T10-00-00.yml');
-                expect(panel.findAll(treeCardFolded(panel, ACCOUNT_TREE_KEY), 'treeRunFaker')).toEqual([]);
+                expect(panel.findAll(expandCard(panel, ACCOUNT_TREE_KEY), 'treeRunFaker')).toEqual([]);
 
             });
 
             it('posts the tree key on a click and disables every Run Faker until the host says the run ended', () => {
 
                 const { panel } = renderHistoryRecipe(3);
-                const leadButton = panel.findAll(treeCardFolded(panel, 'Lead-ONLY'), 'treeRunFaker')[0];
-                const accountButton = panel.findAll(treeCardFolded(panel, ACCOUNT_TREE_KEY), 'treeRunFaker')[0];
+                const leadButton = panel.findAll(expandCard(panel, 'Lead-ONLY'), 'treeRunFaker')[0];
+                const accountButton = panel.findAll(expandCard(panel, ACCOUNT_TREE_KEY), 'treeRunFaker')[0];
 
                 leadButton.dispatch('click');
                 accountButton.dispatch('click');
@@ -4695,6 +4726,10 @@ describe('RecipeCockpitService', () => {
 
                 // THE HOST RELOADS THE RUN BEFORE IT SAYS THE RUN ENDED: THE RELOADED CARDS ARE STILL DISABLED
                 panel.postToPanel({ command: 'recipeData', recipe: loadHistoryRecipe().recipeViewModel, renderSequence: 4 });
+                [ACCOUNT_TREE_KEY, 'Lead-ONLY'].forEach(folderName => {
+                    const treeCard = treeCardFolded(panel, folderName);
+                    if (panel.findAll(treeCard, 'treeRunFaker').length === 0) { expandCard(panel, folderName); }
+                });
                 const reloadedButtons = panel.findAll(panel.cockpitBodyElement, 'treeRunFaker');
                 expect(reloadedButtons.map((button: any) => button.disabled)).toEqual([true, true]);
 
@@ -4715,6 +4750,8 @@ describe('RecipeCockpitService', () => {
                 const { panel } = renderHistoryRecipe();
 
                 panel.postToPanel({ command: 'runFakerState', isRunning: true, treeKey: ACCOUNT_TREE_KEY });
+                expandCard(panel, ACCOUNT_TREE_KEY);
+                expandCard(panel, 'Lead-ONLY');
 
                 const runFakerButtons = panel.findAll(panel.cockpitBodyElement, 'treeRunFaker');
                 expect(runFakerButtons.map((button: any) => [button.disabled, button.textContent])).toEqual([
@@ -4752,36 +4789,68 @@ describe('RecipeCockpitService', () => {
                 });
 
                 // #217 TOOK 🔍 OUT: EACH TAB HAS ITS OWN SEARCH, SO THERE IS NO PANEL-WIDE ONE TO SCOPE
-                it('puts ▶ Run Faker at the END of the row, in the action group, and draws no 🔍', () => {
-
-                    const { panel } = renderHistoryRecipe();
-                    const headerChildren = headerOf(treeCardFolded(panel, 'Lead-ONLY')).children;
-                    const actionGroup = headerChildren[headerChildren.length - 1];
-
-                    expect(actionGroup.classList.contains('treeHeaderActions')).toBe(true);
-                    expect(actionGroup.children.map((actionElement: any) => actionElement.className)).toEqual(['treeFavorite', 'treeRename', 'treeResetSelection hidden', 'treeRunFaker']);
-                    expect(panel.findAll(panel.cockpitBodyElement, 'treeScope')).toEqual([]);
-
-                });
-
-                it('runs Faker from ▶ Run Faker without opening or closing the card, and a DISABLED one neither toggles nor posts', () => {
+                // #255 MOVED ▶ RUN FAKER AND RESET SELECTION INTO THE TREECIPE TAB, BESIDE REGENERATE
+                it('keeps only ☆ and ✎ in the row\'s action group, and puts ▶ Run Faker, Reset selection and Regenerate at the top of the Treecipe tab', () => {
 
                     const { panel } = renderHistoryRecipe();
                     const leadCard = treeCardFolded(panel, 'Lead-ONLY');
-                    const accountCard = treeCardFolded(panel, ACCOUNT_TREE_KEY);
+                    const headerChildren = headerOf(leadCard).children;
+                    const actionGroup = headerChildren[headerChildren.length - 1];
+
+                    expect(actionGroup.classList.contains('treeHeaderActions')).toBe(true);
+                    expect(actionGroup.children.map((actionElement: any) => actionElement.className)).toEqual(['treeFavorite', 'treeRename']);
+                    expect(panel.findAll(panel.cockpitBodyElement, 'treeScope')).toEqual([]);
+
+                    expandCard(panel, 'Lead-ONLY');
+
+                    expect(panel.findAll(actionGroup, 'treeRunFaker')).toEqual([]);
+                    expect(panel.findAll(actionGroup, 'treeResetSelection')).toEqual([]);
+                    const treecipeHeader = panel.findAll(panel.tabPanelOf(leadCard, 'treeStructure'), 'treecipeHeader')[0];
+                    const treecipeActions = panel.findAll(treecipeHeader, 'treecipeActions')[0];
+                    expect(treecipeActions.children.map((actionElement: any) => actionElement.className)).toEqual(['treeRunFaker', 'treeResetSelection hidden', 'regenerate']);
+                    expect(textOf(panel, treecipeActions, 'regenerateRecipe')).toEqual([RECIPE_COCKPIT_REGENERATE_ACTION_LABEL]);
+                    expect(textOf(panel, treecipeActions, 'regenerateNote')).toEqual(['from this workspace\'s metadata, not the org']);
+
+                });
+
+                it('draws Regenerate in the Treecipe tab of every card, compared or not, and posts that card\'s key', () => {
+
+                    const { panel } = renderHistoryRecipe();
+                    const accountCard = expandCard(panel, ACCOUNT_TREE_KEY);
+                    const leadCard = expandCard(panel, 'Lead-ONLY');
+
+                    [accountCard, leadCard].forEach((treeCard: any) => {
+                        const regenerateButtons = panel.findAll(panel.findAll(treeCard, 'treecipeActions')[0], 'regenerateRecipe');
+                        expect(regenerateButtons).toHaveLength(1);
+                        expect(regenerateButtons[0].attributes.title).toBe(RECIPE_COCKPIT_REGENERATE_NOTE);
+                    });
+                    expect(panel.findAll(panel.tabPanelOf(leadCard, 'treeCompareTab'), 'regenerateRecipe')).toEqual([]);
+
+                    panel.findAll(leadCard, 'regenerateRecipe')[0].dispatch('click');
+
+                    expect(postedNamed(panel, 'regenerateRecipe')).toEqual([{ command: 'regenerateRecipe', treeKey: LEAD_TREE_KEY }]);
+                    expect(panel.findAll(accountCard, 'regenerateRecipe')[0].disabled).toBe(true);
+
+                });
+
+                it('runs Faker from ▶ Run Faker without closing the card, and a DISABLED one neither toggles nor posts', () => {
+
+                    const { panel } = renderHistoryRecipe();
+                    const leadCard = expandCard(panel, 'Lead-ONLY');
+                    const accountCard = expandCard(panel, ACCOUNT_TREE_KEY);
                     const leadButton = panel.findAll(leadCard, 'treeRunFaker')[0];
                     const accountButton = panel.findAll(accountCard, 'treeRunFaker')[0];
 
                     leadButton.dispatch('click');
 
                     expect(postedNamed(panel, 'runFaker')).toEqual([{ command: 'runFaker', treeKey: LEAD_TREE_KEY }]);
-                    expect(isOpen(panel, leadCard)).toBe(false);
+                    expect(isOpen(panel, leadCard)).toBe(true);
 
                     expect(accountButton.disabled).toBe(true);
                     accountButton.dispatch('click');
 
                     expect(postedNamed(panel, 'runFaker')).toHaveLength(1);
-                    expect(isOpen(panel, accountCard)).toBe(false);
+                    expect(isOpen(panel, accountCard)).toBe(true);
 
                 });
 
@@ -5697,7 +5766,7 @@ describe('RecipeCockpitService', () => {
 
                 });
 
-                it('hands off to Generate Treecipe, then loads the run it wrote into the cards, the card it came from open on Structure', async () => {
+                it('hands off to Generate Treecipe, then loads the run it wrote into the cards, the card it came from open on Treecipe', async () => {
 
                     const executeCommand = vscode.commands.executeCommand as jest.Mock;
                     await openRenderedCockpit();
@@ -5710,7 +5779,7 @@ describe('RecipeCockpitService', () => {
                     expect(executeCommand).toHaveBeenCalledWith(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND, { isCompletionNotificationSuppressed: true });
                     expect(lastRenderSequence()).toBeGreaterThan(comparedRenderSequence);
                     expect([...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData').focusTree)
-                        .toEqual({ treeKey: 'Account-thru-Contact', tab: 'structure' });
+                        .toEqual({ treeKey: 'Account-thru-Contact', tab: 'treecipe' });
                     // THE REGENERATED RUN IS A NEW FOLDER, SO THE READER'S PLACE IS CARRIED ACROSS TO IT RATHER THAN MATCHED BY NAME (#225)
                     expect([...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData').carryPlaceAcrossRuns).toBe(true);
 
@@ -5723,9 +5792,26 @@ describe('RecipeCockpitService', () => {
 
                 });
 
-                it('given nothing has been compared, does not regenerate', async () => {
+                // #255: REGENERATE IS IN EVERY CARD'S TREECIPE TAB, SO A COMPARISON IS NO LONGER WHAT ROUTES IT
+                it('given nothing has been compared, still regenerates and reopens the card on Treecipe', async () => {
 
                     await openRenderedCockpit();
+                    const renderedSequence = lastRenderSequence();
+
+                    await receivedMessageHandler(regenerateMessage());
+
+                    expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(1);
+                    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND, { isCompletionNotificationSuppressed: true });
+                    expect(lastRenderSequence()).toBeGreaterThan(renderedSequence);
+                    expect([...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData').focusTree)
+                        .toEqual({ treeKey: 'Account-thru-Contact', tab: 'treecipe' });
+
+                });
+
+                it('given the panel has not acknowledged drawing the model, does not regenerate', async () => {
+
+                    await RecipeCockpitService.openRecipeCockpitPanel(MOCK_WORKSPACE_ROOT);
+                    await receivedMessageHandler({ command: 'ready' });
 
                     await receivedMessageHandler(regenerateMessage());
 
@@ -6033,7 +6119,7 @@ describe('RecipeCockpitService', () => {
                 fs.rmSync(path.join(temporaryWorkspaceRoot, 'treecipe', 'FakeDataSets', RECORDED_DATASET), { recursive: true });
                 postedPanelMessages.length = 0;
 
-                await receivedMessageHandler({ command: 'openDataset', datasetFolderName: RECORDED_DATASET, treeKey: LEAD_TREE_KEY, tab: 'structure' });
+                await receivedMessageHandler({ command: 'openDataset', datasetFolderName: RECORDED_DATASET, treeKey: LEAD_TREE_KEY, tab: 'treecipe' });
 
                 expect(executedCommandsNamed('revealInExplorer')).toEqual([]);
                 expect(showWarningMessageSpy).toHaveBeenCalledTimes(1);

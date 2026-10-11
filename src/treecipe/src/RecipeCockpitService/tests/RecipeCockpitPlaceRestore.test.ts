@@ -17,6 +17,7 @@ import {
     IRecipeCockpitCarriedPanelState,
     IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
+    RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB,
     RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -146,7 +147,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             render(panel, recipe);
 
             expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
-            expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Structure');
+            expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Treecipe');
             expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Account')).toBe(true);
             expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Contact')).toBe(false);
             expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').attributes['aria-expanded']).toBe('true');
@@ -178,7 +179,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
         });
 
-        it('given a Structure search, restores it as typed and the rows it narrowed to', () => {
+        it('given a Treecipe search, restores it as typed and the rows it narrowed to', () => {
 
             const recipe = loadHistoryRecipe().recipeViewModel;
             const hiddenPanel = runPanelScript();
@@ -196,47 +197,145 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
         });
 
-        it('given the reader was on a Data-by-Org tab, comes back to it and asks for the orgs again after the draw', () => {
+        // OPENING A CARD ON ITS TREECIPE TAB IS OPENING THE ORG PICKER THAT TAB DRAWS
+        it('given the reader opened a card on its Treecipe tab and moved to Compare, comes back to Compare and asks for the orgs again after the draw', () => {
 
             const recipe = loadHistoryRecipe().recipeViewModel;
             const hiddenPanel = runPanelScript();
             render(hiddenPanel, recipe);
             openCard(hiddenPanel, ACCOUNT_TREE_KEY);
-            clickTab(hiddenPanel, ACCOUNT_TREE_KEY, 'Data-by-Org');
+
+            expect(commandsPosted(hiddenPanel)).toContain('loadDataOrgs');
+
+            clickTab(hiddenPanel, ACCOUNT_TREE_KEY, 'Compare');
 
             expect(hiddenPanel.savedState().isOrgPickerInUse).toBe(true);
 
             const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
             render(panel, recipe);
 
-            expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Data-by-Org');
+            expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Compare');
             expect(indexOfCommand(panel, 'loadDataOrgs')).toBeGreaterThan(indexOfCommand(panel, 'rendered'));
             expect(commandsPosted(panel).filter(command => command === 'loadDataOrgs')).toHaveLength(1);
 
         });
 
-        it('given the reader had used the toolbar\'s org picker, asks for the orgs again after the draw with no tab open', () => {
+        it('given the reader had used the org picker, asks for the orgs again after the draw with no card open', () => {
 
             const recipe = loadHistoryRecipe().recipeViewModel;
             const hiddenPanel = runPanelScript();
             render(hiddenPanel, recipe);
-            hiddenPanel.findAll(hiddenPanel.cockpitBodyElement, 'dataOrgLoad')[0].dispatch('click');
+            openCard(hiddenPanel, LEAD_TREE_KEY);
+            hiddenPanel.findAll(treeCardOf(hiddenPanel, LEAD_TREE_KEY), 'dataOrgLoad')[0].dispatch('click');
+            openCard(hiddenPanel, LEAD_TREE_KEY);
+
+            expect(isCardOpen(hiddenPanel, LEAD_TREE_KEY)).toBe(false);
 
             const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
             render(panel, recipe);
 
+            expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
+            expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
             expect(indexOfCommand(panel, 'loadDataOrgs')).toBeGreaterThan(indexOfCommand(panel, 'rendered'));
 
         });
 
-        it('given the reader never touched the org picker, lists no orgs: listing them runs the CLI\'s connection check', () => {
+        // A RESTORE IS THE PANEL'S OWN OPEN, NOT THE READER OPENING A TREECIPE TAB, SO IT NEVER RUNS THE CLI'S CONNECTION CHECK BY ITSELF
+        it('given a place whose org picker was never used, lists no orgs even with a card restored on its Treecipe tab: listing them runs the CLI\'s connection check', () => {
 
             const { panel: hiddenPanel, recipe } = buildReaderSession();
+            const savedPlace = { ...hiddenPanel.savedState(), isOrgPickerInUse: false };
+            expect(savedPlace.trees.find((savedTree: any) => savedTree.treeKey === ACCOUNT_TREE_KEY).selectedTab).toBe('treecipe');
 
-            const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
+            const panel = runPanelScript({ savedState: savedPlace });
             render(panel, recipe);
 
+            expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
+            expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Treecipe');
             expect(commandsPosted(panel)).not.toContain('loadDataOrgs');
+
+        });
+
+        describe('given a place saved before the Treecipe tab (version 1)', () => {
+
+            const toVersionOnePlace = (place: any) => ({
+                ...place,
+                version: RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB,
+                trees: place.trees.map((savedTree: any) => ({
+                    ...savedTree,
+                    selectedTab: ({ treecipe: 'structure', compare: 'dataByOrg' } as Record<string, string>)[savedTree.selectedTab] ?? savedTree.selectedTab,
+                    searchQueries: { structure: savedTree.searchQueries.treecipe, dataByOrg: savedTree.searchQueries.compare,
+                        versions: savedTree.searchQueries.versions, datasets: savedTree.searchQueries.datasets }
+                }))
+            });
+
+            const buildVersionOneComparedPlace = () => {
+                const recipe = loadHistoryRecipe().recipeViewModel;
+                const hiddenPanel = runPanelScript();
+                render(hiddenPanel, recipe);
+                openCard(hiddenPanel, ACCOUNT_TREE_KEY);
+                clickTab(hiddenPanel, ACCOUNT_TREE_KEY, 'Compare');
+                hiddenPanel.postToPanel(buildAccountComparison(recipe, 1));
+                hiddenPanel.findAll(dataObjectNamed(hiddenPanel, ACCOUNT_TREE_KEY, 'Account'), 'dataObjectToggle')[0].dispatch('click');
+                const statusFilterElement = statusFilterOf(hiddenPanel, ACCOUNT_TREE_KEY);
+                statusFilterElement.value = 'new-in-org';
+                statusFilterElement.dispatch('change');
+                const versionOnePlace = toVersionOnePlace(hiddenPanel.savedState());
+                expect(versionOnePlace.trees[0].selectedTab).toBe('dataByOrg');
+                return { recipe, versionOnePlace };
+            };
+
+            const expectComparedPlaceRestored = (panel: Panel, recipe: IRecipeCockpitRecipeViewModel) => {
+                expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Compare');
+                expect(statusFilterOf(panel, ACCOUNT_TREE_KEY).value).toBe('all');
+                panel.postToPanel(buildAccountComparison(recipe, 1));
+                expect(statusFilterOf(panel, ACCOUNT_TREE_KEY).value).toBe('new-in-org');
+                expect(visibleDataFieldNamesOf(panel, dataObjectNamed(panel, ACCOUNT_TREE_KEY, 'Account'))).toEqual(['Brand_New__c']);
+            };
+
+            it('given its own getState naming the Structure tab and its search, opens the Treecipe tab with the search as typed', () => {
+
+                const recipe = loadHistoryRecipe().recipeViewModel;
+                const hiddenPanel = runPanelScript();
+                render(hiddenPanel, recipe);
+                openCard(hiddenPanel, ACCOUNT_TREE_KEY);
+                hiddenPanel.typeIntoFilter('Rating', treeCardOf(hiddenPanel, ACCOUNT_TREE_KEY));
+                const versionOnePlace = toVersionOnePlace(hiddenPanel.savedState());
+                expect(versionOnePlace.trees[0]).toMatchObject({ selectedTab: 'structure', searchQueries: { structure: 'Rating' } });
+
+                const panel = runPanelScript({ savedState: versionOnePlace });
+                render(panel, recipe);
+
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
+                expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Treecipe');
+                expect(searchInputOf(panel, ACCOUNT_TREE_KEY, 'treeStructure').value).toBe('Rating');
+                // SAVED BACK IN THE CURRENT SHAPE
+                expect(panel.savedState().version).toBe(RECIPE_COCKPIT_PANEL_PLACE_VERSION);
+                expect(panel.savedState().trees[0]).toMatchObject({ selectedTab: 'treecipe', searchQueries: { treecipe: 'Rating', compare: '' } });
+
+            });
+
+            it('given its own getState naming the Data-by-Org tab with a status filter and an opened row, restores both onto the Compare tab', () => {
+
+                const { recipe, versionOnePlace } = buildVersionOneComparedPlace();
+
+                const panel = runPanelScript({ savedState: versionOnePlace });
+                render(panel, recipe);
+
+                expectComparedPlaceRestored(panel, recipe);
+
+            });
+
+            it('given the host\'s place naming the Data-by-Org tab with a status filter and an opened row, restores both onto the Compare tab', () => {
+
+                const { recipe, versionOnePlace } = buildVersionOneComparedPlace();
+
+                const panel = runPanelScript();
+                panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1, restorePlace: versionOnePlace });
+
+                expectComparedPlaceRestored(panel, recipe);
+
+            });
 
         });
 
@@ -283,7 +382,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
         describe('given a later model of the same run in the same document (#225)', () => {
 
-            // WHAT Regenerate, Run Faker, Create AND Add friend DO: THE HOST RELOADS THE RUN ON SCREEN AND POSTS IT AGAIN
+            // WHAT Regenerate, Run Faker, an insert AND Add friend DO: THE HOST RELOADS THE RUN ON SCREEN AND POSTS IT AGAIN
             const reload = (panel: Panel, recipe: IRecipeCockpitRecipeViewModel, focusTree?: any) => {
                 const scrollCallsBefore = panel.scrollToCalls.length;
                 render(panel, recipe, 2, focusTree);
@@ -308,7 +407,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 const scrollCalls = reload(panel, recipe);
 
                 expectReaderSessionRestored(panel);
-                expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Structure');
+                expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Treecipe');
                 expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previous Versions');
                 expect(visibleVersionCount(panel, LEAD_TREE_KEY)).toBe(1);
                 expect(scrollCalls).toEqual([480]);
@@ -318,8 +417,9 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
             it.each([
                 ['Run Faker', { treeKey: LEAD_TREE_KEY, tab: 'datasets' }, LEAD_TREE_KEY, 'Previous Fake Sets'],
-                ['Create', { treeKey: ACCOUNT_TREE_KEY, tab: 'dataByOrg' }, ACCOUNT_TREE_KEY, 'Data-by-Org'],
-                ['Add friend, or a Regenerate that failed and reloaded the same run', { treeKey: LEAD_TREE_KEY, tab: 'structure' }, LEAD_TREE_KEY, 'Structure']
+                ['an insert', { treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe' }, ACCOUNT_TREE_KEY, 'Treecipe'],
+                ['a reload onto Compare', { treeKey: ACCOUNT_TREE_KEY, tab: 'compare' }, ACCOUNT_TREE_KEY, 'Compare'],
+                ['Add friend, or a Regenerate that failed and reloaded the same run', { treeKey: LEAD_TREE_KEY, tab: 'treecipe' }, LEAD_TREE_KEY, 'Treecipe']
             ])('given %s\'s focus, opens its card on its tab and restores everything else', (_action, focusTree, focusedTreeKey, focusedTabLabel) => {
 
                 const { panel, recipe } = buildReaderSession();
@@ -329,7 +429,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 expect(selectedTabOf(panel, focusedTreeKey)).toBe(focusedTabLabel);
                 expectReaderSessionRestored(panel);
                 const otherTreeKey = focusedTreeKey === ACCOUNT_TREE_KEY ? LEAD_TREE_KEY : ACCOUNT_TREE_KEY;
-                expect(selectedTabOf(panel, otherTreeKey)).toBe(otherTreeKey === LEAD_TREE_KEY ? 'Previous Versions' : 'Structure');
+                expect(selectedTabOf(panel, otherTreeKey)).toBe(otherTreeKey === LEAD_TREE_KEY ? 'Previous Versions' : 'Treecipe');
 
             });
 
@@ -371,11 +471,11 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 const scrollCallsBefore = panel.scrollToCalls.length;
 
                 panel.postToPanel({ command: 'recipeData', recipe: { ...recipe, selectedRunFolderName: regeneratedRunFolderName }, renderSequence: 2,
-                    focusTree: { treeKey: LEAD_TREE_KEY, tab: 'structure' }, carryPlaceAcrossRuns: true });
+                    focusTree: { treeKey: LEAD_TREE_KEY, tab: 'treecipe' }, carryPlaceAcrossRuns: true });
 
                 expectReaderSessionRestored(panel);
-                expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Structure');
-                expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Structure');
+                expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Treecipe');
+                expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Treecipe');
                 expect(panel.scrollToCalls.slice(scrollCallsBefore)).toEqual([480]);
                 // SAVED UNDER THE RUN NOW ON SCREEN, SO A LATER HIDE AND REVEAL RESTORES IT THERE
                 expect(panel.savedState().runFolderName).toBe(regeneratedRunFolderName);
@@ -474,22 +574,22 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
             });
 
-            it('given a compared Data-by-Org tab with a status filter and an opened row, holds both until the card\'s comparison is drawn again', () => {
+            it('given a compared Compare tab with a status filter and an opened row, holds both until the card\'s comparison is drawn again', () => {
 
                 const recipe = loadHistoryRecipe().recipeViewModel;
                 const panel = runPanelScript();
                 render(panel, recipe);
                 openCard(panel, ACCOUNT_TREE_KEY);
-                clickTab(panel, ACCOUNT_TREE_KEY, 'Data-by-Org');
+                clickTab(panel, ACCOUNT_TREE_KEY, 'Compare');
                 panel.postToPanel(buildAccountComparison(recipe, 1));
                 panel.findAll(dataObjectNamed(panel, ACCOUNT_TREE_KEY, 'Account'), 'dataObjectToggle')[0].dispatch('click');
                 const statusFilterElement = statusFilterOf(panel, ACCOUNT_TREE_KEY);
                 statusFilterElement.value = 'new-in-org';
                 statusFilterElement.dispatch('change');
 
-                reload(panel, recipe, { treeKey: ACCOUNT_TREE_KEY, tab: 'dataByOrg' });
+                reload(panel, recipe, { treeKey: ACCOUNT_TREE_KEY, tab: 'compare' });
 
-                expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Data-by-Org');
+                expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Compare');
                 expect(statusFilterOf(panel, ACCOUNT_TREE_KEY).value).toBe('all');
                 expect(visibleDataFieldNamesOf(panel, dataObjectNamed(panel, ACCOUNT_TREE_KEY, 'Account'))).toEqual([]);
 
@@ -585,14 +685,14 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
         });
 
-        describe('given a compared Data-by-Org tab, a status filter and an opened row', () => {
+        describe('given a compared Compare tab, a status filter and an opened row', () => {
 
             const buildComparedSession = () => {
                 const recipe = loadHistoryRecipe().recipeViewModel;
                 const hiddenPanel = runPanelScript();
                 render(hiddenPanel, recipe);
                 openCard(hiddenPanel, ACCOUNT_TREE_KEY);
-                clickTab(hiddenPanel, ACCOUNT_TREE_KEY, 'Data-by-Org');
+                clickTab(hiddenPanel, ACCOUNT_TREE_KEY, 'Compare');
                 hiddenPanel.postToPanel(buildAccountComparison(recipe, 1));
                 hiddenPanel.findAll(dataObjectNamed(hiddenPanel, ACCOUNT_TREE_KEY, 'Account'), 'dataObjectToggle')[0].dispatch('click');
                 const statusFilterElement = statusFilterOf(hiddenPanel, ACCOUNT_TREE_KEY);
@@ -610,7 +710,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 render(panel, recipe);
 
                 // NO COMPARISON YET: NO ROW HAS A STATUS, SO APPLYING THE FILTER NOW WOULD HIDE EVERY ROW
-                expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Data-by-Org');
+                expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Compare');
                 expect(statusFilterOf(panel, ACCOUNT_TREE_KEY).value).toBe('all');
                 expect(visibleDataFieldNamesOf(panel, dataObjectNamed(panel, ACCOUNT_TREE_KEY, 'Account'))).toEqual([]);
 
@@ -627,7 +727,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 const hiddenPanel = runPanelScript();
                 render(hiddenPanel, recipe);
                 openCard(hiddenPanel, ACCOUNT_TREE_KEY);
-                clickTab(hiddenPanel, ACCOUNT_TREE_KEY, 'Data-by-Org');
+                clickTab(hiddenPanel, ACCOUNT_TREE_KEY, 'Compare');
                 hiddenPanel.postToPanel(buildAccountComparison(recipe, 1));
                 hiddenPanel.findAll(dataObjectNamed(hiddenPanel, ACCOUNT_TREE_KEY, 'Account'), 'dataObjectToggle')[0].dispatch('click');
 
@@ -702,10 +802,10 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
             const { panel, recipe } = buildReaderSession();
             panel.postToPanel({ command: 'picklistValues', objectApiName: 'Account', fieldApiName: 'Rating__c', picklistValues: ['Hot', 'Warm'], recordTypePicklistValues: [], renderSequence: 1 });
-            clickTab(panel, ACCOUNT_TREE_KEY, 'Data-by-Org');
+            clickTab(panel, ACCOUNT_TREE_KEY, 'Compare');
             panel.postToPanel(buildAccountComparison(recipe, 1));
             panel.postToPanel({ command: 'dataOrgList', orgLabels: [`devhub (${ORG_USERNAME})`], selectedOrgIndex: 0, hiddenOrgNote: '', noOrgsMessage: '', renderSequence: 1 });
-            clickTab(panel, ACCOUNT_TREE_KEY, 'Structure');
+            clickTab(panel, ACCOUNT_TREE_KEY, 'Treecipe');
 
             const savedText = JSON.stringify(panel.savedState());
 
@@ -718,7 +818,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             panel.savedState().trees.forEach((savedTree: any) => {
                 expect(Object.keys(savedTree).sort()).toEqual(['expandedDataObjectApiNames', 'expandedObjectKeys', 'expandedVersionRunFolderNames',
                     'isExpanded', 'openPicklistKeys', 'searchQueries', 'selectedTab', 'statusFilter', 'treeKey']);
-                expect(Object.keys(savedTree.searchQueries).sort()).toEqual(['dataByOrg', 'datasets', 'structure', 'versions']);
+                expect(Object.keys(savedTree.searchQueries).sort()).toEqual(['compare', 'datasets', 'treecipe', 'versions']);
             });
 
         });
@@ -748,7 +848,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                             treeKey: LEAD_TREE_KEY,
                             selectedTab: 'nope',
                             statusFilter: 'constructor',
-                            searchQueries: { structure: 7, toString: 'x', __proto__: 'y' },
+                            searchQueries: { treecipe: 7, toString: 'x', __proto__: 'y' },
                             expandedObjectKeys: 'Lead',
                             openPicklistKeys: [7],
                             expandedDataObjectApiNames: ['__proto__'],
@@ -766,7 +866,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 // NO TAB IS BUILT FOR ROWS THE CARD DOES NOT HAVE, AND A TAB NAME THE PANEL DOES NOT DRAW IS IGNORED
                 expect(commandsPosted(panel)).not.toContain('loadVersionSummaries');
                 openCard(panel, LEAD_TREE_KEY);
-                expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Structure');
+                expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Treecipe');
                 expect(panel.scrollToCalls).toEqual([]);
 
             });
@@ -929,12 +1029,12 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
             await openAndDraw();
             await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
-            panelState().dataOrgCreateResults.set('key', { resultsFilePath: '/x' });
+            panelState().dataOrgInsertResults.set('key', { viewModel: { treeKey: LEAD_TREE_KEY, savedCount: 1, failedCount: 1, outcome: 'completed' }, resultsFilePath: '/x' });
 
             await openAndDraw(path.join(__dirname, 'mocks', 'treeWorkspace'));
 
             expect(lastPosted('recipeData').recipe.selectedRunFolderName).not.toBe(FAKER_JS_RUN_FOLDER_NAME);
-            expect(panelState().dataOrgCreateResults.size).toBe(0);
+            expect(panelState().dataOrgInsertResults.size).toBe(0);
 
         });
 
@@ -986,16 +1086,20 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
         });
 
-        it('keeps the Create results a "View errors" link opens', async () => {
+        it('keeps the insert results a "View errors" link opens', async () => {
 
             await openAndDraw();
-            const storedCreateResult = { resultsFilePath: path.join(HISTORY_WORKSPACE_ROOT, 'results.json') };
-            panelState().dataOrgCreateResults.set('jd@example.com\nLead-ONLY\nLead', storedCreateResult);
+            const storedInsertResult = {
+                viewModel: { treeKey: LEAD_TREE_KEY, savedCount: 2, failedCount: 1, outcome: 'completed' as const },
+                resultsFilePath: path.join(HISTORY_WORKSPACE_ROOT, 'results.json')
+            };
+            const insertResultKey = RecipeCockpitService.buildInsertResultKey(ORG_USERNAME, LEAD_TREE_KEY);
+            panelState().dataOrgInsertResults.set(insertResultKey, storedInsertResult);
             const dataOrgRequestSequence = panelState().dataOrgRequestSequence;
 
             await openAndDraw();
 
-            expect(panelState().dataOrgCreateResults.get('jd@example.com\nLead-ONLY\nLead')).toBe(storedCreateResult);
+            expect(panelState().dataOrgInsertResults.get(insertResultKey)).toBe(storedInsertResult);
             expect(panelState().dataOrgRequestSequence).toBeGreaterThan(dataOrgRequestSequence);
 
         });

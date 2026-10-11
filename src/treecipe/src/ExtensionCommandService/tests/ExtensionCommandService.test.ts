@@ -109,6 +109,7 @@ function buildFakeOrgQuickPick(fakeOptions: { acceptLabel?: string } = {}) {
 
 }
 
+import { RunFakerConfirmation } from '../RunFakerConfirmation';
 import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL, VIEW_GENERATION_SUMMARY_ACTION_LABEL, OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL, REVEAL_IN_EXPLORER_ACTION_LABEL, OPEN_CONFIGURATION_FILE_ACTION_LABEL, OPEN_RECIPE_ACTION_LABEL, GENERATE_TREECIPE_PROGRESS_TITLE, GENERATE_TREECIPE_CANCELLED_MESSAGE, RECORD_TYPE_OPTIONS_TODO_MARKER, MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
@@ -2090,6 +2091,196 @@ describe('ExtensionCommandService', () => {
 
                 expect(ErrorHandlingService.handleCapturedError).toHaveBeenCalledWith(expect.objectContaining({ message: 'faker failed' }), 'runFakerGenerationByRecipeFile');
                 expect(fs.existsSync(path.dirname(generatedFromPath as string))).toBeFalse();
+
+            });
+
+        });
+
+        /*
+            #255: Run Faker resolves to the data set folder it wrote, so the Recipe Cockpit's tree
+            insert inserts exactly what was generated; the insert's own host modal already asked, so
+            { isConfirmed: true } with a recipe path skips the "Generate Data" question; and a filtered
+            copy may carry only record counts.
+        */
+        describe('the Recipe Cockpit tree insert (#255)', () => {
+
+            const countedRecipeText = '# Recipe Cockpit -- a filtered copy of this tree\'s recipe, with counts: Account 3\n- object: Account\n  nickname: Account_1\n  count: 3\n  fields:\n    Name: Acme\n';
+            const fakeDataSetsPath = () => path.join(workspaceRoot, 'treecipe', 'FakeDataSets');
+            const recipeFilePathOf = (backendCase: typeof backendCases[number]) => path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', backendCase.runFolderName, 'Account-thru-Contact', backendCase.recipeFileName);
+
+            beforeEach(() => {
+                jest.spyOn(ConfigurationService, 'getGeneratedRecipesFolderPath').mockReturnValue('treecipe/GeneratedRecipes');
+                jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+                // A jest.fn FROM THE vscode MOCK FACTORY, WHICH KEEPS EVERY EARLIER TEST'S CALLS
+                (vscode.window.showInformationMessage as jest.Mock).mockClear();
+            });
+
+            test.each(backendCases)('given $fakerService, resolves to the data set folder it wrote', async (backendCase) => {
+
+                arrangeRun(backendCase, `treecipe/GeneratedRecipes/${backendCase.runFolderName}/Account-thru-Contact`);
+
+                const datasetFolderPath = await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePathOf(backendCase));
+
+                const [datasetFolderName] = readDatasetFolderNames();
+                expect(typeof datasetFolderPath).toBe('string');
+                expect(path.resolve(datasetFolderPath as string)).toBe(path.join(fakeDataSetsPath(), datasetFolderName));
+                expect(fs.existsSync(path.join(datasetFolderPath as string, 'BaseArtifactFiles', 'datasetSource.json'))).toBeTrue();
+
+            });
+
+            test('resolves to the folder from the picker too', async () => {
+
+                const [fakerJsCase] = backendCases;
+                arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
+
+                const datasetFolderPath = await extensionCommandService.runFakerGenerationByRecipeFile();
+
+                expect(path.resolve(datasetFolderPath as string)).toBe(path.join(fakeDataSetsPath(), readDatasetFolderNames()[0]));
+
+            });
+
+            test('resolves to undefined when the modal is cancelled, the path refused, the copy refused, or generation fails', async () => {
+
+                const [fakerJsCase] = backendCases;
+                arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
+                const recipeFilePath = recipeFilePathOf(fakerJsCase);
+
+                jest.spyOn(vscode.window, 'showInformationMessage').mockResolvedValueOnce(undefined);
+                await expect(extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath)).resolves.toBeUndefined();
+
+                await expect(extensionCommandService.runFakerGenerationByRecipeFile(path.join(workspaceRoot, 'elsewhere.yml'))).resolves.toBeUndefined();
+
+                await expect(extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath, { recipeText: countedRecipeText, excludedObjectApiNames: [], objectCountsByObject: { Account: 0 } })).resolves.toBeUndefined();
+
+                expect(fs.existsSync(fakeDataSetsPath())).toBeFalse();
+
+                ( fakerJsCase.processorPrototype.generateFakeDataBySelectedRecipeFile as jest.Mock ).mockRejectedValueOnce(new Error('faker failed'));
+                await expect(extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath, undefined, { isConfirmed: true })).resolves.toBeUndefined();
+                expect(ErrorHandlingService.handleCapturedError).toHaveBeenCalledWith(expect.objectContaining({ message: 'faker failed' }), 'runFakerGenerationByRecipeFile');
+
+            });
+
+            test.each(backendCases)('given $fakerService and { isConfirmed: true } with a path, skips the "Generate Data" modal and generates', async (backendCase) => {
+
+                arrangeRun(backendCase, `treecipe/GeneratedRecipes/${backendCase.runFolderName}/Account-thru-Contact`);
+
+                const datasetFolderPath = await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePathOf(backendCase), undefined, { isConfirmed: true });
+
+                expect(vscode.window.showInformationMessage).not.toHaveBeenCalledWith(expect.any(String), { modal: true }, 'Generate Data');
+                expect(backendCase.processorPrototype.generateFakeDataBySelectedRecipeFile).toHaveBeenCalledWith(recipeFilePathOf(backendCase));
+                expect(datasetFolderPath).toBeString();
+
+            });
+
+            test('{ isConfirmed: true } without a path still asks, after the picker', async () => {
+
+                const [fakerJsCase] = backendCases;
+                arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
+                jest.spyOn(vscode.window, 'showInformationMessage').mockResolvedValue(undefined);
+
+                const datasetFolderPath = await extensionCommandService.runFakerGenerationByRecipeFile(undefined, undefined, { isConfirmed: true });
+
+                expect(VSCodeWorkspaceService.promptForDirectoryToGenerateQuickItemsForFileSelection).toHaveBeenCalledTimes(1);
+                expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(expect.any(String), { modal: true }, 'Generate Data');
+                expect(datasetFolderPath).toBeUndefined();
+                expect(fakerJsCase.processorPrototype.generateFakeDataBySelectedRecipeFile).not.toHaveBeenCalled();
+
+            });
+
+            test('runs a copy carrying only record counts, and records them in datasetSource.json', async () => {
+
+                const [fakerJsCase] = backendCases;
+                arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
+                const recipeFilePath = recipeFilePathOf(fakerJsCase);
+                const recipeContent = fs.readFileSync(recipeFilePath, 'utf8');
+                let generatedFromText: string | undefined;
+                ( fakerJsCase.processorPrototype.generateFakeDataBySelectedRecipeFile as jest.Mock ).mockImplementation(async (generationRecipeFilePath: string) => {
+                    generatedFromText = fs.readFileSync(generationRecipeFilePath, 'utf8');
+                    return fakerJsCase.fakerOutput;
+                });
+
+                const datasetFolderPath = await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath, {
+                    recipeText: countedRecipeText,
+                    excludedObjectApiNames: [],
+                    objectCountsByObject: { Account: 3 }
+                }, { isConfirmed: true });
+
+                expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+                expect(generatedFromText).toBe(countedRecipeText);
+                expect(fs.readFileSync(recipeFilePath, 'utf8')).toBe(recipeContent);
+                const writtenSource = readWrittenDatasetSource(path.basename(datasetFolderPath as string));
+                expect(writtenSource.objectCountsByObject).toEqual({ Account: 3 });
+                expect(writtenSource).not.toHaveProperty('excludedObjectApiNames');
+                expect(writtenSource).not.toHaveProperty('excludedFieldApiNamesByObject');
+                expect(fs.readFileSync(path.join(datasetFolderPath as string, 'BaseArtifactFiles', `filteredRecipe-${fakerJsCase.recipeFileName}`), 'utf8')).toBe(countedRecipeText);
+
+            });
+
+            test('records no counts for a run with none', async () => {
+
+                const [fakerJsCase] = backendCases;
+                arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
+
+                const datasetFolderPath = await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePathOf(fakerJsCase));
+
+                expect(readWrittenDatasetSource(path.basename(datasetFolderPath as string))).not.toHaveProperty('objectCountsByObject');
+
+            });
+
+            describe('readRunFakerOptions', () => {
+
+                test('confirms only for a token the host issued, and only once', () => {
+                    const confirmationToken = RunFakerConfirmation.issue();
+                    expect(ExtensionCommandService.readRunFakerOptions({ confirmationToken: confirmationToken, other: 'x' })).toEqual({ isConfirmed: true });
+                    expect(ExtensionCommandService.readRunFakerOptions({ confirmationToken: confirmationToken })).toEqual({});
+                });
+
+                test('confirms nothing for a revoked token, or for a flag a caller wrote into the arguments (#255 security review)', () => {
+                    const confirmationToken = RunFakerConfirmation.issue();
+                    RunFakerConfirmation.revoke(confirmationToken);
+                    expect(ExtensionCommandService.readRunFakerOptions({ confirmationToken: confirmationToken })).toEqual({});
+                    expect(ExtensionCommandService.readRunFakerOptions({ isConfirmed: true })).toEqual({});
+                    expect(ExtensionCommandService.readRunFakerOptions({ confirmationToken: 'a'.repeat(64) })).toEqual({});
+                });
+
+                test.each([
+                    ['undefined', undefined],
+                    ['null', null],
+                    ['true itself', true],
+                    ['a string', 'isConfirmed'],
+                    ['isConfirmed true', { isConfirmed: true }],
+                    ['isConfirmed "true"', { isConfirmed: 'true' }],
+                    ['isConfirmed 1', { isConfirmed: 1 }],
+                    ['isConfirmed false', { isConfirmed: false }],
+                    ['an empty object', {}]
+                ])('reads %s as no options', (_description, candidate) => {
+                    expect(ExtensionCommandService.readRunFakerOptions(candidate)).toEqual({});
+                });
+
+            });
+
+            describe('isRunFakerFilteredRecipe', () => {
+
+                test('accepts a copy carrying only record counts', () => {
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], objectCountsByObject: { Account: 3, Contact__c: Number.MAX_SAFE_INTEGER } })).toBeTrue();
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: ['Contact'], objectCountsByObject: { Account: 3 } })).toBeTrue();
+                });
+
+                test.each([
+                    ['an empty count map and nothing else left out', {}],
+                    ['a count of zero', { Account: 0 }],
+                    ['a negative count', { Account: -1 }],
+                    ['a fractional count', { Account: 2.5 }],
+                    ['a string count', { Account: '3' }],
+                    ['a count past MAX_SAFE_INTEGER', { Account: Number.MAX_SAFE_INTEGER + 1 }],
+                    ['NaN', { Account: NaN }],
+                    ['a name that is not an api name', { 'Account\n# x': 3 }],
+                    ['a name with a space', { 'Bad Name': 3 }],
+                    ['a count map that is an array', [['Account', 3]]],
+                    ['a count map that is null', null]
+                ])('refuses %s', (_description, objectCountsByObject) => {
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], objectCountsByObject })).toBeFalse();
+                });
 
             });
 
@@ -4766,6 +4957,7 @@ describe('ExtensionCommandService', () => {
             let getConnectionSpy: jest.SpyInstance;
             let recordTypeSpy: jest.SpyInstance;
             let upsertSpy: jest.SpyInstance;
+            let insertFolderSpy: jest.SpyInstance;
             let sentOnConnection: string[];
 
             const answerOrganization = (organizationAnswer: () => Promise<unknown>) => {
@@ -4779,6 +4971,7 @@ describe('ExtensionCommandService', () => {
                 expect(allOrNoneSpy).not.toHaveBeenCalled();
                 expect(recordTypeSpy).not.toHaveBeenCalled();
                 expect(upsertSpy).not.toHaveBeenCalled();
+                expect(insertFolderSpy).not.toHaveBeenCalled();
                 expect(fs.existsSync(path.join(datasetFolderPath, 'InsertAttempts'))).toBe(false);
             };
 
@@ -4796,6 +4989,8 @@ describe('ExtensionCommandService', () => {
                     return {} as any;
                 });
                 upsertSpy = jest.spyOn(CollectionsApiService, 'upsertDataSetToSelectedOrg').mockResolvedValue(undefined);
+                // THE ONE SHARED INSERT (#255), CALLED THROUGH TO THE SPIES ABOVE
+                insertFolderSpy = jest.spyOn(CollectionsApiService, 'insertDataSetFolderIntoOrg');
 
             });
 
@@ -4815,6 +5010,8 @@ describe('ExtensionCommandService', () => {
                 const insertConnection = await getConnectionSpy.mock.results[0].value;
                 expect(recordTypeSpy.mock.calls[0][0]).toBe(insertConnection);
                 expect(upsertSpy.mock.calls[0][3]).toBe(insertConnection);
+                expect(insertFolderSpy).toHaveBeenCalledTimes(1);
+                expect(insertFolderSpy).toHaveBeenCalledWith(datasetFolderPath, insertConnection, false);
                 expect(allOrNoneSpy).toHaveBeenCalledTimes(1);
                 expect(showWarningMessageSpy).not.toHaveBeenCalled();
 
@@ -4888,6 +5085,33 @@ describe('ExtensionCommandService', () => {
 
                 expect(ExtensionCommandService.buildRefusedInsertOrgMessage({ targetOrgIdentifier: 'p@example.com', username: 'p@example.com' }, undefined))
                     .toContain(`p@example.com (${ORG_TYPE_UNKNOWN_LABEL})`);
+
+            });
+
+            it('inserts through CollectionsApiService.insertDataSetFolderIntoOrg, the one insert the Recipe Cockpit uses too, with the AllOrNone answer', async () => {
+
+                answerOrganization(async () => ({ totalSize: 1, records: [{ IsSandbox: true, OrganizationType: 'Unlimited Edition' }] }));
+                allOrNoneSpy.mockResolvedValue(true);
+                insertFolderSpy.mockResolvedValue({ outcome: 'completed', resultsFilePath: '/results.json', savedRecordCount: 1, failedRecordCount: 0 });
+
+                await new ExtensionCommandService().insertDataSetBySelectedDirectory(datasetFolderPath);
+
+                const insertConnection = await getConnectionSpy.mock.results[0].value;
+                expect(insertFolderSpy).toHaveBeenCalledWith(datasetFolderPath, insertConnection, true);
+                // THE SHARED INSERT WAS STUBBED, SO NOTHING OF THE OLD INLINE SEQUENCE RAN BESIDE IT
+                expect(recordTypeSpy).not.toHaveBeenCalled();
+                expect(upsertSpy).not.toHaveBeenCalled();
+
+            });
+
+            it('inserts nothing when the AllOrNone question is dismissed', async () => {
+
+                answerOrganization(async () => ({ totalSize: 1, records: [{ IsSandbox: true, OrganizationType: 'Unlimited Edition' }] }));
+                allOrNoneSpy.mockResolvedValue(undefined);
+
+                await new ExtensionCommandService().insertDataSetBySelectedDirectory(datasetFolderPath);
+
+                expect(insertFolderSpy).not.toHaveBeenCalled();
 
             });
 

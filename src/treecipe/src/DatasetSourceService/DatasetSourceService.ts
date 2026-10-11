@@ -66,6 +66,8 @@ export interface IDatasetSource {
     excludedObjectApiNames?: string[];
     // THE FIELDS THE RECIPE COCKPIT UNTICKED (#220), BY OBJECT; ABSENT WHEN NOTHING WAS. READ BACK WITH NO PROTOTYPE
     excludedFieldApiNamesByObject?: Record<string, string[]>;
+    // THE RECORD COUNTS THE RECIPE COCKPIT SET (#255), BY OBJECT; ABSENT WHEN NONE WAS. A NESTED FRIEND'S IS PER PARENT RECORD. READ BACK WITH NO PROTOTYPE
+    objectCountsByObject?: Record<string, number>;
 }
 
 export interface IRecipeSourceNames {
@@ -176,10 +178,12 @@ export class DatasetSourceService {
                                 generatedAt: string,
                                 recordCountsByObject: Record<string, number>,
                                 excludedObjectApiNames: string[] = [],
-                                excludedFieldApiNamesByObject: Record<string, string[]> = {}): IDatasetSource {
+                                excludedFieldApiNamesByObject: Record<string, string[]> = {},
+                                objectCountsByObject: Record<string, number> = {}): IDatasetSource {
 
         // fromEntries DEFINES EACH KEY, SO AN OBJECT NAMED __proto__ IS RECORDED RATHER THAN SET AS A PROTOTYPE
         const recordedFieldExclusions = Object.entries(excludedFieldApiNamesByObject).filter(([, fieldApiNames]) => fieldApiNames.length > 0);
+        const recordedObjectCounts = Object.entries(objectCountsByObject);
 
         return {
             schemaVersion: DATASET_SOURCE_SCHEMA_VERSION,
@@ -193,7 +197,8 @@ export class DatasetSourceService {
             ...( excludedObjectApiNames.length > 0 ? { excludedObjectApiNames: [...excludedObjectApiNames] } : {} ),
             ...( recordedFieldExclusions.length > 0
                 ? { excludedFieldApiNamesByObject: Object.fromEntries(recordedFieldExclusions.map(([objectApiName, fieldApiNames]) => [objectApiName, [...fieldApiNames]])) }
-                : {} )
+                : {} ),
+            ...( recordedObjectCounts.length > 0 ? { objectCountsByObject: Object.fromEntries(recordedObjectCounts) } : {} )
         };
 
     }
@@ -369,6 +374,15 @@ export class DatasetSourceService {
             ))
         );
 
+        // OPTIONAL TOO (#255); PRESENT, IT MUST MAP EACH NAME TO A WHOLE NUMBER OF ONE OR MORE
+        const objectCountsByObject = candidate.objectCountsByObject;
+        const isObjectCountMapValid = objectCountsByObject === undefined || (
+            typeof objectCountsByObject === 'object'
+            && objectCountsByObject !== null
+            && !Array.isArray(objectCountsByObject)
+            && Object.values(objectCountsByObject).every(objectCount => typeof objectCount === 'number' && Number.isSafeInteger(objectCount) && objectCount >= 1)
+        );
+
         // OPTIONAL, AND ONLY ON A createInOrg FILE (#254); PRESENT, EACH VALUE IS "random", "blank" OR A LIST OF Ids
         const lookupParentsByField = candidate.lookupParentsByField;
         const isLookupParentMapValid = lookupParentsByField === undefined || (
@@ -388,6 +402,7 @@ export class DatasetSourceService {
                         && isCreateInOrgDetailValid
                         && isExcludedObjectListValid
                         && isExcludedFieldMapValid
+                        && isObjectCountMapValid
                         && isLookupParentMapValid
                         && isStringOrNull(candidate.recipeRunFolderName)
                         && isStringOrNull(candidate.recipeTreeFolderName)
@@ -410,6 +425,14 @@ export class DatasetSourceService {
             readFieldExclusions = Object.create(null) as Record<string, string[]>;
             Object.entries(excludedFieldApiNamesByObject as Record<string, string[]>).forEach(([objectApiName, fieldApiNames]) => {
                 ( readFieldExclusions as Record<string, string[]> )[objectApiName] = [...fieldApiNames];
+            });
+        }
+
+        let readObjectCounts: Record<string, number> | undefined;
+        if ( objectCountsByObject !== undefined ) {
+            readObjectCounts = Object.create(null) as Record<string, number>;
+            Object.entries(objectCountsByObject as Record<string, number>).forEach(([objectApiName, objectCount]) => {
+                ( readObjectCounts as Record<string, number> )[objectApiName] = objectCount;
             });
         }
 
@@ -437,7 +460,8 @@ export class DatasetSourceService {
                 ...( readLookupParents ? { lookupParentsByField: readLookupParents } : {} )
             } : {} ),
             ...( Array.isArray(excludedObjectApiNames) ? { excludedObjectApiNames: [...(excludedObjectApiNames as string[])] } : {} ),
-            ...( readFieldExclusions ? { excludedFieldApiNamesByObject: readFieldExclusions } : {} )
+            ...( readFieldExclusions ? { excludedFieldApiNamesByObject: readFieldExclusions } : {} ),
+            ...( readObjectCounts ? { objectCountsByObject: readObjectCounts } : {} )
         };
 
     }

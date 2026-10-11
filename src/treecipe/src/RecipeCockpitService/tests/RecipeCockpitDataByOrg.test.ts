@@ -17,6 +17,7 @@ import {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
+    RECIPE_COCKPIT_INSERT_ACTION_LABEL,
     RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE,
     RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE,
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT
@@ -71,13 +72,13 @@ function buildFakeConnection(organizationRow: unknown = { IsSandbox: true, Organ
                 }
                 return { totalSize: 1, records: [organizationRow] };
             }
-            throw new Error(`Data-by-Org sent a query it should not have: ${soql}`);
+            throw new Error(`The Treecipe tab's org picker sent a query it should not have: ${soql}`);
         })
     };
 
 }
 
-describe('RecipeCockpitService, Data-by-Org', () => {
+describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #255)', () => {
 
     describe('collectDataOrgObjectApiNames', () => {
 
@@ -267,7 +268,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
-        it('connects by username, labels a sandbox, checks every tree object for Create, counts nothing, and remembers the org for the workspace', async () => {
+        it('connects by username, labels a sandbox, checks every tree object for the insert, counts nothing, and remembers the org for the workspace', async () => {
 
             const fakeConnection = buildFakeConnection();
             const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(fakeConnection as any);
@@ -301,7 +302,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             expect(postedNamed('dataOrgList')[0]).toMatchObject({
                 orgLabels: ['qa'],
                 hiddenOrgCount: 5,
-                hiddenOrgNote: '5 authorized orgs are not listed: 1 production, 1 expired, 1 deleted, 2 not connected. Data-by-Org lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.',
+                hiddenOrgNote: '5 authorized orgs are not listed: 1 production, 1 expired, 1 deleted, 2 not connected. The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.',
                 forgottenOrgNotice: '',
                 noOrgsMessage: ''
             });
@@ -432,7 +433,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         it.each([
             ['answers that it is production, Developer Edition included', { IsSandbox: false, OrganizationType: 'Developer Edition' }, 'Production · Developer Edition', false, 'answered that it is Production · Developer Edition'],
             ['cannot say what it is', new Error('INSUFFICIENT_ACCESS'), ORG_TYPE_UNKNOWN_LABEL, null, 'could not say whether it is a sandbox']
-        ])('asks an org that %s nothing more: no describe, and Create refused', async (_description, organizationRow, expectedTypeLabel, expectedIsSandbox, expectedReason) => {
+        ])('asks an org that %s nothing more: no describe, and the insert refused', async (_description, organizationRow, expectedTypeLabel, expectedIsSandbox, expectedReason) => {
 
             const fakeConnection = buildFakeConnection(organizationRow);
             const describeSpy = jest.spyOn(SalesforceOrgService, 'describeObjects');
@@ -445,7 +446,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             expect(postedNamed('dataOrgSelection').at(-1)).toMatchObject({ orgTypeLabel: expectedTypeLabel, isSandbox: expectedIsSandbox });
             expect(fakeConnection.sentQueries).toEqual(['SELECT IsSandbox, OrganizationType FROM Organization']);
             expect(describeSpy).not.toHaveBeenCalled();
-            expect(postedNamed('dataOrgSelection').at(-1).failureMessage).toContain(`qa ${expectedReason}, so Data-by-Org asked it nothing more.`);
+            expect(postedNamed('dataOrgSelection').at(-1).failureMessage).toContain(`qa ${expectedReason}, so the Treecipe tab asked it nothing more. It inserts records only into a sandbox or scratch org.`);
             expect(postedNamed('dataOrgReadiness').at(-1).objects.every((readiness: any) => readiness.disabledReason !== '')).toBe(true);
 
         });
@@ -463,7 +464,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
         });
 
-        it('preselects the remembered org on reopen, contacting it only once Data-by-Org asks', async () => {
+        it('preselects the remembered org on reopen, contacting it only once the Treecipe tab asks', async () => {
 
             workspaceStateValues.set(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, 'prod@example.com');
             const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
@@ -620,8 +621,8 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
 
         /*
-            Compare with an org… sits in a card's Structure tab and describes in the org Data-by-Org
-            picked, so a reader who chose an org once is not asked again. Only with none picked or
+            Compare with an org… sits in a card's Compare tab and describes in the org the Treecipe
+            tab's picker picked, so a reader who chose an org once is not asked again. Only with none picked or
             remembered does the authorized-org picker open.
         */
         describe('Compare with an org… in a card', () => {
@@ -647,7 +648,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
             const describedUsernames = () => describeObjectsSpy.mock.calls.map(describeCall => describeCall[0]);
 
-            it('uses the org picked in Data-by-Org, describes only that card\'s objects, and tags the answer with the card', async () => {
+            it('uses the org picked in the Treecipe tab, describes only that card\'s objects, and tags the answer with the card', async () => {
 
                 jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
                 jest.spyOn(RecipeCockpitService, 'computeCreateReadinessByTarget').mockResolvedValue({ byObjectApiName: new Map(), byCreateKey: new Map() });
@@ -673,7 +674,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
             });
 
-            it('given Data-by-Org was not opened, uses the org it remembers for this workspace, connecting to nothing to find it', async () => {
+            it('given no Treecipe tab picker was used, uses the org it remembers for this workspace, connecting to nothing to find it', async () => {
 
                 workspaceStateValues.set(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, SANDBOX_ORG.username);
                 const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection');
@@ -707,8 +708,8 @@ describe('RecipeCockpitService, Data-by-Org', () => {
 
             });
 
-            // DATA-BY-ORG NEVER LISTS PRODUCTION, SO "Choose another org…" IS HOW A READER COMPARES WITH IT
-            it('given "Choose another org…", asks with the picker even though Data-by-Org remembers an org', async () => {
+            // THE TREECIPE TAB'S PICKER NEVER LISTS PRODUCTION, SO "Choose another org…" IS HOW A READER COMPARES WITH IT
+            it('given "Choose another org…", asks with the picker even though the Treecipe tab remembers an org', async () => {
 
                 workspaceStateValues.set(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, SANDBOX_ORG.username);
                 const listSpy = SalesforceOrgService.listDataOrgDetails as unknown as jest.SpyInstance;
@@ -736,21 +737,21 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         });
     });
 
-    describe('the panel script, Data-by-Org tabs and the toolbar org picker (#217)', () => {
+    describe('the panel script, the org picker in each card\'s Treecipe tab and the tree insert (#217, #255)', () => {
 
-        const renderDataOrgPanel = () => {
+        const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
+        const LEAD_TREE_KEY = 'Lead-ONLY';
+
+        const renderDataOrgPanel = (focusTree?: { treeKey: string; tab: string }) => {
             const panel = runPanelScript();
             const recipe = loadTreeRecipe();
-            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1 });
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1, focusTree: focusTree });
             return { panel, recipe };
         };
 
         const viewOf = (panel: any, className: string) => panel.findAll(panel.cockpitBodyElement, className)[0];
-        // EVERY CARD OPENED, ON ITS DATA-BY-ORG TAB
-        const openDataOrgView = (panel: any) => {
-            panel.expandAllTrees();
-            panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Data-by-Org'));
-        };
+        // EVERY CARD OPENED, ON ITS TREECIPE TAB -- WHICH IS WHERE EACH CARD DRAWS ITS VIEW OF THE ORG PICKER
+        const openTreecipeViews = (panel: any) => panel.expandAllTrees();
         const textOf = (panel: any, className: string) => panel.findAll(panel.cockpitBodyElement, className).map((element: any) => element.textContent);
         const postedNamed = (panel: any, command: string) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === command);
 
@@ -759,124 +760,176 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             panel.postToPanel({
                 command: 'dataOrgReadiness',
                 objects: TREE_OBJECT_API_NAMES.map(objectApiName => ({ objectApiName, disabledReason, requiredLookups: [] })),
-                createTargets: [], createResults: [], requestSequence, renderSequence
+                createTargets: [], insertResults: [], requestSequence, renderSequence
             });
         };
-        const createReasonsOf = (panel: any) => textOf(panel, 'dataCreateReason');
+        const insertReasonsOf = (panel: any) => textOf(panel, 'treeInsertReason');
+        const insertButtonsOf = (panel: any) => panel.findAll(panel.cockpitBodyElement, 'treeInsert');
 
-        it('puts one org picker in the toolbar and no view switch, and asks for no orgs when the panel opens', () => {
+        it('puts no org picker in the toolbar and no view switch, asks for no orgs when the panel opens, and draws one picker view per opened card', () => {
 
             const { panel } = renderDataOrgPanel();
             const toolbarElement = panel.cockpitBodyElement.children[0];
 
             expect(panel.findAll(panel.cockpitBodyElement, 'viewButton')).toEqual([]);
-            expect(panel.findAll(panel.cockpitBodyElement, 'dataOrgView')).toEqual([]);
             expect(panel.findAll(panel.cockpitBodyElement, 'dataTreeCard')).toEqual([]);
-            expect(panel.findAll(panel.cockpitBodyElement, 'dataOrgControls')).toHaveLength(1);
-            expect(panel.findAll(toolbarElement, 'dataOrgLoad').map((element: any) => element.textContent)).toEqual(['Choose an org…']);
-            expect(panel.findAll(toolbarElement, 'dataOrgSelect')).toHaveLength(1);
-            expect(panel.findAll(toolbarElement, 'dataOrgRefresh')).toHaveLength(1);
-            expect(panel.isHidden(viewOf(panel, 'dataOrgStatus'))).toBe(true);
+            expect(panel.findAll(toolbarElement, 'dataOrgControls')).toEqual([]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataOrgView')).toEqual([]);
             expect(postedNamed(panel, 'loadDataOrgs')).toEqual([]);
+
+            panel.expandAllTrees();
+
+            panel.treeCards().forEach((treeCard: any) => {
+                const treecipeHeaderElement = panel.findAll(treeCard, 'treecipeHeader')[0];
+                const viewElements = panel.findAll(treecipeHeaderElement, 'dataOrgView');
+                expect(viewElements).toHaveLength(1);
+                expect(panel.findAll(viewElements[0], 'dataOrgLoad').map((element: any) => element.textContent)).toEqual(['Choose org…']);
+                expect(panel.findAll(viewElements[0], 'dataOrgSelect')).toHaveLength(1);
+                expect(panel.findAll(viewElements[0], 'dataOrgRefresh')).toHaveLength(1);
+                expect(panel.findAll(treecipeHeaderElement, 'treeInsert')).toHaveLength(1);
+            });
+            expect(panel.findAll(toolbarElement, 'dataOrgControls')).toEqual([]);
 
         });
 
-        it('asks for the orgs once, the first time any card\'s Data-by-Org tab opens', () => {
+        it('asks for the orgs once, the first time a card opens on its Treecipe tab', () => {
+
+            const { panel } = renderDataOrgPanel();
+            const [firstCard, secondCard] = panel.treeCards();
+
+            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([]);
+
+            panel.findAll(firstCard, 'treeHeader')[0].dispatch('click');
+
+            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
+
+            panel.openTab(firstCard, 'Compare');
+            panel.openTab(firstCard, 'Treecipe');
+            panel.findAll(secondCard, 'treeHeader')[0].dispatch('click');
+
+            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
+            panel.findAll(panel.cockpitBodyElement, 'dataOrgLoad').forEach((loadElement: any) => expect(panel.isHidden(loadElement)).toBe(true));
+
+        });
+
+        it('asks for no orgs when a card opens on its Compare tab, and asks once the reader clicks its Treecipe tab', () => {
+
+            const { panel } = renderDataOrgPanel({ treeKey: ACCOUNT_TREE_KEY, tab: 'compare' });
+            const accountCard = panel.treeCards()[0];
+
+            expect(panel.findAll(accountCard, 'treeCompareTab').every((element: any) => !panel.isHidden(element))).toBe(true);
+            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([]);
+
+            // COLLAPSED AND OPENED AGAIN, STILL ON COMPARE
+            panel.findAll(accountCard, 'treeHeader')[0].dispatch('click');
+            panel.findAll(accountCard, 'treeHeader')[0].dispatch('click');
+            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([]);
+
+            panel.openTab(accountCard, 'Treecipe');
+            panel.openTab(accountCard, 'Treecipe');
+
+            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
+
+        });
+
+        it('asks for the orgs when a focus opens a card on its Treecipe tab', () => {
+
+            const { panel } = renderDataOrgPanel({ treeKey: LEAD_TREE_KEY, tab: 'treecipe' });
+
+            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
+
+        });
+
+        it('asks for the orgs once, the first time "Choose org…" is used', () => {
+
+            const { panel } = renderDataOrgPanel({ treeKey: ACCOUNT_TREE_KEY, tab: 'compare' });
+            const accountCard = panel.treeCards()[0];
+
+            panel.findAll(accountCard, 'dataOrgLoad')[0].dispatch('click');
+            panel.findAll(accountCard, 'dataOrgLoad')[0].dispatch('click');
+            panel.openTab(accountCard, 'Treecipe');
+
+            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
+
+        });
+
+        it('builds a card\'s Compare rows the first time its tab opens, its objects in insert order, with no org line in its count', () => {
 
             const { panel } = renderDataOrgPanel();
             panel.expandAllTrees();
             const [firstCard, secondCard] = panel.treeCards();
 
-            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([]);
-
-            panel.openTab(firstCard, 'Data-by-Org');
-            panel.openTab(firstCard, 'Structure');
-            panel.openTab(firstCard, 'Data-by-Org');
-            panel.openTab(secondCard, 'Data-by-Org');
-
-            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
-            expect(panel.isHidden(viewOf(panel, 'dataOrgLoad'))).toBe(true);
-
-        });
-
-        it('asks for the orgs once, the first time the picker is used, before any tab opens', () => {
-
-            const { panel } = renderDataOrgPanel();
-
-            viewOf(panel, 'dataOrgLoad').dispatch('click');
-            viewOf(panel, 'dataOrgLoad').dispatch('click');
-
-            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
             expect(panel.findAll(panel.cockpitBodyElement, 'dataObject')).toEqual([]);
 
-        });
-
-        it('builds a card\'s Data-by-Org rows the first time its tab opens, its objects in insert order', () => {
-
-            const { panel } = renderDataOrgPanel();
-            panel.expandAllTrees();
-            const [firstCard, secondCard] = panel.treeCards();
-
-            expect(panel.findAll(panel.cockpitBodyElement, 'dataObject')).toEqual([]);
-
-            panel.openTab(firstCard, 'Data-by-Org');
+            panel.openTab(firstCard, 'Compare');
 
             expect(panel.findAll(firstCard, 'dataObjectName').map((element: any) => element.textContent)).toEqual(TREE_OBJECT_API_NAMES.slice(0, 3));
             expect(panel.findAll(secondCard, 'dataObject')).toEqual([]);
 
-            panel.openTab(secondCard, 'Data-by-Org');
+            panel.openTab(secondCard, 'Compare');
 
             expect(textOf(panel, 'dataObjectName')).toEqual(TREE_OBJECT_API_NAMES);
-            expect(textOf(panel, 'dataTreeCount')).toEqual(['3 objects · choose an org in the toolbar to create records', '1 object · choose an org in the toolbar to create records']);
+            expect(textOf(panel, 'dataTreeCount')).toEqual(['3 objects', '1 object']);
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataCreate')).toEqual([]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataCreateReason')).toEqual([]);
 
         });
 
-        it('draws one selection into every card\'s tab, including a tab opened only after it arrived, with no record count anywhere', () => {
+        it('draws one selection into every card\'s picker view and insert, including a card opened only after it arrived, and counts no records in the org', () => {
 
             const { panel } = renderDataOrgPanel();
-            panel.expandAllTrees();
             const [firstCard, secondCard] = panel.treeCards();
-            panel.openTab(firstCard, 'Data-by-Org');
+            panel.findAll(firstCard, 'treeHeader')[0].dispatch('click');
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             postSelectionAndReadiness(panel, 1, 'first reason');
 
-            expect(panel.findAll(firstCard, 'dataCreateReason').map((element: any) => element.textContent)).toEqual(['first reason', 'first reason', 'first reason']);
+            expect(panel.findAll(firstCard, 'treeInsertReason').map((element: any) => element.textContent)).toEqual(['first reason']);
 
-            panel.openTab(secondCard, 'Data-by-Org');
+            panel.findAll(secondCard, 'treeHeader')[0].dispatch('click');
 
-            expect(panel.findAll(secondCard, 'dataCreateReason').map((element: any) => element.textContent)).toEqual(['first reason']);
-            expect(panel.findAll(secondCard, 'dataTreeCount')[0].textContent).toBe('1 object');
+            expect(panel.findAll(secondCard, 'treeInsertReason').map((element: any) => element.textContent)).toEqual(['first reason']);
+            expect(panel.findAll(secondCard, 'dataOrgSelect')[0].value).toBe('0');
+            expect(panel.findAll(secondCard, 'dataOrgType')[0].textContent).toBe('Sandbox');
             expect(panel.findAll(panel.cockpitBodyElement, 'dataObjectCount')).toEqual([]);
-            expect(textOf(panel, 'dataTreeCount').join(' ')).not.toMatch(/record/);
             expect(postedNamed(panel, 'selectDataOrg')).toEqual([]);
 
         });
 
-        it('offers the posted labels in a native select and posts back only the chosen index', () => {
+        it('offers the posted labels in a native select and posts back only the chosen index, from whichever card\'s view it was chosen in', () => {
 
             const { panel } = renderDataOrgPanel();
-            openDataOrgView(panel);
+            openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa', 'prod@example.com'], selectedOrgIndex: null, noOrgsMessage: '', renderSequence: 1 });
 
-            const selectElement = viewOf(panel, 'dataOrgSelect');
-            expect(selectElement.tagName).toBe('select');
-            expect(selectElement.children.map((optionElement: any) => [optionElement.value, optionElement.textContent])).toEqual([['', 'Choose an org…'], ['0', 'qa'], ['1', 'prod@example.com']]);
+            const selectElements = panel.findAll(panel.cockpitBodyElement, 'dataOrgSelect');
+            expect(selectElements).toHaveLength(2);
+            selectElements.forEach((selectElement: any) => {
+                expect(selectElement.tagName).toBe('select');
+                expect(selectElement.children.map((optionElement: any) => [optionElement.value, optionElement.textContent])).toEqual([['', 'Choose org…'], ['0', 'qa'], ['1', 'prod@example.com']]);
+            });
+            expect(textOf(panel, 'dataOrgStatus')).toEqual(['Choose an org to insert into.', 'Choose an org to insert into.']);
 
-            selectElement.value = '1';
-            selectElement.dispatch('change');
+            selectElements[1].value = '1';
+            selectElements[1].dispatch('change');
 
             expect(postedNamed(panel, 'selectDataOrg')).toEqual([{ command: 'selectDataOrg', orgIndex: 1 }]);
+
+            panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 1, orgLabel: 'prod@example.com', orgTypeLabel: 'Sandbox', isSandbox: true, failureMessage: '', requestSequence: 1, renderSequence: 1 });
+
+            expect(selectElements.map((selectElement: any) => selectElement.value)).toEqual(['1', '1']);
 
         });
 
         it('says how many authorized orgs it left out, and why, and that the org used last is no longer connected', () => {
 
-            const hiddenOrgNote = '3 authorized orgs are not listed: 1 production, 1 expired, 1 not connected. Data-by-Org lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.';
+            const hiddenOrgNote = '3 authorized orgs are not listed: 1 production, 1 expired, 1 not connected. The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.';
             const { panel } = renderDataOrgPanel();
+            openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', hiddenOrgCount: 3, hiddenOrgNote: hiddenOrgNote, forgottenOrgNotice: 'The last org used, <b>old</b>, is no longer connected.', renderSequence: 1 });
 
             expect(panel.isHidden(viewOf(panel, 'dataOrgHiddenNote'))).toBe(false);
-            expect(viewOf(panel, 'dataOrgHiddenNote').textContent).toBe(`The last org used, <b>old</b>, is no longer connected. ${hiddenOrgNote}`);
+            const expectedNote = `The last org used, <b>old</b>, is no longer connected. ${hiddenOrgNote}`;
+            expect(textOf(panel, 'dataOrgHiddenNote')).toEqual([expectedNote, expectedNote]);
 
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', hiddenOrgCount: 0, hiddenOrgNote: '', forgottenOrgNotice: '', renderSequence: 1 });
             expect(panel.isHidden(viewOf(panel, 'dataOrgHiddenNote'))).toBe(true);
@@ -886,9 +939,9 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         it('shows "Checking org connections…" in place of the dropdown until the list arrives', () => {
 
             const { panel } = renderDataOrgPanel();
-            openDataOrgView(panel);
+            openTreecipeViews(panel);
 
-            expect(viewOf(panel, 'dataOrgStatus').textContent).toBe(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT);
+            expect(textOf(panel, 'dataOrgStatus')).toEqual([RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT, RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT]);
             expect(panel.isHidden(viewOf(panel, 'dataOrgSelect'))).toBe(true);
 
         });
@@ -896,6 +949,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         it('offers ⟳ even when no org is listed, so a re-authorized org can be listed', () => {
 
             const { panel } = renderDataOrgPanel();
+            openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: [], selectedOrgIndex: null, noOrgsMessage: NO_AUTHORIZED_ORGS_MESSAGE, renderSequence: 1 });
 
             expect(panel.isHidden(viewOf(panel, 'dataOrgRefresh'))).toBe(false);
@@ -905,136 +959,148 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         it('shows the no authorized orgs message when there are none', () => {
 
             const { panel } = renderDataOrgPanel();
+            openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: [], selectedOrgIndex: null, noOrgsMessage: NO_AUTHORIZED_ORGS_MESSAGE, renderSequence: 1 });
 
             expect(panel.isHidden(viewOf(panel, 'dataOrgSelect'))).toBe(true);
             expect(viewOf(panel, 'dataOrgStatus').textContent).toBe(NO_AUTHORIZED_ORGS_MESSAGE);
+            expect(insertReasonsOf(panel)).toEqual(['Choose an org above to insert into.', 'Choose an org above to insert into.']);
 
         });
 
-        it('draws the org type and says it is checking the org until its readiness arrives', () => {
+        it('draws the org type and says it is checking the org until its readiness arrives, then offers each tree\'s insert into that org', () => {
 
             const { panel } = renderDataOrgPanel();
-            openDataOrgView(panel);
+            openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Sandbox', isSandbox: true, failureMessage: '', requestSequence: 1, renderSequence: 1 });
 
             expect(viewOf(panel, 'dataOrgType').textContent).toBe('Sandbox');
             expect(viewOf(panel, 'dataOrgStatus').textContent).toBe('Checking qa…');
-            expect(createReasonsOf(panel)).toEqual(TREE_OBJECT_API_NAMES.map(() => 'checking whether records can be created…'));
+            expect(insertReasonsOf(panel)).toEqual(['checking whether this tree can be inserted…', 'checking whether this tree can be inserted…']);
+            expect(insertButtonsOf(panel).every((buttonElement: any) => buttonElement.disabled)).toBe(true);
 
             postSelectionAndReadiness(panel, 1);
 
             expect(panel.isHidden(viewOf(panel, 'dataOrgStatus'))).toBe(true);
-            expect(textOf(panel, 'dataTreeCount')).toEqual(['3 objects', '1 object']);
+            expect(insertReasonsOf(panel)).toEqual(['', '']);
+            expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([
+                [`${RECIPE_COCKPIT_INSERT_ACTION_LABEL} into qa`, false],
+                [`${RECIPE_COCKPIT_INSERT_ACTION_LABEL} into qa`, false]
+            ]);
 
         });
 
         it('drops an answer for an older selection or an older model', () => {
 
             const { panel } = renderDataOrgPanel();
-            openDataOrgView(panel);
+            openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa', 'prod'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             postSelectionAndReadiness(panel, 2, 'current');
 
             postSelectionAndReadiness(panel, 1, 'older selection');
             postSelectionAndReadiness(panel, 3, 'older model', 0);
 
-            expect(createReasonsOf(panel)).toEqual(TREE_OBJECT_API_NAMES.map(() => 'current'));
+            expect(insertReasonsOf(panel)).toEqual(['current', 'current']);
 
         });
 
-        it('says once that the connection failed, and leaves no row waiting on a check that will not come', () => {
+        it('says once that the connection failed, and leaves no tree waiting on a check that will not come', () => {
 
             const { panel } = renderDataOrgPanel();
-            openDataOrgView(panel);
+            openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: ORG_TYPE_UNKNOWN_LABEL, isSandbox: null, failureMessage: 'Could not connect to qa: expired.', requestSequence: 1, renderSequence: 1 });
 
-            expect(viewOf(panel, 'dataOrgStatus').textContent).toBe('Could not connect to qa: expired.');
+            expect(textOf(panel, 'dataOrgStatus')).toEqual(['Could not connect to qa: expired.', 'Could not connect to qa: expired.']);
             expect(viewOf(panel, 'dataOrgStatus').classList.contains('failed')).toBe(true);
-            expect(createReasonsOf(panel)).toEqual(TREE_OBJECT_API_NAMES.map(() => 'Nothing is created in this org.'));
-            expect(panel.findAll(panel.cockpitBodyElement, 'dataCreate').every((buttonElement: any) => buttonElement.disabled)).toBe(true);
+            expect(insertReasonsOf(panel)).toEqual(['Could not connect to qa: expired.', 'Could not connect to qa: expired.']);
+            expect(insertButtonsOf(panel).every((buttonElement: any) => buttonElement.disabled)).toBe(true);
 
         });
 
-        it('drops a failed selection\'s message and Create reason when a new selection starts', () => {
+        it('drops a failed selection\'s message and insert reason when a new selection starts', () => {
 
             const { panel } = renderDataOrgPanel();
-            openDataOrgView(panel);
+            openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa', 'uat'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: ORG_TYPE_UNKNOWN_LABEL, isSandbox: null, failureMessage: 'Could not connect to qa: expired.', requestSequence: 1, renderSequence: 1 });
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 1, orgLabel: 'uat', orgTypeLabel: '', isSandbox: null, failureMessage: '', requestSequence: 2, renderSequence: 1 });
 
             expect(viewOf(panel, 'dataOrgStatus').textContent).toBe('Checking uat…');
             expect(viewOf(panel, 'dataOrgStatus').classList.contains('failed')).toBe(false);
-            expect(createReasonsOf(panel)).toEqual(TREE_OBJECT_API_NAMES.map(() => 'checking whether records can be created…'));
+            expect(insertReasonsOf(panel)).toEqual(['checking whether this tree can be inserted…', 'checking whether this tree can be inserted…']);
 
         });
 
-        it('keeps a not-a-sandbox answer on screen when the refused readiness arrives after it', () => {
+        it('keeps a not-a-sandbox answer on screen, and as every tree\'s insert reason, when the refused readiness arrives after it', () => {
 
             const { panel } = renderDataOrgPanel();
-            openDataOrgView(panel);
+            openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Production', isSandbox: false, failureMessage: 'qa answered that it is Production.', requestSequence: 1, renderSequence: 1 });
             panel.postToPanel({
                 command: 'dataOrgReadiness',
-                objects: TREE_OBJECT_API_NAMES.map(objectApiName => ({ objectApiName, disabledReason: 'Create runs only in a sandbox.', requiredLookups: [] })),
-                createTargets: [], createResults: [], requestSequence: 1, renderSequence: 1
+                objects: TREE_OBJECT_API_NAMES.map(objectApiName => ({ objectApiName, disabledReason: 'Records are inserted only into a sandbox or scratch org.', requiredLookups: [] })),
+                createTargets: [], insertResults: [], requestSequence: 1, renderSequence: 1
             });
 
             expect(viewOf(panel, 'dataOrgStatus').textContent).toBe('qa answered that it is Production.');
-            expect(createReasonsOf(panel)).toEqual(TREE_OBJECT_API_NAMES.map(() => 'Create runs only in a sandbox.'));
+            expect(insertReasonsOf(panel)).toEqual(['qa answered that it is Production.', 'qa answered that it is Production.']);
+            expect(insertButtonsOf(panel).every((buttonElement: any) => buttonElement.disabled)).toBe(true);
 
         });
 
         it('posts ⟳ as a payload-free refresh, and takes the dropdown and the selection away until the orgs are listed again', () => {
 
             const { panel } = renderDataOrgPanel();
-            openDataOrgView(panel);
+            openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             postSelectionAndReadiness(panel, 1);
 
             viewOf(panel, 'dataOrgRefresh').dispatch('click');
 
             expect(postedNamed(panel, 'refreshDataOrgs')).toEqual([{ command: 'refreshDataOrgs' }]);
-            expect(panel.isHidden(viewOf(panel, 'dataOrgSelect'))).toBe(true);
-            expect(viewOf(panel, 'dataOrgStatus').textContent).toBe(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT);
-            expect(panel.findAll(panel.cockpitBodyElement, 'dataCreateControls').every((controlsElement: any) => panel.isHidden(controlsElement))).toBe(true);
+            panel.findAll(panel.cockpitBodyElement, 'dataOrgSelect').forEach((selectElement: any) => expect(panel.isHidden(selectElement)).toBe(true));
+            expect(textOf(panel, 'dataOrgStatus')).toEqual([RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT, RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT]);
+            expect(insertReasonsOf(panel)).toEqual(['Choose an org above to insert into.', 'Choose an org above to insert into.']);
+            expect(insertButtonsOf(panel).every((buttonElement: any) => buttonElement.disabled)).toBe(true);
 
         });
 
-        it('disables ⟳ while the check is out, and enables it again with the list it asked for', () => {
+        it('disables ⟳ in every view while the check is out, and enables it again with the list it asked for', () => {
 
             const { panel } = renderDataOrgPanel();
+            openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', renderSequence: 1 });
 
-            viewOf(panel, 'dataOrgRefresh').dispatch('click');
-            expect(viewOf(panel, 'dataOrgRefresh').disabled).toBe(true);
+            const refreshElements = panel.findAll(panel.cockpitBodyElement, 'dataOrgRefresh');
+            refreshElements[0].dispatch('click');
+            expect(refreshElements.map((element: any) => element.disabled)).toEqual([true, true]);
 
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', renderSequence: 1 });
-            expect(viewOf(panel, 'dataOrgRefresh').disabled).toBe(false);
+            expect(refreshElements.map((element: any) => element.disabled)).toEqual([false, false]);
 
         });
 
-        it('after a ⟳ that forgets the org, hides Create, asks for an org again, and draws nothing more of the old selection', () => {
+        it('after a ⟳ that forgets the org, disables every insert, asks for an org again, and draws nothing more of the old selection', () => {
 
             const { panel } = renderDataOrgPanel();
-            openDataOrgView(panel);
+            openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             postSelectionAndReadiness(panel, 1);
 
             viewOf(panel, 'dataOrgRefresh').dispatch('click');
             panel.postToPanel({ command: 'dataOrgList', orgLabels: [], selectedOrgIndex: null, noOrgsMessage: NO_AUTHORIZED_ORGS_MESSAGE, forgottenOrgNotice: 'The last org used, qa, is no longer connected.', hiddenOrgNote: '', renderSequence: 1 });
 
-            const createHidden = () => panel.findAll(panel.cockpitBodyElement, 'dataCreateControls').every((controlsElement: any) => panel.isHidden(controlsElement));
-            expect(createHidden()).toBe(true);
-            expect(textOf(panel, 'dataTreeCount')).toEqual(['3 objects · choose an org in the toolbar to create records', '1 object · choose an org in the toolbar to create records']);
+            const insertOffered = () => insertButtonsOf(panel).some((buttonElement: any) => !buttonElement.disabled);
+            expect(insertOffered()).toBe(false);
+            expect(insertReasonsOf(panel)).toEqual(['Choose an org above to insert into.', 'Choose an org above to insert into.']);
+            expect(insertButtonsOf(panel).map((buttonElement: any) => buttonElement.textContent)).toEqual([RECIPE_COCKPIT_INSERT_ACTION_LABEL, RECIPE_COCKPIT_INSERT_ACTION_LABEL]);
 
             // AN ANSWER STILL ON ITS WAY FOR THE CLEARED SELECTION IS DROPPED
             postSelectionAndReadiness(panel, 1);
-            expect(createHidden()).toBe(true);
+            expect(insertOffered()).toBe(false);
 
         });
 
@@ -1044,11 +1110,12 @@ describe('RecipeCockpitService, Data-by-Org', () => {
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 2 });
             expect(postedNamed(panel, 'loadDataOrgs')).toEqual([]);
 
-            viewOf(panel, 'dataOrgLoad').dispatch('click');
+            panel.findAll(panel.treeCards()[0], 'treeHeader')[0].dispatch('click');
+            expect(postedNamed(panel, 'loadDataOrgs')).toHaveLength(1);
+
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 3 });
 
             expect(postedNamed(panel, 'loadDataOrgs')).toHaveLength(2);
-            expect(panel.isHidden(viewOf(panel, 'dataOrgLoad'))).toBe(true);
             // AFTER THE NEW MODEL'S ACK, SO THE HOST HAS ALREADY MADE ITS OBJECTS CHECKABLE
             const postedCommands = panel.postedHostMessages.map((hostMessage: any) => hostMessage.command);
             expect(postedCommands.lastIndexOf('loadDataOrgs')).toBeGreaterThan(postedCommands.lastIndexOf('rendered'));
@@ -1058,6 +1125,7 @@ describe('RecipeCockpitService, Data-by-Org', () => {
         it('writes org labels and object names as text, never as markup', () => {
 
             const { panel } = renderDataOrgPanel();
+            openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['<img src=x onerror=alert(1)>'], selectedOrgIndex: null, noOrgsMessage: '', renderSequence: 1 });
 
             expect(viewOf(panel, 'dataOrgSelect').children[1].textContent).toBe('<img src=x onerror=alert(1)>');
