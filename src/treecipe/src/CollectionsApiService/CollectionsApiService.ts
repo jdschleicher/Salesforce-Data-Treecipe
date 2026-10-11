@@ -4,6 +4,7 @@ import { DirectoryProcessor } from "../DirectoryProcessingService/DirectoryProce
 import { SalesforceOrgService } from "../SalesforceOrgService/SalesforceOrgService";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceService";
 import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
+import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
 import { IAuthenticatedOrgDetail } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 
 import * as vscode from 'vscode';
@@ -15,12 +16,15 @@ export const INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER = 'Select the Salesforce org
 /*
     How an insert of a data set ended. "completed" went through every file, "cancelled" was stopped
     by the reader and rolled back, and "stopped" stopped at a file that could not be inserted -- an
-    all-or-none failure, rolled back, or an error. The results file holds what was saved either way.
+    all-or-none failure, or a request that threw (a dropped connection, an expired session, a limit).
+    isRolledBack says whether what was saved was deleted again: always for a cancel, and for a stop
+    under all-or-none. savedRecordCount is what is still in the org.
 */
 export type DataSetInsertOutcome = 'completed' | 'cancelled' | 'stopped';
 
 export interface IDataSetInsertResult {
     outcome: DataSetInsertOutcome;
+    isRolledBack: boolean;
     resultsFilePath: string;
     savedRecordCount: number;
     failedRecordCount: number;
@@ -201,6 +205,7 @@ export class CollectionsApiService {
         };
         const objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string> = {};
         let outcome: DataSetInsertOutcome = 'completed';
+        let isRolledBack = false;
 
         await vscode.window.withProgress(
             {
@@ -214,11 +219,14 @@ export class CollectionsApiService {
               const totalFiles = collectionApiFiles.length;
               const rollBackCancelledInsert = async () => {
                   outcome = 'cancelled';
+                  isRolledBack = true;
                   vscode.window.showWarningMessage("Import cancelled by user. Deleting any previously saved records...");
                   if ( fs.existsSync(fullPathToResultsFile) ) {
                       await this.deletePreviouslySavedRecords(fullPathToResultsFile, aliasAuthenticationConnection);
                   }
               };
+              // processAndInsertCollectionFile ROLLS BACK AN ALL-OR-NONE FAILURE ITSELF, SO A CANCEL SEEN AFTER ONE IS NOT A SECOND DELETE
+              const hasAllOrNoneFailure = () => allOrNoneSelection && Object.keys(allCollectionApiFilesSobjectResults.FailureResults).length > 0;
           
               for (let i = 0; i < totalFiles; i++) {
 
@@ -250,20 +258,34 @@ export class CollectionsApiService {
                                                             progress,
                                                             insertOptions.prepareRecords);
 
-                    if ( !successResult && token.isCancellationRequested ) {
+                    if ( !successResult && token.isCancellationRequested && !hasAllOrNoneFailure() ) {
                         await rollBackCancelledInsert();
                         return;
                     }
 
                     if (!successResult) {
                         outcome = 'stopped';
+                        isRolledBack = allOrNoneSelection;
                         vscode.window.showWarningMessage(`Failed to process ${fileName}`);
                         break;                    
                     }
 
                 } catch (error) {
 
-                    vscode.window.showWarningMessage(`Failed to process ${fileName}`);
+                    /*
+                        A request that threw saved nothing it could report, so the files after it --
+                        whose lookups name its records -- stop here too. Under all-or-none what the
+                        earlier files saved is deleted, as an all-or-none failure is.
+                    */
+                    outcome = 'stopped';
+                    vscode.window.showWarningMessage(`Failed to process ${fileName}: ${RecipeYamlScalar.escapeForNotification(String((error as { message?: unknown })?.message ?? error))}`);
+                    if ( allOrNoneSelection ) {
+                        isRolledBack = true;
+                        if ( fs.existsSync(fullPathToResultsFile) ) {
+                            await this.deletePreviouslySavedRecords(fullPathToResultsFile, aliasAuthenticationConnection);
+                        }
+                    }
+                    break;
 
                 }
 
@@ -280,8 +302,9 @@ export class CollectionsApiService {
 
         return {
             outcome: outcome,
+            isRolledBack: isRolledBack,
             resultsFilePath: fullPathToResultsFile,
-            savedRecordCount: outcome === 'completed' ? countResults(allCollectionApiFilesSobjectResults.SuccessResults) : 0,
+            savedRecordCount: isRolledBack ? 0 : countResults(allCollectionApiFilesSobjectResults.SuccessResults),
             failedRecordCount: countResults(allCollectionApiFilesSobjectResults.FailureResults)
         };
 

@@ -913,6 +913,31 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         });
 
+        it('ignores an org selection, a listing or a Run Faker posted while the insert runs: the host holds the org it confirmed (#259 review)', async () => {
+
+            const connection = buildFakeConnection();
+            useConnection(connection);
+
+            await openSelectedCockpit(FAKER_JS_RUN);
+            const confirmedSelection = panelState().dataOrgSelection;
+            const listSpy = SalesforceOrgService.listDataOrgDetails as jest.Mock;
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => {
+                const listCallCount = listSpy.mock.calls.length;
+                await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
+                await receivedMessageHandler({ command: 'refreshDataOrgs' });
+                await receivedMessageHandler({ command: 'loadDataOrgs' });
+                await receivedMessageHandler({ command: 'runFaker', treeKey: ACCOUNT_TREE_KEY });
+                expect(panelState().dataOrgSelection).toBe(confirmedSelection);
+                expect(listSpy.mock.calls.length).toBe(listCallCount);
+                return RECIPE_COCKPIT_INSERT_CONFIRM_LABEL;
+            });
+            await insertAccountTree();
+
+            expect(runFakerCalls()).toHaveLength(1);
+            expect(insertedOf(connection, 'Contact')).toHaveLength(6);
+
+        });
+
         it('refuses if the selection changed while the dialog was open', async () => {
 
             const connection = buildFakeConnection();
@@ -920,7 +945,8 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
             await openSelectedCockpit(FAKER_JS_RUN);
             (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => {
-                await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
+                // A RELOAD OF THE RUN OR A NEW SELECTION REPLACES THE OBJECT THE INSERT CONFIRMED
+                panelState().dataOrgSelection = { ...( panelState().dataOrgSelection as any ) };
                 return RECIPE_COCKPIT_INSERT_CONFIRM_LABEL;
             });
             await insertAccountTree();
@@ -1111,7 +1137,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             const routedPanelState = buildPanelState();
             const storeResult = (orgUsername: string, failedCount: number) => routedPanelState.dataOrgInsertResults.set(
                 RecipeCockpitService.buildInsertResultKey(orgUsername, ACCOUNT_TREE_KEY),
-                { viewModel: { treeKey: ACCOUNT_TREE_KEY, savedCount: 2, failedCount, outcome: 'completed' }, resultsFilePath: '/workspace/results.json' }
+                { viewModel: { treeKey: ACCOUNT_TREE_KEY, savedCount: 2, failedCount, outcome: 'completed', isRolledBack: false }, resultsFilePath: '/workspace/results.json' }
             );
             const viewErrors = { command: 'viewInsertErrors', treeKey: ACCOUNT_TREE_KEY };
 
@@ -1124,6 +1150,13 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             expect(RecipeCockpitService.routePanelMessage(viewErrors, routedPanelState)).toEqual({ kind: 'viewInsertErrors', resultsFilePath: '/workspace/results.json' });
             expect(RecipeCockpitService.routePanelMessage({ ...viewErrors, resultsFilePath: '/etc/passwd' } as any, routedPanelState)).toEqual({ kind: 'viewInsertErrors', resultsFilePath: '/workspace/results.json' });
             expect(RecipeCockpitService.routePanelMessage({ command: 'viewInsertErrors', treeKey: LEAD_TREE_KEY }, routedPanelState)).toBeUndefined();
+
+            // A STOP WITH NOTHING COUNTED AS FAILED -- A REQUEST THAT THREW -- STILL OPENS ITS RESULTS (#259 review)
+            routedPanelState.dataOrgInsertResults.set(RecipeCockpitService.buildInsertResultKey(SANDBOX_ORG.username, ACCOUNT_TREE_KEY), {
+                viewModel: { treeKey: ACCOUNT_TREE_KEY, savedCount: 2, failedCount: 0, outcome: 'stopped', isRolledBack: false },
+                resultsFilePath: '/workspace/results.json'
+            });
+            expect(RecipeCockpitService.routePanelMessage(viewErrors, routedPanelState)).toEqual({ kind: 'viewInsertErrors', resultsFilePath: '/workspace/results.json' });
 
             routedPanelState.dataOrgSelection = undefined;
             expect(RecipeCockpitService.routePanelMessage(viewErrors, routedPanelState)).toBeUndefined();

@@ -866,6 +866,7 @@ export interface IRecipeCockpitInsertResultViewModel {
     savedCount: number;
     failedCount: number;
     outcome: DataSetInsertOutcome;
+    isRolledBack: boolean;
 }
 
 // ONE OBJECT OF ONE TREE AS THE TREE INSERT SENDS IT: THE FIELDS OF ITS BLOCK, OR WHY THE BLOCK COULD NOT BE READ
@@ -4809,7 +4810,9 @@ export class RecipeCockpitService {
 
         this.storeInsertResult(panelState, orgDetail.username, treeKey, insertResult);
 
-        if ( insertResult.outcome === 'completed' && insertResult.failedRecordCount > 0 ) {
+        if ( insertResult.outcome === 'stopped' && !insertResult.isRolledBack ) {
+            VSCodeWorkspaceService.showWarningMessage(`The insert of ${treeLabel} into ${orgLabel} stopped at a file that could not be inserted. ${insertResult.savedRecordCount} ${insertResult.savedRecordCount === 1 ? 'record was' : 'records were'} kept, because all-or-none was not chosen; "View errors" in the Treecipe tab opens the results.`);
+        } else if ( insertResult.outcome === 'completed' && insertResult.failedRecordCount > 0 ) {
             VSCodeWorkspaceService.showWarningMessage(`${insertResult.savedRecordCount} ${insertResult.savedRecordCount === 1 ? 'record was' : 'records were'} inserted into ${orgLabel} from ${treeLabel} and ${insertResult.failedRecordCount} failed. Nothing was rolled back; "View errors" in the Treecipe tab opens the results.`);
         }
 
@@ -4845,7 +4848,8 @@ export class RecipeCockpitService {
                 treeKey: treeKey,
                 savedCount: insertResult.savedRecordCount,
                 failedCount: insertResult.failedRecordCount,
-                outcome: insertResult.outcome
+                outcome: insertResult.outcome,
+                isRolledBack: insertResult.isRolledBack
             },
             resultsFilePath: insertResult.resultsFilePath
         });
@@ -5427,8 +5431,8 @@ export class RecipeCockpitService {
 
                 const { treeKey } = panelMessage;
 
-                // A RUN IN FLIGHT ALREADY HOLDS THE BUTTONS DISABLED, AND ITS OWN END RE-ENABLES THEM
-                if ( panelState.runFakerStateMessage ) {
+                // A RUN IN FLIGHT ALREADY HOLDS THE BUTTONS DISABLED, AND ITS OWN END RE-ENABLES THEM; AN INSERT GENERATES THROUGH THE SAME COMMAND
+                if ( panelState.runFakerStateMessage || panelState.insertStateMessage ) {
                     return undefined;
                 }
 
@@ -5462,7 +5466,8 @@ export class RecipeCockpitService {
             case 'loadDataOrgs':
 
                 // A RUN ENDS BY LISTING THE ORGS ITSELF; A SECOND LISTING MEANWHILE WOULD DISCARD ITS ANSWER AND FORGET ITS ORG
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning ) {
+                // AN INSERT IN FLIGHT HOLDS THE SELECTION IT CONFIRMED; ITS RELOAD ASKS AGAIN ONCE IT HAS ENDED
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || panelState.insertStateMessage ) {
                     return undefined;
                 }
 
@@ -5474,6 +5479,7 @@ export class RecipeCockpitService {
 
                 if ( typeof orgIndex !== 'number'
                         || panelState.scratchOrgStateMessage?.isRunning
+                        || panelState.insertStateMessage
                         || !Number.isInteger(orgIndex)
                         || orgIndex < 0
                         || orgIndex >= panelState.dataOrgDetails.length
@@ -5492,7 +5498,7 @@ export class RecipeCockpitService {
             */
             case 'refreshDataOrgs':
 
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || panelState.insertStateMessage ) {
                     return undefined;
                 }
 
@@ -5764,7 +5770,8 @@ export class RecipeCockpitService {
 
                 const storedInsertResult = panelState.dataOrgInsertResults.get(this.buildInsertResultKey(panelState.dataOrgSelection.orgDetail.username, treeKey));
 
-                return storedInsertResult && storedInsertResult.viewModel.failedCount > 0
+                // A STOP WITH NOTHING COUNTED AS FAILED (A REQUEST THAT THREW) STILL HAS A RESULTS FILE WORTH OPENING
+                return storedInsertResult && ( storedInsertResult.viewModel.failedCount > 0 || storedInsertResult.viewModel.outcome === 'stopped' )
                     ? { kind: 'viewInsertErrors', resultsFilePath: storedInsertResult.resultsFilePath }
                     : undefined;
 
@@ -9705,7 +9712,9 @@ ${this.buildPaletteCustomProperties()}
         if (insertResult.outcome === 'cancelled') {
             insert.resultElement.textContent = 'Last insert cancelled and rolled back';
         } else if (insertResult.outcome === 'stopped') {
-            insert.resultElement.textContent = 'Last insert stopped and rolled back · ' + insertResult.failedCount + ' failed';
+            insert.resultElement.textContent = insertResult.isRolledBack
+                ? 'Last insert stopped and rolled back · ' + insertResult.failedCount + ' failed'
+                : 'Last insert stopped · ' + insertResult.savedCount + ' inserted and kept · ' + insertResult.failedCount + ' failed';
             insert.resultElement.classList.add('partial');
         } else if (insertResult.failedCount === 0) {
             insert.resultElement.textContent = '✓ ' + insertResult.savedCount + ' inserted';
@@ -9715,7 +9724,7 @@ ${this.buildPaletteCustomProperties()}
             insert.resultElement.classList.add('partial');
         }
 
-        if (insertResult.failedCount > 0) { insert.errorsElement.classList.remove('hidden'); }
+        if (insertResult.failedCount > 0 || insertResult.outcome === 'stopped') { insert.errorsElement.classList.remove('hidden'); }
 
     }
 

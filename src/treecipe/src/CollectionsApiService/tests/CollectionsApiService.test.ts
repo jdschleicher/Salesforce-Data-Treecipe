@@ -1397,7 +1397,7 @@ describe('the one data set insert, shared by Insert Data Set by Directory and th
             const connection = buildConnection();
             const recordTypeDetail = { records: [{ Id: '012000000000001AAA', DeveloperName: 'Business', SobjectType: 'Account' }] };
             const recordTypeSpy = jest.spyOn(RecordTypeService, 'getRecordTypeIdsByConnection').mockResolvedValue(recordTypeDetail);
-            const insertResult = { outcome: 'completed' as const, resultsFilePath: '/results.json', savedRecordCount: 1, failedRecordCount: 0 };
+            const insertResult = { outcome: 'completed' as const, isRolledBack: false, resultsFilePath: '/results.json', savedRecordCount: 1, failedRecordCount: 0 };
             const upsertSpy = jest.spyOn(CollectionsApiService, 'upsertDataSetToSelectedOrg').mockResolvedValue(insertResult);
             const prepareRecords = jest.fn((_objectApiName: string, records: unknown[]) => records);
 
@@ -1461,6 +1461,7 @@ describe('the one data set insert, shared by Insert Data Set by Directory and th
 
             expect(insertResult).toEqual({
                 outcome: 'completed',
+                isRolledBack: false,
                 resultsFilePath: path.join(datasetFolderPath, 'InsertAttempts', 'insertAttempt-2026-10-07T12-00-00', 'insertAttemptResults-2026-10-07T12-00-00.json'),
                 savedRecordCount: 3,
                 failedRecordCount: 0
@@ -1566,6 +1567,69 @@ describe('the one data set insert, shared by Insert Data Set by Directory and th
             expect(insertResult).toMatchObject({ outcome: 'stopped', savedRecordCount: 0, failedRecordCount: 1 });
             expect(vscode.window.showWarningMessage).toHaveBeenCalledWith('Failed to process collectionsApi-Contact.json');
             expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+
+        });
+
+        const throwOnContact = () => buildConnection((objectApiName, records) => {
+            if ( objectApiName === 'Contact' ) {
+                throw new Error('INVALID_SESSION_ID: Session expired');
+            }
+            return records.map((_record, recordIndex) => ({ id: `${objectApiName}-${recordIndex}`, success: true, errors: [] }));
+        });
+        const writeThreeFiles = () => writeDataSetFolder({
+            Account: [record('Account', 1, 'Account_NickName')],
+            Contact: [record('Contact', 1, 'Contact_NickName')],
+            Opportunity: [record('Opportunity', 1, 'Opportunity_NickName')]
+        }, { Account: 0, Contact: 1, Opportunity: 2 });
+
+        test('a request that throws under all-or-none stops there, rolls back what was saved, and never answers completed (#259 review)', async () => {
+
+            writeThreeFiles();
+            const connection = throwOnContact();
+            const deleteSpy = jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockResolvedValue(undefined);
+
+            const insertResult = await insertFolder(connection, true);
+
+            // THE CONTACT REQUEST WAS SENT AND THREW; NOTHING AFTER IT IS SENT
+            expect(connection.insertedBatches.map(insertedBatch => insertedBatch.objectApiName)).toEqual(['Account', 'Contact']);
+            expect(deleteSpy).toHaveBeenCalledTimes(1);
+            expect(insertResult).toMatchObject({ outcome: 'stopped', isRolledBack: true, savedRecordCount: 0 });
+            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls.at(-1)[0]).toContain('Failed to process collectionsApi-Contact.json: ');
+            expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+
+        });
+
+        test('a request that throws without all-or-none stops there and keeps what was saved, saying so', async () => {
+
+            writeThreeFiles();
+            const connection = throwOnContact();
+            const deleteSpy = jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockResolvedValue(undefined);
+
+            const insertResult = await insertFolder(connection, false);
+
+            expect(connection.insertedBatches.map(insertedBatch => insertedBatch.objectApiName)).toEqual(['Account', 'Contact']);
+            expect(deleteSpy).not.toHaveBeenCalled();
+            expect(insertResult).toMatchObject({ outcome: 'stopped', isRolledBack: false, savedRecordCount: 1 });
+
+        });
+
+        test('an all-or-none failure seen together with a cancel is rolled back once, not twice', async () => {
+
+            writeThreeFiles();
+            const connection = buildConnection((objectApiName, records) => {
+                if ( objectApiName === 'Contact' ) {
+                    isCancelled = true;
+                    return records.map(() => ({ success: false, errors: [{ statusCode: 'REQUIRED_FIELD_MISSING', message: 'LastName' }] }));
+                }
+                return records.map((_record, recordIndex) => ({ id: `${objectApiName}-${recordIndex}`, success: true, errors: [] }));
+            });
+            const deleteSpy = jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockResolvedValue(undefined);
+
+            const insertResult = await insertFolder(connection, true);
+
+            expect(deleteSpy).toHaveBeenCalledTimes(1);
+            expect(insertResult).toMatchObject({ outcome: 'stopped', isRolledBack: true });
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalledWith('Import cancelled by user. Deleting any previously saved records...');
 
         });
 
