@@ -562,9 +562,9 @@ export class ExtensionCommandService {
     }
 
     /*
-        The Recipe Cockpit's Regenerate passes { isCompletionNotificationSuppressed: true }: it reloads
-        and focuses the tree it regenerated, so a toast pointing at the run would pull the reader
-        out of the panel. The command is callable by id, so only that exact shape suppresses.
+        The Recipe Cockpit's Generate Treecipe button passes { isCompletionNotificationSuppressed: true }:
+        it reloads the run generation wrote, so a toast pointing at the run would pull the reader out
+        of the panel. The command is callable by id, so only that exact shape suppresses.
     */
     async generateRecipeFromConfigurationDetail(generateTreecipeOptions?: unknown) {
 
