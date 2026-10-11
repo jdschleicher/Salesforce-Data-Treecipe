@@ -540,8 +540,8 @@ describe('RecipeCockpitService', () => {
                 const shellHtml = RecipeCockpitService.buildWebviewShellHtml('testNonce');
                 const styleSheet = styleSheetOf(shellHtml);
 
-                expect(styleSheet).toContain('.treeGlyph path { fill: var(--sdt-accent); stroke: var(--sdt-accent);');
-                expect(styleSheet).toContain('.treeGlyph.excluded path, .treeGlyph.autoExcluded path { fill: none; stroke: var(--sdt-muted);');
+                expect(styleSheet).toContain('.treeGlyph path { fill: none; stroke: var(--sdt-accent);');
+                expect(styleSheet).toContain('.treeGlyph.excluded path, .treeGlyph.autoExcluded path { stroke: var(--sdt-muted); }');
                 expect(styleSheet).toMatch(/\.treeGlyph\.autoExcluded path \{ stroke-dasharray: [^;]+; \}/);
                 expect(styleSheet).toMatch(/\.treeObject\.excluded::after \{[^}]*background-color: var\(--sdt-excluded-overlay\);[^}]*pointer-events: none;[^}]*z-index: 1;/);
                 // THE ICON SITS ABOVE THE OVERLAY, SO IT STAYS CRISP AND CLICKABLE
