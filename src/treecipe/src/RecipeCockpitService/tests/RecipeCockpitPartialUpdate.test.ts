@@ -189,6 +189,70 @@ describe('Recipe Cockpit partial updates (#226)', () => {
 
         });
 
+        // WHAT A NODE SHOWS: ITS OWN TEXT, CLASSES, ATTRIBUTES AND WHETHER IT IS DISABLED
+        const stateOf = (element: any) => JSON.stringify([element.ownTextContent, element.className, element.attributes, element.disabled, element.value]);
+        const isInside = (element: any, ancestorElements: any[]) => ancestorElements.some(ancestorElement => descendantsOf(ancestorElement).includes(element));
+
+        /*
+            #226's criteria name what a partial update must leave alone: the toolbar's org picker, a
+            scratch org run in flight, every card's comparison, and a card's Structure exclusions (#219)
+            -- the card the data set joins included. Each is drawn here before the message arrives.
+        */
+        it('leaves the org picker, a running scratch org, every comparison and the card\'s exclusions exactly as they were', () => {
+
+            const recipe = loadHistoryRecipe();
+            recipe.trees.find((tree: any) => tree.treeKey === LEAD_TREE_KEY).objectSelection = {
+                exclusions: [{ objectApiName: 'Lead', kind: 'excluded' }],
+                disabledLookups: [],
+                includedObjectCount: 0,
+                objectCount: 1
+            };
+            const panel = renderEverythingOpen(recipe);
+            [ACCOUNT_TREE_KEY, LEAD_TREE_KEY].forEach(treeKey => panel.postToPanel({
+                command: 'orgDescribe', treeKey: treeKey, orgLabel: 'qa (qa@example.com.qa)', summary: 'Described', isFailure: false, isCancelled: false,
+                objects: [{ objectApiName: treeKey === LEAD_TREE_KEY ? 'Lead' : 'Account', isDescribed: true, describedFieldCount: 3, failureMessage: '' }],
+                diff: { objects: [], statusCounts: {} }, renderSequence: 1
+            }));
+            panel.postToPanel({ command: 'scratchOrgState', isRunning: true, statusText: 'Creating scratch org…', isFailure: false, hasOutput: false });
+            const leadCard = cardNamed(panel, LEAD_TREE_KEY);
+            const historyPanels = [panel.tabPanelOf(leadCard, 'treeDatasets'), panel.tabPanelOf(leadCard, 'treeVersions')];
+            const createRow = leadDataRow(panel);
+            const nodesBefore = descendantsOf(panel.cockpitBodyElement);
+            const statesBefore = nodesBefore.map(stateOf);
+            expect(panel.findAll(leadCard, 'treeObjectInclude')[0].attributes['aria-pressed']).toBe('false');
+            expect(panel.findAll(leadCard, 'orgDescribeStatus').map((element: any) => element.textContent).join('')).toContain('org: 3 fields');
+
+            postDatasetAdded(panel);
+
+            // EVERY NODE IS STILL THE SAME OBJECT, AND SHOWS WHAT IT SHOWED -- BUT FOR THE NEW ROWS' TABS AND THE CREATED ROW'S RESULT
+            const nodesAfter = descendantsOf(panel.cockpitBodyElement);
+            nodesBefore.forEach((nodeBefore, nodeIndex) => {
+                expect(nodesAfter).toContain(nodeBefore);
+                if ( !isInside(nodeBefore, [...historyPanels, createRow]) ) {
+                    expect(stateOf(nodeBefore)).toBe(statesBefore[nodeIndex]);
+                }
+            });
+            expect(panel.findAll(leadCard, 'treeObjectInclude')[0].attributes['aria-pressed']).toBe('false');
+
+        });
+
+        it('draws every data set\'s Insert… disabled while a Run Faker inserts, the new row\'s included, and gives them back after', () => {
+
+            const panel = renderEverythingOpen();
+            const insertButtons = () => panel.findAll(panel.cockpitBodyElement, 'treeDatasetInsert');
+
+            panel.postToPanel({ command: 'runFakerState', isRunning: true, treeKey: LEAD_TREE_KEY });
+            postDatasetAdded(panel, { createResult: undefined });
+
+            expect(insertButtons().length).toBeGreaterThan(2);
+            expect(insertButtons().every((insertButton: any) => insertButton.disabled)).toBe(true);
+
+            panel.postToPanel({ command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY });
+
+            expect(insertButtons().every((insertButton: any) => !insertButton.disabled)).toBe(true);
+
+        });
+
         it('lists the data set first in Previous Fake Sets and under its version, and shows the Create result on its row', () => {
 
             const panel = renderEverythingOpen();

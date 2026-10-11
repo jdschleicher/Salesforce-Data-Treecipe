@@ -7253,6 +7253,8 @@ ${this.buildPaletteCustomProperties()}
     let renderedSequence = null;
     // THE TREE WHOSE RUN FAKER IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE RUN ENDED
     let runFakerRunningTreeKey = null;
+    // EVERY DRAWN Insert… OF A DATA SET ROW: HELD DISABLED WHILE A RUN FAKER INSERTS (#226), SINCE THE HOST REFUSES ITS OWN FOLDER THEN
+    let datasetInsertElements = [];
     // WHETHER A FRIEND IS BEING ADDED; IT OUTLIVES A MODEL FOR THE SAME REASON
     let isAddFriendRunning = false;
     // EVERY "+" AND FRIEND CHOICE DRAWN FOR THIS MODEL, SO ONE CLICK CAN DISABLE THEM ALL
@@ -8496,8 +8498,11 @@ ${this.buildPaletteCustomProperties()}
         datasetHeaderElement.appendChild(createElement('span', 'treeDatasetFolder muted', dataset.datasetFolderName));
         datasetHeaderElement.appendChild(buildHistoryAction('treeDatasetOpen', 'Open', 'Reveal the folder of this data set in the Explorer',
             Object.assign({ command: 'openDataset' }, actionMessage)));
-        datasetHeaderElement.appendChild(buildHistoryAction('treeDatasetInsert', 'Insert…', 'Insert this data set into an org with Insert Data Set by Directory',
-            Object.assign({ command: 'insertDataset' }, actionMessage)));
+        const insertElement = buildHistoryAction('treeDatasetInsert', 'Insert…', 'Insert this data set into an org with Insert Data Set by Directory',
+            Object.assign({ command: 'insertDataset' }, actionMessage));
+        insertElement.disabled = runFakerRunningTreeKey !== null;
+        datasetInsertElements.push(insertElement);
+        datasetHeaderElement.appendChild(insertElement);
 
         datasetElement.appendChild(datasetHeaderElement);
         datasetElement.appendChild(countsElement);
@@ -9065,6 +9070,8 @@ ${this.buildPaletteCustomProperties()}
         treeStates.forEach(function (treeState) {
             if (treeState.runFakerElement) { applyRunFakerStateTo(treeState.tree, treeState.runFakerElement); }
         });
+
+        datasetInsertElements.forEach(function (insertElement) { insertElement.disabled = runningTreeKey !== null; });
 
     }
 
@@ -10157,6 +10164,7 @@ ${this.buildPaletteCustomProperties()}
 
         cockpitBodyElement.textContent = '';
         treeStates = [];
+        datasetInsertElements = [];
         treesViewElement = null;
         dataOrgLoadElement = null;
         dataOrgSelectElement = null;
