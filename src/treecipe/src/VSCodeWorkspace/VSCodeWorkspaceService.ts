@@ -35,9 +35,11 @@ export interface ICreatedFileNotificationAction {
 export const ORG_CONNECTION_CHECK_PLACEHOLDER = 'Checking org connections…';
 
 // THE ORGS A PICKER OFFERS, AND WHAT TO SAY INSTEAD WHEN IT OFFERS NONE
-export interface IAuthenticatedOrgListingForPicker {
-    orgDetails: IAuthenticatedOrgDetail[];
+export interface IAuthenticatedOrgListingForPicker<TOrgDetail extends IAuthenticatedOrgDetail = IAuthenticatedOrgDetail> {
+    orgDetails: TOrgDetail[];
     emptyListMessage: string;
+    // LABELLED "(default)" -- NEVER SELECTED ON THE READER'S BEHALF
+    defaultUsername?: string;
 }
 
 export class VSCodeWorkspaceService {
@@ -912,10 +914,10 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static buildAuthenticatedOrgQuickPickItems(authenticatedOrgDetails: IAuthenticatedOrgDetail[]): vscode.QuickPickItem[] {
+    static buildAuthenticatedOrgQuickPickItems(authenticatedOrgDetails: IAuthenticatedOrgDetail[], defaultUsername?: string): vscode.QuickPickItem[] {
 
         return authenticatedOrgDetails.map(authenticatedOrgDetail => ({
-            label: authenticatedOrgDetail.alias || authenticatedOrgDetail.username,
+            label: `${authenticatedOrgDetail.alias || authenticatedOrgDetail.username}${defaultUsername !== undefined && authenticatedOrgDetail.username === defaultUsername ? ' (default)' : ''}`,
             // THE USERNAME IS SHOWN EVEN WHEN IT IS THE LABEL SO TWO ALIASES ON ONE ORG STAY TELLABLE APART
             description: authenticatedOrgDetail.username,
             detail: authenticatedOrgDetail.targetOrgIdentifier
@@ -930,8 +932,8 @@ export class VSCodeWorkspaceService {
         ends the command. A listing with no org closes the picker and says why instead of showing
         an empty list, which would look like a picker that failed to load.
     */
-    static async promptForAuthenticatedOrgDetailOnceListed(orgListing: Promise<IAuthenticatedOrgListingForPicker>,
-                                                            placeHolder: string): Promise<IAuthenticatedOrgDetail | undefined> {
+    static async promptForAuthenticatedOrgDetailOnceListed<TOrgDetail extends IAuthenticatedOrgDetail>(orgListing: Promise<IAuthenticatedOrgListingForPicker<TOrgDetail>>,
+                                                            placeHolder: string): Promise<TOrgDetail | undefined> {
 
         const orgQuickPick = vscode.window.createQuickPick();
         orgQuickPick.placeholder = ORG_CONNECTION_CHECK_PLACEHOLDER;
@@ -940,9 +942,9 @@ export class VSCodeWorkspaceService {
         orgQuickPick.enabled = false;
         orgQuickPick.items = [];
 
-        let listedOrgDetails: IAuthenticatedOrgDetail[] = [];
+        let listedOrgDetails: TOrgDetail[] = [];
 
-        const orgSelection = new Promise<IAuthenticatedOrgDetail | undefined>((resolveSelection) => {
+        const orgSelection = new Promise<TOrgDetail | undefined>((resolveSelection) => {
 
             orgQuickPick.onDidAccept(() => {
                 const selectedQuickPickItem = orgQuickPick.selectedItems[0];
@@ -977,7 +979,7 @@ export class VSCodeWorkspaceService {
             }
 
             listedOrgDetails = listingOrDismissal.orgDetails;
-            orgQuickPick.items = this.buildAuthenticatedOrgQuickPickItems(listedOrgDetails);
+            orgQuickPick.items = this.buildAuthenticatedOrgQuickPickItems(listedOrgDetails, listingOrDismissal.defaultUsername);
             orgQuickPick.placeholder = placeHolder;
             orgQuickPick.busy = false;
             orgQuickPick.enabled = true;

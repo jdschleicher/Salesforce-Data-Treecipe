@@ -1,6 +1,6 @@
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { MockDirectoryService } from "../../DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/MockDirectoryService";
-import { ORG_CONNECTION_CHECK_PLACEHOLDER, VSCodeWorkspaceService } from "../VSCodeWorkspaceService";
+import { IAuthenticatedOrgListingForPicker, ORG_CONNECTION_CHECK_PLACEHOLDER, VSCodeWorkspaceService } from "../VSCodeWorkspaceService";
 import { MockVSCodeWorkspaceService } from "./mocks/MockVSCodeWorkspaceService";
 import { SfdxProjectService } from "../../SfdxProjectService/SfdxProjectService";
 
@@ -253,6 +253,19 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             expect(VSCodeWorkspaceService.buildAuthenticatedOrgQuickPickItems([])).toEqual([]);
         });
 
+        test('labels only the default org "(default)", and leaves its detail -- what a selection is matched on -- unchanged (#243)', () => {
+
+            const quickPickItems = VSCodeWorkspaceService.buildAuthenticatedOrgQuickPickItems([
+                { targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub' },
+                { targetOrgIdentifier: 'other-hub@example.com', username: 'other-hub@example.com', alias: undefined }
+            ], 'hub@example.com');
+
+            expect(quickPickItems.map(quickPickItem => quickPickItem.label)).toEqual(['devhub (default)', 'other-hub@example.com']);
+            expect(quickPickItems[0].detail).toBe('devhub');
+            expect(VSCodeWorkspaceService.buildAuthenticatedOrgQuickPickItems([{ targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub' }])[0].label).toBe('devhub');
+
+        });
+
     });
 
     describe('the org quick pick items', () => {
@@ -319,7 +332,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             const fakeQuickPick = buildFakeOrgQuickPick();
             let answerListing: (listing: any) => void = () => undefined;
 
-            const selection = VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(new Promise(resolveListing => { answerListing = resolveListing; }), 'Pick the org');
+            const selection = VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(new Promise<IAuthenticatedOrgListingForPicker>(resolveListing => { answerListing = resolveListing; }), 'Pick the org');
             await new Promise(resolveYield => setImmediate(resolveYield));
 
             expect(fakeQuickPick.show).toHaveBeenCalled();
@@ -347,7 +360,7 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
             const fakeQuickPick = buildFakeOrgQuickPick();
 
-            const selection = VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(new Promise(() => undefined), 'Pick');
+            const selection = VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(new Promise<IAuthenticatedOrgListingForPicker>(() => undefined), 'Pick');
             fakeQuickPick.hide();
 
             expect(await selection).toBeUndefined();
@@ -378,6 +391,24 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
             fakeQuickPick.onDidAccept.mock.calls[0][0]();
 
             expect(await selection).toBeUndefined();
+
+        });
+
+        test('offers a listing\'s default labelled "(default)", selects nothing for the reader, and returns the detail it was listed with (#243)', async () => {
+
+            const fakeQuickPick = buildFakeOrgQuickPick();
+            const devHubDetails = [
+                { targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub', configSource: 'project' as const }
+            ];
+
+            const selection = VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(Promise.resolve({ orgDetails: devHubDetails, emptyListMessage: '', defaultUsername: 'hub@example.com' }), 'Pick the Dev Hub');
+            await new Promise(resolveYield => setImmediate(resolveYield));
+
+            expect(fakeQuickPick.items.map((quickPickItem: any) => quickPickItem.label)).toEqual(['devhub (default)']);
+            expect(fakeQuickPick.selectedItems).toEqual([]);
+            fakeQuickPick.accept(fakeQuickPick.items[0]);
+
+            expect(await selection).toBe(devHubDetails[0]);
 
         });
 

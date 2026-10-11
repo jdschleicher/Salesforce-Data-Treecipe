@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { ISalesforceCliInvocationResult, ISalesforceCliProjectOptions, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
-import { IDefaultDevHubDetail, SalesforceOrgService } from '../SalesforceOrgService/SalesforceOrgService';
+import { IDevHubOrgDetail } from '../SalesforceOrgService/SalesforceOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 
 export const SCRATCH_ORG_ALIAS_PREFIX = 'treecipe-';
@@ -40,8 +40,8 @@ export interface IScratchOrgDefinitionSummary {
 }
 
 /*
-    Everything a scratch org setup uses, resolved on the HOST from the workspace and the CLI's own
-    configuration -- the panel names none of it. The confirmation lists exactly this.
+    Everything a scratch org setup uses, resolved on the HOST from the workspace and the Dev Hub the
+    reader picked -- the panel names none of it. The confirmation lists exactly this.
 */
 export interface IScratchOrgPlan {
     workspaceRoot: string;
@@ -49,7 +49,7 @@ export interface IScratchOrgPlan {
     definitionFileRelativePath: string;
     // AS sfdx-project.json DECLARES THEM: THE CLI RESOLVES THEM ITSELF, SINCE THE DEPLOY NAMES NO --source-dir
     packageDirectoryPaths: string[];
-    devHub: IDefaultDevHubDetail;
+    devHub: IDevHubOrgDetail;
     alias: string;
     durationDays: number;
     definitionSummary: IScratchOrgDefinitionSummary;
@@ -87,8 +87,8 @@ export interface IScratchOrgSetupHooks {
 }
 
 /*
-    Creates a scratch org through the CLI's default Dev Hub and deploys the project's source to it
-    (#200). It imports no vscode itself: the cockpit owns the confirmation, the progress and the panel, and this
+    Creates a scratch org through the Dev Hub the reader picked (#243) and deploys the project's
+    source to it (#200). It imports no vscode itself: the cockpit owns the confirmation, the progress and the panel, and this
     service owns the argv, the reading of the CLI's --json answer and the result files.
 
     Every process goes through PicklistDependencyCheckService.runSalesforceCli -- execFile with an
@@ -114,10 +114,14 @@ export class ScratchOrgService {
 
     /*
         Refuses, before any process, every input the setup cannot run with: the project file, then
-        the definition file, then the Dev Hub. The definition path is fixed, and still checked to
-        resolve inside the workspace, because config/ can be a symlink out of it.
+        the definition file. Both are checked BEFORE the Dev Hub is asked for, so a project that
+        cannot be deployed refuses without a picker. No Dev Hub chosen is no plan: undefined, and
+        nothing was started. The definition path is fixed, and still checked to resolve inside the
+        workspace, because config/ can be a symlink out of it.
     */
-    static async resolveScratchOrgPlan(workspaceRoot: string, date: Date = new Date()): Promise<IScratchOrgPlan> {
+    static async resolveScratchOrgPlan(workspaceRoot: string,
+                                        chooseDevHub: () => Promise<IDevHubOrgDetail | undefined>,
+                                        date: Date = new Date()): Promise<IScratchOrgPlan | undefined> {
 
         const packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
 
@@ -132,7 +136,11 @@ export class ScratchOrgService {
             throw new Error(`No scratch org definition file found at "${definitionFilePath}", so no scratch org was created. Add "${SCRATCH_ORG_DEFINITION_FILE_RELATIVE_PATH}" to the project and try again.`);
         }
 
-        const devHub = await SalesforceOrgService.resolveDefaultDevHub(resolvedWorkspaceRoot);
+        const devHub = await chooseDevHub();
+
+        if ( !devHub ) {
+            return undefined;
+        }
 
         return {
             workspaceRoot: resolvedWorkspaceRoot,
@@ -175,7 +183,7 @@ export class ScratchOrgService {
     static buildScratchOrgCreateArguments(scratchOrgPlan: IScratchOrgPlan): string[] {
 
         PicklistDependencyCheckService.assertValidTargetOrgIdentifier(scratchOrgPlan.alias);
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(scratchOrgPlan.devHub.targetOrgIdentifier);
+        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(scratchOrgPlan.devHub.username);
 
         return [
             'org', 'create', 'scratch',
@@ -183,7 +191,8 @@ export class ScratchOrgService {
             '--definition-file', scratchOrgPlan.definitionFileRelativePath,
             '--alias', scratchOrgPlan.alias,
             '--duration-days', String(scratchOrgPlan.durationDays),
-            '--target-dev-hub', scratchOrgPlan.devHub.targetOrgIdentifier,
+            // THE USERNAME, NOT AN ALIAS: AN ALIAS CAN BE RE-POINTED BETWEEN THE PICK AND THE RUN
+            '--target-dev-hub', scratchOrgPlan.devHub.username,
             '--json'
         ];
 

@@ -28,7 +28,7 @@ import {
     ScratchOrgSetupPhase
 } from '../ScratchOrgService';
 import { ISalesforceCliInvocationResult } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
-import { NO_DEFAULT_DEV_HUB_MESSAGE, TARGET_DEV_HUB_ENVIRONMENT_VARIABLE } from '../../SalesforceOrgService/SalesforceOrgService';
+import { IDevHubOrgDetail, TARGET_DEV_HUB_ENVIRONMENT_VARIABLE } from '../../SalesforceOrgService/SalesforceOrgService';
 
 const MOCKS_PATH = path.join(__dirname, 'mocks');
 const PROJECT_WORKSPACE_PATH = path.join(MOCKS_PATH, 'projectWorkspace');
@@ -41,6 +41,8 @@ const DEPLOY_ONE_COMPONENT_FAILURE = readFixture('deployOneComponentFailure.json
 
 const NEW_SCRATCH_USERNAME = 'test-newscratch@example.com';
 const DEV_HUB_AUTHORIZATION = { username: 'hub@example.com', aliases: ['devhub'], isDevHub: true, instanceUrl: 'https://acme.my.salesforce.com' };
+
+const CHOSEN_DEV_HUB: IDevHubOrgDetail = { targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub' };
 
 const invocation = (stdout: string, exitCode: number | null = 0, extra: Partial<ISalesforceCliInvocationResult> = {}): ISalesforceCliInvocationResult => ({ stdout, stderr: '', exitCode, ...extra });
 
@@ -98,6 +100,10 @@ describe('ScratchOrgService (#200)', () => {
 
     const PLAN_DATE = new Date(2026, 9, 10, 14, 22, 33);
 
+    const resolvePlan = async (chooseDevHub: () => Promise<IDevHubOrgDetail | undefined> = async () => CHOSEN_DEV_HUB) => (
+        await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, chooseDevHub, PLAN_DATE)
+    ) as IScratchOrgPlan;
+
     describe('buildScratchOrgAlias', () => {
 
         it('is treecipe-<yyyyMMdd-HHmmss> in local time', () => {
@@ -111,14 +117,14 @@ describe('ScratchOrgService (#200)', () => {
 
     describe('resolveScratchOrgPlan', () => {
 
-        it('resolves every package directory, the definition file, the default Dev Hub, the alias and 7 days, and starts no process', async () => {
+        it('resolves every package directory, the definition file, the chosen Dev Hub, the alias and 7 days, and starts no process', async () => {
 
-            const scratchOrgPlan = await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE);
+            const scratchOrgPlan = await resolvePlan();
 
             expect(scratchOrgPlan.packageDirectoryPaths).toEqual(['force-app', 'unpackaged']);
             expect(scratchOrgPlan.definitionFilePath).toBe(path.join(path.resolve(workspaceRoot), 'config', 'project-scratch-def.json'));
             expect(scratchOrgPlan.definitionFileRelativePath).toBe(path.join('config', 'project-scratch-def.json'));
-            expect(scratchOrgPlan.devHub).toEqual({ targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub', configSource: 'project' });
+            expect(scratchOrgPlan.devHub).toEqual(CHOSEN_DEV_HUB);
             expect(scratchOrgPlan.alias).toBe('treecipe-20261010-142233');
             expect(scratchOrgPlan.durationDays).toBe(7);
             expect(scratchOrgPlan.definitionSummary).toEqual({ edition: 'Developer', adminEmail: undefined, username: undefined });
@@ -127,13 +133,34 @@ describe('ScratchOrgService (#200)', () => {
 
         });
 
-        it('refuses with no default Dev Hub, naming "sf config set target-dev-hub"', async () => {
+        it('uses the Dev Hub the reader chose, whatever the CLI has set as its default (#243)', async () => {
 
             fs.rmSync(path.join(workspaceRoot, '.sf'), { recursive: true });
+            const otherDevHub: IDevHubOrgDetail = { targetOrgIdentifier: 'otherHub', username: 'other-hub@example.com', alias: 'otherHub' };
 
-            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE)).rejects.toThrow(NO_DEFAULT_DEV_HUB_MESSAGE);
-            expect(NO_DEFAULT_DEV_HUB_MESSAGE).toContain('sf config set target-dev-hub=<alias>');
+            expect(( await resolvePlan(async () => otherDevHub) ).devHub).toEqual(otherDevHub);
             expect(execFile).not.toHaveBeenCalled();
+
+        });
+
+        it('is no plan when no Dev Hub is chosen, and starts no process (#243)', async () => {
+
+            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, async () => undefined, PLAN_DATE)).resolves.toBeUndefined();
+            expect(execFile).not.toHaveBeenCalled();
+
+        });
+
+        it('checks the project before asking for a Dev Hub, so an undeployable project opens no picker (#243)', async () => {
+
+            fs.rmSync(path.join(workspaceRoot, 'config', 'project-scratch-def.json'));
+            const chooseDevHub = jest.fn(async () => CHOSEN_DEV_HUB);
+
+            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, chooseDevHub, PLAN_DATE)).rejects.toThrow('No scratch org definition file found');
+            expect(chooseDevHub).not.toHaveBeenCalled();
+
+            fs.rmSync(path.join(workspaceRoot, 'sfdx-project.json'));
+            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, chooseDevHub, PLAN_DATE)).rejects.toThrow('No "sfdx-project.json" found at');
+            expect(chooseDevHub).not.toHaveBeenCalled();
 
         });
 
@@ -141,7 +168,7 @@ describe('ScratchOrgService (#200)', () => {
 
             fs.rmSync(path.join(workspaceRoot, 'config', 'project-scratch-def.json'));
 
-            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE))
+            await expect(resolvePlan())
                 .rejects.toThrow(`No scratch org definition file found at "${path.join(path.resolve(workspaceRoot), 'config', 'project-scratch-def.json')}"`);
 
         });
@@ -154,7 +181,7 @@ describe('ScratchOrgService (#200)', () => {
             fs.rmSync(path.join(workspaceRoot, 'config'), { recursive: true });
             fs.symlinkSync(outsideConfigPath, path.join(workspaceRoot, 'config'), 'dir');
 
-            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE)).rejects.toThrow('resolves outside this workspace');
+            await expect(resolvePlan()).rejects.toThrow('resolves outside this workspace');
 
         });
 
@@ -163,7 +190,7 @@ describe('ScratchOrgService (#200)', () => {
             fs.rmSync(path.join(workspaceRoot, 'sfdx-project.json'));
             fs.rmSync(path.join(workspaceRoot, '.sf'), { recursive: true });
 
-            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE)).rejects.toThrow('No "sfdx-project.json" found at');
+            await expect(resolvePlan()).rejects.toThrow('No "sfdx-project.json" found at');
 
         });
 
@@ -171,7 +198,7 @@ describe('ScratchOrgService (#200)', () => {
 
             fs.writeFileSync(path.join(workspaceRoot, 'sfdx-project.json'), '{ "packageDirectories": [');
 
-            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE)).rejects.toThrow('as JSON');
+            await expect(resolvePlan()).rejects.toThrow('as JSON');
 
         });
 
@@ -191,14 +218,14 @@ describe('ScratchOrgService (#200)', () => {
             hasFileOrEnvironmentReplacements: false
         };
 
-        it('creates with the definition file relative to the workspace, the generated alias, 7 days and the default Dev Hub', () => {
+        it('creates with the definition file relative to the workspace, the generated alias, 7 days and the chosen Dev Hub by USERNAME (#243)', () => {
 
             expect(ScratchOrgService.buildScratchOrgCreateArguments(PLAN)).toEqual([
                 'org', 'create', 'scratch',
                 '--definition-file', 'config/project-scratch-def.json',
                 '--alias', 'treecipe-20261010-142233',
                 '--duration-days', '7',
-                '--target-dev-hub', 'devhub',
+                '--target-dev-hub', 'hub@example.com',
                 '--json'
             ]);
 
@@ -216,7 +243,7 @@ describe('ScratchOrgService (#200)', () => {
 
         it('refuses an identifier that would read as a flag', () => {
 
-            expect(() => ScratchOrgService.buildScratchOrgCreateArguments({ ...PLAN, devHub: { ...PLAN.devHub, targetOrgIdentifier: '--json' } })).toThrow('is not a usable Salesforce org alias or username');
+            expect(() => ScratchOrgService.buildScratchOrgCreateArguments({ ...PLAN, devHub: { ...PLAN.devHub, username: '--json' } })).toThrow('is not a usable Salesforce org alias or username');
 
         });
 
@@ -392,7 +419,7 @@ describe('ScratchOrgService (#200)', () => {
                 return { kill: jest.fn() };
             });
 
-            const scratchOrgPlan = await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE);
+            const scratchOrgPlan = await resolvePlan();
             const outcome = await ScratchOrgService.runScratchOrgSetup(scratchOrgPlan, { onPhase: jest.fn(), registerCancellation: jest.fn(), isCancellationRequested: () => false, now: () => PLAN_DATE });
 
             expect(outcome).toEqual({ kind: 'deployFailed', username: NEW_SCRATCH_USERNAME, componentFailureCount: 0, failureMessage: ScratchOrgService.buildCliRequiredMessage(), outputFilePath: undefined });
@@ -446,7 +473,7 @@ describe('ScratchOrgService (#200)', () => {
         };
 
         const runSetup = async (cancellation: { requestedAtPhase?: ScratchOrgSetupPhase } = {}) => {
-            const scratchOrgPlan = await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE);
+            const scratchOrgPlan = await resolvePlan();
             const reportedPhases: ScratchOrgSetupPhase[] = [];
             let isCancelled = false;
             let killCurrentProcess: () => void;
@@ -582,7 +609,7 @@ describe('ScratchOrgService (#200)', () => {
                 return { kill: jest.fn() };
             });
 
-            const scratchOrgPlan = await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE);
+            const scratchOrgPlan = await resolvePlan();
             const outcome = await ScratchOrgService.runScratchOrgSetup(scratchOrgPlan, { onPhase: jest.fn(), registerCancellation: jest.fn(), isCancellationRequested: () => isCancelled, now: () => PLAN_DATE });
 
             expect(outcome).toEqual({ kind: 'deployCancelled', username: NEW_SCRATCH_USERNAME, isDeployStarted: false });
@@ -601,7 +628,7 @@ describe('ScratchOrgService (#200)', () => {
                 return { pid: 9, kill: jest.fn() };
             });
 
-            const scratchOrgPlan = await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE);
+            const scratchOrgPlan = await resolvePlan();
             const outcome = await ScratchOrgService.runScratchOrgSetup(scratchOrgPlan, { onPhase: jest.fn(), registerCancellation: jest.fn(), isCancellationRequested: () => false, now: () => PLAN_DATE });
 
             expect(outcome).toEqual({ kind: 'deployUnconfirmed', username: NEW_SCRATCH_USERNAME });
@@ -662,7 +689,7 @@ describe('ScratchOrgService (#200)', () => {
 
             fs.rmSync(path.join(workspaceRoot, 'unpackaged'), { recursive: true });
 
-            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE)).rejects.toThrow('The package directory "unpackaged"');
+            await expect(resolvePlan()).rejects.toThrow('The package directory "unpackaged"');
 
         });
 
@@ -671,7 +698,7 @@ describe('ScratchOrgService (#200)', () => {
             const sfdxProjectFilePath = path.join(workspaceRoot, 'sfdx-project.json');
             fs.writeFileSync(sfdxProjectFilePath, JSON.stringify({ ...JSON.parse(fs.readFileSync(sfdxProjectFilePath, 'utf-8')), replacements: [{ filename: 'x', stringToReplace: 'y', replaceWithEnv: 'HOME' }] }));
 
-            expect(( await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, PLAN_DATE) ).hasFileOrEnvironmentReplacements).toBe(true);
+            expect(( await resolvePlan() ).hasFileOrEnvironmentReplacements).toBe(true);
 
         });
 
