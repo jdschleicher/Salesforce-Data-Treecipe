@@ -58,6 +58,8 @@ export interface INormalizedOrgField {
     isCreateable: boolean;
     isCalculated: boolean;
     isDefaultedOnCreate: boolean;
+    // THE DESCRIBE'S nameField: THE ONE FIELD A RECORD IS NAMED BY (Name, CaseNumber, ...)
+    isNameField: boolean;
 }
 
 // isCreateable IS THE OBJECT'S OWN "createable" -- WHETHER THE USER CAN INSERT RECORDS OF IT AT ALL
@@ -209,6 +211,24 @@ export const ORG_PARENT_RECORD_ID_LIMIT = 2000;
 
 const SALESFORCE_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
 
+// HOW MANY MATCHES A PARENT SEARCH LISTS (#254); ONE MORE IS ASKED FOR, SO THE PICKER CAN SAY THERE ARE MORE
+export const ORG_PARENT_SEARCH_RESULT_LIMIT = 200;
+
+/*
+    One parent record a search found: its Id, type-checked, and its name-field value as text ('' when
+    the record has none, which a quick pick still lists by its Id).
+*/
+export interface IParentRecordMatch {
+    recordId: string;
+    recordName: string;
+}
+
+export interface IParentRecordSearchResult {
+    matches: IParentRecordMatch[];
+    // TRUE WHEN MORE THAN ORG_PARENT_SEARCH_RESULT_LIMIT RECORDS MATCHED; ONLY THE FIRST ONES ARE LISTED
+    hasMoreMatches: boolean;
+}
+
 export const ORG_ORGANIZATION_QUERY = 'SELECT IsSandbox, OrganizationType FROM Organization';
 
 // THE CLI CONFIG KEY, ITS ENVIRONMENT VARIABLE, AND WHAT A READER WITH NONE SET IS TOLD TO RUN
@@ -273,6 +293,102 @@ export class SalesforceOrgService {
                 .map(queryRecord => this.asRecord(queryRecord)?.Id)
                 .filter((recordId): recordId is string => typeof recordId === 'string' && SALESFORCE_RECORD_ID_PATTERN.test(recordId))
             : [];
+
+    }
+
+    /*
+        The name field a describe marks (nameField), or undefined when it marks none or more than one:
+        a parent search has exactly one field to search, or it offers Random only.
+    */
+    static findNameFieldApiName(describe: Pick<INormalizedOrgObjectDescribe, 'fields'>): string | undefined {
+
+        const nameFields = describe.fields.filter(describeField => describeField.isNameField === true);
+
+        return nameFields.length === 1 && this.isUsableObjectApiName(nameFields[0].fieldApiName)
+            ? nameFields[0].fieldApiName
+            : undefined;
+
+    }
+
+    /*
+        The search text as the inside of a SOQL LIKE literal that matches it LITERALLY, between the
+        two % that make it a "contains". A backslash and a quote are escaped for the string literal,
+        and % and _ for LIKE, so none of them can end the literal or widen the match. A control
+        character has no place in a name a reader types, and a pasted one could be a line break, so
+        text carrying one is refused (undefined) rather than sent in any form.
+    */
+    static escapeSoqlLikeSearchText(searchText: string): string | undefined {
+
+        if ( typeof searchText !== 'string' || /[\p{Cc}\u2028\u2029]/u.test(searchText) ) {
+            return undefined;
+        }
+
+        return searchText.replace(/[\\'"%_]/g, matchedCharacter => `\\${matchedCharacter}`);
+
+    }
+
+    /*
+        The SOQL a parent search sends, or undefined when it cannot be built safely: the object and
+        name-field names must be api names, and the search text must escape. Names are held to the
+        same rule a describe is, because both are joined into the query as they are. No COUNT():
+        the query asks for records, one more than the picker lists.
+    */
+    static buildParentSearchQuery(objectApiName: string, nameFieldApiName: string, searchText: string): string | undefined {
+
+        if ( !this.isUsableObjectApiName(objectApiName) || !this.isUsableObjectApiName(nameFieldApiName) ) {
+            return undefined;
+        }
+
+        const escapedSearchText = this.escapeSoqlLikeSearchText(searchText);
+
+        if ( escapedSearchText === undefined ) {
+            return undefined;
+        }
+
+        return `SELECT Id, ${nameFieldApiName} FROM ${objectApiName} WHERE ${nameFieldApiName} LIKE '%${escapedSearchText}%' ORDER BY ${nameFieldApiName} LIMIT ${ORG_PARENT_SEARCH_RESULT_LIMIT + 1}`;
+
+    }
+
+    /*
+        The parent records whose name field contains the search text. Every Id is type-checked as a
+        Salesforce Id and a record without one is dropped; the name is kept only as a string. Throws
+        when the query cannot be built or the org refuses it, so the picker can say why.
+    */
+    static async searchParentRecords(querySource: IOrgQuerySource,
+                                        objectApiName: string,
+                                        nameFieldApiName: string,
+                                        searchText: string): Promise<IParentRecordSearchResult> {
+
+        const searchQuery = this.buildParentSearchQuery(objectApiName, nameFieldApiName, searchText);
+
+        if ( !searchQuery ) {
+            throw new Error('The search could not be sent: it names something that is not an api name, or the text carries a control character.');
+        }
+
+        const queryRecords = this.asRecord(await querySource.query(searchQuery))?.records;
+        const matches: IParentRecordMatch[] = [];
+        const seenRecordIds = new Set<string>();
+
+        ( Array.isArray(queryRecords) ? queryRecords : [] ).forEach(queryRecord => {
+            const recordFields = this.asRecord(queryRecord);
+            const recordId = recordFields?.Id;
+            if ( typeof recordId !== 'string' || !SALESFORCE_RECORD_ID_PATTERN.test(recordId) || seenRecordIds.has(recordId) ) {
+                return;
+            }
+            seenRecordIds.add(recordId);
+            matches.push({ recordId: recordId, recordName: this.asString(recordFields[nameFieldApiName]) });
+        });
+
+        return {
+            matches: matches.slice(0, ORG_PARENT_SEARCH_RESULT_LIMIT),
+            hasMoreMatches: matches.length > ORG_PARENT_SEARCH_RESULT_LIMIT
+        };
+
+    }
+
+    static isSalesforceRecordId(candidateId: unknown): candidateId is string {
+
+        return typeof candidateId === 'string' && SALESFORCE_RECORD_ID_PATTERN.test(candidateId);
 
     }
 
@@ -1095,7 +1211,8 @@ export class SalesforceOrgService {
                 isNillable: fieldRecord.nillable === true,
                 isCreateable: fieldRecord.createable === true,
                 isCalculated: fieldRecord.calculated === true,
-                isDefaultedOnCreate: fieldRecord.defaultedOnCreate === true
+                isDefaultedOnCreate: fieldRecord.defaultedOnCreate === true,
+                isNameField: fieldRecord.nameField === true
             });
 
         });

@@ -92,10 +92,36 @@ export interface IRecipeFieldCheck {
     notCreateableFieldApiNames: string[];
 }
 
+/*
+    roundRobin (#254) gives record i the parent at i mod K, in the order the reader picked them;
+    random, the default, picks one per record as Create always has.
+*/
 export interface IRequiredLookupParentIds {
     fieldApiName: string;
     parentRecordIds: string[];
+    assignment?: 'random' | 'roundRobin';
 }
+
+/*
+    A lookup of the cut recipe block the Create asks about (#254): it points at exactly one object,
+    so there is one object to search. isRequired decides whether "Leave blank" is offered.
+*/
+export interface IPickableLookup {
+    fieldApiName: string;
+    parentObjectApiName: string;
+    isRequired: boolean;
+}
+
+// WHAT THE READER CHOSE FOR ONE LOOKUP: NOTHING HERE IS A DEFAULT, EACH IS SOMETHING THEY PICKED
+export type LookupParentChoice =
+    | { kind: 'random' }
+    | { kind: 'blank' }
+    | { kind: 'chosen'; parentRecordIds: string[] };
+
+// AS datasetSource.json RECORDS IT: "random", "blank", OR THE CHOSEN Ids IN ORDER
+export type RecordedLookupParentChoice = 'random' | 'blank' | string[];
+
+const SALESFORCE_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
 
 export class RecipeCockpitRecordCreation {
 
@@ -146,6 +172,63 @@ export class RecipeCockpitRecordCreation {
         return describe.fields
             .filter(describeField => this.isLookupField(describeField) && !requiredFieldApiNames.has(describeField.fieldApiName))
             .map(describeField => describeField.fieldApiName);
+
+    }
+
+    /*
+        The lookups of the cut block the reader is asked about, in the block's order: each is a lookup
+        the describe knows, points at exactly ONE object and can be written. A polymorphic one is
+        left as it was (blank when optional; a required one already blocks Create), and so is any
+        lookup the block does not carry -- a required one of those still gets a random parent.
+    */
+    static findPickableLookups(describe: ICreateObjectDescribe, recipeFieldApiNames: readonly string[]): IPickableLookup[] {
+
+        const requiredFieldApiNames = new Set(this.findRequiredLookups(describe).map(requiredLookup => requiredLookup.fieldApiName));
+        const describeLookupsByLowerName = new Map(describe.fields
+            .filter(describeField => this.isLookupField(describeField))
+            .map(describeField => [describeField.fieldApiName.toLowerCase(), describeField]));
+        const pickedFieldApiNames = new Set<string>();
+
+        return recipeFieldApiNames.flatMap(recipeFieldApiName => {
+
+            const describeField = describeLookupsByLowerName.get(recipeFieldApiName.toLowerCase());
+
+            if ( !describeField
+                    || describeField.referenceTo.length !== 1
+                    || describeField.isCreateable !== true
+                    || pickedFieldApiNames.has(describeField.fieldApiName) ) {
+                return [];
+            }
+
+            pickedFieldApiNames.add(describeField.fieldApiName);
+
+            return [{
+                fieldApiName: describeField.fieldApiName,
+                parentObjectApiName: describeField.referenceTo[0],
+                isRequired: requiredFieldApiNames.has(describeField.fieldApiName)
+            }];
+
+        });
+
+    }
+
+    /*
+        Whether the Ids a picker handed back may be written: at least one, each a Salesforce Id, and
+        each one the picker's OWN query returned. The picker only lists what its search answered, so
+        this is the second time the same rule is held, at the point the Id becomes a record's value.
+    */
+    static areChosenParentIdsReturnedBySearch(chosenParentRecordIds: readonly string[], searchReturnedRecordIds: ReadonlySet<string>): boolean {
+
+        return chosenParentRecordIds.length > 0
+                && chosenParentRecordIds.every(chosenParentRecordId => typeof chosenParentRecordId === 'string'
+                                                                        && SALESFORCE_RECORD_ID_PATTERN.test(chosenParentRecordId)
+                                                                        && searchReturnedRecordIds.has(chosenParentRecordId));
+
+    }
+
+    static toRecordedLookupParentChoice(lookupParentChoice: LookupParentChoice): RecordedLookupParentChoice {
+
+        return lookupParentChoice.kind === 'chosen' ? [...lookupParentChoice.parentRecordIds] : lookupParentChoice.kind;
 
     }
 
@@ -206,17 +289,18 @@ export class RecipeCockpitRecordCreation {
     }
 
     /*
-        The generated records with every lookup replaced: each required one gets a random existing Id
-        of its parent, and every other lookup is removed, so it is left blank rather than sent as
-        the TODO or nickname the recipe held. pickIndex is the randomness, handed in so a test can
-        name the Id it expects. The records are copied; the ones handed in are not changed.
+        The generated records with every lookup replaced: each assigned one gets an existing Id of its
+        parent -- a random one, or with roundRobin the one at the record's index mod the parents
+        chosen -- and every other lookup is removed, so it is left blank rather than sent as the TODO
+        or nickname the recipe held. pickIndex is the randomness, handed in so a test can name the
+        Id it expects. The records are copied; the ones handed in are not changed.
     */
     static assignLookupIds(records: unknown[],
                             requiredLookupParentIds: IRequiredLookupParentIds[],
                             clearedFieldApiNames: string[],
                             pickIndex: (choiceCount: number) => number): unknown[] {
 
-        return records.map(record => {
+        return records.map((record, recordIndex) => {
 
             if ( record === null || typeof record !== 'object' || Array.isArray(record) ) {
                 return record;
@@ -233,6 +317,10 @@ export class RecipeCockpitRecordCreation {
 
             requiredLookupParentIds.forEach(requiredLookup => {
                 const parentRecordIds = requiredLookup.parentRecordIds;
+                if ( requiredLookup.assignment === 'roundRobin' ) {
+                    assignedRecord[requiredLookup.fieldApiName] = parentRecordIds[recordIndex % parentRecordIds.length];
+                    return;
+                }
                 const chosenIndex = Math.min(Math.max(Math.floor(pickIndex(parentRecordIds.length)), 0), parentRecordIds.length - 1);
                 assignedRecord[requiredLookup.fieldApiName] = parentRecordIds[chosenIndex];
             });

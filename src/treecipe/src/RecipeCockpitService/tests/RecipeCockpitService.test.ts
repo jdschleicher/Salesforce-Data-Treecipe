@@ -92,6 +92,7 @@ function buildOrgField(fieldApiName: string, fieldType: string, overrides: Parti
         isCreateable: true,
         isCalculated: false,
         isDefaultedOnCreate: false,
+        isNameField: false,
         ...overrides
     };
 

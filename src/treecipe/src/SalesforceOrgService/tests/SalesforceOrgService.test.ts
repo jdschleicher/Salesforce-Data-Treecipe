@@ -33,7 +33,8 @@ import {
     OrgConnectionStatusUnavailableError,
     SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS,
     NO_AUTHORIZED_DEV_HUB_MESSAGE,
-    TARGET_DEV_HUB_ENVIRONMENT_VARIABLE
+    TARGET_DEV_HUB_ENVIRONMENT_VARIABLE,
+    ORG_PARENT_SEARCH_RESULT_LIMIT
 } from '../SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
@@ -117,7 +118,8 @@ describe('SalesforceOrgService', () => {
                 isNillable: true,
                 isCreateable: true,
                 isCalculated: false,
-                isDefaultedOnCreate: false
+                isDefaultedOnCreate: false,
+                isNameField: false
             });
 
             expect(normalizedDescribe.fields.find(field => field.fieldApiName === 'Region__c').picklistValues).toEqual([
@@ -188,7 +190,8 @@ describe('SalesforceOrgService', () => {
                     isNillable: false,
                     isCreateable: false,
                     isCalculated: false,
-                    isDefaultedOnCreate: false
+                    isDefaultedOnCreate: false,
+                    isNameField: false
                 }]
             });
 
@@ -946,6 +949,130 @@ describe('SalesforceOrgService', () => {
 
             expect(normalizedDescribe.isCreateable).toBe(true);
             expect(normalizedDescribe.fields[0].isDefaultedOnCreate).toBe(true);
+
+        });
+
+    });
+
+    describe('the parent search of a Create (#254)', () => {
+
+        const buildSearchField = (fieldApiName: string, isNameField: boolean) => SalesforceOrgService.normalizeDescribeResult('X', {
+            fields: [{ name: fieldApiName, type: 'string', nameField: isNameField }]
+        }).fields[0];
+
+        it('normalizes the describe\'s nameField, and anything but true is false', () => {
+
+            const normalizedDescribe = SalesforceOrgService.normalizeDescribeResult('Case', {
+                name: 'Case',
+                fields: [{ name: 'CaseNumber', type: 'string', nameField: true }, { name: 'Subject', type: 'string', nameField: 'true' }, { name: 'Id', type: 'id' }]
+            });
+
+            expect(normalizedDescribe.fields.map(describeField => describeField.isNameField)).toEqual([true, false, false]);
+            expect(SalesforceOrgService.findNameFieldApiName(normalizedDescribe)).toBe('CaseNumber');
+
+        });
+
+        it('finds no name field when the describe marks none, more than one, or one that is not an api name', () => {
+
+            expect(SalesforceOrgService.findNameFieldApiName({ fields: [buildSearchField('Name', false)] })).toBeUndefined();
+            expect(SalesforceOrgService.findNameFieldApiName({ fields: [buildSearchField('Name', true), buildSearchField('Other', true)] })).toBeUndefined();
+            expect(SalesforceOrgService.findNameFieldApiName({ fields: [buildSearchField('Name) FROM User --', true)] })).toBeUndefined();
+
+        });
+
+        it('builds a "contains" query on the name field, one more than the limit, with no COUNT()', () => {
+
+            expect(SalesforceOrgService.buildParentSearchQuery('Account', 'Name', 'Acme'))
+                .toBe(`SELECT Id, Name FROM Account WHERE Name LIKE '%Acme%' ORDER BY Name LIMIT ${ORG_PARENT_SEARCH_RESULT_LIMIT + 1}`);
+            expect(SalesforceOrgService.buildParentSearchQuery('Account', 'Name', 'Acme')).not.toMatch(/COUNT\(/i);
+
+        });
+
+        it.each([
+            ['a quote', 'O\'Brien', 'O\\\'Brien'],
+            ['a quote that would end the literal', '\' OR Name != \'', '\\\' OR Name != \\\''],
+            ['a backslash before a quote', '\\\' OR Id != null --', '\\\\\\\' OR Id != null --'],
+            ['a lone backslash', 'back\\slash', 'back\\\\slash'],
+            ['a percent sign', '100%', '100\\%'],
+            ['an underscore', 'a_b', 'a\\_b'],
+            ['a double quote', 'say "hi"', 'say \\"hi\\"'],
+            ['every one together', '%_\'\\', '\\%\\_\\\'\\\\']
+        ])('matches %s literally', (_label, searchText, expectedEscapedText) => {
+
+            const searchQuery = SalesforceOrgService.buildParentSearchQuery('Account', 'Name', searchText) as string;
+
+            expect(SalesforceOrgService.escapeSoqlLikeSearchText(searchText)).toBe(expectedEscapedText);
+            expect(searchQuery).toBe(`SELECT Id, Name FROM Account WHERE Name LIKE '%${expectedEscapedText}%' ORDER BY Name LIMIT ${ORG_PARENT_SEARCH_RESULT_LIMIT + 1}`);
+
+            // THE LITERAL ENDS ONLY AT THE CLOSING '%': EVERY OTHER QUOTE INSIDE IT IS ESCAPED BY AN ODD RUN OF BACKSLASHES
+            const literalBody = searchQuery.slice(searchQuery.indexOf('\'%') + 2, searchQuery.lastIndexOf('%\''));
+            const unescapedQuotes = [...literalBody.matchAll(/(\\*)'/g)].filter(quoteMatch => quoteMatch[1].length % 2 === 0);
+            expect(unescapedQuotes).toEqual([]);
+            const unescapedWildcards = [...literalBody.matchAll(/(\\*)[%_]/g)].filter(wildcardMatch => wildcardMatch[1].length % 2 === 0);
+            expect(unescapedWildcards).toEqual([]);
+
+        });
+
+        it.each([
+            ['a line feed', 'Acme\nCorp'],
+            ['a carriage return', 'Acme\rCorp'],
+            ['a NUL', 'Acme\u0000'],
+            ['U+0085', 'Acme\u0085'],
+            ['U+2028', 'Acme '],
+            ['U+2029', 'Acme ']
+        ])('refuses search text carrying %s', (_label, searchText) => {
+
+            expect(SalesforceOrgService.escapeSoqlLikeSearchText(searchText)).toBeUndefined();
+            expect(SalesforceOrgService.buildParentSearchQuery('Account', 'Name', searchText)).toBeUndefined();
+
+        });
+
+        it('refuses an object or name field that is not an api name before building anything', () => {
+
+            expect(SalesforceOrgService.buildParentSearchQuery('Account WHERE Id != null', 'Name', 'a')).toBeUndefined();
+            expect(SalesforceOrgService.buildParentSearchQuery('Account', 'Name, (SELECT Id FROM Contacts)', 'a')).toBeUndefined();
+            expect(SalesforceOrgService.buildParentSearchQuery('', 'Name', 'a')).toBeUndefined();
+
+        });
+
+        it('keeps only Id-shaped, distinct Ids with their names, and says when more matched than are listed', async () => {
+
+            const overflowingRecords = Array.from({ length: ORG_PARENT_SEARCH_RESULT_LIMIT + 1 }, (_record, recordIndex) => ({
+                Id: `001${String(recordIndex).padStart(15, '0')}`, Name: `Acme ${recordIndex}`
+            }));
+            const querySource: IOrgQuerySource = { query: jest.fn()
+                .mockResolvedValueOnce({ records: [
+                    { Id: '001000000000001AAA', Name: 'Acme' }, { Id: '001000000000001AAA', Name: 'Acme again' },
+                    { Id: 'not an id!', Name: 'Forged' }, { Id: 7 }, { Name: 'No Id' }, null, { Id: '001000000000002AAA', Name: 42 }
+                ] })
+                .mockResolvedValueOnce({ records: overflowingRecords }) };
+
+            expect(await SalesforceOrgService.searchParentRecords(querySource, 'Account', 'Name', 'Acme')).toEqual({
+                matches: [{ recordId: '001000000000001AAA', recordName: 'Acme' }, { recordId: '001000000000002AAA', recordName: '' }],
+                hasMoreMatches: false
+            });
+
+            const overflowingResult = await SalesforceOrgService.searchParentRecords(querySource, 'Account', 'Name', 'Acme');
+            expect(overflowingResult.matches).toHaveLength(ORG_PARENT_SEARCH_RESULT_LIMIT);
+            expect(overflowingResult.hasMoreMatches).toBe(true);
+
+        });
+
+        it('throws without querying when the search cannot be built', async () => {
+
+            const querySource: IOrgQuerySource = { query: jest.fn() };
+
+            await expect(SalesforceOrgService.searchParentRecords(querySource, 'Account', 'Name', 'a\nb')).rejects.toThrow('could not be sent');
+            expect(querySource.query).not.toHaveBeenCalled();
+
+        });
+
+        it('type-checks a Salesforce Id', () => {
+
+            expect(SalesforceOrgService.isSalesforceRecordId('001000000000001AAA')).toBe(true);
+            expect(SalesforceOrgService.isSalesforceRecordId('001000000000001')).toBe(true);
+            expect(SalesforceOrgService.isSalesforceRecordId('001000000000001AA')).toBe(false);
+            expect(SalesforceOrgService.isSalesforceRecordId(1)).toBe(false);
 
         });
 
