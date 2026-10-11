@@ -93,7 +93,7 @@ export interface IRecipeFieldCheck {
 }
 
 /*
-    roundRobin (#254) gives record i the parent at i mod K, in the order the reader picked them;
+    roundRobin (#254) gives record i the parent at i mod K, in the order the picker listed them;
     random, the default, picks one per record as Create always has.
 */
 export interface IRequiredLookupParentIds {

@@ -1067,15 +1067,6 @@ describe('SalesforceOrgService', () => {
 
         });
 
-        it('type-checks a Salesforce Id', () => {
-
-            expect(SalesforceOrgService.isSalesforceRecordId('001000000000001AAA')).toBe(true);
-            expect(SalesforceOrgService.isSalesforceRecordId('001000000000001')).toBe(true);
-            expect(SalesforceOrgService.isSalesforceRecordId('001000000000001AA')).toBe(false);
-            expect(SalesforceOrgService.isSalesforceRecordId(1)).toBe(false);
-
-        });
-
     });
 
     describe('which orgs Data-by-Org may connect to', () => {

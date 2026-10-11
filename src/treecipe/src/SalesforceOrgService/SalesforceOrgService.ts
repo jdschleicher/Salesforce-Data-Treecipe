@@ -386,12 +386,6 @@ export class SalesforceOrgService {
 
     }
 
-    static isSalesforceRecordId(candidateId: unknown): candidateId is string {
-
-        return typeof candidateId === 'string' && SALESFORCE_RECORD_ID_PATTERN.test(candidateId);
-
-    }
-
     /*
         The org's IsSandbox and OrganizationType, or undefined when the query failed or answered
         with anything else. Never throws: an org whose type cannot be read is labelled "type unknown"

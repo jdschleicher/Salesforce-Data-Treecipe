@@ -55,7 +55,7 @@ import {
 } from './RecipeCockpitTreeHistory';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { IScratchOrgPlan, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
-import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
+import { PARENT_PICKER_RANDOM_LABEL, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 
 // SHARED WITH THE TESTS SO THE PANEL'S VIEW TYPE CANNOT DRIFT FROM WHAT IS ASSERTED
 export const RECIPE_COCKPIT_VIEW_TYPE = 'treecipe.recipeCockpit';
@@ -4585,11 +4585,15 @@ export class RecipeCockpitService {
         }
 
         // ONE PICKER PER LOOKUP OF THE CUT BLOCK (#254), BEFORE ANYTHING IS WRITTEN; ANY CANCEL ENDS THE CREATE HERE
-        const lookupParentChoices = await this.promptForLookupParentChoices(orgDetail.username, connection, querySource, pickableLookups);
+        const lookupParentPrompt = await this.promptForLookupParentChoices(orgDetail.username, connection, querySource, pickableLookups);
 
-        if ( !lookupParentChoices ) {
-            return false;
+        // THE READER CONFIRMED A CREATE, SO ENDING IT HERE IS SAID -- ENTER WITH ONLY A HIGHLIGHTED ROW CHECKS NOTHING
+        if ( 'cancelledLookup' in lookupParentPrompt ) {
+            const { fieldApiName, parentObjectApiName } = lookupParentPrompt.cancelledLookup;
+            return refuse(`No ${objectLabel} records were created: no ${RecipeYamlScalar.escapeForNotification(parentObjectApiName)} parent was chosen for ${RecipeYamlScalar.escapeForNotification(fieldApiName)}. Check ${PARENT_PICKER_RANDOM_LABEL} or the records to use, then accept.`);
         }
+
+        const lookupParentChoices = lookupParentPrompt.choices;
 
         // ASKED AGAIN: THE PICKERS CAN STAY OPEN AS LONG AS THE MODAL COULD
         const isStillSameSelection = this.recipeCockpitPanel === cockpitPanel
@@ -4716,12 +4720,13 @@ export class RecipeCockpitService {
         One picker per lookup of the cut block (#254), in the block's order, each answered before the
         next opens. The search runs on the host against the parent's name field from its describe,
         and every Id a search returns is remembered PER LOOKUP, so the Ids written can be checked
-        against what that lookup's own searches answered. undefined is a cancel of any one picker.
+        against what that lookup's own searches answered. A cancel of any one picker names that lookup
+        and opens no later picker.
     */
     private static async promptForLookupParentChoices(orgUsername: string,
                                                         connection: Connection,
                                                         querySource: IOrgQuerySource,
-                                                        pickableLookups: IPickableLookup[]): Promise<Map<string, ILookupParentChoiceWithSearch> | undefined> {
+                                                        pickableLookups: IPickableLookup[]): Promise<{ choices: Map<string, ILookupParentChoiceWithSearch> } | { cancelledLookup: IPickableLookup }> {
 
         const choicesByFieldApiName = new Map<string, ILookupParentChoiceWithSearch>();
 
@@ -4750,7 +4755,7 @@ export class RecipeCockpitService {
             });
 
             if ( !pickerAnswer || ( pickerAnswer.kind === 'blank' && pickableLookup.isRequired ) ) {
-                return undefined;
+                return { cancelledLookup: pickableLookup };
             }
 
             const choice: LookupParentChoice = pickerAnswer.kind === 'chosen'
@@ -4761,7 +4766,7 @@ export class RecipeCockpitService {
 
         }
 
-        return choicesByFieldApiName;
+        return { choices: choicesByFieldApiName };
 
     }
 

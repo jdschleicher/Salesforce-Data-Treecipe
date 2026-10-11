@@ -963,7 +963,7 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
                 expect(connection.insertedBatches).toEqual([]);
                 expect(datasetFolderNames()).toEqual([]);
                 expect(snowfakeryCalls).toEqual([]);
-                expect(showWarningMessageSpy).not.toHaveBeenCalled();
+                expect(showWarningMessageSpy).toHaveBeenCalledWith('No Contact records were created: no Account parent was chosen for AccountId. Check Random parent or the records to use, then accept.');
                 expect(postedNamed('createState').at(-1).isRunning).toBe(false);
 
             });

@@ -2130,6 +2130,82 @@ describe('VSCodeWorkspaceService.promptForParentRecords (#254)', () => {
 
     });
 
+    test('VS Code\'s check-all, which also checks Random and Leave blank, selects every listed record and neither default', async () => {
+
+        const fakeQuickPick = buildFakeParentQuickPick();
+        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(buildPickerOptions({ isRequired: false }));
+
+        fakeQuickPick.type('acme');
+        await flushSearch();
+        fakeQuickPick.check(...fakeQuickPick.items.filter((listedItem: any) => listedItem.parentPickerRole !== 'message'));
+
+        expect(fakeQuickPick.selectedItems.map((selectedItem: any) => selectedItem.label)).toEqual(['Acme East', 'Acme West']);
+
+        fakeQuickPick.accept();
+        expect(await pickerAnswer).toEqual({ kind: 'chosen', records: ACME_MATCHES });
+
+    });
+
+    test('checking Random cancels a search still waiting on its pause, so it cannot uncheck Random', async () => {
+
+        jest.useFakeTimers();
+
+        try {
+
+            const pickerOptions = buildPickerOptions({ searchDelayMilliseconds: undefined });
+            const fakeQuickPick = buildFakeParentQuickPick();
+            const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(pickerOptions);
+
+            fakeQuickPick.type('acme');
+            fakeQuickPick.check(fakeQuickPick.itemLabeled(PARENT_PICKER_RANDOM_LABEL));
+            jest.advanceTimersByTime(PARENT_PICKER_SEARCH_DELAY_MILLISECONDS);
+
+            expect(pickerOptions.search).not.toHaveBeenCalled();
+            fakeQuickPick.accept();
+            expect(await pickerAnswer).toEqual({ kind: 'random' });
+
+        } finally {
+            jest.useRealTimers();
+        }
+
+    });
+
+    test('drops a search answer once the text has changed again, even before the next search starts', async () => {
+
+        let answerFirstSearch: (searchResult: any) => void = () => undefined;
+        const pickerOptions = buildPickerOptions({ search: jest.fn().mockImplementationOnce(() => new Promise(resolveSearch => { answerFirstSearch = resolveSearch; })) });
+        const fakeQuickPick = buildFakeParentQuickPick();
+        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(pickerOptions);
+
+        fakeQuickPick.type('acm');
+        await flushSearch();
+        fakeQuickPick.type('');
+        answerFirstSearch({ matches: ACME_MATCHES, hasMoreMatches: false });
+        await flushSearch();
+
+        expect(fakeQuickPick.labels()).toEqual([PARENT_PICKER_RANDOM_LABEL]);
+        expect(fakeQuickPick.title).toBe('AccountId → Account (required)');
+
+        fakeQuickPick.hide();
+        await pickerAnswer;
+
+    });
+
+    test('says what a search answered in the title too, since a separator can be hidden while the input filters', async () => {
+
+        const fakeQuickPick = buildFakeParentQuickPick();
+        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(buildPickerOptions({ search: jest.fn().mockResolvedValue({ matches: [], hasMoreMatches: false }) }));
+
+        fakeQuickPick.type('zzz');
+        await flushSearch();
+
+        expect(fakeQuickPick.title).toBe('AccountId → Account (required) — No Account record matches "zzz"');
+
+        fakeQuickPick.hide();
+        await pickerAnswer;
+
+    });
+
     test('keeps records checked in an earlier search', async () => {
 
         const westOnly = { matches: [{ recordId: '001000000000021AAA', recordName: 'Westwind' }], hasMoreMatches: false };
