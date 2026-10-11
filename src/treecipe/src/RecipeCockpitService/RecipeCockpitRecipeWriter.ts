@@ -126,6 +126,26 @@ export interface IRecipeFilterRequest {
     levelsByObjectApiName?: ReadonlyMap<string, number>;
     excludedFieldApiNamesByObject?: ReadonlyMap<string, readonly string[]>;
     objectCountsByObject?: ReadonlyMap<string, number>;
+    fixedValuesByObject?: ReadonlyMap<string, ReadonlyMap<string, IRecipeFixedValue>>;
+}
+
+/*
+    A value the reader typed for a field (#262), written in place of its faker expression on every
+    kept occurrence of its object. kind decides the YAML scalar: text is always double-quoted, so
+    "Yes" or "007" stays the string it was typed as; a number and a boolean are written plain so
+    both backends generate the type the field holds.
+*/
+export type RecipeFixedValueKind = 'text' | 'number' | 'boolean';
+
+export interface IRecipeFixedValue {
+    value: string;
+    kind: RecipeFixedValueKind;
+}
+
+// ONE FIXED VALUE buildFilteredRecipe WROTE, AS IT READ BACK
+export interface IRecipeFilterFixedValue extends IRecipeFixedValue {
+    objectApiName: string;
+    fieldApiName: string;
 }
 
 // ONE COUNT buildFilteredRecipe WROTE, AS IT READ BACK
@@ -155,6 +175,7 @@ export type RecipeFilterResult =
         movedObjects: IRecipeFilterMove[];
         droppedFields: IRecipeFilterDroppedField[];
         appliedCounts: IRecipeFilterCount[];
+        appliedFixedValues: IRecipeFilterFixedValue[];
     }
     | { isFiltered: false; refusal: IRecipeWriterRefusal };
 
@@ -234,6 +255,8 @@ const FRIENDS_INDENT_STEP = 4;
 const API_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 const RECORD_TYPE_ID_FIELD_API_NAME = 'RecordTypeId';
 const RECORD_TYPE_SECTION_MARKER = '### TODO: -- RecordType Options -- ';
+const FIXED_VALUE_TEMPLATE_OPENERS = ['${', '{{', '{%', '<<', '<%'];
+const FIXED_NUMBER_PATTERN = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
 
 export class RecipeCockpitRecipeWriter {
 
@@ -972,6 +995,25 @@ export class RecipeCockpitRecipeWriter {
             countsByObject.set(objectApiName, recordCount);
         }
 
+        const fixedValuesByObject = new Map<string, Map<string, IRecipeFixedValue>>();
+        for ( const [objectApiName, fixedValuesByField] of filterRequest.fixedValuesByObject ?? new Map<string, ReadonlyMap<string, IRecipeFixedValue>>() ) {
+            if ( !API_NAME_PATTERN.test(objectApiName) ) {
+                return refuseFilter('invalid-object-api-name', `"${objectApiName}" is not an object api name.`, objectApiName);
+            }
+            for ( const [fieldApiName, fixedValue] of fixedValuesByField ) {
+                if ( !API_NAME_PATTERN.test(fieldApiName) ) {
+                    return { isFiltered: false, refusal: { reason: 'invalid-field-api-name', message: `"${fieldApiName}" is not a field api name.`, objectApiName: objectApiName, fieldApiName: fieldApiName } };
+                }
+                const valueRefusal = this.checkFixedValue(fixedValue);
+                if ( valueRefusal !== undefined ) {
+                    return { isFiltered: false, refusal: { reason: 'invalid-value', message: `The fixed value for ${objectApiName}.${fieldApiName} ${valueRefusal}`, objectApiName: objectApiName, fieldApiName: fieldApiName } };
+                }
+            }
+            if ( fixedValuesByField.size > 0 ) {
+                fixedValuesByObject.set(objectApiName, new Map(fixedValuesByField));
+            }
+        }
+
         const recipeLines = this.splitRecipeLines(recipeText);
         const { lines } = recipeLines;
         const scannedObjects = this.scanRecipeObjects(lines);
@@ -980,9 +1022,9 @@ export class RecipeCockpitRecipeWriter {
             return refuseFilter('object-not-found', 'The recipe has no "- object:" line, so it could not be filtered.');
         }
 
-        // NOTHING EXCLUDED AND NO COUNT SET IS THE RECIPE ITSELF, BYTE FOR BYTE
-        if ( excludedObjectApiNames.size === 0 && excludedFieldsByObject.size === 0 && countsByObject.size === 0 ) {
-            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [], appliedCounts: [] };
+        // NOTHING EXCLUDED, NO COUNT SET AND NO VALUE FIXED IS THE RECIPE ITSELF, BYTE FOR BYTE
+        if ( excludedObjectApiNames.size === 0 && excludedFieldsByObject.size === 0 && countsByObject.size === 0 && fixedValuesByObject.size === 0 ) {
+            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [], appliedCounts: [], appliedFixedValues: [] };
         }
 
         const friendIndex = this.buildScannedFriendIndex(scannedObjects);
@@ -1035,9 +1077,14 @@ export class RecipeCockpitRecipeWriter {
             }
         }
 
-        // NOTHING IN THIS RECIPE IS LEFT OUT OR RECOUNTED: THE RECIPE ITSELF, BYTE FOR BYTE
-        if ( droppedHeaderIndexes.size === 0 && !hasLookupToDrop && !hasFieldToDrop && countOverridesByLineIndex.size === 0 ) {
-            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [], appliedCounts: [] };
+        const hasFieldToFix = keptObjects.some(keptObject => {
+            const fixedValuesByField = fixedValuesByObject.get(keptObject.objectApiName);
+            return !!fixedValuesByField && keptObject.fields.some(scannedField => fixedValuesByField.has(scannedField.fieldApiName));
+        });
+
+        // NOTHING IN THIS RECIPE IS LEFT OUT, RECOUNTED OR FIXED: THE RECIPE ITSELF, BYTE FOR BYTE
+        if ( droppedHeaderIndexes.size === 0 && !hasLookupToDrop && !hasFieldToDrop && countOverridesByLineIndex.size === 0 && !hasFieldToFix ) {
+            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [], appliedCounts: [], appliedFixedValues: [] };
         }
 
         if ( keptObjects.length === 0 ) {
@@ -1113,11 +1160,14 @@ export class RecipeCockpitRecipeWriter {
         const droppedLookups: IRecipeFilterLookup[] = [];
         const droppedFieldKeys = new Set<string>();
         const droppedFields: IRecipeFilterDroppedField[] = [];
-        const removeFieldLines = (scannedField: IScannedField) => {
-            for ( let lineIndex = scannedField.startIndex; lineIndex < scannedField.endIndex; lineIndex++ ) {
+        const removeFieldLines = (scannedField: IScannedField, fromIndex = scannedField.startIndex) => {
+            for ( let lineIndex = fromIndex; lineIndex < scannedField.endIndex; lineIndex++ ) {
                 removedLineIndexes.add(lineIndex);
             }
         };
+        const fixedFieldsByLineIndex = new Map<number, { fieldApiName: string; fixedValue: IRecipeFixedValue }>();
+        const appliedFixedValueKeys = new Set<string>();
+        const appliedFixedValues: IRecipeFilterFixedValue[] = [];
 
         keptObjects.forEach(keptObject => {
 
@@ -1125,6 +1175,7 @@ export class RecipeCockpitRecipeWriter {
             const parentsByFieldApiName = new Map(lookupsOf(keptObject.objectApiName).map(lookup => [lookup.fieldApiName, lookup.parentObjectApiName]));
             const newParent = newParentsByMovedHeaderIndex.get(keptObject.headerIndex);
             const excludedFieldApiNames = excludedFieldsByObject.get(keptObject.objectApiName);
+            const fixedValuesByField = fixedValuesByObject.get(keptObject.objectApiName);
 
             keptObject.fields.forEach(scannedField => {
 
@@ -1135,6 +1186,19 @@ export class RecipeCockpitRecipeWriter {
                     if ( !droppedFieldKeys.has(droppedFieldKey) ) {
                         droppedFieldKeys.add(droppedFieldKey);
                         droppedFields.push({ objectApiName: keptObject.objectApiName, fieldApiName: scannedField.fieldApiName });
+                    }
+                    return;
+                }
+
+                // A FIXED VALUE REPLACES THE FIELD'S LINE AND DROPS ITS CONTINUATION LINES; IT IS NEVER A LOOKUP TO RE-WIRE
+                const fixedValue = fixedValuesByField?.get(scannedField.fieldApiName);
+                if ( fixedValue ) {
+                    fixedFieldsByLineIndex.set(scannedField.startIndex, { fieldApiName: scannedField.fieldApiName, fixedValue: fixedValue });
+                    removeFieldLines(scannedField, scannedField.startIndex + 1);
+                    const fixedValueKey = `${keptObject.objectApiName}\n${scannedField.fieldApiName}`;
+                    if ( !appliedFixedValueKeys.has(fixedValueKey) ) {
+                        appliedFixedValueKeys.add(fixedValueKey);
+                        appliedFixedValues.push({ objectApiName: keptObject.objectApiName, fieldApiName: scannedField.fieldApiName, ...fixedValue });
                     }
                     return;
                 }
@@ -1233,9 +1297,12 @@ export class RecipeCockpitRecipeWriter {
                 }
 
                 const rewiredField = rewiredFieldsByLineIndex.get(lineIndex);
+                const fixedField = fixedFieldsByLineIndex.get(lineIndex);
                 const countOverride = countOverridesByLineIndex.get(lineIndex);
                 const renderedLine = rewiredField
                     ? `${this.getObjectLayout(newObjectIndent).fieldIndent}${rewiredField.fieldApiName}: ${rewiredField.nickname}`
+                    : fixedField
+                    ? this.buildFixedValueFieldLine(this.getObjectLayout(newObjectIndent).fieldIndent, fixedField.fieldApiName, fixedField.fixedValue)
                     : countOverride !== undefined
                         ? `${this.getObjectLayout(newObjectIndent).propertyIndent}count: ${countOverride}`
                         : reindent(lines[lineIndex], indentDelta);
@@ -1272,7 +1339,8 @@ export class RecipeCockpitRecipeWriter {
         ];
         const headerParts = [
             ...( leftOutParts.length > 0 ? [`leaving out: ${leftOutParts.join('; ')}`] : [] ),
-            ...( appliedCounts.length > 0 ? [`with counts: ${appliedCounts.map(appliedCount => `${appliedCount.objectApiName} ${appliedCount.count}`).join(', ')}`] : [] )
+            ...( appliedCounts.length > 0 ? [`with counts: ${appliedCounts.map(appliedCount => `${appliedCount.objectApiName} ${appliedCount.count}`).join(', ')}`] : [] ),
+            ...( appliedFixedValues.length > 0 ? [`with fixed values: ${appliedFixedValues.map(appliedFixedValue => `${appliedFixedValue.objectApiName}.${appliedFixedValue.fieldApiName}`).join(', ')}`] : [] )
         ];
         emit(`# Recipe Cockpit -- a filtered copy of this tree's recipe, ${headerParts.join('; ')}`);
 
@@ -1328,8 +1396,8 @@ export class RecipeCockpitRecipeWriter {
             return { objectApiName: movedObject.objectApiName, ...( newParent ? { newParentObjectApiName: newParent.objectApiName } : {} ) };
         });
 
-        if ( !this.isFilteredRecipeReadBack(filteredRecipeText, keptObjects, finalParentHeaderIndexes, friendIndex, excludedObjectApiNames, excludedFieldsByObject, appliedCounts) ) {
-            return refuseFilter('unsupported-filter-layout', 'The filtered copy did not read back as the kept objects nested where they were meant to be, with the counts that were set, so it was not used.');
+        if ( !this.isFilteredRecipeReadBack(filteredRecipeText, keptObjects, finalParentHeaderIndexes, friendIndex, excludedObjectApiNames, excludedFieldsByObject, appliedCounts, fixedValuesByObject) ) {
+            return refuseFilter('unsupported-filter-layout', 'The filtered copy did not read back as the kept objects nested where they were meant to be, with the counts and fixed values that were set, so it was not used.');
         }
 
         return {
@@ -1339,9 +1407,57 @@ export class RecipeCockpitRecipeWriter {
             droppedLookups: droppedLookups,
             movedObjects: movedObjects,
             droppedFields: droppedFields,
-            appliedCounts: appliedCounts
+            appliedCounts: appliedCounts,
+            appliedFixedValues: appliedFixedValues
         };
 
+    }
+
+    /*
+        Why a fixed value cannot be written (#262), or undefined when it can. The value is the
+        reader's, and both backends read the copy as YAML and then as templates, so it is refused
+        rather than escaped wherever it could be read as anything but itself: a line break either
+        parser sees (js-yaml breaks at CR and LF, PyYAML also at U+0085, U+2028 and U+2029), any other
+        character PyYAML refuses in a stream, and every template opener -- faker-js runs "${{ }}"
+        with new Function(), and snowfakery renders "${{", "${%" and, in its default
+        snowfakery_version 2, a legacy unsandboxed "<<" / "<%" environment, quoted or not. "${",
+        "{{" and "{%" are wider than any delimiter on purpose. The answer completes "The fixed value
+        for X ...".
+    */
+    static checkFixedValue(fixedValue: IRecipeFixedValue): string | undefined {
+
+        if ( typeof fixedValue?.value !== 'string' || fixedValue.value.length === 0 ) {
+            return 'is empty.';
+        }
+        if ( /[\u0000-\u001f\u007f-\u009f\u2028\u2029\ufeff\ufffe\uffff]/.test(fixedValue.value) ) {
+            return 'has a line break or another control character in it.';
+        }
+        const templateOpener = FIXED_VALUE_TEMPLATE_OPENERS.find(opener => fixedValue.value.includes(opener));
+        if ( templateOpener !== undefined ) {
+            return `has "${templateOpener}" in it, which a faker backend would read as the start of a template.`;
+        }
+        if ( fixedValue.kind === 'number' && !FIXED_NUMBER_PATTERN.test(fixedValue.value) ) {
+            return 'is not a plain number.';
+        }
+        if ( fixedValue.kind === 'boolean' && fixedValue.value !== 'true' && fixedValue.value !== 'false' ) {
+            return 'is not true or false.';
+        }
+        if ( fixedValue.kind !== 'text' && fixedValue.kind !== 'number' && fixedValue.kind !== 'boolean' ) {
+            return 'has no kind the writer knows.';
+        }
+        return undefined;
+
+    }
+
+    // TEXT IS ALWAYS DOUBLE-QUOTED, WHICH checkFixedValue LEAVES ONLY \ AND " TO ESCAPE; A NUMBER OR BOOLEAN IS WRITTEN PLAIN
+    static toFixedValueScalar(fixedValue: IRecipeFixedValue): string {
+        return fixedValue.kind === 'text'
+            ? `"${fixedValue.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+            : fixedValue.value;
+    }
+
+    private static buildFixedValueFieldLine(fieldIndent: string, fieldApiName: string, fixedValue: IRecipeFixedValue): string {
+        return `${fieldIndent}${fieldApiName}: ${this.toFixedValueScalar(fixedValue)}`;
     }
 
     /*
@@ -1395,7 +1511,8 @@ export class RecipeCockpitRecipeWriter {
                                             friendIndex: IScannedFriendIndex,
                                             excludedObjectApiNames: Set<string>,
                                             excludedFieldsByObject: Map<string, Set<string>>,
-                                            appliedCounts: IRecipeFilterCount[]): boolean {
+                                            appliedCounts: IRecipeFilterCount[],
+                                            fixedValuesByObject: Map<string, Map<string, IRecipeFixedValue>>): boolean {
 
         const describeOccurrence = (scannedObject: IScannedObject | undefined) => scannedObject ? `${scannedObject.objectApiName}\u0000${scannedObject.nicknames.join('\u0000')}` : '';
         const describeExpected = (keptObject: IScannedObject) => {
@@ -1418,6 +1535,14 @@ export class RecipeCockpitRecipeWriter {
                 && appliedCounts.every(appliedCount => {
                     const countedObject = filteredObjects.find(filteredObject => filteredObject.objectApiName === appliedCount.objectApiName);
                     return !!countedObject && this.readObjectCount(filteredLines, countedObject) === appliedCount.count;
+                })
+                && filteredObjects.every(filteredObject => {
+                    const fixedValuesByField = fixedValuesByObject.get(filteredObject.objectApiName);
+                    const fieldIndent = this.getObjectLayout(filteredObject.objectIndent).fieldIndent;
+                    return !fixedValuesByField || filteredObject.fields
+                        .filter(scannedField => fixedValuesByField.has(scannedField.fieldApiName))
+                        .every(scannedField => scannedField.endIndex === scannedField.startIndex + 1
+                                                && filteredLines[scannedField.startIndex] === this.buildFixedValueFieldLine(fieldIndent, scannedField.fieldApiName, fixedValuesByField.get(scannedField.fieldApiName) as IRecipeFixedValue));
                 });
 
     }

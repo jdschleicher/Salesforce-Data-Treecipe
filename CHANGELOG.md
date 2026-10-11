@@ -1,5 +1,39 @@
 # Change Log
 
+## [3.61.0] - Recipe Cockpit: a field can have a fixed value instead of its faker expression
+
+Closes [#262](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/262), building on [#219](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/219), [#220](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/220) and [#255](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/255).
+
+Some fields need the same value on every generated record: a region, a test marker, a fixed status. Until now the only way to get one was to edit the generated `.yml` by hand, and the next Regenerate threw that edit away.
+
+- **A pin beside each field's checkbox.** On a tree card's Treecipe tab, each field with a recipe line gets a pin to the right of its checkbox. Clicking it opens a VS Code input box, not a panel field. Whatever you type becomes the field's value on every record that ▶ Run Faker and **Generate fake data and insert** generate, in both backends. The row then shows the value, in place of the faker expression, with a `fixed` badge. To go back to the faker expression, leave the box empty.
+- **The recipe file is never written.** Fixed values are stored in the workspace, per tree folder, next to the excluded objects, unticked fields and record counts. The selection's storage version goes from 3 to 4, and an entry from an older version reads as having no fixed values. They are applied only to the copy Run Faker generates from: `RecipeCockpitRecipeWriter.buildFilteredRecipe` takes `fixedValuesByObject` and:
+  - replaces the field's line and drops its continuation lines, on every kept occurrence of the object, nested friends and self-lookup iterations included;
+  - reads the copy back to confirm each value landed.
+
+  A card with no fixed values generates exactly as before, byte for byte. **Reset selection** clears them too. `datasetSource.json` records them as `fixedValuesByObject`, only when there are any, and the insert's confirmation lists them.
+- **Written as itself in both backends.** Text is always double-quoted, so `Yes`, `007` and `null` stay the strings that were typed. A number (Number, Currency, Percent) or a checkbox value is written plain, so it is generated as its own type. `RecipeCockpitRecipeWriter.checkFixedValue` refuses a value instead of escaping it when either backend could read it as something other than itself:
+  - a line break either YAML parser sees (CR, LF, U+0085, U+2028, U+2029) or any other control character;
+  - any template opener: `${`, `{{`, `{%`, `<<`, `<%`. faker-js runs `${{ }}` with `new Function()`, and snowfakery renders both of its template syntaxes even inside quotes.
+
+  Tests load the copy through the faker-js processor and through PyYAML, plus snowfakery's template selection, and check that the value comes back exactly as typed.
+- **Checked against the field.** The input box checks the value as it is typed, and the host checks it again once the box closes:
+  - a number must fit the field's precision and scale;
+  - a checkbox takes `true` or `false`;
+  - Date and DateTime must be ISO 8601, and a DateTime needs a zone;
+  - text must fit the field's length;
+  - a picklist value, or each value of a multi-select, must be one the workspace metadata declares.
+- **Locked where the tree or the insert decides.** These pins are disabled, with the reason in their title, and a forged message for them writes nothing:
+  - a lookup;
+  - `RecordTypeId`;
+  - a dependent picklist;
+  - a controlling field while a dependent is ticked;
+  - an unticked field;
+  - every field of an excluded object.
+
+  A value stored for a field that is locked is kept and comes back once the field is free again.
+- **The panel never sends the value.** It posts names only: `setFieldFixedValue {treeKey, objectApiName, nickname?, fieldApiName}`. The router checks them against the same `selectableFieldKeys` allow-list as the checkbox. The value is shown with `textContent`, and the pin's glyph is built with `createElementNS` and palette CSS, so the CSP and the shell builder are unchanged.
+- **Unchanged:** the faker services, `IRecipeFakerService`, the generated recipes, Compare, and Insert Data Set by Directory.
 ## [3.60.1] - Recipe Cockpit: the tree's include/exclude icon is a chain link, at the front of the row
 
 Closes [#257](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/257), a follow-up to [#219](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/219).

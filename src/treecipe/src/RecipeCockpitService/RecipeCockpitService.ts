@@ -26,7 +26,7 @@ import {
     RecipeCockpitMetadataDiff,
     RecipePicklistValuesByObjectApiName
 } from './RecipeCockpitMetadataDiff';
-import { IRecipeFilterLookup, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter } from './RecipeCockpitRecipeWriter';
+import { IRecipeFilterLookup, IRecipeFixedValue, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind } from './RecipeCockpitRecipeWriter';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelectionDisabledLookup } from './RecipeCockpitObjectSelection';
 import {
@@ -211,7 +211,8 @@ export const RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY = 'treecipe.recipeCockpit
     entry still reads, as objects with nothing unticked.
 */
 export const RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY = 'treecipe.recipeCockpit.objectSelection';
-export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION = 3;
+export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION = 4;
+export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES = 3;
 export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS = 2;
 export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS = 1;
 
@@ -221,6 +222,20 @@ export const RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON = 'record-type sections dep
 export const RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX = 'controls ';
 export const RECIPE_COCKPIT_EVERY_FIELD_UNTICKED_WARNING = 'every field unticked — records are generated with no fields set';
 export const RECIPE_COCKPIT_RESET_SELECTION_LABEL = 'Reset selection';
+
+/*
+    Why a field's fixed-value pin is disabled (#262). The panel draws the same rule from what the
+    model already carries, and the host re-derives it before it writes, so the reasons are shared.
+    A lock of #220 (RecordTypeId, a controlling field, a parent-excluded lookup) gives its own reason.
+*/
+export const RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON = 'object excluded';
+export const RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON = 'unticked';
+export const RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON = 'the record type is chosen by name';
+export const RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON = 'a lookup is wired by the tree or filled by the insert';
+export const RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX = 'depends on ';
+export const RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hierarchy'];
+export const RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES = ['Number', 'Currency', 'Percent'];
+export const RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH = 32768;
 export const RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL = 'Reset';
 export const RECIPE_COCKPIT_TREE_PREFERENCES_VERSION = 1;
 export const RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH = 80;
@@ -238,6 +253,13 @@ export const RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX = '0 0 24 24';
 export const RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM = 'rotate(-45 12 12)';
 export const RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH = 'M6 8 H10 A4 4 0 0 1 10 16 H6 A4 4 0 0 1 6 8 Z M14 8 H18 A4 4 0 0 1 18 16 H14 A4 4 0 0 1 14 8 Z';
 export const RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH = 'M4.5 8 H6.5 A4 4 0 0 1 6.5 16 H4.5 A4 4 0 0 1 4.5 8 Z M17.5 8 H19.5 A4 4 0 0 1 19.5 16 H17.5 A4 4 0 0 1 17.5 8 Z M12 3.5 V6 M12 18 V20.5';
+/*
+    A field's fixed-value pin (#262), built the same way as the chain link: one path, stroked from the
+    palette by CSS, and filled while the field has a fixed value -- so the shape, aria-pressed, the
+    title and the row's "fixed" badge all say it, never the colour alone.
+*/
+export const RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH = 'M9 3 H15 L14 9 L17 12 V14 H7 V12 L10 9 Z M12 14 V21';
+export const RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = 'fixed';
 export const RECIPE_COCKPIT_FAVORITE_TREE_LABEL = '★';
 export const RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL = '☆';
 export const RECIPE_COCKPIT_FAVORITES_ONLY_LABEL = 'Favorites only';
@@ -462,6 +484,16 @@ export interface IRecipeCockpitTreeViewModel {
     fieldSelection?: IRecipeCockpitTreeFieldSelectionViewModel;
     // SET ONLY WHEN THE READER CHANGED A COUNT (#255), AND LISTING ONLY THE OBJECTS WHOSE COUNT DIFFERS FROM THE RECIPE'S
     objectCounts?: IRecipeCockpitObjectCountViewModel[];
+    // SET ONLY WHEN A FIELD OF THE CARD HAS A FIXED VALUE (#262) A LOCK DOES NOT HOLD BACK
+    fixedValues?: IRecipeCockpitFixedValueViewModel[];
+}
+
+// THE VALUE THE READER TYPED FOR A FIELD (#262); kind IS THE HOST'S, FROM THE FIELD'S TYPE, AND DECIDES HOW THE COPY WRITES IT
+export interface IRecipeCockpitFixedValueViewModel {
+    objectApiName: string;
+    fieldApiName: string;
+    value: string;
+    kind: RecipeFixedValueKind;
 }
 
 export interface IRecipeCockpitObjectCountViewModel {
@@ -499,6 +531,7 @@ export interface IRecipeCockpitRunFakerFilteredRecipe {
     excludedObjectApiNames: string[];
     excludedFieldApiNamesByObject?: Record<string, string[]>;
     objectCountsByObject?: Record<string, number>;
+    fixedValuesByObject?: Record<string, Record<string, string>>;
 }
 
 // WHAT workspaceState HOLDS FOR THE STRUCTURE TAB, BY TREE FOLDER NAME
@@ -507,6 +540,8 @@ export interface IRecipeCockpitTreeSelections {
     excludedFieldApiNamesByFolderName: Map<string, Map<string, Set<string>>>;
     // THE RECORD COUNTS THE READER SET (#255), BY TREE FOLDER THEN OBJECT; A COUNT EQUAL TO THE RECIPE'S OWN IS NEVER STORED
     objectCountsByFolderName: Map<string, Map<string, number>>;
+    // THE VALUES THE READER FIXED (#262), BY TREE FOLDER, OBJECT THEN FIELD
+    fixedValuesByFolderName: Map<string, Map<string, Map<string, string>>>;
 }
 
 /*
@@ -529,6 +564,7 @@ export interface IRecipeCockpitObjectSelectionMessage {
     objectSelection?: IRecipeCockpitTreeObjectSelectionViewModel;
     fieldSelection?: IRecipeCockpitTreeFieldSelectionViewModel;
     objectCounts?: IRecipeCockpitObjectCountViewModel[];
+    fixedValues?: IRecipeCockpitFixedValueViewModel[];
 }
 
 // WHAT workspaceState HOLDS FOR THE CARDS, BY TREE FOLDER NAME; BOTH KEYED BY NAMES FROM DISK, SO NEITHER IS A PLAIN {}
@@ -1085,6 +1121,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'setAllFieldsIncluded'; treeKey: string; folderName: string; objectApiName: string; isIncluded: boolean }
     | { kind: 'resetTreeSelection'; folderName: string }
     | { kind: 'setObjectCount'; treeKey: string; folderName: string; objectApiName: string; count: number }
+    | { kind: 'setFieldFixedValue'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string }
     | { kind: 'persistPlace'; place: IRecipeCockpitPanelPlace }
     | { kind: 'createScratchOrg' }
     | { kind: 'postScratchOrgState'; hostMessage: IRecipeCockpitScratchOrgStateMessage }
@@ -1587,7 +1624,8 @@ export class RecipeCockpitService {
         const treeSelections: IRecipeCockpitTreeSelections = {
             excludedObjectApiNamesByFolderName: new Map(),
             excludedFieldApiNamesByFolderName: new Map(),
-            objectCountsByFolderName: new Map()
+            objectCountsByFolderName: new Map(),
+            fixedValuesByFolderName: new Map()
         };
         let storedSelections: unknown;
 
@@ -1597,7 +1635,7 @@ export class RecipeCockpitService {
             return treeSelections;
         }
 
-        const readableVersions: unknown[] = [RECIPE_COCKPIT_OBJECT_SELECTION_VERSION, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS];
+        const readableVersions: unknown[] = [RECIPE_COCKPIT_OBJECT_SELECTION_VERSION, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS];
         if ( !this.isPlainRecord(storedSelections)
                 || !readableVersions.includes(storedSelections.version)
                 || !this.isPlainRecord(storedSelections.excludedObjectApiNamesByFolderName) ) {
@@ -1614,7 +1652,41 @@ export class RecipeCockpitService {
             }
         });
 
-        const storedCountsByFolderName = storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION ? storedSelections.objectCountsByFolderName : undefined;
+        const hasCounts = storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION || storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES;
+        const storedCountsByFolderName = hasCounts ? storedSelections.objectCountsByFolderName : undefined;
+        const storedFixedValuesByFolderName = storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION ? storedSelections.fixedValuesByFolderName : undefined;
+
+        if ( this.isPlainRecord(storedFixedValuesByFolderName) ) {
+            Object.keys(storedFixedValuesByFolderName).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
+                const storedByObject = storedFixedValuesByFolderName[folderName];
+                if ( !isUsableFolderName(folderName) || !this.isPlainRecord(storedByObject) ) {
+                    return;
+                }
+                const fixedValuesByObject = new Map<string, Map<string, string>>();
+                Object.keys(storedByObject).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(objectApiName => {
+                    const storedByField = storedByObject[objectApiName];
+                    if ( !SalesforceApiName.isApiName(objectApiName) || !this.isPlainRecord(storedByField) ) {
+                        return;
+                    }
+                    const fixedValuesByField = new Map<string, string>();
+                    Object.keys(storedByField).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(fieldApiName => {
+                        const fixedValue = storedByField[fieldApiName];
+                        // THE KIND IS CHECKED AGAINST THE FIELD WHEN IT IS APPLIED; HERE ONLY WHAT NO KIND COULD WRITE IS DROPPED
+                        if ( SalesforceApiName.isApiName(fieldApiName) && typeof fixedValue === 'string'
+                                && fixedValue.length <= RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH
+                                && RecipeCockpitRecipeWriter.checkFixedValue({ value: fixedValue, kind: 'text' }) === undefined ) {
+                            fixedValuesByField.set(fieldApiName, fixedValue);
+                        }
+                    });
+                    if ( fixedValuesByField.size > 0 ) {
+                        fixedValuesByObject.set(objectApiName, fixedValuesByField);
+                    }
+                });
+                if ( fixedValuesByObject.size > 0 ) {
+                    treeSelections.fixedValuesByFolderName.set(folderName, fixedValuesByObject);
+                }
+            });
+        }
 
         if ( this.isPlainRecord(storedCountsByFolderName) ) {
             Object.keys(storedCountsByFolderName).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
@@ -1673,7 +1745,7 @@ export class RecipeCockpitService {
     static async writeTreeSelections(workspaceState: IRecipeCockpitWorkspaceState | undefined, treeSelections: IRecipeCockpitTreeSelections): Promise<boolean> {
 
         if ( !workspaceState ) {
-            VSCodeWorkspaceService.showWarningMessage('The Recipe Cockpit has no workspace to keep excluded objects, unticked fields and record counts in. Open a folder and re-open the cockpit.');
+            VSCodeWorkspaceService.showWarningMessage('The Recipe Cockpit has no workspace to keep excluded objects, unticked fields, record counts and fixed values in. Open a folder and re-open the cockpit.');
             return false;
         }
 
@@ -1697,17 +1769,27 @@ export class RecipeCockpitService {
                 .filter(([, countsByObject]) => countsByObject.size > 0)
                 .map(([folderName, countsByObject]) => [folderName, Object.fromEntries(countsByObject)])
         );
+        const storedFixedValuesByFolderName: Record<string, Record<string, Record<string, string>>> = Object.fromEntries(
+            [...treeSelections.fixedValuesByFolderName]
+                .map(([folderName, fixedValuesByObject]) => [folderName, Object.fromEntries(
+                    [...fixedValuesByObject]
+                        .filter(([, fixedValuesByField]) => fixedValuesByField.size > 0)
+                        .map(([objectApiName, fixedValuesByField]) => [objectApiName, Object.fromEntries(fixedValuesByField)])
+                )] as [string, Record<string, Record<string, string>>])
+                .filter(([, storedByObject]) => Object.keys(storedByObject).length > 0)
+        );
 
         try {
             await workspaceState.update(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY, {
                 version: RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
                 excludedObjectApiNamesByFolderName: storedByFolderName,
                 excludedFieldApiNamesByFolderName: storedFieldsByFolderName,
-                objectCountsByFolderName: storedCountsByFolderName
+                objectCountsByFolderName: storedCountsByFolderName,
+                fixedValuesByFolderName: storedFixedValuesByFolderName
             });
             return true;
         } catch (writeError) {
-            VSCodeWorkspaceService.showWarningMessage(`The excluded objects, unticked fields and record counts could not be saved: ${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}`);
+            VSCodeWorkspaceService.showWarningMessage(`The excluded objects, unticked fields, record counts and fixed values could not be saved: ${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}`);
             return false;
         }
 
@@ -1721,7 +1803,8 @@ export class RecipeCockpitService {
         return this.writeTreeSelections(workspaceState, {
             excludedObjectApiNamesByFolderName: excludedObjectApiNamesByFolderName,
             excludedFieldApiNamesByFolderName: storedSelections.excludedFieldApiNamesByFolderName,
-            objectCountsByFolderName: storedSelections.objectCountsByFolderName
+            objectCountsByFolderName: storedSelections.objectCountsByFolderName,
+            fixedValuesByFolderName: storedSelections.fixedValuesByFolderName
         });
 
     }
@@ -1789,7 +1872,8 @@ export class RecipeCockpitService {
                                     excludedObjectApiNamesByFolderName: Map<string, Set<string>>,
                                     excludedFieldApiNamesByFolderName: Map<string, Map<string, Set<string>>> = new Map(),
                                     onlyFolderName?: string,
-                                    objectCountsByFolderName: Map<string, Map<string, number>> = new Map()): IRecipeCockpitTreeViewModel[] {
+                                    objectCountsByFolderName: Map<string, Map<string, number>> = new Map(),
+                                    fixedValuesByFolderName: Map<string, Map<string, Map<string, string>>> = new Map()): IRecipeCockpitTreeViewModel[] {
 
         const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
 
@@ -1802,6 +1886,7 @@ export class RecipeCockpitService {
             delete tree.objectSelection;
             delete tree.fieldSelection;
             delete tree.objectCounts;
+            delete tree.fixedValues;
 
             if ( tree.folderName === '' ) {
                 return;
@@ -1825,6 +1910,13 @@ export class RecipeCockpitService {
                 tree.objectCounts = objectCounts;
             }
 
+            // AFTER THE SELECTIONS, WHICH DECIDE WHAT A LOCK HOLDS BACK
+            const fixedValues = this.buildTreeFixedValues(objectsByApiName, tree, fixedValuesByFolderName.get(tree.folderName));
+
+            if ( fixedValues.length > 0 ) {
+                tree.fixedValues = fixedValues;
+            }
+
         });
 
         return recipeViewModel.trees;
@@ -1832,7 +1924,194 @@ export class RecipeCockpitService {
     }
 
     static applyTreeSelections(recipeViewModel: IRecipeCockpitRecipeViewModel, treeSelections: IRecipeCockpitTreeSelections): IRecipeCockpitTreeViewModel[] {
-        return this.applyObjectSelections(recipeViewModel, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, undefined, treeSelections.objectCountsByFolderName);
+        return this.applyObjectSelections(recipeViewModel, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, undefined, treeSelections.objectCountsByFolderName, treeSelections.fixedValuesByFolderName);
+    }
+
+    // THE KIND A FIELD'S FIXED VALUE IS WRITTEN AS (#262), FROM ITS METADATA TYPE; A FIELD OF NO KNOWN TYPE IS TEXT
+    static getFixedValueKind(fieldViewModel: IRecipeCockpitFieldViewModel): RecipeFixedValueKind {
+        if ( fieldViewModel.fieldType === 'Checkbox' ) {
+            return 'boolean';
+        }
+        return RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES.includes(fieldViewModel.fieldType) ? 'number' : 'text';
+    }
+
+    /*
+        Why a field cannot be given a fixed value (#262), or undefined when it can. A field the tree or
+        the insert decides -- a lookup, RecordTypeId, a dependent picklist whose value a controlling
+        value chooses -- keeps its expression, and so does any field a #220 lock holds or the reader
+        unticked: a fixed value on a field generation leaves out would never be written. The panel
+        draws the same rule from the same model.
+    */
+    static findFixedValueLockReason(tree: IRecipeCockpitTreeViewModel, objectViewModel: IRecipeCockpitObjectViewModel, fieldViewModel: IRecipeCockpitFieldViewModel): string | undefined {
+
+        if ( this.listExcludedObjectApiNames(tree).includes(objectViewModel.objectApiName) ) {
+            return RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON;
+        }
+
+        const objectFieldSelection = ( tree.fieldSelection?.objects ?? [] ).find(candidate => candidate.objectApiName === objectViewModel.objectApiName);
+        const lockedField = objectFieldSelection?.lockedFields.find(candidate => candidate.fieldApiName === fieldViewModel.fieldApiName);
+
+        if ( lockedField ) {
+            return lockedField.reason;
+        }
+        if ( objectFieldSelection?.excludedFieldApiNames.includes(fieldViewModel.fieldApiName) ) {
+            return RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON;
+        }
+        if ( fieldViewModel.fieldApiName === 'RecordTypeId' ) {
+            return RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON;
+        }
+
+        const isTreeLookup = tree.objects.some(treeObject => treeObject.objectApiName === objectViewModel.objectApiName
+                                                            && treeObject.parentLookups.some(parentLookup => parentLookup.fieldApiName === fieldViewModel.fieldApiName));
+        if ( isTreeLookup || RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES.includes(fieldViewModel.fieldType) ) {
+            return RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON;
+        }
+        if ( fieldViewModel.controllingField ) {
+            return `${RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX}${fieldViewModel.controllingField}`;
+        }
+
+        return undefined;
+
+    }
+
+    /*
+        The fixed values a card generates with (#262): only for a field a pin is drawn for -- a
+        selectable object's field with a line in the recipe -- and that no lock holds back now. A
+        held-back value stays stored, as an excluded object's count does, and comes back with its
+        field. A value its field's kind could not write (a field whose type changed since) is dropped
+        here rather than refused at Run Faker.
+    */
+    static buildTreeFixedValues(objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>,
+                                tree: IRecipeCockpitTreeViewModel,
+                                storedFixedValuesByObject: ReadonlyMap<string, ReadonlyMap<string, string>> | undefined): IRecipeCockpitFixedValueViewModel[] {
+
+        if ( !storedFixedValuesByObject || storedFixedValuesByObject.size === 0 ) {
+            return [];
+        }
+
+        return this.collectSelectableObjectApiNames(objectsByApiName, tree).flatMap(objectApiName => {
+
+            const storedByField = storedFixedValuesByObject.get(objectApiName);
+            const objectViewModel = objectsByApiName.get(objectApiName) as IRecipeCockpitObjectViewModel;
+
+            if ( !storedByField ) {
+                return [];
+            }
+
+            const selectableFieldApiNames = new Set(this.listSelectableFieldApiNames(objectViewModel));
+            return objectViewModel.fields
+                .filter((fieldViewModel, fieldIndex) => selectableFieldApiNames.has(fieldViewModel.fieldApiName)
+                                                        && storedByField.has(fieldViewModel.fieldApiName)
+                                                        && objectViewModel.fields.findIndex(candidate => candidate.fieldApiName === fieldViewModel.fieldApiName) === fieldIndex
+                                                        && this.findFixedValueLockReason(tree, objectViewModel, fieldViewModel) === undefined)
+                .map(fieldViewModel => ({
+                    objectApiName: objectApiName,
+                    fieldApiName: fieldViewModel.fieldApiName,
+                    value: storedByField.get(fieldViewModel.fieldApiName) as string,
+                    kind: this.getFixedValueKind(fieldViewModel)
+                }))
+                .filter(fixedValue => RecipeCockpitRecipeWriter.checkFixedValue(fixedValue) === undefined);
+
+        });
+
+    }
+
+    // WHAT A CARD GENERATES WITH, BY OBJECT THEN FIELD
+    static listFixedValuesByObject(tree: IRecipeCockpitTreeViewModel | undefined): Map<string, Map<string, IRecipeFixedValue>> {
+
+        const fixedValuesByObject = new Map<string, Map<string, IRecipeFixedValue>>();
+        ( tree?.fixedValues ?? [] ).forEach(fixedValue => {
+            const fixedValuesByField = fixedValuesByObject.get(fixedValue.objectApiName) ?? new Map<string, IRecipeFixedValue>();
+            fixedValuesByField.set(fixedValue.fieldApiName, { value: fixedValue.value, kind: fixedValue.kind });
+            fixedValuesByObject.set(fixedValue.objectApiName, fixedValuesByField);
+        });
+        return fixedValuesByObject;
+
+    }
+
+    /*
+        Why a value typed for a field cannot be its fixed value (#262), or undefined. Checked while it
+        is typed and again once the box closes, against the field as the model holds it: the writer's
+        own refusals first (a line break, a template opener), then the field's type -- a number that
+        fits its precision and scale, true or false for a checkbox, an ISO date or date-time, text no
+        longer than its length, and a picklist value its metadata declares (each, for a multi-select).
+        A picklist with no declared values to hold it to takes any value.
+    */
+    static validateFixedValueInput(value: string, fieldViewModel: IRecipeCockpitFieldViewModel, declaredPicklistValues: readonly string[] | undefined): string | undefined {
+
+        if ( value.length > RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH ) {
+            return `A fixed value can be at most ${RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH} characters.`;
+        }
+
+        const kind = this.getFixedValueKind(fieldViewModel);
+        const writerRefusal = RecipeCockpitRecipeWriter.checkFixedValue({ value: value, kind: kind });
+
+        if ( writerRefusal !== undefined ) {
+            if ( kind === 'number' ) {
+                return 'Type a plain number, such as 42, -7 or 3.25.';
+            }
+            if ( kind === 'boolean' ) {
+                return 'Type true or false.';
+            }
+            return `This value ${writerRefusal}`;
+        }
+
+        const sizeMatch = /\((\d+)(?:,(\d+))?\)$/.exec(fieldViewModel.fieldTypeWithSize);
+
+        if ( kind === 'number' && sizeMatch?.[2] !== undefined ) {
+            const precision = Number(sizeMatch[1]);
+            const scale = Number(sizeMatch[2]);
+            const [wholeDigits, decimalDigits = ''] = value.replace(/^-/, '').split('.');
+            if ( decimalDigits.length > scale ) {
+                return `${fieldViewModel.fieldTypeWithSize} takes at most ${scale} decimal place${scale === 1 ? '' : 's'}.`;
+            }
+            if ( wholeDigits.replace(/^0+(?=.)/, '').length > precision - scale ) {
+                return `${fieldViewModel.fieldTypeWithSize} takes at most ${precision - scale} digit${precision - scale === 1 ? '' : 's'} before the decimal point.`;
+            }
+        }
+
+        if ( kind === 'text' && sizeMatch && sizeMatch[2] === undefined && value.length > Number(sizeMatch[1]) ) {
+            return `${fieldViewModel.fieldTypeWithSize} takes at most ${sizeMatch[1]} characters.`;
+        }
+
+        if ( fieldViewModel.fieldType === 'Date' && !this.isIsoDate(value) ) {
+            return 'Type a date as YYYY-MM-DD, such as 2026-01-31.';
+        }
+
+        if ( fieldViewModel.fieldType === 'DateTime' && !this.isIsoDateTime(value) ) {
+            return 'Type a date and time as ISO 8601 with a zone, such as 2026-01-31T09:30:00Z.';
+        }
+
+        if ( fieldViewModel.isPicklist && declaredPicklistValues && declaredPicklistValues.length > 0 ) {
+            const declaredValues = new Set(declaredPicklistValues);
+            const typedValues = fieldViewModel.fieldType === 'MultiselectPicklist' ? value.split(';') : [value];
+            const undeclaredValue = typedValues.find(typedValue => !declaredValues.has(typedValue));
+            if ( undeclaredValue !== undefined ) {
+                return `"${undeclaredValue}" is not a value this picklist declares.`;
+            }
+            if ( new Set(typedValues).size !== typedValues.length ) {
+                return 'A multi-select picklist value names each value once.';
+            }
+        }
+
+        return undefined;
+
+    }
+
+    static isIsoDate(value: string): boolean {
+        const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+        if ( !dateMatch ) {
+            return false;
+        }
+        const parsedDate = new Date(Date.UTC(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3])));
+        return parsedDate.getUTCFullYear() === Number(dateMatch[1])
+                && parsedDate.getUTCMonth() === Number(dateMatch[2]) - 1
+                && parsedDate.getUTCDate() === Number(dateMatch[3]);
+    }
+
+    static isIsoDateTime(value: string): boolean {
+        const dateTimeMatch = /^(\d{4}-\d{2}-\d{2})T([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(value);
+        return !!dateTimeMatch && this.isIsoDate(dateTimeMatch[1]) && !Number.isNaN(Date.parse(value));
     }
 
     /*
@@ -2099,6 +2378,90 @@ export class RecipeCockpitService {
 
     }
 
+    /*
+        A field's pin (#262). The VALUE never comes from the panel: the host asks for it in its own
+        input box, checks it while it is typed and again once the box closes -- against the model on
+        screen THEN, since a reload may have come in meanwhile -- and an empty answer clears it. A
+        field a lock holds back, or no longer drawn, writes nothing. The recipe file is never written.
+    */
+    private static async setFieldFixedValue(cockpitPanel: vscode.WebviewPanel,
+                                            panelState: IRecipeCockpitPanelState,
+                                            panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setFieldFixedValue' }>) {
+
+        const findField = () => {
+            const recipeViewModel = panelState.recipeDataMessage?.recipe;
+            const tree = recipeViewModel?.trees.find(candidateTree => candidateTree.treeKey === panelAction.treeKey);
+            const objectViewModel = recipeViewModel?.objects.find(candidateObject => candidateObject.objectApiName === panelAction.objectApiName);
+            const fieldViewModel = objectViewModel?.fields.find(candidateField => candidateField.fieldApiName === panelAction.fieldApiName && candidateField.lineNumber !== undefined);
+            return tree && objectViewModel && fieldViewModel && tree.folderName === panelAction.folderName
+                    && this.findFixedValueLockReason(tree, objectViewModel, fieldViewModel) === undefined
+                ? { fieldViewModel: fieldViewModel }
+                : undefined;
+        };
+
+        const fieldBeforePrompt = findField();
+        if ( !fieldBeforePrompt ) {
+            return;
+        }
+
+        const { fieldViewModel } = fieldBeforePrompt;
+        const declaredPicklistValues = this.listDeclaredPicklistValues(panelState, panelAction.objectApiName, panelAction.fieldApiName);
+        const storedValue = this.readTreeSelections(this.recipeCockpitWorkspaceState).fixedValuesByFolderName.get(panelAction.folderName)?.get(panelAction.objectApiName)?.get(panelAction.fieldApiName);
+        const fieldLabel = RecipeYamlScalar.escapeForNotification(`${panelAction.objectApiName}.${panelAction.fieldApiName}`);
+        const typeLabel = fieldViewModel.fieldTypeWithSize ? ` (${RecipeYamlScalar.escapeForNotification(fieldViewModel.fieldTypeWithSize)})` : '';
+
+        const typedValue = await vscode.window.showInputBox({
+            title: `Fixed value for ${fieldLabel}`,
+            prompt: `Every record ▶ Run Faker and the tree insert generate gets this value for ${fieldLabel}${typeLabel} instead of its faker expression. Leave it empty to go back to the faker expression. The recipe file is not changed.`,
+            value: storedValue ?? '',
+            ignoreFocusOut: true,
+            validateInput: (candidateValue: string) => candidateValue === '' ? undefined : this.validateFixedValueInput(candidateValue, fieldViewModel, declaredPicklistValues)
+        });
+
+        if ( typedValue === undefined || this.recipeCockpitPanelState !== panelState ) {
+            return;
+        }
+
+        const fieldAfterPrompt = findField();
+        if ( !fieldAfterPrompt ) {
+            return;
+        }
+
+        const refusal = typedValue === '' ? undefined : this.validateFixedValueInput(typedValue, fieldAfterPrompt.fieldViewModel, declaredPicklistValues);
+        if ( refusal !== undefined ) {
+            VSCodeWorkspaceService.showWarningMessage(`The fixed value for ${fieldLabel} was not set: ${RecipeYamlScalar.escapeForNotification(refusal)}`);
+            return;
+        }
+
+        // READ AGAIN AFTER THE BOX: A CHOICE MADE ELSEWHERE WHILE IT WAS OPEN IS NOT WRITTEN BACK
+        const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
+        const fixedValuesByObject = treeSelections.fixedValuesByFolderName.get(panelAction.folderName) ?? new Map<string, Map<string, string>>();
+        const fixedValuesByField = fixedValuesByObject.get(panelAction.objectApiName) ?? new Map<string, string>();
+
+        if ( typedValue === '' ) {
+            fixedValuesByField.delete(panelAction.fieldApiName);
+        } else {
+            fixedValuesByField.set(panelAction.fieldApiName, typedValue);
+        }
+        fixedValuesByObject.set(panelAction.objectApiName, fixedValuesByField);
+        treeSelections.fixedValuesByFolderName.set(panelAction.folderName, fixedValuesByObject);
+
+        // A FIXED VALUE CHANGES NO FIELD THE INSERT SENDS, SO THE ORG'S READINESS NEED NOT BE CHECKED AGAIN
+        await this.saveAndPostTreeSelections(cockpitPanel, panelState, panelAction.folderName, treeSelections, false);
+
+    }
+
+    // A PICKLIST'S ACTIVE VALUES AND EVERY RECORD TYPE'S, FROM THE HOST-ONLY DISPLAY COPY; undefined FOR A FIELD THAT IS NOT A PICKLIST
+    private static listDeclaredPicklistValues(panelState: IRecipeCockpitPanelState, objectApiName: string, fieldApiName: string): string[] | undefined {
+
+        const picklistDisplayValues = panelState.picklistDisplayValuesByObjectApiName.get(objectApiName)?.get(fieldApiName);
+
+        return picklistDisplayValues
+            ? [...picklistDisplayValues.picklistValues, ...picklistDisplayValues.recordTypePicklistValues.flatMap(recordTypeValues => recordTypeValues.picklistValues)]
+            : undefined;
+
+    }
+
     // A CARD'S Reset selection: EVERY OBJECT INCLUDED, EVERY FIELD TICKED AND EVERY COUNT THE RECIPE'S AGAIN, AFTER THE READER CONFIRMS IN THE HOST'S OWN DIALOG
     private static async resetTreeSelection(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, folderName: string) {
 
@@ -2106,7 +2469,8 @@ export class RecipeCockpitService {
 
         if ( !treeSelections.excludedObjectApiNamesByFolderName.has(folderName)
                 && !treeSelections.excludedFieldApiNamesByFolderName.has(folderName)
-                && !treeSelections.objectCountsByFolderName.has(folderName) ) {
+                && !treeSelections.objectCountsByFolderName.has(folderName)
+                && !treeSelections.fixedValuesByFolderName.has(folderName) ) {
             return;
         }
 
@@ -2114,7 +2478,7 @@ export class RecipeCockpitService {
         const treeLabel = RecipeYamlScalar.escapeForNotification(tree?.customName ?? tree?.title ?? folderName);
         const confirmation = await vscode.window.showWarningMessage(
             `Reset the selection of ${treeLabel}?`,
-            { modal: true, detail: 'Every object is included, every field is ticked and every record count goes back to the recipe\'s own again. The recipe file is not changed.' },
+            { modal: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every fixed value is cleared. The recipe file is not changed.' },
             RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL
         );
 
@@ -2127,6 +2491,7 @@ export class RecipeCockpitService {
         currentSelections.excludedObjectApiNamesByFolderName.delete(folderName);
         currentSelections.excludedFieldApiNamesByFolderName.delete(folderName);
         currentSelections.objectCountsByFolderName.delete(folderName);
+        currentSelections.fixedValuesByFolderName.delete(folderName);
 
         await this.saveAndPostTreeSelections(cockpitPanel, panelState, folderName, currentSelections);
 
@@ -2151,7 +2516,7 @@ export class RecipeCockpitService {
         }
 
         // ONLY THIS FOLDER'S CARDS CHANGED, SO ONLY THEY ARE RECOMPUTED
-        this.applyObjectSelections(recipeDataMessage.recipe, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, folderName, treeSelections.objectCountsByFolderName);
+        this.applyObjectSelections(recipeDataMessage.recipe, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, folderName, treeSelections.objectCountsByFolderName, treeSelections.fixedValuesByFolderName);
 
         recipeDataMessage.recipe.trees
             .filter(tree => tree.folderName === folderName)
@@ -2161,7 +2526,8 @@ export class RecipeCockpitService {
                 treeKey: tree.treeKey,
                 ...( tree.objectSelection ? { objectSelection: tree.objectSelection } : {} ),
                 ...( tree.fieldSelection ? { fieldSelection: tree.fieldSelection } : {} ),
-                ...( tree.objectCounts ? { objectCounts: tree.objectCounts } : {} )
+                ...( tree.objectCounts ? { objectCounts: tree.objectCounts } : {} ),
+                ...( tree.fixedValues ? { fixedValues: tree.fixedValues } : {} )
             }));
 
         const isOrgCheckIdle = !panelState.scratchOrgStateMessage?.isRunning && !panelState.insertStateMessage?.isRunning;
@@ -2246,6 +2612,7 @@ export class RecipeCockpitService {
         const excludedObjectApiNames = this.listExcludedObjectApiNames(tree);
         const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByObject(tree);
         const objectCountsByObject = this.listObjectCountsByObject(tree);
+        const fixedValuesByObject = this.listFixedValuesByObject(tree);
         const parentLookupsByObjectApiName = new Map<string, IRecipeFilterLookup[]>();
         tree.objects
             .filter(treeObject => treeObject.iterationNickname === undefined)
@@ -2256,7 +2623,8 @@ export class RecipeCockpitService {
             parentLookupsByObjectApiName: parentLookupsByObjectApiName,
             levelsByObjectApiName: objectLevelsByApiName,
             excludedFieldApiNamesByObject: excludedFieldApiNamesByObject,
-            objectCountsByObject: objectCountsByObject
+            objectCountsByObject: objectCountsByObject,
+            fixedValuesByObject: fixedValuesByObject
         });
 
         if ( 'refusal' in filterResult ) {
@@ -2267,8 +2635,21 @@ export class RecipeCockpitService {
             recipeText: filterResult.recipeText,
             excludedObjectApiNames: excludedObjectApiNames,
             ...( excludedFieldApiNamesByObject.size > 0 ? { excludedFieldApiNamesByObject: Object.fromEntries(excludedFieldApiNamesByObject) } : {} ),
-            ...( filterResult.appliedCounts.length > 0 ? { objectCountsByObject: Object.fromEntries(filterResult.appliedCounts.map(appliedCount => [appliedCount.objectApiName, appliedCount.count])) } : {} )
+            ...( filterResult.appliedCounts.length > 0 ? { objectCountsByObject: Object.fromEntries(filterResult.appliedCounts.map(appliedCount => [appliedCount.objectApiName, appliedCount.count])) } : {} ),
+            ...( filterResult.appliedFixedValues.length > 0 ? { fixedValuesByObject: this.groupAppliedFixedValues(filterResult.appliedFixedValues) } : {} )
         };
+
+    }
+
+    // fromEntries DEFINES EACH KEY, SO AN OBJECT OR FIELD NAMED __proto__ IS RECORDED RATHER THAN SET AS A PROTOTYPE
+    static groupAppliedFixedValues(appliedFixedValues: Array<{ objectApiName: string; fieldApiName: string; value: string }>): Record<string, Record<string, string>> {
+
+        const objectApiNames = [...new Set(appliedFixedValues.map(appliedFixedValue => appliedFixedValue.objectApiName))];
+
+        return Object.fromEntries(objectApiNames.map(objectApiName => [objectApiName, Object.fromEntries(appliedFixedValues
+            .filter(appliedFixedValue => appliedFixedValue.objectApiName === objectApiName)
+            .map(appliedFixedValue => [appliedFixedValue.fieldApiName, appliedFixedValue.value]))]));
+
 
     }
 
@@ -3055,6 +3436,11 @@ export class RecipeCockpitService {
                 await this.setObjectCount(cockpitPanel, panelState, panelAction);
                 return;
 
+            case 'setFieldFixedValue':
+
+                await this.setFieldFixedValue(cockpitPanel, panelState, panelAction);
+                return;
+
             case 'toggleFavoriteTree': {
 
                 const treePreferences = this.readTreePreferences(this.recipeCockpitWorkspaceState);
@@ -3261,13 +3647,14 @@ export class RecipeCockpitService {
 
         const tree = panelState.recipeDataMessage?.recipe.trees.find(candidateTree => candidateTree.treeKey === treeKey);
 
-        if ( this.listExcludedObjectApiNames(tree).length === 0 && this.listExcludedFieldApiNamesByObject(tree).size === 0 && this.listObjectCountsByObject(tree).size === 0 ) {
+        if ( this.listExcludedObjectApiNames(tree).length === 0 && this.listExcludedFieldApiNamesByObject(tree).size === 0
+                && this.listObjectCountsByObject(tree).size === 0 && !tree?.fixedValues?.length ) {
             return undefined;
         }
 
         const treeLabel = RecipeYamlScalar.escapeForNotification(tree.customName ?? tree.title);
         const refuse = (reason: string) => ({
-            refusalMessage: `${refusalPrefix} ${treeLabel}: ${RecipeYamlScalar.escapeForNotification(reason)} Nothing was generated, rather than the whole tree with what the Treecipe tab leaves out or recounts put back in.`
+            refusalMessage: `${refusalPrefix} ${treeLabel}: ${RecipeYamlScalar.escapeForNotification(reason)} Nothing was generated, rather than the whole tree with what the Treecipe tab leaves out, recounts or fixes put back in.`
         });
 
         let recipeText: string;
@@ -5149,6 +5536,7 @@ export class RecipeCockpitService {
             return `  ${RecipeYamlScalar.escapeForNotification(objectApiName)}: ${objectTotal}${perParentText}`;
         });
         const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByObject(tree);
+        const fixedValues = tree.fixedValues ?? [];
 
         return [
             `Org: ${orgLabel}`,
@@ -5159,6 +5547,9 @@ export class RecipeCockpitService {
             ...objectLines,
             ...( excludedFieldApiNamesByObject.size > 0
                 ? [`Unticked, not sent: ${[...excludedFieldApiNamesByObject].map(([objectApiName, fieldApiNames]) => fieldApiNames.map(fieldApiName => `${objectApiName}.${fieldApiName}`).join(', ')).map(fieldText => RecipeYamlScalar.escapeForNotification(fieldText)).join(', ')}`]
+                : [] ),
+            ...( fixedValues.length > 0
+                ? [`Fixed values, the same on every record: ${fixedValues.map(fixedValue => RecipeYamlScalar.escapeForNotification(`${fixedValue.objectApiName}.${fixedValue.fieldApiName} = ${fixedValue.value}`)).join(', ')}`]
                 : [] ),
             ...( outsidePickableLookups.length > 0
                 ? [
@@ -5912,6 +6303,37 @@ export class RecipeCockpitService {
                 }
 
                 return { kind: 'setObjectCount', treeKey: treeKey, folderName: tree.folderName, objectApiName: objectApiName, count: count };
+
+            }
+
+            /*
+                A field's pin (#262): the same three names as its checkbox, matched against the same
+                allow-list, and NO value -- the host asks for it in its own box. A field a lock holds
+                back (#220's, a lookup, RecordTypeId, a dependent picklist, an unticked field or an
+                excluded object's) is refused here and again before anything is written.
+            */
+            case 'setFieldFixedValue': {
+
+                const { treeKey, objectApiName, nickname, fieldApiName } = panelMessage;
+
+                if ( typeof treeKey !== 'string' || !SalesforceApiName.isApiName(objectApiName) || !SalesforceApiName.isApiName(fieldApiName)
+                        || ( nickname !== undefined && typeof nickname !== 'string' )
+                        || !panelState.recipeDataMessage
+                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(this.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
+                    return undefined;
+                }
+
+                const recipeViewModel = panelState.recipeDataMessage.recipe;
+                const objectViewModel = recipeViewModel.objects.find(candidateObject => candidateObject.objectApiName === objectApiName);
+                const fieldViewModel = objectViewModel?.fields.find(candidateField => candidateField.fieldApiName === fieldApiName && candidateField.lineNumber !== undefined);
+                const tree = recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === treeKey);
+
+                if ( !objectViewModel || !fieldViewModel || !tree?.folderName || ( nickname !== undefined && nickname !== objectViewModel.nickname )
+                        || this.findFixedValueLockReason(tree, objectViewModel, fieldViewModel) !== undefined ) {
+                    return undefined;
+                }
+
+                return { kind: 'setFieldFixedValue', treeKey: treeKey, folderName: tree.folderName, objectApiName: objectApiName, fieldApiName: fieldApiName };
 
             }
 
@@ -7326,6 +7748,43 @@ ${this.buildPaletteCustomProperties()}
     }
     .treeFieldInclude[aria-checked="false"] { background-color: var(--sdt-surface); border-color: var(--sdt-muted); }
     .treeFieldInclude:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); border-color: var(--sdt-border); cursor: not-allowed; }
+    .treeFieldFixedValue {
+        position: relative;
+        z-index: 2;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5em;
+        height: 1.5em;
+        padding: 0;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+    .treeFieldFixedValue:hover:not(:disabled) { background-color: var(--sdt-row-hover); border-color: var(--sdt-border); }
+    .treeFieldFixedValue:disabled { cursor: not-allowed; }
+    .fixedValueGlyph { display: block; width: 1.2em; height: 1.2em; }
+    .fixedValueGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .treeFieldFixedValue[aria-pressed="true"] .fixedValueGlyph path { fill: var(--sdt-accent); }
+    .treeFieldFixedValue:disabled .fixedValueGlyph path { stroke: var(--sdt-muted); stroke-dasharray: 2 2.5; }
+    .fixedValueBadge {
+        position: relative;
+        z-index: 2;
+        padding: 0 0.35em;
+        font-size: 0.85em;
+        font-weight: 600;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border-radius: 3px;
+    }
+    .fixedValue {
+        margin: 0.15rem 0 0 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: var(--vscode-editor-font-family);
+        color: var(--sdt-text);
+    }
     .treeFieldNote, .treeFieldWarning { position: relative; z-index: 2; font-size: 0.85em; }
     .treeFieldWarning { color: var(--sdt-changed); }
     .treeFieldBulk { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding: 0.2rem 0.6rem 0.2rem 2.1rem; position: relative; z-index: 2; }
@@ -7462,6 +7921,14 @@ ${this.buildPaletteCustomProperties()}
     const TREE_LINKED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH)};
     const TREE_BROKEN_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH)};
     const FIELD_PARENT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON)};
+    const FIXED_VALUE_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH)};
+    const FIXED_VALUE_BADGE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL)};
+    const FIXED_VALUE_OBJECT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON)};
+    const FIXED_VALUE_UNTICKED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON)};
+    const FIXED_VALUE_RECORD_TYPE_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_RECORD_TYPE_REASON)};
+    const FIXED_VALUE_LOOKUP_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON)};
+    const FIXED_VALUE_DEPENDENT_REASON_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX)};
+    const FIXED_VALUE_LOOKUP_FIELD_TYPES = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES)};
     const EVERY_FIELD_UNTICKED_WARNING = ${JSON.stringify(RECIPE_COCKPIT_EVERY_FIELD_UNTICKED_WARNING)};
     const RESET_SELECTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RESET_SELECTION_LABEL)};
 
@@ -8153,6 +8620,8 @@ ${this.buildPaletteCustomProperties()}
             if (fieldState.noteElement.textContent) { fieldState.noteElement.classList.remove('hidden'); } else { fieldState.noteElement.classList.add('hidden'); }
         }
 
+        drawFieldRowFixedValue(treeObjectState, fieldState);
+
         const includeElement = fieldState.includeElement;
         if (!includeElement) { return; }
 
@@ -8168,6 +8637,113 @@ ${this.buildPaletteCustomProperties()}
             : 'Ticked — click to leave this field out';
         includeElement.setAttribute('title', title);
         includeElement.setAttribute('aria-label', fieldApiName + ': ' + title);
+
+    }
+
+    // THE VALUE THE HOST SAYS THIS CARD GENERATES THE FIELD WITH (#262), OR null
+    function findFixedValue(tree, objectApiName, fieldApiName) {
+
+        const fixedValues = Array.isArray(tree.fixedValues) ? tree.fixedValues : [];
+        const fixedValue = fixedValues.find(function (candidate) { return candidate.objectApiName === objectApiName && candidate.fieldApiName === fieldApiName; });
+
+        return fixedValue ? String(fixedValue.value) : null;
+
+    }
+
+    /*
+        Why a field's pin is disabled (#262): the host's own rule (findFixedValueLockReason), drawn
+        from the model the panel already holds. The host re-derives it before it writes anything.
+    */
+    function findFixedValueLockReason(treeObjectState, fieldState) {
+
+        const tree = treeObjectState.tree;
+        const objectApiName = treeObjectState.object.objectApiName;
+        const field = fieldState.field;
+        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName);
+
+        if (findObjectExclusion(tree, objectApiName)) { return FIXED_VALUE_OBJECT_EXCLUDED_REASON; }
+        if (objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, field.fieldApiName)) { return objectFieldSelection.lockReasonsByFieldApiName[field.fieldApiName]; }
+        if (objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, field.fieldApiName)) { return FIXED_VALUE_UNTICKED_REASON; }
+        if (field.fieldApiName === 'RecordTypeId') { return FIXED_VALUE_RECORD_TYPE_REASON; }
+
+        const isTreeLookup = tree.objects.some(function (treeObject) {
+            return treeObject.objectApiName === objectApiName && treeObject.parentLookups.some(function (parentLookup) { return parentLookup.fieldApiName === field.fieldApiName; });
+        });
+        if (isTreeLookup || FIXED_VALUE_LOOKUP_FIELD_TYPES.indexOf(field.fieldType) !== -1) { return FIXED_VALUE_LOOKUP_REASON; }
+        if (field.controllingField) { return FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField; }
+
+        return '';
+
+    }
+
+    // A FIXED VALUE TAKES THE EXPRESSION'S PLACE ON THE ROW, WRITTEN WITH textContent, AND THE PIN SAYS SO BY SHAPE, aria-pressed AND TITLE
+    function drawFieldRowFixedValue(treeObjectState, fieldState) {
+
+        const objectApiName = treeObjectState.object.objectApiName;
+        const fieldApiName = fieldState.field.fieldApiName;
+        const fixedValue = findFixedValue(treeObjectState.tree, objectApiName, fieldApiName);
+        const isFixed = fixedValue !== null;
+
+        if (fieldState.fixedValueElement) {
+            fieldState.fixedValueElement.textContent = isFixed ? fixedValue : '';
+            if (isFixed) { fieldState.fixedValueElement.classList.remove('hidden'); } else { fieldState.fixedValueElement.classList.add('hidden'); }
+        }
+        if (fieldState.fixedValueBadgeElement) {
+            if (isFixed) { fieldState.fixedValueBadgeElement.classList.remove('hidden'); } else { fieldState.fixedValueBadgeElement.classList.add('hidden'); }
+        }
+        if (fieldState.expressionElement) {
+            if (isFixed) { fieldState.expressionElement.classList.add('hidden'); } else { fieldState.expressionElement.classList.remove('hidden'); }
+        }
+
+        const buttonElement = fieldState.fixedValueButtonElement;
+        if (!buttonElement) { return; }
+
+        const lockReason = treeObjectState.isIteration ? '' : findFixedValueLockReason(treeObjectState, fieldState);
+        buttonElement.disabled = treeObjectState.isIteration || !!lockReason;
+        buttonElement.setAttribute('aria-pressed', isFixed ? 'true' : 'false');
+
+        const title = treeObjectState.isIteration ? 'Follows ' + objectApiName + ' above'
+            : lockReason ? 'Cannot have a fixed value: ' + lockReason
+            : isFixed ? 'Fixed value — click to change or clear it'
+            : 'Give this field a fixed value instead of its faker expression';
+        buttonElement.setAttribute('title', title);
+        buttonElement.setAttribute('aria-label', fieldApiName + ': ' + title);
+
+    }
+
+    /*
+        A field's pin (#262): a real button, keyboard operable, its glyph built node by node like the
+        chain link. A click posts NAMES only -- the value is asked for in the host's own input box.
+    */
+    function buildFieldFixedValueElement(treeObjectState, fieldState) {
+
+        const buttonElement = createElement('button', 'treeFieldFixedValue');
+        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
+        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
+        const object = treeObjectState.object;
+
+        glyphElement.setAttribute('class', 'fixedValueGlyph');
+        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
+        glyphElement.setAttribute('aria-hidden', 'true');
+        glyphElement.setAttribute('focusable', 'false');
+        pathElement.setAttribute('d', FIXED_VALUE_GLYPH_PATH);
+        glyphElement.appendChild(pathElement);
+        buttonElement.appendChild(glyphElement);
+
+        buttonElement.addEventListener('click', function () {
+            if (buttonElement.disabled) { return; }
+            const message = {
+                command: 'setFieldFixedValue',
+                treeKey: treeObjectState.tree.treeKey,
+                objectApiName: object.objectApiName,
+                fieldApiName: fieldState.field.fieldApiName
+            };
+            if (object.nickname) { message.nickname = object.nickname; }
+            vscodeApi.postMessage(message);
+        });
+        fieldState.fixedValueButtonElement = buttonElement;
+
+        return buttonElement;
 
     }
 
@@ -8198,6 +8774,7 @@ ${this.buildPaletteCustomProperties()}
     function hasTreeSelection(tree) {
         return !!tree.objectSelection
             || ( Array.isArray(tree.objectCounts) && tree.objectCounts.length > 0 )
+            || ( Array.isArray(tree.fixedValues) && tree.fixedValues.length > 0 )
             || ( !!tree.fieldSelection && Array.isArray(tree.fieldSelection.objects) && tree.fieldSelection.objects.some(function (objectFieldSelection) {
                 return Array.isArray(objectFieldSelection.excludedFieldApiNames) && objectFieldSelection.excludedFieldApiNames.length > 0;
             }) );
@@ -8223,6 +8800,7 @@ ${this.buildPaletteCustomProperties()}
         treeState.tree.objectSelection = objectSelectionMessage.objectSelection || undefined;
         treeState.tree.fieldSelection = objectSelectionMessage.fieldSelection || undefined;
         treeState.tree.objectCounts = objectSelectionMessage.objectCounts || undefined;
+        treeState.tree.fixedValues = objectSelectionMessage.fixedValues || undefined;
         drawObjectSelection(treeState);
         drawTreeInsert(treeState);
 
@@ -8238,7 +8816,11 @@ ${this.buildPaletteCustomProperties()}
             isPicklistExpanded: false,
             includeElement: null,
             noteElement: null,
-            isIncluded: true
+            isIncluded: true,
+            fixedValueButtonElement: null,
+            fixedValueBadgeElement: null,
+            fixedValueElement: null,
+            expressionElement: null
         };
 
     }
@@ -8360,6 +8942,7 @@ ${this.buildPaletteCustomProperties()}
         // ONLY A FIELD WITH A LINE IN THE RECIPE: THAT LINE IS WHAT THE FILTERED COPY LEAVES OUT
         if (treeObjectState.canSelectFields && field.lineNumber) {
             fieldHeaderElement.appendChild(buildFieldIncludeElement(treeObjectState, fieldState));
+            fieldHeaderElement.appendChild(buildFieldFixedValueElement(treeObjectState, fieldState));
         }
 
         if (field.isPicklist) {
@@ -8408,6 +8991,9 @@ ${this.buildPaletteCustomProperties()}
             fieldHeaderElement.appendChild(createElement('span', 'recipeFileOnly muted', 'read from the recipe file'));
         }
 
+        fieldState.fixedValueBadgeElement = createElement('span', 'fixedValueBadge hidden', FIXED_VALUE_BADGE_LABEL);
+        fieldHeaderElement.appendChild(fieldState.fixedValueBadgeElement);
+
         fieldState.noteElement = createElement('span', 'treeFieldNote muted hidden');
         fieldHeaderElement.appendChild(fieldState.noteElement);
 
@@ -8419,8 +9005,12 @@ ${this.buildPaletteCustomProperties()}
 
         // THE SEARCH BOX MATCHES A FIELD BY ITS FAKER EXPRESSION, SO THE EXPRESSION IS ON SCREEN WITH THE ROW
         if (field.recipeValue) {
-            fieldRowElement.appendChild(createElement('pre', 'expression', field.recipeValue));
+            fieldState.expressionElement = createElement('pre', 'expression', field.recipeValue);
+            fieldRowElement.appendChild(fieldState.expressionElement);
         }
+
+        fieldState.fixedValueElement = createElement('pre', 'fixedValue hidden');
+        fieldRowElement.appendChild(fieldState.fixedValueElement);
 
         return fieldRowElement;
 

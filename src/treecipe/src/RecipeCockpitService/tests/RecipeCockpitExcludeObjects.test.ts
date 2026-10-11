@@ -20,6 +20,7 @@ import {
     IRecipeCockpitTreeViewModel,
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
+    RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH,
     RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM,
@@ -73,7 +74,8 @@ const storedSelections = (excludedObjectApiNamesByFolderName: Record<string, unk
     version: RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     excludedObjectApiNamesByFolderName: excludedObjectApiNamesByFolderName,
     excludedFieldApiNamesByFolderName: excludedFieldApiNamesByFolderName,
-    objectCountsByFolderName: {}
+    objectCountsByFolderName: {},
+    fixedValuesByFolderName: {}
 });
 
 const ACCOUNT_RATING_LOCK = { objects: [{ objectApiName: 'Account', excludedFieldApiNames: [] as string[], lockedFields: [{ fieldApiName: 'Rating__c', reason: 'controls Sub_Rating__c' }] }] };
@@ -248,7 +250,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
         it('reads a version 2 entry, written before record counts (#255), as the same exclusions and no counts, and keeps the stored counts on a write', async () => {
 
             const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: {
-                version: RECIPE_COCKPIT_OBJECT_SELECTION_VERSION - 1,
+                version: RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS,
                 excludedObjectApiNamesByFolderName: { [ACCOUNT_TREE_KEY]: ['Contact'] },
                 excludedFieldApiNamesByFolderName: {},
                 objectCountsByFolderName: { [ACCOUNT_TREE_KEY]: { Account: 9 } }
