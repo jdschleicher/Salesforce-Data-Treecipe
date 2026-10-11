@@ -218,8 +218,9 @@ Each run writes a new `treecipe/FakeDataSets/dataset-<timestamp>` folder (`datas
 This command prompts the user for the following items:
 
 1. Select a pre-existing "dataset" directory with expected Collections-Api structure files
-2. Pick the Salesforce org to insert into (**DO NOT USE PRODUCTION ORG!!!**). Only orgs the Salesforce CLI reports as connected are offered; see [Which orgs the pickers list](#which-orgs-the-pickers-list)
-3. Select "ALL OR NONE" option.
+2. Pick the Salesforce org to insert into. Only orgs the Salesforce CLI reports as connected are offered; see [Which orgs the pickers list](#which-orgs-the-pickers-list)
+3. **Production orgs are refused.** Once connected, and before anything else is sent, the extension asks the org for its `IsSandbox` and `OrganizationType`. It inserts only into a sandbox or scratch org (`IsSandbox` is true) or a Developer Edition org (`OrganizationType` is exactly `Developer Edition`). Any other org, or one whose type cannot be read, gets a warning naming the org and its type (for example `Production · Enterprise Edition` or `type unknown`), and nothing is inserted: no record types are queried and no `InsertAttempts/` folder is written. There is no override. The picker still lists production orgs, because the CLI's local data cannot tell a Developer Edition org from production. The Recipe Cockpit's **Insert…** on a Previous Fake Set runs this same command and the same check
+4. Select "ALL OR NONE" option.
 
    * "false" keeps successfully inserted records
    * "true" rolls back all inserted records
