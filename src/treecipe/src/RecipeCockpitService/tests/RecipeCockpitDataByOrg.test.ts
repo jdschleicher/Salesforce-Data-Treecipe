@@ -651,7 +651,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             it('uses the org picked in the Treecipe tab, describes only that card\'s objects, and tags the answer with the card', async () => {
 
                 jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
-                jest.spyOn(RecipeCockpitService, 'computeCreateReadinessByTarget').mockResolvedValue({ byObjectApiName: new Map(), byCreateKey: new Map() });
+                jest.spyOn(RecipeCockpitService, 'computeCreateReadinessByTarget').mockResolvedValue({ byObjectApiName: new Map(), byCreateKey: new Map(), deployTargetsByCreateKey: new Map() });
 
                 await openRenderedCockpit();
                 await receivedMessageHandler({ command: 'loadDataOrgs' });

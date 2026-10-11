@@ -13,7 +13,7 @@ export const SCRATCH_ORG_DEFINITION_FILE_RELATIVE_PATH = path.join('config', 'pr
 
 export const ORG_OPERATIONS_FOLDER_NAME = 'OrgOperations';
 
-export type OrgOperationName = 'scratch-create' | 'scratch-deploy';
+export type OrgOperationName = 'scratch-create' | 'scratch-deploy' | 'metadata-deploy';
 
 export type ScratchOrgSetupPhase = 'creating' | 'deploying';
 
@@ -24,6 +24,8 @@ export const SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES = 1024 * 1024 * 256;
 export const ORG_OPERATION_REDACTED_KEYS: readonly string[] = ['authFields'];
 
 export const ORG_OPERATION_SECRET_KEY_PATTERN = /token|password|secret|privatekey|sfdxauthurl|authcode/i;
+
+export const ORG_OPERATION_RESULT_FILE_ATTEMPTS = 100;
 
 export const ORG_OPERATION_REDACTED_VALUE = '[redacted by Salesforce Data Treecipe]';
 
@@ -59,6 +61,19 @@ export interface IScratchOrgPlan {
 export type ScratchOrgCreateParseResult =
     { isCreated: true; username: string }
     | { isCreated: false; failureMessage: string };
+
+/*
+    What a deploy's --json says about its components, shared by the scratch org deploy (#200) and
+    the cockpit's missing-metadata deploy (#211). The package.xml entry the CLI lists among the
+    successes is not a component anyone asked for, so it is not counted.
+*/
+export interface IDeployComponentCounts {
+    isSucceeded: boolean;
+    componentSuccessCount: number;
+    componentFailureCount: number;
+    componentFailureProblems: string[];
+    numberComponentsDeployed?: number;
+}
 
 export type SourceDeployParseResult =
     { isDeployed: true; deployedComponentCount: number }
@@ -290,22 +305,40 @@ export class ScratchOrgService {
             return { isDeployed: false, componentFailureCount: 0, failureMessage: invocationResult.spawnError.code === 'ENOENT' ? this.buildCliRequiredMessage() : `The Salesforce CLI could not be started: ${invocationResult.spawnError.message}` };
         }
 
-        const result = payload?.result !== null && typeof payload?.result === 'object' ? payload.result as Record<string, unknown> : undefined;
-        const details = result?.details !== null && typeof result?.details === 'object' ? result.details as Record<string, unknown> : undefined;
-        const componentFailures = details?.componentFailures;
-        const componentFailureCount = Array.isArray(componentFailures)
-            ? componentFailures.length
-            : componentFailures !== null && typeof componentFailures === 'object' ? 1 : 0;
+        const deployComponentCounts = this.readDeployComponentCounts(payload);
+        const componentFailureCount = deployComponentCounts.componentFailureCount;
 
-        if ( payload?.status === 0 && result?.success === true && componentFailureCount === 0 ) {
-            const componentSuccesses = details?.componentSuccesses;
-            const deployedComponentCount = typeof result.numberComponentsDeployed === 'number'
-                ? result.numberComponentsDeployed
-                : Array.isArray(componentSuccesses) ? componentSuccesses.length : 0;
-            return { isDeployed: true, deployedComponentCount: deployedComponentCount };
+        if ( deployComponentCounts.isSucceeded ) {
+            return { isDeployed: true, deployedComponentCount: deployComponentCounts.numberComponentsDeployed ?? deployComponentCounts.componentSuccessCount };
         }
 
         return { isDeployed: false, componentFailureCount: componentFailureCount, failureMessage: this.buildCliFailureDetail(payload, invocationResult) };
+
+    }
+
+    // A DEPLOY SUCCEEDED ONLY ON status 0, result.success true AND NO COMPONENT FAILURE: ANYTHING ELSE, A MALFORMED ANSWER INCLUDED, IS A FAILURE
+    static readDeployComponentCounts(payload: Record<string, unknown> | undefined): IDeployComponentCounts {
+
+        const result = payload?.result !== null && typeof payload?.result === 'object' && !Array.isArray(payload?.result) ? payload.result as Record<string, unknown> : undefined;
+        const details = result?.details !== null && typeof result?.details === 'object' ? result.details as Record<string, unknown> : undefined;
+        const toEntries = (entries: unknown): unknown[] => Array.isArray(entries) ? entries : entries !== null && typeof entries === 'object' ? [entries] : [];
+        const componentFailures = toEntries(details?.componentFailures);
+        const componentSuccesses = toEntries(details?.componentSuccesses)
+            .filter(componentSuccess => !( componentSuccess !== null && typeof componentSuccess === 'object' && ( componentSuccess as Record<string, unknown> ).fullName === 'package.xml' ));
+        const componentFailureProblems = componentFailures.map(componentFailure => {
+            const failureRecord = componentFailure !== null && typeof componentFailure === 'object' ? componentFailure as Record<string, unknown> : {};
+            return [failureRecord.fullName, failureRecord.problem]
+                .filter((failurePart): failurePart is string => typeof failurePart === 'string' && failurePart.trim() !== '')
+                .join(': ');
+        }).filter(problem => problem !== '');
+
+        return {
+            isSucceeded: payload?.status === 0 && result?.success === true && componentFailures.length === 0,
+            componentSuccessCount: componentSuccesses.length,
+            componentFailureCount: componentFailures.length,
+            componentFailureProblems: componentFailureProblems,
+            ...( typeof result?.numberComponentsDeployed === 'number' ? { numberComponentsDeployed: result.numberComponentsDeployed } : {} )
+        };
 
     }
 
@@ -370,11 +403,24 @@ export class ScratchOrgService {
         try {
             fs.mkdirSync(path.dirname(resultFilePath), { recursive: true });
             this.writeOrgOperationsGitignore(workspaceRoot);
-            fs.writeFileSync(resultFilePath, resultFileContent, { encoding: 'utf-8', flag: 'wx' });
-            return resultFilePath;
         } catch {
             return undefined;
         }
+
+        // TWO OPERATIONS IN ONE SECOND (A SECOND DEPLOY, #211) TAKE THE FIRST FREE OF <name>, <name>-2, ... RATHER THAN LOSE THE LATER RESULT
+        for ( let attempt = 1; attempt <= ORG_OPERATION_RESULT_FILE_ATTEMPTS; attempt++ ) {
+            const attemptFilePath = attempt === 1 ? resultFilePath : resultFilePath.replace(/\.json$/, `-${attempt}.json`);
+            try {
+                fs.writeFileSync(attemptFilePath, resultFileContent, { encoding: 'utf-8', flag: 'wx' });
+                return attemptFilePath;
+            } catch (writeError) {
+                if ( ( writeError as NodeJS.ErrnoException )?.code !== 'EEXIST' ) {
+                    return undefined;
+                }
+            }
+        }
+
+        return undefined;
 
     }
 
