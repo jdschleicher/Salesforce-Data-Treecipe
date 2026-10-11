@@ -1,5 +1,36 @@
 # Change Log
 
+## [3.62.0] - Recipe Cockpit deploys an object's missing metadata to the selected sandbox
+
+Closes [#211](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/211), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+When a tree's **Generate fake data and insert** was stopped because the selected sandbox lacked an object or some of a recipe's fields ([#210](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/210)), fixing it meant leaving VS Code, working out the `--metadata` list, running `sf project deploy start` and re-selecting the org. Now **Deploy missing metadata…** does that from the card.
+
+The issue was written for Data-by-Org's per-object **+ Create**, which [#255](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/255) replaced with the whole-tree insert. The button therefore sits under the insert's reason, for the object that reason names.
+
+- **When it shows.** Only when the reason is that the org has no such object (its describe answered `NOT_FOUND`, now `isNotFound` on the describe outcome) or that the tree's block has fields the describe lacks. `RecipeCockpitRecordCreation.buildCreateReadiness` marks those readinesses `isMetadataDeployable`. It never marks a describe that failed for another reason, a not-createable field, a production org or an org whose type is unknown.
+- **What is deployed is the host's.** The panel posts `deployMissingMetadata {orgIndex, treeKey, objectApiName}`. These are matched against `deployableObjectKeys`, an allow-list built from the readiness the host posted for the selection checked now. Each readiness post carries a `readinessSequence` and keeps a snapshot of the targets as that post left them. The panel echoes it in `readinessRendered`, and only that snapshot is promoted, for that selection over a model the panel acknowledged, so a later readiness's targets stay inactive until it is drawn too. The allow-list is emptied on `ready`, a new model, a failure to draw and a new selection. The `orgIndex` must be the selection, and the selection must have answered `IsSandbox: true`.
+- **`RecipeCockpitMetadataDeploy`** (new) builds the members:
+  - A missing object gives `CustomObject:<Object>` plus the custom fields of the tree's block. In source format a `CustomObject` member deploys everything in the object's folder (validation rules, record types, fields the recipe never names), so the confirmation lists every file there (`objectFolderContents`, the first 40 named). Missing fields give `CustomField:<Object>.<Field>` for each missing custom field.
+  - Each folder is read once per plan, and the workspace root's real path is resolved once, rather than once per field.
+  - Each member is found in local source: an `objects` folder under a package directory of `sfdx-project.json` (the strict read), matched case-insensitively. Each file must be inside the workspace, and the name is written as the file on disk spells it.
+  - Each name is held to `SalesforceApiName` twice: as the recipe names it and as the file spells it. A file that only matches through Unicode case folding (U+212A, the Kelvin sign, lowercases to `k`) is skipped.
+  - An object or field that is not custom (`__c`), a file not in local source and one resolving outside the workspace are listed as skipped, with the reason. The argv builder refuses any member that is not a custom `CustomObject`/`CustomField` of api names.
+- **Sandbox only, checked three times.** The router refuses unless the selection answered `IsSandbox: true`. After the confirmation, the Organization row is queried again on a connection opened by username, and anything but `IsSandbox: true` refuses with no CLI call. The CLI gets `--target-org <username>`, never an alias.
+- **The confirmation** is a modal naming the org (alias and username) and listing every member and every skipped item. Cancel runs nothing. When nothing deployable is left, nothing runs and a warning says why.
+- **Running it.** `sf project deploy start --metadata <m1> --metadata <m2> … --target-org <username> --json` runs through `runSalesforceCli` in project mode (the workspace is the `cwd`; `sf` comes from PATH, never from the workspace), with a 30-minute timeout and a cancellable notification. There is no `--source-dir`. Its line on the card (`Deploying 3 components of OtherChildObject__c…`) is stored and replayed to a reloaded document. One deploy runs per window. While it runs, the router refuses a second deploy, an insert, an org selection, ⟳, a listing and a scratch org. The panel holds every insert, every deploy and the picker disabled.
+- **The answer is untrusted.** Only `status`, `result.success`, `componentSuccesses`, `componentFailures` and error text are read, through `ScratchOrgService.readDeployComponentCounts`, now shared with the scratch org deploy (#200). It no longer counts the `package.xml` entry as a component. The outcomes are:
+  - output that is not JSON, or JSON of the wrong shape: a failure, never a success
+  - a CLI that is not installed (`ENOENT`): an error saying the Salesforce CLI is required
+  - some components failed and some did not: a **warning**, never an error, naming `N of M components failed`, with **View output**. No `--ignore-errors` is passed, so the deploy rolls back and the message says none was applied
+  - every component failed: an error with **View output**
+  - a timeout, or an answer too large to read: a warning that it may have partly applied
+  - a cancel: the process tree is killed, and a message says the deploy may have partly applied
+  
+  The result is saved, redacted, to `treecipe/OrgOperations/<username>/<timestamp>-metadata-deploy.json`. Two operations in the same second now take `<name>-2`, `<name>-3`, … rather than losing the later result.
+- **Afterwards, however it ended** (once the CLI started, even if something threw after it): the deploy stays in flight, with its button, every insert and the picker held, until the readiness has been checked again, and the deployed target leaves the allow-list until a fresh readiness offers it again. The new per-org, per-object `SalesforceOrgService.clearDescribeCache(username, object)` drops that describe, and every card listing the object is checked again, connecting only for what the cache no longer holds. The insert is offered only when the fresh describe says so.
+- **Unchanged:** the shell builder still takes only a nonce, and every new text reaches the panel over `postMessage` and is written with `textContent`. Everything ships behind `recipeCockpitEnabled`, whose warning now names the deploy among the things the cockpit can write to an org. Nothing a field depends on (global value sets, record types, permission sets) is deployed with it, and no field-level security is granted.
+
 ## [3.61.0] - Recipe Cockpit: no Regenerate recipe button, a labelled ⟳ Refresh orgs, one button size, and Previously Used Data Sets
 
 Closes [#263](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/263), slice A of [#261](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/261).

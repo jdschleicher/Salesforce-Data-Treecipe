@@ -79,6 +79,8 @@ export interface IOrgObjectDescribeOutcome {
     objectApiName: string;
     describe?: INormalizedOrgObjectDescribe;
     failureMessage?: string;
+    // THE ORG ANSWERED THAT IT HAS NO SUCH OBJECT (NOT_FOUND) -- NOT A FAILURE TO ASK, WHICH SAYS NOTHING ABOUT THE OBJECT
+    isNotFound?: boolean;
     wasCached: boolean;
 }
 
@@ -269,9 +271,18 @@ export class SalesforceOrgService {
     */
     private static describeCache = new Map<string, INormalizedOrgObjectDescribe>();
 
-    static clearDescribeCache() {
+    /*
+        Everything, or one org's answer for one object -- after a deploy changed that object (#211),
+        so the next readiness check describes it afresh instead of reading the answer from before.
+    */
+    static clearDescribeCache(orgUsername?: string, objectApiName?: string) {
 
-        this.describeCache.clear();
+        if ( orgUsername === undefined || objectApiName === undefined ) {
+            this.describeCache.clear();
+            return;
+        }
+
+        this.describeCache.delete(this.buildDescribeCacheKey(orgUsername, objectApiName));
 
     }
 
@@ -1108,7 +1119,12 @@ export class SalesforceOrgService {
 
                     } catch (describeError) {
 
-                        recordOutcome({ objectApiName: objectApiName, failureMessage: this.describeFailure(describeError), wasCached: false });
+                        recordOutcome({
+                            objectApiName: objectApiName,
+                            failureMessage: this.describeFailure(describeError),
+                            ...( this.isNotFoundError(describeError) ? { isNotFound: true } : {} ),
+                            wasCached: false
+                        });
 
                     }
 
@@ -1146,6 +1162,13 @@ export class SalesforceOrgService {
     static isUsableObjectApiName(objectApiName: string): boolean {
 
         return typeof objectApiName === 'string' && OBJECT_API_NAME_PATTERN.test(objectApiName);
+
+    }
+
+    // jsforce REPORTS A DESCRIBE OF AN OBJECT THE ORG DOES NOT HAVE AS errorCode NOT_FOUND
+    static isNotFoundError(describeError: unknown): boolean {
+
+        return ( describeError as { errorCode?: unknown } | undefined )?.errorCode === 'NOT_FOUND';
 
     }
 

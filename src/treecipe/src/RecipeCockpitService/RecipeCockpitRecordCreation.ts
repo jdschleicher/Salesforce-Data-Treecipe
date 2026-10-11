@@ -74,6 +74,12 @@ export interface IRecipeCockpitCreateReadinessViewModel {
     requiredLookups: IRecipeCockpitRequiredLookupViewModel[];
     missingFieldApiNames?: string[];
     notCreateableFieldApiNames?: string[];
+    /*
+        Set only when the reason is one a deploy of local source can fix (#211): the org answered
+        that it has no such object, or the block carries fields the describe does not have. Never
+        for a not-createable field, nor before the sandbox check has passed.
+    */
+    isMetadataDeployable?: boolean;
 }
 
 /*
@@ -87,6 +93,8 @@ export interface ICreateReadinessInput {
     orgTypeDetail: ICreateOrgTypeDetail | undefined;
     describe?: ICreateObjectDescribe;
     describeFailureMessage?: string;
+    // THE ORG ANSWERED THAT IT HAS NO SUCH OBJECT, RATHER THAN THE DESCRIBE FAILING TO BE ASKED
+    isObjectNotFound?: boolean;
     // THE FIELD KEYS OF THE BLOCK THE INSERT WOULD SEND; ABSENT, NO FIELD IS CHECKED
     recipeFieldApiNames?: readonly string[];
     // WHY THAT BLOCK COULD NOT BE READ: A REASON IN ITS OWN RIGHT, NEVER A BLOCK WITH NO FIELDS
@@ -280,7 +288,8 @@ export class RecipeCockpitRecordCreation {
         }
 
         if ( !describe ) {
-            return notReady(`${objectApiName} is not in this org${readinessInput.describeFailureMessage ? ` (${readinessInput.describeFailureMessage})` : ''}.`);
+            const missingObjectReadiness = notReady(`${objectApiName} is not in this org${readinessInput.describeFailureMessage ? ` (${readinessInput.describeFailureMessage})` : ''}.`);
+            return readinessInput.isObjectNotFound === true ? { ...missingObjectReadiness, isMetadataDeployable: true } : missingObjectReadiness;
         }
 
         if ( describe.isCreateable !== true ) {
@@ -303,7 +312,8 @@ export class RecipeCockpitRecordCreation {
         }));
 
         if ( fieldReason ) {
-            return withFieldCheck(notReady(fieldReason, requiredLookups));
+            const fieldReadiness = withFieldCheck(notReady(fieldReason, requiredLookups));
+            return fieldCheck.missingFieldApiNames.length > 0 ? { ...fieldReadiness, isMetadataDeployable: true } : fieldReadiness;
         }
 
         const uncheckedRequiredReason = this.buildUntickedRequiredFieldReason(objectApiName, describe, readinessInput.excludedFieldApiNames ?? []);

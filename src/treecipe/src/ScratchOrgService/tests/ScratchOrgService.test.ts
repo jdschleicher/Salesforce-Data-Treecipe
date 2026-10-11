@@ -396,6 +396,32 @@ describe('ScratchOrgService (#200)', () => {
 
         });
 
+        // TWO OPERATIONS IN ONE SECOND -- A SECOND METADATA DEPLOY (#211) -- KEEP BOTH RESULTS
+        it('writes a later result of the same second beside the first as <name>-2, never over it', () => {
+
+            const firstFilePath = ScratchOrgService.writeOrgOperationResult(workspaceRoot, 'qa@example.com', 'metadata-deploy', invocation('{"status":0}'), PLAN_DATE);
+            const secondFilePath = ScratchOrgService.writeOrgOperationResult(workspaceRoot, 'qa@example.com', 'metadata-deploy', invocation('{"status":1}'), PLAN_DATE);
+
+            expect(path.basename(firstFilePath)).toBe('20261010-142233-metadata-deploy.json');
+            expect(path.basename(secondFilePath)).toBe('20261010-142233-metadata-deploy-2.json');
+            expect(JSON.parse(fs.readFileSync(firstFilePath, 'utf-8'))).toEqual({ status: 0 });
+            expect(JSON.parse(fs.readFileSync(secondFilePath, 'utf-8'))).toEqual({ status: 1 });
+
+        });
+
+        it('stops at a write that fails for any reason but an existing file, rather than trying the next name', () => {
+
+            const writeSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation((filePath: fs.PathOrFileDescriptor) => {
+                if ( String(filePath).endsWith('.json') ) {
+                    throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+                }
+            });
+
+            expect(ScratchOrgService.writeOrgOperationResult(workspaceRoot, 'qa@example.com', 'metadata-deploy', invocation('{}'), PLAN_DATE)).toBeUndefined();
+            expect(writeSpy.mock.calls.filter(([filePath]) => String(filePath).endsWith('.json'))).toHaveLength(1);
+
+        });
+
         it('writes nothing for an unusable folder name, and answers undefined when the write fails', () => {
 
             expect(ScratchOrgService.writeOrgOperationResult(workspaceRoot, '..', 'scratch-create', invocation('{}'), PLAN_DATE)).toBeUndefined();
