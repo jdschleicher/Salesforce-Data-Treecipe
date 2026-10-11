@@ -91,9 +91,8 @@ describe('RecipeCockpitService, the reader\'s place', () => {
         const isObjectOpen = (panel: Panel, treeKey: string, objectApiName: string) => !panel.isHidden(panel.objectBodyOf(objectNamed(panel, treeKey, objectApiName)));
         const picklistToggleOf = (panel: Panel, treeKey: string, objectApiName: string, fieldApiName: string) =>
             panel.findAll(panel.fieldRowNamed(objectNamed(panel, treeKey, objectApiName), fieldApiName), 'picklistToggle')[0];
-        const versionToggles = (panel: Panel, treeKey: string) => panel.findAll(treeCardOf(panel, treeKey), 'treeVersionToggle');
-        const visibleVersionCount = (panel: Panel, treeKey: string) => panel.findAll(treeCardOf(panel, treeKey), 'treeVersion')
-            .filter((versionElement: any) => !panel.isHidden(versionElement)).length;
+        const visibleDatasetCount = (panel: Panel, treeKey: string) => panel.findAll(treeCardOf(panel, treeKey), 'treeDataset')
+            .filter((datasetElement: any) => !panel.isHidden(datasetElement)).length;
         const searchInputOf = (panel: Panel, treeKey: string, panelClassName: string) =>
             panel.findAll(panel.tabPanelOf(treeCardOf(panel, treeKey), panelClassName), 'tabSearchInput')[0];
         const matchCountOf = (panel: Panel, treeKey: string, panelClassName: string) =>
@@ -110,7 +109,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
         const render = (panel: Panel, recipe: IRecipeCockpitRecipeViewModel, renderSequence = 1, focusTree?: any) =>
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: renderSequence, ...( focusTree ? { focusTree } : {} ) });
 
-        // THE READER'S SESSION: TWO CARDS OPEN, AN OBJECT AND A PICKLIST OPENED, A HISTORY TAB SEARCHED WITH A VERSION OPENED, SCROLLED
+        // THE READER'S SESSION: TWO CARDS OPEN, AN OBJECT AND A PICKLIST OPENED, THE DATA SETS TAB SEARCHED, SCROLLED
         const buildReaderSession = () => {
 
             jest.useFakeTimers();
@@ -124,9 +123,8 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').dispatch('click');
 
             openCard(panel, LEAD_TREE_KEY);
-            clickTab(panel, LEAD_TREE_KEY, 'Previous Versions');
-            versionToggles(panel, LEAD_TREE_KEY)[1].dispatch('click');
-            panel.typeIntoTabSearch(treeCardOf(panel, LEAD_TREE_KEY), 'treeVersions', 'FakerJS');
+            clickTab(panel, LEAD_TREE_KEY, 'Previously Used Data Sets');
+            panel.typeIntoTabSearch(treeCardOf(panel, LEAD_TREE_KEY), 'treeDatasets', '09-21');
 
             panel.scrollTo(480);
             jest.advanceTimersByTime(RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY);
@@ -139,7 +137,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             jest.useRealTimers();
         });
 
-        it('given the document is rebuilt, puts back every card, tab, object, picklist, version and search the reader had, and the scroll', () => {
+        it('given the document is rebuilt, puts back every card, tab, object, picklist and search the reader had, and the scroll', () => {
 
             const { panel: hiddenPanel, recipe } = buildReaderSession();
 
@@ -154,17 +152,16 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Regions__c').attributes['aria-expanded']).toBe('false');
 
             expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(true);
-            expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previous Versions');
-            expect(versionToggles(panel, LEAD_TREE_KEY).map((toggleElement: any) => toggleElement.attributes['aria-expanded'])).toEqual(['false', 'true', 'false']);
-            expect(searchInputOf(panel, LEAD_TREE_KEY, 'treeVersions').value).toBe('FakerJS');
-            expect(visibleVersionCount(panel, LEAD_TREE_KEY)).toBe(1);
+            expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previously Used Data Sets');
+            expect(searchInputOf(panel, LEAD_TREE_KEY, 'treeDatasets').value).toBe('09-21');
+            expect(visibleDatasetCount(panel, LEAD_TREE_KEY)).toBe(1);
 
             expect(panel.scrollToCalls).toEqual([480]);
 
         });
 
-        // THE HOST HONOURS loadPicklistValues AND loadVersionSummaries ONLY ONCE "rendered" HAS ACTIVATED THIS MODEL'S ALLOW-LISTS
-        it('asks the host for the values and summaries it re-opens only after acknowledging the draw', () => {
+        // THE HOST HONOURS loadPicklistValues ONLY ONCE "rendered" HAS ACTIVATED THIS MODEL'S ALLOW-LISTS
+        it('asks the host for the values it re-opens only after acknowledging the draw', () => {
 
             const { panel: hiddenPanel, recipe } = buildReaderSession();
 
@@ -175,7 +172,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadPicklistValues'))
                 .toEqual([{ command: 'loadPicklistValues', objectApiName: 'Account', fieldApiName: 'Rating__c' }]);
             expect(indexOfCommand(panel, 'loadPicklistValues')).toBeGreaterThan(indexOfCommand(panel, 'rendered'));
-            expect(indexOfCommand(panel, 'loadVersionSummaries')).toBeGreaterThan(indexOfCommand(panel, 'rendered'));
+            expect(commandsPosted(panel)).not.toContain('loadVersionSummaries');
 
         });
 
@@ -265,7 +262,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                     ...savedTree,
                     selectedTab: ({ treecipe: 'structure', compare: 'dataByOrg' } as Record<string, string>)[savedTree.selectedTab] ?? savedTree.selectedTab,
                     searchQueries: { structure: savedTree.searchQueries.treecipe, dataByOrg: savedTree.searchQueries.compare,
-                        versions: savedTree.searchQueries.versions, datasets: savedTree.searchQueries.datasets }
+                        datasets: savedTree.searchQueries.datasets }
                 }))
             });
 
@@ -339,6 +336,70 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
         });
 
+        // #265: THE TAB IS GONE, SO A CARD SAVED ON IT OPENS ON TREECIPE, AND ITS SEARCH AND OPENED VERSIONS ARE DROPPED -- NEVER MOVED ONTO ANOTHER TAB
+        describe('given a place saved on the removed Previous Versions tab', () => {
+
+            const buildPlaceOnPreviousVersions = (placeVersion: number) => {
+                const recipe = loadHistoryRecipe().recipeViewModel;
+                const hiddenPanel = runPanelScript();
+                render(hiddenPanel, recipe);
+                openCard(hiddenPanel, LEAD_TREE_KEY);
+                const savedPlace = hiddenPanel.savedState();
+                const leadTreePlace = savedPlace.trees.find((savedTree: any) => savedTree.treeKey === LEAD_TREE_KEY);
+                return {
+                    recipe,
+                    place: {
+                        ...savedPlace,
+                        version: placeVersion,
+                        trees: [{
+                            ...leadTreePlace,
+                            selectedTab: 'versions',
+                            searchQueries: { ...leadTreePlace.searchQueries, versions: 'FakerJS' },
+                            expandedVersionRunFolderNames: [FAKER_JS_RUN_FOLDER_NAME]
+                        }]
+                    }
+                };
+            };
+
+            const expectOpenedOnTreecipe = (panel: Panel) => {
+                expect(commandsPosted(panel)).not.toContain('renderFailed');
+                expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(true);
+                expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Treecipe');
+                expect(searchInputOf(panel, LEAD_TREE_KEY, 'treeStructure').value).toBe('');
+                expect(panel.findAll(treeCardOf(panel, LEAD_TREE_KEY), 'treeVersions')).toEqual([]);
+                expect(commandsPosted(panel)).not.toContain('loadVersionSummaries');
+                const savedLeadTree = panel.savedState().trees.find((savedTree: any) => savedTree.treeKey === LEAD_TREE_KEY);
+                expect(savedLeadTree.selectedTab).toBe('treecipe');
+                expect(JSON.stringify(panel.savedState())).not.toMatch(/FakerJS|versions|expandedVersionRunFolderNames/);
+            };
+
+            it.each([
+                ['2', RECIPE_COCKPIT_PANEL_PLACE_VERSION],
+                ['1', RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB]
+            ])('given its own version %s getState, opens the card on Treecipe and keeps nothing of that tab', (_versionLabel, placeVersion) => {
+
+                const { recipe, place } = buildPlaceOnPreviousVersions(placeVersion);
+
+                const panel = runPanelScript({ savedState: place });
+                render(panel, recipe);
+
+                expectOpenedOnTreecipe(panel);
+
+            });
+
+            it('given the host\'s version 2 place, opens the card on Treecipe and keeps nothing of that tab', () => {
+
+                const { recipe, place } = buildPlaceOnPreviousVersions(RECIPE_COCKPIT_PANEL_PLACE_VERSION);
+
+                const panel = runPanelScript();
+                panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1, restorePlace: place });
+
+                expectOpenedOnTreecipe(panel);
+
+            });
+
+        });
+
         it('given the reader opened nothing, saves the default place and restores it as the default', () => {
 
             const recipe = loadHistoryRecipe().recipeViewModel;
@@ -396,11 +457,10 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').attributes['aria-expanded']).toBe('true');
                 expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Regions__c').attributes['aria-expanded']).toBe('false');
                 expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(true);
-                expect(searchInputOf(panel, LEAD_TREE_KEY, 'treeVersions').value).toBe('FakerJS');
-                expect(versionToggles(panel, LEAD_TREE_KEY).map((toggleElement: any) => toggleElement.attributes['aria-expanded'])).toEqual(['false', 'true', 'false']);
+                expect(searchInputOf(panel, LEAD_TREE_KEY, 'treeDatasets').value).toBe('09-21');
             };
 
-            it('puts back every card, tab, object, picklist, version and search the reader had, and the scroll', () => {
+            it('puts back every card, tab, object, picklist and search the reader had, and the scroll', () => {
 
                 const { panel, recipe } = buildReaderSession();
 
@@ -408,8 +468,8 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
                 expectReaderSessionRestored(panel);
                 expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Treecipe');
-                expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previous Versions');
-                expect(visibleVersionCount(panel, LEAD_TREE_KEY)).toBe(1);
+                expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previously Used Data Sets');
+                expect(visibleDatasetCount(panel, LEAD_TREE_KEY)).toBe(1);
                 expect(scrollCalls).toEqual([480]);
                 expect(commandsPosted(panel)).not.toContain('renderFailed');
 
@@ -429,7 +489,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 expect(selectedTabOf(panel, focusedTreeKey)).toBe(focusedTabLabel);
                 expectReaderSessionRestored(panel);
                 const otherTreeKey = focusedTreeKey === ACCOUNT_TREE_KEY ? LEAD_TREE_KEY : ACCOUNT_TREE_KEY;
-                expect(selectedTabOf(panel, otherTreeKey)).toBe(otherTreeKey === LEAD_TREE_KEY ? 'Previous Versions' : 'Treecipe');
+                expect(selectedTabOf(panel, otherTreeKey)).toBe(otherTreeKey === LEAD_TREE_KEY ? 'Previously Used Data Sets' : 'Treecipe');
 
             });
 
@@ -502,7 +562,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             });
 
             // A RELOAD WHOSE RUN LOST A TREE FOLDER, AND AN Add friend THAT ADDED A NICKNAME
-            it('passes over a card, object or version the reloaded model no longer has and restores the rest, without throwing', () => {
+            it('passes over a card or object the reloaded model no longer has and restores the rest, without throwing', () => {
 
                 const { panel, recipe } = buildReaderSession();
                 const reloadedRecipe = {
@@ -527,7 +587,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
             });
 
-            it('asks the host for the values and summaries it re-opens only after acknowledging the new draw', () => {
+            it('asks the host for the values it re-opens only after acknowledging the new draw', () => {
 
                 const { panel, recipe } = buildReaderSession();
                 const postedBeforeReload = panel.postedHostMessages.length;
@@ -537,7 +597,6 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 const postedByReload = commandsPosted(panel).slice(postedBeforeReload);
                 expect(postedByReload).toContain('rendered');
                 expect(postedByReload.indexOf('loadPicklistValues')).toBeGreaterThan(postedByReload.indexOf('rendered'));
-                expect(postedByReload.indexOf('loadVersionSummaries')).toBeGreaterThan(postedByReload.indexOf('rendered'));
                 expect(panel.postedHostMessages.slice(postedBeforeReload).find((hostMessage: any) => hostMessage.command === 'rendered').renderSequence).toBe(2);
 
             });
@@ -797,9 +856,9 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             expect(savedText).not.toContain('devhub');
             expect(Object.keys(panel.savedState()).sort()).toEqual(['isFavoritesOnly', 'isOrgPickerInUse', 'runFolderName', 'scrollY', 'trees', 'version']);
             panel.savedState().trees.forEach((savedTree: any) => {
-                expect(Object.keys(savedTree).sort()).toEqual(['expandedDataObjectApiNames', 'expandedObjectKeys', 'expandedVersionRunFolderNames',
+                expect(Object.keys(savedTree).sort()).toEqual(['expandedDataObjectApiNames', 'expandedObjectKeys',
                     'isExpanded', 'openPicklistKeys', 'searchQueries', 'selectedTab', 'statusFilter', 'treeKey']);
-                expect(Object.keys(savedTree.searchQueries).sort()).toEqual(['compare', 'datasets', 'treecipe', 'versions']);
+                expect(Object.keys(savedTree.searchQueries).sort()).toEqual(['compare', 'datasets', 'treecipe']);
             });
 
         });

@@ -49,8 +49,6 @@ import {
     IRecipeCockpitTreeDatasetViewModel,
     IRecipeCockpitTreeHistoryTargets,
     IRecipeCockpitTreeHistoryViewModel,
-    IRecipeCockpitTreeSummarySource,
-    IRecipeCockpitTreeVersionSummary,
     RecipeCockpitTreeHistory
 } from './RecipeCockpitTreeHistory';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
@@ -167,6 +165,12 @@ export const RECIPE_COCKPIT_PANEL_PLACE_VERSION = 2;
 // A PLACE SAVED BEFORE #255 NAMES THE Structure AND Data-by-Org TABS; IT IS READ THROUGH RECIPE_COCKPIT_TREE_TAB_RENAMES RATHER THAN DROPPED
 export const RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB = 1;
 export const RECIPE_COCKPIT_TREE_TAB_RENAMES: Readonly<Record<string, string>> = Object.freeze({ structure: 'treecipe', dataByOrg: 'compare' });
+/*
+    Tabs a card no longer has, read from a place of EITHER version after the renames (#265): a card
+    saved on one opens on Treecipe, and that tab's search text and opened rows are dropped -- never
+    moved onto another tab's search. Removing another tab is adding its name here.
+*/
+export const RECIPE_COCKPIT_REMOVED_TREE_TABS: readonly string[] = Object.freeze(['versions']);
 export const RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY = 200;
 
 /*
@@ -270,7 +274,7 @@ export const RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = '+';
 export const RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL = 'Add';
 
 // IN THE ORDER A CARD DRAWS THEM; STRUCTURE IS SELECTED BY DEFAULT, AND THE HISTORY TABS ARE DRAWN ONLY FOR A CARD WITH A HISTORY
-export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'compare', 'versions', 'datasets'] as const;
+export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'compare', 'datasets'] as const;
 
 export type RecipeCockpitTreeTab = typeof RECIPE_COCKPIT_TREE_TABS[number];
 
@@ -712,7 +716,6 @@ export interface IRecipeCockpitPanelTreePlace {
     expandedObjectKeys: string[];
     openPicklistKeys: string[];
     expandedDataObjectApiNames: string[];
-    expandedVersionRunFolderNames: string[];
 }
 
 export interface IRecipeCockpitPanelPlace {
@@ -813,14 +816,6 @@ export interface IRecipeCockpitPicklistValuesMessage extends IRecipeCockpitPickl
     command: 'picklistValues';
     objectApiName: string;
     fieldApiName: string;
-    renderSequence: number;
-}
-
-// ONE TREE'S PREVIOUS VERSIONS, SUMMARIZED FROM EACH RUN'S WRAPPER WHEN THE TAB WAS FIRST OPENED
-export interface IRecipeCockpitVersionSummariesMessage {
-    command: 'versionSummaries';
-    treeKey: string;
-    summaries: IRecipeCockpitTreeVersionSummary[];
     renderSequence: number;
 }
 
@@ -1011,7 +1006,6 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitOrgDescribeMessage
                                         | IRecipeCockpitOrgProgressMessage
                                         | IRecipeCockpitPicklistValuesMessage
-                                        | IRecipeCockpitVersionSummariesMessage
                                         | IRecipeCockpitDatasetRecordCountsMessage
                                         | IRecipeCockpitRunFakerStateMessage
                                         | IRecipeCockpitDataOrgListMessage
@@ -1090,8 +1084,6 @@ export interface IRecipeCockpitLoadedRecipe {
     three data set actions by data set folder name.
 */
 export interface IRecipeCockpitTreeHistoryAllowLists {
-    summaryTreeKeys: Set<string>;
-    diffKeys: Set<string>;
     openableDatasetFolderNames: Set<string>;
     insertableDatasetFolderNames: Set<string>;
     countableDatasetFolderNames: Set<string>;
@@ -1118,9 +1110,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'selectOrg'; treeKey: string; isOrgChosenByReader: boolean }
     | { kind: 'generateTreecipe' }
     | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage }
-    | { kind: 'loadVersionSummaries'; treeKey: string; summarySource: IRecipeCockpitTreeSummarySource; renderSequence: number }
     | { kind: 'loadDatasetRecordCounts'; datasetFolderName: string; datasetFolderPath: string; renderSequence: number }
-    | { kind: 'diffTreeVersion'; versionRecipeFilePath: string; currentRecipeFilePath: string; diffTitle: string }
     | { kind: 'openDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
     | { kind: 'insertDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
     | { kind: 'runFaker'; treeKey: string; recipeFilePath: string }
@@ -1253,17 +1243,6 @@ export interface IRecipeCockpitPanelState {
     acknowledgedRenderSequence: number | null;
 }
 
-/*
-    One run's wrapper, reduced to what a Previous Versions row needs: the fields per object, and
-    per tree folder when the wrapper lists its trees. Cached per run for the panel's model, since
-    every tree of a run is summarized from the same wrapper.
-*/
-export interface IRecipeCockpitRunFieldCounts {
-    fieldCountsByObjectApiName: Map<string, number>;
-    fieldCountsByTreeFolderName: Map<string, number>;
-    hasTreeData: boolean;
-}
-
 // HOW A METADATA DEPLOY ENDED (#211): ITS LINE, WHETHER THE CLI RAN (SO THE DESCRIBE IS STALE), AND THE RESULT FILE "View output" OPENS
 interface IRecipeCockpitMetadataDeployClosingState {
     statusText: string;
@@ -1334,11 +1313,14 @@ export class RecipeCockpitService {
             return undefined;
         }
 
-        // AN OLDER PLACE'S TAB NAMES ARE READ AS THE TABS THEY BECAME; A CURRENT ONE IS READ AS IT IS
+        // AN OLDER PLACE'S TAB NAMES ARE READ AS THE TABS THEY BECAME, AND A TAB SINCE REMOVED AS NONE AT ALL
         const isOlderPlace = candidatePlace.version === RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB;
-        const readTabName = (candidateTabName: unknown): unknown => isOlderPlace && typeof candidateTabName === 'string' && Object.prototype.hasOwnProperty.call(RECIPE_COCKPIT_TREE_TAB_RENAMES, candidateTabName)
-            ? RECIPE_COCKPIT_TREE_TAB_RENAMES[candidateTabName]
-            : candidateTabName;
+        const readTabName = (candidateTabName: unknown): unknown => {
+            const renamedTabName = isOlderPlace && typeof candidateTabName === 'string' && Object.prototype.hasOwnProperty.call(RECIPE_COCKPIT_TREE_TAB_RENAMES, candidateTabName)
+                ? RECIPE_COCKPIT_TREE_TAB_RENAMES[candidateTabName]
+                : candidateTabName;
+            return typeof renamedTabName === 'string' && RECIPE_COCKPIT_REMOVED_TREE_TABS.includes(renamedTabName) ? undefined : renamedTabName;
+        };
 
         const { runFolderName } = candidatePlace;
 
@@ -1358,7 +1340,12 @@ export class RecipeCockpitService {
 
             const storedQueries = this.isPlainRecord(candidateTree.searchQueries) ? candidateTree.searchQueries : {};
             const candidateQueries: Record<string, unknown> = Object.create(null);
-            Object.keys(storedQueries).forEach(storedTabName => { candidateQueries[readTabName(storedTabName) as string] = storedQueries[storedTabName]; });
+            Object.keys(storedQueries).forEach(storedTabName => {
+                const tabName = readTabName(storedTabName);
+                if ( typeof tabName === 'string' ) {
+                    candidateQueries[tabName] = storedQueries[storedTabName];
+                }
+            });
             const searchQueries: Partial<Record<RecipeCockpitTreeTab, string>> = {};
 
             RECIPE_COCKPIT_TREE_TABS.forEach(tabName => {
@@ -1378,8 +1365,7 @@ export class RecipeCockpitService {
                 statusFilter: statusFilter,
                 expandedObjectKeys: this.normalizePlaceNames(candidateTree.expandedObjectKeys),
                 openPicklistKeys: this.normalizePlaceNames(candidateTree.openPicklistKeys),
-                expandedDataObjectApiNames: this.normalizePlaceNames(candidateTree.expandedDataObjectApiNames),
-                expandedVersionRunFolderNames: this.normalizePlaceNames(candidateTree.expandedVersionRunFolderNames)
+                expandedDataObjectApiNames: this.normalizePlaceNames(candidateTree.expandedDataObjectApiNames)
             }];
 
         });
@@ -2772,8 +2758,6 @@ export class RecipeCockpitService {
     static buildEmptyTreeHistoryAllowLists(): IRecipeCockpitTreeHistoryAllowLists {
 
         return {
-            summaryTreeKeys: new Set(),
-            diffKeys: new Set(),
             openableDatasetFolderNames: new Set(),
             insertableDatasetFolderNames: new Set(),
             countableDatasetFolderNames: new Set(),
@@ -2809,12 +2793,6 @@ export class RecipeCockpitService {
             if ( !tree.history ) {
                 return;
             }
-
-            treeHistoryAllowLists.summaryTreeKeys.add(tree.treeKey);
-
-            tree.history.versions
-                .filter(version => version.isDiffable)
-                .forEach(version => treeHistoryAllowLists.diffKeys.add(RecipeCockpitTreeHistory.buildDiffKey(tree.treeKey, version.runFolderName)));
 
             tree.history.datasets.forEach(dataset => this.addDatasetToAllowLists(treeHistoryAllowLists, dataset));
 
@@ -3425,35 +3403,10 @@ export class RecipeCockpitService {
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
                 return;
 
-            case 'loadVersionSummaries':
-
-                await this.postVersionSummaries(cockpitPanel, panelState, panelAction.treeKey, panelAction.summarySource, panelAction.renderSequence);
-                return;
-
             case 'loadDatasetRecordCounts':
 
                 this.postDatasetRecordCounts(cockpitPanel, panelState, panelAction.datasetFolderName, panelAction.datasetFolderPath, panelAction.renderSequence);
                 return;
-
-            case 'diffTreeVersion': {
-
-                const unusableRecipeFilePath = [panelAction.versionRecipeFilePath, panelAction.currentRecipeFilePath]
-                    .find(recipeFilePath => !this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot));
-
-                if ( unusableRecipeFilePath !== undefined ) {
-                    VSCodeWorkspaceService.showWarningMessage(`The recipe file "${RecipeYamlScalar.escapeForNotification(path.basename(unusableRecipeFilePath))}" no longer exists in this workspace, so the versions were not compared. Re-open the Recipe Cockpit to load the runs currently on disk.`);
-                    return;
-                }
-
-                await vscode.commands.executeCommand(
-                    'vscode.diff',
-                    vscode.Uri.file(panelAction.versionRecipeFilePath),
-                    vscode.Uri.file(panelAction.currentRecipeFilePath),
-                    panelAction.diffTitle
-                );
-                return;
-
-            }
 
             case 'openDataset':
             case 'insertDataset': {
@@ -3917,62 +3870,6 @@ export class RecipeCockpitService {
 
     }
 
-    /*
-        Each run's summary, posted as it is known. A wrapper can be hundreds of megabytes and a tree
-        can have many runs, so the runs already in the field-count cache (the current one always is
-        -- the load put it there) are posted at once, and every other wrapper is read after a yield
-        and posted on its own: the extension host is never held for more than one wrapper, and the
-        rows fill in as they are read. Each post is cumulative and names only the runs it knows, so
-        a row still loading is never drawn as "unavailable". A reader who moved to another model
-        stops the walk, since its answer would be drawn over nothing.
-    */
-    private static async postVersionSummaries(cockpitPanel: vscode.WebviewPanel,
-                                                panelState: IRecipeCockpitPanelState,
-                                                treeKey: string,
-                                                summarySource: IRecipeCockpitTreeSummarySource,
-                                                renderSequence: number) {
-
-        const fieldCountsByRunFolderName = new Map<string, number | undefined>();
-        const isModelStillOnScreen = () => this.recipeCockpitPanel === cockpitPanel
-                                            && this.recipeCockpitPanelState === panelState
-                                            && panelState.recipeDataMessage.renderSequence === renderSequence;
-
-        const readTreeFieldCountOfRun = (summaryRun: IRecipeCockpitTreeSummarySource['runs'][number]) => fieldCountsByRunFolderName.set(
-            summaryRun.runFolderName,
-            this.readTreeFieldCount(this.readRunFieldCounts(summaryRun.objectsWrapperFilePath, panelState.workspaceRoot), summarySource.treeFolderName, summaryRun.treeFolderPath, panelState.workspaceRoot)
-        );
-
-        const postKnownSummaries = () => this.postToPanel(cockpitPanel, {
-            command: 'versionSummaries',
-            treeKey: treeKey,
-            summaries: RecipeCockpitTreeHistory.buildVersionSummaries(summarySource, fieldCountsByRunFolderName)
-                .filter(versionSummary => fieldCountsByRunFolderName.has(versionSummary.runFolderName)),
-            renderSequence: renderSequence
-        });
-
-        const uncachedRuns = summarySource.runs.filter(summaryRun => !this.isRunFieldCountCached(summaryRun.objectsWrapperFilePath));
-
-        summarySource.runs.filter(summaryRun => !uncachedRuns.includes(summaryRun)).forEach(readTreeFieldCountOfRun);
-
-        if ( fieldCountsByRunFolderName.size > 0 ) {
-            postKnownSummaries();
-        }
-
-        for ( const summaryRun of uncachedRuns ) {
-
-            await this.yieldToExtensionHost();
-
-            if ( !isModelStillOnScreen() ) {
-                return;
-            }
-
-            readTreeFieldCountOfRun(summaryRun);
-            postKnownSummaries();
-
-        }
-
-    }
-
     private static postDatasetRecordCounts(cockpitPanel: vscode.WebviewPanel,
                                             panelState: IRecipeCockpitPanelState,
                                             datasetFolderName: string,
@@ -4003,141 +3900,6 @@ export class RecipeCockpitService {
             failureMessage: failureMessage,
             renderSequence: renderSequence
         });
-
-    }
-
-    /*
-        What each wrapper's field counts were, keyed by the wrapper's resolved path and valid only
-        while its size and modification time are unchanged. It outlives a model on purpose: a run
-        is never rewritten once Generate Treecipe has moved on, so a reload, a run switch or a
-        regeneration re-reads only the wrapper that actually changed. An entry is a few numbers per
-        object, not the wrapper. An unreadable wrapper is cached as undefined for the same reason a
-        readable one is cached -- re-parsing a 370 MB file to fail again is the cost being avoided.
-    */
-    private static runFieldCountCache = new Map<string, { modifiedAtMs: number; sizeInBytes: number; runFieldCounts: IRecipeCockpitRunFieldCounts | undefined }>();
-
-    private static readWrapperFileStamp(objectsWrapperFilePath: string): { modifiedAtMs: number; sizeInBytes: number } | undefined {
-
-        try {
-            const wrapperFileStat = fs.statSync(objectsWrapperFilePath);
-            return { modifiedAtMs: wrapperFileStat.mtimeMs, sizeInBytes: wrapperFileStat.size };
-        } catch {
-            return undefined;
-        }
-
-    }
-
-    static isRunFieldCountCached(objectsWrapperFilePath: string): boolean {
-
-        const cachedEntry = objectsWrapperFilePath ? this.runFieldCountCache.get(path.resolve(objectsWrapperFilePath)) : undefined;
-        const wrapperFileStamp = cachedEntry ? this.readWrapperFileStamp(objectsWrapperFilePath) : undefined;
-
-        return !!wrapperFileStamp
-                && wrapperFileStamp.modifiedAtMs === cachedEntry.modifiedAtMs
-                && wrapperFileStamp.sizeInBytes === cachedEntry.sizeInBytes;
-
-    }
-
-    // THE LOAD HAS ALREADY PARSED THE RUN ON SCREEN, SO ITS COUNTS ARE KEPT RATHER THAN READ AGAIN WHEN A VERSIONS TAB OPENS
-    static cacheRunFieldCounts(objectsWrapperFilePath: string, normalizedObjectsWrapper: IRecipeCockpitNormalizedObjectsWrapper) {
-
-        const wrapperFileStamp = this.readWrapperFileStamp(objectsWrapperFilePath);
-
-        if ( wrapperFileStamp ) {
-            this.runFieldCountCache.set(path.resolve(objectsWrapperFilePath), { ...wrapperFileStamp, runFieldCounts: this.buildRunFieldCounts(normalizedObjectsWrapper) });
-        }
-
-    }
-
-    /*
-        One run's wrapper as field counts, or undefined when it cannot be read -- which the row
-        draws as "summary unavailable", still diffable. The path was contained when the model was
-        built and is checked again here, since a wrapper is only opened now.
-    */
-    static readRunFieldCounts(objectsWrapperFilePath: string, workspaceRoot: string): IRecipeCockpitRunFieldCounts | undefined {
-
-        if ( !objectsWrapperFilePath || !this.isUsableWorkspacePath(objectsWrapperFilePath, workspaceRoot) ) {
-            return undefined;
-        }
-
-        if ( this.isRunFieldCountCached(objectsWrapperFilePath) ) {
-            return this.runFieldCountCache.get(path.resolve(objectsWrapperFilePath)).runFieldCounts;
-        }
-
-        const wrapperFileStamp = this.readWrapperFileStamp(objectsWrapperFilePath);
-        let runFieldCounts: IRecipeCockpitRunFieldCounts | undefined;
-
-        try {
-            const normalizedObjectsWrapper = this.normalizeObjectsWrapper(JSON.parse(fs.readFileSync(objectsWrapperFilePath, 'utf-8')));
-            runFieldCounts = normalizedObjectsWrapper.isObjectsWrapper ? this.buildRunFieldCounts(normalizedObjectsWrapper) : undefined;
-        } catch {
-            runFieldCounts = undefined;
-        }
-
-        if ( wrapperFileStamp ) {
-            this.runFieldCountCache.set(path.resolve(objectsWrapperFilePath), { ...wrapperFileStamp, runFieldCounts: runFieldCounts });
-        }
-
-        return runFieldCounts;
-
-    }
-
-    static buildRunFieldCounts(normalizedObjectsWrapper: IRecipeCockpitNormalizedObjectsWrapper): IRecipeCockpitRunFieldCounts {
-
-        const fieldCountsByObjectApiName = new Map(normalizedObjectsWrapper.objects.map(objectViewModel => [objectViewModel.objectApiName, objectViewModel.fields.length]));
-        const fieldCountsByTreeFolderName = new Map<string, number>();
-
-        normalizedObjectsWrapper.recipeTrees.forEach(recipeTree => {
-            const treeFolderName = RelationshipService.buildRecipeTreeFolderName(recipeTree.objectApiNames);
-            if ( !fieldCountsByTreeFolderName.has(treeFolderName) ) {
-                fieldCountsByTreeFolderName.set(treeFolderName, this.sumFieldCounts(recipeTree.objectApiNames, fieldCountsByObjectApiName));
-            }
-        });
-
-        return {
-            fieldCountsByObjectApiName: fieldCountsByObjectApiName,
-            fieldCountsByTreeFolderName: fieldCountsByTreeFolderName,
-            hasTreeData: normalizedObjectsWrapper.recipeTrees.length > 0
-        };
-
-    }
-
-    /*
-        The fields the wrapper gives one tree. A wrapper with no tree data is matched through the
-        tree folder's recipe file instead -- the objects it carries -- the same fallback the cards
-        use. A wrapper that lists trees and not this one makes no claim about it.
-    */
-    static readTreeFieldCount(runFieldCounts: IRecipeCockpitRunFieldCounts | undefined,
-                                treeFolderName: string,
-                                treeFolderPath: string,
-                                workspaceRoot: string): number | undefined {
-
-        if ( !runFieldCounts ) {
-            return undefined;
-        }
-
-        if ( runFieldCounts.hasTreeData ) {
-            return runFieldCounts.fieldCountsByTreeFolderName.get(treeFolderName);
-        }
-
-        const treeRecipeFilePath = RecipeCockpitTreeHistory.findTreeRecipeFilePath(treeFolderPath);
-
-        if ( !treeRecipeFilePath || !this.isUsableWorkspacePath(treeRecipeFilePath, workspaceRoot) ) {
-            return undefined;
-        }
-
-        try {
-            const recipeObjectApiNames = [...this.parseRecipeSource(fs.readFileSync(treeRecipeFilePath, 'utf-8')).keys()];
-            return this.sumFieldCounts(recipeObjectApiNames, runFieldCounts.fieldCountsByObjectApiName);
-        } catch {
-            return undefined;
-        }
-
-    }
-
-    private static sumFieldCounts(objectApiNames: string[], fieldCountsByObjectApiName: Map<string, number>): number {
-
-        return [...new Set(objectApiNames)].reduce((fieldCount, objectApiName) => fieldCount + (fieldCountsByObjectApiName.get(objectApiName) ?? 0), 0);
 
     }
 
@@ -6374,26 +6136,10 @@ export class RecipeCockpitService {
             }
 
             /*
-                The history tabs post NAMES -- a tree key, a run folder, a data set folder -- and each
-                is matched against its own allow-list drawn from the confirmed-drawn model, then
-                resolved through a map the HOST built. No path the panel could post is ever read.
+                The data sets tab posts NAMES -- a data set folder -- and each is matched against its
+                own allow-list drawn from the confirmed-drawn model, then resolved through a map the
+                HOST built. No path the panel could post is ever read.
             */
-            case 'loadVersionSummaries': {
-
-                const { treeKey } = panelMessage;
-
-                if ( typeof treeKey !== 'string' || !panelState.recipeDataMessage || !panelState.treeHistoryAllowLists.summaryTreeKeys.has(treeKey) ) {
-                    return undefined;
-                }
-
-                const summarySource = panelState.treeHistoryTargets.summarySourcesByTreeKey.get(treeKey);
-
-                return summarySource
-                    ? { kind: 'loadVersionSummaries', treeKey: treeKey, summarySource: summarySource, renderSequence: panelState.recipeDataMessage.renderSequence }
-                    : undefined;
-
-            }
-
             case 'loadDatasetRecordCounts': {
 
                 const { datasetFolderName } = panelMessage;
@@ -6407,21 +6153,6 @@ export class RecipeCockpitService {
                 return datasetFolderPath
                     ? { kind: 'loadDatasetRecordCounts', datasetFolderName: datasetFolderName, datasetFolderPath: datasetFolderPath, renderSequence: panelState.recipeDataMessage.renderSequence }
                     : undefined;
-
-            }
-
-            case 'diffTreeVersion': {
-
-                const { treeKey, runFolderName } = panelMessage;
-
-                if ( typeof treeKey !== 'string' || typeof runFolderName !== 'string' ) {
-                    return undefined;
-                }
-
-                const diffKey = RecipeCockpitTreeHistory.buildDiffKey(treeKey, runFolderName);
-                const diffTarget = panelState.treeHistoryAllowLists.diffKeys.has(diffKey) ? panelState.treeHistoryTargets.diffTargetsByKey.get(diffKey) : undefined;
-
-                return diffTarget ? { kind: 'diffTreeVersion', ...diffTarget } : undefined;
 
             }
 
@@ -6926,11 +6657,11 @@ export class RecipeCockpitService {
 
     }
 
-    // WHERE THE READER ACTED FROM, KEPT ONLY IF IT NAMES A CARD OF THE MODEL ON SCREEN AND A HISTORY TAB
+    // WHERE THE READER ACTED FROM, KEPT ONLY IF IT NAMES A CARD OF THE MODEL ON SCREEN AND ITS DATA SETS TAB
     static readTreeFocus(panelMessage: IRecipeCockpitPanelMessage, panelState: IRecipeCockpitPanelState): IRecipeCockpitTreeFocus | undefined {
 
         const { treeKey, tab } = panelMessage;
-        const isHistoryTab = tab === 'versions' || tab === 'datasets';
+        const isHistoryTab = tab === 'datasets';
         const isRenderedTree = typeof treeKey === 'string'
                                 && !!panelState.recipeDataMessage?.recipe.trees.some(tree => tree.treeKey === treeKey);
 
@@ -7225,9 +6956,6 @@ export class RecipeCockpitService {
         }
 
         const normalizedObjectsWrapper = this.normalizeObjectsWrapper(parsedObjectsWrapper);
-        if ( normalizedObjectsWrapper.isObjectsWrapper ) {
-            this.cacheRunFieldCounts(selectedRun.objectsWrapperFilePath, normalizedObjectsWrapper);
-        }
         const recipeSourceRead = this.readRecipeSourceFiles(selectedRun.runFolderPath, workspaceRoot);
 
         /*
@@ -7253,8 +6981,7 @@ export class RecipeCockpitService {
             path.join(workspaceRoot, ConfigurationService.getFakeDataSetsFolderPath()),
             workspaceRoot,
             selectedRun.runFolderName,
-            recipeViewModel.trees,
-            new Map(recipeRuns.map(recipeRun => [recipeRun.runFolderName, recipeRun.objectsWrapperFilePath]))
+            recipeViewModel.trees
         );
 
         recipeViewModel.trees.forEach(tree => {
@@ -8194,7 +7921,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader:hover { box-shadow: inset 4px 0 0 var(--sdt-accent); }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeFavorite, .treeRename, .treeTab, .treeVersionToggle, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .treeCompare button, .emptyStateActions button, .dataOrgRefresh, .dataObjectToggle, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .treeInsertDeploy, .metadataDeployViewOutput {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .treeCompare button, .emptyStateActions button, .dataOrgRefresh, .dataObjectToggle, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .treeInsertDeploy, .metadataDeployViewOutput {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
@@ -8206,10 +7933,10 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .treeVersionToggle:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .dataObjectToggle:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treeInsertDeploy:hover:not(:disabled), .metadataDeployViewOutput:hover:not(:disabled) {
+    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .dataObjectToggle:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treeInsertDeploy:hover:not(:disabled), .metadataDeployViewOutput:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeVersionToggle, .dataObjectToggle { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
+    .treeToggle, .treeObjectToggle, .picklistToggle, .dataObjectToggle { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
     .dataOrgRefreshIcon { font-size: 1.5em; line-height: 1; }
     .treeToggle, .treeObjectToggle { padding: 0 0.4rem; font-size: 3.3em; line-height: 1; }
@@ -8367,18 +8094,10 @@ ${this.buildPaletteCustomProperties()}
         background-color: var(--sdt-chip-bg);
         border-radius: 0.6rem;
     }
-    .treeVersionHeader, .treeDatasetHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
-    .treeVersion, .treeDataset { padding: 0.3rem 0.6rem; }
-    .treeVersion:hover, .treeDataset:hover { background-color: var(--sdt-row-hover); }
-    .treeVersionDate, .treeDatasetDate { font-weight: 600; }
-    .treeVersionCurrent {
-        font-size: 0.85em;
-        padding: 0 0.4rem;
-        color: var(--sdt-chip-text);
-        background-color: var(--sdt-chip-bg);
-        border-radius: 0.6rem;
-    }
-    .treeVersionBody { padding-left: 1.4rem; }
+    .treeDatasetHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .treeDataset { padding: 0.3rem 0.6rem; }
+    .treeDataset:hover { background-color: var(--sdt-row-hover); }
+    .treeDatasetDate { font-weight: 600; }
     .treeDatasetCounts { margin: 0.1rem 0 0 0; word-break: break-word; }
     .dataOrgControls { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
     .dataOrgSelect {
@@ -8467,6 +8186,7 @@ ${this.buildPaletteCustomProperties()}
     const PANEL_PLACE_TABS = ${JSON.stringify(RECIPE_COCKPIT_TREE_TABS)};
     const PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB};
     const TREE_TAB_RENAMES = ${JSON.stringify(RECIPE_COCKPIT_TREE_TAB_RENAMES)};
+    const REMOVED_TREE_TABS = ${JSON.stringify(RECIPE_COCKPIT_REMOVED_TREE_TABS)};
     const RENAME_TREE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL)};
     const FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITE_TREE_LABEL)};
     const NOT_FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL)};
@@ -9845,10 +9565,9 @@ ${this.buildPaletteCustomProperties()}
 
     /*
         The tab strip and the Treecipe tab -- its header and its objects -- made on the card's first
-        expand. Opening the Treecipe tab is when its org picker asks for its orgs. Compare and the
-        history tabs build their rows on their own first open -- Previous Versions is when it asks
-        for summaries, which the host reads from each run's wrapper. The history tabs are drawn only
-        for a card whose model carries a history.
+        expand. Opening the Treecipe tab is when its org picker asks for its orgs. Compare and
+        Previously Used Data Sets build their rows on their own first open, and the data sets tab is
+        drawn only for a card whose model carries a history.
     */
     function ensureTreeBodyBuilt(treeState) {
 
@@ -9878,7 +9597,6 @@ ${this.buildPaletteCustomProperties()}
         addTreeTab(treeState, tabsElement, 'compare', 'Compare', createElement('div', 'treeCompareTab hidden'));
 
         if (treeState.tree.history) {
-            addTreeTab(treeState, tabsElement, 'versions', 'Previous Versions', createElement('div', 'treeVersions hidden'));
             addTreeTab(treeState, tabsElement, 'datasets', 'Previously Used Data Sets', createElement('div', 'treeDatasets hidden'));
         }
 
@@ -9930,7 +9648,6 @@ ${this.buildPaletteCustomProperties()}
             if (isSelected && !tabState.isBuilt) {
                 tabState.isBuilt = true;
                 if (tabState.tabName === 'compare') { buildCompareTab(treeState, tabState.panelElement); }
-                if (tabState.tabName === 'versions') { buildVersionsTab(treeState, tabState.panelElement); }
                 if (tabState.tabName === 'datasets') { buildDatasetsTab(treeState, tabState.panelElement); }
             }
 
@@ -10020,20 +9737,18 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // ONE DATA SET: WHEN, WHICH VERSION (ON THE FAKE SETS TAB), ITS RECORD COUNTS, AND OPEN / INSERT BY FOLDER NAME
-    function buildDatasetRow(treeState, dataset, tabName) {
+    // ONE DATA SET: WHEN, WHICH VERSION, ITS RECORD COUNTS, AND OPEN / INSERT BY FOLDER NAME
+    function buildDatasetRow(treeState, dataset) {
 
         const datasetElement = createElement('div', 'treeDataset');
         const datasetHeaderElement = createElement('div', 'treeDatasetHeader');
         const countsElement = createElement('div', 'treeDatasetCounts muted');
-        const actionMessage = { datasetFolderName: dataset.datasetFolderName, treeKey: treeState.tree.treeKey, tab: tabName };
+        const actionMessage = { datasetFolderName: dataset.datasetFolderName, treeKey: treeState.tree.treeKey, tab: 'datasets' };
 
         datasetHeaderElement.appendChild(createElement('span', 'treeDatasetDate', dataset.generatedAtLabel));
         datasetHeaderElement.appendChild(createElement('span', 'treeDatasetBackend muted', dataset.fakerService));
 
-        if (tabName === 'datasets') {
-            datasetHeaderElement.appendChild(createElement('span', dataset.runFolderName === null ? 'treeDatasetVersion unknownVersion' : 'treeDatasetVersion', versionLabelOf(treeState, dataset.runFolderName)));
-        }
+        datasetHeaderElement.appendChild(createElement('span', dataset.runFolderName === null ? 'treeDatasetVersion unknownVersion' : 'treeDatasetVersion', versionLabelOf(treeState, dataset.runFolderName)));
 
         datasetHeaderElement.appendChild(createElement('span', 'treeDatasetFolder muted', dataset.datasetFolderName));
         datasetHeaderElement.appendChild(buildHistoryAction('treeDatasetOpen', 'Open', 'Reveal the folder of this data set in the Explorer',
@@ -10044,15 +9759,9 @@ ${this.buildPaletteCustomProperties()}
         datasetElement.appendChild(datasetHeaderElement);
         datasetElement.appendChild(countsElement);
 
-        /*
-            A legacy data set's counts are read from its Collections API files, which hold every
-            record, so they are read when the reader asks: expanding a version is that ask, and on
-            the Fake Sets tab -- which lists every data set at once -- the row's own button is.
-        */
+        // A LEGACY DATA SET'S COUNTS ARE READ FROM ITS COLLECTIONS API FILES, WHICH HOLD EVERY RECORD, SO ONLY WHEN THE ROW'S OWN BUTTON ASKS
         if (dataset.recordCounts) {
             countsElement.textContent = formatRecordCounts(dataset.recordCounts);
-        } else if (tabName === 'versions') {
-            requestDatasetRecordCounts(dataset.datasetFolderName, countsElement);
         } else {
             const loadCountsElement = createElement('button', 'historyAction treeDatasetCountsLoad', 'Show record counts');
             loadCountsElement.setAttribute('title', 'Count the records in the Collections API files of this data set');
@@ -10077,7 +9786,7 @@ ${this.buildPaletteCustomProperties()}
         panelElement.appendChild(treeState.datasetsSearch.element);
 
         treeState.datasetRowStates = datasets.map(function (dataset) {
-            const rowElement = buildDatasetRow(treeState, dataset, 'datasets');
+            const rowElement = buildDatasetRow(treeState, dataset);
             panelElement.appendChild(rowElement);
             return { element: rowElement, searchText: dataset.datasetFolderName.toLowerCase() };
         });
@@ -10087,7 +9796,7 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        The history tabs list rows, not objects, so a search hides the rows it does not match --
+        The data sets tab lists rows, not objects, so a search hides the rows it does not match --
         and says how many it left, so an empty tab never reads as a tree with no history.
     */
     function applyRowSearch(rowStates, searchQuery, search, singular, plural) {
@@ -10107,9 +9816,9 @@ ${this.buildPaletteCustomProperties()}
 
     /*
         One data set an action just wrote (#226), added to the card IN PLACE rather than by redrawing
-        the panel: to the model the card draws from, so a tab built later lists it, and to whichever
-        of its history tabs are already built, at the top, as a reload orders it. Only this card's
-        history rows are touched; every other node on the page is the one that was there before.
+        the panel: to the model the card draws from, so a tab built later lists it, and to its data
+        sets tab when that is already built, at the top, as a reload orders it. Only this card's
+        data set rows are touched; every other node on the page is the one that was there before.
     */
     function addDatasetToTree(treeState, dataset) {
 
@@ -10123,7 +9832,7 @@ ${this.buildPaletteCustomProperties()}
 
         if (datasetsTabState && datasetsTabState.isBuilt) {
             if (treeState.datasetRowStates && treeState.datasetRowStates.length > 0) {
-                const datasetRowElement = buildDatasetRow(treeState, dataset, 'datasets');
+                const datasetRowElement = buildDatasetRow(treeState, dataset);
                 datasetsTabState.panelElement.insertBefore(datasetRowElement, treeState.datasetRowStates[0].element);
                 treeState.datasetRowStates.unshift({ element: datasetRowElement, searchText: dataset.datasetFolderName.toLowerCase() });
                 applyDatasetsFilter(treeState);
@@ -10131,21 +9840,6 @@ ${this.buildPaletteCustomProperties()}
                 // A TAB BUILT EMPTY HAS NO SEARCH BOX YET: BUILT AGAIN, IT GETS ONE
                 datasetsTabState.panelElement.textContent = '';
                 buildDatasetsTab(treeState, datasetsTabState.panelElement);
-            }
-        }
-
-        const versionState = dataset.runFolderName !== null && treeState.versionStatesByRunFolderName
-            ? treeState.versionStatesByRunFolderName[dataset.runFolderName]
-            : undefined;
-
-        if (versionState && versionState.isBodyBuilt) {
-            const versionDatasetRowElement = buildDatasetRow(treeState, dataset, 'versions');
-            if (versionState.hasDatasetRows) {
-                versionState.bodyElement.insertBefore(versionDatasetRowElement, versionState.bodyElement.firstChild);
-            } else {
-                versionState.bodyElement.textContent = '';
-                versionState.bodyElement.appendChild(versionDatasetRowElement);
-                versionState.hasDatasetRows = true;
             }
         }
 
@@ -10180,127 +9874,6 @@ ${this.buildPaletteCustomProperties()}
 
     function applyDatasetsFilter(treeState) {
         applyRowSearch(treeState.datasetRowStates, treeState.searchQueries.datasets, treeState.datasetsSearch, 'data set', 'data sets');
-    }
-
-    function applyVersionsFilter(treeState) {
-        applyRowSearch(treeState.versionStates, treeState.searchQueries.versions, treeState.versionsSearch, 'version', 'versions');
-    }
-
-    function setVersionExpanded(treeState, versionState, isExpanded) {
-
-        if (isExpanded && !versionState.isBodyBuilt) {
-
-            const versionDatasets = treeState.tree.history.datasets.filter(function (dataset) { return dataset.runFolderName === versionState.version.runFolderName; });
-
-            if (versionDatasets.length === 0) {
-                versionState.bodyElement.appendChild(createElement('div', 'treeEmpty muted', 'No data sets were made from this version.'));
-            }
-
-            versionDatasets.forEach(function (dataset) { versionState.bodyElement.appendChild(buildDatasetRow(treeState, dataset, 'versions')); });
-            versionState.hasDatasetRows = versionDatasets.length > 0;
-            versionState.isBodyBuilt = true;
-
-        }
-
-        if (isExpanded) { versionState.bodyElement.classList.remove('hidden'); } else { versionState.bodyElement.classList.add('hidden'); }
-
-        versionState.toggleElement.textContent = isExpanded ? '▾' : '▸';
-        versionState.toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
-        versionState.isExpanded = isExpanded;
-
-    }
-
-    function buildVersionRow(treeState, version) {
-
-        const versionElement = createElement('div', 'treeVersion');
-        const versionHeaderElement = createElement('div', 'treeVersionHeader');
-        const toggleElement = createElement('button', 'treeVersionToggle', '▸');
-
-        const versionState = {
-            version: version,
-            element: versionElement,
-            searchText: [version.runFolderName, version.generatedAtLabel].join('\\n').toLowerCase(),
-            toggleElement: toggleElement,
-            bodyElement: createElement('div', 'treeVersionBody hidden'),
-            fieldsElement: createElement('span', 'treeVersionFields muted', 'Loading summary…'),
-            changeElement: createElement('span', 'treeVersionChange'),
-            isBodyBuilt: false,
-            isExpanded: false
-        };
-
-        toggleElement.setAttribute('aria-expanded', 'false');
-        toggleElement.setAttribute('aria-label', 'Show or hide the data sets made from the version of ' + version.generatedAtLabel);
-        toggleElement.addEventListener('click', function () {
-            setVersionExpanded(treeState, versionState, !versionState.isExpanded);
-            savePanelPlace();
-        });
-
-        versionHeaderElement.appendChild(toggleElement);
-        versionHeaderElement.appendChild(createElement('span', 'treeVersionDate', version.generatedAtLabel));
-        versionHeaderElement.appendChild(createElement('span', 'treeVersionBackend muted', version.fakerService));
-        versionHeaderElement.appendChild(createElement('span', 'treeVersionFolder muted', version.runFolderName));
-        versionHeaderElement.appendChild(versionState.fieldsElement);
-        versionHeaderElement.appendChild(versionState.changeElement);
-
-        if (version.isBackendDifferent) {
-            versionHeaderElement.appendChild(createElement('span', 'treeVersionBackendChange', 'backend ≠'));
-        }
-
-        if (version.isCurrent) {
-            versionHeaderElement.appendChild(createElement('span', 'treeVersionCurrent', 'current'));
-        }
-
-        if (version.isDiffable) {
-            versionHeaderElement.appendChild(buildHistoryAction('treeVersionDiff', 'Diff', 'Compare the recipe of this version with the current one',
-                { command: 'diffTreeVersion', treeKey: treeState.tree.treeKey, runFolderName: version.runFolderName }));
-        }
-
-        versionElement.appendChild(versionHeaderElement);
-        versionElement.appendChild(versionState.bodyElement);
-
-        return versionState;
-
-    }
-
-    function buildVersionsTab(treeState, panelElement) {
-
-        // KEYED BY RUN FOLDER NAMES FROM DISK, SO NO PROTOTYPE
-        treeState.versionStatesByRunFolderName = Object.create(null);
-        treeState.versionsSearch = buildTabSearch(treeState, 'versions', 'Search run folders and dates', applyVersionsFilter);
-        treeState.versionStates = [];
-        panelElement.appendChild(treeState.versionsSearch.element);
-
-        treeState.tree.history.versions.forEach(function (version) {
-            const versionState = buildVersionRow(treeState, version);
-            treeState.versionStatesByRunFolderName[version.runFolderName] = versionState;
-            treeState.versionStates.push(versionState);
-            panelElement.appendChild(versionState.element);
-        });
-
-        applyVersionsFilter(treeState);
-
-        vscodeApi.postMessage({ command: 'loadVersionSummaries', treeKey: treeState.tree.treeKey });
-
-    }
-
-    function renderVersionSummaries(versionSummariesMessage) {
-
-        if (versionSummariesMessage.renderSequence !== renderedSequence) { return; }
-
-        const treeState = treeStates.find(function (candidateTreeState) { return candidateTreeState.tree.treeKey === versionSummariesMessage.treeKey; });
-
-        if (!treeState || !treeState.versionStatesByRunFolderName) { return; }
-
-        versionSummariesMessage.summaries.forEach(function (versionSummary) {
-
-            if (!Object.prototype.hasOwnProperty.call(treeState.versionStatesByRunFolderName, versionSummary.runFolderName)) { return; }
-
-            const versionState = treeState.versionStatesByRunFolderName[versionSummary.runFolderName];
-            versionState.fieldsElement.textContent = versionSummary.isSummaryAvailable ? pluralize(versionSummary.fieldCount, 'field', 'fields') : 'summary unavailable';
-            versionState.changeElement.textContent = versionSummary.changeText;
-
-        });
-
     }
 
     // A RELOAD THE HOST MADE AFTER A DATA SET WENT MISSING, OR A CREATE, RE-OPENS THE CARD AND TAB THE READER ACTED FROM
@@ -10420,9 +9993,9 @@ ${this.buildPaletteCustomProperties()}
                 .map(function (treeObject) { return treeObject.objectApiName; }),
             dataTab: null,
             comparison: null,
-            searchQueries: { treecipe: '', compare: '', versions: '', datasets: '' },
+            searchQueries: { treecipe: '', compare: '', datasets: '' },
             // WHAT THE READER TYPED IN EACH BOX, AS TYPED -- searchQueries IS ITS TRIMMED, LOWERCASED FORM
-            searchTexts: { treecipe: '', compare: '', versions: '', datasets: '' },
+            searchTexts: { treecipe: '', compare: '', datasets: '' },
             statusFilter: 'all',
             /*
                 What a restored place asks of the card's comparison (#222): its status filter and the
@@ -11428,7 +11001,6 @@ ${this.buildPaletteCustomProperties()}
         const expandedObjectKeys = [];
         const openPicklistKeys = [];
         const expandedDataObjectApiNames = [];
-        const expandedVersionRunFolderNames = [];
         const searchQueries = {};
         let hasSearch = false;
 
@@ -11453,12 +11025,6 @@ ${this.buildPaletteCustomProperties()}
             });
         }
 
-        if (treeState.versionStatesByRunFolderName) {
-            Object.keys(treeState.versionStatesByRunFolderName).forEach(function (runFolderName) {
-                if (treeState.versionStatesByRunFolderName[runFolderName].isExpanded) { expandedVersionRunFolderNames.push(runFolderName); }
-            });
-        }
-
         PANEL_PLACE_TABS.forEach(function (tabName) {
             searchQueries[tabName] = treeState.searchTexts[tabName] || '';
             if (treeState.searchQueries[tabName]) { hasSearch = true; }
@@ -11469,7 +11035,7 @@ ${this.buildPaletteCustomProperties()}
 
         if (!treeState.isExpandedByReader && selectedTab === 'treecipe' && statusFilter === 'all' && !hasSearch
                 && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0
-                && expandedDataObjectApiNames.length === 0 && expandedVersionRunFolderNames.length === 0) {
+                && expandedDataObjectApiNames.length === 0) {
             return null;
         }
 
@@ -11481,8 +11047,7 @@ ${this.buildPaletteCustomProperties()}
             statusFilter: statusFilter,
             expandedObjectKeys: expandedObjectKeys,
             openPicklistKeys: openPicklistKeys,
-            expandedDataObjectApiNames: expandedDataObjectApiNames,
-            expandedVersionRunFolderNames: expandedVersionRunFolderNames
+            expandedDataObjectApiNames: expandedDataObjectApiNames
         };
 
     }
@@ -11544,13 +11109,18 @@ ${this.buildPaletteCustomProperties()}
     /*
         A place saved before #255 names the Structure and Data-by-Org tabs: it is read as the tabs
         they became -- Treecipe, and Compare, which keeps the status filter and the opened rows --
-        rather than dropped.
+        rather than dropped. A place of EITHER version can name a tab the card no longer has
+        (REMOVED_TREE_TABS, #265): it opens on Treecipe, and that tab's search is dropped, never
+        moved onto another tab's.
     */
     function upgradePlace(candidatePlace) {
 
-        if (!candidatePlace || typeof candidatePlace !== 'object' || candidatePlace.version !== PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB) { return candidatePlace; }
+        if (!candidatePlace || typeof candidatePlace !== 'object'
+                || (candidatePlace.version !== PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB && candidatePlace.version !== PANEL_PLACE_VERSION)) { return candidatePlace; }
 
-        const renameTab = function (tabName) { return Object.prototype.hasOwnProperty.call(TREE_TAB_RENAMES, tabName) ? TREE_TAB_RENAMES[tabName] : tabName; };
+        const isOlderPlace = candidatePlace.version === PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB;
+        const renameTab = function (tabName) { return isOlderPlace && Object.prototype.hasOwnProperty.call(TREE_TAB_RENAMES, tabName) ? TREE_TAB_RENAMES[tabName] : tabName; };
+        const isRemovedTab = function (tabName) { return REMOVED_TREE_TABS.indexOf(tabName) !== -1; };
 
         return Object.assign({}, candidatePlace, {
             version: PANEL_PLACE_VERSION,
@@ -11558,9 +11128,13 @@ ${this.buildPaletteCustomProperties()}
                 if (!savedTree || typeof savedTree !== 'object') { return savedTree; }
                 const savedQueries = savedTree.searchQueries && typeof savedTree.searchQueries === 'object' ? savedTree.searchQueries : {};
                 const searchQueries = Object.create(null);
-                Object.keys(savedQueries).forEach(function (tabName) { searchQueries[renameTab(tabName)] = savedQueries[tabName]; });
+                Object.keys(savedQueries).forEach(function (tabName) {
+                    const currentTabName = renameTab(tabName);
+                    if (!isRemovedTab(currentTabName)) { searchQueries[currentTabName] = savedQueries[tabName]; }
+                });
+                const selectedTab = typeof savedTree.selectedTab === 'string' ? renameTab(savedTree.selectedTab) : savedTree.selectedTab;
                 return Object.assign({}, savedTree, {
-                    selectedTab: typeof savedTree.selectedTab === 'string' ? renameTab(savedTree.selectedTab) : savedTree.selectedTab,
+                    selectedTab: isRemovedTab(selectedTab) ? 'treecipe' : selectedTab,
                     searchQueries: searchQueries
                 });
             })
@@ -11619,9 +11193,8 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        The rest of the place, AFTER "rendered": opening a picklist row, a Compare tab or a
-        Previous Versions tab asks the host, which answers only once the ack has activated this
-        model's allow-lists. An entry naming a card, object, tab or option this model does not have
+        The rest of the place, AFTER "rendered": opening a picklist row or a Compare tab asks the
+        host, which answers only once the ack has activated this model's allow-lists. An entry naming a card, object, tab or option this model does not have
         is passed over on its own -- the rest of the place still comes back.
     */
     function restorePlaceAfterRender(savedPlace) {
@@ -11653,7 +11226,6 @@ ${this.buildPaletteCustomProperties()}
             const expandedObjectKeys = toStringSet(savedTree.expandedObjectKeys);
             const openPicklistKeys = toStringSet(savedTree.openPicklistKeys);
             const expandedDataObjectApiNames = toStringSet(savedTree.expandedDataObjectApiNames);
-            const expandedVersionRunFolderNames = toStringSet(savedTree.expandedVersionRunFolderNames);
             const savedSearchQueries = savedTree.searchQueries && typeof savedTree.searchQueries === 'object' ? savedTree.searchQueries : {};
 
             // BEFORE ANY TAB IS BUILT: A TAB READS ITS SEARCH, AND APPLIES IT, WHEN IT IS BUILT
@@ -11688,22 +11260,10 @@ ${this.buildPaletteCustomProperties()}
             const dataObjectApiNamesToOpen = toStringSet(treeState.dataObjectApiNames.filter(function (objectApiName) {
                 return hasString(expandedDataObjectApiNames, objectApiName);
             }));
-            const versionRunFolderNamesToOpen = treeState.tree.history
-                ? treeState.tree.history.versions
-                    .map(function (version) { return version.runFolderName; })
-                    .filter(function (runFolderName) { return hasString(expandedVersionRunFolderNames, runFolderName); })
-                : [];
 
             if (hasAnyString(dataObjectApiNamesToOpen)) {
                 treeState.pendingDataExpandedObjectApiNames = dataObjectApiNamesToOpen;
                 selectTreeTab(treeState, 'compare');
-            }
-
-            if (versionRunFolderNamesToOpen.length > 0) {
-                selectTreeTab(treeState, 'versions');
-                versionRunFolderNamesToOpen.forEach(function (runFolderName) {
-                    setVersionExpanded(treeState, treeState.versionStatesByRunFolderName[runFolderName], true);
-                });
             }
 
             if (typeof savedTree.selectedTab === 'string' && PANEL_PLACE_TABS.indexOf(savedTree.selectedTab) !== -1) {
@@ -11867,7 +11427,7 @@ ${this.buildPaletteCustomProperties()}
 
         }
 
-        // AFTER "rendered": A FOCUSED VERSIONS TAB ASKS FOR ITS SUMMARIES, WHICH THE HOST ANSWERS ONLY ONCE THE ACK HAS ACTIVATED THEM
+        // AFTER "rendered": WHAT A RESTORE OR A FOCUS OPENS MAY ASK THE HOST, WHICH ANSWERS ONLY ONCE THE ACK HAS ACTIVATED ITS ALLOW-LISTS
         try {
             restorePlaceAfterRender(savedPlace);
             // A FOCUS IS WHAT THE READER JUST ASKED FOR, SO IT WINS OVER WHERE THEY LAST WERE
@@ -12148,11 +11708,6 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'picklistValues') {
             renderPicklistValues(hostMessage);
-            return;
-        }
-
-        if (hostMessage.command === 'versionSummaries') {
-            renderVersionSummaries(hostMessage);
             return;
         }
 
