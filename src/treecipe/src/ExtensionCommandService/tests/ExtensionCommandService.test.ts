@@ -2261,6 +2261,24 @@ describe('ExtensionCommandService', () => {
 
             describe('isRunFakerFilteredRecipe', () => {
 
+                test('accepts a copy carrying only fixed values (#262)', () => {
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], fixedValuesByObject: { Account: { Name: 'Acme "Ltd"', Active__c: 'true' } } })).toBeTrue();
+                });
+
+                test.each([
+                    ['an empty value map and nothing else left out', {}],
+                    ['an object with no values and nothing else left out', { Account: {} }],
+                    ['a value that is a number', { Account: { Score__c: 4 } }],
+                    ['a field name that is not an api name', { Account: { 'Name\n- object: Evil': 'x' } }],
+                    ['an object name that is not an api name', { 'Bad Name': { Name: 'x' } }],
+                    ['an object entry that is an array', { Account: ['x'] }],
+                    ['an object entry that is null', { Account: null }],
+                    ['a value map that is an array', [['Account', 'x']]],
+                    ['a value map that is null', null]
+                ])('refuses fixed values with %s', (_description, fixedValuesByObject) => {
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], fixedValuesByObject })).toBeFalse();
+                });
+
                 test('accepts a copy carrying only record counts', () => {
                     expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], objectCountsByObject: { Account: 3, Contact__c: Number.MAX_SAFE_INTEGER } })).toBeTrue();
                     expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: ['Contact'], objectCountsByObject: { Account: 3 } })).toBeTrue();

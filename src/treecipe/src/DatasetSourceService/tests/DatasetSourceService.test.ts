@@ -611,6 +611,61 @@ describe('DatasetSourceService', () => {
 
         });
 
+        describe('the fixed values the Recipe Cockpit set (#262)', () => {
+
+            const recipeSourceNames = { recipeRunFolderName: fakerJsRunFolderName, recipeTreeFolderName: 'Account-thru-Contact', recipeFileName: 'recipe.yml' };
+
+            test('buildDatasetSource records them only when there are some, an object or field named __proto__ as a key', () => {
+
+                expect(DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 1 }, [], {}, {}, {}))
+                    .not.toHaveProperty('fixedValuesByObject');
+                expect(DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 1 }, [], {}, {}, { Account: {} }))
+                    .not.toHaveProperty('fixedValuesByObject');
+
+                const fixedValuesByField: Record<string, string> = Object.create(null);
+                fixedValuesByField['__proto__'] = 'EMEA';
+                const fixedValuesByObject: Record<string, Record<string, string>> = Object.create(null);
+                fixedValuesByObject['__proto__'] = fixedValuesByField;
+
+                const written = JSON.parse(JSON.stringify(DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 1 }, [], {}, {}, fixedValuesByObject)));
+
+                expect(Object.keys(written.fixedValuesByObject)).toEqual(['__proto__']);
+                expect(Object.keys(written.fixedValuesByObject['__proto__'])).toEqual(['__proto__']);
+                expect(written).not.toHaveProperty('objectCountsByObject');
+
+            });
+
+            test('accepts them, reads them back with no prototype, and reads a source written before them unchanged', () => {
+
+                const fixingSource: IDatasetSource = { ...validDatasetSource, fixedValuesByObject: { Account: { Region__c: 'EMEA', Active__c: 'true' } } };
+                const parsedDatasetSource = JSON.parse(JSON.stringify({ ...validDatasetSource, fixedValuesByObject: { Placeholder: { Name: 'x' } } }).replace('"Placeholder"', '"__proto__"'));
+
+                expect(DatasetSourceService.typeCheckDatasetSource(fixingSource)).toEqual(fixingSource);
+                expect(DatasetSourceService.typeCheckDatasetSource(validDatasetSource)).not.toHaveProperty('fixedValuesByObject');
+
+                const fixedValuesByObject = DatasetSourceService.typeCheckDatasetSource(parsedDatasetSource)?.fixedValuesByObject as Record<string, Record<string, string>>;
+                expect(Object.getPrototypeOf(fixedValuesByObject)).toBeNull();
+                expect(Object.getPrototypeOf(fixedValuesByObject['__proto__'])).toBeNull();
+                expect(fixedValuesByObject['__proto__']['Name']).toBe('x');
+
+            });
+
+            test.each([
+                ['values as an array', [['Account', 'x']]],
+                ['values as null', null],
+                ['an object entry that is a string', { Account: 'EMEA' }],
+                ['an object entry that is null', { Account: null }],
+                ['an object entry that is an array', { Account: ['EMEA'] }],
+                ['a value that is a number', { Account: { Score__c: 4 } }],
+                ['a value that is null', { Account: { Name: null } }]
+            ])('refuses the whole file for %s', (_description, fixedValuesByObject) => {
+
+                expect(DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, fixedValuesByObject })).toBeUndefined();
+
+            });
+
+        });
+
         describe('the record counts the Recipe Cockpit set (#255)', () => {
 
             const recipeSourceNames = { recipeRunFolderName: fakerJsRunFolderName, recipeTreeFolderName: 'Account-thru-Contact', recipeFileName: 'recipe.yml' };

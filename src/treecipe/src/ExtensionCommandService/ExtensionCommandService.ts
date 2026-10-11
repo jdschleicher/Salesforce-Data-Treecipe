@@ -51,16 +51,18 @@ export const FILTERED_RECIPE_FILE_PREFIX = 'filteredRecipe-';
 
 /*
     What the Recipe Cockpit hands Run Faker for a tree with excluded objects (#219) or unticked
-    fields (#220), or with record counts the reader set (#255): the filtered copy the host built
-    from the tree's recipe, what it leaves out and the counts it carries. The recipe file itself is
-    never written; the copy is what the processor runs and what the data set keeps. At least one
-    object or field is left out, or one count set, or there would be no copy.
+    fields (#220), or with record counts (#255) or fixed values (#262) the reader set: the filtered
+    copy the host built from the tree's recipe, what it leaves out and the counts and values it
+    carries. The recipe file itself is never written; the copy is what the processor runs and what
+    the data set keeps. At least one object or field is left out, or one count or value set, or
+    there would be no copy.
 */
 export interface IRunFakerFilteredRecipe {
     recipeText: string;
     excludedObjectApiNames: string[];
     excludedFieldApiNamesByObject?: Record<string, string[]>;
     objectCountsByObject?: Record<string, number>;
+    fixedValuesByObject?: Record<string, Record<string, string>>;
 }
 /*
     isConfirmed is set by the Recipe Cockpit's tree insert (#255), whose own host modal already named
@@ -319,7 +321,8 @@ export class ExtensionCommandService {
                 DatasetSourceService.countRecordsByObject(mappedSObjectApiToRecords),
                 filteredRecipe?.excludedObjectApiNames ?? [],
                 filteredRecipe?.excludedFieldApiNamesByObject ?? {},
-                filteredRecipe?.objectCountsByObject ?? {}
+                filteredRecipe?.objectCountsByObject ?? {},
+                filteredRecipe?.fixedValuesByObject ?? {}
             );
             DatasetSourceService.writeDatasetSourceFile(fullPathToBaseArtifactsFolder, datasetSource);
             datasetFolderPath = fullPathToUniqueTimeStampedFakeDataSetsFolder;
@@ -357,7 +360,7 @@ export class ExtensionCommandService {
             return false;
         }
 
-        const { recipeText, excludedObjectApiNames, excludedFieldApiNamesByObject, objectCountsByObject } = candidate as Record<string, unknown>;
+        const { recipeText, excludedObjectApiNames, excludedFieldApiNamesByObject, objectCountsByObject, fixedValuesByObject } = candidate as Record<string, unknown>;
 
         const isFieldMap = excludedFieldApiNamesByObject === undefined || (
             typeof excludedFieldApiNamesByObject === 'object'
@@ -384,13 +387,29 @@ export class ExtensionCommandService {
             ))
         );
         const objectCountCount = isCountMap && objectCountsByObject ? Object.keys(objectCountsByObject).length : 0;
+        const isFixedValueMap = fixedValuesByObject === undefined || (
+            typeof fixedValuesByObject === 'object'
+            && fixedValuesByObject !== null
+            && !Array.isArray(fixedValuesByObject)
+            && Object.entries(fixedValuesByObject).every(([objectApiName, fixedValuesByField]) => (
+                SalesforceApiName.isApiName(objectApiName)
+                && typeof fixedValuesByField === 'object'
+                && fixedValuesByField !== null
+                && !Array.isArray(fixedValuesByField)
+                && Object.entries(fixedValuesByField).every(([fieldApiName, fixedValue]) => SalesforceApiName.isApiName(fieldApiName) && typeof fixedValue === 'string')
+            ))
+        );
+        const fixedValueCount = isFixedValueMap && fixedValuesByObject
+            ? Object.values(fixedValuesByObject as Record<string, Record<string, string>>).reduce((valueCount, fixedValuesByField) => valueCount + Object.keys(fixedValuesByField).length, 0)
+            : 0;
 
         return typeof recipeText === 'string'
                 && Array.isArray(excludedObjectApiNames)
                 && excludedObjectApiNames.every(excludedObjectApiName => SalesforceApiName.isApiName(excludedObjectApiName))
                 && isFieldMap
                 && isCountMap
-                && excludedObjectApiNames.length + excludedFieldCount + objectCountCount > 0;
+                && isFixedValueMap
+                && excludedObjectApiNames.length + excludedFieldCount + objectCountCount + fixedValueCount > 0;
 
     }
 

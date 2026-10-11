@@ -68,6 +68,8 @@ export interface IDatasetSource {
     excludedFieldApiNamesByObject?: Record<string, string[]>;
     // THE RECORD COUNTS THE RECIPE COCKPIT SET (#255), BY OBJECT; ABSENT WHEN NONE WAS. A NESTED FRIEND'S IS PER PARENT RECORD. READ BACK WITH NO PROTOTYPE
     objectCountsByObject?: Record<string, number>;
+    // THE VALUES THE RECIPE COCKPIT FIXED (#262), BY OBJECT THEN FIELD; ABSENT WHEN NONE WAS. READ BACK WITH NO PROTOTYPE
+    fixedValuesByObject?: Record<string, Record<string, string>>;
 }
 
 export interface IRecipeSourceNames {
@@ -179,11 +181,13 @@ export class DatasetSourceService {
                                 recordCountsByObject: Record<string, number>,
                                 excludedObjectApiNames: string[] = [],
                                 excludedFieldApiNamesByObject: Record<string, string[]> = {},
-                                objectCountsByObject: Record<string, number> = {}): IDatasetSource {
+                                objectCountsByObject: Record<string, number> = {},
+                                fixedValuesByObject: Record<string, Record<string, string>> = {}): IDatasetSource {
 
         // fromEntries DEFINES EACH KEY, SO AN OBJECT NAMED __proto__ IS RECORDED RATHER THAN SET AS A PROTOTYPE
         const recordedFieldExclusions = Object.entries(excludedFieldApiNamesByObject).filter(([, fieldApiNames]) => fieldApiNames.length > 0);
         const recordedObjectCounts = Object.entries(objectCountsByObject);
+        const recordedFixedValues = Object.entries(fixedValuesByObject).filter(([, fixedValuesByField]) => Object.keys(fixedValuesByField).length > 0);
 
         return {
             schemaVersion: DATASET_SOURCE_SCHEMA_VERSION,
@@ -198,7 +202,10 @@ export class DatasetSourceService {
             ...( recordedFieldExclusions.length > 0
                 ? { excludedFieldApiNamesByObject: Object.fromEntries(recordedFieldExclusions.map(([objectApiName, fieldApiNames]) => [objectApiName, [...fieldApiNames]])) }
                 : {} ),
-            ...( recordedObjectCounts.length > 0 ? { objectCountsByObject: Object.fromEntries(recordedObjectCounts) } : {} )
+            ...( recordedObjectCounts.length > 0 ? { objectCountsByObject: Object.fromEntries(recordedObjectCounts) } : {} ),
+            ...( recordedFixedValues.length > 0
+                ? { fixedValuesByObject: Object.fromEntries(recordedFixedValues.map(([objectApiName, fixedValuesByField]) => [objectApiName, Object.fromEntries(Object.entries(fixedValuesByField))])) }
+                : {} )
         };
 
     }
@@ -383,6 +390,20 @@ export class DatasetSourceService {
             && Object.values(objectCountsByObject).every(objectCount => typeof objectCount === 'number' && Number.isSafeInteger(objectCount) && objectCount >= 1)
         );
 
+        // OPTIONAL TOO (#262); PRESENT, IT MUST MAP EACH NAME TO A MAP OF NAMES TO STRINGS
+        const fixedValuesByObject = candidate.fixedValuesByObject;
+        const isFixedValueMapValid = fixedValuesByObject === undefined || (
+            typeof fixedValuesByObject === 'object'
+            && fixedValuesByObject !== null
+            && !Array.isArray(fixedValuesByObject)
+            && Object.values(fixedValuesByObject).every(fixedValuesByField => (
+                typeof fixedValuesByField === 'object'
+                && fixedValuesByField !== null
+                && !Array.isArray(fixedValuesByField)
+                && Object.values(fixedValuesByField).every(fixedValue => typeof fixedValue === 'string')
+            ))
+        );
+
         // OPTIONAL, AND ONLY ON A createInOrg FILE (#254); PRESENT, EACH VALUE IS "random", "blank" OR A LIST OF Ids
         const lookupParentsByField = candidate.lookupParentsByField;
         const isLookupParentMapValid = lookupParentsByField === undefined || (
@@ -403,6 +424,7 @@ export class DatasetSourceService {
                         && isExcludedObjectListValid
                         && isExcludedFieldMapValid
                         && isObjectCountMapValid
+                        && isFixedValueMapValid
                         && isLookupParentMapValid
                         && isStringOrNull(candidate.recipeRunFolderName)
                         && isStringOrNull(candidate.recipeTreeFolderName)
@@ -436,6 +458,18 @@ export class DatasetSourceService {
             });
         }
 
+        let readFixedValues: Record<string, Record<string, string>> | undefined;
+        if ( fixedValuesByObject !== undefined ) {
+            readFixedValues = Object.create(null) as Record<string, Record<string, string>>;
+            Object.entries(fixedValuesByObject as Record<string, Record<string, string>>).forEach(([objectApiName, fixedValuesByField]) => {
+                const readByField = Object.create(null) as Record<string, string>;
+                Object.entries(fixedValuesByField).forEach(([fieldApiName, fixedValue]) => {
+                    readByField[fieldApiName] = fixedValue;
+                });
+                ( readFixedValues as Record<string, Record<string, string>> )[objectApiName] = readByField;
+            });
+        }
+
         let readLookupParents: Record<string, LookupParentRecord> | undefined;
         if ( lookupParentsByField !== undefined ) {
             readLookupParents = Object.create(null) as Record<string, LookupParentRecord>;
@@ -461,7 +495,8 @@ export class DatasetSourceService {
             } : {} ),
             ...( Array.isArray(excludedObjectApiNames) ? { excludedObjectApiNames: [...(excludedObjectApiNames as string[])] } : {} ),
             ...( readFieldExclusions ? { excludedFieldApiNamesByObject: readFieldExclusions } : {} ),
-            ...( readObjectCounts ? { objectCountsByObject: readObjectCounts } : {} )
+            ...( readObjectCounts ? { objectCountsByObject: readObjectCounts } : {} ),
+            ...( readFixedValues ? { fixedValuesByObject: readFixedValues } : {} )
         };
 
     }
