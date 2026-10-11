@@ -559,14 +559,12 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
         });
         const sandbox = { isSandbox: true, organizationType: 'Developer Edition' };
 
-        it('clears the missing-field reason once the field the org lacks is unticked, since it is no longer listed', () => {
+        it('offers the insert whether or not an unticked field is one the org lacks, since no field is checked against the describe (#264)', () => {
 
             const describe = describe_([{ fieldApiName: 'LastName' }]);
 
-            expect(RecipeCockpitRecordCreation.buildCreateReadiness({ objectApiName: 'Contact', orgTypeDetail: sandbox, describe, recipeFieldApiNames: ['LastName', 'Legacy__c'] }).disabledReason)
-                .toContain('missing 1 recipe field');
-            expect(RecipeCockpitRecordCreation.buildCreateReadiness({ objectApiName: 'Contact', orgTypeDetail: sandbox, describe, recipeFieldApiNames: ['LastName'], excludedFieldApiNames: ['Legacy__c'] }).disabledReason)
-                .toBe('');
+            expect(RecipeCockpitRecordCreation.buildCreateReadiness({ objectApiName: 'Contact', orgTypeDetail: sandbox, describe }).disabledReason).toBe('');
+            expect(RecipeCockpitRecordCreation.buildCreateReadiness({ objectApiName: 'Contact', orgTypeDetail: sandbox, describe, excludedFieldApiNames: ['Legacy__c'] }).disabledReason).toBe('');
 
         });
 
@@ -579,9 +577,9 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
                 { fieldApiName: 'Formula__c', isNillable: false, isCreateable: false }
             ]);
 
-            expect(RecipeCockpitRecordCreation.buildCreateReadiness({ objectApiName: 'Contact', orgTypeDetail: sandbox, describe, recipeFieldApiNames: ['Phone'], excludedFieldApiNames: ['lastname'] }).disabledReason)
+            expect(RecipeCockpitRecordCreation.buildCreateReadiness({ objectApiName: 'Contact', orgTypeDetail: sandbox, describe, excludedFieldApiNames: ['lastname'] }).disabledReason)
                 .toBe('Contact has 1 unticked field this org requires: LastName. Tick it in the Treecipe tab to insert records.');
-            expect(RecipeCockpitRecordCreation.buildCreateReadiness({ objectApiName: 'Contact', orgTypeDetail: sandbox, describe, recipeFieldApiNames: ['LastName'], excludedFieldApiNames: ['IsActive__c', 'Phone', 'Formula__c'] }).disabledReason)
+            expect(RecipeCockpitRecordCreation.buildCreateReadiness({ objectApiName: 'Contact', orgTypeDetail: sandbox, describe, excludedFieldApiNames: ['IsActive__c', 'Phone', 'Formula__c'] }).disabledReason)
                 .toBe('');
             expect(RecipeCockpitRecordCreation.findRequiredFieldApiNames(describe)).toEqual(['LastName']);
 

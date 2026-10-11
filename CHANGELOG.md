@@ -1,5 +1,28 @@
 # Change Log
 
+## [3.64.0] - Recipe Cockpit: the tree insert no longer refuses a sandbox that lacks recipe fields
+
+Closes [#264](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/264), slice B of [#261](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/261).
+
+**Behaviour change.** With a sandbox selected that lacks some of a recipe's fields, or will not let some be set, **Generate fake data and insert into \<org\>** used to be disabled under a sentence such as "Account is missing 17 recipe fields in this org: … Account has 1 recipe field this org will not let you set: ShippingAddress." ([#210](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/210)). The insert is now offered. A record the org rejects for such a field fails at insert time, per record, like any other rejected record:
+
+- with all-or-none off, the records the org accepted stay, and the insert result beside the button and **View errors** show what failed;
+- with all-or-none on, the insert rolls back every record it saved, so nothing is left behind.
+
+What changed:
+
+- **Removed:** `RecipeCockpitRecordCreation.checkRecipeFields`, `buildFieldCheckReason` and `IRecipeFieldCheck`, the `missingFieldApiNames` and `notCreateableFieldApiNames` properties of `IRecipeCockpitCreateReadinessViewModel`, and the `recipeFieldApiNames` input of `buildCreateReadiness`, which only that check read. No "is missing N recipe fields in this org" or "will not let you set" sentence appears anywhere.
+- **Kept:** each tree's block field listing (`listCreateBlockFieldApiNamesForObjects`), which the parent picker ([#254](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/254)) and **Deploy missing metadata…** still read.
+- **These checks still refuse, as before:**
+  - a production org, or an org whose type could not be read;
+  - an object with no describe;
+  - an object the org will not let you create;
+  - a recipe block that could not be read;
+  - an unticked field the org requires;
+  - a required lookup that can point at more than one kind of object.
+- **Deploy missing metadata…** ([#211](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/211)) now shows only for an object the selected sandbox does not have. A recipe field the org lacks no longer stops the insert, so there is no reason for the button to sit under. Slice D of #261 removes the button.
+- **Unchanged:** recipe generation and both faker backends, Run Faker, the org picker, field and object selection, counts, fixed values, `datasetSource.json` and Insert Data Set by Directory.
+
 ## [3.63.0] - Recipe Cockpit: a field can have a fixed value instead of its faker expression
 
 Closes [#262](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/262), building on [#219](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/219), [#220](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/220) and [#255](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/255).
