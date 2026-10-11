@@ -58,7 +58,7 @@ jest.mock('@salesforce/core', () => ({
 }));
 
 import { AuthInfo } from '@salesforce/core';
-import { NO_AUTHORIZED_ORGS_MESSAGE, SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
+import { NO_AUTHORIZED_ORGS_MESSAGE, ORG_ORGANIZATION_QUERY, ORG_TYPE_UNKNOWN_LABEL, SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 
 /*
     vscode's createQuickPick, answering on a later turn as the real one does: it accepts the item
@@ -136,7 +136,8 @@ import { DirectoryProcessor, RecipeGenerationCancelledError } from "../../Direct
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
 import { FakerJSRecipeProcessor } from "../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { SnowfakeryRecipeProcessor } from "../../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor";
-import { CollectionsApiService } from "../../CollectionsApiService/CollectionsApiService";
+import { CollectionsApiService, INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER } from "../../CollectionsApiService/CollectionsApiService";
+import { RecordTypeService } from "../../RecordTypeService/RecordTypeService";
 import { DatasetSourceService } from "../../DatasetSourceService/DatasetSourceService";
 
 /*
@@ -4725,9 +4726,9 @@ describe('ExtensionCommandService', () => {
 
         it('given an org, asks the unchanged AllOrNone question and reads the pre-selected folder', async () => {
 
-            getOrgSpy.mockResolvedValue('devhub');
+            getOrgSpy.mockResolvedValue({ targetOrgIdentifier: 'devhub', username: 'dev@example.com', alias: 'devhub' });
             allOrNoneSpy.mockResolvedValue(true);
-            jest.spyOn(CollectionsApiService, 'getConnectionFromAlias').mockResolvedValue({} as any);
+            jest.spyOn(CollectionsApiService, 'getConnectionFromAlias').mockResolvedValue({ query: jest.fn().mockResolvedValue({ records: [{ IsSandbox: true, OrganizationType: 'Enterprise Edition' }] }) } as any);
             const childFoldersSpy = jest.spyOn(CollectionsApiService, 'getDataSetChildDirectoriesNameToFilesMap').mockRejectedValue(new Error('stop here'));
             jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
 
@@ -4755,6 +4756,151 @@ describe('ExtensionCommandService', () => {
             expect(showWarningMessageSpy).toHaveBeenCalledTimes(3);
             expect(promptSpy).not.toHaveBeenCalled();
             expect(getOrgSpy).not.toHaveBeenCalled();
+
+        });
+
+        describe('the production guard, checked on the insert\'s own connection', () => {
+
+            const pickedOrgDetail = { targetOrgIdentifier: 'qa', username: 'qa@example.com', alias: 'qa' };
+            let connectionQuery: jest.Mock;
+            let getConnectionSpy: jest.SpyInstance;
+            let recordTypeSpy: jest.SpyInstance;
+            let upsertSpy: jest.SpyInstance;
+            let sentOnConnection: string[];
+
+            const answerOrganization = (organizationAnswer: () => Promise<unknown>) => {
+                connectionQuery.mockImplementation((soql: string) => {
+                    sentOnConnection.push(soql);
+                    return organizationAnswer();
+                });
+            };
+
+            const expectNothingInserted = () => {
+                expect(allOrNoneSpy).not.toHaveBeenCalled();
+                expect(recordTypeSpy).not.toHaveBeenCalled();
+                expect(upsertSpy).not.toHaveBeenCalled();
+                expect(fs.existsSync(path.join(datasetFolderPath, 'InsertAttempts'))).toBe(false);
+            };
+
+            beforeEach(() => {
+
+                sentOnConnection = [];
+                connectionQuery = jest.fn();
+                getOrgSpy.mockResolvedValue(pickedOrgDetail);
+                allOrNoneSpy.mockResolvedValue(false);
+                getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue({ query: connectionQuery } as any);
+                jest.spyOn(CollectionsApiService, 'getDataSetChildDirectoriesNameToFilesMap').mockResolvedValue({});
+                jest.spyOn(CollectionsApiService, 'getTreecipeObjectsWrapperDetailByDataSetDirectoriesToFilesMap').mockResolvedValue({ ObjectToObjectInfoMap: { Account: {} } } as any);
+                recordTypeSpy = jest.spyOn(RecordTypeService, 'getRecordTypeIdsByConnection').mockImplementation(async () => {
+                    sentOnConnection.push('record types');
+                    return {} as any;
+                });
+                upsertSpy = jest.spyOn(CollectionsApiService, 'upsertDataSetToSelectedOrg').mockResolvedValue(undefined);
+
+            });
+
+            it.each([
+                ['a sandbox', { IsSandbox: true, OrganizationType: 'Unlimited Edition' }],
+                ['a scratch org', { IsSandbox: true, OrganizationType: 'Developer Edition' }],
+                ['a Developer Edition org', { IsSandbox: false, OrganizationType: 'Developer Edition' }]
+            ])('inserts into %s as before, asking the org first on the one connection the insert uses', async (_orgKind, organizationRow) => {
+
+                answerOrganization(async () => ({ totalSize: 1, records: [organizationRow] }));
+
+                await new ExtensionCommandService().insertDataSetBySelectedDirectory(datasetFolderPath);
+
+                expect(getConnectionSpy).toHaveBeenCalledTimes(1);
+                expect(getConnectionSpy).toHaveBeenCalledWith('qa@example.com');
+                expect(sentOnConnection).toEqual([ORG_ORGANIZATION_QUERY, 'record types']);
+                const insertConnection = await getConnectionSpy.mock.results[0].value;
+                expect(recordTypeSpy.mock.calls[0][0]).toBe(insertConnection);
+                expect(upsertSpy.mock.calls[0][3]).toBe(insertConnection);
+                expect(allOrNoneSpy).toHaveBeenCalledTimes(1);
+                expect(showWarningMessageSpy).not.toHaveBeenCalled();
+
+            });
+
+            it.each([
+                ['Enterprise Edition'],
+                ['Unlimited Edition'],
+                ['Professional Edition'],
+                [''],
+                ['developer edition'],
+                [' Developer Edition'],
+                ['Developer Edition ']
+            ])('refuses a production org answering OrganizationType "%s", naming the org and its type', async (organizationType) => {
+
+                answerOrganization(async () => ({ totalSize: 1, records: [{ IsSandbox: false, OrganizationType: organizationType }] }));
+
+                await new ExtensionCommandService().insertDataSetBySelectedDirectory(datasetFolderPath);
+
+                expectNothingInserted();
+                expect(sentOnConnection).toEqual([ORG_ORGANIZATION_QUERY]);
+                expect(showWarningMessageSpy).toHaveBeenCalledTimes(1);
+                const shownText: string = showWarningMessageSpy.mock.calls[0][0];
+                expect(shownText).toContain('qa (qa@example.com)');
+                expect(shownText).toContain(RecipeYamlScalar.escapeForNotification(SalesforceOrgService.buildOrgTypeLabel({ isSandbox: false, organizationType: organizationType })));
+
+            });
+
+            it.each([
+                ['the Organization query throws', async () => { throw new Error('INVALID_SESSION_ID'); }],
+                ['it returns no rows', async () => ({ totalSize: 0, records: [] })],
+                ['it returns two rows', async () => ({ totalSize: 2, records: [{ IsSandbox: true, OrganizationType: 'x' }, { IsSandbox: true, OrganizationType: 'x' }] })],
+                ['IsSandbox is not a boolean', async () => ({ totalSize: 1, records: [{ IsSandbox: 'true', OrganizationType: 'Developer Edition' }] })],
+                ['OrganizationType is not a string', async () => ({ totalSize: 1, records: [{ IsSandbox: true, OrganizationType: 7 }] })]
+            ])('refuses with "type unknown" when %s', async (_unhappyPath, organizationAnswer) => {
+
+                answerOrganization(organizationAnswer);
+
+                await new ExtensionCommandService().insertDataSetBySelectedDirectory(datasetFolderPath);
+
+                expectNothingInserted();
+                expect(showWarningMessageSpy).toHaveBeenCalledTimes(1);
+                expect(showWarningMessageSpy.mock.calls[0][0]).toContain(`(${ORG_TYPE_UNKNOWN_LABEL})`);
+
+            });
+
+            it('refuses the same way when the folder came from the folder picker', async () => {
+
+                promptSpy.mockResolvedValue({ label: 'dataset', detail: datasetFolderPath });
+                answerOrganization(async () => ({ totalSize: 1, records: [{ IsSandbox: false, OrganizationType: 'Enterprise Edition' }] }));
+
+                await new ExtensionCommandService().insertDataSetBySelectedDirectory();
+
+                expect(promptSpy).toHaveBeenCalledTimes(1);
+                expectNothingInserted();
+                expect(showWarningMessageSpy).toHaveBeenCalledTimes(1);
+
+            });
+
+            it('escapes the org\'s alias and username in the warning, and names the username alone when there is no alias', async () => {
+
+                const hostileAlias = '[x](command:git.push)';
+                getOrgSpy.mockResolvedValue({ targetOrgIdentifier: hostileAlias, username: 'qa@example.com', alias: hostileAlias });
+                answerOrganization(async () => ({ totalSize: 1, records: [{ IsSandbox: false, OrganizationType: 'Enterprise Edition' }] }));
+
+                await new ExtensionCommandService().insertDataSetBySelectedDirectory(datasetFolderPath);
+
+                const shownText: string = showWarningMessageSpy.mock.calls[0][0];
+                expect(shownText).not.toContain(hostileAlias);
+                expect(shownText).toContain(RecipeYamlScalar.escapeForNotification(hostileAlias));
+
+                expect(ExtensionCommandService.buildRefusedInsertOrgMessage({ targetOrgIdentifier: 'p@example.com', username: 'p@example.com' }, undefined))
+                    .toContain(`p@example.com (${ORG_TYPE_UNKNOWN_LABEL})`);
+
+            });
+
+            it('says in the org picker that production orgs are refused', async () => {
+
+                getOrgSpy.mockRestore();
+                const pickerSpy = jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg').mockResolvedValue(pickedOrgDetail);
+
+                expect(await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst()).toEqual(pickedOrgDetail);
+                expect(pickerSpy).toHaveBeenCalledWith(INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER);
+                expect(INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER).toContain('production orgs are refused');
+
+            });
 
         });
 

@@ -112,6 +112,9 @@ export interface IOrgTypeDetail {
 
 export const ORG_TYPE_UNKNOWN_LABEL = 'type unknown';
 
+// MATCHED EXACTLY: A CASE OR WHITESPACE VARIANT IS NOT AN ANSWER THE ORG GIVES, SO IT IS REFUSED
+export const DEVELOPER_EDITION_ORGANIZATION_TYPE = 'Developer Edition';
+
 /*
     The slice of a CLI authorization Data-by-Org judges an org by, before it ever connects. Every
     flag is optional because older authorizations carry none of them.
@@ -298,6 +301,21 @@ export class SalesforceOrgService {
         }
 
         return { isSandbox: organizationRecord.IsSandbox, organizationType: organizationRecord.OrganizationType };
+
+    }
+
+    /*
+        Insert Data Set by Directory's rule: a sandbox or scratch org (IsSandbox), or a Developer
+        Edition org. Everything else is refused, an org whose type could not be read included.
+        Data-by-Org's Create is stricter on purpose and does not use this.
+    */
+    static isOrgTypeAllowedForDataSetInsert(orgTypeDetail: IOrgTypeDetail | undefined): boolean {
+
+        if ( !orgTypeDetail ) {
+            return false;
+        }
+
+        return orgTypeDetail.isSandbox === true || orgTypeDetail.organizationType === DEVELOPER_EDITION_ORGANIZATION_TYPE;
 
     }
 

@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.57.0] - Insert Data Set by Directory refuses a production org
+
+Closes [#204](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/204), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Insert Data Set by Directory offered every connected org, production included, and the only thing in the way was the picker's placeholder, "DO NOT USE A PRODUCTION ORG". The Recipe Cockpit's **Insert…** on a Previous Fake Set runs the same command, so it had the same gap.
+
+- **The org is asked what it is, on the connection the insert uses.** Right after the org is picked, the command connects once and sends `SELECT IsSandbox, OrganizationType FROM Organization` (`SalesforceOrgService.queryOrganizationType`) before anything else: before the AllOrNone question, the record-type query and any Collections API request.
+- **What is allowed** (`SalesforceOrgService.isOrgTypeAllowedForDataSetInsert`, pure): `IsSandbox === true` (a sandbox or a scratch org), or `IsSandbox === false` with `OrganizationType` exactly `"Developer Edition"` (`DEVELOPER_EDITION_ORGANIZATION_TYPE`). A case or whitespace variant is refused.
+- **Everything else is refused, failing closed:** production of any other edition, an empty `OrganizationType`, and an answer that could not be read (the query threw, returned no rows or two rows, or carried a non-boolean `IsSandbox` or a non-string `OrganizationType`).
+- **A refusal** is a warning naming the org (`alias (username)`, or the username alone) and its type (`buildOrgTypeLabel`: `Production · Enterprise Edition`, or `type unknown`), each through `escapeForNotification`. The command then ends: no AllOrNone question, no record-type query, no Collections API request, no `InsertAttempts/` folder. There is no override.
+- **An allowed org** goes on exactly as before.
+- **The picker** still lists every org the CLI reports connected (#201), because the CLI's local data cannot tell a Developer Edition org from production. Its placeholder (`INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER`) now says production orgs are refused. `CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst` returns the picked org's detail rather than its username, so the warning can name the alias; the connection is still opened by username.
+- **The same check runs** whether the folder came from the folder picker or from the cockpit's **Insert…**.
+- **Unchanged.** Data-by-Org's Create still requires `IsSandbox: true` and so still refuses a Developer Edition org.
+
 ## [3.56.0] - Recipe Cockpit: untick the fields of an object that the faker generates
 
 Closes [#220](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/220), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173). Saving a selection under a name to reuse it is tracked in [#250](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/250).

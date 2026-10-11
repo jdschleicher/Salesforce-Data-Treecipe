@@ -28,6 +28,7 @@ import {
     ORG_DESCRIBE_UNUSABLE_NAME_MESSAGE,
     ORG_ORGANIZATION_QUERY,
     ORG_TYPE_UNKNOWN_LABEL,
+    DEVELOPER_EDITION_ORGANIZATION_TYPE,
     IOrgQuerySource,
     OrgConnectionStatusUnavailableError,
     SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS,
@@ -873,6 +874,38 @@ describe('SalesforceOrgService', () => {
             expect(SalesforceOrgService.normalizeOrganizationResult({ records: [{ IsSandbox: 'true', OrganizationType: 'x' }] })).toBeUndefined();
             expect(SalesforceOrgService.normalizeOrganizationResult({ records: [] })).toBeUndefined();
             expect(SalesforceOrgService.buildOrgTypeLabel(undefined)).toBe(ORG_TYPE_UNKNOWN_LABEL);
+
+        });
+
+        it('allows a data set insert into a sandbox or scratch org, or a Developer Edition org matched exactly, and nothing else', () => {
+
+            expect(SalesforceOrgService.isOrgTypeAllowedForDataSetInsert({ isSandbox: true, organizationType: 'Unlimited Edition' })).toBe(true);
+            expect(SalesforceOrgService.isOrgTypeAllowedForDataSetInsert({ isSandbox: true, organizationType: '' })).toBe(true);
+            expect(SalesforceOrgService.isOrgTypeAllowedForDataSetInsert({ isSandbox: false, organizationType: DEVELOPER_EDITION_ORGANIZATION_TYPE })).toBe(true);
+
+            ['Enterprise Edition', 'Unlimited Edition', 'Professional Edition', '', 'developer edition', 'DEVELOPER EDITION', ' Developer Edition', 'Developer Edition ', 'Developer  Edition']
+                .forEach(organizationType => {
+                    expect(SalesforceOrgService.isOrgTypeAllowedForDataSetInsert({ isSandbox: false, organizationType: organizationType })).toBe(false);
+                });
+
+            expect(SalesforceOrgService.isOrgTypeAllowedForDataSetInsert(undefined)).toBe(false);
+
+        });
+
+        it('allows nothing whose Organization answer could not be read', async () => {
+
+            const unreadableAnswers: unknown[] = [
+                { records: [] },
+                { records: [{ IsSandbox: false, OrganizationType: 'Developer Edition' }, { IsSandbox: false, OrganizationType: 'Developer Edition' }] },
+                { records: [{ IsSandbox: 'false', OrganizationType: 'Developer Edition' }] },
+                { records: [{ IsSandbox: false, OrganizationType: null }] },
+                undefined
+            ];
+
+            for ( const unreadableAnswer of unreadableAnswers ) {
+                const orgTypeDetail = await SalesforceOrgService.queryOrganizationType({ query: jest.fn().mockResolvedValue(unreadableAnswer) });
+                expect(SalesforceOrgService.isOrgTypeAllowedForDataSetInsert(orgTypeDetail)).toBe(false);
+            }
 
         });
 

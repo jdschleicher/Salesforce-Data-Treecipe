@@ -13,7 +13,7 @@ import { SfdxProjectService } from "../SfdxProjectService/SfdxProjectService";
 import { SalesforceApiName } from "../RecipeService/SalesforceApiName";
 import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
 import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail, IPicklistDependencySkippedField, IPicklistDependencyGenerationProgress, IPicklistDependencyGenerationSummaryDetail } from "../PicklistDependencyTestService/PicklistDependencyTestService";
-import { PicklistDependencyCheckService, PicklistDependencyDeployReason } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
+import { PicklistDependencyCheckService, PicklistDependencyDeployReason, IAuthenticatedOrgDetail } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import {
     PicklistDependencyExplorerService,
     IPicklistDependencyExplorerViewModel,
@@ -35,7 +35,7 @@ import {
     VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL
 } from "../RecipeCockpitService/RecipeCockpitService";
 
-import { SalesforceOrgService } from '../SalesforceOrgService/SalesforceOrgService';
+import { SalesforceOrgService, IOrgTypeDetail } from '../SalesforceOrgService/SalesforceOrgService';
 
 import * as fs from 'fs';
 import * as os from 'os';
@@ -2512,8 +2512,17 @@ export class ExtensionCommandService {
 
             }
 
-            const targetOrgAlias = await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst();
-            if (!targetOrgAlias) {
+            const targetOrgDetail = await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst();
+            if (!targetOrgDetail) {
+                return;
+            }
+
+            // THE ORG IS ASKED WHAT IT IS ON THE CONNECTION THE INSERT WILL USE, BEFORE ANYTHING ELSE IS SENT ON IT
+            const aliasAuthenticationConnection = await CollectionsApiService.getConnectionFromAlias(targetOrgDetail.username);
+            const orgTypeDetail = await SalesforceOrgService.queryOrganizationType(SalesforceOrgService.toQuerySource(aliasAuthenticationConnection));
+
+            if ( !SalesforceOrgService.isOrgTypeAllowedForDataSetInsert(orgTypeDetail) ) {
+                VSCodeWorkspaceService.showWarningMessage(ExtensionCommandService.buildRefusedInsertOrgMessage(targetOrgDetail, orgTypeDetail));
                 return;
             }
 
@@ -2521,8 +2530,6 @@ export class ExtensionCommandService {
             if (allOrNoneSelection === undefined) {
                 return;
             }
-            
-            const aliasAuthenticationConnection = await CollectionsApiService.getConnectionFromAlias(targetOrgAlias);
 
             const datasetChildFoldersToFilesMap = await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(selectedDataSetFullDirectoryPath);
             
@@ -2545,6 +2552,18 @@ export class ExtensionCommandService {
 
         }
         
+    }
+
+    // EACH NAME AND THE ORG'S OWN TYPE ESCAPED ON ITS OWN: ALL OF THEM CAME FROM OUTSIDE THE EXTENSION
+    static buildRefusedInsertOrgMessage(orgDetail: IAuthenticatedOrgDetail, orgTypeDetail: IOrgTypeDetail | undefined): string {
+
+        const orgLabel = orgDetail.alias
+            ? `${RecipeYamlScalar.escapeForNotification(orgDetail.alias)} (${RecipeYamlScalar.escapeForNotification(orgDetail.username)})`
+            : RecipeYamlScalar.escapeForNotification(orgDetail.username);
+        const orgTypeLabel = RecipeYamlScalar.escapeForNotification(SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail));
+
+        return `Nothing was inserted into ${orgLabel} (${orgTypeLabel}). Insert Data Set by Directory inserts only into a sandbox, a scratch org or a Developer Edition org.`;
+
     }
 
     async changeFakerImplementationService() {

@@ -3,10 +3,13 @@ import { ConfigurationService } from "../ConfigurationService/ConfigurationServi
 import { DirectoryProcessor } from "../DirectoryProcessingService/DirectoryProcessor";
 import { SalesforceOrgService } from "../SalesforceOrgService/SalesforceOrgService";
 import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceService";
+import { IAuthenticatedOrgDetail } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import path = require('path');
+
+export const INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER = 'Select the Salesforce org the data set will be inserted into -- production orgs are refused (sandbox, scratch and Developer Edition orgs are allowed)';
 
 // ONE RECORD THE INSERT REJECTED, BY ITS POSITION IN WHAT WAS SENT, WITH SALESFORCE'S OWN MESSAGES JOINED
 export interface IRecordInsertFailure {
@@ -66,14 +69,14 @@ export class CollectionsApiService {
 
     /*
         Picked from the orgs the Salesforce CLI reports as connected rather than typed in, so a dead
-        scratch org or a disconnected sandbox is never offered. The USERNAME is returned: an alias is
-        a local nickname that could be re-pointed between the pick and the connection.
+        scratch org or a disconnected sandbox is never offered. Production is still listed: the CLI's
+        local data cannot tell a Developer Edition org from production, so the insert asks the org
+        itself once connected and refuses there. Connect by the USERNAME: an alias is a local nickname
+        that could be re-pointed between the pick and the connection.
     */
-    static async getExpectedSalesforceOrgToInsertAgainst(): Promise<string | undefined> {
+    static async getExpectedSalesforceOrgToInsertAgainst(): Promise<IAuthenticatedOrgDetail | undefined> {
 
-        const selectedOrgDetail = await SalesforceOrgService.promptForAuthorizedOrg('Select the Salesforce org the data set will be inserted into -- DO NOT USE A PRODUCTION ORG');
-
-        return selectedOrgDetail?.username;
+        return await SalesforceOrgService.promptForAuthorizedOrg(INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER);
 
     }
 

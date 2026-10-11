@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { CollectionsApiService } from '../CollectionsApiService';
+import { CollectionsApiService, INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER } from '../CollectionsApiService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { MockDirectoryService } from '../../DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/MockDirectoryService';
 import { MockCollectionsApiService } from './mocks/MockCollectionsApiService';
@@ -121,12 +121,13 @@ describe('Shared tests for CollectionsApiService', () => {
 
     describe('getExpectedSalesforceOrgToInsertAgainst', () =>{
 
-        test('picks from the orgs the Salesforce CLI reports connected and returns the chosen org\'s username, never a typed alias', async () => {
+        test('picks from the orgs the Salesforce CLI reports connected and returns the chosen org\'s detail, never a typed alias, saying production is refused', async () => {
 
             const promptSpy = jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg').mockResolvedValue({ targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa' });
 
-            expect(await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst()).toBe('qa@example.com.qa');
-            expect(promptSpy).toHaveBeenCalledWith(expect.stringContaining('DO NOT USE A PRODUCTION ORG'));
+            expect(await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst()).toEqual({ targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa' });
+            expect(promptSpy).toHaveBeenCalledWith(INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER);
+            expect(INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER).toContain('production orgs are refused');
             expect(vscode.window.showInputBox).not.toHaveBeenCalled();
 
         });
