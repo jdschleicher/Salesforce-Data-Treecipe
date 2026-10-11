@@ -1,5 +1,42 @@
 # Change Log
 
+## [3.60.0] - Recipe Cockpit updates only what ▶ Run Faker or a tree insert changed
+
+Closes [#226](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/226), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+▶ Run Faker and **Generate fake data and insert into \<org\>** each add one data set, yet both reloaded the whole run afterwards. The host re-read the run and posted the whole model again, and the panel rebuilt every card, tab and expanded row. The reload also dropped the org selection, so the panel listed the orgs again, re-selected the org, asked it again whether it is a sandbox and checked every object again. It also dropped every card's comparison. Now these two actions change only the rows they affected.
+
+- **`datasetAdded`, in place of a reload.** When the action wrote a data set folder, the host posts one small message: the cards the new data set belongs to, its Previous Fake Sets row, and, after a tree insert, the insert's result for that card. The panel:
+  - shows the insert result beside the card's insert button, as the reload did;
+  - puts the data set at the top of the card's Previous Fake Sets, if that tab is built;
+  - puts it under its version in Previous Versions, if that version is expanded.
+  
+  Every other node on the page is the one that was there before, and a test checks this by object identity across every card. The org selection, readiness and comparisons stay as they were.
+- **Placed by the reload's own rule.** `RecipeCockpitTreeHistory.buildAddedDataset` reads the one new folder and places it through `groupTreeHistories`, the function a reload uses. A partial update and a reload therefore cannot disagree on which cards list it.
+- **Falls back to the reload.** The run is reloaded, onto the same tab as before (Previous Fake Sets after ▶ Run Faker, Treecipe after an insert), when:
+  - the action wrote no data set (cancelled, refused, failed);
+  - the insert threw after its data set folder was made;
+  - the run on screen changed while the action ran;
+  - the data set cannot be placed: not a data set folder name, not a folder inside the workspace, an unreadable `datasetSource.json`, or no card on screen.
+- **Allow-lists still decide what the panel can act on.** The new row's **Open** and **Insert…** go into a *copy* of the pending history allow-lists (`cloneTreeHistoryAllowLists`). Once a model is acknowledged, its pending and active lists are the same sets, so adding to them in place would make the row usable before it was drawn.
+  - The panel answers `partialRendered {renderSequence, updateSequence}` once it has drawn the row. Only that answer promotes the copy.
+  - It is accepted only when it names the latest `updateSequence` and a model whose own `rendered` has arrived since the last `ready`, new post or failure to draw (`acknowledgedRenderSequence`). Otherwise a forged or late answer could activate every history action of a model no document had drawn.
+  - The host also adds the data set to its stored model, so a hidden tab that is shown again draws it, and that model's `rendered` offers it.
+  - The panel drops a `datasetAdded` for any other `renderSequence`. Data set rows still use one rule (`addDatasetToAllowLists`).
+- **Unchanged:** Regenerate, Reset selection, Add friend and switching runs still redraw the whole panel. No button was renamed and no action was added. The cockpit still counts no records in an org.
+
+### Measured
+
+The 3.25.0 method: a synthetic run written to disk and pushed through the real `loadRecipeRunByRuns` and the real panel script. The run has 1,000 objects in 100 trees of 10, with 12 fields each and a third of them 15-value picklists, so 12,000 fields, and 500 data sets. Times are medians of 7. Panel times come from the test harness's fake DOM, not a browser, so compare them with each other rather than with a real webview.
+
+| after ▶ Run Faker or a tree insert | before: reload | after: `datasetAdded` |
+|---|---|---|
+| host work | 235 ms (re-read the run) | 0.24 ms (read one data set) |
+| posted to the panel | 3.40 MB | 862 bytes (with an insert result) |
+| panel draw | 142 ms | 0.05 ms |
+
+The reload's cost did not stop there: it also re-listed the orgs, re-connected, re-asked the org whether it is a sandbox and re-checked every object's readiness. None of that happens now.
+
 ## [3.59.0] - Recipe Cockpit: one Treecipe tab with per-object counts and a whole-tree insert; the comparison becomes a Compare tab
 
 Closes [#255](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/255), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173). Supersedes the count editor of [#151](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/151).

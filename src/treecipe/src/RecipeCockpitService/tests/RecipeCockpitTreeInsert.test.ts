@@ -60,6 +60,7 @@ import {
     RECIPE_COCKPIT_RUN_FAKER_COMMAND
 } from '../RecipeCockpitService';
 import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
@@ -379,6 +380,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             useConnection(connection);
 
             await openSelectedCockpit(FAKER_JS_RUN);
+            const recipeDataPostsBefore = postedNamed('recipeData').length;
             await insertAccountTree();
 
             // THE HOST-SIDE MODAL: EACH OBJECT'S TOTAL, A NESTED FRIEND'S PER-PARENT COUNT, AND NO LARGE-RUN WARNING
@@ -433,8 +435,22 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             });
             expect(fs.readdirSync(path.join(datasetFolderPath, 'InsertAttempts'))).toEqual([`insertAttempt-${TIMESTAMP}`]);
 
-            // RELOADED ONTO THE CARD'S TREECIPE TAB, THE STATE MESSAGE LAST
-            expect(postedNamed('recipeData').at(-1).focusTree).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe' });
+            // NO RELOAD (#226): THE CARD'S RESULT AND ITS NEW DATA SET ARRIVE IN PLACE, THE STATE MESSAGE LAST
+            expect(postedNamed('recipeData')).toHaveLength(recipeDataPostsBefore);
+            expect(postedNamed('datasetAdded')).toEqual([{
+                command: 'datasetAdded',
+                treeKeys: [ACCOUNT_TREE_KEY],
+                dataset: {
+                    datasetFolderName: `dataset-fakerjs-${TIMESTAMP}`,
+                    generatedAtLabel: '2026-10-07 12:00:00 UTC',
+                    fakerService: 'faker-js',
+                    runFolderName: FAKER_JS_RUN,
+                    recordCounts: [{ objectApiName: 'Account', recordCount: 2 }, { objectApiName: 'Contact', recordCount: 6 }, { objectApiName: 'OtherChildObject__c', recordCount: 6 }]
+                },
+                insertResult: { treeKey: ACCOUNT_TREE_KEY, savedCount: 14, failedCount: 0, outcome: 'completed', isRolledBack: false },
+                renderSequence: lastRenderSequence(),
+                updateSequence: 1
+            }]);
             expect(postedNamed('insertState').map(insertState => insertState.isRunning)).toEqual([true, false]);
             expect(postedPanelMessages.at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
 
@@ -736,7 +752,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         });
 
-        it('keeps what was inserted when records fail, offers View errors for them, and reloads onto the Treecipe tab', async () => {
+        it('keeps what was inserted when records fail, shows the result in place, and offers View errors for them', async () => {
 
             const connection = buildFakeConnection({ rejectRecord: (objectApiName, record) => objectApiName === 'Contact' && record.attributes.referenceId.startsWith('Contact_Reference_2__') });
             useConnection(connection);
@@ -748,11 +764,10 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             expect(insertedOf(connection, 'Account')).toHaveLength(2);
             expect(insertedOf(connection, 'Contact').length).toBeGreaterThan(0);
             expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringMatching(/^\d+ records were inserted into qa \(qa@example\.com\.qa\) from Relationship Tree 1 and \d+ failed\. Nothing was rolled back; "View errors" in the Treecipe tab opens the results\.$/));
-            expect(postedNamed('recipeData').at(-1).focusTree).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe' });
+            expect(postedNamed('datasetAdded').at(-1).insertResult).toMatchObject({ treeKey: ACCOUNT_TREE_KEY, outcome: 'completed' });
             expect(postedPanelMessages.at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
 
-            // THE RELOADED PANEL ASKS AGAIN, AS THE REAL ONE DOES ON ITS NEXT DRAW, AND THE RESULT RIDES ON ITS READINESS
-            await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+            // A REVEALED PANEL ASKS AGAIN, AS THE REAL ONE DOES ON ITS NEXT DRAW, AND THE RESULT RIDES ON ITS READINESS
             await receivedMessageHandler({ command: 'loadDataOrgs' });
 
             const insertResults = postedNamed('dataOrgReadiness').at(-1).insertResults;
@@ -1042,6 +1057,136 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
                 expect(postedPanelMessages).toEqual([{ command: 'insertState', isRunning: false, treeKey: ACCOUNT_TREE_KEY }]);
                 expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+
+            });
+
+        });
+
+
+        describe('updating only what the insert changed (#226)', () => {
+
+            const panelState = (): IRecipeCockpitPanelState => (RecipeCockpitService as any).recipeCockpitPanelState;
+            const insertedDatasetFolderName = `dataset-fakerjs-${TIMESTAMP}`;
+            const openMessage = { command: 'openDataset', datasetFolderName: insertedDatasetFolderName };
+            const insertMessage = { command: 'insertDataset', datasetFolderName: insertedDatasetFolderName };
+
+            it('keeps the org selection, so nothing is listed, selected or checked again', async () => {
+
+                useConnection(buildFakeConnection());
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                const selectionBefore = panelState().dataOrgSelection;
+                const [listsBefore, readinessBefore] = [postedNamed('dataOrgList').length, postedNamed('dataOrgReadiness').length];
+
+                await insertAccountTree();
+
+                expect(panelState().dataOrgSelection).toBe(selectionBefore);
+                expect(postedNamed('dataOrgList')).toHaveLength(listsBefore);
+                expect(postedNamed('dataOrgReadiness')).toHaveLength(readinessBefore);
+                expect(postedNamed('datasetAdded')).toHaveLength(1);
+
+            });
+
+            it('offers Open and Insert… on the new data set only once the panel says it drew it', async () => {
+
+                useConnection(buildFakeConnection());
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                await insertAccountTree();
+                const { renderSequence, updateSequence } = postedNamed('datasetAdded')[0];
+
+                expect(RecipeCockpitService.routePanelMessage(openMessage, panelState())).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage(insertMessage, panelState())).toBeUndefined();
+
+                // AN ACK OF ANOTHER POST, OF ANOTHER MODEL, OR NOT A NUMBER, PROMOTES NOTHING
+                expect(RecipeCockpitService.routePanelMessage({ command: 'partialRendered', renderSequence, updateSequence: updateSequence + 1 }, panelState())).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage({ command: 'partialRendered', renderSequence: renderSequence - 1, updateSequence }, panelState())).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage({ command: 'partialRendered', renderSequence, updateSequence: String(updateSequence) }, panelState())).toBeUndefined();
+
+                await receivedMessageHandler({ command: 'partialRendered', renderSequence, updateSequence });
+
+                const datasetFolderPath = path.join(fakeDataSetsFolderPath(), insertedDatasetFolderName);
+                expect(RecipeCockpitService.routePanelMessage(openMessage, panelState())).toEqual({ kind: 'openDataset', datasetFolderName: insertedDatasetFolderName, datasetFolderPath: datasetFolderPath });
+                expect(RecipeCockpitService.routePanelMessage(insertMessage, panelState())).toEqual({ kind: 'insertDataset', datasetFolderName: insertedDatasetFolderName, datasetFolderPath: datasetFolderPath });
+
+            });
+
+            /*
+                The real panel cannot send these -- it acks only a datasetAdded it drew over the model it
+                drew -- so each is a forged or late message, and none may activate the model's actions.
+            */
+            it.each([
+                ['a reload of the document', async () => { await receivedMessageHandler({ command: 'ready' }); }],
+                ['a draw that failed', async () => {
+                    // A FAILURE TO DRAW IS REPORTED, AS IT ALWAYS IS
+                    expectsCapturedError = true;
+                    await receivedMessageHandler({ command: 'renderFailed', message: 'boom', phase: 'render' });
+                }]
+            ])('refuses a partialRendered after %s, until that model is "rendered" again', async (_description, interrupt) => {
+
+                useConnection(buildFakeConnection());
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                await insertAccountTree();
+                const { renderSequence, updateSequence } = postedNamed('datasetAdded')[0];
+
+                await interrupt();
+                await receivedMessageHandler({ command: 'partialRendered', renderSequence, updateSequence });
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'partialRendered', renderSequence, updateSequence }, panelState())).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage(openMessage, panelState())).toBeUndefined();
+
+            });
+
+            it('refuses a partialRendered naming a newer model that has not been "rendered" yet', async () => {
+
+                useConnection(buildFakeConnection());
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                await insertAccountTree();
+                const { updateSequence } = postedNamed('datasetAdded')[0];
+
+                await receivedMessageHandler({ command: 'selectRun', runFolderName: SNOWFAKERY_RUN });
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'partialRendered', renderSequence: lastRenderSequence(), updateSequence }, panelState())).toBeUndefined();
+
+                await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'partialRendered', renderSequence: lastRenderSequence(), updateSequence }, panelState())).toEqual({ kind: 'activateDatasetActions' });
+
+            });
+
+            it('adds the data set to the stored model, so a revealed panel draws it and its "rendered" offers it', async () => {
+
+                useConnection(buildFakeConnection());
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                await insertAccountTree();
+                await receivedMessageHandler({ command: 'ready' });
+
+                const replayedRecipeData = postedNamed('recipeData').at(-1);
+                const replayedTree = replayedRecipeData.recipe.trees.find((tree: any) => tree.treeKey === ACCOUNT_TREE_KEY);
+                expect(replayedTree.history.datasets[0].datasetFolderName).toBe(insertedDatasetFolderName);
+                expect(RecipeCockpitService.routePanelMessage(openMessage, panelState())).toBeUndefined();
+
+                await receivedMessageHandler({ command: 'rendered', renderSequence: replayedRecipeData.renderSequence });
+
+                expect(RecipeCockpitService.routePanelMessage(openMessage, panelState())).toMatchObject({ kind: 'openDataset' });
+
+            });
+
+            it('reloads onto the Treecipe tab as before when the data set cannot be placed on a card', async () => {
+
+                useConnection(buildFakeConnection());
+                jest.spyOn(RecipeCockpitTreeHistory, 'buildAddedDataset').mockReturnValue(undefined);
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                const recipeDataPostsBefore = postedNamed('recipeData').length;
+                await insertAccountTree();
+
+                expect(postedNamed('datasetAdded')).toEqual([]);
+                expect(postedNamed('recipeData')).toHaveLength(recipeDataPostsBefore + 1);
+                expect(postedNamed('recipeData').at(-1).focusTree).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe' });
 
             });
 
