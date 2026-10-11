@@ -133,7 +133,7 @@ describe('Recipe Cockpit partial updates (#226)', () => {
                 panel.openTab(treeCard, 'Compare');
                 panel.openTab(treeCard, 'Previous Versions');
                 panel.findAll(treeCard, 'treeVersionToggle')[0].dispatch('click');
-                panel.openTab(treeCard, 'Previous Fake Sets');
+                panel.openTab(treeCard, 'Previously Used Data Sets');
             });
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Sandbox', isSandbox: true, failureMessage: '', requestSequence: 3, renderSequence: 1 });
@@ -237,7 +237,7 @@ describe('Recipe Cockpit partial updates (#226)', () => {
 
         });
 
-        it('lists the data set first in Previous Fake Sets and under its version, and shows the insert result on its card', () => {
+        it('lists the data set first in Previously Used Data Sets and under its version, and shows the insert result on its card', () => {
 
             const panel = renderEverythingOpen();
             const leadCard = cardNamed(panel, LEAD_TREE_KEY);
@@ -324,7 +324,7 @@ describe('Recipe Cockpit partial updates (#226)', () => {
             postDatasetAdded(panel, { insertResult: undefined });
 
             const leadCard = cardNamed(panel, LEAD_TREE_KEY);
-            panel.openTab(leadCard, 'Previous Fake Sets');
+            panel.openTab(leadCard, 'Previously Used Data Sets');
             expect(datasetFolderNamesIn(panel, panel.tabPanelOf(leadCard, 'treeDatasets'))[0]).toBe(ADDED_DATASET.datasetFolderName);
 
         });

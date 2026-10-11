@@ -114,18 +114,8 @@ export const RECIPE_COCKPIT_CHOOSE_ORG_ACTION_LABEL = 'Choose another org…';
 export const RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER = 'Select the Salesforce org to compare the objects of this recipe with';
 
 export const RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND = 'treecipe.generateTreecipe';
-// THE COCKPIT RELOADS AND FOCUSES THE TREE IT REGENERATED, SO GENERATION'S COMPLETION TOAST WOULD ONLY PULL THE READER OUT OF THE PANEL (#206)
+// THE COCKPIT RELOADS THE RUN GENERATION WROTE, SO ITS COMPLETION TOAST WOULD ONLY PULL THE READER OUT OF THE PANEL (#206)
 export const RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS = { isCompletionNotificationSuppressed: true };
-
-export const RECIPE_COCKPIT_REGENERATE_ACTION_LABEL = 'Regenerate recipe';
-
-/*
-    Said beside the button rather than left for the reader to discover: Generate Treecipe reads the
-    object metadata in THIS WORKSPACE, never the org. A field the comparison reports as new in the
-    org reaches the regenerated recipe only once its metadata has been retrieved into the project,
-    so a button that implied otherwise would promise a fix it cannot make.
-*/
-export const RECIPE_COCKPIT_REGENERATE_NOTE = 'Regenerate recipe re-runs Generate Treecipe from the object metadata in this workspace, not from the org, then opens the latest run. Retrieve the org\'s changes first (for example with "sf project retrieve start") for them to reach the regenerated recipe.';
 
 // WHAT THE PANEL CALLS EACH STATUS, ON A ROW'S BADGE AND IN THE STATUS FILTER
 export const RECIPE_COCKPIT_DIFF_STATUS_LABELS: Readonly<Record<MetadataDiffFieldStatus, string>> = {
@@ -145,7 +135,7 @@ export const RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN = 20;
 
 export const RECIPE_COCKPIT_NO_RUN_MESSAGE = 'No generated recipe run was found under treecipe/GeneratedRecipes. Generate Treecipe writes one from the object metadata in this workspace, and the cockpit opens it when it finishes.';
 
-// OFFERED ONLY IN THE NO-RUN EMPTY STATE: A COCKPIT WITH A RUN ON SCREEN REGENERATES FROM A CARD (#214)
+// OFFERED ONLY IN THE NO-RUN EMPTY STATE (#214)
 export const RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL = 'Generate Treecipe';
 export const RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL = 'Generating…';
 
@@ -214,6 +204,8 @@ export const RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY = 'treecipe.recipeCockpit
 export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION = 3;
 export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS = 2;
 export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS = 1;
+
+export const RECIPE_COCKPIT_REFRESH_ORGS_LABEL = 'Refresh orgs';
 
 // WHY A FIELD'S CHECKBOX IS DISABLED (#220); EACH IS THE HOST'S ANSWER, WHICH THE PANEL DRAWS
 export const RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON = 'parent excluded';
@@ -663,8 +655,6 @@ export interface IRecipeCockpitRecipeDataMessage {
     recipe: IRecipeCockpitRecipeViewModel;
     renderSequence: number;
     focusTree?: IRecipeCockpitTreeFocus;
-    // SET ONLY ON Regenerate's RELOAD (#225): IT LANDS ON THE RUN IT JUST WROTE, AND THE READER'S PLACE GOES WITH IT
-    carryPlaceAcrossRuns?: boolean;
     // A PLACE KEPT IN workspaceState (#230), FOR A DOCUMENT WHOSE OWN getState HAS NONE: A PANEL OPENED AFTER A CLOSE OR A WINDOW RELOAD
     restorePlace?: IRecipeCockpitPanelPlace;
 }
@@ -1060,7 +1050,6 @@ export type RecipeCockpitPanelAction =
     | { kind: 'openSource'; filePath: string; lineNumber: number }
     | { kind: 'selectRun'; runFolderName: string }
     | { kind: 'selectOrg'; treeKey: string; isOrgChosenByReader: boolean }
-    | { kind: 'regenerateRecipe'; treeKey: string }
     | { kind: 'generateTreecipe' }
     | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage }
     | { kind: 'loadVersionSummaries'; treeKey: string; summarySource: IRecipeCockpitTreeSummarySource; renderSequence: number }
@@ -1140,7 +1129,7 @@ export interface IRecipeCockpitPanelState {
     pendingTreeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
     treeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
     isOrgDescribeInFlight: boolean;
-    isRegenerateInFlight: boolean;
+    isGenerateTreecipeInFlight: boolean;
     pendingIsGenerateTreecipeOffered: boolean;
     isGenerateTreecipeOffered: boolean;
     runFakerStateMessage?: IRecipeCockpitRunFakerStateMessage;
@@ -2377,7 +2366,7 @@ export class RecipeCockpitService {
             pendingTreeHistoryAllowLists: this.buildEmptyTreeHistoryAllowLists(),
             treeHistoryAllowLists: this.buildEmptyTreeHistoryAllowLists(),
             isOrgDescribeInFlight: false,
-            isRegenerateInFlight: false,
+            isGenerateTreecipeInFlight: false,
             pendingIsGenerateTreecipeOffered: false,
             isGenerateTreecipeOffered: false,
             reportedFailureDescriptions: new Set(),
@@ -2514,8 +2503,7 @@ export class RecipeCockpitService {
                                                 requestedRunFolderName?: string,
                                                 focusTree?: IRecipeCockpitTreeFocus,
                                                 carriedPanelState?: IRecipeCockpitCarriedPanelState,
-                                                persistedPanelPlace?: IRecipeCockpitPanelPlace,
-                                                carryPlaceAcrossRuns = false): Promise<void> {
+                                                persistedPanelPlace?: IRecipeCockpitPanelPlace): Promise<void> {
 
         const loadSequence = ++this.recipeCockpitLoadSequence;
 
@@ -2546,7 +2534,7 @@ export class RecipeCockpitService {
                 return;
             }
 
-            this.renderRecipeModel(cockpitPanel, loadedRecipe, focusTree, carriedPanelState, persistedPanelPlace, carryPlaceAcrossRuns);
+            this.renderRecipeModel(cockpitPanel, loadedRecipe, focusTree, carriedPanelState, persistedPanelPlace);
 
         } catch (loadError) {
 
@@ -2658,8 +2646,7 @@ export class RecipeCockpitService {
                                         loadedRecipe: IRecipeCockpitLoadedRecipe,
                                         focusTree?: IRecipeCockpitTreeFocus,
                                         carriedPanelState?: IRecipeCockpitCarriedPanelState,
-                                        persistedPanelPlace?: IRecipeCockpitPanelPlace,
-                                        carryPlaceAcrossRuns = false) {
+                                        persistedPanelPlace?: IRecipeCockpitPanelPlace) {
 
         const panelState = this.recipeCockpitPanelState;
         const recipeViewModel = loadedRecipe.recipeViewModel;
@@ -2733,9 +2720,7 @@ export class RecipeCockpitService {
         */
         this.postToPanel(cockpitPanel, {
             ...this.withRestorePlace(recipeDataMessage, panelState),
-            ...( isFocusOnScreen ? { focusTree: focusTree } : {} ),
-            // THE POSTED COPY ONLY, LIKE THE FOCUS: A REPLAY IS A NEW DOCUMENT, WHICH HAS ITS OWN SAVED PLACE
-            ...( carryPlaceAcrossRuns ? { carryPlaceAcrossRuns: true } : {} )
+            ...( isFocusOnScreen ? { focusTree: focusTree } : {} )
         });
 
     }
@@ -2900,11 +2885,6 @@ export class RecipeCockpitService {
             case 'selectOrg':
 
                 await this.describeTreeObjectsInOrg(cockpitPanel, panelState, panelAction.treeKey, panelAction.isOrgChosenByReader);
-                return;
-
-            case 'regenerateRecipe':
-
-                await this.generateTreecipeAndReload(cockpitPanel, panelState, { treeKey: panelAction.treeKey, tab: 'treecipe' });
                 return;
 
             case 'generateTreecipe':
@@ -3285,7 +3265,7 @@ export class RecipeCockpitService {
 
     /*
         Runs one tree's recipe through Run Faker by Recipe, then adds the data set it wrote to the
-        card's Previous Fake Sets in place (#226). A run that wrote none -- failed, refused or
+        card's Previously Used Data Sets in place (#226). A run that wrote none -- failed, refused or
         cancelled at its modal -- or switched runs meanwhile, or wrote one the host cannot place,
         reloads the run on that tab, as every run used to. Either way the state message is posted
         last, because the panel disabled every Run Faker button on the click, and a run that left
@@ -3803,32 +3783,23 @@ export class RecipeCockpitService {
     }
 
     /*
-        The v1 "apply": hands off to Generate Treecipe, then loads the run it wrote into the cards,
-        with the card the reader regenerated from open on its Structure tab.
-
-        The command is the unflagged one a reader can already run from the palette -- the cockpit's
-        flag gates this BUTTON by gating the panel it is drawn in, not the command it hands off to.
-        It regenerates from the workspace's metadata, which is why the panel says so beside the
-        button (RECIPE_COCKPIT_REGENERATE_NOTE). The latest run is loaded afterwards whether or not
-        generation wrote one: Generate Treecipe reports its own failures, and reloading an
-        unchanged latest run shows the reader exactly what is on disk.
-
-        The no-run empty state's Generate Treecipe button (#214) comes through here too, with no
-        card to focus: one in-flight flag means a Regenerate and a first Generate never run at once.
+        The no-run empty state's Generate Treecipe button (#214): hands off to Generate Treecipe, then
+        loads the run it wrote. The command is the unflagged one a reader can already run from the
+        palette. The latest run is loaded afterwards whether or not generation wrote one: Generate
+        Treecipe reports its own failures, and reloading shows the reader exactly what is on disk.
     */
-    private static async generateTreecipeAndReload(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, focusTree?: IRecipeCockpitTreeFocus) {
+    private static async generateTreecipeAndReload(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState) {
 
         /*
-            In flight until the RELOAD has finished, not only the command: the comparison that routes
-            this action is replaced only when the reloaded model renders, so clearing the flag in
-            between would route a second regeneration off the first one's comparison.
+            In flight until the RELOAD has finished, not only the command, so a second click before
+            the new model renders starts no second generation.
 
             The run is reloaded even when generation FAILED. The panel disabled its button on the
             click and only a render gives one back, so a failure that skipped the reload would leave
             the reader a button that can never be pressed again. The failure is still rethrown for
             ErrorHandlingService once the panel is usable.
         */
-        panelState.isRegenerateInFlight = true;
+        panelState.isGenerateTreecipeInFlight = true;
 
         let hasGenerationFailed = false;
         let generationError: unknown;
@@ -3843,12 +3814,11 @@ export class RecipeCockpitService {
             }
 
             if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState ) {
-                // A SUCCESSFUL GENERATION WRITES A NEW RUN, SO THE PLACE IS CARRIED ACROSS RATHER THAN MATCHED BY RUN NAME
-                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, undefined, focusTree, undefined, undefined, true);
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot);
             }
 
         } finally {
-            panelState.isRegenerateInFlight = false;
+            panelState.isGenerateTreecipeInFlight = false;
         }
 
         if ( hasGenerationFailed ) {
@@ -5434,26 +5404,6 @@ export class RecipeCockpitService {
 
             }
 
-            case 'regenerateRecipe': {
-
-                /*
-                    Offered at the top of every card's Treecipe tab (#255) of the model the panel
-                    confirmed drawing: the active describable map is non-empty only after that
-                    model's "rendered", and holds every card with an object to draw. The tree key
-                    names the card the reload re-opens.
-                */
-                const { treeKey } = panelMessage;
-
-                if ( typeof treeKey !== 'string'
-                        || !panelState.describableObjectApiNamesByTreeKey.has(treeKey)
-                        || panelState.isRegenerateInFlight ) {
-                    return undefined;
-                }
-
-                return { kind: 'regenerateRecipe', treeKey: treeKey };
-
-            }
-
             /*
                 No payload to check: the button is drawn only in the empty state of a model with no
                 run, so it is honoured only once THAT model's "rendered" has arrived, and never while
@@ -5461,7 +5411,7 @@ export class RecipeCockpitService {
             */
             case 'generateTreecipe':
 
-                if ( !panelState.isGenerateTreecipeOffered || panelState.isRegenerateInFlight ) {
+                if ( !panelState.isGenerateTreecipeOffered || panelState.isGenerateTreecipeInFlight ) {
                     return undefined;
                 }
 
@@ -7183,8 +7133,6 @@ ${this.buildPaletteCustomProperties()}
     .sourceLink:hover { text-decoration: underline; }
     .orgProgress { margin: 0.4rem 0; }
     .diffSummary { margin-top: 0.2rem; }
-    .regenerate { margin-top: 0.4rem; }
-    .regenerateNote { margin-top: 0.25rem; }
     .diffBadge {
         font-size: 0.85em;
         padding: 0 0.35rem;
@@ -7220,11 +7168,12 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader:hover { box-shadow: inset 4px 0 0 var(--sdt-accent); }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeFavorite, .treeRename, .treeTab, .treeVersionToggle, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .treeCompare button, .emptyStateActions button, .dataOrgRefresh, .dataObjectToggle, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .regenerateRecipe {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeFavorite, .treeRename, .treeTab, .treeVersionToggle, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .treeCompare button, .emptyStateActions button, .dataOrgRefresh, .dataObjectToggle, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
         font: inherit;
+        font-size: 1.1em;
         color: var(--sdt-accent);
         background-color: var(--sdt-surface);
         border: 1px solid var(--sdt-border);
@@ -7234,9 +7183,11 @@ ${this.buildPaletteCustomProperties()}
     .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .treeVersionToggle:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .dataObjectToggle:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeVersionToggle, .dataObjectToggle, .dataOrgRefresh { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeVersionToggle, .dataObjectToggle { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
+    .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
+    .dataOrgRefreshIcon { font-size: 1.5em; line-height: 1; }
     .treeToggle, .treeObjectToggle { padding: 0 0.4rem; font-size: 3.3em; line-height: 1; }
-    .treeRunFaker, .toolbar button, .treeCompare button, .emptyStateActions button, .treeInsert, .dataOrgLoad, .dataOrgNewScratch, .regenerateRecipe {
+    .treeRunFaker, .toolbar button, .treeCompare button, .emptyStateActions button, .treeInsert, .dataOrgLoad, .dataOrgNewScratch {
         color: var(--sdt-on-accent);
         background-color: var(--sdt-accent);
         border-color: var(--sdt-accent);
@@ -7246,7 +7197,7 @@ ${this.buildPaletteCustomProperties()}
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
     .treeAddFriendChoice, .historyAction, .treeInsertErrors, .scratchOrgViewOutput { text-decoration: underline; }
-    .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .treeCompare button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .regenerateRecipe:disabled, .treeRecordCountInput:disabled {
+    .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .treeCompare button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .treeRecordCountInput:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
         border-color: var(--sdt-border);
@@ -7333,6 +7284,7 @@ ${this.buildPaletteCustomProperties()}
         min-height: 1.9rem;
         padding: 0.2rem 0.6rem;
         font: inherit;
+        font-size: 1.1em;
         color: var(--sdt-accent);
         background-color: var(--sdt-surface);
         border: 1px solid var(--sdt-border);
@@ -7434,8 +7386,6 @@ ${this.buildPaletteCustomProperties()}
     const DIFF_STATUSES = ${JSON.stringify(METADATA_DIFF_FIELD_STATUSES)};
     const DIFF_STATUS_LABELS = ${JSON.stringify(RECIPE_COCKPIT_DIFF_STATUS_LABELS)};
     const DIFF_PICKLIST_VALUES_SHOWN = ${RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN};
-    const REGENERATE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_ACTION_LABEL)};
-    const REGENERATE_NOTE = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_NOTE)};
     const GENERATE_TREECIPE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL)};
     const GENERATE_TREECIPE_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL)};
     const DESCRIBE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL)};
@@ -7464,6 +7414,7 @@ ${this.buildPaletteCustomProperties()}
     const FIELD_PARENT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON)};
     const EVERY_FIELD_UNTICKED_WARNING = ${JSON.stringify(RECIPE_COCKPIT_EVERY_FIELD_UNTICKED_WARNING)};
     const RESET_SELECTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RESET_SELECTION_LABEL)};
+    const REFRESH_ORGS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REFRESH_ORGS_LABEL)};
 
     let treeStates = [];
     let treesViewElement = null;
@@ -7723,7 +7674,7 @@ ${this.buildPaletteCustomProperties()}
             loadElement: createElement('button', 'dataOrgLoad', 'Choose org…'),
             selectElement: createElement('select', 'dataOrgSelect hidden'),
             typeElement: createElement('span', 'dataOrgType hidden'),
-            refreshElement: createElement('button', 'dataOrgRefresh hidden', '⟳'),
+            refreshElement: createElement('button', 'dataOrgRefresh hidden'),
             newScratchElement: createElement('button', 'dataOrgNewScratch', '+ New scratch org'),
             hiddenNoteElement: createElement('div', 'dataOrgHiddenNote muted hidden'),
             statusElement: createElement('div', 'dataOrgStatus muted hidden'),
@@ -7743,8 +7694,14 @@ ${this.buildPaletteCustomProperties()}
             vscodeApi.postMessage({ command: 'selectDataOrg', orgIndex: Number(selectedValue) });
         });
 
+        // THE ⟳ GLYPH DRAWS SMALLER THAN THE TEXT AROUND IT, SO IT IS SIZED ON ITS OWN AND THE BUTTON SAYS WHAT IT DOES
+        const refreshIconElement = createElement('span', 'dataOrgRefreshIcon', '⟳');
+        refreshIconElement.setAttribute('aria-hidden', 'true');
+        dataOrgView.refreshElement.appendChild(refreshIconElement);
+        dataOrgView.refreshElement.appendChild(createElement('span', 'dataOrgRefreshLabel', REFRESH_ORGS_LABEL));
         dataOrgView.refreshElement.setAttribute('title', 'Check the org connections again');
-        dataOrgView.refreshElement.setAttribute('aria-label', 'Check the org connections again');
+        // THE ACCESSIBLE NAME STARTS WITH THE VISIBLE LABEL, SO "CLICK REFRESH ORGS" BY VOICE FINDS IT (WCAG 2.5.3)
+        dataOrgView.refreshElement.setAttribute('aria-label', REFRESH_ORGS_LABEL + ': check the org connections again');
         dataOrgView.refreshElement.addEventListener('click', function () {
             showDataOrgConnectionCheck();
             vscodeApi.postMessage({ command: 'refreshDataOrgs' });
@@ -8706,7 +8663,7 @@ ${this.buildPaletteCustomProperties()}
 
         if (treeState.tree.history) {
             addTreeTab(treeState, tabsElement, 'versions', 'Previous Versions', createElement('div', 'treeVersions hidden'));
-            addTreeTab(treeState, tabsElement, 'datasets', 'Previous Fake Sets', createElement('div', 'treeDatasets hidden'));
+            addTreeTab(treeState, tabsElement, 'datasets', 'Previously Used Data Sets', createElement('div', 'treeDatasets hidden'));
         }
 
         treeState.bodyElement.appendChild(tabsElement);
@@ -9262,7 +9219,6 @@ ${this.buildPaletteCustomProperties()}
             // THE TOP OF THE TREECIPE TAB (#255), MADE WITH THE TAB
             runFakerElement: null,
             resetSelectionElement: null,
-            regenerateButtonElement: null,
             insert: null
         };
 
@@ -9392,7 +9348,7 @@ ${this.buildPaletteCustomProperties()}
 
     /*
         The top of a card's Treecipe tab (#255): the panel-wide org picker, then ▶ Run Faker, Reset
-        selection and Regenerate recipe, then "Generate fake data and insert into <org>". Each posts
+        selection, then "Generate fake data and insert into <org>". Each posts
         the tree's KEY alone; which org, which recipe file, which counts and which objects are the
         host's.
     */
@@ -9419,10 +9375,6 @@ ${this.buildPaletteCustomProperties()}
             });
             actionsElement.appendChild(treeState.resetSelectionElement);
             drawResetSelection(treeState);
-        }
-
-        if (treeState.objectStates.length > 0) {
-            actionsElement.appendChild(buildRegenerateElement(treeState));
         }
 
         headerElement.appendChild(actionsElement);
@@ -10292,17 +10244,15 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        A reload in the same document (#225) -- Regenerate, Run Faker, Create, Add friend -- redraws
-        every card from scratch. When it is the run already on screen, the place on screen is taken
-        BEFORE the redraw drops it and restored like a saved one; a run switch, or a reload that
-        landed on another run, starts fresh. Regenerate is the one exception the host marks: it
-        lands on the run it just WROTE, whose cards carry the same tree folder names, so its place
-        goes with it. A model that failed to draw left nothing to take.
+        A reload in the same document (#225) -- Run Faker, Create, Add friend -- redraws every card
+        from scratch. When it is the run already on screen, the place on screen is taken BEFORE the
+        redraw drops it and restored like a saved one; a run switch, or a reload that landed on
+        another run, starts fresh. A model that failed to draw left nothing to take.
     */
-    function takeSameRunPlace(recipe, carryPlaceAcrossRuns) {
+    function takeSameRunPlace(recipe) {
 
         if (!isPlaceRestoreSettled || renderedSequence === null || !recipe || recipe.objects.length === 0
-                || (renderedRunFolderName !== recipe.selectedRunFolderName && !carryPlaceAcrossRuns)) {
+                || renderedRunFolderName !== recipe.selectedRunFolderName) {
             return null;
         }
 
@@ -10617,10 +10567,10 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function renderPanelGuarded(recipe, renderSequence, focusTree, hostPlace, carryPlaceAcrossRuns) {
+    function renderPanelGuarded(recipe, renderSequence, focusTree, hostPlace) {
 
         // THE SAVED PLACE IS SPENT ON THIS DOCUMENT'S FIRST MODEL WHETHER OR NOT IT APPLIES; A LATER MODEL OF THE SAME RUN KEEPS THE PLACE ON SCREEN
-        const savedPlace = takeRestorablePlace(recipe, hostPlace) || takeSameRunPlace(recipe, carryPlaceAcrossRuns);
+        const savedPlace = takeRestorablePlace(recipe, hostPlace) || takeSameRunPlace(recipe);
 
         try {
 
@@ -10823,31 +10773,6 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // REGENERATES FROM THE WORKSPACE'S METADATA, NOT THE ORG, AND SAYS SO BESIDE THE BUTTON
-    function buildRegenerateElement(treeState) {
-
-        const regenerateElement = createElement('span', 'regenerate');
-        const regenerateButtonElement = createElement('button', 'regenerateRecipe', REGENERATE_ACTION_LABEL);
-
-        regenerateButtonElement.setAttribute('title', REGENERATE_NOTE);
-        regenerateButtonElement.setAttribute('aria-label', REGENERATE_ACTION_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
-        regenerateButtonElement.addEventListener('click', function () {
-            // EVERY CARD'S BUTTON: THE HOST RUNS ONE REGENERATE AT A TIME, AND ITS RELOAD REDRAWS THEM ALL
-            treeStates.forEach(function (otherTreeState) {
-                if (otherTreeState.regenerateButtonElement) { otherTreeState.regenerateButtonElement.disabled = true; }
-            });
-            regenerateButtonElement.textContent = 'Regenerating…';
-            vscodeApi.postMessage({ command: 'regenerateRecipe', treeKey: treeState.tree.treeKey });
-        });
-
-        regenerateElement.appendChild(regenerateButtonElement);
-        regenerateElement.appendChild(createElement('span', 'regenerateNote muted', 'from this workspace\\'s metadata, not the org'));
-        treeState.regenerateButtonElement = regenerateButtonElement;
-
-        return regenerateElement;
-
-    }
-
     // KEPT ON THE CARD, SO A DATA-BY-ORG TAB OPENED AFTER THE ANSWER DRAWS IT; A FAILED CONNECTION COMPARED NOTHING
     function applyTreeDiff(treeState, diff, isComparisonShown, summariesByObjectApiName) {
 
@@ -10927,7 +10852,7 @@ ${this.buildPaletteCustomProperties()}
         if (hostMessage.command === 'recipeData') {
 
             // THE STATUS LINE IS LEFT ALONE WHEN THE RENDER FAILED -- CLEARING IT WOULD READ AS FINISHED
-            if (renderPanelGuarded(hostMessage.recipe, hostMessage.renderSequence, hostMessage.focusTree, hostMessage.restorePlace, hostMessage.carryPlaceAcrossRuns === true)) {
+            if (renderPanelGuarded(hostMessage.recipe, hostMessage.renderSequence, hostMessage.focusTree, hostMessage.restorePlace)) {
                 setLoadStatus('', false);
             }
 
