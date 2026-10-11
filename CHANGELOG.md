@@ -1,5 +1,25 @@
 # Change Log
 
+## [3.58.0] - Recipe Cockpit Create: search for and pick each lookup's parent records, or choose Random
+
+Closes [#254](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/254), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Data-by-Org **+ Create** always gave each new record a random existing parent, so putting new Contacts under the Account you were testing with meant fixing their lookups by hand in the org. You can now search for and pick the parents.
+
+- **One picker per lookup in the cut recipe block.** After the Create confirmation, and before anything is written, the host opens a searchable quick pick for each lookup of the block the describe says points at exactly one object and can be written (`RecipeCockpitRecordCreation.findPickableLookups`), in the block's order. A polymorphic lookup (`WhoId`) gets no picker: a required one still blocks Create and an optional one is still left blank. A required lookup the block does not carry still gets a random parent, as before.
+- **Nothing is chosen for you.** A required lookup's picker offers **Random parent** first, and an optional lookup's picker offers **Leave blank** and then **Random parent**. Nothing starts checked. Accepting with nothing checked, or dismissing the picker, cancels the Create: no data set folder, no file, no insert, and no later picker opens. A warning says which lookup had no parent chosen, since pressing Enter on a row that is only highlighted checks nothing.
+- **VS Code's own check-all** checks every listed record, never Random or Leave blank. While a search's status lines are drawn as separator rows, they are also shown in the picker's title, because a separator can be hidden while the input filters.
+- **Random parent** clears the search and keeps it cleared while it stays checked. It is today's behaviour: a random Id from `SELECT Id FROM <Parent> LIMIT 2000` per record, and the Create is refused when the parent has no records. Random now applies to an optional lookup too, when you check it.
+- **Typing searches** the parent's name field, the one its describe marks `nameField` (`Name` for Account, `CaseNumber` for Case), after a short pause. Only the newest search is drawn. Matches are listed by name and Id, at most 200 (`ORG_PARENT_SEARCH_RESULT_LIMIT`; past that the picker says to refine the search). A search with no matches says so. Check one or several, or **Select all matches**. Records checked in an earlier search stay checked.
+- **Several parents are assigned round-robin**: record *i* gets parent *i mod K*, in the order checked (`assignLookupIds` with `assignment: 'roundRobin'`).
+- **The search is built safely** (`SalesforceOrgService.buildParentSearchQuery`): the object and name field must be api names, `\`, `'`, `"`, `%` and `_` are escaped so they match literally, and text carrying a control character, U+2028 or U+2029 is refused rather than sent. The query asks for records, never a `COUNT()`.
+- **Only Ids the picker's own search returned are written.** Each returned Id is type-checked as a Salesforce Id when the search answers, and checked again against that lookup's search results (`areChosenParentIdsReturnedBySearch`) before it goes into a record. Anything else refuses the Create before anything is written.
+- **A parent that cannot be searched**, because its describe marks no name field or it could not be described, gets a picker offering Random (and Leave blank) only, saying why.
+- **The production guards are unchanged.** Sandbox and scratch orgs only, the org type asked again on the insert connection, and the org selection compared again after the confirmation and again after the last picker closes.
+- **What was chosen is recorded.** The Create confirmation lists the lookups you will be asked about. `datasetSource.json` gains `lookupParentsByField` on a `createInOrg` data set: `"random"`, `"blank"` or the chosen Ids for each lookup. It is optional and read back type-checked with no prototype.
+- **The search runs on the host.** The panel's `createRecords` message is unchanged, so no record Id or search text ever comes from the panel.
+- Chosen parents are not remembered between Creates.
+
 ## [3.57.0] - Insert Data Set by Directory refuses a production org
 
 Closes [#204](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/204), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

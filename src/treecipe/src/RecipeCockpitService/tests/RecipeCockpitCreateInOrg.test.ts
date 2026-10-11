@@ -52,7 +52,7 @@ import {
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
-import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { IParentPickerOptions, VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { DatasetSourceService } from '../../DatasetSourceService/DatasetSourceService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 
@@ -65,6 +65,12 @@ const LEAD_TREE_KEY = 'Lead-ONLY';
 const SANDBOX_ORG = { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa' };
 const PARENT_ACCOUNT_IDS = ['001000000000001AAA', '001000000000002AAA'];
 const PARTNER_RECORD_TYPE_ID = '012000000000001AAA';
+// WHAT A PARENT SEARCH FOR "acme" ANSWERS (#254)
+const SEARCHABLE_ACCOUNTS = [
+    { Id: '001000000000011AAA', Name: 'Acme East' },
+    { Id: '001000000000012AAA', Name: 'Acme West' },
+    { Id: '001000000000013AAA', Name: 'Acme North' }
+];
 
 // A faker-js RUN OF THE SAME TREE: Contact NESTED UNDER Account, ITS AccountId WIRED TO THE PARENT'S NICKNAME, AND A RECORD TYPE
 const FAKER_JS_ACCOUNT_RECIPE = `# Relationship Tree: RelationshipTree_1
@@ -105,7 +111,7 @@ const RAW_DESCRIBES: Record<string, unknown> = {
             { name: 'RecordTypeId', type: 'reference', referenceTo: ['RecordType'], nillable: true, createable: true }
         ]
     },
-    Account: { name: 'Account', createable: true, fields: [{ name: 'Name', type: 'string', nillable: false, createable: true }] },
+    Account: { name: 'Account', createable: true, fields: [{ name: 'Name', type: 'string', nillable: false, createable: true, nameField: true }] },
     Lead: { name: 'Lead', createable: true, fields: [{ name: 'Company', type: 'string', nillable: false, createable: true }] },
     OtherChildObject__c: {
         name: 'OtherChildObject__c', createable: true,
@@ -132,6 +138,9 @@ function buildFakeConnection(options: { isSandbox?: boolean; rejectedRecordIndex
             sentQueries.push(soql);
             if ( soql.includes('FROM Organization') ) {
                 return { records: [{ IsSandbox: options.isSandbox ?? true, OrganizationType: options.isSandbox === false ? 'Developer Edition' : 'Unlimited Edition' }] };
+            }
+            if ( soql.startsWith('SELECT Id, Name FROM Account WHERE Name LIKE ') ) {
+                return { records: SEARCHABLE_ACCOUNTS.filter(searchableAccount => searchableAccount.Name.toLowerCase().includes('acme')) };
             }
             if ( soql === 'SELECT Id FROM Account LIMIT 2000' ) {
                 return { records: PARENT_ACCOUNT_IDS.map(accountId => ({ Id: accountId })) };
@@ -410,12 +419,51 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
 
     });
 
+    describe('buildCreateConfirmationDetail, with lookups the reader chooses (#254)', () => {
+
+        it('lists each lookup of the cut block as chosen next, and only the other required lookups as random', () => {
+
+            const detail = RecipeCockpitService.buildCreateConfirmationDetail(
+                'qa (qa@example.com.qa)', { isSandbox: true, organizationType: 'Unlimited Edition' }, 'Contact', 2,
+                { objectApiName: 'Contact', disabledReason: '', requiredLookups: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }, { fieldApiName: 'Master__c', parentObjectApiName: 'Master__c' }] },
+                'faker-js', ACCOUNT_TREE_KEY, 'recipe.yml', [],
+                [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account', isRequired: true }, { fieldApiName: 'ReportsToId', parentObjectApiName: 'Contact', isRequired: false }]
+            ).split('\n');
+
+            expect(detail.slice(4, 10)).toEqual([
+                'Required lookups:',
+                '  Master__c → a random existing Master__c record (none means nothing is created)',
+                'Lookups in the recipe, each chosen next (Random parent, or parent records you search for; cancelling creates nothing):',
+                '  AccountId → Account (required)',
+                '  ReportsToId → Contact (optional, or leave blank)',
+                'Every other lookup is left blank.'
+            ]);
+
+        });
+
+        it('leaves out "Required lookups" when every required lookup is chosen next', () => {
+
+            const detail = RecipeCockpitService.buildCreateConfirmationDetail(
+                'qa', undefined, 'Contact', 2,
+                { objectApiName: 'Contact', disabledReason: '', requiredLookups: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }] },
+                'faker-js', ACCOUNT_TREE_KEY, 'recipe.yml', [],
+                [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account', isRequired: true }]
+            );
+
+            expect(detail).not.toContain('Required lookups:');
+            expect(detail).toContain('  AccountId → Account (required)');
+
+        });
+
+    });
+
     describe('the open panel', () => {
 
         let receivedMessageHandler: (panelMessage: any) => Promise<void>;
         let postedPanelMessages: any[];
         let temporaryWorkspaceRoot: string;
         let showWarningMessageSpy: jest.SpyInstance;
+        let promptForParentRecordsSpy: jest.SpyInstance;
         let selectedFakerService: string;
 
         const lastRenderSequence = () => [...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData')?.renderSequence;
@@ -477,6 +525,9 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockImplementation(() => temporaryWorkspaceRoot);
             jest.spyOn(VSCodeWorkspaceService, 'getNowIsoDateTimestamp').mockReturnValue('2026-10-07T12-00-00');
             showWarningMessageSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+            // A REQUIRED LOOKUP'S PICKER ANSWERS Random AND AN OPTIONAL ONE'S Leave blank: CREATE AS IT WAS BEFORE #254
+            promptForParentRecordsSpy = jest.spyOn(VSCodeWorkspaceService, 'promptForParentRecords')
+                .mockImplementation(async (pickerOptions: IParentPickerOptions) => ({ kind: pickerOptions.isRequired ? 'random' : 'blank' }));
             jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG], hiddenOrgCount: 0, hiddenOrgs: [], hiddenOrgReasonCounts: { production: 0, expired: 0, deleted: 0, notConnected: 0 } });
             selectedFakerService = 'snowfakery';
             jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockImplementation(() => selectedFakerService);
@@ -574,7 +625,17 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
             expect(modalMessage).toBe('Create 3 Contact records in qa (qa@example.com.qa)?');
             expect(modalOptions.modal).toBe(true);
             expect(modalOptions.detail).toContain('Type: Sandbox');
-            expect(modalOptions.detail).toContain('AccountId → a random existing Account record');
+            expect(modalOptions.detail).toContain('AccountId → Account (required)');
+            expect(modalOptions.detail).not.toContain('a random existing Account record');
+            if ( fakerService === 'faker-js' ) {
+                expect(modalOptions.detail).toContain('ReportsToId → Contact (optional, or leave blank)');
+            }
+
+            // ONE PICKER PER LOOKUP OF THE CUT BLOCK, AFTER THE MODAL (#254)
+            expect(promptForParentRecordsSpy.mock.calls.map(([pickerOptions]) => [pickerOptions.fieldApiName, pickerOptions.parentObjectApiName, pickerOptions.isRequired, pickerOptions.nameFieldApiName]))
+                .toEqual(fakerService === 'faker-js'
+                    ? [['AccountId', 'Account', true, 'Name'], ['ReportsToId', 'Contact', false, undefined]]
+                    : [['AccountId', 'Account', true, 'Name']]);
             expect(modalOptions.detail).toContain(`Backend: ${fakerService}`);
             expect(modalAction).toBe(RECIPE_COCKPIT_CREATE_CONFIRM_LABEL);
 
@@ -617,7 +678,8 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
                 recipeRunFolderName: runFolderName,
                 recipeTreeFolderName: ACCOUNT_TREE_KEY,
                 fakerService: fakerService,
-                recordCountsByObject: { Contact: 3 }
+                recordCountsByObject: { Contact: 3 },
+                lookupParentsByField: fakerService === 'faker-js' ? { AccountId: 'random', ReportsToId: 'blank' } : { AccountId: 'random' }
             });
 
             // THE RELOAD LISTS IT IN THE TREE'S PREVIOUS FAKE SETS, AND OPENS THE CARD ON THE DATA-BY-ORG TAB THE CREATE WAS CLICKED IN (#217)
@@ -799,6 +861,234 @@ describe('RecipeCockpitService, Create in org (#180)', () => {
             expect(showWarningMessageSpy).toHaveBeenCalledWith('AccountId needs a Account record, and qa (qa@example.com.qa) returned none, so no Contact records were created.');
             expect(connection.insertedBatches).toEqual([]);
             expect(datasetFolderNames()).toEqual([]);
+
+        });
+
+        describe('choosing the parent records of each lookup (#254)', () => {
+
+            const chosenAccountIds = SEARCHABLE_ACCOUNTS.map(searchableAccount => searchableAccount.Id);
+
+            // THE PICKER SEARCHES "acme" THROUGH THE HOST'S OWN SEARCH AND ANSWERS WITH THE RECORDS IT WAS HANDED
+            const answerAccountIdWithSearch = (pickRecords: (searchMatches: Array<{ recordId: string; recordName: string }>) => Array<{ recordId: string; recordName: string }>) => {
+                promptForParentRecordsSpy.mockImplementation(async (pickerOptions: IParentPickerOptions) => {
+                    if ( pickerOptions.fieldApiName !== 'AccountId' ) {
+                        return { kind: pickerOptions.isRequired ? 'random' : 'blank' };
+                    }
+                    const searchResult = await pickerOptions.search('acme');
+                    return { kind: 'chosen', records: pickRecords(searchResult.matches) };
+                });
+            };
+
+            it('spreads the new records over the chosen parents round-robin, records them, and never queries random Ids for that lookup', async () => {
+
+                const connection = buildFakeConnection();
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
+                answerAccountIdWithSearch(searchMatches => searchMatches);
+
+                await openSelectedCockpit(SNOWFAKERY_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 5 });
+
+                expect(connection.insertedBatches).toHaveLength(1);
+                expect(connection.insertedBatches[0].records.map((insertedRecord: any) => insertedRecord.AccountId))
+                    .toEqual([chosenAccountIds[0], chosenAccountIds[1], chosenAccountIds[2], chosenAccountIds[0], chosenAccountIds[1]]);
+                expect(connection.sentQueries).toContain(`SELECT Id, Name FROM Account WHERE Name LIKE '%acme%' ORDER BY Name LIMIT 201`);
+                expect(connection.sentQueries).not.toContain('SELECT Id FROM Account LIMIT 2000');
+                expect(connection.sentQueries.filter(soql => /COUNT\(/i.test(soql))).toEqual([]);
+
+                const [datasetFolderName] = datasetFolderNames();
+                const datasetSource = JSON.parse(fs.readFileSync(path.join(fakeDataSetsFolderPath(), datasetFolderName, 'BaseArtifactFiles', 'datasetSource.json'), 'utf-8'));
+                expect(datasetSource.lookupParentsByField).toEqual({ AccountId: chosenAccountIds });
+
+            });
+
+            it('gives every record the one parent chosen', async () => {
+
+                const connection = buildFakeConnection();
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
+                answerAccountIdWithSearch(searchMatches => [searchMatches[1]]);
+
+                await openSelectedCockpit(SNOWFAKERY_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 3 });
+
+                expect(connection.insertedBatches[0].records.map((insertedRecord: any) => insertedRecord.AccountId)).toEqual([chosenAccountIds[1], chosenAccountIds[1], chosenAccountIds[1]]);
+
+            });
+
+            it('refuses an Id its search never returned, writing nothing', async () => {
+
+                const connection = buildFakeConnection();
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
+                answerAccountIdWithSearch(searchMatches => [...searchMatches, { recordId: '001000000000099AAA', recordName: 'Forged' }]);
+
+                await openSelectedCockpit(SNOWFAKERY_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 3 });
+
+                expect(showWarningMessageSpy).toHaveBeenCalledWith('The Account records chosen for AccountId are not ones its search returned, so no Contact records were created.');
+                expect(connection.insertedBatches).toEqual([]);
+                expect(datasetFolderNames()).toEqual([]);
+                expect(snowfakeryCalls).toEqual([]);
+
+            });
+
+            it('refuses an Id that is not Id-shaped even if a search answered it', async () => {
+
+                const connection = buildFakeConnection();
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
+                promptForParentRecordsSpy.mockImplementation(async (pickerOptions: IParentPickerOptions) => pickerOptions.isRequired
+                    ? { kind: 'chosen', records: [{ recordId: 'x\' OR Id != null', recordName: 'Forged' }] }
+                    : { kind: 'blank' });
+
+                await openSelectedCockpit(SNOWFAKERY_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 3 });
+
+                expect(connection.insertedBatches).toEqual([]);
+                expect(datasetFolderNames()).toEqual([]);
+
+            });
+
+            it.each([
+                ['the picker is dismissed or accepted with nothing checked', undefined],
+                ['a required lookup is answered "blank"', { kind: 'blank' }]
+            ])('cancels with no folder, no file and no insert when %s', async (_label, pickerAnswer) => {
+
+                const connection = buildFakeConnection();
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
+                promptForParentRecordsSpy.mockResolvedValue(pickerAnswer);
+
+                await openSelectedCockpit(SNOWFAKERY_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 3 });
+
+                expect(promptForParentRecordsSpy).toHaveBeenCalledTimes(1);
+                expect(connection.sentQueries).not.toContain('SELECT Id FROM Account LIMIT 2000');
+                expect(connection.insertedBatches).toEqual([]);
+                expect(datasetFolderNames()).toEqual([]);
+                expect(snowfakeryCalls).toEqual([]);
+                expect(showWarningMessageSpy).toHaveBeenCalledWith('No Contact records were created: no Account parent was chosen for AccountId. Check Random parent or the records to use, then accept.');
+                expect(postedNamed('createState').at(-1).isRunning).toBe(false);
+
+            });
+
+            it('stops at the first cancelled picker and opens no later one', async () => {
+
+                const connection = buildFakeConnection();
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
+                selectedFakerService = 'faker-js';
+                promptForParentRecordsSpy.mockResolvedValue(undefined);
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 3 });
+
+                expect(promptForParentRecordsSpy.mock.calls.map(([pickerOptions]) => pickerOptions.fieldApiName)).toEqual(['AccountId']);
+                expect(datasetFolderNames()).toEqual([]);
+
+            });
+
+            it('fills an optional lookup with a random parent when Random is chosen for it, and records it', async () => {
+
+                const connection = buildFakeConnection();
+                const fakeQuery = connection.query.getMockImplementation();
+                const contactIds = ['003000000000077AAA'];
+                connection.query.mockImplementation(async (soql: string) => soql === 'SELECT Id FROM Contact LIMIT 2000' ? { records: contactIds.map(contactId => ({ Id: contactId })) } : fakeQuery(soql));
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
+                selectedFakerService = 'faker-js';
+                promptForParentRecordsSpy.mockResolvedValue({ kind: 'random' });
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 2 });
+
+                connection.insertedBatches[0].records.forEach((insertedRecord: any) => {
+                    expect(PARENT_ACCOUNT_IDS).toContain(insertedRecord.AccountId);
+                    expect(insertedRecord.ReportsToId).toBe(contactIds[0]);
+                });
+                const [datasetFolderName] = datasetFolderNames();
+                const datasetSource = JSON.parse(fs.readFileSync(path.join(fakeDataSetsFolderPath(), datasetFolderName, 'BaseArtifactFiles', 'datasetSource.json'), 'utf-8'));
+                expect(datasetSource.lookupParentsByField).toEqual({ AccountId: 'random', ReportsToId: 'random' });
+
+            });
+
+            it('offers Random only, and says why, for a parent whose describe marks no name field', async () => {
+
+                const connection = buildFakeConnection();
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
+                selectedFakerService = 'faker-js';
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 1 });
+
+                const reportsToOptions = promptForParentRecordsSpy.mock.calls.map(([pickerOptions]) => pickerOptions).find(pickerOptions => pickerOptions.fieldApiName === 'ReportsToId');
+                expect(reportsToOptions.nameFieldApiName).toBeUndefined();
+                expect(reportsToOptions.searchUnavailableReason).toBe('Contact has no name field in its describe, so it cannot be searched');
+
+            });
+
+            it('refuses when the org selection changes while a picker is open', async () => {
+
+                const connection = buildFakeConnection();
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
+                jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG, { targetOrgIdentifier: 'other', username: 'other@example.com.qa', alias: 'other' }], hiddenOrgCount: 0, hiddenOrgs: [], hiddenOrgReasonCounts: { production: 0, expired: 0, deleted: 0, notConnected: 0 } });
+                promptForParentRecordsSpy.mockImplementation(async () => {
+                    await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 1 });
+                    return { kind: 'random' };
+                });
+
+                await openSelectedCockpit(SNOWFAKERY_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 3 });
+
+                expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringContaining('The org selection changed while the parent records were being chosen for qa (qa@example.com.qa)'));
+                expect(connection.insertedBatches).toEqual([]);
+                expect(datasetFolderNames()).toEqual([]);
+
+            });
+
+            it('opens no picker for a required lookup the cut block does not carry, and gives it a random parent as before', async () => {
+
+                const snowfakeryRecipePath = path.join(temporaryWorkspaceRoot, 'treecipe', 'GeneratedRecipes', SNOWFAKERY_RUN, ACCOUNT_TREE_KEY, `recipe--${ACCOUNT_TREE_KEY}-2026-09-20T10-00-00.yml`);
+                fs.writeFileSync(snowfakeryRecipePath, fs.readFileSync(snowfakeryRecipePath, 'utf-8').replace('    AccountId: ### TODO -- REFERENCE ID REQUIRED\n', ''));
+                const connection = buildFakeConnection();
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
+
+                await openSelectedCockpit(SNOWFAKERY_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 2 });
+
+                expect(promptForParentRecordsSpy).not.toHaveBeenCalled();
+                expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0][1].detail).toContain('AccountId → a random existing Account record');
+                connection.insertedBatches[0].records.forEach((insertedRecord: any) => expect(PARENT_ACCOUNT_IDS).toContain(insertedRecord.AccountId));
+
+            });
+
+            it('offers Random only, saying why, when the parent could not be described', async () => {
+
+                const connection = buildFakeConnection();
+                const fakeDescribe = connection.describe.getMockImplementation() as (objectApiName: string) => Promise<unknown>;
+                connection.describe.mockImplementation(async (objectApiName: string) => {
+                    if ( objectApiName === 'Account' ) {
+                        throw new Error('INVALID_SESSION_ID');
+                    }
+                    return fakeDescribe(objectApiName);
+                });
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(connection as any);
+
+                await openSelectedCockpit(SNOWFAKERY_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 1 });
+
+                const [[accountOptions]] = promptForParentRecordsSpy.mock.calls;
+                expect(accountOptions.nameFieldApiName).toBeUndefined();
+                expect(accountOptions.searchUnavailableReason).toMatch(/^Account could not be described \(.*INVALID_SESSION_ID.*\), so it cannot be searched$/);
+                expect(connection.insertedBatches).toHaveLength(1);
+
+            });
+
+            it('opens no picker when the modal is cancelled', async () => {
+
+                (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
+
+                await openSelectedCockpit(SNOWFAKERY_RUN);
+                await receivedMessageHandler({ command: 'createRecords', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 3 });
+
+                expect(promptForParentRecordsSpy).not.toHaveBeenCalled();
+
+            });
 
         });
 

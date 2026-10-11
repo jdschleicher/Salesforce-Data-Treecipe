@@ -372,4 +372,82 @@ describe('RecipeCockpitRecordCreation', () => {
 
     });
 
+    describe('choosing parents per lookup (#254)', () => {
+
+        it('asks about each single-object, writable lookup the cut block carries, in the block\'s order, matching names case-insensitively', () => {
+
+            expect(RecipeCockpitRecordCreation.findPickableLookups(CONTACT_DESCRIBE, ['LastName', 'reportstoid', 'AccountId', 'Master__c'])).toEqual([
+                { fieldApiName: 'ReportsToId', parentObjectApiName: 'Contact', isRequired: false },
+                { fieldApiName: 'AccountId', parentObjectApiName: 'Account', isRequired: true },
+                { fieldApiName: 'Master__c', parentObjectApiName: 'Master__c', isRequired: true }
+            ]);
+
+        });
+
+        it('asks nothing about a polymorphic, unwritable, record-type or unknown lookup, or a lookup the block does not carry, and asks once per field', () => {
+
+            expect(RecipeCockpitRecordCreation.findPickableLookups(CONTACT_DESCRIBE, ['OwnerId', 'CreatedById', 'RecordTypeId', 'Unknown__c', 'LastName'])).toEqual([]);
+            expect(RecipeCockpitRecordCreation.findPickableLookups(CONTACT_DESCRIBE, ['AccountId', 'accountid']).map(pickableLookup => pickableLookup.fieldApiName)).toEqual(['AccountId']);
+
+        });
+
+        it('gives record i the parent at i mod K with roundRobin, in the order chosen, and never asks for randomness', () => {
+
+            const records = Array.from({ length: 7 }, (_record, recordIndex) => ({ LastName: `L${recordIndex}`, AccountId: 'Account_NickName' }));
+            const pickIndex = jest.fn();
+
+            const assignedRecords = RecipeCockpitRecordCreation.assignLookupIds(
+                records,
+                [{ fieldApiName: 'AccountId', parentRecordIds: ['001P1', '001P2', '001P3'], assignment: 'roundRobin' }],
+                [],
+                pickIndex
+            ) as Array<Record<string, unknown>>;
+
+            expect(assignedRecords.map(assignedRecord => assignedRecord.AccountId)).toEqual(['001P1', '001P2', '001P3', '001P1', '001P2', '001P3', '001P1']);
+            expect(pickIndex).not.toHaveBeenCalled();
+
+        });
+
+        it('gives every record the one parent when one was chosen, and mixes round-robin with a random lookup', () => {
+
+            const assignedRecords = RecipeCockpitRecordCreation.assignLookupIds(
+                [{ LastName: 'A' }, { LastName: 'B' }],
+                [
+                    { fieldApiName: 'AccountId', parentRecordIds: ['001ONLY'], assignment: 'roundRobin' },
+                    { fieldApiName: 'Master__c', parentRecordIds: ['a00A', 'a00B'], assignment: 'random' }
+                ],
+                ['ReportsToId'],
+                () => 1
+            );
+
+            expect(assignedRecords).toEqual([{ LastName: 'A', AccountId: '001ONLY', Master__c: 'a00B' }, { LastName: 'B', AccountId: '001ONLY', Master__c: 'a00B' }]);
+
+        });
+
+        it('accepts chosen Ids only when each is a Salesforce Id the lookup\'s own search returned', () => {
+
+            const returnedIds = new Set(['001000000000001AAA', '001000000000002AAA']);
+
+            expect(RecipeCockpitRecordCreation.areChosenParentIdsReturnedBySearch(['001000000000002AAA', '001000000000001AAA'], returnedIds)).toBe(true);
+            expect(RecipeCockpitRecordCreation.areChosenParentIdsReturnedBySearch([], returnedIds)).toBe(false);
+            expect(RecipeCockpitRecordCreation.areChosenParentIdsReturnedBySearch(['001000000000003AAA'], returnedIds)).toBe(false);
+            expect(RecipeCockpitRecordCreation.areChosenParentIdsReturnedBySearch(['001000000000001AAA', '001000000000003AAA'], returnedIds)).toBe(false);
+            expect(RecipeCockpitRecordCreation.areChosenParentIdsReturnedBySearch(['not an id'], new Set(['not an id']))).toBe(false);
+
+        });
+
+        it('records a choice as "random", "blank" or a copy of the chosen Ids', () => {
+
+            const chosenIds = ['001000000000001AAA'];
+            const recorded = RecipeCockpitRecordCreation.toRecordedLookupParentChoice({ kind: 'chosen', parentRecordIds: chosenIds });
+
+            expect(RecipeCockpitRecordCreation.toRecordedLookupParentChoice({ kind: 'random' })).toBe('random');
+            expect(RecipeCockpitRecordCreation.toRecordedLookupParentChoice({ kind: 'blank' })).toBe('blank');
+            expect(recorded).toEqual(chosenIds);
+            expect(recorded).not.toBe(chosenIds);
+
+        });
+
+    });
+
 });
