@@ -310,7 +310,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, compares its fields with an org you choose, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org. "Deploy missing metadata…", shown under an insert stopped by an object the selected sandbox lacks, deploys only that custom object and its recipe's custom fields from this workspace's source to that org, after a confirmation that lists them, and only once the org answers again that it is a sandbox.
+It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org. "Deploy this metadata…", shown under an insert stopped by an object the selected sandbox lacks, deploys only that custom object and its recipe's custom fields from this workspace's source to that org, after a confirmation that lists them, and only once the org answers again that it is a sandbox.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -972,7 +972,7 @@ export interface IRecipeCockpitScratchOrgStateMessage {
 }
 
 /*
-    "Deploy missing metadata…" (#211): while isRunning, every tree's insert, every deploy button and
+    "Deploy this metadata…" (#211): while isRunning, every tree's insert, every deploy button and
     the org picker are disabled, and statusText is the phase. Once it ends, statusText is how it
     ended, and hasOutput says whether "View output" has a result file -- the path stays on the host.
     treeKey and objectApiName name the card and object the line is drawn for. Stored and replayed.
@@ -987,7 +987,7 @@ export interface IRecipeCockpitMetadataDeployStateMessage {
     hasOutput: boolean;
 }
 
-export const RECIPE_COCKPIT_METADATA_DEPLOY_ACTION_LABEL = 'Deploy missing metadata…';
+export const RECIPE_COCKPIT_METADATA_DEPLOY_ACTION_LABEL = 'Deploy this metadata…';
 
 export const RECIPE_COCKPIT_METADATA_DEPLOY_CONFIRM_LABEL = 'Deploy';
 
@@ -1223,7 +1223,7 @@ export interface IRecipeCockpitPanelState {
     scratchOrgStateMessage?: IRecipeCockpitScratchOrgStateMessage;
     scratchOrgOutputFilePath?: string;
     /*
-        "Deploy missing metadata…" (#211). The deployable objects are an allow-list built from the
+        "Deploy this metadata…" (#211). The deployable objects are an allow-list built from the
         READINESS posted, not from the model: PENDING is filled as each dataOrgReadiness is posted
         for one selection (pendingDeployTargetsRequestSequence), and only the panel's
         "readinessRendered" for that selection, over a model it acknowledged, copies it to ACTIVE.
@@ -1269,6 +1269,8 @@ interface IRecipeCockpitMetadataDeployClosingState {
     statusText: string;
     isFailure: boolean;
     isDeployRun: boolean;
+    // THE CLI ANSWERED THAT THE DEPLOY SUCCEEDED: THE ONE ANSWER THE READINESS IS UPDATED FROM (#270)
+    isDeployed?: boolean;
     outputFilePath?: string;
 }
 
@@ -2608,7 +2610,7 @@ export class RecipeCockpitService {
 
     }
 
-    // THE SAME FOR THE CARDS ONE PREDICATE PICKS: A FOLDER'S, OR EVERY CARD THAT LISTS AN OBJECT A DEPLOY CHANGED (#211)
+    // THE SAME FOR THE CARDS ONE PREDICATE PICKS
     private static async refreshDataOrgReadinessForTrees(cockpitPanel: vscode.WebviewPanel,
                                                             panelState: IRecipeCockpitPanelState,
                                                             isTreeRefreshed: (tree: IRecipeCockpitTreeViewModel) => boolean) {
@@ -2665,6 +2667,53 @@ export class RecipeCockpitService {
             requestSequence: requestSequence,
             renderSequence: recipeDataMessage.renderSequence
         }, readinessByTarget.deployTargetsByCreateKey);
+
+    }
+
+    /*
+        A deploy the CLI answered succeeded for (#270): the object is in the org now, so every card
+        that lists it is told so from that answer -- no describe and no connection. Only each tree's
+        recipe block is read, from the workspace, since a block that cannot be read stays a reason.
+        An answer for a selection, model or request the reader has moved on from is dropped.
+    */
+    private static async postDeployedObjectReadiness(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, objectApiName: string) {
+
+        const dataOrgSelection = panelState.dataOrgSelection;
+        const recipeDataMessage = panelState.recipeDataMessage;
+
+        if ( !dataOrgSelection || dataOrgSelection.orgTypeDetail?.isSandbox !== true || !recipeDataMessage || !panelState.dataOrgObjectApiNames.has(objectApiName) ) {
+            return;
+        }
+
+        const requestSequence = dataOrgSelection.requestSequence;
+        const objectRecipeDataMessage: IRecipeCockpitRecipeDataMessage = {
+            ...recipeDataMessage,
+            recipe: { ...recipeDataMessage.recipe, trees: recipeDataMessage.recipe.trees.filter(tree => tree.objects.some(treeObject => treeObject.objectApiName === objectApiName)) }
+        };
+        const createTargets = ( await this.collectCreateTargets(panelState, objectRecipeDataMessage) )
+            .filter(createTarget => createTarget.objectApiName === objectApiName);
+
+        const isStillCurrent = this.recipeCockpitPanel === cockpitPanel
+                                && this.recipeCockpitPanelState === panelState
+                                && panelState.dataOrgSelection === dataOrgSelection
+                                && panelState.dataOrgRequestSequence === requestSequence
+                                && panelState.recipeDataMessage === recipeDataMessage;
+
+        if ( !isStillCurrent ) {
+            return;
+        }
+
+        this.postDataOrgReadiness(cockpitPanel, panelState, {
+            command: 'dataOrgReadiness',
+            objects: [RecipeCockpitRecordCreation.buildDeployedObjectReadiness(objectApiName)],
+            createTargets: createTargets.map(createTarget => ({
+                ...RecipeCockpitRecordCreation.buildDeployedObjectReadiness(objectApiName, createTarget.recipeFieldRefusalReason),
+                treeKey: createTarget.treeKey
+            })),
+            insertResults: [],
+            requestSequence: requestSequence,
+            renderSequence: recipeDataMessage.renderSequence
+        });
 
     }
 
@@ -4785,10 +4834,13 @@ export class RecipeCockpitService {
     }
 
     /*
-        "Deploy missing metadata…" (#211), for the org the panel has selected and the target the
-        router matched. One at a time per window. However it ends, once the CLI has run, that org's
-        describe of the object is dropped from the session cache and every card listing the object
-        is checked again, so the insert is offered only if a fresh describe says so.
+        "Deploy this metadata…" (#211), for the org the panel has selected and the target the
+        router matched. One at a time per window. The CLI's own answer is the result (#270): nothing
+        is described again once it returns. A success makes the object ready on every card that
+        lists it, for the selection the deploy started under; a failure leaves the readiness, and
+        the deploy, as they were. Once the CLI has run, that org's describe of the object is dropped
+        from the session cache either way, so no describe from before the deploy outlives it; the
+        insert's own check on the click describes the object afresh.
     */
     private static async deployMissingMetadataFromPanel(cockpitPanel: vscode.WebviewPanel, deployTarget: IMetadataDeployTarget) {
 
@@ -4803,6 +4855,7 @@ export class RecipeCockpitService {
         }
 
         this.isMetadataDeployInFlight = true;
+        const deploySelection = panelState.dataOrgSelection;
         const { treeKey, objectApiName } = deployTarget;
         const buildState = (isRunning: boolean, statusText: string, isFailure = false, hasOutput = false): IRecipeCockpitMetadataDeployStateMessage => ({
             command: 'metadataDeployState', isRunning, treeKey, objectApiName, statusText, isFailure, hasOutput
@@ -4826,24 +4879,23 @@ export class RecipeCockpitService {
 
             /*
                 The deploy stays IN FLIGHT -- its button, every insert and the picker held -- until
-                the readiness it changed has been checked again: given back first, the old
+                the readiness its answer changed has been posted: given back first, the old
                 readiness's button would offer the same deploy a second time meanwhile.
             */
             try {
 
                 if ( closingState.isDeployRun || isCliStarted ) {
-
                     SalesforceOrgService.clearDescribeCache(orgDetail.username, objectApiName);
-                    this.forgetDeployTarget(this.recipeCockpitPanelState, deployTarget);
-                    this.setMetadataDeployState(buildState(true, `${closingState.statusText} Checking the tree again…`.trim(), closingState.isFailure));
+                }
 
-                    const currentPanel = this.recipeCockpitPanel;
-                    const currentPanelState = this.recipeCockpitPanelState;
+                const currentPanel = this.recipeCockpitPanel;
+                const currentPanelState = this.recipeCockpitPanelState;
 
-                    if ( currentPanel && currentPanelState.dataOrgSelection?.orgDetail.username === orgDetail.username ) {
-                        await this.refreshDataOrgReadinessForTrees(currentPanel, currentPanelState, tree => tree.objects.some(treeObject => treeObject.objectApiName === objectApiName));
+                if ( closingState.isDeployed === true ) {
+                    this.forgetDeployTarget(currentPanelState, deployTarget);
+                    if ( currentPanel && deploySelection && currentPanelState.dataOrgSelection === deploySelection ) {
+                        await this.postDeployedObjectReadiness(currentPanel, currentPanelState, objectApiName);
                     }
-
                 }
 
             } finally {
@@ -4950,13 +5002,13 @@ export class RecipeCockpitService {
         });
 
         if ( isCancelled ) {
-            const cancelledText = `The deploy of ${objectApiName} to ${orgLabel} was cancelled and may have partly applied.`;
+            const cancelledText = `The deploy of ${objectApiName} to ${orgLabel} was cancelled, so whether it applied is unknown.`;
             VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(cancelledText));
             return { statusText: cancelledText, isFailure: true, isDeployRun: true };
         }
 
         const deployPayload = ScratchOrgService.readCliJsonPayload(deployInvocation);
-        const deployOutcome: MetadataDeployOutcome = RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(deployInvocation, deployPlan.members.length, deployPayload);
+        const deployOutcome: MetadataDeployOutcome = RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(deployInvocation, deployPayload);
         const outputFilePath = deployInvocation.spawnError || deployInvocation.isOutputTooLarge
             ? undefined
             : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, 'metadata-deploy', deployInvocation, new Date(), deployPayload);
@@ -4964,16 +5016,9 @@ export class RecipeCockpitService {
         switch ( deployOutcome.kind ) {
 
             case 'deployed': {
-                const deployedText = `Deployed ${deployOutcome.deployedComponentCount} ${deployOutcome.deployedComponentCount === 1 ? 'component' : 'components'} of ${objectApiName} to ${orgLabel}. Checking again whether the tree can be inserted.`;
+                const deployedText = `Deployed ${deployOutcome.deployedComponentCount} ${deployOutcome.deployedComponentCount === 1 ? 'component' : 'components'} of ${objectApiName} to ${orgLabel}.`;
                 VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(deployedText));
-                return { statusText: deployedText, isFailure: false, isDeployRun: true, outputFilePath: outputFilePath };
-            }
-
-            case 'partiallyFailed': {
-                // NO --ignore-errors: THE DEPLOY ROLLS BACK ON ANY FAILURE, SO THE COMPONENTS THAT DID NOT FAIL WERE NOT APPLIED EITHER
-                const partialText = `${deployOutcome.failedComponentCount} of ${deployOutcome.componentCount} components failed to deploy to ${orgLabel}, so none was applied: ${deployOutcome.failureDetail}`;
-                this.showMetadataDeployNotification('warning', partialText, outputFilePath, workspaceRoot);
-                return { statusText: partialText, isFailure: true, isDeployRun: true, outputFilePath: outputFilePath };
+                return { statusText: deployedText, isFailure: false, isDeployRun: true, isDeployed: true, outputFilePath: outputFilePath };
             }
 
             case 'cliNotInstalled':
@@ -6805,7 +6850,7 @@ export class RecipeCockpitService {
             }
 
             /*
-                "Deploy missing metadata…" (#211) posts NAMES and the INDEX of the org it was drawn
+                "Deploy this metadata…" (#211) posts NAMES and the INDEX of the org it was drawn
                 for, and none of them decides what is deployed: the tree and object must be a target
                 the panel confirmed drawing for the selection checked NOW, that selection must be the
                 org at that index, and the org must have answered that it is a sandbox. A forged
@@ -8476,7 +8521,7 @@ ${this.buildPaletteCustomProperties()}
     // "+ New scratch org" (#200): THE HOST'S LAST scratchOrgState, AND WHETHER A RUN HOLDS THE PICKER AND EVERY INSERT DISABLED
     let scratchOrgState = null;
     let isScratchOrgRunning = false;
-    // "Deploy missing metadata…" (#211): THE HOST'S LAST metadataDeployState, AND WHETHER A DEPLOY HOLDS THE PICKER, EVERY INSERT AND EVERY DEPLOY DISABLED
+    // "Deploy this metadata…" (#211): THE HOST'S LAST metadataDeployState, AND WHETHER A DEPLOY HOLDS THE PICKER, EVERY INSERT AND EVERY DEPLOY DISABLED
     let metadataDeployState = null;
     let isMetadataDeployRunning = false;
     // THE renderSequence THE PICKER ASKED FOR ITS ORGS UNDER -- ONE ASK PER MODEL, MADE THE FIRST TIME A TREECIPE TAB OPENS OR THE PICKER IS USED
@@ -11214,7 +11259,7 @@ ${this.buildPaletteCustomProperties()}
 
         drawTreeInserts();
 
-        // DRAWN: ONLY NOW MAY A "Deploy missing metadata…" OF THIS SELECTION BE HONOURED (#211)
+        // DRAWN: ONLY NOW MAY A "Deploy this metadata…" OF THIS SELECTION BE HONOURED (#211)
         vscodeApi.postMessage({ command: 'readinessRendered', renderSequence: dataOrgReadiness.renderSequence, requestSequence: dataOrgReadiness.requestSequence, readinessSequence: dataOrgReadiness.readinessSequence });
 
     }
