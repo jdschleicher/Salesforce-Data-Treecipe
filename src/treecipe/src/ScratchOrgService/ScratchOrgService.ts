@@ -13,6 +13,14 @@ export const ORG_OPEN_URL_PROTOCOL = 'https:';
 
 export const ORG_OPEN_TIMEOUT_MILLISECONDS = 60000;
 
+// THE SETUP PAGE A DEPLOY'S result.deployUrl NAMES (#283), AND THE CLASSIC PAGE ITS address PARAMETER WRAPS
+export const DEPLOY_STATUS_PAGE_PATH = '/lightning/setup/DeployStatus/page';
+
+export const DEPLOY_STATUS_ADDRESS_PATTERN = /^\/changemgmt\/monitorDeploymentsDetails\.apexp\?asyncId=(0Af[0-9A-Za-z]{12}(?:[0-9A-Za-z]{3})?)(?:&|$)/;
+
+// THE ONLY --path "sf org open" IS EVER GIVEN: THE PAGE, AND A DEPLOY ID THAT IS NOTHING BUT LETTERS AND DIGITS
+export const DEPLOY_STATUS_OPEN_PATH_PATTERN = /^\/lightning\/setup\/DeployStatus\/page\?address=\/changemgmt\/monitorDeploymentsDetails\.apexp\?asyncId=0Af[0-9A-Za-z]{12}(?:[0-9A-Za-z]{3})?$/;
+
 // WINDOWS RESERVES THESE AS DEVICE NAMES, WITH OR WITHOUT AN EXTENSION: A FOLDER BY THAT NAME CANNOT BE MADE
 export const WINDOWS_RESERVED_FOLDER_NAME_PATTERN = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
 
@@ -95,6 +103,8 @@ export interface IDeployComponentCounts {
     componentFailureCount: number;
     componentFailureProblems: string[];
     numberComponentsDeployed?: number;
+    // ONLY WHEN result.deployUrl IS THE DEPLOYMENT STATUS PAGE, OVER https:, ON THE DEPLOY ORG'S OWN HOST (#283)
+    deployUrl?: string;
 }
 
 export type SourceDeployParseResult =
@@ -294,19 +304,27 @@ export class ScratchOrgService {
 
     }
 
-    // --url-only: THE EXTENSION OPENS THE URL ITSELF, WHICH ALSO WORKS WHERE THE CLI HAS NO BROWSER (REMOTE, WSL, CODESPACES)
-    static buildOrgOpenArguments(username: string): string[] {
+    /*
+        --url-only: THE EXTENSION OPENS THE URL ITSELF, WHICH ALSO WORKS WHERE THE CLI HAS NO BROWSER
+        (REMOTE, WSL, CODESPACES). A --path is only ever the Deployment Status page built by
+        buildDeployStatusOpenPath (#283), checked again here.
+    */
+    static buildOrgOpenArguments(username: string, openPath?: string): string[] {
 
         PicklistDependencyCheckService.assertValidTargetOrgIdentifier(username);
 
-        return ['org', 'open', '--target-org', username, '--url-only', '--json'];
+        if ( openPath !== undefined && !DEPLOY_STATUS_OPEN_PATH_PATTERN.test(openPath) ) {
+            throw new Error('Only the Deployment Status page of a deploy can be opened in an org.');
+        }
+
+        return ['org', 'open', '--target-org', username, ...( openPath !== undefined ? ['--path', openPath] : [] ), '--url-only', '--json'];
 
     }
 
     // NOT PROJECT MODE: NO cwd, SO sf IS FOUND ON PATH THE WAY "sf org list" FINDS IT
-    static async resolveOrgOpenUrl(username: string): Promise<OrgOpenParseResult> {
+    static async resolveOrgOpenUrl(username: string, openPath?: string): Promise<OrgOpenParseResult> {
 
-        const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(this.buildOrgOpenArguments(username), undefined, ORG_OPEN_TIMEOUT_MILLISECONDS);
+        const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(this.buildOrgOpenArguments(username, openPath), undefined, ORG_OPEN_TIMEOUT_MILLISECONDS);
 
         return this.parseOrgOpenOutput(invocationResult);
 
@@ -451,8 +469,70 @@ export class ScratchOrgService {
 
     }
 
+    /*
+        A deploy's result.deployUrl (#283), read as untrusted: usable only when it parses as https:,
+        its host is the deploy org's instance host, and it is the Deployment Status page with an
+        address naming one deploy id. Anything else is no URL at all.
+    */
+    static readUsableDeployUrl(deployUrl: unknown, deployOrgInstanceUrl: string | undefined): string | undefined {
+
+        if ( typeof deployUrl !== 'string' || typeof deployOrgInstanceUrl !== 'string' ) {
+            return undefined;
+        }
+
+        let parsedDeployUrl: URL;
+        let parsedInstanceUrl: URL;
+
+        try {
+            parsedDeployUrl = new URL(deployUrl);
+            parsedInstanceUrl = new URL(deployOrgInstanceUrl);
+        } catch {
+            return undefined;
+        }
+
+        const address = parsedDeployUrl.searchParams.get('address');
+
+        return parsedDeployUrl.protocol === ORG_OPEN_URL_PROTOCOL
+                && parsedDeployUrl.username === ''
+                && parsedDeployUrl.password === ''
+                && parsedDeployUrl.host !== ''
+                && parsedDeployUrl.host === parsedInstanceUrl.host
+                && parsedDeployUrl.pathname === DEPLOY_STATUS_PAGE_PATH
+                && address !== null
+                && DEPLOY_STATUS_ADDRESS_PATTERN.test(address)
+            ? parsedDeployUrl.toString()
+            : undefined;
+
+    }
+
+    /*
+        The --path "sf org open" is given for a usable deployUrl: the page and its deploy id, rebuilt
+        rather than copied. On Windows the CLI runs through cmd.exe, which expands %...% even inside
+        double quotes, so the address goes unencoded -- "/" and "?" are legal in a query, and decode
+        to the same value -- and the deployUrl's retURL, which needs an "&", is left out.
+    */
+    static buildDeployStatusOpenPath(deployUrl: string | undefined): string | undefined {
+
+        if ( typeof deployUrl !== 'string' ) {
+            return undefined;
+        }
+
+        let address: string | null;
+        try {
+            address = new URL(deployUrl).searchParams.get('address');
+        } catch {
+            return undefined;
+        }
+
+        const deployId = address !== null ? DEPLOY_STATUS_ADDRESS_PATTERN.exec(address)?.[1] : undefined;
+        const openPath = deployId ? `${DEPLOY_STATUS_PAGE_PATH}?address=/changemgmt/monitorDeploymentsDetails.apexp?asyncId=${deployId}` : undefined;
+
+        return openPath && DEPLOY_STATUS_OPEN_PATH_PATTERN.test(openPath) ? openPath : undefined;
+
+    }
+
     // A DEPLOY SUCCEEDED ONLY ON status 0, result.success true AND NO COMPONENT FAILURE: ANYTHING ELSE, A MALFORMED ANSWER INCLUDED, IS A FAILURE
-    static readDeployComponentCounts(payload: Record<string, unknown> | undefined): IDeployComponentCounts {
+    static readDeployComponentCounts(payload: Record<string, unknown> | undefined, deployOrgInstanceUrl?: string): IDeployComponentCounts {
 
         const result = payload?.result !== null && typeof payload?.result === 'object' && !Array.isArray(payload?.result) ? payload.result as Record<string, unknown> : undefined;
         const details = result?.details !== null && typeof result?.details === 'object' ? result.details as Record<string, unknown> : undefined;
@@ -466,13 +546,15 @@ export class ScratchOrgService {
                 .filter((failurePart): failurePart is string => typeof failurePart === 'string' && failurePart.trim() !== '')
                 .join(': ');
         }).filter(problem => problem !== '');
+        const deployUrl = this.readUsableDeployUrl(result?.deployUrl, deployOrgInstanceUrl);
 
         return {
             isSucceeded: payload?.status === 0 && result?.success === true && componentFailures.length === 0,
             componentSuccessCount: componentSuccesses.length,
             componentFailureCount: componentFailures.length,
             componentFailureProblems: componentFailureProblems,
-            ...( typeof result?.numberComponentsDeployed === 'number' ? { numberComponentsDeployed: result.numberComponentsDeployed } : {} )
+            ...( typeof result?.numberComponentsDeployed === 'number' ? { numberComponentsDeployed: result.numberComponentsDeployed } : {} ),
+            ...( deployUrl ? { deployUrl: deployUrl } : {} )
         };
 
     }
