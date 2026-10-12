@@ -1,5 +1,12 @@
 # Change Log
 
+## [3.72.5] - Recipe Cockpit: the tree's chain link tilts from bottom right to top left
+
+Closes [#295](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/295).
+
+- The chain-link include/exclude icon on a Treecipe object row now runs from the bottom right to the top left. It used to run from the bottom left to the top right. `RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM` is now `rotate(45 12 12)` (it was `rotate(-45 12 12)`). The joined, broken and dashed auto-excluded links all share that one transform, so all three states turn together.
+- **Unchanged:** the glyph paths, size, colours, the 24×24 viewBox (a ±45° turn of the same path reaches the same corners, so nothing is clipped), `aria-pressed`, titles, labels, the exclusion cascade, the CSP and the nonce-only shell builder.
+
 ## [3.72.4] - Docs: README and CLAUDE.md describe the cockpit as it ships
 
 Part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173). Documentation only; no code changes.

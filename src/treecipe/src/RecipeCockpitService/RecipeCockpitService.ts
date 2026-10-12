@@ -226,11 +226,12 @@ export const RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL = '✎';
     script with createElementNS and coloured only from the --sdt-* palette by CSS. Joined is included;
     broken -- the links pulled apart, a spark either side of the gap -- is excluded, and a dashed broken
     link is excluded because a parent is. The SHAPE says the state, never the colour alone. Both are
-    stroked in a 24x24 box and turned to the familiar diagonal. They fetch nothing, so the CSP, the
-    nonce-only shell builder and localResourceRoots: [] are unchanged.
+    stroked in a 24x24 box and turned 45 degrees clockwise, so the link runs from the bottom right to
+    the top left (#295). They fetch nothing, so the CSP, the nonce-only shell builder and
+    localResourceRoots: [] are unchanged.
 */
 export const RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX = '0 0 24 24';
-export const RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM = 'rotate(-45 12 12)';
+export const RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM = 'rotate(45 12 12)';
 export const RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH = 'M6 8 H10 A4 4 0 0 1 10 16 H6 A4 4 0 0 1 6 8 Z M14 8 H18 A4 4 0 0 1 18 16 H14 A4 4 0 0 1 14 8 Z';
 export const RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH = 'M4.5 8 H6.5 A4 4 0 0 1 6.5 16 H4.5 A4 4 0 0 1 4.5 8 Z M17.5 8 H19.5 A4 4 0 0 1 19.5 16 H17.5 A4 4 0 0 1 17.5 8 Z M12 3.5 V6 M12 18 V20.5';
 /*

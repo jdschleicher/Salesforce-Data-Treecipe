@@ -618,6 +618,18 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
 
         });
 
+        it('turns every state of the link from the bottom right to the top left (#295)', () => {
+
+            expect(RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM).toBe('rotate(45 12 12)');
+
+            const panel = drawRecipe(excludeContact);
+            const transformOf = (includeElement: any) => glyphOf(includeElement).children[0].attributes.transform;
+
+            expect(['Account', 'Contact', 'OtherChildObject__c'].map(objectApiName => transformOf(includeOf(panel, objectApiName))))
+                .toEqual(['rotate(45 12 12)', 'rotate(45 12 12)', 'rotate(45 12 12)']);
+
+        });
+
         it('draws the three states by shape, aria-pressed, disabled and title, with the overlay on every row left out', () => {
 
             const panel = drawRecipe(excludeContact);
