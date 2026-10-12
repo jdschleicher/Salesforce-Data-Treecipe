@@ -15,6 +15,7 @@ export interface IRecipeFakerService {
         fieldApiName): string;
     generateTabs(tabCount: number): string;
     getOOTBObjectApiNameToFieldApiNameMap(): Record<string, Record<string, string>>;
+    getMinimumRequiredFieldsTemplate(): Record<string, Record<string, string>>;
     getAddressComponentToRecipeValueMap(): Record<string, string>;
     getGeolocationComponentToRecipeValueMap(): Record<string, string>;
 
