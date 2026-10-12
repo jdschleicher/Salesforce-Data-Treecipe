@@ -11,12 +11,13 @@ jest.mock('vscode', () => ({
 
 jest.mock('@salesforce/core', () => ({
     AuthInfo: { listAllAuthorizations: jest.fn() },
+    StateAggregator: { clearInstance: jest.fn() },
     Org: { create: jest.fn() }
 }));
 
 jest.mock('child_process', () => ({ execFile: jest.fn() }));
 
-import { AuthInfo, Org } from '@salesforce/core';
+import { AuthInfo, Org, StateAggregator } from '@salesforce/core';
 import { execFile } from 'child_process';
 
 import {
@@ -1183,6 +1184,196 @@ describe('SalesforceOrgService', () => {
         it('formats each reason that left an org out, in a fixed order, leaving out the reasons with none', () => {
 
             expect(SalesforceOrgService.formatHiddenOrgReasons({ production: 1, expired: 1, deleted: 0, notConnected: 1 })).toBe('1 production, 1 expired, 1 not connected');
+
+        });
+
+    });
+
+    describe('the alias an org is labelled by (#286)', () => {
+
+        const SANDBOX_USERNAME = 'qa@example.com.qa';
+        const SANDBOX_INSTANCE_URL = 'https://acme--qa.sandbox.my.salesforce.com';
+
+        function buildSandboxAuthorization(aliases: unknown, username = SANDBOX_USERNAME) {
+            return { username: username, aliases: aliases, orgId: '00D1', oauthMethod: 'web', configs: null, isExpired: false, isSandbox: true, instanceUrl: SANDBOX_INSTANCE_URL };
+        }
+
+        function answerSandboxOrgList(orgListEntry: Record<string, unknown>) {
+            answerOrgList({ stdout: buildOrgListStdout({ nonScratchOrgs: [{ username: SANDBOX_USERNAME, connectedStatus: 'Connected', ...orgListEntry }] }) });
+        }
+
+        beforeEach(() => {
+            SalesforceOrgService.clearConnectedOrgStatusCache();
+            (execFile as unknown as jest.Mock).mockClear();
+            (StateAggregator.clearInstance as jest.Mock).mockClear();
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockReset();
+        });
+
+        it('drops the cached StateAggregator before every authorization read, so an alias set since is read from disk', async () => {
+
+            answerSandboxOrgList({});
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([buildSandboxAuthorization([])]);
+
+            await SalesforceOrgService.listDataOrgDetails();
+            await SalesforceOrgService.listAuthorizedOrgDetails();
+            await SalesforceOrgService.listAliasHolders();
+
+            const clearOrder = (StateAggregator.clearInstance as jest.Mock).mock.invocationCallOrder;
+            const readOrder = (AuthInfo.listAllAuthorizations as jest.Mock).mock.invocationCallOrder;
+            expect(readOrder.length).toBeGreaterThan(0);
+            expect(clearOrder).toHaveLength(readOrder.length);
+            readOrder.forEach((readCall, readIndex) => {
+                expect(clearOrder[readIndex]).toBeLessThan(readCall);
+                expect(readIndex === 0 || clearOrder[readIndex] > readOrder[readIndex - 1]).toBe(true);
+            });
+
+        });
+
+        it('labels an org by an alias set after VS Code started, on the next listing, with no ⟳', async () => {
+
+            answerSandboxOrgList({});
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([buildSandboxAuthorization([])]);
+
+            const listedBefore = await SalesforceOrgService.listDataOrgDetails();
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([buildSandboxAuthorization(['myQa'])]);
+            const listedAfter = await SalesforceOrgService.listDataOrgDetails();
+
+            expect(listedBefore.orgDetails).toEqual([{ targetOrgIdentifier: SANDBOX_USERNAME, username: SANDBOX_USERNAME, alias: undefined }]);
+            expect(listedAfter.orgDetails).toEqual([{ targetOrgIdentifier: 'myQa', username: SANDBOX_USERNAME, alias: 'myQa' }]);
+            expect(execFile).toHaveBeenCalledTimes(1);
+
+        });
+
+        it('labels an org the authorizations name no alias for by the alias "sf org list" answers, and only as a label', async () => {
+
+            answerSandboxOrgList({ alias: 'qa' });
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([buildSandboxAuthorization([])]);
+
+            const dataOrgListing = await SalesforceOrgService.listDataOrgDetails();
+
+            expect(dataOrgListing.orgDetails).toEqual([{ targetOrgIdentifier: SANDBOX_USERNAME, username: SANDBOX_USERNAME, alias: 'qa' }]);
+
+        });
+
+        it('picks up an alias "sf org list" answers on ⟳', async () => {
+
+            answerSandboxOrgList({});
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([buildSandboxAuthorization(undefined)]);
+            expect((await SalesforceOrgService.listDataOrgDetails()).orgDetails[0].alias).toBeUndefined();
+
+            answerSandboxOrgList({ alias: 'qa' });
+            await SalesforceOrgService.refreshConnectedOrgAuthorizations();
+
+            expect((await SalesforceOrgService.listDataOrgDetails()).orgDetails[0].alias).toBe('qa');
+
+        });
+
+        it('prefers the alias the authorizations read fresh over the CLI answer, which may be cached', async () => {
+
+            answerSandboxOrgList({ alias: 'oldAlias' });
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([buildSandboxAuthorization(['newAlias'])]);
+
+            expect((await SalesforceOrgService.listDataOrgDetails()).orgDetails[0].alias).toBe('newAlias');
+
+        });
+
+        it('does not put an alias back on an org once the fresh authorizations show it moved to another', async () => {
+
+            answerOrgList({ stdout: buildOrgListStdout({ nonScratchOrgs: [
+                { username: SANDBOX_USERNAME, connectedStatus: 'Connected', alias: 'qa' },
+                { username: 'qa2@example.com.qa2', connectedStatus: 'Connected' }
+            ] }) });
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([
+                buildSandboxAuthorization([]),
+                null,
+                buildSandboxAuthorization(['qa'], 'qa2@example.com.qa2')
+            ]);
+
+            const dataOrgListing = await SalesforceOrgService.listDataOrgDetails();
+
+            expect(dataOrgListing.orgDetails.map(orgDetail => [orgDetail.username, orgDetail.alias])).toEqual([
+                [SANDBOX_USERNAME, undefined],
+                ['qa2@example.com.qa2', 'qa']
+            ]);
+
+        });
+
+        it('does not label an org by a cached CLI alias once the alias it held when the CLI ran is removed', async () => {
+
+            answerSandboxOrgList({ alias: 'qa' });
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([buildSandboxAuthorization(['qa'])]);
+            expect((await SalesforceOrgService.listDataOrgDetails()).orgDetails[0].alias).toBe('qa');
+
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([buildSandboxAuthorization([])]);
+            const listedAfterUnset = await SalesforceOrgService.listDataOrgDetails();
+
+            expect(listedAfterUnset.orgDetails).toEqual([{ targetOrgIdentifier: SANDBOX_USERNAME, username: SANDBOX_USERNAME, alias: undefined }]);
+            expect(execFile).toHaveBeenCalledTimes(1);
+
+        });
+
+        it('labels a hidden org by the same rule', async () => {
+
+            answerSandboxOrgList({ connectedStatus: 'RefreshTokenAuthError', alias: 'qa' });
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([
+                buildSandboxAuthorization([]),
+                buildSandboxAuthorization([], 'never-listed@example.com')
+            ]);
+
+            expect((await SalesforceOrgService.listDataOrgDetails()).hiddenOrgs).toEqual([
+                { username: SANDBOX_USERNAME, label: 'qa', reason: 'notConnected' },
+                { username: 'never-listed@example.com', label: 'never-listed@example.com', reason: 'notConnected' }
+            ]);
+
+        });
+
+        it('labels the Dev Hub picker by the same rule', async () => {
+
+            answerSandboxOrgList({ alias: 'hub' });
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([{ ...buildSandboxAuthorization([]), isDevHub: true }]);
+
+            const devHubListing = await SalesforceOrgService.listDevHubOrgDetails(os.tmpdir(), os.tmpdir(), {});
+
+            expect(devHubListing.orgDetails.map(orgDetail => [orgDetail.username, orgDetail.alias])).toEqual([[SANDBOX_USERNAME, 'hub']]);
+
+        });
+
+        it.each([
+            ['an alias string', { alias: 'qa' }, 'qa'],
+            ['the first string of aliases', { aliases: [7, '', 'qa', 'other'] }, 'qa'],
+            ['alias over aliases', { alias: 'qa', aliases: ['other'] }, 'qa'],
+            ['aliases when alias is empty', { alias: '', aliases: ['qa'] }, 'qa'],
+            ['no alias', {}, undefined],
+            ['an alias that is not a string', { alias: 7 }, undefined],
+            ['aliases that is not a list', { aliases: 'qa' }, undefined],
+            ['an alias that could not be an org identifier', { alias: '-o' }, undefined],
+            ['an alias carrying a line break', { alias: 'qa\nother' }, undefined],
+            ['an alias carrying markdown', { alias: '[x](command:y)' }, undefined]
+        ])('reads %s from an "sf org list" entry as untrusted', (_description, orgListEntry, expectedAlias) => {
+
+            expect(SalesforceOrgService.readOrgListEntryAlias(orgListEntry)).toBe(expectedAlias);
+
+        });
+
+        it('keeps the first alias the answer names for a username, across groups', () => {
+
+            const orgStatusListing = SalesforceOrgService.normalizeOrgListResult({
+                nonScratchOrgs: [{ username: 'x@example.com', connectedStatus: 'Connected', alias: 'first' }],
+                sandboxes: [{ username: 'x@example.com', connectedStatus: 'Connected', alias: 'second' }]
+            });
+
+            expect([...(orgStatusListing.aliasesByUsername ?? new Map()).entries()]).toEqual([['x@example.com', 'first']]);
+
+        });
+
+        it('lists an org with no alias anywhere by its username', async () => {
+
+            answerSandboxOrgList({});
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([buildSandboxAuthorization([42, ''])]);
+
+            const dataOrgListing = await SalesforceOrgService.listDataOrgDetails();
+
+            expect(dataOrgListing.orgDetails).toEqual([{ targetOrgIdentifier: SANDBOX_USERNAME, username: SANDBOX_USERNAME, alias: undefined }]);
 
         });
 

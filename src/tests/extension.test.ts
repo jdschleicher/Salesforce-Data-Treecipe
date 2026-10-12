@@ -25,6 +25,7 @@ jest.mock('vscode', () => ({
 
 jest.mock('@salesforce/core', () => ({
     AuthInfo: { listAllAuthorizations: jest.fn() },
+    StateAggregator: { clearInstance: jest.fn() },
     Org: { create: jest.fn() }
 }));
 

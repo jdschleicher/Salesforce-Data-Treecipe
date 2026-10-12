@@ -181,7 +181,7 @@ src/
     │   └── tests/
     │       └── mocks/
     ├── SalesforceOrgService/
-    │   ├── SalesforceOrgService.ts           # Shared @salesforce/core connection helper, session-cached connected-org listing (`sf org list`, listConnectedOrgAuthorizations) behind every org picker, session-cached describe (cleared whole, or per org username and object after a deploy) + pure describe normalization, the Organization IsSandbox/OrganizationType query, the Dev Hubs a scratch org can come from (`listDevHubOrgDetailsForPicker`: `isDevHub === true` and connected, the default first), the default Dev Hub read in process (env, project .sf/config.json, global)
+    │   ├── SalesforceOrgService.ts           # Shared @salesforce/core connection helper, session-cached connected-org listing (`sf org list`, listConnectedOrgAuthorizations) behind every org picker, authorizations read fresh (`StateAggregator.clearInstance()` first, #286) with the CLI answer's alias as a label-only fallback, session-cached describe (cleared whole, or per org username and object after a deploy) + pure describe normalization, the Organization IsSandbox/OrganizationType query, the Dev Hubs a scratch org can come from (`listDevHubOrgDetailsForPicker`: `isDevHub === true` and connected, the default first), the default Dev Hub read in process (env, project .sf/config.json, global)
     │   └── tests/
     │       └── mocks/                        # A describe result fixture, an `sf org list --json --verbose` answer and its matching authorization files
     ├── ScratchOrgService/
