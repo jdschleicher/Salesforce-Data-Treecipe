@@ -159,7 +159,7 @@ export class RecipeCockpitRecordCreation {
     /*
         The fields a record cannot be inserted without and the user must send: not nillable,
         createable, and not one the org fills itself (defaultedOnCreate -- a checkbox, OwnerId). The
-        Treecipe tab marks such a field "required in <org>" when it is unticked (#220).
+        insert's readiness refuses such a field when it is unticked (#220).
     */
     static findRequiredFieldApiNames(describe: Pick<ICreateObjectDescribe, 'fields'>): string[] {
 
