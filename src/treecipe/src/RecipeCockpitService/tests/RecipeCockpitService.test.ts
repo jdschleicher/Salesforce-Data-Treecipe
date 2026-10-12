@@ -387,7 +387,7 @@ describe('RecipeCockpitService', () => {
 
         const COCKPIT_BUTTON_SELECTORS = [
             '.treeToggle', '.treeObjectToggle', '.picklistToggle', '.treeRunFaker',
-            '.treeTab', '.treeVersionToggle', '.historyAction', '.treeAddFriend', '.treeAddFriendChoice',
+            '.treeTab', '.historyAction', '.treeAddFriend', '.treeAddFriendChoice',
             '.toolbar button', '.treeCompare button', '.emptyStateActions button', '.dataOrgRefresh', '.dataObjectToggle',
             '.treeInsert', '.treeInsertErrors', '.scratchOrgViewOutput', '.dataOrgLoad', '.dataOrgNewScratch'
         ];
@@ -438,7 +438,7 @@ describe('RecipeCockpitService', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
             const triangleRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle');
-            const otherToggleRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle, \\.picklistToggle, \\.treeVersionToggle, \\.dataObjectToggle');
+            const otherToggleRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle, \\.picklistToggle, \\.dataObjectToggle');
 
             expect(triangleRule).toContain('font-size: 3.3em;');
             expect(triangleRule).toContain('line-height: 1;');
@@ -2363,12 +2363,12 @@ describe('RecipeCockpitService', () => {
             expandTree(panel, firstTreeCard);
 
             expect(panel.isHidden(treeBodyOf(firstTreeCard))).toBe(false);
-            expect(textOf(panel, firstTreeCard, 'treeTab')).toEqual(['Treecipe', 'Compare', 'Previous Versions', 'Previously Used Data Sets']);
-            expect(panel.findAll(firstTreeCard, 'treeTab').map((tabElement: any) => tabElement.attributes['aria-selected'])).toEqual(['true', 'false', 'false', 'false']);
-            expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['treecipe', 'compare', 'versions', 'datasets']);
+            expect(textOf(panel, firstTreeCard, 'treeTab')).toEqual(['Treecipe', 'Compare', 'Previously Used Data Sets']);
+            expect(panel.findAll(firstTreeCard, 'treeTab').map((tabElement: any) => tabElement.attributes['aria-selected'])).toEqual(['true', 'false', 'false']);
+            expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['treecipe', 'compare', 'datasets']);
             // ONLY STRUCTURE IS BUILT: THE OTHER TABS BUILD THEIR ROWS ON THEIR OWN FIRST OPEN
             expect(panel.findAll(firstTreeCard, 'dataObject')).toEqual([]);
-            expect(panel.findAll(firstTreeCard, 'treeVersion')).toEqual([]);
+            expect(panel.findAll(firstTreeCard, 'treeDataset')).toEqual([]);
             expect(textOf(panel, firstTreeCard, 'treeObjectName')).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
             expect(textOf(panel, firstTreeCard, 'treeLookups')).toEqual(['(ParentId, OwnerId → User)', '(AccountId → Account)', '(Contact__c → Contact)']);
 
@@ -3888,14 +3888,14 @@ describe('RecipeCockpitService', () => {
                 { treeKey: '', folderName: '' }
             ];
 
-            it('lists every run carrying the tree\'s folder, newest first by timestamp rather than by name, marking the current one and a backend change', () => {
+            it('lists every run carrying the tree\'s folder, newest first by timestamp rather than by name, marking the current one', () => {
 
                 const { historiesByTreeKey } = RecipeCockpitTreeHistory.groupTreeHistories(KNOWN_RUNS, [], TREES, 'recipe-2026-09-20T10-00-00');
 
                 expect(historiesByTreeKey.get('Lead-ONLY').versions).toEqual([
-                    { runFolderName: 'recipe-2026-09-20T10-00-00', generatedAtLabel: '2026-09-20 10:00:00 UTC', fakerService: 'snowfakery', isCurrent: true, isBackendDifferent: false, isDiffable: false },
-                    { runFolderName: 'recipe-fakerjs-2026-09-10T00-00-00', generatedAtLabel: '2026-09-10 00:00:00 UTC', fakerService: 'faker-js', isCurrent: false, isBackendDifferent: true, isDiffable: false },
-                    { runFolderName: 'recipe-2026-09-01T00-00-00', generatedAtLabel: '2026-09-01 00:00:00 UTC', fakerService: 'snowfakery', isCurrent: false, isBackendDifferent: false, isDiffable: false }
+                    { runFolderName: 'recipe-2026-09-20T10-00-00', generatedAtLabel: '2026-09-20 10:00:00 UTC', fakerService: 'snowfakery', isCurrent: true },
+                    { runFolderName: 'recipe-fakerjs-2026-09-10T00-00-00', generatedAtLabel: '2026-09-10 00:00:00 UTC', fakerService: 'faker-js', isCurrent: false },
+                    { runFolderName: 'recipe-2026-09-01T00-00-00', generatedAtLabel: '2026-09-01 00:00:00 UTC', fakerService: 'snowfakery', isCurrent: false }
                 ]);
                 expect(historiesByTreeKey.get('Account-thru-Contact').versions.map(version => version.runFolderName)).toEqual(['recipe-2026-09-20T10-00-00']);
 
@@ -3944,19 +3944,18 @@ describe('RecipeCockpitService', () => {
 
             });
 
-            it('summarizes a version whose run has no objects wrapper from nothing, so it reads as unavailable', () => {
+            it('holds only data set folders and Run Faker recipes on the host, with no version summary or diff targets (#265)', () => {
 
                 const { targets } = RecipeCockpitTreeHistory.buildTreeHistories(
                     HISTORY_GENERATED_RECIPES_PATH,
                     path.join(HISTORY_WORKSPACE_ROOT, 'treecipe', 'FakeDataSets'),
                     HISTORY_WORKSPACE_ROOT,
                     HISTORY_CURRENT_RUN,
-                    [{ treeKey: 'Lead-ONLY', folderName: 'Lead-ONLY' }],
-                    new Map()
+                    [{ treeKey: 'Lead-ONLY', folderName: 'Lead-ONLY' }]
                 );
 
-                expect(targets.summarySourcesByTreeKey.get('Lead-ONLY').runs.map(summaryRun => summaryRun.objectsWrapperFilePath)).toEqual(['', '', '']);
-                expect(RecipeCockpitService.readRunFieldCounts('', HISTORY_WORKSPACE_ROOT)).toBeUndefined();
+                expect(Object.keys(targets).sort()).toEqual(['datasetFolderPathsByName', 'runFakerRecipeFilePathsByTreeKey']);
+                expect(targets.runFakerRecipeFilePathsByTreeKey.get('Lead-ONLY')).toContain(HISTORY_CURRENT_RUN);
 
             });
 
@@ -4014,88 +4013,6 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        describe('version summaries, tested pure', () => {
-
-            it('words a version\'s field count against the current one, from the version\'s side', () => {
-
-                expect(RecipeCockpitTreeHistory.formatFieldCountChange(12, 10)).toBe('+2 fields');
-                expect(RecipeCockpitTreeHistory.formatFieldCountChange(9, 10)).toBe('−1 field');
-                expect(RecipeCockpitTreeHistory.formatFieldCountChange(10, 10)).toBe('same field count');
-
-            });
-
-            it('claims no change for the current version, an unavailable one, or any version when the current one is unavailable', () => {
-
-                const summarySource = {
-                    treeFolderName: 'Lead-ONLY',
-                    currentRunFolderName: 'current',
-                    runs: ['current', 'older', 'unreadable'].map(runFolderName => ({ runFolderName, objectsWrapperFilePath: '', treeFolderPath: '' }))
-                };
-
-                expect(RecipeCockpitTreeHistory.buildVersionSummaries(summarySource, new Map([['current', 4], ['older', 6], ['unreadable', undefined]]))).toEqual([
-                    { runFolderName: 'current', isSummaryAvailable: true, fieldCount: 4, changeText: '' },
-                    { runFolderName: 'older', isSummaryAvailable: true, fieldCount: 6, changeText: '+2 fields' },
-                    { runFolderName: 'unreadable', isSummaryAvailable: false, fieldCount: 0, changeText: '' }
-                ]);
-                expect(RecipeCockpitTreeHistory.buildVersionSummaries(summarySource, new Map([['older', 6]])).map(summary => summary.changeText)).toEqual(['', '', '']);
-
-            });
-
-            it('reads a run\'s tree field count from its RecipeFiles, or through the tree\'s recipe file when it has none, and nothing from an unreadable wrapper', () => {
-
-                const fieldCountOf = (runFolderName: string, treeFolderName: string) => {
-                    const runFolderPath = path.join(HISTORY_GENERATED_RECIPES_PATH, runFolderName);
-                    const objectsWrapperFileName = fs.readdirSync(runFolderPath).find(fileName => fileName.endsWith('.json'));
-                    return RecipeCockpitService.readTreeFieldCount(
-                        RecipeCockpitService.readRunFieldCounts(path.join(runFolderPath, objectsWrapperFileName), HISTORY_WORKSPACE_ROOT),
-                        treeFolderName,
-                        path.join(runFolderPath, treeFolderName),
-                        HISTORY_WORKSPACE_ROOT
-                    );
-                };
-
-                expect(fieldCountOf(HISTORY_CURRENT_RUN, 'Account-thru-OtherChildObject__c')).toBe(12);
-                expect(fieldCountOf(HISTORY_CURRENT_RUN, 'Lead-ONLY')).toBe(2);
-                expect(fieldCountOf(HISTORY_CURRENT_RUN, 'Not-A-Tree')).toBeUndefined();
-                expect(fieldCountOf('recipe-2026-09-01T00-00-00', 'Lead-ONLY')).toBe(3);
-                expect(fieldCountOf('recipe-fakerjs-2026-09-10T00-00-00', 'Lead-ONLY')).toBeUndefined();
-                expect(fieldCountOf('recipe-2026-09-01T00-00-00', 'Not-A-Tree')).toBeUndefined();
-                expect(RecipeCockpitService.readRunFieldCounts('', HISTORY_WORKSPACE_ROOT)).toBeUndefined();
-
-            });
-
-            it('reads nothing from a JSON file that is not an objects wrapper, or from a tree recipe that cannot be read', () => {
-
-                const temporaryWorkspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-cockpit-summary-'));
-
-                try {
-
-                    const notAWrapperFilePath = path.join(temporaryWorkspaceRoot, 'notAWrapper.json');
-                    fs.writeFileSync(notAWrapperFilePath, JSON.stringify({ something: 'else' }));
-
-                    expect(RecipeCockpitService.readRunFieldCounts(notAWrapperFilePath, temporaryWorkspaceRoot)).toBeUndefined();
-
-                    const leadTreeFolderPath = path.join(HISTORY_GENERATED_RECIPES_PATH, 'recipe-2026-09-01T00-00-00', 'Lead-ONLY');
-                    const runFieldCounts = { fieldCountsByObjectApiName: new Map([['Lead', 3]]), fieldCountsByTreeFolderName: new Map<string, number>(), hasTreeData: false };
-                    // AN OBJECT THE TREE'S RECIPE CARRIES AND THE WRAPPER DOES NOT ADDS NO FIELDS, RATHER THAN MAKING THE COUNT NaN
-                    expect(RecipeCockpitService.readTreeFieldCount({ ...runFieldCounts, fieldCountsByObjectApiName: new Map() }, 'Lead-ONLY', leadTreeFolderPath, HISTORY_WORKSPACE_ROOT)).toBe(0);
-
-                    // THE TREE'S RECIPE IS READ ONLY WHILE IT IS INSIDE THE WORKSPACE IT IS READ FOR
-                    expect(RecipeCockpitService.readTreeFieldCount(runFieldCounts, 'Lead-ONLY', leadTreeFolderPath, temporaryWorkspaceRoot)).toBeUndefined();
-
-                    jest.spyOn(fs, 'readFileSync').mockImplementation(() => { throw new Error('EACCES'); });
-
-                    expect(RecipeCockpitService.readTreeFieldCount(runFieldCounts, 'Lead-ONLY', leadTreeFolderPath, HISTORY_WORKSPACE_ROOT)).toBeUndefined();
-
-                } finally {
-                    jest.restoreAllMocks();
-                    fs.rmSync(temporaryWorkspaceRoot, { recursive: true, force: true });
-                }
-
-            });
-
-        });
-
         describe('loadRecipeRunByRuns, with data sets on disk', () => {
 
             it('gives each card with a tree folder its versions and data sets, and counts the unmatched data sets in one notice', () => {
@@ -4104,10 +4021,10 @@ describe('RecipeCockpitService', () => {
                 const leadTree = recipeViewModel.trees.find(tree => tree.treeKey === LEAD_TREE_KEY);
                 const accountTree = recipeViewModel.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY);
 
-                expect(leadTree.history.versions.map(version => [version.runFolderName, version.isCurrent, version.isDiffable])).toEqual([
-                    [HISTORY_CURRENT_RUN, true, false],
-                    ['recipe-fakerjs-2026-09-10T00-00-00', false, true],
-                    ['recipe-2026-09-01T00-00-00', false, true]
+                expect(leadTree.history.versions.map(version => [version.runFolderName, version.isCurrent])).toEqual([
+                    [HISTORY_CURRENT_RUN, true],
+                    ['recipe-fakerjs-2026-09-10T00-00-00', false],
+                    ['recipe-2026-09-01T00-00-00', false]
                 ]);
                 expect(leadTree.history.datasets.map(dataset => [dataset.datasetFolderName, dataset.runFolderName])).toEqual([
                     ['dataset-2026-09-21T00-00-00', HISTORY_CURRENT_RUN],
@@ -4138,18 +4055,15 @@ describe('RecipeCockpitService', () => {
                     'dataset-2026-09-02T00-00-00', 'dataset-2026-09-03T00-00-00', 'dataset-2026-09-15T00-00-00', 'dataset-2026-09-16T00-00-00',
                     'dataset-2026-09-17T00-00-00', 'dataset-2026-09-21T00-00-00', 'dataset-2026-09-21T00-00-00-2'
                 ]);
-                expect([...treeHistoryTargets.diffTargetsByKey.keys()]).toEqual([
-                    RecipeCockpitTreeHistory.buildDiffKey(LEAD_TREE_KEY, 'recipe-fakerjs-2026-09-10T00-00-00'),
-                    RecipeCockpitTreeHistory.buildDiffKey(LEAD_TREE_KEY, 'recipe-2026-09-01T00-00-00')
-                ]);
+                expect([...treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.keys()].sort()).toEqual([ACCOUNT_TREE_KEY, LEAD_TREE_KEY]);
 
             });
 
-            it('leaves out a data set, and a version\'s diff, whose path resolves outside the workspace', () => {
+            it('leaves out a data set whose path resolves outside the workspace', () => {
 
                 const realIsPathContainedInWorkspace = SfdxProjectService.isPathContainedInWorkspace.bind(SfdxProjectService);
                 jest.spyOn(SfdxProjectService, 'isPathContainedInWorkspace').mockImplementation((candidatePath: string, workspaceRoot: string) => (
-                    !candidatePath.includes('dataset-2026-09-21T00-00-00') && !candidatePath.includes('recipe-2026-09-01T00-00-00')
+                    !candidatePath.includes('dataset-2026-09-21T00-00-00')
                     && realIsPathContainedInWorkspace(candidatePath, workspaceRoot)
                 ));
 
@@ -4158,7 +4072,6 @@ describe('RecipeCockpitService', () => {
 
                 expect(leadTree.history.datasets.map(dataset => dataset.datasetFolderName)).not.toContain('dataset-2026-09-21T00-00-00');
                 expect(treeHistoryTargets.datasetFolderPathsByName.has('dataset-2026-09-21T00-00-00')).toBe(false);
-                expect(leadTree.history.versions.find(version => version.runFolderName === 'recipe-2026-09-01T00-00-00').isDiffable).toBe(false);
 
             });
 
@@ -4182,13 +4095,13 @@ describe('RecipeCockpitService', () => {
 
                 const allowLists = RecipeCockpitService.collectTreeHistoryAllowLists(loadHistoryRecipe().recipeViewModel);
 
-                expect([...allowLists.summaryTreeKeys]).toEqual([ACCOUNT_TREE_KEY, LEAD_TREE_KEY]);
+                expect(allowLists).not.toHaveProperty('summaryTreeKeys');
+                expect(allowLists).not.toHaveProperty('diffKeys');
                 expect([...allowLists.countableDatasetFolderNames]).toEqual(['dataset-2026-09-02T00-00-00']);
                 expect([...allowLists.openableDatasetFolderNames].sort()).toEqual([
                     'dataset-2026-09-02T00-00-00', 'dataset-2026-09-15T00-00-00', 'dataset-2026-09-21T00-00-00', 'dataset-2026-09-21T00-00-00-2'
                 ]);
                 expect(allowLists.insertableDatasetFolderNames).toEqual(allowLists.openableDatasetFolderNames);
-                expect(allowLists.diffKeys.size).toBe(2);
 
             });
 
@@ -4199,8 +4112,8 @@ describe('RecipeCockpitService', () => {
 
                 const allowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipeViewModel);
 
-                expect([allowLists.summaryTreeKeys, allowLists.diffKeys, allowLists.openableDatasetFolderNames, allowLists.countableDatasetFolderNames].map(allowList => allowList.size))
-                    .toEqual([0, 0, 0, 0]);
+                expect([allowLists.openableDatasetFolderNames, allowLists.insertableDatasetFolderNames, allowLists.countableDatasetFolderNames].map(allowList => allowList.size))
+                    .toEqual([0, 0, 0]);
 
             });
 
@@ -4210,9 +4123,7 @@ describe('RecipeCockpitService', () => {
                 panelState.treeHistoryTargets = RecipeCockpitTreeHistory.buildEmptyTargets();
 
                 [
-                    { command: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY },
                     { command: 'loadDatasetRecordCounts', datasetFolderName: 'dataset-2026-09-02T00-00-00' },
-                    { command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: 'recipe-2026-09-01T00-00-00' },
                     { command: 'openDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00' }
                 ].forEach(panelMessage => expect(RecipeCockpitService.routePanelMessage(panelMessage, panelState)).toBeUndefined());
 
@@ -4223,9 +4134,7 @@ describe('RecipeCockpitService', () => {
                 const panelState = buildHistoryPanelState(false);
 
                 [
-                    { command: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY },
                     { command: 'loadDatasetRecordCounts', datasetFolderName: 'dataset-2026-09-02T00-00-00' },
-                    { command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: 'recipe-2026-09-01T00-00-00' },
                     { command: 'openDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00' },
                     { command: 'insertDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00' }
                 ].forEach(panelMessage => expect(RecipeCockpitService.routePanelMessage(panelMessage, panelState)).toBeUndefined());
@@ -4239,14 +4148,22 @@ describe('RecipeCockpitService', () => {
 
                 expect(RecipeCockpitService.routePanelMessage({ command: 'openDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00', filePath: '/etc' }, panelState))
                     .toEqual({ kind: 'openDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00', datasetFolderPath: datasetFolderPath });
-                expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00', treeKey: LEAD_TREE_KEY, tab: 'versions' }, panelState))
-                    .toEqual({ kind: 'insertDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00', datasetFolderPath: datasetFolderPath, focusTree: { treeKey: LEAD_TREE_KEY, tab: 'versions' } });
-                expect(RecipeCockpitService.routePanelMessage({ command: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY }, panelState))
-                    .toMatchObject({ kind: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY, renderSequence: 7, summarySource: { treeFolderName: 'Lead-ONLY', currentRunFolderName: HISTORY_CURRENT_RUN } });
+                expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00', treeKey: LEAD_TREE_KEY, tab: 'datasets' }, panelState))
+                    .toEqual({ kind: 'insertDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00', datasetFolderPath: datasetFolderPath, focusTree: { treeKey: LEAD_TREE_KEY, tab: 'datasets' } });
                 expect(RecipeCockpitService.routePanelMessage({ command: 'loadDatasetRecordCounts', datasetFolderName: 'dataset-2026-09-02T00-00-00' }, panelState))
                     .toEqual({ kind: 'loadDatasetRecordCounts', datasetFolderName: 'dataset-2026-09-02T00-00-00', datasetFolderPath: path.join(HISTORY_WORKSPACE_ROOT, 'treecipe', 'FakeDataSets', 'dataset-2026-09-02T00-00-00'), renderSequence: 7 });
-                expect(RecipeCockpitService.routePanelMessage({ command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: 'recipe-2026-09-01T00-00-00' }, panelState))
-                    .toMatchObject({ kind: 'diffTreeVersion', versionRecipeFilePath: expect.stringContaining('recipe--Lead-ONLY-2026-09-01T00-00-00.yml') });
+
+            });
+
+            it('routes nothing for the removed Previous Versions tab: no summaries, no diff, and no focus on it (#265)', () => {
+
+                const panelState = buildHistoryPanelState();
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY }, panelState)).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage({ command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: 'recipe-2026-09-01T00-00-00' }, panelState)).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00', treeKey: LEAD_TREE_KEY, tab: 'versions' }, panelState))
+                    .not.toHaveProperty('focusTree');
+                expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['treecipe', 'compare', 'datasets']);
 
             });
 
@@ -4255,13 +4172,9 @@ describe('RecipeCockpitService', () => {
                 const panelState = buildHistoryPanelState();
 
                 [
-                    { command: 'loadVersionSummaries', treeKey: 'Opportunity-ONLY' },
-                    { command: 'loadVersionSummaries', treeKey: 42 },
                     { command: 'loadDatasetRecordCounts', datasetFolderName: 'dataset-2026-09-21T00-00-00' },
                     { command: 'loadDatasetRecordCounts', datasetFolderName: 'dataset-2026-09-16T00-00-00' },
-                    { command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: HISTORY_CURRENT_RUN },
-                    { command: 'diffTreeVersion', treeKey: ACCOUNT_TREE_KEY, runFolderName: 'recipe-2026-09-01T00-00-00' },
-                    { command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: ['recipe-2026-09-01T00-00-00'] },
+                    { command: 'loadDatasetRecordCounts', datasetFolderName: 42 },
                     { command: 'openDataset', datasetFolderName: 'dataset-2026-09-16T00-00-00' },
                     { command: 'openDataset', datasetFolderName: '../../../etc' },
                     { command: 'insertDataset', datasetFolderName: 'dataset-2026-09-17T00-00-00' },
@@ -4405,74 +4318,22 @@ describe('RecipeCockpitService', () => {
                 return treeCard;
             };
 
-            it('draws Previous Versions newest first, with date, backend, the current one marked, a backend change and Diff only where it can', () => {
+            it('draws no Previous Versions tab, version row or summary, and asks the host for none (#265)', () => {
 
                 const { panel } = renderHistoryRecipe();
-                const leadCard = openTab(panel, 'Lead-ONLY', 'Previous Versions');
+                const leadCard = expandCard(panel, 'Lead-ONLY');
+                panel.findAll(leadCard, 'treeTab').forEach((tabElement: any) => tabElement.dispatch('click'));
 
-                expect(panel.isHidden(panel.findAll(leadCard, 'treeStructure')[0])).toBe(true);
-                expect(panel.isHidden(panel.findAll(leadCard, 'treeVersions')[0])).toBe(false);
-                expect(textOf(panel, leadCard, 'treeVersionDate')).toEqual(['2026-09-20 10:00:00 UTC', '2026-09-10 00:00:00 UTC', '2026-09-01 00:00:00 UTC']);
-                expect(textOf(panel, leadCard, 'treeVersionBackend')).toEqual(['snowfakery', 'faker-js', 'snowfakery']);
-                expect(textOf(panel, leadCard, 'treeVersionCurrent')).toEqual(['current']);
-                expect(textOf(panel, leadCard, 'treeVersionBackendChange')).toEqual(['backend ≠']);
-                expect(textOf(panel, leadCard, 'treeVersionDiff')).toEqual(['Diff', 'Diff']);
-                expect(textOf(panel, leadCard, 'treeVersionFields')).toEqual(['Loading summary…', 'Loading summary…', 'Loading summary…']);
+                expect(textOf(panel, leadCard, 'treeTab')).toEqual(['Treecipe', 'Compare', 'Previously Used Data Sets']);
+                expect(panel.findAll(leadCard, 'treeVersions')).toEqual([]);
+                expect(panel.findAll(leadCard, 'treeVersion')).toEqual([]);
+                expect(panel.findAll(leadCard, 'treeVersionToggle')).toEqual([]);
+                expect(postedNamed(panel, 'loadVersionSummaries')).toEqual([]);
+                expect(postedNamed(panel, 'diffTreeVersion')).toEqual([]);
 
-                panel.findAll(leadCard, 'treeVersionDiff')[1].dispatch('click');
-
-                expect(postedNamed(panel, 'diffTreeVersion')).toEqual([{ command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: 'recipe-2026-09-01T00-00-00' }]);
-
-            });
-
-            it('asks for the summaries once, when the tab is first opened, and draws the answer for the model on screen only', () => {
-
-                const { panel } = renderHistoryRecipe(4);
-                const leadCard = openTab(panel, 'Lead-ONLY', 'Previous Versions');
-                clickNamed(panel, leadCard, 'treeTab', 'Treecipe');
-                clickNamed(panel, leadCard, 'treeTab', 'Previous Versions');
-
-                expect(postedNamed(panel, 'loadVersionSummaries')).toEqual([{ command: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY }]);
-
-                const summaries = [
-                    { runFolderName: HISTORY_CURRENT_RUN, isSummaryAvailable: true, fieldCount: 2, changeText: '' },
-                    { runFolderName: 'recipe-fakerjs-2026-09-10T00-00-00', isSummaryAvailable: false, fieldCount: 0, changeText: '' },
-                    { runFolderName: 'recipe-2026-09-01T00-00-00', isSummaryAvailable: true, fieldCount: 3, changeText: '+1 field' }
-                ];
-
-                panel.postToPanel({ command: 'versionSummaries', treeKey: LEAD_TREE_KEY, summaries: summaries, renderSequence: 3 });
-                expect(textOf(panel, leadCard, 'treeVersionFields')).toEqual(['Loading summary…', 'Loading summary…', 'Loading summary…']);
-
-                panel.postToPanel({ command: 'versionSummaries', treeKey: LEAD_TREE_KEY, summaries: summaries, renderSequence: 4 });
-                expect(textOf(panel, leadCard, 'treeVersionFields')).toEqual(['2 fields', 'summary unavailable', '3 fields']);
-                expect(textOf(panel, leadCard, 'treeVersionChange')).toEqual(['', '', '+1 field']);
-
-            });
-
-            it('expands a version to the data sets made from it, asking for a legacy data set\'s counts and drawing a recorded one\'s', () => {
-
-                const { panel } = renderHistoryRecipe(2);
-                const leadCard = openTab(panel, 'Lead-ONLY', 'Previous Versions');
-                const versionToggles = panel.findAll(leadCard, 'treeVersionToggle');
-
-                versionToggles[0].dispatch('click');
-                versionToggles[1].dispatch('click');
-                versionToggles[2].dispatch('click');
-
-                const versionBodies = panel.findAll(leadCard, 'treeVersionBody');
-
-                expect(textOf(panel, versionBodies[0], 'treeDatasetFolder')).toEqual(['dataset-2026-09-21T00-00-00']);
-                expect(textOf(panel, versionBodies[0], 'treeDatasetCounts')).toEqual(['Lead: 5 records']);
-                expect(textOf(panel, versionBodies[1], 'treeEmpty')).toEqual(['No data sets were made from this version.']);
-                expect(textOf(panel, versionBodies[2], 'treeDatasetCounts')).toEqual(['Loading record counts…']);
-                expect(postedNamed(panel, 'loadDatasetRecordCounts')).toEqual([{ command: 'loadDatasetRecordCounts', datasetFolderName: 'dataset-2026-09-02T00-00-00' }]);
-
-                panel.postToPanel({
-                    command: 'datasetRecordCounts', datasetFolderName: 'dataset-2026-09-02T00-00-00',
-                    recordCounts: [{ objectApiName: 'Lead', recordCount: 3 }], failureMessage: 'Could not count the records in collectionsApi-Broken.json.', renderSequence: 2
-                });
-
-                expect(textOf(panel, versionBodies[2], 'treeDatasetCounts')).toEqual(['Lead: 3 records · Could not count the records in collectionsApi-Broken.json.']);
+                // A versionSummaries MESSAGE FROM AN OLDER HOST DRAWS NOTHING AND THROWS NOTHING
+                panel.postToPanel({ command: 'versionSummaries', treeKey: LEAD_TREE_KEY, summaries: [{ runFolderName: HISTORY_CURRENT_RUN, isSummaryAvailable: true, fieldCount: 2, changeText: '' }], renderSequence: 1 });
+                expect(postedNamed(panel, 'renderFailed')).toEqual([]);
 
             });
 
@@ -4500,9 +4361,12 @@ describe('RecipeCockpitService', () => {
                 expect(postedNamed(panel, 'loadDatasetRecordCounts')).toEqual([{ command: 'loadDatasetRecordCounts', datasetFolderName: 'dataset-2026-09-02T00-00-00' }]);
                 expect(textOf(panel, leadCard, 'treeDatasetCounts')[2]).toBe('Loading record counts…');
 
-                panel.postToPanel({ command: 'datasetRecordCounts', datasetFolderName: 'dataset-2026-09-02T00-00-00', recordCounts: [{ objectApiName: 'Lead', recordCount: 3 }], failureMessage: '', renderSequence: 3 });
+                panel.postToPanel({
+                    command: 'datasetRecordCounts', datasetFolderName: 'dataset-2026-09-02T00-00-00',
+                    recordCounts: [{ objectApiName: 'Lead', recordCount: 3 }], failureMessage: 'Could not count the records in collectionsApi-Broken.json.', renderSequence: 3
+                });
 
-                expect(textOf(panel, leadCard, 'treeDatasetCounts')[2]).toBe('Lead: 3 records');
+                expect(textOf(panel, leadCard, 'treeDatasetCounts')[2]).toBe('Lead: 3 records · Could not count the records in collectionsApi-Broken.json.');
 
             });
 
@@ -4517,22 +4381,6 @@ describe('RecipeCockpitService', () => {
                 expect(textOf(panel, accountCard, 'treeDatasetCounts')).toEqual(['Account: 2 records · Contact: 4 records · OtherChildObject__c: 0 records']);
                 expect(postedNamed(panel, 'openDataset')).toEqual([{ command: 'openDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00-2', treeKey: ACCOUNT_TREE_KEY, tab: 'datasets' }]);
                 expect(postedNamed(panel, 'insertDataset')).toEqual([{ command: 'insertDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00-2', treeKey: ACCOUNT_TREE_KEY, tab: 'datasets' }]);
-
-            });
-
-            it('asks for a legacy data set\'s counts once, however many rows show it, and answers every one', () => {
-
-                const { panel } = renderHistoryRecipe(5);
-                const leadCard = openTab(panel, 'Lead-ONLY', 'Previously Used Data Sets');
-                panel.findAll(leadCard, 'treeDatasetCountsLoad')[0].dispatch('click');
-                clickNamed(panel, leadCard, 'treeTab', 'Previous Versions');
-                panel.findAll(leadCard, 'treeVersionToggle')[2].dispatch('click');
-
-                expect(postedNamed(panel, 'loadDatasetRecordCounts')).toHaveLength(1);
-
-                panel.postToPanel({ command: 'datasetRecordCounts', datasetFolderName: 'dataset-2026-09-02T00-00-00', recordCounts: [], failureMessage: '', renderSequence: 5 });
-
-                expect(textOf(panel, leadCard, 'treeDatasetCounts').filter((countsText: string) => countsText === 'no records')).toHaveLength(2);
 
             });
 
@@ -4567,42 +4415,13 @@ describe('RecipeCockpitService', () => {
 
             });
 
-            it('re-opens the card and tab a refresh names, and asks for its summaries only after acknowledging the draw', () => {
+            it('re-opens the card and tab a refresh names, after acknowledging the draw', () => {
 
-                const { panel } = renderHistoryRecipe(9, { treeKey: LEAD_TREE_KEY, tab: 'versions' });
+                const { panel } = renderHistoryRecipe(9, { treeKey: LEAD_TREE_KEY, tab: 'datasets' });
                 const leadCard = treeCardFolded(panel, 'Lead-ONLY');
-                const panelCommands = panel.postedHostMessages.map((hostMessage: any) => hostMessage.command);
 
-                expect(panel.isHidden(panel.findAll(leadCard, 'treeVersions')[0])).toBe(false);
-                expect(panelCommands.indexOf('rendered')).toBeLessThan(panelCommands.indexOf('loadVersionSummaries'));
-
-            });
-
-            it('searches Previous Versions by run folder or date, which each row draws, hiding the rows it does not match', () => {
-
-                const { panel } = renderHistoryRecipe();
-                const leadCard = openTab(panel, 'Lead-ONLY', 'Previous Versions');
-                const versionsElement = panel.tabPanelOf(leadCard, 'treeVersions');
-                const visibleVersionDates = () => panel.findAll(versionsElement, 'treeVersion')
-                    .filter((versionElement: any) => !panel.isHidden(versionElement))
-                    .map((versionElement: any) => panel.findAll(versionElement, 'treeVersionDate')[0].textContent);
-
-                expect(textOf(panel, versionsElement, 'treeVersionFolder')).toEqual([HISTORY_CURRENT_RUN, 'recipe-fakerjs-2026-09-10T00-00-00', 'recipe-2026-09-01T00-00-00']);
-                expect(textOf(panel, versionsElement, 'tabMatchCount')).toEqual(['3 versions']);
-
-                panel.typeIntoTabSearch(leadCard, 'treeVersions', 'FAKERJS');
-                expect(visibleVersionDates()).toEqual(['2026-09-10 00:00:00 UTC']);
-                expect(textOf(panel, versionsElement, 'tabMatchCount')).toEqual(['1 of 3 versions']);
-
-                panel.typeIntoTabSearch(leadCard, 'treeVersions', '2026-09-01 00:00');
-                expect(visibleVersionDates()).toEqual(['2026-09-01 00:00:00 UTC']);
-
-                panel.typeIntoTabSearch(leadCard, 'treeVersions', 'nothing like it');
-                expect(visibleVersionDates()).toEqual([]);
-                expect(textOf(panel, versionsElement, 'tabMatchCount')).toEqual(['no matches']);
-
-                // A SEARCH NEVER SWITCHES THE TAB IT WAS TYPED IN
-                expect(panel.isHidden(versionsElement)).toBe(false);
+                expect(panel.isHidden(panel.findAll(leadCard, 'treeDatasets')[0])).toBe(false);
+                expect(postedNamed(panel, 'rendered')).toHaveLength(1);
 
             });
 
@@ -5752,108 +5571,20 @@ describe('RecipeCockpitService', () => {
                 temporaryWorkspaceRoots.forEach(temporaryWorkspaceRoot => fs.rmSync(temporaryWorkspaceRoot, { recursive: true, force: true }));
             });
 
-            it('diffs a previous version against the current one only once the panel has confirmed drawing it', async () => {
+            it('opens no diff and reads no wrapper for the removed Previous Versions tab, even once the model is drawn (#265)', async () => {
 
-                await RecipeCockpitService.openRecipeCockpitPanel(HISTORY_WORKSPACE_ROOT);
-                await receivedMessageHandler({ command: 'ready' });
-
-                await receivedMessageHandler({ command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: OLDEST_LEAD_RUN });
-                expect(executedCommandsNamed('vscode.diff')).toEqual([]);
-
-                await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
-                await receivedMessageHandler({ command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: OLDEST_LEAD_RUN });
-
-                expect(executedCommandsNamed('vscode.diff')).toEqual([[
-                    'vscode.diff',
-                    vscode.Uri.file(path.join(HISTORY_GENERATED_RECIPES_PATH, OLDEST_LEAD_RUN, 'Lead-ONLY', 'recipe--Lead-ONLY-2026-09-01T00-00-00.yml')),
-                    vscode.Uri.file(path.join(HISTORY_GENERATED_RECIPES_PATH, HISTORY_CURRENT_RUN, 'Lead-ONLY', 'recipe--Lead-ONLY-2026-09-20T10-00-00.yml')),
-                    'Lead-ONLY: 2026-09-01 00:00:00 UTC ↔ current (2026-09-20 10:00:00 UTC)'
-                ]]);
-
-            });
-
-            it('posts each version\'s summary from its wrapper, with the change against the current version and an unreadable wrapper unavailable', async () => {
-
-                await openRenderedHistoryCockpit(copyHistoryWorkspace());
-                await receivedMessageHandler({ command: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY });
-
-                const postedSummaries = postedPanelMessages.filter(hostMessage => hostMessage.command === 'versionSummaries');
-
-                // THE CURRENT RUN IS ANSWERED AT ONCE FROM THE LOAD, AND EVERY OTHER WRAPPER IS POSTED AS IT IS READ, ONE PER POST
-                expect(postedSummaries.map(versionSummaries => versionSummaries.summaries.map((summary: any) => summary.runFolderName))).toEqual([
-                    [HISTORY_CURRENT_RUN],
-                    [HISTORY_CURRENT_RUN, FAKER_JS_LEAD_RUN],
-                    [HISTORY_CURRENT_RUN, FAKER_JS_LEAD_RUN, OLDEST_LEAD_RUN]
-                ]);
-                expect(postedSummaries.at(-1)).toEqual({
-                    command: 'versionSummaries',
-                    treeKey: LEAD_TREE_KEY,
-                    summaries: [
-                        { runFolderName: HISTORY_CURRENT_RUN, isSummaryAvailable: true, fieldCount: 2, changeText: '' },
-                        { runFolderName: FAKER_JS_LEAD_RUN, isSummaryAvailable: false, fieldCount: 0, changeText: '' },
-                        { runFolderName: OLDEST_LEAD_RUN, isSummaryAvailable: true, fieldCount: 3, changeText: '+1 field' }
-                    ],
-                    renderSequence: lastRenderSequence()
-                });
-
-            });
-
-            it('reads each wrapper once, the current run\'s never, and none again after a reload of the same run', async () => {
-
-                const temporaryWorkspaceRoot = copyHistoryWorkspace();
-                const readFileSync = fs.readFileSync;
-                const readWrapperPaths: string[] = [];
-                jest.spyOn(fs, 'readFileSync').mockImplementation(((filePath: fs.PathOrFileDescriptor, options?: any) => {
-                    if ( String(filePath).includes('treecipeObjectsWrapper-') ) {
-                        readWrapperPaths.push(path.basename(String(filePath)));
-                    }
-                    return readFileSync(filePath, options);
-                }) as typeof fs.readFileSync);
-
-                await openRenderedHistoryCockpit(temporaryWorkspaceRoot);
-                expect(readWrapperPaths).toEqual(['treecipeObjectsWrapper-2026-09-20T10-00-00.json']);
-
-                await receivedMessageHandler({ command: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY });
-                expect(readWrapperPaths.slice(1).sort()).toEqual(['treecipeObjectsWrapper-2026-09-01T00-00-00.json', 'treecipeObjectsWrapper-2026-09-10T00-00-00.json']);
-
-                await receivedMessageHandler({ command: 'selectRun', runFolderName: HISTORY_CURRENT_RUN });
-                await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
-                readWrapperPaths.length = 0;
-                postedPanelMessages.length = 0;
-
-                await receivedMessageHandler({ command: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY });
-
-                expect(readWrapperPaths).toEqual([]);
-                expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'versionSummaries')).toHaveLength(1);
-
-                // A WRAPPER GONE SINCE IT WAS CACHED IS NOT CACHED ANY MORE, AND A RUN WITH NO WRAPPER NEVER IS
-                const oldestWrapperFilePath = path.join(temporaryWorkspaceRoot, 'treecipe', 'GeneratedRecipes', OLDEST_LEAD_RUN, 'treecipeObjectsWrapper-2026-09-01T00-00-00.json');
-                expect(RecipeCockpitService.isRunFieldCountCached(oldestWrapperFilePath)).toBe(true);
-                fs.rmSync(oldestWrapperFilePath);
-                expect(RecipeCockpitService.isRunFieldCountCached(oldestWrapperFilePath)).toBe(false);
-                expect(RecipeCockpitService.isRunFieldCountCached('')).toBe(false);
-
-            });
-
-            it('stops reading wrappers once the panel it was asked from is closed', async () => {
-
-                await openRenderedHistoryCockpit(copyHistoryWorkspace());
-                postedPanelMessages.length = 0;
-
-                const summariesRequest = receivedMessageHandler({ command: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY });
-                registeredDisposeHandler();
-                await summariesRequest;
-
-                expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'versionSummaries')).toHaveLength(1);
-
-            });
-
-            it('still diffs a version whose wrapper could not be read', async () => {
-
+                const readFileSpy = jest.spyOn(fs, 'readFileSync');
                 await openRenderedHistoryCockpit();
-                await receivedMessageHandler({ command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: FAKER_JS_LEAD_RUN });
+                readFileSpy.mockClear();
+                postedPanelMessages.length = 0;
 
-                expect(executedCommandsNamed('vscode.diff')).toHaveLength(1);
+                await receivedMessageHandler({ command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: OLDEST_LEAD_RUN });
+                await receivedMessageHandler({ command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: FAKER_JS_LEAD_RUN });
+                await receivedMessageHandler({ command: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY });
+
+                expect(executedCommandsNamed('vscode.diff')).toEqual([]);
+                expect(postedPanelMessages).toEqual([]);
+                expect(readFileSpy.mock.calls.filter(([filePath]) => String(filePath).includes('treecipeObjectsWrapper'))).toEqual([]);
 
             });
 
@@ -5893,12 +5624,10 @@ describe('RecipeCockpitService', () => {
 
                 await receivedMessageHandler({ command: 'openDataset', datasetFolderName: RECORDED_DATASET });
                 await receivedMessageHandler({ command: 'insertDataset', datasetFolderName: RECORDED_DATASET });
-                await receivedMessageHandler({ command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: OLDEST_LEAD_RUN });
-                await receivedMessageHandler({ command: 'loadVersionSummaries', treeKey: LEAD_TREE_KEY });
                 await receivedMessageHandler({ command: 'loadDatasetRecordCounts', datasetFolderName: LEGACY_DATASET });
 
                 expect((vscode.commands.executeCommand as jest.Mock).mock.calls).toEqual([]);
-                expect(postedPanelMessages.filter(hostMessage => ['versionSummaries', 'datasetRecordCounts'].includes(hostMessage.command))).toEqual([]);
+                expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'datasetRecordCounts')).toEqual([]);
 
             });
 
@@ -5993,24 +5722,6 @@ describe('RecipeCockpitService', () => {
                 expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'datasetRecordCounts')).toEqual([
                     expect.objectContaining({ recordCounts: [], failureMessage: expect.stringContaining('resolves outside the workspace') })
                 ]);
-
-            });
-
-            it('escapes a recipe file name in the warning, so a name shaped like a link cannot run a command', async () => {
-
-                const temporaryWorkspaceRoot = copyHistoryWorkspace();
-                const leadTreeFolderPath = path.join(temporaryWorkspaceRoot, 'treecipe', 'GeneratedRecipes', OLDEST_LEAD_RUN, 'Lead-ONLY');
-                const linkShapedRecipeFilePath = path.join(leadTreeFolderPath, '[Fix](command:workbench.action.quit).yml');
-                fs.renameSync(path.join(leadTreeFolderPath, 'recipe--Lead-ONLY-2026-09-01T00-00-00.yml'), linkShapedRecipeFilePath);
-
-                await openRenderedHistoryCockpit(temporaryWorkspaceRoot);
-                fs.rmSync(linkShapedRecipeFilePath);
-                await receivedMessageHandler({ command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: OLDEST_LEAD_RUN });
-
-                const warningText = showWarningMessageSpy.mock.calls[0][0];
-
-                expect(warningText).not.toContain('[Fix](command:');
-                expect(warningText).toContain('\\u005bFix\\u005d\\u0028command:workbench.action.quit\\u0029.yml');
 
             });
 
@@ -6229,20 +5940,6 @@ describe('RecipeCockpitService', () => {
                     expect(postedPanelMessages.find(hostMessage => hostMessage.command === 'recipeData').recipe.selectedRunFolderName).toBe(OTHER_RUN);
 
                 });
-
-            });
-
-            it('given a recipe file deleted after the draw, says so rather than opening a diff', async () => {
-
-                const temporaryWorkspaceRoot = copyHistoryWorkspace();
-
-                await openRenderedHistoryCockpit(temporaryWorkspaceRoot);
-                fs.rmSync(path.join(temporaryWorkspaceRoot, 'treecipe', 'GeneratedRecipes', OLDEST_LEAD_RUN, 'Lead-ONLY', 'recipe--Lead-ONLY-2026-09-01T00-00-00.yml'));
-
-                await receivedMessageHandler({ command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: OLDEST_LEAD_RUN });
-
-                expect(executedCommandsNamed('vscode.diff')).toEqual([]);
-                expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringContaining('"recipe--Lead-ONLY-2026-09-01T00-00-00.yml" no longer exists'));
 
             });
 

@@ -16,17 +16,15 @@ const RECIPE_FILE_EXTENSIONS = ['.yml', '.yaml'];
 export const RECIPE_COCKPIT_UNMATCHED_DATASETS_NOTICE_SUFFIX = 'couldn\'t be matched to a recipe tree';
 
 /*
-    One Generate Treecipe run that wrote this tree's folder, as a Previous Versions row. What the
-    model knows without opening a wrapper -- when, which backend, whether it can be diffed -- is
-    here; the field count comes later, read from the run's wrapper when the tab is first opened.
+    One Generate Treecipe run that wrote this tree's folder. There is no tab listing them since
+    #265: they are what a data set's row names its version by -- "current version", "version of
+    <date>" -- so run discovery stays while the Previous Versions tab is gone.
 */
 export interface IRecipeCockpitTreeVersionViewModel {
     runFolderName: string;
     generatedAtLabel: string;
     fakerService: DatasetSourceFakerService;
     isCurrent: boolean;
-    isBackendDifferent: boolean;
-    isDiffable: boolean;
 }
 
 export interface IRecipeCockpitDatasetRecordCountViewModel {
@@ -58,19 +56,6 @@ export interface IRecipeCockpitTreeHistoryTree {
     folderName: string;
 }
 
-// WHAT ONE TREE'S VERSIONS ARE SUMMARIZED FROM: EACH RUN'S WRAPPER, AND THE CURRENT RUN TO COMPARE THEM WITH
-export interface IRecipeCockpitTreeSummarySource {
-    treeFolderName: string;
-    currentRunFolderName: string;
-    runs: Array<{ runFolderName: string; objectsWrapperFilePath: string; treeFolderPath: string }>;
-}
-
-export interface IRecipeCockpitTreeDiffTarget {
-    versionRecipeFilePath: string;
-    currentRecipeFilePath: string;
-    diffTitle: string;
-}
-
 /*
     Host-only: where each name the model posts resolves on disk. The panel is handed names, never
     paths, and every one of these paths passed workspace containment when it was put here -- and
@@ -82,8 +67,6 @@ export interface IRecipeCockpitTreeDiffTarget {
     refuses one handed to it by path.
 */
 export interface IRecipeCockpitTreeHistoryTargets {
-    summarySourcesByTreeKey: Map<string, IRecipeCockpitTreeSummarySource>;
-    diffTargetsByKey: Map<string, IRecipeCockpitTreeDiffTarget>;
     datasetFolderPathsByName: Map<string, string>;
     runFakerRecipeFilePathsByTreeKey: Map<string, string>;
 }
@@ -101,24 +84,11 @@ export interface IRecipeCockpitAddedDataset {
     datasetFolderPath: string;
 }
 
-export interface IRecipeCockpitTreeVersionSummary {
-    runFolderName: string;
-    isSummaryAvailable: boolean;
-    fieldCount: number;
-    changeText: string;
-}
-
 export class RecipeCockpitTreeHistory {
 
     static buildEmptyTargets(): IRecipeCockpitTreeHistoryTargets {
 
-        return { summarySourcesByTreeKey: new Map(), diffTargetsByKey: new Map(), datasetFolderPathsByName: new Map(), runFakerRecipeFilePathsByTreeKey: new Map() };
-
-    }
-
-    static buildDiffKey(treeKey: string, runFolderName: string): string {
-
-        return `${treeKey}\n${runFolderName}`;
+        return { datasetFolderPathsByName: new Map(), runFakerRecipeFilePathsByTreeKey: new Map() };
 
     }
 
@@ -196,7 +166,6 @@ export class RecipeCockpitTreeHistory {
 
         const historiesByTreeKey = new Map<string, IRecipeCockpitTreeHistoryViewModel>();
         const treeKeysByFolderName = new Map<string, string[]>();
-        const currentFakerService = this.readFakerServiceOfRun(currentRunFolderName);
 
         trees.forEach(tree => {
 
@@ -213,17 +182,12 @@ export class RecipeCockpitTreeHistory {
                 .filter(knownRun => knownRun.treeFolderNames.includes(tree.folderName))
                 .map(knownRun => knownRun.runFolderName)
                 .sort((firstRunFolderName, secondRunFolderName) => this.compareRunFolderNamesNewestFirst(firstRunFolderName, secondRunFolderName))
-                .map(runFolderName => {
-                    const fakerService = this.readFakerServiceOfRun(runFolderName);
-                    return {
-                        runFolderName: runFolderName,
-                        generatedAtLabel: this.formatTimestampLabel(runFolderName),
-                        fakerService: fakerService,
-                        isCurrent: runFolderName === currentRunFolderName,
-                        isBackendDifferent: fakerService !== currentFakerService,
-                        isDiffable: false
-                    };
-                });
+                .map(runFolderName => ({
+                    runFolderName: runFolderName,
+                    generatedAtLabel: this.formatTimestampLabel(runFolderName),
+                    fakerService: this.readFakerServiceOfRun(runFolderName),
+                    isCurrent: runFolderName === currentRunFolderName
+                }));
 
             historiesByTreeKey.set(tree.treeKey, { versions: versions, datasets: [] });
 
@@ -282,8 +246,8 @@ export class RecipeCockpitTreeHistory {
     }
 
     /*
-        The recipe file a run wrote for one tree: the single .yml in the tree's folder. A folder with
-        none, or with more than one, has no file a diff could honestly call "this tree's recipe".
+        The recipe file a run wrote for one tree: the single recipe in the tree's folder. A folder
+        with none, or with more than one, has no file Run Faker could honestly call "this tree's recipe".
     */
     static findTreeRecipeFilePath(treeFolderPath: string): string | undefined {
 
@@ -307,14 +271,13 @@ export class RecipeCockpitTreeHistory {
         Every tree's versions and data sets, read from disk, with the host-only targets each name in
         them resolves to. Costs directory listings and each data set's small datasetSource.json --
         no wrapper is opened here. A path that resolves outside the workspace is left out of the
-        targets, which leaves its version not diffable and its data set out of the history.
+        targets, which leaves its data set out of the history and its tree with no Run Faker recipe.
     */
     static buildTreeHistories(generatedRecipesFolderPath: string,
                                 fakeDataSetsFolderPath: string,
                                 workspaceRoot: string,
                                 currentRunFolderName: string,
-                                trees: IRecipeCockpitTreeHistoryTree[],
-                                objectsWrapperFilePathsByRunFolderName: Map<string, string>): IRecipeCockpitTreeHistoryBuild {
+                                trees: IRecipeCockpitTreeHistoryTree[]): IRecipeCockpitTreeHistoryBuild {
 
         const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
         const isContained = (candidatePath: string) => SfdxProjectService.isPathContainedInWorkspace(path.resolve(candidatePath), resolvedWorkspaceRoot);
@@ -336,42 +299,11 @@ export class RecipeCockpitTreeHistory {
                 return;
             }
 
-            const treeFolderPathOf = (runFolderName: string) => path.join(generatedRecipesFolderPath, runFolderName, tree.folderName);
-            const currentRecipeFilePath = this.findTreeRecipeFilePath(treeFolderPathOf(currentRunFolderName));
-            const summarySource: IRecipeCockpitTreeSummarySource = { treeFolderName: tree.folderName, currentRunFolderName: currentRunFolderName, runs: [] };
+            const currentRecipeFilePath = this.findTreeRecipeFilePath(path.join(generatedRecipesFolderPath, currentRunFolderName, tree.folderName));
 
             if ( currentRecipeFilePath && path.extname(currentRecipeFilePath) === '.yml' && isContained(currentRecipeFilePath) ) {
                 targets.runFakerRecipeFilePathsByTreeKey.set(tree.treeKey, currentRecipeFilePath);
             }
-
-            treeHistory.versions.forEach(version => {
-
-                summarySource.runs.push({
-                    runFolderName: version.runFolderName,
-                    objectsWrapperFilePath: objectsWrapperFilePathsByRunFolderName.get(version.runFolderName) ?? '',
-                    treeFolderPath: treeFolderPathOf(version.runFolderName)
-                });
-
-                if ( version.isCurrent || !currentRecipeFilePath || !isContained(currentRecipeFilePath) ) {
-                    return;
-                }
-
-                const versionRecipeFilePath = this.findTreeRecipeFilePath(treeFolderPathOf(version.runFolderName));
-
-                if ( !versionRecipeFilePath || !isContained(versionRecipeFilePath) ) {
-                    return;
-                }
-
-                version.isDiffable = true;
-                targets.diffTargetsByKey.set(this.buildDiffKey(tree.treeKey, version.runFolderName), {
-                    versionRecipeFilePath: versionRecipeFilePath,
-                    currentRecipeFilePath: currentRecipeFilePath,
-                    diffTitle: `${tree.folderName}: ${version.generatedAtLabel} ↔ current (${this.formatTimestampLabel(currentRunFolderName)})`
-                });
-
-            });
-
-            targets.summarySourcesByTreeKey.set(tree.treeKey, summarySource);
 
         });
 
@@ -426,48 +358,6 @@ export class RecipeCockpitTreeHistory {
             treeKeys: treeKeys,
             datasetFolderPath: datasetFolderPath
         };
-
-    }
-
-    // A VERSION AGAINST THE CURRENT ONE: "+2 fields" MEANS THAT VERSION HAD TWO MORE
-    static formatFieldCountChange(versionFieldCount: number, currentFieldCount: number): string {
-
-        const fieldCountChange = versionFieldCount - currentFieldCount;
-
-        if ( fieldCountChange === 0 ) {
-            return 'same field count';
-        }
-
-        const fieldWord = Math.abs(fieldCountChange) === 1 ? 'field' : 'fields';
-        return fieldCountChange > 0 ? `+${fieldCountChange} ${fieldWord}` : `−${Math.abs(fieldCountChange)} ${fieldWord}`;
-
-    }
-
-    /*
-        Each version's summary, given each run's field count for this tree (undefined: the run's
-        wrapper could not be read, or does not list the tree). Pure, so the change against the
-        current version is asserted without a wrapper on disk. With no current count there is
-        nothing to compare against, and no change is claimed.
-    */
-    static buildVersionSummaries(summarySource: IRecipeCockpitTreeSummarySource,
-                                    fieldCountsByRunFolderName: Map<string, number | undefined>): IRecipeCockpitTreeVersionSummary[] {
-
-        const currentFieldCount = fieldCountsByRunFolderName.get(summarySource.currentRunFolderName);
-
-        return summarySource.runs.map(summaryRun => {
-
-            const fieldCount = fieldCountsByRunFolderName.get(summaryRun.runFolderName);
-            const isSummaryAvailable = typeof fieldCount === 'number';
-            const isComparable = isSummaryAvailable && typeof currentFieldCount === 'number' && summaryRun.runFolderName !== summarySource.currentRunFolderName;
-
-            return {
-                runFolderName: summaryRun.runFolderName,
-                isSummaryAvailable: isSummaryAvailable,
-                fieldCount: isSummaryAvailable ? fieldCount : 0,
-                changeText: isComparable ? this.formatFieldCountChange(fieldCount, currentFieldCount) : ''
-            };
-
-        });
 
     }
 
