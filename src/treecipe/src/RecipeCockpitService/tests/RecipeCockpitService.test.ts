@@ -407,7 +407,8 @@ describe('RecipeCockpitService', () => {
             expect((sharedButtonRule as RegExpMatchArray)[2]).toContain('border: 1px solid var(--sdt-border);');
             // #263: THE FAVORITE (☆) BUTTON'S SIZE IS EVERY BUTTON'S DEFAULT, SET AFTER font: inherit SO IT IS NOT RESET
             expect((sharedButtonRule as RegExpMatchArray)[2]).toMatch(/font: inherit;\s*font-size: 1\.1em;/);
-            expect(ruleFor(styleSheet, '\\.treeFieldBulk button, \\.treeResetSelection')).toMatch(/font: inherit;\s*font-size: 1\.1em;/);
+            // #151: "Wire to…" AND "Wire TODO lookups" ARE THE SMALL ROW BUTTONS RESET SELECTION IS
+            expect(ruleFor(styleSheet, '\\.treeFieldBulk button, \\.treeResetSelection, \\.treeWireLookup, \\.treeWireAllLookups')).toMatch(/font: inherit;\s*font-size: 1\.1em;/);
             expect(ruleFor(styleSheet, '\\.treeFavorite, \\.treeRename')).toContain('font-size: 1.1em;');
             // #263: THE ⟳ GLYPH DRAWS SMALL IN MOST FONTS, SO IT IS SIZED ABOVE THE BUTTON'S OWN 1.1em
             expect(ruleFor(styleSheet, '\\.dataOrgRefreshIcon')).toContain('font-size: 1.5em;');
