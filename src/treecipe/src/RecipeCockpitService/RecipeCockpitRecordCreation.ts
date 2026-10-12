@@ -3,7 +3,7 @@
     whether each object of a tree is ready to be inserted into the selected org, which lookups a
     record must carry, and how the ones the recipe could not wire are filled.
 
-    This file imports NOTHING, like RecipeCockpitMetadataDiff and RecipeCockpitRecipeWriter. Its
+    This file imports NOTHING, like RecipeCockpitObjectSelection and RecipeCockpitRecipeWriter. Its
     inputs are structural -- SalesforceOrgService's normalized describe and Organization row fit them
     as they are -- so every guard is asserted on plain values, without an org or a webview.
 
