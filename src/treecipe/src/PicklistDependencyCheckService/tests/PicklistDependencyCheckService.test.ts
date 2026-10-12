@@ -438,6 +438,17 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
         });
 
+        it('reads only a leading double slash of either kind as UNC, and nothing that is not a string', () => {
+
+            expect(PicklistDependencyCheckService.isUncPath('\\\\server\\share')).toBe(true);
+            expect(PicklistDependencyCheckService.isUncPath('//server/share')).toBe(true);
+            expect(PicklistDependencyCheckService.isUncPath('C:\\Users\\me\\project')).toBe(false);
+            expect(PicklistDependencyCheckService.isUncPath('C:/Users/me/project')).toBe(false);
+            expect(PicklistDependencyCheckService.isUncPath('\\single\\slash')).toBe(false);
+            expect(PicklistDependencyCheckService.isUncPath(undefined as unknown as string)).toBe(false);
+
+        });
+
         it('runs from a drive-letter folder on Windows and from a double-slash folder elsewhere, which only Windows reads as UNC', async () => {
 
             const isWindowsSpy = jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);

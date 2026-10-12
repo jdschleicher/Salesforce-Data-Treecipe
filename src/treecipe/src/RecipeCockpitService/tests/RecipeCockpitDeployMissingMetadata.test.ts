@@ -49,6 +49,7 @@ import {
     RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
     RECIPE_COCKPIT_METADATA_DEPLOY_ACTION_LABEL,
     RECIPE_COCKPIT_METADATA_DEPLOY_CONFIRM_LABEL,
+    RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL,
     RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL
 } from '../RecipeCockpitService';
@@ -61,6 +62,9 @@ import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceSer
 import { PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+
+const RecipeYamlScalarEscape = (notificationText: string) => RecipeYamlScalar.escapeForNotification(notificationText);
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const METADATA_DEPLOY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'metadataDeployWorkspace');
@@ -77,6 +81,19 @@ const ACCOUNT_TREE_MEMBERS = ['CustomField:Account.Legacy_Code__c', 'CustomField
 // AS A package.xml LISTS THEM: BY TYPE, THEN BY NAME
 const ACCOUNT_TREE_MANIFEST_MEMBERS = ['CustomField:Account.Legacy_Code__c', 'CustomField:Account.Rating__c', 'CustomObject:OtherChildObject__c'];
 const QA_USERNAME = 'qa@example.com.qa';
+
+// #283: THE DEPLOY ORG'S INSTANCE, AND A deployUrl ON IT AS "sf project deploy start --json" WRITES ONE
+const QA_INSTANCE_URL = 'https://acme--qa.sandbox.my.salesforce.com';
+const DEPLOY_ID = '0Af5e00000ABCDEFGH';
+const buildDeployUrl = (instanceUrl: string) => `${instanceUrl}/lightning/setup/DeployStatus/page?address=%2Fchangemgmt%2FmonitorDeploymentsDetails.apexp%3FasyncId%3D${DEPLOY_ID}%26retURL%3D%252Fchangemgmt%252FmonitorDeployment.apexp`;
+const DEPLOY_STATUS_PATH = `/lightning/setup/DeployStatus/page?address=/changemgmt/monitorDeploymentsDetails.apexp?asyncId=${DEPLOY_ID}`;
+const SESSION_ID = '00D000000000001!AQEAQdeployStatusSecret';
+const FRONTDOOR_URL = `${QA_INSTANCE_URL}/secur/frontdoor.jsp?sid=${SESSION_ID}&retURL=%2Flightning%2Fsetup%2FDeployStatus%2Fpage`;
+const withDeployUrl = (deployAnswer: string, deployUrl: unknown): string => {
+    const answer = JSON.parse(deployAnswer);
+    answer.result.deployUrl = deployUrl;
+    return JSON.stringify(answer);
+};
 
 // THE MEMBERS A package.xml NAMES, AS "<Type>:<Name>", IN THE ORDER THE FILE LISTS THEM
 const readManifestMembers = (packageXml: string): string[] => [...packageXml.matchAll(/<types>([\s\S]*?)<\/types>/g)]
@@ -478,6 +495,33 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
         });
 
+        it('keeps a failed deploy\'s Deployment Status page only when its deployUrl is usable on the deploy org\'s host (#283)', () => {
+
+            const invocation = (stdout: string) => ({ stdout: stdout, stderr: '', exitCode: 1 });
+            const failedAnswer = buildDeployAnswer(['Account.A__c'], [{ fullName: 'Account.B__c', problem: 'p' }]);
+            const parse = (stdout: string, instanceUrl?: string) => RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(invocation(stdout), ScratchOrgService.readCliJsonPayload(invocation(stdout)), instanceUrl);
+
+            expect(parse(withDeployUrl(failedAnswer, buildDeployUrl(QA_INSTANCE_URL)), QA_INSTANCE_URL))
+                .toEqual({ kind: 'failed', failureMessage: 'Account.B__c: p', deployStatusPath: DEPLOY_STATUS_PATH });
+
+            [
+                buildDeployUrl('https://acme--qa.sandbox.my.salesforce.com.attacker.example'),
+                buildDeployUrl('http://acme--qa.sandbox.my.salesforce.com'),
+                buildDeployUrl(QA_INSTANCE_URL).replace('DeployStatus', 'SetupOneHome'),
+                'not a url',
+                42
+            ].forEach(deployUrl => expect(parse(withDeployUrl(failedAnswer, deployUrl), QA_INSTANCE_URL))
+                .toEqual({ kind: 'failed', failureMessage: 'Account.B__c: p' }));
+
+            expect(parse(withDeployUrl(failedAnswer, buildDeployUrl(QA_INSTANCE_URL)))).toEqual({ kind: 'failed', failureMessage: 'Account.B__c: p' });
+            expect(parse(withDeployUrl(buildDeployAnswer(['Account.A__c'], []), buildDeployUrl(QA_INSTANCE_URL)), QA_INSTANCE_URL))
+                .toEqual({ kind: 'deployed', deployedComponentCount: 1 });
+            // A FAILURE WITH NO COMPONENT FAILURE IS NOT ONE THE PAGE EXPLAINS
+            expect(parse(JSON.stringify({ status: 1, name: 'NoAuth', message: 'x', result: { success: false, deployUrl: buildDeployUrl(QA_INSTANCE_URL) } }), QA_INSTANCE_URL))
+                .toEqual({ kind: 'failed', failureMessage: 'NoAuth: x' });
+
+        });
+
         it('shares the deploy-result reader with the scratch org deploy, which does not count package.xml as a component', () => {
 
             expect(ScratchOrgService.readDeployComponentCounts(JSON.parse(buildDeployAnswer(['Account.A__c'], [{ fullName: 'Account.B__c', problem: 'p' }])))).toEqual({
@@ -652,6 +696,47 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
         });
 
+        it('opens a failed deploy\'s Deployment Status page only for the card its line is drawn on, and never while a deploy runs (#283)', () => {
+
+            const panelState = buildDeployablePanelState();
+            const deployStatusTarget = { treeKey: ACCOUNT_TREE_KEY, orgDetail: panelState.dataOrgDetails[0], deployStatusPath: DEPLOY_STATUS_PATH };
+            const failedState = { command: 'metadataDeployState' as const, isRunning: false, treeKey: ACCOUNT_TREE_KEY, statusText: 'failed', isFailure: true, hasOutput: true, hasDeployStatus: true };
+            const openMessage = { command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY };
+
+            expect(RecipeCockpitService.routePanelMessage(openMessage, panelState)).toBeUndefined();
+
+            panelState.metadataDeployStatusTarget = deployStatusTarget;
+            expect(RecipeCockpitService.routePanelMessage(openMessage, panelState)).toBeUndefined();
+
+            panelState.metadataDeployStateMessage = failedState;
+
+            expect(RecipeCockpitService.routePanelMessage({ ...openMessage, deployUrl: 'https://evil.example/', username: 'prod@example.com', path: '/x' } as any, panelState))
+                .toEqual({ kind: 'openMetadataDeployStatus', deployStatusTarget: deployStatusTarget });
+
+            [
+                { command: 'openMetadataDeployStatus', treeKey: LEAD_TREE_KEY },
+                { command: 'openMetadataDeployStatus' },
+                { command: 'openMetadataDeployStatus', treeKey: 7 }
+            ].forEach(panelMessage => expect(RecipeCockpitService.routePanelMessage(panelMessage as any, panelState)).toBeUndefined());
+
+            panelState.metadataDeployStateMessage = { ...failedState, isRunning: true, statusText: 'Deploying…' };
+            expect(RecipeCockpitService.routePanelMessage(openMessage, panelState)).toBeUndefined();
+
+            panelState.metadataDeployStateMessage = { ...failedState, treeKey: LEAD_TREE_KEY };
+            expect(RecipeCockpitService.routePanelMessage(openMessage, panelState)).toBeUndefined();
+
+            panelState.metadataDeployStateMessage = { ...failedState, hasDeployStatus: false };
+            expect(RecipeCockpitService.routePanelMessage(openMessage, panelState)).toBeUndefined();
+
+            panelState.metadataDeployStateMessage = failedState;
+            panelState.metadataDeployStatusTarget = undefined;
+            expect(RecipeCockpitService.routePanelMessage(openMessage, panelState)).toBeUndefined();
+
+            panelState.metadataDeployStatusTarget = deployStatusTarget;
+            expect(JSON.stringify(RecipeCockpitService.buildReplayMessages(panelState))).not.toContain(DEPLOY_ID);
+
+        });
+
         it('opens only the result file the host holds, and replays the deploy\'s line to a reloaded document', () => {
 
             const panelState = buildDeployablePanelState();
@@ -818,6 +903,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             notificationInformationSpy = jest.spyOn(VSCodeWorkspaceService, 'showInformationMessage').mockImplementation(() => undefined);
             openFileSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
             jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async () => ({
+                instanceUrl: QA_INSTANCE_URL,
                 describe: jest.fn().mockImplementation(async (objectApiName: string) => {
                     describeCalls.push(objectApiName);
                     if ( !orgDescribes[objectApiName] ) {
@@ -1258,6 +1344,285 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
         });
 
+        describe('"Open Deployment Status" on a failed deploy (#283)', () => {
+
+            let orgOpenAnswer: { stdout: string; error?: unknown };
+
+            const orgOpenCalls = () => cliCalls.filter(argumentList => argumentList[0] === 'org' && argumentList[1] === 'open');
+
+            const everythingWritten = (): string => {
+                const collectFiles = (directoryPath: string): string[] => fs.readdirSync(directoryPath, { withFileTypes: true }).flatMap(directoryEntry => (
+                    directoryEntry.isDirectory()
+                        ? collectFiles(path.join(directoryPath, directoryEntry.name))
+                        : [path.join(directoryPath, directoryEntry.name)]
+                ));
+                return collectFiles(temporaryRoot).map(filePath => fs.readFileSync(filePath, 'utf-8')).join('\n');
+            };
+
+            const failWithDeployUrl = (deployUrl: unknown) => {
+                deployHandler = argumentList => argumentList[0] === 'org' && argumentList[1] === 'open'
+                    ? orgOpenAnswer
+                    : { stdout: withDeployUrl(buildDeployAnswer(['OtherChildObject__c'], [{ fullName: 'Account.Rating__c', problem: 'Value set Ratings not found' }]), deployUrl), error: Object.assign(new Error('exit 1'), { code: 1 }) };
+            };
+
+            beforeEach(() => {
+                orgOpenAnswer = { stdout: JSON.stringify({ status: 0, result: { orgId: '00D000000000001', url: FRONTDOOR_URL, username: QA_USERNAME } }) };
+                (vscode.env.openExternal as jest.Mock).mockReset();
+                (vscode.env.openExternal as jest.Mock).mockResolvedValue(true);
+                (RecipeCockpitService as any).isDeployStatusOpenInFlight = false;
+            });
+
+            it('offers it beside View output, opens the deploy org\'s page signed in through "sf org open --path", and posts, writes and quotes no session', async () => {
+
+                failWithDeployUrl(buildDeployUrl(QA_INSTANCE_URL));
+                await openCockpitWithQaSelected();
+
+                await deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+
+                const [errorText, ...errorActions] = (vscode.window.showErrorMessage as jest.Mock).mock.calls[0];
+                expect(errorText).toBe(`The deploy of Relationship Tree 1 to qa · ${QA_USERNAME} failed: Account.Rating__c: Value set Ratings not found`);
+                expect(errorActions).toEqual([RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL, RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL]);
+                expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, statusText: errorText, isFailure: true, hasOutput: true, hasDeployStatus: true });
+
+                await receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY, path: '/secur/logout.jsp' });
+                await flushAsyncWork();
+
+                expect(orgOpenCalls()).toEqual([['org', 'open', '--target-org', QA_USERNAME, '--path', DEPLOY_STATUS_PATH, '--url-only', '--json']]);
+                const orgOpenCall = (execFile as unknown as jest.Mock).mock.calls.find(([, argumentList]) => argumentList[0] === 'org' && argumentList[1] === 'open');
+                expect(orgOpenCall[2].cwd).toBeUndefined();
+                expect(vscode.env.openExternal).toHaveBeenCalledTimes(1);
+                expect((vscode.env.openExternal as jest.Mock).mock.calls[0][0].toString()).toBe(FRONTDOOR_URL);
+                expect(notificationWarningSpy).not.toHaveBeenCalled();
+
+                expect(JSON.stringify(postedPanelMessages)).not.toContain(SESSION_ID);
+                expect(JSON.stringify(postedPanelMessages)).not.toContain(DEPLOY_ID);
+                expect(everythingWritten()).not.toContain('deployStatusSecret');
+
+            });
+
+            it('opens the same page from the error notification\'s button', async () => {
+
+                failWithDeployUrl(buildDeployUrl(QA_INSTANCE_URL));
+                let chooseOpenStatus: (label: string) => void = () => undefined;
+                (vscode.window.showErrorMessage as jest.Mock).mockImplementationOnce(() => new Promise(resolve => { chooseOpenStatus = resolve; }));
+                await openCockpitWithQaSelected();
+
+                await deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+                expect(lastDeployState()).toMatchObject({ isRunning: false, hasDeployStatus: true });
+
+                // THE READER CLICKS ONCE THE DEPLOY HAS ENDED
+                chooseOpenStatus(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL);
+                await flushAsyncWork();
+                await flushAsyncWork();
+
+                expect(orgOpenCalls()).toEqual([['org', 'open', '--target-org', QA_USERNAME, '--path', DEPLOY_STATUS_PATH, '--url-only', '--json']]);
+                expect((vscode.env.openExternal as jest.Mock).mock.calls[0][0].toString()).toBe(FRONTDOOR_URL);
+                expect(openFileSpy).not.toHaveBeenCalled();
+
+            });
+
+            it('offers nothing for a deployUrl on another host, over http:, on another page or malformed', async () => {
+
+                for ( const deployUrl of [
+                    buildDeployUrl('https://acme--qa.sandbox.my.salesforce.com.attacker.example'),
+                    buildDeployUrl('http://acme--qa.sandbox.my.salesforce.com'),
+                    buildDeployUrl(QA_INSTANCE_URL).replace('/lightning/setup/DeployStatus/page', '/secur/logout.jsp'),
+                    'https://[not a url'
+                ] ) {
+
+                    (vscode.window.showErrorMessage as jest.Mock).mockClear();
+                    failWithDeployUrl(deployUrl);
+                    await openCockpitWithQaSelected();
+
+                    await deploy(ACCOUNT_TREE_KEY);
+                    await flushAsyncWork();
+
+                    expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0].slice(1)).toEqual([RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL]);
+                    expect(lastDeployState()).not.toHaveProperty('hasDeployStatus');
+                    expect(panelState().metadataDeployStatusTarget).toBeUndefined();
+
+                    await receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
+                    await flushAsyncWork();
+                    expect(orgOpenCalls()).toEqual([]);
+
+                }
+
+            });
+
+            it('offers nothing for a successful deploy, a CLI that is not installed or a deploy that timed out', async () => {
+
+                await openCockpitWithQaSelected();
+                await deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+                expect(lastDeployState()).toMatchObject({ isFailure: false });
+                expect(lastDeployState()).not.toHaveProperty('hasDeployStatus');
+
+                deployHandler = () => ({ stdout: '', error: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) });
+                await deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+                expect(lastDeployState()).toMatchObject({ isFailure: true });
+                expect(lastDeployState()).not.toHaveProperty('hasDeployStatus');
+
+                jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockResolvedValueOnce({ stdout: withDeployUrl(buildDeployAnswer([], [{ fullName: 'Account.Rating__c', problem: 'x' }]), buildDeployUrl(QA_INSTANCE_URL)), stderr: '', exitCode: null, timedOut: true });
+                await deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+                expect(lastDeployState()).toMatchObject({ isFailure: true });
+                expect(lastDeployState().statusText).toContain('whether it applied is unknown');
+                expect(lastDeployState()).not.toHaveProperty('hasDeployStatus');
+
+                (vscode.window.showErrorMessage as jest.Mock).mock.calls.concat((vscode.window.showWarningMessage as jest.Mock).mock.calls)
+                    .forEach(notificationCall => expect(notificationCall).not.toContain(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL));
+
+            });
+
+            it('warns with a fixed message, quoting neither the CLI nor any address, when "sf org open" fails or times out', async () => {
+
+                failWithDeployUrl(buildDeployUrl(QA_INSTANCE_URL));
+                await openCockpitWithQaSelected();
+                await deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+
+                const fixedWarning = RecipeYamlScalarEscape(`The Deployment Status page of qa · ${QA_USERNAME} could not be opened. Find the deploy in Setup, under Deployment Status.`);
+
+                orgOpenAnswer = { stdout: JSON.stringify({ status: 1, name: 'SessionError', message: `Opening ${FRONTDOOR_URL} failed` }), error: Object.assign(new Error('exit 1'), { code: 1 }) };
+                await receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
+                await flushAsyncWork();
+
+                expect(notificationWarningSpy).toHaveBeenLastCalledWith(fixedWarning);
+
+                jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockResolvedValueOnce({ stdout: '', stderr: `stuck on ${FRONTDOOR_URL}`, exitCode: null, timedOut: true });
+                await receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
+                await flushAsyncWork();
+
+                expect(notificationWarningSpy).toHaveBeenLastCalledWith(fixedWarning);
+
+                jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockRejectedValueOnce(new Error(`boom ${FRONTDOOR_URL}`));
+                await receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
+                await flushAsyncWork();
+
+                expect(notificationWarningSpy).toHaveBeenLastCalledWith(fixedWarning);
+                expect(vscode.env.openExternal).not.toHaveBeenCalled();
+                expect(JSON.stringify(notificationWarningSpy.mock.calls)).not.toContain(SESSION_ID);
+                expect(JSON.stringify(postedPanelMessages)).not.toContain(SESSION_ID);
+
+            });
+
+            it('warns and opens nothing when the deploy org is no longer authorized', async () => {
+
+                failWithDeployUrl(buildDeployUrl(QA_INSTANCE_URL));
+                await openCockpitWithQaSelected();
+                await deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+
+                (AuthInfo.listAllAuthorizations as jest.Mock).mockImplementation(async () => ORG_AUTHORIZATIONS.filter((authorization: any) => authorization.username !== QA_USERNAME));
+                await receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
+                await flushAsyncWork();
+
+                expect(orgOpenCalls()).toEqual([]);
+                expect(vscode.env.openExternal).not.toHaveBeenCalled();
+                expect(notificationWarningSpy).toHaveBeenLastCalledWith(RecipeYamlScalarEscape(`The Deployment Status page was not opened: qa · ${QA_USERNAME} is no longer authorized. Authorize it again with sf org login web and try again.`));
+
+            });
+
+            it('opens once for a double click, names an org with no alias by its username, and warns when the browser refuses the address', async () => {
+
+                failWithDeployUrl(buildDeployUrl(QA_INSTANCE_URL));
+                await openCockpitWithQaSelected();
+                await deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+                panelState().metadataDeployStatusTarget.orgDetail = { targetOrgIdentifier: QA_USERNAME, username: QA_USERNAME };
+                (vscode.env.openExternal as jest.Mock).mockResolvedValue(false);
+                (AuthInfo.listAllAuthorizations as jest.Mock).mockImplementation(async () => [null, ...ORG_AUTHORIZATIONS]);
+
+                const firstOpen = receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
+                await receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
+                await firstOpen;
+                await flushAsyncWork();
+
+                expect(orgOpenCalls()).toHaveLength(1);
+                expect(vscode.env.openExternal).toHaveBeenCalledTimes(1);
+                expect(notificationWarningSpy).toHaveBeenLastCalledWith(RecipeYamlScalarEscape(`The Deployment Status page of ${QA_USERNAME} was not opened: the browser did not accept the address.`));
+                expect(JSON.stringify(notificationWarningSpy.mock.calls)).not.toContain(SESSION_ID);
+
+            });
+
+            it('opens nothing from the error notification\'s button while another deploy runs', async () => {
+
+                failWithDeployUrl(buildDeployUrl(QA_INSTANCE_URL));
+                let chooseOpenStatus: (label: string) => void = () => undefined;
+                (vscode.window.showErrorMessage as jest.Mock).mockImplementationOnce(() => new Promise(resolve => { chooseOpenStatus = resolve; }));
+                await openCockpitWithQaSelected();
+                await deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+
+                deployHandler = () => 'hold';
+                const deployInFlight = deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+                await flushAsyncWork();
+                expect(lastDeployState()).toMatchObject({ isRunning: true });
+
+                chooseOpenStatus(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL);
+                await flushAsyncWork();
+                await flushAsyncWork();
+
+                expect(orgOpenCalls()).toEqual([]);
+                expect(vscode.env.openExternal).not.toHaveBeenCalled();
+                expect(notificationWarningSpy).toHaveBeenLastCalledWith('The Deployment Status page was not opened: a deploy is running. Try again once it has finished.');
+
+                heldDeployCallbacks.forEach(answerHeldDeploy => answerHeldDeploy());
+                await deployInFlight;
+                await flushAsyncWork();
+
+            });
+
+            it('changes nothing when the error notification itself fails to show', async () => {
+
+                failWithDeployUrl(buildDeployUrl(QA_INSTANCE_URL));
+                (vscode.window.showErrorMessage as jest.Mock).mockRejectedValue(new Error('no window'));
+                await openCockpitWithQaSelected();
+
+                await deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+
+                expect(lastDeployState()).toMatchObject({ isRunning: false, hasDeployStatus: true });
+                expect(orgOpenCalls()).toEqual([]);
+
+            });
+
+            it('carries the link into a reopened panel, and drops it when the next deploy starts', async () => {
+
+                failWithDeployUrl(buildDeployUrl(QA_INSTANCE_URL));
+                await openCockpitWithQaSelected();
+                await deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+
+                await openCockpitWithQaSelected();
+                expect(panelState().metadataDeployStatusTarget).toMatchObject({ treeKey: ACCOUNT_TREE_KEY, deployStatusPath: DEPLOY_STATUS_PATH });
+                expect(postedNamed('metadataDeployState').at(-1)).toMatchObject({ hasDeployStatus: true });
+
+                deployHandler = () => 'hold';
+                const deployInFlight = deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+                await flushAsyncWork();
+
+                expect(lastDeployState()).toMatchObject({ isRunning: true });
+                expect(panelState().metadataDeployStatusTarget).toBeUndefined();
+                await receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
+                expect(orgOpenCalls()).toEqual([]);
+
+                heldDeployCallbacks.forEach(answerHeldDeploy => answerHeldDeploy());
+                await deployInFlight;
+                await flushAsyncWork();
+
+                expect(lastDeployState()).toMatchObject({ isRunning: false });
+                expect(lastDeployState()).not.toHaveProperty('hasDeployStatus');
+
+            });
+
+        });
+
         it('shows an error when the --json is malformed, never a success', async () => {
 
             deployHandler = () => ({ stdout: 'Deploy Succeeded.' });
@@ -1524,6 +1889,32 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             expect(panel.isHidden(viewOutputElement)).toBe(false);
             viewOutputElement.dispatch('click');
             expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'viewMetadataDeployOutput' });
+
+        });
+
+        it('draws "Open Deployment Status" on a failed deploy\'s line only when the host says it has the page, and posts the tree key alone (#283)', () => {
+
+            const panel = renderTrees();
+            selectQa(panel);
+            const openStatusOf = (objectApiName: string) => panel.findAll(cardOf(panel, objectApiName), 'metadataDeployOpenStatus')[0];
+
+            panel.postToPanel({ command: 'metadataDeployState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, statusText: 'The deploy failed: x', isFailure: true, hasOutput: true });
+            expect(panel.isHidden(openStatusOf('OtherChildObject__c'))).toBe(true);
+
+            panel.postToPanel({ command: 'metadataDeployState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, statusText: 'The deploy failed: x', isFailure: true, hasOutput: true, hasDeployStatus: true });
+            const openStatusElement = openStatusOf('OtherChildObject__c');
+            expect(panel.isHidden(openStatusElement)).toBe(false);
+            expect(openStatusElement.textContent).toBe(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL);
+            expect(panel.isHidden(openStatusOf('Lead'))).toBe(true);
+
+            openStatusElement.dispatch('click');
+            expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
+
+            panel.postToPanel({ command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, statusText: 'Deploying…', isFailure: false, hasOutput: false });
+            expect(panel.isHidden(openStatusOf('OtherChildObject__c'))).toBe(true);
+
+            panel.postToPanel({ command: 'metadataDeployState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, statusText: 'Deployed.', isFailure: false, hasOutput: true, hasDeployStatus: true });
+            expect(panel.isHidden(openStatusOf('OtherChildObject__c'))).toBe(true);
 
         });
 
