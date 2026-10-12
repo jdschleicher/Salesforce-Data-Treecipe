@@ -822,6 +822,21 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
         });
 
+        it('on Windows deploys and assigns nothing from a UNC project folder, which cmd.exe would swap for the Windows folder (#285)', async () => {
+
+            await openCockpitWithQaSelected();
+            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+            jest.spyOn(PicklistDependencyCheckService, 'isUncPath').mockReturnValue(true);
+
+            await deployPermissionSets();
+
+            expect(deployCalls()).toEqual([]);
+            expect(assignCalls()).toEqual([]);
+            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0]).toContain('is a network UNC path');
+            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true });
+
+        });
+
         it('counts a permission set the user already holds as a success', async () => {
 
             assignHandler = () => ({

@@ -31,7 +31,7 @@ import {
     ScratchOrgService,
     ScratchOrgSetupPhase
 } from '../ScratchOrgService';
-import { ISalesforceCliInvocationResult } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { IDevHubOrgDetail, TARGET_DEV_HUB_ENVIRONMENT_VARIABLE } from '../../SalesforceOrgService/SalesforceOrgService';
 
 const MOCKS_PATH = path.join(__dirname, 'mocks');
@@ -852,6 +852,26 @@ describe('ScratchOrgService (#200)', () => {
 
             expect(outcome).toEqual({ kind: 'createFailed', failureMessage: ScratchOrgService.buildCliRequiredMessage(), outputFilePath: undefined });
             expect(fs.existsSync(path.join(workspaceRoot, 'treecipe'))).toBe(false);
+
+        });
+
+        it('on Windows creates nothing from a UNC project folder, which cmd.exe would swap for the Windows folder, and says how to open it instead (#285)', async () => {
+
+            answerCliCalls([{ stdout: SCRATCH_CREATE_SUCCESS }, { stdout: DEPLOY_SUCCESS }]);
+            const uncWorkspaceRoot = '\\\\wsl.localhost\\Ubuntu\\home\\me\\project';
+            const scratchOrgPlan = { ...await resolvePlan(), workspaceRoot: uncWorkspaceRoot };
+            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+
+            const outcome = await ScratchOrgService.runScratchOrgSetup(scratchOrgPlan, {
+                onPhase: () => undefined,
+                registerCancellation: () => undefined,
+                isCancellationRequested: () => false,
+                now: () => PLAN_DATE
+            });
+
+            expect(cliCalls).toHaveLength(0);
+            expect(outcome).toMatchObject({ kind: 'createFailed', outputFilePath: undefined });
+            expect(( outcome as { failureMessage: string } ).failureMessage).toContain(`"${uncWorkspaceRoot}" is a network UNC path`);
 
         });
 
