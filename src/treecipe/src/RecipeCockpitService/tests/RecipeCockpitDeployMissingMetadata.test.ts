@@ -1651,6 +1651,20 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
         });
 
+        it('on Windows deploys nothing from a UNC project folder, which cmd.exe would swap for the Windows folder (#285)', async () => {
+
+            await openCockpitWithQaSelected();
+            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+            jest.spyOn(PicklistDependencyCheckService, 'isUncPath').mockReturnValue(true);
+
+            await deploy(ACCOUNT_TREE_KEY);
+
+            expect(deployCalls()).toEqual([]);
+            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0]).toContain('is a network UNC path');
+            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true });
+
+        });
+
         it('deploys nothing when the org cannot be connected to for the second Organization check', async () => {
 
             await openCockpitWithQaSelected();

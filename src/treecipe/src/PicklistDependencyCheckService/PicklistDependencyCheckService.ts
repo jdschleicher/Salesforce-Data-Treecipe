@@ -49,6 +49,8 @@ export interface ISalesforceCliProjectOptions {
 
 export const SALESFORCE_CLI_DEFAULT_MAX_BUFFER_BYTES = 1024 * 1024 * 8;
 
+export const SALESFORCE_CLI_UNC_WORKING_DIRECTORY_ERROR_CODE = 'EUNCWORKINGDIRECTORY';
+
 /*
     The shape the CLI returns for "sf apex run test --json". Only the fields this service reads are
     modelled -- the payload carries considerably more, and typing the remainder would be inventing a
@@ -213,6 +215,16 @@ export class PicklistDependencyCheckService {
 
         if ( projectOptions ) {
 
+            // ON WINDOWS cmd.exe CANNOT START IN A UNC FOLDER: IT SAYS SO ON stderr AND RUNS IN C:\Windows INSTEAD, SO THE CLI READS NO PROJECT (#285)
+            if ( this.isWindowsPlatform() && this.isUncPath(projectOptions.workingDirectoryPath) ) {
+                return Promise.resolve({
+                    stdout: '',
+                    stderr: '',
+                    exitCode: null,
+                    spawnError: Object.assign(new Error(this.buildUncWorkingDirectoryMessage(projectOptions.workingDirectoryPath)), { code: SALESFORCE_CLI_UNC_WORKING_DIRECTORY_ERROR_CODE })
+                });
+            }
+
             const salesforceCliExecutablePath = this.findSalesforceCliOnPath(process.env.PATH ?? process.env.Path ?? '', projectOptions.workingDirectoryPath);
 
             if ( !salesforceCliExecutablePath ) {
@@ -305,6 +317,15 @@ export class PicklistDependencyCheckService {
 
         });
 
+    }
+
+    // \\server\share, \\wsl.localhost\..., \\?\UNC\... -- AND THE SAME WITH FORWARD SLASHES
+    static isUncPath(candidatePath: string): boolean {
+        return typeof candidatePath === 'string' && /^[\\/]{2}/.test(candidatePath);
+    }
+
+    static buildUncWorkingDirectoryMessage(workingDirectoryPath: string): string {
+        return `the project folder "${workingDirectoryPath}" is a network UNC path, and on Windows the Salesforce CLI runs through cmd.exe, which cannot start in one and would run in the Windows folder instead, outside the project. Nothing was run. Open the project from a drive letter by mapping the share to a drive, or reopen a WSL folder with the WSL extension, and try again.`;
     }
 
     /*
