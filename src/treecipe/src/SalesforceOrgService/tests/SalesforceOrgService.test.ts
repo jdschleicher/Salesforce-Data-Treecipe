@@ -1188,6 +1188,31 @@ describe('SalesforceOrgService', () => {
 
     });
 
+    describe('listAliasHolders (#279)', () => {
+
+        it('maps each alias to the org holding it, from the local authorizations alone', async () => {
+
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([
+                { username: 'uat@example.com', aliases: ['uat', 'qa'] },
+                { username: 'other@example.com', aliases: ['qa'] },
+                { username: 'proto@example.com', aliases: ['__proto__'] },
+                { username: 'no-alias@example.com' },
+                { aliases: ['orphan'] },
+                { username: 'odd@example.com', aliases: [42, ''] }
+            ]);
+
+            const aliasHolders = await SalesforceOrgService.listAliasHolders();
+
+            expect([...aliasHolders.entries()]).toEqual([
+                ['uat', 'uat@example.com'],
+                ['qa', 'uat@example.com'],
+                ['__proto__', 'proto@example.com']
+            ]);
+
+        });
+
+    });
+
     describe('the default Dev Hub (#200)', () => {
 
         let temporaryRoot: string;

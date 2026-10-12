@@ -19,8 +19,11 @@ import { AuthInfo } from '@salesforce/core';
 import { execFile } from 'child_process';
 
 import {
+    IScratchOrgAliasChoice,
     IScratchOrgPlan,
+    ORG_OPEN_TIMEOUT_MILLISECONDS,
     ORG_OPERATIONS_FOLDER_NAME,
+    SCRATCH_ORG_ALIAS_MAX_LENGTH,
     SCRATCH_ORG_DURATION_DAYS,
     ORG_OPERATION_REDACTED_VALUE,
     SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES,
@@ -43,6 +46,10 @@ const NEW_SCRATCH_USERNAME = 'test-newscratch@example.com';
 const DEV_HUB_AUTHORIZATION = { username: 'hub@example.com', aliases: ['devhub'], isDevHub: true, instanceUrl: 'https://acme.my.salesforce.com' };
 
 const CHOSEN_DEV_HUB: IDevHubOrgDetail = { targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub' };
+
+const CHOSEN_ALIAS = 'qa-accounts';
+
+const chooseChosenAlias = async (): Promise<IScratchOrgAliasChoice> => ({ alias: CHOSEN_ALIAS });
 
 const invocation = (stdout: string, exitCode: number | null = 0, extra: Partial<ISalesforceCliInvocationResult> = {}): ISalesforceCliInvocationResult => ({ stdout, stderr: '', exitCode, ...extra });
 
@@ -100,16 +107,41 @@ describe('ScratchOrgService (#200)', () => {
 
     const PLAN_DATE = new Date(2026, 9, 10, 14, 22, 33);
 
-    const resolvePlan = async (chooseDevHub: () => Promise<IDevHubOrgDetail | undefined> = async () => CHOSEN_DEV_HUB) => (
-        await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, chooseDevHub, PLAN_DATE)
+    const resolvePlan = async (chooseDevHub: () => Promise<IDevHubOrgDetail | undefined> = async () => CHOSEN_DEV_HUB,
+                               chooseAlias: (devHub: IDevHubOrgDetail) => Promise<IScratchOrgAliasChoice | undefined> = chooseChosenAlias) => (
+        await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, chooseDevHub, chooseAlias)
     ) as IScratchOrgPlan;
 
-    describe('buildScratchOrgAlias', () => {
+    describe('validateScratchOrgAlias (#279)', () => {
 
-        it('is treecipe-<yyyyMMdd-HHmmss> in local time', () => {
+        it('accepts letters, digits and . _ + -', () => {
 
-            expect(ScratchOrgService.buildScratchOrgAlias(PLAN_DATE)).toBe('treecipe-20261010-142233');
-            expect(ScratchOrgService.buildScratchOrgAlias(new Date(2027, 0, 2, 3, 4, 5))).toBe('treecipe-20270102-030405');
+            ['qa-accounts', 'UAT.2', 'a', 'team_one+data', 'x'.repeat(SCRATCH_ORG_ALIAS_MAX_LENGTH)].forEach(alias => {
+                expect(ScratchOrgService.validateScratchOrgAlias(alias)).toBeUndefined();
+            });
+
+        });
+
+        it('refuses an empty alias, and anything that is not a string', () => {
+
+            expect(ScratchOrgService.validateScratchOrgAlias('')).toBe('Enter an alias for the new scratch org.');
+            expect(ScratchOrgService.validateScratchOrgAlias(undefined)).toBe('Enter an alias for the new scratch org.');
+            expect(ScratchOrgService.validateScratchOrgAlias(42)).toBe('Enter an alias for the new scratch org.');
+
+        });
+
+        it('refuses an alias that would read as a username, a flag, a path or two arguments', () => {
+
+            expect(ScratchOrgService.validateScratchOrgAlias('qa@example.com')).toContain('"@"');
+            ['-qa', 'qa accounts', 'qa"x', 'qa/x', 'qa\\x', '.', '..', 'qa\nx', 'qa;x', 'qa$x', '[qa](command:x)'].forEach(alias => {
+                expect(ScratchOrgService.validateScratchOrgAlias(alias)).toBe('An alias is letters, digits and . _ + -, and cannot start with "-" or be "." or "..".');
+            });
+
+        });
+
+        it('refuses an alias longer than the limit', () => {
+
+            expect(ScratchOrgService.validateScratchOrgAlias('x'.repeat(SCRATCH_ORG_ALIAS_MAX_LENGTH + 1))).toBe(`An alias is at most ${SCRATCH_ORG_ALIAS_MAX_LENGTH} characters.`);
 
         });
 
@@ -125,7 +157,8 @@ describe('ScratchOrgService (#200)', () => {
             expect(scratchOrgPlan.definitionFilePath).toBe(path.join(path.resolve(workspaceRoot), 'config', 'project-scratch-def.json'));
             expect(scratchOrgPlan.definitionFileRelativePath).toBe(path.join('config', 'project-scratch-def.json'));
             expect(scratchOrgPlan.devHub).toEqual(CHOSEN_DEV_HUB);
-            expect(scratchOrgPlan.alias).toBe('treecipe-20261010-142233');
+            expect(scratchOrgPlan.alias).toBe(CHOSEN_ALIAS);
+            expect(scratchOrgPlan.aliasHolderUsername).toBeUndefined();
             expect(scratchOrgPlan.durationDays).toBe(7);
             expect(scratchOrgPlan.definitionSummary).toEqual({ edition: 'Developer', adminEmail: undefined, username: undefined });
             expect(scratchOrgPlan.hasFileOrEnvironmentReplacements).toBe(false);
@@ -145,8 +178,46 @@ describe('ScratchOrgService (#200)', () => {
 
         it('is no plan when no Dev Hub is chosen, and starts no process (#243)', async () => {
 
-            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, async () => undefined, PLAN_DATE)).resolves.toBeUndefined();
+            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, async () => undefined, chooseChosenAlias)).resolves.toBeUndefined();
             expect(execFile).not.toHaveBeenCalled();
+
+        });
+
+        it('asks for the alias after the Dev Hub, passing the chosen Dev Hub, and never when no Dev Hub was chosen (#279)', async () => {
+
+            const chooseAlias = jest.fn(chooseChosenAlias);
+
+            await resolvePlan(async () => CHOSEN_DEV_HUB, chooseAlias);
+            expect(chooseAlias).toHaveBeenCalledWith(CHOSEN_DEV_HUB);
+
+            chooseAlias.mockClear();
+            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, async () => undefined, chooseAlias)).resolves.toBeUndefined();
+            expect(chooseAlias).not.toHaveBeenCalled();
+
+        });
+
+        it('is no plan when the alias box is dismissed, and starts no process (#279)', async () => {
+
+            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, async () => CHOSEN_DEV_HUB, async () => undefined)).resolves.toBeUndefined();
+            expect(execFile).not.toHaveBeenCalled();
+
+        });
+
+        it('checks the alias again whatever the box said, and refuses an unusable one before any process (#279)', async () => {
+
+            await expect(resolvePlan(async () => CHOSEN_DEV_HUB, async () => ({ alias: '--json' }))).rejects.toThrow('No scratch org was created: An alias is letters');
+            await expect(resolvePlan(async () => CHOSEN_DEV_HUB, async () => ({ alias: '' }))).rejects.toThrow('No scratch org was created: Enter an alias');
+            await expect(resolvePlan(async () => CHOSEN_DEV_HUB, async () => ({ alias: '..' }))).rejects.toThrow('No scratch org was created');
+            expect(execFile).not.toHaveBeenCalled();
+
+        });
+
+        it('carries the org that holds the alias now, so the modal can say it will be moved (#279)', async () => {
+
+            const scratchOrgPlan = await resolvePlan(async () => CHOSEN_DEV_HUB, async () => ({ alias: 'uat', aliasHolderUsername: 'old-uat@example.com' }));
+
+            expect(scratchOrgPlan.alias).toBe('uat');
+            expect(scratchOrgPlan.aliasHolderUsername).toBe('old-uat@example.com');
 
         });
 
@@ -155,11 +226,11 @@ describe('ScratchOrgService (#200)', () => {
             fs.rmSync(path.join(workspaceRoot, 'config', 'project-scratch-def.json'));
             const chooseDevHub = jest.fn(async () => CHOSEN_DEV_HUB);
 
-            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, chooseDevHub, PLAN_DATE)).rejects.toThrow('No scratch org definition file found');
+            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, chooseDevHub, chooseChosenAlias)).rejects.toThrow('No scratch org definition file found');
             expect(chooseDevHub).not.toHaveBeenCalled();
 
             fs.rmSync(path.join(workspaceRoot, 'sfdx-project.json'));
-            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, chooseDevHub, PLAN_DATE)).rejects.toThrow('No "sfdx-project.json" found at');
+            await expect(ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, chooseDevHub, chooseChosenAlias)).rejects.toThrow('No "sfdx-project.json" found at');
             expect(chooseDevHub).not.toHaveBeenCalled();
 
         });
@@ -212,18 +283,18 @@ describe('ScratchOrgService (#200)', () => {
             definitionFileRelativePath: 'config/project-scratch-def.json',
             packageDirectoryPaths: ['force-app'],
             devHub: { targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub', configSource: 'project' },
-            alias: 'treecipe-20261010-142233',
+            alias: 'qa-accounts',
             durationDays: SCRATCH_ORG_DURATION_DAYS,
             definitionSummary: {},
             hasFileOrEnvironmentReplacements: false
         };
 
-        it('creates with the definition file relative to the workspace, the generated alias, 7 days and the chosen Dev Hub by USERNAME (#243)', () => {
+        it('creates with the definition file relative to the workspace, the alias the reader chose, 7 days and the chosen Dev Hub by USERNAME (#243)', () => {
 
             expect(ScratchOrgService.buildScratchOrgCreateArguments(PLAN)).toEqual([
                 'org', 'create', 'scratch',
                 '--definition-file', 'config/project-scratch-def.json',
-                '--alias', 'treecipe-20261010-142233',
+                '--alias', 'qa-accounts',
                 '--duration-days', '7',
                 '--target-dev-hub', 'hub@example.com',
                 '--json'
@@ -231,11 +302,11 @@ describe('ScratchOrgService (#200)', () => {
 
         });
 
-        it('deploys with no --source-dir and no --ignore-errors, so the CLI deploys every package directory all or nothing', () => {
+        it('deploys to the USERNAME of the new org with no --source-dir and no --ignore-errors, so the CLI deploys every package directory all or nothing (#279)', () => {
 
-            const deployArguments = ScratchOrgService.buildSourceDeployArguments(PLAN);
+            const deployArguments = ScratchOrgService.buildSourceDeployArguments(NEW_SCRATCH_USERNAME);
 
-            expect(deployArguments).toEqual(['project', 'deploy', 'start', '--target-org', 'treecipe-20261010-142233', '--json']);
+            expect(deployArguments).toEqual(['project', 'deploy', 'start', '--target-org', NEW_SCRATCH_USERNAME, '--json']);
             expect(deployArguments).not.toContain('--ignore-errors');
             expect(deployArguments).not.toContain('--source-dir');
 
@@ -264,6 +335,82 @@ describe('ScratchOrgService (#200)', () => {
                 expect(fs.readFileSync(sourceFilePath, 'utf-8')).not.toMatch(/['"]org['"]\s*,\s*['"]delete['"]/);
             });
             expect(fs.readFileSync(path.join(__dirname, '..', 'ScratchOrgService.ts'), 'utf-8')).not.toMatch(/['"]delete['"]/);
+
+        });
+
+    });
+
+    describe('opening an org in the browser (#279)', () => {
+
+        const ORG_OPEN_URL = 'https://acme--uat.sandbox.my.salesforce.com/secur/frontdoor.jsp?sid=00D000000000001!AQEAQsecret';
+
+        it('asks for the URL only, by USERNAME, as JSON', () => {
+
+            expect(ScratchOrgService.buildOrgOpenArguments('uat@example.com')).toEqual(['org', 'open', '--target-org', 'uat@example.com', '--url-only', '--json']);
+            expect(() => ScratchOrgService.buildOrgOpenArguments('--json')).toThrow('is not a usable Salesforce org alias or username');
+
+        });
+
+        it('opens an https: URL the CLI answered with on status 0', () => {
+
+            expect(ScratchOrgService.parseOrgOpenOutput(invocation(JSON.stringify({ status: 0, result: { orgId: '00D000000000001', url: ORG_OPEN_URL, username: 'uat@example.com' } }))))
+                .toEqual({ isOpenable: true, url: ORG_OPEN_URL });
+
+        });
+
+        it('opens nothing that is not https:', () => {
+
+            ['http://acme.my.salesforce.com/', 'javascript:alert(1)', 'file:///etc/passwd', 'command:workbench.action.terminal.new', 'not a url'].forEach(url => {
+                const parseResult = ScratchOrgService.parseOrgOpenOutput(invocation(JSON.stringify({ status: 0, result: { url } })));
+                expect(parseResult).toEqual({ isOpenable: false, failureMessage: 'The Salesforce CLI answered with an address that is not https, so it was not opened.' });
+            });
+
+        });
+
+        it('opens nothing for an answer with no URL, a non-zero status or output that is not JSON', () => {
+
+            expect(ScratchOrgService.parseOrgOpenOutput(invocation(JSON.stringify({ status: 0, result: { url: 42 } }))))
+                .toEqual({ isOpenable: false, failureMessage: 'The Salesforce CLI answered without an address to open.' });
+            expect(ScratchOrgService.parseOrgOpenOutput(invocation(JSON.stringify({ status: 0, result: [ORG_OPEN_URL] }))))
+                .toEqual({ isOpenable: false, failureMessage: 'The Salesforce CLI answered without an address to open.' });
+            expect(ScratchOrgService.parseOrgOpenOutput(invocation(JSON.stringify({ status: 1, name: 'NoAuthInfoFound', message: 'No authorization information found for uat@example.com.' }), 1)))
+                .toEqual({ isOpenable: false, failureMessage: 'NoAuthInfoFound: No authorization information found for uat@example.com.' });
+            expect(ScratchOrgService.parseOrgOpenOutput(invocation('not json', 1)).isOpenable).toBe(false);
+
+        });
+
+        it('never quotes a session id from the output in a failure message', () => {
+
+            const parseResult = ScratchOrgService.parseOrgOpenOutput({ stdout: 'not json', stderr: `Opening ${ORG_OPEN_URL}`, exitCode: 1 });
+
+            expect(parseResult.isOpenable).toBe(false);
+            expect(JSON.stringify(parseResult)).not.toContain('AQEAQsecret');
+
+        });
+
+        it('says the CLI is required when it is not installed, and says a timeout is one', () => {
+
+            expect(ScratchOrgService.parseOrgOpenOutput({ stdout: '', stderr: '', exitCode: null, spawnError: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) }))
+                .toEqual({ isOpenable: false, failureMessage: expect.stringContaining('is required to open an org') });
+            expect(ScratchOrgService.parseOrgOpenOutput({ stdout: '', stderr: '', exitCode: null, timedOut: true }))
+                .toEqual({ isOpenable: false, failureMessage: 'The Salesforce CLI did not answer in time.' });
+
+        });
+
+        it('runs "sf org open" with no working directory, not in project mode', async () => {
+
+            const cliCalls: Array<{ argumentList: string[]; options: Record<string, unknown> }> = [];
+            (execFile as unknown as jest.Mock).mockImplementation((_command: string, argumentList: string[], options: Record<string, unknown>, callback: Function) => {
+                cliCalls.push({ argumentList, options });
+                setImmediate(() => callback(null, JSON.stringify({ status: 0, result: { url: ORG_OPEN_URL } }), ''));
+                return { kill: jest.fn() };
+            });
+
+            await expect(ScratchOrgService.resolveOrgOpenUrl('uat@example.com')).resolves.toEqual({ isOpenable: true, url: ORG_OPEN_URL });
+            expect(cliCalls).toHaveLength(1);
+            expect(cliCalls[0].argumentList).toEqual(['org', 'open', '--target-org', 'uat@example.com', '--url-only', '--json']);
+            expect(cliCalls[0].options.cwd).toBeUndefined();
+            expect(ORG_OPEN_TIMEOUT_MILLISECONDS).toBeGreaterThan(0);
 
         });
 
@@ -525,7 +672,7 @@ describe('ScratchOrgService (#200)', () => {
             killedProcessCount = 0;
         });
 
-        it('creates, then deploys to the alias with the workspace as the working directory, through execFile with no shell, and saves both results', async () => {
+        it('creates, then deploys to the new USERNAME with the workspace as the working directory, through execFile with no shell, and saves both results', async () => {
 
             answerCliCalls([{ stdout: SCRATCH_CREATE_SUCCESS }, { stdout: DEPLOY_SUCCESS }]);
 
@@ -538,6 +685,8 @@ describe('ScratchOrgService (#200)', () => {
                 expect(cliCall.options).toMatchObject({ shell: process.platform === 'win32', cwd: path.resolve(workspaceRoot) });
             });
             expect(cliCalls[1].argumentList).not.toContain('--ignore-errors');
+            expect(cliCalls[0].argumentList).toEqual(expect.arrayContaining(['--alias', CHOSEN_ALIAS]));
+            expect(cliCalls[1].argumentList).toEqual(['project', 'deploy', 'start', '--target-org', NEW_SCRATCH_USERNAME, '--json']);
 
             const operationsFolderPath = path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, NEW_SCRATCH_USERNAME);
             expect(outcome).toEqual({ kind: 'deployed', username: NEW_SCRATCH_USERNAME, deployedComponentCount: 3, outputFilePath: path.join(operationsFolderPath, '20261010-142233-scratch-deploy.json') });
@@ -562,7 +711,7 @@ describe('ScratchOrgService (#200)', () => {
             expect(cliCalls).toHaveLength(1);
             expect(outcome.kind).toBe('createFailed');
             expect(( outcome as { outputFilePath: string } ).outputFilePath)
-                .toBe(path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, 'treecipe-20261010-142233', '20261010-142233-scratch-create.json'));
+                .toBe(path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, 'qa-accounts', '20261010-142233-scratch-create.json'));
 
         });
 
