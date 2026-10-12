@@ -130,7 +130,6 @@ describe('Recipe Cockpit partial updates (#226)', () => {
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1 });
             panel.expandAllTrees();
             panel.treeCards().forEach((treeCard: any) => {
-                panel.openTab(treeCard, 'Compare');
                 panel.openTab(treeCard, 'Previously Used Data Sets');
             });
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
@@ -194,10 +193,11 @@ describe('Recipe Cockpit partial updates (#226)', () => {
 
         /*
             #226's criteria name what a partial update must leave alone: the toolbar's org picker, a
-            scratch org run in flight, every card's comparison, and a card's Structure exclusions (#219)
-            -- the card the data set joins included. Each is drawn here before the message arrives.
+            scratch org run in flight, and a card's Structure exclusions (#219) -- the card the data set
+            joins included. Each is drawn here before the message arrives. (Every card's comparison was
+            on that list too, until #266 removed the Compare tab.)
         */
-        it('leaves the org picker, a running scratch org, every comparison and the card\'s exclusions exactly as they were', () => {
+        it('leaves the org picker, a running scratch org and the card\'s exclusions exactly as they were', () => {
 
             const recipe = loadHistoryRecipe();
             recipe.trees.find((tree: any) => tree.treeKey === LEAD_TREE_KEY).objectSelection = {
@@ -207,11 +207,6 @@ describe('Recipe Cockpit partial updates (#226)', () => {
                 objectCount: 1
             };
             const panel = renderEverythingOpen(recipe);
-            [ACCOUNT_TREE_KEY, LEAD_TREE_KEY].forEach(treeKey => panel.postToPanel({
-                command: 'orgDescribe', treeKey: treeKey, orgLabel: 'qa (qa@example.com.qa)', summary: 'Described', isFailure: false, isCancelled: false,
-                objects: [{ objectApiName: treeKey === LEAD_TREE_KEY ? 'Lead' : 'Account', isDescribed: true, describedFieldCount: 3, failureMessage: '' }],
-                diff: { objects: [], statusCounts: {} }, renderSequence: 1
-            }));
             panel.postToPanel({ command: 'scratchOrgState', isRunning: true, statusText: 'Creating scratch org…', isFailure: false, hasOutput: false });
             const leadCard = cardNamed(panel, LEAD_TREE_KEY);
             const historyPanels = [panel.tabPanelOf(leadCard, 'treeDatasets')];
@@ -219,7 +214,6 @@ describe('Recipe Cockpit partial updates (#226)', () => {
             const nodesBefore = descendantsOf(panel.cockpitBodyElement);
             const statesBefore = nodesBefore.map(stateOf);
             expect(panel.findAll(leadCard, 'treeObjectInclude')[0].attributes['aria-pressed']).toBe('false');
-            expect(panel.findAll(leadCard, 'orgDescribeStatus').map((element: any) => element.textContent).join('')).toContain('org: 3 fields');
 
             postDatasetAdded(panel);
 

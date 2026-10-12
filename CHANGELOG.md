@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.68.0] - Recipe Cockpit: you name the scratch org, and the selected org opens in your browser
+## [3.69.0] - Recipe Cockpit: you name the scratch org, and the selected org opens in your browser
 
 Closes [#279](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/279), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
 
@@ -15,6 +15,24 @@ Closes [#279](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/27
   - A failure (CLI missing, timeout, no authorization) is an error naming the org.
   - The button reads **Opening…** and is disabled while it opens, and while a scratch org run or a metadata deploy holds the org picker. One open runs per window: a panel closed and reopened, or a reloaded document, is told an open is running and starts no second one.
 - **Unchanged:** the Dev Hub picker, the definition file, the 7-day duration, the all-or-nothing deploy, the result files under `treecipe/OrgOperations/`, recipe generation and both faker backends. The cockpit still never deletes an org.
+
+## [3.68.0] - Recipe Cockpit: the Compare tab and the metadata diff are removed
+
+Closes [#266](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/266), slice D of [#261](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/261).
+
+A tree card's tabs are now **Treecipe · Previously Used Data Sets**. The Compare tab compared a tree's fields with an org's describe. It is gone, along with the recipe-vs-org metadata diff behind it. To see what an org lacks, choose it in the Treecipe tab: the insert's own check names any object the org does not have, and **Deploy this metadata…** deploys it.
+
+- **Removed:**
+  - the tab, its **Compare with an org…** and **Choose another org…** buttons, its progress and summary, its per-card status filter, its object and field rows, and their CSS;
+  - `RecipeCockpitMetadataDiff`, its suite and its `metadataDiff/` mocks;
+  - the panel's `selectOrg` message, the host's `orgDescribe` and `orgProgress` messages, and the `describableObjectApiNamesByTreeKey` allow-list;
+  - the stored comparisons (`orgDescribeMessagesByTreeKey`) and the reopen carry that re-posted them (`carryOrgDescribeMessages`, `buildComparedRowsSignature`);
+  - the diff's host-only copy of the recipe's picklist values. The display copy the Treecipe tab loads per row is unchanged;
+  - the *required in \<org\>* note an unticked field drew from a comparison. The insert's readiness still refuses an unticked field the org requires and says so beside the insert button.
+- **Routing.** A posted `selectOrg` routes nothing: no describe, no picker, no message.
+- **Saved place.** A place of either version saved on the Compare tab (`compare`, or `dataByOrg` in a place saved before [#255](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/255)) opens that card on Treecipe. Its search, status filter and opened rows are dropped, never moved onto another tab, and `statusFilter` and `expandedDataObjectApiNames` are no longer part of the place. A `focusTree` naming the tab leaves the card on Treecipe. The place version is unchanged.
+- **Org pickers.** Three remain: the Treecipe tab's **Choose org…**, Insert Data Set by Directory and Run Picklist Dependency Check. Each still lists only the orgs the CLI reports as connected.
+- **Unchanged:** the insert readiness's describes and their session cache, **Deploy this metadata…**, the org picker, Run Faker, the tree insert, recipe generation and both faker backends.
 
 ## [3.67.1] - Recipe Cockpit: picklist values open below their row, and every ▸/▾ is the same size and centred
 

@@ -1,8 +1,8 @@
 /*
     The Recipe Cockpit's recipe writer: recipe text in, recipe text out.
 
-    This file imports NOTHING, for the same reason RecipeCockpitMetadataDiff does: it cannot reach
-    the disk, a webview, vscode or an org, so every edit is asserted on plain strings.
+    This file imports NOTHING, like RecipeCockpitRecordCreation and RecipeCockpitObjectSelection: it
+    cannot reach the disk, a webview, vscode or an org, so every edit is asserted on plain strings.
 
     It patches LINES rather than round-tripping YAML. Both faker backends write recipes as template
     strings, and the "### TODO" comments in them carry meaning -- which record type to pick, which

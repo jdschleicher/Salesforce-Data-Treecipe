@@ -10,7 +10,6 @@ import { IAuthenticatedOrgDetail, ISalesforceCliInvocationResult, PicklistDepend
 import { ITreeMetadataDeployPlan, METADATA_DEPLOY_MANIFEST_FILE_NAME, METADATA_DEPLOY_MAX_BUFFER_BYTES, METADATA_DEPLOY_TIMEOUT_MILLISECONDS, MetadataDeployOutcome, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
 import {
     DevHubConfigSource,
-    IOrgDescribeRequestResult,
     IOrgDescribeSource,
     IOrgQuerySource,
     IOrgTypeDetail,
@@ -21,13 +20,6 @@ import {
     ORG_PARENT_SEARCH_RESULT_LIMIT,
     SalesforceOrgService
 } from '../SalesforceOrgService/SalesforceOrgService';
-import {
-    IMetadataDiffFieldResult,
-    METADATA_DIFF_FIELD_STATUSES,
-    MetadataDiffFieldStatus,
-    RecipeCockpitMetadataDiff,
-    RecipePicklistValuesByObjectApiName
-} from './RecipeCockpitMetadataDiff';
 import { IRecipeFilterLookup, IRecipeFixedValue, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind } from './RecipeCockpitRecipeWriter';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelectionDisabledLookup } from './RecipeCockpitObjectSelection';
@@ -106,32 +98,12 @@ export const RECIPE_COCKPIT_LOAD_PHASES = {
     readingRun: 'Reading the generated recipe run…'
 };
 
-export const RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL = 'Compare with an org…';
 
-// ALWAYS THE AUTHORIZED-ORG PICKER: Data-by-Org LISTS NO PRODUCTION ORG, AND A DESCRIBE WRITES NOTHING
-export const RECIPE_COCKPIT_CHOOSE_ORG_ACTION_LABEL = 'Choose another org…';
 
-export const RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER = 'Select the Salesforce org to compare the objects of this recipe with';
 
 export const RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND = 'treecipe.generateTreecipe';
 // THE COCKPIT RELOADS THE RUN GENERATION WROTE, SO ITS COMPLETION TOAST WOULD ONLY PULL THE READER OUT OF THE PANEL (#206)
 export const RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS = { isCompletionNotificationSuppressed: true };
-
-// WHAT THE PANEL CALLS EACH STATUS, ON A ROW'S BADGE AND IN THE STATUS FILTER
-export const RECIPE_COCKPIT_DIFF_STATUS_LABELS: Readonly<Record<MetadataDiffFieldStatus, string>> = {
-    'new-in-org': 'new in org',
-    'removed-from-org': 'removed from org',
-    'type-changed': 'type changed',
-    'picklist-changed': 'picklist changed',
-    'unchanged': 'unchanged'
-};
-
-/*
-    How many added or removed picklist values a row NAMES before it says how many more there are.
-    The whole list is posted -- it is bounded by the size of one picklist -- but a row naming a
-    thousand values is not one a reader can scan, and the count is what they act on.
-*/
-export const RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN = 20;
 
 export const RECIPE_COCKPIT_NO_RUN_MESSAGE = 'No generated recipe run was found under treecipe/GeneratedRecipes. Generate Treecipe writes one from the object metadata in this workspace, and the cockpit opens it when it finishes.';
 
@@ -167,11 +139,12 @@ export const RECIPE_COCKPIT_PANEL_PLACE_VERSION = 2;
 export const RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB = 1;
 export const RECIPE_COCKPIT_TREE_TAB_RENAMES: Readonly<Record<string, string>> = Object.freeze({ structure: 'treecipe', dataByOrg: 'compare' });
 /*
-    Tabs a card no longer has, read from a place of EITHER version after the renames (#265): a card
+    Tabs a card no longer has, read from a place of EITHER version after the renames (Previous Versions
+    #265, Compare #266, which a version 1 place calls dataByOrg and renames to compare first): a card
     saved on one opens on Treecipe, and that tab's search text and opened rows are dropped -- never
     moved onto another tab's search. Removing another tab is adding its name here.
 */
-export const RECIPE_COCKPIT_REMOVED_TREE_TABS: readonly string[] = Object.freeze(['versions']);
+export const RECIPE_COCKPIT_REMOVED_TREE_TABS: readonly string[] = Object.freeze(['versions', 'compare', 'dataByOrg']);
 export const RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY = 200;
 
 /*
@@ -282,7 +255,7 @@ export const RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = '+';
 export const RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL = 'Add';
 
 // IN THE ORDER A CARD DRAWS THEM; TREECIPE IS SELECTED BY DEFAULT, AND THE DATA SETS TAB IS DRAWN ONLY FOR A CARD WITH A HISTORY
-export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'compare', 'datasets'] as const;
+export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'datasets'] as const;
 
 export type RecipeCockpitTreeTab = typeof RECIPE_COCKPIT_TREE_TABS[number];
 
@@ -320,7 +293,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
     is no clickable link in a modal, so the button is the link and this line is what a reader can
     copy if they would rather not hand the dialog a browser.
 */
-export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, compares its fields with an org you choose, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
+export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
 It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org. "Deploy this metadata…", on every tree's Treecipe tab, deploys that tree's custom objects (each with everything in its source folder) and the custom fields of its standard objects from this workspace's source to the org selected there, or to a sandbox or scratch org you pick when none is, after a confirmation that lists the files, and only once the org answers again that it is a sandbox.
 
@@ -353,7 +326,7 @@ export interface IRecipeCockpitRunViewModel {
 */
 /*
     fieldTypeWithSize is what the Structure tab draws ("Text(50)", "Number(16,2)"); fieldType stays
-    the bare type, which is what the diff compares and what an org-only row is typed by.
+    the bare type.
 
     isPicklist is set ONLY on a picklist or multi-select picklist row, and is all the model says
     about its values: the values are posted when the reader expands the row (loadPicklistValues).
@@ -595,18 +568,15 @@ export interface IRecipeCockpitRecipeViewModel {
 }
 
 /*
-    What normalizeObjectsWrapper reads from the wrapper. picklistValuesByObjectApiName is HOST-ONLY:
-    the metadata diff compares it with the org's describe, and it is kept off the field view model
-    so the model posted to the panel does not grow by every picklist's values. Only a field whose
-    wrapper entry carries a picklistValues array and no controllingField has an entry -- no entry
-    means the recipe makes no claim about the field's values, which is different from an empty list.
+    What normalizeObjectsWrapper reads from the wrapper. picklistDisplayValuesByObjectApiName is
+    kept off the field view model so the model posted to the panel does not grow by every picklist's
+    values: the panel asks for one row's values when it is opened.
 */
 export interface IRecipeCockpitNormalizedObjectsWrapper {
     objects: IRecipeCockpitObjectViewModel[];
     notices: string[];
     isObjectsWrapper: boolean;
     fieldlessObjectApiNames: Set<string>;
-    picklistValuesByObjectApiName: Map<string, Map<string, string[]>>;
     picklistDisplayValuesByObjectApiName: RecipeCockpitPicklistDisplayValuesByObjectApiName;
     recipeTrees: IRecipeCockpitWrapperTree[];
     parentLookupsByObjectApiName: Map<string, IRecipeCockpitParentLookupViewModel[]>;
@@ -719,10 +689,8 @@ export interface IRecipeCockpitPanelTreePlace {
     isExpanded: boolean;
     selectedTab: RecipeCockpitTreeTab;
     searchQueries: Partial<Record<RecipeCockpitTreeTab, string>>;
-    statusFilter: string;
     expandedObjectKeys: string[];
     openPicklistKeys: string[];
-    expandedDataObjectApiNames: string[];
 }
 
 export interface IRecipeCockpitPanelPlace {
@@ -743,79 +711,6 @@ export interface IRecipeCockpitTreeFocus {
 export interface IRecipeCockpitLoadFailedMessage {
     command: 'loadFailed';
     message: string;
-}
-
-/*
-    One field the comparison found DIFFERENT, as the panel draws it. An unchanged field is not sent:
-    every recipe row of a compared object that has no entry here is unchanged, so posting one entry
-    per unchanged field would grow the payload with the recipe for no information. A new-in-org
-    field has no recipe row at all, and is drawn as a row of its own from this entry.
-*/
-export interface IRecipeCockpitFieldDiffViewModel {
-    fieldApiName: string;
-    status: MetadataDiffFieldStatus;
-    recipeFieldType: string;
-    orgFieldType: string;
-    addedPicklistValues: string[];
-    removedPicklistValues: string[];
-}
-
-/*
-    One COMPARED object. An object whose describe failed or was cancelled is absent -- the diff
-    engine reads the org side as what the org HAS, so passing it would report every one of its
-    fields removed -- and the panel draws the absence as "not compared", never as a status.
-*/
-export interface IRecipeCockpitObjectDiffViewModel {
-    objectApiName: string;
-    changedFields: IRecipeCockpitFieldDiffViewModel[];
-    statusCounts: Record<MetadataDiffFieldStatus, number>;
-    uncreateableOrgOnlyFieldCount: number;
-}
-
-export interface IRecipeCockpitDiffViewModel {
-    objects: IRecipeCockpitObjectDiffViewModel[];
-    statusCounts: Record<MetadataDiffFieldStatus, number>;
-}
-
-export interface IRecipeCockpitOrgDescribeObjectSummary {
-    objectApiName: string;
-    isDescribed: boolean;
-    describedFieldCount: number;
-    failureMessage: string;
-}
-
-/*
-    What one org comparison said about ONE TREE of the recipe on screen: a per-object describe
-    SUMMARY and the diff computed host side. The normalized describe stays in the host's cache --
-    the panel draws statuses, not describes. renderSequence ties it to the model it compared -- a
-    comparison of an earlier run's objects must not be drawn over a later run's rows -- and treeKey
-    to the card whose Structure tab asked for it.
-*/
-export interface IRecipeCockpitOrgDescribeMessage {
-    command: 'orgDescribe';
-    treeKey: string;
-    orgLabel: string;
-    summary: string;
-    isFailure: boolean;
-    isCancelled: boolean;
-    objects: IRecipeCockpitOrgDescribeObjectSummary[];
-    diff: IRecipeCockpitDiffViewModel;
-    renderSequence: number;
-    // THE FIELDS EACH DESCRIBED OBJECT REQUIRES (#220), FOR THE STRUCTURE TAB'S "required in <org>"; ONLY OBJECTS WITH ANY
-    requiredFields?: IRecipeCockpitRequiredFieldsViewModel[];
-}
-
-export interface IRecipeCockpitRequiredFieldsViewModel {
-    objectApiName: string;
-    fieldApiNames: string[];
-}
-
-// WHERE A COMPARISON IS WHILE IT RUNS, DRAWN IN THE PANEL AS WELL AS IN THE NOTIFICATION
-export interface IRecipeCockpitOrgProgressMessage {
-    command: 'orgProgress';
-    treeKey: string;
-    message: string;
-    renderSequence: number;
 }
 
 // ONE PICKLIST ROW'S VALUES, ANSWERING THE PANEL'S loadPicklistValues FOR THE MODEL renderSequence NAMES
@@ -1024,8 +919,6 @@ export const RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT: Record<ScratchOrgSetupPhase 
 export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitRecipeDataMessage
                                         | IRecipeCockpitLoadFailedMessage
-                                        | IRecipeCockpitOrgDescribeMessage
-                                        | IRecipeCockpitOrgProgressMessage
                                         | IRecipeCockpitPicklistValuesMessage
                                         | IRecipeCockpitDatasetRecordCountsMessage
                                         | IRecipeCockpitRunFakerStateMessage
@@ -1094,13 +987,9 @@ export interface IRecipeCockpitDataOrgSelection {
     isReadinessPosted?: boolean;
 }
 
-/*
-    The loader's whole answer: what is posted, the picklist values that stay on the host for the
-    diff, and the picklist values the panel asks for one row at a time.
-*/
+// THE LOADER'S WHOLE ANSWER: WHAT IS POSTED, AND THE PICKLIST VALUES THE PANEL ASKS FOR ONE ROW AT A TIME
 export interface IRecipeCockpitLoadedRecipe {
     recipeViewModel: IRecipeCockpitRecipeViewModel;
-    recipePicklistValuesByObjectApiName: Map<string, Map<string, string[]>>;
     picklistDisplayValuesByObjectApiName: RecipeCockpitPicklistDisplayValuesByObjectApiName;
     treeHistoryTargets: IRecipeCockpitTreeHistoryTargets;
     objectLevelsByApiName?: Map<string, number>;
@@ -1134,7 +1023,6 @@ export type RecipeCockpitPanelAction =
     | { kind: 'reportRenderFailure'; failureDescription: string; failureStack: string; invalidatesPanel: boolean }
     | { kind: 'openSource'; filePath: string; lineNumber: number }
     | { kind: 'selectRun'; runFolderName: string }
-    | { kind: 'selectOrg'; treeKey: string; isOrgChosenByReader: boolean }
     | { kind: 'generateTreecipe' }
     | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage }
     | { kind: 'loadDatasetRecordCounts'; datasetFolderName: string; datasetFolderPath: string; renderSequence: number }
@@ -1168,16 +1056,10 @@ export type RecipeCockpitPanelAction =
     | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
     | { kind: 'postOrgOpenState'; hostMessage: IRecipeCockpitOrgOpenStateMessage };
 
-// WHAT A REOPEN OF THE PANEL CARRIES INTO ITS RELOAD (#222): THE MODEL ON SCREEN, AND THE COMPARISONS DRAWN OVER IT
-export interface IRecipeCockpitCarriedPanelState {
-    recipeDataMessage: IRecipeCockpitRecipeDataMessage;
-    orgDescribeMessagesByTreeKey: Map<string, IRecipeCockpitOrgDescribeMessage>;
-}
-
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened --
-    a reopen keeps only the run on screen, its comparisons when the reload draws the same rows, and
-    Data-by-Org's Create results and request sequence.
+    a reopen keeps only the run on screen, and the insert results and request sequence of the
+    Treecipe tab's org selection.
 
     Two generations of allow-list: the PENDING pair is built when a model is posted, and only the
     panel's "rendered" acknowledgement promotes it to ACTIVE. A post succeeding says the message
@@ -1185,39 +1067,26 @@ export interface IRecipeCockpitCarriedPanelState {
     of a hidden tab) empties the active pair until the replayed model is drawn again. An action is
     honoured only when the panel has confirmed the row it came from is actually drawn.
 
-    The describable objects are an allow-list of the same kind, keyed by TREE: the panel names only
-    the card it asks from, and WHICH objects are described is read from here, never from the
-    message. isOrgDescribeInFlight refuses a second request while the first is still picking or
-    describing, so two quick picks cannot race to post two answers. Comparisons are kept per tree,
-    so comparing a second card does not take the first card's answer off the screen.
-
-    recipePicklistValuesByObjectApiName belongs to recipeDataMessage and is replaced with it: it is
-    the diff's recipe side for picklists, and it is never posted. picklistDisplayValuesByObjectApiName
-    is replaced with it too, and is posted one row at a time, only for a row the rendered model
-    marked as a picklist (the loadable picklist keys, another pending/active pair).
+    picklistDisplayValuesByObjectApiName belongs to recipeDataMessage and is replaced with it. It is
+    posted one row at a time, only for a row the rendered model marked as a picklist (the loadable
+    picklist keys, another pending/active pair).
 */
 export interface IRecipeCockpitPanelState {
     workspaceRoot: string;
     isPanelReady: boolean;
     loadPhaseMessage: string;
     recipeDataMessage?: IRecipeCockpitRecipeDataMessage;
-    recipePicklistValuesByObjectApiName: Map<string, Map<string, string[]>>;
     picklistDisplayValuesByObjectApiName: RecipeCockpitPicklistDisplayValuesByObjectApiName;
     loadFailedMessage?: IRecipeCockpitLoadFailedMessage;
-    orgDescribeMessagesByTreeKey: Map<string, IRecipeCockpitOrgDescribeMessage>;
-    orgProgressMessage?: IRecipeCockpitOrgProgressMessage;
     pendingOpenableSourceKeys: Set<string>;
     pendingSelectableRunFolderNames: Set<string>;
-    pendingDescribableObjectApiNamesByTreeKey: Map<string, string[]>;
     pendingLoadablePicklistKeys: Set<string>;
     openableSourceKeys: Set<string>;
     selectableRunFolderNames: Set<string>;
-    describableObjectApiNamesByTreeKey: Map<string, string[]>;
     loadablePicklistKeys: Set<string>;
     treeHistoryTargets: IRecipeCockpitTreeHistoryTargets;
     pendingTreeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
     treeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
-    isOrgDescribeInFlight: boolean;
     // "Open in browser" (#279): ONE "sf org open" AT A TIME, SO A DOUBLE CLICK OPENS ONE TAB
     isOrgOpenInFlight?: boolean;
     isGenerateTreecipeInFlight: boolean;
@@ -1359,8 +1228,6 @@ export class RecipeCockpitService {
 
         const scrollY = candidatePlace.scrollY;
         const candidateTrees = Array.isArray(candidatePlace.trees) ? candidatePlace.trees.slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES) : [];
-        const statusFilterOptions = ['all', ...METADATA_DIFF_FIELD_STATUSES.filter(diffStatus => diffStatus !== 'unchanged')];
-
         const trees = candidateTrees.flatMap((candidateTree: unknown): IRecipeCockpitPanelTreePlace[] => {
 
             if ( !this.isPlainRecord(candidateTree) || !this.isBoundedText(candidateTree.treeKey) || candidateTree.treeKey === '' ) {
@@ -1384,17 +1251,14 @@ export class RecipeCockpitService {
 
             const candidateSelectedTab = readTabName(candidateTree.selectedTab);
             const selectedTab = RECIPE_COCKPIT_TREE_TABS.find(tabName => tabName === candidateSelectedTab) ?? 'treecipe';
-            const statusFilter = statusFilterOptions.find(statusOption => statusOption === candidateTree.statusFilter) ?? 'all';
 
             return [{
                 treeKey: candidateTree.treeKey,
                 isExpanded: candidateTree.isExpanded === true,
                 selectedTab: selectedTab,
                 searchQueries: searchQueries,
-                statusFilter: statusFilter,
                 expandedObjectKeys: this.normalizePlaceNames(candidateTree.expandedObjectKeys),
-                openPicklistKeys: this.normalizePlaceNames(candidateTree.openPicklistKeys),
-                expandedDataObjectApiNames: this.normalizePlaceNames(candidateTree.expandedDataObjectApiNames)
+                openPicklistKeys: this.normalizePlaceNames(candidateTree.openPicklistKeys)
             }];
 
         });
@@ -2867,21 +2731,16 @@ export class RecipeCockpitService {
             workspaceRoot: workspaceRoot,
             isPanelReady: false,
             loadPhaseMessage: '',
-            recipePicklistValuesByObjectApiName: new Map(),
             picklistDisplayValuesByObjectApiName: new Map(),
             pendingOpenableSourceKeys: new Set(),
             pendingSelectableRunFolderNames: new Set(),
-            pendingDescribableObjectApiNamesByTreeKey: new Map(),
             pendingLoadablePicklistKeys: new Set(),
             openableSourceKeys: new Set(),
             selectableRunFolderNames: new Set(),
-            describableObjectApiNamesByTreeKey: new Map(),
-            orgDescribeMessagesByTreeKey: new Map(),
             loadablePicklistKeys: new Set(),
             treeHistoryTargets: RecipeCockpitTreeHistory.buildEmptyTargets(),
             pendingTreeHistoryAllowLists: this.buildEmptyTreeHistoryAllowLists(),
             treeHistoryAllowLists: this.buildEmptyTreeHistoryAllowLists(),
-            isOrgDescribeInFlight: false,
             isGenerateTreecipeInFlight: false,
             pendingIsGenerateTreecipeOffered: false,
             isGenerateTreecipeOffered: false,
@@ -2920,8 +2779,7 @@ export class RecipeCockpitService {
 
         /*
             Re-running the command on an open panel reloads what it SHOWS (#222): the run the reader
-            picked, rather than the newest, and the comparisons drawn over it if the reload reads
-            back exactly the model they were drawn against.
+            picked, rather than the newest.
         */
         const previousPanelState = existingCockpitPanel && this.recipeCockpitPanelState.workspaceRoot === workspaceRoot
             ? this.recipeCockpitPanelState
@@ -2937,13 +2795,6 @@ export class RecipeCockpitService {
         const carriedRunFolderName = previousPanelState?.recipeDataMessage?.recipe.selectedRunFolderName
             || persistedPanelPlace?.runFolderName
             || undefined;
-        // THE OLD MODEL IS HELD THROUGH THE RELOAD ONLY WHEN A COMPARISON NEEDS IT TO BE CHECKED AGAINST -- AT SCALE IT IS TENS OF MB
-        const carriedPanelState = previousPanelState?.recipeDataMessage && previousPanelState.orgDescribeMessagesByTreeKey.size > 0
-            ? {
-                recipeDataMessage: previousPanelState.recipeDataMessage,
-                orgDescribeMessagesByTreeKey: previousPanelState.orgDescribeMessagesByTreeKey
-            }
-            : undefined;
 
         const cockpitPanel = existingCockpitPanel
             ?? vscode.window.createWebviewPanel(
@@ -3007,7 +2858,6 @@ export class RecipeCockpitService {
             workspaceRoot,
             carriedRunFolderName,
             undefined,
-            carriedPanelState,
             persistedPanelPlace
         );
 
@@ -3025,7 +2875,6 @@ export class RecipeCockpitService {
                                                 workspaceRoot: string,
                                                 requestedRunFolderName?: string,
                                                 focusTree?: IRecipeCockpitTreeFocus,
-                                                carriedPanelState?: IRecipeCockpitCarriedPanelState,
                                                 persistedPanelPlace?: IRecipeCockpitPanelPlace): Promise<void> {
 
         const loadSequence = ++this.recipeCockpitLoadSequence;
@@ -3057,7 +2906,7 @@ export class RecipeCockpitService {
                 return;
             }
 
-            this.renderRecipeModel(cockpitPanel, loadedRecipe, focusTree, carriedPanelState, persistedPanelPlace);
+            this.renderRecipeModel(cockpitPanel, loadedRecipe, focusTree, persistedPanelPlace);
 
         } catch (loadError) {
 
@@ -3124,51 +2973,9 @@ export class RecipeCockpitService {
 
     }
 
-    /*
-        A comparison is about the ROWS it was drawn over, so it is carried to a reloaded model only
-        when that model draws the same rows -- the same run, the same objects field for field, and
-        the same objects in each card -- because re-labelling a comparison of different rows with
-        the new model's renderSequence would be a false claim about them. What a card's history
-        lists, and which runs the selector offers, are not rows: a data set made since does not
-        un-compare anything. Compared by serializing both, which costs a reopen a few hundred
-        milliseconds at the largest model and nothing anywhere else.
-    */
-    static buildComparedRowsSignature(recipeViewModel: IRecipeCockpitRecipeViewModel): string {
-
-        return JSON.stringify({
-            selectedRunFolderName: recipeViewModel.selectedRunFolderName,
-            objects: recipeViewModel.objects,
-            trees: recipeViewModel.trees.map(tree => ({ treeKey: tree.treeKey, objects: tree.objects }))
-        });
-
-    }
-
-    static carryOrgDescribeMessages(carriedPanelState: IRecipeCockpitCarriedPanelState | undefined,
-                                        recipeViewModel: IRecipeCockpitRecipeViewModel,
-                                        renderSequence: number): Map<string, IRecipeCockpitOrgDescribeMessage> {
-
-        const carriedOrgDescribeMessages = new Map<string, IRecipeCockpitOrgDescribeMessage>();
-
-        if ( !carriedPanelState || carriedPanelState.orgDescribeMessagesByTreeKey.size === 0 ) {
-            return carriedOrgDescribeMessages;
-        }
-
-        if ( this.buildComparedRowsSignature(carriedPanelState.recipeDataMessage.recipe) !== this.buildComparedRowsSignature(recipeViewModel) ) {
-            return carriedOrgDescribeMessages;
-        }
-
-        carriedPanelState.orgDescribeMessagesByTreeKey.forEach((orgDescribeMessage, treeKey) => {
-            carriedOrgDescribeMessages.set(treeKey, { ...orgDescribeMessage, renderSequence: renderSequence });
-        });
-
-        return carriedOrgDescribeMessages;
-
-    }
-
     private static renderRecipeModel(cockpitPanel: vscode.WebviewPanel,
                                         loadedRecipe: IRecipeCockpitLoadedRecipe,
                                         focusTree?: IRecipeCockpitTreeFocus,
-                                        carriedPanelState?: IRecipeCockpitCarriedPanelState,
                                         persistedPanelPlace?: IRecipeCockpitPanelPlace) {
 
         const panelState = this.recipeCockpitPanelState;
@@ -3193,37 +3000,29 @@ export class RecipeCockpitService {
         if ( persistedPanelPlace && !panelState.restorePlace ) {
             this.forgetPersistedPanelPlace(this.recipeCockpitWorkspaceState);
         }
-        panelState.recipePicklistValuesByObjectApiName = loadedRecipe.recipePicklistValuesByObjectApiName;
         panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
         panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
         panelState.objectLevelsByApiName = loadedRecipe.objectLevelsByApiName;
         panelState.loadFailedMessage = undefined;
-        // A COMPARISON ANSWERED FOR THE PREVIOUS MODEL'S OBJECTS, WHICH ARE NOT NECESSARILY THIS ONE'S
-        panelState.orgDescribeMessagesByTreeKey = this.carryOrgDescribeMessages(carriedPanelState, recipeViewModel, recipeDataMessage.renderSequence);
-        panelState.orgProgressMessage = undefined;
         panelState.loadPhaseMessage = '';
         panelState.reportedFailureDescriptions = new Set();
         panelState.pendingOpenableSourceKeys = new Set(this.collectOpenableSourceKeys(recipeViewModel));
         panelState.pendingSelectableRunFolderNames = new Set(recipeViewModel.runs.map(run => run.runFolderName));
-        panelState.pendingDescribableObjectApiNamesByTreeKey = this.collectDescribableObjectApiNamesByTreeKey(recipeViewModel);
         panelState.pendingLoadablePicklistKeys = new Set(this.collectLoadablePicklistKeys(recipeViewModel));
         panelState.pendingTreeHistoryAllowLists = this.collectTreeHistoryAllowLists(recipeViewModel);
         panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
         // THE PANEL DRAWS THE BUTTON ONLY FOR A MODEL WITH NO RUN, AND ONLY ITS "rendered" SAYS THAT MODEL IS THE ONE ON SCREEN
         panelState.pendingIsGenerateTreecipeOffered = recipeViewModel.runs.length === 0;
         panelState.isGenerateTreecipeOffered = false;
-        // THE SAME REASON AS THE DESCRIBABLE SET: AN ANSWER IS TAGGED WITH THE CURRENT renderSequence, SO THE OLD MODEL'S KEYS MUST NOT ANSWER FOR IT
+        /*
+            Emptied rather than left on the previous model until the new one's "rendered": an answer
+            is tagged with the CURRENT model's renderSequence, so the old model's keys must not
+            answer for it.
+        */
         panelState.loadablePicklistKeys = new Set();
         /*
-            Emptied rather than left on the previous model until the new one's "rendered": a describe
-            reads its objects from here but tags its answer with the CURRENT model's renderSequence,
-            so a click landing between this post and the ack would describe the old run's objects
-            and draw the answer over the new run's rows.
-        */
-        panelState.describableObjectApiNamesByTreeKey = new Map();
-        /*
-            The same for Data-by-Org: its answers are tagged with the model they describe, so a new
-            model ends whatever selection was being checked for the old one. The org list and the org
+            The same for the Treecipe tab's org selection: its answers are tagged with the model they
+            describe, so a new model ends whatever selection was being checked for the old one. The org list and the org
             chosen survive it -- the panel asks again once the new model is drawn.
         */
         panelState.pendingDataOrgObjectApiNames = new Set(this.collectDataOrgObjectApiNames(recipeViewModel));
@@ -3319,7 +3118,6 @@ export class RecipeCockpitService {
                 panelState.isPanelReady = true;
                 panelState.openableSourceKeys = new Set();
                 panelState.selectableRunFolderNames = new Set();
-                panelState.describableObjectApiNamesByTreeKey = new Map();
                 panelState.loadablePicklistKeys = new Set();
                 panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
                 panelState.isGenerateTreecipeOffered = false;
@@ -3340,7 +3138,6 @@ export class RecipeCockpitService {
                 panelState.restorePlace = undefined;
                 panelState.openableSourceKeys = panelState.pendingOpenableSourceKeys;
                 panelState.selectableRunFolderNames = panelState.pendingSelectableRunFolderNames;
-                panelState.describableObjectApiNamesByTreeKey = panelState.pendingDescribableObjectApiNamesByTreeKey;
                 panelState.loadablePicklistKeys = panelState.pendingLoadablePicklistKeys;
                 panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists;
                 panelState.isGenerateTreecipeOffered = panelState.pendingIsGenerateTreecipeOffered;
@@ -3364,7 +3161,6 @@ export class RecipeCockpitService {
                 if ( panelAction.invalidatesPanel ) {
                     panelState.openableSourceKeys = new Set();
                     panelState.selectableRunFolderNames = new Set();
-                    panelState.describableObjectApiNamesByTreeKey = new Map();
                     panelState.loadablePicklistKeys = new Set();
                     panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
                     panelState.isGenerateTreecipeOffered = false;
@@ -3408,11 +3204,6 @@ export class RecipeCockpitService {
             case 'selectRun':
 
                 await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelAction.runFolderName);
-                return;
-
-            case 'selectOrg':
-
-                await this.describeTreeObjectsInOrg(cockpitPanel, panelState, panelAction.treeKey, panelAction.isOrgChosenByReader);
                 return;
 
             case 'generateTreecipe':
@@ -3936,196 +3727,6 @@ export class RecipeCockpitService {
     }
 
     /*
-        Describes the objects of ONE tree card in an org and posts how they compare.
-
-        The org is the one Data-by-Org has picked -- in this panel, or remembered for this workspace
-        -- and the authorized-org quick pick is shown only when there is none. The objects are the
-        ones the rendered model put in that card, captured BEFORE any picker: the reader can switch
-        runs while it is open, and the describe answers for the tree they asked about. Its answer is
-        posted only if that model is still the one on screen. Nothing here is fatal to the panel --
-        no authorized org, a connection that fails and an object the org does not have are all told
-        to the reader and leave the rows as they were. "Choose another org…" skips straight to the
-        picker, which is the only way to compare with an org Data-by-Org does not list (production).
-    */
-    private static async describeTreeObjectsInOrg(cockpitPanel: vscode.WebviewPanel,
-                                                    panelState: IRecipeCockpitPanelState,
-                                                    treeKey: string,
-                                                    isOrgChosenByReader: boolean) {
-
-        const describedRecipeDataMessage = panelState.recipeDataMessage;
-        const describedRecipePicklistValues = panelState.recipePicklistValuesByObjectApiName;
-        const objectApiNames = panelState.describableObjectApiNamesByTreeKey.get(treeKey);
-
-        if ( !describedRecipeDataMessage || !objectApiNames ) {
-            return;
-        }
-
-        panelState.isOrgDescribeInFlight = true;
-
-        try {
-
-            const selectedOrgDetail = isOrgChosenByReader
-                ? await SalesforceOrgService.promptForAuthorizedOrg(RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER)
-                : await this.resolveComparisonOrgDetail(panelState);
-
-            if ( !selectedOrgDetail ) {
-                return;
-            }
-
-            const orgLabel = this.buildOrgLabel(selectedOrgDetail);
-            const objectCountText = `${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'}`;
-            const reportProgress = (progressText: string) => this.reportOrgProgress(
-                cockpitPanel, panelState, describedRecipeDataMessage, treeKey, `Comparing with ${orgLabel}: ${progressText}`
-            );
-            let describeResult: IOrgDescribeRequestResult | undefined;
-            let connectionFailureMessage: IRecipeCockpitOrgDescribeMessage | undefined;
-
-            reportProgress(`describing ${objectCountText}…`);
-
-            try {
-
-                describeResult = await vscode.window.withProgress({
-                    location: vscode.ProgressLocation.Notification,
-                    title: `Recipe Cockpit: describing ${objectCountText} in ${orgLabel}`,
-                    cancellable: true
-                }, async (progress, cancellationToken) => (
-                    await SalesforceOrgService.describeObjects(
-                        selectedOrgDetail.username,
-                        objectApiNames,
-                        // BY THE USERNAME THE CACHE IS KEYED BY -- AN ALIAS RE-POINTED SINCE THE PICK WOULD CACHE ONE ORG'S ANSWER UNDER ANOTHER
-                        () => SalesforceOrgService.getConnection(selectedOrgDetail.username),
-                        {
-                            onObjectDescribed: (completedCount, requestedCount) => {
-                                progress.report({ increment: 100 / requestedCount, message: `${completedCount} of ${requestedCount}` });
-                                reportProgress(`described ${completedCount} of ${requestedCount} ${requestedCount === 1 ? 'object' : 'objects'}…`);
-                            },
-                            isCancellationRequested: () => cancellationToken.isCancellationRequested
-                        }
-                    )
-                ));
-
-            } catch (connectionError) {
-
-                connectionFailureMessage = this.buildOrgConnectionFailureMessage(treeKey, orgLabel, connectionError, describedRecipeDataMessage.renderSequence);
-
-            }
-
-            /*
-                Compared OUTSIDE the connection's try: only a describe that failed is the org's
-                failure. A throw in the comparison is this extension's, and reporting it as "could
-                not connect" would send the reader to re-authorize an org that answered.
-            */
-            const orgDescribeMessage = connectionFailureMessage ?? this.buildOrgDescribeMessage(
-                treeKey,
-                orgLabel,
-                describeResult,
-                describedRecipeDataMessage.renderSequence,
-                this.buildRecipeDiffViewModel(describedRecipeDataMessage.recipe.objects, describeResult, describedRecipePicklistValues)
-            );
-
-            const isDescribedModelStillOnScreen = this.recipeCockpitPanel === cockpitPanel
-                                                    && this.recipeCockpitPanelState === panelState
-                                                    && panelState.recipeDataMessage === describedRecipeDataMessage;
-
-            // AN ANSWER THE READER MOVED AWAY FROM IS NOT THEIRS TO BE TOLD ABOUT, AND A CANCEL IS ONE THEY CHOSE
-            if ( !isDescribedModelStillOnScreen ) {
-                return;
-            }
-
-            const hasUnexpectedFailure = orgDescribeMessage.isFailure
-                                            || ( !orgDescribeMessage.isCancelled && orgDescribeMessage.objects.some(objectSummary => !objectSummary.isDescribed) );
-
-            if ( hasUnexpectedFailure ) {
-                VSCodeWorkspaceService.showWarningMessage(orgDescribeMessage.summary);
-            }
-
-            panelState.orgProgressMessage = undefined;
-            panelState.orgDescribeMessagesByTreeKey.set(treeKey, orgDescribeMessage);
-            this.postToPanel(cockpitPanel, orgDescribeMessage);
-
-        } finally {
-
-            panelState.isOrgDescribeInFlight = false;
-
-            /*
-                Still set only when the comparison ended WITHOUT posting an answer -- an answer
-                clears it first. The host must stop replaying it, and the panel has to be told too:
-                it hides the line when an answer arrives, and none is coming.
-            */
-            const unansweredProgressMessage = panelState.orgProgressMessage;
-            panelState.orgProgressMessage = undefined;
-
-            if ( unansweredProgressMessage && this.recipeCockpitPanelState === panelState ) {
-                this.postToPanel(cockpitPanel, { command: 'orgProgress', treeKey: unansweredProgressMessage.treeKey, message: '', renderSequence: unansweredProgressMessage.renderSequence });
-            }
-
-        }
-
-    }
-
-    /*
-        The org a comparison describes in: the one Data-by-Org has picked in this panel, else the
-        one it remembers for this workspace (looked up in the session's cached answer to which orgs
-        the CLI reports connected, so one since disconnected is not used), else whichever connected
-        org the reader picks now. A listing that fails only means the reader is asked.
-    */
-    private static async resolveComparisonOrgDetail(panelState: IRecipeCockpitPanelState): Promise<IAuthenticatedOrgDetail | undefined> {
-
-        const pickedOrgDetail = panelState.dataOrgUsername
-            ? panelState.dataOrgDetails.find(orgDetail => orgDetail.username === panelState.dataOrgUsername)
-            : undefined;
-
-        if ( pickedOrgDetail ) {
-            return pickedOrgDetail;
-        }
-
-        // A PICKED ORG IS ALWAYS IN THE LIST: A RE-LIST THAT DROPS IT FORGETS IT
-        const rememberedUsername = this.readRememberedDataOrgUsername();
-
-        if ( rememberedUsername ) {
-            try {
-                const rememberedOrgDetail = ( await SalesforceOrgService.listDataOrgDetails() ).orgDetails
-                    .find(orgDetail => orgDetail.username === rememberedUsername);
-                if ( rememberedOrgDetail ) {
-                    return rememberedOrgDetail;
-                }
-            } catch {
-                // NOT LISTED IS THE SAME ANSWER AS NOT REMEMBERED: THE READER CHOOSES
-            }
-        }
-
-        return await SalesforceOrgService.promptForAuthorizedOrg(RECIPE_COCKPIT_ORG_PICKER_PLACEHOLDER);
-
-    }
-
-    /*
-        Stored as well as posted, so a reveal in the middle of a comparison replays where it is, and
-        only for the model the comparison is OF: a reader who switched runs mid-describe has a panel
-        about another recipe, and a progress line over it would describe work it is not waiting on.
-    */
-    private static reportOrgProgress(cockpitPanel: vscode.WebviewPanel,
-                                        panelState: IRecipeCockpitPanelState,
-                                        describedRecipeDataMessage: IRecipeCockpitRecipeDataMessage,
-                                        treeKey: string,
-                                        progressText: string) {
-
-        if ( this.recipeCockpitPanelState !== panelState || panelState.recipeDataMessage !== describedRecipeDataMessage ) {
-            return;
-        }
-
-        const orgProgressMessage: IRecipeCockpitOrgProgressMessage = {
-            command: 'orgProgress',
-            treeKey: treeKey,
-            message: progressText,
-            renderSequence: describedRecipeDataMessage.renderSequence
-        };
-
-        panelState.orgProgressMessage = orgProgressMessage;
-        this.postToPanel(cockpitPanel, orgProgressMessage);
-
-    }
-
-    /*
         The no-run empty state's Generate Treecipe button (#214): hands off to Generate Treecipe, then
         loads the run it wrote. The command is the unflagged one a reader can already run from the
         palette. The latest run is loaded afterwards whether or not generation wrote one: Generate
@@ -4167,32 +3768,6 @@ export class RecipeCockpitService {
         if ( hasGenerationFailed ) {
             throw generationError;
         }
-
-    }
-
-    /*
-        Per tree card, every object it draws a Structure tab for, once: the objects the model has a
-        recipe for, since a lookup target with none is not on the card. A card with none offers no
-        comparison.
-    */
-    static collectDescribableObjectApiNamesByTreeKey(recipeViewModel: IRecipeCockpitRecipeViewModel): Map<string, string[]> {
-
-        const recipeObjectApiNames = new Set(recipeViewModel.objects.map(objectViewModel => objectViewModel.objectApiName));
-        const describableObjectApiNamesByTreeKey = new Map<string, string[]>();
-
-        recipeViewModel.trees.forEach(tree => {
-
-            const treeObjectApiNames = [...new Set(tree.objects
-                .map(treeObject => treeObject.objectApiName)
-                .filter(objectApiName => recipeObjectApiNames.has(objectApiName)))];
-
-            if ( treeObjectApiNames.length > 0 ) {
-                describableObjectApiNamesByTreeKey.set(tree.treeKey, treeObjectApiNames);
-            }
-
-        });
-
-        return describableObjectApiNamesByTreeKey;
 
     }
 
@@ -5498,8 +5073,8 @@ export class RecipeCockpitService {
         InsertAttempts results file, and the same rollback on Cancel or an all-or-none failure.
 
         Once a data set folder was made, an insert that finished on the model it was clicked on posts
-        only its card's result and the new data set (#226), so the org selection, every other card and
-        every comparison stay on screen. One that threw, or whose run changed meanwhile, or whose data
+        only its card's result and the new data set (#226), so the org selection and every other card
+        stay on screen. One that threw, or whose run changed meanwhile, or whose data
         set the host cannot place, reloads the run onto the card's Treecipe tab, as before. The state
         message is posted last, because the panel disabled every insert on the click.
     */
@@ -5968,131 +5543,10 @@ export class RecipeCockpitService {
 
     }
 
-    /*
-        The recipe on screen against what the org described, as the panel draws it.
-
-        Only DESCRIBED objects are compared: RecipeCockpitMetadataDiff reads its org side as what the
-        org has, so an object whose describe failed or was cancelled would come back with every field
-        removed-from-org. Leaving it out of BOTH sides is what lets the panel say "not compared"
-        instead. Outcomes are keyed by the names the host requested, which are the model's own.
-    */
-    static buildRecipeDiffViewModel(recipeObjects: IRecipeCockpitObjectViewModel[],
-                                    describeResult: IOrgDescribeRequestResult,
-                                    recipePicklistValuesByObjectApiName: RecipePicklistValuesByObjectApiName): IRecipeCockpitDiffViewModel {
-
-        const describedOutcomes = describeResult.outcomes.filter(describeOutcome => !!describeOutcome.describe);
-        const describedObjectApiNames = new Set(describedOutcomes.map(describeOutcome => describeOutcome.objectApiName));
-
-        const metadataDiff = RecipeCockpitMetadataDiff.computeMetadataDiff(
-            recipeObjects.filter(recipeObject => describedObjectApiNames.has(recipeObject.objectApiName)),
-            describedOutcomes.map(describeOutcome => describeOutcome.describe),
-            recipePicklistValuesByObjectApiName
-        );
-
-        return {
-            objects: metadataDiff.objects.map(objectResult => ({
-                objectApiName: objectResult.objectApiName,
-                changedFields: objectResult.fields
-                    .filter(fieldResult => fieldResult.status !== 'unchanged')
-                    .map(fieldResult => this.buildFieldDiffViewModel(fieldResult)),
-                statusCounts: objectResult.statusCounts,
-                uncreateableOrgOnlyFieldCount: objectResult.uncreateableOrgOnlyFieldCount
-            })),
-            statusCounts: metadataDiff.statusCounts
-        };
-
-    }
-
-    private static buildFieldDiffViewModel(fieldResult: IMetadataDiffFieldResult): IRecipeCockpitFieldDiffViewModel {
-
-        return {
-            fieldApiName: fieldResult.fieldApiName,
-            status: fieldResult.status,
-            recipeFieldType: fieldResult.recipeFieldType,
-            orgFieldType: fieldResult.orgFieldType,
-            addedPicklistValues: fieldResult.addedPicklistValues,
-            removedPicklistValues: fieldResult.removedPicklistValues
-        };
-
-    }
-
-    static buildEmptyDiffViewModel(): IRecipeCockpitDiffViewModel {
-
-        return { objects: [], statusCounts: RecipeCockpitMetadataDiff.buildEmptyStatusCounts() };
-
-    }
-
     // THE ALIAS A READER CHOSE BY, WITH THE USERNAME THAT SAYS WHICH ORG IT CURRENTLY POINTS AT
     static buildOrgLabel(orgDetail: IAuthenticatedOrgDetail): string {
 
         return orgDetail.alias ? `${orgDetail.alias} (${orgDetail.username})` : orgDetail.username;
-
-    }
-
-    static buildOrgDescribeMessage(treeKey: string,
-                                    orgLabel: string,
-                                    describeResult: IOrgDescribeRequestResult,
-                                    renderSequence: number,
-                                    recipeDiff: IRecipeCockpitDiffViewModel = RecipeCockpitService.buildEmptyDiffViewModel()): IRecipeCockpitOrgDescribeMessage {
-
-        const objectSummaries: IRecipeCockpitOrgDescribeObjectSummary[] = describeResult.outcomes.map(describeOutcome => ({
-            objectApiName: describeOutcome.objectApiName,
-            isDescribed: !!describeOutcome.describe,
-            describedFieldCount: describeOutcome.describe?.fields.length ?? 0,
-            failureMessage: describeOutcome.describe ? '' : ( describeOutcome.failureMessage || 'unknown error' )
-        }));
-
-        const requestedCount = objectSummaries.length;
-        const describedCount = objectSummaries.filter(objectSummary => objectSummary.isDescribed).length;
-        const cachedCount = describeResult.outcomes.filter(describeOutcome => describeOutcome.wasCached).length;
-        const failedCount = requestedCount - describedCount;
-
-        const describedText = `${describedCount} of ${requestedCount} ${requestedCount === 1 ? 'object' : 'objects'} described`;
-        const cachedText = cachedCount > 0 ? ` (${cachedCount} from this session's cache)` : '';
-
-        let summary = `Described in ${orgLabel}: ${describedText}${cachedText}.`;
-
-        if ( describeResult.wasCancelled ) {
-            summary = `The describe in ${orgLabel} was cancelled: ${describedText}${cachedText}.`;
-        } else if ( failedCount > 0 ) {
-            summary = `${summary} ${failedCount} could not be described.`;
-        }
-
-        const requiredFields: IRecipeCockpitRequiredFieldsViewModel[] = describeResult.outcomes
-            .filter(describeOutcome => !!describeOutcome.describe)
-            .map(describeOutcome => ({ objectApiName: describeOutcome.objectApiName, fieldApiNames: RecipeCockpitRecordCreation.findRequiredFieldApiNames(describeOutcome.describe) }))
-            .filter(requiredFieldList => requiredFieldList.fieldApiNames.length > 0);
-
-        return {
-            command: 'orgDescribe',
-            treeKey: treeKey,
-            orgLabel: orgLabel,
-            summary: summary,
-            isFailure: false,
-            isCancelled: describeResult.wasCancelled,
-            objects: objectSummaries,
-            diff: recipeDiff,
-            renderSequence: renderSequence,
-            ...( requiredFields.length > 0 ? { requiredFields: requiredFields } : {} )
-        };
-
-    }
-
-    static buildOrgConnectionFailureMessage(treeKey: string, orgLabel: string, connectionError: unknown, renderSequence: number): IRecipeCockpitOrgDescribeMessage {
-
-        const failureText = ( connectionError as { message?: unknown } )?.message;
-
-        return {
-            command: 'orgDescribe',
-            treeKey: treeKey,
-            orgLabel: orgLabel,
-            summary: `Could not connect to ${orgLabel}: ${typeof failureText === 'string' && failureText ? failureText : String(connectionError)}. Re-authorize the org with "sf org login web" and try again.`,
-            isFailure: true,
-            isCancelled: false,
-            objects: [],
-            diff: this.buildEmptyDiffViewModel(),
-            renderSequence: renderSequence
-        };
 
     }
 
@@ -6202,25 +5656,6 @@ export class RecipeCockpitService {
                 }
 
                 return { kind: 'openSource', filePath: filePath, lineNumber: lineNumber };
-
-            }
-
-            /*
-                The tree's KEY, never an object name: the objects described are the ones the
-                confirmed-drawn model put in that card, read from the active allow-list. One request
-                at a time.
-            */
-            case 'selectOrg': {
-
-                const { treeKey } = panelMessage;
-
-                if ( typeof treeKey !== 'string'
-                        || !panelState.describableObjectApiNamesByTreeKey.has(treeKey)
-                        || panelState.isOrgDescribeInFlight ) {
-                    return undefined;
-                }
-
-                return { kind: 'selectOrg', treeKey: treeKey, isOrgChosenByReader: panelMessage.chooseOrg === true };
 
             }
 
@@ -6848,14 +6283,6 @@ export class RecipeCockpitService {
             replayMessages.push(this.withRestorePlace(panelState.recipeDataMessage, panelState));
         }
 
-        if ( panelState.recipeDataMessage ) {
-            replayMessages.push(...panelState.orgDescribeMessagesByTreeKey.values());
-        }
-
-        if ( panelState.recipeDataMessage && panelState.orgProgressMessage ) {
-            replayMessages.push(panelState.orgProgressMessage);
-        }
-
         if ( panelState.runFakerStateMessage ) {
             replayMessages.push(panelState.runFakerStateMessage);
         }
@@ -7093,7 +6520,6 @@ export class RecipeCockpitService {
         if ( recipeRuns.length === 0 ) {
             return {
                 recipeViewModel: { runs: [], selectedRunFolderName: '', objects: [], trees: [], notices: [], emptyStateMessage: RECIPE_COCKPIT_NO_RUN_MESSAGE },
-                recipePicklistValuesByObjectApiName: new Map(),
                 picklistDisplayValuesByObjectApiName: new Map(),
                 treeHistoryTargets: RecipeCockpitTreeHistory.buildEmptyTargets()
             };
@@ -7119,7 +6545,6 @@ export class RecipeCockpitService {
             recipeViewModel.emptyStateMessage = `The objects wrapper "${path.basename(selectedRun.objectsWrapperFilePath)}" for this run could not be read: ${readError?.message ?? readError}. Choose another run, or run "Generate Treecipe" again.`;
             return {
                 recipeViewModel: recipeViewModel,
-                recipePicklistValuesByObjectApiName: new Map(),
                 picklistDisplayValuesByObjectApiName: new Map(),
                 treeHistoryTargets: RecipeCockpitTreeHistory.buildEmptyTargets()
             };
@@ -7183,7 +6608,6 @@ export class RecipeCockpitService {
 
         return {
             recipeViewModel: recipeViewModel,
-            recipePicklistValuesByObjectApiName: normalizedObjectsWrapper.picklistValuesByObjectApiName,
             picklistDisplayValuesByObjectApiName: normalizedObjectsWrapper.picklistDisplayValuesByObjectApiName,
             treeHistoryTargets: treeHistoryBuild.targets,
             ...( normalizedObjectsWrapper.objectLevelsByApiName ? { objectLevelsByApiName: normalizedObjectsWrapper.objectLevelsByApiName } : {} )
@@ -7213,7 +6637,6 @@ export class RecipeCockpitService {
                 notices: [],
                 isObjectsWrapper: false,
                 fieldlessObjectApiNames: new Set(),
-                picklistValuesByObjectApiName: new Map(),
                 picklistDisplayValuesByObjectApiName: new Map(),
                 recipeTrees: [],
                 parentLookupsByObjectApiName: new Map()
@@ -7247,7 +6670,6 @@ export class RecipeCockpitService {
 
         const objects: IRecipeCockpitObjectViewModel[] = [];
         const fieldlessObjectApiNames = new Set<string>();
-        const picklistValuesByObjectApiName = new Map<string, Map<string, string[]>>();
         const picklistDisplayValuesByObjectApiName: RecipeCockpitPicklistDisplayValuesByObjectApiName = new Map();
         const parentLookupsByObjectApiName = new Map<string, IRecipeCockpitParentLookupViewModel[]>();
         const objectLevelsByApiName = new Map<string, number>();
@@ -7287,24 +6709,9 @@ export class RecipeCockpitService {
                     return;
                 }
 
-                /*
-                    A DEPENDENT picklist backed by a global value set records only the values its
-                    valueSettings name (XmlFileProcessor.extractPicklistDetailsFromValueSettings), not
-                    the set -- and the wrapper does not say which value set a field used, so a local
-                    dependent picklist cannot be told apart from it. Recording either as the field's
-                    values would report every unlisted org value as added, so neither makes a claim.
-                */
-                const isDependentPicklist = !!this.asString(wrapperFieldRecord.controllingField);
-                // READ ONCE AND SHARED BY THE DIFF'S COPY AND THE DISPLAY COPY -- NEITHER IS EVER MUTATED
                 const activePicklistValues = Array.isArray(wrapperFieldRecord.picklistValues)
                     ? this.readActivePicklistValues(wrapperFieldRecord.picklistValues)
                     : undefined;
-
-                if ( activePicklistValues && !isDependentPicklist ) {
-                    const picklistValuesByFieldApiName = picklistValuesByObjectApiName.get(objectApiName) ?? new Map<string, string[]>();
-                    picklistValuesByFieldApiName.set(fieldApiName, activePicklistValues);
-                    picklistValuesByObjectApiName.set(objectApiName, picklistValuesByFieldApiName);
-                }
 
                 const fieldType = this.asString(wrapperFieldRecord.type);
                 const fieldViewModel: IRecipeCockpitFieldViewModel = {
@@ -7356,7 +6763,6 @@ export class RecipeCockpitService {
             notices: notices,
             isObjectsWrapper: true,
             fieldlessObjectApiNames: fieldlessObjectApiNames,
-            picklistValuesByObjectApiName: picklistValuesByObjectApiName,
             picklistDisplayValuesByObjectApiName: picklistDisplayValuesByObjectApiName,
             recipeTrees: recipeTrees,
             parentLookupsByObjectApiName: parentLookupsByObjectApiName,
@@ -8011,24 +7417,6 @@ ${this.buildPaletteCustomProperties()}
     }
     .tabSearchInput::placeholder { color: var(--sdt-muted); opacity: 1; }
     .emptyStateActions { margin-top: 0.5rem; }
-    .treeCompare { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
-    .treeCompareControls { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
-    .treeCompare select {
-        padding: 0.3rem;
-        color: var(--sdt-text);
-        background-color: var(--sdt-surface);
-        border: 1px solid var(--sdt-border);
-        border-radius: 4px;
-    }
-    .orgStatus {
-        border-left: 3px solid var(--sdt-accent);
-        padding: 0.3rem 0.6rem;
-        margin: 0.4rem 0 0.75rem 0;
-        background-color: var(--sdt-surface);
-        border-radius: 4px;
-    }
-    .orgStatus.failed { border-left-color: var(--sdt-removed); }
-    .orgDescribeFailure { color: var(--sdt-muted); }
     .notice {
         border-left: 3px solid var(--sdt-changed);
         padding: 0.3rem 0.6rem;
@@ -8054,20 +7442,6 @@ ${this.buildPaletteCustomProperties()}
     }
     .sourceLink:focus-visible { outline-offset: -1px; }
     .sourceLink:hover { text-decoration: underline; }
-    .orgProgress { margin: 0.4rem 0; }
-    .diffSummary { margin-top: 0.2rem; }
-    .diffBadge {
-        font-size: 0.85em;
-        padding: 0 0.35rem;
-        border: 1px solid currentColor;
-        border-radius: 0.6rem;
-    }
-    .diff-new-in-org { color: var(--sdt-added); }
-    .diff-removed-from-org { color: var(--sdt-removed); }
-    .diff-type-changed { color: var(--sdt-changed); }
-    .diff-picklist-changed { color: var(--sdt-changed); }
-    .diff-unchanged { color: var(--sdt-muted); }
-    .diffDetail { margin: 0.15rem 0 0 0; color: var(--sdt-muted); word-break: break-word; }
     .treeCard {
         background-color: var(--sdt-surface);
         border: 1px solid var(--sdt-border);
@@ -8091,7 +7465,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader:hover { box-shadow: inset 4px 0 0 var(--sdt-accent); }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .treeCompare button, .emptyStateActions button, .dataOrgRefresh, .dataObjectToggle, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treeDeploy, .metadataDeployViewOutput {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treeDeploy, .metadataDeployViewOutput {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
@@ -8103,10 +7477,9 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .dataObjectToggle:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treeDeploy:hover:not(:disabled), .metadataDeployViewOutput:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
+    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treeDeploy:hover:not(:disabled), .metadataDeployViewOutput:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
-    .dataObjectToggle { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
     .dataOrgRefreshIcon { font-size: 1.5em; line-height: 1; }
     .treeToggle, .treeObjectToggle, .picklistToggle, .picklistToggleSpacer {
@@ -8119,7 +7492,7 @@ ${this.buildPaletteCustomProperties()}
     .picklistToggleSpacer { display: inline-block; height: 1px; }
     .toggleGlyph { display: block; width: 2.1rem; height: 2.1rem; }
     .toggleGlyph path { fill: var(--sdt-accent); stroke: none; }
-    .treeRunFaker, .toolbar button, .treeCompare button, .emptyStateActions button, .treeInsert, .dataOrgLoad, .dataOrgNewScratch {
+    .treeRunFaker, .toolbar button, .emptyStateActions button, .treeInsert, .dataOrgLoad, .dataOrgNewScratch {
         color: var(--sdt-on-accent);
         background-color: var(--sdt-accent);
         border-color: var(--sdt-accent);
@@ -8129,7 +7502,7 @@ ${this.buildPaletteCustomProperties()}
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
     .treeAddFriendChoice, .historyAction, .treeInsertErrors, .scratchOrgViewOutput, .metadataDeployViewOutput { text-decoration: underline; }
-    .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .treeCompare button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treeDeploy:disabled {
+    .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treeDeploy:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
         border-color: var(--sdt-border);
@@ -8266,7 +7639,7 @@ ${this.buildPaletteCustomProperties()}
     .treeObjectName { font-weight: 600; }
     .treeObjectBody { padding-bottom: 0.25rem; }
     .treeField { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
-    .treeFieldHeader .fieldType, .dataFieldHeader .fieldType {
+    .treeFieldHeader .fieldType {
         font-size: 0.85em;
         padding: 0 0.4rem;
         color: var(--sdt-chip-text);
@@ -8300,13 +7673,6 @@ ${this.buildPaletteCustomProperties()}
     .metadataDeployStatus { flex-basis: 100%; }
     .metadataDeployStatus.failed { color: var(--sdt-removed); }
     .scratchOrgViewOutput { margin-left: 0.5rem; }
-    .dataTreeCount { padding: 0.4rem 0.6rem 0 0.6rem; }
-    .dataObjectHeader, .dataFieldHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
-    .dataObjectName, .dataFieldName { font-weight: 600; }
-    .dataObject { padding: 0.3rem 0.6rem; }
-    .dataObjectBody { padding: 0.2rem 0 0.25rem 1.5rem; }
-    .dataField { padding: 0.25rem 0.6rem; }
-    .dataField:hover { background-color: var(--sdt-row-hover); }
     .treecipeHeader { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
     .treecipeActions, .treeInsertControls, .treeDeployControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
     .treeRecordCount { display: inline-flex; align-items: baseline; gap: 0.3rem; }
@@ -8321,7 +7687,6 @@ ${this.buildPaletteCustomProperties()}
     .treeRecordCountError { color: var(--sdt-removed); }
     .treeInsertResult.succeeded { color: var(--sdt-added); }
     .treeInsertResult.partial { color: var(--sdt-changed); }
-    .dataObject:hover { background-color: var(--sdt-row-hover); }
     .picklistValues { margin: 0.2rem 0 0 1.4rem; }
     .recordTypeHeading { margin-top: 0.3rem; font-weight: 600; }
     .picklistValue { padding-left: 0.6rem; word-break: break-word; }
@@ -8346,13 +7711,8 @@ ${this.buildPaletteCustomProperties()}
     const cockpitBodyElement = document.getElementById('cockpitBody');
     const AUTO_EXPAND_OBJECT_LIMIT = ${RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT};
     const AUTO_EXPAND_ROW_BUDGET = ${RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET};
-    const DIFF_STATUSES = ${JSON.stringify(METADATA_DIFF_FIELD_STATUSES)};
-    const DIFF_STATUS_LABELS = ${JSON.stringify(RECIPE_COCKPIT_DIFF_STATUS_LABELS)};
-    const DIFF_PICKLIST_VALUES_SHOWN = ${RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN};
     const GENERATE_TREECIPE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL)};
     const GENERATE_TREECIPE_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL)};
-    const DESCRIBE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DESCRIBE_ACTION_LABEL)};
-    const CHOOSE_ORG_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CHOOSE_ORG_ACTION_LABEL)};
     const RUN_FAKER_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL)};
     const RUN_FAKER_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL)};
     const ADD_FRIEND_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL)};
@@ -8511,36 +7871,6 @@ ${this.buildPaletteCustomProperties()}
         });
 
         return sourceLinkElement;
-
-    }
-
-    function listValues(values) {
-
-        const shownValues = values.slice(0, DIFF_PICKLIST_VALUES_SHOWN);
-        const hiddenCount = values.length - shownValues.length;
-
-        return shownValues.join(', ') + (hiddenCount > 0 ? ' and ' + hiddenCount + ' more' : '');
-
-    }
-
-    // WHAT A BADGE CANNOT SAY ON ITS OWN: WHICH TYPES, AND WHICH VALUES
-    function appendDiffDetail(fieldRowElement, fieldDiff) {
-
-        if (!fieldDiff) { return; }
-
-        if (fieldDiff.status === 'type-changed') {
-            fieldRowElement.appendChild(createElement('div', 'diffDetail', 'recipe: ' + fieldDiff.recipeFieldType + ' · org: ' + fieldDiff.orgFieldType));
-        }
-
-        if (fieldDiff.addedPicklistValues.length > 0) {
-            fieldRowElement.appendChild(createElement('div', 'diffDetail',
-                pluralize(fieldDiff.addedPicklistValues.length, 'value', 'values') + ' active in the org and not in the recipe: ' + listValues(fieldDiff.addedPicklistValues)));
-        }
-
-        if (fieldDiff.removedPicklistValues.length > 0) {
-            fieldRowElement.appendChild(createElement('div', 'diffDetail',
-                pluralize(fieldDiff.removedPicklistValues.length, 'value', 'values') + ' in the recipe and not active in the org: ' + listValues(fieldDiff.removedPicklistValues)));
-        }
 
     }
 
@@ -8854,8 +8184,6 @@ ${this.buildPaletteCustomProperties()}
 
     // ROWS WHOSE VALUES WERE ASKED FOR AND NOT YET ANSWERED, BY OBJECT AND FIELD -- KEYED BY NAMES FROM FILES, SO NO PROTOTYPE
     let pendingPicklistValueElements = Object.create(null);
-    // treeKey -> { orgLabel, fieldsByObjectApiName } FROM THE CARD'S LAST COMPARISON (#220); NAME-KEYED, SO NO PROTOTYPE
-    let requiredFieldsByTreeKey = Object.create(null);
 
     // DATA SET COUNT ROWS WAITING ON THE HOST, AND THE ANSWERS ALREADY HAD -- KEYED BY FOLDER NAMES FROM DISK, SO NO PROTOTYPE
     let pendingDatasetCountElements = Object.create(null);
@@ -9096,18 +8424,6 @@ ${this.buildPaletteCustomProperties()}
         return !!record && Object.prototype.hasOwnProperty.call(record, key);
     }
 
-    // WHETHER THE CARD'S LAST COMPARISON SAID THIS FIELD IS REQUIRED, AND IN WHICH ORG
-    function findRequiredInOrgLabel(tree, objectApiName, fieldApiName) {
-
-        if (!hasOwnKey(requiredFieldsByTreeKey, tree.treeKey)) { return ''; }
-
-        const requiredFields = requiredFieldsByTreeKey[tree.treeKey];
-        const fieldApiNames = hasOwnKey(requiredFields.fieldsByObjectApiName, objectApiName) ? requiredFields.fieldsByObjectApiName[objectApiName] : null;
-
-        return fieldApiNames && hasOwnKey(fieldApiNames, fieldApiName) ? requiredFields.orgLabel : '';
-
-    }
-
     /*
         One field row's checkbox, dimming and note (#220), all drawn from the host's answer. The
         state is never colour alone: the box's mark, aria-checked, the title and the note all say it.
@@ -9123,12 +8439,11 @@ ${this.buildPaletteCustomProperties()}
         const isObjectExcluded = !!findObjectExclusion(tree, objectApiName);
         const lockReason = objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : '';
         const isExcluded = lockReason === FIELD_PARENT_EXCLUDED_REASON || ( !!objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName) );
-        const requiredInOrgLabel = isExcluded && lockReason !== FIELD_PARENT_EXCLUDED_REASON ? findRequiredInOrgLabel(tree, objectApiName, fieldApiName) : '';
 
         if (isExcluded) { fieldState.rowElement.classList.add('fieldExcluded'); } else { fieldState.rowElement.classList.remove('fieldExcluded'); }
 
         if (fieldState.noteElement) {
-            fieldState.noteElement.textContent = [lockReason, requiredInOrgLabel ? 'required in ' + requiredInOrgLabel : ''].filter(function (noteText) { return !!noteText; }).join(' · ');
+            fieldState.noteElement.textContent = lockReason;
             if (fieldState.noteElement.textContent) { fieldState.noteElement.classList.remove('hidden'); } else { fieldState.noteElement.classList.add('hidden'); }
         }
 
@@ -9796,9 +9111,9 @@ ${this.buildPaletteCustomProperties()}
 
     /*
         The tab strip and the Treecipe tab -- its header and its objects -- made on the card's first
-        expand. Opening the Treecipe tab is when its org picker asks for its orgs. Compare and
-        Previously Used Data Sets build their rows on their own first open, and the data sets tab is
-        drawn only for a card whose model carries a history.
+        expand. Opening the Treecipe tab is when its org picker asks for its orgs. Previously Used
+        Data Sets builds its rows on its own first open, and is drawn only for a card whose model
+        carries a history.
     */
     function ensureTreeBodyBuilt(treeState) {
 
@@ -9825,7 +9140,6 @@ ${this.buildPaletteCustomProperties()}
         treeState.tabStates = [];
         treeState.selectedTab = 'treecipe';
         addTreeTab(treeState, tabsElement, 'treecipe', 'Treecipe', structureElement);
-        addTreeTab(treeState, tabsElement, 'compare', 'Compare', createElement('div', 'treeCompareTab hidden'));
 
         if (treeState.tree.history) {
             addTreeTab(treeState, tabsElement, 'datasets', 'Previously Used Data Sets', createElement('div', 'treeDatasets hidden'));
@@ -9878,7 +9192,6 @@ ${this.buildPaletteCustomProperties()}
 
             if (isSelected && !tabState.isBuilt) {
                 tabState.isBuilt = true;
-                if (tabState.tabName === 'compare') { buildCompareTab(treeState, tabState.panelElement); }
                 if (tabState.tabName === 'datasets') { buildDatasetsTab(treeState, tabState.panelElement); }
             }
 
@@ -10217,34 +9530,14 @@ ${this.buildPaletteCustomProperties()}
             element: treeElement,
             toggleElement: toggleElement,
             bodyElement: createElement('div', 'treeBody hidden'),
-            // THE OBJECTS THE COMPARE TAB LISTS: THE TREE'S OWN, ONCE EACH, IN INSERT ORDER -- A SELF-LOOKUP'S ITERATION IS THE SAME OBJECT
-            dataObjectApiNames: tree.objects
-                .filter(function (treeObject) { return treeObject.iterationNickname === undefined; })
-                .map(function (treeObject) { return treeObject.objectApiName; }),
-            dataTab: null,
-            comparison: null,
-            searchQueries: { treecipe: '', compare: '', datasets: '' },
+            searchQueries: { treecipe: '', datasets: '' },
             // WHAT THE READER TYPED IN EACH BOX, AS TYPED -- searchQueries IS ITS TRIMMED, LOWERCASED FORM
-            searchTexts: { treecipe: '', compare: '', datasets: '' },
-            statusFilter: 'all',
-            /*
-                What a restored place asks of the card's comparison (#222): its status filter and the
-                Compare rows the reader had opened. Applied before the comparison is drawn, the
-                filter would hide every row and the rows could not open, so they wait for it.
-            */
-            pendingStatusFilter: null,
-            pendingDataExpandedObjectApiNames: null,
-            compare: null,
+            searchTexts: { treecipe: '', datasets: '' },
             // THE TOP OF THE TREECIPE TAB (#255), MADE WITH THE TAB
             runFakerElement: null,
             resetSelectionElement: null,
             insert: null
         };
-
-        // A CARD WITH NO OBJECT TO DRAW HAS NOTHING TO COMPARE, AND THE HOST OFFERS IT NO DESCRIBE
-        if (treeState.objectStates.length > 0) {
-            treeState.compare = buildTreeCompareElement(treeState);
-        }
 
         // AN OBJECT AND ITS FIELDS ARE COUNTED ONCE, HOWEVER MANY OCCURRENCES OF IT THE CARD DRAWS
         const objectStatesCounted = treeState.objectStates.filter(function (treeObjectState) { return !treeObjectState.isIteration; });
@@ -10656,289 +9949,6 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    /*
-        Built on the tab's first open. A comparison answered before the tab opens is kept on the
-        card and drawn when it does.
-    */
-    /*
-        The Compare tab (#255): the org comparison and nothing else -- Compare, Choose another org…,
-        the status filter, progress, the summary and the rows of the fields that differ. It sends
-        only describes and the Organization query; no record is counted or read.
-    */
-    function buildCompareTab(treeState, panelElement) {
-
-        const dataTab = {
-            countElement: createElement('div', 'dataTreeCount muted'),
-            search: null,
-            objectRowStates: []
-        };
-
-        treeState.dataTab = dataTab;
-
-        if (treeState.compare) { panelElement.appendChild(treeState.compare.element); }
-        panelElement.appendChild(dataTab.countElement);
-
-        if (treeState.dataObjectApiNames.length === 0) {
-            panelElement.appendChild(createElement('div', 'treeEmpty muted', 'This tree has no objects with a recipe.'));
-            drawDataTreeHeader(treeState);
-            return;
-        }
-
-        dataTab.search = buildTabSearch(treeState, 'compare', 'Search objects, and the fields that differ once compared', applyDataFilter);
-        panelElement.appendChild(dataTab.search.element);
-
-        // IN INSERT ORDER, AS THE TREE LISTS THEM
-        treeState.dataObjectApiNames.forEach(function (objectApiName) {
-            const dataObjectRowState = buildDataObjectRow(treeState, objectApiName);
-            dataTab.objectRowStates.push(dataObjectRowState);
-            panelElement.appendChild(dataObjectRowState.element);
-        });
-
-        drawDataTreeHeader(treeState);
-        drawDataComparison(treeState);
-
-    }
-
-    function buildDataObjectRow(treeState, objectApiName) {
-
-        const objectElement = createElement('div', 'dataObject');
-        const objectHeaderElement = createElement('div', 'dataObjectHeader');
-        const toggleElement = createElement('button', 'dataObjectToggle hidden', '▸');
-
-        const dataObjectRowState = {
-            objectApiName: objectApiName,
-            searchText: objectApiName.toLowerCase(),
-            element: objectElement,
-            toggleElement: toggleElement,
-            bodyElement: createElement('div', 'dataObjectBody hidden'),
-            describeElement: createElement('span', 'orgDescribeStatus muted hidden'),
-            diffElement: createElement('span', 'objectDiff hidden'),
-            matchElement: createElement('span', 'dataObjectMatch muted hidden'),
-            fieldDiffStates: [],
-            isCompared: false,
-            matchingFieldCount: 0,
-            isBodyBuilt: false,
-            isExpanded: false,
-            isExpandedByReader: false
-        };
-
-        toggleElement.setAttribute('aria-expanded', 'false');
-        toggleElement.setAttribute('aria-label', 'Show or hide the fields of ' + objectApiName + ' that differ from the org');
-        toggleElement.addEventListener('click', function () {
-            dataObjectRowState.isExpandedByReader = !dataObjectRowState.isExpanded;
-            setDataObjectExpanded(dataObjectRowState, dataObjectRowState.isExpandedByReader);
-            savePanelPlace();
-        });
-
-        objectHeaderElement.appendChild(toggleElement);
-        objectHeaderElement.appendChild(createElement('span', 'dataObjectName', objectApiName));
-        objectHeaderElement.appendChild(dataObjectRowState.describeElement);
-        objectHeaderElement.appendChild(dataObjectRowState.diffElement);
-        objectHeaderElement.appendChild(dataObjectRowState.matchElement);
-
-        objectElement.appendChild(objectHeaderElement);
-        objectElement.appendChild(dataObjectRowState.bodyElement);
-
-        return dataObjectRowState;
-
-    }
-
-    function applyDataFieldVisibility(fieldDiffState) {
-
-        if (!fieldDiffState.rowElement) { return; }
-
-        if (fieldDiffState.isMatch) {
-            fieldDiffState.rowElement.classList.remove('hidden');
-        } else {
-            fieldDiffState.rowElement.classList.add('hidden');
-        }
-
-    }
-
-    // ONLY A FIELD THAT DIFFERS IS POSTED, SO ONLY ONE IS DRAWN: ITS NAME, ITS TYPE, ITS BADGE AND WHAT THE BADGE CANNOT SAY
-    function buildDataFieldRow(fieldDiffState) {
-
-        const fieldDiff = fieldDiffState.fieldDiff;
-        const fieldRowElement = createElement('div', 'dataField');
-        const fieldHeaderElement = createElement('div', 'dataFieldHeader');
-        const fieldType = fieldDiff.status === 'new-in-org' ? fieldDiff.orgFieldType : (fieldDiff.recipeFieldType || fieldDiff.orgFieldType);
-
-        fieldHeaderElement.appendChild(createElement('span', 'dataFieldName', fieldDiff.fieldApiName));
-
-        if (fieldType) {
-            fieldHeaderElement.appendChild(createElement('span', 'fieldType', fieldType));
-        }
-
-        fieldHeaderElement.appendChild(createElement('span', 'diffBadge diff-' + fieldDiff.status, DIFF_STATUS_LABELS[fieldDiff.status]));
-        fieldRowElement.appendChild(fieldHeaderElement);
-        appendDiffDetail(fieldRowElement, fieldDiff);
-
-        return fieldRowElement;
-
-    }
-
-    function setDataObjectExpanded(dataObjectRowState, isExpanded) {
-
-        const canExpand = isExpanded && dataObjectRowState.isCompared;
-
-        if (canExpand && !dataObjectRowState.isBodyBuilt) {
-
-            if (dataObjectRowState.fieldDiffStates.length === 0) {
-                dataObjectRowState.bodyElement.appendChild(createElement('div', 'treeEmpty muted', 'No field differs from the org.'));
-            }
-
-            dataObjectRowState.fieldDiffStates.forEach(function (fieldDiffState) {
-                fieldDiffState.rowElement = buildDataFieldRow(fieldDiffState);
-                applyDataFieldVisibility(fieldDiffState);
-                dataObjectRowState.bodyElement.appendChild(fieldDiffState.rowElement);
-            });
-
-            dataObjectRowState.isBodyBuilt = true;
-
-        }
-
-        if (canExpand) { dataObjectRowState.bodyElement.classList.remove('hidden'); } else { dataObjectRowState.bodyElement.classList.add('hidden'); }
-
-        dataObjectRowState.isExpanded = canExpand;
-        dataObjectRowState.toggleElement.textContent = canExpand ? '▾' : '▸';
-        dataObjectRowState.toggleElement.setAttribute('aria-expanded', canExpand ? 'true' : 'false');
-
-    }
-
-    /*
-        Lays the card's comparison over its Compare rows. A compared object's row says what
-        differs and expands to those fields; an object the comparison did not cover says so rather
-        than showing statuses it has none of. Rows from an earlier comparison are rebuilt from this
-        one, so a field only an OLDER org had does not survive into a newer answer.
-    */
-    function drawDataComparison(treeState) {
-
-        const dataTab = treeState.dataTab;
-
-        if (!dataTab) { return; }
-
-        const comparison = treeState.comparison;
-        const isComparisonShown = !!comparison && comparison.isShown;
-
-        dataTab.objectRowStates.forEach(function (dataObjectRowState) {
-
-            const objectApiName = dataObjectRowState.objectApiName;
-            const objectDiff = isComparisonShown && Object.prototype.hasOwnProperty.call(comparison.objectDiffsByApiName, objectApiName)
-                ? comparison.objectDiffsByApiName[objectApiName]
-                : null;
-            const objectSummary = isComparisonShown && Object.prototype.hasOwnProperty.call(comparison.summariesByObjectApiName, objectApiName)
-                ? comparison.summariesByObjectApiName[objectApiName]
-                : null;
-
-            if (!objectSummary) {
-                dataObjectRowState.describeElement.classList.add('hidden');
-            } else {
-                dataObjectRowState.describeElement.textContent = objectSummary.isDescribed
-                    ? 'org: ' + pluralize(objectSummary.describedFieldCount, 'field', 'fields')
-                    : 'not described in the org';
-                dataObjectRowState.describeElement.classList.remove('hidden');
-            }
-
-            if (!isComparisonShown) {
-                dataObjectRowState.diffElement.classList.add('hidden');
-            } else {
-                dataObjectRowState.diffElement.textContent = objectDiff ? describeStatusCounts(objectDiff.statusCounts, false) : 'not compared';
-                // THE DESCRIBE'S OWN REASON -- A CANCELLED DESCRIBE IS NOT ONE THE ORG COULD NOT ANSWER
-                dataObjectRowState.diffElement.setAttribute('title', objectDiff
-                    ? pluralize(objectDiff.uncreateableOrgOnlyFieldCount, 'org field', 'org fields') + ' a recipe cannot write (system and formula fields) are not listed'
-                    : 'Not compared: ' + (objectSummary && objectSummary.failureMessage ? objectSummary.failureMessage : 'this object was not described in the org'));
-                dataObjectRowState.diffElement.classList.remove('hidden');
-            }
-
-            dataObjectRowState.isCompared = !!objectDiff;
-            dataObjectRowState.fieldDiffStates = (objectDiff ? objectDiff.changedFields : []).map(function (fieldDiff) {
-                return { fieldDiff: fieldDiff, searchText: fieldDiff.fieldApiName.toLowerCase(), isMatch: true, rowElement: null };
-            });
-            dataObjectRowState.bodyElement.textContent = '';
-            dataObjectRowState.isBodyBuilt = false;
-
-            if (objectDiff) { dataObjectRowState.toggleElement.classList.remove('hidden'); } else { dataObjectRowState.toggleElement.classList.add('hidden'); }
-            if (!objectDiff) { dataObjectRowState.isExpandedByReader = false; }
-
-            setDataObjectExpanded(dataObjectRowState, dataObjectRowState.isExpanded);
-
-        });
-
-        applyDataFilter(treeState);
-
-    }
-
-    /*
-        The Compare tab's search and its status filter, over its own card only. The search
-        matches what the tab draws: an object's name, and the name of each field that differs once
-        compared. Like the Structure search, it never hides an OBJECT.
-    */
-    function applyDataFilter(treeState) {
-
-        const dataTab = treeState.dataTab;
-
-        if (!dataTab || !dataTab.search) { return; }
-
-        const searchQuery = treeState.searchQueries.compare;
-        const statusFilter = treeState.statusFilter;
-        const isFiltering = !!searchQuery || statusFilter !== 'all';
-        let matchingObjectCount = 0;
-
-        dataTab.objectRowStates.forEach(function (dataObjectRowState) {
-
-            const isObjectNameMatch = !searchQuery || dataObjectRowState.searchText.indexOf(searchQuery) !== -1;
-            let matchingFieldCount = 0;
-
-            dataObjectRowState.fieldDiffStates.forEach(function (fieldDiffState) {
-                fieldDiffState.isMatch = (isObjectNameMatch || fieldDiffState.searchText.indexOf(searchQuery) !== -1)
-                    && (statusFilter === 'all' || fieldDiffState.fieldDiff.status === statusFilter);
-                if (fieldDiffState.isMatch) { matchingFieldCount++; }
-                applyDataFieldVisibility(fieldDiffState);
-            });
-
-            dataObjectRowState.matchingFieldCount = matchingFieldCount;
-
-            const isObjectMatch = !isFiltering || matchingFieldCount > 0 || (isObjectNameMatch && statusFilter === 'all');
-            if (isObjectMatch) { matchingObjectCount++; }
-
-            if (!isFiltering || (isObjectMatch && matchingFieldCount === 0)) {
-                dataObjectRowState.matchElement.classList.add('hidden');
-            } else {
-                dataObjectRowState.matchElement.textContent = matchingFieldCount > 0 ? pluralize(matchingFieldCount, 'matching field', 'matching fields') : 'no matches';
-                dataObjectRowState.matchElement.classList.remove('hidden');
-            }
-
-        });
-
-        const objectCount = dataTab.objectRowStates.length;
-
-        dataTab.search.matchCountElement.textContent = !isFiltering
-            ? pluralize(objectCount, 'object', 'objects')
-            : matchingObjectCount > 0 ? matchingObjectCount + ' of ' + pluralize(objectCount, 'object', 'objects') : 'no matches';
-
-        if (!isFiltering) {
-            dataTab.objectRowStates.forEach(function (dataObjectRowState) { setDataObjectExpanded(dataObjectRowState, dataObjectRowState.isExpandedByReader); });
-            return;
-        }
-
-        expandMatchesWithinBudget(dataTab.objectRowStates,
-            function (dataObjectRowState) { return dataObjectRowState.matchingFieldCount; },
-            function (dataObjectRowState) { return dataObjectRowState.fieldDiffStates.length; },
-            setDataObjectExpanded);
-
-    }
-
-    // A TAB NOT YET OPENED HAS NOTHING TO DRAW: ITS FIRST OPEN DRAWS IT
-    function drawDataTreeHeader(treeState) {
-
-        const dataTab = treeState.dataTab;
-
-        if (!dataTab) { return; }
-
-        dataTab.countElement.textContent = pluralize(treeState.dataObjectApiNames.length, 'object', 'objects');
-
-    }
-
     function buildTreeObjectKey(treeKey, objectApiName) {
         return treeKey + '\\n' + objectApiName;
     }
@@ -11244,7 +10254,6 @@ ${this.buildPaletteCustomProperties()}
 
         const expandedObjectKeys = [];
         const openPicklistKeys = [];
-        const expandedDataObjectApiNames = [];
         const searchQueries = {};
         let hasSearch = false;
 
@@ -11257,29 +10266,15 @@ ${this.buildPaletteCustomProperties()}
             });
         });
 
-        if (treeState.dataTab) {
-            treeState.dataTab.objectRowStates.forEach(function (dataObjectRowState) {
-                if (dataObjectRowState.isExpandedByReader) { expandedDataObjectApiNames.push(dataObjectRowState.objectApiName); }
-            });
-        }
-        // STILL WAITING FOR THE COMPARISON THEY WERE SAVED UNDER, SO STILL THE READER'S
-        if (treeState.pendingDataExpandedObjectApiNames) {
-            Object.keys(treeState.pendingDataExpandedObjectApiNames).forEach(function (objectApiName) {
-                if (expandedDataObjectApiNames.indexOf(objectApiName) === -1) { expandedDataObjectApiNames.push(objectApiName); }
-            });
-        }
-
         PANEL_PLACE_TABS.forEach(function (tabName) {
             searchQueries[tabName] = treeState.searchTexts[tabName] || '';
             if (treeState.searchQueries[tabName]) { hasSearch = true; }
         });
 
-        const statusFilter = treeState.statusFilter !== 'all' ? treeState.statusFilter : (treeState.pendingStatusFilter || 'all');
         const selectedTab = treeState.selectedTab || 'treecipe';
 
-        if (!treeState.isExpandedByReader && selectedTab === 'treecipe' && statusFilter === 'all' && !hasSearch
-                && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0
-                && expandedDataObjectApiNames.length === 0) {
+        if (!treeState.isExpandedByReader && selectedTab === 'treecipe' && !hasSearch
+                && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0) {
             return null;
         }
 
@@ -11288,10 +10283,8 @@ ${this.buildPaletteCustomProperties()}
             isExpanded: !!treeState.isExpandedByReader,
             selectedTab: selectedTab,
             searchQueries: searchQueries,
-            statusFilter: statusFilter,
             expandedObjectKeys: expandedObjectKeys,
-            openPicklistKeys: openPicklistKeys,
-            expandedDataObjectApiNames: expandedDataObjectApiNames
+            openPicklistKeys: openPicklistKeys
         };
 
     }
@@ -11352,10 +10345,9 @@ ${this.buildPaletteCustomProperties()}
 
     /*
         A place saved before #255 names the Structure and Data-by-Org tabs: it is read as the tabs
-        they became -- Treecipe, and Compare, which keeps the status filter and the opened rows --
-        rather than dropped. A place of EITHER version can name a tab the card no longer has
-        (REMOVED_TREE_TABS, #265): it opens on Treecipe, and that tab's search is dropped, never
-        moved onto another tab's.
+        they became rather than dropped. A place of EITHER version can name a tab the card no longer
+        has (REMOVED_TREE_TABS: Previous Versions #265, Compare #266): it opens on Treecipe, and that
+        tab's search, status filter and opened rows are dropped, never moved onto another tab's.
     */
     function upgradePlace(candidatePlace) {
 
@@ -11437,9 +10429,10 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        The rest of the place, AFTER "rendered": opening a picklist row or a Compare tab asks the
-        host, which answers only once the ack has activated this model's allow-lists. An entry naming a card, object, tab or option this model does not have
-        is passed over on its own -- the rest of the place still comes back.
+        The rest of the place, AFTER "rendered": opening a picklist row asks the host, which answers
+        only once the ack has activated this model's allow-lists. An entry naming a card, object or
+        tab this model does not have is passed over on its own -- the rest of the place still comes
+        back.
     */
     function restorePlaceAfterRender(savedPlace) {
 
@@ -11457,7 +10450,6 @@ ${this.buildPaletteCustomProperties()}
 
     function restoreSavedTrees(savedPlace) {
 
-        const statusFilterOptions = toStringSet(DIFF_STATUSES.filter(function (diffStatus) { return diffStatus !== 'unchanged'; }));
         const savedTrees = Array.isArray(savedPlace.trees) ? savedPlace.trees : [];
 
         savedTrees.forEach(function (savedTree) {
@@ -11469,7 +10461,6 @@ ${this.buildPaletteCustomProperties()}
 
             const expandedObjectKeys = toStringSet(savedTree.expandedObjectKeys);
             const openPicklistKeys = toStringSet(savedTree.openPicklistKeys);
-            const expandedDataObjectApiNames = toStringSet(savedTree.expandedDataObjectApiNames);
             const savedSearchQueries = savedTree.searchQueries && typeof savedTree.searchQueries === 'object' ? savedTree.searchQueries : {};
 
             // BEFORE ANY TAB IS BUILT: A TAB READS ITS SEARCH, AND APPLIES IT, WHEN IT IS BUILT
@@ -11492,24 +10483,6 @@ ${this.buildPaletteCustomProperties()}
                 });
             });
 
-            if (treeState.compare && typeof savedTree.statusFilter === 'string' && hasString(statusFilterOptions, savedTree.statusFilter)) {
-                treeState.pendingStatusFilter = savedTree.statusFilter;
-            }
-
-            /*
-                A tab is built FOR ITS SAVED ROWS only when one of them is this card's: building
-                a tab for a stale name is work the reader never asked for. A
-                tab the reader had SELECTED is selected below whatever its rows, as it was on screen.
-            */
-            const dataObjectApiNamesToOpen = toStringSet(treeState.dataObjectApiNames.filter(function (objectApiName) {
-                return hasString(expandedDataObjectApiNames, objectApiName);
-            }));
-
-            if (hasAnyString(dataObjectApiNamesToOpen)) {
-                treeState.pendingDataExpandedObjectApiNames = dataObjectApiNamesToOpen;
-                selectTreeTab(treeState, 'compare');
-            }
-
             if (typeof savedTree.selectedTab === 'string' && PANEL_PLACE_TABS.indexOf(savedTree.selectedTab) !== -1) {
                 selectTreeTab(treeState, savedTree.selectedTab);
             }
@@ -11523,19 +10496,6 @@ ${this.buildPaletteCustomProperties()}
             applyStructureFilter(treeState);
 
         });
-
-    }
-
-    /*
-        What a restored place left waiting is for the comparison it was SAVED under, which only a
-        replay brings back. A comparison the reader asks for is a new one, and is not narrowed by a
-        filter the reader set on an old one -- possibly several reloads ago.
-    */
-    function dropPendingComparisonPlace(treeState) {
-
-        treeState.pendingStatusFilter = null;
-        treeState.pendingDataExpandedObjectApiNames = null;
-        savePanelPlace();
 
     }
 
@@ -11601,7 +10561,6 @@ ${this.buildPaletteCustomProperties()}
         dataOrgReadinessByTreeObjectKey = Object.create(null);
         dataOrgInsertResultsByTreeKey = Object.create(null);
         pendingPicklistValueElements = Object.create(null);
-        requiredFieldsByTreeKey = Object.create(null);
         pendingDatasetCountElements = Object.create(null);
         answeredDatasetCounts = Object.create(null);
         fieldSearchTexts = new Map();
@@ -11693,148 +10652,6 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    /*
-        The comparison's controls, at the top of a card's Compare tab: Compare, the status
-        filter (shown once a comparison is drawn -- before that no row has a status to filter by),
-        where a comparison is while it runs, and what it said. Made with the card, because an
-        answer can arrive for a card whose tab the reader has not opened; attached when the tab is
-        built. The panel names only the TREE -- which objects, and in which org, the host decides:
-        Compare uses the toolbar's org, and Choose another org… never changes it.
-    */
-    function buildTreeCompareElement(treeState) {
-
-        const compareElement = createElement('div', 'treeCompare');
-        const controlsElement = createElement('div', 'treeCompareControls');
-        const describeButtonElement = createElement('button', 'describeInOrg', DESCRIBE_ACTION_LABEL);
-        const chooseOrgButtonElement = createElement('button', 'describeInChosenOrg', CHOOSE_ORG_ACTION_LABEL);
-        const statusFilterElement = createElement('select', 'statusFilter hidden');
-
-        chooseOrgButtonElement.setAttribute('title', 'Choose any connected org, production included, and compare the objects of this tree with it');
-        chooseOrgButtonElement.setAttribute('aria-label', CHOOSE_ORG_ACTION_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
-        chooseOrgButtonElement.addEventListener('click', function () {
-            dropPendingComparisonPlace(treeState);
-            vscodeApi.postMessage({ command: 'selectOrg', treeKey: treeState.tree.treeKey, chooseOrg: true });
-        });
-
-        describeButtonElement.setAttribute('title', 'Describe the objects of this tree in the org picked in the toolbar (or one you choose), and list each field that differs');
-        describeButtonElement.setAttribute('aria-label', DESCRIBE_ACTION_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
-        describeButtonElement.addEventListener('click', function () {
-            dropPendingComparisonPlace(treeState);
-            vscodeApi.postMessage({ command: 'selectOrg', treeKey: treeState.tree.treeKey });
-        });
-
-        statusFilterElement.setAttribute('aria-label', 'Show the fields of ' + displayTitleOf(treeState.tree) + ' that differ from the org, by how they differ');
-
-        // ONLY A FIELD THAT DIFFERS IS DRAWN, SO "UNCHANGED" WOULD FILTER TO NOTHING
-        [['all', 'Every difference']].concat(DIFF_STATUSES.filter(function (diffStatus) { return diffStatus !== 'unchanged'; }).map(function (diffStatus) {
-            return [diffStatus, 'Only ' + DIFF_STATUS_LABELS[diffStatus]];
-        })).forEach(function (statusOption) {
-            const statusOptionElement = createElement('option', '', statusOption[1]);
-            statusOptionElement.value = statusOption[0];
-            statusFilterElement.appendChild(statusOptionElement);
-        });
-
-        statusFilterElement.value = 'all';
-        statusFilterElement.addEventListener('change', function () {
-            treeState.statusFilter = String(statusFilterElement.value || 'all');
-            applyDataFilter(treeState);
-            savePanelPlace();
-        });
-
-        controlsElement.appendChild(describeButtonElement);
-        controlsElement.appendChild(chooseOrgButtonElement);
-        controlsElement.appendChild(statusFilterElement);
-        compareElement.appendChild(controlsElement);
-
-        const compareState = {
-            element: compareElement,
-            statusFilterElement: statusFilterElement,
-            progressElement: createElement('div', 'orgProgress muted hidden'),
-            statusElement: createElement('div', 'orgStatus hidden')
-        };
-
-        compareElement.appendChild(compareState.progressElement);
-        compareElement.appendChild(compareState.statusElement);
-
-        return compareState;
-
-    }
-
-    /*
-        What an org describe said about one card, on its summary line and on each object's header.
-        Drawn only over the model it described: a describe of an earlier run's objects says nothing
-        about these rows.
-    */
-    function renderOrgDescribe(orgDescribe) {
-
-        if (orgDescribe.renderSequence !== renderedSequence) { return; }
-
-        const treeState = findTreeState(orgDescribe.treeKey);
-
-        if (!treeState || !treeState.compare) { return; }
-
-        const statusElement = treeState.compare.statusElement;
-
-        treeState.compare.progressElement.classList.add('hidden');
-
-        statusElement.textContent = '';
-        statusElement.appendChild(createElement('div', 'orgDescribeSummary', orgDescribe.summary));
-        statusElement.classList.remove('hidden');
-
-        if (orgDescribe.isFailure) {
-            statusElement.classList.add('failed');
-        } else {
-            statusElement.classList.remove('failed');
-        }
-
-        // KEYED BY OBJECT NAMES FROM FILES, SO NO PROTOTYPE
-        const summariesByObjectApiName = Object.create(null);
-        orgDescribe.objects.forEach(function (objectSummary) {
-            summariesByObjectApiName[objectSummary.objectApiName] = objectSummary;
-            if (!objectSummary.isDescribed) {
-                statusElement.appendChild(createElement('div', 'orgDescribeFailure', objectSummary.objectApiName + ': ' + objectSummary.failureMessage));
-            }
-        });
-
-        // A FAILED CONNECTION COMPARED NOTHING, AND REPLACES WHATEVER AN EARLIER COMPARISON SAID
-        applyTreeDiff(treeState, orgDescribe.diff, !orgDescribe.isFailure, summariesByObjectApiName);
-        storeRequiredFields(treeState, orgDescribe);
-
-        if (orgDescribe.diff.objects.length > 0) {
-            statusElement.appendChild(createElement('div', 'diffSummary', 'Compared ' + pluralize(orgDescribe.diff.objects.length, 'object', 'objects') + ': ' + describeStatusCounts(orgDescribe.diff.statusCounts, true)));
-        }
-
-    }
-
-    // WHAT THE COMPARISON SAYS EACH OBJECT REQUIRES, FOR THE STRUCTURE TAB'S "required in <org>" (#220)
-    function storeRequiredFields(treeState, orgDescribe) {
-
-        delete requiredFieldsByTreeKey[treeState.tree.treeKey];
-
-        if (!orgDescribe.isFailure && Array.isArray(orgDescribe.requiredFields)) {
-            const fieldsByObjectApiName = Object.create(null);
-            orgDescribe.requiredFields.forEach(function (requiredFieldList) {
-                const fieldApiNames = Object.create(null);
-                ( Array.isArray(requiredFieldList.fieldApiNames) ? requiredFieldList.fieldApiNames : [] ).forEach(function (fieldApiName) { fieldApiNames[fieldApiName] = true; });
-                fieldsByObjectApiName[requiredFieldList.objectApiName] = fieldApiNames;
-            });
-            requiredFieldsByTreeKey[treeState.tree.treeKey] = { orgLabel: String(orgDescribe.orgLabel), fieldsByObjectApiName: fieldsByObjectApiName };
-        }
-
-        drawFieldSelection(treeState);
-
-    }
-
-    function describeStatusCounts(statusCounts, includesUnchanged) {
-
-        const countTexts = DIFF_STATUSES
-            .filter(function (diffStatus) { return (includesUnchanged || diffStatus !== 'unchanged') && statusCounts[diffStatus] > 0; })
-            .map(function (diffStatus) { return statusCounts[diffStatus] + ' ' + DIFF_STATUS_LABELS[diffStatus]; });
-
-        return countTexts.length > 0 ? countTexts.join(' · ') : 'no changes';
-
-    }
-
     // DISABLED UNTIL THE HOST'S RELOAD REDRAWS THE BODY, WHICH IT DOES HOWEVER GENERATION ENDED
     function buildGenerateTreecipeElement() {
 
@@ -11850,72 +10667,6 @@ ${this.buildPaletteCustomProperties()}
         generateElement.appendChild(generateButtonElement);
 
         return generateElement;
-
-    }
-
-    // KEPT ON THE CARD, SO A DATA-BY-ORG TAB OPENED AFTER THE ANSWER DRAWS IT; A FAILED CONNECTION COMPARED NOTHING
-    function applyTreeDiff(treeState, diff, isComparisonShown, summariesByObjectApiName) {
-
-        // KEYED BY OBJECT NAMES FROM FILES, SO NO PROTOTYPE
-        const objectDiffsByApiName = Object.create(null);
-        diff.objects.forEach(function (objectDiff) { objectDiffsByApiName[objectDiff.objectApiName] = objectDiff; });
-
-        treeState.comparison = {
-            isShown: isComparisonShown,
-            objectDiffsByApiName: objectDiffsByApiName,
-            summariesByObjectApiName: summariesByObjectApiName
-        };
-
-        const statusFilterElement = treeState.compare.statusFilterElement;
-
-        const isComparisonDrawn = diff.objects.length > 0 && isComparisonShown;
-
-        if (isComparisonDrawn) {
-            statusFilterElement.classList.remove('hidden');
-            if (treeState.pendingStatusFilter) {
-                treeState.statusFilter = treeState.pendingStatusFilter;
-                statusFilterElement.value = treeState.pendingStatusFilter;
-            }
-        } else {
-            statusFilterElement.classList.add('hidden');
-            treeState.statusFilter = 'all';
-            statusFilterElement.value = 'all';
-        }
-
-        if (isComparisonDrawn && treeState.pendingDataExpandedObjectApiNames && treeState.dataTab) {
-            const pendingObjectApiNames = treeState.pendingDataExpandedObjectApiNames;
-            treeState.dataTab.objectRowStates.forEach(function (dataObjectRowState) {
-                if (hasString(pendingObjectApiNames, dataObjectRowState.objectApiName)) { dataObjectRowState.isExpandedByReader = true; }
-            });
-        }
-
-        // ONE COMPARISON SPENDS WHAT WAITED FOR IT EITHER WAY: A FAILED ONE HAS NOTHING FOR IT TO FILTER OR OPEN
-        treeState.pendingStatusFilter = null;
-        treeState.pendingDataExpandedObjectApiNames = null;
-
-        drawDataComparison(treeState);
-        savePanelPlace();
-
-    }
-
-    function renderOrgProgress(orgProgress) {
-
-        if (orgProgress.renderSequence !== renderedSequence) { return; }
-
-        const treeState = findTreeState(orgProgress.treeKey);
-
-        if (!treeState || !treeState.compare) { return; }
-
-        const progressElement = treeState.compare.progressElement;
-
-        // AN EMPTY MESSAGE IS A COMPARISON THAT ENDED WITH NO ANSWER TO REPLACE THE LINE
-        if (!orgProgress.message) {
-            progressElement.classList.add('hidden');
-            return;
-        }
-
-        progressElement.textContent = orgProgress.message;
-        progressElement.classList.remove('hidden');
 
     }
 
@@ -11938,16 +10689,6 @@ ${this.buildPaletteCustomProperties()}
 
             return;
 
-        }
-
-        if (hostMessage.command === 'orgDescribe') {
-            renderOrgDescribe(hostMessage);
-            return;
-        }
-
-        if (hostMessage.command === 'orgProgress') {
-            renderOrgProgress(hostMessage);
-            return;
         }
 
         if (hostMessage.command === 'picklistValues') {

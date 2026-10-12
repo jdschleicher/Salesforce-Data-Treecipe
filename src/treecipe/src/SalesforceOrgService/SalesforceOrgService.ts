@@ -924,8 +924,8 @@ export class SalesforceOrgService {
 
     /*
         The connected orgs as a quick pick, which opens busy at once and fills only when the CLI
-        has answered. Compare with an org…, Insert Data Set by Directory and Run Picklist Dependency
-        Check all come through here.
+        has answered. Insert Data Set by Directory and Run Picklist Dependency Check both come
+        through here.
     */
     static async promptForAuthorizedOrg(placeHolder: string): Promise<IAuthenticatedOrgDetail | undefined> {
 
