@@ -29,7 +29,7 @@ import {
     ORG_PARENT_SEARCH_RESULT_LIMIT,
     SalesforceOrgService
 } from '../SalesforceOrgService/SalesforceOrgService';
-import { IRecipeFilterLookup, IRecipeFixedValue, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind } from './RecipeCockpitRecipeWriter';
+import { ILookupWiringContext, ILookupWiringRequest, IRecipeFilterLookup, IRecipeFixedValue, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind } from './RecipeCockpitRecipeWriter';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelectionDisabledLookup } from './RecipeCockpitObjectSelection';
 import {
@@ -262,6 +262,11 @@ export const RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL = 'Running Faker…';
 // A SELF-LOOKUP ITERATION'S "+" ADDS ONE OF ITS OBJECT'S FRIENDS BENEATH IT (#197)
 export const RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = '+';
 export const RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL = 'Add';
+export const RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL = 'Wire to…';
+export const RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL = 'Wire TODO lookups';
+export const RECIPE_COCKPIT_WIRE_LOOKUP_CONFIRM_LABEL = 'Wire';
+// HOW MANY LOOKUPS THE WIRE-ALL CONFIRMATION NAMES BEFORE IT COUNTS THE REST
+export const RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_SHOWN = 12;
 
 // IN THE ORDER A CARD DRAWS THEM; TREECIPE IS SELECTED BY DEFAULT, AND THE DATA SETS TAB IS DRAWN ONLY FOR A CARD WITH A HISTORY
 export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'datasets'] as const;
@@ -430,6 +435,25 @@ export interface IRecipeCockpitParentLookupViewModel {
 }
 
 /*
+    A lookup the card's recipe still writes as "### TODO -- REFERENCE ID REQUIRED", and the nicknames
+    it can be wired to (#151): RecipeCockpitRecipeWriter.listLookupWirings's own answer, so the panel
+    never offers a nickname the writer would refuse. objectNickname is set only on an object written
+    more than once, and is the nickname of the occurrence the row draws.
+*/
+export interface IRecipeCockpitLookupWiringViewModel {
+    objectApiName: string;
+    objectNickname?: string;
+    fieldApiName: string;
+    candidateNicknames: string[];
+}
+
+// ONE "Wire to…" THE CONFIRMED-DRAWN MODEL OFFERS, WITH THE HOST-ONLY RECIPE FILE IT WRITES
+export interface IRecipeCockpitLookupWiringTarget {
+    recipeFilePath: string;
+    wiring: IRecipeCockpitLookupWiringViewModel;
+}
+
+/*
     An object as a tree lists it. Its fields are not repeated here: the panel finds them by name in
     the recipe's objects, so every card that lists an object draws the one posted field model.
 */
@@ -473,6 +497,8 @@ export interface IRecipeCockpitTreeViewModel {
     objectCounts?: IRecipeCockpitObjectCountViewModel[];
     // SET ONLY WHEN A FIELD OF THE CARD HAS A FIXED VALUE (#262) A LOCK DOES NOT HOLD BACK
     fixedValues?: IRecipeCockpitFixedValueViewModel[];
+    // SET ONLY ON A CARD ▶ Run Faker CAN RUN WHOSE RECIPE HAS A TODO LOOKUP WITH A PARENT INSERTED BEFORE IT (#151)
+    lookupWirings?: IRecipeCockpitLookupWiringViewModel[];
 }
 
 // THE VALUE THE READER TYPED FOR A FIELD (#262); kind IS THE HOST'S, FROM THE FIELD'S TYPE, AND DECIDES HOW THE COPY WRITES IT
@@ -860,6 +886,12 @@ export interface IRecipeCockpitAddFriendStateMessage {
     isRunning: boolean;
 }
 
+// THE SAME FOR "Wire to…" AND "Wire TODO lookups" (#151): ONE WRITE AT A TIME, REPLAYED ON A REVEAL
+export interface IRecipeCockpitWireLookupStateMessage {
+    command: 'wireLookupState';
+    isRunning: boolean;
+}
+
 /*
     The "+ New scratch org" run (#200): while isRunning, the button, every "+ Create" and the org
     dropdown are disabled, and statusText is the phase. Once it ends, statusText is how it ended,
@@ -878,7 +910,8 @@ export interface IRecipeCockpitScratchOrgStateMessage {
     "Deploy this metadata…" (#211, #273): while isRunning, every tree's insert, every deploy button
     and the org picker are disabled, and statusText is the phase. Once it ends, statusText is how it
     ended, and hasOutput says whether "View output" has a result file -- the path stays on the host.
-    treeKey names the card the line is drawn on. Stored and replayed.
+    treeKey names the card the line is drawn on. Stored and replayed. hasDeployStatus (#283) says a
+    failed deploy has an "Open Deployment Status" link; the page it opens stays on the host too.
 */
 export interface IRecipeCockpitMetadataDeployStateMessage {
     command: 'metadataDeployState';
@@ -887,6 +920,17 @@ export interface IRecipeCockpitMetadataDeployStateMessage {
     statusText: string;
     isFailure: boolean;
     hasOutput: boolean;
+    hasDeployStatus?: boolean;
+}
+
+/*
+    The last failed deploy's Deployment Status page (#283), HOST-ONLY: the tree its line is drawn
+    on, the org it went to, and the --path "sf org open" is given. Never posted.
+*/
+export interface IRecipeCockpitDeployStatusTarget {
+    treeKey: string;
+    orgDetail: IAuthenticatedOrgDetail;
+    deployStatusPath: string;
 }
 
 /*
@@ -908,6 +952,8 @@ export const RECIPE_COCKPIT_METADATA_DEPLOY_CONFIRM_LABEL = 'Deploy';
 export const RECIPE_COCKPIT_METADATA_DEPLOY_ORG_PLACEHOLDER = 'Choose the sandbox or scratch org to deploy this tree\'s metadata to';
 
 export const RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL = 'View output';
+
+export const RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL = 'Open Deployment Status';
 
 export const RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL = 'Deploy & assign permission sets…';
 
@@ -945,6 +991,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitDataOrgReadinessMessage
                                         | IRecipeCockpitInsertStateMessage
                                         | IRecipeCockpitAddFriendStateMessage
+                                        | IRecipeCockpitWireLookupStateMessage
                                         | IRecipeCockpitTreePreferencesMessage
                                         | IRecipeCockpitObjectSelectionMessage
                                         | IRecipeCockpitScratchOrgStateMessage
@@ -1056,6 +1103,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'viewInsertErrors'; resultsFilePath: string }
     | { kind: 'addIterationFriend'; treeKey: string; objectApiName: string; iterationNickname: string; friendObjectApiName: string; recipeFilePath: string }
     | { kind: 'postAddFriendState'; hostMessage: IRecipeCockpitAddFriendStateMessage }
+    | { kind: 'wireLookups'; treeKey: string; recipeFilePath: string; wirings: IRecipeCockpitLookupWiringViewModel[]; isWireAll: boolean }
+    | { kind: 'postWireLookupState'; hostMessage: IRecipeCockpitWireLookupStateMessage }
     | { kind: 'renameTree'; folderName: string }
     | { kind: 'toggleFavoriteTree'; folderName: string }
     | { kind: 'setObjectIncluded'; treeKey: string; folderName: string; objectApiName: string; isIncluded: boolean }
@@ -1072,6 +1121,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'deployTreePermissionSets'; treeKey: string; isSelectedOrg: boolean }
     | { kind: 'postMetadataDeployState'; hostMessage: IRecipeCockpitMetadataDeployStateMessage }
     | { kind: 'viewMetadataDeployOutput'; outputFilePath: string }
+    | { kind: 'openMetadataDeployStatus'; deployStatusTarget: IRecipeCockpitDeployStatusTarget }
     | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
     | { kind: 'postOrgOpenState'; hostMessage: IRecipeCockpitOrgOpenStateMessage };
 
@@ -1127,6 +1177,10 @@ export interface IRecipeCockpitPanelState {
     pendingInsertableFriendTargets: Map<string, string>;
     insertableFriendTargets: Map<string, string>;
     addFriendStateMessage?: IRecipeCockpitAddFriendStateMessage;
+    // EVERY "Wire to…" THE MODEL DRAWS, BY CARD, OBJECT, OCCURRENCE AND FIELD (#151), A PENDING/ACTIVE PAIR LIKE THE "+"'s
+    pendingWireableLookupTargets: Map<string, IRecipeCockpitLookupWiringTarget>;
+    wireableLookupTargets: Map<string, IRecipeCockpitLookupWiringTarget>;
+    wireLookupStateMessage?: IRecipeCockpitWireLookupStateMessage;
     // THE "+ New scratch org" RUN, AND THE HOST-ONLY RESULT FILE ITS "View output" OPENS
     scratchOrgStateMessage?: IRecipeCockpitScratchOrgStateMessage;
     scratchOrgOutputFilePath?: string;
@@ -1139,6 +1193,8 @@ export interface IRecipeCockpitPanelState {
     deployableTreeKeys: Set<string>;
     metadataDeployStateMessage?: IRecipeCockpitMetadataDeployStateMessage;
     metadataDeployOutputFilePath?: string;
+    // THE PAGE THE LAST FAILED DEPLOY'S "Open Deployment Status" OPENS (#283), CLEARED WHEN THE NEXT DEPLOY STARTS
+    metadataDeployStatusTarget?: IRecipeCockpitDeployStatusTarget;
     // THE PLACE workspaceState KEPT FOR THIS MODEL (#230), REPLAYED UNTIL THE MODEL'S "rendered" SAYS IT WAS DRAWN
     restorePlace?: IRecipeCockpitPanelPlace;
     // HOST-ONLY, REPLACED WITH THE MODEL: WHAT A FILTERED COPY NESTS A KEPT FRIEND BY (#219)
@@ -1168,6 +1224,8 @@ interface IRecipeCockpitMetadataDeployClosingState {
     // THE CLI ANSWERED THAT THE DEPLOY SUCCEEDED: THE ONE ANSWER THE READINESS IS UPDATED FROM (#270)
     isDeployed?: boolean;
     outputFilePath?: string;
+    // A FAILED DEPLOY'S DEPLOYMENT STATUS PAGE, FOR orgDetail (#283)
+    deployStatusPath?: string;
 }
 
 /*
@@ -2787,6 +2845,8 @@ export class RecipeCockpitService {
             dataOrgInsertResults: new Map(),
             pendingInsertableFriendTargets: new Map(),
             insertableFriendTargets: new Map(),
+            pendingWireableLookupTargets: new Map(),
+            wireableLookupTargets: new Map(),
             datasetUpdateSequence: 0,
             acknowledgedRenderSequence: null,
             pendingDeployableTreeKeys: new Set(),
@@ -2863,6 +2923,7 @@ export class RecipeCockpitService {
             // SO DOES A METADATA DEPLOY'S (#211)
             this.recipeCockpitPanelState.metadataDeployStateMessage = previousPanelState.metadataDeployStateMessage;
             this.recipeCockpitPanelState.metadataDeployOutputFilePath = previousPanelState.metadataDeployOutputFilePath;
+            this.recipeCockpitPanelState.metadataDeployStatusTarget = previousPanelState.metadataDeployStatusTarget;
         }
 
         if ( !existingCockpitPanel ) {
@@ -3067,6 +3128,8 @@ export class RecipeCockpitService {
         // A "+" OF THE OLD MODEL NAMES AN ITERATION THE NEW ONE'S ROWS MAY NOT DRAW WHERE IT WAS
         panelState.pendingInsertableFriendTargets = this.collectInsertableFriendTargets(recipeViewModel);
         panelState.insertableFriendTargets = new Map();
+        panelState.pendingWireableLookupTargets = this.collectWireableLookupTargets(recipeViewModel, panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey);
+        panelState.wireableLookupTargets = new Map();
         panelState.acknowledgedRenderSequence = null;
         panelState.dataOrgSelection = undefined;
         panelState.dataOrgRequestSequence++;
@@ -3159,6 +3222,7 @@ export class RecipeCockpitService {
                 panelState.insertableTreeKeys = new Set();
                 panelState.deployableTreeKeys = new Set();
                 panelState.insertableFriendTargets = new Map();
+                panelState.wireableLookupTargets = new Map();
                 panelState.acknowledgedRenderSequence = null;
                 panelState.dataOrgSelection = undefined;
                 panelState.dataOrgRequestSequence++;
@@ -3178,6 +3242,7 @@ export class RecipeCockpitService {
                 panelState.insertableTreeKeys = panelState.pendingInsertableTreeKeys;
                 panelState.deployableTreeKeys = panelState.pendingDeployableTreeKeys;
                 panelState.insertableFriendTargets = panelState.pendingInsertableFriendTargets;
+                panelState.wireableLookupTargets = panelState.pendingWireableLookupTargets;
                 panelState.acknowledgedRenderSequence = panelState.recipeDataMessage.renderSequence;
                 return;
 
@@ -3201,6 +3266,7 @@ export class RecipeCockpitService {
                     panelState.insertableTreeKeys = new Set();
                     panelState.deployableTreeKeys = new Set();
                     panelState.insertableFriendTargets = new Map();
+                    panelState.wireableLookupTargets = new Map();
                     panelState.acknowledgedRenderSequence = null;
                     // NOTHING IS ON SCREEN TO DRAW AN ANSWER IN, SO A SELECTION STILL BEING CHECKED STOPS ASKING THE ORG
                     panelState.dataOrgSelection = undefined;
@@ -3327,6 +3393,16 @@ export class RecipeCockpitService {
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
                 return;
 
+            case 'wireLookups':
+
+                await this.wireLookupsFromPanel(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'postWireLookupState':
+
+                this.postToPanel(cockpitPanel, panelAction.hostMessage);
+                return;
+
             case 'persistPlace':
 
                 this.schedulePanelPlacePersist(panelAction.place);
@@ -3425,6 +3501,11 @@ export class RecipeCockpitService {
             case 'viewMetadataDeployOutput':
 
                 await this.openMetadataDeployOutput(panelAction.outputFilePath, panelState.workspaceRoot);
+                return;
+
+            case 'openMetadataDeployStatus':
+
+                await this.openMetadataDeployStatus(panelAction.deployStatusTarget);
                 return;
 
         }
@@ -3586,6 +3667,148 @@ export class RecipeCockpitService {
         fs.writeFileSync(recipeFilePath, insertResult.recipeText);
 
         VSCodeWorkspaceService.showInformationMessage(`Added ${friendObjectApiName} as ${insertResult.edit.friendNickname} under ${iterationNickname} in "${recipeFileLabel}".`);
+
+        return true;
+
+    }
+
+    /*
+        Wires a card's TODO lookups to nicknames in its recipe FILE (#151) -- the one Recipe Cockpit
+        write besides Add friend, and shaped like it: the host picks the nickname (a quick pick when
+        the lookup has more than one, none for "Wire TODO lookups", which only takes lookups with
+        one), a modal names the file and every change, and RecipeCockpitRecipeWriter.wireLookups
+        writes against the file as it is NOW, refusing the whole batch if any lookup is no longer
+        what the model showed. Only a write reloads, onto the card's Treecipe tab; every other ending
+        gives the wire buttons back through the closing wireLookupState.
+    */
+    private static async wireLookupsFromPanel(cockpitPanel: vscode.WebviewPanel,
+                                                panelState: IRecipeCockpitPanelState,
+                                                wireAction: Extract<RecipeCockpitPanelAction, { kind: 'wireLookups' }>) {
+
+        const isPanelStillCurrent = () => this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState;
+        const writtenRunFolderName = panelState.recipeDataMessage.recipe.selectedRunFolderName;
+        // THE CARD AS THE CLICK SAW IT: ITS LOOKUPS DECIDE WHAT THE WRITER ACCEPTS, AND A RELOAD WHILE THE MODAL IS OPEN DOES NOT CHANGE WHAT WAS CONFIRMED
+        const tree = panelState.recipeDataMessage.recipe.trees.find(candidateTree => candidateTree.treeKey === wireAction.treeKey);
+        const objectLevelsByApiName = panelState.objectLevelsByApiName;
+
+        panelState.wireLookupStateMessage = { command: 'wireLookupState', isRunning: true };
+        this.postToPanel(cockpitPanel, panelState.wireLookupStateMessage);
+
+        try {
+
+            const isWired = !!tree && await this.writeLookupWirings(wireAction, tree, objectLevelsByApiName, panelState.workspaceRoot);
+
+            if ( isWired && isPanelStillCurrent() ) {
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, writtenRunFolderName, { treeKey: wireAction.treeKey, tab: 'treecipe' });
+            }
+
+        } finally {
+
+            panelState.wireLookupStateMessage = undefined;
+
+            if ( isPanelStillCurrent() ) {
+                this.postToPanel(cockpitPanel, { command: 'wireLookupState', isRunning: false });
+            }
+
+        }
+
+    }
+
+    // WHETHER THE FILE WAS WRITTEN; EVERY OTHER ENDING HAS ALREADY BEEN SAID TO THE READER, OR WAS THEIR OWN CANCEL
+    private static async writeLookupWirings(wireAction: Extract<RecipeCockpitPanelAction, { kind: 'wireLookups' }>,
+                                            tree: IRecipeCockpitTreeViewModel,
+                                            objectLevelsByApiName: Map<string, number> | undefined,
+                                            workspaceRoot: string): Promise<boolean> {
+
+        const { recipeFilePath, wirings, isWireAll } = wireAction;
+        const recipeFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath));
+        const describeWiring = (wiring: Pick<IRecipeCockpitLookupWiringViewModel, 'objectApiName' | 'objectNickname' | 'fieldApiName'>) => (
+            `${wiring.objectApiName}${wiring.objectNickname !== undefined ? ` (${wiring.objectNickname})` : ''}.${wiring.fieldApiName}`
+        );
+
+        if ( !this.isUsableWorkspacePath(recipeFilePath, workspaceRoot) ) {
+            VSCodeWorkspaceService.showWarningMessage(`The recipe file "${recipeFileLabel}" no longer exists in this workspace, so nothing was wired. Re-open the Recipe Cockpit to load the runs currently on disk.`);
+            return false;
+        }
+
+        let wiringRequests: ILookupWiringRequest[];
+
+        if ( isWireAll ) {
+
+            wiringRequests = wirings.map(wiring => ({
+                objectApiName: wiring.objectApiName,
+                ...( wiring.objectNickname !== undefined ? { objectNickname: wiring.objectNickname } : {} ),
+                fieldApiName: wiring.fieldApiName,
+                parentNickname: wiring.candidateNicknames[0]
+            }));
+
+        } else {
+
+            const wiring = wirings[0];
+            const parentNickname = wiring.candidateNicknames.length === 1
+                ? wiring.candidateNicknames[0]
+                : await vscode.window.showQuickPick(wiring.candidateNicknames, {
+                    title: `Wire ${describeWiring(wiring)}`,
+                    placeHolder: 'The record whose nickname this lookup points at',
+                    ignoreFocusOut: true
+                });
+
+            if ( parentNickname === undefined || !wiring.candidateNicknames.includes(parentNickname) ) {
+                return false;
+            }
+
+            wiringRequests = [{
+                objectApiName: wiring.objectApiName,
+                ...( wiring.objectNickname !== undefined ? { objectNickname: wiring.objectNickname } : {} ),
+                fieldApiName: wiring.fieldApiName,
+                parentNickname: parentNickname
+            }];
+
+        }
+
+        const wiringLines = wiringRequests.map(wiringRequest => `${describeWiring(wiringRequest)} → ${wiringRequest.parentNickname}`);
+        const shownWiringLines = wiringLines.slice(0, RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_SHOWN);
+        const unshownWiringCount = wiringLines.length - shownWiringLines.length;
+
+        const confirmation = await vscode.window.showWarningMessage(
+            wiringRequests.length === 1
+                ? `Wire ${describeWiring(wiringRequests[0])} to ${wiringRequests[0].parentNickname}?`
+                : `Wire ${wiringRequests.length} TODO lookups?`,
+            {
+                modal: true,
+                detail: [
+                    `This writes to "${recipeFileLabel}": each lookup's "### TODO -- REFERENCE ID REQUIRED" line becomes the nickname below, which the insert replaces with the Id of the record holding it. Every other line of the file is left as it is.`,
+                    '',
+                    ...shownWiringLines,
+                    ...( unshownWiringCount > 0 ? [`…and ${unshownWiringCount} more`] : [] ),
+                    ...( isWireAll ? ['', 'A lookup with more than one record to choose from is left as it is: use its "Wire to…".'] : [] )
+                ].join('\n')
+            },
+            RECIPE_COCKPIT_WIRE_LOOKUP_CONFIRM_LABEL
+        );
+
+        if ( confirmation !== RECIPE_COCKPIT_WIRE_LOOKUP_CONFIRM_LABEL ) {
+            return false;
+        }
+
+        // CHECKED AGAIN AFTER THE MODAL: THE FILE CAN HAVE BEEN REPLACED WHILE IT WAS OPEN
+        if ( !this.isUsableWorkspacePath(recipeFilePath, workspaceRoot) ) {
+            VSCodeWorkspaceService.showWarningMessage(`The recipe file "${recipeFileLabel}" no longer exists in this workspace, so nothing was wired.`);
+            return false;
+        }
+
+        const wiringResult = RecipeCockpitRecipeWriter.wireLookups(fs.readFileSync(recipeFilePath, 'utf-8'), wiringRequests, this.buildLookupWiringContext(tree, objectLevelsByApiName));
+
+        if ( 'refusal' in wiringResult ) {
+            VSCodeWorkspaceService.showWarningMessage(`Nothing was wired in "${recipeFileLabel}": ${RecipeYamlScalar.escapeForNotification(wiringResult.refusal.message)}`);
+            return false;
+        }
+
+        fs.writeFileSync(recipeFilePath, wiringResult.recipeText);
+
+        VSCodeWorkspaceService.showInformationMessage(wiringResult.edits.length === 1
+            ? `Wired ${describeWiring(wiringRequests[0])} to ${wiringRequests[0].parentNickname} in "${recipeFileLabel}".`
+            : `Wired ${wiringResult.edits.length} lookups in "${recipeFileLabel}".`);
 
         return true;
 
@@ -4348,6 +4571,11 @@ export class RecipeCockpitService {
         this.metadataDeployRunStateMessage = metadataDeployStateMessage.isRunning ? metadataDeployStateMessage : undefined;
         this.recipeCockpitPanelState.metadataDeployStateMessage = metadataDeployStateMessage;
 
+        // A RUN THAT STARTS REPLACES THE LINE THE LAST FAILED DEPLOY'S LINK WAS DRAWN ON
+        if ( metadataDeployStateMessage.isRunning ) {
+            this.recipeCockpitPanelState.metadataDeployStatusTarget = undefined;
+        }
+
         if ( this.recipeCockpitPanel ) {
             this.postToPanel(this.recipeCockpitPanel, metadataDeployStateMessage);
         }
@@ -4391,8 +4619,9 @@ export class RecipeCockpitService {
         this.isMetadataDeployInFlight = true;
         const treeLabel = tree.customName || tree.title;
         const objectApiNames = [...new Set(tree.objects.map(treeObject => treeObject.objectApiName))];
-        const buildState = (isRunning: boolean, statusText: string, isFailure = false, hasOutput = false): IRecipeCockpitMetadataDeployStateMessage => ({
-            command: 'metadataDeployState', isRunning, treeKey, statusText, isFailure, hasOutput
+        const buildState = (isRunning: boolean, statusText: string, isFailure = false, hasOutput = false, hasDeployStatus = false): IRecipeCockpitMetadataDeployStateMessage => ({
+            command: 'metadataDeployState', isRunning, treeKey, statusText, isFailure, hasOutput,
+            ...( hasDeployStatus ? { hasDeployStatus: true } : {} )
         });
         const reportStatus = (statusText: string) => this.setMetadataDeployState(buildState(true, statusText));
         let closingState: IRecipeCockpitMetadataDeployClosingState = { statusText: '', isFailure: false, isDeployRun: false };
@@ -4447,8 +4676,12 @@ export class RecipeCockpitService {
             } finally {
 
                 this.isMetadataDeployInFlight = false;
+                const deployStatusTarget: IRecipeCockpitDeployStatusTarget | undefined = closingState.deployStatusPath && closingState.orgDetail
+                    ? { treeKey: treeKey, orgDetail: closingState.orgDetail, deployStatusPath: closingState.deployStatusPath }
+                    : undefined;
                 this.recipeCockpitPanelState.metadataDeployOutputFilePath = closingState.outputFilePath;
-                this.setMetadataDeployState(buildState(false, closingState.statusText, closingState.isFailure, !!closingState.outputFilePath));
+                this.recipeCockpitPanelState.metadataDeployStatusTarget = deployStatusTarget;
+                this.setMetadataDeployState(buildState(false, closingState.statusText, closingState.isFailure, !!closingState.outputFilePath, !!deployStatusTarget));
 
             }
 
@@ -4536,8 +4769,12 @@ export class RecipeCockpitService {
         reportStatus(`Checking that ${orgLabel} is a sandbox…`);
 
         let orgTypeDetail: IOrgTypeDetail | undefined;
+        // THE HOST A FAILED DEPLOY'S deployUrl MUST BE ON BEFORE "Open Deployment Status" IS OFFERED (#283)
+        let deployOrgInstanceUrl: string | undefined;
         try {
-            orgTypeDetail = await SalesforceOrgService.queryOrganizationType(SalesforceOrgService.toQuerySource(await SalesforceOrgService.getConnection(orgDetail.username)));
+            const deployOrgConnection = await SalesforceOrgService.getConnection(orgDetail.username);
+            deployOrgInstanceUrl = typeof deployOrgConnection.instanceUrl === 'string' ? deployOrgConnection.instanceUrl : undefined;
+            orgTypeDetail = await SalesforceOrgService.queryOrganizationType(SalesforceOrgService.toQuerySource(deployOrgConnection));
         } catch (connectionError) {
             return { ...refuse(`Nothing was deployed: could not connect to ${orgLabel}: ${this.describeThrown(connectionError)}`, orgDetail), isConfirmed: false };
         }
@@ -4605,7 +4842,7 @@ export class RecipeCockpitService {
         }
 
         const deployPayload = ScratchOrgService.readCliJsonPayload(deployInvocation);
-        const deployOutcome: MetadataDeployOutcome = RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(deployInvocation, deployPayload);
+        const deployOutcome: MetadataDeployOutcome = RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(deployInvocation, deployPayload, deployOrgInstanceUrl);
         const outputFilePath = deployInvocation.spawnError || deployInvocation.isOutputTooLarge
             ? undefined
             : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, 'metadata-deploy', deployInvocation, new Date(), deployPayload);
@@ -4630,8 +4867,10 @@ export class RecipeCockpitService {
 
             case 'failed': {
                 const failedText = `The deploy of ${treeLabel} to ${orgLabel} failed: ${deployOutcome.failureMessage}`;
-                this.showMetadataDeployNotification('error', failedText, outputFilePath, workspaceRoot);
-                return { ...confirmed, statusText: failedText, isFailure: true, isDeployRun: true, outputFilePath: outputFilePath };
+                const deployStatusPath = deployOutcome.deployStatusPath;
+                this.showMetadataDeployNotification('error', failedText, outputFilePath, workspaceRoot,
+                    deployStatusPath ? { orgDetail: orgDetail, deployStatusPath: deployStatusPath } : undefined);
+                return { ...confirmed, statusText: failedText, isFailure: true, isDeployRun: true, outputFilePath: outputFilePath, ...( deployStatusPath ? { deployStatusPath: deployStatusPath } : {} ) };
             }
 
         }
@@ -4645,19 +4884,86 @@ export class RecipeCockpitService {
     }
 
     // NOT AWAITED: THE DEPLOY ENDS, AND RE-ENABLES THE PANEL, WITHOUT WAITING FOR THE READER TO DISMISS THE NOTIFICATION
-    private static showMetadataDeployNotification(severity: 'warning' | 'error', notificationText: string, outputFilePath: string | undefined, workspaceRoot: string) {
+    private static showMetadataDeployNotification(severity: 'warning' | 'error',
+                                                    notificationText: string,
+                                                    outputFilePath: string | undefined,
+                                                    workspaceRoot: string,
+                                                    deployStatusTarget?: Omit<IRecipeCockpitDeployStatusTarget, 'treeKey'>) {
 
-        const actions = outputFilePath ? [RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL] : [];
+        const actions = [
+            ...( deployStatusTarget ? [RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL] : [] ),
+            ...( outputFilePath ? [RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL] : [] )
+        ];
         const escapedText = RecipeYamlScalar.escapeForNotification(notificationText);
         const shownNotification = severity === 'warning'
             ? vscode.window.showWarningMessage(escapedText, ...actions)
             : vscode.window.showErrorMessage(escapedText, ...actions);
 
         Promise.resolve(shownNotification)
-            .then(chosenAction => chosenAction === RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL && outputFilePath
-                ? this.openMetadataDeployOutput(outputFilePath, workspaceRoot)
-                : undefined)
+            .then(chosenAction => {
+                if ( chosenAction === RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL && outputFilePath ) {
+                    return this.openMetadataDeployOutput(outputFilePath, workspaceRoot);
+                }
+                return chosenAction === RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL && deployStatusTarget
+                    ? this.openMetadataDeployStatus(deployStatusTarget)
+                    : undefined;
+            })
             .catch(() => undefined);
+
+    }
+
+    private static isDeployStatusOpenInFlight = false;
+
+    /*
+        "Open Deployment Status" (#283): the deploy org's own Deployment Status page for the deploy,
+        opened signed in through "sf org open --path", the route "Open in browser" takes (#279). The
+        frontdoor URL carries a session id, so it goes to the browser and nowhere else, and every
+        failure is a FIXED warning that quotes neither the CLI nor the URL. One open at a time.
+    */
+    private static async openMetadataDeployStatus(deployStatusTarget: Omit<IRecipeCockpitDeployStatusTarget, 'treeKey'>) {
+
+        if ( this.isDeployStatusOpenInFlight ) {
+            return;
+        }
+
+        // THE NOTIFICATION'S BUTTON IS NOT ROUTED: IT IS HELD TO THE ROUTER'S RULE THAT NOTHING OPENS WHILE A DEPLOY RUNS
+        if ( this.isMetadataDeployInFlight ) {
+            VSCodeWorkspaceService.showWarningMessage('The Deployment Status page was not opened: a deploy is running. Try again once it has finished.');
+            return;
+        }
+
+        this.isDeployStatusOpenInFlight = true;
+        const { orgDetail, deployStatusPath } = deployStatusTarget;
+        const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
+        const notOpenedText = `The Deployment Status page of ${orgLabel} could not be opened. Find the deploy in Setup, under Deployment Status.`;
+
+        try {
+
+            if ( !await SalesforceOrgService.isUsernameAuthorized(orgDetail.username) ) {
+                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The Deployment Status page was not opened: ${orgLabel} is no longer authorized. Authorize it again with sf org login web and try again.`));
+                return;
+            }
+
+            const openOutcome = await ScratchOrgService.resolveOrgOpenUrl(orgDetail.username, deployStatusPath);
+
+            if ( !openOutcome.isOpenable ) {
+                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(notOpenedText));
+                return;
+            }
+
+            if ( !await vscode.env.openExternal(vscode.Uri.parse(openOutcome.url, true)) ) {
+                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The Deployment Status page of ${orgLabel} was not opened: the browser did not accept the address.`));
+            }
+
+        } catch {
+
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(notOpenedText));
+
+        } finally {
+
+            this.isDeployStatusOpenInFlight = false;
+
+        }
 
     }
 
@@ -6320,6 +6626,11 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
+                // A WIRING WRITES THE SAME FILE AND RELOADS IT, SO A "+" WAITS FOR IT
+                if ( panelState.wireLookupStateMessage ) {
+                    return { kind: 'postAddFriendState', hostMessage: { command: 'addFriendState', isRunning: false } };
+                }
+
                 const recipeFilePath = typeof treeKey === 'string'
                                         && typeof objectApiName === 'string'
                                         && typeof objectNickname === 'string'
@@ -6341,6 +6652,55 @@ export class RecipeCockpitService {
 
                 // THE PANEL DISABLED EVERY "+" ON THE CLICK, SO EVEN A REFUSAL ANSWERS THAT NOTHING RUNS
                 return { kind: 'postAddFriendState', hostMessage: { command: 'addFriendState', isRunning: false } };
+
+            }
+
+            /*
+                "Wire to…" posts four NAMES -- the card, the object, the occurrence's nickname when the
+                row draws one, and the field -- matched against the lookups the confirmed-drawn model
+                offered (#151). "Wire TODO lookups" posts the card alone, and wires every lookup of it
+                with exactly ONE nickname to choose from. The nicknames, the recipe file and what is
+                written are all the host's: nothing posted is read as a path, a nickname or recipe text.
+            */
+            case 'wireLookup':
+            case 'wireAllLookups': {
+
+                const closeWireLookupState: RecipeCockpitPanelAction = { kind: 'postWireLookupState', hostMessage: { command: 'wireLookupState', isRunning: false } };
+
+                // ONE WRITE AT A TIME -- THE ONE IN FLIGHT HOLDS EVERY WIRE BUTTON DISABLED AND ITS OWN END GIVES THEM BACK
+                if ( panelState.wireLookupStateMessage ) {
+                    return undefined;
+                }
+
+                if ( panelState.addFriendStateMessage || !panelState.recipeDataMessage || typeof panelMessage.treeKey !== 'string' ) {
+                    return closeWireLookupState;
+                }
+
+                const treeKey = panelMessage.treeKey;
+
+                if ( panelMessage.command === 'wireAllLookups' ) {
+
+                    const singleCandidateTargets = [...panelState.wireableLookupTargets.entries()]
+                        .filter(([targetKey, target]) => targetKey.startsWith(`${treeKey}\n`) && target.wiring.candidateNicknames.length === 1)
+                        .map(([, target]) => target);
+
+                    // ONE CARD IS ONE RECIPE FILE, SO EVERY TARGET OF IT NAMES THE SAME ONE
+                    return singleCandidateTargets.length > 0
+                        ? { kind: 'wireLookups', treeKey: treeKey, recipeFilePath: singleCandidateTargets[0].recipeFilePath, wirings: singleCandidateTargets.map(target => target.wiring), isWireAll: true }
+                        : closeWireLookupState;
+
+                }
+
+                const { objectApiName, objectNickname, fieldApiName } = panelMessage;
+                const target = typeof objectApiName === 'string'
+                                && ( objectNickname === undefined || typeof objectNickname === 'string' )
+                                && typeof fieldApiName === 'string'
+                    ? panelState.wireableLookupTargets.get(this.buildWireableLookupKey(treeKey, objectApiName, objectNickname as string | undefined, fieldApiName))
+                    : undefined;
+
+                return target
+                    ? { kind: 'wireLookups', treeKey: treeKey, recipeFilePath: target.recipeFilePath, wirings: [target.wiring], isWireAll: false }
+                    : closeWireLookupState;
 
             }
 
@@ -6662,6 +7022,29 @@ export class RecipeCockpitService {
 
             }
 
+            /*
+                "Open Deployment Status" (#283): the tree's KEY alone, accepted only for the card the
+                last failed deploy's line is drawn on and only while no deploy runs. The page and
+                the org are the host's; nothing in the message names either.
+            */
+            case 'openMetadataDeployStatus': {
+
+                const { treeKey } = panelMessage;
+                const deployStatusTarget = panelState.metadataDeployStatusTarget;
+
+                if ( typeof treeKey !== 'string'
+                        || !deployStatusTarget
+                        || deployStatusTarget.treeKey !== treeKey
+                        || !panelState.metadataDeployStateMessage?.hasDeployStatus
+                        || panelState.metadataDeployStateMessage.treeKey !== treeKey
+                        || panelState.metadataDeployStateMessage.isRunning ) {
+                    return undefined;
+                }
+
+                return { kind: 'openMetadataDeployStatus', deployStatusTarget: deployStatusTarget };
+
+            }
+
             // NO PAYLOAD: THE FILE IS THE ONE THE LAST DEPLOY WROTE, HELD ON THE HOST
             case 'viewMetadataDeployOutput':
 
@@ -6736,6 +7119,10 @@ export class RecipeCockpitService {
             replayMessages.push({ command: 'orgOpenState', isRunning: true });
         }
 
+        if ( panelState.wireLookupStateMessage ) {
+            replayMessages.push(panelState.wireLookupStateMessage);
+        }
+
         if ( panelState.scratchOrgStateMessage ) {
             replayMessages.push(panelState.scratchOrgStateMessage);
         }
@@ -6795,6 +7182,78 @@ export class RecipeCockpitService {
             }));
 
         return insertableFriendTargets;
+
+    }
+
+    static buildWireableLookupKey(treeKey: string, objectApiName: string, objectNickname: string | undefined, fieldApiName: string): string {
+
+        return `${treeKey}\n${RecipeCockpitRecipeWriter.buildLookupWiringKey(objectApiName, objectNickname, fieldApiName)}`;
+
+    }
+
+    // EVERY "Wire to…" THE RENDERED MODEL DRAWS, MAPPED TO ITS CARD'S RECIPE FILE -- HOST-ONLY, SO THE PANEL NEVER NAMES IT
+    static collectWireableLookupTargets(recipeViewModel: IRecipeCockpitRecipeViewModel, recipeFilePathsByTreeKey: ReadonlyMap<string, string>): Map<string, IRecipeCockpitLookupWiringTarget> {
+
+        const wireableLookupTargets = new Map<string, IRecipeCockpitLookupWiringTarget>();
+
+        recipeViewModel.trees.forEach(tree => {
+
+            const recipeFilePath = recipeFilePathsByTreeKey.get(tree.treeKey);
+            if ( !recipeFilePath ) {
+                return;
+            }
+
+            ( tree.lookupWirings ?? [] ).forEach(wiring => wireableLookupTargets.set(
+                this.buildWireableLookupKey(tree.treeKey, wiring.objectApiName, wiring.objectNickname, wiring.fieldApiName),
+                { recipeFilePath: recipeFilePath, wiring: wiring }
+            ));
+
+        });
+
+        return wireableLookupTargets;
+
+    }
+
+    // WHAT THE WRITER DECIDES A WIRING BY: THE CARD'S OWN LOOKUPS AND RelationshipService's LEVELS, AS ▶ Run Faker's FILTERED COPY USES THEM
+    static buildLookupWiringContext(tree: IRecipeCockpitTreeViewModel, objectLevelsByApiName: Map<string, number> | undefined): ILookupWiringContext {
+
+        const parentLookupsByObjectApiName = new Map<string, IRecipeFilterLookup[]>();
+        tree.objects
+            .filter(treeObject => treeObject.iterationNickname === undefined)
+            .forEach(treeObject => parentLookupsByObjectApiName.set(treeObject.objectApiName, treeObject.parentLookups.map(parentLookup => ({ ...parentLookup }))));
+
+        return {
+            parentLookupsByObjectApiName: parentLookupsByObjectApiName,
+            ...( objectLevelsByApiName ? { levelsByObjectApiName: objectLevelsByApiName } : {} )
+        };
+
+    }
+
+    /*
+        The card's TODO lookups, from the text the load already read for the file (readRecipeSourceFiles)
+        when it has it, else read from disk; a file that cannot be read offers none.
+    */
+    static listTreeLookupWirings(recipeFilePath: string,
+                                    tree: IRecipeCockpitTreeViewModel,
+                                    objectLevelsByApiName: Map<string, number> | undefined,
+                                    alreadyReadRecipeText?: string): IRecipeCockpitLookupWiringViewModel[] {
+
+        let recipeText = alreadyReadRecipeText;
+        if ( recipeText === undefined ) {
+            try {
+                recipeText = fs.readFileSync(recipeFilePath, 'utf-8');
+            } catch {
+                return [];
+            }
+        }
+
+        return RecipeCockpitRecipeWriter.listLookupWirings(recipeText, this.buildLookupWiringContext(tree, objectLevelsByApiName))
+            .map(wiring => ({
+                objectApiName: wiring.objectApiName,
+                ...( wiring.objectNickname !== undefined ? { objectNickname: wiring.objectNickname } : {} ),
+                fieldApiName: wiring.fieldApiName,
+                candidateNicknames: wiring.candidateNicknames
+            }));
 
     }
 
@@ -7024,6 +7483,10 @@ export class RecipeCockpitService {
             const runFakerRecipeFilePath = treeHistoryBuild.targets.runFakerRecipeFilePathsByTreeKey.get(tree.treeKey);
             if ( runFakerRecipeFilePath ) {
                 tree.runFakerRecipeFileName = path.basename(runFakerRecipeFilePath);
+                const lookupWirings = this.listTreeLookupWirings(runFakerRecipeFilePath, tree, normalizedObjectsWrapper.objectLevelsByApiName, recipeSourceRead.recipeTextsByFilePath.get(runFakerRecipeFilePath));
+                if ( lookupWirings.length > 0 ) {
+                    tree.lookupWirings = lookupWirings;
+                }
             }
         });
 
@@ -7500,27 +7963,31 @@ export class RecipeCockpitService {
         symlinks resolved -- before it is trusted. One unreadable file costs that file's source
         links and a notice, not the panel.
     */
-    static readRecipeSourceFiles(runFolderPath: string, workspaceRoot: string): { recipeSourceFiles: IRecipeSourceFile[]; notices: string[] } {
+    // recipeTextsByFilePath IS EACH FILE'S TEXT AS IT WAS READ HERE, SO THE TREE CARDS' TODO LOOKUPS ARE LISTED WITHOUT READING IT AGAIN (#151)
+    static readRecipeSourceFiles(runFolderPath: string, workspaceRoot: string): { recipeSourceFiles: IRecipeSourceFile[]; notices: string[]; recipeTextsByFilePath: Map<string, string> } {
 
         const recipeSourceFiles: IRecipeSourceFile[] = [];
         const notices: string[] = [];
+        const recipeTextsByFilePath = new Map<string, string>();
 
         this.collectRecipeFilePaths(runFolderPath)
             .filter(recipeFilePath => SfdxProjectService.isPathContainedInWorkspace(path.resolve(recipeFilePath), path.resolve(workspaceRoot)))
             .forEach(recipeFilePath => {
 
                 try {
+                    const recipeText = fs.readFileSync(recipeFilePath, 'utf-8');
                     recipeSourceFiles.push({
                         filePath: recipeFilePath,
-                        objectEntries: this.parseRecipeSource(fs.readFileSync(recipeFilePath, 'utf-8'))
+                        objectEntries: this.parseRecipeSource(recipeText)
                     });
+                    recipeTextsByFilePath.set(recipeFilePath, recipeText);
                 } catch (readError) {
                     notices.push(`The recipe file "${path.basename(recipeFilePath)}" could not be read (${readError?.message ?? readError}), so its objects and fields cannot be opened from here.`);
                 }
 
             });
 
-        return { recipeSourceFiles: recipeSourceFiles, notices: notices };
+        return { recipeSourceFiles: recipeSourceFiles, notices: notices, recipeTextsByFilePath: recipeTextsByFilePath };
 
     }
 
@@ -7681,10 +8148,20 @@ export class RecipeCockpitService {
             const objectEntry = recipeSourceFile.objectEntries.get(objectViewModel.objectApiName);
             const wrapperFieldApiNames = new Set(objectViewModel.fields.map(fieldViewModel => fieldViewModel.fieldApiName));
 
-            const locatedWrapperFields = objectViewModel.fields.map(fieldViewModel => ({
-                ...fieldViewModel,
-                lineNumber: objectEntry.fieldEntries.get(fieldViewModel.fieldApiName)?.lineNumber
-            }));
+            /*
+                The wrapper records every lookup as the generated "### TODO -- REFERENCE ID REQUIRED", and
+                keeps saying so after Generate Treecipe wired it to an ancestor (#46) or the reader wired
+                it in the cockpit (#151). Such a row shows what the recipe FILE says instead, which is
+                what Run Faker reads.
+            */
+            const locatedWrapperFields = objectViewModel.fields.map(fieldViewModel => {
+                const fieldEntry = objectEntry.fieldEntries.get(fieldViewModel.fieldApiName);
+                return {
+                    ...fieldViewModel,
+                    ...( fieldEntry && fieldViewModel.recipeValue.startsWith(RelationshipService.referenceIdRequiredTodo) ? { recipeValue: fieldEntry.valueText } : {} ),
+                    lineNumber: fieldEntry?.lineNumber
+                };
+            });
 
             const recipeFileOnlyFields: IRecipeCockpitFieldViewModel[] = [];
 
@@ -7902,7 +8379,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader:hover { box-shadow: inset 4px 0 0 var(--sdt-accent); }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treeDeploy, .treePermissionSets, .metadataDeployViewOutput {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treeDeploy, .treePermissionSets, .metadataDeployViewOutput, .metadataDeployOpenStatus {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
@@ -7914,7 +8391,7 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treeDeploy:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .metadataDeployViewOutput:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
+    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treeDeploy:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .metadataDeployViewOutput:hover:not(:disabled), .metadataDeployOpenStatus:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
     .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
@@ -7938,7 +8415,7 @@ ${this.buildPaletteCustomProperties()}
     .treeAddFriend { font-weight: 600; }
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
-    .treeAddFriendChoice, .historyAction, .treeInsertErrors, .scratchOrgViewOutput, .metadataDeployViewOutput { text-decoration: underline; }
+    .treeAddFriendChoice, .historyAction, .treeInsertErrors, .scratchOrgViewOutput, .metadataDeployViewOutput, .metadataDeployOpenStatus { text-decoration: underline; }
     .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treeDeploy:disabled, .treePermissionSets:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
@@ -8059,7 +8536,7 @@ ${this.buildPaletteCustomProperties()}
     .treeFieldNote, .treeFieldWarning { position: relative; z-index: 2; font-size: 0.85em; }
     .treeFieldWarning { color: var(--sdt-changed); }
     .treeFieldBulk { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding: 0.2rem 0.6rem 0.2rem 2.1rem; position: relative; z-index: 2; }
-    .treeFieldBulk button, .treeResetSelection {
+    .treeFieldBulk button, .treeResetSelection, .treeWireLookup, .treeWireAllLookups {
         min-height: 1.9rem;
         padding: 0.2rem 0.6rem;
         font: inherit;
@@ -8070,8 +8547,8 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeFieldBulk button:hover:not(:disabled), .treeResetSelection:hover:not(:disabled) { border-color: var(--sdt-accent); }
-    .treeFieldBulk button:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); cursor: not-allowed; }
+    .treeFieldBulk button:hover:not(:disabled), .treeResetSelection:hover:not(:disabled), .treeWireLookup:hover:not(:disabled), .treeWireAllLookups:hover:not(:disabled) { border-color: var(--sdt-accent); }
+    .treeFieldBulk button:disabled, .treeWireLookup:disabled, .treeWireAllLookups:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); cursor: not-allowed; }
     .treeObjectHeader:hover, .treeField:hover { background-color: var(--sdt-row-hover); }
     .treeObjectName { font-weight: 600; }
     .treeObjectBody { padding-bottom: 0.25rem; }
@@ -8153,10 +8630,13 @@ ${this.buildPaletteCustomProperties()}
     const RUN_FAKER_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL)};
     const RUN_FAKER_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL)};
     const ADD_FRIEND_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL)};
+    const WIRE_LOOKUP_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL)};
+    const WIRE_ALL_LOOKUPS_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL)};
     const INSERT_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_ACTION_LABEL)};
     const INSERT_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_RUNNING_LABEL)};
     const METADATA_DEPLOY_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_METADATA_DEPLOY_ACTION_LABEL)};
     const PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL)};
+    const METADATA_DEPLOY_OPEN_STATUS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL)};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
     const PANEL_PLACE_VERSION = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION};
     const PANEL_PLACE_SCROLL_SAVE_DELAY = ${RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY};
@@ -8202,6 +8682,11 @@ ${this.buildPaletteCustomProperties()}
     let isAddFriendRunning = false;
     // EVERY "+" AND FRIEND CHOICE DRAWN FOR THIS MODEL, SO ONE CLICK CAN DISABLE THEM ALL
     let addFriendButtonElements = [];
+    // THE SAME FOR "Wire to…" AND "Wire TODO lookups" (#151)
+    let isWireLookupRunning = false;
+    let wireLookupButtonElements = [];
+    // EACH CARD'S lookupWirings BY OBJECT, OCCURRENCE AND FIELD, BUILT ONCE PER CARD RATHER THAN SCANNED PER ROW
+    let lookupWiringIndexByTree = new WeakMap();
     // WHETHER THE READER HAS USED THE ORG PICKER; IT OUTLIVES A MODEL, SO A RELOAD CHECKS THE SAME ORG AGAIN
     let isDataOrgPickerInUse = false;
     /*
@@ -9267,6 +9752,11 @@ ${this.buildPaletteCustomProperties()}
             fieldHeaderElement.appendChild(createElement('span', 'fieldType', field.fieldTypeWithSize || field.fieldType));
         }
 
+        const lookupWiring = field.lineNumber ? findLookupWiring(treeObjectState.tree, treeObjectState.object, field.fieldApiName) : null;
+        if (lookupWiring) {
+            fieldHeaderElement.appendChild(buildWireLookupElement(treeObjectState.tree, lookupWiring));
+        }
+
         if (field.controllingField) {
             fieldHeaderElement.appendChild(createElement('span', 'controllingField muted', 'controlled by ' + field.controllingField));
         }
@@ -9361,6 +9851,84 @@ ${this.buildPaletteCustomProperties()}
 
         isAddFriendRunning = isRunning;
         addFriendButtonElements.forEach(function (buttonElement) { buttonElement.disabled = isRunning; });
+
+    }
+
+    function lookupWiringKeyOf(objectApiName, objectNickname, fieldApiName) {
+        return objectApiName + '\\n' + (objectNickname || '') + '\\n' + fieldApiName;
+    }
+
+    // THE WIRING A ROW DRAWS "Wire to…" FOR: THE CARD'S OWN, FOR THIS OCCURRENCE OF THE OBJECT -- null FOR EVERY OTHER ROW
+    function findLookupWiring(tree, object, fieldApiName) {
+
+        if (!tree.lookupWirings || tree.lookupWirings.length === 0) { return null; }
+
+        let lookupWiringIndex = lookupWiringIndexByTree.get(tree);
+        if (!lookupWiringIndex) {
+            lookupWiringIndex = Object.create(null);
+            tree.lookupWirings.forEach(function (wiring) {
+                lookupWiringIndex[lookupWiringKeyOf(wiring.objectApiName, wiring.objectNickname, wiring.fieldApiName)] = wiring;
+            });
+            lookupWiringIndexByTree.set(tree, lookupWiringIndex);
+        }
+
+        const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
+        return Object.prototype.hasOwnProperty.call(lookupWiringIndex, key) ? lookupWiringIndex[key] : null;
+
+    }
+
+    /*
+        "Wire to…" (#151) on a lookup the recipe still writes as a TODO, posting NAMES only -- the card,
+        the object, the occurrence's nickname and the field. The nickname it is wired to is chosen on
+        the host. One click disables every wire button until the host's wireLookupState gives them back.
+    */
+    function buildWireLookupElement(tree, wiring) {
+
+        const wireElement = createElement('button', 'treeWireLookup', WIRE_LOOKUP_ACTION_LABEL);
+        const fieldLabel = wiring.objectApiName + (wiring.objectNickname ? ' (' + wiring.objectNickname + ')' : '') + '.' + wiring.fieldApiName;
+
+        wireElement.setAttribute('title', wiring.candidateNicknames.length === 1
+            ? 'Point this lookup at ' + wiring.candidateNicknames[0] + ' in the recipe file, after a confirmation'
+            : 'Choose which of ' + wiring.candidateNicknames.join(', ') + ' this lookup points at in the recipe file');
+        wireElement.setAttribute('aria-label', 'Wire ' + fieldLabel);
+        wireElement.addEventListener('click', function () {
+            if (isWireLookupRunning) { return; }
+            setWireLookupRunning(true);
+            const wireMessage = { command: 'wireLookup', treeKey: tree.treeKey, objectApiName: wiring.objectApiName, fieldApiName: wiring.fieldApiName };
+            if (wiring.objectNickname) { wireMessage.objectNickname = wiring.objectNickname; }
+            vscodeApi.postMessage(wireMessage);
+        });
+        wireElement.disabled = isWireLookupRunning;
+        wireLookupButtonElements.push(wireElement);
+
+        return wireElement;
+
+    }
+
+    // "Wire TODO lookups" ON A CARD WITH AT LEAST ONE LOOKUP THAT HAS EXACTLY ONE RECORD TO CHOOSE FROM; null OTHERWISE
+    function buildWireAllLookupsElement(tree) {
+
+        const singleCandidateCount = (tree.lookupWirings || []).filter(function (wiring) { return wiring.candidateNicknames.length === 1; }).length;
+        if (singleCandidateCount === 0) { return null; }
+
+        const wireAllElement = createElement('button', 'treeWireAllLookups', WIRE_ALL_LOOKUPS_ACTION_LABEL + ' (' + singleCandidateCount + ')');
+        wireAllElement.setAttribute('title', 'Point every TODO lookup of this tree that has exactly one record to choose from at that record\\'s nickname, in the recipe file, after a confirmation that lists them');
+        wireAllElement.addEventListener('click', function () {
+            if (isWireLookupRunning) { return; }
+            setWireLookupRunning(true);
+            vscodeApi.postMessage({ command: 'wireAllLookups', treeKey: tree.treeKey });
+        });
+        wireAllElement.disabled = isWireLookupRunning;
+        wireLookupButtonElements.push(wireAllElement);
+
+        return wireAllElement;
+
+    }
+
+    function setWireLookupRunning(isRunning) {
+
+        isWireLookupRunning = isRunning;
+        wireLookupButtonElements.forEach(function (buttonElement) { buttonElement.disabled = isRunning; });
 
     }
 
@@ -10127,6 +10695,11 @@ ${this.buildPaletteCustomProperties()}
             drawResetSelection(treeState);
         }
 
+        const wireAllLookupsElement = buildWireAllLookupsElement(tree);
+        if (wireAllLookupsElement) {
+            actionsElement.appendChild(wireAllLookupsElement);
+        }
+
         headerElement.appendChild(actionsElement);
 
         if (tree.runFakerRecipeFileName) {
@@ -10190,7 +10763,8 @@ ${this.buildPaletteCustomProperties()}
             permissionSetElement: createElement('button', 'treePermissionSets', PERMISSION_SET_ACTION_LABEL),
             statusElement: createElement('div', 'metadataDeployStatus muted hidden'),
             statusTextElement: createElement('span', 'metadataDeployStatusText'),
-            viewOutputElement: createElement('button', 'metadataDeployViewOutput hidden', 'View output')
+            viewOutputElement: createElement('button', 'metadataDeployViewOutput hidden', 'View output'),
+            openStatusElement: createElement('button', 'metadataDeployOpenStatus hidden', METADATA_DEPLOY_OPEN_STATUS_LABEL)
         };
 
         deploy.buttonElement.setAttribute('title', 'Deploy this tree\\'s custom objects, each with everything in its source folder, and the custom fields of its standard objects from the source in this workspace, to the org selected above or a sandbox you choose, after a confirmation that lists the files');
@@ -10223,9 +10797,15 @@ ${this.buildPaletteCustomProperties()}
             vscodeApi.postMessage({ command: 'viewMetadataDeployOutput' });
         });
 
+        // #283: THE TREE'S KEY ALONE -- THE PAGE AND THE ORG ARE THE HOST'S
+        deploy.openStatusElement.addEventListener('click', function () {
+            vscodeApi.postMessage({ command: 'openMetadataDeployStatus', treeKey: treeState.tree.treeKey });
+        });
+
         controlsElement.appendChild(deploy.buttonElement);
         controlsElement.appendChild(deploy.permissionSetElement);
         deploy.statusElement.appendChild(deploy.statusTextElement);
+        deploy.statusElement.appendChild(deploy.openStatusElement);
         deploy.statusElement.appendChild(deploy.viewOutputElement);
         controlsElement.appendChild(deploy.statusElement);
 
@@ -10249,6 +10829,7 @@ ${this.buildPaletteCustomProperties()}
         setShown(deploy.statusElement, !!deployStatusText);
         if (deployStatusText && metadataDeployState.isFailure) { deploy.statusElement.classList.add('failed'); } else { deploy.statusElement.classList.remove('failed'); }
         setShown(deploy.viewOutputElement, !!deployStatusText && !metadataDeployState.isRunning && !!metadataDeployState.hasOutput);
+        setShown(deploy.openStatusElement, !!deployStatusText && !metadataDeployState.isRunning && !!metadataDeployState.isFailure && metadataDeployState.hasDeployStatus === true);
 
     }
 
@@ -11021,6 +11602,7 @@ ${this.buildPaletteCustomProperties()}
         answeredDatasetCounts = Object.create(null);
         fieldSearchTexts = new Map();
         addFriendButtonElements = [];
+        wireLookupButtonElements = [];
         runSelectElement = null;
         favoritesToggleElement = null;
         favoritesCountElement = null;
@@ -11179,6 +11761,11 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'addFriendState') {
             setAddFriendRunning(!!hostMessage.isRunning);
+            return;
+        }
+
+        if (hostMessage.command === 'wireLookupState') {
+            setWireLookupRunning(!!hostMessage.isRunning);
             return;
         }
 
