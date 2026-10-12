@@ -1,11 +1,19 @@
 # Change Log
 
-## [3.72.3] - Docs: README and CLAUDE.md describe the cockpit as it ships
+## [3.72.4] - Docs: README and CLAUDE.md describe the cockpit as it ships
 
 Part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173). Documentation only; no code changes.
 
 - **README.** The Recipe Cockpit intro no longer says the cockpit compares a recipe with an org (the Compare tab went in 3.68.0). It now says the cockpit deploys a tree's metadata and permission sets. **Deploy & assign permission sets…** (3.70.0) gets its own bullet beside **Deploy this metadata…**, and both are named in the Treecipe tab's list of buttons. Insert Data Set by Directory now refers to a row of **Previously Used Data Sets** instead of "a Previous Fake Set".
 - **CLAUDE.md.** The last references to the retired Structure tab and Data-by-Org Create now name the Treecipe tab and the tree insert. An excluded object is described as left out of the tree insert (`listTreeInsertObjectApiNames`), replacing an `excluded in Structure` label that no longer exists.
+
+## [3.72.3] - Recipe Cockpit: the org picker no longer counts the orgs it leaves out
+
+Closes [#284](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/284).
+
+- When the Treecipe tab's org picker leaves an authorized org out (production, expired, deleted or not connected), its note now reads only `The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.` The count and the reasons that came before it ("3 authorized orgs are not listed: 1 production, 1 expired, 1 not connected.") are gone. With nothing left out, there is still no note.
+- The note is one constant, `RECIPE_COCKPIT_HIDDEN_ORGS_NOTE`. The `dataOrgList` message no longer carries `hiddenOrgCount`, which the panel never read.
+- **Unchanged:** which orgs are listed, the "last org used is no longer connected" notice, the messages shown when no org is listed, and the other org pickers (Insert Data Set by Directory, Run Picklist Dependency Check, the Dev Hub picker and the deploy prompts), which still count what they left out.
 
 ## [3.72.2] - Recipe Cockpit: orgs are listed by their alias again
 

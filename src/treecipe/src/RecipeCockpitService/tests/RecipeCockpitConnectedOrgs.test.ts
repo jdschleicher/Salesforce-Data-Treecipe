@@ -42,7 +42,7 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 import { AuthInfo } from '@salesforce/core';
 import { execFile } from 'child_process';
 
-import { RECIPE_COCKPIT_DATA_ORG_STATE_KEY, RecipeCockpitService } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_DATA_ORG_STATE_KEY, RECIPE_COCKPIT_HIDDEN_ORGS_NOTE, RecipeCockpitService } from '../RecipeCockpitService';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
 import { ExtensionCommandService } from '../../ExtensionCommandService/ExtensionCommandService';
@@ -144,7 +144,7 @@ describe('RecipeCockpitService, every org picker lists only the orgs the Salesfo
 
         expect(postedNamed('dataOrgList')[0]).toMatchObject({
             orgLabels: CONNECTED_ORG_LABELS,
-            hiddenOrgNote: expect.stringContaining('4 authorized orgs are not listed: 1 expired, 1 deleted, 2 not connected.')
+            hiddenOrgNote: RECIPE_COCKPIT_HIDDEN_ORGS_NOTE
         });
         expect(offeredQuickPickLabels).toEqual([CONNECTED_ORG_LABELS, CONNECTED_ORG_LABELS]);
         expect(execFile).toHaveBeenCalledTimes(1);
@@ -190,7 +190,7 @@ describe('RecipeCockpitService, every org picker lists only the orgs the Salesfo
 
         expect(postedNamed('dataOrgList')[0]).toMatchObject({
             orgLabels: CONNECTED_ORG_LABELS,
-            hiddenOrgNote: expect.stringContaining('4 authorized orgs are not listed')
+            hiddenOrgNote: RECIPE_COCKPIT_HIDDEN_ORGS_NOTE
         });
         expect(offeredQuickPickLabels).toEqual([CONNECTED_ORG_LABELS, CONNECTED_ORG_LABELS]);
         expect(JSON.stringify(postedNamed('dataOrgList'))).not.toContain('@example.com');
