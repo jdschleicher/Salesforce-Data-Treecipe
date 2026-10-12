@@ -756,9 +756,9 @@ export interface IRecipeCockpitRunFakerStateMessage {
     panel posted would be an org of its choosing; an index can only be one the host offered.
 */
 /*
-    hiddenOrgCount is how many authorized orgs were left out -- because the CLI does not know them to
-    be a sandbox or a scratch org (Data-by-Org never lists, and so never connects to, production), or
-    because it does not report them connected -- and hiddenOrgNote says so, counting each reason.
+    hiddenOrgNote is RECIPE_COCKPIT_HIDDEN_ORGS_NOTE when any authorized org was left out -- because the
+    CLI does not know it to be a sandbox or a scratch org (Data-by-Org never lists, and so never connects
+    to, production), or because it does not report it connected -- and empty otherwise.
     forgottenOrgNotice names the org chosen last when it was forgotten for no longer being connected.
 */
 export interface IRecipeCockpitDataOrgListMessage {
@@ -766,11 +766,12 @@ export interface IRecipeCockpitDataOrgListMessage {
     orgLabels: string[];
     selectedOrgIndex: number | null;
     noOrgsMessage: string;
-    hiddenOrgCount: number;
     hiddenOrgNote: string;
     forgottenOrgNotice: string;
     renderSequence: number;
 }
+
+export const RECIPE_COCKPIT_HIDDEN_ORGS_NOTE = 'The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.';
 
 export const RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE = 'No sandbox or scratch org is authorized. The Treecipe tab connects only to sandboxes and scratch orgs: authorize one with "sf org login web --instance-url https://test.salesforce.com" and try again.';
 
@@ -3921,7 +3922,6 @@ export class RecipeCockpitService {
             orgLabels: orgDetails.map(orgDetail => this.buildDataOrgLabel(orgDetail)),
             selectedOrgIndex: selectedOrgIndex >= 0 ? selectedOrgIndex : null,
             noOrgsMessage: orgDetails.length === 0 ? noOrgsMessage : '',
-            hiddenOrgCount: SalesforceOrgService.countHiddenOrgs(SalesforceOrgService.countHiddenOrgReasons(hiddenOrgs)),
             hiddenOrgNote: hiddenOrgNote,
             forgottenOrgNotice: forgottenOrgNotice,
             renderSequence: listedRecipeDataMessage.renderSequence
@@ -5053,17 +5053,10 @@ export class RecipeCockpitService {
 
     }
 
-    // "3 authorized orgs are not listed: 1 production, 1 expired, 1 not connected." AND WHY THOSE ARE NEVER LISTED
+    // ONLY WHY AN AUTHORIZED ORG MAY BE MISSING, NEVER HOW MANY OR WHICH REASONS (#284)
     static buildDataOrgHiddenNote(hiddenOrgReasonCounts: IHiddenOrgReasonCounts): string {
 
-        const hiddenOrgCount = SalesforceOrgService.countHiddenOrgs(hiddenOrgReasonCounts);
-
-        if ( hiddenOrgCount === 0 ) {
-            return '';
-        }
-
-        return `${hiddenOrgCount} authorized ${hiddenOrgCount === 1 ? 'org is' : 'orgs are'} not listed: ${SalesforceOrgService.formatHiddenOrgReasons(hiddenOrgReasonCounts)}. `
-                + 'The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.';
+        return SalesforceOrgService.countHiddenOrgs(hiddenOrgReasonCounts) === 0 ? '' : RECIPE_COCKPIT_HIDDEN_ORGS_NOTE;
 
     }
 

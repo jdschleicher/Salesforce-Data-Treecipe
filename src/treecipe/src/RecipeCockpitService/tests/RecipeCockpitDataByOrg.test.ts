@@ -237,7 +237,6 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
                 orgLabels: ['qa', 'prod@example.com'],
                 selectedOrgIndex: null,
                 noOrgsMessage: '',
-                hiddenOrgCount: 0,
                 hiddenOrgNote: '',
                 forgottenOrgNotice: '',
                 renderSequence: lastRenderSequence()
@@ -287,7 +286,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
-        it('lists only the orgs the CLI knows are not production and reports connected, and counts each reason it left one out', async () => {
+        it('lists only the orgs the CLI knows are not production and reports connected, and says only that it lists sandboxes, with no count of what it left out', async () => {
 
             jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue(buildDataOrgListing([SANDBOX_ORG], [
                 { username: 'prod@example.com', label: 'prod', reason: 'production' },
@@ -302,11 +301,12 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             expect(postedNamed('dataOrgList')[0]).toMatchObject({
                 orgLabels: ['qa'],
-                hiddenOrgCount: 5,
-                hiddenOrgNote: '5 authorized orgs are not listed: 1 production, 1 expired, 1 deleted, 2 not connected. The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.',
+                hiddenOrgNote: 'The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.',
                 forgottenOrgNotice: '',
                 noOrgsMessage: ''
             });
+            expect(postedNamed('dataOrgList')[0]).not.toHaveProperty('hiddenOrgCount');
+            expect(postedNamed('dataOrgList')[0].hiddenOrgNote).not.toMatch(/authorized orgs? (is|are) not listed|\d/);
 
         });
 
@@ -317,7 +317,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             await openRenderedCockpit();
             await receivedMessageHandler({ command: 'loadDataOrgs' });
 
-            expect(postedNamed('dataOrgList')[0]).toMatchObject({ orgLabels: [], hiddenOrgCount: 1, noOrgsMessage: RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE });
+            expect(postedNamed('dataOrgList')[0]).toMatchObject({ orgLabels: [], noOrgsMessage: RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE });
 
         });
 
@@ -783,12 +783,12 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
-        it('says how many authorized orgs it left out, and why, and that the org used last is no longer connected', () => {
+        it('says it lists only sandboxes when it left an org out, and that the org used last is no longer connected', () => {
 
-            const hiddenOrgNote = '3 authorized orgs are not listed: 1 production, 1 expired, 1 not connected. The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.';
+            const hiddenOrgNote = 'The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.';
             const { panel } = renderDataOrgPanel();
             openTreecipeViews(panel);
-            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', hiddenOrgCount: 3, hiddenOrgNote: hiddenOrgNote, forgottenOrgNotice: 'The last org used, <b>old</b>, is no longer connected.', renderSequence: 1 });
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', hiddenOrgNote: hiddenOrgNote, forgottenOrgNotice: 'The last org used, <b>old</b>, is no longer connected.', renderSequence: 1 });
 
             expect(panel.isHidden(viewOf(panel, 'dataOrgHiddenNote'))).toBe(false);
             const expectedNote = `The last org used, <b>old</b>, is no longer connected. ${hiddenOrgNote}`;

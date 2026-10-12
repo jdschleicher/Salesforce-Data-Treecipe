@@ -494,7 +494,7 @@ Every org picker (the Recipe Cockpit's **Choose org…** in the Treecipe tab, **
 * An expired or deleted scratch org, an org whose refresh token was revoked (`RefreshTokenAuthError`), and an org whose status the CLI reports as `Unknown` are left out. When nothing is left, the warning says how many were left out and why, and how to re-authorize one (`sf org login web`).
 * Answering this pings each authorized org's token, so the first picker you open in a VS Code session can take a few seconds and shows *Checking org connections…*. The answer is kept for the session, so later pickers open at once. The Treecipe tab's **⟳ Refresh orgs** asks the CLI again.
 * If the CLI cannot answer (it is not installed, it timed out, or it returned something unreadable), no org is listed and the message says why. The extension never falls back to listing every authorization unchecked.
-* The Recipe Cockpit's **Choose org…** also leaves out every org not known to be a sandbox or a scratch org, and its note counts each reason: `3 authorized orgs are not listed: 1 production, 1 expired, 1 not connected.`
+* The Recipe Cockpit's org picker also leaves out every org not known to be a sandbox or a scratch org. When it leaves any org out, its note says so without counting them: `The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.`
 * Treecipe connects only to the org you select. It never logs out of, deletes or changes an org to clean up the list.
 
 ---

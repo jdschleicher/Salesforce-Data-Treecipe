@@ -1,5 +1,13 @@
 # Change Log
 
+## [3.70.1] - Recipe Cockpit: the org picker no longer counts the orgs it leaves out
+
+Closes [#284](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/284).
+
+- When the Treecipe tab's org picker leaves an authorized org out (production, expired, deleted or not connected), its note now reads only `The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.` The count and the reasons that came before it ("3 authorized orgs are not listed: 1 production, 1 expired, 1 not connected.") are gone. With nothing left out, there is still no note.
+- The note is one constant, `RECIPE_COCKPIT_HIDDEN_ORGS_NOTE`. The `dataOrgList` message no longer carries `hiddenOrgCount`, which the panel never read.
+- **Unchanged:** which orgs are listed, the "last org used is no longer connected" notice, the messages shown when no org is listed, and the other org pickers (Insert Data Set by Directory, Run Picklist Dependency Check, the Dev Hub picker and the deploy prompts), which still count what they left out.
+
 ## [3.70.0] - Recipe Cockpit: "Deploy & assign permission sets…" for a tree
 
 Closes [#274](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/274), following [#273](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/273).
