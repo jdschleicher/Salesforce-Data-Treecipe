@@ -877,7 +877,8 @@ export interface IRecipeCockpitScratchOrgStateMessage {
     "Deploy this metadata…" (#211, #273): while isRunning, every tree's insert, every deploy button
     and the org picker are disabled, and statusText is the phase. Once it ends, statusText is how it
     ended, and hasOutput says whether "View output" has a result file -- the path stays on the host.
-    treeKey names the card the line is drawn on. Stored and replayed.
+    treeKey names the card the line is drawn on. Stored and replayed. hasDeployStatus (#283) says a
+    failed deploy has an "Open Deployment Status" link; the page it opens stays on the host too.
 */
 export interface IRecipeCockpitMetadataDeployStateMessage {
     command: 'metadataDeployState';
@@ -886,6 +887,17 @@ export interface IRecipeCockpitMetadataDeployStateMessage {
     statusText: string;
     isFailure: boolean;
     hasOutput: boolean;
+    hasDeployStatus?: boolean;
+}
+
+/*
+    The last failed deploy's Deployment Status page (#283), HOST-ONLY: the tree its line is drawn
+    on, the org it went to, and the --path "sf org open" is given. Never posted.
+*/
+export interface IRecipeCockpitDeployStatusTarget {
+    treeKey: string;
+    orgDetail: IAuthenticatedOrgDetail;
+    deployStatusPath: string;
 }
 
 /*
@@ -907,6 +919,8 @@ export const RECIPE_COCKPIT_METADATA_DEPLOY_CONFIRM_LABEL = 'Deploy';
 export const RECIPE_COCKPIT_METADATA_DEPLOY_ORG_PLACEHOLDER = 'Choose the sandbox or scratch org to deploy this tree\'s metadata to';
 
 export const RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL = 'View output';
+
+export const RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL = 'Open Deployment Status';
 
 export const RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL = 'Deploy & assign permission sets…';
 
@@ -1071,6 +1085,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'deployTreePermissionSets'; treeKey: string; isSelectedOrg: boolean }
     | { kind: 'postMetadataDeployState'; hostMessage: IRecipeCockpitMetadataDeployStateMessage }
     | { kind: 'viewMetadataDeployOutput'; outputFilePath: string }
+    | { kind: 'openMetadataDeployStatus'; deployStatusTarget: IRecipeCockpitDeployStatusTarget }
     | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
     | { kind: 'postOrgOpenState'; hostMessage: IRecipeCockpitOrgOpenStateMessage };
 
@@ -1138,6 +1153,8 @@ export interface IRecipeCockpitPanelState {
     deployableTreeKeys: Set<string>;
     metadataDeployStateMessage?: IRecipeCockpitMetadataDeployStateMessage;
     metadataDeployOutputFilePath?: string;
+    // THE PAGE THE LAST FAILED DEPLOY'S "Open Deployment Status" OPENS (#283), CLEARED WHEN THE NEXT DEPLOY STARTS
+    metadataDeployStatusTarget?: IRecipeCockpitDeployStatusTarget;
     // THE PLACE workspaceState KEPT FOR THIS MODEL (#230), REPLAYED UNTIL THE MODEL'S "rendered" SAYS IT WAS DRAWN
     restorePlace?: IRecipeCockpitPanelPlace;
     // HOST-ONLY, REPLACED WITH THE MODEL: WHAT A FILTERED COPY NESTS A KEPT FRIEND BY (#219)
@@ -1167,6 +1184,8 @@ interface IRecipeCockpitMetadataDeployClosingState {
     // THE CLI ANSWERED THAT THE DEPLOY SUCCEEDED: THE ONE ANSWER THE READINESS IS UPDATED FROM (#270)
     isDeployed?: boolean;
     outputFilePath?: string;
+    // A FAILED DEPLOY'S DEPLOYMENT STATUS PAGE, FOR orgDetail (#283)
+    deployStatusPath?: string;
 }
 
 /*
@@ -2862,6 +2881,7 @@ export class RecipeCockpitService {
             // SO DOES A METADATA DEPLOY'S (#211)
             this.recipeCockpitPanelState.metadataDeployStateMessage = previousPanelState.metadataDeployStateMessage;
             this.recipeCockpitPanelState.metadataDeployOutputFilePath = previousPanelState.metadataDeployOutputFilePath;
+            this.recipeCockpitPanelState.metadataDeployStatusTarget = previousPanelState.metadataDeployStatusTarget;
         }
 
         if ( !existingCockpitPanel ) {
@@ -3424,6 +3444,11 @@ export class RecipeCockpitService {
             case 'viewMetadataDeployOutput':
 
                 await this.openMetadataDeployOutput(panelAction.outputFilePath, panelState.workspaceRoot);
+                return;
+
+            case 'openMetadataDeployStatus':
+
+                await this.openMetadataDeployStatus(panelAction.deployStatusTarget);
                 return;
 
         }
@@ -4348,6 +4373,11 @@ export class RecipeCockpitService {
         this.metadataDeployRunStateMessage = metadataDeployStateMessage.isRunning ? metadataDeployStateMessage : undefined;
         this.recipeCockpitPanelState.metadataDeployStateMessage = metadataDeployStateMessage;
 
+        // A RUN THAT STARTS REPLACES THE LINE THE LAST FAILED DEPLOY'S LINK WAS DRAWN ON
+        if ( metadataDeployStateMessage.isRunning ) {
+            this.recipeCockpitPanelState.metadataDeployStatusTarget = undefined;
+        }
+
         if ( this.recipeCockpitPanel ) {
             this.postToPanel(this.recipeCockpitPanel, metadataDeployStateMessage);
         }
@@ -4391,8 +4421,9 @@ export class RecipeCockpitService {
         this.isMetadataDeployInFlight = true;
         const treeLabel = tree.customName || tree.title;
         const objectApiNames = [...new Set(tree.objects.map(treeObject => treeObject.objectApiName))];
-        const buildState = (isRunning: boolean, statusText: string, isFailure = false, hasOutput = false): IRecipeCockpitMetadataDeployStateMessage => ({
-            command: 'metadataDeployState', isRunning, treeKey, statusText, isFailure, hasOutput
+        const buildState = (isRunning: boolean, statusText: string, isFailure = false, hasOutput = false, hasDeployStatus = false): IRecipeCockpitMetadataDeployStateMessage => ({
+            command: 'metadataDeployState', isRunning, treeKey, statusText, isFailure, hasOutput,
+            ...( hasDeployStatus ? { hasDeployStatus: true } : {} )
         });
         const reportStatus = (statusText: string) => this.setMetadataDeployState(buildState(true, statusText));
         let closingState: IRecipeCockpitMetadataDeployClosingState = { statusText: '', isFailure: false, isDeployRun: false };
@@ -4447,8 +4478,12 @@ export class RecipeCockpitService {
             } finally {
 
                 this.isMetadataDeployInFlight = false;
+                const deployStatusTarget: IRecipeCockpitDeployStatusTarget | undefined = closingState.deployStatusPath && closingState.orgDetail
+                    ? { treeKey: treeKey, orgDetail: closingState.orgDetail, deployStatusPath: closingState.deployStatusPath }
+                    : undefined;
                 this.recipeCockpitPanelState.metadataDeployOutputFilePath = closingState.outputFilePath;
-                this.setMetadataDeployState(buildState(false, closingState.statusText, closingState.isFailure, !!closingState.outputFilePath));
+                this.recipeCockpitPanelState.metadataDeployStatusTarget = deployStatusTarget;
+                this.setMetadataDeployState(buildState(false, closingState.statusText, closingState.isFailure, !!closingState.outputFilePath, !!deployStatusTarget));
 
             }
 
@@ -4536,8 +4571,12 @@ export class RecipeCockpitService {
         reportStatus(`Checking that ${orgLabel} is a sandbox…`);
 
         let orgTypeDetail: IOrgTypeDetail | undefined;
+        // THE HOST A FAILED DEPLOY'S deployUrl MUST BE ON BEFORE "Open Deployment Status" IS OFFERED (#283)
+        let deployOrgInstanceUrl: string | undefined;
         try {
-            orgTypeDetail = await SalesforceOrgService.queryOrganizationType(SalesforceOrgService.toQuerySource(await SalesforceOrgService.getConnection(orgDetail.username)));
+            const deployOrgConnection = await SalesforceOrgService.getConnection(orgDetail.username);
+            deployOrgInstanceUrl = typeof deployOrgConnection.instanceUrl === 'string' ? deployOrgConnection.instanceUrl : undefined;
+            orgTypeDetail = await SalesforceOrgService.queryOrganizationType(SalesforceOrgService.toQuerySource(deployOrgConnection));
         } catch (connectionError) {
             return { ...refuse(`Nothing was deployed: could not connect to ${orgLabel}: ${this.describeThrown(connectionError)}`, orgDetail), isConfirmed: false };
         }
@@ -4605,7 +4644,7 @@ export class RecipeCockpitService {
         }
 
         const deployPayload = ScratchOrgService.readCliJsonPayload(deployInvocation);
-        const deployOutcome: MetadataDeployOutcome = RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(deployInvocation, deployPayload);
+        const deployOutcome: MetadataDeployOutcome = RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(deployInvocation, deployPayload, deployOrgInstanceUrl);
         const outputFilePath = deployInvocation.spawnError || deployInvocation.isOutputTooLarge
             ? undefined
             : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, 'metadata-deploy', deployInvocation, new Date(), deployPayload);
@@ -4630,8 +4669,10 @@ export class RecipeCockpitService {
 
             case 'failed': {
                 const failedText = `The deploy of ${treeLabel} to ${orgLabel} failed: ${deployOutcome.failureMessage}`;
-                this.showMetadataDeployNotification('error', failedText, outputFilePath, workspaceRoot);
-                return { ...confirmed, statusText: failedText, isFailure: true, isDeployRun: true, outputFilePath: outputFilePath };
+                const deployStatusPath = deployOutcome.deployStatusPath;
+                this.showMetadataDeployNotification('error', failedText, outputFilePath, workspaceRoot,
+                    deployStatusPath ? { orgDetail: orgDetail, deployStatusPath: deployStatusPath } : undefined);
+                return { ...confirmed, statusText: failedText, isFailure: true, isDeployRun: true, outputFilePath: outputFilePath, ...( deployStatusPath ? { deployStatusPath: deployStatusPath } : {} ) };
             }
 
         }
@@ -4645,19 +4686,80 @@ export class RecipeCockpitService {
     }
 
     // NOT AWAITED: THE DEPLOY ENDS, AND RE-ENABLES THE PANEL, WITHOUT WAITING FOR THE READER TO DISMISS THE NOTIFICATION
-    private static showMetadataDeployNotification(severity: 'warning' | 'error', notificationText: string, outputFilePath: string | undefined, workspaceRoot: string) {
+    private static showMetadataDeployNotification(severity: 'warning' | 'error',
+                                                    notificationText: string,
+                                                    outputFilePath: string | undefined,
+                                                    workspaceRoot: string,
+                                                    deployStatusTarget?: Omit<IRecipeCockpitDeployStatusTarget, 'treeKey'>) {
 
-        const actions = outputFilePath ? [RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL] : [];
+        const actions = [
+            ...( deployStatusTarget ? [RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL] : [] ),
+            ...( outputFilePath ? [RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL] : [] )
+        ];
         const escapedText = RecipeYamlScalar.escapeForNotification(notificationText);
         const shownNotification = severity === 'warning'
             ? vscode.window.showWarningMessage(escapedText, ...actions)
             : vscode.window.showErrorMessage(escapedText, ...actions);
 
         Promise.resolve(shownNotification)
-            .then(chosenAction => chosenAction === RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL && outputFilePath
-                ? this.openMetadataDeployOutput(outputFilePath, workspaceRoot)
-                : undefined)
+            .then(chosenAction => {
+                if ( chosenAction === RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL && outputFilePath ) {
+                    return this.openMetadataDeployOutput(outputFilePath, workspaceRoot);
+                }
+                return chosenAction === RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL && deployStatusTarget
+                    ? this.openMetadataDeployStatus(deployStatusTarget)
+                    : undefined;
+            })
             .catch(() => undefined);
+
+    }
+
+    private static isDeployStatusOpenInFlight = false;
+
+    /*
+        "Open Deployment Status" (#283): the deploy org's own Deployment Status page for the deploy,
+        opened signed in through "sf org open --path", the route "Open in browser" takes (#279). The
+        frontdoor URL carries a session id, so it goes to the browser and nowhere else, and every
+        failure is a FIXED warning that quotes neither the CLI nor the URL. One open at a time.
+    */
+    private static async openMetadataDeployStatus(deployStatusTarget: Omit<IRecipeCockpitDeployStatusTarget, 'treeKey'>) {
+
+        if ( this.isDeployStatusOpenInFlight ) {
+            return;
+        }
+
+        this.isDeployStatusOpenInFlight = true;
+        const { orgDetail, deployStatusPath } = deployStatusTarget;
+        const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
+        const notOpenedText = `The Deployment Status page of ${orgLabel} could not be opened. Find the deploy in Setup, under Deployment Status.`;
+
+        try {
+
+            if ( !await SalesforceOrgService.isUsernameAuthorized(orgDetail.username) ) {
+                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The Deployment Status page was not opened: ${orgLabel} is no longer authorized. Authorize it again with sf org login web and try again.`));
+                return;
+            }
+
+            const openOutcome = await ScratchOrgService.resolveOrgOpenUrl(orgDetail.username, deployStatusPath);
+
+            if ( !openOutcome.isOpenable ) {
+                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(notOpenedText));
+                return;
+            }
+
+            if ( !await vscode.env.openExternal(vscode.Uri.parse(openOutcome.url, true)) ) {
+                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The Deployment Status page of ${orgLabel} was not opened: the browser did not accept the address.`));
+            }
+
+        } catch {
+
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(notOpenedText));
+
+        } finally {
+
+            this.isDeployStatusOpenInFlight = false;
+
+        }
 
     }
 
@@ -6669,6 +6771,29 @@ export class RecipeCockpitService {
 
             }
 
+            /*
+                "Open Deployment Status" (#283): the tree's KEY alone, accepted only for the card the
+                last failed deploy's line is drawn on and only while no deploy runs. The page and
+                the org are the host's; nothing in the message names either.
+            */
+            case 'openMetadataDeployStatus': {
+
+                const { treeKey } = panelMessage;
+                const deployStatusTarget = panelState.metadataDeployStatusTarget;
+
+                if ( typeof treeKey !== 'string'
+                        || !deployStatusTarget
+                        || deployStatusTarget.treeKey !== treeKey
+                        || !panelState.metadataDeployStateMessage?.hasDeployStatus
+                        || panelState.metadataDeployStateMessage.treeKey !== treeKey
+                        || panelState.metadataDeployStateMessage.isRunning ) {
+                    return undefined;
+                }
+
+                return { kind: 'openMetadataDeployStatus', deployStatusTarget: deployStatusTarget };
+
+            }
+
             // NO PAYLOAD: THE FILE IS THE ONE THE LAST DEPLOY WROTE, HELD ON THE HOST
             case 'viewMetadataDeployOutput':
 
@@ -7909,7 +8034,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader:hover { box-shadow: inset 4px 0 0 var(--sdt-accent); }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treeDeploy, .treePermissionSets, .metadataDeployViewOutput {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treeDeploy, .treePermissionSets, .metadataDeployViewOutput, .metadataDeployOpenStatus {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
@@ -7921,7 +8046,7 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treeDeploy:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .metadataDeployViewOutput:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
+    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treeDeploy:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .metadataDeployViewOutput:hover:not(:disabled), .metadataDeployOpenStatus:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
     .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
@@ -7945,7 +8070,7 @@ ${this.buildPaletteCustomProperties()}
     .treeAddFriend { font-weight: 600; }
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
-    .treeAddFriendChoice, .historyAction, .treeInsertErrors, .scratchOrgViewOutput, .metadataDeployViewOutput { text-decoration: underline; }
+    .treeAddFriendChoice, .historyAction, .treeInsertErrors, .scratchOrgViewOutput, .metadataDeployViewOutput, .metadataDeployOpenStatus { text-decoration: underline; }
     .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treeDeploy:disabled, .treePermissionSets:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
@@ -8164,6 +8289,7 @@ ${this.buildPaletteCustomProperties()}
     const INSERT_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_RUNNING_LABEL)};
     const METADATA_DEPLOY_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_METADATA_DEPLOY_ACTION_LABEL)};
     const PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL)};
+    const METADATA_DEPLOY_OPEN_STATUS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL)};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
     const PANEL_PLACE_VERSION = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION};
     const PANEL_PLACE_SCROLL_SAVE_DELAY = ${RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY};
@@ -10197,7 +10323,8 @@ ${this.buildPaletteCustomProperties()}
             permissionSetElement: createElement('button', 'treePermissionSets', PERMISSION_SET_ACTION_LABEL),
             statusElement: createElement('div', 'metadataDeployStatus muted hidden'),
             statusTextElement: createElement('span', 'metadataDeployStatusText'),
-            viewOutputElement: createElement('button', 'metadataDeployViewOutput hidden', 'View output')
+            viewOutputElement: createElement('button', 'metadataDeployViewOutput hidden', 'View output'),
+            openStatusElement: createElement('button', 'metadataDeployOpenStatus hidden', METADATA_DEPLOY_OPEN_STATUS_LABEL)
         };
 
         deploy.buttonElement.setAttribute('title', 'Deploy this tree\\'s custom objects, each with everything in its source folder, and the custom fields of its standard objects from the source in this workspace, to the org selected above or a sandbox you choose, after a confirmation that lists the files');
@@ -10230,9 +10357,15 @@ ${this.buildPaletteCustomProperties()}
             vscodeApi.postMessage({ command: 'viewMetadataDeployOutput' });
         });
 
+        // #283: THE TREE'S KEY ALONE -- THE PAGE AND THE ORG ARE THE HOST'S
+        deploy.openStatusElement.addEventListener('click', function () {
+            vscodeApi.postMessage({ command: 'openMetadataDeployStatus', treeKey: treeState.tree.treeKey });
+        });
+
         controlsElement.appendChild(deploy.buttonElement);
         controlsElement.appendChild(deploy.permissionSetElement);
         deploy.statusElement.appendChild(deploy.statusTextElement);
+        deploy.statusElement.appendChild(deploy.openStatusElement);
         deploy.statusElement.appendChild(deploy.viewOutputElement);
         controlsElement.appendChild(deploy.statusElement);
 
@@ -10256,6 +10389,7 @@ ${this.buildPaletteCustomProperties()}
         setShown(deploy.statusElement, !!deployStatusText);
         if (deployStatusText && metadataDeployState.isFailure) { deploy.statusElement.classList.add('failed'); } else { deploy.statusElement.classList.remove('failed'); }
         setShown(deploy.viewOutputElement, !!deployStatusText && !metadataDeployState.isRunning && !!metadataDeployState.hasOutput);
+        setShown(deploy.openStatusElement, !!deployStatusText && !metadataDeployState.isRunning && !!metadataDeployState.isFailure && metadataDeployState.hasDeployStatus === true);
 
     }
 
