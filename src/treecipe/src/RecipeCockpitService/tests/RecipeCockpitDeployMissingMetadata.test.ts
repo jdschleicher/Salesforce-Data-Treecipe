@@ -52,7 +52,7 @@ import {
     RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL
 } from '../RecipeCockpitService';
-import { METADATA_DEPLOY_SOURCE_FILES_SHOWN, RecipeCockpitMetadataDeploy } from '../RecipeCockpitMetadataDeploy';
+import { METADATA_DEPLOY_NOTIFICATION_SKIPS_SHOWN, METADATA_DEPLOY_SOURCE_FILES_SHOWN, RecipeCockpitMetadataDeploy } from '../RecipeCockpitMetadataDeploy';
 import { RecipeCockpitRecordCreation } from '../RecipeCockpitRecordCreation';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
@@ -74,7 +74,16 @@ const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 const LEAD_TREE_KEY = 'Lead-ONLY';
 const ACCOUNT_TREE_OBJECTS = ['Account', 'User', 'Contact', 'OtherChildObject__c'];
 const ACCOUNT_TREE_MEMBERS = ['CustomField:Account.Legacy_Code__c', 'CustomField:Account.Rating__c', 'CustomObject:OtherChildObject__c'];
+// AS A package.xml LISTS THEM: BY TYPE, THEN BY NAME
+const ACCOUNT_TREE_MANIFEST_MEMBERS = ['CustomField:Account.Legacy_Code__c', 'CustomField:Account.Rating__c', 'CustomObject:OtherChildObject__c'];
 const QA_USERNAME = 'qa@example.com.qa';
+
+// THE MEMBERS A package.xml NAMES, AS "<Type>:<Name>", IN THE ORDER THE FILE LISTS THEM
+const readManifestMembers = (packageXml: string): string[] => [...packageXml.matchAll(/<types>([\s\S]*?)<\/types>/g)]
+    .flatMap(typesMatch => {
+        const componentType = /<name>([^<]*)<\/name>/.exec(typesMatch[1])[1];
+        return [...typesMatch[1].matchAll(/<members>([^<]*)<\/members>/g)].map(memberMatch => `${componentType}:${memberMatch[1]}`);
+    });
 
 const buildDeployAnswer = (successNames: string[], failures: Array<{ fullName: string; problem: string }>) => JSON.stringify({
     status: failures.length === 0 ? 0 : 1,
@@ -193,7 +202,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
         });
 
-        it('skips a standard field file, a field name that is not an api name, and a field file that resolves outside the workspace', () => {
+        it('leaves out a standard field file without listing it, and skips a field name that is not an api name and a field file that resolves outside the workspace', () => {
 
             const accountFieldsPath = path.join(objectsFolderPath(), 'Account', 'fields');
             const outsideFolderPath = path.join(temporaryRoot, 'outside');
@@ -209,10 +218,10 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             expect(treePlan.members).toEqual(['CustomField:Account.Legacy_Code__c', 'CustomField:Account.Rating__c']);
             expect(treePlan.skippedItems).toEqual(expect.arrayContaining([
                 { name: 'Account.Escaped__c', reason: 'outsideWorkspace' },
-                { name: 'Account.Name', reason: 'standardField' },
                 { name: 'Account.x --target-org prod', reason: 'notAnApiName' }
             ]));
-            expect(treePlan.skippedItems).toHaveLength(3);
+            // A STANDARD FIELD'S FILE IS ORDINARY IN RETRIEVED SOURCE: NEITHER DEPLOYED NOR LISTED AS SKIPPED
+            expect(treePlan.skippedItems).toHaveLength(2);
 
         });
 
@@ -326,6 +335,24 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
         });
 
+        it('caps every list in the confirmation and the skips a notification names, and counts the rest', () => {
+
+            const manyMembers = Array.from({ length: METADATA_DEPLOY_SOURCE_FILES_SHOWN + 3 }, (unused, memberIndex) => `CustomField:Account.F${memberIndex}__c`);
+            const manySkips = Array.from({ length: METADATA_DEPLOY_SOURCE_FILES_SHOWN + 4 }, (unused, skipIndex) => ({ name: `Gone${skipIndex}__c`, reason: 'notInLocalSource' as const }));
+            const detail = RecipeCockpitMetadataDeploy.buildConfirmationDetail({ treeLabel: 't', members: manyMembers, objectPlans: [], skippedItems: manySkips }, 'qa');
+
+            expect(detail).toContain(`To deploy (${METADATA_DEPLOY_SOURCE_FILES_SHOWN + 3}):`);
+            expect(detail).toContain('  and 3 more');
+            expect(detail).toContain(`Skipped (${METADATA_DEPLOY_SOURCE_FILES_SHOWN + 4}):`);
+            expect(detail).toContain('  and 4 more');
+            expect(detail).not.toContain(`F${METADATA_DEPLOY_SOURCE_FILES_SHOWN}__c`);
+
+            const nothingMessage = RecipeCockpitMetadataDeploy.buildNothingToDeployMessage({ treeLabel: 't', members: [], objectPlans: [], skippedItems: manySkips });
+            expect(nothingMessage).toContain(`Gone${METADATA_DEPLOY_NOTIFICATION_SKIPS_SHOWN - 1}__c is not in local source; and ${manySkips.length - METADATA_DEPLOY_NOTIFICATION_SKIPS_SHOWN} more.`);
+            expect(nothingMessage).not.toContain(`Gone${METADATA_DEPLOY_NOTIFICATION_SKIPS_SHOWN}__c`);
+
+        });
+
         it('says why nothing of a tree can be deployed', () => {
 
             expect(RecipeCockpitMetadataDeploy.buildNothingToDeployMessage(plan(['Lead'])))
@@ -333,18 +360,68 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
         });
 
-        it('builds the argv: project deploy start, one --metadata per member, the username as --target-org, --json, and no --source-dir', () => {
+        it('builds the argv: project deploy start, the manifest, the username as --target-org, --json, and no --source-dir or --metadata', () => {
 
-            const deployArguments = RecipeCockpitMetadataDeploy.buildMetadataDeployArguments(['CustomObject:Gone__c', 'CustomField:Gone__c.A__c'], QA_USERNAME);
+            const deployArguments = RecipeCockpitMetadataDeploy.buildMetadataDeployArguments('/tmp/treecipe-metadata-deploy-x/package.xml', QA_USERNAME);
 
             expect(deployArguments).toEqual([
                 'project', 'deploy', 'start',
-                '--metadata', 'CustomObject:Gone__c',
-                '--metadata', 'CustomField:Gone__c.A__c',
+                '--manifest', '/tmp/treecipe-metadata-deploy-x/package.xml',
                 '--target-org', QA_USERNAME,
                 '--json'
             ]);
             expect(deployArguments).not.toContain('--source-dir');
+            expect(deployArguments).not.toContain('--metadata');
+
+        });
+
+        it('writes the members as a package.xml grouped by type, with the project\'s sourceApiVersion when it is a plain version', () => {
+
+            expect(RecipeCockpitMetadataDeploy.buildPackageXml(['CustomObject:Gadget__c', 'CustomField:Account.Rating__c', 'CustomField:Account.Legacy_Code__c', 'CustomObject:Gadget__c'], '62.0')).toBe([
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                '<Package xmlns="http://soap.sforce.com/2006/04/metadata">',
+                '    <types>',
+                '        <members>Account.Legacy_Code__c</members>',
+                '        <members>Account.Rating__c</members>',
+                '        <name>CustomField</name>',
+                '    </types>',
+                '    <types>',
+                '        <members>Gadget__c</members>',
+                '        <name>CustomObject</name>',
+                '    </types>',
+                '    <version>62.0</version>',
+                '</Package>',
+                ''
+            ].join('\n'));
+            expect(RecipeCockpitMetadataDeploy.buildPackageXml(['CustomObject:Gadget__c'], undefined)).not.toContain('<version>');
+            expect(RecipeCockpitMetadataDeploy.buildPackageXml(['CustomObject:Gadget__c'], '62.0</version><x>')).not.toContain('<version>');
+
+        });
+
+        it('reads the sourceApiVersion only when it is a plain version number', () => {
+
+            const projectFilePath = path.join(workspaceRoot, 'sfdx-project.json');
+            const writeVersion = (sourceApiVersion: unknown) => fs.writeFileSync(projectFilePath, JSON.stringify({ packageDirectories: [{ path: 'force-app', default: true }], sourceApiVersion }));
+
+            writeVersion('61.0');
+            expect(RecipeCockpitMetadataDeploy.readSourceApiVersion(workspaceRoot)).toBe('61.0');
+            writeVersion('61.0"/><x');
+            expect(RecipeCockpitMetadataDeploy.readSourceApiVersion(workspaceRoot)).toBeUndefined();
+            writeVersion(61);
+            expect(RecipeCockpitMetadataDeploy.readSourceApiVersion(workspaceRoot)).toBeUndefined();
+            fs.writeFileSync(projectFilePath, '{ not json');
+            expect(RecipeCockpitMetadataDeploy.readSourceApiVersion(workspaceRoot)).toBeUndefined();
+
+        });
+
+        // cmd.exe REFUSES A COMMAND LINE PAST 8,191 CHARACTERS, AND ONE --metadata PER MEMBER PASSED IT AT ABOUT 150 MEMBERS
+        it('keeps the command line the same length however many members a tree deploys', () => {
+
+            const manyMembers = Array.from({ length: 2000 }, (unused, memberIndex) => `CustomField:Opportunity.Some_Override_${memberIndex}__c`);
+            const manifestFilePath = '/tmp/treecipe-metadata-deploy-x/package.xml';
+
+            expect(readManifestMembers(RecipeCockpitMetadataDeploy.buildPackageXml(manyMembers, '62.0'))).toHaveLength(2000);
+            expect(RecipeCockpitMetadataDeploy.buildMetadataDeployArguments(manifestFilePath, QA_USERNAME).join(' ').length).toBeLessThan(200);
 
         });
 
@@ -353,10 +430,11 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             'CustomObject:Account',
             'CustomField:Account.A__c --source-dir .',
             'ApexClass:Evil',
-            'CustomField:Account..A__c'
-        ])('refuses %s as a member before any process', (member) => {
+            'CustomField:Account..A__c',
+            'CustomObject:A__c</members><members>ApexClass:Evil'
+        ])('refuses %s as a member before any manifest is written', (member) => {
 
-            expect(() => RecipeCockpitMetadataDeploy.buildMetadataDeployArguments([member], QA_USERNAME)).toThrow();
+            expect(() => RecipeCockpitMetadataDeploy.buildPackageXml([member], '62.0')).toThrow();
 
         });
 
@@ -420,7 +498,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             panelState.recipeDataMessage = { command: 'recipeData', recipe: { runs: [], selectedRunFolderName: '', objects: [], trees: [], notices: [], emptyStateMessage: '' }, renderSequence: 3 };
             panelState.acknowledgedRenderSequence = 3;
             panelState.dataOrgDetails = [{ targetOrgIdentifier: 'qa', username: QA_USERNAME, alias: 'qa' }];
-            panelState.dataOrgSelection = { orgIndex: 0, orgDetail: panelState.dataOrgDetails[0], requestSequence: 7, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' } };
+            panelState.dataOrgSelection = { orgIndex: 0, orgDetail: panelState.dataOrgDetails[0], requestSequence: 7, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' }, isReadinessPosted: true };
             panelState.pendingDeployableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
             panelState.deployableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
             return panelState;
@@ -508,6 +586,28 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
         });
 
+        // A READINESS FROM DESCRIBES TAKEN BEFORE THE DEPLOY, POSTED AFTER IT, WOULD PUT BACK THE REASONS THE DEPLOY REMOVED
+        it('refuses a deploy to the selected org until that selection\'s readiness was posted', () => {
+
+            const panelState = buildDeployablePanelState();
+            panelState.dataOrgSelection.isReadinessPosted = undefined;
+
+            expect(RecipeCockpitService.routePanelMessage(deployMessage, panelState)).toEqual({
+                kind: 'postMetadataDeployState',
+                hostMessage: {
+                    command: 'metadataDeployState',
+                    isRunning: false,
+                    treeKey: ACCOUNT_TREE_KEY,
+                    statusText: 'Nothing was deployed: the org selected above is still being checked. Deploy once that check has finished.',
+                    isFailure: true,
+                    hasOutput: false
+                }
+            });
+            // THE PROMPTED PATH CHECKS NOTHING OF THE SELECTION
+            expect(RecipeCockpitService.routePanelMessage({ command: 'deployTreeMetadata', treeKey: ACCOUNT_TREE_KEY }, panelState)?.kind).toBe('deployTreeMetadata');
+
+        });
+
         it('refuses a second deploy while one runs, and an insert, an org selection, ⟳, a listing or a scratch org meanwhile', () => {
 
             const panelState = buildDeployablePanelState();
@@ -590,6 +690,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
         let describeCalls: string[];
         let childKill: jest.Mock;
         let workspaceState: { get: jest.Mock; update: jest.Mock };
+        let deployedManifests: string[];
 
         const lastRenderSequence = () => [...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData')?.renderSequence;
         const postedNamed = (command: string) => postedPanelMessages.filter(hostMessage => hostMessage.command === command);
@@ -651,8 +752,9 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             organizationAnswers = [];
             childKill = jest.fn();
             workspaceState = { get: jest.fn(), update: jest.fn().mockResolvedValue(undefined) };
-            deployHandler = (argumentList: string[]) => {
-                const members = argumentList.filter((argument, argumentIndex) => argumentList[argumentIndex - 1] === '--metadata');
+            deployedManifests = [];
+            deployHandler = () => {
+                const members = readManifestMembers(deployedManifests.at(-1));
                 // THE DEPLOY LANDS: THE NEXT DESCRIBE SEES WHAT IT ADDED
                 members.forEach(member => {
                     const [componentType, componentName] = member.split(':');
@@ -669,6 +771,10 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             (execFile as unknown as jest.Mock).mockReset();
             (execFile as unknown as jest.Mock).mockImplementation((_command: string, argumentList: string[], _options: unknown, callback: any) => {
                 cliCalls.push(argumentList);
+                const manifestFilePath = argumentList[argumentList.indexOf('--manifest') + 1];
+                if ( argumentList[0] === 'project' ) {
+                    deployedManifests.push(fs.readFileSync(manifestFilePath, 'utf-8'));
+                }
                 const answerWith = (cliAnswer: { stdout: string; error?: unknown }) => setImmediate(() => callback(cliAnswer.error ?? null, cliAnswer.stdout, ''));
                 if ( argumentList[0] === 'org' && argumentList[1] === 'list' ) {
                     answerWith({ stdout: JSON.stringify(SF_ORG_LIST) });
@@ -762,12 +868,14 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             expect(modalOptions.detail).not.toContain('User');
             expect(modalAction).toBe(RECIPE_COCKPIT_METADATA_DEPLOY_CONFIRM_LABEL);
 
-            expect(deployCalls()).toEqual([[
-                'project', 'deploy', 'start',
-                ...ACCOUNT_TREE_MEMBERS.flatMap(member => ['--metadata', member]),
-                '--target-org', QA_USERNAME,
-                '--json'
-            ]]);
+            expect(deployCalls()).toHaveLength(1);
+            const [, , , , manifestFilePath, ...restOfArguments] = deployCalls()[0];
+            expect(deployCalls()[0].slice(0, 4)).toEqual(['project', 'deploy', 'start', '--manifest']);
+            expect(restOfArguments).toEqual(['--target-org', QA_USERNAME, '--json']);
+            expect(readManifestMembers(deployedManifests[0])).toEqual(ACCOUNT_TREE_MANIFEST_MEMBERS);
+            // THE MANIFEST IS WRITTEN OUTSIDE THE WORKSPACE AND REMOVED ONCE THE DEPLOY ENDS
+            expect(path.resolve(manifestFilePath).startsWith(path.resolve(workspaceRoot))).toBe(false);
+            expect(fs.existsSync(path.dirname(manifestFilePath))).toBe(false);
             const deployExecOptions = (execFile as unknown as jest.Mock).mock.calls.find(([, argumentList]) => argumentList[0] === 'project')[2];
             expect(deployExecOptions.cwd).toBe(path.resolve(workspaceRoot));
 
@@ -819,7 +927,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
             expect(modalCalls()[0][0]).toBe(`Deploy 4 components of Relationship Tree 1 to qa · ${QA_USERNAME}?`);
             expect(modalCalls()[0][1].detail).toContain('  Gadget__c/validationRules/Serial_Required.validationRule-meta.xml');
-            expect(deployCalls()[0]).toEqual(expect.arrayContaining(['CustomObject:OtherChildObject__c', 'CustomObject:Gadget__c']));
+            expect(readManifestMembers(deployedManifests[0])).toEqual(expect.arrayContaining(['CustomObject:OtherChildObject__c', 'CustomObject:Gadget__c']));
             expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: false });
 
         });
@@ -1211,12 +1319,15 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
             const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
             await openCockpitWithQaSelected();
-            jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockRejectedValue(new Error('boom'));
+            const runSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockRejectedValue(new Error('boom'));
 
             await deploy(ACCOUNT_TREE_KEY);
 
             expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true, statusText: 'The deploy of Relationship Tree 1 stopped: boom' });
             expect(handleCapturedErrorSpy).toHaveBeenCalled();
+            // THE MANIFEST'S FOLDER IS REMOVED HOWEVER THE DEPLOY ENDED
+            const deployArguments = runSpy.mock.calls[0][0] as string[];
+            expect(fs.existsSync(path.dirname(deployArguments[deployArguments.indexOf('--manifest') + 1]))).toBe(false);
 
         });
 

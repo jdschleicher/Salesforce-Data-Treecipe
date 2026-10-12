@@ -1,12 +1,13 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Connection } from '@salesforce/core';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
 import { IAuthenticatedOrgDetail, ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
-import { ITreeMetadataDeployPlan, METADATA_DEPLOY_MAX_BUFFER_BYTES, METADATA_DEPLOY_TIMEOUT_MILLISECONDS, MetadataDeployOutcome, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
+import { ITreeMetadataDeployPlan, METADATA_DEPLOY_MANIFEST_FILE_NAME, METADATA_DEPLOY_MAX_BUFFER_BYTES, METADATA_DEPLOY_TIMEOUT_MILLISECONDS, MetadataDeployOutcome, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
 import {
     DevHubConfigSource,
     IOrgDescribeRequestResult,
@@ -1060,6 +1061,12 @@ export interface IRecipeCockpitDataOrgSelection {
     orgDetail: IAuthenticatedOrgDetail;
     requestSequence: number;
     orgTypeDetail?: IOrgTypeDetail;
+    /*
+        Set once this selection's describes have answered and its readiness was posted (#273). A
+        deploy to the selection waits for it: a readiness built from describes taken BEFORE a
+        deploy, posted after it, would put back the reasons the deploy just removed.
+    */
+    isReadinessPosted?: boolean;
 }
 
 /*
@@ -4763,39 +4770,57 @@ export class RecipeCockpitService {
             return { ...refuse(`Nothing was deployed: ${orgLabel} ${orgTypeDetail ? `answered that it is ${SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail)}` : 'could not say whether it is a sandbox'}. Metadata is deployed only to a sandbox or scratch org.`, orgDetail), isConfirmed: false };
         }
 
-        const deployArguments = RecipeCockpitMetadataDeploy.buildMetadataDeployArguments(deployPlan.members, orgDetail.username);
-
-        reportStatus(`Deploying ${componentText} of ${treeLabel}…`);
-        onCliStarted(orgDetail, plannedObjectApiNames);
-
+        /*
+            The members go in a package.xml OUTSIDE the workspace, so the command line stays short
+            whatever the tree holds (cmd.exe refuses one past 8,191 characters) and nothing is left
+            in the repository. The folder is removed however the deploy ends.
+        */
+        const packageXml = RecipeCockpitMetadataDeploy.buildPackageXml(deployPlan.members, RecipeCockpitMetadataDeploy.readSourceApiVersion(workspaceRoot));
+        const manifestFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-metadata-deploy-'));
+        const manifestFilePath = path.join(manifestFolderPath, METADATA_DEPLOY_MANIFEST_FILE_NAME);
         let isCancelled = false;
+        let deployInvocation: ISalesforceCliInvocationResult;
 
-        const deployInvocation: ISalesforceCliInvocationResult = await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: `Recipe Cockpit: deploying ${componentText} of ${treeLabel} to ${orgLabel}`,
-            cancellable: true
-        }, async (_progress, cancellationToken) => {
+        try {
 
-            let killCurrentProcess: (() => void) | undefined;
-            cancellationToken.onCancellationRequested(() => {
-                isCancelled = true;
-                killCurrentProcess?.();
+            fs.writeFileSync(manifestFilePath, packageXml, 'utf-8');
+            const deployArguments = RecipeCockpitMetadataDeploy.buildMetadataDeployArguments(manifestFilePath, orgDetail.username);
+
+            reportStatus(`Deploying ${componentText} of ${treeLabel}…`);
+            onCliStarted(orgDetail, plannedObjectApiNames);
+
+            deployInvocation = await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `Recipe Cockpit: deploying ${componentText} of ${treeLabel} to ${orgLabel}`,
+                cancellable: true
+            }, async (_progress, cancellationToken) => {
+
+                let killCurrentProcess: (() => void) | undefined;
+                cancellationToken.onCancellationRequested(() => {
+                    isCancelled = true;
+                    killCurrentProcess?.();
+                });
+
+                return await PicklistDependencyCheckService.runSalesforceCli(
+                    deployArguments,
+                    (killChildProcess: () => void) => {
+                        killCurrentProcess = killChildProcess;
+                        if ( cancellationToken.isCancellationRequested ) {
+                            isCancelled = true;
+                            killChildProcess();
+                        }
+                    },
+                    METADATA_DEPLOY_TIMEOUT_MILLISECONDS,
+                    { workingDirectoryPath: path.resolve(workspaceRoot), maxBufferBytes: METADATA_DEPLOY_MAX_BUFFER_BYTES }
+                );
+
             });
 
-            return await PicklistDependencyCheckService.runSalesforceCli(
-                deployArguments,
-                (killChildProcess: () => void) => {
-                    killCurrentProcess = killChildProcess;
-                    if ( cancellationToken.isCancellationRequested ) {
-                        isCancelled = true;
-                        killChildProcess();
-                    }
-                },
-                METADATA_DEPLOY_TIMEOUT_MILLISECONDS,
-                { workingDirectoryPath: path.resolve(workspaceRoot), maxBufferBytes: METADATA_DEPLOY_MAX_BUFFER_BYTES }
-            );
+        } finally {
 
-        });
+            fs.rmSync(manifestFolderPath, { recursive: true, force: true });
+
+        }
 
         if ( isCancelled ) {
             const cancelledText = `The deploy of ${treeLabel} to ${orgLabel} was cancelled, so whether it applied is unknown.`;
@@ -5037,6 +5062,7 @@ export class RecipeCockpitService {
 
         const usernamePrefix = `${orgDetail.username}\n`;
 
+        dataOrgSelection.isReadinessPosted = true;
         this.postToPanel(cockpitPanel, {
             command: 'dataOrgReadiness',
             objects: objectApiNames.map(objectApiName => readinessByObjectApiName.get(objectApiName)).filter(readiness => !!readiness),
@@ -6557,7 +6583,9 @@ export class RecipeCockpitService {
                         && !!dataOrgSelection
                         && dataOrgSelection.orgIndex === orgIndex
                         && dataOrgSelection.orgTypeDetail?.isSandbox === true ) {
-                    return { kind: 'deployTreeMetadata', treeKey: treeKey, isSelectedOrg: true };
+                    return dataOrgSelection.isReadinessPosted === true
+                        ? { kind: 'deployTreeMetadata', treeKey: treeKey, isSelectedOrg: true }
+                        : refuse('Nothing was deployed: the org selected above is still being checked. Deploy once that check has finished.');
                 }
 
                 return refuse('Nothing was deployed: the org selected above has not answered that it is a sandbox. Choose a sandbox or scratch org there.');

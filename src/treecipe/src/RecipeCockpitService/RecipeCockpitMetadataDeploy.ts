@@ -28,11 +28,10 @@ export const METADATA_DEPLOY_OBJECTS_FOLDER_SEARCH_DEPTH = 5;
 
 const CUSTOM_COMPONENT_SUFFIX_PATTERN = /__c$/i;
 
-export type MetadataDeploySkipReason = 'notAnApiName' | 'standardField' | 'notInLocalSource' | 'outsideWorkspace' | 'noCustomFieldsInSource';
+export type MetadataDeploySkipReason = 'notAnApiName' | 'notInLocalSource' | 'outsideWorkspace' | 'noCustomFieldsInSource';
 
 export const METADATA_DEPLOY_SKIP_REASON_TEXT: Readonly<Record<MetadataDeploySkipReason, string>> = {
     notAnApiName: 'not a Salesforce api name',
-    standardField: 'not a custom field (__c), which this does not deploy',
     notInLocalSource: 'not in local source',
     outsideWorkspace: 'its source file resolves outside this workspace',
     noCustomFieldsInSource: 'a standard object with no custom field (__c) in local source'
@@ -63,8 +62,15 @@ export interface ITreeMetadataDeployPlan {
     skippedItems: IMetadataDeploySkippedItem[];
 }
 
-// HOW MANY SOURCE FILES THE CONFIRMATION SPELLS OUT ACROSS THE WHOLE TREE; THE REST ARE COUNTED
+// HOW MANY MEMBERS, SOURCE FILES AND SKIPPED ITEMS THE CONFIRMATION SPELLS OUT EACH, ACROSS THE WHOLE TREE; THE REST ARE COUNTED
 export const METADATA_DEPLOY_SOURCE_FILES_SHOWN = 60;
+
+// HOW MANY SKIPPED ITEMS A "NOTHING TO DEPLOY" NOTIFICATION NAMES; THE REST ARE COUNTED
+export const METADATA_DEPLOY_NOTIFICATION_SKIPS_SHOWN = 10;
+
+export const METADATA_DEPLOY_MANIFEST_FILE_NAME = 'package.xml';
+
+const API_VERSION_PATTERN = /^\d+\.\d+$/;
 
 /*
     One plan's reads, made once: a folder's entries, and the workspace root's real path. A plan
@@ -346,8 +352,8 @@ export class RecipeCockpitMetadataDeploy {
                         return;
                     }
 
+                    // A STANDARD FIELD'S FILE IS ORDINARY IN RETRIEVED SOURCE, AND NOTHING THE READER COULD ACT ON
                     if ( !this.isCustomComponentName(fieldSourceName) ) {
-                        skipField(fieldLabel, 'standardField');
                         return;
                     }
 
@@ -414,14 +420,15 @@ export class RecipeCockpitMetadataDeploy {
     }
 
     /*
-        One --metadata per member and --target-org the USERNAME, never an alias, which can be
-        re-pointed between the confirmation and the run. No --source-dir: only the named members
-        are deployed, and the CLI resolves them from sfdx-project.json in the workspace it runs in.
-        Every member is checked again here, so a plan built any other way still cannot add an argument.
+        The members as a package.xml, which the deploy names with --manifest. One --metadata per
+        member made the command line grow with the tree, and on Windows the CLI runs through
+        cmd.exe, which refuses a line past 8,191 characters -- about 150 members. Every member is
+        checked again here, so a plan built any other way still cannot add an element, and a member
+        is an api name, so nothing in it needs escaping. The version is sfdx-project.json's
+        sourceApiVersion when it is a plain version number; otherwise it is left out and the CLI
+        decides, as it does for --metadata.
     */
-    static buildMetadataDeployArguments(members: string[], orgUsername: string): string[] {
-
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(orgUsername);
+    static buildPackageXml(members: string[], apiVersion: string | undefined): string {
 
         members.forEach(member => {
             if ( !this.isDeployableMember(member) ) {
@@ -429,9 +436,53 @@ export class RecipeCockpitMetadataDeploy {
             }
         });
 
+        const membersByType = new Map<string, string[]>();
+        members.forEach(member => {
+            const [componentType, componentName] = member.split(':');
+            membersByType.set(componentType, [...( membersByType.get(componentType) ?? [] ), componentName]);
+        });
+
+        return [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<Package xmlns="http://soap.sforce.com/2006/04/metadata">',
+            ...[...membersByType.keys()].sort().flatMap(componentType => [
+                '    <types>',
+                ...[...new Set(membersByType.get(componentType))].sort().map(componentName => `        <members>${componentName}</members>`),
+                `        <name>${componentType}</name>`,
+                '    </types>'
+            ]),
+            ...( apiVersion && API_VERSION_PATTERN.test(apiVersion) ? [`    <version>${apiVersion}</version>`] : [] ),
+            '</Package>',
+            ''
+        ].join('\n');
+
+    }
+
+    // sfdx-project.json's sourceApiVersion, only when it is a plain version number; the file was already read strictly by the plan
+    static readSourceApiVersion(workspaceRoot: string): string | undefined {
+
+        try {
+            const sourceApiVersion = SfdxProjectService.readSfdxProjectJson(SfdxProjectService.getSfdxProjectFilePath(workspaceRoot)).sourceApiVersion;
+            return typeof sourceApiVersion === 'string' && API_VERSION_PATTERN.test(sourceApiVersion) ? sourceApiVersion : undefined;
+        } catch {
+            return undefined;
+        }
+
+    }
+
+    /*
+        The manifest and --target-org the USERNAME, never an alias, which can be re-pointed between
+        the confirmation and the run. No --source-dir: only the manifest's members are deployed, and
+        the CLI resolves them from sfdx-project.json in the workspace it runs in. The command line
+        stays the same length whatever the tree holds.
+    */
+    static buildMetadataDeployArguments(manifestFilePath: string, orgUsername: string): string[] {
+
+        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(orgUsername);
+
         return [
             'project', 'deploy', 'start',
-            ...members.flatMap(member => ['--metadata', member]),
+            '--manifest', manifestFilePath,
             '--target-org', orgUsername,
             '--json'
         ];
@@ -505,7 +556,10 @@ export class RecipeCockpitMetadataDeploy {
         const toSingleLine = (text: string) => String(text ?? '').replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');
 
         const sourceFiles = plan.objectPlans.flatMap(objectPlan => objectPlan.sourceFiles);
-        const hiddenSourceFileCount = sourceFiles.length - METADATA_DEPLOY_SOURCE_FILES_SHOWN;
+        const listFirst = (lines: string[]) => [
+            ...lines.slice(0, METADATA_DEPLOY_SOURCE_FILES_SHOWN).map(line => `  ${toSingleLine(line)}`),
+            ...( lines.length > METADATA_DEPLOY_SOURCE_FILES_SHOWN ? [`  and ${lines.length - METADATA_DEPLOY_SOURCE_FILES_SHOWN} more`] : [] )
+        ];
         const hasCustomObject = plan.members.some(member => member.startsWith('CustomObject:'));
 
         return [
@@ -513,13 +567,12 @@ export class RecipeCockpitMetadataDeploy {
             `Org: ${toSingleLine(orgLabel)}`,
             '',
             `To deploy (${plan.members.length}):`,
-            ...plan.members.map(member => `  ${toSingleLine(member)}`),
+            ...listFirst(plan.members),
             '',
             `Source files sent (${sourceFiles.length}):`,
-            ...sourceFiles.slice(0, METADATA_DEPLOY_SOURCE_FILES_SHOWN).map(sourceFile => `  ${toSingleLine(sourceFile)}`),
-            ...( hiddenSourceFileCount > 0 ? [`  and ${hiddenSourceFileCount} more`] : [] ),
+            ...listFirst(sourceFiles),
             ...( plan.skippedItems.length > 0
-                ? ['', `Skipped (${plan.skippedItems.length}):`, ...plan.skippedItems.map(skippedItem => `  ${toSingleLine(skippedItem.name)} — ${METADATA_DEPLOY_SKIP_REASON_TEXT[skippedItem.reason]}`)]
+                ? ['', `Skipped (${plan.skippedItems.length}):`, ...listFirst(plan.skippedItems.map(skippedItem => `${skippedItem.name} — ${METADATA_DEPLOY_SKIP_REASON_TEXT[skippedItem.reason]}`))]
                 : [] ),
             '',
             [
@@ -534,9 +587,13 @@ export class RecipeCockpitMetadataDeploy {
     // WHY NOTHING WAS DEPLOYED WHEN THE PLAN LEFT NOTHING
     static buildNothingToDeployMessage(plan: ITreeMetadataDeployPlan): string {
 
-        const skippedText = plan.skippedItems
-            .map(skippedItem => `${skippedItem.name} is ${METADATA_DEPLOY_SKIP_REASON_TEXT[skippedItem.reason]}`)
-            .join('; ');
+        const hiddenSkipCount = plan.skippedItems.length - METADATA_DEPLOY_NOTIFICATION_SKIPS_SHOWN;
+        const skippedText = [
+            ...plan.skippedItems
+                .slice(0, METADATA_DEPLOY_NOTIFICATION_SKIPS_SHOWN)
+                .map(skippedItem => `${skippedItem.name} is ${METADATA_DEPLOY_SKIP_REASON_TEXT[skippedItem.reason]}`),
+            ...( hiddenSkipCount > 0 ? [`and ${hiddenSkipCount} more`] : [] )
+        ].join('; ');
 
         return `Nothing of the tree ${plan.treeLabel} can be deployed${skippedText ? `: ${skippedText}` : ''}.`;
 
