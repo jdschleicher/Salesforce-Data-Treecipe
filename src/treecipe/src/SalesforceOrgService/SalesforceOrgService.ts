@@ -1,4 +1,4 @@
-import { AuthInfo, Connection, Org, OrgAuthorization } from '@salesforce/core';
+import { AuthInfo, Connection, Org, OrgAuthorization, StateAggregator } from '@salesforce/core';
 import { IAuthenticatedOrgDetail, ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { IAuthenticatedOrgListingForPicker, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
@@ -161,6 +161,7 @@ export interface IHiddenAuthorizedOrg {
 */
 export interface IConnectedOrgStatusListing {
     connectionStatesByUsername: Map<string, OrgConnectionState>;
+    aliasesByUsername?: Map<string, string>;
     checkedAuthorizationUsernames?: Set<string>;
 }
 
@@ -598,7 +599,7 @@ export class SalesforceOrgService {
     // THE AUTHORIZATIONS ARE READ BEFORE THE CLI RUNS, SO ONE ADDED DURING THE CHECK IS NEVER COUNTED AS CHECKED
     private static async runOrgListCommand(): Promise<IConnectedOrgStatusListing> {
 
-        const checkedAuthorizationUsernames = new Set(this.readAuthorizations(await AuthInfo.listAllAuthorizations())
+        const checkedAuthorizationUsernames = new Set((await this.readFreshAuthorizations())
             .map(authorization => authorization?.username)
             .filter((username): username is string => typeof username === 'string' && !!username));
 
@@ -609,6 +610,20 @@ export class SalesforceOrgService {
         );
 
         return { ...this.parseOrgListInvocation(invocationResult), checkedAuthorizationUsernames: checkedAuthorizationUsernames };
+
+    }
+
+    /*
+        @salesforce/core reads aliases once per process into a StateAggregator, so inside a long-lived
+        extension host an alias set after the extension loaded -- "sf alias set", "sf org login
+        --alias", a scratch org this extension created -- never appeared, and the org was listed by
+        username (#286). Dropping the instance makes every listing read the alias file again.
+    */
+    private static async readFreshAuthorizations(): Promise<OrgAuthorization[]> {
+
+        StateAggregator.clearInstance();
+
+        return this.readAuthorizations(await AuthInfo.listAllAuthorizations());
 
     }
 
@@ -667,6 +682,7 @@ export class SalesforceOrgService {
         }
 
         const connectionStatesByUsername = new Map<string, OrgConnectionState>();
+        const aliasesByUsername = new Map<string, string>();
 
         SALESFORCE_CLI_ORG_LIST_GROUPS.forEach(orgListGroup => {
 
@@ -692,11 +708,33 @@ export class SalesforceOrgService {
                     connectionStatesByUsername.set(username, connectionState);
                 }
 
+                const alias = this.readOrgListEntryAlias(orgListEntryRecord);
+
+                if ( alias && !aliasesByUsername.has(username) ) {
+                    aliasesByUsername.set(username, alias);
+                }
+
             });
 
         });
 
-        return { connectionStatesByUsername: connectionStatesByUsername };
+        return { connectionStatesByUsername: connectionStatesByUsername, aliasesByUsername: aliasesByUsername };
+
+    }
+
+    /*
+        An entry's alias, as untrusted as the rest of the answer: "alias" when it is a string, else
+        the first string of "aliases". It is only ever a label, but one that could not be an org
+        identifier is not one this extension offers either, so the org keeps its username.
+    */
+    static readOrgListEntryAlias(orgListEntry: Record<string, unknown>): string | undefined {
+
+        const { alias, aliases } = orgListEntry;
+        const candidateAlias = typeof alias === 'string' && alias
+            ? alias
+            : ( Array.isArray(aliases) ? aliases.find((listedAlias: unknown): listedAlias is string => typeof listedAlias === 'string' && !!listedAlias) : undefined );
+
+        return candidateAlias !== undefined && PicklistDependencyCheckService.isValidTargetOrgIdentifier(candidateAlias) ? candidateAlias : undefined;
 
     }
 
@@ -744,6 +782,7 @@ export class SalesforceOrgService {
 
         const hiddenOrgs: IHiddenAuthorizedOrg[] = [];
         const usableAuthorizations: OrgAuthorization[] = [];
+        const labelAliasesByUsername = this.buildLabelAliasesByUsername(this.readAuthorizations(authorizations), connectedOrgStatusListing);
 
         this.readAuthorizations(authorizations).forEach(authorization => {
 
@@ -756,7 +795,8 @@ export class SalesforceOrgService {
             const hiddenReason = this.findHiddenOrgReason(authorization, connectedOrgStatusListing, isProductionExcluded);
 
             if ( hiddenReason ) {
-                hiddenOrgs.push({ username: username, label: authorization.aliases?.[0] || username, reason: hiddenReason });
+                const label = PicklistDependencyCheckService.readFirstAuthorizationAlias(authorization) || labelAliasesByUsername.get(username) || username;
+                hiddenOrgs.push({ username: username, label: label, reason: hiddenReason });
                 return;
             }
 
@@ -765,10 +805,39 @@ export class SalesforceOrgService {
         });
 
         return {
-            orgDetails: PicklistDependencyCheckService.buildAuthenticatedOrgDetails(usableAuthorizations),
+            orgDetails: PicklistDependencyCheckService.buildAuthenticatedOrgDetails(usableAuthorizations, labelAliasesByUsername),
             hiddenOrgs: hiddenOrgs,
             hiddenOrgReasonCounts: this.countHiddenOrgReasons(hiddenOrgs)
         };
+
+    }
+
+    /*
+        The CLI's alias for each authorization that carries none of its own. The authorizations are
+        read fresh on every listing while the CLI's answer is cached until ⟳, so an alias the fresh
+        read already gives another org has moved, and is not put back on this one.
+    */
+    private static buildLabelAliasesByUsername(authorizations: OrgAuthorization[],
+                                                connectedOrgStatusListing: IConnectedOrgStatusListing): Map<string, string> {
+
+        const labelAliasesByUsername = new Map<string, string>();
+        const cliAliasesByUsername = connectedOrgStatusListing.aliasesByUsername;
+
+        if ( !( cliAliasesByUsername instanceof Map ) ) {
+            return labelAliasesByUsername;
+        }
+
+        const heldAliases = new Set(authorizations.flatMap(authorization => (
+            Array.isArray(authorization?.aliases) ? authorization.aliases.filter((alias: unknown) => typeof alias === 'string') : []
+        )));
+
+        cliAliasesByUsername.forEach((alias, username) => {
+            if ( !heldAliases.has(alias) ) {
+                labelAliasesByUsername.set(username, alias);
+            }
+        });
+
+        return labelAliasesByUsername;
 
     }
 
@@ -823,7 +892,7 @@ export class SalesforceOrgService {
     // THE ORGS DATA-BY-ORG LISTS: ONLY THOSE KNOWN NOT TO BE PRODUCTION AND REPORTED CONNECTED, WITH WHY THE REST ARE NOT
     static async listDataOrgDetails(): Promise<IDataOrgListing> {
 
-        const authorizations = this.readAuthorizations(await AuthInfo.listAllAuthorizations());
+        const authorizations = await this.readFreshAuthorizations();
         const connectedOrgStatusListing = await this.listConnectedOrgStatusForAuthorizations(authorizations);
         const connectedOrgListing = this.buildConnectedOrgListing(authorizations, connectedOrgStatusListing, true);
 
@@ -840,7 +909,7 @@ export class SalesforceOrgService {
 
         const aliasHolders = new Map<string, string>();
 
-        for ( const authorization of this.readAuthorizations(await AuthInfo.listAllAuthorizations()) ) {
+        for ( const authorization of await this.readFreshAuthorizations() ) {
             const username = authorization?.username;
             if ( typeof username !== 'string' || !username || !Array.isArray(authorization?.aliases) ) {
                 continue;
@@ -863,7 +932,7 @@ export class SalesforceOrgService {
     */
     static async listAuthorizedOrgDetails(): Promise<IConnectedOrgListing> {
 
-        return await this.listConnectedOrgDetailsFor(this.readAuthorizations(await AuthInfo.listAllAuthorizations()));
+        return await this.listConnectedOrgDetailsFor(await this.readFreshAuthorizations());
 
     }
 
@@ -1010,7 +1079,7 @@ export class SalesforceOrgService {
                                         homeDirectoryPath?: string,
                                         environmentVariables?: NodeJS.ProcessEnv): Promise<IConnectedOrgListing & { orgDetails: IDevHubOrgDetail[]; defaultUsername?: string }> {
 
-        const devHubAuthorizations = this.readAuthorizations(await AuthInfo.listAllAuthorizations())
+        const devHubAuthorizations = (await this.readFreshAuthorizations())
             .filter(authorization => authorization?.isDevHub === true);
         const connectedListing = await this.listConnectedOrgDetailsFor(devHubAuthorizations);
         // THE ARGV NAMES THE USERNAME, SO A DEV HUB WHOSE ALIAS PASSES BUT WHOSE USERNAME DOES NOT IS NEVER OFFERED

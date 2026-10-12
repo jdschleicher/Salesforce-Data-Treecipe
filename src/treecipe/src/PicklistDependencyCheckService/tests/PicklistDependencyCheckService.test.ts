@@ -653,6 +653,34 @@ describe('shouldBuildAuthenticatedOrgQuickPickDetails', () => {
 
     });
 
+    it('shouldLabelByALabelAliasWithoutMakingItTheTargetOrgIdentifier', () => {
+
+        const orgDetails = PicklistDependencyCheckService.buildAuthenticatedOrgDetails([
+            buildOrgAuthorization({ username: 'qa@example.com', aliases: [] }),
+            buildOrgAuthorization({ username: 'uat@example.com', aliases: ['uat'] })
+        ], new Map([['qa@example.com', 'qa'], ['uat@example.com', 'staleUat']]));
+
+        expect(orgDetails).toEqual([
+            { targetOrgIdentifier: 'qa@example.com', username: 'qa@example.com', alias: 'qa' },
+            { targetOrgIdentifier: 'uat', username: 'uat@example.com', alias: 'uat' }
+        ]);
+
+    });
+
+    it('shouldSkipAnAuthorizationAliasThatIsNotANonEmptyString', () => {
+
+        const orgDetails = PicklistDependencyCheckService.buildAuthenticatedOrgDetails([
+            buildOrgAuthorization({ username: 'qa@example.com', aliases: [42, '', 'qa'] as unknown as string[] }),
+            buildOrgAuthorization({ username: 'uat@example.com', aliases: 'uat' as unknown as string[] })
+        ]);
+
+        expect(orgDetails).toEqual([
+            { targetOrgIdentifier: 'qa', username: 'qa@example.com', alias: 'qa' },
+            { targetOrgIdentifier: 'uat@example.com', username: 'uat@example.com', alias: undefined }
+        ]);
+
+    });
+
     it('shouldReturnEmptyListWhenNoOrgsAreAuthenticated', () => {
         expect(PicklistDependencyCheckService.buildAuthenticatedOrgDetails([])).toBeEmpty();
         expect(PicklistDependencyCheckService.buildAuthenticatedOrgDetails(undefined as unknown as OrgAuthorization[])).toBeEmpty();

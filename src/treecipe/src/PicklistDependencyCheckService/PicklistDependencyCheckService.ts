@@ -409,7 +409,26 @@ export class PicklistDependencyCheckService {
 
     }
 
-    static buildAuthenticatedOrgDetails(authorizations: OrgAuthorization[]): IAuthenticatedOrgDetail[] {
+    // THE FIRST NON-EMPTY STRING ALIAS AN AUTHORIZATION CARRIES -- ITS aliases COME FROM FILES ON DISK, SO NOTHING ELSE IS ASSUMED
+    static readFirstAuthorizationAlias(authorization: OrgAuthorization | null | undefined): string | undefined {
+
+        const aliases: unknown = authorization?.aliases;
+
+        if ( !Array.isArray(aliases) ) {
+            return undefined;
+        }
+
+        return aliases.find((alias: unknown): alias is string => typeof alias === 'string' && alias.length > 0);
+
+    }
+
+    /*
+        labelAliasesByUsername is a LABEL and nothing else (#286): an alias read fresh from the CLI
+        for an authorization that carries none of its own. It never becomes targetOrgIdentifier, so
+        what reaches "--target-org" is decided by the authorization alone, as it always was.
+    */
+    static buildAuthenticatedOrgDetails(authorizations: OrgAuthorization[],
+                                        labelAliasesByUsername?: ReadonlyMap<string, string>): IAuthenticatedOrgDetail[] {
 
         if ( !Array.isArray(authorizations) ) {
             return [];
@@ -418,17 +437,19 @@ export class PicklistDependencyCheckService {
         return authorizations.reduce((orgDetails: IAuthenticatedOrgDetail[], authorization) => {
 
             const username = authorization?.username;
-            if ( !username ) {
+            if ( typeof username !== 'string' || !username ) {
                 return orgDetails;
             }
 
-            const alias = authorization.aliases?.length ? authorization.aliases[0] : undefined;
-            const targetOrgIdentifier = alias || username;
+            const authorizationAlias = this.readFirstAuthorizationAlias(authorization);
+            const targetOrgIdentifier = authorizationAlias || username;
 
             // AN UNUSABLE IDENTIFIER IS DROPPED HERE SO IT CANNOT REACH THE QUICK PICK AND THEN THE CLI
             if ( !this.isValidTargetOrgIdentifier(targetOrgIdentifier) ) {
                 return orgDetails;
             }
+
+            const alias = authorizationAlias || labelAliasesByUsername?.get(username);
 
             orgDetails.push({ targetOrgIdentifier, username, alias });
 

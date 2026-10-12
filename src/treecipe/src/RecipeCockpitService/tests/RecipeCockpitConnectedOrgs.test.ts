@@ -33,6 +33,7 @@ jest.mock('vscode', () => ({
 
 jest.mock('@salesforce/core', () => ({
     AuthInfo: { listAllAuthorizations: jest.fn() },
+    StateAggregator: { clearInstance: jest.fn() },
     Org: { create: jest.fn() }
 }));
 
@@ -41,7 +42,7 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 import { AuthInfo } from '@salesforce/core';
 import { execFile } from 'child_process';
 
-import { RecipeCockpitService } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_DATA_ORG_STATE_KEY, RecipeCockpitService } from '../RecipeCockpitService';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
 import { ExtensionCommandService } from '../../ExtensionCommandService/ExtensionCommandService';
@@ -170,6 +171,54 @@ describe('RecipeCockpitService, every org picker lists only the orgs the Salesfo
         expect(execFile).toHaveBeenCalledTimes(2);
         expect(postedNamed('dataOrgList').map(dataOrgList => dataOrgList.orgLabels)).toEqual([CONNECTED_ORG_LABELS, ['qa', 'uat', 'activeScratch']]);
         expect(offeredQuickPickLabels).toEqual([['qa', 'uat', 'activeScratch']]);
+
+    });
+
+    it('labels each org by the alias "sf org list" answers when the authorizations carry none, while the selection and the remembered org stay the username (#286)', async () => {
+
+        // A StateAggregator READ BEFORE THE ALIASES WERE SET: EVERY AUTHORIZATION COMES BACK WITH NONE
+        (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue(ORG_AUTHORIZATIONS.map((authorization: any) => ({ ...authorization, aliases: [] })));
+        const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockRejectedValue(new Error('no connection in this test'));
+        const workspaceStateUpdate = jest.fn().mockResolvedValue(undefined);
+
+        await RecipeCockpitService.openRecipeCockpitPanel(TREE_WORKSPACE_ROOT, { get: jest.fn(), update: workspaceStateUpdate });
+        await receivedMessageHandler({ command: 'ready' });
+        await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+        await receivedMessageHandler({ command: 'loadDataOrgs' });
+        await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst();
+        await (new ExtensionCommandService() as any).promptForPicklistDependencyTargetOrg();
+
+        expect(postedNamed('dataOrgList')[0]).toMatchObject({
+            orgLabels: CONNECTED_ORG_LABELS,
+            hiddenOrgNote: expect.stringContaining('4 authorized orgs are not listed')
+        });
+        expect(offeredQuickPickLabels).toEqual([CONNECTED_ORG_LABELS, CONNECTED_ORG_LABELS]);
+        expect(JSON.stringify(postedNamed('dataOrgList'))).not.toContain('@example.com');
+
+        await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
+
+        const panelState = (RecipeCockpitService as any).recipeCockpitPanelState;
+        expect(panelState.dataOrgSelection.orgDetail).toEqual({ targetOrgIdentifier: 'qa@example.com.qa', username: 'qa@example.com.qa', alias: 'qa' });
+        expect(workspaceStateUpdate).toHaveBeenCalledWith(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, 'qa@example.com.qa');
+        expect(getConnectionSpy).toHaveBeenCalledWith('qa@example.com.qa');
+        expect(postedNamed('dataOrgSelection')[0]).toMatchObject({ orgIndex: 0, orgLabel: 'qa' });
+
+    });
+
+    it('lists an org with no alias anywhere by its username (#286)', async () => {
+
+        (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue(ORG_AUTHORIZATIONS.map((authorization: any) => ({ ...authorization, aliases: [] })));
+        (execFile as unknown as jest.Mock).mockImplementation((_command: string, _args: string[], _options: unknown, callback: any) => {
+            const unaliasedOrgList = JSON.parse(SF_ORG_LIST_STDOUT);
+            Object.values(unaliasedOrgList.result).forEach((orgListEntries: any) => orgListEntries.forEach((orgListEntry: any) => { delete orgListEntry.alias; }));
+            setImmediate(() => callback(null, JSON.stringify(unaliasedOrgList), ''));
+            return { kill: jest.fn() };
+        });
+
+        await openRenderedCockpit();
+        await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+        expect(postedNamed('dataOrgList')[0].orgLabels).toEqual(['qa@example.com.qa', 'test-active@example.com']);
 
     });
 
