@@ -1404,10 +1404,16 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             it('opens the same page from the error notification\'s button', async () => {
 
                 failWithDeployUrl(buildDeployUrl(QA_INSTANCE_URL));
-                (vscode.window.showErrorMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL);
+                let chooseOpenStatus: (label: string) => void = () => undefined;
+                (vscode.window.showErrorMessage as jest.Mock).mockImplementationOnce(() => new Promise(resolve => { chooseOpenStatus = resolve; }));
                 await openCockpitWithQaSelected();
 
                 await deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+                expect(lastDeployState()).toMatchObject({ isRunning: false, hasDeployStatus: true });
+
+                // THE READER CLICKS ONCE THE DEPLOY HAS ENDED
+                chooseOpenStatus(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL);
                 await flushAsyncWork();
                 await flushAsyncWork();
 
@@ -1539,6 +1545,35 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
                 expect(vscode.env.openExternal).toHaveBeenCalledTimes(1);
                 expect(notificationWarningSpy).toHaveBeenLastCalledWith(RecipeYamlScalarEscape(`The Deployment Status page of ${QA_USERNAME} was not opened: the browser did not accept the address.`));
                 expect(JSON.stringify(notificationWarningSpy.mock.calls)).not.toContain(SESSION_ID);
+
+            });
+
+            it('opens nothing from the error notification\'s button while another deploy runs', async () => {
+
+                failWithDeployUrl(buildDeployUrl(QA_INSTANCE_URL));
+                let chooseOpenStatus: (label: string) => void = () => undefined;
+                (vscode.window.showErrorMessage as jest.Mock).mockImplementationOnce(() => new Promise(resolve => { chooseOpenStatus = resolve; }));
+                await openCockpitWithQaSelected();
+                await deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+
+                deployHandler = () => 'hold';
+                const deployInFlight = deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+                await flushAsyncWork();
+                expect(lastDeployState()).toMatchObject({ isRunning: true });
+
+                chooseOpenStatus(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL);
+                await flushAsyncWork();
+                await flushAsyncWork();
+
+                expect(orgOpenCalls()).toEqual([]);
+                expect(vscode.env.openExternal).not.toHaveBeenCalled();
+                expect(notificationWarningSpy).toHaveBeenLastCalledWith('The Deployment Status page was not opened: a deploy is running. Try again once it has finished.');
+
+                heldDeployCallbacks.forEach(answerHeldDeploy => answerHeldDeploy());
+                await deployInFlight;
+                await flushAsyncWork();
 
             });
 

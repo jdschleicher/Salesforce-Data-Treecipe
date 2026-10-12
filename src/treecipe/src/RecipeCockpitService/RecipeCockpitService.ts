@@ -4728,6 +4728,12 @@ export class RecipeCockpitService {
             return;
         }
 
+        // THE NOTIFICATION'S BUTTON IS NOT ROUTED: IT IS HELD TO THE ROUTER'S RULE THAT NOTHING OPENS WHILE A DEPLOY RUNS
+        if ( this.isMetadataDeployInFlight ) {
+            VSCodeWorkspaceService.showWarningMessage('The Deployment Status page was not opened: a deploy is running. Try again once it has finished.');
+            return;
+        }
+
         this.isDeployStatusOpenInFlight = true;
         const { orgDetail, deployStatusPath } = deployStatusTarget;
         const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
