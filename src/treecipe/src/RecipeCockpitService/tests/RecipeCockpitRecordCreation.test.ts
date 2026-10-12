@@ -243,9 +243,9 @@ describe('RecipeCockpitRecordCreation', () => {
 
         });
 
-        it('marks only an object the org answered it does not have as deployable', () => {
+        it('marks no reason as deployable: "Deploy this metadata…" no longer depends on the readiness (#273)', () => {
 
-            expect(readinessOf({ describe: undefined, describeFailureMessage: 'NOT_FOUND', isObjectNotFound: true }).isMetadataDeployable).toBe(true);
+            expect(readinessOf({ describe: undefined, describeFailureMessage: 'NOT_FOUND' })).not.toHaveProperty('isMetadataDeployable');
             expect(readinessOf({ describe: undefined, describeFailureMessage: 'timed out' })).not.toHaveProperty('isMetadataDeployable');
 
         });

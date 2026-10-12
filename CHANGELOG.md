@@ -1,5 +1,24 @@
 # Change Log
 
+## [3.67.0] - Recipe Cockpit: "Deploy this metadata…" is always offered and deploys the whole tree
+
+Closes [#273](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/273), following [#211](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/211) and [#270](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/270).
+
+**Behaviour change.** **Deploy this metadata…** used to appear only under an insert stopped by one object the selected sandbox lacked, and deployed only that object. It is now on every tree card's Treecipe tab, whatever the org answered, and deploys everything the tree needs from this workspace's source:
+
+- **every custom object (`__c`) of the tree** as one `CustomObject` member, which in source format sends everything in the object's folder (fields, validation rules, record types, list views);
+- **every standard object of the tree** through the custom fields its source folder has, one `CustomField` member each. A standard object with none is listed as skipped.
+
+What changed:
+
+- **Org.** With an org chosen in the Treecipe tab, the deploy goes there, and only once that org has answered that it is a sandbox and its check has finished (otherwise the card says so and nothing runs: a check that finished after the deploy would put back the reasons the deploy removed). With none chosen, the cockpit asks for one from the same list the Treecipe tab's picker draws (sandboxes and scratch orgs the CLI reports connected, never production). An org picked there becomes the Treecipe tab's selection once you confirm the deploy, so its insert readiness is checked afresh after the deploy. Dismissing the picker runs nothing.
+- **Confirmation.** It names the tree, the org, the members, the source files they send and the objects skipped with why, each list the first 60 and then a count. A standard object's standard field files (common in retrieved source) are neither deployed nor listed as skipped. A "nothing to deploy" message names the first 10 skipped items.
+- **Manifest.** The members go in a temporary `package.xml` outside the workspace, passed with `--manifest` and removed once the deploy ends, with the project's `sourceApiVersion` as its version when that is a plain version number. One `--metadata` per member made the command line grow with the tree, and on Windows, where the CLI runs through `cmd.exe`, a line past 8,191 characters (about 150 members) never starts. `sfdx-project.json` is read and the plan is made before any org is asked for, so an undeployable project or a tree with nothing in local source opens no picker. Cancel runs nothing.
+- **What the panel sends.** It posts `deployTreeMetadata {treeKey, orgIndex?}`. The tree key is matched against `deployableTreeKeys`, a pending/active allow-list built from the rendered model (every card with a folder and an object), and the objects are read from the host's stored model. The per-object deploy targets built from readiness are gone: `IMetadataDeployTarget`, `buildDeployTarget`, `deployTargetsByCreateKey`, the pending snapshots, `readinessSequence`, the panel's `readinessRendered` and `activateDeployActions`, and `isMetadataDeployable` on the readiness. `RecipeCockpitMetadataDeploy.planMetadataDeploy` is replaced by `planTreeMetadataDeploy`.
+- **After the deploy.** The describes of every planned object are dropped from the session cache once the CLI has run. On success, every deployed object is marked ready on every card that lists it, for the selection the deploy started under, from the CLI's answer alone.
+- **Unchanged:** the second Organization check after the confirmation, the rest of the argv (`--target-org <username>`, `--json`, no `--source-dir`, no `--ignore-errors`), project mode with `sf` from PATH, all-or-nothing results, **View output**, one deploy per window and what it holds disabled, recipe generation and both faker backends.
+- No permission set is deployed or assigned; that is [#274](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/274).
+
 ## [3.66.0] - Recipe Cockpit: the Previous Versions tab is removed
 
 Closes [#265](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/265), slice C of [#261](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/261).

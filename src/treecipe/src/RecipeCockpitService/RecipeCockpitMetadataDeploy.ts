@@ -7,15 +7,15 @@ import { ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 
 /*
-    "Deploy this metadata…" (#211): what one object of one tree is missing from the selected
+    "Deploy this metadata…" (#211, #273): everything one relationship tree needs in the selected
     sandbox, turned into the --metadata members of one "sf project deploy start", and the CLI's
-    answer read back. It imports no vscode: the cockpit owns the confirmation, the progress and the
-    panel, and this file owns the member list, the local-source lookup, the argv and the parse.
+    answer read back. It imports no vscode: the cockpit owns the org, the confirmation, the progress
+    and the panel, and this file owns the member list, the local-source lookup, the argv and the parse.
 
-    Every member comes from the HOST -- the readiness it computed and the files on disk -- never
-    from a panel message, and every name in one is held to SalesforceApiName twice: as the recipe
-    or the describe named it, and as the source file on disk spells it, since that spelling is what
-    reaches the argv.
+    Every member comes from the HOST -- the objects of the tree in the model it rendered, and the
+    files on disk -- never from a panel message, and every name in one is held to SalesforceApiName
+    twice: as the tree named it, and as the source file on disk spells it, since that spelling is
+    what reaches the argv.
 */
 
 // A DEPLOY CAN RUN FOR MINUTES ON A BUSY SANDBOX; PAST THIS THE PROCESS TREE IS KILLED AND THE RUN REPORTED AS UNFINISHED
@@ -28,27 +28,13 @@ export const METADATA_DEPLOY_OBJECTS_FOLDER_SEARCH_DEPTH = 5;
 
 const CUSTOM_COMPONENT_SUFFIX_PATTERN = /__c$/i;
 
-/*
-    What the host's readiness said one object of one tree is missing: the object itself (and then
-    the recipe's fields of it), or the recipe fields the describe does not have -- which no
-    readiness produces since #264; #266 removes this path with the rest of the deploy.
-*/
-export interface IMetadataDeployTarget {
-    treeKey: string;
-    objectApiName: string;
-    isObjectMissing: boolean;
-    fieldApiNames: string[];
-}
-
-export type MetadataDeploySkipReason = 'notAnApiName' | 'standardObject' | 'standardField' | 'objectNotDeployable' | 'notInLocalSource' | 'outsideWorkspace';
+export type MetadataDeploySkipReason = 'notAnApiName' | 'notInLocalSource' | 'outsideWorkspace' | 'noCustomFieldsInSource';
 
 export const METADATA_DEPLOY_SKIP_REASON_TEXT: Readonly<Record<MetadataDeploySkipReason, string>> = {
     notAnApiName: 'not a Salesforce api name',
-    standardObject: 'not a custom object (__c), which this does not deploy',
-    standardField: 'not a custom field (__c), which this does not deploy',
-    objectNotDeployable: 'its object cannot be deployed',
     notInLocalSource: 'not in local source',
-    outsideWorkspace: 'its source file resolves outside this workspace'
+    outsideWorkspace: 'its source file resolves outside this workspace',
+    noCustomFieldsInSource: 'a standard object with no custom field (__c) in local source'
 };
 
 export interface IMetadataDeploySkippedItem {
@@ -57,24 +43,39 @@ export interface IMetadataDeploySkippedItem {
 }
 
 /*
-    objectFolderContents is set only for a missing object: in source format a CustomObject member
-    deploys EVERYTHING under the object's folder -- fields the recipe never names, validation rules,
-    record types, list views -- so the confirmation lists those files rather than only the members.
+    One object's share of a tree's plan. A custom object is ONE CustomObject member, and in source
+    format that member deploys EVERYTHING under the object's folder -- fields the recipe never
+    names, validation rules, record types, list views -- so sourceFiles lists those files and the
+    confirmation shows them, rather than only the member. A standard object cannot be deployed, so
+    it contributes the custom fields its source folder has, one CustomField member each.
 */
-export interface IMetadataDeployPlan {
+export interface IMetadataDeployObjectPlan {
     objectApiName: string;
     members: string[];
-    skippedItems: IMetadataDeploySkippedItem[];
-    objectFolderContents?: string[];
+    sourceFiles: string[];
 }
 
-// HOW MANY OF A MISSING OBJECT'S SOURCE FILES THE CONFIRMATION SPELLS OUT; THE REST ARE COUNTED
-export const METADATA_DEPLOY_OBJECT_FOLDER_CONTENTS_SHOWN = 40;
+export interface ITreeMetadataDeployPlan {
+    treeLabel: string;
+    objectPlans: IMetadataDeployObjectPlan[];
+    members: string[];
+    skippedItems: IMetadataDeploySkippedItem[];
+}
+
+// HOW MANY MEMBERS, SOURCE FILES AND SKIPPED ITEMS THE CONFIRMATION SPELLS OUT EACH, ACROSS THE WHOLE TREE; THE REST ARE COUNTED
+export const METADATA_DEPLOY_SOURCE_FILES_SHOWN = 60;
+
+// HOW MANY SKIPPED ITEMS A "NOTHING TO DEPLOY" NOTIFICATION NAMES; THE REST ARE COUNTED
+export const METADATA_DEPLOY_NOTIFICATION_SKIPS_SHOWN = 10;
+
+export const METADATA_DEPLOY_MANIFEST_FILE_NAME = 'package.xml';
+
+const API_VERSION_PATTERN = /^\d+\.\d+$/;
 
 /*
     One plan's reads, made once: a folder's entries, and the workspace root's real path. A plan
-    looks the same folders up once per field, so without this a 500-field object re-read its
-    objects folder 500 times.
+    looks the same folders up once per object, so without this a 200-object tree re-read every
+    objects folder 200 times.
 */
 interface IPlanReadCache {
     entryNamesByFolderPath: Map<string, string[] | undefined>;
@@ -245,80 +246,40 @@ export class RecipeCockpitMetadataDeploy {
     }
 
     /*
-        The members to deploy and everything left out, with why. A missing object deploys
-        CustomObject:<Object> and its recipe fields; missing fields deploy CustomField:<Object>.<Field>.
-        A standard object or field cannot be deployed, and one not found in local source is not
-        guessed at. Names reach a member only as the source file on disk spells them, and only if
-        that spelling is an api name too.
+        The members to deploy for every object of one tree, and everything left out, with why. A
+        custom object is deployed whole, as its CustomObject member; a standard object only through
+        the custom fields its source folder has. One not found in local source is not guessed at.
+        Names reach a member only as the source file on disk spells them, and only if that spelling
+        is an api name too. An object the tree lists twice, in any case, is planned once.
     */
-    static planMetadataDeploy(deployTarget: IMetadataDeployTarget, workspaceRoot: string, packageDirectoryPaths: string[]): IMetadataDeployPlan {
+    static planTreeMetadataDeploy(treeLabel: string, objectApiNames: readonly string[], workspaceRoot: string, packageDirectoryPaths: string[]): ITreeMetadataDeployPlan {
 
-        const { objectApiName, isObjectMissing } = deployTarget;
-        const plan: IMetadataDeployPlan = { objectApiName: objectApiName, members: [], skippedItems: [] };
-        const fieldApiNames = [...new Set(deployTarget.fieldApiNames)];
-        const skip = (name: string, reason: MetadataDeploySkipReason) => plan.skippedItems.push({ name: name, reason: reason });
-
-        if ( !SalesforceApiName.isApiName(objectApiName) ) {
-            skip(String(objectApiName), 'notAnApiName');
-            return plan;
-        }
-
+        const plan: ITreeMetadataDeployPlan = { treeLabel: treeLabel, objectPlans: [], members: [], skippedItems: [] };
         const objectsFolderPaths = this.findObjectsFolderPaths(workspaceRoot, packageDirectoryPaths);
         const readCache = this.buildPlanReadCache(workspaceRoot);
-        let deployedObjectName = objectApiName;
+        const plannedObjectNames = new Set<string>();
 
-        if ( isObjectMissing ) {
+        objectApiNames.forEach(objectApiName => {
 
-            if ( !this.isCustomComponentName(objectApiName) ) {
-                skip(objectApiName, 'standardObject');
-                fieldApiNames.forEach(fieldApiName => skip(`${objectApiName}.${fieldApiName}`, 'objectNotDeployable'));
-                return plan;
+            const lowerObjectApiName = String(objectApiName).toLowerCase();
+            if ( plannedObjectNames.has(lowerObjectApiName) ) {
+                return;
             }
+            plannedObjectNames.add(lowerObjectApiName);
 
-            const objectSource = this.findSourceFile(objectsFolderPaths, readCache, objectApiName, undefined, '.object-meta.xml', objectApiName);
-            const objectSourceName = 'fileName' in objectSource ? objectSource.fileName.slice(0, -'.object-meta.xml'.length) : undefined;
-
-            if ( !objectSourceName || !SalesforceApiName.isApiName(objectSourceName) ) {
-                skip(objectApiName, 'reason' in objectSource ? objectSource.reason : 'notAnApiName');
-                fieldApiNames.forEach(fieldApiName => skip(`${objectApiName}.${fieldApiName}`, 'objectNotDeployable'));
-                return plan;
-            }
-
-            deployedObjectName = objectSourceName;
-            plan.members.push(`CustomObject:${deployedObjectName}`);
-            plan.objectFolderContents = this.listObjectFolderContents(objectsFolderPaths, readCache, objectApiName);
-
-        }
-
-        fieldApiNames.forEach(fieldApiName => {
-
-            const fieldLabel = `${objectApiName}.${fieldApiName}`;
-
-            if ( !SalesforceApiName.isApiName(fieldApiName) ) {
-                skip(fieldLabel, 'notAnApiName');
+            if ( !SalesforceApiName.isApiName(objectApiName) ) {
+                plan.skippedItems.push({ name: String(objectApiName), reason: 'notAnApiName' });
                 return;
             }
 
-            if ( !this.isCustomComponentName(fieldApiName) ) {
-                skip(fieldLabel, 'standardField');
-                return;
+            const objectPlan = this.isCustomComponentName(objectApiName)
+                ? this.planCustomObject(objectsFolderPaths, readCache, objectApiName, plan.skippedItems)
+                : this.planStandardObjectFields(objectsFolderPaths, readCache, objectApiName, plan.skippedItems);
+
+            if ( objectPlan ) {
+                plan.objectPlans.push(objectPlan);
+                plan.members.push(...objectPlan.members);
             }
-
-            const fieldSource = this.findSourceFile(objectsFolderPaths, readCache, objectApiName, 'fields', '.field-meta.xml', fieldApiName);
-
-            if ( 'reason' in fieldSource ) {
-                skip(fieldLabel, fieldSource.reason);
-                return;
-            }
-
-            const fieldSourceName = fieldSource.fileName.slice(0, -'.field-meta.xml'.length);
-
-            if ( !SalesforceApiName.isApiName(fieldSourceName) ) {
-                skip(fieldLabel, 'notAnApiName');
-                return;
-            }
-
-            plan.members.push(`CustomField:${deployedObjectName}.${fieldSourceName}`);
 
         });
 
@@ -326,10 +287,107 @@ export class RecipeCockpitMetadataDeploy {
 
     }
 
+    private static planCustomObject(objectsFolderPaths: string[],
+                                    readCache: IPlanReadCache,
+                                    objectApiName: string,
+                                    skippedItems: IMetadataDeploySkippedItem[]): IMetadataDeployObjectPlan | undefined {
+
+        const objectSource = this.findSourceFile(objectsFolderPaths, readCache, objectApiName, undefined, '.object-meta.xml', objectApiName);
+
+        if ( 'reason' in objectSource ) {
+            skippedItems.push({ name: objectApiName, reason: objectSource.reason });
+            return undefined;
+        }
+
+        const objectSourceName = objectSource.fileName.slice(0, -'.object-meta.xml'.length);
+
+        if ( !SalesforceApiName.isApiName(objectSourceName) ) {
+            skippedItems.push({ name: objectApiName, reason: 'notAnApiName' });
+            return undefined;
+        }
+
+        return {
+            objectApiName: objectApiName,
+            members: [`CustomObject:${objectSourceName}`],
+            sourceFiles: this.listObjectFolderContents(objectsFolderPaths, readCache, objectApiName)
+        };
+
+    }
+
+    // EVERY CUSTOM FIELD FILE UNDER THE OBJECT'S fields FOLDER, IN EVERY objects FOLDER, EACH INSIDE THE WORKSPACE
+    private static planStandardObjectFields(objectsFolderPaths: string[],
+                                            readCache: IPlanReadCache,
+                                            objectApiName: string,
+                                            skippedItems: IMetadataDeploySkippedItem[]): IMetadataDeployObjectPlan | undefined {
+
+        const fieldFileSuffix = '.field-meta.xml';
+        const members = new Set<string>();
+        const sourceFiles = new Set<string>();
+        const skippedFieldNames = new Set<string>();
+        const skipField = (fieldLabel: string, reason: MetadataDeploySkipReason) => {
+            if ( !skippedFieldNames.has(fieldLabel) ) {
+                skippedFieldNames.add(fieldLabel);
+                skippedItems.push({ name: fieldLabel, reason: reason });
+            }
+        };
+
+        objectsFolderPaths.forEach(objectsFolderPath => {
+
+            const objectFolderName = this.findEntryName(objectsFolderPath, objectApiName, readCache);
+            if ( !objectFolderName || !SalesforceApiName.isApiName(objectFolderName) ) {
+                return;
+            }
+
+            const fieldsFolderPath = path.join(objectsFolderPath, objectFolderName, 'fields');
+
+            ( this.readEntryNames(fieldsFolderPath, readCache) ?? [] )
+                .filter(entryName => entryName.endsWith(fieldFileSuffix))
+                .forEach(entryName => {
+
+                    const fieldSourceName = entryName.slice(0, -fieldFileSuffix.length);
+                    const fieldLabel = `${objectApiName}.${fieldSourceName}`;
+
+                    if ( !SalesforceApiName.isApiName(fieldSourceName) ) {
+                        skipField(fieldLabel, 'notAnApiName');
+                        return;
+                    }
+
+                    // A STANDARD FIELD'S FILE IS ORDINARY IN RETRIEVED SOURCE, AND NOTHING THE READER COULD ACT ON
+                    if ( !this.isCustomComponentName(fieldSourceName) ) {
+                        return;
+                    }
+
+                    const filePath = path.join(fieldsFolderPath, entryName);
+
+                    if ( !this.isContainedInWorkspace(filePath, readCache) ) {
+                        skipField(fieldLabel, 'outsideWorkspace');
+                        return;
+                    }
+
+                    if ( SfdxProjectService.isExistingFile(filePath) ) {
+                        members.add(`CustomField:${objectFolderName}.${fieldSourceName}`);
+                        sourceFiles.add(`${objectFolderName}/fields/${entryName}`);
+                    }
+
+                });
+
+        });
+
+        if ( members.size === 0 ) {
+            if ( skippedFieldNames.size === 0 ) {
+                skippedItems.push({ name: objectApiName, reason: 'noCustomFieldsInSource' });
+            }
+            return undefined;
+        }
+
+        return { objectApiName: objectApiName, members: [...members].sort(), sourceFiles: [...sourceFiles].sort() };
+
+    }
+
     /*
-        Every source file under the object's folder in every objects folder, as "<folder>/<file>" --
-        what a CustomObject member sends along with the object. Names come from the repository, so
-        the confirmation writes each on one line.
+        Every source file under the object's folder in every objects folder, as
+        "<object folder>/<file>" -- what a CustomObject member sends along with the object. Names
+        come from the repository, so the confirmation writes each on one line.
     */
     static listObjectFolderContents(objectsFolderPaths: string[], readCache: IPlanReadCache, objectApiName: string): string[] {
 
@@ -348,9 +406,9 @@ export class RecipeCockpitMetadataDeploy {
 
                 const childNames = this.readEntryNames(path.join(objectFolderPath, entryName), readCache);
                 if ( childNames ) {
-                    childNames.forEach(childName => contents.push(`${entryName}/${childName}`));
-                } else if ( !entryName.endsWith('.object-meta.xml') ) {
-                    contents.push(entryName);
+                    childNames.forEach(childName => contents.push(`${objectFolderName}/${entryName}/${childName}`));
+                } else {
+                    contents.push(`${objectFolderName}/${entryName}`);
                 }
 
             });
@@ -362,14 +420,15 @@ export class RecipeCockpitMetadataDeploy {
     }
 
     /*
-        One --metadata per member and --target-org the USERNAME, never an alias, which can be
-        re-pointed between the confirmation and the run. No --source-dir: only the named members
-        are deployed, and the CLI resolves them from sfdx-project.json in the workspace it runs in.
-        Every member is checked again here, so a plan built any other way still cannot add an argument.
+        The members as a package.xml, which the deploy names with --manifest. One --metadata per
+        member made the command line grow with the tree, and on Windows the CLI runs through
+        cmd.exe, which refuses a line past 8,191 characters -- about 150 members. Every member is
+        checked again here, so a plan built any other way still cannot add an element, and a member
+        is an api name, so nothing in it needs escaping. The version is sfdx-project.json's
+        sourceApiVersion when it is a plain version number; otherwise it is left out and the CLI
+        decides, as it does for --metadata.
     */
-    static buildMetadataDeployArguments(members: string[], orgUsername: string): string[] {
-
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(orgUsername);
+    static buildPackageXml(members: string[], apiVersion: string | undefined): string {
 
         members.forEach(member => {
             if ( !this.isDeployableMember(member) ) {
@@ -377,9 +436,53 @@ export class RecipeCockpitMetadataDeploy {
             }
         });
 
+        const membersByType = new Map<string, string[]>();
+        members.forEach(member => {
+            const [componentType, componentName] = member.split(':');
+            membersByType.set(componentType, [...( membersByType.get(componentType) ?? [] ), componentName]);
+        });
+
+        return [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<Package xmlns="http://soap.sforce.com/2006/04/metadata">',
+            ...[...membersByType.keys()].sort().flatMap(componentType => [
+                '    <types>',
+                ...[...new Set(membersByType.get(componentType))].sort().map(componentName => `        <members>${componentName}</members>`),
+                `        <name>${componentType}</name>`,
+                '    </types>'
+            ]),
+            ...( apiVersion && API_VERSION_PATTERN.test(apiVersion) ? [`    <version>${apiVersion}</version>`] : [] ),
+            '</Package>',
+            ''
+        ].join('\n');
+
+    }
+
+    // sfdx-project.json's sourceApiVersion, only when it is a plain version number; the file was already read strictly by the plan
+    static readSourceApiVersion(workspaceRoot: string): string | undefined {
+
+        try {
+            const sourceApiVersion = SfdxProjectService.readSfdxProjectJson(SfdxProjectService.getSfdxProjectFilePath(workspaceRoot)).sourceApiVersion;
+            return typeof sourceApiVersion === 'string' && API_VERSION_PATTERN.test(sourceApiVersion) ? sourceApiVersion : undefined;
+        } catch {
+            return undefined;
+        }
+
+    }
+
+    /*
+        The manifest and --target-org the USERNAME, never an alias, which can be re-pointed between
+        the confirmation and the run. No --source-dir: only the manifest's members are deployed, and
+        the CLI resolves them from sfdx-project.json in the workspace it runs in. The command line
+        stays the same length whatever the tree holds.
+    */
+    static buildMetadataDeployArguments(manifestFilePath: string, orgUsername: string): string[] {
+
+        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(orgUsername);
+
         return [
             'project', 'deploy', 'start',
-            ...members.flatMap(member => ['--metadata', member]),
+            '--manifest', manifestFilePath,
             '--target-org', orgUsername,
             '--json'
         ];
@@ -447,44 +550,52 @@ export class RecipeCockpitMetadataDeploy {
 
     }
 
-    // THE CONFIRMATION'S DETAIL: EVERY MEMBER TO BE DEPLOYED, EVERY ITEM LEFT OUT AND WHY, EACH ON ONE LINE
-    static buildConfirmationDetail(plan: IMetadataDeployPlan, orgLabel: string): string {
+    // THE CONFIRMATION'S DETAIL: EVERY MEMBER, THE SOURCE FILES THEY SEND, EVERY ITEM LEFT OUT AND WHY, EACH ON ONE LINE
+    static buildConfirmationDetail(plan: ITreeMetadataDeployPlan, orgLabel: string): string {
 
         const toSingleLine = (text: string) => String(text ?? '').replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');
 
-        const objectFolderContents = plan.objectFolderContents ?? [];
-        const hiddenContentCount = objectFolderContents.length - METADATA_DEPLOY_OBJECT_FOLDER_CONTENTS_SHOWN;
+        const sourceFiles = plan.objectPlans.flatMap(objectPlan => objectPlan.sourceFiles);
+        const listFirst = (lines: string[]) => [
+            ...lines.slice(0, METADATA_DEPLOY_SOURCE_FILES_SHOWN).map(line => `  ${toSingleLine(line)}`),
+            ...( lines.length > METADATA_DEPLOY_SOURCE_FILES_SHOWN ? [`  and ${lines.length - METADATA_DEPLOY_SOURCE_FILES_SHOWN} more`] : [] )
+        ];
+        const hasCustomObject = plan.members.some(member => member.startsWith('CustomObject:'));
 
         return [
+            `Tree: ${toSingleLine(plan.treeLabel)}`,
             `Org: ${toSingleLine(orgLabel)}`,
             '',
             `To deploy (${plan.members.length}):`,
-            ...plan.members.map(member => `  ${toSingleLine(member)}`),
-            ...( plan.objectFolderContents
-                ? [
-                    '',
-                    `${plan.members[0]} deploys the object with everything in its source folder (${objectFolderContents.length} ${objectFolderContents.length === 1 ? 'file' : 'files'}), not only the fields above:`,
-                    ...objectFolderContents.slice(0, METADATA_DEPLOY_OBJECT_FOLDER_CONTENTS_SHOWN).map(content => `  ${toSingleLine(content)}`),
-                    ...( hiddenContentCount > 0 ? [`  and ${hiddenContentCount} more`] : [] )
-                ]
-                : [] ),
+            ...listFirst(plan.members),
+            '',
+            `Source files sent (${sourceFiles.length}):`,
+            ...listFirst(sourceFiles),
             ...( plan.skippedItems.length > 0
-                ? ['', `Skipped (${plan.skippedItems.length}):`, ...plan.skippedItems.map(skippedItem => `  ${toSingleLine(skippedItem.name)} — ${METADATA_DEPLOY_SKIP_REASON_TEXT[skippedItem.reason]}`)]
+                ? ['', `Skipped (${plan.skippedItems.length}):`, ...listFirst(plan.skippedItems.map(skippedItem => `${skippedItem.name} — ${METADATA_DEPLOY_SKIP_REASON_TEXT[skippedItem.reason]}`))]
                 : [] ),
             '',
-            `${plan.objectFolderContents ? 'Only these members, and the object\'s folder,' : 'Only these members'} are deployed, from this workspace\'s source. The deploy is all or nothing: if any component fails, none is applied. Anything they depend on (a global value set, a permission) is not deployed with them, and field-level security is not granted.`
+            [
+                ...( hasCustomObject ? ['A CustomObject member deploys everything in its object\'s source folder, not only the fields the recipe uses.'] : [] ),
+                'Everything is deployed from this workspace\'s source, and the deploy is all or nothing: if any component fails, none is applied.',
+                'Anything these depend on outside the tree (a global value set, another object) is not deployed with them, and no permission set is deployed or assigned.'
+            ].join(' ')
         ].join('\n');
 
     }
 
     // WHY NOTHING WAS DEPLOYED WHEN THE PLAN LEFT NOTHING
-    static buildNothingToDeployMessage(plan: IMetadataDeployPlan): string {
+    static buildNothingToDeployMessage(plan: ITreeMetadataDeployPlan): string {
 
-        const skippedText = plan.skippedItems
-            .map(skippedItem => `${skippedItem.name} is ${METADATA_DEPLOY_SKIP_REASON_TEXT[skippedItem.reason]}`)
-            .join('; ');
+        const hiddenSkipCount = plan.skippedItems.length - METADATA_DEPLOY_NOTIFICATION_SKIPS_SHOWN;
+        const skippedText = [
+            ...plan.skippedItems
+                .slice(0, METADATA_DEPLOY_NOTIFICATION_SKIPS_SHOWN)
+                .map(skippedItem => `${skippedItem.name} is ${METADATA_DEPLOY_SKIP_REASON_TEXT[skippedItem.reason]}`),
+            ...( hiddenSkipCount > 0 ? [`and ${hiddenSkipCount} more`] : [] )
+        ].join('; ');
 
-        return `Nothing of ${plan.objectApiName} can be deployed${skippedText ? `: ${skippedText}` : ''}.`;
+        return `Nothing of the tree ${plan.treeLabel} can be deployed${skippedText ? `: ${skippedText}` : ''}.`;
 
     }
 
