@@ -35,7 +35,7 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
 /*
-    #255: a count box right of each object's name sets how many records ▶ Run Faker and the whole-tree
+    #255: a count box right of each object's name sets how many records the generate button and the whole-tree
     insert generate, kept by tree folder beside the excluded objects and unticked fields. The recipe
     file is never written: the count rides on the filtered copy.
 */

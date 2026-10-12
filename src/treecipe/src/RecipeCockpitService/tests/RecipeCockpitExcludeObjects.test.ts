@@ -33,7 +33,7 @@ import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceSer
 /*
     #219: a tree icon on each Treecipe-tab row includes or excludes an object, and its children follow.
     The HOST keeps what the reader excluded by tree folder in workspaceState, computes the cascade,
-    and posts it; ▶ Run Faker generates from a filtered copy and the whole-tree insert (#255) leaves
+    and posts it; the generate button generates from a filtered copy and the whole-tree insert (#255) leaves
     an excluded object out.
 */
 

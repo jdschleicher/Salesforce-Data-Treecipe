@@ -1169,6 +1169,8 @@ export interface IRecipeCockpitPanelState {
     isGenerateTreecipeOffered: boolean;
     // ONE ENTRY PER TREE GENERATING ONLY (#293): A TREE'S RUN HOLDS ITS OWN BUTTON, NEVER ANOTHER CARD'S
     generateStateMessages: Map<string, IRecipeCockpitGenerateStateMessage>;
+    // A GENERATE-ONLY RUN'S RELOAD, HELD WHILE ANOTHER TREE'S INSERT RUNS: A RELOAD DROPS THE ORG SELECTION THAT INSERT CONFIRMED
+    deferredReloadFocus?: IRecipeCockpitTreeFocus;
     reportedFailureDescriptions: Set<string>;
     pendingDataOrgObjectApiNames: Set<string>;
     dataOrgObjectApiNames: Set<string>;
@@ -3910,7 +3912,9 @@ export class RecipeCockpitService {
                 const isAddedInPlace = typeof writtenDatasetFolderPath === 'string'
                                         && panelState.recipeDataMessage === clickedRecipeDataMessage
                                         && this.postAddedDataset(cockpitPanel, panelState, clickedRecipeDataMessage, writtenDatasetFolderPath);
-                if ( !isAddedInPlace ) {
+                if ( !isAddedInPlace && panelState.insertStateMessage ) {
+                    panelState.deferredReloadFocus = { treeKey: treeKey, tab: 'datasets' };
+                } else if ( !isAddedInPlace ) {
                     await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'datasets' });
                 }
             }
@@ -5776,7 +5780,8 @@ export class RecipeCockpitService {
         only its card's result and the new data set (#226), so the org selection and every other card
         stay on screen. One that threw, or whose run changed meanwhile, or whose data
         set the host cannot place, reloads the run onto the card's Treecipe tab, as before. The state
-        message is posted last, because the panel disabled every insert on the click.
+        message is posted last, because the panel disabled the card's button on the click. A generate-only
+        run on another tree that had to reload meanwhile reloads here instead (#293).
     */
     private static async insertTreeIntoOrg(cockpitPanel: vscode.WebviewPanel,
                                             panelState: IRecipeCockpitPanelState,
@@ -5820,9 +5825,17 @@ export class RecipeCockpitService {
                                         && this.postAddedDataset(cockpitPanel, panelState, clickedRecipeDataMessage, insertedDatasetFolderPath, insertResult);
 
                 if ( !isAddedInPlace ) {
+                    panelState.deferredReloadFocus = undefined;
                     await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'treecipe' });
                 }
 
+            }
+
+            // A GENERATE-ONLY RUN THAT ENDED DURING THIS INSERT RELOADS NOW, ONTO ITS OWN CARD
+            const deferredReloadFocus = panelState.deferredReloadFocus;
+            panelState.deferredReloadFocus = undefined;
+            if ( deferredReloadFocus && isPanelStillCurrent() && panelState.recipeDataMessage ) {
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, deferredReloadFocus);
             }
 
             if ( isPanelStillCurrent() ) {
@@ -6640,7 +6653,7 @@ export class RecipeCockpitService {
                     return { kind: 'insertTree', treeKey: treeKey as string, recipeFilePath: recipeFilePath };
                 }
 
-                // THE PANEL DISABLED EVERY INSERT ON THE CLICK, SO EVEN A REFUSAL ANSWERS THAT NOTHING RUNS
+                // THE PANEL DISABLED THE CARD'S BUTTON ON THE CLICK, SO EVEN A REFUSAL ANSWERS THAT NOTHING RUNS
                 return {
                     kind: 'postInsertState',
                     hostMessage: { command: 'insertState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '' }
@@ -8711,8 +8724,7 @@ ${this.buildPaletteCustomProperties()}
     let runSelectElement = null;
     let renderedRunFolderName = '';
     let renderedSequence = null;
-    // THE TREE WHOSE RUN FAKER IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE RUN ENDED
-    // EVERY TREE GENERATING ONLY (#293), BY KEY; EACH HOLDS ITS OWN BUTTON AND NO OTHER
+    // EVERY TREE GENERATING ONLY (#293), BY KEY; EACH HOLDS ITS OWN BUTTON AND NO OTHER, AND OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE RUN ENDED
     const generatingTreeKeys = Object.create(null);
     // WHETHER A FRIEND IS BEING ADDED; IT OUTLIVES A MODEL FOR THE SAME REASON
     let isAddFriendRunning = false;
@@ -11026,11 +11038,11 @@ ${this.buildPaletteCustomProperties()}
     */
     function findTreeInsertReason(treeState) {
 
-        if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) { return 'choose an org above to also insert it.'; }
+        if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) { return 'Choose an org above to also insert it.'; }
         if (dataOrgSelectionFailureMessage) { return dataOrgSelectionFailureMessage; }
-        if (insertRunningTreeKey !== null && insertRunningTreeKey !== treeState.tree.treeKey) { return 'another tree is being inserted.'; }
-        if (isScratchOrgRunning) { return 'a scratch org is being set up.'; }
-        if (isMetadataDeployRunning) { return 'a deploy is running.'; }
+        if (insertRunningTreeKey !== null && insertRunningTreeKey !== treeState.tree.treeKey) { return 'Another tree is being inserted.'; }
+        if (isScratchOrgRunning) { return 'A scratch org is being set up.'; }
+        if (isMetadataDeployRunning) { return 'A deploy is running.'; }
 
         const insertObjectApiNames = listTreeInsertObjectApiNames(treeState);
         if (insertObjectApiNames.length === 0) { return 'Every object of this tree is excluded.'; }
@@ -11104,7 +11116,7 @@ ${this.buildPaletteCustomProperties()}
         treeStates.forEach(drawTreeDeploy);
     }
 
-    // EVERY TREE'S INSERT IS DISABLED ON THE CLICK, BEFORE THE HOST ANSWERS; ITS insertState ENABLES THEM AGAIN
+    // THE CLICKED TREE'S BUTTON IS DISABLED ON THE CLICK AND EVERY OTHER TURNS GENERATE ONLY; ITS insertState GIVES THEM BACK
     function setInsertRunning(runningTreeKey) {
 
         insertRunningTreeKey = runningTreeKey;

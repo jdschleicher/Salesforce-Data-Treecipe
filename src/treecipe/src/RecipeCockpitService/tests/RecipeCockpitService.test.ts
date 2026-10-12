@@ -3523,7 +3523,7 @@ describe('RecipeCockpitService', () => {
 
                 expect(leadButtons.map((button: any) => [button.textContent, button.disabled])).toEqual([[RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false]]);
                 expect(leadButtons[0].attributes.title).toContain('recipe--Lead-ONLY-2026-09-20T10-00-00.yml');
-                expect(textOf(panel, leadCard, 'treeInsertReason')).toEqual(['Generates only: choose an org above to also insert it.']);
+                expect(textOf(panel, leadCard, 'treeInsertReason')).toEqual(['Generates only: Choose an org above to also insert it.']);
                 expect(panel.findAll(panel.cockpitBodyElement, 'treeRunFaker')).toEqual([]);
                 expect(panel.findAll(expandCard(panel, ACCOUNT_TREE_KEY), 'treeInsert')).toEqual([]);
 

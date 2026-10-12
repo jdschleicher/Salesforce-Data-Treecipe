@@ -44,7 +44,7 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
 /*
-    #262: a pin beside each field's checkbox gives the field a fixed value that ▶ Run Faker and the
+    #262: a pin beside each field's checkbox gives the field a fixed value that the generate button and the
     whole-tree insert generate in place of its faker expression. It is kept by tree folder beside the
     excluded objects, unticked fields and counts, and rides on the filtered copy: the recipe file is
     never written.

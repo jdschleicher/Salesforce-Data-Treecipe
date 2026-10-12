@@ -38,7 +38,7 @@ import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgSe
 /*
     #220: a checkbox on each Treecipe-tab field row leaves that field out of generation. The HOST keeps
     the unticked fields beside #219's excluded objects, decides which fields may not be unticked and
-    why, and ▶ Run Faker and the whole-tree insert (#255) both leave the unticked fields out.
+    why, and the generate button and the whole-tree insert (#255) both leave the unticked fields out.
 */
 
 const HISTORY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'historyWorkspace');

@@ -513,6 +513,38 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         });
 
+        // #293 REVIEW: ANOTHER TREE'S GENERATE NO LONGER WAITS FOR AN INSERT, SO ITS RELOAD MUST NOT DROP THE SELECTION THE INSERT CONFIRMED
+        it('holds the reload of another tree\'s generate-only run that wrote nothing until the insert ends, and the insert still lands', async () => {
+
+            selectedFakerService = 'snowfakery';
+            const connection = buildFakeConnection();
+            useConnection(connection);
+
+            await openSelectedCockpit(SNOWFAKERY_RUN);
+            const confirmedSelection = panelState().dataOrgSelection;
+            let recipeDataPostsDuringInsert = -1;
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => {
+                const recipeDataPostsBefore = postedNamed('recipeData').length;
+                // Run Faker's own modal for the Lead tree is dismissed, so that run writes nothing and would reload
+                await receivedMessageHandler({ command: 'generateTree', treeKey: LEAD_TREE_KEY });
+                recipeDataPostsDuringInsert = postedNamed('recipeData').length - recipeDataPostsBefore;
+                expect(panelState().dataOrgSelection).toBe(confirmedSelection);
+                return RECIPE_COCKPIT_INSERT_CONFIRM_LABEL;
+            });
+
+            await insertAccountTree();
+
+            expect(recipeDataPostsDuringInsert).toBe(0);
+            expect(postedNamed('generateState').at(-1)).toEqual({ command: 'generateState', isRunning: false, treeKey: LEAD_TREE_KEY });
+            expect(insertedOf(connection, 'Account')).toHaveLength(2);
+            expect(showWarningMessageSpy).not.toHaveBeenCalledWith(expect.stringContaining('The org selection changed'));
+            // THE HELD RELOAD RUNS ONCE THE INSERT HAS ENDED, ONTO THE GENERATE'S OWN CARD, AND NOTHING IS LEFT HELD
+            expect(postedNamed('recipeData').at(-1).focusTree).toEqual({ treeKey: LEAD_TREE_KEY, tab: 'datasets' });
+            expect(panelState().deferredReloadFocus).toBeUndefined();
+            expect(postedNamed('insertState').at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+
+        });
+
         it('given snowfakery, gives every unwired TODO lookup a parent this run inserted', async () => {
 
             selectedFakerService = 'snowfakery';
@@ -1444,7 +1476,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             return RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
         };
 
-        it('offers the insert on every card ▶ Run Faker can run', () => {
+        it('offers the insert on every card that can generate', () => {
 
             const recipe = loadSnowfakeryModel();
 
@@ -1663,7 +1695,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             expect(partOf(panel, header, 'treeInsertControls')).toBeDefined();
             expect(partOf(panel, card, 'treeInsert').disabled).toBe(false);
             expect(partOf(panel, card, 'treeInsert').textContent).toBe(RECIPE_COCKPIT_GENERATE_ACTION_LABEL);
-            expect(partOf(panel, card, 'treeInsertReason').textContent).toBe('Generates only: choose an org above to also insert it.');
+            expect(partOf(panel, card, 'treeInsertReason').textContent).toBe('Generates only: Choose an org above to also insert it.');
 
         });
 

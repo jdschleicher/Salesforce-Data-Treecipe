@@ -846,7 +846,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             expect(panel.isHidden(viewOf(panel, 'dataOrgSelect'))).toBe(true);
             expect(viewOf(panel, 'dataOrgStatus').textContent).toBe(NO_AUTHORIZED_ORGS_MESSAGE);
-            expect(insertReasonsOf(panel)).toEqual(['Generates only: choose an org above to also insert it.', 'Generates only: choose an org above to also insert it.']);
+            expect(insertReasonsOf(panel)).toEqual(['Generates only: Choose an org above to also insert it.', 'Generates only: Choose an org above to also insert it.']);
 
         });
 
@@ -948,7 +948,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             expect(postedNamed(panel, 'refreshDataOrgs')).toEqual([{ command: 'refreshDataOrgs' }]);
             panel.findAll(panel.cockpitBodyElement, 'dataOrgSelect').forEach((selectElement: any) => expect(panel.isHidden(selectElement)).toBe(true));
             expect(textOf(panel, 'dataOrgStatus')).toEqual([RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT, RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT]);
-            expect(insertReasonsOf(panel)).toEqual(['Generates only: choose an org above to also insert it.', 'Generates only: choose an org above to also insert it.']);
+            expect(insertReasonsOf(panel)).toEqual(['Generates only: Choose an org above to also insert it.', 'Generates only: Choose an org above to also insert it.']);
             // #293: NEVER DISABLED BY THE ORG -- IT GENERATES ONLY
             expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([[RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false], [RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false]]);
 
@@ -981,7 +981,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             const insertOffered = () => insertButtonsOf(panel).some((buttonElement: any) => buttonElement.textContent !== RECIPE_COCKPIT_GENERATE_ACTION_LABEL);
             expect(insertOffered()).toBe(false);
-            expect(insertReasonsOf(panel)).toEqual(['Generates only: choose an org above to also insert it.', 'Generates only: choose an org above to also insert it.']);
+            expect(insertReasonsOf(panel)).toEqual(['Generates only: Choose an org above to also insert it.', 'Generates only: Choose an org above to also insert it.']);
             expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([[RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false], [RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false]]);
 
             // AN ANSWER STILL ON ITS WAY FOR THE CLEARED SELECTION IS DROPPED
