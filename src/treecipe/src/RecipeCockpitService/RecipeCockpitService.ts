@@ -7105,14 +7105,22 @@ export class RecipeCockpitService {
 
     }
 
-    // THE CARD'S TODO LOOKUPS, READ FROM ITS RECIPE FILE AS IT IS ON DISK; A FILE THAT CANNOT BE READ OFFERS NONE
-    static listTreeLookupWirings(recipeFilePath: string, tree: IRecipeCockpitTreeViewModel, objectLevelsByApiName: Map<string, number> | undefined): IRecipeCockpitLookupWiringViewModel[] {
+    /*
+        The card's TODO lookups, from the text the load already read for the file (readRecipeSourceFiles)
+        when it has it, else read from disk; a file that cannot be read offers none.
+    */
+    static listTreeLookupWirings(recipeFilePath: string,
+                                    tree: IRecipeCockpitTreeViewModel,
+                                    objectLevelsByApiName: Map<string, number> | undefined,
+                                    alreadyReadRecipeText?: string): IRecipeCockpitLookupWiringViewModel[] {
 
-        let recipeText: string;
-        try {
-            recipeText = fs.readFileSync(recipeFilePath, 'utf-8');
-        } catch {
-            return [];
+        let recipeText = alreadyReadRecipeText;
+        if ( recipeText === undefined ) {
+            try {
+                recipeText = fs.readFileSync(recipeFilePath, 'utf-8');
+            } catch {
+                return [];
+            }
         }
 
         return RecipeCockpitRecipeWriter.listLookupWirings(recipeText, this.buildLookupWiringContext(tree, objectLevelsByApiName))
@@ -7351,7 +7359,7 @@ export class RecipeCockpitService {
             const runFakerRecipeFilePath = treeHistoryBuild.targets.runFakerRecipeFilePathsByTreeKey.get(tree.treeKey);
             if ( runFakerRecipeFilePath ) {
                 tree.runFakerRecipeFileName = path.basename(runFakerRecipeFilePath);
-                const lookupWirings = this.listTreeLookupWirings(runFakerRecipeFilePath, tree, normalizedObjectsWrapper.objectLevelsByApiName);
+                const lookupWirings = this.listTreeLookupWirings(runFakerRecipeFilePath, tree, normalizedObjectsWrapper.objectLevelsByApiName, recipeSourceRead.recipeTextsByFilePath.get(runFakerRecipeFilePath));
                 if ( lookupWirings.length > 0 ) {
                     tree.lookupWirings = lookupWirings;
                 }
@@ -7831,27 +7839,31 @@ export class RecipeCockpitService {
         symlinks resolved -- before it is trusted. One unreadable file costs that file's source
         links and a notice, not the panel.
     */
-    static readRecipeSourceFiles(runFolderPath: string, workspaceRoot: string): { recipeSourceFiles: IRecipeSourceFile[]; notices: string[] } {
+    // recipeTextsByFilePath IS EACH FILE'S TEXT AS IT WAS READ HERE, SO THE TREE CARDS' TODO LOOKUPS ARE LISTED WITHOUT READING IT AGAIN (#151)
+    static readRecipeSourceFiles(runFolderPath: string, workspaceRoot: string): { recipeSourceFiles: IRecipeSourceFile[]; notices: string[]; recipeTextsByFilePath: Map<string, string> } {
 
         const recipeSourceFiles: IRecipeSourceFile[] = [];
         const notices: string[] = [];
+        const recipeTextsByFilePath = new Map<string, string>();
 
         this.collectRecipeFilePaths(runFolderPath)
             .filter(recipeFilePath => SfdxProjectService.isPathContainedInWorkspace(path.resolve(recipeFilePath), path.resolve(workspaceRoot)))
             .forEach(recipeFilePath => {
 
                 try {
+                    const recipeText = fs.readFileSync(recipeFilePath, 'utf-8');
                     recipeSourceFiles.push({
                         filePath: recipeFilePath,
-                        objectEntries: this.parseRecipeSource(fs.readFileSync(recipeFilePath, 'utf-8'))
+                        objectEntries: this.parseRecipeSource(recipeText)
                     });
+                    recipeTextsByFilePath.set(recipeFilePath, recipeText);
                 } catch (readError) {
                     notices.push(`The recipe file "${path.basename(recipeFilePath)}" could not be read (${readError?.message ?? readError}), so its objects and fields cannot be opened from here.`);
                 }
 
             });
 
-        return { recipeSourceFiles: recipeSourceFiles, notices: notices };
+        return { recipeSourceFiles: recipeSourceFiles, notices: notices, recipeTextsByFilePath: recipeTextsByFilePath };
 
     }
 

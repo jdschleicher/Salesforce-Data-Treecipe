@@ -152,6 +152,15 @@ describe('RecipeCockpitService, wiring TODO lookups to nicknames (#151)', () => 
 
         });
 
+        it('lists them from the text the load already read, reading the recipe file once', () => {
+
+            const readFileSyncSpy = jest.spyOn(fs, 'readFileSync');
+
+            expect(loadModel().trees[0].lookupWirings).toHaveLength(4);
+            expect(readFileSyncSpy.mock.calls.filter(([filePath]) => filePath === recipeFilePath)).toHaveLength(1);
+
+        });
+
         it('posts no lookupWirings on a card whose recipe has none left', () => {
 
             fs.writeFileSync(recipeFilePath, RECIPE_TEXT.split(TODO).join('Already_Filled'));

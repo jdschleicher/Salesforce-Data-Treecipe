@@ -338,6 +338,81 @@ describe('RecipeCockpitRecipeWriter lookup wiring (#151)', () => {
 
     });
 
+    describe('review fixes', () => {
+
+        // THE READ-BACK USED TO SEARCH EVERY FIELD OF THE FILE PER EDIT: 15.7 s FOR THIS SHAPE IN REVIEW, UNDER A SECOND ONCE INDEXED
+        test('wires 11,000 objects\' 33,000 TODO lookups in one batch in linear time', () => {
+
+            const lookups: Record<string, IRecipeFilterLookup[]> = {};
+            const levels: Record<string, number> = { Account: 0 };
+            const recipeLines = ['- object: Account', '  nickname: Account_NickName', '  fields:', '    Name: Acme', ''];
+            for ( let objectIndex = 0; objectIndex < 11000; objectIndex++ ) {
+                const objectApiName = `Child${objectIndex}__c`;
+                lookups[objectApiName] = [1, 2, 3].map(lookupIndex => ({ fieldApiName: `Account${lookupIndex}__c`, parentObjectApiName: 'Account' }));
+                levels[objectApiName] = 1;
+                recipeLines.push(`- object: ${objectApiName}`, `  nickname: ${objectApiName}_NickName`, '  fields:',
+                    ...Array.from({ length: 17 }, (_unused, fieldIndex) => `    Text${fieldIndex}__c: x`),
+                    ...[1, 2, 3].map(lookupIndex => `    Account${lookupIndex}__c: ${TODO}`), '');
+            }
+            const context = buildContext(lookups, levels);
+            const recipeText = recipeLines.join('\n');
+
+            const startedAt = Date.now();
+            const wirings = RecipeCockpitRecipeWriter.listLookupWirings(recipeText, context);
+            const result = expectApplied(RecipeCockpitRecipeWriter.wireLookups(recipeText, wirings.map(wiring => ({
+                objectApiName: wiring.objectApiName,
+                fieldApiName: wiring.fieldApiName,
+                parentNickname: wiring.candidateNicknames[0]
+            })), context));
+
+            expect(Date.now() - startedAt).toBeLessThan(5000);
+            expect(result.edits).toHaveLength(33000);
+            expect(result.recipeText).not.toContain(TODO);
+
+        });
+
+        test('an object written more than once is wired only when every occurrence has a nickname of its own', () => {
+
+            const recipeText = [
+                '- object: Account', '  nickname: Account_NickName', '  fields:', '    Name: Acme', '',
+                '- object: Contact', '  nickname: Contact_X', '  fields:', `    AccountId: ${TODO}`, '',
+                '- object: Contact', '  nickname: Contact_Y', '  fields:', `    AccountId: ${TODO}`, '',
+                '- object: Contact', '  nickname: Contact_Y', '  fields:', `    AccountId: ${TODO}`, ''
+            ].join('\n');
+            const context = buildContext({ Contact: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }] }, { Account: 0, Contact: 1 });
+
+            // THE COCKPIT DRAWS THIS CONTACT AS ONE ROW WITH NO NICKNAME, SO NO OCCURRENCE OF IT IS OFFERED
+            expect(RecipeCockpitRecipeWriter.listLookupWirings(recipeText, context)).toEqual([]);
+            expect(expectRefused(RecipeCockpitRecipeWriter.wireLookups(recipeText, [
+                { objectApiName: 'Contact', objectNickname: 'Contact_X', fieldApiName: 'AccountId', parentNickname: 'Account_NickName' }
+            ], context)).reason).toBe('lookup-not-wireable');
+
+            const distinctText = recipeText.replace(/Contact_Y\n([\s\S]*)Contact_Y/, 'Contact_Y\n$1Contact_Z');
+            expect(RecipeCockpitRecipeWriter.listLookupWirings(distinctText, context).map(wiring => wiring.objectNickname)).toEqual(['Contact_X', 'Contact_Y', 'Contact_Z']);
+
+        });
+
+        test.each(['Yes', 'No', 'On', 'Off', 'y', 'N', 'true', 'False', 'null', 'NULL'])('never offers the nickname %s, which YAML would not load as a string', reservedNickname => {
+
+            const recipeText = FLAT_RECIPE.replace('  nickname: Account_NickName', `  nickname: ${reservedNickname}`);
+
+            expect(RecipeCockpitRecipeWriter.listLookupWirings(recipeText, FLAT_CONTEXT)).toEqual([]);
+            expect(expectRefused(RecipeCockpitRecipeWriter.wireLookups(recipeText, [
+                { objectApiName: 'Contact', fieldApiName: 'AccountId', parentNickname: reservedNickname }
+            ], FLAT_CONTEXT)).reason).toBe('lookup-not-wireable');
+
+        });
+
+        test('a reserved-looking nickname that YAML reads as a string is still offered', () => {
+
+            const recipeText = FLAT_RECIPE.replace('  nickname: Account_NickName', '  nickname: Yesterday');
+
+            expect(RecipeCockpitRecipeWriter.listLookupWirings(recipeText, FLAT_CONTEXT).map(wiring => wiring.candidateNicknames)).toEqual([['Yesterday'], ['Yesterday']]);
+
+        });
+
+    });
+
     describe('against the generated snowfakery recipe', () => {
 
         const SNOWFAKERY_RECIPE = fs.readFileSync(path.join(__dirname, 'mocks', 'recipeWriter', 'recipe-snowfakery--RelationshipTree_1.yml'), 'utf-8');

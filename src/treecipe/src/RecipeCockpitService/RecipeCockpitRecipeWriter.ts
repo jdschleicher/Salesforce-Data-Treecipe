@@ -297,6 +297,8 @@ const FIXED_VALUE_TEMPLATE_OPENERS = ['${', '{{', '{%', '<<', '<%'];
 const FIXED_NUMBER_PATTERN = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
 const FIXED_NUMBER_MAX_EXACT_DIGITS = 15;
 // RelationshipService.referenceIdRequiredTodo, ALONE OR WITH THE " -- <Parent>, <Parent>" A NESTED TREE APPENDS (#46) -- A TEST HOLDS THE TWO TOGETHER
+// AN API NAME THAT YAML 1.1 (PyYAML, snowfakery's reader) OR 1.2 (js-yaml) LOADS AS A BOOLEAN OR NULL RATHER THAN A STRING
+const YAML_NON_STRING_PLAIN_SCALAR_PATTERN = /^(?:y|Y|yes|Yes|YES|n|N|no|No|NO|true|True|TRUE|false|False|FALSE|on|On|ON|off|Off|OFF|null|Null|NULL)$/;
 const REFERENCE_ID_REQUIRED_TODO_TEXT = '### TODO -- REFERENCE ID REQUIRED';
 const REFERENCE_ID_REQUIRED_TODO_PATTERN = /^### TODO -- REFERENCE ID REQUIRED(?: -- [^\r\n\u0085\u2028\u2029]*)?[ \t]*$/;
 
@@ -899,12 +901,12 @@ export class RecipeCockpitRecipeWriter {
 
         }
 
-        // READ BACK: THE SAME OBJECTS, AND EACH WRITTEN LINE STILL THE FIELD IT REPLACED
+        // READ BACK: THE SAME OBJECTS, AND EACH WRITTEN LINE STILL THE FIELD IT REPLACED -- BY ONE INDEX, SINCE A WIRE-ALL CAN BE TENS OF THOUSANDS OF EDITS
         const nextScannedObjects = this.scanRecipeObjects(nextLines);
+        const fieldApiNamesByStartIndex = new Map<number, string>();
+        nextScannedObjects.forEach(scannedObject => scannedObject.fields.forEach(scannedField => fieldApiNamesByStartIndex.set(scannedField.startIndex, scannedField.fieldApiName)));
         const isReadBack = nextScannedObjects.length === scannedObjects.length
-            && edits.every(edit => nextScannedObjects.some(scannedObject => scannedObject.fields.some(scannedField => (
-                scannedField.startIndex === edit.startLineNumber - 1 && scannedField.fieldApiName === edit.fieldApiName
-            ))));
+            && edits.every(edit => fieldApiNamesByStartIndex.get(edit.startLineNumber - 1) === edit.fieldApiName);
 
         if ( !isReadBack ) {
             const firstEdit = edits[0];
@@ -930,7 +932,12 @@ export class RecipeCockpitRecipeWriter {
         const occurrenceCountsByNickname = new Map<string, number>();
 
         scannedObjects.forEach(scannedObject => {
-            occurrencesByObjectApiName.set(scannedObject.objectApiName, [...( occurrencesByObjectApiName.get(scannedObject.objectApiName) ?? [] ), scannedObject]);
+            const occurrences = occurrencesByObjectApiName.get(scannedObject.objectApiName);
+            if ( occurrences ) {
+                occurrences.push(scannedObject);
+            } else {
+                occurrencesByObjectApiName.set(scannedObject.objectApiName, [scannedObject]);
+            }
             scannedObject.nicknames.forEach(nickname => occurrenceCountsByNickname.set(nickname, (occurrenceCountsByNickname.get(nickname) ?? 0) + 1));
         });
 
@@ -941,6 +948,11 @@ export class RecipeCockpitRecipeWriter {
                 ? scannedObject.nicknames[0]
                 : undefined
         );
+        // A NICKNAME WRITTEN AS A VALUE MUST LOAD AS THE STRING IT IS, OR THE INSERT'S WHOLE-STRING SWAP NEVER MATCHES IT
+        const readWritableNickname = (scannedObject: IScannedObject): string | undefined => {
+            const nickname = readDistinctNickname(scannedObject);
+            return nickname !== undefined && !YAML_NON_STRING_PLAIN_SCALAR_PATTERN.test(nickname) ? nickname : undefined;
+        };
         const levelOf = (objectApiName: string): number | undefined => wiringContext.levelsByObjectApiName?.get(objectApiName);
 
         const locatedWirings: { wiring: ILookupWiring; lineIndex: number; fieldIndent: string }[] = [];
@@ -948,12 +960,19 @@ export class RecipeCockpitRecipeWriter {
         scannedObjects.forEach(scannedObject => {
 
             const parentLookups = wiringContext.parentLookupsByObjectApiName.get(scannedObject.objectApiName) ?? [];
-            const isWrittenOnce = occurrencesByObjectApiName.get(scannedObject.objectApiName).length === 1;
+            const occurrences = occurrencesByObjectApiName.get(scannedObject.objectApiName);
+            const isWrittenOnce = occurrences.length === 1;
             const objectNickname = isWrittenOnce ? undefined : readDistinctNickname(scannedObject);
 
+            /*
+                An object written more than once is wired only when EVERY occurrence has a nickname of
+                its own: RecipeCockpitService.parseRecipeSource draws such an object as one row with no
+                nickname (hasIndistinctOccurrences), so a wiring keyed by one occurrence's nickname would
+                have no "Wire to…" to show and would be written by "Wire TODO lookups" alone.
+            */
             if ( parentLookups.length === 0
                     || !API_NAME_PATTERN.test(scannedObject.objectApiName)
-                    || ( !isWrittenOnce && objectNickname === undefined )
+                    || ( !isWrittenOnce && occurrences.some(occurrence => readDistinctNickname(occurrence) === undefined) )
                     || scannedObject.fieldsLineIndexes.length !== 1 ) {
                 return;
             }
@@ -988,7 +1007,7 @@ export class RecipeCockpitRecipeWriter {
 
                 const ancestorNicknames = ancestors
                     .filter(ancestor => parentObjectApiNames.includes(ancestor.objectApiName))
-                    .map(readDistinctNickname);
+                    .map(readWritableNickname);
                 const lowerLevelNicknames = parentObjectApiNames
                     .filter(parentObjectApiName => {
                         const parentLevel = levelOf(parentObjectApiName);
@@ -996,7 +1015,7 @@ export class RecipeCockpitRecipeWriter {
                     })
                     .flatMap(parentObjectApiName => ( occurrencesByObjectApiName.get(parentObjectApiName) ?? [] ))
                     .filter(parentOccurrence => parentOccurrence !== scannedObject)
-                    .map(readDistinctNickname);
+                    .map(readWritableNickname);
 
                 const candidateNicknames = [...new Set([...ancestorNicknames, ...lowerLevelNicknames].filter((nickname): nickname is string => nickname !== undefined))];
 
