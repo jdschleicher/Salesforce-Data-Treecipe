@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.71.0] - Recipe Cockpit: wire a TODO lookup to a nickname, writing the recipe file
+## [3.72.0] - Recipe Cockpit: wire a TODO lookup to a nickname, writing the recipe file
 
 For [#151](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/151), rescoped to lookup wiring.
 
@@ -13,6 +13,29 @@ A lookup Generate Treecipe could not wire stays `### TODO -- REFERENCE ID REQUIR
 - **What the panel sends.** `wireLookup {treeKey, objectApiName, objectNickname?, fieldApiName}` and `wireAllLookups {treeKey}` carry names only, matched against `wireableLookupTargets`, a pending/active allow-list built from the rendered model's `lookupWirings` (promoted on `rendered`, emptied on `ready`, a new post and a failure to draw). The nickname and the recipe file are the host's. One write runs at a time (`wireLookupState`, replayed on a reveal), and **+** (Add friend) waits for it, since both write the same file.
 - **A lookup row shows what the recipe file says.** The objects wrapper records every lookup as the TODO, even after Generate Treecipe wired it to an ancestor (#46). A lookup row whose wrapper value is that TODO now shows the file's value, so a wired lookup reads as its nickname.
 - **Unchanged:** recipe generation and both faker backends, the tree insert's own filling of lookups still TODO, field and object selection, counts and fixed values (which still never write the recipe).
+
+## [3.71.0] - Recipe Cockpit: "Open Deployment Status" when "Deploy this metadata…" fails
+
+Closes [#283](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/283), following [#273](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/273).
+
+When a tree's metadata deploy fails, the CLI's `--json` names the deploy's page in Setup (`result.deployUrl`), but the cockpit used to drop it. A failed deploy now offers **Open Deployment Status**, which opens that page in the deploy org, signed in.
+
+- **Where it shows.** On a `failed` outcome (component failures) with a usable URL, the error notification shows **Open Deployment Status** beside **View output**, and the card's deploy status line shows the same link. Neither appears for a successful deploy, a CLI that is not installed, an `unconfirmed` deploy (timeout, cancel, oversized output), or a URL that fails any check.
+- **Which URLs count.** `ScratchOrgService.readDeployComponentCounts` takes the deploy org's instance URL (read from the connection the deploy's Organization re-check already opens) and returns `deployUrl` only when all of these hold:
+  - it parses as `https:`;
+  - it has no credentials;
+  - its host, port included, equals the deploy org's instance host;
+  - its path is `/lightning/setup/DeployStatus/page`;
+  - its `address` names `/changemgmt/monitorDeploymentsDetails.apexp?asyncId=<0Af… id>`.
+
+  Anything else (another host, `http:`, another page, malformed, not a string) is no URL. The scratch org deploy (#200) shares the parser but passes no instance URL, so it offers nothing.
+- **Opening.** The page opens through `sf org open --target-org <username> --path <path> --url-only --json`, the same route as #279's **Open in browser**: `runSalesforceCli` with a timeout and no `cwd`, read by `parseOrgOpenOutput`, and the frontdoor URL handed only to `vscode.env.openExternal`.
+  - The `--path` is rebuilt from the deploy id (`ScratchOrgService.buildDeployStatusOpenPath`) with the address unencoded and no `retURL`, rather than copied. On Windows `cmd.exe` expands `%…%` even inside quotes, so the argument carries no `%` or `&`.
+  - `buildOrgOpenArguments` refuses any other `--path`.
+- **Unhappy paths.** If the deploy org is no longer authorized (`SalesforceOrgService.isUsernameAuthorized`, read locally), a warning appears and nothing opens. If `sf org open` fails, times out or throws, a fixed warning appears that quotes neither the CLI nor any address. One open runs at a time.
+- **What the panel sends.** It posts `openMetadataDeployStatus {treeKey}` with no URL in the payload. The router accepts it only for the `treeKey` the last failed deploy's line is drawn on, and only while no deploy runs. The page and the org are held host-side in `metadataDeployStatusTarget`, which the next deploy or permission set run clears and a reopened panel carries. The panel learns only `hasDeployStatus: true` on `metadataDeployState`.
+- Notifications go through `escapeForNotification`, name the org as `alias · username`, and are not awaited. No URL or session id is posted, written, logged or quoted.
+- **Unchanged:** recipe generation and both faker backends.
 
 ## [3.70.0] - Recipe Cockpit: "Deploy & assign permission sets…" for a tree
 

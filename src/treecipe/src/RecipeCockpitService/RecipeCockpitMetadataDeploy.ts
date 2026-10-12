@@ -86,7 +86,8 @@ interface IPlanReadCache {
 export type MetadataDeployOutcome =
     { kind: 'deployed'; deployedComponentCount: number }
     // ALL OR NOTHING, AS THE CLI REPORTS IT: ANY COMPONENT FAILURE IS THE WHOLE DEPLOY'S
-    | { kind: 'failed'; failureMessage: string }
+    // deployStatusPath ONLY FOR COMPONENT FAILURES WHOSE deployUrl IS THE DEPLOY ORG'S OWN DEPLOYMENT STATUS PAGE (#283)
+    | { kind: 'failed'; failureMessage: string; deployStatusPath?: string }
     | { kind: 'cliNotInstalled'; failureMessage: string }
     // THE DEPLOY RAN BUT ITS ANSWER COULD NOT BE READ, OR IT WAS CUT SHORT: WHETHER IT APPLIED IS UNKNOWN
     | { kind: 'unconfirmed'; failureMessage: string };
@@ -517,10 +518,12 @@ export class RecipeCockpitMetadataDeploy {
     /*
         The CLI's answer, type-checked: only status, the component successes and failures and the
         error text are read. Deployed only on status 0, success and no component failure; output
-        that is not JSON is a failure, never a success.
+        that is not JSON is a failure, never a success. A failure's deployUrl is kept, as the --path
+        to open, only when it is on deployOrgInstanceUrl's host (#283).
     */
     static parseMetadataDeployOutput(invocationResult: ISalesforceCliInvocationResult,
-                                        payload: Record<string, unknown> | undefined = ScratchOrgService.readCliJsonPayload(invocationResult)): MetadataDeployOutcome {
+                                        payload: Record<string, unknown> | undefined = ScratchOrgService.readCliJsonPayload(invocationResult),
+                                        deployOrgInstanceUrl?: string): MetadataDeployOutcome {
 
         if ( invocationResult.spawnError ) {
             return invocationResult.spawnError.code === 'ENOENT'
@@ -540,13 +543,19 @@ export class RecipeCockpitMetadataDeploy {
             return { kind: 'failed', failureMessage: ScratchOrgService.buildCliFailureDetail(payload, invocationResult) };
         }
 
-        const deployComponentCounts = ScratchOrgService.readDeployComponentCounts(payload);
+        const deployComponentCounts = ScratchOrgService.readDeployComponentCounts(payload, deployOrgInstanceUrl);
 
         if ( deployComponentCounts.isSucceeded ) {
             return { kind: 'deployed', deployedComponentCount: deployComponentCounts.numberComponentsDeployed ?? deployComponentCounts.componentSuccessCount };
         }
 
-        return { kind: 'failed', failureMessage: deployComponentCounts.componentFailureProblems.join('; ') || ScratchOrgService.buildCliFailureDetail(payload, invocationResult) };
+        const deployStatusPath = deployComponentCounts.componentFailureCount > 0 ? ScratchOrgService.buildDeployStatusOpenPath(deployComponentCounts.deployUrl) : undefined;
+
+        return {
+            kind: 'failed',
+            failureMessage: deployComponentCounts.componentFailureProblems.join('; ') || ScratchOrgService.buildCliFailureDetail(payload, invocationResult),
+            ...( deployStatusPath ? { deployStatusPath: deployStatusPath } : {} )
+        };
 
     }
 
