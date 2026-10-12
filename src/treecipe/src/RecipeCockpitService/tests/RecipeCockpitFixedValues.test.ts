@@ -44,7 +44,7 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
 /*
-    #262: a pin beside each field's checkbox gives the field a fixed value that ▶ Run Faker and the
+    #262: a pin beside each field's checkbox gives the field a fixed value that the generate button and the
     whole-tree insert generate in place of its faker expression. It is kept by tree folder beside the
     excluded objects, unticked fields and counts, and rides on the filtered copy: the recipe file is
     never written.
@@ -816,7 +816,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
             await openAndDraw(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [ACCOUNT_TREE_KEY]: { Contact: { LastName: 'Smith' } } }) }));
 
-            await receivedMessageHandler({ command: 'runFaker', treeKey: ACCOUNT_TREE_KEY });
+            await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
 
             const runFakerCall = executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND);
             expect(runFakerCall).toHaveLength(3);
@@ -831,7 +831,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
             await openAndDraw(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [ACCOUNT_TREE_KEY]: { Account: { ParentId: 'x' } } }) }));
 
-            await receivedMessageHandler({ command: 'runFaker', treeKey: ACCOUNT_TREE_KEY });
+            await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
 
             expect(executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toEqual([RECIPE_COCKPIT_RUN_FAKER_COMMAND, ACCOUNT_RECIPE_FILE_PATH]);
 

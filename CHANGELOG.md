@@ -1,11 +1,39 @@
 # Change Log
 
-## [3.72.5] - Recipe Cockpit: the tree's chain link tilts from bottom right to top left
+## [3.74.1] - Recipe Cockpit: the tree's chain link tilts from bottom right to top left
 
 Closes [#295](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/295).
 
 - The chain-link include/exclude icon on a Treecipe object row now runs from the bottom right to the top left. It used to run from the bottom left to the top right. `RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM` is now `rotate(45 12 12)` (it was `rotate(-45 12 12)`). The joined, broken and dashed auto-excluded links all share that one transform, so all three states turn together.
 - **Unchanged:** the glyph paths, size, colours, the 24×24 viewBox (a ±45° turn of the same path reaches the same corners, so nothing is clipped), `aria-pressed`, titles, labels, the exclusion cascade, the CSP and the nonce-only shell builder.
+
+## [3.74.0] - Recipe Cockpit: add a lookup's standard parent to the recipe from a template
+
+Closes [#294](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/294). Part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+A lookup to a parent the recipe does not write (a Contact's `AccountId` with no Account block) could only point at records already in the org, through the insert's parent picker, or be left blank. The Treecipe tab can now add that parent to the recipe **file**, so the tree generates and inserts its own parent.
+
+- **Add \<Parent\> to recipe** on a lookup row writes a new top-level block for the parent, then wires the lookup to it the way #151's **Wire to…** does. The block has a nickname of its own (`Account_NickName`, or `Account_NickName_2` when that is taken), `count: 1` and only the template's fields. It goes directly above the top-level block holding the lookup, and above the generated comment that names that block's object (`# Contact (Parents: …)`), so the comment stays with its object. Any other comment, such as a `# Level N` banner or a note of your own, stays where it is. A host confirmation names the file, the fields and the wiring; Cancel writes nothing. The cockpit then reloads onto the card's Treecipe tab with the parent in it.
+- **Minimum required fields template, in both backends.** `getMinimumRequiredFieldsTemplate()` on `IRecipeFakerService`, beside `getOOTBObjectApiNameToFieldApiNameMap`: Account `Name`; Contact `LastName`; Lead `LastName`, `Company`; Opportunity `Name`, `StageName`, `CloseDate`; Case with no fields (a block with its count only). Each backend takes its values from its own standard-object list. faker-js writes `Name: ${{faker.company.name()}}` and snowfakery `Name: ${{fake.company}}`. The block uses the template of the backend that wrote the recipe, read from its folder and file names.
+- **Offered only where the insert can use it.** The lookup's value must still be exactly `### TODO -- REFERENCE ID REQUIRED`. The card's lookups must point it at **one** parent, the parent must have a template, and the recipe must not already write it. Generate Treecipe must also put the parent at a strictly lower relationship level, so the insert sends it first and resolves the lookup to its Id through the existing nickname swap. An object written more than once is offered only when every occurrence has a nickname of its own.
+- **Refused with a warning, nothing written:** a parent with no template (custom objects and `User` included), a recipe that already has a block for the parent, a polymorphic lookup, a lookup filled in or a file changed on disk since the panel drew it, and an object written more than once whose occurrences cannot be told apart.
+- **A line patch.** `RecipeCockpitRecipeWriter.addParentObject` re-checks everything against the file as it is at the click. It inserts the block and replaces the lookup's one line, and every other line keeps its bytes and line ending. The result is scanned again before it is saved. `listAddableParentObjects` is the same rule, so the panel never offers an addition the writer would refuse for a reason the file already shows.
+- **One write at a time.** The button posts names only (`addParentObject {treeKey, objectApiName, objectNickname?, fieldApiName}`), matched against `addableParentTargets`, a pending/active allow-list like #151's. It shares the wiring's lock and `wireLookupState`, so it, **Wire to…** and **Wire TODO lookups** are held together.
+- **Template alone.** The template is not checked against an org. A required field your org adds to the parent is reported by the insert, in its result and View errors, as before.
+- **Review fixes.** An object whose name is not an api name is never offered, and the writer refuses it, so no workspace text reaches the confirmation unchecked. The confirmation and its notices now escape every name they show. Whether an object's occurrences can be told apart is worked out once per object rather than once per lookup, so a recipe that writes one object thousands of times stays fast.
+- **Unchanged:** Generate Treecipe and both backends' generated recipes, the insert's parent picker (custom objects still go through it), and every other lookup.
+
+## [3.73.0] - Recipe Cockpit: one generate button per tree, never disabled except while it runs
+
+Closes [#293](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/293). Part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+- **▶ Run Faker is gone.** Each tree card's Treecipe tab has one button. It generates exactly as **Run Faker by Recipe** does (the card's filtered copy for excluded objects, unticked fields, changed counts and fixed values; `datasetSource.json`; the new data set added in place to Previously Used Data Sets). When it can, it then inserts the way **Insert Data Set by Directory** does, with the cockpit's lookup wiring (nicknames, in-run parents, the parent picker, required lookups filled from the org).
+- **The label says what a click does.** With a sandbox or scratch org selected and every object ready, it reads **Generate fake data and insert into \<org\>**. Otherwise it reads **Generate fake data**, generates only (with Run Faker by Recipe's own confirmation), and says why beside it as `Generates only: <reason>`. Reasons include: no org chosen, an org that is not a sandbox, a readiness reason or a check still running, another tree being inserted, and a scratch org or deploy still running.
+- **Never disabled except while its own tree runs.** Only the clicked card's button is held, as **Generating…** or **Inserting…**. Other cards stay clickable: generate-only runs are tracked per tree and replayed per tree on a reload, so several trees can generate at once. Inserts stay one at a time; while one runs, every other card generates only.
+- **A generate never cancels another tree's insert.** A generate-only run that ends without a data set it can add in place normally reloads the run. While another tree's insert is running, that reload is held until the insert ends, because a reload drops the org selection the insert was confirmed against.
+- **Generate only in the insert dialog.** The insert's confirmation now offers **Generate only** beside **Generate and insert**. It writes the same data set, connects to nothing and inserts nothing.
+- **Messages.** The panel's `runFaker`/`runFakerState` messages are now `generateTree`/`generateState`; a posted `runFaker` routes to nothing. A refusal that used to start "Run Faker did not run on" now starts "Nothing was generated for".
+- **Unchanged:** the palette commands **Run Faker by Recipe** and **Insert Data Set by Directory**, both faker backends, and the insert's sandbox-and-scratch-only rule. Insert Data Set by Directory still also accepts Developer Edition; the two rules were deliberately not merged.
 
 ## [3.72.4] - Docs: README and CLAUDE.md describe the cockpit as it ships
 

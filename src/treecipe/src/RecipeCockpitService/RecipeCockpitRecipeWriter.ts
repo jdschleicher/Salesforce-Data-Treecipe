@@ -25,7 +25,7 @@
     only object it adds a friend to is such an iteration.
 */
 
-export type RecipeWriterOperation = 'insert-field' | 'replace-field-value' | 'comment-out-field' | 'restore-commented-out-field' | 'set-object-property' | 'insert-friend' | 'wire-lookup';
+export type RecipeWriterOperation = 'insert-field' | 'replace-field-value' | 'comment-out-field' | 'restore-commented-out-field' | 'set-object-property' | 'insert-friend' | 'wire-lookup' | 'add-parent-object';
 
 export type RecipeObjectProperty = 'nickname' | 'count';
 
@@ -59,7 +59,11 @@ export type RecipeWriterRefusalReason =
     | 'no-lookup-wirings'
     | 'duplicate-lookup-wiring'
     | 'lookup-not-wireable'
-    | 'parent-nickname-not-a-candidate';
+    | 'parent-nickname-not-a-candidate'
+    | 'polymorphic-lookup'
+    | 'no-parent-template'
+    | 'parent-object-already-exists'
+    | 'parent-not-inserted-first';
 
 export interface IRecipeWriterRefusal {
     reason: RecipeWriterRefusalReason;
@@ -85,8 +89,10 @@ export interface IRecipeWriterEdit {
     friendObjectApiName?: string;
     // THE NICKNAME insertFriend GAVE THE FRIEND IT ADDED
     friendNickname?: string;
-    // THE NICKNAME wireLookups WROTE AS THE LOOKUP'S VALUE
+    // THE NICKNAME wireLookups WROTE AS THE LOOKUP'S VALUE, OR THE ONE addParentObject GAVE THE PARENT IT ADDED
     parentNickname?: string;
+    // THE OBJECT addParentObject ADDED
+    parentObjectApiName?: string;
     startLineNumber: number;
     removedLines: string[];
     insertedLines: string[];
@@ -215,6 +221,29 @@ export interface ILookupWiringContext {
 
 export type RecipeLookupWiringResult =
     | { isApplied: true; recipeText: string; edits: IRecipeWriterEdit[] }
+    | { isApplied: false; refusal: IRecipeWriterRefusal };
+
+/*
+    A TODO lookup whose parent the recipe does not write, and which addParentObject can add from a
+    template (#294). objectNickname is set only when the object is written more than once.
+*/
+export interface IParentObjectAddition {
+    objectApiName: string;
+    objectNickname?: string;
+    fieldApiName: string;
+    parentObjectApiName: string;
+}
+
+// WHAT addParentObject IS ASKED TO WRITE: THE LOOKUP, AND THE TEMPLATE'S FIELD VALUES FOR EVERY PARENT IT KNOWS
+export interface IParentObjectAdditionRequest {
+    objectApiName: string;
+    objectNickname?: string;
+    fieldApiName: string;
+    parentTemplatesByObjectApiName: Readonly<Record<string, Readonly<Record<string, string>>>>;
+}
+
+export type RecipeParentObjectAdditionResult =
+    | { isApplied: true; recipeText: string; parentObjectApiName: string; parentNickname: string; edits: IRecipeWriterEdit[] }
     | { isApplied: false; refusal: IRecipeWriterRefusal };
 
 export type RecipeWriterResult =
@@ -925,6 +954,330 @@ export class RecipeCockpitRecipeWriter {
         return `${objectApiName}\n${objectNickname ?? ''}\n${fieldApiName}`;
     }
 
+    /*
+        Every TODO lookup addParentObject would accept (#294): one line that is exactly the
+        "### TODO -- REFERENCE ID REQUIRED", whose field the card's lookups point at ONE parent, that
+        parent has a template, the recipe writes no block for it, and RelationshipService puts it at
+        a strictly LOWER level than the object -- which is what makes the insert send it first and
+        listLookupWirings accept its nickname afterwards. It is what the Recipe Cockpit offers, so the
+        panel never draws an "Add" the writer would refuse for a reason the file already shows.
+    */
+    static listAddableParentObjects(recipeText: string,
+                                    wiringContext: ILookupWiringContext,
+                                    templateObjectApiNames: ReadonlySet<string>): IParentObjectAddition[] {
+
+        const { lines } = this.splitRecipeLines(recipeText);
+        const scannedObjects = this.scanRecipeObjects(lines);
+        const additionIndex = this.buildParentObjectAdditionIndex(scannedObjects);
+        const parentTemplates = Object.fromEntries([...templateObjectApiNames].map(objectApiName => [objectApiName, {}]));
+
+        return scannedObjects.flatMap(scannedObject => {
+
+            const lookupFieldApiNames = new Set(( wiringContext.parentLookupsByObjectApiName.get(scannedObject.objectApiName) ?? [] ).map(parentLookup => parentLookup.fieldApiName));
+            if ( lookupFieldApiNames.size === 0 ) {
+                return [];
+            }
+
+            const occurrences = additionIndex.occurrencesByObjectApiName.get(scannedObject.objectApiName);
+            const objectNickname = occurrences.length === 1 ? undefined : scannedObject.nicknames[0];
+
+            return [...new Set(scannedObject.fields.map(scannedField => scannedField.fieldApiName))].filter(fieldApiName => lookupFieldApiNames.has(fieldApiName)).flatMap(fieldApiName => {
+                const located = this.locateParentObjectAddition(lines, additionIndex, {
+                    objectApiName: scannedObject.objectApiName,
+                    ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
+                    fieldApiName: fieldApiName,
+                    parentTemplatesByObjectApiName: parentTemplates
+                }, wiringContext);
+                return 'refusal' in located || located.scannedObject !== scannedObject ? [] : [located.addition];
+            });
+
+        });
+
+    }
+
+    /*
+        Adds the lookup's parent to the recipe as a top-level block -- a unique nickname, "count: 1"
+        and only the template's fields -- and wires the lookup to it, in one write or none (#294).
+        The block goes directly above the top-level block holding the lookup (above the comment lines
+        that head it), so the parent reads before its children; the insert sends it first by its
+        level either way. Everything is checked against the text as it is NOW, so a lookup filled in
+        or a parent added since the caller listed it refuses rather than writing a second block.
+        Only the new lines and the lookup's one line change; every other line keeps its bytes and
+        its line ending, and the result is scanned again before it is answered.
+    */
+    static addParentObject(recipeText: string, additionRequest: IParentObjectAdditionRequest, wiringContext: ILookupWiringContext): RecipeParentObjectAdditionResult {
+
+        const { objectApiName, objectNickname, fieldApiName } = additionRequest;
+
+        if ( !API_NAME_PATTERN.test(objectApiName) ) {
+            return this.refuse('invalid-object-api-name', `"${objectApiName}" is not an object api name.`, objectApiName, fieldApiName, objectNickname);
+        }
+        if ( objectNickname !== undefined && !API_NAME_PATTERN.test(objectNickname) ) {
+            return this.refuse('invalid-object-nickname', `"${objectNickname}" is not a nickname.`, objectApiName, fieldApiName, objectNickname);
+        }
+        if ( !API_NAME_PATTERN.test(fieldApiName) ) {
+            return this.refuse('invalid-field-api-name', `"${fieldApiName}" is not a field api name.`, objectApiName, fieldApiName, objectNickname);
+        }
+
+        const recipeLines = this.splitRecipeLines(recipeText);
+        const scannedObjects = this.scanRecipeObjects(recipeLines.lines);
+        const additionIndex = this.buildParentObjectAdditionIndex(scannedObjects);
+        const located = this.locateParentObjectAddition(recipeLines.lines, additionIndex, additionRequest, wiringContext);
+
+        if ( 'refusal' in located ) {
+            return located;
+        }
+
+        const { parentObjectApiName } = located.addition;
+        const parentTemplate = additionRequest.parentTemplatesByObjectApiName[parentObjectApiName];
+        const fieldLabel = `${this.describeObject(objectApiName, objectNickname)}.${fieldApiName}`;
+        const topLayout = this.getObjectLayout(0);
+
+        const templateFieldLines: string[] = [];
+        for ( const [templateFieldApiName, templateValueText] of Object.entries(parentTemplate) ) {
+            const fieldLines = API_NAME_PATTERN.test(templateFieldApiName) && typeof templateValueText === 'string'
+                ? this.buildFieldLines(templateFieldApiName, templateValueText, topLayout)
+                : undefined;
+            if ( !fieldLines ) {
+                return this.refuse('invalid-value', `The ${parentObjectApiName} template's ${templateFieldApiName} does not keep the recipe layout, so nothing was added.`, objectApiName, fieldApiName, objectNickname);
+            }
+            templateFieldLines.push(...fieldLines);
+        }
+
+        const heldNicknames = new Set(scannedObjects.flatMap(scannedObject => scannedObject.nicknames));
+        const baseNickname = `${parentObjectApiName}_NickName`;
+        let parentNickname = baseNickname;
+        for ( let suffix = 2; heldNicknames.has(parentNickname); suffix++ ) {
+            parentNickname = `${baseNickname}_${suffix}`;
+        }
+
+        const blockLines = [
+            `# ${parentObjectApiName} (Added by the Recipe Cockpit as the parent of ${fieldLabel})`,
+            `- object: ${parentObjectApiName}`,
+            `${topLayout.propertyIndent}nickname: ${parentNickname}`,
+            `${topLayout.propertyIndent}count: 1`,
+            ...( templateFieldLines.length > 0 ? [`${topLayout.propertyIndent}fields:`, ...templateFieldLines] : [] ),
+            ''
+        ];
+
+        /*
+            The block goes above the comment that names the top-level object -- Generate Treecipe's
+            "# Contact (Parents: …)", with or without blank lines before the header -- so that comment
+            stays with the object it names. Any other comment (a "# Level N" banner, a reader's note)
+            is not taken to head the object, so the block goes directly above the header instead.
+        */
+        const rootObjectApiName = additionIndex.friendIndex.objectsByHeaderIndex.get(located.rootHeaderIndex).objectApiName;
+        let headingIndex = located.rootHeaderIndex - 1;
+        while ( headingIndex >= 0 && !recipeLines.lines[headingIndex].trim() ) {
+            headingIndex--;
+        }
+        const isRootHeading = headingIndex >= 0
+            && ( recipeLines.lines[headingIndex] === `# ${rootObjectApiName}` || recipeLines.lines[headingIndex].startsWith(`# ${rootObjectApiName} `) );
+        const insertIndex = isRootHeading ? headingIndex : located.rootHeaderIndex;
+
+        const { lines, lineEndings } = recipeLines;
+        const defaultLineEnding = lineEndings.find(lineEnding => lineEnding) ?? '\n';
+        const blockLineEnding = ( insertIndex > 0 ? lineEndings[insertIndex - 1] : lineEndings[insertIndex] ) || defaultLineEnding;
+        const wiredLine = `${located.fieldIndent}${fieldApiName}: ${parentNickname}`;
+
+        const wiredLines = lines.slice();
+        wiredLines[located.lineIndex] = wiredLine;
+        const nextLines = [...wiredLines.slice(0, insertIndex), ...blockLines, ...wiredLines.slice(insertIndex)];
+        const nextLineEndings = [...lineEndings.slice(0, insertIndex), ...blockLines.map(() => blockLineEnding), ...lineEndings.slice(insertIndex)];
+        const wiredLineIndex = located.lineIndex + blockLines.length;
+
+        // READ BACK: EVERY OBJECT THAT WAS THERE, PLUS THE PARENT AT THE TOP LEVEL WITH ITS NICKNAME AND THE TEMPLATE'S FIELDS, AND THE LOOKUP STILL ITS FIELD
+        const nextScannedObjects = this.scanRecipeObjects(nextLines);
+        const addedParent = nextScannedObjects.find(scannedObject => scannedObject.headerIndex === insertIndex + 1);
+        const wiredObject = nextScannedObjects.find(scannedObject => scannedObject.headerIndex === located.scannedObject.headerIndex + blockLines.length);
+        const isReadBack = nextScannedObjects.length === scannedObjects.length + 1
+            && !!addedParent
+            && addedParent.objectApiName === parentObjectApiName
+            && addedParent.objectIndent === 0
+            && addedParent.nicknames.length === 1
+            && addedParent.nicknames[0] === parentNickname
+            && addedParent.propertyLineIndexes.count.length === 1
+            && addedParent.fields.map(scannedField => scannedField.fieldApiName).join('\n') === Object.keys(parentTemplate).join('\n')
+            && !!wiredObject
+            && wiredObject.objectApiName === objectApiName
+            && wiredObject.fields.some(scannedField => scannedField.startIndex === wiredLineIndex && scannedField.fieldApiName === fieldApiName);
+
+        if ( !isReadBack ) {
+            return this.refuse('unsupported-field-layout', `The recipe with ${parentObjectApiName} added did not read back as the same objects plus ${parentObjectApiName}, so nothing was added.`, objectApiName, fieldApiName, objectNickname);
+        }
+
+        return {
+            isApplied: true,
+            recipeText: this.joinRecipeLines({ lines: nextLines, lineEndings: nextLineEndings }),
+            parentObjectApiName: parentObjectApiName,
+            parentNickname: parentNickname,
+            edits: [
+                {
+                    operation: 'add-parent-object',
+                    objectApiName: objectApiName,
+                    ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
+                    fieldApiName: fieldApiName,
+                    parentObjectApiName: parentObjectApiName,
+                    parentNickname: parentNickname,
+                    startLineNumber: insertIndex + 1,
+                    removedLines: [],
+                    insertedLines: blockLines
+                },
+                {
+                    operation: 'wire-lookup',
+                    objectApiName: objectApiName,
+                    ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
+                    fieldApiName: fieldApiName,
+                    parentNickname: parentNickname,
+                    startLineNumber: wiredLineIndex + 1,
+                    removedLines: [lines[located.lineIndex]],
+                    insertedLines: [wiredLine]
+                }
+            ]
+        };
+
+    }
+
+    private static buildParentObjectAdditionIndex(scannedObjects: IScannedObject[]): {
+        friendIndex: IScannedFriendIndex;
+        occurrencesByObjectApiName: Map<string, IScannedObject[]>;
+        hasDistinctNicknamesByObjectApiName: Map<string, boolean>;
+        occurrencesByNickname: Map<string, IScannedObject>;
+    } {
+
+        const occurrencesByObjectApiName = new Map<string, IScannedObject[]>();
+        const occurrenceCountsByNickname = new Map<string, number>();
+
+        scannedObjects.forEach(scannedObject => {
+            const occurrences = occurrencesByObjectApiName.get(scannedObject.objectApiName);
+            if ( occurrences ) {
+                occurrences.push(scannedObject);
+            } else {
+                occurrencesByObjectApiName.set(scannedObject.objectApiName, [scannedObject]);
+            }
+            scannedObject.nicknames.forEach(nickname => occurrenceCountsByNickname.set(nickname, (occurrenceCountsByNickname.get(nickname) ?? 0) + 1));
+        });
+
+        // WHETHER EVERY OCCURRENCE OF AN OBJECT HAS A NICKNAME NO OTHER OCCURRENCE HOLDS -- ONCE PER OBJECT, NOT PER LOOKUP, SINCE AN OBJECT CAN BE WRITTEN THOUSANDS OF TIMES
+        const hasDistinctNicknamesByObjectApiName = new Map<string, boolean>();
+        occurrencesByObjectApiName.forEach((occurrences, objectApiName) => hasDistinctNicknamesByObjectApiName.set(objectApiName, occurrences.every(occurrence => (
+            occurrence.nicknames.length === 1
+                && API_NAME_PATTERN.test(occurrence.nicknames[0])
+                && occurrenceCountsByNickname.get(occurrence.nicknames[0]) === 1
+        ))));
+
+        const occurrencesByNickname = new Map<string, IScannedObject>();
+        scannedObjects.forEach(scannedObject => {
+            if ( scannedObject.nicknames.length === 1 && occurrenceCountsByNickname.get(scannedObject.nicknames[0]) === 1 ) {
+                occurrencesByNickname.set(scannedObject.nicknames[0], scannedObject);
+            }
+        });
+
+        return {
+            friendIndex: this.buildScannedFriendIndex(scannedObjects),
+            occurrencesByObjectApiName: occurrencesByObjectApiName,
+            hasDistinctNicknamesByObjectApiName: hasDistinctNicknamesByObjectApiName,
+            occurrencesByNickname: occurrencesByNickname
+        };
+
+    }
+
+    // THE ONE RULE BOTH listAddableParentObjects AND addParentObject DECIDE BY, WITH A REFUSAL SAYING WHICH PART FAILED
+    private static locateParentObjectAddition(lines: string[],
+                                                additionIndex: ReturnType<typeof RecipeCockpitRecipeWriter.buildParentObjectAdditionIndex>,
+                                                additionRequest: IParentObjectAdditionRequest,
+                                                wiringContext: ILookupWiringContext):
+        { addition: IParentObjectAddition; scannedObject: IScannedObject; lineIndex: number; fieldIndent: string; rootHeaderIndex: number } | { isApplied: false; refusal: IRecipeWriterRefusal } {
+
+        const { objectApiName, objectNickname, fieldApiName, parentTemplatesByObjectApiName } = additionRequest;
+        const { friendIndex, occurrencesByObjectApiName, hasDistinctNicknamesByObjectApiName, occurrencesByNickname } = additionIndex;
+        const refuse = (reason: RecipeWriterRefusalReason, message: string) => this.refuse(reason, message, objectApiName, fieldApiName, objectNickname);
+        const objectLabel = this.describeObject(objectApiName, objectNickname);
+        const fieldLabel = `${objectLabel}.${fieldApiName}`;
+
+        // listAddableParentObjects ASKS ABOUT EVERY OBJECT THE FILE WRITES, AND ONLY AN API NAME MAY REACH A NOTIFICATION OR THE RECIPE
+        if ( !API_NAME_PATTERN.test(objectApiName) || !API_NAME_PATTERN.test(fieldApiName) || ( objectNickname !== undefined && !API_NAME_PATTERN.test(objectNickname) ) ) {
+            return refuse('invalid-object-api-name', `"${objectApiName}.${fieldApiName}" is not an object and field api name.`);
+        }
+
+        const occurrences = occurrencesByObjectApiName.get(objectApiName) ?? [];
+        if ( occurrences.length === 0 ) {
+            return refuse('object-not-found', `The recipe has no "- object: ${objectApiName}" line.`);
+        }
+
+        if ( occurrences.length > 1 && ( objectNickname === undefined || !hasDistinctNicknamesByObjectApiName.get(objectApiName) ) ) {
+            return refuse('duplicate-object', `The recipe writes ${objectApiName} ${occurrences.length} times and its occurrences cannot be told apart by nickname, so which one's lookup to wire cannot be told.`);
+        }
+
+        const nicknamedOccurrence = objectNickname === undefined ? undefined : occurrencesByNickname.get(objectNickname);
+        const scannedObject = occurrences.length === 1 && ( objectNickname === undefined || occurrences[0].nicknames.includes(objectNickname) )
+            ? occurrences[0]
+            : ( nicknamedOccurrence?.objectApiName === objectApiName ? nicknamedOccurrence : undefined );
+
+        if ( !scannedObject ) {
+            return refuse('object-not-found', `The recipe has no "- object: ${objectApiName}" with the nickname ${objectNickname}.`);
+        }
+
+        const { fieldIndent } = this.getObjectLayout(scannedObject.objectIndent);
+        const scannedFields = scannedObject.fields.filter(scannedField => scannedField.fieldApiName === fieldApiName);
+        const scannedField = scannedObject.fieldsLineIndexes.length === 1 && scannedFields.length === 1 ? scannedFields[0] : undefined;
+        const valueText = scannedField ? lines[scannedField.startIndex].slice(fieldIndent.length + fieldApiName.length + 1).replace(/^[ \t]+/, '') : '';
+
+        if ( !scannedField
+                || !REFERENCE_ID_REQUIRED_TODO_PATTERN.test(valueText)
+                || lines.slice(scannedField.startIndex + 1, scannedField.endIndex).some(continuationLine => continuationLine.trim()) ) {
+            return refuse('lookup-not-wireable', `${fieldLabel} is no longer a "${REFERENCE_ID_REQUIRED_TODO_TEXT}" lookup, so nothing was added.`);
+        }
+
+        const parentObjectApiNames = [...new Set(( wiringContext.parentLookupsByObjectApiName.get(objectApiName) ?? [] )
+            .filter(parentLookup => parentLookup.fieldApiName === fieldApiName)
+            .map(parentLookup => parentLookup.parentObjectApiName))];
+
+        if ( parentObjectApiNames.length === 0 ) {
+            return refuse('lookup-not-wireable', `${fieldLabel} is not a lookup of this tree, so nothing was added.`);
+        }
+
+        if ( parentObjectApiNames.length > 1 ) {
+            return refuse('polymorphic-lookup', `${fieldLabel} can point at ${parentObjectApiNames.join(' or ')}, so which object to add cannot be told.`);
+        }
+
+        const [parentObjectApiName] = parentObjectApiNames;
+
+        if ( !API_NAME_PATTERN.test(parentObjectApiName) || !Object.prototype.hasOwnProperty.call(parentTemplatesByObjectApiName, parentObjectApiName) ) {
+            return refuse('no-parent-template', `There is no minimum required fields template for ${parentObjectApiName}, so it cannot be added to the recipe.`);
+        }
+
+        if ( occurrencesByObjectApiName.has(parentObjectApiName) ) {
+            return refuse('parent-object-already-exists', `The recipe already has a "- object: ${parentObjectApiName}" block, so nothing was added.`);
+        }
+
+        const parentLevel = wiringContext.levelsByObjectApiName?.get(parentObjectApiName);
+        const objectLevel = wiringContext.levelsByObjectApiName?.get(objectApiName);
+
+        if ( parentLevel === undefined || objectLevel === undefined || parentLevel >= objectLevel ) {
+            return refuse('parent-not-inserted-first', `${parentObjectApiName} is not at a lower relationship level than ${objectApiName}, so the insert would not send it first, and nothing was added.`);
+        }
+
+        let rootObject = scannedObject;
+        while ( rootObject.parentHeaderIndex !== undefined ) {
+            rootObject = friendIndex.objectsByHeaderIndex.get(rootObject.parentHeaderIndex);
+        }
+
+        return {
+            addition: {
+                objectApiName: objectApiName,
+                ...( occurrences.length > 1 ? { objectNickname: scannedObject.nicknames[0] } : {} ),
+                fieldApiName: fieldApiName,
+                parentObjectApiName: parentObjectApiName
+            },
+            scannedObject: scannedObject,
+            lineIndex: scannedField.startIndex,
+            fieldIndent: fieldIndent,
+            rootHeaderIndex: rootObject.headerIndex
+        };
+
+    }
+
     private static locateLookupWirings(lines: string[], scannedObjects: IScannedObject[], wiringContext: ILookupWiringContext): { wiring: ILookupWiring; lineIndex: number; fieldIndent: string }[] {
 
         const friendIndex = this.buildScannedFriendIndex(scannedObjects);
@@ -1216,7 +1569,7 @@ export class RecipeCockpitRecipeWriter {
 
     /*
         A copy of a tree's recipe without the objects the Recipe Cockpit's Structure tab excluded
-        (#219): what ▶ Run Faker generates from, so the recipe file itself is never written.
+        (#219): what the cockpit's generate button generates from, so the recipe file itself is never written.
 
         An excluded object's block is dropped -- its header comment, its own block and its friends:
         block -- and so is every later occurrence of any object nested under it (a copy under a

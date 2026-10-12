@@ -3,6 +3,7 @@ import { RecordTypeWrapper } from "../../../RecordTypeService/RecordTypesWrapper
 import { MockRecordTypeService } from "../../../RecordTypeService/tests/MockRecordTypeService";
 import { SnowfakeryRecipeFakerService } from "../SnowfakeryRecipeFakerService";
 import * as yaml from 'js-yaml';
+import { FakerJSRecipeFakerService } from '../../FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import {
     ANY_YAML_LINE_BREAK,
     CONTROLLING_FIELD_API_NAME,
@@ -851,6 +852,65 @@ describe('SnowfakeryRecipeFakerService writes every picklist value inertly', () 
             expect(SnowfakeryRecipeFakerService.buildDependentPicklistChoiceItem('a: b')).toBe('"a: b"');
 
         });
+
+    });
+
+});
+
+describe('SnowfakeryRecipeFakerService.getMinimumRequiredFieldsTemplate (#294)', () => {
+
+    const template = new SnowfakeryRecipeFakerService().getMinimumRequiredFieldsTemplate();
+
+    test('lists the minimum required fields of each standard parent object', () => {
+
+        expect(Object.fromEntries(Object.entries(template).map(([objectApiName, fieldValues]) => [objectApiName, Object.keys(fieldValues)]))).toEqual({
+            Account: ['Name'],
+            Contact: ['LastName'],
+            Lead: ['LastName', 'Company'],
+            Opportunity: ['Name', 'StageName', 'CloseDate'],
+            Case: []
+        });
+
+    });
+
+    test('has the same objects and fields as the other backend', () => {
+
+        const otherTemplate = new FakerJSRecipeFakerService().getMinimumRequiredFieldsTemplate();
+        const fieldNamesOf = (fieldTemplate: Record<string, Record<string, string>>) => Object.entries(fieldTemplate).map(([objectApiName, fieldValues]) => [objectApiName, Object.keys(fieldValues)]);
+
+        expect(fieldNamesOf(template)).toEqual(fieldNamesOf(otherTemplate));
+
+    });
+
+    test('takes every value from the backend\'s own standard-object list', () => {
+
+        const standardObjectValues = new SnowfakeryRecipeFakerService().getOOTBObjectApiNameToFieldApiNameMap();
+
+        Object.entries(template).forEach(([objectApiName, fieldValues]) => {
+            Object.entries(fieldValues).forEach(([fieldApiName, fieldValue]) => {
+                expect(fieldValue).toBe(standardObjectValues[objectApiName][fieldApiName]);
+            });
+        });
+
+    });
+
+    test.each(Object.keys(template))('the %s block loads as valid YAML', (objectApiName) => {
+
+        const fieldLines = Object.entries(template[objectApiName]).map(([fieldApiName, fieldValue]) => `    ${fieldApiName}: ${fieldValue}`);
+        const recipeYaml = [
+            `- object: ${objectApiName}`,
+            `  nickname: ${objectApiName}_NickName`,
+            '  count: 1',
+            ...( fieldLines.length > 0 ? ['  fields:', ...fieldLines] : [] ),
+            ''
+        ].join('\n');
+
+        const [loadedObject] = yaml.load(recipeYaml) as Array<{ object: string; count: number; fields?: Record<string, unknown> }>;
+
+        expect(loadedObject.object).toBe(objectApiName);
+        expect(loadedObject.count).toBe(1);
+        expect(Object.keys(loadedObject.fields ?? {})).toEqual(Object.keys(template[objectApiName]));
+        Object.values(loadedObject.fields ?? {}).forEach(loadedValue => expect(typeof loadedValue).toBe('string'));
 
     });
 
