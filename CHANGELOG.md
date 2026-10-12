@@ -1,5 +1,21 @@
 # Change Log
 
+## [3.69.0] - Recipe Cockpit: you name the scratch org, and the selected org opens in your browser
+
+Closes [#279](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/279), part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+- **You choose the scratch org's alias.** After you pick the Dev Hub, **+ New scratch org** asks for an alias in an input box. There is no `treecipe-<timestamp>` default any more: the box starts empty, and the alias is the name `sf org list`, the org picker and later CLI commands use. Escape cancels: nothing runs and nothing is written.
+  - The alias must be letters, digits and `. _ + -`, at most 80 characters, and start with a letter or digit. It cannot end with `.` (Windows drops a trailing dot from a folder name), cannot be a Windows device name such as `CON` or `nul.txt`, and cannot contain `@` (that would read as a username). The box refuses anything else while you type, and the host checks again before the alias reaches the CLI (`ScratchOrgService.validateScratchOrgAlias`).
+  - If another authorized org already holds the alias, the box warns you ("`uat` is currently `uat@example.com`. Creating will move it to the new org") but lets you go ahead. The confirmation says so again. Which org holds an alias is read from the local authorizations only (`SalesforceOrgService.listAliasHolders`).
+  - The source deploy now targets the new org's **username**, which the create returns, never the alias, because an alias you chose can be moved between the create and the deploy.
+- **Open in browser.** A button beside the selected org in every Treecipe tab logs you in to that org in your browser.
+  - The panel posts `openDataOrg {orgIndex}`. The host acts only when that index is the org selected now.
+  - It runs `sf org open --target-org <username> --url-only --json` (not in project mode, with a 60-second timeout) and opens the answer with `vscode.env.openExternal`, which also works in Remote, WSL and Codespaces, where the CLI has no browser of its own. Only an `https:` address is opened.
+  - The address carries a session id, so it is never posted to the panel, saved, logged or quoted in a notification. Any error is answered with a fixed message. `ScratchOrgService.redactSecretText` now also removes any address carrying a `sid=` or `otp=` parameter, for CLI text a failure quotes.
+  - A failure (CLI missing, timeout, no authorization) is an error naming the org.
+  - The button reads **Opening…** and is disabled while it opens, and while a scratch org run or a metadata deploy holds the org picker. One open runs per window: a panel closed and reopened, or a reloaded document, is told an open is running and starts no second one.
+- **Unchanged:** the Dev Hub picker, the definition file, the 7-day duration, the all-or-nothing deploy, the result files under `treecipe/OrgOperations/`, recipe generation and both faker backends. The cockpit still never deletes an org.
+
 ## [3.68.0] - Recipe Cockpit: the Compare tab and the metadata diff are removed
 
 Closes [#266](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/266), slice D of [#261](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/261).

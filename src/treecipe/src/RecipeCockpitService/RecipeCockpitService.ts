@@ -46,7 +46,7 @@ import {
 } from './RecipeCockpitTreeHistory';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { RunFakerConfirmation } from '../ExtensionCommandService/RunFakerConfirmation';
-import { IScratchOrgPlan, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
+import { IScratchOrgAliasChoice, IScratchOrgPlan, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
 import { PARENT_PICKER_RANDOM_LABEL, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 
 // SHARED WITH THE TESTS SO THE PANEL'S VIEW TYPE CANNOT DRIFT FROM WHAT IS ASSERTED
@@ -879,6 +879,18 @@ export interface IRecipeCockpitMetadataDeployStateMessage {
     hasOutput: boolean;
 }
 
+/*
+    "Open in browser" (#279): the panel disabled the button on the click, and this says the open has
+    finished -- whether it opened, refused or failed is a notification's, since the URL it opened
+    carries a session id and nothing about it is ever posted.
+*/
+export interface IRecipeCockpitOrgOpenStateMessage {
+    command: 'orgOpenState';
+    isRunning: boolean;
+}
+
+export const RECIPE_COCKPIT_OPEN_ORG_LABEL = 'Open in browser';
+
 export const RECIPE_COCKPIT_METADATA_DEPLOY_ACTION_LABEL = 'Deploy this metadata…';
 
 export const RECIPE_COCKPIT_METADATA_DEPLOY_CONFIRM_LABEL = 'Deploy';
@@ -890,6 +902,11 @@ export const RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL = 'View output';
 export const RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL = 'Create scratch org';
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER = 'Choose the Dev Hub to create the scratch org through';
+
+// #279: THE READER NAMES THE ORG; THERE IS NO DEFAULT ALIAS, SO THE PLACEHOLDER IS ONLY AN EXAMPLE
+export const RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PROMPT = 'Alias for the new scratch org: the name the Salesforce CLI, the org picker and later commands will know it by.';
+
+export const RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PLACEHOLDER = 'for example qa-accounts';
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL = 'View output';
 
@@ -914,6 +931,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitObjectSelectionMessage
                                         | IRecipeCockpitScratchOrgStateMessage
                                         | IRecipeCockpitMetadataDeployStateMessage
+                                        | IRecipeCockpitOrgOpenStateMessage
                                         | IRecipeCockpitDatasetAddedMessage;
 
 /*
@@ -1034,7 +1052,9 @@ export type RecipeCockpitPanelAction =
     | { kind: 'viewScratchOrgOutput'; outputFilePath: string }
     | { kind: 'deployTreeMetadata'; treeKey: string; isSelectedOrg: boolean }
     | { kind: 'postMetadataDeployState'; hostMessage: IRecipeCockpitMetadataDeployStateMessage }
-    | { kind: 'viewMetadataDeployOutput'; outputFilePath: string };
+    | { kind: 'viewMetadataDeployOutput'; outputFilePath: string }
+    | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
+    | { kind: 'postOrgOpenState'; hostMessage: IRecipeCockpitOrgOpenStateMessage };
 
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened --
@@ -1067,6 +1087,8 @@ export interface IRecipeCockpitPanelState {
     treeHistoryTargets: IRecipeCockpitTreeHistoryTargets;
     pendingTreeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
     treeHistoryAllowLists: IRecipeCockpitTreeHistoryAllowLists;
+    // "Open in browser" (#279): ONE "sf org open" AT A TIME, SO A DOUBLE CLICK OPENS ONE TAB
+    isOrgOpenInFlight?: boolean;
     isGenerateTreecipeInFlight: boolean;
     pendingIsGenerateTreecipeOffered: boolean;
     isGenerateTreecipeOffered: boolean;
@@ -2796,6 +2818,7 @@ export class RecipeCockpitService {
 
         this.adoptScratchOrgRunState(this.recipeCockpitPanelState);
         this.adoptMetadataDeployRunState(this.recipeCockpitPanelState);
+        this.recipeCockpitPanelState.isOrgOpenInFlight = this.isOrgOpenInFlightForWindow;
 
         if ( previousPanelState ) {
             // WHAT A "View errors" LINK OPENS, AND THE SEQUENCE A NEW SELECTION MUST STAY ABOVE
@@ -3347,6 +3370,16 @@ export class RecipeCockpitService {
                 return;
 
             case 'postMetadataDeployState':
+
+                this.postToPanel(cockpitPanel, panelAction.hostMessage);
+                return;
+
+            case 'openDataOrg':
+
+                await this.openDataOrgInBrowser(panelState, panelAction.orgDetail);
+                return;
+
+            case 'postOrgOpenState':
 
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
                 return;
@@ -3950,17 +3983,21 @@ export class RecipeCockpitService {
         let scratchOrgPlan: IScratchOrgPlan | undefined;
 
         try {
-            scratchOrgPlan = await ScratchOrgService.resolveScratchOrgPlan(workspaceRoot, () => VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(
-                SalesforceOrgService.listDevHubOrgDetailsForPicker(workspaceRoot),
-                RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER
-            ));
+            scratchOrgPlan = await ScratchOrgService.resolveScratchOrgPlan(
+                workspaceRoot,
+                () => VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(
+                    SalesforceOrgService.listDevHubOrgDetailsForPicker(workspaceRoot),
+                    RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER
+                ),
+                () => this.promptForScratchOrgAlias()
+            );
         } catch (planError) {
             const refusalMessage = String(planError?.message ?? planError);
             VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(refusalMessage));
             return { statusText: refusalMessage, isFailure: true };
         }
 
-        // NO DEV HUB PICKED -- DISMISSED, OR NONE TO OFFER, WHICH THE PICKER HAS ALREADY SAID -- IS A CANCEL
+        // NO DEV HUB PICKED -- DISMISSED, OR NONE TO OFFER, WHICH THE PICKER HAS ALREADY SAID -- OR NO ALIAS ENTERED, IS A CANCEL
         if ( !scratchOrgPlan ) {
             return { statusText: '', isFailure: false };
         }
@@ -4038,7 +4075,7 @@ export class RecipeCockpitService {
         }
 
         if ( setupOutcome.kind === 'deployUnconfirmed' ) {
-            const unconfirmedText = `The deploy to ${alias} ran, but its answer was too large to read, so whether it succeeded is unknown. Check it with "sf project deploy report --target-org ${alias}". The scratch org ${orgText} is kept.`;
+            const unconfirmedText = `The deploy to ${alias} ran, but its answer was too large to read, so whether it succeeded is unknown. Check it with "sf project deploy report --target-org ${setupOutcome.username}". The scratch org ${orgText} is kept.`;
             VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(unconfirmedText));
             return { statusText: `${unconfirmedText} ${selectionText}`, isFailure: true };
         }
@@ -4059,6 +4096,124 @@ export class RecipeCockpitService {
             isFailure: !isListed,
             outputFilePath: setupOutcome.outputFilePath
         };
+
+    }
+
+    /*
+        "Open in browser" (#279): "sf org open --url-only --json" for the selected org's USERNAME,
+        and the https: URL it answers handed to the reader's browser by VS Code, which also works
+        where the CLI has no browser of its own. The URL logs the reader in -- it carries a session
+        id -- so it goes to openExternal and nowhere else: never posted, saved, logged or quoted in
+        a notification. Notifications are not awaited, so the button comes back without a click.
+
+        One open per WINDOW, like the scratch org run: a panel closed and reopened mid-open starts
+        from this flag, is told the open is running when its document loads, and is the panel the
+        closing state goes to. Anything that throws is answered with a fixed message rather than
+        the error's own text, which the generic handler would carry into a Report Issue URL.
+    */
+    private static isOrgOpenInFlightForWindow = false;
+
+    private static async openDataOrgInBrowser(panelState: IRecipeCockpitPanelState, orgDetail: IAuthenticatedOrgDetail) {
+
+        this.isOrgOpenInFlightForWindow = true;
+        panelState.isOrgOpenInFlight = true;
+        const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
+
+        try {
+
+            const openOutcome = await ScratchOrgService.resolveOrgOpenUrl(orgDetail.username);
+
+            if ( 'failureMessage' in openOutcome ) {
+                this.showOrgOpenError(`${orgLabel} was not opened: ${openOutcome.failureMessage}`);
+                return;
+            }
+
+            const isOpened = await vscode.env.openExternal(vscode.Uri.parse(openOutcome.url, true));
+
+            if ( !isOpened ) {
+                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${orgLabel} was not opened: the browser did not accept the address.`));
+            }
+
+        } catch {
+
+            this.showOrgOpenError(`${orgLabel} was not opened: the browser could not be started.`);
+
+        } finally {
+
+            this.isOrgOpenInFlightForWindow = false;
+            panelState.isOrgOpenInFlight = false;
+            this.recipeCockpitPanelState.isOrgOpenInFlight = false;
+
+            if ( this.recipeCockpitPanel ) {
+                this.postToPanel(this.recipeCockpitPanel, { command: 'orgOpenState', isRunning: false });
+            }
+
+        }
+
+    }
+
+    // NOT AWAITED: THE BUTTON COMES BACK WITHOUT WAITING FOR THE READER TO DISMISS THE NOTIFICATION
+    private static showOrgOpenError(errorText: string) {
+
+        Promise.resolve(vscode.window.showErrorMessage(RecipeYamlScalar.escapeForNotification(errorText))).catch(() => undefined);
+
+    }
+
+    /*
+        The new org's alias, asked after the Dev Hub and before the modal (#279). There is no
+        default: the box starts empty and an empty or unusable alias cannot be submitted. An alias
+        another authorized org holds is a WARNING, not a refusal -- the CLI moves it to the new org,
+        which may be exactly what the reader wants -- and the modal repeats it. Escape is a cancel.
+        Which org holds which alias is read from the local authorizations only, and a failure to
+        read them costs only the warning.
+    */
+    private static async promptForScratchOrgAlias(): Promise<IScratchOrgAliasChoice | undefined> {
+
+        let aliasHolders = new Map<string, string>();
+
+        try {
+            aliasHolders = await SalesforceOrgService.listAliasHolders();
+        } catch {
+            // NO WARNING TO GIVE: THE CREATE ITSELF STILL WORKS
+        }
+
+        const enteredAlias = await vscode.window.showInputBox({
+            title: 'New scratch org',
+            prompt: RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PROMPT,
+            placeHolder: RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PLACEHOLDER,
+            ignoreFocusOut: true,
+            validateInput: (typedAlias: string) => this.validateScratchOrgAliasInput(typedAlias, aliasHolders)
+        });
+
+        if ( enteredAlias === undefined ) {
+            return undefined;
+        }
+
+        const alias = enteredAlias.trim();
+        const aliasHolderUsername = aliasHolders.get(alias);
+
+        return aliasHolderUsername ? { alias: alias, aliasHolderUsername: aliasHolderUsername } : { alias: alias };
+
+    }
+
+    // AN INPUT BOX'S MESSAGE RENDERS [label](command:...) AS A NOTIFICATION DOES, SO THE HOLDER'S USERNAME IS ESCAPED
+    static validateScratchOrgAliasInput(typedAlias: string, aliasHolders: Map<string, string>): string | vscode.InputBoxValidationMessage | undefined {
+
+        const alias = String(typedAlias ?? '').trim();
+        const aliasRefusal = ScratchOrgService.validateScratchOrgAlias(alias);
+
+        if ( aliasRefusal ) {
+            return aliasRefusal;
+        }
+
+        const aliasHolderUsername = aliasHolders.get(alias);
+
+        return aliasHolderUsername
+            ? {
+                message: RecipeYamlScalar.escapeForNotification(`"${alias}" is currently ${aliasHolderUsername}. Creating will move it to the new org.`),
+                severity: vscode.InputBoxValidationSeverity.Warning
+            }
+            : undefined;
 
     }
 
@@ -4107,7 +4262,9 @@ export class RecipeCockpitService {
             `Definition file: ${scratchOrgPlan.definitionFileRelativePath}`,
             ...definitionLines,
             `Package directories to deploy: ${scratchOrgPlan.packageDirectoryPaths.map(packageDirectoryPath => this.toSingleLine(packageDirectoryPath)).join(', ')}`,
-            `Alias: ${scratchOrgPlan.alias}`,
+            scratchOrgPlan.aliasHolderUsername
+                ? this.toSingleLine(`Alias: ${scratchOrgPlan.alias} — currently ${scratchOrgPlan.aliasHolderUsername}; the Salesforce CLI will move it to the new org`)
+                : this.toSingleLine(`Alias: ${scratchOrgPlan.alias}`),
             `Duration: ${scratchOrgPlan.durationDays} days`,
             '',
             'This deploys metadata authored in this repository, and the definition file decides who administers the new org.',
@@ -6034,6 +6191,40 @@ export class RecipeCockpitService {
 
             }
 
+            /*
+                "Open in browser" (#279) names the org by INDEX, and only the org SELECTED now is
+                opened: an index the panel could have kept from an older listing, or any other org
+                the list holds, is refused. Which username is the host's. A refusal still answers,
+                since the panel disabled the button on the click; a second click while one open is
+                in flight starts nothing and is told the open is running, and the first one's answer
+                re-enables the button.
+            */
+            case 'openDataOrg': {
+
+                const { orgIndex } = panelMessage;
+                const dataOrgSelection = panelState.dataOrgSelection;
+
+                // A RELOADED DOCUMENT MAY NOT KNOW AN OPEN IS RUNNING: IT IS TOLD, AND THE FIRST OPEN'S ANSWER RE-ENABLES IT
+                if ( panelState.isOrgOpenInFlight ) {
+                    return { kind: 'postOrgOpenState', hostMessage: { command: 'orgOpenState', isRunning: true } };
+                }
+
+                if ( typeof orgIndex !== 'number'
+                        || !Number.isInteger(orgIndex)
+                        || !panelState.recipeDataMessage
+                        || panelState.dataOrgObjectApiNames.size === 0
+                        || panelState.scratchOrgStateMessage?.isRunning
+                        || panelState.metadataDeployStateMessage?.isRunning
+                        || !dataOrgSelection
+                        || dataOrgSelection.orgIndex !== orgIndex
+                        || panelState.dataOrgDetails[orgIndex]?.username !== dataOrgSelection.orgDetail.username ) {
+                    return { kind: 'postOrgOpenState', hostMessage: { command: 'orgOpenState', isRunning: false } };
+                }
+
+                return { kind: 'openDataOrg', orgDetail: dataOrgSelection.orgDetail };
+
+            }
+
             // NO PAYLOAD: THE FILE IS THE ONE THE LAST DEPLOY WROTE, HELD ON THE HOST
             case 'viewMetadataDeployOutput':
 
@@ -6102,6 +6293,10 @@ export class RecipeCockpitService {
 
         if ( panelState.addFriendStateMessage ) {
             replayMessages.push(panelState.addFriendStateMessage);
+        }
+
+        if ( panelState.isOrgOpenInFlight ) {
+            replayMessages.push({ command: 'orgOpenState', isRunning: true });
         }
 
         if ( panelState.scratchOrgStateMessage ) {
@@ -7270,7 +7465,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader:hover { box-shadow: inset 4px 0 0 var(--sdt-accent); }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .treeDeploy, .metadataDeployViewOutput {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treeDeploy, .metadataDeployViewOutput {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
@@ -7282,7 +7477,7 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treeDeploy:hover:not(:disabled), .metadataDeployViewOutput:hover:not(:disabled) {
+    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treeDeploy:hover:not(:disabled), .metadataDeployViewOutput:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
     .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
@@ -7307,7 +7502,7 @@ ${this.buildPaletteCustomProperties()}
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
     .treeAddFriendChoice, .historyAction, .treeInsertErrors, .scratchOrgViewOutput, .metadataDeployViewOutput { text-decoration: underline; }
-    .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .treeRecordCountInput:disabled, .treeDeploy:disabled {
+    .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treeDeploy:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
         border-color: var(--sdt-border);
@@ -7556,6 +7751,7 @@ ${this.buildPaletteCustomProperties()}
     const EVERY_FIELD_UNTICKED_WARNING = ${JSON.stringify(RECIPE_COCKPIT_EVERY_FIELD_UNTICKED_WARNING)};
     const RESET_SELECTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RESET_SELECTION_LABEL)};
     const REFRESH_ORGS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REFRESH_ORGS_LABEL)};
+    const OPEN_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OPEN_ORG_LABEL)};
 
     let treeStates = [];
     let treesViewElement = null;
@@ -7591,6 +7787,8 @@ ${this.buildPaletteCustomProperties()}
     // "Deploy this metadata…" (#211, #273): THE HOST'S LAST metadataDeployState, AND WHETHER A DEPLOY HOLDS THE PICKER, EVERY INSERT AND EVERY DEPLOY DISABLED
     let metadataDeployState = null;
     let isMetadataDeployRunning = false;
+    // "Open in browser" (#279): SET ON THE CLICK, CLEARED BY THE HOST'S orgOpenState
+    let isOrgOpenRunning = false;
     // THE renderSequence THE PICKER ASKED FOR ITS ORGS UNDER -- ONE ASK PER MODEL, MADE THE FIRST TIME A TREECIPE TAB OPENS OR THE PICKER IS USED
     let dataOrgRequestedSequence = null;
     // THE LATEST SELECTION THE HOST NAMED; COUNTS FOR ANY OTHER ARE A DIFFERENT ORG'S, OR AN OLDER ASK OF THIS ONE
@@ -7788,6 +7986,7 @@ ${this.buildPaletteCustomProperties()}
             loadElement: createElement('button', 'dataOrgLoad', 'Choose org…'),
             selectElement: createElement('select', 'dataOrgSelect hidden'),
             typeElement: createElement('span', 'dataOrgType hidden'),
+            openOrgElement: createElement('button', 'dataOrgOpen hidden', OPEN_ORG_LABEL),
             refreshElement: createElement('button', 'dataOrgRefresh hidden'),
             newScratchElement: createElement('button', 'dataOrgNewScratch', '+ New scratch org'),
             hiddenNoteElement: createElement('div', 'dataOrgHiddenNote muted hidden'),
@@ -7821,8 +8020,17 @@ ${this.buildPaletteCustomProperties()}
             vscodeApi.postMessage({ command: 'refreshDataOrgs' });
         });
 
+        // THE SELECTION'S INDEX ONLY: THE HOST OPENS THE ORG IT HAS SELECTED, AND NOTHING COMES BACK BUT "DONE"
+        dataOrgView.openOrgElement.setAttribute('title', 'Log in to the selected org in your browser');
+        dataOrgView.openOrgElement.addEventListener('click', function () {
+            if (isOrgOpenRunning || isScratchOrgRunning || isMetadataDeployRunning || dataOrgSelectedIndex === null) { return; }
+            isOrgOpenRunning = true;
+            drawDataOrgViews();
+            vscodeApi.postMessage({ command: 'openDataOrg', orgIndex: dataOrgSelectedIndex });
+        });
+
         // THE MESSAGE CARRIES NOTHING: THE DEV HUB, THE DEFINITION FILE, WHAT IS DEPLOYED AND THE ALIAS ARE ALL THE HOST'S
-        dataOrgView.newScratchElement.setAttribute('title', 'Choose a Dev Hub, create a scratch org through it, deploy the source of this project to it and select it');
+        dataOrgView.newScratchElement.setAttribute('title', 'Choose a Dev Hub, name the new scratch org, create it through the Dev Hub, deploy the source of this project to it and select it');
         dataOrgView.newScratchElement.addEventListener('click', function () {
             if (isScratchOrgRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
             isDataOrgPickerInUse = true;
@@ -7839,6 +8047,7 @@ ${this.buildPaletteCustomProperties()}
         pickerElement.appendChild(dataOrgView.loadElement);
         pickerElement.appendChild(dataOrgView.selectElement);
         pickerElement.appendChild(dataOrgView.typeElement);
+        pickerElement.appendChild(dataOrgView.openOrgElement);
         pickerElement.appendChild(dataOrgView.refreshElement);
         pickerElement.appendChild(dataOrgView.newScratchElement);
         viewElement.appendChild(pickerElement);
@@ -7903,6 +8112,10 @@ ${this.buildPaletteCustomProperties()}
         dataOrgView.selectElement.disabled = isScratchOrgRunning || isMetadataDeployRunning;
         dataOrgView.loadElement.disabled = isScratchOrgRunning || isMetadataDeployRunning;
         dataOrgView.refreshElement.disabled = isScratchOrgRunning || isMetadataDeployRunning || isDataOrgRefreshDisabled;
+
+        setShown(dataOrgView.openOrgElement, isDataOrgSelectShown && dataOrgSelectedIndex !== null);
+        dataOrgView.openOrgElement.disabled = isOrgOpenRunning || isScratchOrgRunning || isMetadataDeployRunning;
+        dataOrgView.openOrgElement.textContent = isOrgOpenRunning ? 'Opening…' : OPEN_ORG_LABEL;
 
         const scratchStatusText = scratchOrgState ? scratchOrgState.statusText : '';
         dataOrgView.scratchStatusTextElement.textContent = scratchStatusText;
@@ -10530,6 +10743,12 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'metadataDeployState') {
             renderMetadataDeployState(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'orgOpenState') {
+            isOrgOpenRunning = !!hostMessage.isRunning;
+            drawDataOrgViews();
             return;
         }
 

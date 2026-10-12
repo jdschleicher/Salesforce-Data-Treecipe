@@ -21,6 +21,7 @@ jest.mock('vscode', () => ({
         showInformationMessage: jest.fn(),
         showErrorMessage: jest.fn(),
         showQuickPick: jest.fn(),
+        showInputBox: jest.fn(),
         createOutputChannel: jest.fn(),
         createStatusBarItem: jest.fn().mockImplementation(() => ({ text: '', show: jest.fn(), dispose: jest.fn() }))
     },
@@ -28,6 +29,7 @@ jest.mock('vscode', () => ({
     ViewColumn: { One: 1 },
     StatusBarAlignment: { Left: 1, Right: 2 },
     ProgressLocation: { Notification: 15, Window: 10 },
+    InputBoxValidationSeverity: { Info: 1, Warning: 2, Error: 3 },
     ConfigurationTarget: { Workspace: 2 },
     FileType: { Directory: 2, File: 1, SymbolicLink: 64 },
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }), parse: (uriValue: string) => ({ toString: () => uriValue }) }
@@ -48,6 +50,8 @@ import {
     RecipeCockpitService,
     RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
+    RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PLACEHOLDER,
+    RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PROMPT,
     RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL,
     RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER,
     RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL
@@ -73,6 +77,7 @@ const DEPLOY_SUCCESS = fs.readFileSync(path.join(SCRATCH_ORG_MOCKS_PATH, 'deploy
 const DEPLOY_ONE_COMPONENT_FAILURE = fs.readFileSync(path.join(SCRATCH_ORG_MOCKS_PATH, 'deployOneComponentFailure.json'), 'utf-8');
 
 const NEW_SCRATCH_USERNAME = 'test-newscratch@example.com';
+const CHOSEN_ALIAS = 'qa-accounts';
 const DEV_HUB_AUTHORIZATION = { username: 'hub@example.com', aliases: ['devhub'], isDevHub: true, instanceUrl: 'https://acme.my.salesforce.com' };
 const LEAD_TREE_KEY = 'Lead-ONLY';
 
@@ -318,6 +323,8 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             (vscode.window.showErrorMessage as jest.Mock).mockReset();
             (vscode.window.showErrorMessage as jest.Mock).mockResolvedValue(undefined);
             (vscode.window.showInformationMessage as jest.Mock).mockReset();
+            (vscode.window.showInputBox as jest.Mock).mockReset();
+            (vscode.window.showInputBox as jest.Mock).mockResolvedValue(CHOSEN_ALIAS);
 
             (vscode.window.createWebviewPanel as jest.Mock).mockImplementation(() => ({
                 reveal: jest.fn(),
@@ -380,13 +387,110 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(modalOptions.detail).not.toContain('replacements');
             expect(modalOptions.detail).toContain(`Definition file: ${path.join('config', 'project-scratch-def.json')}`);
             expect(modalOptions.detail).toContain('Package directories to deploy: force-app, unpackaged');
-            expect(modalOptions.detail).toMatch(/Alias: treecipe-\d{8}-\d{6}/);
+            expect(modalOptions.detail).toContain(`Alias: ${CHOSEN_ALIAS}\n`);
+            expect(modalOptions.detail).not.toContain('will move it');
             expect(modalOptions.detail).toContain('Duration: 7 days');
             expect(modalAction).toBe(RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL);
 
             expect(execFile).not.toHaveBeenCalled();
             expect(vscode.window.withProgress).not.toHaveBeenCalled();
             expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false, statusText: '', isFailure: false, hasOutput: false });
+
+        });
+
+        it('asks for the alias after the Dev Hub and before the modal, in an empty box with no default (#279)', async () => {
+
+            const promptOrder: string[] = [];
+            devHubPromptSpy.mockImplementation(async (orgListing: Promise<any>) => { promptOrder.push('devHub'); return (await orgListing).orgDetails[0]; });
+            (vscode.window.showInputBox as jest.Mock).mockImplementation(async () => { promptOrder.push('alias'); return CHOSEN_ALIAS; });
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => { promptOrder.push('modal'); return undefined; });
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            expect(promptOrder).toEqual(['devHub', 'alias', 'modal']);
+            const [inputBoxOptions] = (vscode.window.showInputBox as jest.Mock).mock.calls[0];
+            expect(inputBoxOptions).toMatchObject({ prompt: RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PROMPT, placeHolder: RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PLACEHOLDER, ignoreFocusOut: true });
+            expect(inputBoxOptions.value).toBeUndefined();
+            expect(inputBoxOptions.placeHolder).not.toContain('treecipe');
+
+        });
+
+        it('runs nothing and says nothing when the alias box is dismissed (#279)', async () => {
+
+            (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+            expect(notificationWarningSpy).not.toHaveBeenCalled();
+            expect(execFile).not.toHaveBeenCalled();
+            expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME))).toBe(false);
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false, statusText: '', isFailure: false, hasOutput: false });
+
+        });
+
+        it('refuses an empty or unusable alias while it is typed, warns on one another org holds, and accepts the rest (#279)', async () => {
+
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            const { validateInput } = (vscode.window.showInputBox as jest.Mock).mock.calls[0][0];
+            expect(validateInput('')).toBe('Enter an alias for the new scratch org.');
+            expect(validateInput('   ')).toBe('Enter an alias for the new scratch org.');
+            expect(validateInput('-qa')).toContain('An alias is letters, digits');
+            expect(validateInput('qa accounts')).toContain('An alias is letters, digits');
+            expect(validateInput('me@example.com')).toContain('"@"');
+            expect(validateInput(CHOSEN_ALIAS)).toBeUndefined();
+            expect(validateInput(' uat ')).toEqual({
+                message: RecipeYamlScalar.escapeForNotification('"uat" is currently uat@example.com.uat. Creating will move it to the new org.'),
+                severity: vscode.InputBoxValidationSeverity.Warning
+            });
+
+        });
+
+        it('lets the reader move an alias another org holds, saying so in the modal, and creates with it (#279)', async () => {
+
+            (vscode.window.showInputBox as jest.Mock).mockResolvedValue(' uat ');
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            const [, modalOptions] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
+            expect(modalOptions.detail).toContain('Alias: uat — currently uat@example.com.uat; the Salesforce CLI will move it to the new org');
+            const createArguments = cliCalls.find(argumentList => argumentList[1] === 'create');
+            expect(aliasOf(createArguments)).toBe('uat');
+            expect(cliCalls.find(argumentList => argumentList[1] === 'deploy')).toEqual(['project', 'deploy', 'start', '--target-org', NEW_SCRATCH_USERNAME, '--json']);
+
+        });
+
+        it('refuses an alias the box should not have let through, before the modal and any process (#279)', async () => {
+
+            (vscode.window.showInputBox as jest.Mock).mockResolvedValue('--json');
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+            expect(notificationWarningSpy).toHaveBeenCalledWith(RecipeYamlScalar.escapeForNotification('No scratch org was created: An alias is letters, digits and . _ + -, starts with a letter or digit, and does not end with ".".'));
+            expect(execFile).not.toHaveBeenCalled();
+            expect(lastScratchOrgState()).toMatchObject({ isRunning: false, isFailure: true });
+
+        });
+
+        it('still asks for the alias, without a warning to give, when the authorizations cannot be read (#279)', async () => {
+
+            jest.spyOn(SalesforceOrgService, 'listAliasHolders').mockRejectedValue(new Error('auth files unreadable'));
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+            await openRenderedCockpit();
+
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+
+            const { validateInput } = (vscode.window.showInputBox as jest.Mock).mock.calls[0][0];
+            expect(validateInput('uat')).toBeUndefined();
+            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0][1].detail).toContain(`Alias: ${CHOSEN_ALIAS}`);
 
         });
 
@@ -403,7 +507,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(cliCallKinds()).toEqual(['org list', 'org create', 'project deploy', 'org list']);
             const [createArguments, deployArguments] = [cliCalls[1], cliCalls[2]];
             const alias = createArguments[createArguments.indexOf('--alias') + 1];
-            expect(alias).toMatch(/^treecipe-\d{8}-\d{6}$/);
+            expect(alias).toBe(CHOSEN_ALIAS);
             expect(createArguments).toEqual([
                 'org', 'create', 'scratch',
                 '--definition-file', path.join('config', 'project-scratch-def.json'),
@@ -412,7 +516,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
                 '--target-dev-hub', 'hub@example.com',
                 '--json'
             ]);
-            expect(deployArguments).toEqual(['project', 'deploy', 'start', '--target-org', alias, '--json']);
+            expect(deployArguments).toEqual(['project', 'deploy', 'start', '--target-org', NEW_SCRATCH_USERNAME, '--json']);
             expect(deployArguments).not.toContain('--ignore-errors');
 
             const lastList = postedNamed('dataOrgList').at(-1);
@@ -854,7 +958,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             definitionFileRelativePath: 'config/project-scratch-def.json',
             packageDirectoryPaths: ['force-app'],
             devHub: { targetOrgIdentifier: 'hub@example.com', username: 'hub@example.com', configSource: 'global' as const },
-            alias: 'treecipe-20261010-000000',
+            alias: 'qa-accounts',
             durationDays: 7,
             definitionSummary: {},
             hasFileOrEnvironmentReplacements: false
@@ -894,7 +998,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             await receivedMessageHandler({ command: 'createScratchOrg' });
 
             expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0]).toBe('Create a scratch org through the Dev Hub hub@example.com and deploy this project\'s source to it?');
-            expect(lastScratchOrgState().statusText).toStartWith('Scratch org treecipe-20261010-000000 (test-one@example.com) is ready: 1 component deployed.');
+            expect(lastScratchOrgState().statusText).toStartWith('Scratch org qa-accounts (test-one@example.com) is ready: 1 component deployed.');
             expect(lastScratchOrgState()).toMatchObject({ isFailure: true, hasOutput: false });
 
         });
@@ -952,6 +1056,32 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(postedPanelMessages.slice(postedBefore).filter(hostMessage => hostMessage.command !== 'scratchOrgState' || hostMessage.isRunning)).toEqual([
                 expect.objectContaining({ command: 'scratchOrgState', isRunning: true })
             ]);
+
+        });
+
+    });
+
+    describe('validateScratchOrgAliasInput (#279)', () => {
+
+        it('escapes the holder it names, since an input box renders [label](command:...) as a link', () => {
+
+            const validationMessage = RecipeCockpitService.validateScratchOrgAliasInput('qa', new Map([['qa', '[click](command:workbench.action.terminal.new)']])) as vscode.InputBoxValidationMessage;
+
+            expect(validationMessage.message).toBe(RecipeYamlScalar.escapeForNotification('"qa" is currently [click](command:workbench.action.terminal.new). Creating will move it to the new org.'));
+            expect(validationMessage.message).not.toContain('](command:');
+
+        });
+
+        it('reads a missing value as an empty alias', () => {
+
+            expect(RecipeCockpitService.validateScratchOrgAliasInput(undefined as unknown as string, new Map())).toBe('Enter an alias for the new scratch org.');
+
+        });
+
+        it('does not read an alias named __proto__ off a prototype', () => {
+
+            expect(RecipeCockpitService.validateScratchOrgAliasInput('constructor', new Map())).toBeUndefined();
+            expect(RecipeCockpitService.validateScratchOrgAliasInput('toString', new Map([['constructor', 'x@example.com']]))).toBeUndefined();
 
         });
 
