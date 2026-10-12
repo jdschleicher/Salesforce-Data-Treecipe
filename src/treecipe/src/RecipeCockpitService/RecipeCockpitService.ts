@@ -2967,6 +2967,7 @@ export class RecipeCockpitService {
 
         this.adoptScratchOrgRunState(this.recipeCockpitPanelState);
         this.adoptMetadataDeployRunState(this.recipeCockpitPanelState);
+        this.recipeCockpitPanelState.isOrgOpenInFlight = this.isOrgOpenInFlightForWindow;
 
         if ( previousPanelState ) {
             // WHAT A "View errors" LINK OPENS, AND THE SEQUENCE A NEW SELECTION MUST STAY ABOVE
@@ -3584,7 +3585,7 @@ export class RecipeCockpitService {
 
             case 'openDataOrg':
 
-                await this.openDataOrgInBrowser(cockpitPanel, panelState, panelAction.orgDetail);
+                await this.openDataOrgInBrowser(panelState, panelAction.orgDetail);
                 return;
 
             case 'postOrgOpenState':
@@ -4529,9 +4530,17 @@ export class RecipeCockpitService {
         where the CLI has no browser of its own. The URL logs the reader in -- it carries a session
         id -- so it goes to openExternal and nowhere else: never posted, saved, logged or quoted in
         a notification. Notifications are not awaited, so the button comes back without a click.
-    */
-    private static async openDataOrgInBrowser(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, orgDetail: IAuthenticatedOrgDetail) {
 
+        One open per WINDOW, like the scratch org run: a panel closed and reopened mid-open starts
+        from this flag, is told the open is running when its document loads, and is the panel the
+        closing state goes to. Anything that throws is answered with a fixed message rather than
+        the error's own text, which the generic handler would carry into a Report Issue URL.
+    */
+    private static isOrgOpenInFlightForWindow = false;
+
+    private static async openDataOrgInBrowser(panelState: IRecipeCockpitPanelState, orgDetail: IAuthenticatedOrgDetail) {
+
+        this.isOrgOpenInFlightForWindow = true;
         panelState.isOrgOpenInFlight = true;
         const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
 
@@ -4540,7 +4549,7 @@ export class RecipeCockpitService {
             const openOutcome = await ScratchOrgService.resolveOrgOpenUrl(orgDetail.username);
 
             if ( 'failureMessage' in openOutcome ) {
-                Promise.resolve(vscode.window.showErrorMessage(RecipeYamlScalar.escapeForNotification(`${orgLabel} was not opened: ${openOutcome.failureMessage}`))).catch(() => undefined);
+                this.showOrgOpenError(`${orgLabel} was not opened: ${openOutcome.failureMessage}`);
                 return;
             }
 
@@ -4550,12 +4559,28 @@ export class RecipeCockpitService {
                 VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${orgLabel} was not opened: the browser did not accept the address.`));
             }
 
+        } catch {
+
+            this.showOrgOpenError(`${orgLabel} was not opened: the browser could not be started.`);
+
         } finally {
 
+            this.isOrgOpenInFlightForWindow = false;
             panelState.isOrgOpenInFlight = false;
-            this.postToPanel(cockpitPanel, { command: 'orgOpenState', isRunning: false });
+            this.recipeCockpitPanelState.isOrgOpenInFlight = false;
+
+            if ( this.recipeCockpitPanel ) {
+                this.postToPanel(this.recipeCockpitPanel, { command: 'orgOpenState', isRunning: false });
+            }
 
         }
+
+    }
+
+    // NOT AWAITED: THE BUTTON COMES BACK WITHOUT WAITING FOR THE READER TO DISMISS THE NOTIFICATION
+    private static showOrgOpenError(errorText: string) {
+
+        Promise.resolve(vscode.window.showErrorMessage(RecipeYamlScalar.escapeForNotification(errorText))).catch(() => undefined);
 
     }
 
@@ -6736,15 +6761,17 @@ export class RecipeCockpitService {
                 opened: an index the panel could have kept from an older listing, or any other org
                 the list holds, is refused. Which username is the host's. A refusal still answers,
                 since the panel disabled the button on the click; a second click while one open is
-                in flight is dropped, and the first one's answer re-enables the button.
+                in flight starts nothing and is told the open is running, and the first one's answer
+                re-enables the button.
             */
             case 'openDataOrg': {
 
                 const { orgIndex } = panelMessage;
                 const dataOrgSelection = panelState.dataOrgSelection;
 
+                // A RELOADED DOCUMENT MAY NOT KNOW AN OPEN IS RUNNING: IT IS TOLD, AND THE FIRST OPEN'S ANSWER RE-ENABLES IT
                 if ( panelState.isOrgOpenInFlight ) {
-                    return undefined;
+                    return { kind: 'postOrgOpenState', hostMessage: { command: 'orgOpenState', isRunning: true } };
                 }
 
                 if ( typeof orgIndex !== 'number'
@@ -6839,6 +6866,10 @@ export class RecipeCockpitService {
 
         if ( panelState.addFriendStateMessage ) {
             replayMessages.push(panelState.addFriendStateMessage);
+        }
+
+        if ( panelState.isOrgOpenInFlight ) {
+            replayMessages.push({ command: 'orgOpenState', isRunning: true });
         }
 
         if ( panelState.scratchOrgStateMessage ) {

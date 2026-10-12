@@ -127,12 +127,24 @@ describe('RecipeCockpitService, "Open in browser" beside the selected org (#279)
 
         });
 
-        it('drops a second click while one open is in flight: the first one answers', () => {
+        it('starts nothing for a second click while one open is in flight, and says the open is running', () => {
 
             const panelState = buildSelectedPanelState();
             panelState.isOrgOpenInFlight = true;
 
-            expect(RecipeCockpitService.routePanelMessage({ command: 'openDataOrg', orgIndex: 1 }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'openDataOrg', orgIndex: 1 }, panelState))
+                .toEqual({ kind: 'postOrgOpenState', hostMessage: { command: 'orgOpenState', isRunning: true } });
+
+        });
+
+        it('replays a running open to a reloaded document, and nothing when none is running', () => {
+
+            const panelState = buildSelectedPanelState();
+
+            expect((RecipeCockpitService.routePanelMessage({ command: 'ready' }, panelState) as any).hostMessages).not.toContainEqual(expect.objectContaining({ command: 'orgOpenState' }));
+
+            panelState.isOrgOpenInFlight = true;
+            expect((RecipeCockpitService.routePanelMessage({ command: 'ready' }, panelState) as any).hostMessages).toContainEqual({ command: 'orgOpenState', isRunning: true });
 
         });
 
@@ -322,14 +334,48 @@ describe('RecipeCockpitService, "Open in browser" beside the selected org (#279)
 
         });
 
-        it('answers even when opening throws, so the button is never left disabled', async () => {
+        it('answers a throw with a fixed message that quotes nothing, and never leaves the button disabled', async () => {
 
-            jest.spyOn(ScratchOrgService, 'resolveOrgOpenUrl').mockRejectedValue(new Error('broke'));
-            jest.spyOn(require('../../ErrorHandlingService/ErrorHandlingService').ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined as any);
+            answerOrgOpen(JSON.stringify({ status: 0, result: { url: ORG_OPEN_URL } }));
+            (vscode.env.openExternal as jest.Mock).mockRejectedValue(new Error(`could not open ${ORG_OPEN_URL}`));
             await openSelectedCockpit();
 
             await receivedMessageHandler({ command: 'openDataOrg', orgIndex: 0 });
 
+            expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(RecipeYamlScalar.escapeForNotification('qa · qa@example.com.qa was not opened: the browser could not be started.'));
+            expect(JSON.stringify((vscode.window.showErrorMessage as jest.Mock).mock.calls)).not.toContain(SESSION_ID);
+            expect(postedPanelMessages.at(-1)).toEqual(IDLE_STATE);
+            expect(panelState().isOrgOpenInFlight).toBe(false);
+            expect((RecipeCockpitService as any).isOrgOpenInFlightForWindow).toBe(false);
+
+        });
+
+        it('holds one open per window: a panel reopened mid-open is told it is running, refuses a second, and gets the closing state', async () => {
+
+            let finishOrgOpen: () => void = () => undefined;
+            jest.spyOn(ScratchOrgService, 'resolveOrgOpenUrl').mockImplementation(() => new Promise(resolve => {
+                finishOrgOpen = () => resolve({ isOpenable: true, url: ORG_OPEN_URL });
+            }));
+            await openSelectedCockpit();
+
+            const firstOpen = receivedMessageHandler({ command: 'openDataOrg', orgIndex: 0 });
+            await new Promise(resolve => setImmediate(resolve));
+
+            (RecipeCockpitService as any).recipeCockpitPanel = undefined;
+            postedPanelMessages = [];
+            await openSelectedCockpit();
+
+            expect(panelState().isOrgOpenInFlight).toBe(true);
+            expect(postedPanelMessages).toContainEqual({ command: 'orgOpenState', isRunning: true });
+
+            await receivedMessageHandler({ command: 'openDataOrg', orgIndex: 0 });
+            expect(ScratchOrgService.resolveOrgOpenUrl).toHaveBeenCalledTimes(1);
+            expect(postedPanelMessages.at(-1)).toEqual({ command: 'orgOpenState', isRunning: true });
+
+            finishOrgOpen();
+            await firstOpen;
+
+            expect(vscode.env.openExternal).toHaveBeenCalledTimes(1);
             expect(postedPanelMessages.at(-1)).toEqual(IDLE_STATE);
             expect(panelState().isOrgOpenInFlight).toBe(false);
 

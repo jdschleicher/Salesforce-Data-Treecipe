@@ -134,7 +134,27 @@ describe('ScratchOrgService (#200)', () => {
 
             expect(ScratchOrgService.validateScratchOrgAlias('qa@example.com')).toContain('"@"');
             ['-qa', 'qa accounts', 'qa"x', 'qa/x', 'qa\\x', '.', '..', 'qa\nx', 'qa;x', 'qa$x', '[qa](command:x)'].forEach(alias => {
-                expect(ScratchOrgService.validateScratchOrgAlias(alias)).toBe('An alias is letters, digits and . _ + -, and cannot start with "-" or be "." or "..".');
+                expect(ScratchOrgService.validateScratchOrgAlias(alias)).toBe('An alias is letters, digits and . _ + -, starts with a letter or digit, and does not end with ".".');
+            });
+
+        });
+
+        it('refuses an alias that does not start with a letter or digit, or ends with "." (Windows strips it from a folder name)', () => {
+
+            ['_qa', '+qa', '.qa', '...', 'qa.', 'qa..'].forEach(alias => {
+                expect(ScratchOrgService.validateScratchOrgAlias(alias)).toBe('An alias is letters, digits and . _ + -, starts with a letter or digit, and does not end with ".".');
+            });
+            expect(ScratchOrgService.validateScratchOrgAlias('qa.v2')).toBeUndefined();
+
+        });
+
+        it('refuses a Windows device name, with or without an extension, in any case', () => {
+
+            ['CON', 'con', 'Prn', 'aux', 'NUL', 'com1', 'LPT9', 'nul.txt', 'con.qa'].forEach(alias => {
+                expect(ScratchOrgService.validateScratchOrgAlias(alias)).toBe(`"${alias}" is a name Windows reserves for a device, so it cannot be an alias.`);
+            });
+            ['console', 'auxiliary', 'com10', 'nullable'].forEach(alias => {
+                expect(ScratchOrgService.validateScratchOrgAlias(alias)).toBeUndefined();
             });
 
         });
@@ -385,6 +405,16 @@ describe('ScratchOrgService (#200)', () => {
 
             expect(parseResult.isOpenable).toBe(false);
             expect(JSON.stringify(parseResult)).not.toContain('AQEAQsecret');
+
+        });
+
+        it('redacts a frontdoor address however its session parameter is spelled', () => {
+
+            ['https://acme.my.salesforce.com/secur/frontdoor.jsp?sid=abc.def', 'https://acme.my.salesforce.com/secur/frontdoor.jsp?otp=one-time&startURL=%2F', 'http://x.example.com/a?b=1&SID=zzz'].forEach(address => {
+                const redactedText = ScratchOrgService.redactSecretText(`failed to open ${address} in time`);
+                expect(redactedText).toBe(`failed to open ${ORG_OPERATION_REDACTED_VALUE} in time`);
+            });
+            expect(ScratchOrgService.redactSecretText('see https://help.salesforce.com/s/?language=en_US')).toBe('see https://help.salesforce.com/s/?language=en_US');
 
         });
 

@@ -13,6 +13,9 @@ export const ORG_OPEN_URL_PROTOCOL = 'https:';
 
 export const ORG_OPEN_TIMEOUT_MILLISECONDS = 60000;
 
+// WINDOWS RESERVES THESE AS DEVICE NAMES, WITH OR WITHOUT AN EXTENSION: A FOLDER BY THAT NAME CANNOT BE MADE
+export const WINDOWS_RESERVED_FOLDER_NAME_PATTERN = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
+
 export const SCRATCH_ORG_DURATION_DAYS = 7;
 
 export const SCRATCH_ORG_DEFINITION_FILE_RELATIVE_PATH = path.join('config', 'project-scratch-def.json');
@@ -144,7 +147,9 @@ export class ScratchOrgService {
         Why an alias cannot be used, or undefined when it can (#279). It is an argv value, the
         folder a failed create's result is saved under, and a name the CLI resolves --target-org
         against, so it is held to all three: an identifier the CLI is handed elsewhere, a folder
-        name that names no other folder, and no "@", which would read as a username.
+        name that names no other folder, and no "@", which would read as a username. It starts with
+        a letter or digit and does not end with ".", which Windows strips from a folder name, and it
+        is not a Windows device name, which no folder can have.
     */
     static validateScratchOrgAlias(alias: unknown): string | undefined {
 
@@ -160,8 +165,15 @@ export class ScratchOrgService {
             return 'An alias cannot contain "@", which would read as a username.';
         }
 
-        if ( !PicklistDependencyCheckService.isValidTargetOrgIdentifier(alias) || !this.isUsableOrgOperationFolderName(alias) ) {
-            return 'An alias is letters, digits and . _ + -, and cannot start with "-" or be "." or "..".';
+        if ( !PicklistDependencyCheckService.isValidTargetOrgIdentifier(alias)
+                || !this.isUsableOrgOperationFolderName(alias)
+                || !/^[A-Za-z0-9]/.test(alias)
+                || alias.endsWith('.') ) {
+            return 'An alias is letters, digits and . _ + -, starts with a letter or digit, and does not end with ".".';
+        }
+
+        if ( WINDOWS_RESERVED_FOLDER_NAME_PATTERN.test(alias) ) {
+            return `"${alias}" is a name Windows reserves for a device, so it cannot be an alias.`;
         }
 
         return undefined;
@@ -583,6 +595,8 @@ export class ScratchOrgService {
     static redactSecretText(text: string): string {
 
         return String(text ?? '')
+            // A FRONTDOOR ADDRESS ("sf org open --url-only") LOGS WHOEVER HAS IT IN, WHATEVER FORM ITS SESSION PARAMETER TAKES
+            .replace(/https?:\/\/[^\s"']*[?&](?:sid|otp)=[^\s"']*/gi, ORG_OPERATION_REDACTED_VALUE)
             .replace(/00D[A-Za-z0-9]{12,15}![A-Za-z0-9._-]+/g, ORG_OPERATION_REDACTED_VALUE)
             .replace(/force:\/\/[^\s"']+/g, ORG_OPERATION_REDACTED_VALUE);
 

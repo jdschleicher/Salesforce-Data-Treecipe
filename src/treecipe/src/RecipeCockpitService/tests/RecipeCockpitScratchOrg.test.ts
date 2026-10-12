@@ -474,7 +474,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             await receivedMessageHandler({ command: 'createScratchOrg' });
 
             expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
-            expect(notificationWarningSpy).toHaveBeenCalledWith(RecipeYamlScalar.escapeForNotification('No scratch org was created: An alias is letters, digits and . _ + -, and cannot start with "-" or be "." or "..".'));
+            expect(notificationWarningSpy).toHaveBeenCalledWith(RecipeYamlScalar.escapeForNotification('No scratch org was created: An alias is letters, digits and . _ + -, starts with a letter or digit, and does not end with ".".'));
             expect(execFile).not.toHaveBeenCalled();
             expect(lastScratchOrgState()).toMatchObject({ isRunning: false, isFailure: true });
 
@@ -1080,8 +1080,8 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
         it('does not read an alias named __proto__ off a prototype', () => {
 
-            expect(RecipeCockpitService.validateScratchOrgAliasInput('__proto__', new Map())).toBeUndefined();
             expect(RecipeCockpitService.validateScratchOrgAliasInput('constructor', new Map())).toBeUndefined();
+            expect(RecipeCockpitService.validateScratchOrgAliasInput('toString', new Map([['constructor', 'x@example.com']]))).toBeUndefined();
 
         });
 
