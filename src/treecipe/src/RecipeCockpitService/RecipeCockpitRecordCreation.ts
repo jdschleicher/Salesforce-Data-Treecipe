@@ -3,7 +3,7 @@
     whether each object of a tree is ready to be inserted into the selected org, which lookups a
     record must carry, and how the ones the recipe could not wire are filled.
 
-    This file imports NOTHING, like RecipeCockpitMetadataDiff and RecipeCockpitRecipeWriter. Its
+    This file imports NOTHING, like RecipeCockpitObjectSelection and RecipeCockpitRecipeWriter. Its
     inputs are structural -- SalesforceOrgService's normalized describe and Organization row fit them
     as they are -- so every guard is asserted on plain values, without an org or a webview.
 
@@ -159,7 +159,7 @@ export class RecipeCockpitRecordCreation {
     /*
         The fields a record cannot be inserted without and the user must send: not nillable,
         createable, and not one the org fills itself (defaultedOnCreate -- a checkbox, OwnerId). The
-        Treecipe tab marks such a field "required in <org>" when it is unticked (#220).
+        insert's readiness refuses such a field when it is unticked (#220).
     */
     static findRequiredFieldApiNames(describe: Pick<ICreateObjectDescribe, 'fields'>): string[] {
 

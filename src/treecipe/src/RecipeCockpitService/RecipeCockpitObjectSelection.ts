@@ -1,7 +1,7 @@
 /*
     Which objects of one relationship tree the Recipe Cockpit leaves out of generation (#219).
 
-    This file imports NOTHING, like RecipeCockpitMetadataDiff and RecipeCockpitRecipeWriter: the
+    This file imports NOTHING, like RecipeCockpitRecordCreation and RecipeCockpitRecipeWriter: the
     cascade is computed on the HOST from what the reader excluded directly, and posted to the panel,
     so the panel never decides what is generated.
 

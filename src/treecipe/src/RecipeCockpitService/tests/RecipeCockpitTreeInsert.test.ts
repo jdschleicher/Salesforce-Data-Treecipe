@@ -1061,30 +1061,12 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         });
 
-        it('lets the Compare tab send only describes and the Organization query: no COUNT and no data SELECT', async () => {
-
-            const connection = buildFakeConnection();
-            useConnection(connection);
-
-            await openSelectedCockpit(FAKER_JS_RUN);
-            await receivedMessageHandler({ command: 'selectOrg', treeKey: ACCOUNT_TREE_KEY });
-
-            const orgDescribe = postedNamed('orgDescribe').at(-1);
-            expect(orgDescribe).toMatchObject({ treeKey: ACCOUNT_TREE_KEY });
-            expect(connection.describe).toHaveBeenCalled();
-            expect(connection.sentQueries.length).toBeGreaterThan(0);
-            connection.sentQueries.forEach(soql => expect(soql).toBe('SELECT IsSandbox, OrganizationType FROM Organization'));
-            expect(connection.insertCalls).toEqual([]);
-
-        });
-
         it('sends no COUNT and no data SELECT from choosing an org through an insert, except the Ids of a required parent outside the tree', async () => {
 
             const connection = buildFakeConnection({ withOutsideParent: true });
             useConnection(connection);
 
             await openSelectedCockpit(FAKER_JS_RUN);
-            await receivedMessageHandler({ command: 'selectOrg', treeKey: ACCOUNT_TREE_KEY });
             await insertAccountTree();
 
             expect(connection.sentQueries.filter(soql => /COUNT\s*\(/i.test(soql))).toEqual([]);
