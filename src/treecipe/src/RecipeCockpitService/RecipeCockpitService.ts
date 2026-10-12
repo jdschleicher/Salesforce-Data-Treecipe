@@ -254,10 +254,8 @@ export const RECIPE_COCKPIT_NO_FAVORITES_MESSAGE = 'No favorite trees in this ru
 
 export const RECIPE_COCKPIT_INSERT_DATASET_COMMAND = 'treecipe.insertDataSetBySelectedDirectory';
 
-// A TREE CARD'S ▶ Run Faker HANDS ITS RECIPE FILE TO THIS COMMAND, WHICH KEEPS ITS CONFIRMATION AND BACKEND CHECK
+// A TREE CARD'S GENERATE BUTTON HANDS ITS RECIPE FILE TO THIS COMMAND, WHICH KEEPS ITS CONFIRMATION AND BACKEND CHECK
 export const RECIPE_COCKPIT_RUN_FAKER_COMMAND = 'treecipe.runFakerByRecipe';
-export const RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL = '▶ Run Faker';
-export const RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL = 'Running Faker…';
 
 // A SELF-LOOKUP ITERATION'S "+" ADDS ONE OF ITS OBJECT'S FRIENDS BENEATH IT (#197)
 export const RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = '+';
@@ -475,7 +473,7 @@ export interface IRecipeCockpitTreeObjectViewModel {
     the panel draws no Previously Used Data Sets tab for them.
 */
 /*
-    runFakerRecipeFileName is set only on a card ▶ Run Faker can run: the recipe FILE NAME, for the
+    runFakerRecipeFileName is set only on a card that can generate: the recipe FILE NAME, for the
     button's tooltip. The path stays on the host; the panel posts the treeKey.
 */
 export interface IRecipeCockpitTreeViewModel {
@@ -497,7 +495,7 @@ export interface IRecipeCockpitTreeViewModel {
     objectCounts?: IRecipeCockpitObjectCountViewModel[];
     // SET ONLY WHEN A FIELD OF THE CARD HAS A FIXED VALUE (#262) A LOCK DOES NOT HOLD BACK
     fixedValues?: IRecipeCockpitFixedValueViewModel[];
-    // SET ONLY ON A CARD ▶ Run Faker CAN RUN WHOSE RECIPE HAS A TODO LOOKUP WITH A PARENT INSERTED BEFORE IT (#151)
+    // SET ONLY ON A CARD THAT CAN GENERATE WHOSE RECIPE HAS A TODO LOOKUP WITH A PARENT INSERTED BEFORE IT (#151)
     lookupWirings?: IRecipeCockpitLookupWiringViewModel[];
 }
 
@@ -538,7 +536,7 @@ export interface IRecipeCockpitTreeFieldSelectionViewModel {
     objects: IRecipeCockpitObjectFieldSelectionViewModel[];
 }
 
-// WHAT ▶ Run Faker HANDS treecipe.runFakerByRecipe FOR A CARD THAT LEAVES SOMETHING OUT -- THE SHAPE ITS HANDLER TYPE-CHECKS
+// WHAT THE GENERATE BUTTON HANDS treecipe.runFakerByRecipe FOR A CARD THAT LEAVES SOMETHING OUT -- THE SHAPE ITS HANDLER TYPE-CHECKS
 export interface IRecipeCockpitRunFakerFilteredRecipe {
     recipeText: string;
     excludedObjectApiNames: string[];
@@ -766,12 +764,12 @@ export interface IRecipeCockpitDatasetRecordCountsMessage {
 }
 
 /*
-    Whether a Run Faker started from this panel is still running. Every Run Faker button is disabled
-    while it is, and the message is replayed on a reveal so a reloaded document does not offer a
-    second run the host would refuse.
+    Whether a generate-only run (#293) started from this panel is still running on one tree. Only
+    that tree's button is disabled while it is -- every other card can still generate -- and the
+    message is replayed on a reveal so a reloaded document does not offer a second run of that tree.
 */
-export interface IRecipeCockpitRunFakerStateMessage {
-    command: 'runFakerState';
+export interface IRecipeCockpitGenerateStateMessage {
+    command: 'generateState';
     isRunning: boolean;
     treeKey: string;
 }
@@ -869,7 +867,7 @@ export interface IRecipeCockpitDataOrgReadinessMessage {
     renderSequence: number;
 }
 
-// AN INSERT IN FLIGHT DISABLES EVERY TREE'S INSERT; REPLAYED ON A RELOAD SO A RELOADED DOCUMENT DOES NOT OFFER A SECOND
+// AN INSERT IN FLIGHT DISABLES ITS OWN TREE'S BUTTON AND TURNS EVERY OTHER INTO GENERATE ONLY (#293); REPLAYED ON A RELOAD SO A RELOADED DOCUMENT DOES NOT OFFER A SECOND
 export interface IRecipeCockpitInsertStateMessage {
     command: 'insertState';
     isRunning: boolean;
@@ -985,7 +983,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitLoadFailedMessage
                                         | IRecipeCockpitPicklistValuesMessage
                                         | IRecipeCockpitDatasetRecordCountsMessage
-                                        | IRecipeCockpitRunFakerStateMessage
+                                        | IRecipeCockpitGenerateStateMessage
                                         | IRecipeCockpitDataOrgListMessage
                                         | IRecipeCockpitDataOrgSelectionMessage
                                         | IRecipeCockpitDataOrgReadinessMessage
@@ -1016,6 +1014,14 @@ export interface IRecipeCockpitDatasetAddedMessage {
 }
 
 export const RECIPE_COCKPIT_INSERT_CONFIRM_LABEL = 'Generate and insert';
+
+// THE INSERT DIALOG'S SECOND CHOICE (#293): THE SAME GENERATION, WITH NO CONNECTION AND NO INSERT
+export const RECIPE_COCKPIT_GENERATE_ONLY_CONFIRM_LABEL = 'Generate only';
+
+// WHAT THE ONE BUTTON READS WHEN THE INSERT IS NOT AVAILABLE: IT GENERATES, AS Run Faker by Recipe DOES (#293)
+export const RECIPE_COCKPIT_GENERATE_ACTION_LABEL = 'Generate fake data';
+
+export const RECIPE_COCKPIT_GENERATE_RUNNING_LABEL = 'Generating…';
 
 export const RECIPE_COCKPIT_INSERT_ACTION_LABEL = 'Generate fake data and insert';
 
@@ -1068,7 +1074,7 @@ export interface IRecipeCockpitTreeHistoryAllowLists {
     openableDatasetFolderNames: Set<string>;
     insertableDatasetFolderNames: Set<string>;
     countableDatasetFolderNames: Set<string>;
-    runnableTreeKeys: Set<string>;
+    generatableTreeKeys: Set<string>;
     // THE CARDS ✎ AND ☆ ARE DRAWN ON: EVERY CARD WITH A FOLDER, WHICH LEAVES OUT ONLY THE UNGROUPED ONE
     nameableTreeKeys: Set<string>;
     // "<treeKey>\n<object>" FOR EVERY TREE ICON THE PANEL DRAWS CLICKABLE (#219): A CARD WITH A FOLDER, AN OBJECT IT DRAWS, TOLD APART FROM ANY OTHER OCCURRENCE
@@ -1093,8 +1099,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'loadDatasetRecordCounts'; datasetFolderName: string; datasetFolderPath: string; renderSequence: number }
     | { kind: 'openDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
     | { kind: 'insertDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
-    | { kind: 'runFaker'; treeKey: string; recipeFilePath: string }
-    | { kind: 'postRunFakerState'; hostMessage: IRecipeCockpitRunFakerStateMessage }
+    | { kind: 'generateTree'; treeKey: string; recipeFilePath: string }
+    | { kind: 'postGenerateState'; hostMessage: IRecipeCockpitGenerateStateMessage }
     | { kind: 'loadDataOrgs' }
     | { kind: 'selectDataOrg'; orgIndex: number }
     | { kind: 'refreshDataOrgs' }
@@ -1161,7 +1167,10 @@ export interface IRecipeCockpitPanelState {
     isGenerateTreecipeInFlight: boolean;
     pendingIsGenerateTreecipeOffered: boolean;
     isGenerateTreecipeOffered: boolean;
-    runFakerStateMessage?: IRecipeCockpitRunFakerStateMessage;
+    // ONE ENTRY PER TREE GENERATING ONLY (#293): A TREE'S RUN HOLDS ITS OWN BUTTON, NEVER ANOTHER CARD'S
+    generateStateMessages: Map<string, IRecipeCockpitGenerateStateMessage>;
+    // A GENERATE-ONLY RUN'S RELOAD, HELD WHILE ANOTHER TREE'S INSERT RUNS: A RELOAD DROPS THE ORG SELECTION THAT INSERT CONFIRMED
+    deferredReloadFocus?: IRecipeCockpitTreeFocus;
     reportedFailureDescriptions: Set<string>;
     pendingDataOrgObjectApiNames: Set<string>;
     dataOrgObjectApiNames: Set<string>;
@@ -1169,7 +1178,7 @@ export interface IRecipeCockpitPanelState {
     dataOrgUsername?: string;
     dataOrgSelection?: IRecipeCockpitDataOrgSelection;
     dataOrgRequestSequence: number;
-    // THE CARDS "Generate fake data and insert" IS DRAWN ON: EVERY CARD ▶ Run Faker CAN RUN (#255)
+    // THE CARDS "Generate fake data and insert" IS DRAWN ON: EVERY CARD THAT CAN GENERATE (#255)
     pendingInsertableTreeKeys: Set<string>;
     insertableTreeKeys: Set<string>;
     insertStateMessage?: IRecipeCockpitInsertStateMessage;
@@ -2442,7 +2451,7 @@ export class RecipeCockpitService {
 
         const typedValue = await vscode.window.showInputBox({
             title: `Fixed value for ${fieldLabel}`,
-            prompt: `Every record ▶ Run Faker and the tree insert generate gets this value for ${fieldLabel}${typeLabel} instead of its faker expression. Leave it empty to go back to the faker expression. The recipe file is not changed.`,
+            prompt: `Every record Generate fake data writes gets this value for ${fieldLabel}${typeLabel} instead of its faker expression. Leave it empty to go back to the faker expression. The recipe file is not changed.`,
             value: storedValue ?? '',
             ignoreFocusOut: true,
             validateInput: (candidateValue: string) => candidateValue === '' ? undefined : this.validateFixedValueInput(candidateValue, fieldViewModel, declaredPicklistValues)
@@ -2689,7 +2698,7 @@ export class RecipeCockpitService {
     }
 
     /*
-        What ▶ Run Faker runs for a card with exclusions (#219): the filtered copy of its recipe, or
+        What the generate button runs for a card with exclusions (#219): the filtered copy of its recipe, or
         why there is none. Read at the click from the stored model, which is what the card shows.
     */
     static buildRunFakerFilteredRecipe(recipeText: string,
@@ -2746,7 +2755,7 @@ export class RecipeCockpitService {
             openableDatasetFolderNames: new Set(),
             insertableDatasetFolderNames: new Set(),
             countableDatasetFolderNames: new Set(),
-            runnableTreeKeys: new Set(),
+            generatableTreeKeys: new Set(),
             nameableTreeKeys: new Set(),
             selectableObjectKeys: new Set(),
             selectableFieldKeys: new Set()
@@ -2763,7 +2772,7 @@ export class RecipeCockpitService {
         recipeViewModel.trees.forEach(tree => {
 
             if ( tree.runFakerRecipeFileName ) {
-                treeHistoryAllowLists.runnableTreeKeys.add(tree.treeKey);
+                treeHistoryAllowLists.generatableTreeKeys.add(tree.treeKey);
             }
 
             if ( tree.folderName !== '' ) {
@@ -2840,6 +2849,7 @@ export class RecipeCockpitService {
             dataOrgObjectApiNames: new Set(),
             dataOrgDetails: [],
             dataOrgRequestSequence: 0,
+            generateStateMessages: new Map(),
             pendingInsertableTreeKeys: new Set(),
             insertableTreeKeys: new Set(),
             dataOrgInsertResults: new Map(),
@@ -3338,12 +3348,12 @@ export class RecipeCockpitService {
 
             }
 
-            case 'runFaker':
+            case 'generateTree':
 
-                await this.runFakerForTree(cockpitPanel, panelState, panelAction.treeKey, panelAction.recipeFilePath);
+                await this.generateTreeDataset(cockpitPanel, panelState, panelAction.treeKey, panelAction.recipeFilePath);
                 return;
 
-            case 'postRunFakerState':
+            case 'postGenerateState':
 
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
                 return;
@@ -3822,7 +3832,7 @@ export class RecipeCockpitService {
     private static resolveRunFakerFilteredRecipe(panelState: IRecipeCockpitPanelState,
                                                     treeKey: string,
                                                     recipeFilePath: string,
-                                                    refusalPrefix = 'Run Faker did not run on'): IRecipeCockpitRunFakerFilteredRecipe | { refusalMessage: string } | undefined {
+                                                    refusalPrefix: string): IRecipeCockpitRunFakerFilteredRecipe | { refusalMessage: string } | undefined {
 
         const tree = panelState.recipeDataMessage?.recipe.trees.find(candidateTree => candidateTree.treeKey === treeKey);
 
@@ -3850,25 +3860,27 @@ export class RecipeCockpitService {
     }
 
     /*
-        Runs one tree's recipe through Run Faker by Recipe, then adds the data set it wrote to the
+        The card's button when the insert is not available (#293): runs one tree's recipe through Run
+        Faker by Recipe, with that command's own confirmation, then adds the data set it wrote to the
         card's Previously Used Data Sets in place (#226). A run that wrote none -- failed, refused or
         cancelled at its modal -- or switched runs meanwhile, or wrote one the host cannot place,
-        reloads the run on that tab, as every run used to. Either way the state message is posted
-        last, because the panel disabled every Run Faker button on the click, and a run that left
-        them disabled would leave a card that can never be run again.
+        reloads the run on that tab. Either way the state message is posted last, because the panel
+        disabled that card's button on the click, and a run that left it disabled would leave a card
+        that can never generate again. Other cards are never held: each tree's run is its own.
 
         A recipe file gone since the model was drawn is said so here and nothing runs; the command
         checks again on its own, since it is callable by id.
     */
-    private static async runFakerForTree(cockpitPanel: vscode.WebviewPanel,
+    private static async generateTreeDataset(cockpitPanel: vscode.WebviewPanel,
                                             panelState: IRecipeCockpitPanelState,
                                             treeKey: string,
                                             recipeFilePath: string) {
 
         const isPanelStillCurrent = () => this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState;
 
-        panelState.runFakerStateMessage = { command: 'runFakerState', isRunning: true, treeKey: treeKey };
-        this.postToPanel(cockpitPanel, panelState.runFakerStateMessage);
+        const generateStateMessage: IRecipeCockpitGenerateStateMessage = { command: 'generateState', isRunning: true, treeKey: treeKey };
+        panelState.generateStateMessages.set(treeKey, generateStateMessage);
+        this.postToPanel(cockpitPanel, generateStateMessage);
 
         const clickedRecipeDataMessage = panelState.recipeDataMessage;
         let writtenDatasetFolderPath: unknown;
@@ -3878,7 +3890,7 @@ export class RecipeCockpitService {
         try {
 
             const filteredRecipe = this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot)
-                ? this.resolveRunFakerFilteredRecipe(panelState, treeKey, recipeFilePath)
+                ? this.resolveRunFakerFilteredRecipe(panelState, treeKey, recipeFilePath, 'Nothing was generated for')
                 : undefined;
 
             if ( filteredRecipe && 'refusalMessage' in filteredRecipe ) {
@@ -3892,7 +3904,7 @@ export class RecipeCockpitService {
                     runError = commandError;
                 }
             } else {
-                VSCodeWorkspaceService.showWarningMessage(`The recipe file "${RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath))}" no longer exists in this workspace, so Run Faker did not run. The Recipe Cockpit has reloaded the run.`);
+                VSCodeWorkspaceService.showWarningMessage(`The recipe file "${RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath))}" no longer exists in this workspace, so nothing was generated. The Recipe Cockpit has reloaded the run.`);
             }
 
             // A RELOAD IS OF THE RUN ON SCREEN NOW, NOT AT THE CLICK -- THE READER CAN SWITCH RUNS WHILE GENERATION RUNS
@@ -3900,17 +3912,19 @@ export class RecipeCockpitService {
                 const isAddedInPlace = typeof writtenDatasetFolderPath === 'string'
                                         && panelState.recipeDataMessage === clickedRecipeDataMessage
                                         && this.postAddedDataset(cockpitPanel, panelState, clickedRecipeDataMessage, writtenDatasetFolderPath);
-                if ( !isAddedInPlace ) {
+                if ( !isAddedInPlace && panelState.insertStateMessage ) {
+                    panelState.deferredReloadFocus = { treeKey: treeKey, tab: 'datasets' };
+                } else if ( !isAddedInPlace ) {
                     await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'datasets' });
                 }
             }
 
         } finally {
 
-            panelState.runFakerStateMessage = undefined;
+            panelState.generateStateMessages.delete(treeKey);
 
             if ( isPanelStillCurrent() ) {
-                this.postToPanel(cockpitPanel, { command: 'runFakerState', isRunning: false, treeKey: treeKey });
+                this.postToPanel(cockpitPanel, { command: 'generateState', isRunning: false, treeKey: treeKey });
             }
 
         }
@@ -5665,7 +5679,7 @@ export class RecipeCockpitService {
 
     }
 
-    // EVERY CARD ▶ Run Faker CAN RUN: "Generate fake data and insert" GENERATES THE SAME WAY, SO IT IS OFFERED ON THE SAME CARDS
+    // EVERY CARD THAT CAN GENERATE: "Generate fake data and insert" GENERATES THE SAME WAY, SO IT IS OFFERED ON THE SAME CARDS
     static collectInsertableTreeKeys(recipeViewModel: IRecipeCockpitRecipeViewModel): string[] {
 
         return recipeViewModel.trees
@@ -5756,7 +5770,7 @@ export class RecipeCockpitService {
     }
 
     /*
-        "Generate fake data and insert into <org>" (#255): the tree generated exactly as ▶ Run Faker
+        "Generate fake data and insert into <org>" (#255): the tree generated exactly as Run Faker by Recipe
         generates it -- the card's selection and counts, the same data set folder, datasetSource.json
         and filtered copy -- then inserted, parents first, through the one insert every command uses
         (CollectionsApiService.insertDataSetFolderIntoOrg): the same all-or-none choice, the same
@@ -5766,7 +5780,8 @@ export class RecipeCockpitService {
         only its card's result and the new data set (#226), so the org selection and every other card
         stay on screen. One that threw, or whose run changed meanwhile, or whose data
         set the host cannot place, reloads the run onto the card's Treecipe tab, as before. The state
-        message is posted last, because the panel disabled every insert on the click.
+        message is posted last, because the panel disabled the card's button on the click. A generate-only
+        run on another tree that had to reload meanwhile reloads here instead (#293).
     */
     private static async insertTreeIntoOrg(cockpitPanel: vscode.WebviewPanel,
                                             panelState: IRecipeCockpitPanelState,
@@ -5780,6 +5795,7 @@ export class RecipeCockpitService {
 
         const clickedRecipeDataMessage = panelState.recipeDataMessage;
         let isDatasetWritten = false;
+        let isGenerateOnly = false;
         let insertedDatasetFolderPath = '';
         let insertResult: IRecipeCockpitInsertResultViewModel | undefined;
         let hasInsertFailed = false;
@@ -5790,7 +5806,7 @@ export class RecipeCockpitService {
             isDatasetWritten = await this.performTreeInsert(cockpitPanel, panelState, insertAction, datasetFolderPath => {
                 isDatasetWritten = true;
                 insertedDatasetFolderPath = datasetFolderPath;
-            }, storedInsertResult => { insertResult = storedInsertResult; });
+            }, storedInsertResult => { insertResult = storedInsertResult; }, () => { isGenerateOnly = true; });
 
         } catch (thrownError) {
 
@@ -5803,15 +5819,23 @@ export class RecipeCockpitService {
 
             if ( isDatasetWritten && isPanelStillCurrent() && panelState.recipeDataMessage ) {
 
-                // A RESULT IS REPORTED ONLY BY AN INSERT THAT REACHED THE END, SO ONE THAT THREW HAS NONE
-                const isAddedInPlace = !!insertResult
+                // A RESULT IS REPORTED ONLY BY AN INSERT THAT REACHED THE END, SO ONE THAT THREW HAS NONE; "Generate only" HAS NONE TO REPORT
+                const isAddedInPlace = ( !!insertResult || isGenerateOnly )
                                         && panelState.recipeDataMessage === clickedRecipeDataMessage
                                         && this.postAddedDataset(cockpitPanel, panelState, clickedRecipeDataMessage, insertedDatasetFolderPath, insertResult);
 
                 if ( !isAddedInPlace ) {
+                    panelState.deferredReloadFocus = undefined;
                     await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'treecipe' });
                 }
 
+            }
+
+            // A GENERATE-ONLY RUN THAT ENDED DURING THIS INSERT RELOADS NOW, ONTO ITS OWN CARD
+            const deferredReloadFocus = panelState.deferredReloadFocus;
+            panelState.deferredReloadFocus = undefined;
+            if ( deferredReloadFocus && isPanelStillCurrent() && panelState.recipeDataMessage ) {
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, deferredReloadFocus);
             }
 
             if ( isPanelStillCurrent() ) {
@@ -5831,7 +5855,8 @@ export class RecipeCockpitService {
                                             panelState: IRecipeCockpitPanelState,
                                             insertAction: Extract<RecipeCockpitPanelAction, { kind: 'insertTree' }>,
                                             onDatasetFolderMade: (datasetFolderPath: string) => void,
-                                            onInsertResult: (insertResult: IRecipeCockpitInsertResultViewModel) => void): Promise<boolean> {
+                                            onInsertResult: (insertResult: IRecipeCockpitInsertResultViewModel) => void,
+                                            onGenerateOnly: () => void): Promise<boolean> {
 
         const { treeKey, recipeFilePath } = insertAction;
         const dataOrgSelection = panelState.dataOrgSelection;
@@ -5911,8 +5936,20 @@ export class RecipeCockpitService {
         const confirmation = await vscode.window.showWarningMessage(
             `Generate ${treeLabel} and insert it into ${orgLabel}?`,
             { modal: true, detail: this.buildInsertConfirmationDetail(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, outsidePickableLookups) },
-            RECIPE_COCKPIT_INSERT_CONFIRM_LABEL
+            RECIPE_COCKPIT_INSERT_CONFIRM_LABEL,
+            RECIPE_COCKPIT_GENERATE_ONLY_CONFIRM_LABEL
         );
+
+        // THE SAME GENERATION, ITS MODAL ANSWERED BY THIS ONE, AND NOTHING SENT TO THE ORG (#293)
+        if ( confirmation === RECIPE_COCKPIT_GENERATE_ONLY_CONFIRM_LABEL ) {
+            onGenerateOnly();
+            const datasetFolderPath = await this.generateConfirmedDataset(recipeFilePath, filteredRecipe);
+            if ( !datasetFolderPath || !this.isUsableWorkspacePath(datasetFolderPath, panelState.workspaceRoot) ) {
+                return refuse(`${treeLabel} was not generated.`);
+            }
+            onDatasetFolderMade(datasetFolderPath);
+            return true;
+        }
 
         if ( confirmation !== RECIPE_COCKPIT_INSERT_CONFIRM_LABEL ) {
             return false;
@@ -5991,16 +6028,9 @@ export class RecipeCockpitService {
             outsideParentsByObject.set(objectApiName, objectParents);
         }
 
-        // THE SAME COMMAND ▶ Run Faker RUNS, WITH ITS MODAL ALREADY ANSWERED BY THIS ONE
-        const confirmationToken = RunFakerConfirmation.issue();
-        let datasetFolderPath: unknown;
-        try {
-            datasetFolderPath = await vscode.commands.executeCommand(RECIPE_COCKPIT_RUN_FAKER_COMMAND, recipeFilePath, filteredRecipe, { confirmationToken: confirmationToken });
-        } finally {
-            RunFakerConfirmation.revoke(confirmationToken);
-        }
+        const datasetFolderPath = await this.generateConfirmedDataset(recipeFilePath, filteredRecipe);
 
-        if ( typeof datasetFolderPath !== 'string' || !SfdxProjectService.isExistingDirectory(datasetFolderPath) || !this.isUsableWorkspacePath(datasetFolderPath, panelState.workspaceRoot) ) {
+        if ( !datasetFolderPath || !this.isUsableWorkspacePath(datasetFolderPath, panelState.workspaceRoot) ) {
             return refuse(`${treeLabel} was not generated, so nothing was inserted into ${orgLabel}.`);
         }
         onDatasetFolderMade(datasetFolderPath);
@@ -6018,6 +6048,21 @@ export class RecipeCockpitService {
         }
 
         return true;
+
+    }
+
+    // Run Faker by Recipe WITH ITS MODAL ALREADY ANSWERED BY THE INSERT'S: THE DATA SET FOLDER IT WROTE, OR undefined
+    private static async generateConfirmedDataset(recipeFilePath: string, filteredRecipe: IRecipeCockpitRunFakerFilteredRecipe | undefined): Promise<string | undefined> {
+
+        const confirmationToken = RunFakerConfirmation.issue();
+        let datasetFolderPath: unknown;
+        try {
+            datasetFolderPath = await vscode.commands.executeCommand(RECIPE_COCKPIT_RUN_FAKER_COMMAND, recipeFilePath, filteredRecipe, { confirmationToken: confirmationToken });
+        } finally {
+            RunFakerConfirmation.revoke(confirmationToken);
+        }
+
+        return typeof datasetFolderPath === 'string' && SfdxProjectService.isExistingDirectory(datasetFolderPath) ? datasetFolderPath : undefined;
 
     }
 
@@ -6228,7 +6273,8 @@ export class RecipeCockpitService {
                 ? ['', `This run will take time: ${totalRecordCount} records in at least ${requestCount} Collections API requests.`]
                 : [] ),
             '',
-            'The data set is written to FakeDataSets as Run Faker writes it, then inserted the way Insert Data Set by Directory inserts: you choose all-or-none next, and Cancel on the progress notification deletes every record this insert saved.'
+            'The data set is written to FakeDataSets as Run Faker by Recipe writes it, then inserted the way Insert Data Set by Directory inserts: you choose all-or-none next, and Cancel on the progress notification deletes every record this insert saved.',
+            `${RECIPE_COCKPIT_GENERATE_ONLY_CONFIRM_LABEL} writes the same data set and inserts nothing.`
         ].join('\n');
 
     }
@@ -6459,36 +6505,38 @@ export class RecipeCockpitService {
             }
 
             /*
-                The tree's KEY -- its folder name -- never a path: the recipe file is looked up in
-                the host-only targets of the confirmed-drawn model, and one run at a time.
+                The card's button when it cannot insert (#293): the tree's KEY -- its folder name --
+                never a path, the recipe file looked up in the host-only targets of the
+                confirmed-drawn model. A tree already generating or inserting is held, and only that
+                tree: every other card generates whatever else runs.
             */
-            case 'runFaker': {
+            case 'generateTree': {
 
                 const { treeKey } = panelMessage;
 
-                // A RUN IN FLIGHT ALREADY HOLDS THE BUTTONS DISABLED, AND ITS OWN END RE-ENABLES THEM; AN INSERT GENERATES THROUGH THE SAME COMMAND
-                if ( panelState.runFakerStateMessage || panelState.insertStateMessage ) {
+                // THAT TREE'S RUN ALREADY HOLDS ITS BUTTON DISABLED, AND ITS OWN END RE-ENABLES IT
+                if ( typeof treeKey === 'string' && ( panelState.generateStateMessages.has(treeKey) || panelState.insertStateMessage?.treeKey === treeKey ) ) {
                     return undefined;
                 }
 
                 const recipeFilePath = typeof treeKey === 'string'
                                         && !!panelState.recipeDataMessage
-                                        && panelState.treeHistoryAllowLists.runnableTreeKeys.has(treeKey)
+                                        && panelState.treeHistoryAllowLists.generatableTreeKeys.has(treeKey)
                     ? panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey)
                     : undefined;
 
                 if ( recipeFilePath ) {
-                    return { kind: 'runFaker', treeKey: treeKey as string, recipeFilePath: recipeFilePath };
+                    return { kind: 'generateTree', treeKey: treeKey as string, recipeFilePath: recipeFilePath };
                 }
 
                 /*
-                    The panel disabled every Run Faker on the click, before asking. A click on cards
+                    The panel disabled the card's button on the click, before asking. A click on cards
                     a new model has replaced but not yet confirmed drawing is refused here, and only
-                    a runFakerState gives the buttons back -- so a refusal still says nothing runs.
+                    a generateState gives the button back -- so a refusal still says nothing runs.
                 */
                 return {
-                    kind: 'postRunFakerState',
-                    hostMessage: { command: 'runFakerState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '' }
+                    kind: 'postGenerateState',
+                    hostMessage: { command: 'generateState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '' }
                 };
 
             }
@@ -6582,17 +6630,19 @@ export class RecipeCockpitService {
 
                 const { treeKey } = panelMessage;
 
-                // AN INSERT IN FLIGHT ALREADY HOLDS EVERY BUTTON DISABLED, AND ITS OWN END RE-ENABLES THEM
+                // AN INSERT IN FLIGHT HOLDS ITS OWN TREE'S BUTTON; A CLICK ON ANOTHER IS ANSWERED WITH IT, SO THAT CARD GIVES ITS BUTTON BACK AS GENERATE ONLY
                 if ( panelState.insertStateMessage ) {
-                    return undefined;
+                    return panelState.insertStateMessage.treeKey === treeKey
+                        ? undefined
+                        : { kind: 'postInsertState', hostMessage: panelState.insertStateMessage };
                 }
 
                 const recipeFilePath = typeof treeKey === 'string' ? panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey) : undefined;
                 // A SCRATCH ORG RUN IS ABOUT TO CHANGE THE SELECTION, SO NOTHING IS INSERTED WHILE IT IS IN FLIGHT
                 const isRoutable = !panelState.scratchOrgStateMessage?.isRunning
                                     && !panelState.metadataDeployStateMessage?.isRunning
-                                    && !panelState.runFakerStateMessage
                                     && typeof treeKey === 'string'
+                                    && !panelState.generateStateMessages.has(treeKey)
                                     && !!panelState.recipeDataMessage
                                     && !!panelState.dataOrgSelection
                                     && panelState.dataOrgSelection.orgTypeDetail?.isSandbox === true
@@ -6603,7 +6653,7 @@ export class RecipeCockpitService {
                     return { kind: 'insertTree', treeKey: treeKey as string, recipeFilePath: recipeFilePath };
                 }
 
-                // THE PANEL DISABLED EVERY INSERT ON THE CLICK, SO EVEN A REFUSAL ANSWERS THAT NOTHING RUNS
+                // THE PANEL DISABLED THE CARD'S BUTTON ON THE CLICK, SO EVEN A REFUSAL ANSWERS THAT NOTHING RUNS
                 return {
                     kind: 'postInsertState',
                     hostMessage: { command: 'insertState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '' }
@@ -7103,9 +7153,7 @@ export class RecipeCockpitService {
             replayMessages.push(this.withRestorePlace(panelState.recipeDataMessage, panelState));
         }
 
-        if ( panelState.runFakerStateMessage ) {
-            replayMessages.push(panelState.runFakerStateMessage);
-        }
+        replayMessages.push(...panelState.generateStateMessages.values());
 
         if ( panelState.insertStateMessage ) {
             replayMessages.push(panelState.insertStateMessage);
@@ -7214,7 +7262,7 @@ export class RecipeCockpitService {
 
     }
 
-    // WHAT THE WRITER DECIDES A WIRING BY: THE CARD'S OWN LOOKUPS AND RelationshipService's LEVELS, AS ▶ Run Faker's FILTERED COPY USES THEM
+    // WHAT THE WRITER DECIDES A WIRING BY: THE CARD'S OWN LOOKUPS AND RelationshipService's LEVELS, AS THE GENERATE BUTTON'S FILTERED COPY USES THEM
     static buildLookupWiringContext(tree: IRecipeCockpitTreeViewModel, objectLevelsByApiName: Map<string, number> | undefined): ILookupWiringContext {
 
         const parentLookupsByObjectApiName = new Map<string, IRecipeFilterLookup[]>();
@@ -8379,7 +8427,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader:hover { box-shadow: inset 4px 0 0 var(--sdt-accent); }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeRunFaker, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treeDeploy, .treePermissionSets, .metadataDeployViewOutput, .metadataDeployOpenStatus {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treeDeploy, .treePermissionSets, .metadataDeployViewOutput, .metadataDeployOpenStatus {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
@@ -8391,7 +8439,7 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treeDeploy:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .metadataDeployViewOutput:hover:not(:disabled), .metadataDeployOpenStatus:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
+    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treeDeploy:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .metadataDeployViewOutput:hover:not(:disabled), .metadataDeployOpenStatus:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
     .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
@@ -8406,7 +8454,7 @@ ${this.buildPaletteCustomProperties()}
     .picklistToggleSpacer { display: inline-block; height: 1px; }
     .toggleGlyph { display: block; width: 2.1rem; height: 2.1rem; }
     .toggleGlyph path { fill: var(--sdt-accent); stroke: none; }
-    .treeRunFaker, .toolbar button, .emptyStateActions button, .treeInsert, .dataOrgLoad, .dataOrgNewScratch {
+    .toolbar button, .emptyStateActions button, .treeInsert, .dataOrgLoad, .dataOrgNewScratch {
         color: var(--sdt-on-accent);
         background-color: var(--sdt-accent);
         border-color: var(--sdt-accent);
@@ -8416,7 +8464,7 @@ ${this.buildPaletteCustomProperties()}
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
     .treeAddFriendChoice, .historyAction, .treeInsertErrors, .scratchOrgViewOutput, .metadataDeployViewOutput, .metadataDeployOpenStatus { text-decoration: underline; }
-    .treeRunFaker:disabled, .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treeDeploy:disabled, .treePermissionSets:disabled {
+    .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treeDeploy:disabled, .treePermissionSets:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
         border-color: var(--sdt-border);
@@ -8627,8 +8675,8 @@ ${this.buildPaletteCustomProperties()}
     const AUTO_EXPAND_ROW_BUDGET = ${RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET};
     const GENERATE_TREECIPE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL)};
     const GENERATE_TREECIPE_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL)};
-    const RUN_FAKER_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL)};
-    const RUN_FAKER_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL)};
+    const GENERATE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_ACTION_LABEL)};
+    const GENERATE_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_RUNNING_LABEL)};
     const ADD_FRIEND_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL)};
     const WIRE_LOOKUP_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL)};
     const WIRE_ALL_LOOKUPS_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL)};
@@ -8676,8 +8724,8 @@ ${this.buildPaletteCustomProperties()}
     let runSelectElement = null;
     let renderedRunFolderName = '';
     let renderedSequence = null;
-    // THE TREE WHOSE RUN FAKER IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE RUN ENDED
-    let runFakerRunningTreeKey = null;
+    // EVERY TREE GENERATING ONLY (#293), BY KEY; EACH HOLDS ITS OWN BUTTON AND NO OTHER, AND OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE RUN ENDED
+    const generatingTreeKeys = Object.create(null);
     // WHETHER A FRIEND IS BEING ADDED; IT OUTLIVES A MODEL FOR THE SAME REASON
     let isAddFriendRunning = false;
     // EVERY "+" AND FRIEND CHOICE DRAWN FOR THIS MODEL, SO ONE CLICK CAN DISABLE THEM ALL
@@ -10540,7 +10588,6 @@ ${this.buildPaletteCustomProperties()}
             // WHAT THE READER TYPED IN EACH BOX, AS TYPED -- searchQueries IS ITS TRIMMED, LOWERCASED FORM
             searchTexts: { treecipe: '', datasets: '' },
             // THE TOP OF THE TREECIPE TAB (#255), MADE WITH THE TAB
-            runFakerElement: null,
             resetSelectionElement: null,
             insert: null
         };
@@ -10582,7 +10629,7 @@ ${this.buildPaletteCustomProperties()}
         /*
             The actions sit at the END of the row and never toggle it. The click is stopped on the
             GROUP rather than on each button, because a browser may hand a click on a DISABLED
-            button -- every Run Faker while one runs -- to its ancestors without running the
+            button -- a rename while a write runs -- to its ancestors without running the
             button's own listener.
         */
         const actionsElement = createElement('span', 'treeHeaderActions');
@@ -10638,8 +10685,8 @@ ${this.buildPaletteCustomProperties()}
             treeState.renameElement.setAttribute('title', 'Rename this tree');
         }
 
-        if (treeState.runFakerElement) {
-            treeState.runFakerElement.setAttribute('aria-label', 'Run Faker on ' + displayTitle + ' (' + tree.runFakerRecipeFileName + ')');
+        if (treeState.insert) {
+            drawTreeInsert(treeState);
         }
 
     }
@@ -10665,7 +10712,7 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        The top of a card's Treecipe tab (#255): the panel-wide org picker, then ▶ Run Faker, Reset
+        The top of a card's Treecipe tab (#255): the panel-wide org picker, then Reset
         selection, then "Generate fake data and insert into <org>". Each posts
         the tree's KEY alone; which org, which recipe file, which counts and which objects are the
         host's.
@@ -10678,11 +10725,6 @@ ${this.buildPaletteCustomProperties()}
 
         if (tree.runFakerRecipeFileName) {
             headerElement.appendChild(buildDataOrgView().element);
-        }
-
-        if (tree.runFakerRecipeFileName) {
-            treeState.runFakerElement = buildRunFakerElement(tree);
-            actionsElement.appendChild(treeState.runFakerElement);
         }
 
         if (tree.folderName) {
@@ -10726,11 +10768,21 @@ ${this.buildPaletteCustomProperties()}
             errorsElement: createElement('button', 'treeInsertErrors hidden', 'View errors')
         };
 
-        insert.buttonElement.setAttribute('title', 'Generate this tree with its selection and counts, as ▶ Run Faker does, then insert it into the chosen org, parents first');
+        /*
+            The ONE generate button (#293): it inserts when the tree can be inserted into the chosen
+            org, and otherwise generates only -- it is never disabled for any other reason. Only its
+            own tree's run holds it.
+        */
         insert.buttonElement.addEventListener('click', function () {
-            if (insertRunningTreeKey !== null || isMetadataDeployRunning || dataOrgSelectedIndex === null || renderedSequence === null) { return; }
-            setInsertRunning(treeState.tree.treeKey);
-            vscodeApi.postMessage({ command: 'insertTree', treeKey: treeState.tree.treeKey });
+            const treeKey = treeState.tree.treeKey;
+            if (isTreeRunning(treeKey) || renderedSequence === null) { return; }
+            if (findTreeInsertReason(treeState) === '') {
+                setInsertRunning(treeKey);
+                vscodeApi.postMessage({ command: 'insertTree', treeKey: treeKey });
+            } else {
+                setGenerateRunning(treeKey, true);
+                vscodeApi.postMessage({ command: 'generateTree', treeKey: treeKey });
+            }
         });
 
         insert.errorsElement.addEventListener('click', function () {
@@ -10833,43 +10885,18 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    /*
-        Posts the tree's KEY; the host looks its recipe file up. Every Run Faker button is disabled
-        on the click, before the host answers, so a second click cannot start a second run -- the
-        host's runFakerState is what enables them again.
-    */
-    function buildRunFakerElement(tree) {
-
-        const runFakerElement = createElement('button', 'treeRunFaker', RUN_FAKER_ACTION_LABEL);
-
-        runFakerElement.setAttribute('title', 'Run Faker by Recipe on ' + tree.runFakerRecipeFileName);
-        runFakerElement.setAttribute('aria-label', 'Run Faker on ' + displayTitleOf(tree) + ' (' + tree.runFakerRecipeFileName + ')');
-        runFakerElement.addEventListener('click', function () {
-            if (runFakerRunningTreeKey !== null || insertRunningTreeKey !== null) { return; }
-            setRunFakerRunning(tree.treeKey);
-            vscodeApi.postMessage({ command: 'runFaker', treeKey: tree.treeKey });
-        });
-
-        applyRunFakerStateTo(tree, runFakerElement);
-
-        return runFakerElement;
-
+    function isTreeRunning(treeKey) {
+        return insertRunningTreeKey === treeKey || hasOwnKey(generatingTreeKeys, treeKey);
     }
 
-    function applyRunFakerStateTo(tree, runFakerElement) {
+    function setGenerateRunning(treeKey, isRunning) {
 
-        runFakerElement.disabled = runFakerRunningTreeKey !== null || insertRunningTreeKey !== null;
-        runFakerElement.textContent = runFakerRunningTreeKey === tree.treeKey ? RUN_FAKER_RUNNING_LABEL : RUN_FAKER_ACTION_LABEL;
+        if (isRunning) {
+            generatingTreeKeys[treeKey] = true;
+        } else {
+            delete generatingTreeKeys[treeKey];
+        }
 
-    }
-
-    function setRunFakerRunning(runningTreeKey) {
-
-        runFakerRunningTreeKey = runningTreeKey;
-
-        treeStates.forEach(function (treeState) {
-            if (treeState.runFakerElement) { applyRunFakerStateTo(treeState.tree, treeState.runFakerElement); }
-        });
         drawTreeInserts();
 
     }
@@ -11011,8 +11038,11 @@ ${this.buildPaletteCustomProperties()}
     */
     function findTreeInsertReason(treeState) {
 
-        if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) { return 'Choose an org above to insert into.'; }
+        if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) { return 'Choose an org above to also insert it.'; }
         if (dataOrgSelectionFailureMessage) { return dataOrgSelectionFailureMessage; }
+        if (insertRunningTreeKey !== null && insertRunningTreeKey !== treeState.tree.treeKey) { return 'Another tree is being inserted.'; }
+        if (isScratchOrgRunning) { return 'A scratch org is being set up.'; }
+        if (isMetadataDeployRunning) { return 'A deploy is running.'; }
 
         const insertObjectApiNames = listTreeInsertObjectApiNames(treeState);
         if (insertObjectApiNames.length === 0) { return 'Every object of this tree is excluded.'; }
@@ -11036,14 +11066,21 @@ ${this.buildPaletteCustomProperties()}
         const insert = treeState.insert;
         if (!insert) { return; }
 
-        const disabledReason = findTreeInsertReason(treeState);
+        const tree = treeState.tree;
+        const insertReason = findTreeInsertReason(treeState);
         const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : '';
+        const actionLabel = insertReason === '' ? INSERT_ACTION_LABEL + (orgLabel ? ' into ' + orgLabel : '') : GENERATE_ACTION_LABEL;
 
-        insert.buttonElement.disabled = insertRunningTreeKey !== null || isScratchOrgRunning || isMetadataDeployRunning || runFakerRunningTreeKey !== null || !!disabledReason;
+        insert.buttonElement.disabled = isTreeRunning(tree.treeKey);
 
-        insert.buttonElement.textContent = insertRunningTreeKey === treeState.tree.treeKey ? INSERT_RUNNING_LABEL
-            : INSERT_ACTION_LABEL + (orgLabel ? ' into ' + orgLabel : '');
-        insert.reasonElement.textContent = disabledReason;
+        insert.buttonElement.textContent = insertRunningTreeKey === tree.treeKey ? INSERT_RUNNING_LABEL
+            : hasOwnKey(generatingTreeKeys, tree.treeKey) ? GENERATE_RUNNING_LABEL
+            : actionLabel;
+        insert.buttonElement.setAttribute('aria-label', actionLabel + ' for ' + displayTitleOf(tree) + ' (' + tree.runFakerRecipeFileName + ')');
+        insert.buttonElement.setAttribute('title', insertReason === ''
+            ? 'Generate this tree with its selection and counts from ' + tree.runFakerRecipeFileName + ', then insert it into the chosen org, parents first'
+            : 'Generate this tree with its selection and counts from ' + tree.runFakerRecipeFileName + ' into a new data set, without inserting it');
+        insert.reasonElement.textContent = insertReason === '' ? '' : 'Generates only: ' + insertReason;
 
         const insertResult = hasOwnKey(dataOrgInsertResultsByTreeKey, treeState.tree.treeKey) ? dataOrgInsertResultsByTreeKey[treeState.tree.treeKey] : null;
 
@@ -11079,7 +11116,7 @@ ${this.buildPaletteCustomProperties()}
         treeStates.forEach(drawTreeDeploy);
     }
 
-    // EVERY TREE'S INSERT IS DISABLED ON THE CLICK, BEFORE THE HOST ANSWERS; ITS insertState ENABLES THEM AGAIN
+    // THE CLICKED TREE'S BUTTON IS DISABLED ON THE CLICK AND EVERY OTHER TURNS GENERATE ONLY; ITS insertState GIVES THEM BACK
     function setInsertRunning(runningTreeKey) {
 
         insertRunningTreeKey = runningTreeKey;
@@ -11359,7 +11396,7 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        A reload in the same document (#225) -- Run Faker, Create, Add friend -- redraws every card
+        A reload in the same document (#225) -- Generate, Create, Add friend -- redraws every card
         from scratch. When it is the run already on screen, the place on screen is taken BEFORE the
         redraw drops it and restored like a saved one; a run switch, or a reload that landed on
         another run, starts fresh. A model that failed to draw left nothing to take.
@@ -11800,8 +11837,8 @@ ${this.buildPaletteCustomProperties()}
             return;
         }
 
-        if (hostMessage.command === 'runFakerState') {
-            setRunFakerRunning(hostMessage.isRunning ? hostMessage.treeKey : null);
+        if (hostMessage.command === 'generateState') {
+            if (typeof hostMessage.treeKey === 'string') { setGenerateRunning(hostMessage.treeKey, !!hostMessage.isRunning); }
             return;
         }
 

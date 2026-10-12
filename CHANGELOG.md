@@ -1,5 +1,17 @@
 # Change Log
 
+## [3.73.0] - Recipe Cockpit: one generate button per tree, never disabled except while it runs
+
+Closes [#293](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/293). Part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+- **▶ Run Faker is gone.** Each tree card's Treecipe tab has one button. It generates exactly as **Run Faker by Recipe** does (the card's filtered copy for excluded objects, unticked fields, changed counts and fixed values; `datasetSource.json`; the new data set added in place to Previously Used Data Sets). When it can, it then inserts the way **Insert Data Set by Directory** does, with the cockpit's lookup wiring (nicknames, in-run parents, the parent picker, required lookups filled from the org).
+- **The label says what a click does.** With a sandbox or scratch org selected and every object ready, it reads **Generate fake data and insert into \<org\>**. Otherwise it reads **Generate fake data**, generates only (with Run Faker by Recipe's own confirmation), and says why beside it as `Generates only: <reason>`. Reasons include: no org chosen, an org that is not a sandbox, a readiness reason or a check still running, another tree being inserted, and a scratch org or deploy still running.
+- **Never disabled except while its own tree runs.** Only the clicked card's button is held, as **Generating…** or **Inserting…**. Other cards stay clickable: generate-only runs are tracked per tree and replayed per tree on a reload, so several trees can generate at once. Inserts stay one at a time; while one runs, every other card generates only.
+- **A generate never cancels another tree's insert.** A generate-only run that ends without a data set it can add in place normally reloads the run. While another tree's insert is running, that reload is held until the insert ends, because a reload drops the org selection the insert was confirmed against.
+- **Generate only in the insert dialog.** The insert's confirmation now offers **Generate only** beside **Generate and insert**. It writes the same data set, connects to nothing and inserts nothing.
+- **Messages.** The panel's `runFaker`/`runFakerState` messages are now `generateTree`/`generateState`; a posted `runFaker` routes to nothing. A refusal that used to start "Run Faker did not run on" now starts "Nothing was generated for".
+- **Unchanged:** the palette commands **Run Faker by Recipe** and **Insert Data Set by Directory**, both faker backends, and the insert's sandbox-and-scratch-only rule. Insert Data Set by Directory still also accepts Developer Edition; the two rules were deliberately not merged.
+
 ## [3.72.4] - Docs: README and CLAUDE.md describe the cockpit as it ships
 
 Part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173). Documentation only; no code changes.

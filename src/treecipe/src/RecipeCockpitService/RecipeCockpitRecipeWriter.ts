@@ -1216,7 +1216,7 @@ export class RecipeCockpitRecipeWriter {
 
     /*
         A copy of a tree's recipe without the objects the Recipe Cockpit's Structure tab excluded
-        (#219): what ▶ Run Faker generates from, so the recipe file itself is never written.
+        (#219): what the cockpit's generate button generates from, so the recipe file itself is never written.
 
         An excluded object's block is dropped -- its header comment, its own block and its friends:
         block -- and so is every later occurrence of any object nested under it (a copy under a

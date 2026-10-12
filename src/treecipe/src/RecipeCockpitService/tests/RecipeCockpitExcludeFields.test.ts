@@ -38,7 +38,7 @@ import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgSe
 /*
     #220: a checkbox on each Treecipe-tab field row leaves that field out of generation. The HOST keeps
     the unticked fields beside #219's excluded objects, decides which fields may not be unticked and
-    why, and ▶ Run Faker and the whole-tree insert (#255) both leave the unticked fields out.
+    why, and the generate button and the whole-tree insert (#255) both leave the unticked fields out.
 */
 
 const HISTORY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'historyWorkspace');
@@ -692,7 +692,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
             await openAndDraw(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({}, { [ACCOUNT_TREE_KEY]: { Contact: ['LastName'] } }) }));
 
-            await receivedMessageHandler({ command: 'runFaker', treeKey: ACCOUNT_TREE_KEY });
+            await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
 
             const runFakerCall = executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND);
             expect(runFakerCall?.[1]).toBe(ACCOUNT_RECIPE_FILE_PATH);

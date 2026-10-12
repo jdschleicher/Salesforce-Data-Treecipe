@@ -40,8 +40,8 @@ import {
     RECIPE_COCKPIT_TOGGLE_EXPANDED_GLYPH_PATH,
     RECIPE_COCKPIT_INSERT_DATASET_COMMAND,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
-    RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL,
-    RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL,
+    RECIPE_COCKPIT_GENERATE_ACTION_LABEL,
+    RECIPE_COCKPIT_GENERATE_RUNNING_LABEL,
     RecipeCockpitPaletteToken
 } from '../RecipeCockpitService';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
@@ -374,7 +374,7 @@ describe('RecipeCockpitService', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
 
-            expect(styleSheet).toMatch(/\.treeRunFaker, \.toolbar button, \.emptyStateActions button, \.treeInsert, \.dataOrgLoad, \.dataOrgNewScratch \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
+            expect(styleSheet).toMatch(/\n\s*\.toolbar button, \.emptyStateActions button, \.treeInsert, \.dataOrgLoad, \.dataOrgNewScratch \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
             expect(styleSheet).toContain('.treeInsertResult.succeeded { color: var(--sdt-added); }');
             expect(styleSheet).toContain('.treeInsertResult.partial { color: var(--sdt-changed); }');
             // #266: THE COMPARE TAB'S DIFF BADGES, ROWS AND CONTROLS ARE GONE, WITH THEIR RULES
@@ -384,7 +384,7 @@ describe('RecipeCockpitService', () => {
         });
 
         const COCKPIT_BUTTON_SELECTORS = [
-            '.treeToggle', '.treeObjectToggle', '.picklistToggle', '.treeRunFaker',
+            '.treeToggle', '.treeObjectToggle', '.picklistToggle',
             '.treeTab', '.historyAction', '.treeAddFriend', '.treeAddFriendChoice',
             '.toolbar button', '.emptyStateActions button', '.dataOrgRefresh',
             '.treeInsert', '.treeInsertErrors', '.scratchOrgViewOutput', '.dataOrgLoad', '.dataOrgNewScratch'
@@ -414,7 +414,8 @@ describe('RecipeCockpitService', () => {
             expect(ruleFor(styleSheet, '\\.dataOrgRefreshIcon')).toContain('font-size: 1.5em;');
             // #263: REGENERATE RECIPE AND ITS NOTE ARE GONE, WITH THEIR RULES
             expect(styleSheet).not.toMatch(/\.regenerate/);
-            expect(styleSheet).not.toMatch(/\.treeRunFaker \{ padding: 0 /);
+            // #293: ▶ Run Faker IS GONE, WITH EVERY RULE THAT NAMED IT
+            expect(styleSheet).not.toMatch(/\.treeRunFaker/);
             // #217: 🔍, ITS CLEAR BUTTON, THE VIEW SWITCH AND THE DATA-BY-ORG VIEW'S CARDS ARE GONE, WITH THEIR RULES
             expect(styleSheet).not.toMatch(/\.treeScope|\.viewButton|\.dataTreeCard|\.dataTreeToggle|\.filterInput/);
 
@@ -458,11 +459,11 @@ describe('RecipeCockpitService', () => {
         it('draws every disabled cockpit button in the disabled tokens with a not-allowed cursor', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
-            const disabledRule = styleSheet.match(/\n\s*([^{}\n]*\.treeRunFaker:disabled[^{}\n]*) \{([^}]*)\}/);
+            const disabledRule = styleSheet.match(/\n\s*([^{}\n]*\.treeAddFriend:disabled[^{}\n]*) \{([^}]*)\}/);
 
             expect(disabledRule).not.toBeNull();
             const disabledSelectors = (disabledRule as RegExpMatchArray)[1].split(',').map(selector => selector.trim());
-            ['.treeRunFaker:disabled', '.treeAddFriend:disabled', '.treeAddFriendChoice:disabled', '.toolbar button:disabled',
+            ['.treeAddFriend:disabled', '.treeAddFriendChoice:disabled', '.toolbar button:disabled',
                 '.emptyStateActions button:disabled', '.treeInsert:disabled', '.dataOrgRefresh:disabled',
                 '.dataOrgLoad:disabled', '.dataOrgNewScratch:disabled', '.treeRecordCountInput:disabled'].forEach(selector => expect(disabledSelectors).toContain(selector));
             expect((disabledRule as RegExpMatchArray)[2]).toContain('color: var(--sdt-disabled-text);');
@@ -3226,7 +3227,7 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        describe('routePanelMessage, runFaker', () => {
+        describe('routePanelMessage, generateTree', () => {
 
             const LEAD_RECIPE_FILE_PATH = path.join(HISTORY_GENERATED_RECIPES_PATH, HISTORY_CURRENT_RUN, 'Lead-ONLY', 'recipe--Lead-ONLY-2026-09-20T10-00-00.yml');
 
@@ -3252,11 +3253,11 @@ describe('RecipeCockpitService', () => {
                 ]);
                 expect(treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(LEAD_TREE_KEY)).toBe(LEAD_RECIPE_FILE_PATH);
                 expect(JSON.stringify(recipeViewModel.trees)).not.toContain(HISTORY_WORKSPACE_ROOT);
-                expect([...RecipeCockpitService.collectTreeHistoryAllowLists(recipeViewModel).runnableTreeKeys]).toEqual([ACCOUNT_TREE_KEY, LEAD_TREE_KEY]);
+                expect([...RecipeCockpitService.collectTreeHistoryAllowLists(recipeViewModel).generatableTreeKeys]).toEqual([ACCOUNT_TREE_KEY, LEAD_TREE_KEY]);
 
             });
 
-            it('offers no Run Faker for a tree whose recipe resolves outside the workspace', () => {
+            it('offers no generate button for a tree whose recipe resolves outside the workspace', () => {
 
                 const realIsPathContainedInWorkspace = SfdxProjectService.isPathContainedInWorkspace.bind(SfdxProjectService);
                 jest.spyOn(SfdxProjectService, 'isPathContainedInWorkspace').mockImplementation((candidatePath: string, workspaceRoot: string) => (
@@ -3272,55 +3273,75 @@ describe('RecipeCockpitService', () => {
 
             it('resolves a posted tree key to the host\'s recipe file, never to a posted path', () => {
 
-                expect(RecipeCockpitService.routePanelMessage({ command: 'runFaker', treeKey: LEAD_TREE_KEY, filePath: '/etc/passwd' }, buildRunFakerPanelState()))
-                    .toEqual({ kind: 'runFaker', treeKey: LEAD_TREE_KEY, recipeFilePath: LEAD_RECIPE_FILE_PATH });
+                expect(RecipeCockpitService.routePanelMessage({ command: 'generateTree', treeKey: LEAD_TREE_KEY, filePath: '/etc/passwd' }, buildRunFakerPanelState()))
+                    .toEqual({ kind: 'generateTree', treeKey: LEAD_TREE_KEY, recipeFilePath: LEAD_RECIPE_FILE_PATH });
+
+            });
+
+            // #293: ▶ Run Faker IS GONE, AND SO IS ITS MESSAGE -- A POSTED runFaker RUNS NOTHING AND ANSWERS NOTHING
+            it('routes a posted runFaker to nothing', () => {
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'runFaker', treeKey: LEAD_TREE_KEY }, buildRunFakerPanelState())).toBeUndefined();
 
             });
 
             /*
-                The panel disables every Run Faker on the click, so a refusal still answers: nothing
-                runs, and the buttons come back. Only a run already in flight goes unanswered -- its
-                own end re-enables them.
+                The panel disables the card's button on the click, so a refusal still answers: nothing
+                runs, and the button comes back. Only a run of that same tree goes unanswered -- its
+                own end re-enables it.
             */
             it('runs nothing before the draw is confirmed, for a key the model did not offer, or a payload of the wrong type, and says so', () => {
 
-                const notRunning = (treeKey: string) => ({ kind: 'postRunFakerState', hostMessage: { command: 'runFakerState', isRunning: false, treeKey: treeKey } });
+                const notRunning = (treeKey: string) => ({ kind: 'postGenerateState', hostMessage: { command: 'generateState', isRunning: false, treeKey: treeKey } });
 
-                expect(RecipeCockpitService.routePanelMessage({ command: 'runFaker', treeKey: LEAD_TREE_KEY }, buildRunFakerPanelState(false))).toEqual(notRunning(LEAD_TREE_KEY));
+                expect(RecipeCockpitService.routePanelMessage({ command: 'generateTree', treeKey: LEAD_TREE_KEY }, buildRunFakerPanelState(false))).toEqual(notRunning(LEAD_TREE_KEY));
 
                 const panelState = buildRunFakerPanelState();
 
                 expect([
-                    { command: 'runFaker', treeKey: 'Opportunity-ONLY' },
-                    { command: 'runFaker', treeKey: '__proto__' },
-                    { command: 'runFaker', treeKey: [LEAD_TREE_KEY] },
-                    { command: 'runFaker' }
+                    { command: 'generateTree', treeKey: 'Opportunity-ONLY' },
+                    { command: 'generateTree', treeKey: '__proto__' },
+                    { command: 'generateTree', treeKey: [LEAD_TREE_KEY] },
+                    { command: 'generateTree' }
                 ].map(panelMessage => RecipeCockpitService.routePanelMessage(panelMessage, panelState)))
                     .toEqual([notRunning('Opportunity-ONLY'), notRunning('__proto__'), notRunning(''), notRunning('')]);
 
                 const withoutTargets = buildRunFakerPanelState();
                 withoutTargets.treeHistoryTargets = RecipeCockpitTreeHistory.buildEmptyTargets();
-                expect(RecipeCockpitService.routePanelMessage({ command: 'runFaker', treeKey: LEAD_TREE_KEY }, withoutTargets)).toEqual(notRunning(LEAD_TREE_KEY));
+                expect(RecipeCockpitService.routePanelMessage({ command: 'generateTree', treeKey: LEAD_TREE_KEY }, withoutTargets)).toEqual(notRunning(LEAD_TREE_KEY));
 
             });
 
-            it('answers nothing while a run is in flight', () => {
+            // #293: THE BUTTON IS NEVER HELD BY ANOTHER CARD -- ONLY ITS OWN TREE'S RUN HOLDS IT
+            it('answers nothing for a tree already generating or inserting, and generates any other tree whatever runs', () => {
 
                 const panelState = buildRunFakerPanelState();
-                panelState.runFakerStateMessage = { command: 'runFakerState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
+                panelState.generateStateMessages.set(ACCOUNT_TREE_KEY, { command: 'generateState', isRunning: true, treeKey: ACCOUNT_TREE_KEY });
 
-                expect(RecipeCockpitService.routePanelMessage({ command: 'runFaker', treeKey: LEAD_TREE_KEY }, panelState)).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY }, panelState)).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage({ command: 'generateTree', treeKey: LEAD_TREE_KEY }, panelState))
+                    .toEqual({ kind: 'generateTree', treeKey: LEAD_TREE_KEY, recipeFilePath: LEAD_RECIPE_FILE_PATH });
+
+                const inserting = buildRunFakerPanelState();
+                inserting.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: LEAD_TREE_KEY };
+                inserting.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true, statusText: '', isFailure: false, hasOutput: false } as any;
+                inserting.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true, statusText: '', isFailure: false, hasOutput: false };
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'generateTree', treeKey: LEAD_TREE_KEY }, inserting)).toBeUndefined();
+                expect(RecipeCockpitService.routePanelMessage({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY }, inserting))
+                    .toEqual({ kind: 'generateTree', treeKey: ACCOUNT_TREE_KEY, recipeFilePath: expect.stringContaining('recipe--Account-thru-OtherChildObject__c') });
 
             });
 
-            it('replays a run still in flight after the model, so a reloaded document keeps its buttons disabled', () => {
+            it('replays every run still in flight after the model, so a reloaded document keeps those buttons disabled', () => {
 
                 const panelState = buildRunFakerPanelState();
-                panelState.runFakerStateMessage = { command: 'runFakerState', isRunning: true, treeKey: LEAD_TREE_KEY };
+                panelState.generateStateMessages.set(LEAD_TREE_KEY, { command: 'generateState', isRunning: true, treeKey: LEAD_TREE_KEY });
+                panelState.generateStateMessages.set(ACCOUNT_TREE_KEY, { command: 'generateState', isRunning: true, treeKey: ACCOUNT_TREE_KEY });
 
-                const replayedCommands = RecipeCockpitService.buildReplayMessages(panelState).map(hostMessage => hostMessage.command);
+                const replayed = RecipeCockpitService.buildReplayMessages(panelState).map(hostMessage => [hostMessage.command, (hostMessage as any).treeKey]);
 
-                expect(replayedCommands).toEqual(['recipeData', 'runFakerState']);
+                expect(replayed).toEqual([['recipeData', undefined], ['generateState', LEAD_TREE_KEY], ['generateState', ACCOUNT_TREE_KEY]]);
 
             });
 
@@ -3486,7 +3507,8 @@ describe('RecipeCockpitService', () => {
 
             });
 
-            it('draws ▶ Run Faker on each card that has a recipe, naming the file in its tooltip, and none on a card without one', () => {
+            // #293: ▶ Run Faker IS GONE; THE ONE GENERATE BUTTON READS "Generate fake data" UNTIL AN ORG CAN TAKE THE INSERT
+            it('draws one generate button on each card that has a recipe, naming the file in its tooltip, no ▶ Run Faker, and none on a card without one', () => {
 
                 const panel = runPanelScript();
                 const loadedRecipe = loadHistoryRecipe();
@@ -3494,63 +3516,71 @@ describe('RecipeCockpitService', () => {
                 panel.postToPanel({ command: 'recipeData', recipe: loadedRecipe.recipeViewModel, renderSequence: 1 });
 
                 // A FOLDED CARD HAS NO TREECIPE TAB YET, SO NO BUTTON
-                expect(panel.findAll(treeCardFolded(panel, 'Lead-ONLY'), 'treeRunFaker')).toEqual([]);
+                expect(panel.findAll(treeCardFolded(panel, 'Lead-ONLY'), 'treeInsert')).toEqual([]);
 
-                const leadButtons = panel.findAll(panel.findAll(expandCard(panel, 'Lead-ONLY'), 'treecipeActions')[0], 'treeRunFaker');
+                const leadCard = expandCard(panel, 'Lead-ONLY');
+                const leadButtons = panel.findAll(leadCard, 'treeInsert');
 
-                expect(leadButtons.map((button: any) => button.textContent)).toEqual([RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL]);
-                expect(leadButtons[0].attributes.title).toBe('Run Faker by Recipe on recipe--Lead-ONLY-2026-09-20T10-00-00.yml');
-                expect(panel.findAll(expandCard(panel, ACCOUNT_TREE_KEY), 'treeRunFaker')).toEqual([]);
+                expect(leadButtons.map((button: any) => [button.textContent, button.disabled])).toEqual([[RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false]]);
+                expect(leadButtons[0].attributes.title).toContain('recipe--Lead-ONLY-2026-09-20T10-00-00.yml');
+                expect(textOf(panel, leadCard, 'treeInsertReason')).toEqual(['Generates only: Choose an org above to also insert it.']);
+                expect(panel.findAll(panel.cockpitBodyElement, 'treeRunFaker')).toEqual([]);
+                expect(panel.findAll(expandCard(panel, ACCOUNT_TREE_KEY), 'treeInsert')).toEqual([]);
 
             });
 
-            it('posts the tree key on a click and disables every Run Faker until the host says the run ended', () => {
+            it('posts generateTree with no org, and disables ONLY that card\'s button until the host says its run ended', () => {
 
                 const { panel } = renderHistoryRecipe(3);
-                const leadButton = panel.findAll(expandCard(panel, 'Lead-ONLY'), 'treeRunFaker')[0];
-                const accountButton = panel.findAll(expandCard(panel, ACCOUNT_TREE_KEY), 'treeRunFaker')[0];
+                const leadButton = panel.findAll(expandCard(panel, 'Lead-ONLY'), 'treeInsert')[0];
+                const accountButton = panel.findAll(expandCard(panel, ACCOUNT_TREE_KEY), 'treeInsert')[0];
 
                 leadButton.dispatch('click');
+                leadButton.dispatch('click');
+
+                expect(postedNamed(panel, 'generateTree')).toEqual([{ command: 'generateTree', treeKey: LEAD_TREE_KEY }]);
+                expect([leadButton.disabled, accountButton.disabled]).toEqual([true, false]);
+                expect([leadButton.textContent, accountButton.textContent]).toEqual([RECIPE_COCKPIT_GENERATE_RUNNING_LABEL, RECIPE_COCKPIT_GENERATE_ACTION_LABEL]);
+
+                // ANOTHER CARD GENERATES WHILE THE FIRST RUNS
                 accountButton.dispatch('click');
-                leadButton.dispatch('click');
-
-                expect(postedNamed(panel, 'runFaker')).toEqual([{ command: 'runFaker', treeKey: LEAD_TREE_KEY }]);
+                expect(postedNamed(panel, 'generateTree')).toEqual([{ command: 'generateTree', treeKey: LEAD_TREE_KEY }, { command: 'generateTree', treeKey: ACCOUNT_TREE_KEY }]);
                 expect([leadButton.disabled, accountButton.disabled]).toEqual([true, true]);
-                expect([leadButton.textContent, accountButton.textContent]).toEqual([RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL, RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL]);
 
                 // THE HOST RELOADS THE RUN BEFORE IT SAYS THE RUN ENDED: THE RELOADED CARDS ARE STILL DISABLED
                 panel.postToPanel({ command: 'recipeData', recipe: loadHistoryRecipe().recipeViewModel, renderSequence: 4 });
                 [ACCOUNT_TREE_KEY, 'Lead-ONLY'].forEach(folderName => {
                     const treeCard = treeCardFolded(panel, folderName);
-                    if (panel.findAll(treeCard, 'treeRunFaker').length === 0) { expandCard(panel, folderName); }
+                    if (panel.findAll(treeCard, 'treeInsert').length === 0) { expandCard(panel, folderName); }
                 });
-                const reloadedButtons = panel.findAll(panel.cockpitBodyElement, 'treeRunFaker');
+                const reloadedButtons = panel.findAll(panel.cockpitBodyElement, 'treeInsert');
                 expect(reloadedButtons.map((button: any) => button.disabled)).toEqual([true, true]);
 
-                panel.postToPanel({ command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY });
+                panel.postToPanel({ command: 'generateState', isRunning: false, treeKey: LEAD_TREE_KEY });
+                panel.postToPanel({ command: 'generateState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
 
                 expect(reloadedButtons.map((button: any) => [button.disabled, button.textContent])).toEqual([
-                    [false, RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL],
-                    [false, RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL]
+                    [false, RECIPE_COCKPIT_GENERATE_ACTION_LABEL],
+                    [false, RECIPE_COCKPIT_GENERATE_ACTION_LABEL]
                 ]);
 
                 reloadedButtons[0].dispatch('click');
-                expect(postedNamed(panel, 'runFaker')).toHaveLength(2);
+                expect(postedNamed(panel, 'generateTree')).toHaveLength(3);
 
             });
 
-            it('disables every Run Faker when a reloaded document is told a run is still in flight', () => {
+            it('disables only the card a reloaded document is told is still generating', () => {
 
                 const { panel } = renderHistoryRecipe();
 
-                panel.postToPanel({ command: 'runFakerState', isRunning: true, treeKey: ACCOUNT_TREE_KEY });
+                panel.postToPanel({ command: 'generateState', isRunning: true, treeKey: ACCOUNT_TREE_KEY });
                 expandCard(panel, ACCOUNT_TREE_KEY);
                 expandCard(panel, 'Lead-ONLY');
 
-                const runFakerButtons = panel.findAll(panel.cockpitBodyElement, 'treeRunFaker');
-                expect(runFakerButtons.map((button: any) => [button.disabled, button.textContent])).toEqual([
-                    [true, RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL],
-                    [true, RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL]
+                const generateButtons = panel.findAll(panel.cockpitBodyElement, 'treeInsert');
+                expect(generateButtons.map((button: any) => [button.disabled, button.textContent])).toEqual([
+                    [true, RECIPE_COCKPIT_GENERATE_RUNNING_LABEL],
+                    [false, RECIPE_COCKPIT_GENERATE_ACTION_LABEL]
                 ]);
 
             });
@@ -3583,8 +3613,8 @@ describe('RecipeCockpitService', () => {
                 });
 
                 // #217 TOOK 🔍 OUT: EACH TAB HAS ITS OWN SEARCH, SO THERE IS NO PANEL-WIDE ONE TO SCOPE
-                // #255 MOVED ▶ RUN FAKER AND RESET SELECTION INTO THE TREECIPE TAB; #263 TOOK REGENERATE OUT OF IT
-                it('keeps only ☆ and ✎ in the row\'s action group, and puts ▶ Run Faker and Reset selection at the top of the Treecipe tab', () => {
+                // #255 MOVED RESET SELECTION INTO THE TREECIPE TAB; #263 TOOK REGENERATE OUT OF IT; #293 TOOK ▶ RUN FAKER OUT
+                it('keeps only ☆ and ✎ in the row\'s action group, and puts Reset selection and the generate button at the top of the Treecipe tab', () => {
 
                     const { panel } = renderHistoryRecipe();
                     const leadCard = treeCardFolded(panel, 'Lead-ONLY');
@@ -3597,11 +3627,12 @@ describe('RecipeCockpitService', () => {
 
                     expandCard(panel, 'Lead-ONLY');
 
-                    expect(panel.findAll(actionGroup, 'treeRunFaker')).toEqual([]);
+                    expect(panel.findAll(actionGroup, 'treeInsert')).toEqual([]);
                     expect(panel.findAll(actionGroup, 'treeResetSelection')).toEqual([]);
                     const treecipeHeader = panel.findAll(panel.tabPanelOf(leadCard, 'treeStructure'), 'treecipeHeader')[0];
                     const treecipeActions = panel.findAll(treecipeHeader, 'treecipeActions')[0];
-                    expect(treecipeActions.children.map((actionElement: any) => actionElement.className)).toEqual(['treeRunFaker', 'treeResetSelection hidden']);
+                    expect(treecipeActions.children.map((actionElement: any) => actionElement.className)).toEqual(['treeResetSelection hidden']);
+                    expect(panel.findAll(treecipeHeader, 'treeInsert')).toHaveLength(1);
 
                 });
 
@@ -3618,24 +3649,22 @@ describe('RecipeCockpitService', () => {
 
                 });
 
-                it('runs Faker from ▶ Run Faker without closing the card, and a DISABLED one neither toggles nor posts', () => {
+                it('generates from the Treecipe tab without closing the card, and a DISABLED button neither toggles nor posts', () => {
 
                     const { panel } = renderHistoryRecipe();
                     const leadCard = expandCard(panel, 'Lead-ONLY');
-                    const accountCard = expandCard(panel, ACCOUNT_TREE_KEY);
-                    const leadButton = panel.findAll(leadCard, 'treeRunFaker')[0];
-                    const accountButton = panel.findAll(accountCard, 'treeRunFaker')[0];
+                    const leadButton = panel.findAll(leadCard, 'treeInsert')[0];
 
                     leadButton.dispatch('click');
 
-                    expect(postedNamed(panel, 'runFaker')).toEqual([{ command: 'runFaker', treeKey: LEAD_TREE_KEY }]);
+                    expect(postedNamed(panel, 'generateTree')).toEqual([{ command: 'generateTree', treeKey: LEAD_TREE_KEY }]);
                     expect(isOpen(panel, leadCard)).toBe(true);
 
-                    expect(accountButton.disabled).toBe(true);
-                    accountButton.dispatch('click');
+                    expect(leadButton.disabled).toBe(true);
+                    leadButton.dispatch('click');
 
-                    expect(postedNamed(panel, 'runFaker')).toHaveLength(1);
-                    expect(isOpen(panel, accountCard)).toBe(true);
+                    expect(postedNamed(panel, 'generateTree')).toHaveLength(1);
+                    expect(isOpen(panel, leadCard)).toBe(true);
 
                 });
 
@@ -4288,7 +4317,7 @@ describe('RecipeCockpitService', () => {
 
             });
 
-            describe('Run Faker', () => {
+            describe('Generate fake data with no insert (#293)', () => {
 
                 const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 
@@ -4307,7 +4336,7 @@ describe('RecipeCockpitService', () => {
                     }));
                 };
 
-                const runFakerStates = () => postedPanelMessages.filter(hostMessage => hostMessage.command === 'runFakerState');
+                const generateStates = () => postedPanelMessages.filter(hostMessage => hostMessage.command === 'generateState');
                 const reloadedLeadTree = () => postedPanelMessages.filter(hostMessage => hostMessage.command === 'recipeData').at(-1)
                     .recipe.trees.find((tree: any) => tree.treeKey === LEAD_TREE_KEY);
 
@@ -4327,14 +4356,14 @@ describe('RecipeCockpitService', () => {
                     const renderSequence = lastRenderSequence();
                     postedPanelMessages.length = 0;
 
-                    await receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
+                    await receivedMessageHandler({ command: 'generateTree', treeKey: LEAD_TREE_KEY });
 
                     expect(executedCommandsNamed(RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toEqual([[RECIPE_COCKPIT_RUN_FAKER_COMMAND, leadRecipeFilePath]]);
-                    expect(postedPanelMessages.map(hostMessage => hostMessage.command).filter(command => ['runFakerState', 'recipeData', 'datasetAdded'].includes(command)))
-                        .toEqual(['runFakerState', 'datasetAdded', 'runFakerState']);
-                    expect(runFakerStates()).toEqual([
-                        { command: 'runFakerState', isRunning: true, treeKey: LEAD_TREE_KEY },
-                        { command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY }
+                    expect(postedPanelMessages.map(hostMessage => hostMessage.command).filter(command => ['generateState', 'recipeData', 'datasetAdded'].includes(command)))
+                        .toEqual(['generateState', 'datasetAdded', 'generateState']);
+                    expect(generateStates()).toEqual([
+                        { command: 'generateState', isRunning: true, treeKey: LEAD_TREE_KEY },
+                        { command: 'generateState', isRunning: false, treeKey: LEAD_TREE_KEY }
                     ]);
                     expect(postedPanelMessages.find(hostMessage => hostMessage.command === 'datasetAdded')).toEqual({
                         command: 'datasetAdded',
@@ -4353,10 +4382,10 @@ describe('RecipeCockpitService', () => {
                     // NOTHING IS LEFT IN FLIGHT: A REVEAL REPLAYS NO RUN BUT THE NEW DATA SET, AND A SECOND RUN IS ROUTED ONCE IT IS DRAWN
                     postedPanelMessages.length = 0;
                     await receivedMessageHandler({ command: 'ready' });
-                    expect(runFakerStates()).toEqual([]);
+                    expect(generateStates()).toEqual([]);
                     expect(reloadedLeadTree().history.datasets[0]).toMatchObject({ datasetFolderName: 'dataset-2026-09-22T00-00-00', runFolderName: HISTORY_CURRENT_RUN });
                     await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
-                    await receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
+                    await receivedMessageHandler({ command: 'generateTree', treeKey: LEAD_TREE_KEY });
                     expect(executedCommandsNamed(RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toHaveLength(2);
 
                 });
@@ -4372,35 +4401,42 @@ describe('RecipeCockpitService', () => {
                     await openRenderedHistoryCockpit(temporaryWorkspaceRoot);
                     postedPanelMessages.length = 0;
 
-                    await receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
+                    await receivedMessageHandler({ command: 'generateTree', treeKey: LEAD_TREE_KEY });
 
                     expect(postedPanelMessages.some(hostMessage => hostMessage.command === 'datasetAdded')).toBe(false);
                     expect(postedPanelMessages.find(hostMessage => hostMessage.command === 'recipeData').focusTree).toEqual({ treeKey: LEAD_TREE_KEY, tab: 'datasets' });
-                    expect(runFakerStates().at(-1)).toEqual({ command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY });
+                    expect(generateStates().at(-1)).toEqual({ command: 'generateState', isRunning: false, treeKey: LEAD_TREE_KEY });
 
                 });
 
-                it('refuses a second Run Faker while the first is running, and replays the running state to a reloaded document', async () => {
+                it('refuses a second run of the same tree while the first is running, runs another tree meanwhile, and replays the running state to a reloaded document', async () => {
 
-                    let finishRun: () => void;
+                    const finishRuns: Array<() => void> = [];
                     (vscode.commands.executeCommand as jest.Mock).mockImplementation((commandName: string) => (
-                        commandName === RECIPE_COCKPIT_RUN_FAKER_COMMAND ? new Promise<void>(resolveRun => { finishRun = resolveRun; }) : Promise.resolve()
+                        commandName === RECIPE_COCKPIT_RUN_FAKER_COMMAND ? new Promise<void>(resolveRun => { finishRuns.push(resolveRun); }) : Promise.resolve()
                     ));
 
                     await openRenderedHistoryCockpit();
-                    const firstRun = receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
-                    await receivedMessageHandler({ command: 'runFaker', treeKey: ACCOUNT_TREE_KEY });
+                    const firstRun = receivedMessageHandler({ command: 'generateTree', treeKey: LEAD_TREE_KEY });
+                    await receivedMessageHandler({ command: 'generateTree', treeKey: LEAD_TREE_KEY });
 
                     expect(executedCommandsNamed(RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toHaveLength(1);
 
+                    const secondRun = receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
+                    await new Promise(resolveTick => setImmediate(resolveTick));
+                    expect(executedCommandsNamed(RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toHaveLength(2);
+
                     postedPanelMessages.length = 0;
                     await receivedMessageHandler({ command: 'ready' });
-                    expect(runFakerStates()).toEqual([{ command: 'runFakerState', isRunning: true, treeKey: LEAD_TREE_KEY }]);
+                    expect(generateStates()).toEqual([
+                        { command: 'generateState', isRunning: true, treeKey: LEAD_TREE_KEY },
+                        { command: 'generateState', isRunning: true, treeKey: ACCOUNT_TREE_KEY }
+                    ]);
 
-                    finishRun();
-                    await firstRun;
+                    finishRuns.forEach(finishRun => finishRun());
+                    await Promise.all([firstRun, secondRun]);
 
-                    expect(runFakerStates().at(-1)).toEqual({ command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY });
+                    expect(generateStates().filter(hostMessage => !hostMessage.isRunning).map(hostMessage => hostMessage.treeKey).sort()).toEqual([ACCOUNT_TREE_KEY, LEAD_TREE_KEY].sort());
 
                 });
 
@@ -4416,10 +4452,10 @@ describe('RecipeCockpitService', () => {
                     await openRenderedHistoryCockpit();
                     postedPanelMessages.length = 0;
 
-                    await receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
+                    await receivedMessageHandler({ command: 'generateTree', treeKey: LEAD_TREE_KEY });
 
                     expect(postedPanelMessages.some(hostMessage => hostMessage.command === 'recipeData')).toBe(true);
-                    expect(runFakerStates().at(-1)).toEqual({ command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY });
+                    expect(generateStates().at(-1)).toEqual({ command: 'generateState', isRunning: false, treeKey: LEAD_TREE_KEY });
                     expect(handleCapturedErrorSpy).toHaveBeenCalledWith(expect.objectContaining({ message: 'snowfakery is not installed' }), 'openRecipeCockpit');
 
                 });
@@ -4433,10 +4469,10 @@ describe('RecipeCockpitService', () => {
                         .recipe.trees.find((tree: any) => tree.treeKey === LEAD_TREE_KEY).history.datasets;
                     postedPanelMessages.length = 0;
 
-                    await receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
+                    await receivedMessageHandler({ command: 'generateTree', treeKey: LEAD_TREE_KEY });
 
                     expect(reloadedLeadTree().history.datasets).toEqual(leadDatasetsBefore);
-                    expect(runFakerStates().at(-1)).toEqual({ command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY });
+                    expect(generateStates().at(-1)).toEqual({ command: 'generateState', isRunning: false, treeKey: LEAD_TREE_KEY });
 
                 });
 
@@ -4448,12 +4484,12 @@ describe('RecipeCockpitService', () => {
                     fs.rmSync(path.join(temporaryWorkspaceRoot, 'treecipe', 'GeneratedRecipes', HISTORY_CURRENT_RUN, LEAD_TREE_KEY, 'recipe--Lead-ONLY-2026-09-20T10-00-00.yml'));
                     postedPanelMessages.length = 0;
 
-                    await receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
+                    await receivedMessageHandler({ command: 'generateTree', treeKey: LEAD_TREE_KEY });
 
                     expect(executedCommandsNamed(RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toEqual([]);
-                    expect(showWarningMessageSpy).toHaveBeenCalledWith('The recipe file "recipe--Lead-ONLY-2026-09-20T10-00-00.yml" no longer exists in this workspace, so Run Faker did not run. The Recipe Cockpit has reloaded the run.');
+                    expect(showWarningMessageSpy).toHaveBeenCalledWith('The recipe file "recipe--Lead-ONLY-2026-09-20T10-00-00.yml" no longer exists in this workspace, so nothing was generated. The Recipe Cockpit has reloaded the run.');
                     expect(reloadedLeadTree()).not.toHaveProperty('runFakerRecipeFileName');
-                    expect(runFakerStates().at(-1)).toEqual({ command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY });
+                    expect(generateStates().at(-1)).toEqual({ command: 'generateState', isRunning: false, treeKey: LEAD_TREE_KEY });
 
                 });
 
@@ -4462,7 +4498,7 @@ describe('RecipeCockpitService', () => {
                     await openRenderedHistoryCockpit();
                     await receivedMessageHandler({ command: 'ready' });
 
-                    await receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
+                    await receivedMessageHandler({ command: 'generateTree', treeKey: LEAD_TREE_KEY });
 
                     expect(executedCommandsNamed(RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toEqual([]);
 
@@ -4475,10 +4511,10 @@ describe('RecipeCockpitService', () => {
                     await receivedMessageHandler({ command: 'selectRun', runFolderName: 'recipe-2026-09-01T00-00-00' });
                     postedPanelMessages.length = 0;
 
-                    await receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
+                    await receivedMessageHandler({ command: 'generateTree', treeKey: LEAD_TREE_KEY });
 
                     expect(executedCommandsNamed(RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toEqual([]);
-                    expect(postedPanelMessages).toEqual([{ command: 'runFakerState', isRunning: false, treeKey: LEAD_TREE_KEY }]);
+                    expect(postedPanelMessages).toEqual([{ command: 'generateState', isRunning: false, treeKey: LEAD_TREE_KEY }]);
 
                 });
 
@@ -4491,7 +4527,7 @@ describe('RecipeCockpitService', () => {
                     ));
 
                     await openRenderedHistoryCockpit();
-                    const run = receivedMessageHandler({ command: 'runFaker', treeKey: LEAD_TREE_KEY });
+                    const run = receivedMessageHandler({ command: 'generateTree', treeKey: LEAD_TREE_KEY });
                     await receivedMessageHandler({ command: 'selectRun', runFolderName: OTHER_RUN });
                     postedPanelMessages.length = 0;
 
