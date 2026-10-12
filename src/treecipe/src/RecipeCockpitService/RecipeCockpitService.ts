@@ -273,7 +273,7 @@ export const RECIPE_COCKPIT_RUN_FAKER_RUNNING_LABEL = 'Running Faker…';
 export const RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = '+';
 export const RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL = 'Add';
 
-// IN THE ORDER A CARD DRAWS THEM; STRUCTURE IS SELECTED BY DEFAULT, AND THE HISTORY TABS ARE DRAWN ONLY FOR A CARD WITH A HISTORY
+// IN THE ORDER A CARD DRAWS THEM; TREECIPE IS SELECTED BY DEFAULT, AND THE DATA SETS TAB IS DRAWN ONLY FOR A CARD WITH A HISTORY
 export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'compare', 'datasets'] as const;
 
 export type RecipeCockpitTreeTab = typeof RECIPE_COCKPIT_TREE_TABS[number];
@@ -458,7 +458,7 @@ export interface IRecipeCockpitTreeObjectViewModel {
 /*
     history is set only on a card whose folder is in the run on screen -- the one identity a tree
     keeps across runs. The ungrouped card, and a recipe file with no tree folder, have none, and
-    the panel draws no history tabs for them.
+    the panel draws no Previously Used Data Sets tab for them.
 */
 /*
     runFakerRecipeFileName is set only on a card ▶ Run Faker can run: the recipe FILE NAME, for the
@@ -1079,9 +1079,8 @@ export interface IRecipeCockpitLoadedRecipe {
 }
 
 /*
-    The allow-lists of the history tabs, one per action, each a set of NAMES drawn from the
-    rendered model's tree histories. Summaries are keyed by tree, diffs by tree and run, and the
-    three data set actions by data set folder name.
+    The allow-lists of the tree cards' actions, one per action, each a set of NAMES drawn from the
+    rendered model's trees. The three data set actions are keyed by data set folder name.
 */
 export interface IRecipeCockpitTreeHistoryAllowLists {
     openableDatasetFolderNames: Set<string>;
@@ -6661,11 +6660,11 @@ export class RecipeCockpitService {
     static readTreeFocus(panelMessage: IRecipeCockpitPanelMessage, panelState: IRecipeCockpitPanelState): IRecipeCockpitTreeFocus | undefined {
 
         const { treeKey, tab } = panelMessage;
-        const isHistoryTab = tab === 'datasets';
+        const isDatasetsTab = tab === 'datasets';
         const isRenderedTree = typeof treeKey === 'string'
                                 && !!panelState.recipeDataMessage?.recipe.trees.some(tree => tree.treeKey === treeKey);
 
-        return isHistoryTab && isRenderedTree ? { treeKey: treeKey as string, tab: tab } : undefined;
+        return isDatasetsTab && isRenderedTree ? { treeKey: treeKey as string, tab: tab } : undefined;
 
     }
 
