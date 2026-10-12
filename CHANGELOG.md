@@ -1,5 +1,16 @@
 # Change Log
 
+## [3.72.2] - Recipe Cockpit: orgs are listed by their alias again
+
+Closes [#286](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/286).
+
+The Treecipe tab's org picker is meant to label an org by its alias, but sandboxes with an alias were listed by username. `@salesforce/core` reads aliases once per process into a `StateAggregator`, and the extension host lives as long as VS Code. So an alias set after the extension loaded never appeared. That includes `sf alias set`, `sf org login … --alias` and a scratch org this extension created.
+
+- **Fresh authorizations.** Every org listing now drops that cached instance (`StateAggregator.clearInstance()`) before it reads the authorizations, so the alias file is read again. This covers the Treecipe tab's picker, Insert Data Set, Run Picklist Dependency Check, the Dev Hub picker, the alias check of **+ New scratch org** and the authorization check before a failed deploy's Deployment Status (#283). An alias set since shows up on the next listing, with no ⟳.
+- **The CLI's alias as a fallback.** The `sf org list --json --verbose` answer's `alias` (or the first string of `aliases`) is read as untrusted. It is used only as a label, and only for an org whose authorization carries no alias. An alias that could not be an org identifier is ignored. The CLI answer is cached until ⟳, so a CLI alias is not put back on an org once it is stale: when the fresh authorizations show it on another org, or when this org's authorization carried an alias at the time the CLI ran and no longer does (`sf alias unset`).
+- **Same label everywhere.** It is the alias, or the username when there is none, in the picker, the hidden-orgs note and the quick picks.
+- **Only a label.** The selection is still by index, the remembered org is still the username, and the cockpit's CLI calls still name the username. `targetOrgIdentifier` is still decided by the authorization alone, so the CLI's alias never reaches `--target-org`. An authorization's aliases are now type-checked: the first non-empty string is used.
+- **Unchanged:** which orgs are listed (production stays out of the Treecipe tab, and only orgs the CLI reports as connected are listed), recipe generation and both faker backends.
 ## [3.72.1] - Recipe Cockpit: the CLI never runs outside the project on a Windows network folder
 
 Closes [#285](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/285).
