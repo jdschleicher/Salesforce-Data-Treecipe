@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Serial_Required</fullName>
+    <active>true</active>
+    <errorConditionFormula>ISBLANK(Serial__c)</errorConditionFormula>
+    <errorMessage>Serial is required.</errorMessage>
+</ValidationRule>

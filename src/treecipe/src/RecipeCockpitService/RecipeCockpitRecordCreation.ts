@@ -72,11 +72,6 @@ export interface IRecipeCockpitCreateReadinessViewModel {
     treeKey?: string;
     disabledReason: string;
     requiredLookups: IRecipeCockpitRequiredLookupViewModel[];
-    /*
-        Set only when the reason is one a deploy of local source can fix (#211): the org answered
-        that it has no such object. Never before the sandbox check has passed.
-    */
-    isMetadataDeployable?: boolean;
 }
 
 /*
@@ -90,8 +85,6 @@ export interface ICreateReadinessInput {
     orgTypeDetail: ICreateOrgTypeDetail | undefined;
     describe?: ICreateObjectDescribe;
     describeFailureMessage?: string;
-    // THE ORG ANSWERED THAT IT HAS NO SUCH OBJECT, RATHER THAN THE DESCRIBE FAILING TO BE ASKED
-    isObjectNotFound?: boolean;
     // WHY THAT BLOCK COULD NOT BE READ: A REASON IN ITS OWN RIGHT, NEVER A BLOCK WITH NO FIELDS
     recipeFieldRefusalReason?: string;
     // THE FIELDS THE STRUCTURE TAB UNTICKED (#220): NOT SENT, SO ONE THE ORG REQUIRES IS A REASON
@@ -278,8 +271,7 @@ export class RecipeCockpitRecordCreation {
         }
 
         if ( !describe ) {
-            const missingObjectReadiness = notReady(`${objectApiName} is not in this org${readinessInput.describeFailureMessage ? ` (${readinessInput.describeFailureMessage})` : ''}.`);
-            return readinessInput.isObjectNotFound === true ? { ...missingObjectReadiness, isMetadataDeployable: true } : missingObjectReadiness;
+            return notReady(`${objectApiName} is not in this org${readinessInput.describeFailureMessage ? ` (${readinessInput.describeFailureMessage})` : ''}.`);
         }
 
         if ( describe.isCreateable !== true ) {
