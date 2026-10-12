@@ -1298,6 +1298,20 @@ describe('SalesforceOrgService', () => {
 
         });
 
+        it('does not label an org by a cached CLI alias once the alias it held when the CLI ran is removed', async () => {
+
+            answerSandboxOrgList({ alias: 'qa' });
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([buildSandboxAuthorization(['qa'])]);
+            expect((await SalesforceOrgService.listDataOrgDetails()).orgDetails[0].alias).toBe('qa');
+
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([buildSandboxAuthorization([])]);
+            const listedAfterUnset = await SalesforceOrgService.listDataOrgDetails();
+
+            expect(listedAfterUnset.orgDetails).toEqual([{ targetOrgIdentifier: SANDBOX_USERNAME, username: SANDBOX_USERNAME, alias: undefined }]);
+            expect(execFile).toHaveBeenCalledTimes(1);
+
+        });
+
         it('labels a hidden org by the same rule', async () => {
 
             answerSandboxOrgList({ connectedStatus: 'RefreshTokenAuthError', alias: 'qa' });

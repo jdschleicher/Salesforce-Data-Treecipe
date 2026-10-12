@@ -163,6 +163,7 @@ export interface IConnectedOrgStatusListing {
     connectionStatesByUsername: Map<string, OrgConnectionState>;
     aliasesByUsername?: Map<string, string>;
     checkedAuthorizationUsernames?: Set<string>;
+    checkedAuthorizationAliasesByUsername?: Map<string, string>;
 }
 
 /*
@@ -599,9 +600,16 @@ export class SalesforceOrgService {
     // THE AUTHORIZATIONS ARE READ BEFORE THE CLI RUNS, SO ONE ADDED DURING THE CHECK IS NEVER COUNTED AS CHECKED
     private static async runOrgListCommand(): Promise<IConnectedOrgStatusListing> {
 
-        const checkedAuthorizationUsernames = new Set((await this.readFreshAuthorizations())
-            .map(authorization => authorization?.username)
-            .filter((username): username is string => typeof username === 'string' && !!username));
+        const checkedAuthorizationUsernames = new Set<string>();
+        const checkedAuthorizationAliasesByUsername = new Map<string, string>();
+
+        (await this.readFreshAuthorizations()).forEach(authorization => {
+            const username = authorization?.username;
+            if ( typeof username === 'string' && username ) {
+                checkedAuthorizationUsernames.add(username);
+                checkedAuthorizationAliasesByUsername.set(username, PicklistDependencyCheckService.readFirstAuthorizationAlias(authorization) ?? '');
+            }
+        });
 
         const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(
             [...SALESFORCE_CLI_ORG_LIST_ARGUMENTS],
@@ -609,7 +617,11 @@ export class SalesforceOrgService {
             SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS
         );
 
-        return { ...this.parseOrgListInvocation(invocationResult), checkedAuthorizationUsernames: checkedAuthorizationUsernames };
+        return {
+            ...this.parseOrgListInvocation(invocationResult),
+            checkedAuthorizationUsernames: checkedAuthorizationUsernames,
+            checkedAuthorizationAliasesByUsername: checkedAuthorizationAliasesByUsername
+        };
 
     }
 
@@ -815,7 +827,9 @@ export class SalesforceOrgService {
     /*
         The CLI's alias for each authorization that carries none of its own. The authorizations are
         read fresh on every listing while the CLI's answer is cached until ⟳, so an alias the fresh
-        read already gives another org has moved, and is not put back on this one.
+        read already gives another org has moved, and is not put back on this one; and an org whose
+        authorization DID carry an alias when the CLI ran has had it removed since ("sf alias
+        unset"), so the CLI's copy of it is stale too.
     */
     private static buildLabelAliasesByUsername(authorizations: OrgAuthorization[],
                                                 connectedOrgStatusListing: IConnectedOrgStatusListing): Map<string, string> {
@@ -831,8 +845,10 @@ export class SalesforceOrgService {
             Array.isArray(authorization?.aliases) ? authorization.aliases.filter((alias: unknown) => typeof alias === 'string') : []
         )));
 
+        const checkedAliasesByUsername = connectedOrgStatusListing.checkedAuthorizationAliasesByUsername;
+
         cliAliasesByUsername.forEach((alias, username) => {
-            if ( !heldAliases.has(alias) ) {
+            if ( !heldAliases.has(alias) && !checkedAliasesByUsername?.get(username) ) {
                 labelAliasesByUsername.set(username, alias);
             }
         });
