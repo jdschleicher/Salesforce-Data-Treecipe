@@ -4707,6 +4707,8 @@ export class RecipeCockpitService {
         let cliStartedFor: { orgDetail: IAuthenticatedOrgDetail; objectApiNames: string[] } | undefined;
 
         reportStatus(`Finding the permission sets for ${treeLabel}…`);
+        // THE WALK AND THE PARSES ARE SYNCHRONOUS: WITHOUT A YIELD THE STATUS WOULD PAINT ONLY ONCE THEY HAD FINISHED
+        await this.yieldToExtensionHost();
 
         try {
 
@@ -4737,8 +4739,8 @@ export class RecipeCockpitService {
                 const currentPanelState = this.recipeCockpitPanelState;
 
                 if ( closingState.isAssigned === true && cliStartedFor && deploySelection && currentPanel && currentPanelState.dataOrgSelection === deploySelection ) {
-                    const coveredObjectApiNames = new Set(cliStartedFor.objectApiNames);
-                    await this.refreshDataOrgReadinessForTrees(currentPanel, currentPanelState, recipeTree => recipeTree.objects.some(treeObject => coveredObjectApiNames.has(treeObject.objectApiName)));
+                    const lowerCoveredNames = new Set(cliStartedFor.objectApiNames.map(objectApiName => objectApiName.toLowerCase()));
+                    await this.refreshDataOrgReadinessForTrees(currentPanel, currentPanelState, recipeTree => recipeTree.objects.some(treeObject => lowerCoveredNames.has(treeObject.objectApiName.toLowerCase())));
                 }
 
                 if ( !deploySelection && closingState.isConfirmed === true && closingState.orgDetail && currentPanel && currentPanelState.recipeDataMessage ) {
@@ -4854,7 +4856,12 @@ export class RecipeCockpitService {
         }
 
         const permissionSetNames = pickedPermissionSets.map(permissionSet => permissionSet.name);
-        const coveredObjectApiNames = objectApiNames.filter(objectApiName => pickedPermissionSets.some(permissionSet => permissionSet.coveredObjectApiNames.includes(objectApiName)));
+        // EVERY OBJECT A PICK GRANTS ON, NOT ONLY THIS TREE'S: ANOTHER CARD'S DESCRIBE OF IT CHANGES TOO
+        const lowerGrantedNames = new Set(pickedPermissionSets.flatMap(permissionSet => permissionSet.grantedObjectApiNames).map(objectApiName => objectApiName.toLowerCase()));
+        const coveredObjectApiNames = [...new Set([
+            ...objectApiNames,
+            ...pickedPermissionSets.flatMap(permissionSet => permissionSet.grantedObjectApiNames).filter(objectApiName => SalesforceApiName.isApiName(objectApiName))
+        ])].filter(objectApiName => lowerGrantedNames.has(objectApiName.toLowerCase()));
         // NO PARENTHESES: A NOTIFICATION ESCAPES THEM, AND THIS LABEL IS IN EVERY ONE THIS RUN SHOWS
         const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
         const permissionSetText = `${permissionSetNames.length} ${permissionSetNames.length === 1 ? 'permission set' : 'permission sets'}`;
@@ -4893,7 +4900,7 @@ export class RecipeCockpitService {
         reportStatus(`Deploying ${permissionSetText} for ${treeLabel}…`);
         onCliStarted(orgDetail, coveredObjectApiNames);
 
-        const deployRun = await this.runCancellableCli(`Recipe Cockpit: deploying ${permissionSetText} for ${treeLabel} to ${orgLabel}`, deployArguments, PERMISSION_SET_DEPLOY_TIMEOUT_MILLISECONDS, workspaceRoot);
+        const deployRun = await this.runCancellableCli(RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: deploying ${permissionSetText} for ${treeLabel} to ${orgLabel}`), deployArguments, PERMISSION_SET_DEPLOY_TIMEOUT_MILLISECONDS, workspaceRoot);
 
         if ( deployRun.isCancelled ) {
             const cancelledText = `The deploy of ${permissionSetText} for ${treeLabel} to ${orgLabel} was cancelled, so whether it applied is unknown. Nothing was assigned.`;
@@ -4932,7 +4939,7 @@ export class RecipeCockpitService {
 
         reportStatus(`Assigning ${permissionSetText} to ${orgDetail.username}…`);
 
-        const assignRun = await this.runCancellableCli(`Recipe Cockpit: assigning ${permissionSetText} to ${orgDetail.username}`, assignArguments, PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS, workspaceRoot);
+        const assignRun = await this.runCancellableCli(RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: assigning ${permissionSetText} to ${orgDetail.username}`), assignArguments, PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS, workspaceRoot);
 
         if ( assignRun.isCancelled ) {
             const cancelledText = `The assignment of ${permissionSetText} in ${orgLabel} was cancelled after they were deployed, so which were assigned is unknown.`;
@@ -6581,9 +6588,10 @@ export class RecipeCockpitService {
                 and shares its lock and its line: one deploy of either kind at a time, none while an
                 insert or a scratch org run holds the selection, and none of those while it runs.
                 Which permission sets are offered is the host's, from local source. An index must BE
-                the selection and that org must have answered that it is a sandbox; there is no
-                readiness gate, since a permission set's deploy changes no readiness the selection's
-                own check could put back.
+                the selection, that org must have answered that it is a sandbox, and its readiness
+                must have been posted: an assignment changes what a describe answers, so a describe
+                the selection's own check took before it, cached or posted after it, would put back
+                the reasons the assignment removed.
             */
             case 'deployTreePermissionSets': {
 
@@ -6618,7 +6626,9 @@ export class RecipeCockpitService {
                         && !!dataOrgSelection
                         && dataOrgSelection.orgIndex === orgIndex
                         && dataOrgSelection.orgTypeDetail?.isSandbox === true ) {
-                    return { kind: 'deployTreePermissionSets', treeKey: treeKey, isSelectedOrg: true };
+                    return dataOrgSelection.isReadinessPosted === true
+                        ? { kind: 'deployTreePermissionSets', treeKey: treeKey, isSelectedOrg: true }
+                        : refuse('Nothing was deployed or assigned: the org selected above is still being checked. Try again once that check has finished.');
                 }
 
                 return refuse('Nothing was deployed or assigned: the org selected above has not answered that it is a sandbox. Choose a sandbox or scratch org there.');

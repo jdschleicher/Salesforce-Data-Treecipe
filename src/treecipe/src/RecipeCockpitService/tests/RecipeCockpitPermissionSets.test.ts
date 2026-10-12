@@ -123,8 +123,8 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
             expect(await discover()).toEqual({
                 permissionSets: [
-                    { name: 'Account_Tree_Access', relativeFilePath: ACCOUNT_TREE_ACCESS_PATH, coveredObjectApiNames: ['Account', 'OtherChildObject__c'] },
-                    { name: 'Contact_Reader', relativeFilePath: CONTACT_READER_PATH, coveredObjectApiNames: ['Contact'] }
+                    { name: 'Account_Tree_Access', relativeFilePath: ACCOUNT_TREE_ACCESS_PATH, coveredObjectApiNames: ['Account', 'OtherChildObject__c'], grantedObjectApiNames: ['OtherChildObject__c', 'Account'] },
+                    { name: 'Contact_Reader', relativeFilePath: CONTACT_READER_PATH, coveredObjectApiNames: ['Contact'], grantedObjectApiNames: ['contact'] }
                 ],
                 unparseableFilePaths: [],
                 notApiNameFilePaths: []
@@ -198,7 +198,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
         it('marks a permission set that covers only some of the tree as partial', () => {
 
-            const permissionSet = { name: 'Account_Tree_Access', relativeFilePath: ACCOUNT_TREE_ACCESS_PATH, coveredObjectApiNames: ['Account', 'OtherChildObject__c'] };
+            const permissionSet = { name: 'Account_Tree_Access', relativeFilePath: ACCOUNT_TREE_ACCESS_PATH, coveredObjectApiNames: ['Account', 'OtherChildObject__c'], grantedObjectApiNames: ['Account', 'OtherChildObject__c'] };
 
             expect(RecipeCockpitPermissionSetDeploy.describeCoverage(permissionSet, 3)).toBe('partial, 2 of 3: Account, OtherChildObject__c');
             expect(RecipeCockpitPermissionSetDeploy.describeCoverage(permissionSet, 2)).toBe('covers all 2 of the tree\'s objects: Account, OtherChildObject__c');
@@ -314,7 +314,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
         it('names the tree, the org, the user and every pick with what it covers in the confirmation, each on one line', () => {
 
             const detail = RecipeCockpitPermissionSetDeploy.buildConfirmationDetail('Tree\nTwo', `qa · ${QA_USERNAME}`, QA_USERNAME, [
-                { name: 'Account_Tree_Access', relativeFilePath: ACCOUNT_TREE_ACCESS_PATH, coveredObjectApiNames: ['Account', 'OtherChildObject__c'] }
+                { name: 'Account_Tree_Access', relativeFilePath: ACCOUNT_TREE_ACCESS_PATH, coveredObjectApiNames: ['Account', 'OtherChildObject__c'], grantedObjectApiNames: ['Account', 'OtherChildObject__c'] }
             ], 3);
 
             expect(detail).toContain('Tree: Tree Two');
@@ -334,7 +334,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             panelState.recipeDataMessage = { command: 'recipeData', recipe: { runs: [], selectedRunFolderName: '', objects: [], trees: [], notices: [], emptyStateMessage: '' }, renderSequence: 3 };
             panelState.acknowledgedRenderSequence = 3;
             panelState.dataOrgDetails = [{ targetOrgIdentifier: 'qa', username: QA_USERNAME, alias: 'qa' }];
-            panelState.dataOrgSelection = { orgIndex: 0, orgDetail: panelState.dataOrgDetails[0], requestSequence: 7, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' }, isReadinessPosted: false };
+            panelState.dataOrgSelection = { orgIndex: 0, orgDetail: panelState.dataOrgDetails[0], requestSequence: 7, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' }, isReadinessPosted: true };
             panelState.pendingDeployableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
             panelState.deployableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
             return panelState;
@@ -342,7 +342,20 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
         const permissionSetMessage = { command: 'deployTreePermissionSets', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY };
 
-        it('routes the tree KEY and whether the selection is the org, never anything else, and needs no posted readiness', () => {
+        it('refuses the selected org until its readiness was posted, since a describe taken before the assignment would put back what it removed', () => {
+
+            const panelState = buildPanelState();
+            panelState.dataOrgSelection.isReadinessPosted = false;
+
+            expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)).toMatchObject({
+                kind: 'postMetadataDeployState',
+                hostMessage: { isRunning: false, treeKey: ACCOUNT_TREE_KEY, isFailure: true, statusText: 'Nothing was deployed or assigned: the org selected above is still being checked. Try again once that check has finished.' }
+            });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'deployTreePermissionSets', treeKey: ACCOUNT_TREE_KEY }, panelState)?.kind).toBe('deployTreePermissionSets');
+
+        });
+
+        it('routes the tree KEY and whether the selection is the org, never anything else', () => {
 
             expect(RecipeCockpitService.routePanelMessage({ ...permissionSetMessage, names: ['Evil'], username: 'prod@example.com' } as any, buildPanelState()))
                 .toEqual({ kind: 'deployTreePermissionSets', treeKey: ACCOUNT_TREE_KEY, isSelectedOrg: true });
@@ -625,6 +638,23 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
         });
 
+        it('drops and re-checks the describes of every object a pick grants on, another card\'s included, matched case-insensitively', async () => {
+
+            const accessFilePath = path.join(workspaceRoot, ACCOUNT_TREE_ACCESS_PATH);
+            fs.writeFileSync(accessFilePath, fs.readFileSync(accessFilePath, 'utf-8').replace('<label>', '<objectPermissions><allowRead>true</allowRead><object>lead</object></objectPermissions>\n    <label>'));
+            await openCockpitWithQaSelected();
+            const clearSpy = jest.spyOn(SalesforceOrgService, 'clearDescribeCache');
+            const describesBefore = describeCalls.length;
+
+            await deployPermissionSets();
+
+            expect(clearSpy).toHaveBeenCalledWith(QA_USERNAME, 'lead');
+            expect(clearSpy).not.toHaveBeenCalledWith(QA_USERNAME, 'User');
+            // THE Lead CARD IS CHECKED AGAIN, SO ITS OBJECT IS DESCRIBED AFRESH
+            expect(describeCalls.slice(describesBefore)).toContain('Lead');
+
+        });
+
         it('deploys and assigns only what the reader picked', async () => {
 
             await openCockpitWithQaSelected();
@@ -649,6 +679,9 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             expect(modalMessage).not.toMatch(/[[\]()]/);
             expect(modalOptions.detail).not.toMatch(/[[\]()]/);
             expect(modalOptions.detail).toContain('Tree: Run \\u005bme\\u005d\\u0028command:evil\\u0029');
+            const progressTitles = (vscode.window.withProgress as jest.Mock).mock.calls.map(([progressOptions]) => progressOptions.title);
+            expect(progressTitles).toHaveLength(2);
+            progressTitles.forEach(progressTitle => expect(progressTitle).not.toMatch(/[[\]()]/));
 
         });
 

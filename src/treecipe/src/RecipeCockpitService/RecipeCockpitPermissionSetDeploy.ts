@@ -46,6 +46,8 @@ export interface IPermissionSetCandidate {
     relativeFilePath: string;
     // THE TREE'S OBJECTS IT GRANTS ANYTHING ON, AS THE TREE SPELLS THEM AND IN THE TREE'S ORDER
     coveredObjectApiNames: string[];
+    // EVERY OBJECT IT GRANTS ANYTHING ON, THE TREE'S OR NOT, AS ITS XML SPELLS THEM: WHAT AN ASSIGNMENT CAN CHANGE A DESCRIBE OF
+    grantedObjectApiNames: string[];
 }
 
 export interface IPermissionSetDiscovery {
@@ -226,7 +228,8 @@ export class RecipeCockpitPermissionSetDeploy {
             discovery.permissionSets.push({
                 name: permissionSetName,
                 relativeFilePath: relativeFilePath,
-                coveredObjectApiNames: treeObjectOrder.filter(objectApiName => coveredLowerNames.has(objectApiName.toLowerCase()))
+                coveredObjectApiNames: treeObjectOrder.filter(objectApiName => coveredLowerNames.has(objectApiName.toLowerCase())),
+                grantedObjectApiNames: [...new Set(grantedObjectApiNames)]
             });
 
         }
