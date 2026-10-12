@@ -25,7 +25,7 @@
     only object it adds a friend to is such an iteration.
 */
 
-export type RecipeWriterOperation = 'insert-field' | 'replace-field-value' | 'comment-out-field' | 'restore-commented-out-field' | 'set-object-property' | 'insert-friend';
+export type RecipeWriterOperation = 'insert-field' | 'replace-field-value' | 'comment-out-field' | 'restore-commented-out-field' | 'set-object-property' | 'insert-friend' | 'wire-lookup';
 
 export type RecipeObjectProperty = 'nickname' | 'count';
 
@@ -55,7 +55,11 @@ export type RecipeWriterRefusalReason =
     | 'duplicate-friends-block'
     | 'unsupported-friend-layout'
     | 'all-objects-excluded'
-    | 'unsupported-filter-layout';
+    | 'unsupported-filter-layout'
+    | 'no-lookup-wirings'
+    | 'duplicate-lookup-wiring'
+    | 'lookup-not-wireable'
+    | 'parent-nickname-not-a-candidate';
 
 export interface IRecipeWriterRefusal {
     reason: RecipeWriterRefusalReason;
@@ -81,6 +85,8 @@ export interface IRecipeWriterEdit {
     friendObjectApiName?: string;
     // THE NICKNAME insertFriend GAVE THE FRIEND IT ADDED
     friendNickname?: string;
+    // THE NICKNAME wireLookups WROTE AS THE LOOKUP'S VALUE
+    parentNickname?: string;
     startLineNumber: number;
     removedLines: string[];
     insertedLines: string[];
@@ -179,6 +185,38 @@ export type RecipeFilterResult =
     }
     | { isFiltered: false; refusal: IRecipeWriterRefusal };
 
+/*
+    One lookup a recipe still writes as "### TODO -- REFERENCE ID REQUIRED", and the nicknames it can
+    be wired to (#151). objectNickname is set only when the object is written more than once, which
+    is when the writer needs it to tell the occurrences apart. candidateNicknames is never empty:
+    a TODO nothing can resolve is not listed.
+*/
+export interface ILookupWiring {
+    objectApiName: string;
+    objectNickname?: string;
+    fieldApiName: string;
+    parentObjectApiNames: string[];
+    candidateNicknames: string[];
+}
+
+// WHAT A CALLER ASKS wireLookups TO WRITE: ONE TODO LOOKUP AND THE NICKNAME IT BECOMES
+export interface ILookupWiringRequest {
+    objectApiName: string;
+    objectNickname?: string;
+    fieldApiName: string;
+    parentNickname: string;
+}
+
+// THE LOOKUPS AND LEVELS listLookupWirings DECIDES BY -- THE SAME TWO buildFilteredRecipe TAKES
+export interface ILookupWiringContext {
+    parentLookupsByObjectApiName: ReadonlyMap<string, readonly IRecipeFilterLookup[]>;
+    levelsByObjectApiName?: ReadonlyMap<string, number>;
+}
+
+export type RecipeLookupWiringResult =
+    | { isApplied: true; recipeText: string; edits: IRecipeWriterEdit[] }
+    | { isApplied: false; refusal: IRecipeWriterRefusal };
+
 export type RecipeWriterResult =
     | { isApplied: true; recipeText: string; edit: IRecipeWriterEdit }
     | { isApplied: false; refusal: IRecipeWriterRefusal };
@@ -258,6 +296,9 @@ const RECORD_TYPE_SECTION_MARKER = '### TODO: -- RecordType Options -- ';
 const FIXED_VALUE_TEMPLATE_OPENERS = ['${', '{{', '{%', '<<', '<%'];
 const FIXED_NUMBER_PATTERN = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
 const FIXED_NUMBER_MAX_EXACT_DIGITS = 15;
+// RelationshipService.referenceIdRequiredTodo, ALONE OR WITH THE " -- <Parent>, <Parent>" A NESTED TREE APPENDS (#46) -- A TEST HOLDS THE TWO TOGETHER
+const REFERENCE_ID_REQUIRED_TODO_TEXT = '### TODO -- REFERENCE ID REQUIRED';
+const REFERENCE_ID_REQUIRED_TODO_PATTERN = /^### TODO -- REFERENCE ID REQUIRED(?: -- [^\r\n\u0085\u2028\u2029]*)?[ \t]*$/;
 
 export class RecipeCockpitRecipeWriter {
 
@@ -758,6 +799,228 @@ export class RecipeCockpitRecipeWriter {
                 && insertedFriend.nicknames.length === 1
                 && insertedFriend.nicknames[0] === friendNickname
                 && insertedFriend.fields.map(scannedField => scannedField.fieldApiName).join('\n') === sourceFriend.fields.map(scannedField => scannedField.fieldApiName).join('\n');
+
+    }
+
+    /*
+        Every lookup the recipe still writes as the generated "### TODO -- REFERENCE ID REQUIRED", and
+        the nicknames it can be wired to (#151). Wiring writes the nickname as the lookup's value, which
+        both backends leave as a plain string and the insert replaces with the Id of the record holding
+        that nickname -- so a nickname is offered only where the insert can RESOLVE it: an ANCESTOR of
+        the occurrence (a faker-js friend is generated under it), or an object of the same file at a
+        strictly LOWER relationship level, which is inserted first. A cycle, a self-lookup's top record
+        and a parent with no recipe stay TODOs: there is no record inserted before them to name.
+
+        A nickname counts only when exactly one occurrence in the file carries it, since a nickname two
+        occurrences share resolves to whichever is inserted first. Only a field that is ONE line and
+        that line exactly the TODO is listed, so a lookup a person already filled in is never offered.
+    */
+    static listLookupWirings(recipeText: string, wiringContext: ILookupWiringContext): ILookupWiring[] {
+
+        const { lines } = this.splitRecipeLines(recipeText);
+        return this.locateLookupWirings(lines, this.scanRecipeObjects(lines), wiringContext).map(locatedWiring => locatedWiring.wiring);
+
+    }
+
+    /*
+        Writes each requested nickname over its TODO in ONE scan, or nothing: every request is checked
+        against listLookupWirings of the text as it is NOW, so a TODO filled in, a nickname renamed or
+        an object moved since the caller listed them refuses the whole batch rather than writing part
+        of it. Each field's one line is replaced and every other line, line endings included, is left
+        as it was.
+    */
+    static wireLookups(recipeText: string, wiringRequests: readonly ILookupWiringRequest[], wiringContext: ILookupWiringContext): RecipeLookupWiringResult {
+
+        if ( wiringRequests.length === 0 ) {
+            return this.refuse('no-lookup-wirings', 'No lookup was named to wire.', '');
+        }
+
+        const requestKeys = new Set<string>();
+
+        for ( const wiringRequest of wiringRequests ) {
+
+            const { objectApiName, objectNickname, fieldApiName, parentNickname } = wiringRequest;
+
+            if ( !API_NAME_PATTERN.test(objectApiName) ) {
+                return this.refuse('invalid-object-api-name', `"${objectApiName}" is not an object api name.`, objectApiName, fieldApiName, objectNickname);
+            }
+            if ( objectNickname !== undefined && !API_NAME_PATTERN.test(objectNickname) ) {
+                return this.refuse('invalid-object-nickname', `"${objectNickname}" is not a nickname.`, objectApiName, fieldApiName, objectNickname);
+            }
+            if ( !API_NAME_PATTERN.test(fieldApiName) ) {
+                return this.refuse('invalid-field-api-name', `"${fieldApiName}" is not a field api name.`, objectApiName, fieldApiName, objectNickname);
+            }
+            if ( !API_NAME_PATTERN.test(parentNickname) ) {
+                return this.refuse('invalid-value', `"${parentNickname}" is not a nickname.`, objectApiName, fieldApiName, objectNickname);
+            }
+
+            const requestKey = this.buildLookupWiringKey(objectApiName, objectNickname, fieldApiName);
+            if ( requestKeys.has(requestKey) ) {
+                return this.refuse('duplicate-lookup-wiring', `${this.describeObject(objectApiName, objectNickname)}.${fieldApiName} was named more than once.`, objectApiName, fieldApiName, objectNickname);
+            }
+            requestKeys.add(requestKey);
+
+        }
+
+        const recipeLines = this.splitRecipeLines(recipeText);
+        const scannedObjects = this.scanRecipeObjects(recipeLines.lines);
+        const locatedWiringsByKey = new Map(this.locateLookupWirings(recipeLines.lines, scannedObjects, wiringContext)
+            .map(locatedWiring => [this.buildLookupWiringKey(locatedWiring.wiring.objectApiName, locatedWiring.wiring.objectNickname, locatedWiring.wiring.fieldApiName), locatedWiring]));
+
+        const nextLines = recipeLines.lines.slice();
+        const edits: IRecipeWriterEdit[] = [];
+
+        for ( const wiringRequest of wiringRequests ) {
+
+            const { objectApiName, objectNickname, fieldApiName, parentNickname } = wiringRequest;
+            const fieldLabel = `${this.describeObject(objectApiName, objectNickname)}.${fieldApiName}`;
+            const locatedWiring = locatedWiringsByKey.get(this.buildLookupWiringKey(objectApiName, objectNickname, fieldApiName));
+
+            if ( !locatedWiring ) {
+                return this.refuse('lookup-not-wireable', `${fieldLabel} is no longer a "${REFERENCE_ID_REQUIRED_TODO_TEXT}" lookup with a parent inserted before it, so nothing was wired.`, objectApiName, fieldApiName, objectNickname);
+            }
+
+            if ( !locatedWiring.wiring.candidateNicknames.includes(parentNickname) ) {
+                return this.refuse('parent-nickname-not-a-candidate', `${parentNickname} is not a record ${fieldLabel} can be wired to: it must be held by one occurrence of ${locatedWiring.wiring.parentObjectApiNames.join(' or ')} inserted before it.`, objectApiName, fieldApiName, objectNickname);
+            }
+
+            const wiredLine = `${locatedWiring.fieldIndent}${fieldApiName}: ${parentNickname}`;
+            edits.push({
+                operation: 'wire-lookup',
+                objectApiName: objectApiName,
+                ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
+                fieldApiName: fieldApiName,
+                parentNickname: parentNickname,
+                startLineNumber: locatedWiring.lineIndex + 1,
+                removedLines: [recipeLines.lines[locatedWiring.lineIndex]],
+                insertedLines: [wiredLine]
+            });
+            nextLines[locatedWiring.lineIndex] = wiredLine;
+
+        }
+
+        // READ BACK: THE SAME OBJECTS, AND EACH WRITTEN LINE STILL THE FIELD IT REPLACED
+        const nextScannedObjects = this.scanRecipeObjects(nextLines);
+        const isReadBack = nextScannedObjects.length === scannedObjects.length
+            && edits.every(edit => nextScannedObjects.some(scannedObject => scannedObject.fields.some(scannedField => (
+                scannedField.startIndex === edit.startLineNumber - 1 && scannedField.fieldApiName === edit.fieldApiName
+            ))));
+
+        if ( !isReadBack ) {
+            const firstEdit = edits[0];
+            return this.refuse('unsupported-field-layout', 'The wired recipe did not read back as the same objects and fields, so nothing was wired.', firstEdit.objectApiName, firstEdit.fieldApiName, firstEdit.objectNickname);
+        }
+
+        return {
+            isApplied: true,
+            recipeText: this.joinRecipeLines({ lines: nextLines, lineEndings: recipeLines.lineEndings }),
+            edits: edits
+        };
+
+    }
+
+    static buildLookupWiringKey(objectApiName: string, objectNickname: string | undefined, fieldApiName: string): string {
+        return `${objectApiName}\n${objectNickname ?? ''}\n${fieldApiName}`;
+    }
+
+    private static locateLookupWirings(lines: string[], scannedObjects: IScannedObject[], wiringContext: ILookupWiringContext): { wiring: ILookupWiring; lineIndex: number; fieldIndent: string }[] {
+
+        const friendIndex = this.buildScannedFriendIndex(scannedObjects);
+        const occurrencesByObjectApiName = new Map<string, IScannedObject[]>();
+        const occurrenceCountsByNickname = new Map<string, number>();
+
+        scannedObjects.forEach(scannedObject => {
+            occurrencesByObjectApiName.set(scannedObject.objectApiName, [...( occurrencesByObjectApiName.get(scannedObject.objectApiName) ?? [] ), scannedObject]);
+            scannedObject.nicknames.forEach(nickname => occurrenceCountsByNickname.set(nickname, (occurrenceCountsByNickname.get(nickname) ?? 0) + 1));
+        });
+
+        const readDistinctNickname = (scannedObject: IScannedObject): string | undefined => (
+            scannedObject.nicknames.length === 1
+                && API_NAME_PATTERN.test(scannedObject.nicknames[0])
+                && occurrenceCountsByNickname.get(scannedObject.nicknames[0]) === 1
+                ? scannedObject.nicknames[0]
+                : undefined
+        );
+        const levelOf = (objectApiName: string): number | undefined => wiringContext.levelsByObjectApiName?.get(objectApiName);
+
+        const locatedWirings: { wiring: ILookupWiring; lineIndex: number; fieldIndent: string }[] = [];
+
+        scannedObjects.forEach(scannedObject => {
+
+            const parentLookups = wiringContext.parentLookupsByObjectApiName.get(scannedObject.objectApiName) ?? [];
+            const isWrittenOnce = occurrencesByObjectApiName.get(scannedObject.objectApiName).length === 1;
+            const objectNickname = isWrittenOnce ? undefined : readDistinctNickname(scannedObject);
+
+            if ( parentLookups.length === 0
+                    || !API_NAME_PATTERN.test(scannedObject.objectApiName)
+                    || ( !isWrittenOnce && objectNickname === undefined )
+                    || scannedObject.fieldsLineIndexes.length !== 1 ) {
+                return;
+            }
+
+            const ancestors: IScannedObject[] = [];
+            for ( let ancestor = friendIndex.objectsByHeaderIndex.get(scannedObject.parentHeaderIndex);
+                    ancestor;
+                    ancestor = ancestor.parentHeaderIndex === undefined ? undefined : friendIndex.objectsByHeaderIndex.get(ancestor.parentHeaderIndex) ) {
+                ancestors.push(ancestor);
+            }
+
+            const { fieldIndent } = this.getObjectLayout(scannedObject.objectIndent);
+            const fieldCountsByApiName = new Map<string, number>();
+            scannedObject.fields.forEach(scannedField => fieldCountsByApiName.set(scannedField.fieldApiName, (fieldCountsByApiName.get(scannedField.fieldApiName) ?? 0) + 1));
+            const objectLevel = levelOf(scannedObject.objectApiName);
+
+            scannedObject.fields.forEach(scannedField => {
+
+                const parentObjectApiNames = [...new Set(parentLookups
+                    .filter(parentLookup => parentLookup.fieldApiName === scannedField.fieldApiName && API_NAME_PATTERN.test(parentLookup.parentObjectApiName))
+                    .map(parentLookup => parentLookup.parentObjectApiName))];
+
+                const valueText = lines[scannedField.startIndex].slice(fieldIndent.length + scannedField.fieldApiName.length + 1).replace(/^[ \t]+/, '');
+
+                if ( parentObjectApiNames.length === 0
+                        || fieldCountsByApiName.get(scannedField.fieldApiName) !== 1
+                        || !API_NAME_PATTERN.test(scannedField.fieldApiName)
+                        || !REFERENCE_ID_REQUIRED_TODO_PATTERN.test(valueText)
+                        || lines.slice(scannedField.startIndex + 1, scannedField.endIndex).some(continuationLine => continuationLine.trim()) ) {
+                    return;
+                }
+
+                const ancestorNicknames = ancestors
+                    .filter(ancestor => parentObjectApiNames.includes(ancestor.objectApiName))
+                    .map(readDistinctNickname);
+                const lowerLevelNicknames = parentObjectApiNames
+                    .filter(parentObjectApiName => {
+                        const parentLevel = levelOf(parentObjectApiName);
+                        return parentLevel !== undefined && objectLevel !== undefined && parentLevel < objectLevel;
+                    })
+                    .flatMap(parentObjectApiName => ( occurrencesByObjectApiName.get(parentObjectApiName) ?? [] ))
+                    .filter(parentOccurrence => parentOccurrence !== scannedObject)
+                    .map(readDistinctNickname);
+
+                const candidateNicknames = [...new Set([...ancestorNicknames, ...lowerLevelNicknames].filter((nickname): nickname is string => nickname !== undefined))];
+
+                if ( candidateNicknames.length === 0 ) {
+                    return;
+                }
+
+                locatedWirings.push({
+                    wiring: {
+                        objectApiName: scannedObject.objectApiName,
+                        ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
+                        fieldApiName: scannedField.fieldApiName,
+                        parentObjectApiNames: parentObjectApiNames,
+                        candidateNicknames: candidateNicknames
+                    },
+                    lineIndex: scannedField.startIndex,
+                    fieldIndent: fieldIndent
+                });
+
+            });
+
+        });
+
+        return locatedWirings;
 
     }
 

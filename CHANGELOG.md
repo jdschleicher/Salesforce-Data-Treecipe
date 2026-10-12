@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.71.0] - Recipe Cockpit: wire a TODO lookup to a nickname, writing the recipe file
+
+For [#151](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/151), rescoped to lookup wiring.
+
+A lookup Generate Treecipe could not wire stays `### TODO -- REFERENCE ID REQUIRED`. That is every lookup of a snowfakery recipe, and of a faker-js recipe generated before #46. Run Faker then generates it as nothing, and only the cockpit's own tree insert filled it in, with a random parent. The Treecipe tab now resolves the TODO in the recipe **file**, so Run Faker, Insert Data Set by Directory and every later run see the reference:
+
+- **Wire to…** on a lookup row writes the parent's nickname as the lookup's value (`AccountId: Account_NickName`). The insert replaces a value that is exactly a nickname with the Id of the record holding it, for both backends, and faker-js spreads a nickname with `count > 1` across that parent's records. With more than one record to choose from (a polymorphic lookup, or two parents in the tree), the cockpit asks which. A confirmation names the file and the change; Cancel writes nothing.
+- **Wire TODO lookups (N)**, beside Reset selection, wires every lookup of the tree that has exactly one record to choose from in one write, after a confirmation listing each `Object.Field → Nickname` (the first 12, then a count). A lookup with more than one choice is left for its own **Wire to…**.
+- **Only a nickname the insert can resolve is offered:** an ancestor of the occurrence (a faker-js friend is generated under it), or an object of the same recipe at a strictly lower relationship level, which is inserted first. A nickname is offered only when exactly one occurrence in the file holds it. A self-lookup's top record, a lookup cycle and a parent with no recipe stay TODOs, because no record is inserted before them to name.
+- **The write is a line patch.** `RecipeCockpitRecipeWriter.wireLookups` replaces only each TODO field's own line, in one scan, and leaves every other line and line ending as it was. It re-derives what may be wired (`listLookupWirings`) from the file as it is at the click, so a lookup filled in, a nickname renamed or an object moved since the panel was drawn refuses the whole batch and writes nothing. The cockpit then reloads onto the card's Treecipe tab.
+- **What the panel sends.** `wireLookup {treeKey, objectApiName, objectNickname?, fieldApiName}` and `wireAllLookups {treeKey}` carry names only, matched against `wireableLookupTargets`, a pending/active allow-list built from the rendered model's `lookupWirings` (promoted on `rendered`, emptied on `ready`, a new post and a failure to draw). The nickname and the recipe file are the host's. One write runs at a time (`wireLookupState`, replayed on a reveal), and **+** (Add friend) waits for it, since both write the same file.
+- **A lookup row shows what the recipe file says.** The objects wrapper records every lookup as the TODO, even after Generate Treecipe wired it to an ancestor (#46). A lookup row whose wrapper value is that TODO now shows the file's value, so a wired lookup reads as its nickname.
+- **Unchanged:** recipe generation and both faker backends, the tree insert's own filling of lookups still TODO, field and object selection, counts and fixed values (which still never write the recipe).
+
 ## [3.70.0] - Recipe Cockpit: "Deploy & assign permission sets…" for a tree
 
 Closes [#274](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/274), following [#273](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/273).
