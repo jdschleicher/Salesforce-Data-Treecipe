@@ -1060,11 +1060,20 @@ export class RecipeCockpitRecipeWriter {
             ''
         ];
 
-        // THE BLOCK GOES ABOVE THE COMMENT LINES THAT HEAD THE TOP-LEVEL BLOCK, SO THEY STAY WITH THE OBJECT THEY NAME
-        let insertIndex = located.rootHeaderIndex;
-        while ( insertIndex > 0 && recipeLines.lines[insertIndex - 1].startsWith('#') ) {
-            insertIndex--;
+        /*
+            The block goes above the comment that names the top-level object -- Generate Treecipe's
+            "# Contact (Parents: …)", with or without blank lines before the header -- so that comment
+            stays with the object it names. Any other comment (a "# Level N" banner, a reader's note)
+            is not taken to head the object, so the block goes directly above the header instead.
+        */
+        const rootObjectApiName = additionIndex.friendIndex.objectsByHeaderIndex.get(located.rootHeaderIndex).objectApiName;
+        let headingIndex = located.rootHeaderIndex - 1;
+        while ( headingIndex >= 0 && !recipeLines.lines[headingIndex].trim() ) {
+            headingIndex--;
         }
+        const isRootHeading = headingIndex >= 0
+            && ( recipeLines.lines[headingIndex] === `# ${rootObjectApiName}` || recipeLines.lines[headingIndex].startsWith(`# ${rootObjectApiName} `) );
+        const insertIndex = isRootHeading ? headingIndex : located.rootHeaderIndex;
 
         const { lines, lineEndings } = recipeLines;
         const defaultLineEnding = lineEndings.find(lineEnding => lineEnding) ?? '\n';
@@ -1129,7 +1138,12 @@ export class RecipeCockpitRecipeWriter {
 
     }
 
-    private static buildParentObjectAdditionIndex(scannedObjects: IScannedObject[]): { friendIndex: IScannedFriendIndex; occurrencesByObjectApiName: Map<string, IScannedObject[]>; occurrenceCountsByNickname: Map<string, number> } {
+    private static buildParentObjectAdditionIndex(scannedObjects: IScannedObject[]): {
+        friendIndex: IScannedFriendIndex;
+        occurrencesByObjectApiName: Map<string, IScannedObject[]>;
+        hasDistinctNicknamesByObjectApiName: Map<string, boolean>;
+        occurrencesByNickname: Map<string, IScannedObject>;
+    } {
 
         const occurrencesByObjectApiName = new Map<string, IScannedObject[]>();
         const occurrenceCountsByNickname = new Map<string, number>();
@@ -1144,7 +1158,27 @@ export class RecipeCockpitRecipeWriter {
             scannedObject.nicknames.forEach(nickname => occurrenceCountsByNickname.set(nickname, (occurrenceCountsByNickname.get(nickname) ?? 0) + 1));
         });
 
-        return { friendIndex: this.buildScannedFriendIndex(scannedObjects), occurrencesByObjectApiName: occurrencesByObjectApiName, occurrenceCountsByNickname: occurrenceCountsByNickname };
+        // WHETHER EVERY OCCURRENCE OF AN OBJECT HAS A NICKNAME NO OTHER OCCURRENCE HOLDS -- ONCE PER OBJECT, NOT PER LOOKUP, SINCE AN OBJECT CAN BE WRITTEN THOUSANDS OF TIMES
+        const hasDistinctNicknamesByObjectApiName = new Map<string, boolean>();
+        occurrencesByObjectApiName.forEach((occurrences, objectApiName) => hasDistinctNicknamesByObjectApiName.set(objectApiName, occurrences.every(occurrence => (
+            occurrence.nicknames.length === 1
+                && API_NAME_PATTERN.test(occurrence.nicknames[0])
+                && occurrenceCountsByNickname.get(occurrence.nicknames[0]) === 1
+        ))));
+
+        const occurrencesByNickname = new Map<string, IScannedObject>();
+        scannedObjects.forEach(scannedObject => {
+            if ( scannedObject.nicknames.length === 1 && occurrenceCountsByNickname.get(scannedObject.nicknames[0]) === 1 ) {
+                occurrencesByNickname.set(scannedObject.nicknames[0], scannedObject);
+            }
+        });
+
+        return {
+            friendIndex: this.buildScannedFriendIndex(scannedObjects),
+            occurrencesByObjectApiName: occurrencesByObjectApiName,
+            hasDistinctNicknamesByObjectApiName: hasDistinctNicknamesByObjectApiName,
+            occurrencesByNickname: occurrencesByNickname
+        };
 
     }
 
@@ -1156,27 +1190,29 @@ export class RecipeCockpitRecipeWriter {
         { addition: IParentObjectAddition; scannedObject: IScannedObject; lineIndex: number; fieldIndent: string; rootHeaderIndex: number } | { isApplied: false; refusal: IRecipeWriterRefusal } {
 
         const { objectApiName, objectNickname, fieldApiName, parentTemplatesByObjectApiName } = additionRequest;
-        const { friendIndex, occurrencesByObjectApiName, occurrenceCountsByNickname } = additionIndex;
+        const { friendIndex, occurrencesByObjectApiName, hasDistinctNicknamesByObjectApiName, occurrencesByNickname } = additionIndex;
         const refuse = (reason: RecipeWriterRefusalReason, message: string) => this.refuse(reason, message, objectApiName, fieldApiName, objectNickname);
         const objectLabel = this.describeObject(objectApiName, objectNickname);
         const fieldLabel = `${objectLabel}.${fieldApiName}`;
+
+        // listAddableParentObjects ASKS ABOUT EVERY OBJECT THE FILE WRITES, AND ONLY AN API NAME MAY REACH A NOTIFICATION OR THE RECIPE
+        if ( !API_NAME_PATTERN.test(objectApiName) || !API_NAME_PATTERN.test(fieldApiName) || ( objectNickname !== undefined && !API_NAME_PATTERN.test(objectNickname) ) ) {
+            return refuse('invalid-object-api-name', `"${objectApiName}.${fieldApiName}" is not an object and field api name.`);
+        }
 
         const occurrences = occurrencesByObjectApiName.get(objectApiName) ?? [];
         if ( occurrences.length === 0 ) {
             return refuse('object-not-found', `The recipe has no "- object: ${objectApiName}" line.`);
         }
 
-        const hasDistinctNickname = (occurrence: IScannedObject) => occurrence.nicknames.length === 1
-                                                                        && API_NAME_PATTERN.test(occurrence.nicknames[0])
-                                                                        && occurrenceCountsByNickname.get(occurrence.nicknames[0]) === 1;
-
-        if ( occurrences.length > 1 && ( objectNickname === undefined || !occurrences.every(hasDistinctNickname) ) ) {
+        if ( occurrences.length > 1 && ( objectNickname === undefined || !hasDistinctNicknamesByObjectApiName.get(objectApiName) ) ) {
             return refuse('duplicate-object', `The recipe writes ${objectApiName} ${occurrences.length} times and its occurrences cannot be told apart by nickname, so which one's lookup to wire cannot be told.`);
         }
 
+        const nicknamedOccurrence = objectNickname === undefined ? undefined : occurrencesByNickname.get(objectNickname);
         const scannedObject = occurrences.length === 1 && ( objectNickname === undefined || occurrences[0].nicknames.includes(objectNickname) )
             ? occurrences[0]
-            : occurrences.find(occurrence => occurrence.nicknames[0] === objectNickname);
+            : ( nicknamedOccurrence?.objectApiName === objectApiName ? nicknamedOccurrence : undefined );
 
         if ( !scannedObject ) {
             return refuse('object-not-found', `The recipe has no "- object: ${objectApiName}" with the nickname ${objectNickname}.`);

@@ -284,6 +284,13 @@ describe('RecipeCockpitRecipeWriter add parent object (#294)', () => {
             const opportunityRootIndex = loadedObjects.findIndex(loadedObject => !!findOpportunity([loadedObject]));
             expect(campaignIndex).toBeLessThan(opportunityRootIndex);
 
+            // THE BLOCK GOES ABOVE THE GENERATED COMMENT THAT NAMES THE TOP-LEVEL OBJECT, EVEN WITH A BLANK LINE BEFORE ITS HEADER, AND BELOW ANY BANNER
+            const resultLines = result.recipeText.replace(/\r\n/g, '\n').split('\n');
+            const lineAfterBlock = resultLines[blockStartIndex + blockEdit.insertedLines.length];
+            const rootObjectApiName = loadedObjects[opportunityRootIndex].object;
+            expect(lineAfterBlock).toStartWith(`# ${rootObjectApiName} (`);
+            expect(resultLines[blockStartIndex - 1]).not.toStartWith(`# ${rootObjectApiName} (`);
+
             // ONCE ADDED IT IS NOT OFFERED AGAIN, AND THE RECIPE IS STILL WIRABLE THE #151 WAY FOR WHAT IT WAS BEFORE
             expect(RecipeCockpitRecipeWriter.listAddableParentObjects(result.recipeText, generatedContext, new Set(['Campaign']))).toEqual([]);
 
@@ -404,6 +411,49 @@ describe('RecipeCockpitRecipeWriter add parent object (#294)', () => {
             expect(result.edits[0].startLineNumber).toBe(1);
             expect(result.recipeText.startsWith('# Account (Added by the Recipe Cockpit as the parent of Contact.AccountId)\n- object: Account\n')).toBeTrue();
             expect(result.recipeText.endsWith(bareRecipe.replace(`AccountId: ${TODO}`, 'AccountId: Account_NickName'))).toBeTrue();
+
+        });
+
+        test('a comment that does not name the object stays above the block, and a heading separated by blank lines stays with its object', () => {
+
+            const recipeWithBanner = [
+                '# Level 1 - Contact',
+                '# a reader\'s own note',
+                '',
+                '- object: Contact',
+                '  nickname: Contact_NickName',
+                '  count: 1',
+                '  fields:',
+                `    AccountId: ${TODO}`,
+                ''
+            ].join('\n');
+
+            const bannerResult = expectApplied(RecipeCockpitRecipeWriter.addParentObject(recipeWithBanner, request('AccountId', templates), CONTACT_CONTEXT));
+            expect(bannerResult.recipeText.split('\n').slice(0, 5)).toEqual([
+                '# Level 1 - Contact',
+                '# a reader\'s own note',
+                '',
+                '# Account (Added by the Recipe Cockpit as the parent of Contact.AccountId)',
+                '- object: Account'
+            ]);
+
+            const recipeWithHeading = recipeWithBanner.replace('# a reader\'s own note', '# Contact (Parents: Account)');
+            const headingResult = expectApplied(RecipeCockpitRecipeWriter.addParentObject(recipeWithHeading, request('AccountId', templates), CONTACT_CONTEXT));
+            const headingLines = headingResult.recipeText.split('\n');
+            expect(headingLines.slice(0, 2)).toEqual(['# Level 1 - Contact', '# Account (Added by the Recipe Cockpit as the parent of Contact.AccountId)']);
+            expect(headingLines.slice(headingLines.indexOf('# Contact (Parents: Account)'), headingLines.indexOf('- object: Contact') + 1)).toEqual(['# Contact (Parents: Account)', '', '- object: Contact']);
+
+        });
+
+        test('an object whose name is not an api name is never offered and is refused', () => {
+
+            const hostileRecipe = CONTACT_RECIPE.replace('- object: Contact', '- object: Evil[x](command:workbench.action.terminal.new)');
+            const hostileContext = buildContext({
+                'Evil[x](command:workbench.action.terminal.new)': [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }]
+            }, { Account: 0, 'Evil[x](command:workbench.action.terminal.new)': 1 });
+
+            expect(RecipeCockpitRecipeWriter.listAddableParentObjects(hostileRecipe, hostileContext, new Set(['Account']))).toEqual([]);
+            expectRefused(RecipeCockpitRecipeWriter.addParentObject(hostileRecipe, request('AccountId', templates, 'Evil[x](command:workbench.action.terminal.new)'), hostileContext), 'invalid-object-api-name');
 
         });
 

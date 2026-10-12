@@ -3796,8 +3796,11 @@ export class RecipeCockpitService {
 
         const { recipeFilePath, addition } = addAction;
         const recipeFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath));
-        const fieldLabel = `${addition.objectApiName}${addition.objectNickname !== undefined ? ` (${addition.objectNickname})` : ''}.${addition.fieldApiName}`;
-        const refusalPrefix = `${addition.parentObjectApiName} was not added to "${recipeFileLabel}":`;
+        // THE NAMES COME FROM WORKSPACE FILES, AND A MODAL RENDERS [label](command:…) AS A LINK THAT RUNS THE COMMAND
+        const parentLabel = RecipeYamlScalar.escapeForNotification(addition.parentObjectApiName);
+        const objectLabel = RecipeYamlScalar.escapeForNotification(addition.objectApiName);
+        const fieldLabel = `${objectLabel}${addition.objectNickname !== undefined ? ` (${RecipeYamlScalar.escapeForNotification(addition.objectNickname)})` : ''}.${RecipeYamlScalar.escapeForNotification(addition.fieldApiName)}`;
+        const refusalPrefix = `${parentLabel} was not added to "${recipeFileLabel}":`;
 
         if ( !this.isUsableWorkspacePath(recipeFilePath, workspaceRoot) ) {
             VSCodeWorkspaceService.showWarningMessage(`The recipe file "${recipeFileLabel}" no longer exists in this workspace, so nothing was added. Re-open the Recipe Cockpit to load the runs currently on disk.`);
@@ -3822,17 +3825,17 @@ export class RecipeCockpitService {
 
         const templateFieldApiNames = Object.keys(parentTemplate);
         const confirmation = await vscode.window.showWarningMessage(
-            `Add ${addition.parentObjectApiName} to the recipe and wire ${fieldLabel} to it?`,
+            `Add ${parentLabel} to the recipe and wire ${fieldLabel} to it?`,
             {
                 modal: true,
                 detail: [
-                    `This writes to "${recipeFileLabel}": a new top-level ${addition.parentObjectApiName} block, ahead of the block holding ${addition.objectApiName}, with one record and a nickname of its own, and ${fieldLabel}'s "### TODO -- REFERENCE ID REQUIRED" line becomes that nickname. Every other line of the file is left as it is.`,
+                    `This writes to "${recipeFileLabel}": a new top-level ${parentLabel} block, ahead of the block holding ${objectLabel}, with one record and a nickname of its own, and ${fieldLabel}'s "### TODO -- REFERENCE ID REQUIRED" line becomes that nickname. Every other line of the file is left as it is.`,
                     '',
                     templateFieldApiNames.length > 0
                         ? `Fields, from the ${fakerService} minimum required fields template: ${templateFieldApiNames.join(', ')}.`
-                        : `The ${fakerService} template has no required field for ${addition.parentObjectApiName}, so its block has a count only.`,
+                        : `The ${fakerService} template has no required field for ${parentLabel}, so its block has a count only.`,
                     '',
-                    `Generate fake data and insert then inserts ${addition.parentObjectApiName} before ${addition.objectApiName} and points the lookup at its Id. A required field your org adds to ${addition.parentObjectApiName} is not in the template: add it to the block if the insert reports it.`
+                    `Generate fake data and insert then inserts ${parentLabel} before ${objectLabel} and points the lookup at its Id. A required field your org adds to ${parentLabel} is not in the template: add it to the block if the insert reports it.`
                 ].join('\n')
             },
             RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL
@@ -3868,7 +3871,7 @@ export class RecipeCockpitService {
 
         fs.writeFileSync(recipeFilePath, additionResult.recipeText);
 
-        VSCodeWorkspaceService.showInformationMessage(`Added ${addition.parentObjectApiName} as ${additionResult.parentNickname} to "${recipeFileLabel}" and wired ${fieldLabel} to it.`);
+        VSCodeWorkspaceService.showInformationMessage(`Added ${parentLabel} as ${RecipeYamlScalar.escapeForNotification(additionResult.parentNickname)} to "${recipeFileLabel}" and wired ${fieldLabel} to it.`);
 
         return true;
 
