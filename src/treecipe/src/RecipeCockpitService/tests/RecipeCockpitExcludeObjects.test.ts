@@ -477,7 +477,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
 
             await openAndDraw(buildWorkspaceState());
 
-            await receivedMessageHandler({ command: 'runFaker', treeKey: ACCOUNT_TREE_KEY });
+            await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
 
             expect(executeCommand).toHaveBeenCalledWith(RECIPE_COCKPIT_RUN_FAKER_COMMAND, ACCOUNT_RECIPE_FILE_PATH);
             expect(executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toHaveLength(2);
@@ -489,7 +489,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
             await openAndDraw(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [ACCOUNT_TREE_KEY]: ['Contact'] }) }));
 
-            await receivedMessageHandler({ command: 'runFaker', treeKey: ACCOUNT_TREE_KEY });
+            await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
 
             const runFakerCall = executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND);
             expect(runFakerCall?.[1]).toBe(ACCOUNT_RECIPE_FILE_PATH);
@@ -498,7 +498,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             expect(runFakerCall?.[2].recipeText).not.toContain('- object: Contact');
             expect(runFakerCall?.[2].recipeText).not.toContain('- object: OtherChildObject__c');
             expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
-            expect(lastPosted('runFakerState')).toMatchObject({ isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+            expect(lastPosted('generateState')).toMatchObject({ isRunning: false, treeKey: ACCOUNT_TREE_KEY });
 
         });
 
@@ -507,12 +507,12 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
             await openAndDraw(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [ACCOUNT_TREE_KEY]: ['Account'] }) }));
 
-            await receivedMessageHandler({ command: 'runFaker', treeKey: ACCOUNT_TREE_KEY });
+            await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
 
             expect(executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toBeUndefined();
             expect(warningSpy).toHaveBeenCalledTimes(1);
-            expect(warningSpy.mock.calls[0][0]).toStartWith('Run Faker did not run on Relationship Tree 1: Every object in the recipe is excluded');
-            expect(lastPosted('runFakerState')).toMatchObject({ isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+            expect(warningSpy.mock.calls[0][0]).toStartWith('Nothing was generated for Relationship Tree 1: Every object in the recipe is excluded');
+            expect(lastPosted('generateState')).toMatchObject({ isRunning: false, treeKey: ACCOUNT_TREE_KEY });
 
         });
 
@@ -526,7 +526,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
                 return realReadFileSync(filePath, options);
             }) as typeof fs.readFileSync);
 
-            await receivedMessageHandler({ command: 'runFaker', treeKey: ACCOUNT_TREE_KEY });
+            await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
 
             expect(executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toBeUndefined();
             expect(warningSpy.mock.calls[0][0]).toContain('Relationship Tree 1: its recipe could not be read');
@@ -787,14 +787,15 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
 
             // INCLUDING CONTACT AGAIN PUTS IT BACK IN THE INSERT, WITH ITS OWN READINESS
             panel.postToPanel({ command: 'objectSelection', renderSequence: 3, treeKey: ACCOUNT_TREE_KEY });
-            expect(insertOf(0).disabled).toBeTrue();
-            expect(insertReasonOf(0)).toBe('Contact is not createable in this org.');
+            expect(insertOf(0).disabled).toBeFalse();
+            expect(insertOf(0).textContent).toBe('Generate fake data');
+            expect(insertReasonOf(0)).toBe('Generates only: Contact is not createable in this org.');
 
             const recipe = loadRecipe();
             RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Account'])]]));
             panel.postToPanel({ command: 'objectSelection', renderSequence: 3, treeKey: ACCOUNT_TREE_KEY, objectSelection: treeOf(recipe, ACCOUNT_TREE_KEY).objectSelection });
-            expect(insertOf(0).disabled).toBeTrue();
-            expect(insertReasonOf(0)).toBe('Every object of this tree is excluded.');
+            expect(insertOf(0).disabled).toBeFalse();
+            expect(insertReasonOf(0)).toBe('Generates only: Every object of this tree is excluded.');
             expect(insertOf(1).disabled).toBeFalse();
 
         });

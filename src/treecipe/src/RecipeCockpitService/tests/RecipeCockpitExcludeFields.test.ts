@@ -692,7 +692,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
             await openAndDraw(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({}, { [ACCOUNT_TREE_KEY]: { Contact: ['LastName'] } }) }));
 
-            await receivedMessageHandler({ command: 'runFaker', treeKey: ACCOUNT_TREE_KEY });
+            await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
 
             const runFakerCall = executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND);
             expect(runFakerCall?.[1]).toBe(ACCOUNT_RECIPE_FILE_PATH);

@@ -1153,7 +1153,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
         });
 
-        it('disables the button, the dropdown, ⟳ and every tree insert while a run is in flight, and gives them back when it ends', () => {
+        it('disables the button, the dropdown and ⟳ while a run is in flight, turns every tree insert into generate only, and gives them back when it ends', () => {
 
             const panel = renderPanel();
             panel.expandAllTrees();
@@ -1163,7 +1163,8 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             panel.postToPanel({ command: 'scratchOrgState', isRunning: true, statusText: 'Deploying source…', isFailure: false, hasOutput: false });
 
-            expect(leadInsertButton(panel).disabled).toBe(true);
+            // #293: THE GENERATE BUTTON IS NEVER HELD BY A RUN -- IT GENERATES ONLY UNTIL THE RUN ENDS
+            expect([leadInsertButton(panel).disabled, leadInsertButton(panel).textContent]).toEqual([false, 'Generate fake data']);
             expect(firstOf(panel, 'dataOrgNewScratch').disabled).toBe(true);
             expect(firstOf(panel, 'dataOrgSelect').disabled).toBe(true);
             expect(firstOf(panel, 'dataOrgRefresh').disabled).toBe(true);

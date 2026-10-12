@@ -816,7 +816,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
             await openAndDraw(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [ACCOUNT_TREE_KEY]: { Contact: { LastName: 'Smith' } } }) }));
 
-            await receivedMessageHandler({ command: 'runFaker', treeKey: ACCOUNT_TREE_KEY });
+            await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
 
             const runFakerCall = executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND);
             expect(runFakerCall).toHaveLength(3);
@@ -831,7 +831,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
             await openAndDraw(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [ACCOUNT_TREE_KEY]: { Account: { ParentId: 'x' } } }) }));
 
-            await receivedMessageHandler({ command: 'runFaker', treeKey: ACCOUNT_TREE_KEY });
+            await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
 
             expect(executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toEqual([RECIPE_COCKPIT_RUN_FAKER_COMMAND, ACCOUNT_RECIPE_FILE_PATH]);
 

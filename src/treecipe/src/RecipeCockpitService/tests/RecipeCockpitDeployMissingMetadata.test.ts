@@ -1865,7 +1865,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
         });
 
-        it('holds every insert, every deploy and the picker while a deploy runs, draws its line on the card, and offers View output when it ended with a result file', () => {
+        it('holds every deploy and the picker while a deploy runs, turns every insert into generate only, draws its line on the card, and offers View output when it ended with a result file', () => {
 
             const panel = renderTrees();
             selectQa(panel);
@@ -1874,7 +1874,9 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
             expect(deployButtonOf(panel).disabled).toBe(true);
             expect(deployButtonOf(panel, 'Lead').disabled).toBe(true);
-            panel.findAll(panel.cockpitBodyElement, 'treeInsert').forEach((insertButton: any) => expect(insertButton.disabled).toBe(true));
+            // #293: THE GENERATE BUTTON IS NEVER HELD BY A DEPLOY -- IT GENERATES ONLY UNTIL THE DEPLOY ENDS
+            panel.findAll(panel.cockpitBodyElement, 'treeInsert').forEach((insertButton: any) => expect([insertButton.disabled, insertButton.textContent]).toEqual([false, 'Generate fake data']));
+            panel.findAll(panel.cockpitBodyElement, 'treeInsertReason').forEach((reasonElement: any) => expect(reasonElement.textContent).toBe('Generates only: a deploy is running.'));
             expect(firstOf(panel, 'dataOrgRefresh').disabled).toBe(true);
             expect(firstOf(panel, 'dataOrgNewScratch').disabled).toBe(true);
             expect(panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'metadataDeployStatusText')[0].textContent).toBe('Deploying 3 components of Relationship Tree 1…');

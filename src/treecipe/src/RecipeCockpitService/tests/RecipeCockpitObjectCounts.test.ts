@@ -815,7 +815,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             await openAndDraw(workspaceState);
             await receivedMessageHandler({ command: 'setObjectCount', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 4 });
 
-            await receivedMessageHandler({ command: 'runFaker', treeKey: ACCOUNT_TREE_KEY });
+            await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
 
             const runFakerCall = executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND);
             expect(runFakerCall).toHaveLength(3);
@@ -832,7 +832,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
 
             recipeDataMessage.recipe.trees.forEach((tree: IRecipeCockpitTreeViewModel) => expect(tree).not.toHaveProperty('objectCounts'));
 
-            await receivedMessageHandler({ command: 'runFaker', treeKey: ACCOUNT_TREE_KEY });
+            await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
 
             expect(executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toEqual([RECIPE_COCKPIT_RUN_FAKER_COMMAND, ACCOUNT_RECIPE_FILE_PATH]);
 
