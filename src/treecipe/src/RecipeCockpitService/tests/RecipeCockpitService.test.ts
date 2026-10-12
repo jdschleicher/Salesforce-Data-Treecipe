@@ -40,6 +40,8 @@ import {
     RECIPE_COCKPIT_REFRESH_ORGS_LABEL,
     RECIPE_COCKPIT_DIFF_PICKLIST_VALUES_SHOWN,
     RECIPE_COCKPIT_PALETTE,
+    RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH,
+    RECIPE_COCKPIT_TOGGLE_EXPANDED_GLYPH_PATH,
     RECIPE_COCKPIT_INSERT_DATASET_COMMAND,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_RUN_FAKER_ACTION_LABEL,
@@ -433,18 +435,24 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        // #244: AT 1.1em THE ▸/▾ WAS TOO SMALL TO TELL AT A GLANCE WHETHER A CARD OR OBJECT WAS OPEN
-        it('draws the tree card and Treecipe object triangles at 3.3em, centred in their rows, and no other toggle', () => {
+        // #244 MADE THE ▸/▾ BIG ENOUGH TO READ AT A GLANCE; #277 GAVE THE PICKLIST'S THE SAME SIZE AND CENTRED ALL THREE
+        it('draws the tree card, Treecipe object and picklist toggles as one centred 2.6rem box, and the field rows centred on it', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
-            const triangleRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle');
-            const otherToggleRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle, \\.picklistToggle, \\.dataObjectToggle');
+            const toggleBoxRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle, \\.picklistToggle, \\.picklistToggleSpacer');
+            const toggleCentringRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle, \\.picklistToggle');
 
-            expect(triangleRule).toContain('font-size: 3.3em;');
-            expect(triangleRule).toContain('line-height: 1;');
-            expect(otherToggleRule).toContain('font-size: 1.1em;');
-            expect(styleSheet.indexOf(triangleRule)).toBeGreaterThan(styleSheet.indexOf(otherToggleRule));
-            expect(styleSheet.match(/font-size: 3\.3em;/g)).toHaveLength(1);
+            expect(toggleBoxRule).toContain('width: 2.6rem;');
+            expect(toggleBoxRule).toContain('height: 2.6rem;');
+            expect(toggleCentringRule).toContain('display: inline-flex;');
+            expect(toggleCentringRule).toContain('align-items: center;');
+            expect(toggleCentringRule).toContain('justify-content: center;');
+            expect(toggleCentringRule).toContain('padding: 0;');
+            expect(ruleFor(styleSheet, '\\.toggleGlyph path')).toContain('fill: var(--sdt-accent);');
+            // THE FONT TRIANGLE AT 3.3em IS GONE: IT SAT ON THE BASELINE, OFF CENTRE IN ITS BUTTON
+            expect(styleSheet).not.toMatch(/font-size: 3\.3em;/);
+            expect(ruleFor(styleSheet, '\\.dataObjectToggle')).toContain('font-size: 1.1em;');
+            expect(ruleFor(styleSheet, '\\.treeObjectHeader, \\.treeFieldHeader')).toContain('align-items: center;');
             expect(ruleFor(styleSheet, '\\.treeObjectHeader')).toContain('align-items: center;');
             expect(ruleFor(styleSheet, '\\.treeHeader')).toContain('align-items: center;');
 
@@ -2539,6 +2547,80 @@ describe('RecipeCockpitService', () => {
             expect(textOf(panel, regionsRow, 'picklistEmpty')).toEqual(['no values']);
 
             expect(panel.findAll(treeFieldNamed(panel, accountElement, 'Legacy_Code__c'), 'picklistToggle')).toEqual([]);
+
+        });
+
+        const toggleGlyphPathOf = (toggleElement: any) => toggleElement.children[0].children[0].attributes.d;
+
+        // #277: THE ▸/▾ IS A PATH CENTRED IN ITS BOX, NOT A FONT GLYPH ON THE TEXT BASELINE
+        it('draws every Treecipe toggle as an svg triangle that turns down when it opens', () => {
+
+            const { panel } = renderTreeRecipe();
+            const [firstTreeCard] = treeCardsOf(panel);
+            const treeToggle = panel.findAll(firstTreeCard, 'treeToggle')[0];
+
+            expect(treeToggle.textContent).toBe('');
+            expect(treeToggle.children[0].namespaceURI).toBe('http://www.w3.org/2000/svg');
+            expect(treeToggle.children[0].attributes['aria-hidden']).toBe('true');
+            expect(toggleGlyphPathOf(treeToggle)).toBe(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
+
+            expandTree(panel, firstTreeCard);
+            expect(toggleGlyphPathOf(treeToggle)).toBe(RECIPE_COCKPIT_TOGGLE_EXPANDED_GLYPH_PATH);
+            expect(treeToggle.attributes['aria-expanded']).toBe('true');
+
+            const accountElement = treeObjectNamed(panel, firstTreeCard, 'Account');
+            const objectToggle = panel.findAll(accountElement, 'treeObjectToggle')[0];
+            expect(toggleGlyphPathOf(objectToggle)).toBe(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
+            expandTreeObject(panel, accountElement);
+            expect(toggleGlyphPathOf(objectToggle)).toBe(RECIPE_COCKPIT_TOGGLE_EXPANDED_GLYPH_PATH);
+
+            const picklistToggle = panel.findAll(treeFieldNamed(panel, accountElement, 'Rating__c'), 'picklistToggle')[0];
+            expect(toggleGlyphPathOf(picklistToggle)).toBe(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
+            expect(picklistToggle.attributes['aria-expanded']).toBe('false');
+            picklistToggle.dispatch('click');
+            expect(toggleGlyphPathOf(picklistToggle)).toBe(RECIPE_COCKPIT_TOGGLE_EXPANDED_GLYPH_PATH);
+            expect(picklistToggle.attributes['aria-expanded']).toBe('true');
+            picklistToggle.dispatch('click');
+            expect(toggleGlyphPathOf(picklistToggle)).toBe(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
+
+        });
+
+        it('gives a field with no picklist a hidden slot where the ▸ goes, so every field name lines up', () => {
+
+            const { panel } = renderTreeRecipe();
+            const [firstTreeCard] = treeCardsOf(panel);
+            expandTree(panel, firstTreeCard);
+            const accountElement = treeObjectNamed(panel, firstTreeCard, 'Account');
+            expandTreeObject(panel, accountElement);
+
+            const leadingClassOf = (fieldApiName: string) => {
+                const headerChildren = treeFieldNamed(panel, accountElement, fieldApiName).children[0].children;
+                const nameIndex = headerChildren.findIndex((child: any) => child.classList.contains('treeFieldName'));
+                return headerChildren[nameIndex - 1].classList;
+            };
+
+            expect(leadingClassOf('Rating__c').contains('picklistToggle')).toBe(true);
+            expect(leadingClassOf('Legacy_Code__c').contains('picklistToggleSpacer')).toBe(true);
+            const spacer = panel.findAll(treeFieldNamed(panel, accountElement, 'Legacy_Code__c'), 'picklistToggleSpacer')[0];
+            expect(spacer.attributes['aria-hidden']).toBe('true');
+            expect(panel.findAll(treeFieldNamed(panel, accountElement, 'Rating__c'), 'picklistToggleSpacer')).toEqual([]);
+
+        });
+
+        // #277: THE VALUES OPEN UNDER THE ROW THAT WAS CLICKED, NEVER ABOVE IT
+        it('opens a picklist\'s values at the bottom of its own row, after its header and expression', () => {
+
+            const { panel } = renderTreeRecipe();
+            const [firstTreeCard] = treeCardsOf(panel);
+            expandTree(panel, firstTreeCard);
+            const accountElement = treeObjectNamed(panel, firstTreeCard, 'Account');
+            expandTreeObject(panel, accountElement);
+            const ratingRow = treeFieldNamed(panel, accountElement, 'Rating__c');
+
+            panel.findAll(ratingRow, 'picklistToggle')[0].dispatch('click');
+
+            expect(ratingRow.children[0].classList.contains('treeFieldHeader')).toBe(true);
+            expect(ratingRow.children[ratingRow.children.length - 1].classList.contains('picklistValues')).toBe(true);
 
         });
 

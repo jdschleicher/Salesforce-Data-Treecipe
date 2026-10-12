@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.67.1] - Recipe Cockpit: picklist values open below their row, and every ▸/▾ is the same size and centred
+
+Closes [#277](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/277).
+
+- **Picklist values open downward.** A picklist row rebuilt already open (on a reopened panel, a revealed tab, or the reload after Run Faker, a tree insert or Add friend) appended its values before its own header. They drew above the field name, so with picklists stacked the row seemed to open upward. The row now opens only once it is whole, so its values sit at the bottom of the row, where a click puts them.
+- **One toggle size.** The ▸/▾ of a tree card, a Treecipe object and a picklist field is one 2.6rem button, the same box as the chain link. The picklist toggle was 1.1em next to the object toggle's 3.3em.
+- **Centred.** The triangle is an inline SVG built with `createElementNS` (`RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH`, `RECIPE_COCKPIT_TOGGLE_EXPANDED_GLYPH_PATH`, each centred in the 24x24 box) and filled with `--sdt-accent`. A font triangle sat on the text baseline, low in its button. Nothing is fetched, so the CSP and the shell builder are unchanged.
+- **Aligned rows.** A field with no picklist keeps an `aria-hidden` slot where the ▸ goes, so every field name of an object lines up, and a field row centres its controls rather than aligning them on the baseline.
+- **Unchanged:** the Compare tab's ▸ (`.dataObjectToggle`), picklist values still loaded on expand, `aria-expanded` on every toggle, recipe generation and both faker backends.
+
 ## [3.67.0] - Recipe Cockpit: "Deploy this metadata…" is always offered and deploys the whole tree
 
 Closes [#273](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/273), following [#211](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/211) and [#270](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/270).

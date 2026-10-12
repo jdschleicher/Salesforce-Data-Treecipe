@@ -160,6 +160,21 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
         });
 
+        // #277: A ROW REBUILT OPEN USED TO APPEND ITS VALUES BEFORE ITS HEADER, SO THEY DREW ABOVE THE FIELD NAME
+        it('draws a re-opened picklist\'s values under its own header, where a click puts them', () => {
+
+            const { panel: hiddenPanel, recipe } = buildReaderSession();
+
+            const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
+            render(panel, recipe);
+
+            const ratingRow = panel.fieldRowNamed(objectNamed(panel, ACCOUNT_TREE_KEY, 'Account'), 'Rating__c');
+            expect(ratingRow.children[0].classList.contains('treeFieldHeader')).toBe(true);
+            expect(ratingRow.children[ratingRow.children.length - 1].classList.contains('picklistValues')).toBe(true);
+            expect(panel.findAll(ratingRow, 'picklistValues')).toHaveLength(1);
+
+        });
+
         // THE HOST HONOURS loadPicklistValues ONLY ONCE "rendered" HAS ACTIVATED THIS MODEL'S ALLOW-LISTS
         it('asks the host for the values it re-opens only after acknowledging the draw', () => {
 
