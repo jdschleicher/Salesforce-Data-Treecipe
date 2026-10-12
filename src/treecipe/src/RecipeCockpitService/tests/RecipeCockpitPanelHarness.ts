@@ -182,8 +182,6 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
         typeIntoTabSearch: (treeCard: any, panelClassName: string, searchText: string) => typeIntoSearch(findAll(treeCard, panelClassName)[0], searchText),
         // THE STRUCTURE TAB'S SEARCH OF ONE CARD -- THE FIRST, UNLESS ONE IS NAMED
         typeIntoFilter: (searchText: string, treeCard?: any) => typeIntoSearch(findAll(treeCard || treeCards()[0], 'treeStructure')[0], searchText),
-        // THE DATA-BY-ORG TAB'S OBJECT ROWS, OF EVERY CARD WHOSE TAB IS BUILT
-        dataObjectElements: (rootElement?: any) => findAll(rootElement || cockpitBodyElement, 'dataObject'),
         postToPanel: (hostMessage: any) => windowListenersByType['message']({ data: hostMessage }),
         raiseWindowError: (errorEvent: any) => windowListenersByType['error'](errorEvent)
     };

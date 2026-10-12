@@ -55,11 +55,9 @@ const buildPlace = (overrides: Partial<IRecipeCockpitPanelPlace> = {}): IRecipeC
         treeKey: ACCOUNT_TREE_KEY,
         isExpanded: true,
         selectedTab: 'treecipe',
-        searchQueries: { treecipe: '', compare: '', datasets: '' },
-        statusFilter: 'all',
+        searchQueries: { treecipe: '', datasets: '' },
         expandedObjectKeys: ['Account\n'],
-        openPicklistKeys: [],
-        expandedDataObjectApiNames: []
+        openPicklistKeys: []
     }],
     ...overrides
 });
@@ -152,11 +150,9 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
                     treeKey: LEAD_TREE_KEY,
                     isExpanded: false,
                     selectedTab: 'treecipe',
-                    searchQueries: { treecipe: '', compare: '', datasets: '' },
-                    statusFilter: 'all',
+                    searchQueries: { treecipe: '', datasets: '' },
                     expandedObjectKeys: ['Lead\n'],
-                    openPicklistKeys: [],
-                    expandedDataObjectApiNames: []
+                    openPicklistKeys: []
                 }]
             });
 
@@ -194,8 +190,8 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
         it('given a version 2 place, round-trips it unchanged', () => {
 
-            const versionTwoPlace = buildPlace({ trees: [{ ...buildPlace().trees[0], selectedTab: 'compare', statusFilter: 'new-in-org',
-                searchQueries: { treecipe: 'Rating', compare: 'Brand', datasets: 'set' }, expandedDataObjectApiNames: ['Account'] }] });
+            const versionTwoPlace = buildPlace({ trees: [{ ...buildPlace().trees[0], selectedTab: 'datasets',
+                searchQueries: { treecipe: 'Rating', datasets: 'set' } }] });
 
             expect(RECIPE_COCKPIT_PANEL_PLACE_VERSION).toBe(2);
             expect(RecipeCockpitService.normalizePanelPlace(versionTwoPlace)).toEqual(versionTwoPlace);
@@ -210,7 +206,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
                 selectedTab: 'dataByOrg', searchQueries: { structure: 'Rating', dataByOrg: 'Brand' } }] });
 
             expect(normalizedPlace!.trees[0].selectedTab).toBe('treecipe');
-            expect(normalizedPlace!.trees[0].searchQueries).toEqual({ treecipe: '', compare: '', datasets: '' });
+            expect(normalizedPlace!.trees[0].searchQueries).toEqual({ treecipe: '', datasets: '' });
 
         });
 
@@ -233,8 +229,33 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
             expect(RECIPE_COCKPIT_REMOVED_TREE_TABS).toContain('versions');
             expect(normalizedPlace!.version).toBe(RECIPE_COCKPIT_PANEL_PLACE_VERSION);
-            expect(normalizedPlace!.trees[0]).toEqual({ ...buildPlace().trees[0], selectedTab: 'treecipe', searchQueries: { treecipe: '', compare: '', datasets: 'set' } });
+            expect(normalizedPlace!.trees[0]).toEqual({ ...buildPlace().trees[0], selectedTab: 'treecipe', searchQueries: { treecipe: '', datasets: 'set' } });
             expect(JSON.stringify(normalizedPlace)).not.toMatch(/FakerJS|expandedVersionRunFolderNames|versions/);
+
+        });
+
+        // #266: THE SAME FOR COMPARE -- AND ITS STATUS FILTER AND OPENED ROWS, WHICH ONLY THAT TAB READ, ARE DROPPED WITH IT
+        it.each([
+            ['2', RECIPE_COCKPIT_PANEL_PLACE_VERSION, 'compare'],
+            ['1', RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB, 'dataByOrg']
+        ])('given a version %s place saved on the removed Compare tab (%s), opens Treecipe and keeps nothing of that tab', (_versionLabel, placeVersion, savedTabName) => {
+
+            const normalizedPlace = RecipeCockpitService.normalizePanelPlace({
+                ...buildPlace(),
+                version: placeVersion,
+                trees: [{
+                    ...buildPlace().trees[0],
+                    selectedTab: savedTabName,
+                    statusFilter: 'type-changed',
+                    expandedDataObjectApiNames: ['Account'],
+                    searchQueries: { [savedTabName]: 'Brand', datasets: 'set' }
+                }]
+            });
+
+            expect(RECIPE_COCKPIT_REMOVED_TREE_TABS).toContain('compare');
+            expect(normalizedPlace!.version).toBe(RECIPE_COCKPIT_PANEL_PLACE_VERSION);
+            expect(normalizedPlace!.trees[0]).toEqual({ ...buildPlace().trees[0], selectedTab: 'treecipe', searchQueries: { treecipe: '', datasets: 'set' } });
+            expect(JSON.stringify(normalizedPlace)).not.toMatch(/Brand|type-changed|statusFilter|expandedDataObjectApiNames|compare|dataByOrg/);
 
         });
 
@@ -248,7 +269,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
             it.each([
                 ['structure', 'treecipe'],
-                ['dataByOrg', 'compare'],
+                ['dataByOrg', 'treecipe'],
                 ['versions', 'treecipe'],
                 ['datasets', 'datasets']
             ])('reads its %s tab as the %s tab, and returns a version 2 place', (savedTabName, expectedTabName) => {
@@ -260,22 +281,17 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
             });
 
-            it('reads its search keys as the tabs they became, and keeps its status filter and opened rows for the Compare tab', () => {
+            it('reads its search keys as the tabs they became, and drops the searches of the tabs since removed', () => {
 
                 const normalizedPlace = RecipeCockpitService.normalizePanelPlace(buildVersionOnePlace({
-                    selectedTab: 'dataByOrg',
-                    statusFilter: 'type-changed',
-                    expandedDataObjectApiNames: ['Account'],
+                    selectedTab: 'structure',
                     searchQueries: { structure: 'Rating', dataByOrg: 'Brand', versions: 'FakerJS', datasets: 'set' }
                 }));
 
-                // THE REMOVED PREVIOUS VERSIONS TAB'S SEARCH IS DROPPED, NOT MOVED (#265)
+                // THE REMOVED PREVIOUS VERSIONS (#265) AND COMPARE (#266) TABS' SEARCHES ARE DROPPED, NOT MOVED
                 expect(normalizedPlace).toEqual(buildPlace({ trees: [{
                     ...buildPlace().trees[0],
-                    selectedTab: 'compare',
-                    statusFilter: 'type-changed',
-                    expandedDataObjectApiNames: ['Account'],
-                    searchQueries: { treecipe: 'Rating', compare: 'Brand', datasets: 'set' }
+                    searchQueries: { treecipe: 'Rating', datasets: 'set' }
                 }] }));
 
             });
@@ -288,12 +304,9 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
         });
 
-        it('accepts each status the status filter offers and each tab', () => {
+        it('accepts each tab', () => {
 
-            ['all', 'new-in-org', 'removed-from-org', 'type-changed', 'picklist-changed'].forEach(statusFilter => {
-                expect(RecipeCockpitService.normalizePanelPlace(buildPlace({ trees: [{ ...buildPlace().trees[0], statusFilter }] }))!.trees[0].statusFilter).toBe(statusFilter);
-            });
-            (['treecipe', 'compare', 'datasets'] as const).forEach(selectedTab => {
+            (['treecipe', 'datasets'] as const).forEach(selectedTab => {
                 expect(RecipeCockpitService.normalizePanelPlace(buildPlace({ trees: [{ ...buildPlace().trees[0], selectedTab }] }))!.trees[0].selectedTab).toBe(selectedTab);
             });
 
@@ -546,7 +559,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             const versionOnePlace = {
                 ...buildPlace({ runFolderName: CURRENT_RUN_FOLDER_NAME }),
                 version: RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB,
-                trees: [{ ...buildPlace().trees[0], selectedTab: 'structure', searchQueries: { structure: 'Rating', dataByOrg: '', datasets: '' } }]
+                trees: [{ ...buildPlace().trees[0], selectedTab: 'structure', searchQueries: { structure: 'Rating', dataByOrg: 'Brand', datasets: '' } }]
             };
             const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY]: versionOnePlace });
 
@@ -555,7 +568,8 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             const recipeDataMessage = lastPosted('recipeData');
 
             expect(recipeDataMessage.restorePlace.version).toBe(RECIPE_COCKPIT_PANEL_PLACE_VERSION);
-            expect(recipeDataMessage.restorePlace.trees[0]).toMatchObject({ selectedTab: 'treecipe', searchQueries: { treecipe: 'Rating', compare: '' } });
+            expect(recipeDataMessage.restorePlace.trees[0]).toMatchObject({ selectedTab: 'treecipe', searchQueries: { treecipe: 'Rating', datasets: '' } });
+            expect(recipeDataMessage.restorePlace.trees[0].searchQueries).not.toHaveProperty('compare');
 
             const panel = runPanelScript();
             panel.postToPanel(recipeDataMessage);
@@ -567,7 +581,8 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
         });
 
-        it('given a version 1 place naming the Data-by-Org tab, hands the panel its status filter and opened rows on the Compare tab', async () => {
+        // #266: THE DATA-BY-ORG TAB BECAME COMPARE, AND COMPARE IS GONE -- ITS FILTER AND OPENED ROWS ARE NOT HANDED ON
+        it('given a version 1 place naming the Data-by-Org tab, hands the panel a place on the Treecipe tab with no status filter or opened rows', async () => {
 
             const versionOnePlace = {
                 ...buildPlace({ runFolderName: CURRENT_RUN_FOLDER_NAME }),
@@ -579,7 +594,10 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             await RecipeCockpitService.openRecipeCockpitPanel(HISTORY_WORKSPACE_ROOT, workspaceState);
             await receivedMessageHandler({ command: 'ready' });
 
-            expect(lastPosted('recipeData').restorePlace.trees[0]).toMatchObject({ selectedTab: 'compare', statusFilter: 'new-in-org', expandedDataObjectApiNames: ['Account'] });
+            const restoredTree = lastPosted('recipeData').restorePlace.trees[0];
+            expect(restoredTree.selectedTab).toBe('treecipe');
+            expect(restoredTree).not.toHaveProperty('statusFilter');
+            expect(restoredTree).not.toHaveProperty('expandedDataObjectApiNames');
 
         });
 
@@ -650,7 +668,6 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             expect(panelState.selectableRunFolderNames.size).toBe(0);
             expect(panelState.openableSourceKeys.size).toBe(0);
             expect(panelState.loadablePicklistKeys.size).toBe(0);
-            expect(panelState.describableObjectApiNamesByTreeKey.size).toBe(0);
             expect(panelState.dataOrgObjectApiNames.size).toBe(0);
             // AND A PLACE POSTED BEFORE THE DRAW IS NOT WRITTEN
             workspaceState.update.mockClear();

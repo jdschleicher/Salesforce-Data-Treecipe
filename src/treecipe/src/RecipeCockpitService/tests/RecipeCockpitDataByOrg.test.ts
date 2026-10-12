@@ -620,122 +620,6 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
-
-        /*
-            Compare with an org… sits in a card's Compare tab and describes in the org the Treecipe
-            tab's picker picked, so a reader who chose an org once is not asked again. Only with none picked or
-            remembered does the authorized-org picker open.
-        */
-        describe('Compare with an org… in a card', () => {
-
-            const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
-            let describeObjectsSpy: jest.SpyInstance;
-            let promptSpy: jest.SpyInstance;
-
-            beforeEach(() => {
-
-                describeObjectsSpy = jest.spyOn(SalesforceOrgService, 'describeObjects').mockImplementation(async (orgUsername: string, objectApiNames: string[]) => ({
-                    outcomes: objectApiNames.map(objectApiName => ({ objectApiName: objectApiName, failureMessage: 'NOT_FOUND', wasCached: false })),
-                    wasCancelled: false
-                }));
-                promptSpy = jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg').mockResolvedValue({ targetOrgIdentifier: 'devhub', username: 'jd@example.com', alias: 'devhub' });
-                jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
-                (vscode.window.withProgress as jest.Mock).mockReset();
-                (vscode.window.withProgress as jest.Mock).mockImplementation(async (progressOptions: any, progressTask: Function) => (
-                    progressTask({ report: jest.fn() }, { isCancellationRequested: false })
-                ));
-
-            });
-
-            const describedUsernames = () => describeObjectsSpy.mock.calls.map(describeCall => describeCall[0]);
-
-            it('uses the org picked in the Treecipe tab, describes only that card\'s objects, and tags the answer with the card', async () => {
-
-                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
-                jest.spyOn(RecipeCockpitService, 'computeCreateReadinessByTarget').mockResolvedValue({ byObjectApiName: new Map(), byCreateKey: new Map() });
-
-                await openRenderedCockpit();
-                await receivedMessageHandler({ command: 'loadDataOrgs' });
-                await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 1 });
-                await receivedMessageHandler({ command: 'selectOrg', treeKey: ACCOUNT_TREE_KEY });
-
-                expect(promptSpy).not.toHaveBeenCalled();
-                expect(describeObjectsSpy).toHaveBeenCalledTimes(1);
-                expect(describeObjectsSpy.mock.calls[0][0]).toBe('prod@example.com');
-                expect(describeObjectsSpy.mock.calls[0][1]).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
-                expect(postedNamed('orgDescribe')).toEqual([expect.objectContaining({ treeKey: ACCOUNT_TREE_KEY, orgLabel: 'prod@example.com' })]);
-
-                await receivedMessageHandler({ command: 'selectOrg', treeKey: 'Lead-ONLY' });
-
-                expect(describeObjectsSpy.mock.calls[1][1]).toEqual(['Lead']);
-                // EACH CARD KEEPS ITS OWN ANSWER, SO A RELOADED DOCUMENT GETS BOTH BACK
-                postedPanelMessages.length = 0;
-                await receivedMessageHandler({ command: 'ready' });
-                expect(postedNamed('orgDescribe').map(orgDescribe => orgDescribe.treeKey)).toEqual([ACCOUNT_TREE_KEY, 'Lead-ONLY']);
-
-            });
-
-            it('given no Treecipe tab picker was used, uses the org it remembers for this workspace, connecting to nothing to find it', async () => {
-
-                workspaceStateValues.set(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, SANDBOX_ORG.username);
-                const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection');
-
-                await openRenderedCockpit();
-                await receivedMessageHandler({ command: 'selectOrg', treeKey: ACCOUNT_TREE_KEY });
-
-                expect(promptSpy).not.toHaveBeenCalled();
-                expect(describedUsernames()).toEqual([SANDBOX_ORG.username]);
-                // THE DESCRIBE IS HANDED A CONNECTION FACTORY, WHICH THIS SPY NEVER RUNS -- LISTING THE ORGS CONNECTED TO NONE
-                expect(getConnectionSpy).not.toHaveBeenCalled();
-
-            });
-
-            it.each([
-                ['nothing is picked or remembered', undefined, () => undefined],
-                ['the remembered org is no longer authorized', 'gone@example.com', () => undefined],
-                ['the authorized orgs cannot be listed', SANDBOX_ORG.username, () => jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockRejectedValue(new Error('auth files unreadable'))]
-            ])('given %s, asks for an org with the picker', async (_description, rememberedUsername, arrange) => {
-
-                if ( rememberedUsername ) {
-                    workspaceStateValues.set(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, rememberedUsername);
-                }
-                arrange();
-
-                await openRenderedCockpit();
-                await receivedMessageHandler({ command: 'selectOrg', treeKey: ACCOUNT_TREE_KEY });
-
-                expect(promptSpy).toHaveBeenCalledTimes(1);
-                expect(describedUsernames()).toEqual(['jd@example.com']);
-
-            });
-
-            // THE TREECIPE TAB'S PICKER NEVER LISTS PRODUCTION, SO "Choose another org…" IS HOW A READER COMPARES WITH IT
-            it('given "Choose another org…", asks with the picker even though the Treecipe tab remembers an org', async () => {
-
-                workspaceStateValues.set(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, SANDBOX_ORG.username);
-                const listSpy = SalesforceOrgService.listDataOrgDetails as unknown as jest.SpyInstance;
-
-                await openRenderedCockpit();
-                listSpy.mockClear();
-                await receivedMessageHandler({ command: 'selectOrg', treeKey: ACCOUNT_TREE_KEY, chooseOrg: true });
-
-                expect(promptSpy).toHaveBeenCalledTimes(1);
-                expect(listSpy).not.toHaveBeenCalled();
-                expect(describedUsernames()).toEqual(['jd@example.com']);
-
-            });
-
-            it('given a card the rendered model does not have, describes nothing', async () => {
-
-                await openRenderedCockpit();
-                await receivedMessageHandler({ command: 'selectOrg', treeKey: 'Opportunity-ONLY' });
-
-                expect(promptSpy).not.toHaveBeenCalled();
-                expect(describeObjectsSpy).not.toHaveBeenCalled();
-
-            });
-
-        });
     });
 
     describe('the panel script, the org picker in each card\'s Treecipe tab and the tree insert (#217, #255)', () => {
@@ -804,7 +688,6 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
 
-            panel.openTab(firstCard, 'Compare');
             panel.openTab(firstCard, 'Treecipe');
             panel.findAll(secondCard, 'treeHeader')[0].dispatch('click');
 
@@ -813,66 +696,11 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
-        it('asks for no orgs when a card opens on its Compare tab, and asks once the reader clicks its Treecipe tab', () => {
-
-            const { panel } = renderDataOrgPanel({ treeKey: ACCOUNT_TREE_KEY, tab: 'compare' });
-            const accountCard = panel.treeCards()[0];
-
-            expect(panel.findAll(accountCard, 'treeCompareTab').every((element: any) => !panel.isHidden(element))).toBe(true);
-            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([]);
-
-            // COLLAPSED AND OPENED AGAIN, STILL ON COMPARE
-            panel.findAll(accountCard, 'treeHeader')[0].dispatch('click');
-            panel.findAll(accountCard, 'treeHeader')[0].dispatch('click');
-            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([]);
-
-            panel.openTab(accountCard, 'Treecipe');
-            panel.openTab(accountCard, 'Treecipe');
-
-            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
-
-        });
-
         it('asks for the orgs when a focus opens a card on its Treecipe tab', () => {
 
             const { panel } = renderDataOrgPanel({ treeKey: LEAD_TREE_KEY, tab: 'treecipe' });
 
             expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
-
-        });
-
-        it('asks for the orgs once, the first time "Choose org…" is used', () => {
-
-            const { panel } = renderDataOrgPanel({ treeKey: ACCOUNT_TREE_KEY, tab: 'compare' });
-            const accountCard = panel.treeCards()[0];
-
-            panel.findAll(accountCard, 'dataOrgLoad')[0].dispatch('click');
-            panel.findAll(accountCard, 'dataOrgLoad')[0].dispatch('click');
-            panel.openTab(accountCard, 'Treecipe');
-
-            expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
-
-        });
-
-        it('builds a card\'s Compare rows the first time its tab opens, its objects in insert order, with no org line in its count', () => {
-
-            const { panel } = renderDataOrgPanel();
-            panel.expandAllTrees();
-            const [firstCard, secondCard] = panel.treeCards();
-
-            expect(panel.findAll(panel.cockpitBodyElement, 'dataObject')).toEqual([]);
-
-            panel.openTab(firstCard, 'Compare');
-
-            expect(panel.findAll(firstCard, 'dataObjectName').map((element: any) => element.textContent)).toEqual(TREE_OBJECT_API_NAMES.slice(0, 3));
-            expect(panel.findAll(secondCard, 'dataObject')).toEqual([]);
-
-            panel.openTab(secondCard, 'Compare');
-
-            expect(textOf(panel, 'dataObjectName')).toEqual(TREE_OBJECT_API_NAMES);
-            expect(textOf(panel, 'dataTreeCount')).toEqual(['3 objects', '1 object']);
-            expect(panel.findAll(panel.cockpitBodyElement, 'dataCreate')).toEqual([]);
-            expect(panel.findAll(panel.cockpitBodyElement, 'dataCreateReason')).toEqual([]);
 
         });
 

@@ -585,21 +585,6 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
         });
 
-        it('lists every required field in the comparison it posts, for "required in <org>"', () => {
-
-            const orgDescribeMessage = RecipeCockpitService.buildOrgDescribeMessage(ACCOUNT_TREE_KEY, 'qa', {
-                wasCancelled: false,
-                outcomes: [
-                    { objectApiName: 'Contact', describe: { ...describe_([{ fieldApiName: 'LastName', isNillable: false }, { fieldApiName: 'Phone' }]), objectLabel: 'Contact', fields: describe_([{ fieldApiName: 'LastName', isNillable: false }, { fieldApiName: 'Phone' }]).fields } as any, wasCached: false },
-                    { objectApiName: 'Account', describe: { objectApiName: 'Account', objectLabel: 'Account', isCreateable: true, fields: [] } as any, wasCached: false },
-                    { objectApiName: 'Gone__c', failureMessage: 'NOT_FOUND', wasCached: false }
-                ]
-            } as any, 2);
-
-            expect(orgDescribeMessage.requiredFields).toEqual([{ objectApiName: 'Contact', fieldApiNames: ['LastName'] }]);
-
-        });
-
     });
 
     describe('openRecipeCockpitPanel', () => {
@@ -1015,12 +1000,12 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
         });
 
-        it('says "required in <org>" on an unticked field the card\'s comparison marks required, and only on an unticked one', () => {
+        // #266: THE NOTE WAS FED BY THE COMPARE TAB'S DESCRIBE; THE INSERT STILL REFUSES AN UNTICKED FIELD THE ORG REQUIRES
+        it('draws no "required in <org>" note on an unticked field, even for an orgDescribe naming it required', () => {
 
             const panel = drawRecipe(recipe => untick(recipe, { Contact: ['LastName'] }));
             panel.postToPanel({ command: 'rendered' });
             const contact = expanded(panel, 'Contact');
-            panel.openTab(panel.treeCards()[0], 'Compare');
 
             panel.postToPanel({
                 command: 'orgDescribe', treeKey: ACCOUNT_TREE_KEY, orgLabel: 'qa (qa@example.com.qa)', summary: 'Described', isFailure: false, isCancelled: false,
@@ -1028,12 +1013,8 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
                 requiredFields: [{ objectApiName: 'Contact', fieldApiNames: ['LastName', 'AccountId'] }]
             });
 
-            expect(noteOf(panel, contact, 'LastName').textContent).toBe('required in qa (qa@example.com.qa)');
-            expect(panel.isHidden(noteOf(panel, contact, 'AccountId'))).toBeTrue();
-
-            // A FAILED CONNECTION REPLACES WHAT THE EARLIER COMPARISON SAID
-            panel.postToPanel({ command: 'orgDescribe', treeKey: ACCOUNT_TREE_KEY, orgLabel: 'qa', summary: 'Could not connect', isFailure: true, isCancelled: false, objects: [], diff: { objects: [], statusCounts: {} }, renderSequence: 3 });
             expect(panel.isHidden(noteOf(panel, contact, 'LastName'))).toBeTrue();
+            expect(noteOf(panel, contact, 'LastName').textContent).toBe('');
 
         });
 

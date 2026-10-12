@@ -48,9 +48,9 @@ import { ExtensionCommandService } from '../../ExtensionCommandService/Extension
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
 /*
-    One "sf org list --json --verbose" answer, read by all four org pickers through the real
-    SalesforceOrgService: the Treecipe tab's org dropdown, the Classic list's Compare with an org…, Insert
-    Data Set by Directory and Run Picklist Dependency Check. Only execFile and the authorization
+    One "sf org list --json --verbose" answer, read by all three org pickers through the real
+    SalesforceOrgService: the Treecipe tab's org dropdown, Insert Data Set by Directory and Run
+    Picklist Dependency Check. The Compare tab's picker went with the tab (#266). Only execFile and the authorization
     files are stood in for.
 */
 const SALESFORCE_ORG_MOCKS_PATH = path.join(__dirname, '..', '..', 'SalesforceOrgService', 'tests', 'mocks');
@@ -133,14 +133,11 @@ describe('RecipeCockpitService, every org picker lists only the orgs the Salesfo
 
     });
 
-    it('leaves out RefreshTokenAuthError, Unknown, expired and deleted orgs in all four pickers, and runs "sf org list" once for all of them', async () => {
+    it('leaves out RefreshTokenAuthError, Unknown, expired and deleted orgs in all three pickers, and runs "sf org list" once for all of them', async () => {
 
         await openRenderedCockpit();
 
         await receivedMessageHandler({ command: 'loadDataOrgs' });
-        // COMPARE IS PER TREE CARD; "Choose another org…" ALWAYS OPENS THE PICKER
-        const firstTreeKey = postedNamed('recipeData').at(-1).recipe.trees[0].treeKey;
-        await receivedMessageHandler({ command: 'selectOrg', treeKey: firstTreeKey, chooseOrg: true });
         await CollectionsApiService.getExpectedSalesforceOrgToInsertAgainst();
         await (new ExtensionCommandService() as any).promptForPicklistDependencyTargetOrg();
 
@@ -148,7 +145,7 @@ describe('RecipeCockpitService, every org picker lists only the orgs the Salesfo
             orgLabels: CONNECTED_ORG_LABELS,
             hiddenOrgNote: expect.stringContaining('4 authorized orgs are not listed: 1 expired, 1 deleted, 2 not connected.')
         });
-        expect(offeredQuickPickLabels).toEqual([CONNECTED_ORG_LABELS, CONNECTED_ORG_LABELS, CONNECTED_ORG_LABELS]);
+        expect(offeredQuickPickLabels).toEqual([CONNECTED_ORG_LABELS, CONNECTED_ORG_LABELS]);
         expect(execFile).toHaveBeenCalledTimes(1);
         expect((execFile as unknown as jest.Mock).mock.calls[0][1]).toEqual(['org', 'list', '--json', '--verbose']);
 

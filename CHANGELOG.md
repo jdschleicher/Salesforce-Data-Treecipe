@@ -1,5 +1,35 @@
 # Change Log
 
+## [3.68.0] - Recipe Cockpit: the Compare tab and the recipe-vs-org metadata diff are removed
+
+Closes [#266](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/266), slice D of [#261](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/261).
+
+A tree card's tabs are now **Treecipe · Previously Used Data Sets**. The Compare tab, which described a card's objects in an org and badged every field that differed (*new in org*, *removed from org*, *type changed*, *picklist changed*), is gone.
+
+- **Removed from the panel:**
+  - the tab with **Compare with an org…** and **Choose another org…**;
+  - the status filter, the progress line, the summary, the per-object rows with their badges and detail lines, and their CSS;
+  - the **"required in \<org\>"** note on an unticked field row, which the Compare tab's describe fed.
+- **Removed from the host:**
+  - the `selectOrg`, `orgDescribe` and `orgProgress` messages, the `selectOrg` route and action, and the describe-and-compare flow with its org resolution and progress reporting;
+  - `describableObjectApiNamesByTreeKey` (pending and active), `orgDescribeMessagesByTreeKey`, `orgProgressMessage` and `isOrgDescribeInFlight`, and their replay;
+  - `buildRecipeDiffViewModel`, `buildOrgDescribeMessage`, `buildOrgConnectionFailureMessage` and `buildOrgLabel`;
+  - the host-only copy of the recipe's picklist values (`picklistValuesByObjectApiName`, `recipePicklistValuesByObjectApiName`), which only the diff read;
+  - the comparisons a re-run of **Open Recipe Cockpit** carried over (`IRecipeCockpitCarriedPanelState`, `buildComparedRowsSignature`, `carryOrgDescribeMessages`).
+- **`RecipeCockpitMetadataDiff.ts`**, its test and its `metadataDiff` fixtures are deleted, and no file imports it.
+- **Kept:**
+  - the tree insert's readiness, which still describes objects through `SalesforceOrgService`'s session cache;
+  - the insert's refusal of an unticked field the org requires;
+  - the Treecipe tab's org picker;
+  - **Deploy this metadata…**, which [#273](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/273) redid and which already lived on the Treecipe tab.
+- **Forged messages.** A posted `selectOrg` is an unrecognized command: the router answers nothing, so no picker opens and nothing connects. An `orgDescribe` or `orgProgress` reaching the panel draws nothing and throws nothing.
+- **Saved places.**
+  - A card saved on Compare (`compare`, or `dataByOrg` in a version 1 place) opens on **Treecipe**. Its search is dropped, never moved onto another tab.
+  - Its status filter and opened Compare rows are no longer part of the place, so they are ignored.
+  - This is slice C's migration with `compare` added to `RECIPE_COCKPIT_REMOVED_TREE_TABS`. The place version did not change.
+- **Org pickers.** Three now read the CLI's connected-org listing: the Treecipe tab's, Insert Data Set by Directory's and Run Picklist Dependency Check's.
+- **Unchanged:** recipe generation and both faker backends, the Treecipe tab and its insert, Previously Used Data Sets, `datasetSource.json`, `SalesforceOrgService.describeObjects` and `normalizeDescribeResult`, and Insert Data Set by Directory.
+
 ## [3.67.0] - Recipe Cockpit: "Deploy this metadata…" is always offered and deploys the whole tree
 
 Closes [#273](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/273), following [#211](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/211) and [#270](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/270).
