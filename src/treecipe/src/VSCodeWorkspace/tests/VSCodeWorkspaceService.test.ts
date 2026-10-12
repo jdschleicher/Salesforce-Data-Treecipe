@@ -8,6 +8,8 @@ import {
     PARENT_PICKER_RANDOM_LABEL,
     PARENT_PICKER_SEARCH_DELAY_MILLISECONDS,
     PARENT_PICKER_SELECT_ALL_LABEL,
+    RECIPE_COCKPIT_STATUS_BAR_TEXT,
+    RECIPE_COCKPIT_STATUS_BAR_TOOLTIP,
     VSCodeWorkspaceService
 } from "../VSCodeWorkspaceService";
 import { MockVSCodeWorkspaceService } from "./mocks/MockVSCodeWorkspaceService";
@@ -24,7 +26,8 @@ jest.mock('vscode', () => ({
         fs: {
             readFile: jest.fn()
         },
-        openTextDocument: jest.fn()
+        openTextDocument: jest.fn(),
+        onDidChangeConfiguration: jest.fn()
     },
     Uri: {
         file: (path: string) => ({ fsPath: path })
@@ -1960,6 +1963,152 @@ describe('createStatusBarPhaseItem', () => {
 
     });
 
+
+});
+
+describe('VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem (#251)', () => {
+
+    const buildFakeStatusBarItem = () => ({
+        text: '', tooltip: undefined as unknown, command: undefined as unknown,
+        show: jest.fn(), hide: jest.fn(), dispose: jest.fn()
+    });
+
+    let configurationChangeListener: ((change: { affectsConfiguration(section: string): boolean }) => void) | undefined;
+    let settingValue: boolean | undefined;
+    const configurationListenerDisposable = { dispose: jest.fn() };
+
+    const changeSetting = (value: boolean | undefined, affectedSection = 'salesforce-data-treecipe.showRecipeCockpitStatusBarItem') => {
+        settingValue = value;
+        configurationChangeListener?.({ affectsConfiguration: (section: string) => section === affectedSection });
+    };
+
+    beforeEach(() => {
+
+        settingValue = undefined;
+        configurationChangeListener = undefined;
+        (vscode.workspace as { workspaceFolders: unknown }).workspaceFolders = [{ uri: { fsPath: '/workspace' } }];
+        (vscode.window.createStatusBarItem as jest.Mock).mockReset();
+        (vscode.workspace.onDidChangeConfiguration as jest.Mock).mockReset().mockImplementation(listener => {
+            configurationChangeListener = listener;
+            return configurationListenerDisposable;
+        });
+        jest.spyOn(ConfigurationService, 'getExtensionConfigValue').mockImplementation(
+            key => ( key === 'showRecipeCockpitStatusBarItem' ? settingValue : undefined ) as never
+        );
+
+    });
+
+    afterEach(() => {
+        (vscode.workspace as { workspaceFolders: unknown }).workspaceFolders = undefined;
+    });
+
+    it('creates a left aligned item that runs Open Recipe Cockpit, shows it, and registers it for disposal', () => {
+
+        const statusBarItem = buildFakeStatusBarItem();
+        (vscode.window.createStatusBarItem as jest.Mock).mockReturnValue(statusBarItem);
+        const subscriptions: { dispose(): unknown }[] = [];
+
+        VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem(subscriptions);
+
+        expect(vscode.window.createStatusBarItem).toHaveBeenCalledWith(vscode.StatusBarAlignment.Left);
+        expect(statusBarItem.text).toBe('$(list-tree) Treecipe');
+        expect(RECIPE_COCKPIT_STATUS_BAR_TEXT).toBe('$(list-tree) Treecipe');
+        expect(statusBarItem.tooltip).toBe('Open Recipe Cockpit');
+        expect(RECIPE_COCKPIT_STATUS_BAR_TOOLTIP).toBe('Open Recipe Cockpit');
+        expect(statusBarItem.command).toBe('treecipe.openRecipeCockpit');
+        expect(statusBarItem.command).toBe(require('../../../../../package.json').contributes.commands
+            .find((command: { command: string }) => command.command === 'treecipe.openRecipeCockpit').command);
+        expect(statusBarItem.show).toHaveBeenCalled();
+
+        expect(subscriptions).toContain(configurationListenerDisposable);
+        subscriptions.forEach(subscription => subscription.dispose());
+        expect(statusBarItem.dispose).toHaveBeenCalled();
+
+    });
+
+    // SHOWING THE ITEM IS ALL REGISTERING DOES -- ONLY A CLICK RUNS THE COMMAND
+    it('runs no command, writes no setting and opens no webview when it shows the item', () => {
+
+        (vscode.window.createStatusBarItem as jest.Mock).mockReturnValue(buildFakeStatusBarItem());
+        const setExtensionConfigValueSpy = jest.spyOn(ConfigurationService, 'setExtensionConfigValue');
+        // A jest.fn() FROM THE MODULE FACTORY, WHICH restoreMocks DOES NOT COVER -- ITS CALLS ACCUMULATE
+        (vscode.commands.executeCommand as jest.Mock).mockClear();
+
+        VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem([]);
+
+        expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+        expect(setExtensionConfigValueSpy).not.toHaveBeenCalled();
+
+    });
+
+    it('given the setting is false, creates no item and throws nothing', () => {
+
+        settingValue = false;
+        const subscriptions: { dispose(): unknown }[] = [];
+
+        expect(() => VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem(subscriptions)).not.toThrow();
+
+        expect(vscode.window.createStatusBarItem).not.toHaveBeenCalled();
+        expect(() => subscriptions.forEach(subscription => subscription.dispose())).not.toThrow();
+
+    });
+
+    it('given no workspace folder is open, creates no item, registers nothing and throws nothing', () => {
+
+        (vscode.workspace as { workspaceFolders: unknown }).workspaceFolders = undefined;
+        const subscriptions: { dispose(): unknown }[] = [];
+
+        expect(() => VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem(subscriptions)).not.toThrow();
+
+        expect(vscode.window.createStatusBarItem).not.toHaveBeenCalled();
+        expect(vscode.workspace.onDidChangeConfiguration).not.toHaveBeenCalled();
+        expect(subscriptions).toEqual([]);
+
+    });
+
+    it('hides the item when the setting is turned off and shows the same item when it is turned back on, without a reload', () => {
+
+        const statusBarItem = buildFakeStatusBarItem();
+        (vscode.window.createStatusBarItem as jest.Mock).mockReturnValue(statusBarItem);
+
+        VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem([]);
+        expect(statusBarItem.show).toHaveBeenCalledTimes(1);
+
+        changeSetting(false);
+        expect(statusBarItem.hide).toHaveBeenCalledTimes(1);
+
+        changeSetting(true);
+        expect(statusBarItem.show).toHaveBeenCalledTimes(2);
+        expect(vscode.window.createStatusBarItem).toHaveBeenCalledTimes(1);
+
+    });
+
+    it('creates the item when the setting is turned on after starting off', () => {
+
+        settingValue = false;
+        const statusBarItem = buildFakeStatusBarItem();
+        (vscode.window.createStatusBarItem as jest.Mock).mockReturnValue(statusBarItem);
+
+        VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem([]);
+        expect(vscode.window.createStatusBarItem).not.toHaveBeenCalled();
+
+        changeSetting(true);
+        expect(vscode.window.createStatusBarItem).toHaveBeenCalledTimes(1);
+        expect(statusBarItem.show).toHaveBeenCalledTimes(1);
+
+    });
+
+    it('ignores a change to any other setting', () => {
+
+        const statusBarItem = buildFakeStatusBarItem();
+        (vscode.window.createStatusBarItem as jest.Mock).mockReturnValue(statusBarItem);
+
+        VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem([]);
+        changeSetting(false, 'salesforce-data-treecipe.recipeCockpitEnabled');
+
+        expect(statusBarItem.hide).not.toHaveBeenCalled();
+
+    });
 
 });
 

@@ -453,6 +453,8 @@ A panel for browsing a generated recipe (every object, every field, the field's 
 
 **Prerequisite:** [Generate Treecipe](#2-salesforce-treecipe-generate-treecipe) must have been run at least once. With no generated run the panel says so and names that command.
 
+**One click from the status bar.** In a workspace that contains `treecipe/treecipe.config.json`, the extension starts when the window loads and puts a tree icon and **Treecipe** on the left of the status bar (tooltip *Open Recipe Cockpit*). Clicking it runs this same command, so the preview opt-in below still applies and an open panel is brought to the front rather than opened twice. Showing it loads no run, contacts no org and runs no `sf` command. Hide it with `salesforce-data-treecipe.showRecipeCockpitStatusBarItem` (on by default); the change takes effect without a reload.
+
 **It is a preview.** The first time you run it in a workspace, a warning asks you to opt in. The switch is `salesforce-data-treecipe.recipeCockpitEnabled`, written for **this workspace only**, and you can turn it off in Settings. What is built and what is still missing is tracked under the [`recipe-cockpit` label](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues?q=is%3Aissue+label%3Arecipe-cockpit). It writes back into a recipe only three changes, and asks first each time: a friend added under a self-lookup iteration with **+**, a TODO lookup wired to a nickname with **Wire to…**, and a lookup's standard parent added with **Add \<Parent\> to recipe**.
 
 How it works:

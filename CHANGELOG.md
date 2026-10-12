@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.75.0] - Recipe Cockpit: a status bar item opens the cockpit in Treecipe workspaces
+
+Closes [#251](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/251). Part of epic [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59).
+
+- **`$(list-tree) Treecipe` in the status bar.** A workspace that contains `treecipe/treecipe.config.json` now activates the extension at window load (`workspaceContains:treecipe/treecipe.config.json`, the extension's first activation event). The item sits on the left, with the tooltip *Open Recipe Cockpit*. A workspace without that file activates exactly as before, on a command, and has no item.
+- **The same command as the palette.** Clicking runs `treecipe.openRecipeCockpit`, so the `recipeCockpitEnabled` opt-in warning still appears when the flag is off, and an open panel is revealed rather than duplicated.
+- **Showing it does nothing else.** No run is loaded, no org contacted, no `sf` command run, no generated file read and no webview created until it is clicked. There is still no `onWebviewPanel:` activation event and no panel serializer.
+- **New setting `salesforce-data-treecipe.showRecipeCockpitStatusBarItem`** (boolean, default `true`). Turning it off hides the item and turning it on shows it, without a reload. With it off from the start, or in a window with no folder, no item is created at all. The item and its settings listener are disposed with the extension.
+- **No settings write on every load.** `activate` writes `useSnowfakeryAsDefault: false` to the workspace only when the workspace does not already hold that value, so a Treecipe workspace's `.vscode/settings.json` is not rewritten each time the window loads. That flag is not the faker backend choice (`selectedFakerService`), which activation never touches.
+
 ## [3.74.0] - Recipe Cockpit: add a lookup's standard parent to the recipe from a template
 
 Closes [#294](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/294). Part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
