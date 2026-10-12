@@ -832,6 +832,31 @@ export class SalesforceOrgService {
     }
 
     /*
+        Which authorized org holds each alias, read from the local authorizations alone -- no CLI,
+        no connection -- so "+ New scratch org" can say an alias the reader typed will be moved off
+        another org (#279). A map, so an alias named __proto__ is an alias like any other.
+    */
+    static async listAliasHolders(): Promise<Map<string, string>> {
+
+        const aliasHolders = new Map<string, string>();
+
+        for ( const authorization of this.readAuthorizations(await AuthInfo.listAllAuthorizations()) ) {
+            const username = authorization?.username;
+            if ( typeof username !== 'string' || !username || !Array.isArray(authorization?.aliases) ) {
+                continue;
+            }
+            for ( const alias of authorization.aliases ) {
+                if ( typeof alias === 'string' && alias && !aliasHolders.has(alias) ) {
+                    aliasHolders.set(alias, username);
+                }
+            }
+        }
+
+        return aliasHolders;
+
+    }
+
+    /*
         The quick-pick commands have no ⟳, so an answer from the cache that leaves them nothing to
         offer is asked again once: the reader may have re-authorized an org since, which is exactly
         what the empty-list warning tells them to do.
@@ -899,8 +924,8 @@ export class SalesforceOrgService {
 
     /*
         The connected orgs as a quick pick, which opens busy at once and fills only when the CLI
-        has answered. Compare with an org…, Insert Data Set by Directory and Run Picklist Dependency
-        Check all come through here.
+        has answered. Insert Data Set by Directory and Run Picklist Dependency Check both come
+        through here.
     */
     static async promptForAuthorizedOrg(placeHolder: string): Promise<IAuthenticatedOrgDetail | undefined> {
 

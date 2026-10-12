@@ -5,7 +5,16 @@ import { ISalesforceCliInvocationResult, ISalesforceCliProjectOptions, PicklistD
 import { IDevHubOrgDetail } from '../SalesforceOrgService/SalesforceOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 
-export const SCRATCH_ORG_ALIAS_PREFIX = 'treecipe-';
+// AN ALIAS THE CLI KEEPS IN ~/.sfdx/alias.json AND THE READER TYPES BACK: LONG ENOUGH FOR A NAME, SHORT ENOUGH FOR A PICKER
+export const SCRATCH_ORG_ALIAS_MAX_LENGTH = 80;
+
+// WHAT AN https: URL FROM "sf org open --url-only" MAY BE, BEFORE IT IS HANDED TO THE READER'S BROWSER
+export const ORG_OPEN_URL_PROTOCOL = 'https:';
+
+export const ORG_OPEN_TIMEOUT_MILLISECONDS = 60000;
+
+// WINDOWS RESERVES THESE AS DEVICE NAMES, WITH OR WITHOUT AN EXTENSION: A FOLDER BY THAT NAME CANNOT BE MADE
+export const WINDOWS_RESERVED_FOLDER_NAME_PATTERN = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
 
 export const SCRATCH_ORG_DURATION_DAYS = 7;
 
@@ -52,11 +61,24 @@ export interface IScratchOrgPlan {
     // AS sfdx-project.json DECLARES THEM: THE CLI RESOLVES THEM ITSELF, SINCE THE DEPLOY NAMES NO --source-dir
     packageDirectoryPaths: string[];
     devHub: IDevHubOrgDetail;
+    // THE READER'S OWN (#279): NO DEFAULT, AND CHECKED AGAIN HERE WHATEVER THE INPUT BOX ALREADY SAID
     alias: string;
+    // ANOTHER AUTHORIZED ORG HOLDING THE ALIAS NOW: THE CLI RE-POINTS IT TO THE NEW ORG, AND THE MODAL SAYS SO
+    aliasHolderUsername?: string;
     durationDays: number;
     definitionSummary: IScratchOrgDefinitionSummary;
     hasFileOrEnvironmentReplacements: boolean;
 }
+
+// WHAT THE READER ANSWERED IN THE ALIAS BOX, AND WHICH ORG HOLDS THAT ALIAS NOW, IF ANY
+export interface IScratchOrgAliasChoice {
+    alias: string;
+    aliasHolderUsername?: string;
+}
+
+export type OrgOpenParseResult =
+    { isOpenable: true; url: string }
+    | { isOpenable: false; failureMessage: string };
 
 export type ScratchOrgCreateParseResult =
     { isCreated: true; username: string }
@@ -112,7 +134,7 @@ export interface IScratchOrgSetupHooks {
 */
 export class ScratchOrgService {
 
-    // LOCAL TIME, SINCE THE ALIAS IS FOR THE READER: treecipe-20261010-142233
+    // LOCAL TIME: A RESULT FILE'S NAME IS READ BY A PERSON
     static buildCompactTimestamp(date: Date): string {
 
         const twoDigits = (value: number) => String(value).padStart(2, '0');
@@ -121,9 +143,40 @@ export class ScratchOrgService {
 
     }
 
-    static buildScratchOrgAlias(date: Date): string {
+    /*
+        Why an alias cannot be used, or undefined when it can (#279). It is an argv value, the
+        folder a failed create's result is saved under, and a name the CLI resolves --target-org
+        against, so it is held to all three: an identifier the CLI is handed elsewhere, a folder
+        name that names no other folder, and no "@", which would read as a username. It starts with
+        a letter or digit and does not end with ".", which Windows strips from a folder name, and it
+        is not a Windows device name, which no folder can have.
+    */
+    static validateScratchOrgAlias(alias: unknown): string | undefined {
 
-        return `${SCRATCH_ORG_ALIAS_PREFIX}${this.buildCompactTimestamp(date)}`;
+        if ( typeof alias !== 'string' || alias === '' ) {
+            return 'Enter an alias for the new scratch org.';
+        }
+
+        if ( alias.length > SCRATCH_ORG_ALIAS_MAX_LENGTH ) {
+            return `An alias is at most ${SCRATCH_ORG_ALIAS_MAX_LENGTH} characters.`;
+        }
+
+        if ( alias.includes('@') ) {
+            return 'An alias cannot contain "@", which would read as a username.';
+        }
+
+        if ( !PicklistDependencyCheckService.isValidTargetOrgIdentifier(alias)
+                || !this.isUsableOrgOperationFolderName(alias)
+                || !/^[A-Za-z0-9]/.test(alias)
+                || alias.endsWith('.') ) {
+            return 'An alias is letters, digits and . _ + -, starts with a letter or digit, and does not end with ".".';
+        }
+
+        if ( WINDOWS_RESERVED_FOLDER_NAME_PATTERN.test(alias) ) {
+            return `"${alias}" is a name Windows reserves for a device, so it cannot be an alias.`;
+        }
+
+        return undefined;
 
     }
 
@@ -136,7 +189,7 @@ export class ScratchOrgService {
     */
     static async resolveScratchOrgPlan(workspaceRoot: string,
                                         chooseDevHub: () => Promise<IDevHubOrgDetail | undefined>,
-                                        date: Date = new Date()): Promise<IScratchOrgPlan | undefined> {
+                                        chooseAlias: (devHub: IDevHubOrgDetail) => Promise<IScratchOrgAliasChoice | undefined>): Promise<IScratchOrgPlan | undefined> {
 
         const packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
 
@@ -157,13 +210,27 @@ export class ScratchOrgService {
             return undefined;
         }
 
+        // NO ALIAS IS NO PLAN, LIKE NO DEV HUB: ESCAPE IN THE BOX IS A CANCEL
+        const aliasChoice = await chooseAlias(devHub);
+
+        if ( !aliasChoice ) {
+            return undefined;
+        }
+
+        const aliasRefusal = this.validateScratchOrgAlias(aliasChoice.alias);
+
+        if ( aliasRefusal ) {
+            throw new Error(`No scratch org was created: ${aliasRefusal}`);
+        }
+
         return {
             workspaceRoot: resolvedWorkspaceRoot,
             definitionFilePath: definitionFilePath,
             definitionFileRelativePath: SCRATCH_ORG_DEFINITION_FILE_RELATIVE_PATH,
             packageDirectoryPaths: packageDirectoryPaths,
             devHub: devHub,
-            alias: this.buildScratchOrgAlias(date),
+            alias: aliasChoice.alias,
+            ...( aliasChoice.aliasHolderUsername ? { aliasHolderUsername: aliasChoice.aliasHolderUsername } : {} ),
             durationDays: SCRATCH_ORG_DURATION_DAYS,
             definitionSummary: this.readDefinitionSummary(definitionFilePath),
             hasFileOrEnvironmentReplacements: SfdxProjectService.hasFileOrEnvironmentReplacements(resolvedWorkspaceRoot)
@@ -215,13 +282,81 @@ export class ScratchOrgService {
 
     /*
         No --source-dir, so the CLI deploys every package directory sfdx-project.json names, and no
-        --ignore-errors, so the deploy is all or nothing: one failing component rolls it back.
+        --ignore-errors, so the deploy is all or nothing: one failing component rolls it back. The
+        target is the USERNAME the create answered with, never the alias: the reader chose the
+        alias (#279), and an alias can be re-pointed between the create and the deploy.
     */
-    static buildSourceDeployArguments(scratchOrgPlan: IScratchOrgPlan): string[] {
+    static buildSourceDeployArguments(username: string): string[] {
 
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(scratchOrgPlan.alias);
+        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(username);
 
-        return ['project', 'deploy', 'start', '--target-org', scratchOrgPlan.alias, '--json'];
+        return ['project', 'deploy', 'start', '--target-org', username, '--json'];
+
+    }
+
+    // --url-only: THE EXTENSION OPENS THE URL ITSELF, WHICH ALSO WORKS WHERE THE CLI HAS NO BROWSER (REMOTE, WSL, CODESPACES)
+    static buildOrgOpenArguments(username: string): string[] {
+
+        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(username);
+
+        return ['org', 'open', '--target-org', username, '--url-only', '--json'];
+
+    }
+
+    // NOT PROJECT MODE: NO cwd, SO sf IS FOUND ON PATH THE WAY "sf org list" FINDS IT
+    static async resolveOrgOpenUrl(username: string): Promise<OrgOpenParseResult> {
+
+        const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(this.buildOrgOpenArguments(username), undefined, ORG_OPEN_TIMEOUT_MILLISECONDS);
+
+        return this.parseOrgOpenOutput(invocationResult);
+
+    }
+
+    /*
+        "sf org open --url-only --json" (#279). The answer is untrusted and the URL carries a
+        session id, so it is only ever handed to the browser: openable on status 0 and a result.url
+        that parses as https:, and a failure message never quotes it.
+    */
+    static parseOrgOpenOutput(invocationResult: ISalesforceCliInvocationResult): OrgOpenParseResult {
+
+        if ( invocationResult.spawnError ) {
+            return {
+                isOpenable: false,
+                failureMessage: invocationResult.spawnError.code === 'ENOENT'
+                    ? `The Salesforce CLI ("${PicklistDependencyCheckService.getSalesforceCliExecutable()}") is required to open an org, and it is not installed or not on PATH. Install it and try again.`
+                    : `The Salesforce CLI could not be started: ${invocationResult.spawnError.message}`
+            };
+        }
+
+        if ( invocationResult.timedOut ) {
+            return { isOpenable: false, failureMessage: 'The Salesforce CLI did not answer in time.' };
+        }
+
+        const payload = this.readCliJsonPayload(invocationResult);
+        const result = payload?.result !== null && typeof payload?.result === 'object' && !Array.isArray(payload?.result) ? payload.result as Record<string, unknown> : undefined;
+        const url = result?.url;
+
+        if ( payload?.status === 0 && typeof url === 'string' ) {
+
+            let parsedUrl: URL | undefined;
+
+            try {
+                parsedUrl = new URL(url);
+            } catch {
+                parsedUrl = undefined;
+            }
+
+            return parsedUrl && parsedUrl.protocol === ORG_OPEN_URL_PROTOCOL
+                ? { isOpenable: true, url: parsedUrl.toString() }
+                : { isOpenable: false, failureMessage: 'The Salesforce CLI answered with an address that is not https, so it was not opened.' };
+
+        }
+
+        if ( payload?.status === 0 ) {
+            return { isOpenable: false, failureMessage: 'The Salesforce CLI answered without an address to open.' };
+        }
+
+        return { isOpenable: false, failureMessage: this.redactSecretText(this.buildCliFailureDetail(payload, invocationResult)) };
 
     }
 
@@ -460,6 +595,8 @@ export class ScratchOrgService {
     static redactSecretText(text: string): string {
 
         return String(text ?? '')
+            // A FRONTDOOR ADDRESS ("sf org open --url-only") LOGS WHOEVER HAS IT IN, WHATEVER FORM ITS SESSION PARAMETER TAKES
+            .replace(/https?:\/\/[^\s"']*[?&](?:sid|otp)=[^\s"']*/gi, ORG_OPERATION_REDACTED_VALUE)
             .replace(/00D[A-Za-z0-9]{12,15}![A-Za-z0-9._-]+/g, ORG_OPERATION_REDACTED_VALUE)
             .replace(/force:\/\/[^\s"']+/g, ORG_OPERATION_REDACTED_VALUE);
 
@@ -515,7 +652,7 @@ export class ScratchOrgService {
         setupHooks.onPhase('deploying');
 
         const deployInvocation = await PicklistDependencyCheckService.runSalesforceCli(
-            this.buildSourceDeployArguments(scratchOrgPlan),
+            this.buildSourceDeployArguments(username),
             setupHooks.registerCancellation,
             undefined,
             deployOptions
