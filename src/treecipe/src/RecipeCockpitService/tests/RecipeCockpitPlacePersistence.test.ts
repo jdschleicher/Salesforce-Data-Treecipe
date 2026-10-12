@@ -22,7 +22,8 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB,
     RECIPE_COCKPIT_PANEL_PLACE_MAX_TEXT_LENGTH,
     RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES,
-    RECIPE_COCKPIT_PANEL_PLACE_MAX_SERIALIZED_LENGTH
+    RECIPE_COCKPIT_PANEL_PLACE_MAX_SERIALIZED_LENGTH,
+    RECIPE_COCKPIT_REMOVED_TREE_TABS
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -54,12 +55,11 @@ const buildPlace = (overrides: Partial<IRecipeCockpitPanelPlace> = {}): IRecipeC
         treeKey: ACCOUNT_TREE_KEY,
         isExpanded: true,
         selectedTab: 'treecipe',
-        searchQueries: { treecipe: '', compare: '', versions: '', datasets: '' },
+        searchQueries: { treecipe: '', compare: '', datasets: '' },
         statusFilter: 'all',
         expandedObjectKeys: ['Account\n'],
         openPicklistKeys: [],
-        expandedDataObjectApiNames: [],
-        expandedVersionRunFolderNames: []
+        expandedDataObjectApiNames: []
     }],
     ...overrides
 });
@@ -152,12 +152,11 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
                     treeKey: LEAD_TREE_KEY,
                     isExpanded: false,
                     selectedTab: 'treecipe',
-                    searchQueries: { treecipe: '', compare: '', versions: 'FakerJS', datasets: '' },
+                    searchQueries: { treecipe: '', compare: '', datasets: '' },
                     statusFilter: 'all',
                     expandedObjectKeys: ['Lead\n'],
                     openPicklistKeys: [],
-                    expandedDataObjectApiNames: [],
-                    expandedVersionRunFolderNames: []
+                    expandedDataObjectApiNames: []
                 }]
             });
 
@@ -196,7 +195,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
         it('given a version 2 place, round-trips it unchanged', () => {
 
             const versionTwoPlace = buildPlace({ trees: [{ ...buildPlace().trees[0], selectedTab: 'compare', statusFilter: 'new-in-org',
-                searchQueries: { treecipe: 'Rating', compare: 'Brand', versions: 'FakerJS', datasets: 'set' }, expandedDataObjectApiNames: ['Account'] }] });
+                searchQueries: { treecipe: 'Rating', compare: 'Brand', datasets: 'set' }, expandedDataObjectApiNames: ['Account'] }] });
 
             expect(RECIPE_COCKPIT_PANEL_PLACE_VERSION).toBe(2);
             expect(RecipeCockpitService.normalizePanelPlace(versionTwoPlace)).toEqual(versionTwoPlace);
@@ -211,7 +210,31 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
                 selectedTab: 'dataByOrg', searchQueries: { structure: 'Rating', dataByOrg: 'Brand' } }] });
 
             expect(normalizedPlace!.trees[0].selectedTab).toBe('treecipe');
-            expect(normalizedPlace!.trees[0].searchQueries).toEqual({ treecipe: '', compare: '', versions: '', datasets: '' });
+            expect(normalizedPlace!.trees[0].searchQueries).toEqual({ treecipe: '', compare: '', datasets: '' });
+
+        });
+
+        // #265: A PLACE OF EITHER VERSION SAVED ON PREVIOUS VERSIONS OPENS ON TREECIPE, AND NOTHING OF THAT TAB IS KEPT OR MOVED
+        it.each([
+            ['2', RECIPE_COCKPIT_PANEL_PLACE_VERSION],
+            ['1', RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB]
+        ])('given a version %s place saved on the removed Previous Versions tab, opens Treecipe and keeps nothing of that tab', (_versionLabel, placeVersion) => {
+
+            const normalizedPlace = RecipeCockpitService.normalizePanelPlace({
+                ...buildPlace(),
+                version: placeVersion,
+                trees: [{
+                    ...buildPlace().trees[0],
+                    selectedTab: 'versions',
+                    searchQueries: { versions: 'FakerJS', datasets: 'set' },
+                    expandedVersionRunFolderNames: [FAKER_JS_RUN_FOLDER_NAME]
+                }]
+            });
+
+            expect(RECIPE_COCKPIT_REMOVED_TREE_TABS).toContain('versions');
+            expect(normalizedPlace!.version).toBe(RECIPE_COCKPIT_PANEL_PLACE_VERSION);
+            expect(normalizedPlace!.trees[0]).toEqual({ ...buildPlace().trees[0], selectedTab: 'treecipe', searchQueries: { treecipe: '', compare: '', datasets: 'set' } });
+            expect(JSON.stringify(normalizedPlace)).not.toMatch(/FakerJS|expandedVersionRunFolderNames|versions/);
 
         });
 
@@ -226,7 +249,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             it.each([
                 ['structure', 'treecipe'],
                 ['dataByOrg', 'compare'],
-                ['versions', 'versions'],
+                ['versions', 'treecipe'],
                 ['datasets', 'datasets']
             ])('reads its %s tab as the %s tab, and returns a version 2 place', (savedTabName, expectedTabName) => {
 
@@ -246,12 +269,13 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
                     searchQueries: { structure: 'Rating', dataByOrg: 'Brand', versions: 'FakerJS', datasets: 'set' }
                 }));
 
+                // THE REMOVED PREVIOUS VERSIONS TAB'S SEARCH IS DROPPED, NOT MOVED (#265)
                 expect(normalizedPlace).toEqual(buildPlace({ trees: [{
                     ...buildPlace().trees[0],
                     selectedTab: 'compare',
                     statusFilter: 'type-changed',
                     expandedDataObjectApiNames: ['Account'],
-                    searchQueries: { treecipe: 'Rating', compare: 'Brand', versions: 'FakerJS', datasets: 'set' }
+                    searchQueries: { treecipe: 'Rating', compare: 'Brand', datasets: 'set' }
                 }] }));
 
             });
@@ -269,7 +293,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             ['all', 'new-in-org', 'removed-from-org', 'type-changed', 'picklist-changed'].forEach(statusFilter => {
                 expect(RecipeCockpitService.normalizePanelPlace(buildPlace({ trees: [{ ...buildPlace().trees[0], statusFilter }] }))!.trees[0].statusFilter).toBe(statusFilter);
             });
-            (['treecipe', 'compare', 'versions', 'datasets'] as const).forEach(selectedTab => {
+            (['treecipe', 'compare', 'datasets'] as const).forEach(selectedTab => {
                 expect(RecipeCockpitService.normalizePanelPlace(buildPlace({ trees: [{ ...buildPlace().trees[0], selectedTab }] }))!.trees[0].selectedTab).toBe(selectedTab);
             });
 
@@ -366,7 +390,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             (RecipeCockpitService as any).pendingPersistedPanelPlace = undefined;
         };
 
-        // THE READER'S SESSION IN THE REAL PANEL SCRIPT, ON A RUN THAT IS NOT THE NEWEST: THE ACCOUNT CARD AND OBJECT OPEN, THE LEAD CARD ON A SEARCHED HISTORY TAB
+        // THE READER'S SESSION IN THE REAL PANEL SCRIPT, ON A RUN THAT IS NOT THE NEWEST: THE ACCOUNT CARD AND OBJECT OPEN, THE LEAD CARD ON A SEARCHED DATA SETS TAB
         const buildSavedPlaceFromPanel = (recipeDataMessage: any, accountTreeKey = OLDER_ACCOUNT_TREE_KEY) => {
             const panel = runPanelScript();
             panel.postToPanel(recipeDataMessage);
@@ -376,8 +400,8 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             panel.expandObject(accountObject);
             const leadCard = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeFolder')[0]?.textContent === LEAD_TREE_KEY);
             panel.findAll(leadCard, 'treeToggle')[0].dispatch('click');
-            panel.openTab(leadCard, 'Previous Versions');
-            panel.typeIntoTabSearch(leadCard, 'treeVersions', 'FakerJS');
+            panel.openTab(leadCard, 'Previously Used Data Sets');
+            panel.typeIntoTabSearch(leadCard, 'treeDatasets', '09-21');
             return panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'savePlace').pop().place;
         };
 
@@ -443,7 +467,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             expect(isCardOpenIn(reopenedPanel, OLDER_ACCOUNT_TREE_KEY)).toBe(true);
             expect(isCardOpenIn(reopenedPanel, LEAD_TREE_KEY)).toBe(true);
             const leadCard = reopenedPanel.treeCards().find((treeCard: any) => reopenedPanel.findAll(treeCard, 'treeFolder')[0]?.textContent === LEAD_TREE_KEY);
-            expect(reopenedPanel.findAll(reopenedPanel.tabPanelOf(leadCard, 'treeVersions'), 'tabSearchInput')[0].value).toBe('FakerJS');
+            expect(reopenedPanel.findAll(reopenedPanel.tabPanelOf(leadCard, 'treeDatasets'), 'tabSearchInput')[0].value).toBe('09-21');
 
         });
 
@@ -522,7 +546,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             const versionOnePlace = {
                 ...buildPlace({ runFolderName: CURRENT_RUN_FOLDER_NAME }),
                 version: RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB,
-                trees: [{ ...buildPlace().trees[0], selectedTab: 'structure', searchQueries: { structure: 'Rating', dataByOrg: '', versions: '', datasets: '' } }]
+                trees: [{ ...buildPlace().trees[0], selectedTab: 'structure', searchQueries: { structure: 'Rating', dataByOrg: '', datasets: '' } }]
             };
             const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_PANEL_PLACE_STATE_KEY]: versionOnePlace });
 

@@ -1,5 +1,21 @@
 # Change Log
 
+## [3.66.0] - Recipe Cockpit: the Previous Versions tab is removed
+
+Closes [#265](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/265), slice C of [#261](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/261).
+
+A tree card's tabs are now **Treecipe · Compare · Previously Used Data Sets**. The Previous Versions tab, which listed earlier runs of the tree with field-count summaries and a Diff, is gone.
+
+- **Removed:**
+  - the tab, its version rows and their expanded data set lists;
+  - the `loadVersionSummaries` / `versionSummaries` and `diffTreeVersion` messages, their `summaryTreeKeys` and `diffKeys` allow-lists and host handlers;
+  - the per-run wrapper field-count cache (`runFieldCountCache`, `readRunFieldCounts`, `readTreeFieldCount` and their helpers);
+  - `RecipeCockpitTreeHistory.buildVersionSummaries`, `formatFieldCountChange`, `buildDiffKey`, the summary and diff targets, and the `isDiffable` / `isBackendDifferent` version fields.
+- **Kept:** run discovery in `RecipeCockpitTreeHistory`. Data sets are still matched to their tree through it, and each data set row still says *current version*, *version of \<date\>* or *version unknown*.
+- **Previously Used Data Sets is unchanged.** A row shows, opens, inserts and counts records exactly as before, and a new data set is still added in place (#226). A legacy data set's record counts are read when you click the row's **Show record counts**, which was already the only way on this tab.
+- **Saved places.** A card saved on Previous Versions, in a place of either version, opens on **Treecipe**. Its Previous Versions search is dropped, never moved onto another tab, and its expanded versions are ignored. `RECIPE_COCKPIT_REMOVED_TREE_TABS` holds the removed tab names on both the host and the panel, so removing another tab is adding its name there. The place version did not change.
+- **Unchanged:** recipe generation and both faker backends, the Compare tab, the Treecipe tab and its insert, `datasetSource.json`, and Insert Data Set by Directory.
+
 ## [3.65.0] - Recipe Cockpit: "Deploy this metadata…" takes the CLI's answer as the result
 
 Closes [#270](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/270), following [#211](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/211).
