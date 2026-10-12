@@ -258,6 +258,13 @@ export const RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH = 'M4.5 8 H6.5 A4 4 0 0 1 6.5
 */
 export const RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH = 'M9 3 H15 L14 9 L17 12 V14 H7 V12 L10 9 Z M12 14 V21';
 export const RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = 'fixed';
+/*
+    The ▸/▾ of a tree card, a Treecipe object and a picklist field (#277), drawn like the chain link: a
+    font's triangle sits on the text baseline, so no button rule could centre it. Each path's box is
+    centred on (12, 12) in the same 24x24 view box, and filled from the palette by CSS.
+*/
+export const RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH = 'M7.5 5 L16.5 12 L7.5 19 Z';
+export const RECIPE_COCKPIT_TOGGLE_EXPANDED_GLYPH_PATH = 'M5 7.5 L19 7.5 L12 16.5 Z';
 export const RECIPE_COCKPIT_FAVORITE_TREE_LABEL = '★';
 export const RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL = '☆';
 export const RECIPE_COCKPIT_FAVORITES_ONLY_LABEL = 'Favorites only';
@@ -7874,7 +7881,7 @@ ${this.buildPaletteCustomProperties()}
         margin: 0.6rem 0;
         overflow: hidden;
     }
-    .treeObjectHeader, .treeFieldHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .treeObjectHeader, .treeFieldHeader { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
     .treeHeader {
         display: flex;
         flex-wrap: wrap;
@@ -7904,10 +7911,19 @@ ${this.buildPaletteCustomProperties()}
     .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeRunFaker:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .dataObjectToggle:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treeDeploy:hover:not(:disabled), .metadataDeployViewOutput:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .dataObjectToggle { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
+    .dataObjectToggle { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
     .dataOrgRefreshIcon { font-size: 1.5em; line-height: 1; }
-    .treeToggle, .treeObjectToggle { padding: 0 0.4rem; font-size: 3.3em; line-height: 1; }
+    .treeToggle, .treeObjectToggle, .picklistToggle, .picklistToggleSpacer {
+        box-sizing: border-box;
+        flex: none;
+        width: 2.6rem;
+        height: 2.6rem;
+    }
+    .treeToggle, .treeObjectToggle, .picklistToggle { display: inline-flex; align-items: center; justify-content: center; padding: 0; line-height: 1; }
+    .picklistToggleSpacer { display: inline-block; height: 1px; }
+    .toggleGlyph { display: block; width: 2.1rem; height: 2.1rem; }
+    .toggleGlyph path { fill: var(--sdt-accent); stroke: none; }
     .treeRunFaker, .toolbar button, .treeCompare button, .emptyStateActions button, .treeInsert, .dataOrgLoad, .dataOrgNewScratch {
         color: var(--sdt-on-accent);
         background-color: var(--sdt-accent);
@@ -8167,6 +8183,9 @@ ${this.buildPaletteCustomProperties()}
     const TREE_BROKEN_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH)};
     const FIELD_PARENT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON)};
     const FIXED_VALUE_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH)};
+    const TOGGLE_COLLAPSED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH)};
+    const TOGGLE_EXPANDED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_EXPANDED_GLYPH_PATH)};
+    const toggleGlyphPathElements = new WeakMap();
     const FIXED_VALUE_BADGE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL)};
     const FIXED_VALUE_OBJECT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON)};
     const FIXED_VALUE_UNTICKED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON)};
@@ -8648,6 +8667,30 @@ ${this.buildPaletteCustomProperties()}
         is built node by node -- no markup string -- and coloured by CSS from the palette alone.
         A click posts what the reader asked for; what that excludes comes back from the host.
     */
+    function buildToggleElement(className) {
+
+        const toggleElement = createElement('button', className);
+        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
+        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
+
+        glyphElement.setAttribute('class', 'toggleGlyph');
+        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
+        glyphElement.setAttribute('aria-hidden', 'true');
+        glyphElement.setAttribute('focusable', 'false');
+        pathElement.setAttribute('d', TOGGLE_COLLAPSED_GLYPH_PATH);
+        glyphElement.appendChild(pathElement);
+        toggleElement.appendChild(glyphElement);
+        toggleGlyphPathElements.set(toggleElement, pathElement);
+
+        return toggleElement;
+
+    }
+
+    function drawToggle(toggleElement, isExpanded) {
+        toggleGlyphPathElements.get(toggleElement).setAttribute('d', isExpanded ? TOGGLE_EXPANDED_GLYPH_PATH : TOGGLE_COLLAPSED_GLYPH_PATH);
+        toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+    }
+
     function buildTreeGlyph(treeObjectState) {
 
         const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
@@ -9216,12 +9259,14 @@ ${this.buildPaletteCustomProperties()}
             fieldHeaderElement.appendChild(buildFieldFixedValueElement(treeObjectState, fieldState));
         }
 
+        let setPicklistExpanded = null;
+
         if (field.isPicklist) {
 
-            const picklistToggleElement = createElement('button', 'picklistToggle', '▸');
+            const picklistToggleElement = buildToggleElement('picklistToggle');
             let picklistValuesElement = null;
 
-            const setPicklistExpanded = function (isExpanding) {
+            setPicklistExpanded = function (isExpanding) {
                 if (isExpanding && !picklistValuesElement) {
                     picklistValuesElement = createElement('div', 'picklistValues');
                     fieldRowElement.appendChild(picklistValuesElement);
@@ -9231,21 +9276,23 @@ ${this.buildPaletteCustomProperties()}
                     if (isExpanding) { picklistValuesElement.classList.remove('hidden'); } else { picklistValuesElement.classList.add('hidden'); }
                 }
                 fieldState.isPicklistExpanded = isExpanding;
-                picklistToggleElement.textContent = isExpanding ? '▾' : '▸';
-                picklistToggleElement.setAttribute('aria-expanded', isExpanding ? 'true' : 'false');
+                drawToggle(picklistToggleElement, isExpanding);
             };
 
             picklistToggleElement.setAttribute('aria-label', 'Show or hide the values of ' + field.fieldApiName);
+            picklistToggleElement.setAttribute('aria-expanded', 'false');
             picklistToggleElement.addEventListener('click', function () {
                 setPicklistExpanded(!fieldState.isPicklistExpanded);
                 savePanelPlace();
             });
 
-            // THE OPEN STATE LIVES ON THE FIELD, SO A ROW BUILT FROM A RESTORED PLACE OPENS AS IT WAS -- ASKING THE HOST AGAIN
-            setPicklistExpanded(!!fieldState.isPicklistExpanded);
-
             fieldHeaderElement.appendChild(picklistToggleElement);
 
+        } else {
+            // A ROW WITHOUT A ▸ KEEPS ITS SLOT, SO EVERY FIELD NAME OF AN OBJECT LINES UP
+            const toggleSpacerElement = createElement('span', 'picklistToggleSpacer');
+            toggleSpacerElement.setAttribute('aria-hidden', 'true');
+            fieldHeaderElement.appendChild(toggleSpacerElement);
         }
 
         fieldHeaderElement.appendChild(createElement('span', 'treeFieldName', field.fieldApiName));
@@ -9282,6 +9329,10 @@ ${this.buildPaletteCustomProperties()}
 
         fieldState.fixedValueElement = createElement('pre', 'fixedValue hidden');
         fieldRowElement.appendChild(fieldState.fixedValueElement);
+
+        // A ROW BUILT FROM A RESTORED PLACE OPENS ONLY ONCE IT IS WHOLE: OPENED EARLIER, ITS VALUES WERE
+        // APPENDED BEFORE ITS HEADER AND DREW ABOVE THE FIELD NAME (#277). IT STILL ASKS THE HOST AGAIN
+        if (setPicklistExpanded && fieldState.isPicklistExpanded) { setPicklistExpanded(true); }
 
         return fieldRowElement;
 
@@ -9377,8 +9428,7 @@ ${this.buildPaletteCustomProperties()}
         if (isExpanded) { treeObjectState.bodyElement.classList.remove('hidden'); } else { treeObjectState.bodyElement.classList.add('hidden'); }
 
         treeObjectState.isExpanded = isExpanded;
-        treeObjectState.toggleElement.textContent = isExpanded ? '▾' : '▸';
-        treeObjectState.toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+        drawToggle(treeObjectState.toggleElement, isExpanded);
 
     }
 
@@ -9449,7 +9499,7 @@ ${this.buildPaletteCustomProperties()}
         const treeKey = tree.treeKey;
         const objectElement = createElement('div', 'treeObject');
         const objectHeaderElement = createElement('div', 'treeObjectHeader');
-        const toggleElement = createElement('button', 'treeObjectToggle', '▸');
+        const toggleElement = buildToggleElement('treeObjectToggle');
 
         const treeObjectState = {
             treeObject: treeObject,
@@ -9875,8 +9925,7 @@ ${this.buildPaletteCustomProperties()}
         }
 
         treeState.isExpanded = isExpanded;
-        treeState.toggleElement.textContent = isExpanded ? '▾' : '▸';
-        treeState.toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+        drawToggle(treeState.toggleElement, isExpanded);
 
     }
 
@@ -9941,7 +9990,7 @@ ${this.buildPaletteCustomProperties()}
 
         const treeElement = createElement('div', 'treeCard');
         const treeHeaderElement = createElement('div', 'treeHeader');
-        const toggleElement = createElement('button', 'treeToggle', '▸');
+        const toggleElement = buildToggleElement('treeToggle');
 
         const treeState = {
             tree: tree,
