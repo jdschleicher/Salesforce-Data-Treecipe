@@ -4667,6 +4667,8 @@ describe('RecipeCockpitService', () => {
             // A READER OPTING IN IS TOLD THE PANEL CAN INSERT RECORDS, AND ONLY INTO A SANDBOX
             expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('It CAN WRITE TO AN ORG');
             expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('only for an org that reports itself as a sandbox');
+            // #266: THE COMPARE TAB IS GONE, SO THE OPT-IN NO LONGER PROMISES A COMPARISON WITH AN ORG
+            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).not.toMatch(/compar/i);
 
         });
 
