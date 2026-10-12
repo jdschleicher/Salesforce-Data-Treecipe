@@ -392,6 +392,31 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
+    /*
+        The fields a standard parent object needs to be inserted, and nothing else: what the Recipe
+        Cockpit writes when it adds a lookup's parent to a recipe (#294). Each value is this backend's
+        own standard-object value, so the block reads like one Generate Treecipe wrote. An object with
+        no required field (Case) has an empty entry and is written with its count only.
+    */
+    getMinimumRequiredFieldsTemplate(): Record<string, Record<string, string>> {
+
+        const minimumRequiredFieldApiNamesByObject: Record<string, string[]> = {
+            "Account": [ "Name" ],
+            "Contact": [ "LastName" ],
+            "Lead": [ "LastName", "Company" ],
+            "Opportunity": [ "Name", "StageName", "CloseDate" ],
+            "Case": []
+        };
+
+        const standardObjectValues = this.getOOTBObjectApiNameToFieldApiNameMap();
+
+        return Object.fromEntries(Object.entries(minimumRequiredFieldApiNamesByObject).map(([objectApiName, fieldApiNames]) => [
+            objectApiName,
+            Object.fromEntries(fieldApiNames.map(fieldApiName => [fieldApiName, standardObjectValues[objectApiName][fieldApiName]]))
+        ]));
+
+    }
+
     getOOTBObjectApiNameToFieldApiNameMap(): Record<string, Record<string, string>> {
 
         const salesforceFakerMappings: Record<string, Record<string, string>> = {

@@ -46,6 +46,8 @@ import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { DATASET_COLLECTIONS_API_FOLDER_NAME, DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
 import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
+import { SnowfakeryRecipeFakerService } from '../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import {
     IRecipeCockpitDatasetRecordCountViewModel,
     IRecipeCockpitTreeDatasetViewModel,
@@ -265,6 +267,8 @@ export const RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL = 'Wire TODO lookups';
 export const RECIPE_COCKPIT_WIRE_LOOKUP_CONFIRM_LABEL = 'Wire';
 // HOW MANY LOOKUPS THE WIRE-ALL CONFIRMATION NAMES BEFORE IT COUNTS THE REST
 export const RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_SHOWN = 12;
+// A TODO LOOKUP WHOSE STANDARD PARENT THE RECIPE DOES NOT WRITE ADDS THAT PARENT FROM A TEMPLATE (#294)
+export const RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL = 'Add to recipe';
 
 // IN THE ORDER A CARD DRAWS THEM; TREECIPE IS SELECTED BY DEFAULT, AND THE DATA SETS TAB IS DRAWN ONLY FOR A CARD WITH A HISTORY
 export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'datasets'] as const;
@@ -445,6 +449,20 @@ export interface IRecipeCockpitLookupWiringViewModel {
     candidateNicknames: string[];
 }
 
+// A TODO LOOKUP WHOSE ONE PARENT THE RECIPE DOES NOT WRITE AND A TEMPLATE CAN ADD (#294)
+export interface IRecipeCockpitAddableParentViewModel {
+    objectApiName: string;
+    objectNickname?: string;
+    fieldApiName: string;
+    parentObjectApiName: string;
+}
+
+// ONE "Add <Parent> to recipe" THE CONFIRMED-DRAWN MODEL OFFERS, WITH THE HOST-ONLY RECIPE FILE IT WRITES
+export interface IRecipeCockpitAddableParentTarget {
+    recipeFilePath: string;
+    addition: IRecipeCockpitAddableParentViewModel;
+}
+
 // ONE "Wire to…" THE CONFIRMED-DRAWN MODEL OFFERS, WITH THE HOST-ONLY RECIPE FILE IT WRITES
 export interface IRecipeCockpitLookupWiringTarget {
     recipeFilePath: string;
@@ -497,6 +515,8 @@ export interface IRecipeCockpitTreeViewModel {
     fixedValues?: IRecipeCockpitFixedValueViewModel[];
     // SET ONLY ON A CARD THAT CAN GENERATE WHOSE RECIPE HAS A TODO LOOKUP WITH A PARENT INSERTED BEFORE IT (#151)
     lookupWirings?: IRecipeCockpitLookupWiringViewModel[];
+    // SET ONLY ON A CARD THAT CAN GENERATE WHOSE RECIPE HAS A TODO LOOKUP TO A STANDARD PARENT IT DOES NOT WRITE (#294)
+    addableParents?: IRecipeCockpitAddableParentViewModel[];
 }
 
 // THE VALUE THE READER TYPED FOR A FIELD (#262); kind IS THE HOST'S, FROM THE FIELD'S TYPE, AND DECIDES HOW THE COPY WRITES IT
@@ -1111,6 +1131,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'postAddFriendState'; hostMessage: IRecipeCockpitAddFriendStateMessage }
     | { kind: 'wireLookups'; treeKey: string; recipeFilePath: string; wirings: IRecipeCockpitLookupWiringViewModel[]; isWireAll: boolean }
     | { kind: 'postWireLookupState'; hostMessage: IRecipeCockpitWireLookupStateMessage }
+    | { kind: 'addParentObject'; treeKey: string; recipeFilePath: string; addition: IRecipeCockpitAddableParentViewModel }
     | { kind: 'renameTree'; folderName: string }
     | { kind: 'toggleFavoriteTree'; folderName: string }
     | { kind: 'setObjectIncluded'; treeKey: string; folderName: string; objectApiName: string; isIncluded: boolean }
@@ -1189,6 +1210,8 @@ export interface IRecipeCockpitPanelState {
     // EVERY "Wire to…" THE MODEL DRAWS, BY CARD, OBJECT, OCCURRENCE AND FIELD (#151), A PENDING/ACTIVE PAIR LIKE THE "+"'s
     pendingWireableLookupTargets: Map<string, IRecipeCockpitLookupWiringTarget>;
     wireableLookupTargets: Map<string, IRecipeCockpitLookupWiringTarget>;
+    pendingAddableParentTargets: Map<string, IRecipeCockpitAddableParentTarget>;
+    addableParentTargets: Map<string, IRecipeCockpitAddableParentTarget>;
     wireLookupStateMessage?: IRecipeCockpitWireLookupStateMessage;
     // THE "+ New scratch org" RUN, AND THE HOST-ONLY RESULT FILE ITS "View output" OPENS
     scratchOrgStateMessage?: IRecipeCockpitScratchOrgStateMessage;
@@ -2857,6 +2880,8 @@ export class RecipeCockpitService {
             insertableFriendTargets: new Map(),
             pendingWireableLookupTargets: new Map(),
             wireableLookupTargets: new Map(),
+            pendingAddableParentTargets: new Map(),
+            addableParentTargets: new Map(),
             datasetUpdateSequence: 0,
             acknowledgedRenderSequence: null,
             pendingDeployableTreeKeys: new Set(),
@@ -3140,6 +3165,8 @@ export class RecipeCockpitService {
         panelState.insertableFriendTargets = new Map();
         panelState.pendingWireableLookupTargets = this.collectWireableLookupTargets(recipeViewModel, panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey);
         panelState.wireableLookupTargets = new Map();
+        panelState.pendingAddableParentTargets = this.collectAddableParentTargets(recipeViewModel, panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey);
+        panelState.addableParentTargets = new Map();
         panelState.acknowledgedRenderSequence = null;
         panelState.dataOrgSelection = undefined;
         panelState.dataOrgRequestSequence++;
@@ -3233,6 +3260,7 @@ export class RecipeCockpitService {
                 panelState.deployableTreeKeys = new Set();
                 panelState.insertableFriendTargets = new Map();
                 panelState.wireableLookupTargets = new Map();
+                panelState.addableParentTargets = new Map();
                 panelState.acknowledgedRenderSequence = null;
                 panelState.dataOrgSelection = undefined;
                 panelState.dataOrgRequestSequence++;
@@ -3253,6 +3281,7 @@ export class RecipeCockpitService {
                 panelState.deployableTreeKeys = panelState.pendingDeployableTreeKeys;
                 panelState.insertableFriendTargets = panelState.pendingInsertableFriendTargets;
                 panelState.wireableLookupTargets = panelState.pendingWireableLookupTargets;
+                panelState.addableParentTargets = panelState.pendingAddableParentTargets;
                 panelState.acknowledgedRenderSequence = panelState.recipeDataMessage.renderSequence;
                 return;
 
@@ -3277,6 +3306,7 @@ export class RecipeCockpitService {
                     panelState.deployableTreeKeys = new Set();
                     panelState.insertableFriendTargets = new Map();
                     panelState.wireableLookupTargets = new Map();
+                    panelState.addableParentTargets = new Map();
                     panelState.acknowledgedRenderSequence = null;
                     // NOTHING IS ON SCREEN TO DRAW AN ANSWER IN, SO A SELECTION STILL BEING CHECKED STOPS ASKING THE ORG
                     panelState.dataOrgSelection = undefined;
@@ -3411,6 +3441,11 @@ export class RecipeCockpitService {
             case 'postWireLookupState':
 
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
+                return;
+
+            case 'addParentObject':
+
+                await this.addParentObjectFromPanel(cockpitPanel, panelState, panelAction);
                 return;
 
             case 'persistPlace':
@@ -3695,10 +3730,39 @@ export class RecipeCockpitService {
                                                 panelState: IRecipeCockpitPanelState,
                                                 wireAction: Extract<RecipeCockpitPanelAction, { kind: 'wireLookups' }>) {
 
+        await this.runRecipeLookupWrite(cockpitPanel, panelState, wireAction.treeKey,
+            (tree, objectLevelsByApiName) => this.writeLookupWirings(wireAction, tree, objectLevelsByApiName, panelState.workspaceRoot));
+
+    }
+
+    /*
+        "Add <Parent> to recipe" (#294): the parent's block from the minimum required fields template
+        of the recipe's OWN backend, and the lookup wired to it, in one write after a modal that shows
+        both. Shaped like a wiring and sharing its lock, its state message and its reload.
+    */
+    private static async addParentObjectFromPanel(cockpitPanel: vscode.WebviewPanel,
+                                                    panelState: IRecipeCockpitPanelState,
+                                                    addAction: Extract<RecipeCockpitPanelAction, { kind: 'addParentObject' }>) {
+
+        await this.runRecipeLookupWrite(cockpitPanel, panelState, addAction.treeKey,
+            (tree, objectLevelsByApiName) => this.writeParentObjectAddition(addAction, tree, objectLevelsByApiName, panelState.workspaceRoot));
+
+    }
+
+    /*
+        One write to a card's recipe file at a time, for a wiring and an added parent alike. Only a
+        write reloads, onto the card's Treecipe tab; every other ending gives the buttons back through
+        the closing wireLookupState.
+    */
+    private static async runRecipeLookupWrite(cockpitPanel: vscode.WebviewPanel,
+                                                panelState: IRecipeCockpitPanelState,
+                                                treeKey: string,
+                                                write: (tree: IRecipeCockpitTreeViewModel, objectLevelsByApiName: Map<string, number> | undefined) => Promise<boolean>) {
+
         const isPanelStillCurrent = () => this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState;
         const writtenRunFolderName = panelState.recipeDataMessage.recipe.selectedRunFolderName;
         // THE CARD AS THE CLICK SAW IT: ITS LOOKUPS DECIDE WHAT THE WRITER ACCEPTS, AND A RELOAD WHILE THE MODAL IS OPEN DOES NOT CHANGE WHAT WAS CONFIRMED
-        const tree = panelState.recipeDataMessage.recipe.trees.find(candidateTree => candidateTree.treeKey === wireAction.treeKey);
+        const tree = panelState.recipeDataMessage.recipe.trees.find(candidateTree => candidateTree.treeKey === treeKey);
         const objectLevelsByApiName = panelState.objectLevelsByApiName;
 
         panelState.wireLookupStateMessage = { command: 'wireLookupState', isRunning: true };
@@ -3706,10 +3770,10 @@ export class RecipeCockpitService {
 
         try {
 
-            const isWired = !!tree && await this.writeLookupWirings(wireAction, tree, objectLevelsByApiName, panelState.workspaceRoot);
+            const isWritten = !!tree && await write(tree, objectLevelsByApiName);
 
-            if ( isWired && isPanelStillCurrent() ) {
-                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, writtenRunFolderName, { treeKey: wireAction.treeKey, tab: 'treecipe' });
+            if ( isWritten && isPanelStillCurrent() ) {
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, writtenRunFolderName, { treeKey: treeKey, tab: 'treecipe' });
             }
 
         } finally {
@@ -3721,6 +3785,92 @@ export class RecipeCockpitService {
             }
 
         }
+
+    }
+
+    // WHETHER THE FILE WAS WRITTEN; EVERY OTHER ENDING HAS ALREADY BEEN SAID TO THE READER, OR WAS THEIR OWN CANCEL
+    private static async writeParentObjectAddition(addAction: Extract<RecipeCockpitPanelAction, { kind: 'addParentObject' }>,
+                                                    tree: IRecipeCockpitTreeViewModel,
+                                                    objectLevelsByApiName: Map<string, number> | undefined,
+                                                    workspaceRoot: string): Promise<boolean> {
+
+        const { recipeFilePath, addition } = addAction;
+        const recipeFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath));
+        const fieldLabel = `${addition.objectApiName}${addition.objectNickname !== undefined ? ` (${addition.objectNickname})` : ''}.${addition.fieldApiName}`;
+        const refusalPrefix = `${addition.parentObjectApiName} was not added to "${recipeFileLabel}":`;
+
+        if ( !this.isUsableWorkspacePath(recipeFilePath, workspaceRoot) ) {
+            VSCodeWorkspaceService.showWarningMessage(`The recipe file "${recipeFileLabel}" no longer exists in this workspace, so nothing was added. Re-open the Recipe Cockpit to load the runs currently on disk.`);
+            return false;
+        }
+
+        const generatedRecipesFolderPath = path.join(workspaceRoot, ConfigurationService.getGeneratedRecipesFolderPath());
+        const fakerService = VSCodeWorkspaceService.readRecipeFakerService(generatedRecipesFolderPath, recipeFilePath);
+
+        if ( !fakerService ) {
+            VSCodeWorkspaceService.showWarningMessage(`${refusalPrefix} which faker backend wrote it cannot be told from its folder and file name, so which template to use cannot be either.`);
+            return false;
+        }
+
+        const parentTemplates = this.getParentObjectTemplates(fakerService);
+        const parentTemplate = Object.prototype.hasOwnProperty.call(parentTemplates, addition.parentObjectApiName) ? parentTemplates[addition.parentObjectApiName] : undefined;
+
+        if ( !parentTemplate ) {
+            VSCodeWorkspaceService.showWarningMessage(`${refusalPrefix} there is no minimum required fields template for it.`);
+            return false;
+        }
+
+        const templateFieldApiNames = Object.keys(parentTemplate);
+        const confirmation = await vscode.window.showWarningMessage(
+            `Add ${addition.parentObjectApiName} to the recipe and wire ${fieldLabel} to it?`,
+            {
+                modal: true,
+                detail: [
+                    `This writes to "${recipeFileLabel}": a new top-level ${addition.parentObjectApiName} block, ahead of the block holding ${addition.objectApiName}, with one record and a nickname of its own, and ${fieldLabel}'s "### TODO -- REFERENCE ID REQUIRED" line becomes that nickname. Every other line of the file is left as it is.`,
+                    '',
+                    templateFieldApiNames.length > 0
+                        ? `Fields, from the ${fakerService} minimum required fields template: ${templateFieldApiNames.join(', ')}.`
+                        : `The ${fakerService} template has no required field for ${addition.parentObjectApiName}, so its block has a count only.`,
+                    '',
+                    `Generate fake data and insert then inserts ${addition.parentObjectApiName} before ${addition.objectApiName} and points the lookup at its Id. A required field your org adds to ${addition.parentObjectApiName} is not in the template: add it to the block if the insert reports it.`
+                ].join('\n')
+            },
+            RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL
+        );
+
+        if ( confirmation !== RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL ) {
+            return false;
+        }
+
+        // CHECKED AGAIN AFTER THE MODAL: THE FILE CAN HAVE BEEN REPLACED WHILE IT WAS OPEN
+        if ( !this.isUsableWorkspacePath(recipeFilePath, workspaceRoot) ) {
+            VSCodeWorkspaceService.showWarningMessage(`The recipe file "${recipeFileLabel}" no longer exists in this workspace, so nothing was added.`);
+            return false;
+        }
+
+        const additionResult = RecipeCockpitRecipeWriter.addParentObject(fs.readFileSync(recipeFilePath, 'utf-8'), {
+            objectApiName: addition.objectApiName,
+            ...( addition.objectNickname !== undefined ? { objectNickname: addition.objectNickname } : {} ),
+            fieldApiName: addition.fieldApiName,
+            parentTemplatesByObjectApiName: { [addition.parentObjectApiName]: parentTemplate }
+        }, this.buildLookupWiringContext(tree, objectLevelsByApiName));
+
+        if ( 'refusal' in additionResult ) {
+            VSCodeWorkspaceService.showWarningMessage(`${refusalPrefix} ${RecipeYamlScalar.escapeForNotification(additionResult.refusal.message)}`);
+            return false;
+        }
+
+        // THE WRITER NAMES THE PARENT FROM THE FILE'S LOOKUPS AT THE CLICK; ONE THAT IS NOT THE PARENT THE READER CONFIRMED WRITES NOTHING
+        if ( additionResult.parentObjectApiName !== addition.parentObjectApiName ) {
+            VSCodeWorkspaceService.showWarningMessage(`${refusalPrefix} ${fieldLabel} no longer points at it.`);
+            return false;
+        }
+
+        fs.writeFileSync(recipeFilePath, additionResult.recipeText);
+
+        VSCodeWorkspaceService.showInformationMessage(`Added ${addition.parentObjectApiName} as ${additionResult.parentNickname} to "${recipeFileLabel}" and wired ${fieldLabel} to it.`);
+
+        return true;
 
     }
 
@@ -6755,6 +6905,36 @@ export class RecipeCockpitService {
             }
 
             /*
+                "Add <Parent> to recipe" (#294) posts the same four NAMES "Wire to…" does, matched
+                against the additions the confirmed-drawn model offered. It writes the same file as a
+                wiring and reloads it, so it shares that one-write lock and its wireLookupState. The
+                parent, its template, the nickname and the recipe file are all the host's.
+            */
+            case 'addParentObject': {
+
+                const closeWireLookupState: RecipeCockpitPanelAction = { kind: 'postWireLookupState', hostMessage: { command: 'wireLookupState', isRunning: false } };
+
+                if ( panelState.wireLookupStateMessage ) {
+                    return undefined;
+                }
+
+                const { treeKey, objectApiName, objectNickname, fieldApiName } = panelMessage;
+                const target = !panelState.addFriendStateMessage
+                                && !!panelState.recipeDataMessage
+                                && typeof treeKey === 'string'
+                                && typeof objectApiName === 'string'
+                                && ( objectNickname === undefined || typeof objectNickname === 'string' )
+                                && typeof fieldApiName === 'string'
+                    ? panelState.addableParentTargets.get(this.buildWireableLookupKey(treeKey, objectApiName, objectNickname as string | undefined, fieldApiName))
+                    : undefined;
+
+                return target
+                    ? { kind: 'addParentObject', treeKey: treeKey as string, recipeFilePath: target.recipeFilePath, addition: target.addition }
+                    : closeWireLookupState;
+
+            }
+
+            /*
                 ✎ and ☆ post the card's KEY, matched against the cards the confirmed-drawn model
                 drew them on. The name itself is never posted: the host asks for it in its own
                 input box, so no text from the panel is ever stored.
@@ -7262,6 +7442,63 @@ export class RecipeCockpitService {
 
     }
 
+    // EVERY "Add <Parent> to recipe" THE RENDERED MODEL DRAWS, MAPPED TO ITS CARD'S RECIPE FILE -- HOST-ONLY, SO THE PANEL NEVER NAMES IT
+    static collectAddableParentTargets(recipeViewModel: IRecipeCockpitRecipeViewModel, recipeFilePathsByTreeKey: ReadonlyMap<string, string>): Map<string, IRecipeCockpitAddableParentTarget> {
+
+        const addableParentTargets = new Map<string, IRecipeCockpitAddableParentTarget>();
+
+        recipeViewModel.trees.forEach(tree => {
+
+            const recipeFilePath = recipeFilePathsByTreeKey.get(tree.treeKey);
+            if ( !recipeFilePath ) {
+                return;
+            }
+
+            ( tree.addableParents ?? [] ).forEach(addition => addableParentTargets.set(
+                this.buildWireableLookupKey(tree.treeKey, addition.objectApiName, addition.objectNickname, addition.fieldApiName),
+                { recipeFilePath: recipeFilePath, addition: addition }
+            ));
+
+        });
+
+        return addableParentTargets;
+
+    }
+
+    // THE PARENTS A CARD CAN ADD ARE THE TEMPLATE'S OBJECTS, WHICH BOTH BACKENDS SHARE; THE VALUES COME FROM THE RECIPE'S OWN BACKEND AT THE WRITE
+    static getParentObjectTemplates(fakerService: 'faker-js' | 'snowfakery'): Record<string, Record<string, string>> {
+
+        return fakerService === 'faker-js'
+            ? new FakerJSRecipeFakerService().getMinimumRequiredFieldsTemplate()
+            : new SnowfakeryRecipeFakerService().getMinimumRequiredFieldsTemplate();
+
+    }
+
+    /*
+        The card's TODO lookups whose one standard parent the recipe does not write (#294), from the
+        text the load already read when it has it; a file that cannot be read offers none.
+    */
+    static listTreeAddableParents(recipeFilePath: string,
+                                    tree: IRecipeCockpitTreeViewModel,
+                                    objectLevelsByApiName: Map<string, number> | undefined,
+                                    alreadyReadRecipeText?: string): IRecipeCockpitAddableParentViewModel[] {
+
+        let recipeText = alreadyReadRecipeText;
+        if ( recipeText === undefined ) {
+            try {
+                recipeText = fs.readFileSync(recipeFilePath, 'utf-8');
+            } catch {
+                return [];
+            }
+        }
+
+        const templateObjectApiNames = new Set(Object.keys(this.getParentObjectTemplates('faker-js')));
+
+        return RecipeCockpitRecipeWriter.listAddableParentObjects(recipeText, this.buildLookupWiringContext(tree, objectLevelsByApiName), templateObjectApiNames)
+            .map(addition => ({ ...addition }));
+
+    }
+
     // WHAT THE WRITER DECIDES A WIRING BY: THE CARD'S OWN LOOKUPS AND RelationshipService's LEVELS, AS THE GENERATE BUTTON'S FILTERED COPY USES THEM
     static buildLookupWiringContext(tree: IRecipeCockpitTreeViewModel, objectLevelsByApiName: Map<string, number> | undefined): ILookupWiringContext {
 
@@ -7534,6 +7771,10 @@ export class RecipeCockpitService {
                 const lookupWirings = this.listTreeLookupWirings(runFakerRecipeFilePath, tree, normalizedObjectsWrapper.objectLevelsByApiName, recipeSourceRead.recipeTextsByFilePath.get(runFakerRecipeFilePath));
                 if ( lookupWirings.length > 0 ) {
                     tree.lookupWirings = lookupWirings;
+                }
+                const addableParents = this.listTreeAddableParents(runFakerRecipeFilePath, tree, normalizedObjectsWrapper.objectLevelsByApiName, recipeSourceRead.recipeTextsByFilePath.get(runFakerRecipeFilePath));
+                if ( addableParents.length > 0 ) {
+                    tree.addableParents = addableParents;
                 }
             }
         });
@@ -8584,7 +8825,7 @@ ${this.buildPaletteCustomProperties()}
     .treeFieldNote, .treeFieldWarning { position: relative; z-index: 2; font-size: 0.85em; }
     .treeFieldWarning { color: var(--sdt-changed); }
     .treeFieldBulk { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding: 0.2rem 0.6rem 0.2rem 2.1rem; position: relative; z-index: 2; }
-    .treeFieldBulk button, .treeResetSelection, .treeWireLookup, .treeWireAllLookups {
+    .treeFieldBulk button, .treeResetSelection, .treeWireLookup, .treeWireAllLookups, .treeAddParentObject {
         min-height: 1.9rem;
         padding: 0.2rem 0.6rem;
         font: inherit;
@@ -8595,8 +8836,8 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeFieldBulk button:hover:not(:disabled), .treeResetSelection:hover:not(:disabled), .treeWireLookup:hover:not(:disabled), .treeWireAllLookups:hover:not(:disabled) { border-color: var(--sdt-accent); }
-    .treeFieldBulk button:disabled, .treeWireLookup:disabled, .treeWireAllLookups:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); cursor: not-allowed; }
+    .treeFieldBulk button:hover:not(:disabled), .treeResetSelection:hover:not(:disabled), .treeWireLookup:hover:not(:disabled), .treeWireAllLookups:hover:not(:disabled), .treeAddParentObject:hover:not(:disabled) { border-color: var(--sdt-accent); }
+    .treeFieldBulk button:disabled, .treeWireLookup:disabled, .treeWireAllLookups:disabled, .treeAddParentObject:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); cursor: not-allowed; }
     .treeObjectHeader:hover, .treeField:hover { background-color: var(--sdt-row-hover); }
     .treeObjectName { font-weight: 600; }
     .treeObjectBody { padding-bottom: 0.25rem; }
@@ -8735,6 +8976,7 @@ ${this.buildPaletteCustomProperties()}
     let wireLookupButtonElements = [];
     // EACH CARD'S lookupWirings BY OBJECT, OCCURRENCE AND FIELD, BUILT ONCE PER CARD RATHER THAN SCANNED PER ROW
     let lookupWiringIndexByTree = new WeakMap();
+    let addableParentIndexByTree = new WeakMap();
     // WHETHER THE READER HAS USED THE ORG PICKER; IT OUTLIVES A MODEL, SO A RELOAD CHECKS THE SAME ORG AGAIN
     let isDataOrgPickerInUse = false;
     /*
@@ -9805,6 +10047,11 @@ ${this.buildPaletteCustomProperties()}
             fieldHeaderElement.appendChild(buildWireLookupElement(treeObjectState.tree, lookupWiring));
         }
 
+        const addableParent = field.lineNumber ? findAddableParent(treeObjectState.tree, treeObjectState.object, field.fieldApiName) : null;
+        if (addableParent) {
+            fieldHeaderElement.appendChild(buildAddParentObjectElement(treeObjectState.tree, addableParent));
+        }
+
         if (field.controllingField) {
             fieldHeaderElement.appendChild(createElement('span', 'controllingField muted', 'controlled by ' + field.controllingField));
         }
@@ -9950,6 +10197,51 @@ ${this.buildPaletteCustomProperties()}
         wireLookupButtonElements.push(wireElement);
 
         return wireElement;
+
+    }
+
+    // THE ADDITION A ROW DRAWS "Add <Parent> to recipe" FOR (#294) -- null FOR EVERY OTHER ROW
+    function findAddableParent(tree, object, fieldApiName) {
+
+        if (!tree.addableParents || tree.addableParents.length === 0) { return null; }
+
+        let addableParentIndex = addableParentIndexByTree.get(tree);
+        if (!addableParentIndex) {
+            addableParentIndex = Object.create(null);
+            tree.addableParents.forEach(function (addition) {
+                addableParentIndex[lookupWiringKeyOf(addition.objectApiName, addition.objectNickname, addition.fieldApiName)] = addition;
+            });
+            addableParentIndexByTree.set(tree, addableParentIndex);
+        }
+
+        const key = lookupWiringKeyOf(object.objectApiName, object.nickname, fieldApiName);
+        return Object.prototype.hasOwnProperty.call(addableParentIndex, key) ? addableParentIndex[key] : null;
+
+    }
+
+    /*
+        "Add <Parent> to recipe" (#294) on a TODO lookup whose standard parent the recipe does not
+        write, posting the same NAMES "Wire to…" does. It writes the same file, so it is held by the
+        same one-write lock and given back by the same wireLookupState.
+    */
+    function buildAddParentObjectElement(tree, addition) {
+
+        const addElement = createElement('button', 'treeAddParentObject', 'Add ' + addition.parentObjectApiName + ' to recipe');
+        const fieldLabel = addition.objectApiName + (addition.objectNickname ? ' (' + addition.objectNickname + ')' : '') + '.' + addition.fieldApiName;
+
+        addElement.setAttribute('title', 'Add a ' + addition.parentObjectApiName + ' block with its minimum required fields to the recipe file and point this lookup at it, after a confirmation');
+        addElement.setAttribute('aria-label', 'Add ' + addition.parentObjectApiName + ' to the recipe for ' + fieldLabel);
+        addElement.addEventListener('click', function () {
+            if (isWireLookupRunning) { return; }
+            setWireLookupRunning(true);
+            const addMessage = { command: 'addParentObject', treeKey: tree.treeKey, objectApiName: addition.objectApiName, fieldApiName: addition.fieldApiName };
+            if (addition.objectNickname) { addMessage.objectNickname = addition.objectNickname; }
+            vscodeApi.postMessage(addMessage);
+        });
+        addElement.disabled = isWireLookupRunning;
+        wireLookupButtonElements.push(addElement);
+
+        return addElement;
 
     }
 
