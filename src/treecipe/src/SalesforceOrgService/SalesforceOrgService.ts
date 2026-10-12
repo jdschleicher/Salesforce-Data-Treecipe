@@ -925,6 +925,13 @@ export class SalesforceOrgService {
 
     }
 
+    // WHETHER THE CLI STILL HOLDS AN AUTHORIZATION FOR THIS USERNAME, READ LOCALLY WITH NO CONNECTION (#283)
+    static async isUsernameAuthorized(username: string): Promise<boolean> {
+
+        return (await this.readFreshAuthorizations()).some(authorization => authorization?.username === username);
+
+    }
+
     /*
         The quick-pick commands have no ⟳, so an answer from the cache that leaves them nothing to
         offer is asked again once: the reader may have re-authorized an org since, which is exactly

@@ -1,0 +1,37 @@
+{
+  "name": "FailedDeployError",
+  "message": "Deploy failed.",
+  "exitCode": 1,
+  "status": 1,
+  "result": {
+    "status": "Failed",
+    "success": false,
+    "numberComponentsDeployed": 0,
+    "numberComponentErrors": 1,
+    "deployUrl": "https://acme--qa.sandbox.my.salesforce.com.attacker.example/lightning/setup/DeployStatus/page?address=%2Fchangemgmt%2FmonitorDeploymentsDetails.apexp%3FasyncId%3D0Af5e00000ABCDEFGH%26retURL%3D%252Fchangemgmt%252FmonitorDeployment.apexp",
+    "details": {
+      "componentSuccesses": [
+        {
+          "fullName": "Account.Score__c",
+          "componentType": "CustomField",
+          "success": true
+        },
+        {
+          "fullName": "package.xml",
+          "componentType": "",
+          "success": true
+        }
+      ],
+      "componentFailures": [
+        {
+          "fullName": "Lead.Rating__c",
+          "componentType": "CustomField",
+          "problem": "Invalid field type",
+          "problemType": "Error",
+          "success": false
+        }
+      ]
+    }
+  },
+  "warnings": []
+}

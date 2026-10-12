@@ -1365,6 +1365,23 @@ describe('SalesforceOrgService', () => {
 
     });
 
+    describe('isUsernameAuthorized (#283)', () => {
+
+        it('answers from the local authorizations alone, matching the username exactly', async () => {
+
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([null, { aliases: ['qa'] }, { username: 'qa@example.com' }]);
+
+            await expect(SalesforceOrgService.isUsernameAuthorized('qa@example.com')).resolves.toBe(true);
+            await expect(SalesforceOrgService.isUsernameAuthorized('QA@example.com')).resolves.toBe(false);
+            await expect(SalesforceOrgService.isUsernameAuthorized('qa')).resolves.toBe(false);
+
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue(undefined);
+            await expect(SalesforceOrgService.isUsernameAuthorized('qa@example.com')).resolves.toBe(false);
+
+        });
+
+    });
+
     describe('listAliasHolders (#279)', () => {
 
         it('maps each alias to the org holding it, from the local authorizations alone', async () => {

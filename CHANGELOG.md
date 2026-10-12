@@ -1,16 +1,62 @@
 # Change Log
 
-## [3.70.1] - Recipe Cockpit: orgs are listed by their alias again
+## [3.72.2] - Recipe Cockpit: orgs are listed by their alias again
 
 Closes [#286](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/286).
 
 The Treecipe tab's org picker is meant to label an org by its alias, but sandboxes with an alias were listed by username. `@salesforce/core` reads aliases once per process into a `StateAggregator`, and the extension host lives as long as VS Code. So an alias set after the extension loaded never appeared. That includes `sf alias set`, `sf org login … --alias` and a scratch org this extension created.
 
-- **Fresh authorizations.** Every org listing now drops that cached instance (`StateAggregator.clearInstance()`) before it reads the authorizations, so the alias file is read again. This covers the Treecipe tab's picker, Insert Data Set, Run Picklist Dependency Check, the Dev Hub picker and the alias check of **+ New scratch org**. An alias set since shows up on the next listing, with no ⟳.
+- **Fresh authorizations.** Every org listing now drops that cached instance (`StateAggregator.clearInstance()`) before it reads the authorizations, so the alias file is read again. This covers the Treecipe tab's picker, Insert Data Set, Run Picklist Dependency Check, the Dev Hub picker, the alias check of **+ New scratch org** and the authorization check before a failed deploy's Deployment Status (#283). An alias set since shows up on the next listing, with no ⟳.
 - **The CLI's alias as a fallback.** The `sf org list --json --verbose` answer's `alias` (or the first string of `aliases`) is read as untrusted. It is used only as a label, and only for an org whose authorization carries no alias. An alias that could not be an org identifier is ignored. The CLI answer is cached until ⟳, so an alias the fresh authorizations show on another org is not put back on this one.
 - **Same label everywhere.** It is the alias, or the username when there is none, in the picker, the hidden-orgs note and the quick picks.
 - **Only a label.** The selection is still by index, the remembered org is still the username, and the cockpit's CLI calls still name the username. `targetOrgIdentifier` is still decided by the authorization alone, so the CLI's alias never reaches `--target-org`. An authorization's aliases are now type-checked: the first non-empty string is used.
 - **Unchanged:** which orgs are listed (production stays out of the Treecipe tab, and only orgs the CLI reports as connected are listed), recipe generation and both faker backends.
+## [3.72.1] - Recipe Cockpit: the CLI never runs outside the project on a Windows network folder
+
+Closes [#285](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/285).
+
+**+ New scratch org**, **Deploy this metadata…** and **Deploy & assign permission sets…** run the Salesforce CLI in project mode: the workspace folder holding `sfdx-project.json` is its working directory, because `sf project deploy start` finds its project there. Every one of those calls already passed that folder, and the tests asserted it. On Windows, though, the CLI runs through `cmd.exe`, and `cmd.exe` cannot start in a network (UNC) folder (`\\server\share\…`, or a WSL folder opened as `\\wsl.localhost\…`). It prints "UNC paths are not supported. Defaulting to Windows directory." and runs in `C:\Windows`, so the CLI ran outside the project.
+
+- **Refused before anything runs.** On Windows, `PicklistDependencyCheckService.runSalesforceCli` now refuses a project-mode working directory that starts with two slashes of either kind. It starts no process and answers a spawn error (`EUNCWORKINGDIRECTORY`) naming the folder and saying how to open it instead: map the share to a drive letter, or reopen a WSL folder with the WSL extension. Each flow reports that error as it already reports a CLI that could not be started, and writes no result file. Nothing is created, deployed or assigned.
+- **A real process proves the working directory.** A new test (skipped on Windows) puts a stand-in `sf` script on PATH, moves the test process to the machine root, and checks that the CLI starts in the workspace. Taking `cwd` out of `runSalesforceCli` fails that test with `/`.
+- **Unchanged:** calls outside project mode (`sf org list`, `sf org open`, the picklist dependency check), the CLI found on PATH by absolute path, `NoDefaultCurrentDirectoryInExePath`, all-or-nothing deploys, and targeting by username. A double-slash folder on macOS or Linux is an ordinary path and is not refused.
+
+## [3.72.0] - Recipe Cockpit: wire a TODO lookup to a nickname, writing the recipe file
+
+For [#151](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/151), rescoped to lookup wiring.
+
+A lookup Generate Treecipe could not wire stays `### TODO -- REFERENCE ID REQUIRED`. That is every lookup of a snowfakery recipe, and of a faker-js recipe generated before #46. Run Faker then generates it as nothing, and only the cockpit's own tree insert filled it in, with a random parent. The Treecipe tab now resolves the TODO in the recipe **file**, so Run Faker, Insert Data Set by Directory and every later run see the reference:
+
+- **Wire to…** on a lookup row writes the parent's nickname as the lookup's value (`AccountId: Account_NickName`). The insert replaces a value that is exactly a nickname with the Id of the record holding it, for both backends, and faker-js spreads a nickname with `count > 1` across that parent's records. With more than one record to choose from (a polymorphic lookup, or two parents in the tree), the cockpit asks which. A confirmation names the file and the change; Cancel writes nothing.
+- **Wire TODO lookups (N)**, beside Reset selection, wires every lookup of the tree that has exactly one record to choose from in one write, after a confirmation listing each `Object.Field → Nickname` (the first 12, then a count). A lookup with more than one choice is left for its own **Wire to…**.
+- **Only a nickname the insert can resolve is offered:** an ancestor of the occurrence (a faker-js friend is generated under it), or an object of the same recipe at a strictly lower relationship level, which is inserted first. A nickname is offered only when exactly one occurrence in the file holds it, and never one YAML would load as a boolean or null (`Yes`, `No`, `On`, `Off`, `true`, `null`…), since the insert could not match it. An object written more than once is offered only when every occurrence has a nickname of its own, the same rule the Treecipe tab draws it by. A self-lookup's top record, a lookup cycle and a parent with no recipe stay TODOs, because no record is inserted before them to name.
+- **The write is a line patch.** `RecipeCockpitRecipeWriter.wireLookups` replaces only each TODO field's own line, in one scan, and leaves every other line and line ending as it was. It re-derives what may be wired (`listLookupWirings`) from the file as it is at the click, so a lookup filled in, a nickname renamed or an object moved since the panel was drawn refuses the whole batch and writes nothing. The cockpit then reloads onto the card's Treecipe tab. The read-back checks every edited line against one index of the result, so **Wire TODO lookups** on 11,000 objects (33,000 lookups) takes about 1.4 s rather than 14 s, and a cockpit load lists the TODO lookups from the recipe text it already read.
+- **What the panel sends.** `wireLookup {treeKey, objectApiName, objectNickname?, fieldApiName}` and `wireAllLookups {treeKey}` carry names only, matched against `wireableLookupTargets`, a pending/active allow-list built from the rendered model's `lookupWirings` (promoted on `rendered`, emptied on `ready`, a new post and a failure to draw). The nickname and the recipe file are the host's. One write runs at a time (`wireLookupState`, replayed on a reveal), and **+** (Add friend) waits for it, since both write the same file.
+- **A lookup row shows what the recipe file says.** The objects wrapper records every lookup as the TODO, even after Generate Treecipe wired it to an ancestor (#46). A lookup row whose wrapper value is that TODO now shows the file's value, so a wired lookup reads as its nickname.
+- **Unchanged:** recipe generation and both faker backends, the tree insert's own filling of lookups still TODO, field and object selection, counts and fixed values (which still never write the recipe).
+
+## [3.71.0] - Recipe Cockpit: "Open Deployment Status" when "Deploy this metadata…" fails
+
+Closes [#283](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/283), following [#273](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/273).
+
+When a tree's metadata deploy fails, the CLI's `--json` names the deploy's page in Setup (`result.deployUrl`), but the cockpit used to drop it. A failed deploy now offers **Open Deployment Status**, which opens that page in the deploy org, signed in.
+
+- **Where it shows.** On a `failed` outcome (component failures) with a usable URL, the error notification shows **Open Deployment Status** beside **View output**, and the card's deploy status line shows the same link. Neither appears for a successful deploy, a CLI that is not installed, an `unconfirmed` deploy (timeout, cancel, oversized output), or a URL that fails any check.
+- **Which URLs count.** `ScratchOrgService.readDeployComponentCounts` takes the deploy org's instance URL (read from the connection the deploy's Organization re-check already opens) and returns `deployUrl` only when all of these hold:
+  - it parses as `https:`;
+  - it has no credentials;
+  - its host, port included, equals the deploy org's instance host;
+  - its path is `/lightning/setup/DeployStatus/page`;
+  - its `address` names `/changemgmt/monitorDeploymentsDetails.apexp?asyncId=<0Af… id>`.
+
+  Anything else (another host, `http:`, another page, malformed, not a string) is no URL. The scratch org deploy (#200) shares the parser but passes no instance URL, so it offers nothing.
+- **Opening.** The page opens through `sf org open --target-org <username> --path <path> --url-only --json`, the same route as #279's **Open in browser**: `runSalesforceCli` with a timeout and no `cwd`, read by `parseOrgOpenOutput`, and the frontdoor URL handed only to `vscode.env.openExternal`.
+  - The `--path` is rebuilt from the deploy id (`ScratchOrgService.buildDeployStatusOpenPath`) with the address unencoded and no `retURL`, rather than copied. On Windows `cmd.exe` expands `%…%` even inside quotes, so the argument carries no `%` or `&`.
+  - `buildOrgOpenArguments` refuses any other `--path`.
+- **Unhappy paths.** If the deploy org is no longer authorized (`SalesforceOrgService.isUsernameAuthorized`, read locally), a warning appears and nothing opens. If `sf org open` fails, times out or throws, a fixed warning appears that quotes neither the CLI nor any address. One open runs at a time.
+- **What the panel sends.** It posts `openMetadataDeployStatus {treeKey}` with no URL in the payload. The router accepts it only for the `treeKey` the last failed deploy's line is drawn on, and only while no deploy runs. The page and the org are held host-side in `metadataDeployStatusTarget`, which the next deploy or permission set run clears and a reopened panel carries. The panel learns only `hasDeployStatus: true` on `metadataDeployState`.
+- Notifications go through `escapeForNotification`, name the org as `alias · username`, and are not awaited. No URL or session id is posted, written, logged or quoted.
+- **Unchanged:** recipe generation and both faker backends.
 
 ## [3.70.0] - Recipe Cockpit: "Deploy & assign permission sets…" for a tree
 
