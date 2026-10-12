@@ -1,4 +1,4 @@
-import { PicklistDependencyCheckService } from "../PicklistDependencyCheckService";
+import { PicklistDependencyCheckService, SALESFORCE_CLI_UNC_WORKING_DIRECTORY_ERROR_CODE } from "../PicklistDependencyCheckService";
 
 import { OrgAuthorization } from '@salesforce/core';
 
@@ -416,6 +416,42 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
 
         });
 
+        it.each([
+            '\\\\fileserver\\share\\project',
+            '\\\\wsl.localhost\\Ubuntu\\home\\me\\project',
+            '\\\\?\\UNC\\fileserver\\share\\project',
+            '//fileserver/share/project'
+        ])('on Windows refuses the UNC folder %s, starting nothing, since cmd.exe would run the CLI in the Windows folder instead (#285)', async (uncWorkingDirectoryPath) => {
+
+            jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+            process.env.PATH = installedBinPath;
+            const { capturedCalls } = captureExecFile();
+
+            const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(['project', 'deploy', 'start', '--json'], undefined, undefined, { workingDirectoryPath: uncWorkingDirectoryPath });
+
+            expect(capturedCalls).toHaveLength(0);
+            expect(invocationResult.exitCode).toBeNull();
+            expect(invocationResult.spawnError?.code).toBe(SALESFORCE_CLI_UNC_WORKING_DIRECTORY_ERROR_CODE);
+            expect(invocationResult.spawnError?.message).toContain(`"${uncWorkingDirectoryPath}"`);
+            expect(invocationResult.spawnError?.message).toContain('Nothing was run');
+            expect(() => PicklistDependencyCheckService.parseSalesforceCliJsonOutput(invocationResult)).toThrow(/UNC path/);
+
+        });
+
+        it('runs from a drive-letter folder on Windows and from a double-slash folder elsewhere, which only Windows reads as UNC', async () => {
+
+            const isWindowsSpy = jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
+            process.env.PATH = installedBinPath;
+            const { capturedCalls } = captureExecFile();
+
+            await PicklistDependencyCheckService.runSalesforceCli(['project', 'deploy', 'start'], undefined, undefined, { workingDirectoryPath: workspacePath });
+            isWindowsSpy.mockReturnValue(false);
+            await PicklistDependencyCheckService.runSalesforceCli(['project', 'deploy', 'start'], undefined, undefined, { workingDirectoryPath: `/${workspacePath}` });
+
+            expect(capturedCalls.map(capturedCall => capturedCall.options.cwd)).toEqual([workspacePath, `/${workspacePath}`]);
+
+        });
+
         it('changes nothing for a caller with no project options', async () => {
 
             jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(false);
@@ -426,6 +462,47 @@ describe('shouldRunTheSalesforceCliAsynchronously', () => {
             expect(capturedCalls[0].command).toBe('sf');
             expect(capturedCalls[0].options).not.toHaveProperty('cwd');
             expect(capturedCalls[0].options).not.toHaveProperty('env');
+
+        });
+
+    });
+
+    describe('runSalesforceCli from the project, with a real process (#285)', () => {
+
+        const os = jest.requireActual('os');
+        const path = jest.requireActual('path');
+
+        let temporaryRoot: string;
+        let savedPathVariable: string | undefined;
+        let savedWorkingDirectoryPath: string;
+
+        beforeEach(() => {
+            temporaryRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-sf-cwd-')));
+            savedPathVariable = process.env.PATH;
+            savedWorkingDirectoryPath = process.cwd();
+        });
+
+        afterEach(() => {
+            process.chdir(savedWorkingDirectoryPath);
+            process.env.PATH = savedPathVariable;
+            fs.rmSync(temporaryRoot, { recursive: true, force: true });
+        });
+
+        // A SHELL SCRIPT STANDS IN FOR sf, SO THIS RUNS WHERE /bin/sh DOES
+        (process.platform === 'win32' ? it.skip : it)('starts the CLI in the workspace even when the extension host itself is running from the machine root', async () => {
+
+            const workspacePath = path.join(temporaryRoot, 'workspace');
+            const installedBinPath = path.join(temporaryRoot, 'installed', 'bin');
+            fs.mkdirSync(workspacePath, { recursive: true });
+            fs.mkdirSync(installedBinPath, { recursive: true });
+            fs.writeFileSync(path.join(installedBinPath, 'sf'), '#!/bin/sh\nprintf \'{"status":0,"cwd":"%s"}\' "$(pwd -P)"\n', { mode: 0o755 });
+            process.env.PATH = `${installedBinPath}:${savedPathVariable ?? ''}`;
+            process.chdir(path.parse(process.cwd()).root);
+
+            const invocationResult = await PicklistDependencyCheckService.runSalesforceCli(['project', 'deploy', 'start', '--json'], undefined, 10000, { workingDirectoryPath: workspacePath });
+
+            expect(invocationResult.spawnError).toBeUndefined();
+            expect(JSON.parse(invocationResult.stdout).cwd).toBe(workspacePath);
 
         });
 

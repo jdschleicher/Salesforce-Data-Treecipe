@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.70.1] - Recipe Cockpit: the CLI never runs outside the project on a Windows network folder
+
+Closes [#285](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/285).
+
+**+ New scratch org**, **Deploy this metadata…** and **Deploy & assign permission sets…** run the Salesforce CLI in project mode: the workspace folder holding `sfdx-project.json` is its working directory, because `sf project deploy start` finds its project there. Every one of those calls already passed that folder, and the tests asserted it. On Windows, though, the CLI runs through `cmd.exe`, and `cmd.exe` cannot start in a network (UNC) folder (`\\server\share\…`, or a WSL folder opened as `\\wsl.localhost\…`). It prints "UNC paths are not supported. Defaulting to Windows directory." and runs in `C:\Windows`, so the CLI ran outside the project.
+
+- **Refused before anything runs.** On Windows, `PicklistDependencyCheckService.runSalesforceCli` now refuses a project-mode working directory that starts with two slashes of either kind. It starts no process and answers a spawn error (`EUNCWORKINGDIRECTORY`) naming the folder and saying how to open it instead: map the share to a drive letter, or reopen a WSL folder with the WSL extension. Each flow reports that error as it already reports a CLI that could not be started, and writes no result file. Nothing is created, deployed or assigned.
+- **A real process proves the working directory.** A new test (skipped on Windows) puts a stand-in `sf` script on PATH, moves the test process to the machine root, and checks that the CLI starts in the workspace. Taking `cwd` out of `runSalesforceCli` fails that test with `/`.
+- **Unchanged:** calls outside project mode (`sf org list`, `sf org open`, the picklist dependency check), the CLI found on PATH by absolute path, `NoDefaultCurrentDirectoryInExePath`, all-or-nothing deploys, and targeting by username. A double-slash folder on macOS or Linux is an ordinary path and is not refused.
+
 ## [3.70.0] - Recipe Cockpit: "Deploy & assign permission sets…" for a tree
 
 Closes [#274](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/274), following [#273](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/273).
