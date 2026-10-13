@@ -120,6 +120,17 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
 
         });
 
+        it('answers only names Salesforce takes, whatever the folder name', () => {
+
+            const hostileFolderNames = ['a', '9', '_a_', 'a__b', '__proto__', 'a\u2028b', 'x'.repeat(200), `${'a'.repeat(75)}__b`, '..', 'ä-b', ' Account - thru - Contact ', 'A'.repeat(76) + '_'];
+            hostileFolderNames.forEach(folderName => {
+                const permissionSetName = RecipeCockpitPermissionSetGenerate.buildPermissionSetName(folderName);
+                expect(permissionSetName === undefined || RecipeCockpitPermissionSetGenerate.isPermissionSetName(permissionSetName)).toBe(true);
+            });
+            expect(RecipeCockpitPermissionSetGenerate.buildPermissionSetName('..')).toBeUndefined();
+
+        });
+
         it('accepts only names Salesforce takes: an api name with no "__", no trailing "_", at most 80 characters', () => {
 
             expect(RecipeCockpitPermissionSetGenerate.isPermissionSetName('SDT_Lead_ONLY')).toBe(true);
@@ -152,6 +163,19 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             expect(RecipeCockpitPermissionSetGenerate.resolveDefaultPackageDirectoryPath(GENERATE_WORKSPACE_ROOT)).toBe(path.join(GENERATE_WORKSPACE_ROOT, 'force-app'));
             expect(() => RecipeCockpitPermissionSetGenerate.resolveDefaultPackageDirectoryPath(path.join(GENERATE_WORKSPACE_ROOT, 'force-app'))).toThrow('No "sfdx-project.json" found');
 
+            const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-generate-project-'));
+            try {
+                fs.mkdirSync(path.join(temporaryRoot, 'first'));
+                fs.mkdirSync(path.join(temporaryRoot, 'second'));
+                fs.writeFileSync(path.join(temporaryRoot, 'sfdx-project.json'), JSON.stringify({ packageDirectories: [{ path: 'first' }, { path: 'second' }] }));
+                expect(RecipeCockpitPermissionSetGenerate.resolveDefaultPackageDirectoryPath(temporaryRoot)).toBe(path.join(temporaryRoot, 'first'));
+
+                fs.writeFileSync(path.join(temporaryRoot, 'sfdx-project.json'), '{ "packageDirectories": [');
+                expect(() => RecipeCockpitPermissionSetGenerate.resolveDefaultPackageDirectoryPath(temporaryRoot)).toThrow('Could not parse');
+            } finally {
+                fs.rmSync(temporaryRoot, { recursive: true, force: true });
+            }
+
         });
 
         it('reads each field\'s access from its XML: required and master-detail are not grantable, formula, roll-up and auto number are read-only', async () => {
@@ -169,6 +193,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             expect(await RecipeCockpitPermissionSetGenerate.readFieldAccess('<CustomField></CustomField>', 'ns__Person__pc')).toBe('editable');
             expect(await RecipeCockpitPermissionSetGenerate.readFieldAccess('<CustomObject><type>Text</type></CustomObject>', 'Custom__c')).toBe('unreadable');
             expect(await RecipeCockpitPermissionSetGenerate.readFieldAccess('<CustomField><type>', 'Custom__c')).toBe('unreadable');
+            expect(await RecipeCockpitPermissionSetGenerate.readFieldAccess('', 'Custom__c')).toBe('unreadable');
 
         });
 
@@ -197,7 +222,8 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             const plan = await RecipeCockpitPermissionSetGenerate.buildPermissionSetPlan(objectsDirectoryPath, [
                 { objectApiName: 'Account', fieldApiNames: ['Rating__c', '../Rating__c', 'Rating__c'] },
                 { objectApiName: 'Bad Object', fieldApiNames: ['X__c'] },
-                { objectApiName: 'Gadget__c', fieldApiNames: ['Size__c'] }
+                { objectApiName: 'Gadget__c', fieldApiNames: ['Size__c'] },
+                { objectApiName: 'Account', fieldApiNames: ['Rating__c'] }
             ]);
 
             expect(plan).toEqual({
@@ -218,6 +244,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
                 const deepFolderPath = path.join(temporaryRoot, ...Array.from({ length: 9 }, (_unused, depth) => `level${depth}`), 'Deep__c', 'fields');
                 fs.mkdirSync(deepFolderPath, { recursive: true });
                 fs.mkdirSync(path.join(temporaryRoot, 'level0', 'Shallow__c', 'fields'), { recursive: true });
+                ['zeta', 'alpha', 'mid'].forEach(siblingName => fs.mkdirSync(path.join(temporaryRoot, siblingName)));
 
                 expect([...RecipeCockpitPermissionSetGenerate.findObjectFieldsDirectoryPaths(temporaryRoot, ['Deep__c', 'Shallow__c']).entries()])
                     .toEqual([['Shallow__c', path.join(temporaryRoot, 'level0', 'Shallow__c', 'fields')]]);
@@ -444,7 +471,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             expect(informationText).toContain(`Wrote ${ACCOUNT_TREE_PERMISSION_SET_NAME} to ${ACCOUNT_TREE_FILE_PATH}`);
             expect(informationText).toContain('2 required or master-detail fields, which Salesforce does not take in a permission set');
             expect(informationText).toContain('2 fields whose source file could not be read');
-            expect(informationText).toContain('1 standard field whose source file does not say it is not required');
+            expect(informationText).toContain('1 standard field without <required>false</required> in its source file');
             expect(actions).toEqual([RECIPE_COCKPIT_GENERATE_PERMISSION_SET_OPEN_LABEL, RECIPE_COCKPIT_GENERATE_PERMISSION_SET_COPY_LABEL, RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL]);
 
             expect(execFile).not.toHaveBeenCalled();
@@ -516,6 +543,19 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
 
             expect(warningTexts().at(-1)).toContain('No permission set was written for');
             expect(warningTexts().at(-1)).toContain('No "sfdx-project.json" found');
+            expect(modalCalls()).toHaveLength(0);
+            expect(fs.existsSync(generatedFilePath())).toBe(false);
+
+        });
+
+        it('refuses with a warning and writes nothing when sfdx-project.json cannot be parsed', async () => {
+
+            fs.writeFileSync(path.join(workspaceRoot, 'sfdx-project.json'), '{ "packageDirectories": [');
+            await openCockpit();
+            await generate();
+
+            expect(warningTexts().at(-1)).toContain('No permission set was written for');
+            expect(warningTexts().at(-1)).toContain('Could not parse');
             expect(modalCalls()).toHaveLength(0);
             expect(fs.existsSync(generatedFilePath())).toBe(false);
 
@@ -640,6 +680,70 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
 
             expect(warningTexts().at(-1)).toContain('started meanwhile');
             expect(fs.existsSync(generatedFilePath())).toBe(false);
+
+        });
+
+        it('words its counts for one and for none, and says nothing was left out when nothing was', async () => {
+
+            const buildPlan = jest.spyOn(RecipeCockpitPermissionSetGenerate, 'buildPermissionSetPlan');
+            buildPlan.mockResolvedValueOnce({ objectApiNames: ['Account'], fieldPermissions: [{ field: 'Account.Rating__c', isEditable: true }], skippedNameCount: 1, unreadableFieldCount: 1, notGrantableFieldCount: 1, requiredUnknownFieldCount: 1 });
+            buildPlan.mockResolvedValueOnce({ objectApiNames: ['Account', 'Contact'], fieldPermissions: [], skippedNameCount: 0, unreadableFieldCount: 0, notGrantableFieldCount: 0, requiredUnknownFieldCount: 0 });
+
+            await openCockpit();
+            await generate();
+            await generate();
+
+            expect(informationCalls()[0][0]).toContain('Create and Read on 1 object, access to 1 field. Left out: 1 required or master-detail field, which Salesforce does not take in a permission set; 1 standard field without <required>false</required> in its source file; 1 field whose source file could not be read; 1 invalid api name.');
+            expect(informationCalls()[1][0]).toContain('Create and Read on 2 objects, access to 0 fields. Deploy it, then assign it.');
+
+        });
+
+        it('does nothing with no model on screen', async () => {
+
+            await openCockpit();
+            (RecipeCockpitService as any).recipeCockpitPanelState.recipeDataMessage = undefined;
+            await (RecipeCockpitService as any).generateTreePermissionSetFromPanel((RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY);
+
+            expect(modalCalls()).toHaveLength(0);
+            expect(warningTexts()).toEqual([]);
+
+        });
+
+        it('hands the assign flow the org selected above, when there is one', async () => {
+
+            informationAnswer = RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL;
+            const routePanelMessage = RecipeCockpitService.routePanelMessage.bind(RecipeCockpitService);
+            const routeSpy = jest.spyOn(RecipeCockpitService, 'routePanelMessage')
+                .mockImplementation((panelMessage, panelState) => panelMessage.command === 'assignTreePermissionSets' ? undefined : routePanelMessage(panelMessage, panelState));
+
+            await openCockpit();
+            (RecipeCockpitService as any).recipeCockpitPanelState.dataOrgSelection = { orgIndex: 2 };
+            await generate();
+
+            expect(routeSpy).toHaveBeenCalledWith({ command: 'assignTreePermissionSets', treeKey: ACCOUNT_TREE_KEY, orgIndex: 2 }, expect.anything());
+
+        });
+
+        it('writes nothing when an assignment or a recipe write started while the modal was open', async () => {
+
+            for ( const startedState of [
+                { permissionSetAssignStateMessage: { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY } },
+                { wireLookupStateMessage: { command: 'wireLookupState', isRunning: true } }
+            ] ) {
+                (RecipeCockpitService as any).recipeCockpitPanel = undefined;
+                await openCockpit();
+                (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => {
+                    if ( options?.modal ) {
+                        Object.assign((RecipeCockpitService as any).recipeCockpitPanelState, startedState);
+                        return modalAnswer;
+                    }
+                    return undefined;
+                });
+                await generate();
+
+                expect(warningTexts().at(-1)).toContain('started meanwhile');
+                expect(fs.existsSync(generatedFilePath())).toBe(false);
+            }
 
         });
 

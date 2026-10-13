@@ -4792,14 +4792,16 @@ export class RecipeCockpitService {
             return;
         }
 
-        const insertObjectApiNames = this.listTreeInsertObjectApiNames(recipeViewModel, tree);
-        const recipeObjectsByApiName = new Map(recipeViewModel.objects.map(objectViewModel => [objectViewModel.objectApiName, objectViewModel]));
-        const plan = await RecipeCockpitPermissionSetGenerate.buildPermissionSetPlan(objectsDirectoryPath, insertObjectApiNames.map(objectApiName => ({
-            objectApiName: objectApiName,
-            fieldApiNames: ( recipeObjectsByApiName.get(objectApiName)?.fields ?? [] )
-                .filter(fieldViewModel => !fieldViewModel.isOnlyInRecipeFile)
-                .map(fieldViewModel => fieldViewModel.fieldApiName)
-        })));
+        // listTreeInsertObjectApiNames ANSWERS ONLY OBJECTS THE RECIPE HOLDS, SO EACH IS ONE OF recipeViewModel.objects
+        const insertObjectApiNames = new Set(this.listTreeInsertObjectApiNames(recipeViewModel, tree));
+        const plan = await RecipeCockpitPermissionSetGenerate.buildPermissionSetPlan(objectsDirectoryPath, recipeViewModel.objects
+            .filter(objectViewModel => insertObjectApiNames.has(objectViewModel.objectApiName))
+            .map(objectViewModel => ({
+                objectApiName: objectViewModel.objectApiName,
+                fieldApiNames: objectViewModel.fields
+                    .filter(fieldViewModel => !fieldViewModel.isOnlyInRecipeFile)
+                    .map(fieldViewModel => fieldViewModel.fieldApiName)
+            })));
 
         if ( plan.objectApiNames.length === 0 ) {
             refuse('none of its objects has an api name.');
@@ -4809,8 +4811,9 @@ export class RecipeCockpitService {
         const permissionSetFilePath = RecipeCockpitPermissionSetGenerate.getPermissionSetFilePath(packageDirectoryPath, permissionSetName);
         const relativeFilePath = path.relative(workspaceRoot, permissionSetFilePath).split(path.sep).join('/');
         const isOverwrite = fs.existsSync(permissionSetFilePath);
-        const objectCountText = `${plan.objectApiNames.length} ${plan.objectApiNames.length === 1 ? 'object' : 'objects'}`;
-        const fieldCountText = `${plan.fieldPermissions.length} ${plan.fieldPermissions.length === 1 ? 'field' : 'fields'}`;
+        const describeCount = (count: number, noun: string) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+        const objectCountText = describeCount(plan.objectApiNames.length, 'object');
+        const fieldCountText = describeCount(plan.fieldPermissions.length, 'field');
 
         const confirmation = await vscode.window.showWarningMessage(
             RecipeYamlScalar.escapeForNotification(`${isOverwrite ? 'Overwrite' : 'Write'} the permission set ${permissionSetName} for ${this.toSingleLine(treeLabel)}?`),
@@ -4868,12 +4871,14 @@ export class RecipeCockpitService {
             return;
         }
 
-        const leftOutTexts = [
-            ...( plan.notGrantableFieldCount > 0 ? [`${plan.notGrantableFieldCount} required or master-detail ${plan.notGrantableFieldCount === 1 ? 'field' : 'fields'}, which Salesforce does not take in a permission set`] : [] ),
-            ...( plan.requiredUnknownFieldCount > 0 ? [`${plan.requiredUnknownFieldCount} standard ${plan.requiredUnknownFieldCount === 1 ? 'field' : 'fields'} whose source file does not say ${plan.requiredUnknownFieldCount === 1 ? 'it is' : 'they are'} not required`] : [] ),
-            ...( plan.unreadableFieldCount > 0 ? [`${plan.unreadableFieldCount} ${plan.unreadableFieldCount === 1 ? 'field' : 'fields'} whose source file could not be read`] : [] ),
-            ...( plan.skippedNameCount > 0 ? [`${plan.skippedNameCount} ${plan.skippedNameCount === 1 ? 'name' : 'names'} that ${plan.skippedNameCount === 1 ? 'is' : 'are'} not an api name`] : [] )
-        ];
+        const leftOutTexts = ([
+            [plan.notGrantableFieldCount, 'required or master-detail field', ', which Salesforce does not take in a permission set'],
+            [plan.requiredUnknownFieldCount, 'standard field', ' without <required>false</required> in its source file'],
+            [plan.unreadableFieldCount, 'field', ' whose source file could not be read'],
+            [plan.skippedNameCount, 'invalid api name', '']
+        ] as Array<[number, string, string]>)
+            .filter(([count]) => count > 0)
+            .map(([count, noun, reason]) => `${describeCount(count, noun)}${reason}`);
 
         this.showGeneratedPermissionSetNotification(
             RecipeYamlScalar.escapeForNotification(`Wrote ${permissionSetName} to ${relativeFilePath}: Create and Read on ${objectCountText}, access to ${fieldCountText}.${leftOutTexts.length > 0 ? ` Left out: ${leftOutTexts.join('; ')}.` : ''} Deploy it, then assign it.`),

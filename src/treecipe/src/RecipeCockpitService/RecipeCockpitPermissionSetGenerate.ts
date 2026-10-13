@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as xml2js from 'xml2js';
 
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
-import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
+import { ISfdxPackageDirectory, SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { PERMISSION_SET_FILE_SUFFIX } from './RecipeCockpitPermissionSetAssign';
 
 /*
@@ -78,8 +78,8 @@ export class RecipeCockpitPermissionSetGenerate {
 
     /*
         SDT_ and the tree's folder name with every character outside [A-Za-z0-9] made "_", runs of
-        "_" collapsed and the ends trimmed, cut to 80. Undefined when what is left is not a name
-        Salesforce takes: an api name with no "__" and no trailing "_".
+        "_" collapsed and the ends trimmed, cut to 80. Undefined when nothing usable is left. Every
+        name it answers is one Salesforce takes (isPermissionSetName), which a test holds it to.
     */
     static buildPermissionSetName(treeFolderName: string): string | undefined {
 
@@ -92,11 +92,10 @@ export class RecipeCockpitPermissionSetGenerate {
             return undefined;
         }
 
-        const permissionSetName = `${PERMISSION_SET_GENERATED_NAME_PREFIX}${cleanedFolderName}`
+        // WHAT IS LEFT IS [A-Za-z0-9]+ RUNS JOINED BY ONE "_", SO SDT_ AND IT, CUT AND END-TRIMMED, ALWAYS PASSES isPermissionSetName
+        return `${PERMISSION_SET_GENERATED_NAME_PREFIX}${cleanedFolderName}`
             .slice(0, PERMISSION_SET_NAME_MAX_LENGTH)
             .replace(/_+$/, '');
-
-        return this.isPermissionSetName(permissionSetName) ? permissionSetName : undefined;
 
     }
 
@@ -133,12 +132,11 @@ export class RecipeCockpitPermissionSetGenerate {
     static resolveDefaultPackageDirectoryPath(workspaceRoot: string): string {
 
         const packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
-        const packageDirectories: unknown = SfdxProjectService.readSfdxProjectJson(SfdxProjectService.getSfdxProjectFilePath(workspaceRoot))?.packageDirectories;
-        const defaultIndex = Array.isArray(packageDirectories)
-            ? packageDirectories.findIndex(packageDirectory => packageDirectory?.default === true)
-            : -1;
+        // THE STRICT READ ABOVE ALREADY REFUSED A FILE WHOSE packageDirectories IS NOT A LIST OF OBJECTS
+        const packageDirectories = SfdxProjectService.readSfdxProjectJson(SfdxProjectService.getSfdxProjectFilePath(workspaceRoot)).packageDirectories as ISfdxPackageDirectory[];
+        const defaultIndex = packageDirectories.findIndex(packageDirectory => packageDirectory.default === true);
 
-        return path.resolve(workspaceRoot, packageDirectoryPaths[defaultIndex >= 0 ? defaultIndex : 0]);
+        return path.resolve(workspaceRoot, packageDirectoryPaths[Math.max(defaultIndex, 0)]);
 
     }
 
@@ -192,7 +190,8 @@ export class RecipeCockpitPermissionSetGenerate {
             folderEntries
                 .filter(folderEntry => folderEntry.isDirectory() && !folderEntry.name.startsWith('.') && folderEntry.name !== 'node_modules')
                 .map(folderEntry => folderEntry.name)
-                .sort((first, second) => first < second ? -1 : 1)
+                // sort() WITH NO COMPARATOR ORDERS BY UTF-16 CODE UNIT, AS "<" DOES -- NEVER localeCompare
+                .sort()
                 .forEach(childName => walk(path.join(folderPath, childName), depth + 1));
 
         };
@@ -277,15 +276,15 @@ export class RecipeCockpitPermissionSetGenerate {
 
         });
 
-        const byName = (first: string, second: string) => first < second ? -1 : first > second ? 1 : 0;
-        plan.objectApiNames = [...fieldApiNamesByObject.keys()].sort(byName);
+        // sort() WITH NO COMPARATOR ORDERS BY UTF-16 CODE UNIT, AS "<" DOES -- NEVER localeCompare
+        plan.objectApiNames = [...fieldApiNamesByObject.keys()].sort();
         const fieldsDirectoryPathsByObject = this.findObjectFieldsDirectoryPaths(objectsDirectoryPath, plan.objectApiNames);
 
         for ( const objectApiName of plan.objectApiNames ) {
 
             const fieldsDirectoryPath = fieldsDirectoryPathsByObject.get(objectApiName);
 
-            for ( const fieldApiName of [...( fieldApiNamesByObject.get(objectApiName) ?? [] )].sort(byName) ) {
+            for ( const fieldApiName of [...( fieldApiNamesByObject.get(objectApiName) as Set<string> )].sort() ) {
 
                 let fieldAccess: GeneratedFieldAccess = 'unreadable';
                 if ( fieldsDirectoryPath ) {
