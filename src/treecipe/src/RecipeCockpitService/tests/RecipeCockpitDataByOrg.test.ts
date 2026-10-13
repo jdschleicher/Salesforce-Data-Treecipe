@@ -22,6 +22,9 @@ import {
     RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE,
     RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE,
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT,
+    RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON,
+    RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER,
+    RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER,
     RECIPE_COCKPIT_REFRESH_ORGS_LABEL
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -79,6 +82,12 @@ function buildFakeConnection(organizationRow: unknown = { IsSandbox: true, Organ
     };
 
 }
+
+
+// THE ORG SHOWN WHILE THE CONNECTIONS ARE CHECKED (#305) IS READ FROM THE MACHINE'S OWN AUTHORIZATIONS, SO NO SUITE DEPENDS ON THEM
+beforeEach(() => {
+    jest.spyOn(SalesforceOrgService, 'readLocalDataOrgDetail').mockResolvedValue(undefined);
+});
 
 describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #255)', () => {
 
@@ -247,6 +256,125 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
+        // #305: THE ORG SHOWN WHILE THE CHECK RUNS, AND THE CLI'S DEFAULT ORG
+        it('posts the CLI\'s default org as a label before the list, reading it locally, and passes the workspace to the listing', async () => {
+
+            const readLocalSpy = jest.spyOn(SalesforceOrgService, 'readLocalDataOrgDetail').mockResolvedValue({ ...SANDBOX_ORG, isDefault: true });
+            const listSpy = SalesforceOrgService.listDataOrgDetails as jest.Mock;
+            const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection');
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+            const orgMessages = postedPanelMessages.filter(hostMessage => ['dataOrgProvisional', 'dataOrgList'].includes(hostMessage.command));
+            expect(orgMessages.map(hostMessage => hostMessage.command)).toEqual(['dataOrgProvisional', 'dataOrgList']);
+            expect(orgMessages[0]).toEqual({ command: 'dataOrgProvisional', orgLabel: 'qa (default)', requestSequence: expect.any(Number), renderSequence: lastRenderSequence() });
+            expect(readLocalSpy).toHaveBeenCalledWith(undefined, TREE_WORKSPACE_ROOT);
+            expect(listSpy).toHaveBeenCalledWith(TREE_WORKSPACE_ROOT);
+            expect(JSON.stringify(orgMessages[0])).not.toContain('qa@example.com.qa');
+            expect(getConnectionSpy).not.toHaveBeenCalled();
+
+        });
+
+        it('shows the org chosen last, rather than the default, while the check runs', async () => {
+
+            workspaceStateValues.set(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, 'prod@example.com');
+            const readLocalSpy = jest.spyOn(SalesforceOrgService, 'readLocalDataOrgDetail').mockResolvedValue(SECOND_ORG);
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+            expect(readLocalSpy).toHaveBeenCalledWith('prod@example.com', TREE_WORKSPACE_ROOT);
+            expect(postedNamed('dataOrgProvisional').map(hostMessage => hostMessage.orgLabel)).toEqual(['prod@example.com']);
+            expect(postedNamed('dataOrgList')[0].selectedOrgIndex).toBe(1);
+
+        });
+
+        it('posts no provisional org when none is remembered or set as the default, or when reading it fails, and lists the orgs all the same', async () => {
+
+            jest.spyOn(SalesforceOrgService, 'readLocalDataOrgDetail').mockRejectedValue(new Error('auth files unreadable'));
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+            expect(postedNamed('dataOrgProvisional')).toEqual([]);
+            expect(postedNamed('dataOrgList')[0].orgLabels).toEqual(['qa', 'prod@example.com']);
+
+        });
+
+        it('labels the default org "(default)" and selects it when no org was chosen before, so its own Organization row decides the insert', async () => {
+
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue(buildDataOrgListing([{ ...SECOND_ORG, isDefault: true } as IAuthenticatedOrgDetail, SANDBOX_ORG]));
+            const getConnectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ IsSandbox: false, OrganizationType: 'Enterprise Edition' }) as any);
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+            expect(postedNamed('dataOrgList')[0]).toMatchObject({ orgLabels: ['prod@example.com (default)', 'qa'], selectedOrgIndex: 0 });
+            expect(getConnectionSpy).toHaveBeenCalledWith('prod@example.com');
+            const [lastSelection] = postedNamed('dataOrgSelection').slice(-1);
+            expect(lastSelection.isSandbox).toBe(false);
+            expect(lastSelection.failureMessage).toContain('It inserts records only into a sandbox or scratch org.');
+            // REFUSED: THE ROUTER ANSWERS THE PANEL THAT NO INSERT RUNS, AND NEVER ROUTES ONE
+            expect(RecipeCockpitService.routePanelMessage({ command: 'insertTree', treeKey: 'Account-thru-OtherChildObject__c' }, (RecipeCockpitService as any).recipeCockpitPanelState)).toEqual({
+                kind: 'postInsertState',
+                hostMessage: { command: 'insertState', isRunning: false, treeKey: 'Account-thru-OtherChildObject__c' }
+            });
+
+        });
+
+        it('keeps the org chosen last selected over the default', async () => {
+
+            workspaceStateValues.set(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, 'qa@example.com.qa');
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue(buildDataOrgListing([{ ...SECOND_ORG, isDefault: true } as IAuthenticatedOrgDetail, SANDBOX_ORG]));
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+            expect(postedNamed('dataOrgList')[0].selectedOrgIndex).toBe(1);
+
+        });
+
+        it('says the org chosen last is no longer connected, and forgets it, when it falls back to the default', async () => {
+
+            workspaceStateValues.set(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, 'old@example.com');
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue(buildDataOrgListing(
+                [{ ...SANDBOX_ORG, isDefault: true } as IAuthenticatedOrgDetail, SECOND_ORG],
+                [{ username: 'old@example.com', label: 'old-scratch', reason: 'expired' }]
+            ));
+            const rememberSpy = workspaceState.update;
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+            expect(postedNamed('dataOrgList')[0]).toMatchObject({
+                orgLabels: ['qa (default)', 'prod@example.com'],
+                selectedOrgIndex: 0,
+                forgottenOrgNotice: 'The last org used, old-scratch, is no longer connected.'
+            });
+            expect(rememberSpy.mock.calls.map(updateCall => updateCall[1])).toEqual([undefined, 'qa@example.com.qa']);
+
+        });
+
+        it('drops a provisional org read for a check a ready has replaced', async () => {
+
+            let answerLocalRead: (orgDetail: any) => void = () => undefined;
+            jest.spyOn(SalesforceOrgService, 'readLocalDataOrgDetail').mockImplementation(() => new Promise(resolveRead => { answerLocalRead = resolveRead; }));
+
+            await openRenderedCockpit();
+            const listing = receivedMessageHandler({ command: 'loadDataOrgs' });
+            await new Promise(resolveYield => setImmediate(resolveYield));
+            await receivedMessageHandler({ command: 'ready' });
+            answerLocalRead({ ...SANDBOX_ORG, isDefault: true });
+            await listing;
+
+            expect(postedNamed('dataOrgProvisional')).toEqual([]);
+
+        });
+
         it('says why when the authorized orgs could not be listed', async () => {
 
             jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockRejectedValue(new Error('auth files unreadable'));
@@ -302,7 +430,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             expect(postedNamed('dataOrgList')[0]).toMatchObject({
                 orgLabels: ['qa'],
-                hiddenOrgNote: 'The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.',
+                hiddenOrgNote: 'The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, plus the CLI\'s default org, and inserts only into a sandbox or scratch org.',
                 forgottenOrgNotice: '',
                 noOrgsMessage: ''
             });
@@ -786,7 +914,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         it('says it lists only sandboxes when it left an org out, and that the org used last is no longer connected', () => {
 
-            const hiddenOrgNote = 'The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.';
+            const hiddenOrgNote = 'The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, plus the CLI\'s default org, and inserts only into a sandbox or scratch org.';
             const { panel } = renderDataOrgPanel();
             openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', hiddenOrgNote: hiddenOrgNote, forgottenOrgNotice: 'The last org used, <b>old</b>, is no longer connected.', renderSequence: 1 });
@@ -800,13 +928,85 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
-        it('shows "Checking org connections…" in place of the dropdown until the list arrives', () => {
+        const optionsOf = (selectElement: any) => selectElement.children.map((optionElement: any) => [optionElement.value, optionElement.textContent]);
+
+        // #305: THE PICKER NEVER VANISHES WHILE "sf org list" CHECKS THE CONNECTIONS
+        it('keeps the dropdown, ⟳ and "+ New scratch org" drawn and enabled while the check runs, with a spinner to the right of the dropdown and "Checking org connections…" below', () => {
 
             const { panel } = renderDataOrgPanel();
             openTreecipeViews(panel);
 
+            ['dataOrgSelect', 'dataOrgRefresh', 'dataOrgNewScratch', 'dataOrgSpinner'].forEach(className => {
+                panel.findAll(panel.cockpitBodyElement, className).forEach((element: any) => {
+                    expect(panel.isHidden(element)).toBe(false);
+                    expect(element.disabled).toBeFalsy();
+                });
+            });
+            panel.findAll(panel.cockpitBodyElement, 'dataOrgSelect').forEach((selectElement: any) => {
+                expect(optionsOf(selectElement)).toEqual([['', RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER]]);
+            });
+            const [controlsElement] = panel.findAll(panel.treeCards()[0], 'dataOrgControls');
+            const controlClasses = controlsElement.children.map((element: any) => element.className.split(' ')[0]);
+            expect(controlClasses.indexOf('dataOrgSpinner')).toBe(controlClasses.indexOf('dataOrgSelect') + 1);
+            expect(viewOf(panel, 'dataOrgSpinner').attributes['aria-hidden']).toBe('true');
             expect(textOf(panel, 'dataOrgStatus')).toEqual([RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT, RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT]);
-            expect(panel.isHidden(viewOf(panel, 'dataOrgSelect'))).toBe(true);
+
+        });
+
+        it('holds every insert while the check runs, generating only with the reason that it is checking', () => {
+
+            const { panel } = renderDataOrgPanel();
+            openTreecipeViews(panel);
+
+            const checkingReason = `Generates only: ${RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON}`;
+            expect(insertReasonsOf(panel)).toEqual([checkingReason, checkingReason]);
+            expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([[RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false], [RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false]]);
+
+        });
+
+        it('shows the org the host read locally as the dropdown\'s one option while the check runs, never posting it as a selection', () => {
+
+            const { panel } = renderDataOrgPanel();
+            openTreecipeViews(panel);
+            panel.postToPanel({ command: 'dataOrgProvisional', orgLabel: 'qa (default)', requestSequence: 1, renderSequence: 1 });
+
+            panel.findAll(panel.cockpitBodyElement, 'dataOrgSelect').forEach((selectElement: any) => {
+                expect(optionsOf(selectElement)).toEqual([['', 'qa (default)']]);
+                selectElement.dispatch('change');
+            });
+            expect(postedNamed(panel, 'selectDataOrg')).toEqual([]);
+            expect(insertReasonsOf(panel)[0]).toBe(`Generates only: ${RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON}`);
+
+        });
+
+        it('drops a provisional org for another model, an older check, or once the list has arrived', () => {
+
+            const { panel } = renderDataOrgPanel();
+            openTreecipeViews(panel);
+            panel.postToPanel({ command: 'dataOrgProvisional', orgLabel: 'other model', requestSequence: 1, renderSequence: 2 });
+            panel.postToPanel({ command: 'dataOrgProvisional', orgLabel: 'newer', requestSequence: 3, renderSequence: 1 });
+            panel.postToPanel({ command: 'dataOrgProvisional', orgLabel: 'older', requestSequence: 2, renderSequence: 1 });
+
+            expect(optionsOf(viewOf(panel, 'dataOrgSelect'))).toEqual([['', 'newer']]);
+
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', renderSequence: 1 });
+            panel.postToPanel({ command: 'dataOrgProvisional', orgLabel: 'late', requestSequence: 4, renderSequence: 1 });
+
+            expect(optionsOf(viewOf(panel, 'dataOrgSelect'))).toEqual([['', 'Choose org…'], ['0', 'qa']]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataOrgSpinner').every((element: any) => panel.isHidden(element))).toBe(true);
+
+        });
+
+        it('stops the spinner and leaves the dropdown drawn when the check fails', () => {
+
+            const { panel } = renderDataOrgPanel();
+            openTreecipeViews(panel);
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: [], selectedOrgIndex: null, noOrgsMessage: 'The Salesforce CLI could not report which authorized orgs are connected, so no org is listed.', renderSequence: 1 });
+
+            expect(panel.findAll(panel.cockpitBodyElement, 'dataOrgSpinner').every((element: any) => panel.isHidden(element))).toBe(true);
+            expect(panel.isHidden(viewOf(panel, 'dataOrgSelect'))).toBe(false);
+            expect(viewOf(panel, 'dataOrgStatus').textContent).toContain('could not report');
+            expect(insertReasonsOf(panel)[0]).toBe('Generates only: Choose an org above to also insert it.');
 
         });
 
@@ -844,7 +1044,8 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: [], selectedOrgIndex: null, noOrgsMessage: NO_AUTHORIZED_ORGS_MESSAGE, renderSequence: 1 });
 
-            expect(panel.isHidden(viewOf(panel, 'dataOrgSelect'))).toBe(true);
+            expect(panel.isHidden(viewOf(panel, 'dataOrgSelect'))).toBe(false);
+            expect(optionsOf(viewOf(panel, 'dataOrgSelect'))).toEqual([['', RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER]]);
             expect(viewOf(panel, 'dataOrgStatus').textContent).toBe(NO_AUTHORIZED_ORGS_MESSAGE);
             expect(insertReasonsOf(panel)).toEqual(['Generates only: Choose an org above to also insert it.', 'Generates only: Choose an org above to also insert it.']);
 
@@ -936,7 +1137,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
-        it('posts ⟳ as a payload-free refresh, and takes the dropdown and the selection away until the orgs are listed again', () => {
+        it('posts ⟳ as a payload-free refresh, and takes the selection away until the orgs are listed again, keeping the dropdown drawn with only the check\'s option', () => {
 
             const { panel } = renderDataOrgPanel();
             openTreecipeViews(panel);
@@ -946,15 +1147,20 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             viewOf(panel, 'dataOrgRefresh').dispatch('click');
 
             expect(postedNamed(panel, 'refreshDataOrgs')).toEqual([{ command: 'refreshDataOrgs' }]);
-            panel.findAll(panel.cockpitBodyElement, 'dataOrgSelect').forEach((selectElement: any) => expect(panel.isHidden(selectElement)).toBe(true));
+            panel.findAll(panel.cockpitBodyElement, 'dataOrgSelect').forEach((selectElement: any) => {
+                expect(panel.isHidden(selectElement)).toBe(false);
+                expect(optionsOf(selectElement)).toEqual([['', RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER]]);
+            });
             expect(textOf(panel, 'dataOrgStatus')).toEqual([RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT, RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT]);
-            expect(insertReasonsOf(panel)).toEqual(['Generates only: Choose an org above to also insert it.', 'Generates only: Choose an org above to also insert it.']);
+            const checkingReason = `Generates only: ${RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON}`;
+            expect(insertReasonsOf(panel)).toEqual([checkingReason, checkingReason]);
             // #293: NEVER DISABLED BY THE ORG -- IT GENERATES ONLY
             expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([[RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false], [RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false]]);
 
         });
 
-        it('disables ⟳ in every view while the check is out, and enables it again with the list it asked for', () => {
+        // #305: THE HOST JOINS A CHECK ALREADY IN FLIGHT, SO A SECOND CLICK STARTS NO SECOND "sf org list"
+        it('keeps ⟳ enabled in every view while the check is out, so a second click asks again', () => {
 
             const { panel } = renderDataOrgPanel();
             openTreecipeViews(panel);
@@ -962,10 +1168,10 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             const refreshElements = panel.findAll(panel.cockpitBodyElement, 'dataOrgRefresh');
             refreshElements[0].dispatch('click');
-            expect(refreshElements.map((element: any) => element.disabled)).toEqual([true, true]);
-
-            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', renderSequence: 1 });
             expect(refreshElements.map((element: any) => element.disabled)).toEqual([false, false]);
+            refreshElements[1].dispatch('click');
+
+            expect(postedNamed(panel, 'refreshDataOrgs')).toHaveLength(2);
 
         });
 

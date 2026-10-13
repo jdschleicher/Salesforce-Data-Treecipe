@@ -61,7 +61,8 @@ import {
     RECIPE_COCKPIT_GENERATE_ACTION_LABEL,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
-    RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL
+    RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
+    RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON
 } from '../RecipeCockpitService';
 import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
@@ -263,6 +264,12 @@ const buildWorkspaceState = () => {
         }) as jest.Mock
     };
 };
+
+
+// THE ORG SHOWN WHILE THE CONNECTIONS ARE CHECKED (#305) IS READ FROM THE MACHINE'S OWN AUTHORIZATIONS, SO NO SUITE DEPENDS ON THEM
+beforeEach(() => {
+    jest.spyOn(SalesforceOrgService, 'readLocalDataOrgDetail').mockResolvedValue(undefined);
+});
 
 describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255)', () => {
 
@@ -1771,7 +1778,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
         const postedNamed = (panel: any, command: string) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === command);
 
         // #293: THE BUTTON IS NEVER DISABLED BY THE ORG -- WITHOUT ONE THAT CAN TAKE THE INSERT IT GENERATES ONLY, AND SAYS WHY
-        it('draws the button at the top of the Treecipe tab, enabled as Generate fake data with its reason while no org is selected', () => {
+        it('draws the button at the top of the Treecipe tab, enabled as Generate fake data with its reason while the org check runs (#305)', () => {
 
             const panel = renderPanel();
             const card = accountCard(panel);
@@ -1781,7 +1788,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             expect(partOf(panel, header, 'treeInsertControls')).toBeDefined();
             expect(partOf(panel, card, 'treeInsert').disabled).toBe(false);
             expect(partOf(panel, card, 'treeInsert').textContent).toBe(RECIPE_COCKPIT_GENERATE_ACTION_LABEL);
-            expect(partOf(panel, card, 'treeInsertReason').textContent).toBe('Generates only: Choose an org above to also insert it.');
+            expect(partOf(panel, card, 'treeInsertReason').textContent).toBe(`Generates only: ${RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON}`);
 
         });
 

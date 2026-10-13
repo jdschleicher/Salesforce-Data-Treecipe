@@ -19,6 +19,7 @@ import {
 import { RecipeCockpitPermissionSetGenerate } from './RecipeCockpitPermissionSetGenerate';
 import {
     DevHubConfigSource,
+    IDataOrgDetail,
     IOrgDescribeSource,
     IOrgQuerySource,
     IOrgTypeDetail,
@@ -245,10 +246,10 @@ export const RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH = 'M9 3 H15 L14 9 L17 12 V14 
 export const RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = 'fixed';
 /*
     The ▸/▾ of a tree card, a Treecipe object and a picklist field (#277), drawn like the chain link: a
-    font's triangle sits on the text baseline, so no button rule could centre it. Each path's box is
-    centred on (12, 12) in the same 24x24 view box, and filled from the palette by CSS.
+    font's triangle sits on the text baseline, so no button rule could centre it. An open chevron (#307)
+    whose box is centred on (12, 12) in the same 24x24 view box, stroked from the palette by CSS.
 */
-export const RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH = 'M7.5 5 L16.5 12 L7.5 19 Z';
+export const RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH = 'M8.5 5 L15.5 12 L8.5 19';
 /*
     Motion (#227). The ▸ is ONE path that CSS turns a quarter on aria-expanded, so it rotates rather
     than swapping. A body the reader opens fades in once it is built; one the reader closes carries
@@ -812,8 +813,9 @@ export interface IRecipeCockpitGenerateStateMessage {
 */
 /*
     hiddenOrgNote is RECIPE_COCKPIT_HIDDEN_ORGS_NOTE when any authorized org was left out -- because the
-    CLI does not know it to be a sandbox or a scratch org (Data-by-Org never lists, and so never connects
-    to, production), or because it does not report it connected -- and empty otherwise.
+    CLI does not know it to be a sandbox or a scratch org (Data-by-Org lists no production org but the
+    CLI's default, #305), or because it does not report it connected -- and empty otherwise. A label
+    ending " (default)" is the CLI's default org, always listed first.
     forgottenOrgNotice names the org chosen last when it was forgotten for no longer being connected.
 */
 export interface IRecipeCockpitDataOrgListMessage {
@@ -826,12 +828,40 @@ export interface IRecipeCockpitDataOrgListMessage {
     renderSequence: number;
 }
 
-export const RECIPE_COCKPIT_HIDDEN_ORGS_NOTE = 'The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, never production.';
+export const RECIPE_COCKPIT_HIDDEN_ORGS_NOTE = "The Treecipe tab lists only sandboxes and scratch orgs the Salesforce CLI reports as connected, plus the CLI's default org, and inserts only into a sandbox or scratch org.";
 
 export const RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE = 'No sandbox or scratch org is authorized. The Treecipe tab connects only to sandboxes and scratch orgs: authorize one with "sf org login web --instance-url https://test.salesforce.com" and try again.';
 
-// WHAT DATA-BY-ORG SHOWS IN PLACE OF THE DROPDOWN WHILE THE CLI IS ASKED WHICH ORGS ARE CONNECTED
+// WHAT DATA-BY-ORG SHOWS BESIDE THE DROPDOWN, AND ITS SPINNER, WHILE THE CLI IS ASKED WHICH ORGS ARE CONNECTED
 export const RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT = 'Checking org connections…';
+
+// WHAT EVERY TREE'S "Generates only:" SAYS WHILE THAT CHECK RUNS: THE ORG IN THE DROPDOWN IS NOT CONFIRMED YET (#305)
+export const RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON = 'checking the org connection…';
+
+// THE DROPDOWN'S ONE OPTION WHILE THE CHECK RUNS AND NO ORG IS REMEMBERED OR SET AS THE CLI'S DEFAULT
+export const RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER = 'Loading orgs…';
+
+export const RECIPE_COCKPIT_DEFAULT_ORG_SUFFIX = ' (default)';
+
+// ONE TURN OF THE ORG CHECK'S SPINNER (#305): A LOOP RATHER THAN A TRANSITION, SO IT IS NOT HELD TO THE 120-180 MS OF MOTION (#227)
+export const RECIPE_COCKPIT_SPINNER_ROTATION_MILLISECONDS = 800;
+
+// THE DROPDOWN'S ONE OPTION WHEN THE CHECK ANSWERED WITH NO ORG TO OFFER: IT STAYS DRAWN, AND ⟳ BESIDE IT
+export const RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER = 'No org listed';
+
+/*
+    The org the dropdown shows while "sf org list" checks the connections (#305): the org chosen
+    last, else the CLI's default, read from the local authorization files and config alone. It is
+    a LABEL and nothing else -- the panel cannot select it, and nothing is inserted until the list
+    answers and the selection's own Organization row says sandbox. requestSequence names the check
+    it was read for, so one read for a check since replaced is dropped.
+*/
+export interface IRecipeCockpitDataOrgProvisionalMessage {
+    command: 'dataOrgProvisional';
+    orgLabel: string;
+    requestSequence: number;
+    renderSequence: number;
+}
 
 export const RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE = 'No connected sandbox or scratch org is authorized. The Treecipe tab lists only orgs the Salesforce CLI reports as connected: re-authorize one with "sf org login web --instance-url https://test.salesforce.com", then press ⟳.';
 
@@ -982,6 +1012,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitDatasetRecordCountsMessage
                                         | IRecipeCockpitGenerateStateMessage
                                         | IRecipeCockpitDataOrgListMessage
+                                        | IRecipeCockpitDataOrgProvisionalMessage
                                         | IRecipeCockpitDataOrgSelectionMessage
                                         | IRecipeCockpitDataOrgReadinessMessage
                                         | IRecipeCockpitInsertStateMessage
@@ -4084,6 +4115,27 @@ export class RecipeCockpitService {
 
     }
 
+    // THE DROPDOWN'S LABEL: THE CLI'S DEFAULT ORG SAYS SO (#305)
+    static buildDataOrgListLabel(orgDetail: IDataOrgDetail): string {
+
+        return this.buildDataOrgLabel(orgDetail) + ( orgDetail.isDefault === true ? RECIPE_COCKPIT_DEFAULT_ORG_SUFFIX : '' );
+
+    }
+
+    /*
+        What the dropdown shows while the connections are checked: the org chosen last, else the
+        CLI's default. Read locally; a read that fails shows nothing rather than holding the check.
+    */
+    private static async readProvisionalDataOrgDetail(panelState: IRecipeCockpitPanelState): Promise<IDataOrgDetail | undefined> {
+
+        try {
+            return await SalesforceOrgService.readLocalDataOrgDetail(panelState.dataOrgUsername ?? this.readRememberedDataOrgUsername(), panelState.workspaceRoot);
+        } catch {
+            return undefined;
+        }
+
+    }
+
     private static readRememberedDataOrgUsername(): string | undefined {
 
         try {
@@ -4114,8 +4166,10 @@ export class RecipeCockpitService {
 
         The list in hand is dropped BEFORE the check, so no org can be selected until it answers; a
         new model, a ready or a later listing bumps dataOrgRequestSequence meanwhile, and the answer
-        is then discarded rather than drawn over whatever replaced it. A remembered org that the CLI
-        now reports expired, deleted or not connected is forgotten, and the view says so once.
+        is then discarded rather than drawn over whatever replaced it. While it runs, the org chosen
+        last (else the CLI's default) is posted as dataOrgProvisional, a label read from local files
+        (#305). A remembered org that the CLI now reports expired, deleted or not connected is
+        forgotten, and the view says so once; with no remembered org listed, the default is selected.
     */
     // keepUnlistedUsername: A SCRATCH ORG JUST CREATED THE CLI DOES NOT LIST YET IS STILL THE ONE TO SELECT ONCE IT DOES
     private static async loadDataOrgs(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, isRefresh = false, keepUnlistedUsername = false) {
@@ -4125,18 +4179,39 @@ export class RecipeCockpitService {
         panelState.dataOrgSelection = undefined;
         const listingRequestSequence = ++panelState.dataOrgRequestSequence;
 
-        let orgDetails: IAuthenticatedOrgDetail[] = [];
+        const isListingCurrent = () => this.recipeCockpitPanel === cockpitPanel
+                                        && this.recipeCockpitPanelState === panelState
+                                        && panelState.recipeDataMessage === listedRecipeDataMessage
+                                        && panelState.dataOrgRequestSequence === listingRequestSequence;
+
+        // THE CHECK STARTS FIRST: THE LOCAL READ OF THE ORG SHOWN MEANWHILE MUST NEVER DELAY IT
+        const dataOrgListingRequest = ( async () => {
+            if ( isRefresh ) {
+                await SalesforceOrgService.refreshConnectedOrgAuthorizations();
+            }
+            return await SalesforceOrgService.listDataOrgDetails(panelState.workspaceRoot);
+        } )();
+        dataOrgListingRequest.catch(() => undefined);
+
+        const provisionalOrgDetail = await this.readProvisionalDataOrgDetail(panelState);
+
+        if ( provisionalOrgDetail && isListingCurrent() ) {
+            this.postToPanel(cockpitPanel, {
+                command: 'dataOrgProvisional',
+                orgLabel: this.buildDataOrgListLabel(provisionalOrgDetail),
+                requestSequence: listingRequestSequence,
+                renderSequence: listedRecipeDataMessage.renderSequence
+            });
+        }
+
+        let orgDetails: IDataOrgDetail[] = [];
         let hiddenOrgs: IHiddenAuthorizedOrg[] = [];
         let hiddenOrgNote = '';
         let noOrgsMessage = NO_AUTHORIZED_ORGS_MESSAGE;
 
         try {
 
-            if ( isRefresh ) {
-                await SalesforceOrgService.refreshConnectedOrgAuthorizations();
-            }
-
-            const dataOrgListing = await SalesforceOrgService.listDataOrgDetails();
+            const dataOrgListing = await dataOrgListingRequest;
             orgDetails = dataOrgListing.orgDetails;
             hiddenOrgs = dataOrgListing.hiddenOrgs;
             hiddenOrgNote = this.buildDataOrgHiddenNote(dataOrgListing.hiddenOrgReasonCounts);
@@ -4150,20 +4225,22 @@ export class RecipeCockpitService {
 
         }
 
-        if ( this.recipeCockpitPanel !== cockpitPanel
-                || this.recipeCockpitPanelState !== panelState
-                || panelState.recipeDataMessage !== listedRecipeDataMessage
-                || panelState.dataOrgRequestSequence !== listingRequestSequence ) {
+        if ( !isListingCurrent() ) {
             return;
         }
 
         panelState.dataOrgDetails = orgDetails;
 
         const rememberedUsername = panelState.dataOrgUsername ?? this.readRememberedDataOrgUsername();
-        const selectedOrgIndex = rememberedUsername ? orgDetails.findIndex(orgDetail => orgDetail.username === rememberedUsername) : -1;
+        const rememberedOrgIndex = rememberedUsername ? orgDetails.findIndex(orgDetail => orgDetail.username === rememberedUsername) : -1;
+        // THE ORG CHOSEN LAST WINS; WITH NONE LISTED, THE CLI'S DEFAULT IS SELECTED -- UNLESS A SCRATCH ORG JUST CREATED IS STILL TO BE
+        const selectedOrgIndex = rememberedOrgIndex >= 0 || ( rememberedUsername && keepUnlistedUsername )
+            ? rememberedOrgIndex
+            : orgDetails.findIndex(orgDetail => orgDetail.isDefault === true);
         let forgottenOrgNotice = '';
 
-        if ( rememberedUsername && selectedOrgIndex === -1 && !keepUnlistedUsername ) {
+        // CHECKED AGAINST THE REMEMBERED ORG ITSELF: FALLING BACK TO THE DEFAULT MUST NOT SKIP SAYING WHY THE LAST ONE WENT
+        if ( rememberedUsername && rememberedOrgIndex === -1 && !keepUnlistedUsername ) {
 
             const disconnectedRememberedOrg = hiddenOrgs.find(hiddenOrg => hiddenOrg.username === rememberedUsername && hiddenOrg.reason !== 'production');
 
@@ -4178,7 +4255,7 @@ export class RecipeCockpitService {
 
         this.postToPanel(cockpitPanel, {
             command: 'dataOrgList',
-            orgLabels: orgDetails.map(orgDetail => this.buildDataOrgLabel(orgDetail)),
+            orgLabels: orgDetails.map(orgDetail => this.buildDataOrgListLabel(orgDetail)),
             selectedOrgIndex: selectedOrgIndex >= 0 ? selectedOrgIndex : null,
             noOrgsMessage: orgDetails.length === 0 ? noOrgsMessage : '',
             hiddenOrgNote: hiddenOrgNote,
@@ -5227,9 +5304,9 @@ export class RecipeCockpitService {
         isOrgTypeAnswered = true;
 
         /*
-            Listed only because the CLI knew it as a sandbox or scratch org -- but the org's own
-            answer is the one that counts. An org that answers it is not a sandbox, or cannot say,
-            is asked NOTHING more: no describe, no Create.
+            Listed because the CLI knew it as a sandbox or scratch org, or because it is the CLI's
+            default org (#305) -- but the org's own answer is the one that counts. An org that
+            answers it is not a sandbox, or cannot say, is asked NOTHING more: no describe, no insert.
         */
         if ( dataOrgSelection.orgTypeDetail?.isSandbox !== true ) {
 
@@ -8289,7 +8366,7 @@ ${this.buildPaletteCustomProperties()}
     .toggleGlyph { display: block; width: 2.1rem; height: 2.1rem; transition: transform ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease; }
     [aria-expanded="true"] > .toggleGlyph { transform: rotate(90deg); }
     .noMotion > .toggleGlyph { transition: none; }
-    .toggleGlyph path { fill: var(--sdt-accent); stroke: none; }
+    .toggleGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
     .toolbar button, .emptyStateActions button, .treeInsert, .dataOrgLoad, .dataOrgNewScratch {
         color: var(--sdt-on-accent);
         background-color: var(--sdt-accent);
@@ -8493,6 +8570,17 @@ ${this.buildPaletteCustomProperties()}
         background-color: var(--sdt-chip-bg);
         border-radius: 0.6rem;
     }
+    @keyframes sdtSpin { to { transform: rotate(360deg); } }
+    /* A RING, NOT A GLYPH: ITS COLOURS ARE THE PALETTE'S, AND REDUCED MOTION LEAVES IT DRAWN BUT STILL */
+    .dataOrgSpinner {
+        display: inline-block;
+        width: 0.9rem;
+        height: 0.9rem;
+        border: 2px solid var(--sdt-border);
+        border-top-color: var(--sdt-accent);
+        border-radius: 50%;
+        animation: sdtSpin ${RECIPE_COCKPIT_SPINNER_ROTATION_MILLISECONDS}ms linear infinite;
+    }
     .dataOrgStatus { margin: 0.4rem 0; }
     .dataOrgStatus.failed { color: var(--sdt-removed); }
     .treecipeHeader { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
@@ -8549,6 +8637,9 @@ ${this.buildPaletteCustomProperties()}
     const PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL)};
     const GENERATE_PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL)};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
+    const DATA_ORG_CONNECTION_CHECK_INSERT_REASON = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON)};
+    const DATA_ORG_LOADING_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER)};
+    const DATA_ORG_NONE_LISTED_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER)};
     const PANEL_PLACE_VERSION = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION};
     const PANEL_PLACE_SCROLL_SAVE_DELAY = ${RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY};
     const PANEL_PLACE_TABS = ${JSON.stringify(RECIPE_COCKPIT_TREE_TABS)};
@@ -8612,7 +8703,14 @@ ${this.buildPaletteCustomProperties()}
     let isDataOrgLoadShown = true;
     let isDataOrgSelectShown = false;
     let isDataOrgRefreshShown = false;
-    let isDataOrgRefreshDisabled = false;
+    /*
+        WHILE "sf org list" CHECKS THE CONNECTIONS (#305) THE PICKER STAYS DRAWN: THE DROPDOWN HOLDS ONE
+        OPTION -- THE HOST'S PROVISIONAL LABEL, ELSE "Loading orgs…" -- THAT NOTHING CAN SELECT, AND A
+        SPINNER SITS TO ITS RIGHT. A NEW ARRAY PER CHANGE, SO EACH VIEW REDRAWS ITS OPTIONS ONCE
+    */
+    let isDataOrgChecking = false;
+    let dataOrgCheckingOptionLabels = [];
+    let dataOrgProvisionalRequestSequence = null;
     let dataOrgTypeLabel = null;
     let dataOrgStatusText = '';
     let isDataOrgStatusFailure = false;
@@ -8818,6 +8916,7 @@ ${this.buildPaletteCustomProperties()}
             element: viewElement,
             loadElement: createElement('button', 'dataOrgLoad', 'Choose org…'),
             selectElement: createElement('select', 'dataOrgSelect hidden'),
+            spinnerElement: createElement('span', 'dataOrgSpinner hidden'),
             typeElement: createElement('span', 'dataOrgType hidden'),
             openOrgElement: createElement('button', 'dataOrgOpen hidden', OPEN_ORG_LABEL),
             refreshElement: createElement('button', 'dataOrgRefresh hidden'),
@@ -8833,9 +8932,12 @@ ${this.buildPaletteCustomProperties()}
         dataOrgView.selectElement.setAttribute('aria-label', 'Salesforce org the generated data goes to');
         dataOrgView.selectElement.addEventListener('change', function () {
             const selectedValue = String(dataOrgView.selectElement.value || '');
-            if (!selectedValue) { return; }
+            // ONLY AN INDEX THE HOST LISTED: THE CHECK'S OWN OPTION, AND EVERY PLACEHOLDER, CARRY NONE
+            if (isDataOrgChecking || !/^[0-9]+$/.test(selectedValue)) { return; }
             vscodeApi.postMessage({ command: 'selectDataOrg', orgIndex: Number(selectedValue) });
         });
+
+        dataOrgView.spinnerElement.setAttribute('aria-hidden', 'true');
 
         // THE ⟳ GLYPH DRAWS SMALLER THAN THE TEXT AROUND IT, SO IT IS SIZED ON ITS OWN AND THE BUTTON SAYS WHAT IT DOES
         const refreshIconElement = createElement('span', 'dataOrgRefreshIcon', '⟳');
@@ -8872,6 +8974,7 @@ ${this.buildPaletteCustomProperties()}
 
         pickerElement.appendChild(dataOrgView.loadElement);
         pickerElement.appendChild(dataOrgView.selectElement);
+        pickerElement.appendChild(dataOrgView.spinnerElement);
         pickerElement.appendChild(dataOrgView.typeElement);
         pickerElement.appendChild(dataOrgView.openOrgElement);
         pickerElement.appendChild(dataOrgView.refreshElement);
@@ -8938,9 +9041,15 @@ ${this.buildPaletteCustomProperties()}
     */
     function drawDataOrgView(dataOrgView) {
 
-        if (dataOrgView.drawnLabels !== dataOrgLabels) {
+        const optionLabels = isDataOrgChecking ? dataOrgCheckingOptionLabels : dataOrgLabels;
+
+        if (dataOrgView.drawnLabels !== optionLabels) {
             dataOrgView.selectElement.textContent = '';
-            if (dataOrgLabels && dataOrgLabels.length > 0) {
+            if (isDataOrgChecking || (dataOrgLabels && dataOrgLabels.length === 0)) {
+                const onlyOptionElement = createElement('option', '', isDataOrgChecking ? optionLabels[0] : DATA_ORG_NONE_LISTED_PLACEHOLDER);
+                onlyOptionElement.value = '';
+                dataOrgView.selectElement.appendChild(onlyOptionElement);
+            } else if (dataOrgLabels && dataOrgLabels.length > 0) {
                 const placeholderElement = createElement('option', '', 'Choose org…');
                 placeholderElement.value = '';
                 dataOrgView.selectElement.appendChild(placeholderElement);
@@ -8950,12 +9059,13 @@ ${this.buildPaletteCustomProperties()}
                     dataOrgView.selectElement.appendChild(optionElement);
                 });
             }
-            dataOrgView.drawnLabels = dataOrgLabels;
+            dataOrgView.drawnLabels = optionLabels;
         }
 
-        dataOrgView.selectElement.value = dataOrgSelectedIndex === null ? '' : String(dataOrgSelectedIndex);
+        dataOrgView.selectElement.value = isDataOrgChecking || dataOrgSelectedIndex === null ? '' : String(dataOrgSelectedIndex);
         setShown(dataOrgView.loadElement, isDataOrgLoadShown);
-        setShown(dataOrgView.selectElement, isDataOrgSelectShown);
+        setShown(dataOrgView.selectElement, isDataOrgSelectShown || isDataOrgChecking);
+        setShown(dataOrgView.spinnerElement, isDataOrgChecking);
         setShown(dataOrgView.refreshElement, isDataOrgRefreshShown);
         dataOrgView.typeElement.textContent = dataOrgTypeLabel || '';
         setShown(dataOrgView.typeElement, dataOrgTypeLabel !== null);
@@ -8973,7 +9083,7 @@ ${this.buildPaletteCustomProperties()}
         // A PERMISSION SET ASSIGNMENT HOLDS THE PICKER TOO: IT ASSIGNS IN THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
         dataOrgView.selectElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning;
         dataOrgView.loadElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning;
-        dataOrgView.refreshElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isDataOrgRefreshDisabled;
+        dataOrgView.refreshElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning;
 
         setShown(dataOrgView.openOrgElement, isDataOrgSelectShown && dataOrgSelectedIndex !== null);
         dataOrgView.openOrgElement.disabled = isOrgOpenRunning || isScratchOrgRunning || isPermissionSetAssignRunning;
@@ -10950,6 +11060,7 @@ ${this.buildPaletteCustomProperties()}
     */
     function findTreeInsertReason(treeState) {
 
+        if (isDataOrgChecking) { return DATA_ORG_CONNECTION_CHECK_INSERT_REASON; }
         if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) { return 'Choose an org above to also insert it.'; }
         if (dataOrgSelectionFailureMessage) { return dataOrgSelectionFailureMessage; }
         if (insertRunningTreeKey !== null && insertRunningTreeKey !== treeState.tree.treeKey) { return 'Another tree is being inserted.'; }
@@ -11021,12 +11132,7 @@ ${this.buildPaletteCustomProperties()}
 
     function renderScratchOrgState(hostMessage) {
 
-        const wasRunning = isScratchOrgRunning;
-
         isScratchOrgRunning = !!hostMessage.isRunning;
-
-        // THE RUN ENDED: WHAT IT HELD DISABLED COMES BACK, ⟳ INCLUDED -- ITS LISTING HAS ALREADY ANSWERED
-        if (wasRunning && !isScratchOrgRunning) { isDataOrgRefreshDisabled = false; }
 
         drawDataOrgViews();
         drawTreeInserts();
@@ -11069,7 +11175,9 @@ ${this.buildPaletteCustomProperties()}
         dataOrgRequestedSequence = renderedSequence;
         isDataOrgLoadShown = false;
         isDataOrgSelectShown = false;
+        startDataOrgCheck();
         setDataOrgStatus(DATA_ORG_CONNECTION_CHECK_TEXT, false);
+        drawTreeInserts();
         vscodeApi.postMessage({ command: 'loadDataOrgs' });
 
     }
@@ -11079,17 +11187,19 @@ ${this.buildPaletteCustomProperties()}
         if (renderedSequence === null || dataOrgList.renderSequence !== renderedSequence) { return; }
 
         isDataOrgLoadShown = false;
+        isDataOrgChecking = false;
         clearDataOrgSelection();
         // ⟳ IS HOW A READER WHO JUST RE-AUTHORIZED AN ORG SEES IT LISTED, SO IT STAYS EVEN WITH NOTHING LISTED
         isDataOrgRefreshShown = true;
-        isDataOrgRefreshDisabled = false;
 
         // PRODUCTION AND ORGS THE CLI DOES NOT REPORT CONNECTED ARE NEVER LISTED, AND THE READER IS TOLD WHY ONE THEY AUTHORIZED IS MISSING
         dataOrgHiddenNoteText = [dataOrgList.forgottenOrgNotice || '', dataOrgList.hiddenOrgNote || ''].filter(Boolean).join(' ');
         dataOrgLabels = Array.isArray(dataOrgList.orgLabels) ? dataOrgList.orgLabels.slice() : [];
 
+        // THE DROPDOWN STAYS DRAWN WITH NOTHING TO CHOOSE, SO THE PICKER DOES NOT VANISH WHEN THE CHECK FOUND NO ORG (#305)
+        isDataOrgSelectShown = true;
+
         if (dataOrgLabels.length === 0) {
-            isDataOrgSelectShown = false;
             setDataOrgStatus(dataOrgList.noOrgsMessage, true);
             return;
         }
@@ -11123,15 +11233,39 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // THE DROPDOWN IS TAKEN AWAY UNTIL THE CLI ANSWERS, SO NOTHING CAN BE SELECTED FROM A LIST BEING REPLACED
+    /*
+        The dropdown STAYS until the CLI answers (#305), holding only the check's own option, so
+        nothing can be selected from a list being replaced. ⟳ stays usable: the host joins a check
+        already in flight rather than starting a second "sf org list".
+    */
     function showDataOrgConnectionCheck() {
 
         isDataOrgSelectShown = false;
         dataOrgHiddenNoteText = '';
-        // ONE CHECK AT A TIME: ⟳ COMES BACK WITH THE LIST IT ASKED FOR
-        isDataOrgRefreshDisabled = true;
+        startDataOrgCheck();
         clearDataOrgSelection();
         setDataOrgStatus(DATA_ORG_CONNECTION_CHECK_TEXT, false);
+
+    }
+
+    function startDataOrgCheck() {
+
+        isDataOrgChecking = true;
+        isDataOrgRefreshShown = true;
+        dataOrgCheckingOptionLabels = [DATA_ORG_LOADING_PLACEHOLDER];
+
+    }
+
+    // THE ORG CHOSEN LAST, ELSE THE CLI'S DEFAULT, SHOWN WHILE THE CHECK RUNS -- A LABEL ONLY, NEVER A SELECTION
+    function renderDataOrgProvisional(dataOrgProvisional) {
+
+        if (renderedSequence === null || dataOrgProvisional.renderSequence !== renderedSequence || !isDataOrgChecking) { return; }
+        if (typeof dataOrgProvisional.orgLabel !== 'string' || !dataOrgProvisional.orgLabel) { return; }
+        if (dataOrgProvisionalRequestSequence !== null && dataOrgProvisional.requestSequence < dataOrgProvisionalRequestSequence) { return; }
+
+        dataOrgProvisionalRequestSequence = dataOrgProvisional.requestSequence;
+        dataOrgCheckingOptionLabels = [dataOrgProvisional.orgLabel];
+        drawDataOrgViews();
 
     }
 
@@ -11501,7 +11635,9 @@ ${this.buildPaletteCustomProperties()}
         isDataOrgLoadShown = true;
         isDataOrgSelectShown = false;
         isDataOrgRefreshShown = false;
-        isDataOrgRefreshDisabled = false;
+        isDataOrgChecking = false;
+        dataOrgCheckingOptionLabels = [];
+        dataOrgProvisionalRequestSequence = null;
         dataOrgTypeLabel = null;
         dataOrgStatusText = '';
         isDataOrgStatusFailure = false;
@@ -11657,6 +11793,11 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'dataOrgList') {
             renderDataOrgList(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'dataOrgProvisional') {
+            renderDataOrgProvisional(hostMessage);
             return;
         }
 
