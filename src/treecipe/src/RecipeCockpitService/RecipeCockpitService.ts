@@ -7,16 +7,15 @@ import type { Connection } from '@salesforce/core';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { ErrorHandlingService } from '../ErrorHandlingService/ErrorHandlingService';
 import { IAuthenticatedOrgDetail, ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
-import { ITreeMetadataDeployPlan, METADATA_DEPLOY_MANIFEST_FILE_NAME, METADATA_DEPLOY_MAX_BUFFER_BYTES, METADATA_DEPLOY_NOTIFICATION_SKIPS_SHOWN, METADATA_DEPLOY_TIMEOUT_MILLISECONDS, MetadataDeployOutcome, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
 import {
     IPermissionSetCandidate,
     PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS,
-    PERMISSION_SET_DEPLOY_TIMEOUT_MILLISECONDS,
     PERMISSION_SET_MAX_BUFFER_BYTES,
     PERMISSION_SET_MAX_PICKS,
+    PERMISSION_SET_NOTIFICATION_SKIPS_SHOWN,
     PermissionSetAssignOutcome,
-    RecipeCockpitPermissionSetDeploy
-} from './RecipeCockpitPermissionSetDeploy';
+    RecipeCockpitPermissionSetAssign
+} from './RecipeCockpitPermissionSetAssign';
 import {
     DevHubConfigSource,
     IOrgDescribeSource,
@@ -311,7 +310,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org. "Deploy this metadata…", on every tree's Treecipe tab, deploys that tree's custom objects (each with everything in its source folder) and the custom fields of its standard objects from this workspace's source to the org selected there, or to a sandbox or scratch org you pick when none is, after a confirmation that lists the files, and only once the org answers again that it is a sandbox. "Deploy & assign permission sets…", beside it, deploys the permission sets you pick from this workspace's source that grant access to that tree's objects to the same kind of org, and assigns them to the user that org is authorized as, after a confirmation and the same sandbox check.
+It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Treecipe tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -925,30 +924,15 @@ export interface IRecipeCockpitScratchOrgStateMessage {
 }
 
 /*
-    "Deploy this metadata…" (#211, #273): while isRunning, every tree's insert, every deploy button
-    and the org picker are disabled, and statusText is the phase. Once it ends, statusText is how it
-    ended, and hasOutput says whether "View output" has a result file -- the path stays on the host.
-    treeKey names the card the line is drawn on. Stored and replayed. hasDeployStatus (#283) says a
-    failed deploy has an "Open Deployment Status" link; the page it opens stays on the host too.
+    "Assign permission sets to me…" (#274, #302): while isRunning, every tree's insert, every
+    assign button and the org picker are disabled. treeKey names the card whose button was clicked.
+    It carries no text: how a run went is said in a VS Code notification, whose buttons ("View
+    output") are its only follow-up actions. Stored and replayed.
 */
-export interface IRecipeCockpitMetadataDeployStateMessage {
-    command: 'metadataDeployState';
+export interface IRecipeCockpitPermissionSetAssignStateMessage {
+    command: 'permissionSetAssignState';
     isRunning: boolean;
     treeKey: string;
-    statusText: string;
-    isFailure: boolean;
-    hasOutput: boolean;
-    hasDeployStatus?: boolean;
-}
-
-/*
-    The last failed deploy's Deployment Status page (#283), HOST-ONLY: the tree its line is drawn
-    on, the org it went to, and the --path "sf org open" is given. Never posted.
-*/
-export interface IRecipeCockpitDeployStatusTarget {
-    treeKey: string;
-    orgDetail: IAuthenticatedOrgDetail;
-    deployStatusPath: string;
 }
 
 /*
@@ -963,23 +947,15 @@ export interface IRecipeCockpitOrgOpenStateMessage {
 
 export const RECIPE_COCKPIT_OPEN_ORG_LABEL = 'Open in browser';
 
-export const RECIPE_COCKPIT_METADATA_DEPLOY_ACTION_LABEL = 'Deploy this metadata…';
+export const RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL = 'View output';
 
-export const RECIPE_COCKPIT_METADATA_DEPLOY_CONFIRM_LABEL = 'Deploy';
+export const RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL = 'Assign permission sets to me…';
 
-export const RECIPE_COCKPIT_METADATA_DEPLOY_ORG_PLACEHOLDER = 'Choose the sandbox or scratch org to deploy this tree\'s metadata to';
+export const RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL = 'Assign';
 
-export const RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL = 'View output';
+export const RECIPE_COCKPIT_PERMISSION_SET_PICK_PLACEHOLDER = 'Choose the permission sets to assign to you for this tree';
 
-export const RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL = 'Open Deployment Status';
-
-export const RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL = 'Deploy & assign permission sets…';
-
-export const RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL = 'Deploy and assign';
-
-export const RECIPE_COCKPIT_PERMISSION_SET_PICK_PLACEHOLDER = 'Choose the permission sets to deploy and assign for this tree';
-
-export const RECIPE_COCKPIT_PERMISSION_SET_ORG_PLACEHOLDER = 'Choose the sandbox or scratch org to deploy and assign this tree\'s permission sets in';
+export const RECIPE_COCKPIT_PERMISSION_SET_ORG_PLACEHOLDER = 'Choose the sandbox or scratch org to assign this tree\'s permission sets in';
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL = 'Create scratch org';
 
@@ -1013,7 +989,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitTreePreferencesMessage
                                         | IRecipeCockpitObjectSelectionMessage
                                         | IRecipeCockpitScratchOrgStateMessage
-                                        | IRecipeCockpitMetadataDeployStateMessage
+                                        | IRecipeCockpitPermissionSetAssignStateMessage
                                         | IRecipeCockpitOrgOpenStateMessage
                                         | IRecipeCockpitDatasetAddedMessage;
 
@@ -1071,9 +1047,9 @@ export interface IRecipeCockpitDataOrgSelection {
     requestSequence: number;
     orgTypeDetail?: IOrgTypeDetail;
     /*
-        Set once this selection's describes have answered and its readiness was posted (#273). A
-        deploy to the selection waits for it: a readiness built from describes taken BEFORE a
-        deploy, posted after it, would put back the reasons the deploy just removed.
+        Set once this selection's describes have answered and its readiness was posted (#274). A
+        permission set assignment in the selection waits for it: a readiness built from describes
+        taken BEFORE an assignment, posted after it, would put back the reasons it just removed.
     */
     isReadinessPosted?: boolean;
 }
@@ -1144,11 +1120,9 @@ export type RecipeCockpitPanelAction =
     | { kind: 'createScratchOrg' }
     | { kind: 'postScratchOrgState'; hostMessage: IRecipeCockpitScratchOrgStateMessage }
     | { kind: 'viewScratchOrgOutput'; outputFilePath: string }
-    | { kind: 'deployTreeMetadata'; treeKey: string; isSelectedOrg: boolean }
-    | { kind: 'deployTreePermissionSets'; treeKey: string; isSelectedOrg: boolean }
-    | { kind: 'postMetadataDeployState'; hostMessage: IRecipeCockpitMetadataDeployStateMessage }
-    | { kind: 'viewMetadataDeployOutput'; outputFilePath: string }
-    | { kind: 'openMetadataDeployStatus'; deployStatusTarget: IRecipeCockpitDeployStatusTarget }
+    | { kind: 'assignTreePermissionSets'; treeKey: string; isSelectedOrg: boolean }
+    // A REFUSAL IS A WARNING NOTIFICATION, AND THE STATE GIVES THE CLICKED BUTTON BACK
+    | { kind: 'refusePermissionSetAssign'; refusalText?: string; hostMessage: IRecipeCockpitPermissionSetAssignStateMessage }
     | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
     | { kind: 'postOrgOpenState'; hostMessage: IRecipeCockpitOrgOpenStateMessage };
 
@@ -1217,16 +1191,13 @@ export interface IRecipeCockpitPanelState {
     scratchOrgStateMessage?: IRecipeCockpitScratchOrgStateMessage;
     scratchOrgOutputFilePath?: string;
     /*
-        "Deploy this metadata…" (#273): the cards it is drawn on, every card with a folder and an
-        object, a pending/active pair like the insert's. WHAT is deployed is read from the stored
-        model's tree on the host, never from the message.
+        "Assign permission sets to me…" (#274, #302): the cards it is drawn on, every card with a
+        folder and an object, a pending/active pair like the insert's. WHICH objects are read from
+        the stored model's tree on the host, never from the message.
     */
-    pendingDeployableTreeKeys: Set<string>;
-    deployableTreeKeys: Set<string>;
-    metadataDeployStateMessage?: IRecipeCockpitMetadataDeployStateMessage;
-    metadataDeployOutputFilePath?: string;
-    // THE PAGE THE LAST FAILED DEPLOY'S "Open Deployment Status" OPENS (#283), CLEARED WHEN THE NEXT DEPLOY STARTS
-    metadataDeployStatusTarget?: IRecipeCockpitDeployStatusTarget;
+    pendingAssignableTreeKeys: Set<string>;
+    assignableTreeKeys: Set<string>;
+    permissionSetAssignStateMessage?: IRecipeCockpitPermissionSetAssignStateMessage;
     // THE PLACE workspaceState KEPT FOR THIS MODEL (#230), REPLAYED UNTIL THE MODEL'S "rendered" SAYS IT WAS DRAWN
     restorePlace?: IRecipeCockpitPanelPlace;
     // HOST-ONLY, REPLACED WITH THE MODEL: WHAT A FILTERED COPY NESTS A KEPT FRIEND BY (#219)
@@ -1242,36 +1213,14 @@ export interface IRecipeCockpitPanelState {
 }
 
 /*
-    How a metadata deploy ended (#211, #273): its line, the org it was for and the objects it
-    planned, whether the reader confirmed it, whether the CLI ran (so those describes are stale),
-    and the result file "View output" opens.
-*/
-interface IRecipeCockpitMetadataDeployClosingState {
-    statusText: string;
-    isFailure: boolean;
-    isDeployRun: boolean;
-    orgDetail?: IAuthenticatedOrgDetail;
-    deployedObjectApiNames?: string[];
-    isConfirmed?: boolean;
-    // THE CLI ANSWERED THAT THE DEPLOY SUCCEEDED: THE ONE ANSWER THE READINESS IS UPDATED FROM (#270)
-    isDeployed?: boolean;
-    outputFilePath?: string;
-    // A FAILED DEPLOY'S DEPLOYMENT STATUS PAGE, FOR orgDetail (#283)
-    deployStatusPath?: string;
-}
-
-/*
-    How "Deploy & assign permission sets…" ended (#274): its line, the org it was for, whether the
-    reader confirmed it, whether any pick is now held by the user (so the cards are re-checked),
-    and the result file "View output" opens.
+    How "Assign permission sets to me…" ended (#274, #302): the org it was for, whether the reader
+    confirmed it, and whether any pick is now held by the user (so the cards are re-checked). What
+    it said is a notification's, never the panel's.
 */
 interface IRecipeCockpitPermissionSetClosingState {
-    statusText: string;
-    isFailure: boolean;
     orgDetail?: IAuthenticatedOrgDetail;
     isConfirmed?: boolean;
     isAssigned?: boolean;
-    outputFilePath?: string;
 }
 
 // ONE LOOKUP'S ANSWER, WITH EVERY Id ITS OWN SEARCHES RETURNED: ONLY THOSE MAY BE WRITTEN (#254)
@@ -2673,54 +2622,6 @@ export class RecipeCockpitService {
     }
 
     /*
-        A deploy the CLI answered succeeded for (#270, #273): its objects are in the org now, so
-        every card that lists one is told so from that answer -- no describe and no connection. Only
-        each tree's recipe block is read, from the workspace, since a block that cannot be read stays
-        a reason. An answer for a selection, model or request the reader has moved on from is dropped.
-    */
-    private static async postDeployedObjectReadiness(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, deployedObjectApiNames: readonly string[]) {
-
-        const dataOrgSelection = panelState.dataOrgSelection;
-        const recipeDataMessage = panelState.recipeDataMessage;
-        const objectApiNames = new Set(deployedObjectApiNames.filter(objectApiName => panelState.dataOrgObjectApiNames.has(objectApiName)));
-
-        if ( !dataOrgSelection || dataOrgSelection.orgTypeDetail?.isSandbox !== true || !recipeDataMessage || objectApiNames.size === 0 ) {
-            return;
-        }
-
-        const requestSequence = dataOrgSelection.requestSequence;
-        const objectRecipeDataMessage: IRecipeCockpitRecipeDataMessage = {
-            ...recipeDataMessage,
-            recipe: { ...recipeDataMessage.recipe, trees: recipeDataMessage.recipe.trees.filter(tree => tree.objects.some(treeObject => objectApiNames.has(treeObject.objectApiName))) }
-        };
-        const createTargets = ( await this.collectCreateTargets(panelState, objectRecipeDataMessage) )
-            .filter(createTarget => objectApiNames.has(createTarget.objectApiName));
-
-        const isStillCurrent = this.recipeCockpitPanel === cockpitPanel
-                                && this.recipeCockpitPanelState === panelState
-                                && panelState.dataOrgSelection === dataOrgSelection
-                                && panelState.dataOrgRequestSequence === requestSequence
-                                && panelState.recipeDataMessage === recipeDataMessage;
-
-        if ( !isStillCurrent ) {
-            return;
-        }
-
-        this.postToPanel(cockpitPanel, {
-            command: 'dataOrgReadiness',
-            objects: [...objectApiNames].map(objectApiName => RecipeCockpitRecordCreation.buildDeployedObjectReadiness(objectApiName)),
-            createTargets: createTargets.map(createTarget => ({
-                ...RecipeCockpitRecordCreation.buildDeployedObjectReadiness(createTarget.objectApiName, createTarget.recipeFieldRefusalReason),
-                treeKey: createTarget.treeKey
-            })),
-            insertResults: [],
-            requestSequence: requestSequence,
-            renderSequence: recipeDataMessage.renderSequence
-        });
-
-    }
-
-    /*
         What the generate button runs for a card with exclusions (#219): the filtered copy of its recipe, or
         why there is none. Read at the click from the stored model, which is what the card shows.
     */
@@ -2884,8 +2785,8 @@ export class RecipeCockpitService {
             addableParentTargets: new Map(),
             datasetUpdateSequence: 0,
             acknowledgedRenderSequence: null,
-            pendingDeployableTreeKeys: new Set(),
-            deployableTreeKeys: new Set()
+            pendingAssignableTreeKeys: new Set(),
+            assignableTreeKeys: new Set()
         };
 
     }
@@ -2945,7 +2846,7 @@ export class RecipeCockpitService {
         this.recipeCockpitPanelState = this.buildInitialPanelState(workspaceRoot);
 
         this.adoptScratchOrgRunState(this.recipeCockpitPanelState);
-        this.adoptMetadataDeployRunState(this.recipeCockpitPanelState);
+        this.adoptPermissionSetAssignRunState(this.recipeCockpitPanelState);
         this.recipeCockpitPanelState.isOrgOpenInFlight = this.isOrgOpenInFlightForWindow;
 
         if ( previousPanelState ) {
@@ -2955,10 +2856,8 @@ export class RecipeCockpitService {
             // A SCRATCH ORG RUN OUTLIVES THE RELOAD, AND ITS LINE AND OUTPUT GO WITH IT
             this.recipeCockpitPanelState.scratchOrgStateMessage = previousPanelState.scratchOrgStateMessage;
             this.recipeCockpitPanelState.scratchOrgOutputFilePath = previousPanelState.scratchOrgOutputFilePath;
-            // SO DOES A METADATA DEPLOY'S (#211)
-            this.recipeCockpitPanelState.metadataDeployStateMessage = previousPanelState.metadataDeployStateMessage;
-            this.recipeCockpitPanelState.metadataDeployOutputFilePath = previousPanelState.metadataDeployOutputFilePath;
-            this.recipeCockpitPanelState.metadataDeployStatusTarget = previousPanelState.metadataDeployStatusTarget;
+            // SO DOES A PERMISSION SET ASSIGNMENT'S (#274)
+            this.recipeCockpitPanelState.permissionSetAssignStateMessage = previousPanelState.permissionSetAssignStateMessage;
         }
 
         if ( !existingCockpitPanel ) {
@@ -3158,8 +3057,8 @@ export class RecipeCockpitService {
         panelState.dataOrgObjectApiNames = new Set();
         panelState.pendingInsertableTreeKeys = new Set(this.collectInsertableTreeKeys(recipeViewModel));
         panelState.insertableTreeKeys = new Set();
-        panelState.pendingDeployableTreeKeys = new Set(this.collectDeployableTreeKeys(recipeViewModel));
-        panelState.deployableTreeKeys = new Set();
+        panelState.pendingAssignableTreeKeys = new Set(this.collectAssignableTreeKeys(recipeViewModel));
+        panelState.assignableTreeKeys = new Set();
         // A "+" OF THE OLD MODEL NAMES AN ITERATION THE NEW ONE'S ROWS MAY NOT DRAW WHERE IT WAS
         panelState.pendingInsertableFriendTargets = this.collectInsertableFriendTargets(recipeViewModel);
         panelState.insertableFriendTargets = new Map();
@@ -3257,7 +3156,7 @@ export class RecipeCockpitService {
                 // A RELOADED DOCUMENT HAS NO DROPDOWN TO DRAW A SELECTION IN, SO ONE STILL BEING CHECKED IS ENDED
                 panelState.dataOrgObjectApiNames = new Set();
                 panelState.insertableTreeKeys = new Set();
-                panelState.deployableTreeKeys = new Set();
+                panelState.assignableTreeKeys = new Set();
                 panelState.insertableFriendTargets = new Map();
                 panelState.wireableLookupTargets = new Map();
                 panelState.addableParentTargets = new Map();
@@ -3278,7 +3177,7 @@ export class RecipeCockpitService {
                 panelState.isGenerateTreecipeOffered = panelState.pendingIsGenerateTreecipeOffered;
                 panelState.dataOrgObjectApiNames = panelState.pendingDataOrgObjectApiNames;
                 panelState.insertableTreeKeys = panelState.pendingInsertableTreeKeys;
-                panelState.deployableTreeKeys = panelState.pendingDeployableTreeKeys;
+                panelState.assignableTreeKeys = panelState.pendingAssignableTreeKeys;
                 panelState.insertableFriendTargets = panelState.pendingInsertableFriendTargets;
                 panelState.wireableLookupTargets = panelState.pendingWireableLookupTargets;
                 panelState.addableParentTargets = panelState.pendingAddableParentTargets;
@@ -3303,7 +3202,7 @@ export class RecipeCockpitService {
                     panelState.isGenerateTreecipeOffered = false;
                     panelState.dataOrgObjectApiNames = new Set();
                     panelState.insertableTreeKeys = new Set();
-                    panelState.deployableTreeKeys = new Set();
+                    panelState.assignableTreeKeys = new Set();
                     panelState.insertableFriendTargets = new Map();
                     panelState.wireableLookupTargets = new Map();
                     panelState.addableParentTargets = new Map();
@@ -3518,18 +3417,16 @@ export class RecipeCockpitService {
                 await this.openScratchOrgOutput(panelAction.outputFilePath, panelState.workspaceRoot);
                 return;
 
-            case 'deployTreeMetadata':
+            case 'assignTreePermissionSets':
 
-                await this.deployTreeMetadataFromPanel(cockpitPanel, panelAction.treeKey, panelAction.isSelectedOrg);
+                await this.assignTreePermissionSetsFromPanel(cockpitPanel, panelAction.treeKey, panelAction.isSelectedOrg);
                 return;
 
-            case 'deployTreePermissionSets':
+            case 'refusePermissionSetAssign':
 
-                await this.deployTreePermissionSetsFromPanel(cockpitPanel, panelAction.treeKey, panelAction.isSelectedOrg);
-                return;
-
-            case 'postMetadataDeployState':
-
+                if ( panelAction.refusalText ) {
+                    VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(panelAction.refusalText));
+                }
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
                 return;
 
@@ -3541,16 +3438,6 @@ export class RecipeCockpitService {
             case 'postOrgOpenState':
 
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
-                return;
-
-            case 'viewMetadataDeployOutput':
-
-                await this.openMetadataDeployOutput(panelAction.outputFilePath, panelState.workspaceRoot);
-                return;
-
-            case 'openMetadataDeployStatus':
-
-                await this.openMetadataDeployStatus(panelAction.deployStatusTarget);
                 return;
 
         }
@@ -4728,476 +4615,73 @@ export class RecipeCockpitService {
 
     }
 
-    private static isMetadataDeployInFlight = false;
+    private static isPermissionSetAssignInFlight = false;
 
-    private static metadataDeployRunStateMessage: IRecipeCockpitMetadataDeployStateMessage | undefined;
+    private static permissionSetAssignRunStateMessage: IRecipeCockpitPermissionSetAssignStateMessage | undefined;
 
     // KEPT FOR THE WINDOW WHILE RUNNING, STORED ON WHICHEVER PANEL STATE IS CURRENT, AND POSTED TO WHICHEVER PANEL IS OPEN
-    private static setMetadataDeployState(metadataDeployStateMessage: IRecipeCockpitMetadataDeployStateMessage) {
+    private static setPermissionSetAssignState(permissionSetAssignStateMessage: IRecipeCockpitPermissionSetAssignStateMessage) {
 
-        this.metadataDeployRunStateMessage = metadataDeployStateMessage.isRunning ? metadataDeployStateMessage : undefined;
-        this.recipeCockpitPanelState.metadataDeployStateMessage = metadataDeployStateMessage;
-
-        // A RUN THAT STARTS REPLACES THE LINE THE LAST FAILED DEPLOY'S LINK WAS DRAWN ON
-        if ( metadataDeployStateMessage.isRunning ) {
-            this.recipeCockpitPanelState.metadataDeployStatusTarget = undefined;
-        }
+        this.permissionSetAssignRunStateMessage = permissionSetAssignStateMessage.isRunning ? permissionSetAssignStateMessage : undefined;
+        this.recipeCockpitPanelState.permissionSetAssignStateMessage = permissionSetAssignStateMessage;
 
         if ( this.recipeCockpitPanel ) {
-            this.postToPanel(this.recipeCockpitPanel, metadataDeployStateMessage);
+            this.postToPanel(this.recipeCockpitPanel, permissionSetAssignStateMessage);
         }
 
     }
 
-    // A PANEL STATE BUILT WHILE A DEPLOY IS GOING STARTS FROM ITS STATE, SO ITS ROUTER REFUSES WHAT THE DEPLOY HOLDS
-    private static adoptMetadataDeployRunState(panelState: IRecipeCockpitPanelState) {
+    // A PANEL STATE BUILT WHILE AN ASSIGNMENT IS GOING STARTS FROM ITS STATE, SO ITS ROUTER REFUSES WHAT THE ASSIGNMENT HOLDS
+    private static adoptPermissionSetAssignRunState(panelState: IRecipeCockpitPanelState) {
 
-        if ( this.isMetadataDeployInFlight && this.metadataDeployRunStateMessage ) {
-            panelState.metadataDeployStateMessage = this.metadataDeployRunStateMessage;
+        if ( this.isPermissionSetAssignInFlight && this.permissionSetAssignRunStateMessage ) {
+            panelState.permissionSetAssignStateMessage = this.permissionSetAssignRunStateMessage;
         }
-
-    }
-
-    /*
-        "Deploy this metadata…" (#211, #273), for one tree of the model on screen: to the org the
-        Treecipe tab has selected (isSelectedOrg, which the router checked answered that it is a
-        sandbox), or else to one the reader picks from the same non-production list, which then
-        becomes the Treecipe tab's selection once the deploy was confirmed. One at a time per
-        window. The CLI's own answer is the result (#270): nothing is described again once it
-        returns. A success makes the deployed objects ready on every card that lists them, for the
-        selection the deploy started under; a failure leaves the readiness as it was. Once the CLI
-        has run, that org's describes of the planned objects are dropped from the session cache
-        either way, so no describe from before the deploy outlives it; the insert's own check on the
-        click describes them afresh.
-    */
-    private static async deployTreeMetadataFromPanel(cockpitPanel: vscode.WebviewPanel, treeKey: string, isSelectedOrg: boolean) {
-
-        const panelState = this.recipeCockpitPanelState;
-        const tree = panelState.recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
-        const deploySelection = isSelectedOrg ? panelState.dataOrgSelection : undefined;
-
-        if ( this.isMetadataDeployInFlight || !tree || ( isSelectedOrg && !deploySelection ) ) {
-            this.postToPanel(cockpitPanel, this.metadataDeployRunStateMessage
-                ?? panelState.metadataDeployStateMessage
-                ?? { command: 'metadataDeployState', isRunning: false, treeKey: '', statusText: '', isFailure: false, hasOutput: false });
-            return;
-        }
-
-        this.isMetadataDeployInFlight = true;
-        const treeLabel = tree.customName || tree.title;
-        const objectApiNames = [...new Set(tree.objects.map(treeObject => treeObject.objectApiName))];
-        const buildState = (isRunning: boolean, statusText: string, isFailure = false, hasOutput = false, hasDeployStatus = false): IRecipeCockpitMetadataDeployStateMessage => ({
-            command: 'metadataDeployState', isRunning, treeKey, statusText, isFailure, hasOutput,
-            ...( hasDeployStatus ? { hasDeployStatus: true } : {} )
-        });
-        const reportStatus = (statusText: string) => this.setMetadataDeployState(buildState(true, statusText));
-        let closingState: IRecipeCockpitMetadataDeployClosingState = { statusText: '', isFailure: false, isDeployRun: false };
-        // SET THE MOMENT THE CLI IS STARTED, SO A THROW AFTER IT STILL DROPS THE CACHED DESCRIBES
-        let cliStartedFor: { orgDetail: IAuthenticatedOrgDetail; objectApiNames: string[] } | undefined;
-
-        reportStatus(`Preparing the deploy of ${treeLabel}…`);
-
-        try {
-
-            closingState = await this.performMetadataDeploy(
-                panelState.workspaceRoot,
-                treeLabel,
-                objectApiNames,
-                deploySelection ? async () => deploySelection.orgDetail : async () => this.promptForMetadataDeployOrg(reportStatus),
-                reportStatus,
-                (orgDetail, plannedObjectApiNames) => { cliStartedFor = { orgDetail: orgDetail, objectApiNames: plannedObjectApiNames }; }
-            );
-
-        } catch (deployError) {
-
-            closingState = { statusText: `The deploy of ${treeLabel} stopped: ${this.describeThrown(deployError)}`, isFailure: true, isDeployRun: !!cliStartedFor };
-            throw deployError;
-
-        } finally {
-
-            /*
-                The deploy stays IN FLIGHT -- every deploy, every insert and the picker held -- until
-                the readiness its answer changed, and a picked org's selection, have been posted.
-            */
-            try {
-
-                if ( cliStartedFor ) {
-                    const { orgDetail, objectApiNames: plannedObjectApiNames } = cliStartedFor;
-                    plannedObjectApiNames.forEach(objectApiName => SalesforceOrgService.clearDescribeCache(orgDetail.username, objectApiName));
-                }
-
-                const currentPanel = this.recipeCockpitPanel;
-                const currentPanelState = this.recipeCockpitPanelState;
-
-                if ( closingState.isDeployed === true && deploySelection && currentPanel && currentPanelState.dataOrgSelection === deploySelection ) {
-                    await this.postDeployedObjectReadiness(currentPanel, currentPanelState, closingState.deployedObjectApiNames ?? []);
-                }
-
-                // AN ORG PICKED HERE IS ONE THE PICKER LISTS, SO IT IS SELECTED FROM THE SESSION'S LISTING, AND DESCRIBED AFRESH
-                if ( !deploySelection && closingState.isConfirmed === true && closingState.orgDetail && currentPanel && currentPanelState.recipeDataMessage ) {
-                    this.rememberDataOrgUsername(closingState.orgDetail.username);
-                    currentPanelState.dataOrgUsername = closingState.orgDetail.username;
-                    await this.loadDataOrgs(currentPanel, currentPanelState);
-                }
-
-            } finally {
-
-                this.isMetadataDeployInFlight = false;
-                const deployStatusTarget: IRecipeCockpitDeployStatusTarget | undefined = closingState.deployStatusPath && closingState.orgDetail
-                    ? { treeKey: treeKey, orgDetail: closingState.orgDetail, deployStatusPath: closingState.deployStatusPath }
-                    : undefined;
-                this.recipeCockpitPanelState.metadataDeployOutputFilePath = closingState.outputFilePath;
-                this.recipeCockpitPanelState.metadataDeployStatusTarget = deployStatusTarget;
-                this.setMetadataDeployState(buildState(false, closingState.statusText, closingState.isFailure, !!closingState.outputFilePath, !!deployStatusTarget));
-
-            }
-
-        }
-
-    }
-
-    // THE TREECIPE TAB'S OWN LIST: SANDBOXES AND SCRATCH ORGS THE CLI REPORTS CONNECTED, NEVER PRODUCTION
-    private static async promptForMetadataDeployOrg(reportStatus: (statusText: string) => void): Promise<IAuthenticatedOrgDetail | undefined> {
-
-        reportStatus('Choose the sandbox or scratch org to deploy to…');
-
-        return await VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(
-            SalesforceOrgService.listDataOrgDetails().then(dataOrgListing => ({
-                orgDetails: dataOrgListing.orgDetails,
-                emptyListMessage: this.buildDataOrgNoOrgsMessage(dataOrgListing.hiddenOrgReasonCounts)
-            })),
-            RECIPE_COCKPIT_METADATA_DEPLOY_ORG_PLACEHOLDER
-        );
 
     }
 
     /*
-        The plan is made BEFORE an org is asked for, so a project that cannot be deployed opens no
-        picker; resolveOrgDetail answering undefined (a dismissed picker) is a quiet cancel.
-    */
-    private static async performMetadataDeploy(workspaceRoot: string,
-                                                treeLabel: string,
-                                                objectApiNames: string[],
-                                                resolveOrgDetail: () => Promise<IAuthenticatedOrgDetail | undefined>,
-                                                reportStatus: (statusText: string) => void,
-                                                onCliStarted: (orgDetail: IAuthenticatedOrgDetail, plannedObjectApiNames: string[]) => void): Promise<IRecipeCockpitMetadataDeployClosingState> {
-
-        const refuse = (refusalText: string, orgDetail?: IAuthenticatedOrgDetail): IRecipeCockpitMetadataDeployClosingState => {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(refusalText));
-            return { statusText: refusalText, isFailure: true, isDeployRun: false, orgDetail: orgDetail };
-        };
-
-        let packageDirectoryPaths: string[];
-        try {
-            packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
-        } catch (projectError) {
-            return refuse(`Nothing was deployed: ${this.describeThrown(projectError)}`);
-        }
-
-        const deployPlan: ITreeMetadataDeployPlan = RecipeCockpitMetadataDeploy.planTreeMetadataDeploy(treeLabel, objectApiNames, workspaceRoot, packageDirectoryPaths);
-
-        if ( deployPlan.members.length === 0 ) {
-            return refuse(RecipeCockpitMetadataDeploy.buildNothingToDeployMessage(deployPlan));
-        }
-
-        let orgDetail: IAuthenticatedOrgDetail | undefined;
-        try {
-            orgDetail = await resolveOrgDetail();
-        } catch (listError) {
-            return refuse(`Nothing was deployed: ${this.describeThrown(listError)}`);
-        }
-
-        if ( !orgDetail ) {
-            return { statusText: '', isFailure: false, isDeployRun: false };
-        }
-
-        const plannedObjectApiNames = deployPlan.objectPlans.map(objectPlan => objectPlan.objectApiName);
-        // NO PARENTHESES: A NOTIFICATION ESCAPES THEM, AND THIS LABEL IS IN EVERY ONE THE DEPLOY SHOWS
-        const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
-        const componentText = `${deployPlan.members.length} ${deployPlan.members.length === 1 ? 'component' : 'components'}`;
-
-        const confirmation = await vscode.window.showWarningMessage(
-            `Deploy ${componentText} of ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgLabel)}?`,
-            { modal: true, detail: RecipeCockpitMetadataDeploy.buildConfirmationDetail(deployPlan, orgLabel) },
-            RECIPE_COCKPIT_METADATA_DEPLOY_CONFIRM_LABEL
-        );
-
-        if ( confirmation !== RECIPE_COCKPIT_METADATA_DEPLOY_CONFIRM_LABEL ) {
-            return { statusText: '', isFailure: false, isDeployRun: false };
-        }
-
-        const confirmed = { orgDetail: orgDetail, isConfirmed: true, deployedObjectApiNames: plannedObjectApiNames };
-
-        /*
-            The org was checked when it was selected or listed; it is asked AGAIN, by username, after
-            the reader confirmed and before any process -- an org that does not answer that it is a
-            sandbox gets no deploy, whatever the selection or the listing said.
-        */
-        reportStatus(`Checking that ${orgLabel} is a sandbox…`);
-
-        let orgTypeDetail: IOrgTypeDetail | undefined;
-        // THE HOST A FAILED DEPLOY'S deployUrl MUST BE ON BEFORE "Open Deployment Status" IS OFFERED (#283)
-        let deployOrgInstanceUrl: string | undefined;
-        try {
-            const deployOrgConnection = await SalesforceOrgService.getConnection(orgDetail.username);
-            deployOrgInstanceUrl = typeof deployOrgConnection.instanceUrl === 'string' ? deployOrgConnection.instanceUrl : undefined;
-            orgTypeDetail = await SalesforceOrgService.queryOrganizationType(SalesforceOrgService.toQuerySource(deployOrgConnection));
-        } catch (connectionError) {
-            return { ...refuse(`Nothing was deployed: could not connect to ${orgLabel}: ${this.describeThrown(connectionError)}`, orgDetail), isConfirmed: false };
-        }
-
-        if ( orgTypeDetail?.isSandbox !== true ) {
-            return { ...refuse(`Nothing was deployed: ${orgLabel} ${orgTypeDetail ? `answered that it is ${SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail)}` : 'could not say whether it is a sandbox'}. Metadata is deployed only to a sandbox or scratch org.`, orgDetail), isConfirmed: false };
-        }
-
-        /*
-            The members go in a package.xml OUTSIDE the workspace, so the command line stays short
-            whatever the tree holds (cmd.exe refuses one past 8,191 characters) and nothing is left
-            in the repository. The folder is removed however the deploy ends.
-        */
-        const packageXml = RecipeCockpitMetadataDeploy.buildPackageXml(deployPlan.members, RecipeCockpitMetadataDeploy.readSourceApiVersion(workspaceRoot));
-        const manifestFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-metadata-deploy-'));
-        const manifestFilePath = path.join(manifestFolderPath, METADATA_DEPLOY_MANIFEST_FILE_NAME);
-        let isCancelled = false;
-        let deployInvocation: ISalesforceCliInvocationResult;
-
-        try {
-
-            fs.writeFileSync(manifestFilePath, packageXml, 'utf-8');
-            const deployArguments = RecipeCockpitMetadataDeploy.buildMetadataDeployArguments(manifestFilePath, orgDetail.username);
-
-            reportStatus(`Deploying ${componentText} of ${treeLabel}…`);
-            onCliStarted(orgDetail, plannedObjectApiNames);
-
-            deployInvocation = await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Recipe Cockpit: deploying ${componentText} of ${treeLabel} to ${orgLabel}`,
-                cancellable: true
-            }, async (_progress, cancellationToken) => {
-
-                let killCurrentProcess: (() => void) | undefined;
-                cancellationToken.onCancellationRequested(() => {
-                    isCancelled = true;
-                    killCurrentProcess?.();
-                });
-
-                return await PicklistDependencyCheckService.runSalesforceCli(
-                    deployArguments,
-                    (killChildProcess: () => void) => {
-                        killCurrentProcess = killChildProcess;
-                        if ( cancellationToken.isCancellationRequested ) {
-                            isCancelled = true;
-                            killChildProcess();
-                        }
-                    },
-                    METADATA_DEPLOY_TIMEOUT_MILLISECONDS,
-                    { workingDirectoryPath: path.resolve(workspaceRoot), maxBufferBytes: METADATA_DEPLOY_MAX_BUFFER_BYTES }
-                );
-
-            });
-
-        } finally {
-
-            fs.rmSync(manifestFolderPath, { recursive: true, force: true });
-
-        }
-
-        if ( isCancelled ) {
-            const cancelledText = `The deploy of ${treeLabel} to ${orgLabel} was cancelled, so whether it applied is unknown.`;
-            VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(cancelledText));
-            return { ...confirmed, statusText: cancelledText, isFailure: true, isDeployRun: true };
-        }
-
-        const deployPayload = ScratchOrgService.readCliJsonPayload(deployInvocation);
-        const deployOutcome: MetadataDeployOutcome = RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(deployInvocation, deployPayload, deployOrgInstanceUrl);
-        const outputFilePath = deployInvocation.spawnError || deployInvocation.isOutputTooLarge
-            ? undefined
-            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, 'metadata-deploy', deployInvocation, new Date(), deployPayload);
-
-        switch ( deployOutcome.kind ) {
-
-            case 'deployed': {
-                const deployedText = `Deployed ${deployOutcome.deployedComponentCount} ${deployOutcome.deployedComponentCount === 1 ? 'component' : 'components'} of ${treeLabel} to ${orgLabel}.`;
-                VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(deployedText));
-                return { ...confirmed, statusText: deployedText, isFailure: false, isDeployRun: true, isDeployed: true, outputFilePath: outputFilePath };
-            }
-
-            case 'cliNotInstalled':
-                this.showMetadataDeployNotification('error', deployOutcome.failureMessage, undefined, workspaceRoot);
-                return { ...confirmed, statusText: deployOutcome.failureMessage, isFailure: true, isDeployRun: false };
-
-            case 'unconfirmed': {
-                const unconfirmedText = `${deployOutcome.failureMessage} Check it with "sf project deploy report --target-org ${orgDetail.username}".`;
-                this.showMetadataDeployNotification('warning', unconfirmedText, outputFilePath, workspaceRoot);
-                return { ...confirmed, statusText: unconfirmedText, isFailure: true, isDeployRun: true, outputFilePath: outputFilePath };
-            }
-
-            case 'failed': {
-                const failedText = `The deploy of ${treeLabel} to ${orgLabel} failed: ${deployOutcome.failureMessage}`;
-                const deployStatusPath = deployOutcome.deployStatusPath;
-                this.showMetadataDeployNotification('error', failedText, outputFilePath, workspaceRoot,
-                    deployStatusPath ? { orgDetail: orgDetail, deployStatusPath: deployStatusPath } : undefined);
-                return { ...confirmed, statusText: failedText, isFailure: true, isDeployRun: true, outputFilePath: outputFilePath, ...( deployStatusPath ? { deployStatusPath: deployStatusPath } : {} ) };
-            }
-
-        }
-
-    }
-
-    private static describeThrown(thrownValue: unknown): string {
-
-        return String(( thrownValue as Error | undefined )?.message ?? thrownValue);
-
-    }
-
-    // NOT AWAITED: THE DEPLOY ENDS, AND RE-ENABLES THE PANEL, WITHOUT WAITING FOR THE READER TO DISMISS THE NOTIFICATION
-    private static showMetadataDeployNotification(severity: 'warning' | 'error',
-                                                    notificationText: string,
-                                                    outputFilePath: string | undefined,
-                                                    workspaceRoot: string,
-                                                    deployStatusTarget?: Omit<IRecipeCockpitDeployStatusTarget, 'treeKey'>) {
-
-        const actions = [
-            ...( deployStatusTarget ? [RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL] : [] ),
-            ...( outputFilePath ? [RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL] : [] )
-        ];
-        const escapedText = RecipeYamlScalar.escapeForNotification(notificationText);
-        const shownNotification = severity === 'warning'
-            ? vscode.window.showWarningMessage(escapedText, ...actions)
-            : vscode.window.showErrorMessage(escapedText, ...actions);
-
-        Promise.resolve(shownNotification)
-            .then(chosenAction => {
-                if ( chosenAction === RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL && outputFilePath ) {
-                    return this.openMetadataDeployOutput(outputFilePath, workspaceRoot);
-                }
-                return chosenAction === RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL && deployStatusTarget
-                    ? this.openMetadataDeployStatus(deployStatusTarget)
-                    : undefined;
-            })
-            .catch(() => undefined);
-
-    }
-
-    private static isDeployStatusOpenInFlight = false;
-
-    /*
-        "Open Deployment Status" (#283): the deploy org's own Deployment Status page for the deploy,
-        opened signed in through "sf org open --path", the route "Open in browser" takes (#279). The
-        frontdoor URL carries a session id, so it goes to the browser and nowhere else, and every
-        failure is a FIXED warning that quotes neither the CLI nor the URL. One open at a time.
-    */
-    private static async openMetadataDeployStatus(deployStatusTarget: Omit<IRecipeCockpitDeployStatusTarget, 'treeKey'>) {
-
-        if ( this.isDeployStatusOpenInFlight ) {
-            return;
-        }
-
-        // THE NOTIFICATION'S BUTTON IS NOT ROUTED: IT IS HELD TO THE ROUTER'S RULE THAT NOTHING OPENS WHILE A DEPLOY RUNS
-        if ( this.isMetadataDeployInFlight ) {
-            VSCodeWorkspaceService.showWarningMessage('The Deployment Status page was not opened: a deploy is running. Try again once it has finished.');
-            return;
-        }
-
-        this.isDeployStatusOpenInFlight = true;
-        const { orgDetail, deployStatusPath } = deployStatusTarget;
-        const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
-        const notOpenedText = `The Deployment Status page of ${orgLabel} could not be opened. Find the deploy in Setup, under Deployment Status.`;
-
-        try {
-
-            if ( !await SalesforceOrgService.isUsernameAuthorized(orgDetail.username) ) {
-                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The Deployment Status page was not opened: ${orgLabel} is no longer authorized. Authorize it again with sf org login web and try again.`));
-                return;
-            }
-
-            const openOutcome = await ScratchOrgService.resolveOrgOpenUrl(orgDetail.username, deployStatusPath);
-
-            if ( !openOutcome.isOpenable ) {
-                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(notOpenedText));
-                return;
-            }
-
-            if ( !await vscode.env.openExternal(vscode.Uri.parse(openOutcome.url, true)) ) {
-                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The Deployment Status page of ${orgLabel} was not opened: the browser did not accept the address.`));
-            }
-
-        } catch {
-
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(notOpenedText));
-
-        } finally {
-
-            this.isDeployStatusOpenInFlight = false;
-
-        }
-
-    }
-
-    // THE PATH IS THE HOST'S OWN, AND STILL RE-CHECKED: THE FILE CAN HAVE BEEN REPLACED BY A LINK OUT OF THE WORKSPACE SINCE
-    private static async openMetadataDeployOutput(outputFilePath: string, workspaceRoot: string) {
-
-        if ( !this.isUsableWorkspacePath(outputFilePath, workspaceRoot) ) {
-            VSCodeWorkspaceService.showWarningMessage('The deploy result file no longer exists in this workspace.');
-            return;
-        }
-
-        await VSCodeWorkspaceService.openFileInEditor(outputFilePath);
-
-    }
-
-    /*
-        "Deploy & assign permission sets…" (#274), for one tree of the model on screen. It shares
-        the metadata deploy's lock and line, so while it runs nothing else may deploy, insert, change
-        the selection or create a scratch org. The org is the selection (isSelectedOrg, checked by
-        the router to have answered that it is a sandbox) or one the reader picks from the same
-        non-production list, which becomes the selection once confirmed. Field-level security
-        changes what a describe answers, so once the CLI has run that org's describes of the
-        objects the picks cover are dropped either way, and an assignment that landed on the
+        "Assign permission sets to me…" (#274, #302), for one tree of the model on screen. Nothing is
+        deployed: the picks are this workspace's permission sets, and only those the org already
+        holds are assigned; the rest are named in a warning for the reader to deploy. One at a time
+        per window, and while it runs nothing else may insert, change the selection or create a
+        scratch org. The org is the selection (isSelectedOrg, checked by the router to have answered
+        that it is a sandbox) or one the reader picks from the same non-production list, which
+        becomes the selection once confirmed. Every outcome is a VS Code notification, whose "View
+        output" is its only follow-up; the panel only gets its button back. Field-level security
+        changes what a describe answers, so once the CLI has run that org's describes of the objects
+        the assigned picks cover are dropped either way, and an assignment that landed on the
         selection re-checks the cards listing them.
     */
-    private static async deployTreePermissionSetsFromPanel(cockpitPanel: vscode.WebviewPanel, treeKey: string, isSelectedOrg: boolean) {
+    private static async assignTreePermissionSetsFromPanel(cockpitPanel: vscode.WebviewPanel, treeKey: string, isSelectedOrg: boolean) {
 
         const panelState = this.recipeCockpitPanelState;
         const tree = panelState.recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
-        const deploySelection = isSelectedOrg ? panelState.dataOrgSelection : undefined;
+        const assignSelection = isSelectedOrg ? panelState.dataOrgSelection : undefined;
 
-        if ( this.isMetadataDeployInFlight || !tree || ( isSelectedOrg && !deploySelection ) ) {
-            this.postToPanel(cockpitPanel, this.metadataDeployRunStateMessage
-                ?? panelState.metadataDeployStateMessage
-                ?? { command: 'metadataDeployState', isRunning: false, treeKey: '', statusText: '', isFailure: false, hasOutput: false });
+        if ( this.isPermissionSetAssignInFlight || !tree || ( isSelectedOrg && !assignSelection ) ) {
+            this.postToPanel(cockpitPanel, this.permissionSetAssignRunStateMessage
+                ?? { command: 'permissionSetAssignState', isRunning: false, treeKey: treeKey });
             return;
         }
 
-        this.isMetadataDeployInFlight = true;
+        this.isPermissionSetAssignInFlight = true;
         const treeLabel = tree.customName || tree.title;
         const objectApiNames = [...new Set(tree.objects.map(treeObject => treeObject.objectApiName))];
-        const buildState = (isRunning: boolean, statusText: string, isFailure = false, hasOutput = false): IRecipeCockpitMetadataDeployStateMessage => ({
-            command: 'metadataDeployState', isRunning, treeKey, statusText, isFailure, hasOutput
-        });
-        const reportStatus = (statusText: string) => this.setMetadataDeployState(buildState(true, statusText));
-        let closingState: IRecipeCockpitPermissionSetClosingState = { statusText: '', isFailure: false };
+        let closingState: IRecipeCockpitPermissionSetClosingState = {};
         let cliStartedFor: { orgDetail: IAuthenticatedOrgDetail; objectApiNames: string[] } | undefined;
 
-        reportStatus(`Finding the permission sets for ${treeLabel}…`);
-        // THE WALK AND THE PARSES ARE SYNCHRONOUS: WITHOUT A YIELD THE STATUS WOULD PAINT ONLY ONCE THEY HAD FINISHED
-        await this.yieldToExtensionHost();
+        this.setPermissionSetAssignState({ command: 'permissionSetAssignState', isRunning: true, treeKey: treeKey });
 
         try {
 
-            closingState = await this.performPermissionSetDeploy(
+            closingState = await this.performPermissionSetAssign(
                 panelState.workspaceRoot,
                 treeLabel,
                 objectApiNames,
-                deploySelection ? async () => deploySelection.orgDetail : async () => this.promptForPermissionSetOrg(reportStatus),
-                reportStatus,
+                assignSelection ? async () => assignSelection.orgDetail : async () => this.promptForPermissionSetOrg(),
                 (orgDetail, coveredObjectApiNames) => { cliStartedFor = { orgDetail: orgDetail, objectApiNames: coveredObjectApiNames }; }
             );
-
-        } catch (deployError) {
-
-            closingState = { statusText: `The permission sets of ${treeLabel} stopped: ${this.describeThrown(deployError)}`, isFailure: true };
-            throw deployError;
 
         } finally {
 
@@ -5211,12 +4695,12 @@ export class RecipeCockpitService {
                 const currentPanel = this.recipeCockpitPanel;
                 const currentPanelState = this.recipeCockpitPanelState;
 
-                if ( closingState.isAssigned === true && cliStartedFor && deploySelection && currentPanel && currentPanelState.dataOrgSelection === deploySelection ) {
+                if ( closingState.isAssigned === true && cliStartedFor && assignSelection && currentPanel && currentPanelState.dataOrgSelection === assignSelection ) {
                     const lowerCoveredNames = new Set(cliStartedFor.objectApiNames.map(objectApiName => objectApiName.toLowerCase()));
                     await this.refreshDataOrgReadinessForTrees(currentPanel, currentPanelState, recipeTree => recipeTree.objects.some(treeObject => lowerCoveredNames.has(treeObject.objectApiName.toLowerCase())));
                 }
 
-                if ( !deploySelection && closingState.isConfirmed === true && closingState.orgDetail && currentPanel && currentPanelState.recipeDataMessage ) {
+                if ( !assignSelection && closingState.isConfirmed === true && closingState.orgDetail && currentPanel && currentPanelState.recipeDataMessage ) {
                     this.rememberDataOrgUsername(closingState.orgDetail.username);
                     currentPanelState.dataOrgUsername = closingState.orgDetail.username;
                     await this.loadDataOrgs(currentPanel, currentPanelState);
@@ -5224,9 +4708,8 @@ export class RecipeCockpitService {
 
             } finally {
 
-                this.isMetadataDeployInFlight = false;
-                this.recipeCockpitPanelState.metadataDeployOutputFilePath = closingState.outputFilePath;
-                this.setMetadataDeployState(buildState(false, closingState.statusText, closingState.isFailure, !!closingState.outputFilePath));
+                this.isPermissionSetAssignInFlight = false;
+                this.setPermissionSetAssignState({ command: 'permissionSetAssignState', isRunning: false, treeKey: treeKey });
 
             }
 
@@ -5234,9 +4717,7 @@ export class RecipeCockpitService {
 
     }
 
-    private static async promptForPermissionSetOrg(reportStatus: (statusText: string) => void): Promise<IAuthenticatedOrgDetail | undefined> {
-
-        reportStatus('Choose the sandbox or scratch org to deploy and assign in…');
+    private static async promptForPermissionSetOrg(): Promise<IAuthenticatedOrgDetail | undefined> {
 
         return await VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(
             SalesforceOrgService.listDataOrgDetails().then(dataOrgListing => ({
@@ -5254,7 +4735,7 @@ export class RecipeCockpitService {
         const pickedItems = await vscode.window.showQuickPick(
             permissionSets.map(permissionSet => ({
                 label: permissionSet.name,
-                description: RecipeCockpitPermissionSetDeploy.describeCoverage(permissionSet, treeObjectCount),
+                description: RecipeCockpitPermissionSetAssign.describeCoverage(permissionSet, treeObjectCount),
                 detail: permissionSet.relativeFilePath,
                 permissionSet: permissionSet
             })),
@@ -5267,164 +4748,142 @@ export class RecipeCockpitService {
 
     /*
         Everything is found and picked BEFORE an org is asked for, so a project with no permission
-        set for the tree opens no picker; a dismissed pick or org prompt is a quiet cancel. The
-        assign runs only after a deploy the CLI answered succeeded.
+        set for the tree opens no picker; a dismissed pick or org prompt is a quiet cancel. After the
+        confirmation the org is asked again whether it is a sandbox and, on the same connection,
+        which picks it holds. No CLI process starts for a pick the org does not hold.
     */
-    private static async performPermissionSetDeploy(workspaceRoot: string,
+    private static async performPermissionSetAssign(workspaceRoot: string,
                                                     treeLabel: string,
                                                     objectApiNames: string[],
                                                     resolveOrgDetail: () => Promise<IAuthenticatedOrgDetail | undefined>,
-                                                    reportStatus: (statusText: string) => void,
                                                     onCliStarted: (orgDetail: IAuthenticatedOrgDetail, coveredObjectApiNames: string[]) => void): Promise<IRecipeCockpitPermissionSetClosingState> {
 
-        const refuse = (refusalText: string, orgDetail?: IAuthenticatedOrgDetail): IRecipeCockpitPermissionSetClosingState => {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(refusalText));
-            return { statusText: refusalText, isFailure: true, orgDetail: orgDetail };
+        const refuse = (refusalText: string, closingState: IRecipeCockpitPermissionSetClosingState = {}): IRecipeCockpitPermissionSetClosingState => {
+            this.showPermissionSetNotification(refusalText, undefined, workspaceRoot);
+            return closingState;
         };
 
         let packageDirectoryPaths: string[];
         try {
             packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
         } catch (projectError) {
-            return refuse(`Nothing was deployed or assigned: ${this.describeThrown(projectError)}`);
+            return refuse(`Nothing was assigned: ${this.describeThrown(projectError)}`);
         }
 
-        const discovery = await RecipeCockpitPermissionSetDeploy.discoverPermissionSets(objectApiNames, workspaceRoot, packageDirectoryPaths);
+        const discovery = await RecipeCockpitPermissionSetAssign.discoverPermissionSets(objectApiNames, workspaceRoot, packageDirectoryPaths);
         const skippedFilePaths = [...discovery.unparseableFilePaths, ...discovery.notApiNameFilePaths];
 
         if ( skippedFilePaths.length > 0 ) {
-            const shownFilePaths = skippedFilePaths.slice(0, METADATA_DEPLOY_NOTIFICATION_SKIPS_SHOWN);
+            const shownFilePaths = skippedFilePaths.slice(0, PERMISSION_SET_NOTIFICATION_SKIPS_SHOWN);
             const hiddenCount = skippedFilePaths.length - shownFilePaths.length;
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(
-                `Skipped ${skippedFilePaths.length} permission set ${skippedFilePaths.length === 1 ? 'file' : 'files'} that could not be read as a permission set with an api name: ${shownFilePaths.join(', ')}${hiddenCount > 0 ? ` and ${hiddenCount} more` : ''}.`
-            ));
+            this.showPermissionSetNotification(
+                `Skipped ${skippedFilePaths.length} permission set ${skippedFilePaths.length === 1 ? 'file' : 'files'} that could not be read as a permission set with an api name: ${shownFilePaths.join(', ')}${hiddenCount > 0 ? ` and ${hiddenCount} more` : ''}.`,
+                undefined,
+                workspaceRoot
+            );
         }
 
         if ( discovery.permissionSets.length === 0 ) {
-            const noneText = `No permission set in this workspace's source grants access to any object of ${treeLabel}, so nothing was deployed or assigned.`;
-            VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(noneText));
-            return { statusText: noneText, isFailure: false };
+            return refuse(`No permission set in this workspace's source grants access to any object of ${treeLabel}, so nothing was assigned.`);
         }
-
-        reportStatus(`Choose the permission sets for ${treeLabel}…`);
 
         const pickedPermissionSets = await this.promptForPermissionSets(discovery.permissionSets, objectApiNames.length);
         if ( !pickedPermissionSets ) {
-            return { statusText: '', isFailure: false };
+            return {};
         }
 
         if ( pickedPermissionSets.length > PERMISSION_SET_MAX_PICKS ) {
-            return refuse(`Nothing was deployed or assigned: ${pickedPermissionSets.length} permission sets were chosen, and at most ${PERMISSION_SET_MAX_PICKS} can be deployed and assigned at once.`);
+            return refuse(`Nothing was assigned: ${pickedPermissionSets.length} permission sets were chosen, and at most ${PERMISSION_SET_MAX_PICKS} can be assigned at once.`);
         }
 
         let orgDetail: IAuthenticatedOrgDetail | undefined;
         try {
             orgDetail = await resolveOrgDetail();
         } catch (listError) {
-            return refuse(`Nothing was deployed or assigned: ${this.describeThrown(listError)}`);
+            return refuse(`Nothing was assigned: ${this.describeThrown(listError)}`);
         }
 
         if ( !orgDetail ) {
-            return { statusText: '', isFailure: false };
+            return {};
         }
 
-        const permissionSetNames = pickedPermissionSets.map(permissionSet => permissionSet.name);
-        // EVERY OBJECT A PICK GRANTS ON, NOT ONLY THIS TREE'S: ANOTHER CARD'S DESCRIBE OF IT CHANGES TOO
-        const lowerGrantedNames = new Set(pickedPermissionSets.flatMap(permissionSet => permissionSet.grantedObjectApiNames).map(objectApiName => objectApiName.toLowerCase()));
-        const coveredObjectApiNames = [...new Set([
-            ...objectApiNames,
-            ...pickedPermissionSets.flatMap(permissionSet => permissionSet.grantedObjectApiNames).filter(objectApiName => SalesforceApiName.isApiName(objectApiName))
-        ])].filter(objectApiName => lowerGrantedNames.has(objectApiName.toLowerCase()));
         // NO PARENTHESES: A NOTIFICATION ESCAPES THEM, AND THIS LABEL IS IN EVERY ONE THIS RUN SHOWS
         const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
-        const permissionSetText = `${permissionSetNames.length} ${permissionSetNames.length === 1 ? 'permission set' : 'permission sets'}`;
+        const describePermissionSets = (count: number) => `${count} ${count === 1 ? 'permission set' : 'permission sets'}`;
 
         const confirmation = await vscode.window.showWarningMessage(
-            RecipeYamlScalar.escapeForNotification(`Deploy and assign ${permissionSetText} for ${this.toSingleLine(treeLabel)} in ${this.toSingleLine(orgLabel)}?`),
+            RecipeYamlScalar.escapeForNotification(`Assign ${describePermissionSets(pickedPermissionSets.length)} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgDetail.username)} in ${this.toSingleLine(orgLabel)}?`),
             {
                 modal: true,
-                detail: RecipeYamlScalar.escapeForNotification(RecipeCockpitPermissionSetDeploy.buildConfirmationDetail(treeLabel, orgLabel, orgDetail.username, pickedPermissionSets, objectApiNames.length))
+                detail: RecipeYamlScalar.escapeForNotification(RecipeCockpitPermissionSetAssign.buildConfirmationDetail(treeLabel, orgLabel, orgDetail.username, pickedPermissionSets, objectApiNames.length))
             },
             RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL
         );
 
         if ( confirmation !== RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL ) {
-            return { statusText: '', isFailure: false };
+            return {};
         }
 
-        const confirmed = { orgDetail: orgDetail, isConfirmed: true };
-
-        reportStatus(`Checking that ${orgLabel} is a sandbox…`);
-
+        let querySource: IOrgQuerySource;
         let orgTypeDetail: IOrgTypeDetail | undefined;
         try {
-            orgTypeDetail = await SalesforceOrgService.queryOrganizationType(SalesforceOrgService.toQuerySource(await SalesforceOrgService.getConnection(orgDetail.username)));
+            querySource = SalesforceOrgService.toQuerySource(await SalesforceOrgService.getConnection(orgDetail.username));
+            orgTypeDetail = await SalesforceOrgService.queryOrganizationType(querySource);
         } catch (connectionError) {
-            return refuse(`Nothing was deployed or assigned: could not connect to ${orgLabel}: ${this.describeThrown(connectionError)}`, orgDetail);
+            return refuse(`Nothing was assigned: could not connect to ${orgLabel}: ${this.describeThrown(connectionError)}`);
         }
 
         if ( orgTypeDetail?.isSandbox !== true ) {
-            return refuse(`Nothing was deployed or assigned: ${orgLabel} ${orgTypeDetail ? `answered that it is ${SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail)}` : 'could not say whether it is a sandbox'}. Permission sets are deployed and assigned only in a sandbox or scratch org.`, orgDetail);
+            return refuse(`Nothing was assigned: ${orgLabel} ${orgTypeDetail ? `answered that it is ${SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail)}` : 'could not say whether it is a sandbox'}. Permission sets are assigned only in a sandbox or scratch org.`);
         }
 
-        const deployArguments = RecipeCockpitPermissionSetDeploy.buildPermissionSetDeployArguments(permissionSetNames, orgDetail.username);
-        const assignArguments = RecipeCockpitPermissionSetDeploy.buildPermissionSetAssignArguments(permissionSetNames, orgDetail.username);
+        // ONLY AN ORG THAT ANSWERED IT IS A SANDBOX BECOMES THE SELECTION, WHATEVER FOLLOWS
+        const confirmed: IRecipeCockpitPermissionSetClosingState = { orgDetail: orgDetail, isConfirmed: true };
 
-        reportStatus(`Deploying ${permissionSetText} for ${treeLabel}…`);
+        let orgPermissionSetNames: string[];
+        try {
+            orgPermissionSetNames = await SalesforceOrgService.queryPermissionSetNames(querySource, pickedPermissionSets.map(permissionSet => permissionSet.name));
+        } catch {
+            return refuse(`Nothing was assigned: ${orgLabel} could not be asked which of the permission sets it holds. Try again.`, confirmed);
+        }
+
+        const { presentPermissionSets, missingPermissionSets } = RecipeCockpitPermissionSetAssign.partitionByOrgPresence(pickedPermissionSets, orgPermissionSetNames);
+
+        if ( missingPermissionSets.length > 0 ) {
+            this.showPermissionSetNotification(
+                RecipeCockpitPermissionSetAssign.buildMissingPermissionSetsMessage(missingPermissionSets.map(permissionSet => permissionSet.name), orgLabel),
+                undefined,
+                workspaceRoot
+            );
+        }
+
+        if ( presentPermissionSets.length === 0 ) {
+            return confirmed;
+        }
+
+        const permissionSetNames = presentPermissionSets.map(permissionSet => permissionSet.name);
+        const permissionSetText = describePermissionSets(permissionSetNames.length);
+        // EVERY OBJECT A PICK GRANTS ON, NOT ONLY THIS TREE'S: ANOTHER CARD'S DESCRIBE OF IT CHANGES TOO
+        const lowerGrantedNames = new Set(presentPermissionSets.flatMap(permissionSet => permissionSet.grantedObjectApiNames).map(objectApiName => objectApiName.toLowerCase()));
+        const coveredObjectApiNames = [...new Set([
+            ...objectApiNames,
+            ...presentPermissionSets.flatMap(permissionSet => permissionSet.grantedObjectApiNames).filter(objectApiName => SalesforceApiName.isApiName(objectApiName))
+        ])].filter(objectApiName => lowerGrantedNames.has(objectApiName.toLowerCase()));
+        const assignArguments = RecipeCockpitPermissionSetAssign.buildPermissionSetAssignArguments(permissionSetNames, orgDetail.username);
+
         onCliStarted(orgDetail, coveredObjectApiNames);
-
-        const deployRun = await this.runCancellableCli(RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: deploying ${permissionSetText} for ${treeLabel} to ${orgLabel}`), deployArguments, PERMISSION_SET_DEPLOY_TIMEOUT_MILLISECONDS, workspaceRoot);
-
-        if ( deployRun.isCancelled ) {
-            const cancelledText = `The deploy of ${permissionSetText} for ${treeLabel} to ${orgLabel} was cancelled, so whether it applied is unknown. Nothing was assigned.`;
-            VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(cancelledText));
-            return { ...confirmed, statusText: cancelledText, isFailure: true };
-        }
-
-        const deployPayload = ScratchOrgService.readCliJsonPayload(deployRun.invocation);
-        const deployOutcome: MetadataDeployOutcome = RecipeCockpitPermissionSetDeploy.parsePermissionSetDeployOutput(deployRun.invocation, deployPayload);
-        const deployOutputFilePath = deployRun.invocation.spawnError || deployRun.invocation.isOutputTooLarge
-            ? undefined
-            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, 'permission-set-deploy', deployRun.invocation, new Date(), deployPayload);
-
-        switch ( deployOutcome.kind ) {
-
-            case 'cliNotInstalled':
-                this.showMetadataDeployNotification('error', deployOutcome.failureMessage, undefined, workspaceRoot);
-                return { ...confirmed, statusText: deployOutcome.failureMessage, isFailure: true };
-
-            case 'unconfirmed': {
-                const unconfirmedText = `${deployOutcome.failureMessage} Nothing was assigned. Check it with "sf project deploy report --target-org ${orgDetail.username}".`;
-                this.showMetadataDeployNotification('warning', unconfirmedText, deployOutputFilePath, workspaceRoot);
-                return { ...confirmed, statusText: unconfirmedText, isFailure: true, outputFilePath: deployOutputFilePath };
-            }
-
-            case 'failed': {
-                const failedText = `The deploy of ${permissionSetText} for ${treeLabel} to ${orgLabel} failed, so nothing was assigned: ${deployOutcome.failureMessage}`;
-                this.showMetadataDeployNotification('error', failedText, deployOutputFilePath, workspaceRoot);
-                return { ...confirmed, statusText: failedText, isFailure: true, outputFilePath: deployOutputFilePath };
-            }
-
-            case 'deployed':
-                break;
-
-        }
-
-        reportStatus(`Assigning ${permissionSetText} to ${orgDetail.username}…`);
 
         const assignRun = await this.runCancellableCli(RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: assigning ${permissionSetText} to ${orgDetail.username}`), assignArguments, PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS, workspaceRoot);
 
         if ( assignRun.isCancelled ) {
-            const cancelledText = `The assignment of ${permissionSetText} in ${orgLabel} was cancelled after they were deployed, so which were assigned is unknown.`;
-            VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(cancelledText));
-            return { ...confirmed, statusText: cancelledText, isFailure: true, outputFilePath: deployOutputFilePath };
+            return refuse(`The assignment of ${permissionSetText} in ${orgLabel} was cancelled, so which were assigned is unknown.`, confirmed);
         }
 
         const assignPayload = ScratchOrgService.readCliJsonPayload(assignRun.invocation);
-        const assignOutcome: PermissionSetAssignOutcome = RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(assignRun.invocation, permissionSetNames, assignPayload);
+        const assignOutcome: PermissionSetAssignOutcome = RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(assignRun.invocation, permissionSetNames, assignPayload);
         const assignOutputFilePath = assignRun.invocation.spawnError || assignRun.invocation.isOutputTooLarge
-            ? deployOutputFilePath
-            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, 'permission-set-assign', assignRun.invocation, new Date(), assignPayload) ?? deployOutputFilePath;
+            ? undefined
+            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, 'permission-set-assign', assignRun.invocation, new Date(), assignPayload);
 
         switch ( assignOutcome.kind ) {
 
@@ -5432,32 +4891,62 @@ export class RecipeCockpitService {
                 const alreadyText = assignOutcome.alreadyAssignedNames.length > 0
                     ? ` ${assignOutcome.alreadyAssignedNames.join(', ')} ${assignOutcome.alreadyAssignedNames.length === 1 ? 'was' : 'were'} already assigned.`
                     : '';
-                const assignedText = `Deployed and assigned ${permissionSetText} for ${treeLabel} to ${orgDetail.username} in ${orgLabel}.${alreadyText}`;
-                VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(assignedText));
-                return { ...confirmed, statusText: assignedText, isFailure: false, isAssigned: true, outputFilePath: assignOutputFilePath };
+                VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(`Assigned ${permissionSetText} for ${treeLabel} to ${orgDetail.username} in ${orgLabel}.${alreadyText}`));
+                return { ...confirmed, isAssigned: true };
             }
 
             case 'cliNotInstalled':
-                this.showMetadataDeployNotification('error', assignOutcome.failureMessage, undefined, workspaceRoot);
-                return { ...confirmed, statusText: assignOutcome.failureMessage, isFailure: true, outputFilePath: deployOutputFilePath };
+                return refuse(assignOutcome.failureMessage, confirmed);
 
-            case 'unconfirmed': {
-                const unconfirmedText = `The permission sets were deployed. ${assignOutcome.failureMessage}`;
-                this.showMetadataDeployNotification('warning', unconfirmedText, assignOutputFilePath, workspaceRoot);
-                return { ...confirmed, statusText: unconfirmedText, isFailure: true, outputFilePath: assignOutputFilePath };
-            }
+            case 'unconfirmed':
+                this.showPermissionSetNotification(assignOutcome.failureMessage, assignOutputFilePath, workspaceRoot);
+                return confirmed;
 
             case 'notAllAssigned': {
                 const landedNames = [...assignOutcome.assignedNames, ...assignOutcome.alreadyAssignedNames];
-                const failedText = [
-                    `The permission sets were deployed, but ${assignOutcome.failedNames.join(', ')} could not be assigned to ${orgDetail.username}: ${assignOutcome.failureMessages.join('; ')}`,
+                this.showPermissionSetNotification([
+                    `${assignOutcome.failedNames.join(', ')} could not be assigned to ${orgDetail.username} in ${orgLabel}: ${assignOutcome.failureMessages.join('; ')}`,
                     ...( landedNames.length > 0 ? [`Assigned: ${landedNames.join(', ')}.`] : [] )
-                ].join(' ');
-                this.showMetadataDeployNotification('error', failedText, assignOutputFilePath, workspaceRoot);
-                return { ...confirmed, statusText: failedText, isFailure: true, isAssigned: landedNames.length > 0, outputFilePath: assignOutputFilePath };
+                ].join(' '), assignOutputFilePath, workspaceRoot);
+                return { ...confirmed, isAssigned: landedNames.length > 0 };
             }
 
         }
+
+    }
+
+    private static describeThrown(thrownValue: unknown): string {
+
+        return String(( thrownValue as Error | undefined )?.message ?? thrownValue);
+
+    }
+
+    /*
+        Every outcome but a success is a WARNING, and its only follow-up is the notification's own
+        "View output" button when the CLI left a result file. NOT AWAITED: the run ends, and gives the
+        panel its button back, without waiting for the reader to dismiss it.
+    */
+    private static showPermissionSetNotification(notificationText: string, outputFilePath: string | undefined, workspaceRoot: string) {
+
+        const actions = outputFilePath ? [RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL] : [];
+
+        Promise.resolve(vscode.window.showWarningMessage(RecipeYamlScalar.escapeForNotification(notificationText), ...actions))
+            .then(chosenAction => chosenAction === RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL && outputFilePath
+                ? this.openPermissionSetOutput(outputFilePath, workspaceRoot)
+                : undefined)
+            .catch(() => undefined);
+
+    }
+
+    // THE PATH IS THE HOST'S OWN, AND STILL RE-CHECKED: THE FILE CAN HAVE BEEN REPLACED BY A LINK OUT OF THE WORKSPACE SINCE
+    private static async openPermissionSetOutput(outputFilePath: string, workspaceRoot: string) {
+
+        if ( !this.isUsableWorkspacePath(outputFilePath, workspaceRoot) ) {
+            VSCodeWorkspaceService.showWarningMessage('The permission set result file no longer exists in this workspace.');
+            return;
+        }
+
+        await VSCodeWorkspaceService.openFileInEditor(outputFilePath);
 
     }
 
@@ -5841,8 +5330,8 @@ export class RecipeCockpitService {
 
     }
 
-    // EVERY CARD WITH A FOLDER AND AN OBJECT: "Deploy this metadata…" IS OFFERED WHATEVER THE ORG ANSWERED (#273)
-    static collectDeployableTreeKeys(recipeViewModel: IRecipeCockpitRecipeViewModel): string[] {
+    // EVERY CARD WITH A FOLDER AND AN OBJECT: "Assign permission sets to me…" IS OFFERED WHATEVER THE ORG ANSWERED (#274)
+    static collectAssignableTreeKeys(recipeViewModel: IRecipeCockpitRecipeViewModel): string[] {
 
         return recipeViewModel.trees
             .filter(tree => tree.folderName !== '' && tree.objects.length > 0)
@@ -6703,8 +6192,8 @@ export class RecipeCockpitService {
 
                 // A RUN ENDS BY LISTING THE ORGS ITSELF; A SECOND LISTING MEANWHILE WOULD DISCARD ITS ANSWER AND FORGET ITS ORG
                 // AN INSERT IN FLIGHT HOLDS THE SELECTION IT CONFIRMED; ITS RELOAD ASKS AGAIN ONCE IT HAS ENDED
-                // A METADATA DEPLOY HOLDS THE SELECTION IT DEPLOYS TO, AND CHECKS IT AGAIN WHEN IT ENDS
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || panelState.insertStateMessage || panelState.metadataDeployStateMessage?.isRunning ) {
+                // A PERMISSION SET ASSIGNMENT HOLDS THE SELECTION IT ASSIGNS IN, AND CHECKS IT AGAIN WHEN IT ENDS
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning ) {
                     return undefined;
                 }
 
@@ -6716,7 +6205,7 @@ export class RecipeCockpitService {
 
                 if ( typeof orgIndex !== 'number'
                         || panelState.scratchOrgStateMessage?.isRunning
-                        || panelState.metadataDeployStateMessage?.isRunning
+                        || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.insertStateMessage
                         || !Number.isInteger(orgIndex)
                         || orgIndex < 0
@@ -6736,7 +6225,7 @@ export class RecipeCockpitService {
             */
             case 'refreshDataOrgs':
 
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || panelState.insertStateMessage || panelState.metadataDeployStateMessage?.isRunning ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning ) {
                     return undefined;
                 }
 
@@ -6754,7 +6243,7 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.insertStateMessage || panelState.metadataDeployStateMessage?.isRunning ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning ) {
                     return {
                         kind: 'postScratchOrgState',
                         hostMessage: panelState.scratchOrgStateMessage ?? { command: 'scratchOrgState', isRunning: false, statusText: '', isFailure: false, hasOutput: false }
@@ -6793,7 +6282,7 @@ export class RecipeCockpitService {
                 const recipeFilePath = typeof treeKey === 'string' ? panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey) : undefined;
                 // A SCRATCH ORG RUN IS ABOUT TO CHANGE THE SELECTION, SO NOTHING IS INSERTED WHILE IT IS IN FLIGHT
                 const isRoutable = !panelState.scratchOrgStateMessage?.isRunning
-                                    && !panelState.metadataDeployStateMessage?.isRunning
+                                    && !panelState.permissionSetAssignStateMessage?.isRunning
                                     && typeof treeKey === 'string'
                                     && !panelState.generateStateMessages.has(treeKey)
                                     && !!panelState.recipeDataMessage
@@ -7116,96 +6605,45 @@ export class RecipeCockpitService {
             }
 
             /*
-                "Deploy this metadata…" (#273) posts the tree's KEY, and the INDEX of the org the
-                Treecipe tab has selected when it has one; neither decides what is deployed. The key
-                must be a card the panel confirmed drawing, and the deploy reads that tree's objects
-                from the stored model. An index must BE the selection, and that org must have
-                answered that it is a sandbox; with no index the host asks for an org itself, from
-                the same non-production list the picker draws. A forged message for production stops
-                here, before any connection or process. One deploy at a time, and none while an
-                insert or a scratch org run holds the selection.
-            */
-            case 'deployTreeMetadata': {
-
-                const { orgIndex, treeKey } = panelMessage;
-                const dataOrgSelection = panelState.dataOrgSelection;
-
-                if ( panelState.metadataDeployStateMessage?.isRunning ) {
-                    return undefined;
-                }
-
-                // THE PANEL DISABLED EVERY DEPLOY ON THE CLICK, SO EVEN A REFUSAL ANSWERS THAT NOTHING RUNS
-                const refuse = (refusalText = ''): RecipeCockpitPanelAction => ({
-                    kind: 'postMetadataDeployState',
-                    hostMessage: refusalText && typeof treeKey === 'string'
-                        ? { command: 'metadataDeployState', isRunning: false, treeKey: treeKey, statusText: refusalText, isFailure: true, hasOutput: false }
-                        : panelState.metadataDeployStateMessage
-                            ?? { command: 'metadataDeployState', isRunning: false, treeKey: '', statusText: '', isFailure: false, hasOutput: false }
-                });
-
-                if ( typeof treeKey !== 'string'
-                        || !panelState.recipeDataMessage
-                        || !panelState.deployableTreeKeys.has(treeKey)
-                        || panelState.scratchOrgStateMessage?.isRunning
-                        || panelState.insertStateMessage ) {
-                    return refuse();
-                }
-
-                if ( orgIndex === undefined || orgIndex === null ) {
-                    return { kind: 'deployTreeMetadata', treeKey: treeKey, isSelectedOrg: false };
-                }
-
-                if ( typeof orgIndex === 'number'
-                        && !!dataOrgSelection
-                        && dataOrgSelection.orgIndex === orgIndex
-                        && dataOrgSelection.orgTypeDetail?.isSandbox === true ) {
-                    return dataOrgSelection.isReadinessPosted === true
-                        ? { kind: 'deployTreeMetadata', treeKey: treeKey, isSelectedOrg: true }
-                        : refuse('Nothing was deployed: the org selected above is still being checked. Deploy once that check has finished.');
-                }
-
-                return refuse('Nothing was deployed: the org selected above has not answered that it is a sandbox. Choose a sandbox or scratch org there.');
-
-            }
-
-            /*
-                "Deploy & assign permission sets…" (#274) posts what the metadata deploy posts, is
-                matched against the same deployableTreeKeys (every card with a folder and an object)
-                and shares its lock and its line: one deploy of either kind at a time, none while an
-                insert or a scratch org run holds the selection, and none of those while it runs.
-                Which permission sets are offered is the host's, from local source. An index must BE
-                the selection, that org must have answered that it is a sandbox, and its readiness
+                "Assign permission sets to me…" (#274, #302) posts the tree's KEY, and the INDEX of
+                the org the Treecipe tab has selected when it has one; neither decides what is
+                assigned. The key must be a card the panel confirmed drawing, and the host reads that
+                tree's objects from the stored model; which permission sets are offered is the
+                host's, from local source. One assignment at a time, none while an insert or a
+                scratch org run holds the selection, and none of those while it runs. An index must
+                BE the selection, that org must have answered that it is a sandbox, and its readiness
                 must have been posted: an assignment changes what a describe answers, so a describe
                 the selection's own check took before it, cached or posted after it, would put back
-                the reasons the assignment removed.
+                the reasons the assignment removed. With no index the host asks for an org itself,
+                from the same non-production list the picker draws. A forged message for production
+                stops here, before any connection or process. A refusal with a reason is a warning
+                notification; every refusal gives the clicked button back.
             */
-            case 'deployTreePermissionSets': {
+            case 'assignTreePermissionSets': {
 
                 const { orgIndex, treeKey } = panelMessage;
                 const dataOrgSelection = panelState.dataOrgSelection;
 
-                if ( panelState.metadataDeployStateMessage?.isRunning ) {
+                if ( panelState.permissionSetAssignStateMessage?.isRunning ) {
                     return undefined;
                 }
 
-                const refuse = (refusalText = ''): RecipeCockpitPanelAction => ({
-                    kind: 'postMetadataDeployState',
-                    hostMessage: refusalText && typeof treeKey === 'string'
-                        ? { command: 'metadataDeployState', isRunning: false, treeKey: treeKey, statusText: refusalText, isFailure: true, hasOutput: false }
-                        : panelState.metadataDeployStateMessage
-                            ?? { command: 'metadataDeployState', isRunning: false, treeKey: '', statusText: '', isFailure: false, hasOutput: false }
+                const refuse = (refusalText?: string): RecipeCockpitPanelAction => ({
+                    kind: 'refusePermissionSetAssign',
+                    ...( refusalText ? { refusalText: refusalText } : {} ),
+                    hostMessage: { command: 'permissionSetAssignState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '' }
                 });
 
                 if ( typeof treeKey !== 'string'
                         || !panelState.recipeDataMessage
-                        || !panelState.deployableTreeKeys.has(treeKey)
+                        || !panelState.assignableTreeKeys.has(treeKey)
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.insertStateMessage ) {
                     return refuse();
                 }
 
                 if ( orgIndex === undefined || orgIndex === null ) {
-                    return { kind: 'deployTreePermissionSets', treeKey: treeKey, isSelectedOrg: false };
+                    return { kind: 'assignTreePermissionSets', treeKey: treeKey, isSelectedOrg: false };
                 }
 
                 if ( typeof orgIndex === 'number'
@@ -7213,11 +6651,11 @@ export class RecipeCockpitService {
                         && dataOrgSelection.orgIndex === orgIndex
                         && dataOrgSelection.orgTypeDetail?.isSandbox === true ) {
                     return dataOrgSelection.isReadinessPosted === true
-                        ? { kind: 'deployTreePermissionSets', treeKey: treeKey, isSelectedOrg: true }
-                        : refuse('Nothing was deployed or assigned: the org selected above is still being checked. Try again once that check has finished.');
+                        ? { kind: 'assignTreePermissionSets', treeKey: treeKey, isSelectedOrg: true }
+                        : refuse('Nothing was assigned: the org selected above is still being checked. Try again once that check has finished.');
                 }
 
-                return refuse('Nothing was deployed or assigned: the org selected above has not answered that it is a sandbox. Choose a sandbox or scratch org there.');
+                return refuse('Nothing was assigned: the org selected above has not answered that it is a sandbox. Choose a sandbox or scratch org there.');
 
             }
 
@@ -7244,7 +6682,7 @@ export class RecipeCockpitService {
                         || !panelState.recipeDataMessage
                         || panelState.dataOrgObjectApiNames.size === 0
                         || panelState.scratchOrgStateMessage?.isRunning
-                        || panelState.metadataDeployStateMessage?.isRunning
+                        || panelState.permissionSetAssignStateMessage?.isRunning
                         || !dataOrgSelection
                         || dataOrgSelection.orgIndex !== orgIndex
                         || panelState.dataOrgDetails[orgIndex]?.username !== dataOrgSelection.orgDetail.username ) {
@@ -7254,38 +6692,6 @@ export class RecipeCockpitService {
                 return { kind: 'openDataOrg', orgDetail: dataOrgSelection.orgDetail };
 
             }
-
-            /*
-                "Open Deployment Status" (#283): the tree's KEY alone, accepted only for the card the
-                last failed deploy's line is drawn on and only while no deploy runs. The page and
-                the org are the host's; nothing in the message names either.
-            */
-            case 'openMetadataDeployStatus': {
-
-                const { treeKey } = panelMessage;
-                const deployStatusTarget = panelState.metadataDeployStatusTarget;
-
-                if ( typeof treeKey !== 'string'
-                        || !deployStatusTarget
-                        || deployStatusTarget.treeKey !== treeKey
-                        || !panelState.metadataDeployStateMessage?.hasDeployStatus
-                        || panelState.metadataDeployStateMessage.treeKey !== treeKey
-                        || panelState.metadataDeployStateMessage.isRunning ) {
-                    return undefined;
-                }
-
-                return { kind: 'openMetadataDeployStatus', deployStatusTarget: deployStatusTarget };
-
-            }
-
-            // NO PAYLOAD: THE FILE IS THE ONE THE LAST DEPLOY WROTE, HELD ON THE HOST
-            case 'viewMetadataDeployOutput':
-
-                if ( panelState.metadataDeployStateMessage?.isRunning || !panelState.metadataDeployOutputFilePath ) {
-                    return undefined;
-                }
-
-                return { kind: 'viewMetadataDeployOutput', outputFilePath: panelState.metadataDeployOutputFilePath };
 
             // THE TREE'S KEY ALONE: THE RESULTS FILE IS THE HOST'S, STORED FOR THE ORG SELECTED NOW
             case 'viewInsertErrors': {
@@ -7358,8 +6764,8 @@ export class RecipeCockpitService {
             replayMessages.push(panelState.scratchOrgStateMessage);
         }
 
-        if ( panelState.metadataDeployStateMessage ) {
-            replayMessages.push(panelState.metadataDeployStateMessage);
+        if ( panelState.permissionSetAssignStateMessage ) {
+            replayMessages.push(panelState.permissionSetAssignStateMessage);
         }
 
         if ( panelState.loadFailedMessage ) {
@@ -8671,7 +8077,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader:hover { box-shadow: inset 4px 0 0 var(--sdt-accent); }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treeDeploy, .treePermissionSets, .metadataDeployViewOutput, .metadataDeployOpenStatus {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treePermissionSets {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
@@ -8683,7 +8089,7 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treeDeploy:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .metadataDeployViewOutput:hover:not(:disabled), .metadataDeployOpenStatus:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
+    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
     .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
@@ -8707,8 +8113,8 @@ ${this.buildPaletteCustomProperties()}
     .treeAddFriend { font-weight: 600; }
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
-    .treeAddFriendChoice, .historyAction, .treeInsertErrors, .scratchOrgViewOutput, .metadataDeployViewOutput, .metadataDeployOpenStatus { text-decoration: underline; }
-    .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treeDeploy:disabled, .treePermissionSets:disabled {
+    .treeAddFriendChoice, .historyAction, .treeInsertErrors, .scratchOrgViewOutput { text-decoration: underline; }
+    .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treePermissionSets:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
         border-color: var(--sdt-border);
@@ -8876,11 +8282,9 @@ ${this.buildPaletteCustomProperties()}
     .dataOrgStatus.failed { color: var(--sdt-removed); }
     .scratchOrgStatus { margin: 0.4rem 0; }
     .scratchOrgStatus.failed { color: var(--sdt-removed); }
-    .metadataDeployStatus { flex-basis: 100%; }
-    .metadataDeployStatus.failed { color: var(--sdt-removed); }
     .scratchOrgViewOutput { margin-left: 0.5rem; }
     .treecipeHeader { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
-    .treecipeActions, .treeInsertControls, .treeDeployControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
+    .treecipeActions, .treeInsertControls, .treePermissionSetControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
     .treeRecordCount { display: inline-flex; align-items: baseline; gap: 0.3rem; }
     .treeRecordCountInput {
         width: 5.5rem;
@@ -8926,9 +8330,7 @@ ${this.buildPaletteCustomProperties()}
     const WIRE_ALL_LOOKUPS_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL)};
     const INSERT_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_ACTION_LABEL)};
     const INSERT_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_RUNNING_LABEL)};
-    const METADATA_DEPLOY_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_METADATA_DEPLOY_ACTION_LABEL)};
     const PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL)};
-    const METADATA_DEPLOY_OPEN_STATUS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL)};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
     const PANEL_PLACE_VERSION = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION};
     const PANEL_PLACE_SCROLL_SAVE_DELAY = ${RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY};
@@ -9000,9 +8402,8 @@ ${this.buildPaletteCustomProperties()}
     // "+ New scratch org" (#200): THE HOST'S LAST scratchOrgState, AND WHETHER A RUN HOLDS THE PICKER AND EVERY INSERT DISABLED
     let scratchOrgState = null;
     let isScratchOrgRunning = false;
-    // "Deploy this metadata…" (#211, #273): THE HOST'S LAST metadataDeployState, AND WHETHER A DEPLOY HOLDS THE PICKER, EVERY INSERT AND EVERY DEPLOY DISABLED
-    let metadataDeployState = null;
-    let isMetadataDeployRunning = false;
+    // "Assign permission sets to me…" (#274, #302): WHETHER AN ASSIGNMENT HOLDS THE PICKER, EVERY INSERT AND EVERY ASSIGN BUTTON DISABLED
+    let isPermissionSetAssignRunning = false;
     // "Open in browser" (#279): SET ON THE CLICK, CLEARED BY THE HOST'S orgOpenState
     let isOrgOpenRunning = false;
     // THE renderSequence THE PICKER ASKED FOR ITS ORGS UNDER -- ONE ASK PER MODEL, MADE THE FIRST TIME A TREECIPE TAB OPENS OR THE PICKER IS USED
@@ -9239,7 +8640,7 @@ ${this.buildPaletteCustomProperties()}
         // THE SELECTION'S INDEX ONLY: THE HOST OPENS THE ORG IT HAS SELECTED, AND NOTHING COMES BACK BUT "DONE"
         dataOrgView.openOrgElement.setAttribute('title', 'Log in to the selected org in your browser');
         dataOrgView.openOrgElement.addEventListener('click', function () {
-            if (isOrgOpenRunning || isScratchOrgRunning || isMetadataDeployRunning || dataOrgSelectedIndex === null) { return; }
+            if (isOrgOpenRunning || isScratchOrgRunning || isPermissionSetAssignRunning || dataOrgSelectedIndex === null) { return; }
             isOrgOpenRunning = true;
             drawDataOrgViews();
             vscodeApi.postMessage({ command: 'openDataOrg', orgIndex: dataOrgSelectedIndex });
@@ -9248,7 +8649,7 @@ ${this.buildPaletteCustomProperties()}
         // THE MESSAGE CARRIES NOTHING: THE DEV HUB, THE DEFINITION FILE, WHAT IS DEPLOYED AND THE ALIAS ARE ALL THE HOST'S
         dataOrgView.newScratchElement.setAttribute('title', 'Choose a Dev Hub, name the new scratch org, create it through the Dev Hub, deploy the source of this project to it and select it');
         dataOrgView.newScratchElement.addEventListener('click', function () {
-            if (isScratchOrgRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
+            if (isScratchOrgRunning || isPermissionSetAssignRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
             isDataOrgPickerInUse = true;
             isScratchOrgRunning = true;
             drawDataOrgViews();
@@ -9322,15 +8723,15 @@ ${this.buildPaletteCustomProperties()}
         if (isDataOrgStatusFailure) { dataOrgView.statusElement.classList.add('failed'); } else { dataOrgView.statusElement.classList.remove('failed'); }
 
         // AN INSERT IN FLIGHT HOLDS IT TOO: THE HOST WOULD REFUSE A RUN THAT CHANGES THE SELECTION UNDER IT
-        dataOrgView.newScratchElement.disabled = isScratchOrgRunning || isMetadataDeployRunning || insertRunningTreeKey !== null;
+        dataOrgView.newScratchElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || insertRunningTreeKey !== null;
         dataOrgView.newScratchElement.textContent = isScratchOrgRunning ? 'Setting up scratch org…' : '+ New scratch org';
-        // A METADATA DEPLOY HOLDS THE PICKER TOO: IT DEPLOYS TO THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
-        dataOrgView.selectElement.disabled = isScratchOrgRunning || isMetadataDeployRunning;
-        dataOrgView.loadElement.disabled = isScratchOrgRunning || isMetadataDeployRunning;
-        dataOrgView.refreshElement.disabled = isScratchOrgRunning || isMetadataDeployRunning || isDataOrgRefreshDisabled;
+        // A PERMISSION SET ASSIGNMENT HOLDS THE PICKER TOO: IT ASSIGNS IN THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
+        dataOrgView.selectElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning;
+        dataOrgView.loadElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning;
+        dataOrgView.refreshElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isDataOrgRefreshDisabled;
 
         setShown(dataOrgView.openOrgElement, isDataOrgSelectShown && dataOrgSelectedIndex !== null);
-        dataOrgView.openOrgElement.disabled = isOrgOpenRunning || isScratchOrgRunning || isMetadataDeployRunning;
+        dataOrgView.openOrgElement.disabled = isOrgOpenRunning || isScratchOrgRunning || isPermissionSetAssignRunning;
         dataOrgView.openOrgElement.textContent = isOrgOpenRunning ? 'Opening…' : OPEN_ORG_LABEL;
 
         const scratchStatusText = scratchOrgState ? scratchOrgState.statusText : '';
@@ -11044,7 +10445,7 @@ ${this.buildPaletteCustomProperties()}
         }
 
         if (tree.folderName && tree.objects.length > 0) {
-            headerElement.appendChild(buildTreeDeployElement(treeState));
+            headerElement.appendChild(buildTreePermissionSetElement(treeState));
         }
 
         drawTreeName(treeState);
@@ -11097,86 +10498,43 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        "Deploy this metadata…" (#273), on every card with a folder whatever the org answered. Posts
-        the tree's KEY, and the index of the org the Treecipe tab has selected when it has one; with
-        none the host asks for an org itself. What is deployed is the host's. Every deploy and insert
-        is disabled on the click, and only the host's metadataDeployState gives them back.
+        "Assign permission sets to me…" (#274, #302), on every card with a folder whatever the org
+        answered. Posts the tree's KEY, and the index of the org the Treecipe tab has selected when
+        it has one; with none the host asks for an org itself. Which permission sets are offered is
+        the host's. Every assign button and insert is disabled on the click, and only the host's
+        permissionSetAssignState gives them back. How it went is a VS Code notification, never a
+        line here.
     */
-    function buildTreeDeployElement(treeState) {
+    function buildTreePermissionSetElement(treeState) {
 
-        const controlsElement = createElement('div', 'treeDeployControls');
-        const deploy = {
-            buttonElement: createElement('button', 'treeDeploy', METADATA_DEPLOY_ACTION_LABEL),
-            permissionSetElement: createElement('button', 'treePermissionSets', PERMISSION_SET_ACTION_LABEL),
-            statusElement: createElement('div', 'metadataDeployStatus muted hidden'),
-            statusTextElement: createElement('span', 'metadataDeployStatusText'),
-            viewOutputElement: createElement('button', 'metadataDeployViewOutput hidden', 'View output'),
-            openStatusElement: createElement('button', 'metadataDeployOpenStatus hidden', METADATA_DEPLOY_OPEN_STATUS_LABEL)
-        };
+        const controlsElement = createElement('div', 'treePermissionSetControls');
+        const buttonElement = createElement('button', 'treePermissionSets', PERMISSION_SET_ACTION_LABEL);
 
-        deploy.buttonElement.setAttribute('title', 'Deploy this tree\\'s custom objects, each with everything in its source folder, and the custom fields of its standard objects from the source in this workspace, to the org selected above or a sandbox you choose, after a confirmation that lists the files');
-        deploy.buttonElement.addEventListener('click', function () {
-            if (isMetadataDeployRunning || insertRunningTreeKey !== null || isScratchOrgRunning || renderedSequence === null) { return; }
-            isMetadataDeployRunning = true;
+        buttonElement.setAttribute('title', 'Choose the permission sets in this workspace\\'s source that grant access to this tree\\'s objects and assign the ones the org selected above, or a sandbox you choose, already holds to the user that org is authorized as, after a confirmation. Nothing is deployed.');
+        buttonElement.addEventListener('click', function () {
+            if (isPermissionSetAssignRunning || insertRunningTreeKey !== null || isScratchOrgRunning || renderedSequence === null) { return; }
+            isPermissionSetAssignRunning = true;
             drawTreeInserts();
             drawDataOrgViews();
-            const deployMessage = { command: 'deployTreeMetadata', treeKey: treeState.tree.treeKey };
-            if (dataOrgSelectedIndex !== null) { deployMessage.orgIndex = dataOrgSelectedIndex; }
-            vscodeApi.postMessage(deployMessage);
-        });
-
-        /*
-            "Deploy & assign permission sets…" (#274) posts the same two fields and shares the
-            deploy's lock and line: which permission sets, and the pick, are the host's.
-        */
-        deploy.permissionSetElement.setAttribute('title', 'Choose the permission sets in this workspace\\'s source that grant access to this tree\\'s objects, deploy them to the org selected above or a sandbox you choose, and assign them to the user that org is authorized as, after a confirmation');
-        deploy.permissionSetElement.addEventListener('click', function () {
-            if (isMetadataDeployRunning || insertRunningTreeKey !== null || isScratchOrgRunning || renderedSequence === null) { return; }
-            isMetadataDeployRunning = true;
-            drawTreeInserts();
-            drawDataOrgViews();
-            const permissionSetMessage = { command: 'deployTreePermissionSets', treeKey: treeState.tree.treeKey };
+            const permissionSetMessage = { command: 'assignTreePermissionSets', treeKey: treeState.tree.treeKey };
             if (dataOrgSelectedIndex !== null) { permissionSetMessage.orgIndex = dataOrgSelectedIndex; }
             vscodeApi.postMessage(permissionSetMessage);
         });
 
-        deploy.viewOutputElement.addEventListener('click', function () {
-            vscodeApi.postMessage({ command: 'viewMetadataDeployOutput' });
-        });
+        controlsElement.appendChild(buttonElement);
 
-        // #283: THE TREE'S KEY ALONE -- THE PAGE AND THE ORG ARE THE HOST'S
-        deploy.openStatusElement.addEventListener('click', function () {
-            vscodeApi.postMessage({ command: 'openMetadataDeployStatus', treeKey: treeState.tree.treeKey });
-        });
-
-        controlsElement.appendChild(deploy.buttonElement);
-        controlsElement.appendChild(deploy.permissionSetElement);
-        deploy.statusElement.appendChild(deploy.statusTextElement);
-        deploy.statusElement.appendChild(deploy.openStatusElement);
-        deploy.statusElement.appendChild(deploy.viewOutputElement);
-        controlsElement.appendChild(deploy.statusElement);
-
-        treeState.deploy = deploy;
-        drawTreeDeploy(treeState);
+        treeState.permissionSetButtonElement = buttonElement;
+        drawTreePermissionSet(treeState);
 
         return controlsElement;
 
     }
 
-    function drawTreeDeploy(treeState) {
+    function drawTreePermissionSet(treeState) {
 
-        const deploy = treeState.deploy;
-        if (!deploy) { return; }
+        if (!treeState.permissionSetButtonElement) { return; }
 
-        deploy.buttonElement.disabled = isMetadataDeployRunning || insertRunningTreeKey !== null || isScratchOrgRunning;
-        deploy.permissionSetElement.disabled = deploy.buttonElement.disabled;
-
-        const deployStatusText = metadataDeployState && metadataDeployState.treeKey === treeState.tree.treeKey ? metadataDeployState.statusText : '';
-        deploy.statusTextElement.textContent = deployStatusText;
-        setShown(deploy.statusElement, !!deployStatusText);
-        if (deployStatusText && metadataDeployState.isFailure) { deploy.statusElement.classList.add('failed'); } else { deploy.statusElement.classList.remove('failed'); }
-        setShown(deploy.viewOutputElement, !!deployStatusText && !metadataDeployState.isRunning && !!metadataDeployState.hasOutput);
-        setShown(deploy.openStatusElement, !!deployStatusText && !metadataDeployState.isRunning && !!metadataDeployState.isFailure && metadataDeployState.hasDeployStatus === true);
+        treeState.permissionSetButtonElement.disabled = isPermissionSetAssignRunning || insertRunningTreeKey !== null || isScratchOrgRunning;
 
     }
 
@@ -11337,7 +10695,7 @@ ${this.buildPaletteCustomProperties()}
         if (dataOrgSelectionFailureMessage) { return dataOrgSelectionFailureMessage; }
         if (insertRunningTreeKey !== null && insertRunningTreeKey !== treeState.tree.treeKey) { return 'Another tree is being inserted.'; }
         if (isScratchOrgRunning) { return 'A scratch org is being set up.'; }
-        if (isMetadataDeployRunning) { return 'A deploy is running.'; }
+        if (isPermissionSetAssignRunning) { return 'Permission sets are being assigned.'; }
 
         const insertObjectApiNames = listTreeInsertObjectApiNames(treeState);
         if (insertObjectApiNames.length === 0) { return 'Every object of this tree is excluded.'; }
@@ -11408,7 +10766,7 @@ ${this.buildPaletteCustomProperties()}
 
     function drawTreeInserts() {
         treeStates.forEach(drawTreeInsert);
-        treeStates.forEach(drawTreeDeploy);
+        treeStates.forEach(drawTreePermissionSet);
     }
 
     // THE CLICKED TREE'S BUTTON IS DISABLED ON THE CLICK AND EVERY OTHER TURNS GENERATE ONLY; ITS insertState GIVES THEM BACK
@@ -11420,10 +10778,9 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function renderMetadataDeployState(hostMessage) {
+    function renderPermissionSetAssignState(hostMessage) {
 
-        metadataDeployState = hostMessage;
-        isMetadataDeployRunning = !!hostMessage.isRunning;
+        isPermissionSetAssignRunning = !!hostMessage.isRunning;
 
         drawDataOrgViews();
         drawTreeInserts();
@@ -12116,8 +11473,8 @@ ${this.buildPaletteCustomProperties()}
             return;
         }
 
-        if (hostMessage.command === 'metadataDeployState') {
-            renderMetadataDeployState(hostMessage);
+        if (hostMessage.command === 'permissionSetAssignState') {
+            renderPermissionSetAssignState(hostMessage);
             return;
         }
 

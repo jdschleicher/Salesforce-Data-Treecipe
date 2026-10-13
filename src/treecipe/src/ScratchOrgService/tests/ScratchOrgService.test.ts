@@ -22,9 +22,9 @@ import { execFile } from 'child_process';
 import {
     IScratchOrgAliasChoice,
     IScratchOrgPlan,
-    DEPLOY_STATUS_OPEN_PATH_PATTERN,
     ORG_OPEN_TIMEOUT_MILLISECONDS,
     ORG_OPERATIONS_FOLDER_NAME,
+    ORG_OPERATION_RESULT_FILE_ATTEMPTS,
     SCRATCH_ORG_ALIAS_MAX_LENGTH,
     SCRATCH_ORG_DURATION_DAYS,
     ORG_OPERATION_REDACTED_VALUE,
@@ -43,8 +43,6 @@ const SCRATCH_CREATE_SUCCESS = readFixture('scratchCreateSuccess.json');
 const SCRATCH_CREATE_LIMIT_REACHED = readFixture('scratchCreateLimitReached.json');
 const DEPLOY_SUCCESS = readFixture('deploySuccess.json');
 const DEPLOY_ONE_COMPONENT_FAILURE = readFixture('deployOneComponentFailure.json');
-const DEPLOY_FOREIGN_HOST_URL = readFixture('deployForeignHostUrl.json');
-const DEPLOY_HTTP_URL = readFixture('deployHttpUrl.json');
 
 const NEW_SCRATCH_USERNAME = 'test-newscratch@example.com';
 const DEV_HUB_AUTHORIZATION = { username: 'hub@example.com', aliases: ['devhub'], isDevHub: true, instanceUrl: 'https://acme.my.salesforce.com' };
@@ -536,96 +534,28 @@ describe('ScratchOrgService (#200)', () => {
 
     });
 
-    describe('a failed deploy\'s Deployment Status page (#283)', () => {
-
-        const INSTANCE_URL = 'https://acme--qa.sandbox.my.salesforce.com';
-        const DEPLOY_ID = '0Af5e00000ABCDEFGH';
-        const STATUS_PATH = `/lightning/setup/DeployStatus/page?address=/changemgmt/monitorDeploymentsDetails.apexp?asyncId=${DEPLOY_ID}`;
-        const deployUrlOf = (fixture: string): string => JSON.parse(fixture).result.deployUrl;
-
-        it('returns the deployUrl only when it is https:, on the deploy org\'s own host, and the Deployment Status page', () => {
-
-            const usableDeployUrl = deployUrlOf(DEPLOY_ONE_COMPONENT_FAILURE);
-
-            expect(ScratchOrgService.readDeployComponentCounts(JSON.parse(DEPLOY_ONE_COMPONENT_FAILURE), INSTANCE_URL).deployUrl).toBe(usableDeployUrl);
-            expect(ScratchOrgService.readDeployComponentCounts(JSON.parse(DEPLOY_ONE_COMPONENT_FAILURE), `${INSTANCE_URL}/`).deployUrl).toBe(usableDeployUrl);
-            expect(ScratchOrgService.readDeployComponentCounts(JSON.parse(DEPLOY_FOREIGN_HOST_URL), INSTANCE_URL)).not.toHaveProperty('deployUrl');
-            expect(ScratchOrgService.readDeployComponentCounts(JSON.parse(DEPLOY_HTTP_URL), INSTANCE_URL)).not.toHaveProperty('deployUrl');
-            expect(ScratchOrgService.readDeployComponentCounts(JSON.parse(DEPLOY_ONE_COMPONENT_FAILURE))).not.toHaveProperty('deployUrl');
-            expect(ScratchOrgService.readDeployComponentCounts(JSON.parse(DEPLOY_ONE_COMPONENT_FAILURE), 'https://acme--uat.sandbox.my.salesforce.com')).not.toHaveProperty('deployUrl');
-
-        });
-
-        it('refuses another page, a malformed address, credentials in the URL and anything that is not a string', () => {
-
-            const usableDeployUrl = deployUrlOf(DEPLOY_ONE_COMPONENT_FAILURE);
-
-            [
-                usableDeployUrl.replace('/lightning/setup/DeployStatus/page', '/lightning/setup/SetupOneHome/home'),
-                usableDeployUrl.replace('/lightning/setup/DeployStatus/page', '/lightning/setup/DeployStatus/page/'),
-                usableDeployUrl.replace('monitorDeploymentsDetails', 'monitorSomethingElse'),
-                usableDeployUrl.replace(DEPLOY_ID, '001000000000001AAA'),
-                usableDeployUrl.replace(DEPLOY_ID, `${DEPLOY_ID}%22%26calc`),
-                `${INSTANCE_URL}/lightning/setup/DeployStatus/page`,
-                `https://user:pass@acme--qa.sandbox.my.salesforce.com/lightning/setup/DeployStatus/page?address=%2Fchangemgmt%2FmonitorDeploymentsDetails.apexp%3FasyncId%3D${DEPLOY_ID}`,
-                `https://acme--qa.sandbox.my.salesforce.com:8443/lightning/setup/DeployStatus/page?address=%2Fchangemgmt%2FmonitorDeploymentsDetails.apexp%3FasyncId%3D${DEPLOY_ID}`,
-                'javascript:alert(1)',
-                'not a url',
-                ''
-            ].forEach(deployUrl => expect(ScratchOrgService.readUsableDeployUrl(deployUrl, INSTANCE_URL)).toBeUndefined());
-
-            [undefined, null, 42, { href: usableDeployUrl }, [usableDeployUrl]].forEach(deployUrl => expect(ScratchOrgService.readUsableDeployUrl(deployUrl, INSTANCE_URL)).toBeUndefined());
-            expect(ScratchOrgService.readUsableDeployUrl(usableDeployUrl, 'not a url')).toBeUndefined();
-            expect(ScratchOrgService.readUsableDeployUrl(usableDeployUrl, undefined)).toBeUndefined();
-
-        });
-
-        it('rebuilds the --path from the deploy id alone, with no % or & for cmd.exe to read', () => {
-
-            const openPath = ScratchOrgService.buildDeployStatusOpenPath(deployUrlOf(DEPLOY_ONE_COMPONENT_FAILURE));
-
-            expect(openPath).toBe(STATUS_PATH);
-            expect(openPath).not.toMatch(/[%&^!"<>|]/);
-            expect(DEPLOY_STATUS_OPEN_PATH_PATTERN.test(openPath)).toBe(true);
-            expect(ScratchOrgService.buildDeployStatusOpenPath(`${INSTANCE_URL}/lightning/setup/DeployStatus/page?address=x`)).toBeUndefined();
-            expect(ScratchOrgService.buildDeployStatusOpenPath('not a url')).toBeUndefined();
-            expect(ScratchOrgService.buildDeployStatusOpenPath(undefined)).toBeUndefined();
-
-        });
-
-        it('asks "sf org open" for that path, and for no other', () => {
-
-            expect(ScratchOrgService.buildOrgOpenArguments('qa@example.com', STATUS_PATH))
-                .toEqual(['org', 'open', '--target-org', 'qa@example.com', '--path', STATUS_PATH, '--url-only', '--json']);
-            ['/lightning/setup/SetupOneHome/home', `${STATUS_PATH}&x=1`, `${STATUS_PATH}%PATH%`, '', `--json`].forEach(openPath => {
-                expect(() => ScratchOrgService.buildOrgOpenArguments('qa@example.com', openPath)).toThrow('Only the Deployment Status page');
-            });
-
-        });
-
-        it('runs "sf org open --path" with no working directory', async () => {
-
-            const cliCalls: Array<{ argumentList: string[]; options: Record<string, unknown> }> = [];
-            (execFile as unknown as jest.Mock).mockImplementation((_command: string, argumentList: string[], options: Record<string, unknown>, callback: Function) => {
-                cliCalls.push({ argumentList, options });
-                setImmediate(() => callback(null, JSON.stringify({ status: 0, result: { url: 'https://acme--qa.sandbox.my.salesforce.com/secur/frontdoor.jsp?sid=x' } }), ''));
-                return { kill: jest.fn() };
-            });
-
-            await expect(ScratchOrgService.resolveOrgOpenUrl('qa@example.com', STATUS_PATH)).resolves.toMatchObject({ isOpenable: true });
-            expect(cliCalls).toHaveLength(1);
-            expect(cliCalls[0].argumentList).toEqual(['org', 'open', '--target-org', 'qa@example.com', '--path', STATUS_PATH, '--url-only', '--json']);
-            expect(cliCalls[0].options.cwd).toBeUndefined();
-
-        });
-
-    });
-
     describe('parseSourceDeployOutput', () => {
 
         it('reads a successful deploy\'s component count', () => {
 
             expect(ScratchOrgService.parseSourceDeployOutput(invocation(DEPLOY_SUCCESS))).toEqual({ isDeployed: true, deployedComponentCount: 3 });
+
+        });
+
+        it('reads a malformed answer as a failure with nothing counted, and counts the successes when the CLI gives no total', () => {
+
+            [undefined, {}, { status: 0 }, { status: 0, result: null }, { status: 0, result: [] }, { status: 0, result: 'x' }].forEach(payload => {
+                expect(ScratchOrgService.readDeployComponentCounts(payload as Record<string, unknown> | undefined))
+                    .toEqual({ isSucceeded: false, componentSuccessCount: 0, componentFailureCount: 0 });
+            });
+
+            const withoutTotal = { status: 0, result: { success: true, details: { componentSuccesses: [{ fullName: 'package.xml' }, { fullName: 'Account' }, { fullName: 'Contact' }] } } };
+            expect(ScratchOrgService.readDeployComponentCounts(withoutTotal)).toEqual({ isSucceeded: true, componentSuccessCount: 2, componentFailureCount: 0 });
+            expect(ScratchOrgService.parseSourceDeployOutput(invocation(JSON.stringify(withoutTotal)))).toEqual({ isDeployed: true, deployedComponentCount: 2 });
+
+            // ONE FAILURE THE CLI WRITES AS AN OBJECT RATHER THAN A LIST IS STILL A FAILURE
+            expect(ScratchOrgService.readDeployComponentCounts({ status: 0, result: { success: true, details: { componentFailures: { fullName: 'Account' } } } }))
+                .toMatchObject({ isSucceeded: false, componentFailureCount: 1 });
 
         });
 
@@ -665,13 +595,26 @@ describe('ScratchOrgService (#200)', () => {
         // TWO OPERATIONS IN ONE SECOND -- A SECOND METADATA DEPLOY (#211) -- KEEP BOTH RESULTS
         it('writes a later result of the same second beside the first as <name>-2, never over it', () => {
 
-            const firstFilePath = ScratchOrgService.writeOrgOperationResult(workspaceRoot, 'qa@example.com', 'metadata-deploy', invocation('{"status":0}'), PLAN_DATE);
-            const secondFilePath = ScratchOrgService.writeOrgOperationResult(workspaceRoot, 'qa@example.com', 'metadata-deploy', invocation('{"status":1}'), PLAN_DATE);
+            const firstFilePath = ScratchOrgService.writeOrgOperationResult(workspaceRoot, 'qa@example.com', 'permission-set-assign', invocation('{"status":0}'), PLAN_DATE);
+            const secondFilePath = ScratchOrgService.writeOrgOperationResult(workspaceRoot, 'qa@example.com', 'permission-set-assign', invocation('{"status":1}'), PLAN_DATE);
 
-            expect(path.basename(firstFilePath)).toBe('20261010-142233-metadata-deploy.json');
-            expect(path.basename(secondFilePath)).toBe('20261010-142233-metadata-deploy-2.json');
+            expect(path.basename(firstFilePath)).toBe('20261010-142233-permission-set-assign.json');
+            expect(path.basename(secondFilePath)).toBe('20261010-142233-permission-set-assign-2.json');
             expect(JSON.parse(fs.readFileSync(firstFilePath, 'utf-8'))).toEqual({ status: 0 });
             expect(JSON.parse(fs.readFileSync(secondFilePath, 'utf-8'))).toEqual({ status: 1 });
+
+        });
+
+        it('answers undefined once every name of the second is taken, rather than writing over one', () => {
+
+            const writeSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation((filePath: fs.PathOrFileDescriptor) => {
+                if ( String(filePath).endsWith('.json') ) {
+                    throw Object.assign(new Error('EEXIST: file already exists'), { code: 'EEXIST' });
+                }
+            });
+
+            expect(ScratchOrgService.writeOrgOperationResult(workspaceRoot, 'qa@example.com', 'permission-set-assign', invocation('{}'), PLAN_DATE)).toBeUndefined();
+            expect(writeSpy.mock.calls.filter(([filePath]) => String(filePath).endsWith('.json'))).toHaveLength(ORG_OPERATION_RESULT_FILE_ATTEMPTS);
 
         });
 
@@ -683,7 +626,7 @@ describe('ScratchOrgService (#200)', () => {
                 }
             });
 
-            expect(ScratchOrgService.writeOrgOperationResult(workspaceRoot, 'qa@example.com', 'metadata-deploy', invocation('{}'), PLAN_DATE)).toBeUndefined();
+            expect(ScratchOrgService.writeOrgOperationResult(workspaceRoot, 'qa@example.com', 'permission-set-assign', invocation('{}'), PLAN_DATE)).toBeUndefined();
             expect(writeSpy.mock.calls.filter(([filePath]) => String(filePath).endsWith('.json'))).toHaveLength(1);
 
         });

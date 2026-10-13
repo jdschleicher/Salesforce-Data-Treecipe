@@ -6,13 +6,13 @@ import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
-import { MetadataDeployOutcome, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
 
 /*
-    "Deploy & assign permission sets…" (#274): the project's permission sets that grant anything on
-    one relationship tree's objects, the argv that deploys the ones the reader picked and the argv
-    that assigns them to the user the org is authorized as, and both of the CLI's answers read back.
-    It imports no vscode: the cockpit owns the pick, the org, the confirmation and the progress.
+    "Assign permission sets to me…" (#274, #302): the project's permission sets that grant anything
+    on one relationship tree's objects, which of the reader's picks the org already holds, the argv
+    that assigns those to the user the org is authorized as, and the CLI's answer read back. Nothing
+    is deployed: a pick the org does not hold is named for the reader to deploy themselves. It
+    imports no vscode: the cockpit owns the pick, the org, the confirmation and the progress.
 
     Every permission set comes from the HOST -- files on disk under the strict package directories,
     each inside the workspace -- never from a panel message, and its name, taken from the file name,
@@ -25,13 +25,14 @@ export const PERMISSION_SET_FILE_SUFFIX = '.permissionset-meta.xml';
 export const PERMISSION_SET_SEARCH_DEPTH = 6;
 
 /*
-    One --metadata and one --name per pick, so the command line grows with the pick; on Windows the
+    One --name per pick, so the command line grows with the pick; on Windows the
     CLI runs through cmd.exe, which refuses a line past 8,191 characters. Fifty names of at most 80
     characters stay well under it.
 */
 export const PERMISSION_SET_MAX_PICKS = 50;
 
-export const PERMISSION_SET_DEPLOY_TIMEOUT_MILLISECONDS = 30 * 60 * 1000;
+// HOW MANY SKIPPED FILES A WARNING NAMES BEFORE IT COUNTS THE REST
+export const PERMISSION_SET_NOTIFICATION_SKIPS_SHOWN = 10;
 
 export const PERMISSION_SET_ASSIGN_TIMEOUT_MILLISECONDS = 5 * 60 * 1000;
 
@@ -65,7 +66,13 @@ export type PermissionSetAssignOutcome =
     | { kind: 'cliNotInstalled'; failureMessage: string }
     | { kind: 'unconfirmed'; failureMessage: string };
 
-export class RecipeCockpitPermissionSetDeploy {
+// THE PICKS THE ORG HOLDS, WHICH ARE ASSIGNED, AND THE ONES IT DOES NOT, WHICH THE READER IS TOLD TO DEPLOY
+export interface IPermissionSetOrgPresence {
+    presentPermissionSets: IPermissionSetCandidate[];
+    missingPermissionSets: IPermissionSetCandidate[];
+}
+
+export class RecipeCockpitPermissionSetAssign {
 
     // EVERY *.permissionset-meta.xml UNDER THE PACKAGE DIRECTORIES, IN THEIR ORDER, EACH INSIDE THE WORKSPACE
     static findPermissionSetFilePaths(workspaceRoot: string, packageDirectoryPaths: string[]): string[] {
@@ -253,33 +260,19 @@ export class RecipeCockpitPermissionSetDeploy {
     private static assertPermissionSetNames(permissionSetNames: readonly string[]) {
 
         if ( permissionSetNames.length === 0 ) {
-            throw new Error('No permission set was named, so nothing was deployed or assigned.');
+            throw new Error('No permission set was named, so nothing was assigned.');
         }
 
         permissionSetNames.forEach(permissionSetName => {
             if ( !SalesforceApiName.isApiName(permissionSetName) ) {
-                throw new Error(`"${permissionSetName}" is not a Salesforce api name, so nothing was deployed or assigned.`);
+                throw new Error(`"${permissionSetName}" is not a Salesforce api name, so nothing was assigned.`);
             }
         });
 
     }
 
-    // --target-org IS THE USERNAME, NEVER AN ALIAS, WHICH CAN BE RE-POINTED BETWEEN THE CONFIRMATION AND THE RUN
-    static buildPermissionSetDeployArguments(permissionSetNames: readonly string[], orgUsername: string): string[] {
-
-        this.assertPermissionSetNames(permissionSetNames);
-        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(orgUsername);
-
-        return [
-            'project', 'deploy', 'start',
-            '--json',
-            '--target-org', orgUsername,
-            ...permissionSetNames.flatMap(permissionSetName => ['--metadata', `PermissionSet:${permissionSetName}`])
-        ];
-
-    }
-
-    // NO --on-behalf-of: THE ASSIGNEE IS THE USER THE ORG IS AUTHORIZED AS, AND NO ONE ELSE
+    // NO --on-behalf-of: THE ASSIGNEE IS THE USER THE ORG IS AUTHORIZED AS, AND NO ONE ELSE. --target-org IS THE
+    // USERNAME, NEVER AN ALIAS, WHICH CAN BE RE-POINTED BETWEEN THE CONFIRMATION AND THE RUN
     static buildPermissionSetAssignArguments(permissionSetNames: readonly string[], orgUsername: string): string[] {
 
         this.assertPermissionSetNames(permissionSetNames);
@@ -296,19 +289,7 @@ export class RecipeCockpitPermissionSetDeploy {
 
     static buildCliRequiredMessage(): string {
 
-        return `The Salesforce CLI is required to deploy and assign permission sets, and "${PicklistDependencyCheckService.getSalesforceCliExecutable()}" is not installed or not on PATH. Install it and try again.`;
-
-    }
-
-    // THE DEPLOY'S ANSWER IS READ EXACTLY AS "Deploy this metadata…" READS ITS OWN: ALL OR NOTHING
-    static parsePermissionSetDeployOutput(invocationResult: ISalesforceCliInvocationResult,
-                                            payload: Record<string, unknown> | undefined = ScratchOrgService.readCliJsonPayload(invocationResult)): MetadataDeployOutcome {
-
-        const deployOutcome = RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(invocationResult, payload);
-
-        return deployOutcome.kind === 'cliNotInstalled'
-            ? { kind: 'cliNotInstalled', failureMessage: this.buildCliRequiredMessage() }
-            : deployOutcome;
+        return `The Salesforce CLI is required to assign permission sets, and "${PicklistDependencyCheckService.getSalesforceCliExecutable()}" is not installed or not on PATH. Install it and try again.`;
 
     }
 
@@ -412,6 +393,32 @@ export class RecipeCockpitPermissionSetDeploy {
 
     }
 
+    /*
+        Splits the picks by whether the org holds them, matched case-insensitively as Salesforce
+        reads names, each list in the order picked.
+    */
+    static partitionByOrgPresence(permissionSets: readonly IPermissionSetCandidate[], orgPermissionSetNames: readonly string[]): IPermissionSetOrgPresence {
+
+        const lowerOrgNames = new Set(orgPermissionSetNames.map(permissionSetName => permissionSetName.toLowerCase()));
+        const presence: IPermissionSetOrgPresence = { presentPermissionSets: [], missingPermissionSets: [] };
+
+        permissionSets.forEach(permissionSet => {
+            ( lowerOrgNames.has(permissionSet.name.toLowerCase()) ? presence.presentPermissionSets : presence.missingPermissionSets ).push(permissionSet);
+        });
+
+        return presence;
+
+    }
+
+    // WHAT THE READER IS TOLD ABOUT THE PICKS THE ORG DOES NOT HOLD: THEIR NAMES, AND THAT DEPLOYING THEM IS THEIRS TO DO
+    static buildMissingPermissionSetsMessage(missingPermissionSetNames: readonly string[], orgLabel: string): string {
+
+        const isOne = missingPermissionSetNames.length === 1;
+
+        return `Not in ${orgLabel}: ${missingPermissionSetNames.join(', ')}. Deploy ${isOne ? 'this permission set' : 'these permission sets'} to the org, then assign ${isOne ? 'it' : 'them'}.`;
+
+    }
+
     private static failEvery(permissionSetNames: readonly string[], failureMessage: string): PermissionSetAssignOutcome {
 
         return { kind: 'notAllAssigned', assignedNames: [], alreadyAssignedNames: [], failedNames: [...permissionSetNames], failureMessages: [failureMessage] };
@@ -432,7 +439,7 @@ export class RecipeCockpitPermissionSetDeploy {
             `${permissionSets.length} ${permissionSets.length === 1 ? 'permission set' : 'permission sets'}:`,
             ...permissionSets.map(permissionSet => `  ${permissionSet.name} — ${toSingleLine(this.describeCoverage(permissionSet, treeObjectCount))}`),
             '',
-            'Each is deployed from this workspace\'s source first, all or nothing; only if the deploy succeeds are they assigned. A permission set the user already holds counts as assigned.'
+            'Nothing is deployed. Only the permission sets the org already holds are assigned; any it does not hold are named so you can deploy them. A permission set the user already holds counts as assigned.'
         ].join('\n');
 
     }

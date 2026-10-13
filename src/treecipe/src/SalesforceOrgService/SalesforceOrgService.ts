@@ -2,6 +2,7 @@ import { AuthInfo, Connection, Org, OrgAuthorization, StateAggregator } from '@s
 import { IAuthenticatedOrgDetail, ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { IAuthenticatedOrgListingForPicker, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 
 import * as fs from 'fs';
 import * as os from 'os';
@@ -274,8 +275,9 @@ export class SalesforceOrgService {
     private static describeCache = new Map<string, INormalizedOrgObjectDescribe>();
 
     /*
-        Everything, or one org's answer for one object -- after a deploy changed that object (#211),
-        so the next readiness check describes it afresh instead of reading the answer from before.
+        Everything, or one org's answer for one object -- after a permission set assignment changed
+        what that object's describe answers (#274), so the next readiness check describes it afresh
+        instead of reading the answer from before.
     */
     static clearDescribeCache(orgUsername?: string, objectApiName?: string) {
 
@@ -306,6 +308,37 @@ export class SalesforceOrgService {
                 .map(queryRecord => this.asRecord(queryRecord)?.Id)
                 .filter((recordId): recordId is string => typeof recordId === 'string' && SALESFORCE_RECORD_ID_PATTERN.test(recordId))
             : [];
+
+    }
+
+    /*
+        Which of the named permission sets the org holds, as the org spells them. Every name is held
+        to the api-name rule before it is quoted into the SOQL, so a name cannot close the quote, and
+        every answer is type-checked: it came over the network. A query that fails throws, so a
+        caller never reads a failed query as "the org has none of them".
+    */
+    static async queryPermissionSetNames(querySource: IOrgQuerySource, permissionSetNames: readonly string[]): Promise<string[]> {
+
+        if ( permissionSetNames.length === 0 ) {
+            return [];
+        }
+
+        permissionSetNames.forEach(permissionSetName => {
+            if ( !SalesforceApiName.isApiName(permissionSetName) ) {
+                throw new Error(`"${permissionSetName}" is not a Salesforce api name, so it was not sent to the org.`);
+            }
+        });
+
+        const quotedNames = permissionSetNames.map(permissionSetName => `'${permissionSetName}'`).join(', ');
+        const queryRecords = this.asRecord(await querySource.query(`SELECT Name FROM PermissionSet WHERE Name IN (${quotedNames})`))?.records;
+
+        if ( !Array.isArray(queryRecords) ) {
+            throw new Error('The org\'s answer about its permission sets could not be read.');
+        }
+
+        return queryRecords
+            .map(queryRecord => this.asRecord(queryRecord)?.Name)
+            .filter((permissionSetName): permissionSetName is string => typeof permissionSetName === 'string' && SalesforceApiName.isApiName(permissionSetName));
 
     }
 
@@ -938,13 +971,6 @@ export class SalesforceOrgService {
         }
 
         return aliasHolders;
-
-    }
-
-    // WHETHER THE CLI STILL HOLDS AN AUTHORIZATION FOR THIS USERNAME, READ LOCALLY WITH NO CONNECTION (#283)
-    static async isUsernameAuthorized(username: string): Promise<boolean> {
-
-        return (await this.readFreshAuthorizations()).some(authorization => authorization?.username === username);
 
     }
 

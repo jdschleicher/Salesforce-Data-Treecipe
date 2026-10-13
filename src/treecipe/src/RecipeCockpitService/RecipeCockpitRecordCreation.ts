@@ -304,18 +304,6 @@ export class RecipeCockpitRecordCreation {
     }
 
     /*
-        An object a "Deploy this metadata…" just created (#270), read from the CLI's own answer and
-        never from a describe: the org has it now, so the one reason left is one about the recipe
-        itself. The guards that need a describe (createable, an unticked required field, a
-        polymorphic lookup) are applied when the insert is clicked, which describes it afresh.
-    */
-    static buildDeployedObjectReadiness(objectApiName: string, recipeFieldRefusalReason?: string): IRecipeCockpitCreateReadinessViewModel {
-
-        return { objectApiName, disabledReason: recipeFieldRefusalReason ?? '', requiredLookups: [] };
-
-    }
-
-    /*
         One file's records with every lookup the recipe could not wire filled or cleared (#255). A
         value that already names a record of this insert is kept -- a faker-js friend's parent, which
         the insert resolves. Any other value (a TODO, a nickname of nothing inserted, a hand-written

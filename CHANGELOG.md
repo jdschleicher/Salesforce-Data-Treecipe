@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.75.0] - Recipe Cockpit: "Deploy this metadata…" removed; the permission set button only assigns
+
+Closes [#302](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/302). Part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+The Recipe Cockpit no longer deploys metadata. Deploy a tree's objects, fields and permission sets with your usual deploy (for example `sf project deploy start`); the cockpit's job is to make sure the user you are logged in as can see them before the insert.
+
+- **"Deploy this metadata…" is gone**, with its "Open Deployment Status" link (#283). A posted `deployTreeMetadata` or `openMetadataDeployStatus` message does nothing. **+ New scratch org** still deploys the project's source to the scratch org it creates.
+- **"Deploy & assign permission sets…" is now "Assign permission sets to me…".** It still offers this workspace's permission sets that grant access to the tree's objects, in the same multi-select pick, and uses the org chosen above (or one you pick: sandboxes and scratch orgs only). After you confirm, it asks the org again whether it is a sandbox and, on the same connection, which of your picks the org already holds (`SELECT Name FROM PermissionSet WHERE Name IN (…)`, case-insensitive). It runs **no** `sf project deploy start`.
+- **Picks the org does not hold are not assigned.** They are named in one warning, for example *Not in qa · qa@example.com: Gadget_Access. Deploy this permission set to the org, then assign it.* The picks the org holds are assigned with `sf org assign permset` to the user the org is authorized as. When it holds none of them, no CLI process runs. If the org cannot be asked, nothing is assigned and a fixed warning says to try again.
+- **Every outcome is a VS Code notification, and its follow-up is a button on it.** The card no longer draws a status line, **View output** or **Open Deployment Status**: it has the button only, disabled while a run is going. A success is an information message. Everything else (a refusal, a missing permission set, a partial assignment, a timeout, a cancel, a missing Salesforce CLI) is a **warning**, never an error, and when the CLI left a result its **View output** button opens it from `treecipe/OrgOperations/<username>/<timestamp>-permission-set-assign.json`.
+- **A prompted org that answers it is not a sandbox no longer becomes the selection.** Only an org that passed the sandbox check is remembered as the one chosen above.
+- **Removed code:** `RecipeCockpitMetadataDeploy`, the deployed-object readiness, the deploy-status URL helpers in `ScratchOrgService` (and `sf org open --path`), and `SalesforceOrgService.isUsernameAuthorized`. `RecipeCockpitPermissionSetDeploy` is renamed `RecipeCockpitPermissionSetAssign`.
+- **Unchanged:** the sandbox and scratch-org-only rule and its second check, the confirmation, the 50-pick limit, the one-at-a-time lock with the insert, the org picker and **+ New scratch org**, and the describe refresh for the objects an assignment grants on.
+
 ## [3.74.0] - Recipe Cockpit: add a lookup's standard parent to the recipe from a template
 
 Closes [#294](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/294). Part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

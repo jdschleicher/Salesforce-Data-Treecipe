@@ -3324,7 +3324,7 @@ describe('RecipeCockpitService', () => {
 
                 const inserting = buildRunFakerPanelState();
                 inserting.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: LEAD_TREE_KEY };
-                inserting.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true, statusText: '', isFailure: false, hasOutput: false } as any;
+                inserting.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
                 inserting.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true, statusText: '', isFailure: false, hasOutput: false };
 
                 expect(RecipeCockpitService.routePanelMessage({ command: 'generateTree', treeKey: LEAD_TREE_KEY }, inserting)).toBeUndefined();

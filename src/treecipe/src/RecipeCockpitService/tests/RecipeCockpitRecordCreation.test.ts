@@ -243,13 +243,6 @@ describe('RecipeCockpitRecordCreation', () => {
 
         });
 
-        it('marks no reason as deployable: "Deploy this metadata…" no longer depends on the readiness (#273)', () => {
-
-            expect(readinessOf({ describe: undefined, describeFailureMessage: 'NOT_FOUND' })).not.toHaveProperty('isMetadataDeployable');
-            expect(readinessOf({ describe: undefined, describeFailureMessage: 'timed out' })).not.toHaveProperty('isMetadataDeployable');
-
-        });
-
         it('still refuses with the reason the block could not be read, after the guards that come first', () => {
 
             expect(readinessOf({ recipeFieldRefusalReason: 'The recipe file is gone.' }).disabledReason).toBe('The recipe file is gone.');
@@ -273,6 +266,17 @@ describe('RecipeCockpitRecordCreation', () => {
                 objectApiName: 'Task', orgTypeDetail: SANDBOX,
                 describe: { objectApiName: 'Task', isCreateable: true, fields: [lookup('WhatId', ['Account', 'Opportunity'], { isNillable: false })] }
             }).disabledReason).toContain('WhatId is required and can point at more than one object (Account, Opportunity)');
+
+        });
+
+        it('names a production org whose type is empty as type unknown, and a required lookup naming no object as naming none', () => {
+
+            expect(readinessOf({ orgTypeDetail: { isSandbox: false, organizationType: '' } }).disabledReason)
+                .toBe('Records are inserted only into a sandbox or scratch org, and this org is Production · type unknown.');
+            expect(RecipeCockpitRecordCreation.buildCreateReadiness({
+                objectApiName: 'Task', orgTypeDetail: SANDBOX,
+                describe: { objectApiName: 'Task', isCreateable: true, fields: [lookup('WhatId', [], { isNillable: false })] }
+            }).disabledReason).toContain('WhatId is required and can point at more than one object (none named)');
 
         });
 
