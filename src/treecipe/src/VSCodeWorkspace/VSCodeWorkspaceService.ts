@@ -798,6 +798,47 @@ export class VSCodeWorkspaceService {
 
     }
 
+    /*
+        A notification whose one button opens a file the run wrote (#301, #310). The path is the
+        host's own and is checked again on the click, since the file can have been removed or
+        replaced by a link out of the workspace since; with no path there is no button. NOT AWAITED,
+        so the run ends without waiting for the reader.
+    */
+    static showNotificationWithWorkspaceFile(severity: 'information' | 'warning' | 'error',
+                                                notificationText: string,
+                                                actionLabel: string,
+                                                filePath: string | undefined,
+                                                workspaceRoot: string,
+                                                missingFileText: string) {
+
+        const actions = filePath ? [actionLabel] : [];
+        const shownNotification = severity === 'information'
+            ? vscode.window.showInformationMessage(notificationText, ...actions)
+            : severity === 'warning'
+                ? vscode.window.showWarningMessage(notificationText, ...actions)
+                : vscode.window.showErrorMessage(notificationText, ...actions);
+
+        Promise.resolve(shownNotification)
+            .then(chosenAction => chosenAction === actionLabel && filePath
+                ? this.openWorkspaceResultFile(filePath, workspaceRoot, missingFileText)
+                : undefined)
+            .catch(() => undefined);
+
+    }
+
+    static async openWorkspaceResultFile(filePath: string, workspaceRoot: string, missingFileText: string) {
+
+        const isUsable = fs.existsSync(filePath)
+                            && SfdxProjectService.isPathContainedInWorkspace(path.resolve(filePath), path.resolve(workspaceRoot));
+        if ( !isUsable ) {
+            this.showWarningMessage(missingFileText);
+            return;
+        }
+
+        await this.openFileInEditor(filePath);
+
+    }
+
     static showInformationMessage(message: string) {
 
         vscode.window.showInformationMessage(message);

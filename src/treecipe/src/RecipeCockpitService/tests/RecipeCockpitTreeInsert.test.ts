@@ -667,7 +667,9 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             expect(datasetFolderPath).toBe(path.join(fakeDataSetsFolderPath(), datasetFolderNames()[0]));
             expect(insertConnection).toBe(connection);
             expect(allOrNone).toBe(true);
-            expect(Object.keys(insertOptions)).toEqual(['prepareRecords']);
+            expect(Object.keys(insertOptions)).toEqual(['prepareRecords', 'isFailureReportedByCaller']);
+            // THE CARD'S OWN NOTIFICATION SAYS HOW IT ENDED, SO THE SHARED INSERT SHOWS NONE OF ITS OWN (#310)
+            expect(insertOptions.isFailureReportedByCaller).toBe(true);
             expect(typeof insertOptions.prepareRecords).toBe('function');
             connection.insertCalls.forEach(insertCall => expect(insertCall.insertOptions.allOrNone).toBe(true));
 
@@ -1093,10 +1095,13 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 const savedRecordIds = [...connection.insertedRecordsById.keys()];
                 expect(savedRecordIds.length).toBeGreaterThan(0);
                 expect(connection.deleteCalls.flat().sort()).toEqual(savedRecordIds.sort());
-                expect(resultNotificationCalls(vscode.window.showWarningMessage)).toEqual([[
+                // ONE RED NOTIFICATION, THE CARD'S, AND NO "Failed to process" FROM THE SHARED INSERT BESIDE IT (#310)
+                expect(resultNotificationCalls(vscode.window.showErrorMessage)).toEqual([[
                     expect.stringMatching(/^The insert of Relationship Tree 1 into qa \(qa@example\.com\.qa\) stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen\. \d+ records? failed\.$/),
                     RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL
                 ]]);
+                expect(( vscode.window.showErrorMessage as jest.Mock ).mock.calls.filter(notificationCall => String(notificationCall[0]).startsWith('Failed to process'))).toEqual([]);
+                expect(resultNotificationCalls(vscode.window.showWarningMessage)).toEqual([]);
 
             });
 
@@ -1502,19 +1507,33 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
         beforeEach(() => {
             (vscode.window.showInformationMessage as jest.Mock).mockReset();
             (vscode.window.showWarningMessage as jest.Mock).mockReset();
+            (vscode.window.showErrorMessage as jest.Mock).mockReset();
         });
 
         it.each([
             ['a full success', { outcome: 'completed', savedRecordCount: 1 }, 'showInformationMessage', '1 record was inserted into qa from Relationship Tree 1.', RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL],
             ['records that failed', { outcome: 'completed', savedRecordCount: 3, failedRecordCount: 1 }, 'showWarningMessage', '3 records were inserted into qa from Relationship Tree 1 and 1 failed. Nothing was rolled back.', RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL],
-            ['a stop that kept what it saved', { outcome: 'stopped', savedRecordCount: 1, failedRecordCount: 2 }, 'showWarningMessage', 'The insert of Relationship Tree 1 into qa stopped at a file that could not be inserted. 1 record was kept, because all-or-none was not chosen, and 2 failed.', RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL],
-            ['a stop that rolled back', { outcome: 'stopped', isRolledBack: true, failedRecordCount: 1 }, 'showWarningMessage', 'The insert of Relationship Tree 1 into qa stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen. 1 record failed.', RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL],
+            ['a stop that kept what it saved', { outcome: 'stopped', savedRecordCount: 1, failedRecordCount: 2 }, 'showErrorMessage', 'The insert of Relationship Tree 1 into qa stopped at a file that could not be inserted. 1 record was kept, because all-or-none was not chosen, and 2 failed.', RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL],
+            ['a stop that rolled back', { outcome: 'stopped', isRolledBack: true, failedRecordCount: 1 }, 'showErrorMessage', 'The insert of Relationship Tree 1 into qa stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen. 1 record failed.', RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL],
             ['a cancel', { outcome: 'cancelled', isRolledBack: true }, 'showWarningMessage', 'The insert of Relationship Tree 1 into qa was cancelled and every record it had inserted was deleted.', RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL]
         ])('reports %s in one notification with the button that opens the results file', (_label, insertResult, notifyName, expectedText, expectedButton) => {
 
             showInsertNotification(insertResult);
 
             expect((vscode.window as any)[notifyName].mock.calls).toEqual([[expectedText, expectedButton]]);
+
+        });
+
+        it('opens the results file from a stopped insert\'s red notification (#310)', async () => {
+
+            const openFileSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+            (vscode.window.showErrorMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL);
+
+            showInsertNotification({ outcome: 'stopped', failedRecordCount: 1 });
+            await new Promise(resolve => setImmediate(resolve));
+
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+            expect(openFileSpy).toHaveBeenCalledWith(RESULTS_FILE_PATH);
 
         });
 

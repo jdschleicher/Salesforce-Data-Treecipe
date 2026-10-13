@@ -38,9 +38,19 @@ export interface IDataSetInsertResult {
 */
 export type DataSetRecordPreparer = (objectApiName: string, records: unknown[], createdRecordIdsByReferenceId: Readonly<Record<string, string>>) => unknown[];
 
+/*
+    isFailureReportedByCaller: the caller shows how the insert ended in its own notification (the
+    Recipe Cockpit's tree insert), so a file that stops the insert shows no second one here.
+*/
 export interface IDataSetInsertOptions {
     prepareRecords?: DataSetRecordPreparer;
+    isFailureReportedByCaller?: boolean;
 }
+
+export const INSERT_VIEW_ERRORS_LABEL = 'View errors';
+export const INSERT_RESULTS_FILE_MISSING_TEXT = 'The insert results file no longer exists in this workspace.';
+// A FailureResults ENTRY FOR A REQUEST THAT THREW: NOT A RECORD THE ORG REJECTED, SO NEVER COUNTED AS ONE
+export const INSERT_REQUEST_FAILED_STATUS_CODE = 'REQUEST_FAILED';
 
 type InsertProgress = vscode.Progress<{ message?: string; increment?: number }>;
 
@@ -204,6 +214,7 @@ export class CollectionsApiService {
             'FailureResults' : {}
         };
         const objectReferenceIdToOrgCreatedRecordIdMap: Record<string, string> = {};
+        const countRecordFailures = (objectResults: any[] | undefined) => (objectResults ?? []).filter(objectResult => !this.isRequestFailureResult(objectResult)).length;
         let outcome: DataSetInsertOutcome = 'completed';
         let isRolledBack = false;
 
@@ -227,6 +238,15 @@ export class CollectionsApiService {
               };
               // processAndInsertCollectionFile ROLLS BACK AN ALL-OR-NONE FAILURE ITSELF, SO A CANCEL SEEN AFTER ONE IS NOT A SECOND DELETE
               const hasAllOrNoneFailure = () => allOrNoneSelection && Object.keys(allCollectionApiFilesSobjectResults.FailureResults).length > 0;
+              const showInsertFailure = (notificationText: string) => {
+                  if ( insertOptions.isFailureReportedByCaller ) {
+                      return;
+                  }
+                  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                  VSCodeWorkspaceService.showNotificationWithWorkspaceFile('error', notificationText, INSERT_VIEW_ERRORS_LABEL,
+                      workspaceRoot && fs.existsSync(fullPathToResultsFile) ? fullPathToResultsFile : undefined,
+                      workspaceRoot ?? '', INSERT_RESULTS_FILE_MISSING_TEXT);
+              };
           
               for (let i = 0; i < totalFiles; i++) {
 
@@ -266,7 +286,8 @@ export class CollectionsApiService {
                     if (!successResult) {
                         outcome = 'stopped';
                         isRolledBack = allOrNoneSelection;
-                        vscode.window.showWarningMessage(`Failed to process ${fileName}`);
+                        const failedCount = countRecordFailures(allCollectionApiFilesSobjectResults.FailureResults[this.getObjectNameFromCollectionsApiFilePath(collectionsApiFilePath)]);
+                        showInsertFailure(`Failed to process ${fileName}: ${failedCount} ${failedCount === 1 ? 'record' : 'records'} failed${isRolledBack ? ', and every record this insert had saved was deleted, because all-or-none was chosen' : ''}.`);
                         break;                    
                     }
 
@@ -278,7 +299,9 @@ export class CollectionsApiService {
                         earlier files saved is deleted, as an all-or-none failure is.
                     */
                     outcome = 'stopped';
-                    vscode.window.showWarningMessage(`Failed to process ${fileName}: ${RecipeYamlScalar.escapeForNotification(String((error as { message?: unknown })?.message ?? error))}`);
+                    const errorMessage = String((error as { message?: unknown })?.message ?? error);
+                    this.recordRequestFailure(allCollectionApiFilesSobjectResults, this.getObjectNameFromCollectionsApiFilePath(collectionsApiFilePath), fileName, errorMessage, fullPathToResultsFile);
+                    showInsertFailure(`Failed to process ${fileName}: ${RecipeYamlScalar.escapeForNotification(errorMessage)}`);
                     if ( allOrNoneSelection ) {
                         isRolledBack = true;
                         if ( fs.existsSync(fullPathToResultsFile) ) {
@@ -298,7 +321,7 @@ export class CollectionsApiService {
             }
         );
 
-        const countResults = (resultsByObject: Record<string, any[]> | undefined) => Object.values(resultsByObject ?? {}).reduce((recordCount, objectResults) => recordCount + objectResults.length, 0);
+        const countResults = (resultsByObject: Record<string, any[]> | undefined) => Object.values(resultsByObject ?? {}).reduce((recordCount, objectResults) => recordCount + countRecordFailures(objectResults), 0);
 
         return {
             outcome: outcome,
@@ -375,6 +398,37 @@ export class CollectionsApiService {
             return true;
 
     
+    }
+
+    /*
+        A request that threw has no per-record answer, so the results file would otherwise not say
+        why the insert stopped -- or not exist at all, when it was the first file. One entry under
+        the object's FailureResults records the file and the error. A file that cannot be written
+        is left unwritten: the caller's notification then offers no button rather than failing.
+    */
+    static recordRequestFailure(allCollectionApiFilesSobjectResults: Record<string, Record<string, any[]>>,
+                                objectApiName: string,
+                                fileName: string,
+                                errorMessage: string,
+                                fullPathToResultsFile: string) {
+
+        const requestFailure = { success: false, fileName: fileName, errors: [{ statusCode: INSERT_REQUEST_FAILED_STATUS_CODE, message: errorMessage, fields: [] as string[] }] };
+        allCollectionApiFilesSobjectResults.FailureResults = this.addItemToRecordMap(allCollectionApiFilesSobjectResults.FailureResults, objectApiName, requestFailure);
+
+        try {
+            this.appendInsertAttemptsFileWithLatestSobjectResults(allCollectionApiFilesSobjectResults, fullPathToResultsFile);
+        } catch {
+            // THE NOTIFICATION STILL SHOWS, WITHOUT A BUTTON
+        }
+
+    }
+
+    static isRequestFailureResult(objectResult: any): boolean {
+
+        return Array.isArray(objectResult?.errors)
+                && objectResult.errors.some((resultError: any) => resultError?.statusCode === INSERT_REQUEST_FAILED_STATUS_CODE)
+                && typeof objectResult?.fileName === 'string';
+
     }
 
     static updateCompleteCollectionApiSobjectResults(allCollectionApiFilesSobjectResults: Record<string, Record<string, any[]>>, 

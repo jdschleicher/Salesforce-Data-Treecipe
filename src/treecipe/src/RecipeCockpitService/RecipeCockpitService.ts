@@ -5582,7 +5582,8 @@ export class RecipeCockpitService {
         onDatasetFolderMade(datasetFolderPath);
 
         const insertResult = await CollectionsApiService.insertDataSetFolderIntoOrg(datasetFolderPath, connection, allOrNoneSelection, {
-            prepareRecords: this.buildTreeInsertRecordPreparer(orgDetail.username, insertObjectApiNameSet, orgRecordIdsByObject, choiceCount => Math.floor(Math.random() * choiceCount), outsideParentsByObject)
+            prepareRecords: this.buildTreeInsertRecordPreparer(orgDetail.username, insertObjectApiNameSet, orgRecordIdsByObject, choiceCount => Math.floor(Math.random() * choiceCount), outsideParentsByObject),
+            isFailureReportedByCaller: true
         });
 
         onInsertFinished();
@@ -5630,21 +5631,23 @@ export class RecipeCockpitService {
 
     /*
         How the tree insert ended, with the results file a button opens (#301): "View errors" when a
-        record failed or the insert stopped, "View results" otherwise. The insert writes that file
-        only once it has sent a file, so one cancelled or failed before that offers no button. The
-        panel draws no line for it. NOT AWAITED, so the insert ends without waiting for the reader. treeLabel and orgLabel
-        arrive escaped.
+        record failed or the insert stopped, "View results" otherwise. A stopped insert is an ERROR
+        (#310), the one notification for it, since the shared insert was told not to show its own.
+        The insert writes that file once it has sent a file, so a cancel before that offers no
+        button. The panel draws no line for it. NOT AWAITED, so the insert ends without waiting for
+        the reader. treeLabel and orgLabel arrive escaped.
     */
     private static showTreeInsertNotification(insertResult: IDataSetInsertResult, treeLabel: string, orgLabel: string, workspaceRoot: string) {
 
         const recordsText = (recordCount: number) => `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
         const hasErrors = insertResult.failedRecordCount > 0 || insertResult.outcome === 'stopped';
-        let severity: 'information' | 'warning' = 'warning';
+        let severity: 'information' | 'warning' | 'error' = 'warning';
         let notificationText: string;
 
         if ( insertResult.outcome === 'cancelled' ) {
             notificationText = `The insert of ${treeLabel} into ${orgLabel} was cancelled${insertResult.isRolledBack ? ' and every record it had inserted was deleted' : ''}.`;
         } else if ( insertResult.outcome === 'stopped' ) {
+            severity = 'error';
             notificationText = insertResult.isRolledBack
                 ? `The insert of ${treeLabel} into ${orgLabel} stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen. ${recordsText(insertResult.failedRecordCount)} failed.`
                 : `The insert of ${treeLabel} into ${orgLabel} stopped at a file that could not be inserted. ${recordsText(insertResult.savedRecordCount)} ${insertResult.savedRecordCount === 1 ? 'was' : 'were'} kept, because all-or-none was not chosen, and ${insertResult.failedRecordCount} failed.`;
@@ -5661,11 +5664,6 @@ export class RecipeCockpitService {
 
     }
 
-    /*
-        A notification whose one button opens a file this run wrote (#301). The path is the host's
-        own and is checked again on the click, since the file can have been replaced by a link out
-        of the workspace since; with no path there is no button. NOT AWAITED.
-    */
     private static showNotificationWithFile(severity: 'information' | 'warning' | 'error',
                                             notificationText: string,
                                             actionLabel: string,
@@ -5673,29 +5671,7 @@ export class RecipeCockpitService {
                                             workspaceRoot: string,
                                             missingFileText: string) {
 
-        const actions = filePath ? [actionLabel] : [];
-        const shownNotification = severity === 'information'
-            ? vscode.window.showInformationMessage(notificationText, ...actions)
-            : severity === 'warning'
-                ? vscode.window.showWarningMessage(notificationText, ...actions)
-                : vscode.window.showErrorMessage(notificationText, ...actions);
-
-        Promise.resolve(shownNotification)
-            .then(chosenAction => chosenAction === actionLabel && filePath
-                ? this.openWorkspaceResultFile(filePath, workspaceRoot, missingFileText)
-                : undefined)
-            .catch(() => undefined);
-
-    }
-
-    private static async openWorkspaceResultFile(filePath: string, workspaceRoot: string, missingFileText: string) {
-
-        if ( !this.isUsableWorkspacePath(filePath, workspaceRoot) ) {
-            VSCodeWorkspaceService.showWarningMessage(missingFileText);
-            return;
-        }
-
-        await VSCodeWorkspaceService.openFileInEditor(filePath);
+        VSCodeWorkspaceService.showNotificationWithWorkspaceFile(severity, notificationText, actionLabel, filePath, workspaceRoot, missingFileText);
 
     }
 
