@@ -51,10 +51,10 @@ import {
     RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
     RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL,
     RECIPE_COCKPIT_PERMISSION_SET_ORG_PLACEHOLDER,
-    RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
-    RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL
+    RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL,
+    RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL
 } from '../RecipeCockpitService';
-import { PERMISSION_SET_MAX_PICKS, RecipeCockpitPermissionSetDeploy } from '../RecipeCockpitPermissionSetDeploy';
+import { PERMISSION_SET_MAX_PICKS, RecipeCockpitPermissionSetAssign } from '../RecipeCockpitPermissionSetAssign';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { ORG_OPERATIONS_FOLDER_NAME } from '../../ScratchOrgService/ScratchOrgService';
@@ -63,7 +63,7 @@ import { PicklistDependencyCheckService } from '../../PicklistDependencyCheckSer
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
-const METADATA_DEPLOY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'metadataDeployWorkspace');
+const PERMISSION_SET_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'permissionSetWorkspace');
 const SALESFORCE_ORG_MOCKS_PATH = path.join(__dirname, '..', '..', 'SalesforceOrgService', 'tests', 'mocks');
 
 const readJson = (filePath: string) => JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -80,18 +80,6 @@ const CONTACT_READER_PATH = 'unpackaged/permissionsets/Contact_Reader.permission
 
 const invocation = (stdout: string, extra: Record<string, unknown> = {}) => ({ stdout: stdout, stderr: '', exitCode: 0, ...extra });
 
-const buildDeployAnswer = (failures: Array<{ fullName: string; problem: string }> = []) => JSON.stringify({
-    status: failures.length === 0 ? 0 : 1,
-    ...( failures.length > 0 ? { name: 'FailedDeployError', message: 'Deploy failed.' } : {} ),
-    result: {
-        success: failures.length === 0,
-        details: {
-            componentSuccesses: [{ fullName: 'Account_Tree_Access', componentType: 'PermissionSet', success: true }],
-            componentFailures: failures.map(failure => ({ ...failure, componentType: 'PermissionSet', success: false }))
-        }
-    }
-});
-
 const buildAssignAnswer = (successNames: string[], failures: Array<{ name?: string; message: string }> = []) => JSON.stringify({
     status: failures.length === 0 ? 0 : 1,
     result: {
@@ -100,9 +88,9 @@ const buildAssignAnswer = (successNames: string[], failures: Array<{ name?: stri
     }
 });
 
-describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Treecipe tab (#274)', () => {
+describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecipe tab (#274, #302)', () => {
 
-    describe('RecipeCockpitPermissionSetDeploy', () => {
+    describe('RecipeCockpitPermissionSetAssign', () => {
 
         let temporaryRoot: string;
         let workspaceRoot: string;
@@ -110,7 +98,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
         beforeEach(() => {
             temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-permission-sets-'));
             workspaceRoot = path.join(temporaryRoot, 'workspace');
-            fs.cpSync(METADATA_DEPLOY_WORKSPACE_ROOT, workspaceRoot, { recursive: true });
+            fs.cpSync(PERMISSION_SET_WORKSPACE_ROOT, workspaceRoot, { recursive: true });
         });
 
         afterEach(() => {
@@ -119,7 +107,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
         const permissionSetsFolderPath = () => path.join(workspaceRoot, 'force-app', 'main', 'default', 'permissionsets');
         const discover = (objectApiNames: string[] = ACCOUNT_TREE_OBJECTS, packageDirectoryPaths = ['force-app', 'unpackaged']) =>
-            RecipeCockpitPermissionSetDeploy.discoverPermissionSets(objectApiNames, workspaceRoot, packageDirectoryPaths);
+            RecipeCockpitPermissionSetAssign.discoverPermissionSets(objectApiNames, workspaceRoot, packageDirectoryPaths);
 
         it('offers the permission sets whose object or field permissions name any of the tree\'s objects, case-insensitively, with what each covers in the tree\'s order', async () => {
 
@@ -161,11 +149,11 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
         it('reads an empty permission set as granting nothing, and malformed permission entries as nothing', async () => {
 
-            expect(await RecipeCockpitPermissionSetDeploy.readGrantedObjectApiNames('<PermissionSet></PermissionSet>')).toEqual([]);
-            expect(await RecipeCockpitPermissionSetDeploy.readGrantedObjectApiNames('<PermissionSet xmlns="x"/>')).toEqual([]);
-            expect(await RecipeCockpitPermissionSetDeploy.readGrantedObjectApiNames('<PermissionSet><objectPermissions><object><x>1</x></object></objectPermissions><fieldPermissions><field> </field></fieldPermissions></PermissionSet>')).toEqual([]);
-            expect(await RecipeCockpitPermissionSetDeploy.readGrantedObjectApiNames('<PermissionSet><objectPermissions>text</objectPermissions><objectPermissions><allowRead>true</allowRead></objectPermissions></PermissionSet>')).toEqual([]);
-            expect(await RecipeCockpitPermissionSetDeploy.readGrantedObjectApiNames('')).toBeUndefined();
+            expect(await RecipeCockpitPermissionSetAssign.readGrantedObjectApiNames('<PermissionSet></PermissionSet>')).toEqual([]);
+            expect(await RecipeCockpitPermissionSetAssign.readGrantedObjectApiNames('<PermissionSet xmlns="x"/>')).toEqual([]);
+            expect(await RecipeCockpitPermissionSetAssign.readGrantedObjectApiNames('<PermissionSet><objectPermissions><object><x>1</x></object></objectPermissions><fieldPermissions><field> </field></fieldPermissions></PermissionSet>')).toEqual([]);
+            expect(await RecipeCockpitPermissionSetAssign.readGrantedObjectApiNames('<PermissionSet><objectPermissions>text</objectPermissions><objectPermissions><allowRead>true</allowRead></objectPermissions></PermissionSet>')).toEqual([]);
+            expect(await RecipeCockpitPermissionSetAssign.readGrantedObjectApiNames('')).toBeUndefined();
 
         });
 
@@ -202,61 +190,68 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
             const permissionSet = { name: 'Account_Tree_Access', relativeFilePath: ACCOUNT_TREE_ACCESS_PATH, coveredObjectApiNames: ['Account', 'OtherChildObject__c'], grantedObjectApiNames: ['Account', 'OtherChildObject__c'] };
 
-            expect(RecipeCockpitPermissionSetDeploy.describeCoverage(permissionSet, 3)).toBe('partial, 2 of 3: Account, OtherChildObject__c');
-            expect(RecipeCockpitPermissionSetDeploy.describeCoverage(permissionSet, 2)).toBe('covers all 2 of the tree\'s objects: Account, OtherChildObject__c');
+            expect(RecipeCockpitPermissionSetAssign.describeCoverage(permissionSet, 3)).toBe('partial, 2 of 3: Account, OtherChildObject__c');
+            expect(RecipeCockpitPermissionSetAssign.describeCoverage(permissionSet, 2)).toBe('covers all 2 of the tree\'s objects: Account, OtherChildObject__c');
 
         });
 
-        it('builds the deploy argv with one --metadata per pick and the assign argv with one --name per pick, the username as --target-org', () => {
+        it('builds the assign argv with one --name per pick and the username as --target-org, and no deploy argv at all', () => {
 
-            expect(RecipeCockpitPermissionSetDeploy.buildPermissionSetDeployArguments(['Account_Tree_Access', 'Contact_Reader'], QA_USERNAME)).toEqual([
-                'project', 'deploy', 'start', '--json', '--target-org', QA_USERNAME,
-                '--metadata', 'PermissionSet:Account_Tree_Access', '--metadata', 'PermissionSet:Contact_Reader'
-            ]);
-            expect(RecipeCockpitPermissionSetDeploy.buildPermissionSetAssignArguments(['Account_Tree_Access', 'Contact_Reader'], QA_USERNAME)).toEqual([
+            expect(RecipeCockpitPermissionSetAssign.buildPermissionSetAssignArguments(['Account_Tree_Access', 'Contact_Reader'], QA_USERNAME)).toEqual([
                 'org', 'assign', 'permset', '--json', '--target-org', QA_USERNAME,
                 '--name', 'Account_Tree_Access', '--name', 'Contact_Reader'
             ]);
-            expect(RecipeCockpitPermissionSetDeploy.buildPermissionSetDeployArguments(['A'], QA_USERNAME)).not.toContain('--ignore-errors');
+            expect(RecipeCockpitPermissionSetAssign.buildPermissionSetAssignArguments(['A'], QA_USERNAME)).not.toContain('--on-behalf-of');
+            expect(RecipeCockpitPermissionSetAssign).not.toHaveProperty('buildPermissionSetDeployArguments');
+            expect(RecipeCockpitPermissionSetAssign).not.toHaveProperty('parsePermissionSetDeployOutput');
 
         });
 
         it('refuses a name that is not an api name, no name at all, and an org identifier that could be read as a flag, before any argv', () => {
 
-            expect(() => RecipeCockpitPermissionSetDeploy.buildPermissionSetDeployArguments(['Ok', 'X --ignore-errors'], QA_USERNAME)).toThrow('is not a Salesforce api name');
-            expect(() => RecipeCockpitPermissionSetDeploy.buildPermissionSetAssignArguments(['-onbehalfof'], QA_USERNAME)).toThrow('is not a Salesforce api name');
-            expect(() => RecipeCockpitPermissionSetDeploy.buildPermissionSetAssignArguments([], QA_USERNAME)).toThrow('No permission set was named');
-            expect(() => RecipeCockpitPermissionSetDeploy.buildPermissionSetDeployArguments(['Ok'], '--target-org')).toThrow();
+            expect(() => RecipeCockpitPermissionSetAssign.buildPermissionSetAssignArguments(['Ok', 'X --on-behalf-of'], QA_USERNAME)).toThrow('is not a Salesforce api name, so nothing was assigned.');
+            expect(() => RecipeCockpitPermissionSetAssign.buildPermissionSetAssignArguments(['-onbehalfof'], QA_USERNAME)).toThrow('is not a Salesforce api name');
+            expect(() => RecipeCockpitPermissionSetAssign.buildPermissionSetAssignArguments([], QA_USERNAME)).toThrow('No permission set was named, so nothing was assigned.');
+            expect(() => RecipeCockpitPermissionSetAssign.buildPermissionSetAssignArguments(['Ok'], '--target-org')).toThrow();
 
         });
 
-        it('reads the deploy\'s --json all or nothing, and says the CLI is required on ENOENT', () => {
+        it('splits the picks by whether the org holds them, case-insensitively and in the order picked', () => {
 
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetDeployOutput(invocation(buildDeployAnswer())))
-                .toEqual({ kind: 'deployed', deployedComponentCount: 1 });
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetDeployOutput(invocation(buildDeployAnswer([{ fullName: 'Contact_Reader', problem: 'no such field Contact.Email' }]), { exitCode: 1 })))
-                .toEqual({ kind: 'failed', failureMessage: 'Contact_Reader: no such field Contact.Email' });
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetDeployOutput(invocation('not json')).kind).toBe('failed');
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetDeployOutput(invocation('', { spawnError: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) })))
-                .toEqual({ kind: 'cliNotInstalled', failureMessage: 'The Salesforce CLI is required to deploy and assign permission sets, and "sf" is not installed or not on PATH. Install it and try again.' });
+            const pick = (name: string) => ({ name: name, relativeFilePath: `${name}.permissionset-meta.xml`, coveredObjectApiNames: ['Account'], grantedObjectApiNames: ['Account'] });
+
+            const presence = RecipeCockpitPermissionSetAssign.partitionByOrgPresence([pick('B_Set'), pick('A_Set'), pick('C_Set')], ['a_set', 'C_SET', 'Unrelated']);
+
+            expect(presence.presentPermissionSets.map(permissionSet => permissionSet.name)).toEqual(['A_Set', 'C_Set']);
+            expect(presence.missingPermissionSets.map(permissionSet => permissionSet.name)).toEqual(['B_Set']);
+            expect(RecipeCockpitPermissionSetAssign.partitionByOrgPresence([pick('A_Set')], []).missingPermissionSets).toHaveLength(1);
+
+        });
+
+        it('tells the reader to deploy what the org does not hold, in the singular and the plural', () => {
+
+            expect(RecipeCockpitPermissionSetAssign.buildMissingPermissionSetsMessage(['Gadget_Access'], 'qa · qa@example.com'))
+                .toBe('Not in qa · qa@example.com: Gadget_Access. Deploy this permission set to the org, then assign it.');
+            expect(RecipeCockpitPermissionSetAssign.buildMissingPermissionSetsMessage(['A', 'B'], 'qa'))
+                .toBe('Not in qa: A, B. Deploy these permission sets to the org, then assign them.');
 
         });
 
         it('reads an assignment of every pick as assigned', () => {
 
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(invocation(buildAssignAnswer(['A', 'B'])), ['A', 'B']))
+            expect(RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(invocation(buildAssignAnswer(['A', 'B'])), ['A', 'B']))
                 .toEqual({ kind: 'assigned', assignedNames: ['A', 'B'], alreadyAssignedNames: [] });
 
         });
 
         it('counts a permission set the user already holds as assigned, whether or not the failure names it', () => {
 
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(
+            expect(RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(
                 invocation(buildAssignAnswer(['A'], [{ name: 'B', message: 'Duplicate PermissionSetAssignment. Assignee: 005x, PermissionSet: 0PSx' }]), { exitCode: 1 }),
                 ['A', 'B']
             )).toEqual({ kind: 'assigned', assignedNames: ['A'], alreadyAssignedNames: ['B'] });
 
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(
+            expect(RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(
                 invocation(buildAssignAnswer([], [
                     { name: QA_USERNAME, message: 'Duplicate PermissionSetAssignment. Assignee: 005x, PermissionSet: 0PSa' },
                     { name: QA_USERNAME, message: 'Duplicate PermissionSetAssignment. Assignee: 005x, PermissionSet: 0PSb' }
@@ -268,19 +263,19 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
         it('names which picks failed in a partial assignment, and what the CLI said', () => {
 
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(
+            expect(RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(
                 invocation(buildAssignAnswer(['A'], [{ name: QA_USERNAME, message: 'Permission set "B" not found in target org.' }]), { exitCode: 1 }),
                 ['A', 'B']
             )).toEqual({ kind: 'notAllAssigned', assignedNames: ['A'], alreadyAssignedNames: [], failedNames: ['B'], failureMessages: ['Permission set "B" not found in target org.'] });
 
             // A FAILURE NAMING NO PICK IS MATCHED TO THE PICKS NOTHING ACCOUNTED FOR, AND NEVER READ AS A SUCCESS
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(
+            expect(RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(
                 invocation(buildAssignAnswer(['A'], [{ name: QA_USERNAME, message: 'insufficient access' }]), { exitCode: 1 }),
                 ['A', 'B', 'C']
             )).toEqual({ kind: 'notAllAssigned', assignedNames: ['A'], alreadyAssignedNames: [], failedNames: ['B', 'C'], failureMessages: ['insufficient access'] });
 
             // A NAME THAT ONLY PREFIXES ANOTHER IS NOT A MATCH
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(
+            expect(RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(
                 invocation(buildAssignAnswer([], [{ message: 'Permission set "Access_Plus" not found' }]), { exitCode: 1 }),
                 ['Access', 'Access_Plus']
             )).toMatchObject({ failedNames: ['Access_Plus', 'Access'] });
@@ -289,33 +284,33 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
         it('never reads a pick the answer does not account for as assigned, nor a malformed answer as a success', () => {
 
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(invocation(buildAssignAnswer(['A'])), ['A', 'B']))
+            expect(RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(invocation(buildAssignAnswer(['A'])), ['A', 'B']))
                 .toMatchObject({ kind: 'notAllAssigned', assignedNames: ['A'], failedNames: ['B'] });
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(invocation('{"status":1,"name":"NoAuth","message":"No authorization"}', { exitCode: 1 }), ['A']))
+            expect(RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(invocation('{"status":1,"name":"NoAuth","message":"No authorization"}', { exitCode: 1 }), ['A']))
                 .toEqual({ kind: 'notAllAssigned', assignedNames: [], alreadyAssignedNames: [], failedNames: ['A'], failureMessages: ['NoAuth: No authorization'] });
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(invocation('{"status":0,"result":{"successes":[null,"A",{"value":7}],"failures":"x"}}'), ['A']))
+            expect(RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(invocation('{"status":0,"result":{"successes":[null,"A",{"value":7}],"failures":"x"}}'), ['A']))
                 .toMatchObject({ kind: 'notAllAssigned', failedNames: ['A'] });
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(invocation('not json'), ['A']).kind).toBe('notAllAssigned');
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(invocation('{"status":0,"result":[]}'), ['A']).kind).toBe('notAllAssigned');
+            expect(RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(invocation('not json'), ['A']).kind).toBe('notAllAssigned');
+            expect(RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(invocation('{"status":0,"result":[]}'), ['A']).kind).toBe('notAllAssigned');
             // A FAILURE WITH NO MESSAGE STILL FAILS THE PICK IT NAMES, AND THE CLI'S OWN ERROR STANDS IN FOR THE MESSAGE
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(invocation('{"status":1,"name":"AssignError","result":{"successes":[],"failures":[{"name":"A"}]}}'), ['A']))
+            expect(RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(invocation('{"status":1,"name":"AssignError","result":{"successes":[],"failures":[{"name":"A"}]}}'), ['A']))
                 .toEqual({ kind: 'notAllAssigned', assignedNames: [], alreadyAssignedNames: [], failedNames: ['A'], failureMessages: ['AssignError'] });
 
         });
 
         it('says the CLI is required on ENOENT, and that a timeout or an answer too large to read leaves the assignment unknown', () => {
 
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(invocation('', { spawnError: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) }), ['A']).kind).toBe('cliNotInstalled');
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(invocation('', { spawnError: Object.assign(new Error('EACCES'), { code: 'EACCES' }) }), ['A']))
+            expect(RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(invocation('', { spawnError: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) }), ['A']).kind).toBe('cliNotInstalled');
+            expect(RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(invocation('', { spawnError: Object.assign(new Error('EACCES'), { code: 'EACCES' }) }), ['A']))
                 .toMatchObject({ kind: 'notAllAssigned', failedNames: ['A'], failureMessages: ['The Salesforce CLI could not be started: EACCES'] });
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(invocation('', { timedOut: true }), ['A']).kind).toBe('unconfirmed');
-            expect(RecipeCockpitPermissionSetDeploy.parsePermissionSetAssignOutput(invocation('', { isOutputTooLarge: true }), ['A']).kind).toBe('unconfirmed');
+            expect(RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(invocation('', { timedOut: true }), ['A']).kind).toBe('unconfirmed');
+            expect(RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(invocation('', { isOutputTooLarge: true }), ['A']).kind).toBe('unconfirmed');
 
         });
 
         it('names the tree, the org, the user and every pick with what it covers in the confirmation, each on one line', () => {
 
-            const detail = RecipeCockpitPermissionSetDeploy.buildConfirmationDetail('Tree\nTwo', `qa · ${QA_USERNAME}`, QA_USERNAME, [
+            const detail = RecipeCockpitPermissionSetAssign.buildConfirmationDetail('Tree\nTwo', `qa · ${QA_USERNAME}`, QA_USERNAME, [
                 { name: 'Account_Tree_Access', relativeFilePath: ACCOUNT_TREE_ACCESS_PATH, coveredObjectApiNames: ['Account', 'OtherChildObject__c'], grantedObjectApiNames: ['Account', 'OtherChildObject__c'] }
             ], 3);
 
@@ -323,6 +318,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             expect(detail).toContain(`Org: qa · ${QA_USERNAME}`);
             expect(detail).toContain(`Assigned to: ${QA_USERNAME}, the user this org is authorized as`);
             expect(detail).toContain('1 permission set:\n  Account_Tree_Access — partial, 2 of 3: Account, OtherChildObject__c');
+            expect(detail).toContain('Nothing is deployed.');
             expect(detail).not.toMatch(/[()]/);
 
         });
@@ -337,31 +333,32 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             panelState.acknowledgedRenderSequence = 3;
             panelState.dataOrgDetails = [{ targetOrgIdentifier: 'qa', username: QA_USERNAME, alias: 'qa' }];
             panelState.dataOrgSelection = { orgIndex: 0, orgDetail: panelState.dataOrgDetails[0], requestSequence: 7, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' }, isReadinessPosted: true };
-            panelState.pendingDeployableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
-            panelState.deployableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
+            panelState.pendingAssignableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
+            panelState.assignableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
             return panelState;
         };
 
-        const permissionSetMessage = { command: 'deployTreePermissionSets', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY };
+        const permissionSetMessage = { command: 'assignTreePermissionSets', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY };
+        const notRunning = (treeKey: string = ACCOUNT_TREE_KEY) => ({ command: 'permissionSetAssignState', isRunning: false, treeKey: treeKey });
 
-        it('refuses the selected org until its readiness was posted, since a describe taken before the assignment would put back what it removed', () => {
+        it('refuses the selected org with a warning until its readiness was posted, since a describe taken before the assignment would put back what it removed', () => {
 
             const panelState = buildPanelState();
             panelState.dataOrgSelection.isReadinessPosted = false;
 
-            expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)).toMatchObject({
-                kind: 'postMetadataDeployState',
-                hostMessage: { command: 'metadataDeployState', isRunning: false },
-                refusalText: 'Nothing was deployed or assigned: the org selected above is still being checked. Try again once that check has finished.'
+            expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)).toEqual({
+                kind: 'refusePermissionSetAssign',
+                refusalText: 'Nothing was assigned: the org selected above is still being checked. Try again once that check has finished.',
+                hostMessage: notRunning()
             });
-            expect(RecipeCockpitService.routePanelMessage({ command: 'deployTreePermissionSets', treeKey: ACCOUNT_TREE_KEY }, panelState)?.kind).toBe('deployTreePermissionSets');
+            expect(RecipeCockpitService.routePanelMessage({ command: 'assignTreePermissionSets', treeKey: ACCOUNT_TREE_KEY }, panelState)?.kind).toBe('assignTreePermissionSets');
 
         });
 
         it('routes the tree KEY and whether the selection is the org, never anything else', () => {
 
             expect(RecipeCockpitService.routePanelMessage({ ...permissionSetMessage, names: ['Evil'], username: 'prod@example.com' } as any, buildPanelState()))
-                .toEqual({ kind: 'deployTreePermissionSets', treeKey: ACCOUNT_TREE_KEY, isSelectedOrg: true });
+                .toEqual({ kind: 'assignTreePermissionSets', treeKey: ACCOUNT_TREE_KEY, isSelectedOrg: true });
 
         });
 
@@ -370,8 +367,8 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             const panelState = buildPanelState();
             panelState.dataOrgSelection = undefined;
 
-            expect(RecipeCockpitService.routePanelMessage({ command: 'deployTreePermissionSets', treeKey: ACCOUNT_TREE_KEY }, panelState))
-                .toEqual({ kind: 'deployTreePermissionSets', treeKey: ACCOUNT_TREE_KEY, isSelectedOrg: false });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'assignTreePermissionSets', treeKey: ACCOUNT_TREE_KEY }, panelState))
+                .toEqual({ kind: 'assignTreePermissionSets', treeKey: ACCOUNT_TREE_KEY, isSelectedOrg: false });
 
         });
 
@@ -379,57 +376,66 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
             const panelState = buildPanelState();
 
-            expect(RecipeCockpitService.routePanelMessage({ ...permissionSetMessage, treeKey: 'Lead-ONLY' }, panelState)?.kind).toBe('postMetadataDeployState');
-            expect(RecipeCockpitService.routePanelMessage({ ...permissionSetMessage, treeKey: 7 }, panelState)?.kind).toBe('postMetadataDeployState');
-            expect(RecipeCockpitService.routePanelMessage({ ...permissionSetMessage, orgIndex: 1 }, panelState)).toEqual({
-                kind: 'postMetadataDeployState',
-                hostMessage: { command: 'metadataDeployState', isRunning: false },
-                refusalText: expect.stringContaining('has not answered that it is a sandbox')
+            expect(RecipeCockpitService.routePanelMessage({ ...permissionSetMessage, treeKey: 'Lead-ONLY' }, panelState)).toEqual({ kind: 'refusePermissionSetAssign', hostMessage: notRunning('Lead-ONLY') });
+            expect(RecipeCockpitService.routePanelMessage({ ...permissionSetMessage, treeKey: 7 }, panelState)).toEqual({ kind: 'refusePermissionSetAssign', hostMessage: notRunning('') });
+            expect(RecipeCockpitService.routePanelMessage({ ...permissionSetMessage, orgIndex: 1 }, panelState)).toMatchObject({
+                kind: 'refusePermissionSetAssign',
+                refusalText: expect.stringContaining('has not answered that it is a sandbox'),
+                hostMessage: notRunning()
             });
 
             panelState.dataOrgSelection.orgTypeDetail = { isSandbox: false, organizationType: 'Enterprise Edition' };
-            expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)?.kind).toBe('postMetadataDeployState');
-
-            panelState.deployableTreeKeys = new Set();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'deployTreePermissionSets', treeKey: ACCOUNT_TREE_KEY }, panelState)?.kind).toBe('postMetadataDeployState');
-
-        });
-
-        it('answers a refusal with an idle state and no text of its own, and refuses a selection that has not answered its org type', () => {
-
-            const panelState = buildPanelState();
-            panelState.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: false };
-
-            expect(RecipeCockpitService.routePanelMessage({ ...permissionSetMessage, treeKey: 'Lead-ONLY' }, panelState)).toEqual({ kind: 'postMetadataDeployState', hostMessage: { command: 'metadataDeployState', isRunning: false } });
+            expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)?.kind).toBe('refusePermissionSetAssign');
 
             panelState.dataOrgSelection.orgTypeDetail = undefined;
-            expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)?.kind).toBe('postMetadataDeployState');
+            expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)?.kind).toBe('refusePermissionSetAssign');
+
+            panelState.assignableTreeKeys = new Set();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'assignTreePermissionSets', treeKey: ACCOUNT_TREE_KEY }, panelState)?.kind).toBe('refusePermissionSetAssign');
 
         });
 
-        it('shares the metadata deploy\'s lock: refused while a deploy, a scratch org run or an insert holds it, and holding them all while it runs', () => {
+        it('routes nothing for the removed metadata deploy, its Deployment Status page, the old permission set message or an inline "View output"', () => {
+
+            const panelState = buildPanelState();
+
+            ['deployTreeMetadata', 'openMetadataDeployStatus', 'deployTreePermissionSets', 'viewMetadataDeployOutput'].forEach(command => {
+                expect(RecipeCockpitService.routePanelMessage({ command: command, orgIndex: 0, treeKey: ACCOUNT_TREE_KEY }, panelState)).toBeUndefined();
+            });
+
+        });
+
+        it('is refused while a scratch org run or an insert holds the selection, and holds them all while it runs', () => {
 
             const panelState = buildPanelState();
 
             panelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true };
-            expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)?.kind).toBe('postMetadataDeployState');
+            expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)?.kind).toBe('refusePermissionSetAssign');
 
             panelState.scratchOrgStateMessage = undefined;
             panelState.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
-            expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)?.kind).toBe('postMetadataDeployState');
+            expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)?.kind).toBe('refusePermissionSetAssign');
 
             panelState.insertStateMessage = undefined;
-            panelState.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true };
+            panelState.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
             panelState.dataOrgObjectApiNames = new Set(['Account']);
             panelState.insertableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
             panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.set(ACCOUNT_TREE_KEY, '/workspace/account.yml');
 
             expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)).toBeUndefined();
-            expect(RecipeCockpitService.routePanelMessage({ command: 'deployTreeMetadata', treeKey: ACCOUNT_TREE_KEY }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'insertTree', treeKey: ACCOUNT_TREE_KEY }, panelState)?.kind).toBe('postInsertState');
             expect(RecipeCockpitService.routePanelMessage({ command: 'createScratchOrg' }, panelState)?.kind).toBe('postScratchOrgState');
             expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'openDataOrg', orgIndex: 0 }, panelState)).toEqual({ kind: 'postOrgOpenState', hostMessage: { command: 'orgOpenState', isRunning: false } });
+
+        });
+
+        it('replays an assignment still running, so a reloaded document keeps the picker and every assign button held', () => {
+
+            const panelState = buildPanelState();
+            panelState.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
+
+            expect(RecipeCockpitService.buildReplayMessages(panelState)).toContainEqual(panelState.permissionSetAssignStateMessage);
 
         });
 
@@ -444,12 +450,12 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
         let postedPanelMessages: any[];
         let cliCalls: string[][];
         let organizationAnswers: Array<{ IsSandbox: boolean; OrganizationType: string }>;
-        let deployHandler: (argumentList: string[]) => { stdout: string; error?: unknown } | 'hold';
+        let orgPermissionSetNames: string[] | 'fail';
+        let soqlQueries: string[];
         let assignHandler: (argumentList: string[]) => { stdout: string; error?: unknown } | 'hold';
         let heldCallbacks: Array<() => void>;
         let cancellationListeners: Array<() => void>;
         let cancellationToken: { isCancellationRequested: boolean; onCancellationRequested: (listener: () => void) => void };
-        let notificationWarningSpy: jest.SpyInstance;
         let notificationInformationSpy: jest.SpyInstance;
         let describeCalls: string[];
         let childKill: jest.Mock;
@@ -459,13 +465,17 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
         const postedNamed = (command: string) => postedPanelMessages.filter(hostMessage => hostMessage.command === command);
         const deployCalls = () => cliCalls.filter(argumentList => argumentList[0] === 'project');
         const assignCalls = () => cliCalls.filter(argumentList => argumentList[0] === 'org' && argumentList[1] === 'assign');
-        const lastDeployState = () => postedNamed('metadataDeployState').at(-1);
-        // HOW A RUN ENDED (#301): THE NOTIFICATIONS THAT ARE NOT A MODAL, AS [text, ...buttons]
-        const runNotifications = (notify: unknown) => ( notify as jest.Mock ).mock.calls.filter(notificationCall => !notificationCall[1]?.modal);
+        const lastAssignState = () => postedNamed('permissionSetAssignState').at(-1);
         const flushAsyncWork = () => new Promise(resolve => setImmediate(resolve));
         const panelState = (): IRecipeCockpitPanelState => (RecipeCockpitService as any).recipeCockpitPanelState;
         const quickPick = () => vscode.window.showQuickPick as jest.Mock;
-        const modalCalls = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([, options]) => options?.modal);
+        const warningCalls = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls;
+        const modalCalls = () => warningCalls().filter(([, options]) => options?.modal);
+        // EVERY NON-MODAL WARNING: ITS TEXT, AND THE BUTTONS IT OFFERS
+        const notificationWarnings = () => warningCalls()
+            .filter(([, options]) => !( options && typeof options === 'object' && options.modal ))
+            .map(([warningText, ...actions]) => ({ text: warningText as string, actions: actions as string[] }));
+        const lastWarning = () => notificationWarnings().at(-1);
 
         const openCockpit = async () => {
             await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState);
@@ -481,8 +491,8 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             await flushAsyncWork();
         };
 
-        const deployPermissionSets = async (treeKey: string = ACCOUNT_TREE_KEY, orgIndex: number | null = 0) => {
-            await receivedMessageHandler({ command: 'deployTreePermissionSets', treeKey: treeKey, ...( orgIndex === null ? {} : { orgIndex: orgIndex } ) });
+        const assignPermissionSets = async (treeKey: string = ACCOUNT_TREE_KEY, orgIndex: number | null = 0) => {
+            await receivedMessageHandler({ command: 'assignTreePermissionSets', treeKey: treeKey, ...( orgIndex === null ? {} : { orgIndex: orgIndex } ) });
             await flushAsyncWork();
         };
 
@@ -491,7 +501,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-cockpit-permission-sets-'));
             workspaceRoot = path.join(temporaryRoot, 'workspace');
             fs.cpSync(TREE_WORKSPACE_ROOT, workspaceRoot, { recursive: true });
-            fs.cpSync(METADATA_DEPLOY_WORKSPACE_ROOT, workspaceRoot, { recursive: true });
+            fs.cpSync(PERMISSION_SET_WORKSPACE_ROOT, workspaceRoot, { recursive: true });
             fs.mkdirSync(path.join(temporaryRoot, 'installed', 'bin'), { recursive: true });
             ['sf', 'sf.cmd'].forEach(executableName => fs.writeFileSync(path.join(temporaryRoot, 'installed', 'bin', executableName), ''));
             savedPathVariable = process.env.PATH;
@@ -499,20 +509,21 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
             SalesforceOrgService.clearConnectedOrgStatusCache();
             SalesforceOrgService.clearDescribeCache();
-            (RecipeCockpitService as any).isMetadataDeployInFlight = false;
-            (RecipeCockpitService as any).metadataDeployRunStateMessage = undefined;
+            (RecipeCockpitService as any).isPermissionSetAssignInFlight = false;
+            (RecipeCockpitService as any).permissionSetAssignRunStateMessage = undefined;
             (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
             (RecipeCockpitService as any).scratchOrgRunStateMessage = undefined;
 
             postedPanelMessages = [];
             cliCalls = [];
             describeCalls = [];
+            soqlQueries = [];
             heldCallbacks = [];
             cancellationListeners = [];
             organizationAnswers = [];
+            orgPermissionSetNames = ['Account_Tree_Access', 'Contact_Reader', 'Gadget_Access'];
             childKill = jest.fn();
             workspaceState = { get: jest.fn(), update: jest.fn().mockResolvedValue(undefined) };
-            deployHandler = () => ({ stdout: buildDeployAnswer() });
             assignHandler = argumentList => ({ stdout: buildAssignAnswer(argumentList.filter((_argument, argumentIndex) => argumentList[argumentIndex - 1] === '--name')) });
 
             (execFile as unknown as jest.Mock).mockReset();
@@ -522,7 +533,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
                 if ( argumentList[0] === 'org' && argumentList[1] === 'list' ) {
                     answerWith({ stdout: JSON.stringify(SF_ORG_LIST) });
                 } else {
-                    const cliAnswer = argumentList[0] === 'project' ? deployHandler(argumentList) : assignHandler(argumentList);
+                    const cliAnswer = assignHandler(argumentList);
                     if ( cliAnswer === 'hold' ) {
                         heldCallbacks.push(() => answerWith({ stdout: '', error: Object.assign(new Error('killed'), { code: null, signal: 'SIGTERM' }) }));
                     } else {
@@ -559,7 +570,8 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             }));
 
             jest.spyOn(VSCodeWorkspaceService, 'createStatusBarPhaseItem').mockImplementation(() => ({ text: '', dispose: jest.fn() }) as any);
-            notificationWarningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+            // THE SHARED HELPER WARNS THROUGH vscode.window.showWarningMessage TOO, SO EVERY WARNING IS READ FROM THERE
+            jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation((warningText: string) => { vscode.window.showWarningMessage(warningText); });
             notificationInformationSpy = jest.spyOn(VSCodeWorkspaceService, 'showInformationMessage').mockImplementation(() => undefined);
             jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
             jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async () => ({
@@ -567,11 +579,21 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
                     describeCalls.push(objectApiName);
                     return { name: objectApiName, createable: true, fields: [] };
                 }),
-                query: jest.fn().mockImplementation(async (soql: string) => (
-                    soql.includes('FROM Organization')
-                        ? { records: [organizationAnswers.shift() ?? { IsSandbox: true, OrganizationType: 'Developer Edition' }] }
-                        : Promise.reject(new Error(`A query was sent that should not have been: ${soql}`))
-                )),
+                query: jest.fn().mockImplementation(async (soql: string) => {
+                    soqlQueries.push(soql);
+                    if ( soql.includes('FROM Organization') ) {
+                        return { records: [organizationAnswers.shift() ?? { IsSandbox: true, OrganizationType: 'Developer Edition' }] };
+                    }
+                    if ( soql.startsWith('SELECT Name FROM PermissionSet WHERE Name IN (') ) {
+                        if ( orgPermissionSetNames === 'fail' ) {
+                            throw new Error('INVALID_SESSION_ID: Session expired');
+                        }
+                        const presentNames = orgPermissionSetNames;
+                        // SOQL MATCHES A NAME CASE-INSENSITIVELY, AND ANSWERS WITH THE ORG'S OWN SPELLING
+                        return { records: presentNames.filter(permissionSetName => soql.toLowerCase().includes(`'${permissionSetName.toLowerCase()}'`)).map(permissionSetName => ({ Name: permissionSetName })) };
+                    }
+                    throw new Error(`A query was sent that should not have been: ${soql}`);
+                }),
                 sobject: jest.fn()
             }) as any);
 
@@ -585,13 +607,13 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             fs.rmSync(temporaryRoot, { recursive: true, force: true });
         });
 
-        it('offers the covering permission sets in a multi-select pick, names the org and every pick in an escaped modal, deploys them, then assigns them to the org\'s user', async () => {
+        it('offers the covering permission sets in a multi-select pick, names the org, the user and every pick in an escaped modal, and assigns them without deploying anything', async () => {
 
             await openCockpitWithQaSelected();
             const clearSpy = jest.spyOn(SalesforceOrgService, 'clearDescribeCache');
             const describesBefore = describeCalls.length;
 
-            await deployPermissionSets();
+            await assignPermissionSets();
 
             const [pickItems, pickOptions] = quickPick().mock.calls[0];
             expect(pickOptions).toMatchObject({ canPickMany: true });
@@ -601,21 +623,19 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             ]);
 
             const [modalMessage, modalOptions, modalAction] = modalCalls()[0];
-            expect(modalMessage).toBe(`Deploy and assign 2 permission sets for Relationship Tree 1 in qa · ${QA_USERNAME}?`);
+            expect(modalMessage).toBe(`Assign 2 permission sets for Relationship Tree 1 to ${QA_USERNAME} in qa · ${QA_USERNAME}?`);
             expect(modalOptions.detail).toContain(`Org: qa · ${QA_USERNAME}`);
             expect(modalOptions.detail).toContain('  Account_Tree_Access — partial, 2 of 3: Account, OtherChildObject__c');
-            expect(modalOptions.detail).toContain('  Contact_Reader — partial, 1 of 3: Contact');
+            expect(modalOptions.detail).toContain('Nothing is deployed.');
             expect(modalAction).toBe(RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL);
 
-            expect(deployCalls()).toEqual([[
-                'project', 'deploy', 'start', '--json', '--target-org', QA_USERNAME,
-                '--metadata', 'PermissionSet:Account_Tree_Access', '--metadata', 'PermissionSet:Contact_Reader'
-            ]]);
+            expect(soqlQueries).toContain('SELECT Name FROM PermissionSet WHERE Name IN (\'Account_Tree_Access\', \'Contact_Reader\')');
+            expect(deployCalls()).toEqual([]);
             expect(assignCalls()).toEqual([[
                 'org', 'assign', 'permset', '--json', '--target-org', QA_USERNAME,
                 '--name', 'Account_Tree_Access', '--name', 'Contact_Reader'
             ]]);
-            expect(cliCalls.indexOf(deployCalls()[0])).toBeLessThan(cliCalls.indexOf(assignCalls()[0]));
+            expect(cliCalls.some(argumentList => argumentList.includes('deploy'))).toBe(false);
             // PROJECT MODE: THE WORKSPACE IS THE WORKING DIRECTORY, AND sf IS RUN BY ITS ABSOLUTE PATH FROM PATH
             const projectCalls = (execFile as unknown as jest.Mock).mock.calls.filter(([, argumentList]) => argumentList[0] !== 'org' || argumentList[1] !== 'list');
             projectCalls.forEach(([command, , execOptions]) => {
@@ -623,24 +643,79 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
                 expect(path.isAbsolute(String(command).replace(/^"|"$/g, ''))).toBe(true);
             });
 
-            const doneText = `Deployed and assigned 2 permission sets for Relationship Tree 1 to ${QA_USERNAME} in qa · ${QA_USERNAME}.`;
-            // THE NOTIFICATION IS ALL THE READER IS TOLD, AND ITS "View output" OPENS THE ASSIGNMENT'S RESULT (#301)
-            expect(runNotifications(vscode.window.showInformationMessage)).toEqual([[doneText, RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL]]);
-            expect(postedNamed('metadataDeployState')).toEqual([{ command: 'metadataDeployState', isRunning: true }, { command: 'metadataDeployState', isRunning: false }]);
+            expect(notificationInformationSpy).toHaveBeenCalledWith(`Assigned 2 permission sets for Relationship Tree 1 to ${QA_USERNAME} in qa · ${QA_USERNAME}.`);
+            expect(notificationWarnings()).toEqual([]);
+            // THE PANEL IS TOLD ONLY THAT IT RAN AND THAT IT ENDED: NO TEXT, NO LINE, NO OUTPUT LINK
+            expect(postedNamed('permissionSetAssignState')).toEqual([
+                { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY },
+                { command: 'permissionSetAssignState', isRunning: false, treeKey: ACCOUNT_TREE_KEY }
+            ]);
 
             const operationsFolderPath = path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME);
             const resultFiles = fs.readdirSync(operationsFolderPath);
-            expect(resultFiles.filter(fileName => fileName.endsWith('-permission-set-deploy.json'))).toHaveLength(1);
             expect(resultFiles.filter(fileName => fileName.endsWith('-permission-set-assign.json'))).toHaveLength(1);
+            expect(resultFiles.filter(fileName => fileName.includes('deploy'))).toEqual([]);
 
             // FIELD-LEVEL SECURITY CHANGES WHAT A DESCRIBE ANSWERS: THE COVERED OBJECTS ARE DESCRIBED AFRESH FOR THE CARD
             ACCOUNT_TREE_OBJECTS.forEach(objectApiName => expect(clearSpy).toHaveBeenCalledWith(QA_USERNAME, objectApiName));
             expect(describeCalls.slice(describesBefore)).toEqual(expect.arrayContaining(['Account', 'OtherChildObject__c']));
-            expect(postedPanelMessages.indexOf(lastDeployState())).toBeGreaterThan(postedPanelMessages.indexOf(postedNamed('dataOrgReadiness').at(-1)));
+            expect(postedPanelMessages.indexOf(lastAssignState())).toBeGreaterThan(postedPanelMessages.indexOf(postedNamed('dataOrgReadiness').at(-1)));
 
         });
 
-        it('drops and re-checks the describes of every object a pick grants on, another card\'s included, matched case-insensitively', async () => {
+        it('assigns the picks the org holds, and names the rest in a warning telling the reader to deploy them', async () => {
+
+            orgPermissionSetNames = ['account_tree_access'];
+            await openCockpitWithQaSelected();
+            const clearSpy = jest.spyOn(SalesforceOrgService, 'clearDescribeCache');
+
+            await assignPermissionSets();
+
+            expect(assignCalls()).toEqual([['org', 'assign', 'permset', '--json', '--target-org', QA_USERNAME, '--name', 'Account_Tree_Access']]);
+            expect(notificationWarnings()).toContainEqual({
+                text: `Not in qa · ${QA_USERNAME}: Contact_Reader. Deploy this permission set to the org, then assign it.`,
+                actions: []
+            });
+            expect(notificationInformationSpy).toHaveBeenCalledWith(`Assigned 1 permission set for Relationship Tree 1 to ${QA_USERNAME} in qa · ${QA_USERNAME}.`);
+            // ONLY WHAT AN ASSIGNED PICK GRANTS ON IS DROPPED
+            expect(clearSpy).toHaveBeenCalledWith(QA_USERNAME, 'Account');
+            expect(clearSpy).not.toHaveBeenCalledWith(QA_USERNAME, 'Contact');
+
+        });
+
+        it('starts no CLI process when the org holds none of the picks, and only warns', async () => {
+
+            orgPermissionSetNames = [];
+            await openCockpitWithQaSelected();
+            const clearSpy = jest.spyOn(SalesforceOrgService, 'clearDescribeCache');
+
+            await assignPermissionSets();
+
+            expect(cliCalls.filter(argumentList => argumentList[1] !== 'list')).toEqual([]);
+            expect(notificationWarnings()).toEqual([{
+                text: `Not in qa · ${QA_USERNAME}: Account_Tree_Access, Contact_Reader. Deploy these permission sets to the org, then assign them.`,
+                actions: []
+            }]);
+            expect(notificationInformationSpy).not.toHaveBeenCalled();
+            expect(clearSpy).not.toHaveBeenCalled();
+            expect(lastAssignState()).toEqual({ command: 'permissionSetAssignState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+
+        });
+
+        it('assigns nothing, and gives a fixed warning, when the org cannot be asked which permission sets it holds', async () => {
+
+            orgPermissionSetNames = 'fail';
+            await openCockpitWithQaSelected();
+
+            await assignPermissionSets();
+
+            expect(assignCalls()).toEqual([]);
+            expect(lastWarning()).toEqual({ text: `Nothing was assigned: qa · ${QA_USERNAME} could not be asked which of the permission sets it holds. Try again.`, actions: [] });
+            expect(lastWarning().text).not.toContain('INVALID_SESSION_ID');
+
+        });
+
+        it('drops and re-checks the describes of every object an assigned pick grants on, another card\'s included, matched case-insensitively', async () => {
 
             const accessFilePath = path.join(workspaceRoot, ACCOUNT_TREE_ACCESS_PATH);
             fs.writeFileSync(accessFilePath, fs.readFileSync(accessFilePath, 'utf-8').replace('<label>', '<objectPermissions><allowRead>true</allowRead><object>lead</object></objectPermissions>\n    <label>'));
@@ -648,7 +723,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             const clearSpy = jest.spyOn(SalesforceOrgService, 'clearDescribeCache');
             const describesBefore = describeCalls.length;
 
-            await deployPermissionSets();
+            await assignPermissionSets();
 
             expect(clearSpy).toHaveBeenCalledWith(QA_USERNAME, 'lead');
             expect(clearSpy).not.toHaveBeenCalledWith(QA_USERNAME, 'User');
@@ -657,33 +732,35 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
         });
 
-        it('deploys and assigns only what the reader picked', async () => {
+        it('asks about and assigns only what the reader picked', async () => {
 
             await openCockpitWithQaSelected();
             quickPick().mockImplementation(async (items: any[]) => items.filter(item => item.label === 'Contact_Reader'));
 
-            await deployPermissionSets();
+            await assignPermissionSets();
 
-            expect(modalCalls()[0][0]).toBe(`Deploy and assign 1 permission set for Relationship Tree 1 in qa · ${QA_USERNAME}?`);
-            expect(deployCalls()[0]).toEqual(['project', 'deploy', 'start', '--json', '--target-org', QA_USERNAME, '--metadata', 'PermissionSet:Contact_Reader']);
+            expect(modalCalls()[0][0]).toBe(`Assign 1 permission set for Relationship Tree 1 to ${QA_USERNAME} in qa · ${QA_USERNAME}?`);
+            expect(soqlQueries.at(-1)).toBe('SELECT Name FROM PermissionSet WHERE Name IN (\'Contact_Reader\')');
             expect(assignCalls()[0].slice(-2)).toEqual(['--name', 'Contact_Reader']);
 
         });
 
-        it('escapes every repository text in the modal', async () => {
+        it('escapes every repository text in the modal, the progress title and the notifications', async () => {
 
+            orgPermissionSetNames = ['Account_Tree_Access'];
             await openCockpitWithQaSelected();
             panelState().recipeDataMessage.recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY).customName = 'Run [me](command:evil)';
 
-            await deployPermissionSets();
+            await assignPermissionSets();
 
             const [modalMessage, modalOptions] = modalCalls()[0];
             expect(modalMessage).not.toMatch(/[[\]()]/);
             expect(modalOptions.detail).not.toMatch(/[[\]()]/);
             expect(modalOptions.detail).toContain('Tree: Run \\u005bme\\u005d\\u0028command:evil\\u0029');
             const progressTitles = (vscode.window.withProgress as jest.Mock).mock.calls.map(([progressOptions]) => progressOptions.title);
-            expect(progressTitles).toHaveLength(2);
+            expect(progressTitles).toHaveLength(1);
             progressTitles.forEach(progressTitle => expect(progressTitle).not.toMatch(/[[\]()]/));
+            notificationWarnings().forEach(warning => expect(warning.text).not.toMatch(/[[\]()]/));
 
         });
 
@@ -696,31 +773,31 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
                 return listing.orgDetails.find((orgDetail: any) => orgDetail.username === QA_USERNAME);
             });
 
-            await deployPermissionSets(ACCOUNT_TREE_KEY, null);
+            await assignPermissionSets(ACCOUNT_TREE_KEY, null);
             await flushAsyncWork();
 
             expect(promptSpy.mock.calls[0][1]).toBe(RECIPE_COCKPIT_PERMISSION_SET_ORG_PLACEHOLDER);
             expect(assignCalls()).toHaveLength(1);
             expect(workspaceState.update).toHaveBeenCalledWith(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, QA_USERNAME);
             expect(panelState().dataOrgSelection?.orgDetail.username).toBe(QA_USERNAME);
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
+            expect(lastAssignState()).toEqual({ command: 'permissionSetAssignState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
 
         });
 
-        it('says so and runs nothing when no permission set in source covers the tree, opening no pick and no org prompt', async () => {
+        it('warns and runs nothing when no permission set in source covers the tree, opening no pick and no org prompt', async () => {
 
             fs.rmSync(path.join(workspaceRoot, 'force-app', 'main', 'default', 'permissionsets'), { recursive: true });
             fs.rmSync(path.join(workspaceRoot, 'unpackaged', 'permissionsets'), { recursive: true });
             await openCockpit();
             const promptSpy = jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed');
 
-            await deployPermissionSets(ACCOUNT_TREE_KEY, null);
+            await assignPermissionSets(ACCOUNT_TREE_KEY, null);
 
-            expect(notificationInformationSpy).toHaveBeenCalledWith('No permission set in this workspace\'s source grants access to any object of Relationship Tree 1, so nothing was deployed or assigned.');
+            expect(lastWarning()).toEqual({ text: 'No permission set in this workspace\'s source grants access to any object of Relationship Tree 1, so nothing was assigned.', actions: [] });
             expect(quickPick()).not.toHaveBeenCalled();
             expect(promptSpy).not.toHaveBeenCalled();
             expect(cliCalls.filter(argumentList => argumentList[1] !== 'list')).toEqual([]);
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
+            expect(lastAssignState()).toMatchObject({ isRunning: false });
 
         });
 
@@ -729,31 +806,32 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             fs.writeFileSync(path.join(workspaceRoot, 'force-app', 'main', 'default', 'permissionsets', 'Broken.permissionset-meta.xml'), '<PermissionSet><');
             await openCockpitWithQaSelected();
 
-            await deployPermissionSets();
+            await assignPermissionSets();
 
-            expect(notificationWarningSpy).toHaveBeenCalledWith('Skipped 1 permission set file that could not be read as a permission set with an api name: force-app/main/default/permissionsets/Broken.permissionset-meta.xml.');
+            expect(notificationWarnings()).toContainEqual({ text: 'Skipped 1 permission set file that could not be read as a permission set with an api name: force-app/main/default/permissionsets/Broken.permissionset-meta.xml.', actions: [] });
             expect(quickPick().mock.calls[0][0].map((pickItem: any) => pickItem.label)).toEqual(['Account_Tree_Access', 'Contact_Reader']);
             expect(assignCalls()).toHaveLength(1);
 
         });
 
-        it('runs nothing when the pick is dismissed or left empty, or the confirmation is cancelled', async () => {
+        it('runs nothing, and says nothing, when the pick is dismissed or left empty, or the confirmation is cancelled', async () => {
 
             await openCockpitWithQaSelected();
 
             quickPick().mockResolvedValueOnce(undefined);
-            await deployPermissionSets();
+            await assignPermissionSets();
             quickPick().mockResolvedValueOnce([]);
-            await deployPermissionSets();
+            await assignPermissionSets();
             expect(modalCalls()).toEqual([]);
 
             (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
-            await deployPermissionSets();
+            await assignPermissionSets();
 
             expect(modalCalls()).toHaveLength(1);
-            expect(deployCalls()).toEqual([]);
+            expect(soqlQueries.filter(soql => soql.includes('PermissionSet'))).toEqual([]);
             expect(assignCalls()).toEqual([]);
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
+            expect(notificationWarnings()).toEqual([]);
+            expect(lastAssignState()).toMatchObject({ isRunning: false });
 
         });
 
@@ -762,25 +840,24 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             await openCockpitWithQaSelected();
             quickPick().mockImplementation(async (items: any[]) => Array.from({ length: PERMISSION_SET_MAX_PICKS + 1 }, () => items[0]));
 
-            await deployPermissionSets();
+            await assignPermissionSets();
 
             expect(modalCalls()).toEqual([]);
-            expect(deployCalls()).toEqual([]);
-            expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining(`at most ${PERMISSION_SET_MAX_PICKS} can be deployed and assigned at once`));
+            expect(assignCalls()).toEqual([]);
+            expect(lastWarning().text).toContain(`at most ${PERMISSION_SET_MAX_PICKS} can be assigned at once`);
 
         });
 
-        it('asks the Organization row again after the confirmation, and runs nothing in an org that does not answer it is a sandbox', async () => {
+        it('asks the Organization row again after the confirmation, and asks nothing more of an org that does not answer it is a sandbox', async () => {
 
             await openCockpitWithQaSelected();
             organizationAnswers.push({ IsSandbox: false, OrganizationType: 'Enterprise Edition' });
 
-            await deployPermissionSets();
+            await assignPermissionSets();
 
-            expect(deployCalls()).toEqual([]);
+            expect(soqlQueries.filter(soql => soql.includes('PermissionSet'))).toEqual([]);
             expect(assignCalls()).toEqual([]);
-            expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining('Permission sets are deployed and assigned only in a sandbox or scratch org.'));
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
+            expect(lastWarning().text).toContain('Permission sets are assigned only in a sandbox or scratch org.');
 
         });
 
@@ -790,68 +867,37 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed').mockResolvedValueOnce({ targetOrgIdentifier: 'qa', username: QA_USERNAME, alias: 'qa' });
             organizationAnswers.push({ IsSandbox: false, OrganizationType: 'Enterprise Edition' });
 
-            await deployPermissionSets(ACCOUNT_TREE_KEY, null);
+            await assignPermissionSets(ACCOUNT_TREE_KEY, null);
 
-            expect(deployCalls()).toEqual([]);
+            expect(assignCalls()).toEqual([]);
             expect(workspaceState.update).not.toHaveBeenCalledWith(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, expect.anything());
 
         });
 
-        it('runs no assign when the deploy fails, and shows the CLI\'s problem as an error', async () => {
-
-            deployHandler = () => ({ stdout: buildDeployAnswer([{ fullName: 'Contact_Reader', problem: 'In field: field - no CustomField named Contact.Email found' }]), error: Object.assign(new Error('exit 1'), { code: 1 }) });
-            await openCockpitWithQaSelected();
-
-            await deployPermissionSets();
-
-            expect(deployCalls()).toHaveLength(1);
-            expect(assignCalls()).toEqual([]);
-            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0]).toContain('failed, so nothing was assigned: Contact_Reader: In field: field - no CustomField named Contact.Email found');
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
-
-        });
-
-        it('says the Salesforce CLI is required when sf is not installed', async () => {
+        it('says the Salesforce CLI is required in a warning when sf is not installed', async () => {
 
             process.env.PATH = path.join(temporaryRoot, 'nowhere');
             await openCockpitWithQaSelected();
 
-            await deployPermissionSets();
+            await assignPermissionSets();
 
-            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0]).toContain('The Salesforce CLI is required to deploy and assign permission sets, and "sf" is not installed or not on PATH.');
-            expect(deployCalls()).toEqual([]);
+            expect(lastWarning()).toEqual({ text: 'The Salesforce CLI is required to assign permission sets, and "sf" is not installed or not on PATH. Install it and try again.', actions: [] });
+            expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
             expect(assignCalls()).toEqual([]);
 
         });
 
-        it('on Windows deploys and assigns nothing from a UNC project folder, which cmd.exe would swap for the Windows folder (#285)', async () => {
+        it('on Windows assigns nothing from a UNC project folder, which cmd.exe would swap for the Windows folder (#285)', async () => {
 
             await openCockpitWithQaSelected();
             jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
             jest.spyOn(PicklistDependencyCheckService, 'isUncPath').mockReturnValue(true);
 
-            await deployPermissionSets();
+            await assignPermissionSets();
 
-            expect(deployCalls()).toEqual([]);
             expect(assignCalls()).toEqual([]);
-            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0]).toContain('is a network UNC path');
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
-
-        });
-
-        // #301: THE RESULT FILE IS THE SUCCESS NOTIFICATION'S BUTTON, NOT A LINK IN THE PANEL
-        it('opens the assignment\'s saved result from the success notification\'s View output', async () => {
-
-            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL);
-            await openCockpitWithQaSelected();
-
-            await deployPermissionSets();
-            await flushAsyncWork();
-
-            const operationsFolderPath = path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME);
-            const assignResultFileName = fs.readdirSync(operationsFolderPath).find(fileName => fileName.endsWith('-permission-set-assign.json'));
-            expect(VSCodeWorkspaceService.openFileInEditor).toHaveBeenCalledWith(path.join(operationsFolderPath, assignResultFileName));
-            expect(postedNamed('metadataDeployState').at(-1)).toEqual({ command: 'metadataDeployState', isRunning: false });
+            expect(lastWarning().text).toContain('is a network UNC path');
+            expect(lastAssignState()).toMatchObject({ isRunning: false });
 
         });
 
@@ -863,46 +909,51 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             });
             await openCockpitWithQaSelected();
 
-            await deployPermissionSets();
+            await assignPermissionSets();
 
-            expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
-            expect(runNotifications(vscode.window.showInformationMessage).at(-1)[0]).toContain('Contact_Reader was already assigned.');
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
+            expect(notificationWarnings()).toEqual([]);
+            expect(notificationInformationSpy).toHaveBeenCalledWith(expect.stringContaining('Contact_Reader was already assigned.'));
 
         });
 
-        it('names which permission sets failed in a partial assignment', async () => {
+        it('names which permission sets failed in a warning whose "View output" button opens the result file', async () => {
 
             assignHandler = () => ({
                 stdout: buildAssignAnswer(['Account_Tree_Access'], [{ name: QA_USERNAME, message: 'Permission set "Contact_Reader" not found in target org.' }]),
                 error: Object.assign(new Error('exit 1'), { code: 1 })
             });
             await openCockpitWithQaSelected();
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any, ...actions: string[]) => (
+                options?.modal ? RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL : [options, ...actions].includes(RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL) ? RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL : undefined
+            ));
 
-            await deployPermissionSets();
+            await assignPermissionSets();
+            await flushAsyncWork();
 
-            const errorText = (vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0];
-            expect(errorText).toContain(`but Contact_Reader could not be assigned to ${QA_USERNAME}`);
-            expect(errorText).toContain('Assigned: Account_Tree_Access.');
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
+            const failure = lastWarning();
+            expect(failure.text).toBe(`Contact_Reader could not be assigned to ${QA_USERNAME} in qa · ${QA_USERNAME}: Permission set "Contact_Reader" not found in target org. Assigned: Account_Tree_Access.`);
+            expect(failure.actions).toEqual([RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL]);
+            expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+            expect(VSCodeWorkspaceService.openFileInEditor).toHaveBeenCalledWith(expect.stringMatching(/-permission-set-assign\.json$/));
+            // THE CARD DRAWS NO LINE OF ITS OWN, SO NOTHING ABOUT THE OUTCOME IS POSTED
+            expect(lastAssignState()).toEqual({ command: 'permissionSetAssignState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
 
         });
 
-        it('kills the process tree on cancel, assigns nothing, and refuses a metadata deploy meanwhile', async () => {
+        it('kills the process tree on cancel, warns that which were assigned is unknown, and refuses a second assignment meanwhile', async () => {
 
-            deployHandler = () => 'hold';
+            assignHandler = () => 'hold';
             await openCockpitWithQaSelected();
             const killSpy = jest.spyOn(PicklistDependencyCheckService, 'killProcessTree');
 
-            const runInFlight = deployPermissionSets();
+            const runInFlight = assignPermissionSets();
             await flushAsyncWork();
             await flushAsyncWork();
 
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: true });
+            expect(lastAssignState()).toEqual({ command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY });
 
-            await receivedMessageHandler({ command: 'deployTreeMetadata', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY });
-            await receivedMessageHandler({ command: 'deployTreePermissionSets', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY });
-            expect(deployCalls()).toHaveLength(1);
+            await receivedMessageHandler({ command: 'assignTreePermissionSets', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY });
+            expect(assignCalls()).toHaveLength(1);
 
             cancellationToken.isCancellationRequested = true;
             cancellationListeners.forEach(cancellationListener => cancellationListener());
@@ -912,9 +963,8 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
             expect(killSpy).toHaveBeenCalled();
             expect(childKill).toHaveBeenCalled();
-            expect(assignCalls()).toEqual([]);
-            expect(notificationInformationSpy).toHaveBeenCalledWith(expect.stringContaining('was cancelled, so whether it applied is unknown. Nothing was assigned.'));
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
+            expect(lastWarning().text).toContain('was cancelled, so which were assigned is unknown.');
+            expect(lastAssignState()).toMatchObject({ isRunning: false });
 
         });
 
@@ -924,30 +974,30 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             await openCockpit();
             const promptSpy = jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed');
 
-            await deployPermissionSets(ACCOUNT_TREE_KEY, null);
+            await assignPermissionSets(ACCOUNT_TREE_KEY, null);
 
             expect(quickPick()).not.toHaveBeenCalled();
             expect(promptSpy).not.toHaveBeenCalled();
-            expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining('Nothing was deployed or assigned: No "sfdx-project.json" found'));
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
+            expect(lastWarning().text).toContain('Nothing was assigned: No "sfdx-project.json" found');
 
         });
 
-        it('says so when the org list cannot be read for the prompt, and runs nothing when the prompt is dismissed', async () => {
+        it('warns when the org list cannot be read for the prompt, and runs nothing when the prompt is dismissed', async () => {
 
             await openCockpit();
             jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed')
                 .mockRejectedValueOnce(new Error('The Salesforce CLI could not report which authorized orgs are connected.'))
                 .mockResolvedValueOnce(undefined);
 
-            await deployPermissionSets(ACCOUNT_TREE_KEY, null);
-            expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining('Nothing was deployed or assigned: The Salesforce CLI could not report'));
+            await assignPermissionSets(ACCOUNT_TREE_KEY, null);
+            expect(lastWarning().text).toContain('Nothing was assigned: The Salesforce CLI could not report');
 
-            await deployPermissionSets(ACCOUNT_TREE_KEY, null);
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
+            const warningsBefore = notificationWarnings().length;
+            await assignPermissionSets(ACCOUNT_TREE_KEY, null);
+            expect(notificationWarnings()).toHaveLength(warningsBefore);
 
             expect(modalCalls()).toEqual([]);
-            expect(deployCalls()).toEqual([]);
+            expect(assignCalls()).toEqual([]);
 
         });
 
@@ -956,73 +1006,46 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             await openCockpitWithQaSelected();
             (SalesforceOrgService.getConnection as jest.Mock).mockRejectedValueOnce(new Error('expired access token'));
 
-            await deployPermissionSets();
+            await assignPermissionSets();
 
-            expect(deployCalls()).toEqual([]);
-            expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining(`could not connect to qa · ${QA_USERNAME}: expired access token`));
+            expect(assignCalls()).toEqual([]);
+            expect(lastWarning().text).toContain(`could not connect to qa · ${QA_USERNAME}: expired access token`);
 
         });
 
-        it('assigns nothing after a deploy that timed out, and says whether it applied is unknown', async () => {
+        it('warns that which were assigned is unknown when the assignment times out', async () => {
 
             await openCockpitWithQaSelected();
             const runSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockResolvedValue({ stdout: '', stderr: '', exitCode: null, timedOut: true });
 
-            await deployPermissionSets();
+            await assignPermissionSets();
 
             expect(runSpy).toHaveBeenCalledTimes(1);
-            const warningTexts = (vscode.window.showWarningMessage as jest.Mock).mock.calls.map(([warningText]) => warningText);
-            expect(warningTexts.at(-1)).toContain('so whether it applied is unknown. Nothing was assigned.');
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
+            expect(lastWarning().text).toBe('The assignment did not finish in time and was stopped, so which permission sets were assigned is unknown.');
 
         });
 
-        it('says which were assigned is unknown when the assignment times out, is cancelled, or finds no CLI after the deploy', async () => {
-
-            await openCockpitWithQaSelected();
-            const runSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli');
-
-            runSpy.mockResolvedValueOnce({ stdout: buildDeployAnswer(), stderr: '', exitCode: 0 }).mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: null, timedOut: true });
-            await deployPermissionSets();
-            expect(runNotifications(vscode.window.showWarningMessage).at(-1)[0]).toBe('The permission sets were deployed. The assignment did not finish in time and was stopped, so which permission sets were assigned is unknown.');
-
-            runSpy.mockResolvedValueOnce({ stdout: buildDeployAnswer(), stderr: '', exitCode: 0 })
-                .mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: null, spawnError: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) });
-            await deployPermissionSets();
-            expect(runNotifications(vscode.window.showErrorMessage).at(-1)).toEqual([expect.stringContaining('The Salesforce CLI is required')]);
-
-            runSpy.mockResolvedValueOnce({ stdout: buildDeployAnswer(), stderr: '', exitCode: 0 }).mockImplementationOnce(async (_argumentList, registerCancellation) => {
-                cancellationToken.isCancellationRequested = true;
-                registerCancellation(jest.fn());
-                return { stdout: '', stderr: '', exitCode: null };
-            });
-            await deployPermissionSets();
-            // THE DEPLOY RAN AND SAVED ITS RESULT, SO THE CANCEL STILL OFFERS IT (#301)
-            expect(runNotifications(vscode.window.showInformationMessage).at(-1)).toEqual([expect.stringContaining('was cancelled after they were deployed'), RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL]);
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
-
-        });
-
-        it('ends the run and rethrows when the run itself throws, so the panel is given its buttons back', async () => {
+        it('gives the panel its button back and rethrows when the run itself throws', async () => {
 
             const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
             await openCockpitWithQaSelected();
             jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockRejectedValue(new Error('boom'));
 
-            await deployPermissionSets();
+            await assignPermissionSets();
 
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
+            expect(lastAssignState()).toEqual({ command: 'permissionSetAssignState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
             expect(handleCapturedErrorSpy).toHaveBeenCalled();
+            expect((RecipeCockpitService as any).isPermissionSetAssignInFlight).toBe(false);
 
         });
 
-        it('answers with the deploy state and runs nothing when the tree is gone by the time the action runs', async () => {
+        it('answers with a not-running state and runs nothing when the tree is gone by the time the action runs', async () => {
 
             await openCockpitWithQaSelected();
 
-            await (RecipeCockpitService as any).deployTreePermissionSetsFromPanel((RecipeCockpitService as any).recipeCockpitPanel, 'Gone-tree', false);
+            await (RecipeCockpitService as any).assignTreePermissionSetsFromPanel((RecipeCockpitService as any).recipeCockpitPanel, 'Gone-tree', false);
 
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
+            expect(lastAssignState()).toEqual({ command: 'permissionSetAssignState', isRunning: false, treeKey: 'Gone-tree' });
             expect(quickPick()).not.toHaveBeenCalled();
 
         });
@@ -1035,12 +1058,12 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed').mockResolvedValueOnce({ targetOrgIdentifier: QA_USERNAME, username: QA_USERNAME });
             jest.spyOn(SalesforceOrgService, 'queryOrganizationType').mockResolvedValueOnce(undefined);
 
-            await deployPermissionSets(ACCOUNT_TREE_KEY, null);
+            await assignPermissionSets(ACCOUNT_TREE_KEY, null);
 
-            expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringMatching(/^Skipped 11 permission set files .* and 1 more\.$/));
-            expect(modalCalls()[0][0]).toBe(`Deploy and assign 2 permission sets for Relationship Tree 1 in ${QA_USERNAME}?`);
-            expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining(`${QA_USERNAME} could not say whether it is a sandbox`));
-            expect(deployCalls()).toEqual([]);
+            expect(notificationWarnings().map(warning => warning.text)).toContainEqual(expect.stringMatching(/^Skipped 11 permission set files .* and 1 more\.$/));
+            expect(modalCalls()[0][0]).toBe(`Assign 2 permission sets for Relationship Tree 1 to ${QA_USERNAME} in ${QA_USERNAME}?`);
+            expect(lastWarning().text).toContain(`${QA_USERNAME} could not say whether it is a sandbox`);
+            expect(assignCalls()).toEqual([]);
 
         });
 
@@ -1049,27 +1072,140 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             await openCockpitWithQaSelected();
 
             assignHandler = () => ({ stdout: buildAssignAnswer([], [{ message: 'Duplicate PermissionSetAssignment' }]), error: Object.assign(new Error('exit 1'), { code: 1 }) });
-            await deployPermissionSets();
-            expect(runNotifications(vscode.window.showInformationMessage).at(-1)[0]).toContain('Account_Tree_Access, Contact_Reader were already assigned.');
+            await assignPermissionSets();
+            expect(notificationInformationSpy).toHaveBeenLastCalledWith(expect.stringContaining('Account_Tree_Access, Contact_Reader were already assigned.'));
 
             assignHandler = () => ({ stdout: buildAssignAnswer([], [{ message: 'insufficient access' }]), error: Object.assign(new Error('exit 1'), { code: 1 }) });
-            await deployPermissionSets();
-            expect(runNotifications(vscode.window.showErrorMessage).at(-1)).toEqual([
-                `The permission sets were deployed, but Account_Tree_Access, Contact_Reader could not be assigned to ${QA_USERNAME}: insufficient access`,
-                RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL
-            ]);
+            await assignPermissionSets();
+            expect(lastWarning().text).toBe(`Account_Tree_Access, Contact_Reader could not be assigned to ${QA_USERNAME} in qa · ${QA_USERNAME}: insufficient access`);
 
         });
 
-        it('is refused while a metadata deploy runs', async () => {
+        it('is refused while another assignment runs', async () => {
 
             await openCockpitWithQaSelected();
-            (RecipeCockpitService as any).isMetadataDeployInFlight = true;
+            (RecipeCockpitService as any).isPermissionSetAssignInFlight = true;
+            (RecipeCockpitService as any).permissionSetAssignRunStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
 
-            await deployPermissionSets();
+            await (RecipeCockpitService as any).assignTreePermissionSetsFromPanel((RecipeCockpitService as any).recipeCockpitPanel, ACCOUNT_TREE_KEY, true);
 
             expect(quickPick()).not.toHaveBeenCalled();
-            expect(deployCalls()).toEqual([]);
+            expect(assignCalls()).toEqual([]);
+            expect(lastAssignState()).toMatchObject({ isRunning: true });
+
+        });
+
+        it('carries a running assignment into a panel reopened mid-run, so its router still refuses what the run holds', async () => {
+
+            assignHandler = () => 'hold';
+            await openCockpitWithQaSelected();
+
+            const runInFlight = assignPermissionSets();
+            await flushAsyncWork();
+            await flushAsyncWork();
+
+            await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState);
+            expect(panelState().permissionSetAssignStateMessage).toEqual({ command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY });
+            expect(RecipeCockpitService.buildReplayMessages(panelState())).toContainEqual({ command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY });
+
+            heldCallbacks.forEach(answer => answer());
+            await runInFlight;
+            await flushAsyncWork();
+
+            expect(panelState().permissionSetAssignStateMessage).toEqual({ command: 'permissionSetAssignState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+
+        });
+
+        it('says the result file is gone when "View output" is chosen after it was removed, and swallows an editor that fails to open it', async () => {
+
+            assignHandler = () => ({ stdout: buildAssignAnswer([], [{ message: 'insufficient access' }]), error: Object.assign(new Error('exit 1'), { code: 1 }) });
+            await openCockpitWithQaSelected();
+            let chooseViewOutput: (choice: string) => void = () => undefined;
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation((_message: string, options: any) => (
+                options?.modal ? Promise.resolve(RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL) : new Promise(resolve => { chooseViewOutput = resolve; })
+            ));
+
+            await assignPermissionSets();
+            fs.rmSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME), { recursive: true, force: true });
+            chooseViewOutput(RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL);
+            await flushAsyncWork();
+
+            expect(VSCodeWorkspaceService.openFileInEditor).not.toHaveBeenCalled();
+            expect(lastWarning().text).toBe('The permission set result file no longer exists in this workspace.');
+
+            (VSCodeWorkspaceService.openFileInEditor as jest.Mock).mockRejectedValueOnce(new Error('editor closed'));
+            await assignPermissionSets();
+            chooseViewOutput(RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL);
+            await flushAsyncWork();
+
+            expect(VSCodeWorkspaceService.openFileInEditor).toHaveBeenCalledTimes(1);
+
+        });
+
+        it('kills the process at once when the cancel came before the CLI registered it', async () => {
+
+            await openCockpitWithQaSelected();
+            const killChildProcess = jest.fn();
+            jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockImplementation(async (_argumentList, registerCancellation) => {
+                cancellationToken.isCancellationRequested = true;
+                registerCancellation(killChildProcess);
+                return { stdout: '', stderr: '', exitCode: null };
+            });
+
+            await assignPermissionSets();
+
+            expect(killChildProcess).toHaveBeenCalled();
+            expect(lastWarning().text).toContain('was cancelled, so which were assigned is unknown.');
+
+        });
+
+        it('lets the assignment run once a selection whose objects could not be described has posted that as its readiness', async () => {
+
+            jest.spyOn(RecipeCockpitService as any, 'collectCreateTargets').mockRejectedValueOnce(new Error('REQUEST_LIMIT_EXCEEDED'));
+            await openCockpitWithQaSelected();
+
+            const readiness = postedNamed('dataOrgReadiness').at(-1);
+            expect(readiness.objects).toContainEqual({
+                objectApiName: 'Account',
+                disabledReason: 'The objects could not be described in this org (REQUEST_LIMIT_EXCEEDED), so nothing is inserted into it.',
+                requiredLookups: []
+            });
+            expect(panelState().dataOrgSelection.isReadinessPosted).toBe(true);
+
+            await assignPermissionSets();
+
+            expect(assignCalls()).toHaveLength(1);
+
+        });
+
+        it('re-checks the cards after an assignment and refuses a card whose recipe file can no longer be read', async () => {
+
+            await openCockpitWithQaSelected();
+            const recipeFilePath = panelState().treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(ACCOUNT_TREE_KEY);
+            fs.rmSync(recipeFilePath);
+            const readinessBefore = postedNamed('dataOrgReadiness').length;
+
+            await assignPermissionSets();
+
+            const recheck = postedNamed('dataOrgReadiness').slice(readinessBefore).at(-1);
+            expect(recheck.createTargets).toContainEqual(expect.objectContaining({
+                treeKey: ACCOUNT_TREE_KEY,
+                objectApiName: 'Account',
+                disabledReason: 'The recipe file for this tree could not be read, so its Account records could not be prepared.'
+            }));
+
+        });
+
+        it('warns, and gives the button back, when the router refuses the selected org before its check has finished', async () => {
+
+            await openCockpitWithQaSelected();
+            panelState().dataOrgSelection.isReadinessPosted = false;
+
+            await assignPermissionSets();
+
+            expect(lastWarning()).toEqual({ text: 'Nothing was assigned: the org selected above is still being checked. Try again once that check has finished.', actions: [] });
+            expect(lastAssignState()).toEqual({ command: 'permissionSetAssignState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+            expect(quickPick()).not.toHaveBeenCalled();
 
         });
 
@@ -1095,47 +1231,55 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
         const permissionSetButtonOf = (panel: ReturnType<typeof runPanelScript>, objectApiName = 'OtherChildObject__c') => panel.findAll(cardOf(panel, objectApiName), 'treePermissionSets')[0];
 
-        it('draws the button beside the deploy on every card with a folder, and posts the tree key alone', () => {
+        it('draws the assign button, and no deploy button, status line or output link, on every card with a folder, and posts the tree key alone', () => {
 
             const panel = renderTrees();
             const permissionSetButton = permissionSetButtonOf(panel);
+            const accountCard = cardOf(panel, 'OtherChildObject__c');
 
-            expect(permissionSetButton.textContent).toBe(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL);
+            expect(permissionSetButton.textContent).toBe('Assign permission sets to me…');
+            expect(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL).toBe('Assign permission sets to me…');
             expect(panel.isHidden(permissionSetButton)).toBe(false);
             expect(panel.isHidden(permissionSetButtonOf(panel, 'Lead'))).toBe(false);
+            ['treeDeploy', 'metadataDeployStatus', 'metadataDeployViewOutput', 'metadataDeployOpenStatus'].forEach(className => {
+                expect(panel.findAll(accountCard, className)).toEqual([]);
+            });
+            expect(panel.findAll(accountCard, 'treePermissionSetControls')[0].children).toEqual([permissionSetButton]);
 
             permissionSetButton.dispatch('click');
 
-            expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'deployTreePermissionSets', treeKey: ACCOUNT_TREE_KEY });
+            expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'assignTreePermissionSets', treeKey: ACCOUNT_TREE_KEY });
             expect(permissionSetButton.disabled).toBe(true);
-            expect(panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'treeDeploy')[0].disabled).toBe(true);
+            expect(permissionSetButtonOf(panel, 'Lead').disabled).toBe(true);
 
             permissionSetButton.dispatch('click');
-            expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'deployTreePermissionSets')).toHaveLength(1);
+            expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'assignTreePermissionSets')).toHaveLength(1);
 
         });
 
-        it('posts the index of the org chosen above, and is held with every deploy while one runs', () => {
+        it('posts the index of the org chosen above, and is held with every assign button while one runs', () => {
 
             const panel = renderTrees();
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', hiddenOrgCount: 0, hiddenOrgNote: '', forgottenOrgNotice: '', renderSequence: 1 });
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Sandbox', isSandbox: true, failureMessage: '', requestSequence: 5, renderSequence: 1 });
 
-            panel.postToPanel({ command: 'metadataDeployState', isRunning: true });
+            panel.postToPanel({ command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY });
             expect(permissionSetButtonOf(panel).disabled).toBe(true);
             expect(permissionSetButtonOf(panel, 'Lead').disabled).toBe(true);
 
-            panel.postToPanel({ command: 'metadataDeployState', isRunning: false });
+            panel.postToPanel({ command: 'permissionSetAssignState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
             expect(permissionSetButtonOf(panel).disabled).toBe(false);
 
             permissionSetButtonOf(panel).dispatch('click');
-            expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'deployTreePermissionSets', treeKey: ACCOUNT_TREE_KEY, orgIndex: 0 });
+            expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'assignTreePermissionSets', treeKey: ACCOUNT_TREE_KEY, orgIndex: 0 });
 
         });
 
-        it('is named in the preview warning', () => {
+        it('is named in the preview warning, which no longer offers a metadata deploy', () => {
 
-            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('"Deploy & assign permission sets…", beside it, deploys the permission sets you pick');
+            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('"Assign permission sets to me…", on every tree\'s Treecipe tab, assigns the permission sets you pick');
+            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('It deploys nothing');
+            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).not.toContain('Deploy this metadata');
 
         });
 

@@ -114,7 +114,7 @@ describe('RecipeCockpitService, "Open in browser" beside the selected org (#279)
 
         });
 
-        it('refuses while a scratch org run or a metadata deploy holds the selection', () => {
+        it('refuses while a scratch org run or a permission set assignment holds the selection', () => {
 
             const refusal = { kind: 'postOrgOpenState', hostMessage: IDLE_STATE };
 
@@ -123,7 +123,7 @@ describe('RecipeCockpitService, "Open in browser" beside the selected org (#279)
             expect(RecipeCockpitService.routePanelMessage({ command: 'openDataOrg', orgIndex: 1 }, scratchRunState)).toEqual(refusal);
 
             const deployState = buildSelectedPanelState();
-            deployState.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true };
+            deployState.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: 'x' };
             expect(RecipeCockpitService.routePanelMessage({ command: 'openDataOrg', orgIndex: 1 }, deployState)).toEqual(refusal);
 
         });

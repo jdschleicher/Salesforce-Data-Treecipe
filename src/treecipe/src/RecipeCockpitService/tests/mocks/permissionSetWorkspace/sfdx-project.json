@@ -3,6 +3,6 @@
     { "path": "force-app", "default": true },
     { "path": "unpackaged" }
   ],
-  "name": "metadata-deploy-fixture",
+  "name": "permission-set-fixture",
   "sourceApiVersion": "64.0"
 }

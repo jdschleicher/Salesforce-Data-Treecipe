@@ -988,6 +988,39 @@ describe('SalesforceOrgService', () => {
 
     });
 
+    describe('queryPermissionSetNames (#302)', () => {
+
+        it('asks for the named permission sets in one query and keeps only the api names the org answers with', async () => {
+
+            const querySource: IOrgQuerySource = { query: jest.fn().mockResolvedValue({ records: [
+                { Name: 'Account_Tree_Access' }, { Name: 'bad name' }, { Name: 7 }, null, { Id: '0PS000000000001' }
+            ] }) };
+
+            expect(await SalesforceOrgService.queryPermissionSetNames(querySource, ['Account_Tree_Access', 'Contact_Reader'])).toEqual(['Account_Tree_Access']);
+            expect(querySource.query).toHaveBeenCalledWith('SELECT Name FROM PermissionSet WHERE Name IN (\'Account_Tree_Access\', \'Contact_Reader\')');
+
+        });
+
+        it('sends no query for no names, and refuses a name that could close the quote before any query', async () => {
+
+            const querySource: IOrgQuerySource = { query: jest.fn() };
+
+            expect(await SalesforceOrgService.queryPermissionSetNames(querySource, [])).toEqual([]);
+            await expect(SalesforceOrgService.queryPermissionSetNames(querySource, ['Ok', "x') OR Name != ('"])).rejects.toThrow('is not a Salesforce api name');
+            expect(querySource.query).not.toHaveBeenCalled();
+
+        });
+
+        it('throws, rather than answering "none", for a failed query or an answer with no records list', async () => {
+
+            await expect(SalesforceOrgService.queryPermissionSetNames({ query: jest.fn().mockRejectedValue(new Error('INVALID_SESSION_ID')) }, ['A'])).rejects.toThrow('INVALID_SESSION_ID');
+            await expect(SalesforceOrgService.queryPermissionSetNames({ query: jest.fn().mockResolvedValue({ records: 'x' }) }, ['A'])).rejects.toThrow('could not be read');
+            await expect(SalesforceOrgService.queryPermissionSetNames({ query: jest.fn().mockResolvedValue(undefined) }, ['A'])).rejects.toThrow('could not be read');
+
+        });
+
+    });
+
     describe('normalizeDescribeResult, what a Create reads', () => {
 
         it('carries the object\'s createable and each field\'s defaultedOnCreate', () => {
@@ -1374,23 +1407,6 @@ describe('SalesforceOrgService', () => {
             const dataOrgListing = await SalesforceOrgService.listDataOrgDetails();
 
             expect(dataOrgListing.orgDetails).toEqual([{ targetOrgIdentifier: SANDBOX_USERNAME, username: SANDBOX_USERNAME, alias: undefined }]);
-
-        });
-
-    });
-
-    describe('isUsernameAuthorized (#283)', () => {
-
-        it('answers from the local authorizations alone, matching the username exactly', async () => {
-
-            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([null, { aliases: ['qa'] }, { username: 'qa@example.com' }]);
-
-            await expect(SalesforceOrgService.isUsernameAuthorized('qa@example.com')).resolves.toBe(true);
-            await expect(SalesforceOrgService.isUsernameAuthorized('QA@example.com')).resolves.toBe(false);
-            await expect(SalesforceOrgService.isUsernameAuthorized('qa')).resolves.toBe(false);
-
-            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue(undefined);
-            await expect(SalesforceOrgService.isUsernameAuthorized('qa@example.com')).resolves.toBe(false);
 
         });
 
