@@ -745,7 +745,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             expect(getConnectionSpy).not.toHaveBeenCalled();
             expect(describeObjectsSpy.mock.calls[0][1]).toEqual(['Lead']);
             const readiness = lastPosted('dataOrgReadiness');
-            expect(readiness).toMatchObject({ requestSequence: 6, insertResults: [] });
+            expect(readiness).toMatchObject({ requestSequence: 6 });
             expect(readiness.createTargets).toHaveLength(1);
             expect(readiness.createTargets[0]).toMatchObject({ treeKey: LEAD_TREE_KEY, objectApiName: 'Lead' });
             expect(readiness.createTargets[0].disabledReason).toBe('Lead has 1 unticked field this org requires: Company. Tick it in the Treecipe tab to insert records.');

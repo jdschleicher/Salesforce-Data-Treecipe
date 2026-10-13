@@ -884,12 +884,10 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
             await openAndDraw();
             await receivedMessageHandler({ command: 'selectRun', runFolderName: FAKER_JS_RUN_FOLDER_NAME });
-            panelState().dataOrgInsertResults.set('key', { viewModel: { treeKey: LEAD_TREE_KEY, savedCount: 1, failedCount: 1, outcome: 'completed' }, resultsFilePath: '/x' });
 
             await openAndDraw(path.join(__dirname, 'mocks', 'treeWorkspace'));
 
             expect(lastPosted('recipeData').recipe.selectedRunFolderName).not.toBe(FAKER_JS_RUN_FOLDER_NAME);
-            expect(panelState().dataOrgInsertResults.size).toBe(0);
 
         });
 
@@ -909,20 +907,15 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
         });
 
-        it('keeps the insert results a "View errors" link opens', async () => {
+        // #301: AN INSERT'S RESULT IS ITS NOTIFICATION'S, SO NOTHING OF IT IS HELD FOR A REOPEN
+        it('keeps the org selection\'s request sequence, and holds no insert result', async () => {
 
             await openAndDraw();
-            const storedInsertResult = {
-                viewModel: { treeKey: LEAD_TREE_KEY, savedCount: 2, failedCount: 1, outcome: 'completed' as const },
-                resultsFilePath: path.join(HISTORY_WORKSPACE_ROOT, 'results.json')
-            };
-            const insertResultKey = RecipeCockpitService.buildInsertResultKey(ORG_USERNAME, LEAD_TREE_KEY);
-            panelState().dataOrgInsertResults.set(insertResultKey, storedInsertResult);
             const dataOrgRequestSequence = panelState().dataOrgRequestSequence;
 
             await openAndDraw();
 
-            expect(panelState().dataOrgInsertResults.get(insertResultKey)).toBe(storedInsertResult);
+            expect(panelState()).not.toHaveProperty('dataOrgInsertResults');
             expect(panelState().dataOrgRequestSequence).toBeGreaterThan(dataOrgRequestSequence);
 
         });

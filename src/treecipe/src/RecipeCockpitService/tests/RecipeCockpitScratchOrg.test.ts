@@ -122,7 +122,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             return panelState;
         };
 
-        const runningState = { command: 'scratchOrgState' as const, isRunning: true, statusText: 'Creating scratch org…', isFailure: false, hasOutput: false };
+        const runningState = { command: 'scratchOrgState' as const, isRunning: true };
 
         it('routes a createScratchOrg beside a drawn picker, whatever else the message carries -- none of it is read', () => {
 
@@ -138,7 +138,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             expect(RecipeCockpitService.routePanelMessage({ command: 'createScratchOrg' }, panelState)).toEqual({
                 kind: 'postScratchOrgState',
-                hostMessage: { command: 'scratchOrgState', isRunning: false, statusText: '', isFailure: false, hasOutput: false }
+                hostMessage: { command: 'scratchOrgState', isRunning: false }
             });
 
         });
@@ -174,20 +174,13 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
         });
 
-        it('opens only the result file the host holds, never a path from the panel, and nothing while running', () => {
+        // #301: "View output" IS THE NOTIFICATION'S BUTTON, SO THE PANEL HAS NO MESSAGE THAT OPENS A RESULT FILE
+        it('routes nothing for a posted viewScratchOrgOutput', () => {
 
             const panelState = buildRenderedPanelState();
 
-            expect(RecipeCockpitService.routePanelMessage({ command: 'viewScratchOrgOutput', filePath: '/etc/passwd' }, panelState)).toBeUndefined();
-
-            panelState.scratchOrgOutputFilePath = '/workspace/treecipe/OrgOperations/x/1-scratch-deploy.json';
-
-            expect(RecipeCockpitService.routePanelMessage({ command: 'viewScratchOrgOutput', filePath: '/etc/passwd' }, panelState))
-                .toEqual({ kind: 'viewScratchOrgOutput', outputFilePath: '/workspace/treecipe/OrgOperations/x/1-scratch-deploy.json' });
-
-            panelState.scratchOrgStateMessage = runningState;
-
             expect(RecipeCockpitService.routePanelMessage({ command: 'viewScratchOrgOutput' }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'viewScratchOrgOutput', filePath: '/etc/passwd' }, panelState)).toBeUndefined();
 
         });
 
@@ -240,6 +233,10 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
         const cliCallKinds = () => cliCalls.map(argumentList => argumentList.slice(0, 2).join(' '));
         const lastScratchOrgState = () => postedNamed('scratchOrgState').at(-1);
         const flushAsyncWork = () => new Promise(resolve => setImmediate(resolve));
+        // HOW A RUN ENDED (#301): EVERY NOTIFICATION THAT IS NOT A MODAL, AS [text, ...buttons]
+        const runNotifications = (notify: unknown) => ( notify as jest.Mock ).mock.calls.filter(notificationCall => !notificationCall[1]?.modal);
+        const runNotificationTexts = () => [vscode.window.showInformationMessage, vscode.window.showWarningMessage, vscode.window.showErrorMessage]
+            .flatMap(notify => runNotifications(notify).map(notificationCall => notificationCall[0]));
         const aliasOf = (createArguments: string[]) => createArguments[createArguments.indexOf('--alias') + 1];
 
         const buildOrgListStdout = () => {
@@ -395,7 +392,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             expect(execFile).not.toHaveBeenCalled();
             expect(vscode.window.withProgress).not.toHaveBeenCalled();
-            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false, statusText: '', isFailure: false, hasOutput: false });
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
 
         });
 
@@ -428,7 +425,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(notificationWarningSpy).not.toHaveBeenCalled();
             expect(execFile).not.toHaveBeenCalled();
             expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME))).toBe(false);
-            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false, statusText: '', isFailure: false, hasOutput: false });
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
 
         });
 
@@ -477,7 +474,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
             expect(notificationWarningSpy).toHaveBeenCalledWith(RecipeYamlScalar.escapeForNotification('No scratch org was created: An alias is letters, digits and . _ + -, starts with a letter or digit, and does not end with ".".'));
             expect(execFile).not.toHaveBeenCalled();
-            expect(lastScratchOrgState()).toMatchObject({ isRunning: false, isFailure: true });
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
 
         });
 
@@ -503,7 +500,12 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             expect(cliCallKinds()).toEqual(['org list']);
 
+            const progressMessages: string[] = [];
+            (vscode.window.withProgress as jest.Mock).mockImplementation(async (_options: unknown, progressTask: any) => await progressTask({ report: (progressReport: { message: string }) => progressMessages.push(progressReport.message) }, cancellationToken));
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL);
+
             await receivedMessageHandler({ command: 'createScratchOrg' });
+            await flushAsyncWork();
 
             expect(cliCallKinds()).toEqual(['org list', 'org create', 'project deploy', 'org list']);
             const [createArguments, deployArguments] = [cliCalls[1], cliCalls[2]];
@@ -531,12 +533,17 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(postedNamed('dataOrgReadiness').at(-1).createTargets.find((readiness: any) => readiness.treeKey === LEAD_TREE_KEY && readiness.objectApiName === 'Lead'))
                 .toMatchObject({ disabledReason: '' });
 
-            const phases = postedNamed('scratchOrgState').map(scratchOrgState => scratchOrgState.statusText);
-            expect(phases).toIncludeAllMembers(['Creating scratch org…', 'Deploying source…']);
-            expect(lastScratchOrgState()).toMatchObject({ isRunning: false, isFailure: false, hasOutput: true });
-            expect(lastScratchOrgState().statusText).toContain(`Scratch org ${alias} (${NEW_SCRATCH_USERNAME}) is ready: 3 components deployed. It is selected in the Treecipe tab.`);
+            // THE PHASES ARE THE PROGRESS NOTIFICATION'S, AND HOW IT ENDED IS A NOTIFICATION WITH "View output" (#301)
+            expect(progressMessages).toEqual(['Creating scratch org…', 'Deploying source…', 'Listing the new scratch org…']);
+            expect(postedNamed('scratchOrgState')).toEqual([{ command: 'scratchOrgState', isRunning: true }, { command: 'scratchOrgState', isRunning: false }]);
+            expect(runNotifications(vscode.window.showInformationMessage)).toEqual([[
+                RecipeYamlScalar.escapeForNotification(`Scratch org ${alias} · ${NEW_SCRATCH_USERNAME} is ready: 3 components deployed. It is selected in the Treecipe tab.`),
+                RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL
+            ]]);
+            const operationsFolderPath = path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, NEW_SCRATCH_USERNAME);
+            const deployResultFileName = fs.readdirSync(operationsFolderPath).find(fileName => fileName.endsWith('-scratch-deploy.json'));
+            expect(openFileSpy).toHaveBeenCalledWith(path.join(operationsFolderPath, deployResultFileName));
             expect(postedPanelMessages.indexOf(lastScratchOrgState())).toBeGreaterThan(postedPanelMessages.indexOf(postedNamed('dataOrgReadiness').at(-1)));
-            expect(JSON.stringify(postedNamed('scratchOrgState'))).not.toContain(workspaceRoot);
 
         });
 
@@ -551,7 +558,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             const alias = aliasOf(cliCalls.find(argumentList => argumentList[1] === 'create'));
             const [errorText, errorAction] = (vscode.window.showErrorMessage as jest.Mock).mock.calls[0];
-            expect(errorText).toBe(`Deploy to ${alias} failed — 1 component failure`);
+            expect(errorText).toBe(`Deploy to ${alias} failed — 1 component failure. The scratch org is kept, but it has none of the project's metadata until a deploy succeeds. It is selected in the Treecipe tab.`);
             expect(errorAction).toBe(RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL);
             // THE ONLY WARNING IS THE CONFIRMATION -- A FAILED DEPLOY IS NEVER A WARNING
             expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
@@ -559,8 +566,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             expect(cliCallKinds().slice(-1)).toEqual(['org list']);
             expect(postedNamed('dataOrgSelection').at(-1).orgLabel).toBe('new');
-            expect(lastScratchOrgState()).toMatchObject({ isRunning: false, isFailure: true, hasOutput: true });
-            expect(lastScratchOrgState().statusText).toStartWith(`Deploy to ${alias} failed — 1 component failure. The scratch org is kept, but it has none of the project's metadata until a deploy succeeds. It is selected in the Treecipe tab.`);
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
 
             const operationsFolderPath = path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, NEW_SCRATCH_USERNAME);
             const deployResultFileName = fs.readdirSync(operationsFolderPath).find(fileName => fileName.endsWith('-scratch-deploy.json'));
@@ -568,11 +574,11 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(readJson(deployResultFilePath)).toEqual(JSON.parse(DEPLOY_ONE_COMPONENT_FAILURE));
             expect(openFileSpy).toHaveBeenCalledWith(deployResultFilePath);
 
+            // THE PANEL HAS NO MESSAGE THAT OPENS IT
             openFileSpy.mockClear();
             await receivedMessageHandler({ command: 'viewScratchOrgOutput', filePath: '/etc/passwd' });
 
-            expect(openFileSpy).toHaveBeenCalledTimes(1);
-            expect(openFileSpy).toHaveBeenCalledWith(deployResultFilePath);
+            expect(openFileSpy).not.toHaveBeenCalled();
 
         });
 
@@ -590,8 +596,10 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(cliCallKinds().indexOf('org create')).toBeLessThan(cliCallKinds().lastIndexOf('org list'));
             expect(postedNamed('dataOrgSelection')).toHaveLength(selectionsBefore);
             expect(postedNamed('dataOrgList').at(-1).selectedOrgIndex).toBeNull();
-            expect(lastScratchOrgState().statusText).toContain(`does not list`);
-            expect(lastScratchOrgState().statusText).toContain('so no org was selected in its place');
+            const [notListedText, notListedAction] = runNotifications(vscode.window.showWarningMessage).at(-1);
+            expect(notListedText).toContain('does not list');
+            expect(notListedText).toContain('so no org was selected in its place');
+            expect(notListedAction).toBe(RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL);
             expect(workspaceStateUpdate).not.toHaveBeenCalledWith(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, undefined);
 
         });
@@ -633,7 +641,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
             expect(cliCallKinds()).not.toContain('org create');
             expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'OrgOperations'))).toBe(false);
-            expect(lastScratchOrgState()).toMatchObject({ isRunning: false, isFailure: false, statusText: '' });
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
             expect(notificationWarningSpy).not.toHaveBeenCalled();
 
         });
@@ -648,7 +656,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(devHubPromptSpy).not.toHaveBeenCalled();
             expect(execFile).not.toHaveBeenCalled();
             expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining('No scratch org definition file found'));
-            expect(lastScratchOrgState()).toMatchObject({ isRunning: false, isFailure: true });
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
 
         });
 
@@ -695,10 +703,10 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(cliCallKinds()).toEqual(['org create']);
             // NO "View output": THERE IS NO OUTPUT
             expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0]).toEqual([
-                RecipeYamlScalar.escapeForNotification(`The scratch org ${aliasOf(cliCalls[0])} was not created: ${ScratchOrgService.buildCliRequiredMessage()}`)
+                RecipeYamlScalar.escapeForNotification(`The scratch org ${aliasOf(cliCalls[0])} was not created: ${ScratchOrgService.buildCliRequiredMessage()} No deploy was attempted.`)
             ]);
             expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME))).toBe(false);
-            expect(lastScratchOrgState()).toMatchObject({ isRunning: false, isFailure: true, hasOutput: false });
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
 
         });
 
@@ -714,8 +722,8 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(errorText).toContain('has reached its active scratch org limit');
             expect(errorText).not.toContain('[Click](command:');
             expect(errorAction).toBe(RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL);
-            expect(lastScratchOrgState()).toMatchObject({ isRunning: false, isFailure: true, hasOutput: true });
-            expect(lastScratchOrgState().statusText).toContain('No deploy was attempted.');
+            expect(errorText).toEndWith('No deploy was attempted.');
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
 
             const alias = aliasOf(cliCalls[0]);
             expect(fs.readdirSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME, alias))).toEqual([expect.stringMatching(/-scratch-create\.json$/)]);
@@ -730,7 +738,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             await receivedMessageHandler({ command: 'createScratchOrg' });
 
             expect(cliCallKinds()).toEqual(['org create']);
-            expect(lastScratchOrgState()).toMatchObject({ isRunning: false, isFailure: true });
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
             expect(postedNamed('dataOrgSelection')).toHaveLength(0);
 
         });
@@ -750,8 +758,10 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(deployProcess.kill).toHaveBeenCalled();
             expect(cliCallKinds()).toEqual(['org create', 'project deploy', 'org list']);
             expect(postedNamed('dataOrgSelection').at(-1).orgLabel).toBe('new');
-            expect(lastScratchOrgState().statusText).toContain('was stopped partway, so some components may be missing');
-            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls.at(-1)[0]).toContain('stopped partway');
+            const [stoppedText, ...stoppedActions] = runNotifications(vscode.window.showInformationMessage).at(-1);
+            expect(stoppedText).toContain('was stopped partway, so some components may be missing');
+            expect(stoppedText).toEndWith('It is selected in the Treecipe tab.');
+            expect(stoppedActions).toEqual([]);
 
         });
 
@@ -768,7 +778,8 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             expect((execFile as unknown as jest.Mock).mock.results[0].value.kill).toHaveBeenCalled();
             expect(cliCallKinds()).toEqual(['org create']);
-            expect(lastScratchOrgState().statusText).toContain('A scratch org may still have been created: check with "sf org list".');
+            expect(runNotificationTexts()).toEqual([expect.stringContaining('A scratch org may still have been created: check with "sf org list".')]);
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
 
         });
 
@@ -786,7 +797,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             postedPanelMessages.length = 0;
             await openRenderedCockpit();
 
-            expect((RecipeCockpitService as any).recipeCockpitPanelState.scratchOrgStateMessage).toMatchObject({ isRunning: true, statusText: 'Creating scratch org…' });
+            expect((RecipeCockpitService as any).recipeCockpitPanelState.scratchOrgStateMessage).toEqual({ command: 'scratchOrgState', isRunning: true });
             expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, (RecipeCockpitService as any).recipeCockpitPanelState)).toBeUndefined();
 
             await receivedMessageHandler({ command: 'ready' });
@@ -814,7 +825,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             await receivedMessageHandler({ command: 'createScratchOrg' });
 
-            expect(postedPanelMessages).toEqual([expect.objectContaining({ command: 'scratchOrgState', isRunning: true, statusText: 'Creating scratch org…' })]);
+            expect(postedPanelMessages).toEqual([{ command: 'scratchOrgState', isRunning: true }]);
 
             heldCliCallbacks.forEach(releaseCliCallback => releaseCliCallback());
             await firstRun;
@@ -849,7 +860,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             await receivedMessageHandler({ command: 'createScratchOrg' });
 
             expect(cliCallKinds()).toEqual(['org create', 'org list']);
-            expect(lastScratchOrgState().statusText).toContain('before anything was deployed to it');
+            expect(runNotificationTexts()).toEqual([expect.stringContaining('before anything was deployed to it')]);
             expect(postedNamed('dataOrgSelection').at(-1).orgLabel).toBe('new');
 
         });
@@ -862,8 +873,9 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             await receivedMessageHandler({ command: 'createScratchOrg' });
 
             expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
-            expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining('its answer was too large to read, so whether it succeeded is unknown'));
-            expect(lastScratchOrgState()).toMatchObject({ isRunning: false, isFailure: true, hasOutput: false });
+            // NO "View output": NOTHING WAS SAVED FROM AN ANSWER TOO LARGE TO READ
+            expect(runNotifications(vscode.window.showWarningMessage)).toEqual([[expect.stringContaining('its answer was too large to read, so whether it succeeded is unknown')]]);
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
             expect(postedNamed('dataOrgSelection').at(-1).orgLabel).toBe('new');
 
         });
@@ -878,14 +890,14 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             await flushAsyncWork();
 
             expect(cliCallKinds()).toEqual(['org create']);
-            expect(lastScratchOrgState()).toMatchObject({ isRunning: true, statusText: 'Creating scratch org…' });
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: true });
 
             await receivedMessageHandler({ command: 'createScratchOrg' });
             await receivedMessageHandler({ command: 'ready' });
 
             expect(cliCallKinds()).toEqual(['org create']);
             expect(vscode.window.withProgress).toHaveBeenCalledTimes(1);
-            expect(postedPanelMessages.at(-1)).toMatchObject({ command: 'scratchOrgState', isRunning: true, statusText: 'Creating scratch org…' });
+            expect(postedPanelMessages.at(-1)).toEqual({ command: 'scratchOrgState', isRunning: true });
 
             await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
             isNewOrgAuthorized = true;
@@ -971,7 +983,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             await receivedMessageHandler({ command: 'createScratchOrg' });
 
-            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false, statusText: '', isFailure: false, hasOutput: false });
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
             expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
 
         });
@@ -999,8 +1011,10 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             await receivedMessageHandler({ command: 'createScratchOrg' });
 
             expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0]).toBe('Create a scratch org through the Dev Hub hub@example.com and deploy this project\'s source to it?');
-            expect(lastScratchOrgState().statusText).toStartWith('Scratch org qa-accounts (test-one@example.com) is ready: 1 component deployed.');
-            expect(lastScratchOrgState()).toMatchObject({ isFailure: true, hasOutput: false });
+            // NOT LISTED, SO A WARNING; AND NO RESULT FILE, SO NO "View output"
+            const readyNotifications = ( vscode.window.showWarningMessage as jest.Mock ).mock.calls.filter(notificationCall => !notificationCall[1]?.modal);
+            expect(readyNotifications).toEqual([[expect.stringMatching(/^Scratch org qa-accounts · test-one@example\.com is ready: 1 component deployed\. /)]]);
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
 
         });
 
@@ -1013,19 +1027,27 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             await receivedMessageHandler({ command: 'createScratchOrg' });
 
-            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false, statusText: 'The scratch org setup stopped: progress broke', isFailure: true, hasOutput: false });
+            expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
             expect(handleCapturedErrorSpy).toHaveBeenCalled();
             expect((RecipeCockpitService as any).isScratchOrgSetupInFlight).toBe(false);
 
         });
 
-        it('opens no result file that has gone since the run wrote it', async () => {
+        it('opens no result file that has gone since the run wrote it, when its notification\'s View output is clicked', async () => {
 
             const openFileSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+            const goneFilePath = path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME, 'gone', 'x-scratch-deploy.json');
+            jest.spyOn(ScratchOrgService, 'resolveScratchOrgPlan').mockResolvedValue({ ...PLAN, workspaceRoot });
+            jest.spyOn(ScratchOrgService, 'runScratchOrgSetup').mockResolvedValue({ kind: 'deployed', username: 'test-one@example.com', deployedComponentCount: 1, outputFilePath: goneFilePath } as any);
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [], hiddenOrgs: [], hiddenOrgReasonCounts: { production: 0, expired: 0, deleted: 0, notConnected: 0 }, hiddenOrgCount: 0 });
+            (vscode.window.withProgress as jest.Mock).mockImplementation(async (_options: unknown, progressTask: any) => await progressTask({ report: jest.fn() }, { isCancellationRequested: false, onCancellationRequested: jest.fn() }));
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options?: { modal?: boolean }) => options?.modal
+                ? RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL
+                : RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL);
             await openCockpit();
-            (RecipeCockpitService as any).recipeCockpitPanelState.scratchOrgOutputFilePath = path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME, 'gone', 'x-scratch-deploy.json');
 
-            await receivedMessageHandler({ command: 'viewScratchOrgOutput' });
+            await receivedMessageHandler({ command: 'createScratchOrg' });
+            await new Promise(resolve => setImmediate(resolve));
 
             expect(openFileSpy).not.toHaveBeenCalled();
             expect(VSCodeWorkspaceService.showWarningMessage).toHaveBeenCalledWith('The scratch org result file no longer exists in this workspace.');
@@ -1106,7 +1128,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
         const selectOrgWithLeadReady = (panel: ReturnType<typeof runPanelScript>) => {
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', hiddenOrgCount: 0, hiddenOrgNote: '', forgottenOrgNotice: '', renderSequence: 1 });
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Sandbox', isSandbox: true, requestSequence: 5, renderSequence: 1 });
-            panel.postToPanel({ command: 'dataOrgReadiness', objects: [{ objectApiName: 'Lead', disabledReason: '', requiredLookups: [] }], createTargets: [], insertResults: [], requestSequence: 5, renderSequence: 1 });
+            panel.postToPanel({ command: 'dataOrgReadiness', objects: [{ objectApiName: 'Lead', disabledReason: '', requiredLookups: [] }], createTargets: [], requestSequence: 5, renderSequence: 1 });
         };
 
         const leadInsertButton = (panel: ReturnType<typeof runPanelScript>) => {
@@ -1161,33 +1183,45 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             expect(leadInsertButton(panel).disabled).toBe(false);
 
-            panel.postToPanel({ command: 'scratchOrgState', isRunning: true, statusText: 'Deploying source…', isFailure: false, hasOutput: false });
+            panel.postToPanel({ command: 'scratchOrgState', isRunning: true });
 
             // #293: THE GENERATE BUTTON IS NEVER HELD BY A RUN -- IT GENERATES ONLY UNTIL THE RUN ENDS
             expect([leadInsertButton(panel).disabled, leadInsertButton(panel).textContent]).toEqual([false, 'Generate fake data']);
             expect(firstOf(panel, 'dataOrgNewScratch').disabled).toBe(true);
             expect(firstOf(panel, 'dataOrgSelect').disabled).toBe(true);
             expect(firstOf(panel, 'dataOrgRefresh').disabled).toBe(true);
-            expect(firstOf(panel, 'scratchOrgStatusText').textContent).toBe('Deploying source…');
-            expect(panel.isHidden(firstOf(panel, 'scratchOrgViewOutput'))).toBe(true);
 
             // A LISTING THE RUN POSTS ON ITS WAY OUT DOES NOT RE-ENABLE WHAT THE RUN HOLDS
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa', 'new'], selectedOrgIndex: 1, noOrgsMessage: '', hiddenOrgCount: 0, hiddenOrgNote: '', forgottenOrgNotice: '', renderSequence: 1 });
             expect(firstOf(panel, 'dataOrgSelect').disabled).toBe(true);
             expect(firstOf(panel, 'dataOrgRefresh').disabled).toBe(true);
 
-            panel.postToPanel({ command: 'scratchOrgState', isRunning: false, statusText: 'Deploy to treecipe-x failed — 1 component failure.', isFailure: true, hasOutput: true });
+            panel.postToPanel({ command: 'scratchOrgState', isRunning: false });
 
             expect(firstOf(panel, 'dataOrgNewScratch').disabled).toBe(false);
             expect(firstOf(panel, 'dataOrgSelect').disabled).toBe(false);
             expect(firstOf(panel, 'dataOrgRefresh').disabled).toBe(false);
-            expect(firstOf(panel, 'scratchOrgStatus').classList.contains('failed')).toBe(true);
-            expect(firstOf(panel, 'scratchOrgStatusText').textContent).toBe('Deploy to treecipe-x failed — 1 component failure.');
 
-            const viewOutputElement = firstOf(panel, 'scratchOrgViewOutput');
-            expect(panel.isHidden(viewOutputElement)).toBe(false);
-            viewOutputElement.dispatch('click');
-            expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'viewScratchOrgOutput' });
+        });
+
+        // #301: HOW A RUN WENT IS ITS NOTIFICATION'S, SO THE ORG PICKER GROWS NO LINE WHILE IT RUNS OR WHEN IT ENDS
+        it('draws no status line and no View output, adding no node to the panel, while a run goes and when it ends', () => {
+
+            const panel = renderPanel();
+            panel.expandAllTrees();
+            selectOrgWithLeadReady(panel);
+            const pickerElement = panel.cockpitBodyElement;
+            const descendantsOf = (element: any): any[] => [element, ...element.children.flatMap(descendantsOf)];
+            const nodesBefore = descendantsOf(pickerElement);
+
+            panel.postToPanel({ command: 'scratchOrgState', isRunning: true, statusText: 'Deploying source…', isFailure: false, hasOutput: false });
+            expect(descendantsOf(pickerElement)).toEqual(nodesBefore);
+            panel.postToPanel({ command: 'scratchOrgState', isRunning: false, statusText: 'Deploy failed', isFailure: true, hasOutput: true });
+            expect(descendantsOf(pickerElement)).toEqual(nodesBefore);
+
+            expect(panel.findAll(panel.cockpitBodyElement, 'scratchOrgStatus')).toEqual([]);
+            expect(panel.findAll(panel.cockpitBodyElement, 'scratchOrgViewOutput')).toEqual([]);
+            expect(JSON.stringify(descendantsOf(panel.cockpitBodyElement).map((element: any) => element.ownTextContent))).not.toContain('Deploy failed');
 
         });
 
@@ -1195,14 +1229,14 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             const panel = renderPanel();
             panel.postToPanel({ command: 'rendered' });
-            panel.postToPanel({ command: 'scratchOrgState', isRunning: true, statusText: 'Creating scratch org…', isFailure: false, hasOutput: false });
+            panel.postToPanel({ command: 'scratchOrgState', isRunning: true });
             panel.expandAllTrees();
             firstOf(panel, 'dataOrgLoad').dispatch('click');
             panel.treeCards().forEach((treeCard: any) => panel.openTab(treeCard, 'Treecipe'));
 
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'loadDataOrgs')).toHaveLength(0);
 
-            panel.postToPanel({ command: 'scratchOrgState', isRunning: false, statusText: '', isFailure: false, hasOutput: false });
+            panel.postToPanel({ command: 'scratchOrgState', isRunning: false });
             panel.postToPanel({ command: 'insertState', isRunning: true, treeKey: LEAD_TREE_KEY });
 
             panel.findAll(panel.cockpitBodyElement, 'dataOrgNewScratch').forEach((newScratchElement: any) => expect(newScratchElement.disabled).toBe(true));
@@ -1215,12 +1249,11 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
         it('draws a run replayed before the model is rendered again once the picker exists', () => {
 
             const panel = runPanelScript();
-            panel.postToPanel({ command: 'scratchOrgState', isRunning: true, statusText: 'Creating scratch org…', isFailure: false, hasOutput: false });
+            panel.postToPanel({ command: 'scratchOrgState', isRunning: true });
             panel.postToPanel({ command: 'recipeData', recipe: loadTreeRecipe(), renderSequence: 1 });
             panel.expandAllTrees();
 
             expect(firstOf(panel, 'dataOrgNewScratch').disabled).toBe(true);
-            expect(firstOf(panel, 'scratchOrgStatusText').textContent).toBe('Creating scratch org…');
 
         });
 

@@ -119,7 +119,7 @@ describe('RecipeCockpitService, "Open in browser" beside the selected org (#279)
             const refusal = { kind: 'postOrgOpenState', hostMessage: IDLE_STATE };
 
             const scratchRunState = buildSelectedPanelState();
-            scratchRunState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true, statusText: '', isFailure: false, hasOutput: false };
+            scratchRunState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true };
             expect(RecipeCockpitService.routePanelMessage({ command: 'openDataOrg', orgIndex: 1 }, scratchRunState)).toEqual(refusal);
 
             const deployState = buildSelectedPanelState();
@@ -462,12 +462,12 @@ describe('RecipeCockpitService, "Open in browser" beside the selected org (#279)
             listOrgs(panel, null);
             selectOrg(panel, 0);
 
-            panel.postToPanel({ command: 'scratchOrgState', isRunning: true, statusText: 'Creating scratch org…', isFailure: false, hasOutput: false });
+            panel.postToPanel({ command: 'scratchOrgState', isRunning: true });
             openButtons(panel).forEach(openButton => expect(openButton.disabled).toBe(true));
             openButtons(panel)[0].dispatch('click');
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'openDataOrg')).toEqual([]);
 
-            panel.postToPanel({ command: 'scratchOrgState', isRunning: false, statusText: '', isFailure: false, hasOutput: false });
+            panel.postToPanel({ command: 'scratchOrgState', isRunning: false });
             openButtons(panel).forEach(openButton => expect(openButton.disabled).toBe(false));
 
         });

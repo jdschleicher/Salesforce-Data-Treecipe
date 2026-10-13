@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.78.0] - Recipe Cockpit: the tree insert and "+ New scratch org" report in notifications, with their files as buttons
+
+Closes [#301](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/301).
+
+When a tree insert or a scratch org run ended, the cockpit added a line to the card or under the org picker. The line pushed every row below it down and repeated a notification VS Code had already shown, and on a success the file it linked to was not in the notification at all. 3.77.0 (#302) did this for the permission set button; this release does it for the other two.
+
+- **Nothing in the panel moves when a run ends.** The tree insert's result line and its **View errors**, and the scratch org line under the picker with its **View output**, are gone. While a run goes, its buttons are disabled exactly as before.
+- **Tree insert:** one notification for every outcome. A full success is an information message with **View results**. Failed records or a stop is a warning with **View errors**, and a cancel is a warning with **View results**. Both buttons open the insert's results file, and an insert that wrote no results file, such as one cancelled before its first file, shows no button. The text no longer says to use "View errors" in the Treecipe tab.
+- **+ New scratch org:** a success now offers **View output**, as a failure did. Text that was only in the panel line, "It is selected in the Treecipe tab", "press ⟳ to check again" and "No deploy was attempted", is now in the notification. The org is named `alias · username`, so it is not shown with escaped parentheses. The "Listing the new scratch org…" step is shown in a progress notification.
+- **A button opens only a file still in the workspace.** The path is checked again when it is clicked, and a file that has gone opens nothing and says so.
+- **Messages.** `scratchOrgState` carries only `isRunning`. `dataOrgReadiness` no longer carries `insertResults`, and `datasetAdded` no longer carries `insertResult`. A posted `viewInsertErrors` or `viewScratchOrgOutput` routes to nothing, so the panel has no message that opens a file.
+- **Unchanged:** `Generates only: <reason>` beside the generate button and the org picker's own status and hidden-orgs note, which describe the selection rather than a run; the one-run-per-window locks; the sandbox-and-scratch-only rule; text escaped for notifications; and Insert Data Set by Directory's own notifications.
+
 ## [3.77.0] - Recipe Cockpit: "Deploy this metadata…" removed; the permission set button only assigns
 
 Closes [#302](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/302). Part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).

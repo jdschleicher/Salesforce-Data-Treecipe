@@ -667,7 +667,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             panel.postToPanel({
                 command: 'dataOrgReadiness',
                 objects: TREE_OBJECT_API_NAMES.map(objectApiName => ({ objectApiName, disabledReason, requiredLookups: [] })),
-                createTargets: [], insertResults: [], requestSequence, renderSequence
+                createTargets: [], requestSequence, renderSequence
             });
         };
         const insertReasonsOf = (panel: any) => textOf(panel, 'treeInsertReason');
@@ -926,7 +926,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             panel.postToPanel({
                 command: 'dataOrgReadiness',
                 objects: TREE_OBJECT_API_NAMES.map(objectApiName => ({ objectApiName, disabledReason: 'Records are inserted only into a sandbox or scratch org.', requiredLookups: [] })),
-                createTargets: [], insertResults: [], requestSequence: 1, renderSequence: 1
+                createTargets: [], requestSequence: 1, renderSequence: 1
             });
 
             expect(viewOf(panel, 'dataOrgStatus').textContent).toBe('qa answered that it is Production.');

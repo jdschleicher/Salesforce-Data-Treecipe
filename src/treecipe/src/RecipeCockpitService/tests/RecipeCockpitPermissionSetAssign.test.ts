@@ -409,7 +409,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
 
             const panelState = buildPanelState();
 
-            panelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true, statusText: 'Creating scratch org…', isFailure: false, hasOutput: false };
+            panelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true };
             expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)?.kind).toBe('refusePermissionSetAssign');
 
             panelState.scratchOrgStateMessage = undefined;

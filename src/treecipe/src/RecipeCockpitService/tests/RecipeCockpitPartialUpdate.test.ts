@@ -116,7 +116,6 @@ describe('Recipe Cockpit partial updates (#226)', () => {
             runFolderName: HISTORY_CURRENT_RUN,
             recordCounts: [{ objectApiName: 'Lead', recordCount: 2 }]
         };
-        const LEAD_INSERT_RESULT = { treeKey: LEAD_TREE_KEY, savedCount: 2, failedCount: 0, outcome: 'completed', isRolledBack: false };
 
         const loadHistoryRecipe = () => {
             const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH);
@@ -138,7 +137,6 @@ describe('Recipe Cockpit partial updates (#226)', () => {
                 command: 'dataOrgReadiness',
                 objects: ['Account', 'Contact', 'OtherChildObject__c', 'Lead'].map(objectApiName => ({ objectApiName, disabledReason: '', requiredLookups: [] })),
                 createTargets: [],
-                insertResults: [],
                 requestSequence: 3,
                 renderSequence: 1
             });
@@ -151,12 +149,10 @@ describe('Recipe Cockpit partial updates (#226)', () => {
         const cardNamed = (panel: any, treeKey: string) => panel.treeCards()[treeKey === ACCOUNT_TREE_KEY ? 0 : 1];
         const descendantsOf = (element: any): any[] => [element, ...element.children.flatMap(descendantsOf)];
         const datasetFolderNamesIn = (panel: any, element: any) => panel.findAll(element, 'treeDatasetFolder').map((folderElement: any) => folderElement.textContent);
-        const leadInsertResult = (panel: any) => panel.findAll(cardNamed(panel, LEAD_TREE_KEY), 'treeInsertResult')[0];
         const postDatasetAdded = (panel: any, overrides: Record<string, unknown> = {}) => panel.postToPanel({
             command: 'datasetAdded',
             treeKeys: [LEAD_TREE_KEY],
             dataset: ADDED_DATASET,
-            insertResult: LEAD_INSERT_RESULT,
             renderSequence: 1,
             updateSequence: 7,
             ...overrides
@@ -207,21 +203,20 @@ describe('Recipe Cockpit partial updates (#226)', () => {
                 objectCount: 1
             };
             const panel = renderEverythingOpen(recipe);
-            panel.postToPanel({ command: 'scratchOrgState', isRunning: true, statusText: 'Creating scratch org…', isFailure: false, hasOutput: false });
+            panel.postToPanel({ command: 'scratchOrgState', isRunning: true });
             const leadCard = cardNamed(panel, LEAD_TREE_KEY);
             const historyPanels = [panel.tabPanelOf(leadCard, 'treeDatasets')];
-            const insertResultElement = leadInsertResult(panel);
             const nodesBefore = descendantsOf(panel.cockpitBodyElement);
             const statesBefore = nodesBefore.map(stateOf);
             expect(panel.findAll(leadCard, 'treeObjectInclude')[0].attributes['aria-pressed']).toBe('false');
 
             postDatasetAdded(panel);
 
-            // EVERY NODE IS STILL THE SAME OBJECT, AND SHOWS WHAT IT SHOWED -- BUT FOR THE NEW ROW'S TAB AND THE CARD'S INSERT RESULT
+            // EVERY NODE IS STILL THE SAME OBJECT, AND SHOWS WHAT IT SHOWED -- BUT FOR THE NEW ROW'S TAB
             const nodesAfter = descendantsOf(panel.cockpitBodyElement);
             nodesBefore.forEach((nodeBefore, nodeIndex) => {
                 expect(nodesAfter).toContain(nodeBefore);
-                if ( !isInside(nodeBefore, [...historyPanels, insertResultElement]) ) {
+                if ( !isInside(nodeBefore, historyPanels) ) {
                     expect(stateOf(nodeBefore)).toBe(statesBefore[nodeIndex]);
                 }
             });
@@ -229,7 +224,7 @@ describe('Recipe Cockpit partial updates (#226)', () => {
 
         });
 
-        it('lists the data set first in Previously Used Data Sets, and shows the insert result on its card', () => {
+        it('lists the data set first in Previously Used Data Sets, and draws no insert result on its card (#301)', () => {
 
             const panel = renderEverythingOpen();
             const leadCard = cardNamed(panel, LEAD_TREE_KEY);
@@ -239,7 +234,7 @@ describe('Recipe Cockpit partial updates (#226)', () => {
 
             expect(datasetFolderNamesIn(panel, panel.tabPanelOf(leadCard, 'treeDatasets'))).toEqual([ADDED_DATASET.datasetFolderName, ...datasetFolderNamesBefore]);
             expect(panel.findAll(panel.tabPanelOf(leadCard, 'treeDatasets'), 'tabMatchCount')[0].textContent).toBe(`${datasetFolderNamesBefore.length + 1} data sets`);
-            expect(leadInsertResult(panel).textContent).toBe('✓ 2 inserted');
+            expect(panel.findAll(leadCard, 'treeInsertResult')).toEqual([]);
 
             // ITS Open AND Insert… NAME THE FOLDER, AND THE ROW SAYS WHICH VERSION IT CAME FROM
             const addedRow = panel.findAll(panel.tabPanelOf(leadCard, 'treeDatasets'), 'treeDataset')[0];
@@ -267,7 +262,6 @@ describe('Recipe Cockpit partial updates (#226)', () => {
             postDatasetAdded(panel, { renderSequence: 2 });
 
             expect(descendantsOf(cardNamed(panel, LEAD_TREE_KEY))).toEqual(leadCardNodesBefore);
-            expect(leadInsertResult(panel).textContent).toBe('');
             expect(panel.postedHostMessages).toEqual([]);
 
         });
@@ -308,7 +302,7 @@ describe('Recipe Cockpit partial updates (#226)', () => {
             panel.postToPanel({ command: 'recipeData', recipe: loadHistoryRecipe(), renderSequence: 1 });
             panel.expandAllTrees();
 
-            postDatasetAdded(panel, { insertResult: undefined });
+            postDatasetAdded(panel);
 
             const leadCard = cardNamed(panel, LEAD_TREE_KEY);
             panel.openTab(leadCard, 'Previously Used Data Sets');

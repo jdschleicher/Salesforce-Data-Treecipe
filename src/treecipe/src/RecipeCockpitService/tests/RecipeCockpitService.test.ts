@@ -369,13 +369,12 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('restyles the buttons with the accent and the insert result with the added and changed tokens', () => {
+        it('restyles the buttons with the accent, and styles no result line, since a run\'s result is a notification (#301)', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
 
             expect(styleSheet).toMatch(/\n\s*\.toolbar button, \.emptyStateActions button, \.treeInsert, \.dataOrgLoad, \.dataOrgNewScratch \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
-            expect(styleSheet).toContain('.treeInsertResult.succeeded { color: var(--sdt-added); }');
-            expect(styleSheet).toContain('.treeInsertResult.partial { color: var(--sdt-changed); }');
+            expect(styleSheet).not.toMatch(/\.treeInsertResult|\.treeInsertErrors|\.scratchOrgStatus|\.scratchOrgViewOutput/);
             // #266: THE COMPARE TAB'S DIFF BADGES, ROWS AND CONTROLS ARE GONE, WITH THEIR RULES
             expect(styleSheet).not.toMatch(/\.diff|\.dataObject|\.dataField|\.treeCompare|\.orgStatus|\.orgProgress|\.orgDescribe|\.statusFilter|\.dataTreeCount|\.describeIn/);
             expect(styleSheet).toMatch(/\.sourceLink \{[^}]*color: var\(--sdt-accent\);/);
@@ -386,7 +385,7 @@ describe('RecipeCockpitService', () => {
             '.treeToggle', '.treeObjectToggle', '.picklistToggle',
             '.treeTab', '.historyAction', '.treeAddFriend', '.treeAddFriendChoice',
             '.toolbar button', '.emptyStateActions button', '.dataOrgRefresh',
-            '.treeInsert', '.treeInsertErrors', '.scratchOrgViewOutput', '.dataOrgLoad', '.dataOrgNewScratch'
+            '.treeInsert', '.dataOrgLoad', '.dataOrgNewScratch'
         ];
 
         const ruleFor = (styleSheet: string, selectorPattern: string): string =>
@@ -3325,7 +3324,7 @@ describe('RecipeCockpitService', () => {
                 const inserting = buildRunFakerPanelState();
                 inserting.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: LEAD_TREE_KEY };
                 inserting.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
-                inserting.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true, statusText: '', isFailure: false, hasOutput: false };
+                inserting.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true };
 
                 expect(RecipeCockpitService.routePanelMessage({ command: 'generateTree', treeKey: LEAD_TREE_KEY }, inserting)).toBeUndefined();
                 expect(RecipeCockpitService.routePanelMessage({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY }, inserting))

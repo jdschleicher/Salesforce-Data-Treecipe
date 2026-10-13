@@ -40,7 +40,7 @@ import {
     RecipeCockpitRecordCreation,
     RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD
 } from './RecipeCockpitRecordCreation';
-import { CollectionsApiService, DataSetInsertOutcome, DataSetRecordPreparer, IDataSetInsertResult } from '../CollectionsApiService/CollectionsApiService';
+import { CollectionsApiService, DataSetRecordPreparer, IDataSetInsertResult } from '../CollectionsApiService/CollectionsApiService';
 import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { DATASET_COLLECTIONS_API_FOLDER_NAME, DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
@@ -852,20 +852,6 @@ export interface IRecipeCockpitDataOrgSelectionMessage {
     renderSequence: number;
 }
 
-/*
-    What the last tree insert (#255) of one tree did, as its Treecipe tab shows it. Kept on the host
-    per org USERNAME and tree, and posted with the readiness of the org it was made in, so it
-    survives the reload an insert ends with. outcome is the shared insert's: "cancelled" and
-    "stopped" (an all-or-none failure) were rolled back.
-*/
-export interface IRecipeCockpitInsertResultViewModel {
-    treeKey: string;
-    savedCount: number;
-    failedCount: number;
-    outcome: DataSetInsertOutcome;
-    isRolledBack: boolean;
-}
-
 // ONE OBJECT OF ONE TREE AS THE TREE INSERT SENDS IT: THE FIELDS OF ITS BLOCK, OR WHY THE BLOCK COULD NOT BE READ
 export interface IRecipeCockpitCreateTarget {
     treeKey: string;
@@ -892,7 +878,6 @@ export interface IRecipeCockpitDataOrgReadinessMessage {
     objects: IRecipeCockpitCreateReadinessViewModel[];
     // ONE PER TREE AND OBJECT, FOR THAT TREE'S BLOCK (#210); A ROW READS ITS OWN BEFORE ITS OBJECT'S
     createTargets: IRecipeCockpitCreateReadinessViewModel[];
-    insertResults: IRecipeCockpitInsertResultViewModel[];
     requestSequence: number;
     renderSequence: number;
 }
@@ -922,16 +907,12 @@ export interface IRecipeCockpitWireLookupStateMessage {
 
 /*
     The "+ New scratch org" run (#200): while isRunning, the button, every "+ Create" and the org
-    dropdown are disabled, and statusText is the phase. Once it ends, statusText is how it ended,
-    and hasOutput says whether "View output" has a result file to open -- the path stays on the host.
-    Stored and replayed, so a reloaded document shows where the run is.
+    dropdown are disabled. How the run went is a notification's, with its "View output" button
+    (#301): the panel draws no line for it. Stored and replayed, so a reloaded document holds them.
 */
 export interface IRecipeCockpitScratchOrgStateMessage {
     command: 'scratchOrgState';
     isRunning: boolean;
-    statusText: string;
-    isFailure: boolean;
-    hasOutput: boolean;
 }
 
 /*
@@ -1006,7 +987,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
 
 /*
     One data set an action just wrote, posted IN PLACE of a reload (#226): the cards it joins, its
-    history row, and -- when the tree insert wrote it -- the card's new insert result. renderSequence
+    history row. How an insert went is its notification's (#301), never the panel's. renderSequence
     names the model it was added to, and the panel drops it for any other. updateSequence is this
     post's own number, echoed back in "partialRendered" once the row is drawn: only that
     acknowledgement makes the new row's Open and Insert… usable, as "rendered" does for a model.
@@ -1015,7 +996,6 @@ export interface IRecipeCockpitDatasetAddedMessage {
     command: 'datasetAdded';
     treeKeys: string[];
     dataset: IRecipeCockpitTreeDatasetViewModel;
-    insertResult?: IRecipeCockpitInsertResultViewModel;
     renderSequence: number;
     updateSequence: number;
 }
@@ -1034,11 +1014,10 @@ export const RECIPE_COCKPIT_INSERT_ACTION_LABEL = 'Generate fake data and insert
 
 export const RECIPE_COCKPIT_INSERT_RUNNING_LABEL = 'Inserting…';
 
-// A STORED INSERT RESULT, WITH THE HOST-ONLY RESULTS FILE "View errors" OPENS
-export interface IRecipeCockpitStoredInsertResult {
-    viewModel: IRecipeCockpitInsertResultViewModel;
-    resultsFilePath: string;
-}
+// THE TREE INSERT'S NOTIFICATION BUTTONS (#301): BOTH OPEN THE INSERT'S RESULTS FILE
+export const RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL = 'View errors';
+
+export const RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL = 'View results';
 
 // THE SLICE OF vscode.Memento THE COCKPIT USES, SO A TEST CAN HAND IN A MAP
 export interface IRecipeCockpitWorkspaceState {
@@ -1113,7 +1092,6 @@ export type RecipeCockpitPanelAction =
     | { kind: 'refreshDataOrgs' }
     | { kind: 'insertTree'; treeKey: string; recipeFilePath: string }
     | { kind: 'postInsertState'; hostMessage: IRecipeCockpitInsertStateMessage }
-    | { kind: 'viewInsertErrors'; resultsFilePath: string }
     | { kind: 'addIterationFriend'; treeKey: string; objectApiName: string; iterationNickname: string; friendObjectApiName: string; recipeFilePath: string }
     | { kind: 'postAddFriendState'; hostMessage: IRecipeCockpitAddFriendStateMessage }
     | { kind: 'wireLookups'; treeKey: string; recipeFilePath: string; wirings: IRecipeCockpitLookupWiringViewModel[]; isWireAll: boolean }
@@ -1130,7 +1108,6 @@ export type RecipeCockpitPanelAction =
     | { kind: 'persistPlace'; place: IRecipeCockpitPanelPlace }
     | { kind: 'createScratchOrg' }
     | { kind: 'postScratchOrgState'; hostMessage: IRecipeCockpitScratchOrgStateMessage }
-    | { kind: 'viewScratchOrgOutput'; outputFilePath: string }
     | { kind: 'assignTreePermissionSets'; treeKey: string; isSelectedOrg: boolean }
     // A REFUSAL IS A WARNING NOTIFICATION, AND THE STATE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refusePermissionSetAssign'; refusalText?: string; hostMessage: IRecipeCockpitPermissionSetAssignStateMessage }
@@ -1139,8 +1116,8 @@ export type RecipeCockpitPanelAction =
 
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened --
-    a reopen keeps only the run on screen, and the insert results and request sequence of the
-    Treecipe tab's org selection.
+    a reopen keeps only the run on screen, and the request sequence of the Treecipe tab's org
+    selection.
 
     Two generations of allow-list: the PENDING pair is built when a model is posted, and only the
     panel's "rendered" acknowledgement promotes it to ACTIVE. A post succeeding says the message
@@ -1188,7 +1165,6 @@ export interface IRecipeCockpitPanelState {
     pendingInsertableTreeKeys: Set<string>;
     insertableTreeKeys: Set<string>;
     insertStateMessage?: IRecipeCockpitInsertStateMessage;
-    dataOrgInsertResults: Map<string, IRecipeCockpitStoredInsertResult>;
     pendingInsertableFriendTargets: Map<string, string>;
     insertableFriendTargets: Map<string, string>;
     addFriendStateMessage?: IRecipeCockpitAddFriendStateMessage;
@@ -1198,9 +1174,8 @@ export interface IRecipeCockpitPanelState {
     pendingAddableParentTargets: Map<string, IRecipeCockpitAddableParentTarget>;
     addableParentTargets: Map<string, IRecipeCockpitAddableParentTarget>;
     wireLookupStateMessage?: IRecipeCockpitWireLookupStateMessage;
-    // THE "+ New scratch org" RUN, AND THE HOST-ONLY RESULT FILE ITS "View output" OPENS
+    // THE "+ New scratch org" RUN (#200)
     scratchOrgStateMessage?: IRecipeCockpitScratchOrgStateMessage;
-    scratchOrgOutputFilePath?: string;
     /*
         "Assign permission sets to me…" (#274, #302): the cards it is drawn on, every card with a
         folder and an object, a pending/active pair like the insert's. WHICH objects are read from
@@ -2625,7 +2600,6 @@ export class RecipeCockpitService {
             command: 'dataOrgReadiness',
             objects: [...readinessByTarget.byObjectApiName.values()],
             createTargets: [...readinessByTarget.byCreateKey.values()],
-            insertResults: [],
             requestSequence: requestSequence,
             renderSequence: recipeDataMessage.renderSequence
         });
@@ -2787,7 +2761,6 @@ export class RecipeCockpitService {
             generateStateMessages: new Map(),
             pendingInsertableTreeKeys: new Set(),
             insertableTreeKeys: new Set(),
-            dataOrgInsertResults: new Map(),
             pendingInsertableFriendTargets: new Map(),
             insertableFriendTargets: new Map(),
             pendingWireableLookupTargets: new Map(),
@@ -2861,12 +2834,10 @@ export class RecipeCockpitService {
         this.recipeCockpitPanelState.isOrgOpenInFlight = this.isOrgOpenInFlightForWindow;
 
         if ( previousPanelState ) {
-            // WHAT A "View errors" LINK OPENS, AND THE SEQUENCE A NEW SELECTION MUST STAY ABOVE
-            this.recipeCockpitPanelState.dataOrgInsertResults = previousPanelState.dataOrgInsertResults;
+            // THE SEQUENCE A NEW SELECTION MUST STAY ABOVE
             this.recipeCockpitPanelState.dataOrgRequestSequence = previousPanelState.dataOrgRequestSequence;
-            // A SCRATCH ORG RUN OUTLIVES THE RELOAD, AND ITS LINE AND OUTPUT GO WITH IT
+            // A SCRATCH ORG RUN OUTLIVES THE RELOAD, AND WHAT IT HOLDS DISABLED GOES WITH IT
             this.recipeCockpitPanelState.scratchOrgStateMessage = previousPanelState.scratchOrgStateMessage;
-            this.recipeCockpitPanelState.scratchOrgOutputFilePath = previousPanelState.scratchOrgOutputFilePath;
             // SO DOES A PERMISSION SET ASSIGNMENT'S (#274)
             this.recipeCockpitPanelState.permissionSetAssignStateMessage = previousPanelState.permissionSetAssignStateMessage;
         }
@@ -3323,16 +3294,6 @@ export class RecipeCockpitService {
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
                 return;
 
-            case 'viewInsertErrors':
-
-                if ( !this.isUsableWorkspacePath(panelAction.resultsFilePath, panelState.workspaceRoot) ) {
-                    VSCodeWorkspaceService.showWarningMessage('The results file of that insert no longer exists in this workspace.');
-                    return;
-                }
-
-                await VSCodeWorkspaceService.openFileInEditor(panelAction.resultsFilePath);
-                return;
-
             case 'addIterationFriend':
 
                 await this.addFriendToIteration(cockpitPanel, panelState, panelAction);
@@ -3421,11 +3382,6 @@ export class RecipeCockpitService {
             case 'postScratchOrgState':
 
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
-                return;
-
-            case 'viewScratchOrgOutput':
-
-                await this.openScratchOrgOutput(panelAction.outputFilePath, panelState.workspaceRoot);
                 return;
 
             case 'assignTreePermissionSets':
@@ -4224,8 +4180,8 @@ export class RecipeCockpitService {
     /*
         "+ New scratch org" (#200). The plan is resolved on the host and refused before any process
         when an input is missing; the modal names what was resolved, and Cancel runs nothing. Then
-        create and deploy run under one cancellable notification, their phase mirrored in the
-        panel's status line. Once a username exists the org is kept whatever followed, and the
+        create and deploy run under one cancellable notification, which reports their phase, and how
+        the run ended is a notification with a "View output" button (#301). Once a username exists the org is kept whatever followed, and the
         connected-org cache is dropped BEFORE re-listing -- the session's cached "sf org list"
         predates the org -- so it is selected by username from a fresh answer, or reported not
         listed yet with nothing selected in its place.
@@ -4252,31 +4208,16 @@ export class RecipeCockpitService {
         }
 
         this.isScratchOrgSetupInFlight = true;
-        let closingState: { statusText: string; isFailure: boolean; outputFilePath?: string } = { statusText: '', isFailure: false };
-
-        this.setScratchOrgState({ command: 'scratchOrgState', isRunning: true, statusText: '', isFailure: false, hasOutput: false });
+        this.setScratchOrgState({ command: 'scratchOrgState', isRunning: true });
 
         try {
 
-            closingState = await this.performScratchOrgSetup(this.recipeCockpitPanelState.workspaceRoot);
-
-        } catch (setupError) {
-
-            closingState = { statusText: `The scratch org setup stopped: ${setupError?.message ?? setupError}`, isFailure: true };
-            throw setupError;
+            await this.performScratchOrgSetup(this.recipeCockpitPanelState.workspaceRoot);
 
         } finally {
 
             this.isScratchOrgSetupInFlight = false;
-            this.recipeCockpitPanelState.scratchOrgOutputFilePath = closingState.outputFilePath;
-
-            this.setScratchOrgState({
-                command: 'scratchOrgState',
-                isRunning: false,
-                statusText: closingState.statusText,
-                isFailure: closingState.isFailure,
-                hasOutput: !!closingState.outputFilePath
-            });
+            this.setScratchOrgState({ command: 'scratchOrgState', isRunning: false });
 
         }
 
@@ -4303,7 +4244,7 @@ export class RecipeCockpitService {
 
     }
 
-    private static async performScratchOrgSetup(workspaceRoot: string): Promise<{ statusText: string; isFailure: boolean; outputFilePath?: string }> {
+    private static async performScratchOrgSetup(workspaceRoot: string): Promise<void> {
 
         let scratchOrgPlan: IScratchOrgPlan | undefined;
 
@@ -4317,14 +4258,13 @@ export class RecipeCockpitService {
                 () => this.promptForScratchOrgAlias()
             );
         } catch (planError) {
-            const refusalMessage = String(planError?.message ?? planError);
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(refusalMessage));
-            return { statusText: refusalMessage, isFailure: true };
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(String(planError?.message ?? planError)));
+            return;
         }
 
         // NO DEV HUB PICKED -- DISMISSED, OR NONE TO OFFER, WHICH THE PICKER HAS ALREADY SAID -- OR NO ALIAS ENTERED, IS A CANCEL
         if ( !scratchOrgPlan ) {
-            return { statusText: '', isFailure: false };
+            return;
         }
 
         const devHubLabel = this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan));
@@ -4336,10 +4276,8 @@ export class RecipeCockpitService {
         );
 
         if ( confirmation !== RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL ) {
-            return { statusText: '', isFailure: false };
+            return;
         }
-
-        const reportPhase = (phaseText: string) => this.setScratchOrgState({ command: 'scratchOrgState', isRunning: true, statusText: phaseText, isFailure: false, hasOutput: false });
 
         const setupOutcome: ScratchOrgSetupOutcome = await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
@@ -4353,7 +4291,6 @@ export class RecipeCockpitService {
             return await ScratchOrgService.runScratchOrgSetup(scratchOrgPlan, {
                 onPhase: (setupPhase: ScratchOrgSetupPhase) => {
                     progress.report({ message: RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT[setupPhase] });
-                    reportPhase(RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT[setupPhase]);
                 },
                 registerCancellation: (killChildProcess: () => void) => {
                     killCurrentProcess = killChildProcess;
@@ -4367,22 +4304,29 @@ export class RecipeCockpitService {
         });
 
         const alias = scratchOrgPlan.alias;
+        const showScratchOrgNotification = (severity: 'information' | 'warning' | 'error', notificationText: string, outputFilePath?: string) =>
+            this.showNotificationWithFile(severity, RecipeYamlScalar.escapeForNotification(notificationText), RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL,
+                outputFilePath, workspaceRoot, 'The scratch org result file no longer exists in this workspace.');
 
         if ( setupOutcome.kind === 'createFailed' ) {
-            const failureText = `The scratch org ${alias} was not created: ${setupOutcome.failureMessage}`;
-            this.showScratchOrgError(failureText, setupOutcome.outputFilePath, workspaceRoot);
-            return { statusText: `${failureText} No deploy was attempted.`, isFailure: true, outputFilePath: setupOutcome.outputFilePath };
+            showScratchOrgNotification('error', `The scratch org ${alias} was not created: ${setupOutcome.failureMessage} No deploy was attempted.`, setupOutcome.outputFilePath);
+            return;
         }
 
         if ( setupOutcome.kind === 'createCancelled' ) {
-            const cancelledText = `Cancelled while the scratch org ${alias} was being created. A scratch org may still have been created: check with "sf org list".`;
-            VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(cancelledText));
-            return { statusText: cancelledText, isFailure: true };
+            showScratchOrgNotification('information', `Cancelled while the scratch org ${alias} was being created. A scratch org may still have been created: check with "sf org list".`);
+            return;
         }
 
-        reportPhase(RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT.listing);
-        const isListed = await this.listAndSelectNewScratchOrg(setupOutcome.username);
-        const orgText = `${alias} (${setupOutcome.username})`;
+        const isListed = await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Recipe Cockpit: scratch org ${alias}`
+        }, async progress => {
+            progress.report({ message: RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT.listing });
+            return await this.listAndSelectNewScratchOrg(setupOutcome.username);
+        });
+        // NO PARENTHESES: A NOTIFICATION ESCAPES THEM, AND THE NOTIFICATION IS NOW ALL THE READER SEES OF THE RUN (#301)
+        const orgText = `${alias} · ${setupOutcome.username}`;
         const selectionText = isListed
             ? 'It is selected in the Treecipe tab.'
             : `The Salesforce CLI does not list ${orgText} as connected yet, so no org was selected in its place: press ⟳ to check again.`;
@@ -4391,36 +4335,26 @@ export class RecipeCockpitService {
             const failureHeadline = setupOutcome.componentFailureCount > 0
                 ? `Deploy to ${alias} failed — ${setupOutcome.componentFailureCount} component ${setupOutcome.componentFailureCount === 1 ? 'failure' : 'failures'}`
                 : `Deploy to ${alias} failed — ${setupOutcome.failureMessage}`;
-            this.showScratchOrgError(failureHeadline, setupOutcome.outputFilePath, workspaceRoot);
-            return {
-                statusText: `${failureHeadline}. The scratch org is kept, but it has none of the project's metadata until a deploy succeeds. ${selectionText}`,
-                isFailure: true,
-                outputFilePath: setupOutcome.outputFilePath
-            };
+            showScratchOrgNotification('error', `${failureHeadline}. The scratch org is kept, but it has none of the project's metadata until a deploy succeeds. ${selectionText}`, setupOutcome.outputFilePath);
+            return;
         }
 
         if ( setupOutcome.kind === 'deployUnconfirmed' ) {
-            const unconfirmedText = `The deploy to ${alias} ran, but its answer was too large to read, so whether it succeeded is unknown. Check it with "sf project deploy report --target-org ${setupOutcome.username}". The scratch org ${orgText} is kept.`;
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(unconfirmedText));
-            return { statusText: `${unconfirmedText} ${selectionText}`, isFailure: true };
+            showScratchOrgNotification('warning', `The deploy to ${alias} ran, but its answer was too large to read, so whether it succeeded is unknown. Check it with "sf project deploy report --target-org ${setupOutcome.username}". The scratch org ${orgText} is kept. ${selectionText}`);
+            return;
         }
 
         if ( setupOutcome.kind === 'deployCancelled' ) {
             const cancelledText = setupOutcome.isDeployStarted
                 ? `The deploy to ${alias} was stopped partway, so some components may be missing. The scratch org ${orgText} is kept.`
                 : `Cancelled after the scratch org ${orgText} was created, before anything was deployed to it: it has none of the project's metadata. It is kept.`;
-            VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(cancelledText));
-            return { statusText: `${cancelledText} ${selectionText}`, isFailure: true };
+            showScratchOrgNotification('information', `${cancelledText} ${selectionText}`);
+            return;
         }
 
-        const deployedText = `Scratch org ${orgText} is ready: ${setupOutcome.deployedComponentCount} ${setupOutcome.deployedComponentCount === 1 ? 'component' : 'components'} deployed.`;
-        VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(deployedText));
-
-        return {
-            statusText: `${deployedText} ${selectionText}`,
-            isFailure: !isListed,
-            outputFilePath: setupOutcome.outputFilePath
-        };
+        showScratchOrgNotification(isListed ? 'information' : 'warning',
+            `Scratch org ${orgText} is ready: ${setupOutcome.deployedComponentCount} ${setupOutcome.deployedComponentCount === 1 ? 'component' : 'components'} deployed. ${selectionText}`,
+            setupOutcome.outputFilePath);
 
     }
 
@@ -4598,31 +4532,6 @@ export class RecipeCockpitService {
                 : [] ),
             'The deploy is all or nothing: if any component fails, none is deployed. The scratch org is kept whatever happens, and nothing here deletes an org.'
         ].join('\n');
-
-    }
-
-    // NOT AWAITED: THE RUN ENDS, AND RE-ENABLES THE PANEL, WITHOUT WAITING FOR THE READER TO DISMISS THE NOTIFICATION
-    private static showScratchOrgError(errorText: string, outputFilePath: string | undefined, workspaceRoot: string) {
-
-        const actions = outputFilePath ? [RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL] : [];
-
-        Promise.resolve(vscode.window.showErrorMessage(RecipeYamlScalar.escapeForNotification(errorText), ...actions))
-            .then(chosenAction => chosenAction === RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL && outputFilePath
-                ? this.openScratchOrgOutput(outputFilePath, workspaceRoot)
-                : undefined)
-            .catch(() => undefined);
-
-    }
-
-    // THE PATH IS THE HOST'S OWN, AND STILL RE-CHECKED: THE FILE CAN HAVE BEEN REPLACED BY A LINK OUT OF THE WORKSPACE SINCE
-    private static async openScratchOrgOutput(outputFilePath: string, workspaceRoot: string) {
-
-        if ( !this.isUsableWorkspacePath(outputFilePath, workspaceRoot) ) {
-            VSCodeWorkspaceService.showWarningMessage('The scratch org result file no longer exists in this workspace.');
-            return;
-        }
-
-        await VSCodeWorkspaceService.openFileInEditor(outputFilePath);
 
     }
 
@@ -5122,7 +5031,6 @@ export class RecipeCockpitService {
                     command: 'dataOrgReadiness',
                     objects: [...( await this.computeCreateReadiness(orgDetail.username, connection, objectApiNames, dataOrgSelection.orgTypeDetail) ).values()],
                     createTargets: [],
-                    insertResults: [],
                     requestSequence: requestSequence,
                     renderSequence: renderSequence
                 });
@@ -5156,16 +5064,12 @@ export class RecipeCockpitService {
             return;
         }
 
-        const usernamePrefix = `${orgDetail.username}\n`;
 
         dataOrgSelection.isReadinessPosted = true;
         this.postToPanel(cockpitPanel, {
             command: 'dataOrgReadiness',
             objects: objectApiNames.map(objectApiName => readinessByObjectApiName.get(objectApiName)).filter(readiness => !!readiness),
             createTargets: [...readinessByCreateKey.values()],
-            insertResults: [...panelState.dataOrgInsertResults.entries()]
-                .filter(([insertResultKey]) => insertResultKey.startsWith(usernamePrefix))
-                .map(([, storedInsertResult]) => storedInsertResult.viewModel),
             requestSequence: requestSequence,
             renderSequence: renderSequence
         });
@@ -5326,12 +5230,6 @@ export class RecipeCockpitService {
 
     }
 
-    static buildInsertResultKey(orgUsername: string, treeKey: string): string {
-
-        return `${orgUsername}\n${treeKey}`;
-
-    }
-
     // EVERY CARD THAT CAN GENERATE: "Generate fake data and insert" GENERATES THE SAME WAY, SO IT IS OFFERED ON THE SAME CARDS
     static collectInsertableTreeKeys(recipeViewModel: IRecipeCockpitRecipeViewModel): string[] {
 
@@ -5362,8 +5260,7 @@ export class RecipeCockpitService {
     static postAddedDataset(cockpitPanel: vscode.WebviewPanel,
                             panelState: IRecipeCockpitPanelState,
                             recipeDataMessage: IRecipeCockpitRecipeDataMessage,
-                            datasetFolderPath: string,
-                            insertResult?: IRecipeCockpitInsertResultViewModel): boolean {
+                            datasetFolderPath: string): boolean {
 
         const recipeViewModel = recipeDataMessage.recipe;
         const historyTrees = recipeViewModel.trees.filter(tree => tree.folderName !== '' && !!tree.history);
@@ -5398,10 +5295,6 @@ export class RecipeCockpitService {
             renderSequence: recipeDataMessage.renderSequence,
             updateSequence: ++panelState.datasetUpdateSequence
         };
-
-        if ( insertResult ) {
-            datasetAddedMessage.insertResult = insertResult;
-        }
 
         this.postToPanel(cockpitPanel, datasetAddedMessage);
 
@@ -5450,7 +5343,7 @@ export class RecipeCockpitService {
         let isDatasetWritten = false;
         let isGenerateOnly = false;
         let insertedDatasetFolderPath = '';
-        let insertResult: IRecipeCockpitInsertResultViewModel | undefined;
+        let isInsertFinished = false;
         let hasInsertFailed = false;
         let insertError: unknown;
 
@@ -5459,7 +5352,7 @@ export class RecipeCockpitService {
             isDatasetWritten = await this.performTreeInsert(cockpitPanel, panelState, insertAction, datasetFolderPath => {
                 isDatasetWritten = true;
                 insertedDatasetFolderPath = datasetFolderPath;
-            }, storedInsertResult => { insertResult = storedInsertResult; }, () => { isGenerateOnly = true; });
+            }, () => { isInsertFinished = true; }, () => { isGenerateOnly = true; });
 
         } catch (thrownError) {
 
@@ -5472,10 +5365,10 @@ export class RecipeCockpitService {
 
             if ( isDatasetWritten && isPanelStillCurrent() && panelState.recipeDataMessage ) {
 
-                // A RESULT IS REPORTED ONLY BY AN INSERT THAT REACHED THE END, SO ONE THAT THREW HAS NONE; "Generate only" HAS NONE TO REPORT
-                const isAddedInPlace = ( !!insertResult || isGenerateOnly )
+                // ONLY AN INSERT THAT REACHED THE END, OR "Generate only", ADDS ITS DATA SET IN PLACE; ONE THAT THREW RELOADS
+                const isAddedInPlace = ( isInsertFinished || isGenerateOnly )
                                         && panelState.recipeDataMessage === clickedRecipeDataMessage
-                                        && this.postAddedDataset(cockpitPanel, panelState, clickedRecipeDataMessage, insertedDatasetFolderPath, insertResult);
+                                        && this.postAddedDataset(cockpitPanel, panelState, clickedRecipeDataMessage, insertedDatasetFolderPath);
 
                 if ( !isAddedInPlace ) {
                     panelState.deferredReloadFocus = undefined;
@@ -5508,7 +5401,7 @@ export class RecipeCockpitService {
                                             panelState: IRecipeCockpitPanelState,
                                             insertAction: Extract<RecipeCockpitPanelAction, { kind: 'insertTree' }>,
                                             onDatasetFolderMade: (datasetFolderPath: string) => void,
-                                            onInsertResult: (insertResult: IRecipeCockpitInsertResultViewModel) => void,
+                                            onInsertFinished: () => void,
                                             onGenerateOnly: () => void): Promise<boolean> {
 
         const { treeKey, recipeFilePath } = insertAction;
@@ -5692,13 +5585,8 @@ export class RecipeCockpitService {
             prepareRecords: this.buildTreeInsertRecordPreparer(orgDetail.username, insertObjectApiNameSet, orgRecordIdsByObject, choiceCount => Math.floor(Math.random() * choiceCount), outsideParentsByObject)
         });
 
-        onInsertResult(this.storeInsertResult(panelState, orgDetail.username, treeKey, insertResult));
-
-        if ( insertResult.outcome === 'stopped' && !insertResult.isRolledBack ) {
-            VSCodeWorkspaceService.showWarningMessage(`The insert of ${treeLabel} into ${orgLabel} stopped at a file that could not be inserted. ${insertResult.savedRecordCount} ${insertResult.savedRecordCount === 1 ? 'record was' : 'records were'} kept, because all-or-none was not chosen; "View errors" in the Treecipe tab opens the results.`);
-        } else if ( insertResult.outcome === 'completed' && insertResult.failedRecordCount > 0 ) {
-            VSCodeWorkspaceService.showWarningMessage(`${insertResult.savedRecordCount} ${insertResult.savedRecordCount === 1 ? 'record was' : 'records were'} inserted into ${orgLabel} from ${treeLabel} and ${insertResult.failedRecordCount} failed. Nothing was rolled back; "View errors" in the Treecipe tab opens the results.`);
-        }
+        onInsertFinished();
+        this.showTreeInsertNotification(insertResult, treeLabel, orgLabel, panelState.workspaceRoot);
 
         return true;
 
@@ -5740,22 +5628,74 @@ export class RecipeCockpitService {
 
     }
 
-    private static storeInsertResult(panelState: IRecipeCockpitPanelState, orgUsername: string, treeKey: string, insertResult: IDataSetInsertResult): IRecipeCockpitInsertResultViewModel {
+    /*
+        How the tree insert ended, with the results file a button opens (#301): "View errors" when a
+        record failed or the insert stopped, "View results" otherwise. The insert writes that file
+        only once it has sent a file, so one cancelled or failed before that offers no button. The
+        panel draws no line for it. NOT AWAITED, so the insert ends without waiting for the reader. treeLabel and orgLabel
+        arrive escaped.
+    */
+    private static showTreeInsertNotification(insertResult: IDataSetInsertResult, treeLabel: string, orgLabel: string, workspaceRoot: string) {
 
-        const insertResultViewModel: IRecipeCockpitInsertResultViewModel = {
-            treeKey: treeKey,
-            savedCount: insertResult.savedRecordCount,
-            failedCount: insertResult.failedRecordCount,
-            outcome: insertResult.outcome,
-            isRolledBack: insertResult.isRolledBack
-        };
+        const recordsText = (recordCount: number) => `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
+        const hasErrors = insertResult.failedRecordCount > 0 || insertResult.outcome === 'stopped';
+        let severity: 'information' | 'warning' = 'warning';
+        let notificationText: string;
 
-        panelState.dataOrgInsertResults.set(this.buildInsertResultKey(orgUsername, treeKey), {
-            viewModel: insertResultViewModel,
-            resultsFilePath: insertResult.resultsFilePath
-        });
+        if ( insertResult.outcome === 'cancelled' ) {
+            notificationText = `The insert of ${treeLabel} into ${orgLabel} was cancelled${insertResult.isRolledBack ? ' and every record it had inserted was deleted' : ''}.`;
+        } else if ( insertResult.outcome === 'stopped' ) {
+            notificationText = insertResult.isRolledBack
+                ? `The insert of ${treeLabel} into ${orgLabel} stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen. ${recordsText(insertResult.failedRecordCount)} failed.`
+                : `The insert of ${treeLabel} into ${orgLabel} stopped at a file that could not be inserted. ${recordsText(insertResult.savedRecordCount)} ${insertResult.savedRecordCount === 1 ? 'was' : 'were'} kept, because all-or-none was not chosen, and ${insertResult.failedRecordCount} failed.`;
+        } else if ( insertResult.failedRecordCount > 0 ) {
+            notificationText = `${recordsText(insertResult.savedRecordCount)} ${insertResult.savedRecordCount === 1 ? 'was' : 'were'} inserted into ${orgLabel} from ${treeLabel} and ${insertResult.failedRecordCount} failed. Nothing was rolled back.`;
+        } else {
+            severity = 'information';
+            notificationText = `${recordsText(insertResult.savedRecordCount)} ${insertResult.savedRecordCount === 1 ? 'was' : 'were'} inserted into ${orgLabel} from ${treeLabel}.`;
+        }
 
-        return insertResultViewModel;
+        this.showNotificationWithFile(severity, notificationText, hasErrors ? RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL : RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
+            insertResult.resultsFilePath && fs.existsSync(insertResult.resultsFilePath) ? insertResult.resultsFilePath : undefined,
+            workspaceRoot, 'The insert results file no longer exists in this workspace.');
+
+    }
+
+    /*
+        A notification whose one button opens a file this run wrote (#301). The path is the host's
+        own and is checked again on the click, since the file can have been replaced by a link out
+        of the workspace since; with no path there is no button. NOT AWAITED.
+    */
+    private static showNotificationWithFile(severity: 'information' | 'warning' | 'error',
+                                            notificationText: string,
+                                            actionLabel: string,
+                                            filePath: string | undefined,
+                                            workspaceRoot: string,
+                                            missingFileText: string) {
+
+        const actions = filePath ? [actionLabel] : [];
+        const shownNotification = severity === 'information'
+            ? vscode.window.showInformationMessage(notificationText, ...actions)
+            : severity === 'warning'
+                ? vscode.window.showWarningMessage(notificationText, ...actions)
+                : vscode.window.showErrorMessage(notificationText, ...actions);
+
+        Promise.resolve(shownNotification)
+            .then(chosenAction => chosenAction === actionLabel && filePath
+                ? this.openWorkspaceResultFile(filePath, workspaceRoot, missingFileText)
+                : undefined)
+            .catch(() => undefined);
+
+    }
+
+    private static async openWorkspaceResultFile(filePath: string, workspaceRoot: string, missingFileText: string) {
+
+        if ( !this.isUsableWorkspacePath(filePath, workspaceRoot) ) {
+            VSCodeWorkspaceService.showWarningMessage(missingFileText);
+            return;
+        }
+
+        await VSCodeWorkspaceService.openFileInEditor(filePath);
 
     }
 
@@ -6257,20 +6197,11 @@ export class RecipeCockpitService {
                 if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning ) {
                     return {
                         kind: 'postScratchOrgState',
-                        hostMessage: panelState.scratchOrgStateMessage ?? { command: 'scratchOrgState', isRunning: false, statusText: '', isFailure: false, hasOutput: false }
+                        hostMessage: panelState.scratchOrgStateMessage ?? { command: 'scratchOrgState', isRunning: false }
                     };
                 }
 
                 return { kind: 'createScratchOrg' };
-
-            // NO PAYLOAD: THE FILE IS THE ONE THIS PANEL'S LAST RUN WROTE, HELD ON THE HOST
-            case 'viewScratchOrgOutput':
-
-                if ( panelState.scratchOrgStateMessage?.isRunning || !panelState.scratchOrgOutputFilePath ) {
-                    return undefined;
-                }
-
-                return { kind: 'viewScratchOrgOutput', outputFilePath: panelState.scratchOrgOutputFilePath };
 
             /*
                 "Generate fake data and insert" (#255) posts the tree's KEY and nothing else, and it is
@@ -6701,24 +6632,6 @@ export class RecipeCockpitService {
                 }
 
                 return { kind: 'openDataOrg', orgDetail: dataOrgSelection.orgDetail };
-
-            }
-
-            // THE TREE'S KEY ALONE: THE RESULTS FILE IS THE HOST'S, STORED FOR THE ORG SELECTED NOW
-            case 'viewInsertErrors': {
-
-                const { treeKey } = panelMessage;
-
-                if ( typeof treeKey !== 'string' || !panelState.dataOrgSelection ) {
-                    return undefined;
-                }
-
-                const storedInsertResult = panelState.dataOrgInsertResults.get(this.buildInsertResultKey(panelState.dataOrgSelection.orgDetail.username, treeKey));
-
-                // A STOP WITH NOTHING COUNTED AS FAILED (A REQUEST THAT THREW) STILL HAS A RESULTS FILE WORTH OPENING
-                return storedInsertResult && ( storedInsertResult.viewModel.failedCount > 0 || storedInsertResult.viewModel.outcome === 'stopped' )
-                    ? { kind: 'viewInsertErrors', resultsFilePath: storedInsertResult.resultsFilePath }
-                    : undefined;
 
             }
 
@@ -8109,7 +8022,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader, .treeObjectHeader, .treeField, .treeDataset { transition: background-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, box-shadow ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease; }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treePermissionSets {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treePermissionSets {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
@@ -8121,7 +8034,7 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treeInsertErrors:hover:not(:disabled), .scratchOrgViewOutput:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
+    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
     .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
@@ -8149,7 +8062,7 @@ ${this.buildPaletteCustomProperties()}
     .treeAddFriend { font-weight: 600; }
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
-    .treeAddFriendChoice, .historyAction, .treeInsertErrors, .scratchOrgViewOutput { text-decoration: underline; }
+    .treeAddFriendChoice, .historyAction { text-decoration: underline; }
     .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treePermissionSets:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
@@ -8343,9 +8256,6 @@ ${this.buildPaletteCustomProperties()}
     }
     .dataOrgStatus { margin: 0.4rem 0; }
     .dataOrgStatus.failed { color: var(--sdt-removed); }
-    .scratchOrgStatus { margin: 0.4rem 0; }
-    .scratchOrgStatus.failed { color: var(--sdt-removed); }
-    .scratchOrgViewOutput { margin-left: 0.5rem; }
     .treecipeHeader { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
     .treecipeActions, .treeInsertControls, .treePermissionSetControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
     .treeRecordCount { display: inline-flex; align-items: baseline; gap: 0.3rem; }
@@ -8358,8 +8268,6 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 4px;
     }
     .treeRecordCountError { color: var(--sdt-removed); }
-    .treeInsertResult.succeeded { color: var(--sdt-added); }
-    .treeInsertResult.partial { color: var(--sdt-changed); }
     .picklistValues { margin: 0.2rem 0 0 1.4rem; }
     .recordTypeHeading { margin-top: 0.3rem; font-weight: 600; }
     .picklistValue { padding-left: 0.6rem; word-break: break-word; }
@@ -8469,8 +8377,7 @@ ${this.buildPaletteCustomProperties()}
     let dataOrgStatusText = '';
     let isDataOrgStatusFailure = false;
     let dataOrgHiddenNoteText = '';
-    // "+ New scratch org" (#200): THE HOST'S LAST scratchOrgState, AND WHETHER A RUN HOLDS THE PICKER AND EVERY INSERT DISABLED
-    let scratchOrgState = null;
+    // "+ New scratch org" (#200): WHETHER A RUN HOLDS THE PICKER AND EVERY INSERT DISABLED; HOW IT ENDED IS A NOTIFICATION'S (#301)
     let isScratchOrgRunning = false;
     // "Assign permission sets to me…" (#274, #302): WHETHER AN ASSIGNMENT HOLDS THE PICKER, EVERY INSERT AND EVERY ASSIGN BUTTON DISABLED
     let isPermissionSetAssignRunning = false;
@@ -8489,7 +8396,6 @@ ${this.buildPaletteCustomProperties()}
     let dataOrgReadinessByObject = Object.create(null);
     // AN OBJECT'S READINESS IN ONE TREE, FOR ITS BLOCK (#210); THE OBJECT'S ANSWERS WHEN THERE IS NONE
     let dataOrgReadinessByTreeObjectKey = Object.create(null);
-    let dataOrgInsertResultsByTreeKey = Object.create(null);
     // THE TREE WHOSE INSERT IS RUNNING; IT OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE INSERT ENDED
     let insertRunningTreeKey = null;
     /*
@@ -8678,9 +8584,6 @@ ${this.buildPaletteCustomProperties()}
             newScratchElement: createElement('button', 'dataOrgNewScratch', '+ New scratch org'),
             hiddenNoteElement: createElement('div', 'dataOrgHiddenNote muted hidden'),
             statusElement: createElement('div', 'dataOrgStatus muted hidden'),
-            scratchStatusElement: createElement('div', 'scratchOrgStatus muted hidden'),
-            scratchStatusTextElement: createElement('span', 'scratchOrgStatusText'),
-            scratchViewOutputElement: createElement('button', 'scratchOrgViewOutput hidden', 'View output'),
             drawnLabels: null
         };
 
@@ -8727,10 +8630,6 @@ ${this.buildPaletteCustomProperties()}
             vscodeApi.postMessage({ command: 'createScratchOrg' });
         });
 
-        dataOrgView.scratchViewOutputElement.addEventListener('click', function () {
-            vscodeApi.postMessage({ command: 'viewScratchOrgOutput' });
-        });
-
         pickerElement.appendChild(dataOrgView.loadElement);
         pickerElement.appendChild(dataOrgView.selectElement);
         pickerElement.appendChild(dataOrgView.typeElement);
@@ -8740,9 +8639,6 @@ ${this.buildPaletteCustomProperties()}
         viewElement.appendChild(pickerElement);
         viewElement.appendChild(dataOrgView.hiddenNoteElement);
         viewElement.appendChild(dataOrgView.statusElement);
-        dataOrgView.scratchStatusElement.appendChild(dataOrgView.scratchStatusTextElement);
-        dataOrgView.scratchStatusElement.appendChild(dataOrgView.scratchViewOutputElement);
-        viewElement.appendChild(dataOrgView.scratchStatusElement);
 
         dataOrgViews.push(dataOrgView);
         drawDataOrgView(dataOrgView);
@@ -8842,12 +8738,6 @@ ${this.buildPaletteCustomProperties()}
         setShown(dataOrgView.openOrgElement, isDataOrgSelectShown && dataOrgSelectedIndex !== null);
         dataOrgView.openOrgElement.disabled = isOrgOpenRunning || isScratchOrgRunning || isPermissionSetAssignRunning;
         dataOrgView.openOrgElement.textContent = isOrgOpenRunning ? 'Opening…' : OPEN_ORG_LABEL;
-
-        const scratchStatusText = scratchOrgState ? scratchOrgState.statusText : '';
-        dataOrgView.scratchStatusTextElement.textContent = scratchStatusText;
-        setShown(dataOrgView.scratchStatusElement, !!scratchStatusText);
-        if (scratchOrgState && scratchOrgState.isFailure) { dataOrgView.scratchStatusElement.classList.add('failed'); } else { dataOrgView.scratchStatusElement.classList.remove('failed'); }
-        setShown(dataOrgView.scratchViewOutputElement, !!scratchOrgState && !scratchOrgState.isRunning && !!scratchOrgState.hasOutput);
 
     }
 
@@ -10280,15 +10170,6 @@ ${this.buildPaletteCustomProperties()}
                 .forEach(function (treeState) { addDatasetToTree(treeState, datasetAddedMessage.dataset); });
         });
 
-        const insertResult = datasetAddedMessage.insertResult;
-
-        if (insertResult) {
-            dataOrgInsertResultsByTreeKey[insertResult.treeKey] = insertResult;
-            treeStates
-                .filter(function (treeState) { return treeState.tree.treeKey === insertResult.treeKey; })
-                .forEach(drawTreeInsert);
-        }
-
         vscodeApi.postMessage({ command: 'partialRendered', renderSequence: renderedSequence, updateSequence: datasetAddedMessage.updateSequence });
 
     }
@@ -10582,9 +10463,7 @@ ${this.buildPaletteCustomProperties()}
         const controlsElement = createElement('div', 'treeInsertControls');
         const insert = {
             buttonElement: createElement('button', 'treeInsert', INSERT_ACTION_LABEL),
-            reasonElement: createElement('span', 'treeInsertReason muted'),
-            resultElement: createElement('span', 'treeInsertResult'),
-            errorsElement: createElement('button', 'treeInsertErrors hidden', 'View errors')
+            reasonElement: createElement('span', 'treeInsertReason muted')
         };
 
         /*
@@ -10604,14 +10483,8 @@ ${this.buildPaletteCustomProperties()}
             }
         });
 
-        insert.errorsElement.addEventListener('click', function () {
-            vscodeApi.postMessage({ command: 'viewInsertErrors', treeKey: treeState.tree.treeKey });
-        });
-
         controlsElement.appendChild(insert.buttonElement);
         controlsElement.appendChild(insert.reasonElement);
-        controlsElement.appendChild(insert.resultElement);
-        controlsElement.appendChild(insert.errorsElement);
 
         treeState.insert = insert;
         drawTreeInsert(treeState);
@@ -10858,33 +10731,6 @@ ${this.buildPaletteCustomProperties()}
             : 'Generate this tree with its selection and counts from ' + tree.runFakerRecipeFileName + ' into a new data set, without inserting it');
         insert.reasonElement.textContent = insertReason === '' ? '' : 'Generates only: ' + insertReason;
 
-        const insertResult = hasOwnKey(dataOrgInsertResultsByTreeKey, treeState.tree.treeKey) ? dataOrgInsertResultsByTreeKey[treeState.tree.treeKey] : null;
-
-        insert.resultElement.className = 'treeInsertResult';
-        insert.errorsElement.classList.add('hidden');
-
-        if (!insertResult) {
-            insert.resultElement.textContent = '';
-            return;
-        }
-
-        if (insertResult.outcome === 'cancelled') {
-            insert.resultElement.textContent = 'Last insert cancelled and rolled back';
-        } else if (insertResult.outcome === 'stopped') {
-            insert.resultElement.textContent = insertResult.isRolledBack
-                ? 'Last insert stopped and rolled back · ' + insertResult.failedCount + ' failed'
-                : 'Last insert stopped · ' + insertResult.savedCount + ' inserted and kept · ' + insertResult.failedCount + ' failed';
-            insert.resultElement.classList.add('partial');
-        } else if (insertResult.failedCount === 0) {
-            insert.resultElement.textContent = '✓ ' + insertResult.savedCount + ' inserted';
-            insert.resultElement.classList.add('succeeded');
-        } else {
-            insert.resultElement.textContent = insertResult.savedCount + ' inserted · ' + insertResult.failedCount + ' failed';
-            insert.resultElement.classList.add('partial');
-        }
-
-        if (insertResult.failedCount > 0 || insertResult.outcome === 'stopped') { insert.errorsElement.classList.remove('hidden'); }
-
     }
 
     function drawTreeInserts() {
@@ -10914,7 +10760,6 @@ ${this.buildPaletteCustomProperties()}
 
         const wasRunning = isScratchOrgRunning;
 
-        scratchOrgState = hostMessage;
         isScratchOrgRunning = !!hostMessage.isRunning;
 
         // THE RUN ENDED: WHAT IT HELD DISABLED COMES BACK, ⟳ INCLUDED -- ITS LISTING HAS ALREADY ANSWERED
@@ -10931,7 +10776,6 @@ ${this.buildPaletteCustomProperties()}
 
         dataOrgReadiness.objects.forEach(function (readiness) { dataOrgReadinessByObject[readiness.objectApiName] = readiness; });
         (dataOrgReadiness.createTargets || []).forEach(function (readiness) { dataOrgReadinessByTreeObjectKey[buildTreeObjectKey(readiness.treeKey, readiness.objectApiName)] = readiness; });
-        (dataOrgReadiness.insertResults || []).forEach(function (insertResult) { dataOrgInsertResultsByTreeKey[insertResult.treeKey] = insertResult; });
 
         // THE CHECK IS OVER; A FAILURE THE SELECTION REPORTED STAYS ON SCREEN
         if (!isDataOrgStatusFailure) { setDataOrgStatus('', false); }
@@ -11010,7 +10854,6 @@ ${this.buildPaletteCustomProperties()}
         dataOrgSelectionFailureMessage = '';
         dataOrgReadinessByObject = Object.create(null);
         dataOrgReadinessByTreeObjectKey = Object.create(null);
-        dataOrgInsertResultsByTreeKey = Object.create(null);
         dataOrgTypeLabel = null;
         drawDataOrgViews();
         drawTreeInserts();
@@ -11040,7 +10883,6 @@ ${this.buildPaletteCustomProperties()}
             dataOrgRequestSequence = dataOrgSelection.requestSequence;
             dataOrgReadinessByObject = Object.create(null);
             dataOrgReadinessByTreeObjectKey = Object.create(null);
-            dataOrgInsertResultsByTreeKey = Object.create(null);
             dataOrgSelectionFailureMessage = '';
             setDataOrgStatus('Checking ' + dataOrgSelection.orgLabel + '…', false);
         }
@@ -11408,7 +11250,6 @@ ${this.buildPaletteCustomProperties()}
         dataOrgSelectionFailureMessage = '';
         dataOrgReadinessByObject = Object.create(null);
         dataOrgReadinessByTreeObjectKey = Object.create(null);
-        dataOrgInsertResultsByTreeKey = Object.create(null);
         pendingPicklistValueElements = Object.create(null);
         pendingDatasetCountElements = Object.create(null);
         answeredDatasetCounts = Object.create(null);
