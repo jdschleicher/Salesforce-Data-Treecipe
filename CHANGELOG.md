@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.82.2] - salesforceObjectsPath must stay inside the workspace
+## [3.82.3] - salesforceObjectsPath must stay inside the workspace
 
 Closes [#117](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/117).
 
@@ -11,6 +11,13 @@ Closes [#117](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/11
 - **Global value sets are read from inside the workspace too.** `globalValueSets/` is looked for beside the objects directory, found by `ConfigurationService.resolveSalesforceMetadataParentPath` with `path.dirname`. The old helper only split on `/`, so with the resolved Windows path it found no parent and read `<drive>:\globalValueSets\` instead. An objects directory that is the workspace folder itself (`"./"`) used to send that read to the folder above the workspace; it now reads `<workspace>/globalValueSets/`. The `/`-only `VSCodeWorkspaceService.getParentPath` is removed.
 - **Now works:** a value with no `./` prefix (`"force-app/main/default/objects"`), and backslash paths written by hand.
 - **Unchanged:** `"./force-app/main/default/objects/"`, with or without the trailing slash, resolves to the same folder as before.
+
+## [3.82.2] - The extension icon is a PNG, so a release can publish again
+
+The release build failed at `vsce publish` with "The provided icon is not a supported image format": `package.json` named `images/datatreecipe.webp` as the icon, and the Marketplace rejects a WebP icon at publish (`vsce package` still builds with it, so only the release job showed the failure). While it failed, no new version reached the Marketplace, so an installed extension kept showing behavior removed since, such as the Recipe Cockpit's metadata deploy messages (#302).
+
+- **The icon is `images/datatreecipe.png`**, 256 x 256, drawn from the same artwork. The WebP file is removed.
+- **Unchanged:** every command and the extension's code.
 
 ## [3.82.1] - One implementation of the custom relationship mapping lookup
 
