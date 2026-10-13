@@ -187,6 +187,13 @@ export const RECIPE_COCKPIT_UNGROUPED_TREE_TITLE = 'Not in a relationship tree';
 export const RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY = 'treecipe.recipeCockpit.treePreferences';
 
 /*
+    A data set's own name and favorite, kept in workspaceState by its FOLDER NAME under
+    FakeDataSets/ -- unique there, since a same-second folder takes a -<n> suffix -- so a data set
+    keeps both however many cards list it and across every reload.
+*/
+export const RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY = 'treecipe.recipeCockpit.datasetPreferences';
+
+/*
     What each tree folder's Structure tab excluded directly (#219) and the fields it unticked (#220);
     the cascade and the locks are recomputed, never stored. Version 2 added the fields; a version 1
     entry still reads, as objects with nothing unticked.
@@ -222,6 +229,8 @@ export const RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH = 32768;
 export const RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL = 'Reset';
 export const RECIPE_COCKPIT_TREE_PREFERENCES_VERSION = 1;
 export const RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH = 80;
+export const RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION = 1;
+export const RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH = 80;
 export const RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL = '✎';
 
 /*
@@ -623,6 +632,21 @@ export interface IRecipeCockpitTreePreferencesMessage {
     trees: Array<{ treeKey: string; customName?: string; isFavorite: boolean }>;
 }
 
+// WHAT workspaceState HOLDS FOR THE DATA SET ROWS, BY DATA SET FOLDER NAME; NEITHER IS A PLAIN {}
+export interface IRecipeCockpitDatasetPreferences {
+    customNamesByFolderName: Map<string, string>;
+    favoriteFolderNames: Set<string>;
+}
+
+// A DATA SET'S NAME OR FAVORITE CHANGED: ITS ROW ON EVERY CARD THAT LISTS IT, REDRAWN IN PLACE
+export interface IRecipeCockpitDatasetPreferencesMessage {
+    command: 'datasetPreferences';
+    renderSequence: number;
+    datasetFolderName: string;
+    customName?: string;
+    isFavorite: boolean;
+}
+
 export interface IRecipeCockpitRecipeViewModel {
     runs: IRecipeCockpitRunViewModel[];
     selectedRunFolderName: string;
@@ -756,6 +780,8 @@ export interface IRecipeCockpitPanelTreePlace {
     searchQueries: Partial<Record<RecipeCockpitTreeTab, string>>;
     expandedObjectKeys: string[];
     openPicklistKeys: string[];
+    // THE DATA SETS TAB'S FAVORITES ONLY; A PLACE SAVED BEFORE IT HAS NONE AND READS AS THE FILTER OFF
+    isDatasetFavoritesOnly?: true;
 }
 
 export interface IRecipeCockpitPanelPlace {
@@ -1019,6 +1045,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitAddFriendStateMessage
                                         | IRecipeCockpitWireLookupStateMessage
                                         | IRecipeCockpitTreePreferencesMessage
+                                        | IRecipeCockpitDatasetPreferencesMessage
                                         | IRecipeCockpitObjectSelectionMessage
                                         | IRecipeCockpitScratchOrgStateMessage
                                         | IRecipeCockpitPermissionSetAssignStateMessage
@@ -1103,6 +1130,8 @@ export interface IRecipeCockpitTreeHistoryAllowLists {
     generatableTreeKeys: Set<string>;
     // THE CARDS ✎ AND ☆ ARE DRAWN ON: EVERY CARD WITH A FOLDER, WHICH LEAVES OUT ONLY THE UNGROUPED ONE
     nameableTreeKeys: Set<string>;
+    // THE DATA SET ROWS ✎ AND ☆ ARE DRAWN ON: EVERY ROW THE RENDERED HISTORIES LIST
+    nameableDatasetFolderNames: Set<string>;
     // "<treeKey>\n<object>" FOR EVERY TREE ICON THE PANEL DRAWS CLICKABLE (#219): A CARD WITH A FOLDER, AN OBJECT IT DRAWS, TOLD APART FROM ANY OTHER OCCURRENCE
     selectableObjectKeys: Set<string>;
     // "<treeKey>\n<object>\n<field>" FOR EVERY FIELD CHECKBOX (#220): A SELECTABLE OBJECT'S FIELDS THAT HAVE A LINE IN THE RECIPE
@@ -1139,6 +1168,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'addParentObject'; treeKey: string; recipeFilePath: string; addition: IRecipeCockpitAddableParentViewModel }
     | { kind: 'renameTree'; folderName: string }
     | { kind: 'toggleFavoriteTree'; folderName: string }
+    | { kind: 'renameDataset'; datasetFolderName: string }
+    | { kind: 'toggleFavoriteDataset'; datasetFolderName: string }
     | { kind: 'setObjectIncluded'; treeKey: string; folderName: string; objectApiName: string; isIncluded: boolean }
     | { kind: 'setFieldIncluded'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string; isIncluded: boolean }
     | { kind: 'setAllFieldsIncluded'; treeKey: string; folderName: string; objectApiName: string; isIncluded: boolean }
@@ -1357,7 +1388,8 @@ export class RecipeCockpitService {
                 selectedTab: selectedTab,
                 searchQueries: searchQueries,
                 expandedObjectKeys: this.normalizePlaceNames(candidateTree.expandedObjectKeys),
-                openPicklistKeys: this.normalizePlaceNames(candidateTree.openPicklistKeys)
+                openPicklistKeys: this.normalizePlaceNames(candidateTree.openPicklistKeys),
+                ...( candidateTree.isDatasetFavoritesOnly === true ? { isDatasetFavoritesOnly: true as const } : {} )
             }];
 
         });
@@ -1487,17 +1519,48 @@ export class RecipeCockpitService {
     */
     static readTreePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined): IRecipeCockpitTreePreferences {
 
-        const treePreferences = this.buildEmptyTreePreferences();
+        return this.readNamePreferences(workspaceState, RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY, RECIPE_COCKPIT_TREE_PREFERENCES_VERSION,
+            trimmedName => this.describeTreeNameProblem(trimmedName));
+
+    }
+
+    // A FAILED WRITE IS SAID ONCE, AND THE CARDS ARE LEFT AS THEY WERE: A NAME THE NEXT OPEN WOULD NOT SHOW IS NOT ONE TO DRAW NOW
+    static async writeTreePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined, treePreferences: IRecipeCockpitTreePreferences): Promise<boolean> {
+
+        return this.writeNamePreferences(workspaceState, RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY, RECIPE_COCKPIT_TREE_PREFERENCES_VERSION, treePreferences, 'tree');
+
+    }
+
+    // THE DATA SET ROWS' NAMES AND FAVORITES, READ AND CHECKED BY THE SAME RULE AS THE CARDS'
+    static readDatasetPreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined): IRecipeCockpitDatasetPreferences {
+
+        return this.readNamePreferences(workspaceState, RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY, RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION,
+            trimmedName => this.describeDatasetNameProblem(trimmedName));
+
+    }
+
+    static async writeDatasetPreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined, datasetPreferences: IRecipeCockpitDatasetPreferences): Promise<boolean> {
+
+        return this.writeNamePreferences(workspaceState, RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY, RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION, datasetPreferences, 'data set');
+
+    }
+
+    private static readNamePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined,
+                                        stateKey: string,
+                                        stateVersion: number,
+                                        describeNameProblem: (trimmedName: string) => string | undefined): IRecipeCockpitTreePreferences {
+
+        const namePreferences = this.buildEmptyTreePreferences();
         let storedPreferences: unknown;
 
         try {
-            storedPreferences = workspaceState?.get<unknown>(RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY);
+            storedPreferences = workspaceState?.get<unknown>(stateKey);
         } catch {
-            return treePreferences;
+            return namePreferences;
         }
 
-        if ( !this.isPlainRecord(storedPreferences) || storedPreferences.version !== RECIPE_COCKPIT_TREE_PREFERENCES_VERSION ) {
-            return treePreferences;
+        if ( !this.isPlainRecord(storedPreferences) || storedPreferences.version !== stateVersion ) {
+            return namePreferences;
         }
 
         const storedCustomNames = this.isPlainRecord(storedPreferences.customNames) ? storedPreferences.customNames : {};
@@ -1505,37 +1568,40 @@ export class RecipeCockpitService {
         Object.keys(storedCustomNames).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
             const customName = storedCustomNames[folderName];
             if ( this.isBoundedText(folderName) && folderName !== '' && typeof customName === 'string'
-                    && customName !== '' && customName === customName.trim() && this.describeTreeNameProblem(customName) === undefined ) {
-                treePreferences.customNamesByFolderName.set(folderName, customName);
+                    && customName !== '' && customName === customName.trim() && describeNameProblem(customName) === undefined ) {
+                namePreferences.customNamesByFolderName.set(folderName, customName);
             }
         });
 
-        this.normalizePlaceNames(storedPreferences.favoriteFolderNames).forEach(folderName => treePreferences.favoriteFolderNames.add(folderName));
+        this.normalizePlaceNames(storedPreferences.favoriteFolderNames).forEach(folderName => namePreferences.favoriteFolderNames.add(folderName));
 
-        return treePreferences;
+        return namePreferences;
 
     }
 
-    // A FAILED WRITE IS SAID ONCE, AND THE CARDS ARE LEFT AS THEY WERE: A NAME THE NEXT OPEN WOULD NOT SHOW IS NOT ONE TO DRAW NOW
-    static async writeTreePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined, treePreferences: IRecipeCockpitTreePreferences): Promise<boolean> {
+    private static async writeNamePreferences(workspaceState: IRecipeCockpitWorkspaceState | undefined,
+                                                stateKey: string,
+                                                stateVersion: number,
+                                                namePreferences: IRecipeCockpitTreePreferences,
+                                                namedThing: string): Promise<boolean> {
 
         if ( !workspaceState ) {
-            VSCodeWorkspaceService.showWarningMessage('The Recipe Cockpit has no workspace to keep tree names and favorites in. Open a folder and re-open the cockpit.');
+            VSCodeWorkspaceService.showWarningMessage(`The Recipe Cockpit has no workspace to keep ${namedThing} names and favorites in. Open a folder and re-open the cockpit.`);
             return false;
         }
 
         // fromEntries DEFINES EACH KEY, SO A FOLDER NAMED __proto__ IS STORED RATHER THAN SET AS A PROTOTYPE
-        const customNames: Record<string, string> = Object.fromEntries(treePreferences.customNamesByFolderName);
+        const customNames: Record<string, string> = Object.fromEntries(namePreferences.customNamesByFolderName);
 
         try {
-            await workspaceState.update(RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY, {
-                version: RECIPE_COCKPIT_TREE_PREFERENCES_VERSION,
+            await workspaceState.update(stateKey, {
+                version: stateVersion,
                 customNames: customNames,
-                favoriteFolderNames: [...treePreferences.favoriteFolderNames]
+                favoriteFolderNames: [...namePreferences.favoriteFolderNames]
             });
             return true;
         } catch (writeError) {
-            VSCodeWorkspaceService.showWarningMessage(`The tree name or favorite could not be saved: ${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}`);
+            VSCodeWorkspaceService.showWarningMessage(`The ${namedThing} name or favorite could not be saved: ${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}`);
             return false;
         }
 
@@ -1544,12 +1610,24 @@ export class RecipeCockpitService {
     // WHY A NAME CANNOT BE ANY CARD'S, WHOEVER ELSE HAS IT -- ONE LINE OF TEXT, WITHIN THE LENGTH THE HEADER IS DRAWN FOR
     private static describeTreeNameProblem(trimmedName: string): string | undefined {
 
+        return this.describeCustomNameProblem(trimmedName, 'A tree name', RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH);
+
+    }
+
+    private static describeDatasetNameProblem(trimmedName: string): string | undefined {
+
+        return this.describeCustomNameProblem(trimmedName, 'A data set name', RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH);
+
+    }
+
+    private static describeCustomNameProblem(trimmedName: string, nameLabel: string, maxLength: number): string | undefined {
+
         if ( /[\p{Cc}\u2028\u2029]/u.test(trimmedName) ) {
-            return 'A tree name must be one line, with no control characters.';
+            return `${nameLabel} must be one line, with no control characters.`;
         }
 
-        if ( trimmedName.length > RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH ) {
-            return `A tree name can be at most ${RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH} characters.`;
+        if ( trimmedName.length > maxLength ) {
+            return `${nameLabel} can be at most ${maxLength} characters.`;
         }
 
         return undefined;
@@ -1636,6 +1714,88 @@ export class RecipeCockpitService {
                     ...( tree.customName !== undefined ? { customName: tree.customName } : {} ),
                     isFavorite: tree.isFavorite === true
                 }))
+        };
+
+    }
+
+    /*
+        What the input box says is wrong with a data set's name. An empty name clears it. A
+        name is unique against every OTHER data set's name in the workspace and every other row's
+        folder name on screen, trimmed and without case: two rows a reader cannot tell apart are
+        what a name exists to prevent.
+    */
+    static validateDatasetName(candidateName: string,
+                                datasetFolderName: string,
+                                datasetPreferences: IRecipeCockpitDatasetPreferences,
+                                trees: IRecipeCockpitTreeViewModel[]): string | undefined {
+
+        const trimmedName = candidateName.trim();
+
+        if ( trimmedName === '' ) {
+            return undefined;
+        }
+
+        const namingProblem = this.describeDatasetNameProblem(trimmedName);
+
+        if ( namingProblem ) {
+            return namingProblem;
+        }
+
+        const comparableName = trimmedName.toLowerCase();
+        const otherNames: string[] = [];
+
+        datasetPreferences.customNamesByFolderName.forEach((customName, namedFolderName) => {
+            if ( namedFolderName !== datasetFolderName ) { otherNames.push(customName); }
+        });
+
+        trees.forEach(tree => (tree.history?.datasets ?? [])
+            .filter(dataset => dataset.datasetFolderName !== datasetFolderName)
+            .forEach(dataset => otherNames.push(dataset.datasetFolderName, dataset.customName ?? '')));
+
+        return otherNames.some(otherName => otherName.trim().toLowerCase() === comparableName)
+            ? 'Another data set already has that name.'
+            : undefined;
+
+    }
+
+    // THE NAMES AND FAVORITES ONTO EVERY DATA SET ROW OF EVERY CARD, IN PLACE
+    static applyDatasetPreferences(trees: IRecipeCockpitTreeViewModel[], datasetPreferences: IRecipeCockpitDatasetPreferences): IRecipeCockpitTreeViewModel[] {
+
+        trees.forEach(tree => (tree.history?.datasets ?? []).forEach(dataset => this.applyPreferencesToDataset(dataset, datasetPreferences)));
+
+        return trees;
+
+    }
+
+    static applyPreferencesToDataset(dataset: IRecipeCockpitTreeDatasetViewModel, datasetPreferences: IRecipeCockpitDatasetPreferences) {
+
+        delete dataset.customName;
+        delete dataset.isFavorite;
+
+        const customName = datasetPreferences.customNamesByFolderName.get(dataset.datasetFolderName);
+
+        if ( customName !== undefined ) {
+            dataset.customName = customName;
+        }
+
+        if ( datasetPreferences.favoriteFolderNames.has(dataset.datasetFolderName) ) {
+            dataset.isFavorite = true;
+        }
+
+    }
+
+    static buildDatasetPreferencesMessage(datasetFolderName: string,
+                                            datasetPreferences: IRecipeCockpitDatasetPreferences,
+                                            renderSequence: number): IRecipeCockpitDatasetPreferencesMessage {
+
+        const customName = datasetPreferences.customNamesByFolderName.get(datasetFolderName);
+
+        return {
+            command: 'datasetPreferences',
+            renderSequence: renderSequence,
+            datasetFolderName: datasetFolderName,
+            ...( customName !== undefined ? { customName: customName } : {} ),
+            isFavorite: datasetPreferences.favoriteFolderNames.has(datasetFolderName)
         };
 
     }
@@ -2707,6 +2867,7 @@ export class RecipeCockpitService {
             countableDatasetFolderNames: new Set(),
             generatableTreeKeys: new Set(),
             nameableTreeKeys: new Set(),
+            nameableDatasetFolderNames: new Set(),
             selectableObjectKeys: new Set(),
             selectableFieldKeys: new Set()
         };
@@ -2751,6 +2912,7 @@ export class RecipeCockpitService {
 
         treeHistoryAllowLists.openableDatasetFolderNames.add(dataset.datasetFolderName);
         treeHistoryAllowLists.insertableDatasetFolderNames.add(dataset.datasetFolderName);
+        treeHistoryAllowLists.nameableDatasetFolderNames.add(dataset.datasetFolderName);
 
         if ( dataset.recordCounts === null ) {
             treeHistoryAllowLists.countableDatasetFolderNames.add(dataset.datasetFolderName);
@@ -3032,6 +3194,7 @@ export class RecipeCockpitService {
         const panelState = this.recipeCockpitPanelState;
         const recipeViewModel = loadedRecipe.recipeViewModel;
         this.applyTreePreferences(recipeViewModel.trees, this.readTreePreferences(this.recipeCockpitWorkspaceState));
+        this.applyDatasetPreferences(recipeViewModel.trees, this.readDatasetPreferences(this.recipeCockpitWorkspaceState));
         this.applyTreeSelections(recipeViewModel, this.readTreeSelections(this.recipeCockpitWorkspaceState));
         const recipeDataMessage: IRecipeCockpitRecipeDataMessage = {
             command: 'recipeData',
@@ -3415,6 +3578,26 @@ export class RecipeCockpitService {
 
             }
 
+            case 'renameDataset':
+
+                await this.renameDataset(cockpitPanel, panelState, panelAction.datasetFolderName);
+                return;
+
+            case 'toggleFavoriteDataset': {
+
+                const datasetPreferences = this.readDatasetPreferences(this.recipeCockpitWorkspaceState);
+
+                if ( datasetPreferences.favoriteFolderNames.has(panelAction.datasetFolderName) ) {
+                    datasetPreferences.favoriteFolderNames.delete(panelAction.datasetFolderName);
+                } else {
+                    datasetPreferences.favoriteFolderNames.add(panelAction.datasetFolderName);
+                }
+
+                await this.saveAndPostDatasetPreferences(cockpitPanel, panelState, panelAction.datasetFolderName, datasetPreferences);
+                return;
+
+            }
+
             case 'createScratchOrg':
 
                 await this.createScratchOrgFromPanel(cockpitPanel);
@@ -3523,6 +3706,65 @@ export class RecipeCockpitService {
         this.applyTreePreferences(recipeDataMessage.recipe.trees, treePreferences);
 
         this.postToPanel(cockpitPanel, this.buildTreePreferencesMessage(recipeDataMessage.recipe.trees, folderName, recipeDataMessage.renderSequence));
+
+    }
+
+    // A DATA SET'S NAME, ASKED FOR AND CHECKED AS A CARD'S IS: BY THE BOX AS IT IS TYPED, AND AGAIN WHEN IT CLOSES
+    private static async renameDataset(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, datasetFolderName: string) {
+
+        const shownTrees = panelState.recipeDataMessage?.recipe.trees ?? [];
+        const datasetPreferences = this.readDatasetPreferences(this.recipeCockpitWorkspaceState);
+        // THE INPUT BOX DRAWS [label](command:...) IN ITS PROMPT AS A LINK THAT RUNS THE COMMAND, AND THE FOLDER NAME COMES FROM DISK
+        const folderLabel = RecipeYamlScalar.escapeForNotification(datasetFolderName);
+
+        const enteredName = await vscode.window.showInputBox({
+            title: 'Rename data set',
+            prompt: `A name for the data set in "${folderLabel}", unique in this workspace. Leave it empty to show it by its folder name again. The folder is not renamed.`,
+            placeHolder: datasetFolderName,
+            value: datasetPreferences.customNamesByFolderName.get(datasetFolderName) ?? '',
+            validateInput: candidateName => this.validateDatasetName(candidateName, datasetFolderName, datasetPreferences, shownTrees)
+        });
+
+        if ( enteredName === undefined || this.recipeCockpitPanel !== cockpitPanel || this.recipeCockpitPanelState !== panelState ) {
+            return;
+        }
+
+        const latestDatasetPreferences = this.readDatasetPreferences(this.recipeCockpitWorkspaceState);
+        const namingProblem = this.validateDatasetName(enteredName, datasetFolderName, latestDatasetPreferences, panelState.recipeDataMessage?.recipe.trees ?? []);
+
+        if ( namingProblem ) {
+            VSCodeWorkspaceService.showWarningMessage(`The data set was not renamed. ${namingProblem}`);
+            return;
+        }
+
+        const trimmedName = enteredName.trim();
+
+        if ( trimmedName === '' ) {
+            latestDatasetPreferences.customNamesByFolderName.delete(datasetFolderName);
+        } else {
+            latestDatasetPreferences.customNamesByFolderName.set(datasetFolderName, trimmedName);
+        }
+
+        await this.saveAndPostDatasetPreferences(cockpitPanel, panelState, datasetFolderName, latestDatasetPreferences);
+
+    }
+
+    // WRITTEN, PUT ON THE STORED MODEL A REVEAL REPLAYS, THEN POSTED FOR THE ONE DATA SET, TAGGED WITH THE MODEL IT IS ABOUT
+    private static async saveAndPostDatasetPreferences(cockpitPanel: vscode.WebviewPanel,
+                                                        panelState: IRecipeCockpitPanelState,
+                                                        datasetFolderName: string,
+                                                        datasetPreferences: IRecipeCockpitDatasetPreferences) {
+
+        const isWritten = await this.writeDatasetPreferences(this.recipeCockpitWorkspaceState, datasetPreferences);
+
+        if ( !isWritten || this.recipeCockpitPanel !== cockpitPanel || this.recipeCockpitPanelState !== panelState || !panelState.recipeDataMessage ) {
+            return;
+        }
+
+        const recipeDataMessage = panelState.recipeDataMessage;
+        this.applyDatasetPreferences(recipeDataMessage.recipe.trees, datasetPreferences);
+
+        this.postToPanel(cockpitPanel, this.buildDatasetPreferencesMessage(datasetFolderName, datasetPreferences, recipeDataMessage.renderSequence));
 
     }
 
@@ -5565,6 +5807,8 @@ export class RecipeCockpitService {
             return false;
         }
 
+        this.applyPreferencesToDataset(addedDataset.dataset, this.readDatasetPreferences(this.recipeCockpitWorkspaceState));
+
         // NEWEST FIRST, AS A RELOAD ORDERS THEM: THE FOLDER WAS NAMED FROM THE TIME IT WAS WRITTEN
         historyTrees
             .filter(tree => addedDataset.treeKeys.includes(tree.treeKey))
@@ -6640,6 +6884,24 @@ export class RecipeCockpitService {
                 const folderName = panelState.recipeDataMessage.recipe.trees.find(tree => tree.treeKey === treeKey)?.folderName;
 
                 return folderName ? { kind: panelMessage.command, folderName: folderName } : undefined;
+
+            }
+
+            /*
+                A data set row's ✎ and ☆ post its FOLDER NAME, matched against the rows the
+                confirmed-drawn model listed. As for a card, the name is asked for by the host.
+            */
+            case 'renameDataset':
+            case 'toggleFavoriteDataset': {
+
+                const { datasetFolderName } = panelMessage;
+
+                if ( typeof datasetFolderName !== 'string' || !panelState.recipeDataMessage
+                        || !panelState.treeHistoryAllowLists.nameableDatasetFolderNames.has(datasetFolderName) ) {
+                    return undefined;
+                }
+
+                return { kind: panelMessage.command, datasetFolderName: datasetFolderName };
 
             }
 
@@ -8520,6 +8782,8 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 0.6rem;
     }
     .treeDatasetHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .treeDatasetName { font-weight: 600; }
+    .treeDatasetFavorite, .treeDatasetRename { font-size: 1.1em; line-height: 1; }
     .treeDataset { padding: 0.3rem 0.6rem; }
     .treeDataset:hover { background-color: var(--sdt-row-hover); }
     .treeDatasetDate { font-weight: 600; }
@@ -10367,13 +10631,26 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // ONE DATA SET: WHEN, WHICH VERSION, ITS RECORD COUNTS, AND OPEN / INSERT BY FOLDER NAME
-    function buildDatasetRow(treeState, dataset) {
+    /*
+        ONE DATA SET: ITS OWN NAME AND STAR, WHEN, WHICH VERSION, ITS RECORD COUNTS, AND OPEN /
+        INSERT BY FOLDER NAME. ✎ AND ☆ POST THE FOLDER NAME ONLY; THE HOST ASKS FOR THE NAME ITSELF.
+    */
+    function buildDatasetRowState(treeState, dataset) {
 
         const datasetElement = createElement('div', 'treeDataset');
         const datasetHeaderElement = createElement('div', 'treeDatasetHeader');
         const countsElement = createElement('div', 'treeDatasetCounts muted');
         const actionMessage = { datasetFolderName: dataset.datasetFolderName, treeKey: treeState.tree.treeKey, tab: 'datasets' };
+        const rowState = { element: datasetElement, dataset: dataset, searchText: '', nameElement: null, favoriteElement: null, renameElement: null };
+
+        rowState.favoriteElement = createElement('button', 'historyAction treeDatasetFavorite');
+        rowState.favoriteElement.addEventListener('click', function () {
+            vscodeApi.postMessage({ command: 'toggleFavoriteDataset', datasetFolderName: dataset.datasetFolderName });
+        });
+        datasetHeaderElement.appendChild(rowState.favoriteElement);
+
+        rowState.nameElement = createElement('span', 'treeDatasetName');
+        datasetHeaderElement.appendChild(rowState.nameElement);
 
         datasetHeaderElement.appendChild(createElement('span', 'treeDatasetDate', dataset.generatedAtLabel));
         datasetHeaderElement.appendChild(createElement('span', 'treeDatasetBackend muted', dataset.fakerService));
@@ -10381,6 +10658,13 @@ ${this.buildPaletteCustomProperties()}
         datasetHeaderElement.appendChild(createElement('span', dataset.runFolderName === null ? 'treeDatasetVersion unknownVersion' : 'treeDatasetVersion', versionLabelOf(treeState, dataset.runFolderName)));
 
         datasetHeaderElement.appendChild(createElement('span', 'treeDatasetFolder muted', dataset.datasetFolderName));
+
+        rowState.renameElement = createElement('button', 'historyAction treeDatasetRename', RENAME_TREE_ACTION_LABEL);
+        rowState.renameElement.addEventListener('click', function () {
+            vscodeApi.postMessage({ command: 'renameDataset', datasetFolderName: dataset.datasetFolderName });
+        });
+        datasetHeaderElement.appendChild(rowState.renameElement);
+
         datasetHeaderElement.appendChild(buildHistoryAction('treeDatasetOpen', 'Open', 'Reveal the folder of this data set in the Explorer',
             Object.assign({ command: 'openDataset' }, actionMessage)));
         datasetHeaderElement.appendChild(buildHistoryAction('treeDatasetInsert', 'Insert…', 'Insert this data set into an org with Insert Data Set by Directory',
@@ -10399,7 +10683,45 @@ ${this.buildPaletteCustomProperties()}
             countsElement.appendChild(loadCountsElement);
         }
 
-        return datasetElement;
+        drawDatasetName(rowState);
+
+        return rowState;
+
+    }
+
+    // THE ROW'S NAME AND STAR, DRAWN AT FIRST AND AGAIN WHEN THE HOST SAYS EITHER CHANGED; THE SEARCH MATCHES THE NAME TOO
+    function drawDatasetName(rowState) {
+
+        const dataset = rowState.dataset;
+        const displayName = dataset.customName || dataset.datasetFolderName;
+
+        rowState.nameElement.textContent = dataset.customName || '';
+        if (dataset.customName) { rowState.nameElement.classList.remove('hidden'); } else { rowState.nameElement.classList.add('hidden'); }
+
+        rowState.favoriteElement.textContent = dataset.isFavorite ? FAVORITE_TREE_LABEL : NOT_FAVORITE_TREE_LABEL;
+        rowState.favoriteElement.setAttribute('aria-pressed', dataset.isFavorite ? 'true' : 'false');
+        rowState.favoriteElement.setAttribute('aria-label', dataset.isFavorite ? 'Remove ' + displayName + ' from favorites' : 'Mark ' + displayName + ' as a favorite');
+        rowState.favoriteElement.setAttribute('title', dataset.isFavorite ? 'Remove from favorites' : 'Mark as a favorite');
+
+        rowState.renameElement.setAttribute('aria-label', 'Rename ' + displayName);
+        rowState.renameElement.setAttribute('title', 'Rename this data set');
+
+        rowState.searchText = (dataset.datasetFolderName + '\\n' + (dataset.customName || '')).toLowerCase();
+
+    }
+
+    // THE DATA SETS TAB'S OWN FAVORITES ONLY: PANEL-ONLY, KEPT IN THE READER'S PLACE PER CARD
+    function buildDatasetFavoritesToggle(treeState) {
+
+        const toggleElement = createElement('button', 'historyAction treeDatasetFavoritesToggle');
+        toggleElement.setAttribute('title', 'Show only the data sets marked as favorites');
+        toggleElement.addEventListener('click', function () {
+            treeState.isDatasetFavoritesOnly = !treeState.isDatasetFavoritesOnly;
+            applyDatasetsFilter(treeState);
+            savePanelPlace();
+        });
+
+        return toggleElement;
 
     }
 
@@ -10412,13 +10734,15 @@ ${this.buildPaletteCustomProperties()}
             return;
         }
 
-        treeState.datasetsSearch = buildTabSearch(treeState, 'datasets', 'Search data set folders', applyDatasetsFilter);
+        treeState.datasetsSearch = buildTabSearch(treeState, 'datasets', 'Search data sets', applyDatasetsFilter);
+        treeState.datasetFavoritesToggleElement = buildDatasetFavoritesToggle(treeState);
+        treeState.datasetsSearch.element.appendChild(treeState.datasetFavoritesToggleElement);
         panelElement.appendChild(treeState.datasetsSearch.element);
 
         treeState.datasetRowStates = datasets.map(function (dataset) {
-            const rowElement = buildDatasetRow(treeState, dataset);
-            panelElement.appendChild(rowElement);
-            return { element: rowElement, searchText: dataset.datasetFolderName.toLowerCase() };
+            const rowState = buildDatasetRowState(treeState, dataset);
+            panelElement.appendChild(rowState.element);
+            return rowState;
         });
 
         applyDatasetsFilter(treeState);
@@ -10429,16 +10753,18 @@ ${this.buildPaletteCustomProperties()}
         The data sets tab lists rows, not objects, so a search hides the rows it does not match --
         and says how many it left, so an empty tab never reads as a tree with no history.
     */
-    function applyRowSearch(rowStates, searchQuery, search, singular, plural) {
+    function applyRowSearch(rowStates, searchQuery, search, singular, plural, isFavoritesOnly) {
 
         let matchingRowCount = 0;
+        const isFiltered = !!searchQuery || !!isFavoritesOnly;
 
         rowStates.forEach(function (rowState) {
-            const isMatch = !searchQuery || rowState.searchText.indexOf(searchQuery) !== -1;
+            const isMatch = (!searchQuery || rowState.searchText.indexOf(searchQuery) !== -1)
+                && (!isFavoritesOnly || rowState.dataset.isFavorite === true);
             if (isMatch) { matchingRowCount++; rowState.element.classList.remove('hidden'); } else { rowState.element.classList.add('hidden'); }
         });
 
-        search.matchCountElement.textContent = !searchQuery
+        search.matchCountElement.textContent = !isFiltered
             ? pluralize(rowStates.length, singular, plural)
             : matchingRowCount > 0 ? matchingRowCount + ' of ' + pluralize(rowStates.length, singular, plural) : 'no matches';
 
@@ -10462,9 +10788,9 @@ ${this.buildPaletteCustomProperties()}
 
         if (datasetsTabState && datasetsTabState.isBuilt) {
             if (treeState.datasetRowStates && treeState.datasetRowStates.length > 0) {
-                const datasetRowElement = buildDatasetRow(treeState, dataset);
-                datasetsTabState.panelElement.insertBefore(datasetRowElement, treeState.datasetRowStates[0].element);
-                treeState.datasetRowStates.unshift({ element: datasetRowElement, searchText: dataset.datasetFolderName.toLowerCase() });
+                const datasetRowState = buildDatasetRowState(treeState, dataset);
+                datasetsTabState.panelElement.insertBefore(datasetRowState.element, treeState.datasetRowStates[0].element);
+                treeState.datasetRowStates.unshift(datasetRowState);
                 applyDatasetsFilter(treeState);
             } else {
                 // A TAB BUILT EMPTY HAS NO SEARCH BOX YET: BUILT AGAIN, IT GETS ONE
@@ -10494,7 +10820,52 @@ ${this.buildPaletteCustomProperties()}
     }
 
     function applyDatasetsFilter(treeState) {
-        applyRowSearch(treeState.datasetRowStates, treeState.searchQueries.datasets, treeState.datasetsSearch, 'data set', 'data sets');
+
+        applyRowSearch(treeState.datasetRowStates, treeState.searchQueries.datasets, treeState.datasetsSearch, 'data set', 'data sets', treeState.isDatasetFavoritesOnly);
+
+        if (treeState.datasetFavoritesToggleElement) {
+            treeState.datasetFavoritesToggleElement.textContent = (treeState.isDatasetFavoritesOnly ? FAVORITE_TREE_LABEL : NOT_FAVORITE_TREE_LABEL) + ' ' + FAVORITES_ONLY_LABEL;
+            treeState.datasetFavoritesToggleElement.setAttribute('aria-pressed', treeState.isDatasetFavoritesOnly ? 'true' : 'false');
+        }
+
+    }
+
+    /*
+        A data set's name or star changed: every card that lists it -- the model each draws
+        from, so a tab built later draws it too, and the row itself where that tab is built. Only
+        for the model on screen: a newer one was built from the preferences this update reports.
+    */
+    function renderDatasetPreferences(datasetPreferencesMessage) {
+
+        if (renderedSequence === null || datasetPreferencesMessage.renderSequence !== renderedSequence
+                || typeof datasetPreferencesMessage.datasetFolderName !== 'string') { return; }
+
+        const datasetFolderName = datasetPreferencesMessage.datasetFolderName;
+        const customName = typeof datasetPreferencesMessage.customName === 'string' ? datasetPreferencesMessage.customName : undefined;
+        const isFavorite = datasetPreferencesMessage.isFavorite === true;
+
+        treeStates.forEach(function (treeState) {
+
+            const treeHistory = treeState.tree.history;
+            if (!treeHistory) { return; }
+
+            treeHistory.datasets
+                .filter(function (dataset) { return dataset.datasetFolderName === datasetFolderName; })
+                .forEach(function (dataset) { dataset.customName = customName; dataset.isFavorite = isFavorite; });
+
+            const changedRowStates = (treeState.datasetRowStates || []).filter(function (rowState) { return rowState.dataset.datasetFolderName === datasetFolderName; });
+
+            if (changedRowStates.length === 0) { return; }
+
+            changedRowStates.forEach(function (rowState) {
+                rowState.dataset.customName = customName;
+                rowState.dataset.isFavorite = isFavorite;
+                drawDatasetName(rowState);
+            });
+            applyDatasetsFilter(treeState);
+
+        });
+
     }
 
     // A RELOAD THE HOST MADE AFTER A DATA SET WENT MISSING, OR A CREATE, RE-OPENS THE CARD AND TAB THE READER ACTED FROM
@@ -10606,6 +10977,8 @@ ${this.buildPaletteCustomProperties()}
             searchQueries: { treecipe: '', datasets: '' },
             // WHAT THE READER TYPED IN EACH BOX, AS TYPED -- searchQueries IS ITS TRIMMED, LOWERCASED FORM
             searchTexts: { treecipe: '', datasets: '' },
+            isDatasetFavoritesOnly: false,
+            datasetFavoritesToggleElement: null,
             // THE TOP OF THE TREECIPE TAB (#255), MADE WITH THE TAB
             resetSelectionElement: null,
             insert: null
@@ -11330,12 +11703,12 @@ ${this.buildPaletteCustomProperties()}
 
         const selectedTab = treeState.selectedTab || 'treecipe';
 
-        if (!treeState.isExpandedByReader && selectedTab === 'treecipe' && !hasSearch
+        if (!treeState.isExpandedByReader && selectedTab === 'treecipe' && !hasSearch && !treeState.isDatasetFavoritesOnly
                 && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0) {
             return null;
         }
 
-        return {
+        const treePlace = {
             treeKey: treeState.tree.treeKey,
             isExpanded: !!treeState.isExpandedByReader,
             selectedTab: selectedTab,
@@ -11343,6 +11716,10 @@ ${this.buildPaletteCustomProperties()}
             expandedObjectKeys: expandedObjectKeys,
             openPicklistKeys: openPicklistKeys
         };
+
+        if (treeState.isDatasetFavoritesOnly) { treePlace.isDatasetFavoritesOnly = true; }
+
+        return treePlace;
 
     }
 
@@ -11528,6 +11905,10 @@ ${this.buildPaletteCustomProperties()}
                     treeState.searchQueries[tabName] = savedQuery.trim().toLowerCase();
                 }
             });
+
+            // BEFORE THE DATA SETS TAB IS BUILT, WHICH APPLIES IT; A TAB ALREADY BUILT APPLIES IT NOW
+            treeState.isDatasetFavoritesOnly = savedTree.isDatasetFavoritesOnly === true;
+            if (treeState.datasetRowStates) { applyDatasetsFilter(treeState); }
 
             const hasOpenPicklists = hasAnyString(openPicklistKeys);
 
@@ -11797,6 +12178,11 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'treePreferences') {
             renderTreePreferences(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'datasetPreferences') {
+            renderDatasetPreferences(hostMessage);
             return;
         }
 
