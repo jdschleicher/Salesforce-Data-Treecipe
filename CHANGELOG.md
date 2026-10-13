@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.76.0] - Recipe Cockpit: motion for expanding, collapsing, switching tabs and pressing buttons
+
+Closes [#227](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/227). Part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Everything in the cockpit used to change in a single frame. It now moves, briefly, where the reader made it move.
+
+- **Expanding and collapsing.** A tree card, a Treecipe object and a picklist row (its first open included) fade and slide open (160 ms) and fade closed (140 ms). The ▸ is one triangle that turns a quarter on `aria-expanded` (`[aria-expanded="true"] > .toggleGlyph { transform: rotate(90deg) }`) instead of being swapped for a second shape, so `RECIPE_COCKPIT_TOGGLE_EXPANDED_GLYPH_PATH` is gone. (The Previous Versions row the issue names was removed in 3.66.0 (#265); there is nothing left to animate there.)
+- **Hidden stays hidden.** The `hidden` class is set or cleared first, so it and `aria-expanded` are accurate for the whole animation. A closing body stays drawn only while it fades, and is `aria-hidden="true"` and `inert` meanwhile; both are removed when the fade ends. Reopening a body mid-fade cancels the fade.
+- **Rows are still built on first expand only.** A body is built first and revealed after, so an animation never builds a row the reader did not open.
+- **Tabs.** The incoming tab panel fades in; the outgoing one is gone at once. Each tab's underline is a bar that shrinks toward the incoming tab while the incoming one grows from the outgoing side, so the underline moves to the active tab. The panel only names the direction (`movingLeft`/`movingRight`) on the tab strip; nothing is positioned through inline styles.
+- **Buttons and rows.** Every button, select and input transitions its colours, border and shadow (120 ms) and nudges down 1px when pressed. The filled accent buttons darken on hover and press. A card header, an object row, a field row and a data set row transition their background, and object and field rows highlight while something in them has keyboard focus.
+- **Only the reader's own click animates.** A restored place, a `focusTree` from the host and a search's auto-expand stay instant, the ▸ included: a toggle turned by anything but a click carries `noMotion`.
+- **An excluded object's body is not faded.** An animating body is its own stacking context, which would draw its checkboxes and pins under the object's dimming overlay for the length of the fade, so it opens and closes at once.
+- **`prefers-reduced-motion: reduce`** turns every transition and animation off (one `*, *::before, *::after` block with `!important`, last in the stylesheet), and the panel script then adds no animation classes at all.
+- **Palette and CSP unchanged.** No new colour: the underline is `--sdt-accent`, hover and press use `--sdt-row-hover` or a `brightness()` filter. The filter dims the white text along with the accent, so `--sdt-on-accent` on the accent falls from 5.17:1 to 4.93:1 on hover and 4.65:1 pressed, still above 4.5:1; a test holds both filtered states to it. No `--vscode-*` colour is read. The shell builder still takes only a nonce, and every rule is in its nonced stylesheet.
 ## [3.75.0] - Recipe Cockpit: a status bar item opens the cockpit in Treecipe workspaces
 
 Closes [#251](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/251). Part of epic [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59).
