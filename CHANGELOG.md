@@ -14,6 +14,12 @@ Everything in the cockpit used to change in a single frame. It now moves, briefl
 - **Only the reader's own click animates.** A restored place, a `focusTree` from the host and a search's auto-expand stay instant.
 - **`prefers-reduced-motion: reduce`** turns every transition and animation off (one `*, *::before, *::after` block with `!important`, last in the stylesheet), and the panel script then adds no animation classes at all.
 - **Palette and CSP unchanged.** No new colour: the underline is `--sdt-accent`, hover and press use `--sdt-row-hover` or a `brightness()` filter that only raises the contrast of `--sdt-on-accent` on the accent. No `--vscode-*` colour is read. The shell builder still takes only a nonce, and every rule is in its nonced stylesheet.
+## [3.74.1] - Recipe Cockpit: the tree's chain link tilts from bottom right to top left
+
+Closes [#295](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/295).
+
+- The chain-link include/exclude icon on a Treecipe object row now runs from the bottom right to the top left. It used to run from the bottom left to the top right. `RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM` is now `rotate(45 12 12)` (it was `rotate(-45 12 12)`). The joined, broken and dashed auto-excluded links all share that one transform, so all three states turn together.
+- **Unchanged:** the glyph paths, size, colours, the 24×24 viewBox (a ±45° turn of the same path reaches the same corners, so nothing is clipped), `aria-pressed`, titles, labels, the exclusion cascade, the CSP and the nonce-only shell builder.
 
 ## [3.74.0] - Recipe Cockpit: add a lookup's standard parent to the recipe from a template
 
