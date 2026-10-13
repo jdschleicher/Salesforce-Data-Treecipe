@@ -1,0 +1,8 @@
+{
+  "packageDirectories": [
+    { "path": "unpackaged" },
+    { "path": "force-app", "default": true }
+  ],
+  "name": "permission-set-generate-fixture",
+  "sourceApiVersion": "64.0"
+}

@@ -1244,7 +1244,11 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             ['treeDeploy', 'metadataDeployStatus', 'metadataDeployViewOutput', 'metadataDeployOpenStatus'].forEach(className => {
                 expect(panel.findAll(accountCard, className)).toEqual([]);
             });
-            expect(panel.findAll(accountCard, 'treePermissionSetControls')[0].children).toEqual([permissionSetButton]);
+            // THE ASSIGN BUTTON, THEN "Generate permission set…" (#306), AND NOTHING ELSE
+            const controlChildren = panel.findAll(accountCard, 'treePermissionSetControls')[0].children;
+            expect(controlChildren).toHaveLength(2);
+            expect(controlChildren[0] === permissionSetButton).toBe(true);
+            expect(controlChildren[1].className).toBe('treeGeneratePermissionSet');
 
             permissionSetButton.dispatch('click');
 
