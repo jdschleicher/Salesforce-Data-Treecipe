@@ -997,7 +997,8 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
                 return { stdout: '', stderr: '', exitCode: null };
             });
             await deployPermissionSets();
-            expect(notificationInformationSpy).toHaveBeenLastCalledWith(expect.stringContaining('was cancelled after they were deployed'));
+            // THE DEPLOY RAN AND SAVED ITS RESULT, SO THE CANCEL STILL OFFERS IT (#301)
+            expect(runNotifications(vscode.window.showInformationMessage).at(-1)).toEqual([expect.stringContaining('was cancelled after they were deployed'), RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL]);
             expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });

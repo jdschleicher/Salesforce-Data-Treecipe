@@ -1490,7 +1490,8 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
     // #301: HOW AN INSERT ENDED IS ONE NOTIFICATION, AND THE RESULTS FILE IS ITS BUTTON
     describe('showTreeInsertNotification', () => {
 
-        const RESULTS_FILE_PATH = path.join(TREE_WORKSPACE_ROOT, 'results.json');
+        // AN EXISTING FILE INSIDE THE WORKSPACE STANDS IN FOR THE INSERT'S RESULTS FILE
+        const RESULTS_FILE_PATH = path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', 'treecipeObjectsWrapper-2026-09-20T10-00-00.json');
         const showInsertNotification = (insertResult: Record<string, unknown>) => ( RecipeCockpitService as any ).showTreeInsertNotification(
             { resultsFilePath: RESULTS_FILE_PATH, isRolledBack: false, savedRecordCount: 0, failedRecordCount: 0, ...insertResult },
             'Relationship Tree 1',
@@ -1529,11 +1530,13 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         });
 
-        it('offers no button when the insert saved no results file', () => {
+        it('offers no button when the insert wrote no results file -- a cancel or a failure before the first file is sent', () => {
 
             showInsertNotification({ outcome: 'completed', savedRecordCount: 2, resultsFilePath: '' });
+            showInsertNotification({ outcome: 'cancelled', resultsFilePath: path.join(TREE_WORKSPACE_ROOT, 'InsertAttempts', 'never-written.json') });
 
             expect((vscode.window.showInformationMessage as jest.Mock).mock.calls).toEqual([['2 records were inserted into qa from Relationship Tree 1.']]);
+            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls).toEqual([['The insert of Relationship Tree 1 into qa was cancelled.']]);
 
         });
 
@@ -1543,7 +1546,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
             (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL);
 
-            showInsertNotification({ outcome: 'completed', savedRecordCount: 1, failedRecordCount: 1, resultsFilePath: '/etc/passwd' });
+            showInsertNotification({ outcome: 'completed', savedRecordCount: 1, failedRecordCount: 1, resultsFilePath: __filename });
             await new Promise(resolve => setImmediate(resolve));
 
             expect(openFileSpy).not.toHaveBeenCalled();

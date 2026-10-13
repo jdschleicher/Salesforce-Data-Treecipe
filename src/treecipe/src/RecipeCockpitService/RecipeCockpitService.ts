@@ -41,7 +41,7 @@ import {
     RecipeCockpitRecordCreation,
     RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD
 } from './RecipeCockpitRecordCreation';
-import { CollectionsApiService, DataSetInsertOutcome, DataSetRecordPreparer, IDataSetInsertResult } from '../CollectionsApiService/CollectionsApiService';
+import { CollectionsApiService, DataSetRecordPreparer, IDataSetInsertResult } from '../CollectionsApiService/CollectionsApiService';
 import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { DATASET_COLLECTIONS_API_FOLDER_NAME, DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
@@ -5230,7 +5230,7 @@ export class RecipeCockpitService {
 
         if ( assignRun.isCancelled ) {
             const cancelledText = `The assignment of ${permissionSetText} in ${orgLabel} was cancelled after they were deployed, so which were assigned is unknown.`;
-            VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(cancelledText));
+            this.showMetadataDeployNotification('information', cancelledText, deployOutputFilePath, workspaceRoot);
             return confirmed;
         }
 
@@ -6035,8 +6035,9 @@ export class RecipeCockpitService {
 
     /*
         How the tree insert ended, with the results file a button opens (#301): "View errors" when a
-        record failed or the insert stopped, "View results" otherwise. The panel draws no line for
-        it. NOT AWAITED, so the insert ends without waiting for the reader. treeLabel and orgLabel
+        record failed or the insert stopped, "View results" otherwise. The insert writes that file
+        only once it has sent a file, so one cancelled or failed before that offers no button. The
+        panel draws no line for it. NOT AWAITED, so the insert ends without waiting for the reader. treeLabel and orgLabel
         arrive escaped.
     */
     private static showTreeInsertNotification(insertResult: IDataSetInsertResult, treeLabel: string, orgLabel: string, workspaceRoot: string) {
@@ -6060,7 +6061,8 @@ export class RecipeCockpitService {
         }
 
         this.showNotificationWithFile(severity, notificationText, hasErrors ? RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL : RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
-            insertResult.resultsFilePath || undefined, workspaceRoot, 'The insert results file no longer exists in this workspace.');
+            insertResult.resultsFilePath && fs.existsSync(insertResult.resultsFilePath) ? insertResult.resultsFilePath : undefined,
+            workspaceRoot, 'The insert results file no longer exists in this workspace.');
 
     }
 
