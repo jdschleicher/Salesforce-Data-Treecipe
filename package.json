@@ -99,7 +99,7 @@
           "salesforce-data-treecipe.showRecipeCockpitStatusBarItem": {
             "type": "boolean",
             "default": true,
-            "description": "Show the Treecipe status bar item that opens the Recipe Cockpit, in a workspace that contains treecipe/treecipe.config.json"
+            "description": "Show the Treecipe status bar item that opens the Recipe Cockpit. The extension starts at window load in a workspace that contains treecipe/treecipe.config.json; in any other folder the item appears once a Treecipe command has run"
           }
         }
       }

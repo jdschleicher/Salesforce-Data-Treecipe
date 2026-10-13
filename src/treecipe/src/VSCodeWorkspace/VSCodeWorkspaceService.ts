@@ -14,6 +14,8 @@ export const RECIPE_COCKPIT_COMMAND_ID = 'treecipe.openRecipeCockpit';
 export const RECIPE_COCKPIT_STATUS_BAR_SETTING_KEY = 'showRecipeCockpitStatusBarItem';
 export const RECIPE_COCKPIT_STATUS_BAR_TEXT = '$(list-tree) Treecipe';
 export const RECIPE_COCKPIT_STATUS_BAR_TOOLTIP = 'Open Recipe Cockpit';
+export const RECIPE_COCKPIT_STATUS_BAR_ITEM_ID = 'salesforce-data-treecipe.recipeCockpit';
+export const RECIPE_COCKPIT_STATUS_BAR_ITEM_NAME = 'Treecipe Recipe Cockpit';
 
 
 /*
@@ -906,7 +908,9 @@ export class VSCodeWorkspaceService {
             }
 
             if ( !recipeCockpitStatusBarItem ) {
-                recipeCockpitStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
+                // AN ID AND NAME LABEL THE ITEM IN THE STATUS BAR'S OWN HIDE MENU, AND LET VS CODE REMEMBER A HIDE
+                recipeCockpitStatusBarItem = vscode.window.createStatusBarItem(RECIPE_COCKPIT_STATUS_BAR_ITEM_ID, vscode.StatusBarAlignment.Left);
+                recipeCockpitStatusBarItem.name = RECIPE_COCKPIT_STATUS_BAR_ITEM_NAME;
                 recipeCockpitStatusBarItem.text = RECIPE_COCKPIT_STATUS_BAR_TEXT;
                 recipeCockpitStatusBarItem.tooltip = RECIPE_COCKPIT_STATUS_BAR_TOOLTIP;
                 recipeCockpitStatusBarItem.command = RECIPE_COCKPIT_COMMAND_ID;

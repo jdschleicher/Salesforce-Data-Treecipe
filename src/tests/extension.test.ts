@@ -58,6 +58,9 @@ describe('activate', () => {
         // A jest.fn() FROM THE MODULE FACTORY, WHICH restoreMocks DOES NOT COVER -- ITS CALLS ACCUMULATE
         (vscode.commands.registerCommand as jest.Mock).mockClear();
 
+        // SO NO TEST INHERITS THE FOLDERS THE ONE BEFORE IT SET ON THE MODULE-FACTORY MOCK
+        (vscode.workspace as { workspaceFolders: unknown }).workspaceFolders = undefined;
+
     });
 
     it('given no workspace folder is open, writes no configuration value', async () => {
@@ -98,6 +101,19 @@ describe('activate', () => {
 
     });
 
+    it('given the workspace holds true for the snowfakery default, writes false', async () => {
+
+        (vscode.workspace as { workspaceFolders: unknown }).workspaceFolders = [{ uri: { fsPath: '/workspace' } }];
+        jest.spyOn(ConfigurationService, 'getWorkspaceScopedExtensionConfigValue').mockReturnValue(true);
+        const setExtensionConfigValueSpy = jest.spyOn(ConfigurationService, 'setExtensionConfigValue')
+            .mockResolvedValue(true);
+
+        await activate(buildExtensionContext() as never);
+
+        expect(setExtensionConfigValueSpy).toHaveBeenCalledWith('useSnowfakeryAsDefault', false);
+
+    });
+
     it('registers the Recipe Cockpit status bar item against the extension subscriptions (#251)', async () => {
 
         jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
@@ -110,8 +126,8 @@ describe('activate', () => {
     });
 
     /*
-        The status bar item exists only in a Treecipe workspace (#251), and that is decided by the
-        manifest: the extension starts at window load only where treecipe/treecipe.config.json is.
+        The status bar item shows at window load only in a Treecipe workspace (#251), and that is
+        decided by the manifest: elsewhere the extension starts on its first command, as before.
     */
     it('activates at window load only in a workspace containing treecipe/treecipe.config.json', () => {
 

@@ -1969,7 +1969,7 @@ describe('createStatusBarPhaseItem', () => {
 describe('VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem (#251)', () => {
 
     const buildFakeStatusBarItem = () => ({
-        text: '', tooltip: undefined as unknown, command: undefined as unknown,
+        text: '', tooltip: undefined as unknown, command: undefined as unknown, name: undefined as unknown,
         show: jest.fn(), hide: jest.fn(), dispose: jest.fn()
     });
 
@@ -2010,7 +2010,8 @@ describe('VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem (#251)', () 
 
         VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem(subscriptions);
 
-        expect(vscode.window.createStatusBarItem).toHaveBeenCalledWith(vscode.StatusBarAlignment.Left);
+        expect(vscode.window.createStatusBarItem).toHaveBeenCalledWith('salesforce-data-treecipe.recipeCockpit', vscode.StatusBarAlignment.Left);
+        expect(statusBarItem.name).toBe('Treecipe Recipe Cockpit');
         expect(statusBarItem.text).toBe('$(list-tree) Treecipe');
         expect(RECIPE_COCKPIT_STATUS_BAR_TEXT).toBe('$(list-tree) Treecipe');
         expect(statusBarItem.tooltip).toBe('Open Recipe Cockpit');
