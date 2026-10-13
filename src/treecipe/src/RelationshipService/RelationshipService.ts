@@ -738,7 +738,7 @@ export class RelationshipService {
     if (customRelationshipMappings) {
       const objectFieldKey = `${objectApiName}.${fieldApiName}`;
       const customMatch = customRelationshipMappings[objectFieldKey];
-      if (customMatch && this.isValidCustomRelationshipKey(objectFieldKey)) {
+      if (typeof customMatch === 'string' && customMatch && this.isValidCustomRelationshipKey(objectFieldKey)) {
         return customMatch;
       }
     }

@@ -988,6 +988,18 @@ describe("Shared Relationship Service Tests", () => {
 
         });
 
+        test('given a custom mapping whose parent is not a string, the mapping is skipped and the OOTB fallback applies', () => {
+
+            const relationshipService = new RelationshipService();
+            const customMappings = JSON.parse(
+                '{ "CustomObject__c.Primary_Contact__c": 42, "CustomObject__c.AccountId": { "name": "Contact" } }'
+            ) as Record<string, string>;
+
+            expect(relationshipService.resolveParentReferenceForField('CustomObject__c', 'Primary_Contact__c', customMappings)).toBeUndefined();
+            expect(relationshipService.resolveParentReferenceForField('CustomObject__c', 'AccountId', customMappings)).toBe('Account');
+
+        });
+
         test.each(['constructor', 'toString', '__proto__', 'hasOwnProperty'])(
             'given a field named %s, the OOTB fallback does not resolve an Object.prototype member',
             (fieldApiName) => {
