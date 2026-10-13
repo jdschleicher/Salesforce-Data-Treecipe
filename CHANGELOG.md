@@ -1,5 +1,12 @@
 # Change Log
 
+## [3.79.1] - Recipe Cockpit: the expand/collapse toggles are an outlined chevron
+
+Closes [#307](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/307).
+
+- **Every toggle draws an open chevron instead of a filled triangle**: the tree card header, the Treecipe object row and the picklist field row. It points right when collapsed and down when expanded, and is stroked in the accent colour with round caps, like the chain link and the fixed-value pin.
+- **Unchanged:** it is still one path that CSS turns a quarter on `aria-expanded`, with the same motion and `prefers-reduced-motion` rule, the same 2.1rem glyph in a 2.6rem button, and the same row alignment.
+
 ## [3.79.0] - Recipe Cockpit: the org picker stays on screen while orgs are checked, and the CLI's default org comes first
 
 Closes [#305](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/305).

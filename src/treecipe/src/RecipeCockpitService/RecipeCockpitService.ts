@@ -245,10 +245,10 @@ export const RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH = 'M9 3 H15 L14 9 L17 12 V14 
 export const RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = 'fixed';
 /*
     The ▸/▾ of a tree card, a Treecipe object and a picklist field (#277), drawn like the chain link: a
-    font's triangle sits on the text baseline, so no button rule could centre it. Each path's box is
-    centred on (12, 12) in the same 24x24 view box, and filled from the palette by CSS.
+    font's triangle sits on the text baseline, so no button rule could centre it. An open chevron (#307)
+    whose box is centred on (12, 12) in the same 24x24 view box, stroked from the palette by CSS.
 */
-export const RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH = 'M7.5 5 L16.5 12 L7.5 19 Z';
+export const RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH = 'M8.5 5 L15.5 12 L8.5 19';
 /*
     Motion (#227). The ▸ is ONE path that CSS turns a quarter on aria-expanded, so it rotates rather
     than swapping. A body the reader opens fades in once it is built; one the reader closes carries
@@ -8127,7 +8127,7 @@ ${this.buildPaletteCustomProperties()}
     .toggleGlyph { display: block; width: 2.1rem; height: 2.1rem; transition: transform ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease; }
     [aria-expanded="true"] > .toggleGlyph { transform: rotate(90deg); }
     .noMotion > .toggleGlyph { transition: none; }
-    .toggleGlyph path { fill: var(--sdt-accent); stroke: none; }
+    .toggleGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
     .toolbar button, .emptyStateActions button, .treeInsert, .dataOrgLoad, .dataOrgNewScratch {
         color: var(--sdt-on-accent);
         background-color: var(--sdt-accent);
