@@ -44,6 +44,9 @@ export interface IRecipeCockpitTreeDatasetViewModel {
     fakerService: DatasetSourceFakerService;
     runFolderName: string | null;
     recordCounts: IRecipeCockpitDatasetRecordCountViewModel[] | null;
+    // THE READER'S OWN NAME AND FAVORITE (#312), SET BY THE HOST AT POST TIME AND ONLY WHEN THEY HAVE ONE
+    customName?: string;
+    isFavorite?: boolean;
 }
 
 export interface IRecipeCockpitTreeHistoryViewModel {

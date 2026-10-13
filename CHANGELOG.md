@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.81.1] - One implementation of the custom relationship mapping lookup
+## [3.82.1] - One implementation of the custom relationship mapping lookup
 
 Closes [#116](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/116).
 
@@ -12,6 +12,18 @@ Closes [#116](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/11
 - **A field named like an `Object.prototype` member no longer resolves to it.** The OOTB fallback used to read the map with a plain index, so a lookup field named `constructor` resolved to a function. It now checks for an own key and resolves to nothing.
 - **A custom mapping whose parent is not a string is skipped.** `treecipe.config.json` is hand-edited and its values were never type-checked, so `"Obj.Field": 42` came back from a method typed `string | undefined`. It now falls back to the OOTB map like an empty value does. The object-name guard downstream already refused such a value, so no recipe changes.
 - **Unchanged:** a custom key still resolves, the OOTB fallback still applies, an invalid key is still skipped, a field with no mapping still resolves to `undefined`, and the #113 tests that follow a custom mapping through to the relationship trees and recipe files pass without changes.
+
+## [3.82.0] - Recipe Cockpit: rename and favorite a previously used data set
+
+A tree card could be named and starred (#235), but its **Previously Used Data Sets** rows could only be told apart by a timestamped folder name. Each row now gets the same two controls.
+
+- **☆ marks a data set a favorite, ✎ gives it a name.** The name is drawn in bold beside the date, and the folder name stays on the row. Leave the box empty to go back to the folder name. The folder itself is never renamed.
+- **The name is asked for by the host**, in its own input box, as a tree's is. It must be one line, at most 80 characters, and unique (trimmed, ignoring case) against every other data set's name in the workspace and every other row's folder name on screen. It is checked as it is typed and again when the box closes. The folder name in the prompt is escaped like a notification.
+- **Kept in `workspaceState` by data set FOLDER NAME** (`treecipe.recipeCockpit.datasetPreferences`), separate from the trees' names. A folder name is unique under `FakeDataSets/`, so a data set keeps its name and star on every card that lists it, across reloads, run switches and window reloads. Each stored entry is checked when read, and a folder named `__proto__` keeps its name.
+- **Favorites only, per card.** The data sets tab has a **☆ Favorites only** toggle beside its search. It works together with the search, and the count reads `<n> of <m> data sets`. It is saved in the reader's place for that card (`isDatasetFavoritesOnly`, optional, so an older place reads as the filter off).
+- **The search matches a data set's name** as well as its folder name.
+- **Messages.** The panel posts `renameDataset {datasetFolderName}` or `toggleFavoriteDataset {datasetFolderName}`, matched against `nameableDatasetFolderNames`, a new pending/active allow-list of every row the drawn model lists. A row added in place (#226) joins it only once the panel says it is drawn. The host posts `datasetPreferences {renderSequence, datasetFolderName, customName?, isFavorite}`, and the panel redraws that row on every card in place.
+- **Unchanged:** Open, Insert… and Show record counts, `datasetSource.json`, the data set folders on disk, and both faker backends.
 
 ## [3.81.0] - A failed insert is a red error with a View errors button
 
