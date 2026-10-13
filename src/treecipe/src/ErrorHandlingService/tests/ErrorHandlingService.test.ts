@@ -3,6 +3,8 @@ import { ErrorHandlingService } from '../ErrorHandlingService';
 import { MissingTreecipeConfigurationError } from '../../ConfigurationService/ConfigurationService';
 import { MockVSCodeWorkspaceService } from '../../VSCodeWorkspace/tests/mocks/MockVSCodeWorkspaceService';
 import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 
@@ -137,6 +139,19 @@ describe('ErrorHandlingService', () => {
 
         });
 
+        it('runs the initiation setup when that button is chosen', async () => {
+
+            const showErrorMessageMock = vscode.window.showErrorMessage as jest.Mock;
+            showErrorMessageMock.mockResolvedValueOnce('Run Treecipe Initiation Setup');
+
+            ErrorHandlingService.handleMissingTreecipeConfigSetup(new Error('missing'), 'generateRecipeFromConfigurationDetail');
+            await new Promise(resolve => setImmediate(resolve));
+
+            expect(vscode.commands.executeCommand).toHaveBeenCalledWith('treecipe.initiateConfiguration');
+            expect(vscode.env.openExternal).not.toHaveBeenCalled();
+
+        });
+
         it('given the typed missing-config error, still routes to the missing-config flow', () => {
 
             const handleMissingTreecipeConfigSetupSpy = jest.spyOn(ErrorHandlingService, 'handleMissingTreecipeConfigSetup')
@@ -197,6 +212,46 @@ describe('ErrorHandlingService', () => {
             expect(resolvedPath).toContain('/tmp/some-workspace/treecipe/');
             expect(resolvedPath).toContain('RecipeGenerationErrors');
             expect(resolvedPath).not.toContain('undefined');
+        });
+
+    });
+
+    describe('error capture files in an open workspace', () => {
+
+        const captureWriters: [string, (error: Error, command: string) => void, string][] = [
+            ['createGenerateRecipeErrorCaptureFile', ErrorHandlingService.createGenerateRecipeErrorCaptureFile.bind(ErrorHandlingService), 'generateRecipeError_'],
+            ['createGetRecipeFakerErrorCaptureFile', ErrorHandlingService.createGetRecipeFakerErrorCaptureFile.bind(ErrorHandlingService), 'getFakerJSValueError'],
+            ['createFakerExpressionEvaluationErrorCaptureFile', ErrorHandlingService.createFakerExpressionEvaluationErrorCaptureFile.bind(ErrorHandlingService), 'fakerJSExpressionError']
+        ];
+
+        test.each(captureWriters)('%s creates its folder, writes the error as JSON, says so and opens the file', async (_writerName, captureWriter, fileNamePrefix) => {
+
+            const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-error-capture-'));
+            jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
+            jest.spyOn(VSCodeWorkspaceService, 'getNowIsoDateTimestamp').mockReturnValue('2026-10-13T10-00-00');
+            const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(jest.fn());
+            const openSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+
+            try {
+
+                const capturedError = Object.assign(new Error('boom'), { detail: 'what went wrong' });
+                captureWriter(capturedError, 'treecipe.generateTreecipe');
+                await new Promise(resolve => setTimeout(resolve, 20));
+
+                const errorsFolderPath = ErrorHandlingService.resolveErrorCaptureFolderPath(
+                    fileNamePrefix === 'fakerJSExpressionError' ? ErrorHandlingService.getFakerJSExpressionErrorsFolderName() : ErrorHandlingService.getRecipeGenerationErrorsFolderName()
+                );
+                const writtenFileNames = fs.readdirSync(errorsFolderPath);
+
+                expect(writtenFileNames).toEqual([`${fileNamePrefix}2026-10-13T10-00-00.json`]);
+                expect(JSON.parse(fs.readFileSync(`${errorsFolderPath}/${writtenFileNames[0]}`, 'utf-8'))).toEqual({ detail: 'what went wrong' });
+                expect(warningSpy).toHaveBeenCalledTimes(1);
+                expect(openSpy).toHaveBeenCalledWith(`${errorsFolderPath}/${writtenFileNames[0]}`);
+
+            } finally {
+                fs.rmSync(workspaceRoot, { recursive: true, force: true });
+            }
+
         });
 
     });
