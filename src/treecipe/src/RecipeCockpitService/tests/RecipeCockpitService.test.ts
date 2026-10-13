@@ -41,7 +41,8 @@ import {
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_GENERATE_ACTION_LABEL,
     RECIPE_COCKPIT_GENERATE_RUNNING_LABEL,
-    RecipeCockpitPaletteToken
+    RecipeCockpitPaletteToken,
+    RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON
 } from '../RecipeCockpitService';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -3522,7 +3523,8 @@ describe('RecipeCockpitService', () => {
 
                 expect(leadButtons.map((button: any) => [button.textContent, button.disabled])).toEqual([[RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false]]);
                 expect(leadButtons[0].attributes.title).toContain('recipe--Lead-ONLY-2026-09-20T10-00-00.yml');
-                expect(textOf(panel, leadCard, 'treeInsertReason')).toEqual(['Generates only: Choose an org above to also insert it.']);
+                // OPENING THE TREECIPE TAB STARTS THE ORG CHECK, AND EVERY INSERT WAITS ON IT (#305)
+                expect(textOf(panel, leadCard, 'treeInsertReason')).toEqual([`Generates only: ${RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON}`]);
                 expect(panel.findAll(panel.cockpitBodyElement, 'treeRunFaker')).toEqual([]);
                 expect(panel.findAll(expandCard(panel, ACCOUNT_TREE_KEY), 'treeInsert')).toEqual([]);
 
