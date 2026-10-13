@@ -1043,18 +1043,6 @@ export class VSCodeWorkspaceService {
 
     }
 
-    static getParentPath(pathToRemoveLastSegmentFrom: string): string {
-
-        // IF THERE IS A FORWARD SLASH AT THE END OF THE PATH STRING , REMOVE IT
-        const pathWithoutTrailingForwardSlash = pathToRemoveLastSegmentFrom.replace(/\/$/, '');
-
-        const parentDirectoryPathSlashIndex = pathWithoutTrailingForwardSlash.lastIndexOf('/');
-        const parentDirectoryPath = parentDirectoryPathSlashIndex > 0 ? pathWithoutTrailingForwardSlash.substring(0, parentDirectoryPathSlashIndex) : '';
-
-        return parentDirectoryPath;
-
-    }
-
     static buildAuthenticatedOrgQuickPickItems(authenticatedOrgDetails: IAuthenticatedOrgDetail[], defaultUsername?: string): vscode.QuickPickItem[] {
 
         return authenticatedOrgDetails.map(authenticatedOrgDetail => ({

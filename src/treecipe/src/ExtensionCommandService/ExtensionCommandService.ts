@@ -575,16 +575,14 @@ export class ExtensionCommandService {
 
             if (workspaceRoot) {
             
-                const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
-                const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
-                const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+                const fullPathToObjectsDirectory = ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot);
                 
                 /* 
                 -- initialize globalvaluesets singleton --
                  at this point in the extension commands, where a command is entered to generate a reciipe, we should retrieve the globalvaluesets 
                  as there could be changes that have taken place throughout the vscode instance of the user
                 */
-                const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
+                const pathToSalesforceMetadataParentDirectory = ConfigurationService.resolveSalesforceMetadataParentPath(fullPathToObjectsDirectory, workspaceRoot);
                 let globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
 
                 /*
@@ -808,9 +806,7 @@ export class ExtensionCommandService {
     */
     private async generatePicklistDependencyClasses(extensionPath: string, workspaceRoot: string): Promise<IPicklistDependencyGenerationResult | undefined> {
 
-        const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
-        const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
-        const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+        const fullPathToObjectsDirectory = ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot);
 
         if ( !fs.existsSync(fullPathToObjectsDirectory) ) {
             throw new Error(`No objects directory found at "${fullPathToObjectsDirectory}". Check the "salesforceObjectsPath" value in treecipe.config.json, or re-run "Initiate Configuration File", and run the command again.`);
@@ -853,7 +849,7 @@ export class ExtensionCommandService {
                     initializes it -- the sets may have changed since the window opened.
                 */
                 const isMissingGlobalValueSetsDirectoryWarningShown = false;
-                const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
+                const pathToSalesforceMetadataParentDirectory = ConfigurationService.resolveSalesforceMetadataParentPath(fullPathToObjectsDirectory, workspaceRoot);
                 await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, isMissingGlobalValueSetsDirectoryWarningShown);
 
                 const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(
@@ -1568,9 +1564,7 @@ export class ExtensionCommandService {
                 throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
             }
 
-            const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
-            const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
-            const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+            const fullPathToObjectsDirectory = ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot);
 
             if ( !fs.existsSync(fullPathToObjectsDirectory) ) {
                 throw new Error(`No objects directory found at "${fullPathToObjectsDirectory}". Check the "salesforceObjectsPath" value in treecipe.config.json, or re-run "Initiate Configuration File", and run the command again.`);
@@ -1946,9 +1940,7 @@ export class ExtensionCommandService {
                 throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
             }
 
-            const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
-            const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
-            const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+            const fullPathToObjectsDirectory = ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot);
 
             if ( !fs.existsSync(fullPathToObjectsDirectory) ) {
                 throw new Error(`No objects directory found at "${fullPathToObjectsDirectory}". Check the "salesforceObjectsPath" value in treecipe.config.json, or re-run "Initiate Configuration File", and run the command again.`);
@@ -2039,7 +2031,7 @@ export class ExtensionCommandService {
 
                 // THE PREVIEW READS THE SAME SPEC DETAILS THE GENERATE COMMAND DOES, SO IT NEEDS THE SAME GLOBAL VALUE SETS
                 const isMissingGlobalValueSetsDirectoryWarningShown = false;
-                const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
+                const pathToSalesforceMetadataParentDirectory = ConfigurationService.resolveSalesforceMetadataParentPath(fullPathToObjectsDirectory, workspaceRoot);
                 await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, isMissingGlobalValueSetsDirectoryWarningShown);
 
                 /*

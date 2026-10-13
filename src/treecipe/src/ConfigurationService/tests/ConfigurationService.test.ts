@@ -791,6 +791,134 @@ describe('Shared ConfigurationService Tests', () => {
 
     });
 
+    describe('resolveConfiguredObjectsPath', () => {
+
+        let temporaryRoot: string;
+        let workspaceRoot: string;
+        let outsideRoot: string;
+        let objectsDirectoryPath: string;
+
+        beforeEach(() => {
+
+            temporaryRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-objects-path-')));
+            workspaceRoot = path.join(temporaryRoot, 'workspace');
+            outsideRoot = path.join(temporaryRoot, 'outside');
+            objectsDirectoryPath = path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects');
+            fs.mkdirSync(objectsDirectoryPath, { recursive: true });
+            fs.mkdirSync(outsideRoot, { recursive: true });
+
+        });
+
+        afterEach(() => {
+            fs.rmSync(temporaryRoot, { recursive: true, force: true });
+        });
+
+        test.each([
+            ['./force-app/main/default/objects'],
+            ['./force-app/main/default/objects/'],
+            ['force-app/main/default/objects'],
+            ['.\\force-app\\main\\default\\objects\\'],
+            ['./force-app/./main/default/objects'],
+        ])('resolves %p to the objects directory inside the workspace', (configuredObjectsPath) => {
+
+            expect(ConfigurationService.resolveConfiguredObjectsPath(configuredObjectsPath, workspaceRoot)).toBe(objectsDirectoryPath);
+
+        });
+
+        test('resolves "./" to the workspace root itself', () => {
+
+            expect(ConfigurationService.resolveConfiguredObjectsPath('./', workspaceRoot)).toBe(workspaceRoot);
+
+        });
+
+        test.each([
+            ['./../outside'],
+            ['../../.ssh'],
+            ['./force-app/../../outside'],
+            ['..\\outside'],
+        ])('refuses %p, which walks out of the workspace, naming the configured value', (configuredObjectsPath) => {
+
+            expect(() => ConfigurationService.resolveConfiguredObjectsPath(configuredObjectsPath, workspaceRoot))
+                .toThrow(`"salesforceObjectsPath" in treecipe.config.json is ${JSON.stringify(configuredObjectsPath)}, which is outside this workspace.`);
+
+        });
+
+        test.each([
+            ['/etc'],
+            ['C:/Users/someone/objects'],
+            ['C:\\Users\\someone\\objects'],
+            ['c:relative'],
+            ['\\\\server\\share\\objects'],
+        ])('refuses the absolute path %p', (configuredObjectsPath) => {
+
+            expect(() => ConfigurationService.resolveConfiguredObjectsPath(configuredObjectsPath, workspaceRoot)).toThrow('which is an absolute path.');
+
+        });
+
+        test('refuses an absolute path even when it names the objects directory inside the workspace', () => {
+
+            expect(() => ConfigurationService.resolveConfiguredObjectsPath(objectsDirectoryPath, workspaceRoot)).toThrow('which is an absolute path.');
+
+        });
+
+        test.each([
+            [undefined],
+            [''],
+            ['   '],
+            [42],
+        ])('refuses %p, which is not a path', (configuredObjectsPath) => {
+
+            expect(() => ConfigurationService.resolveConfiguredObjectsPath(configuredObjectsPath, workspaceRoot)).toThrow('which is not a path.');
+
+        });
+
+        test('refuses a link inside the workspace that points outside it', () => {
+
+            fs.symlinkSync(outsideRoot, path.join(workspaceRoot, 'linkedObjects'), 'dir');
+
+            expect(() => ConfigurationService.resolveConfiguredObjectsPath('./linkedObjects', workspaceRoot)).toThrow('which is outside this workspace.');
+
+        });
+
+        test('resolveSalesforceMetadataParentPath answers the objects directory\'s parent', () => {
+
+            expect(ConfigurationService.resolveSalesforceMetadataParentPath(objectsDirectoryPath, workspaceRoot))
+                .toBe(path.join(workspaceRoot, 'force-app', 'main', 'default'));
+
+        });
+
+        test('resolveSalesforceMetadataParentPath answers the workspace root when the objects directory is the root', () => {
+
+            const rootObjectsDirectoryPath = ConfigurationService.resolveConfiguredObjectsPath('./', workspaceRoot);
+
+            expect(ConfigurationService.resolveSalesforceMetadataParentPath(rootObjectsDirectoryPath, workspaceRoot)).toBe(workspaceRoot);
+
+        });
+
+        test('resolveSalesforceMetadataParentPath finds the parent of a Windows path, which has no forward slash', () => {
+
+            const windowsWorkspaceRoot = 'c:\\Users\\someone\\project';
+            jest.spyOn(path, 'resolve').mockImplementation((...pathSegments: string[]) => path.win32.resolve(...pathSegments));
+            jest.spyOn(path, 'dirname').mockImplementation((pathToParent: string) => path.win32.dirname(pathToParent));
+            jest.spyOn(SfdxProjectService, 'isPathContainedInWorkspace').mockImplementation((candidatePath: string, rootPath: string) => (
+                candidatePath === rootPath || candidatePath.startsWith(rootPath + '\\')
+            ));
+
+            expect(ConfigurationService.resolveSalesforceMetadataParentPath(`${windowsWorkspaceRoot}\\force-app\\main\\default\\objects`, windowsWorkspaceRoot))
+                .toBe(`${windowsWorkspaceRoot}\\force-app\\main\\default`);
+
+        });
+
+        test('resolveObjectsDirectoryPath reads the configured value', () => {
+
+            jest.spyOn(ConfigurationService, 'getObjectsPathFromTreecipeJSONConfiguration').mockReturnValue('force-app/main/default/objects');
+
+            expect(ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot)).toBe(objectsDirectoryPath);
+
+        });
+
+    });
+
     describe('getFakeDataSetsFolderName', () => {
 
         test('returns expected treecipe dataset artifcats folder name', () => {

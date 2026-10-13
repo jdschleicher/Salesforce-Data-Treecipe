@@ -1,5 +1,17 @@
 # Change Log
 
+## [3.82.3] - salesforceObjectsPath must stay inside the workspace
+
+Closes [#117](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/117).
+
+`salesforceObjectsPath` in `treecipe/treecipe.config.json` was cut at its first `./` and glued onto the workspace folder, so `"./../../.ssh"` walked out of the workspace, a value with no `./` walked `<workspace>/undefined`, and `"./a/./b"` was cut to `a/`. The config file arrives with a cloned repository.
+
+- **One resolver, every command.** `ConfigurationService.resolveObjectsDirectoryPath` resolves the value with `path.resolve` against the workspace folder and holds it to `SfdxProjectService.isPathContainedInWorkspace` (the lexical and the realpath check, so a link inside the workspace pointing outside it is refused too). Generate Treecipe, Generate Picklist Dependency Tests, Update Picklist Dependency Metadata from Specs, Open Picklist Dependency Explorer and the Recipe Cockpit's "Generate permission set…" all use it.
+- **Refused before anything is read.** A path outside the workspace, an absolute path (`/…`, `C:\…`, `\\server\…`, even one that lands inside the workspace, since the config writer only writes relative paths and an absolute one names one machine) or a value that is not a path stops the command with an error naming the configured value, for example *"salesforceObjectsPath" in treecipe.config.json is "./../../.ssh", which is outside this workspace.* No global value set is read, no directory is walked and no recipe is written.
+- **Global value sets are read from inside the workspace too.** `globalValueSets/` is looked for beside the objects directory, found by `ConfigurationService.resolveSalesforceMetadataParentPath` with `path.dirname`. The old helper only split on `/`, so with the resolved Windows path it found no parent and read `<drive>:\globalValueSets\` instead. An objects directory that is the workspace folder itself (`"./"`) used to send that read to the folder above the workspace; it now reads `<workspace>/globalValueSets/`. The `/`-only `VSCodeWorkspaceService.getParentPath` is removed.
+- **Now works:** a value with no `./` prefix (`"force-app/main/default/objects"`), and backslash paths written by hand.
+- **Unchanged:** `"./force-app/main/default/objects/"`, with or without the trailing slash, resolves to the same folder as before.
+
 ## [3.82.2] - The extension icon is a PNG, so a release can publish again
 
 The release build failed at `vsce publish` with "The provided icon is not a supported image format": `package.json` named `images/datatreecipe.webp` as the icon, and the Marketplace rejects a WebP icon at publish (`vsce package` still builds with it, so only the release job showed the failure). While it failed, no new version reached the Marketplace, so an installed extension kept showing behavior removed since, such as the Recipe Cockpit's metadata deploy messages (#302).
