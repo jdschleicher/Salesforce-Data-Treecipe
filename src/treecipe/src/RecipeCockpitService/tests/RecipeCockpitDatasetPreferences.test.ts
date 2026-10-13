@@ -1,0 +1,585 @@
+import * as matchers from 'jest-extended';
+expect.extend(matchers);
+
+import * as path from 'path';
+import * as vscode from 'vscode';
+
+jest.mock('vscode', () => ({
+    window: { createWebviewPanel: jest.fn(), withProgress: jest.fn(), showInputBox: jest.fn() },
+    commands: { executeCommand: jest.fn() },
+    ViewColumn: { One: 1 },
+    ProgressLocation: { Notification: 15 },
+    Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
+}), { virtual: true });
+
+import {
+    RecipeCockpitService,
+    IRecipeCockpitDatasetPreferences,
+    IRecipeCockpitPanelState,
+    IRecipeCockpitRecipeViewModel,
+    RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY,
+    RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION,
+    RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH,
+    RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY,
+    RECIPE_COCKPIT_PANEL_PLACE_VERSION
+} from '../RecipeCockpitService';
+import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+
+/*
+    A data set's own name and favorite, and the data sets tab's Favorites only, as #235 does
+    for a tree card. The host keeps both by data set FOLDER NAME in workspaceState and asks for a
+    name in its own input box; the panel posts only the folder name of a row it drew, and redraws
+    that row in place on every card that lists it.
+*/
+
+const HISTORY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'historyWorkspace');
+const HISTORY_GENERATED_RECIPES_PATH = path.join(HISTORY_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes');
+const CURRENT_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
+const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
+const LEAD_TREE_KEY = 'Lead-ONLY';
+const ACCOUNT_DATASET = 'dataset-2026-09-21T00-00-00-2';
+const LEAD_DATASETS = ['dataset-2026-09-21T00-00-00', 'dataset-2026-09-15T00-00-00', 'dataset-2026-09-02T00-00-00'];
+const DATASETS_TAB_LABEL = 'Previously Used Data Sets';
+
+const loadRecipe = (): IRecipeCockpitRecipeViewModel => RecipeCockpitService.loadRecipeRunByRuns(
+    RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH),
+    HISTORY_WORKSPACE_ROOT,
+    CURRENT_RUN_FOLDER_NAME
+).recipeViewModel;
+
+const buildPreferences = (customNames: Record<string, string> = {}, favoriteFolderNames: string[] = []): IRecipeCockpitDatasetPreferences => ({
+    customNamesByFolderName: new Map(Object.entries(customNames)),
+    favoriteFolderNames: new Set(favoriteFolderNames)
+});
+
+const buildWorkspaceState = (initialValues: Record<string, unknown> = {}) => {
+    const storedValues = new Map<string, unknown>(Object.entries(initialValues));
+    return {
+        storedValues,
+        get: jest.fn((key: string) => storedValues.get(key)) as jest.Mock,
+        update: jest.fn((key: string, value: unknown) => {
+            if ( value === undefined ) { storedValues.delete(key); } else { storedValues.set(key, JSON.parse(JSON.stringify(value))); }
+            return Promise.resolve();
+        }) as jest.Mock
+    };
+};
+
+const storedPreferences = (customNames: Record<string, unknown> = {}, favoriteFolderNames: unknown[] = []) => ({
+    version: RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION,
+    customNames: customNames,
+    favoriteFolderNames: favoriteFolderNames
+});
+
+describe('RecipeCockpitService, data set names and favorites', () => {
+
+    describe('readDatasetPreferences and writeDatasetPreferences', () => {
+
+        it('given no workspace state, nothing stored, or another shape, reads none', () => {
+
+            const isEmpty = (datasetPreferences: IRecipeCockpitDatasetPreferences) => datasetPreferences.customNamesByFolderName.size === 0 && datasetPreferences.favoriteFolderNames.size === 0;
+
+            expect(isEmpty(RecipeCockpitService.readDatasetPreferences(undefined))).toBe(true);
+            expect(isEmpty(RecipeCockpitService.readDatasetPreferences(buildWorkspaceState()))).toBe(true);
+            expect(isEmpty(RecipeCockpitService.readDatasetPreferences(buildWorkspaceState({
+                [RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY]: { ...storedPreferences({ [ACCOUNT_DATASET]: 'Seed' }), version: RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION + 1 }
+            })))).toBe(true);
+
+            const throwingState = { get: () => { throw new Error('no state'); }, update: jest.fn() };
+            expect(isEmpty(RecipeCockpitService.readDatasetPreferences(throwingState as any))).toBe(true);
+
+        });
+
+        it('drops each entry that could not have been saved and keeps the rest, a folder named __proto__ included', () => {
+
+            const datasetPreferences = RecipeCockpitService.readDatasetPreferences(buildWorkspaceState({
+                [RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY]: JSON.parse(JSON.stringify(storedPreferences({
+                    [ACCOUNT_DATASET]: 'Seed',
+                    ['__proto__']: 'Prototype data set',
+                    notText: 7,
+                    untrimmed: ' Padded ',
+                    twoLines: 'One\nTwo',
+                    tooLong: 'n'.repeat(RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH + 1)
+                }, [LEAD_DATASETS[0], 7, ''])))
+            }));
+
+            expect([...datasetPreferences.customNamesByFolderName.entries()]).toEqual([[ACCOUNT_DATASET, 'Seed'], ['__proto__', 'Prototype data set']]);
+            expect([...datasetPreferences.favoriteFolderNames]).toEqual([LEAD_DATASETS[0]]);
+
+        });
+
+        it('writes what it reads back, under its own key and never the trees\'', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            const datasetPreferences = buildPreferences({ [ACCOUNT_DATASET]: 'Seed', ['__proto__']: 'Prototype data set' }, [LEAD_DATASETS[1]]);
+
+            await expect(RecipeCockpitService.writeDatasetPreferences(workspaceState, datasetPreferences)).resolves.toBe(true);
+
+            expect(workspaceState.storedValues.has(RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY)).toBe(false);
+            expect(RecipeCockpitService.readDatasetPreferences(workspaceState)).toEqual(datasetPreferences);
+
+        });
+
+        it('given no workspace state, or a write that fails, says so and answers false', async () => {
+
+            const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+            const failingState = buildWorkspaceState();
+            failingState.update.mockImplementation(() => Promise.reject(new Error('read-only [x](command:y)')));
+
+            await expect(RecipeCockpitService.writeDatasetPreferences(undefined, buildPreferences())).resolves.toBe(false);
+            await expect(RecipeCockpitService.writeDatasetPreferences(failingState, buildPreferences())).resolves.toBe(false);
+
+            expect(warningSpy.mock.calls[0][0]).toContain('data set names and favorites');
+            expect(warningSpy.mock.calls[1][0]).toContain('The data set name or favorite could not be saved');
+            expect(warningSpy.mock.calls[1][0]).not.toContain('[x](command:y)');
+
+        });
+
+    });
+
+    describe('validateDatasetName', () => {
+
+        const trees = () => loadRecipe().trees;
+
+        it('accepts an empty name, which clears it, and a name no other data set has', () => {
+
+            expect(RecipeCockpitService.validateDatasetName('   ', ACCOUNT_DATASET, buildPreferences(), trees())).toBeUndefined();
+            expect(RecipeCockpitService.validateDatasetName(' Seed ', ACCOUNT_DATASET, buildPreferences(), trees())).toBeUndefined();
+            // ITS OWN NAME AND ITS OWN FOLDER ARE NOT "ANOTHER" DATA SET'S
+            expect(RecipeCockpitService.validateDatasetName('Seed', ACCOUNT_DATASET, buildPreferences({ [ACCOUNT_DATASET]: 'Seed' }), trees())).toBeUndefined();
+            expect(RecipeCockpitService.validateDatasetName(ACCOUNT_DATASET, ACCOUNT_DATASET, buildPreferences(), trees())).toBeUndefined();
+
+        });
+
+        it('refuses another data set\'s name or folder name, without case, and one that is not one short line', () => {
+
+            expect(RecipeCockpitService.validateDatasetName('SEED', ACCOUNT_DATASET, buildPreferences({ 'dataset-gone': 'Seed' }), trees())).toContain('already has that name');
+            expect(RecipeCockpitService.validateDatasetName(LEAD_DATASETS[0].toUpperCase(), ACCOUNT_DATASET, buildPreferences(), trees())).toContain('already has that name');
+            expect(RecipeCockpitService.validateDatasetName('One Two', ACCOUNT_DATASET, buildPreferences(), trees())).toContain('one line');
+            expect(RecipeCockpitService.validateDatasetName('n'.repeat(RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH + 1), ACCOUNT_DATASET, buildPreferences(), trees()))
+                .toContain(`at most ${RECIPE_COCKPIT_DATASET_NAME_MAX_LENGTH}`);
+
+        });
+
+    });
+
+    describe('applyDatasetPreferences', () => {
+
+        it('names and stars every row of a data set, and takes off what was cleared', () => {
+
+            const recipe = loadRecipe();
+            RecipeCockpitService.applyDatasetPreferences(recipe.trees, buildPreferences({ [LEAD_DATASETS[1]]: 'Before the fix' }, [ACCOUNT_DATASET]));
+
+            const leadDatasets = recipe.trees[1].history!.datasets;
+            expect(recipe.trees[0].history!.datasets[0]).toMatchObject({ datasetFolderName: ACCOUNT_DATASET, isFavorite: true });
+            expect(leadDatasets[1].customName).toBe('Before the fix');
+            expect(leadDatasets[0].customName).toBeUndefined();
+            expect(leadDatasets[0].isFavorite).toBeUndefined();
+
+            RecipeCockpitService.applyDatasetPreferences(recipe.trees, buildPreferences());
+
+            expect(recipe.trees[0].history!.datasets[0].isFavorite).toBeUndefined();
+            expect(leadDatasets[1].customName).toBeUndefined();
+
+        });
+
+    });
+
+    describe('routePanelMessage, renameDataset and toggleFavoriteDataset', () => {
+
+        const buildDrawnPanelState = (): IRecipeCockpitPanelState => {
+            const panelState = RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT);
+            const recipe = loadRecipe();
+            panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
+            panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+            return panelState;
+        };
+
+        it('allows every data set row the model lists', () => {
+
+            expect([...RecipeCockpitService.collectTreeHistoryAllowLists(loadRecipe()).nameableDatasetFolderNames].sort())
+                .toEqual([ACCOUNT_DATASET, ...LEAD_DATASETS].sort());
+
+        });
+
+        it.each(['renameDataset', 'toggleFavoriteDataset'])('given %s for a drawn row, names its folder', (command) => {
+
+            expect(RecipeCockpitService.routePanelMessage({ command: command, datasetFolderName: LEAD_DATASETS[1] }, buildDrawnPanelState()))
+                .toEqual({ kind: command, datasetFolderName: LEAD_DATASETS[1] });
+
+        });
+
+        it.each(['renameDataset', 'toggleFavoriteDataset'])('given %s for anything else, does nothing', (command) => {
+
+            const route = (datasetFolderName: unknown, panelState = buildDrawnPanelState()) => RecipeCockpitService.routePanelMessage({ command: command, datasetFolderName: datasetFolderName }, panelState);
+
+            expect(route('dataset-2026-09-03T00-00-00')).toBeUndefined();
+            expect(route('../outside')).toBeUndefined();
+            expect(route(7)).toBeUndefined();
+            expect(route(undefined)).toBeUndefined();
+
+            const undrawnPanelState = buildDrawnPanelState();
+            undrawnPanelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
+            expect(route(ACCOUNT_DATASET, undrawnPanelState)).toBeUndefined();
+
+            const modelLessPanelState = buildDrawnPanelState();
+            modelLessPanelState.recipeDataMessage = undefined;
+            expect(route(ACCOUNT_DATASET, modelLessPanelState)).toBeUndefined();
+
+        });
+
+        it('allows a data set added in place only once the panel says its row is drawn', () => {
+
+            const panelState = buildDrawnPanelState();
+            const addedDataset = { datasetFolderName: 'dataset-2026-09-22T00-00-00', generatedAtLabel: '', fakerService: 'snowfakery' as const, runFolderName: null, recordCounts: null };
+
+            panelState.pendingTreeHistoryAllowLists = RecipeCockpitService.cloneTreeHistoryAllowLists(panelState.treeHistoryAllowLists);
+            RecipeCockpitService.addDatasetToAllowLists(panelState.pendingTreeHistoryAllowLists, addedDataset);
+
+            expect(RecipeCockpitService.routePanelMessage({ command: 'renameDataset', datasetFolderName: addedDataset.datasetFolderName }, panelState)).toBeUndefined();
+            expect(panelState.pendingTreeHistoryAllowLists.nameableDatasetFolderNames.has(addedDataset.datasetFolderName)).toBe(true);
+
+        });
+
+    });
+
+    describe('openRecipeCockpitPanel', () => {
+
+        let receivedMessageHandler: (panelMessage: any) => Promise<void>;
+        let disposeHandler: (() => void) | undefined;
+        let postedPanelMessages: any[];
+
+        const lastPosted = (command: string) => [...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === command);
+        const showInputBox = vscode.window.showInputBox as jest.Mock;
+
+        const buildWebviewPanel = () => ({
+            reveal: jest.fn(),
+            dispose: jest.fn(),
+            onDidDispose: jest.fn().mockImplementation((handler: () => void) => { disposeHandler = handler; return { dispose: jest.fn() }; }),
+            webview: {
+                html: '',
+                postMessage: jest.fn().mockImplementation((hostMessage: any) => { postedPanelMessages.push(hostMessage); return Promise.resolve(true); }),
+                onDidReceiveMessage: jest.fn().mockImplementation((messageHandler: (panelMessage: any) => Promise<void>) => {
+                    receivedMessageHandler = messageHandler;
+                    return { dispose: jest.fn() };
+                })
+            }
+        });
+
+        const openAndDraw = async (workspaceState: ReturnType<typeof buildWorkspaceState>) => {
+            await RecipeCockpitService.openRecipeCockpitPanel(HISTORY_WORKSPACE_ROOT, workspaceState);
+            await receivedMessageHandler({ command: 'ready' });
+            const recipeDataMessage = lastPosted('recipeData');
+            await receivedMessageHandler({ command: 'rendered', renderSequence: recipeDataMessage.renderSequence });
+            return recipeDataMessage;
+        };
+
+        const datasetsOf = (recipeDataMessage: any, treeKey: string) => recipeDataMessage.recipe.trees.find((tree: any) => tree.treeKey === treeKey).history.datasets;
+        const storedOf = (workspaceState: ReturnType<typeof buildWorkspaceState>) => workspaceState.storedValues.get(RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY);
+
+        beforeEach(() => {
+            postedPanelMessages = [];
+            showInputBox.mockReset();
+            (vscode.window.createWebviewPanel as jest.Mock).mockImplementation(() => buildWebviewPanel());
+            jest.spyOn(VSCodeWorkspaceService, 'createStatusBarPhaseItem').mockImplementation((initialMessage: string) => ({ text: initialMessage, dispose: jest.fn() }) as any);
+        });
+
+        afterEach(() => {
+            disposeHandler?.();
+            disposeHandler = undefined;
+        });
+
+        it('draws the data sets with the names and favorites workspaceState kept', async () => {
+
+            const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY]: storedPreferences({ [LEAD_DATASETS[1]]: 'Before the fix' }, [ACCOUNT_DATASET]) });
+            const recipeDataMessage = await openAndDraw(workspaceState);
+
+            expect(datasetsOf(recipeDataMessage, LEAD_TREE_KEY)[1]).toMatchObject({ datasetFolderName: LEAD_DATASETS[1], customName: 'Before the fix' });
+            expect(datasetsOf(recipeDataMessage, ACCOUNT_TREE_KEY)[0].isFavorite).toBe(true);
+
+        });
+
+        it('renames a data set through the host\'s input box, keeps the name, and posts the change for that row', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            const recipeDataMessage = await openAndDraw(workspaceState);
+            showInputBox.mockResolvedValue('  Before the fix ');
+
+            await receivedMessageHandler({ command: 'renameDataset', datasetFolderName: LEAD_DATASETS[1] });
+
+            const inputBoxOptions = showInputBox.mock.calls[0][0];
+            expect(inputBoxOptions.value).toBe('');
+            expect(inputBoxOptions.placeHolder).toBe(LEAD_DATASETS[1]);
+            expect(inputBoxOptions.validateInput(ACCOUNT_DATASET)).toContain('already has that name');
+            expect(inputBoxOptions.validateInput('Anything else')).toBeUndefined();
+
+            expect(storedOf(workspaceState)).toEqual(storedPreferences({ [LEAD_DATASETS[1]]: 'Before the fix' }));
+            expect(lastPosted('datasetPreferences')).toEqual({
+                command: 'datasetPreferences',
+                renderSequence: recipeDataMessage.renderSequence,
+                datasetFolderName: LEAD_DATASETS[1],
+                customName: 'Before the fix',
+                isFavorite: false
+            });
+
+            // A REVEAL REPLAYS THE STORED MODEL, WHICH HAS TO CARRY THE NAME TOO
+            postedPanelMessages = [];
+            await receivedMessageHandler({ command: 'ready' });
+            expect(datasetsOf(lastPosted('recipeData'), LEAD_TREE_KEY)[1].customName).toBe('Before the fix');
+
+        });
+
+        it('escapes a folder name in the prompt, which the input box would draw as a link that runs a command', async () => {
+
+            await openAndDraw(buildWorkspaceState());
+            const forgedFolderName = '[Click](command:workbench.action.terminal.new)';
+            const panelState = (RecipeCockpitService as any).recipeCockpitPanelState as IRecipeCockpitPanelState;
+            panelState.treeHistoryAllowLists.nameableDatasetFolderNames.add(forgedFolderName);
+            showInputBox.mockResolvedValue(undefined);
+
+            await receivedMessageHandler({ command: 'renameDataset', datasetFolderName: forgedFolderName });
+
+            const prompt = showInputBox.mock.calls[0][0].prompt;
+            expect(prompt).not.toContain(forgedFolderName);
+            expect(prompt).not.toMatch(/[[\]()]/);
+
+        });
+
+        it('pre-fills the data set\'s own name, an emptied box clears it, and a cancelled box changes nothing', async () => {
+
+            const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY]: storedPreferences({ [ACCOUNT_DATASET]: 'Seed' }, [ACCOUNT_DATASET]) });
+            await openAndDraw(workspaceState);
+
+            showInputBox.mockResolvedValue(undefined);
+            await receivedMessageHandler({ command: 'renameDataset', datasetFolderName: ACCOUNT_DATASET });
+            expect(lastPosted('datasetPreferences')).toBeUndefined();
+
+            showInputBox.mockResolvedValue('');
+            await receivedMessageHandler({ command: 'renameDataset', datasetFolderName: ACCOUNT_DATASET });
+
+            expect(showInputBox.mock.calls[0][0].value).toBe('Seed');
+            expect(storedOf(workspaceState)).toEqual(storedPreferences({}, [ACCOUNT_DATASET]));
+            expect(lastPosted('datasetPreferences')).toEqual(expect.objectContaining({ datasetFolderName: ACCOUNT_DATASET, isFavorite: true }));
+            expect(lastPosted('datasetPreferences').customName).toBeUndefined();
+
+        });
+
+        it('given another window took the name while the box was open, refuses it and says why', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            await openAndDraw(workspaceState);
+            const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+            showInputBox.mockImplementation(async () => {
+                workspaceState.storedValues.set(RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY, storedPreferences({ 'dataset-elsewhere': 'Seed' }));
+                return 'seed';
+            });
+
+            await receivedMessageHandler({ command: 'renameDataset', datasetFolderName: ACCOUNT_DATASET });
+
+            expect(storedOf(workspaceState)).toEqual(storedPreferences({ 'dataset-elsewhere': 'Seed' }));
+            expect(lastPosted('datasetPreferences')).toBeUndefined();
+            expect(warningSpy.mock.calls[0][0]).toContain('already has that name');
+
+        });
+
+        it('marks a data set a favorite and takes it off again, and a reload of the run draws the star', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            await openAndDraw(workspaceState);
+
+            await receivedMessageHandler({ command: 'toggleFavoriteDataset', datasetFolderName: LEAD_DATASETS[2] });
+
+            expect(storedOf(workspaceState)).toEqual(storedPreferences({}, [LEAD_DATASETS[2]]));
+            expect(lastPosted('datasetPreferences')).toEqual(expect.objectContaining({ datasetFolderName: LEAD_DATASETS[2], isFavorite: true }));
+
+            postedPanelMessages = [];
+            await receivedMessageHandler({ command: 'selectRun', runFolderName: CURRENT_RUN_FOLDER_NAME });
+            expect(datasetsOf(lastPosted('recipeData'), LEAD_TREE_KEY)[2].isFavorite).toBe(true);
+            await receivedMessageHandler({ command: 'rendered', renderSequence: lastPosted('recipeData').renderSequence });
+
+            await receivedMessageHandler({ command: 'toggleFavoriteDataset', datasetFolderName: LEAD_DATASETS[2] });
+
+            expect(storedOf(workspaceState)).toEqual(storedPreferences({}, []));
+            expect(lastPosted('datasetPreferences')).toEqual(expect.objectContaining({ datasetFolderName: LEAD_DATASETS[2], isFavorite: false }));
+
+        });
+
+        it('given a write that fails, leaves the rows as they were', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            await openAndDraw(workspaceState);
+            jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+            workspaceState.update.mockImplementation(() => Promise.reject(new Error('read-only')));
+
+            await receivedMessageHandler({ command: 'toggleFavoriteDataset', datasetFolderName: ACCOUNT_DATASET });
+
+            expect(lastPosted('datasetPreferences')).toBeUndefined();
+
+        });
+
+    });
+
+    describe('the panel script', () => {
+
+        const drawRecipe = (recipeChanges: (recipe: IRecipeCockpitRecipeViewModel) => void = () => undefined, panelScriptOptions = {}, extraMessage: any = {}) => {
+            const panel = runPanelScript(panelScriptOptions);
+            const recipe = loadRecipe();
+            recipeChanges(recipe);
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 3, ...extraMessage });
+            return panel;
+        };
+
+        const leadCardOf = (panel: ReturnType<typeof runPanelScript>) => panel.treeCards()[1];
+        const openLeadDatasets = (panel: ReturnType<typeof runPanelScript>) => {
+            const leadCard = leadCardOf(panel);
+            panel.findAll(leadCard, 'treeToggle')[0].dispatch('click');
+            panel.openTab(leadCard, DATASETS_TAB_LABEL);
+            return panel.tabPanelOf(leadCard, 'treeDatasets');
+        };
+        const rowsOf = (panel: ReturnType<typeof runPanelScript>, tabPanel: any) => panel.findAll(tabPanel, 'treeDataset');
+        const shownFolderNamesOf = (panel: ReturnType<typeof runPanelScript>, tabPanel: any) => rowsOf(panel, tabPanel)
+            .filter((rowElement: any) => !panel.isHidden(rowElement))
+            .map((rowElement: any) => panel.findAll(rowElement, 'treeDatasetFolder')[0].textContent);
+        const favoritesToggleOf = (panel: ReturnType<typeof runPanelScript>, tabPanel: any) => panel.findAll(tabPanel, 'treeDatasetFavoritesToggle')[0];
+
+        it('draws a data set\'s own name beside its folder, and the star of a favorite', () => {
+
+            const panel = drawRecipe(recipe => {
+                recipe.trees[1].history!.datasets[1].customName = 'Before the fix';
+                recipe.trees[1].history!.datasets[0].isFavorite = true;
+            });
+            const rows = rowsOf(panel, openLeadDatasets(panel));
+
+            expect(panel.findAll(rows[1], 'treeDatasetName')[0].textContent).toBe('Before the fix');
+            expect(panel.isHidden(panel.findAll(rows[1], 'treeDatasetName')[0])).toBe(false);
+            expect(panel.findAll(rows[1], 'treeDatasetFolder')[0].textContent).toBe(LEAD_DATASETS[1]);
+            expect(panel.isHidden(panel.findAll(rows[0], 'treeDatasetName')[0])).toBe(true);
+            expect(panel.findAll(rows[0], 'treeDatasetFavorite')[0].textContent).toBe('★');
+            expect(panel.findAll(rows[0], 'treeDatasetFavorite')[0].attributes['aria-pressed']).toBe('true');
+            expect(panel.findAll(rows[1], 'treeDatasetFavorite')[0].textContent).toBe('☆');
+            expect(panel.findAll(rows[1], 'treeDatasetRename')[0].attributes['aria-label']).toBe('Rename Before the fix');
+
+        });
+
+        it('posts only the data set\'s folder name for ✎ and ☆', () => {
+
+            const panel = drawRecipe();
+            const [firstRow] = rowsOf(panel, openLeadDatasets(panel));
+
+            panel.findAll(firstRow, 'treeDatasetFavorite')[0].dispatch('click');
+            panel.findAll(firstRow, 'treeDatasetRename')[0].dispatch('click');
+
+            expect(panel.postedHostMessages.filter((hostMessage: any) => ['toggleFavoriteDataset', 'renameDataset'].includes(hostMessage.command))).toEqual([
+                { command: 'toggleFavoriteDataset', datasetFolderName: LEAD_DATASETS[0] },
+                { command: 'renameDataset', datasetFolderName: LEAD_DATASETS[0] }
+            ]);
+
+        });
+
+        it('redraws the row the host names in place, only for the model on screen, and a search finds it by its new name', () => {
+
+            const panel = drawRecipe();
+            const tabPanel = openLeadDatasets(panel);
+            const rowsBefore = rowsOf(panel, tabPanel);
+
+            panel.postToPanel({ command: 'datasetPreferences', renderSequence: 2, datasetFolderName: LEAD_DATASETS[1], customName: 'Stale', isFavorite: true });
+            expect(panel.isHidden(panel.findAll(rowsBefore[1], 'treeDatasetName')[0])).toBe(true);
+
+            panel.postToPanel({ command: 'datasetPreferences', renderSequence: 3, datasetFolderName: LEAD_DATASETS[1], customName: 'Before the fix', isFavorite: true });
+
+            expect(rowsOf(panel, tabPanel)).toEqual(rowsBefore);
+            expect(panel.findAll(rowsBefore[1], 'treeDatasetName')[0].textContent).toBe('Before the fix');
+            expect(panel.findAll(rowsBefore[1], 'treeDatasetFavorite')[0].textContent).toBe('★');
+
+            panel.typeIntoTabSearch(leadCardOf(panel), 'treeDatasets', 'before the');
+            expect(shownFolderNamesOf(panel, tabPanel)).toEqual([LEAD_DATASETS[1]]);
+
+        });
+
+        it('draws a name changed before the data sets tab was built when the tab is opened', () => {
+
+            const panel = drawRecipe();
+            panel.postToPanel({ command: 'datasetPreferences', renderSequence: 3, datasetFolderName: LEAD_DATASETS[2], customName: 'Oldest', isFavorite: false });
+
+            const rows = rowsOf(panel, openLeadDatasets(panel));
+
+            expect(panel.findAll(rows[2], 'treeDatasetName')[0].textContent).toBe('Oldest');
+
+        });
+
+        it('Favorites only shows the favorites and counts them, with the search, and a row taken off hides at once', () => {
+
+            const panel = drawRecipe(recipe => {
+                recipe.trees[1].history!.datasets[0].isFavorite = true;
+                recipe.trees[1].history!.datasets[2].isFavorite = true;
+            });
+            const tabPanel = openLeadDatasets(panel);
+            const matchCountElement = panel.findAll(tabPanel, 'tabMatchCount')[0];
+
+            expect(favoritesToggleOf(panel, tabPanel).attributes['aria-pressed']).toBe('false');
+            expect(shownFolderNamesOf(panel, tabPanel)).toEqual(LEAD_DATASETS);
+
+            favoritesToggleOf(panel, tabPanel).dispatch('click');
+
+            expect(favoritesToggleOf(panel, tabPanel).attributes['aria-pressed']).toBe('true');
+            expect(shownFolderNamesOf(panel, tabPanel)).toEqual([LEAD_DATASETS[0], LEAD_DATASETS[2]]);
+            expect(matchCountElement.textContent).toBe('2 of 3 data sets');
+
+            panel.typeIntoTabSearch(leadCardOf(panel), 'treeDatasets', '09-02');
+            expect(shownFolderNamesOf(panel, tabPanel)).toEqual([LEAD_DATASETS[2]]);
+
+            panel.postToPanel({ command: 'datasetPreferences', renderSequence: 3, datasetFolderName: LEAD_DATASETS[2], isFavorite: false });
+            expect(shownFolderNamesOf(panel, tabPanel)).toEqual([]);
+            expect(matchCountElement.textContent).toBe('no matches');
+
+        });
+
+        it('keeps the filter in the reader\'s place per card, and a reopened document restores it', () => {
+
+            const panel = drawRecipe(recipe => { recipe.trees[1].history!.datasets[1].isFavorite = true; });
+            const tabPanel = openLeadDatasets(panel);
+            favoritesToggleOf(panel, tabPanel).dispatch('click');
+
+            const leadPlace = panel.savedState().trees.find((treePlace: any) => treePlace.treeKey === LEAD_TREE_KEY);
+            expect(leadPlace.isDatasetFavoritesOnly).toBe(true);
+
+            const reopenedPanel = drawRecipe(recipe => { recipe.trees[1].history!.datasets[1].isFavorite = true; }, { savedState: panel.savedState() });
+            const reopenedTabPanel = reopenedPanel.tabPanelOf(reopenedPanel.treeCards()[1], 'treeDatasets');
+
+            expect(shownFolderNamesOf(reopenedPanel, reopenedTabPanel)).toEqual([LEAD_DATASETS[1]]);
+            expect(favoritesToggleOf(reopenedPanel, reopenedTabPanel).attributes['aria-pressed']).toBe('true');
+
+        });
+
+        it('given a place saved before data set favorites, which has no filter, shows every data set', () => {
+
+            const oldPlace = {
+                version: RECIPE_COCKPIT_PANEL_PLACE_VERSION, runFolderName: CURRENT_RUN_FOLDER_NAME, isOrgPickerInUse: false, isFavoritesOnly: false, scrollY: 0,
+                trees: [{ treeKey: LEAD_TREE_KEY, isExpanded: true, selectedTab: 'datasets', searchQueries: {}, expandedObjectKeys: [], openPicklistKeys: [] }]
+            };
+            const panel = drawRecipe(recipe => { recipe.trees[1].history!.datasets[1].isFavorite = true; }, { savedState: oldPlace });
+
+            expect(shownFolderNamesOf(panel, panel.tabPanelOf(leadCardOf(panel), 'treeDatasets'))).toEqual(LEAD_DATASETS);
+
+        });
+
+    });
+
+    describe('normalizePanelPlace', () => {
+
+        it('keeps a card\'s data sets filter only when it is exactly true', () => {
+
+            const place = (isDatasetFavoritesOnly: unknown) => RecipeCockpitService.normalizePanelPlace({
+                version: RECIPE_COCKPIT_PANEL_PLACE_VERSION, runFolderName: CURRENT_RUN_FOLDER_NAME, scrollY: 0,
+                trees: [{ treeKey: LEAD_TREE_KEY, isDatasetFavoritesOnly: isDatasetFavoritesOnly }]
+            })!.trees[0];
+
+            expect(place(true).isDatasetFavoritesOnly).toBe(true);
+            expect(place('true')).not.toHaveProperty('isDatasetFavoritesOnly');
+            expect(place(undefined)).not.toHaveProperty('isDatasetFavoritesOnly');
+
+        });
+
+    });
+
+});
