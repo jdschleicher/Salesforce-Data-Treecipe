@@ -178,6 +178,7 @@ export interface IConnectedOrgListing {
 }
 
 export interface IDataOrgListing extends IConnectedOrgListing {
+    orgDetails: IDataOrgDetail[];
     hiddenOrgCount: number;
 }
 
@@ -251,6 +252,42 @@ export const DEV_HUB_REAUTHORIZE_INSTRUCTION = 'Authorize one with "sf org login
 export const NO_AUTHORIZED_DEV_HUB_MESSAGE = `No Dev Hub is authorized, so no scratch org was created. ${DEV_HUB_REAUTHORIZE_INSTRUCTION}`;
 
 export type DevHubConfigSource = 'environment' | 'project' | 'global';
+
+// THE ORG "sf" COMMANDS TARGET WITH NO --target-org (#305), READ BY THE SAME NAMES AND ORDER AS THE DEFAULT DEV HUB
+export const TARGET_ORG_CONFIG_KEY = 'target-org';
+
+export const TARGET_ORG_ENVIRONMENT_VARIABLE = 'SF_TARGET_ORG';
+
+export const LEGACY_TARGET_ORG_ENVIRONMENT_VARIABLE = 'SFDX_DEFAULTUSERNAME';
+
+export const LEGACY_TARGET_ORG_CONFIG_KEY = 'defaultusername';
+
+interface IDefaultOrgSettingNames {
+    environmentVariableNames: string[];
+    configKey: string;
+    legacyConfigKey: string;
+}
+
+const DEFAULT_DEV_HUB_SETTING_NAMES: IDefaultOrgSettingNames = {
+    environmentVariableNames: [TARGET_DEV_HUB_ENVIRONMENT_VARIABLE, LEGACY_TARGET_DEV_HUB_ENVIRONMENT_VARIABLE],
+    configKey: TARGET_DEV_HUB_CONFIG_KEY,
+    legacyConfigKey: LEGACY_TARGET_DEV_HUB_CONFIG_KEY
+};
+
+const DEFAULT_TARGET_ORG_SETTING_NAMES: IDefaultOrgSettingNames = {
+    environmentVariableNames: [TARGET_ORG_ENVIRONMENT_VARIABLE, LEGACY_TARGET_ORG_ENVIRONMENT_VARIABLE],
+    configKey: TARGET_ORG_CONFIG_KEY,
+    legacyConfigKey: LEGACY_TARGET_ORG_CONFIG_KEY
+};
+
+/*
+    An org the Treecipe tab's picker lists. isDefault marks the CLI's default org (#305): it is
+    listed first whatever the CLI knows of its type, because what decides whether anything is
+    inserted into it is the Organization row its selection asks for, never the listing.
+*/
+export interface IDataOrgDetail extends IAuthenticatedOrgDetail {
+    isDefault?: boolean;
+}
 
 // A DEV HUB THE READER CAN PICK. configSource IS PRESENT ONLY ON THE ONE THE CLI HAS SET AS ITS DEFAULT
 export interface IDevHubOrgDetail extends IAuthenticatedOrgDetail {
@@ -938,14 +975,86 @@ export class SalesforceOrgService {
 
     }
 
-    // THE ORGS DATA-BY-ORG LISTS: ONLY THOSE KNOWN NOT TO BE PRODUCTION AND REPORTED CONNECTED, WITH WHY THE REST ARE NOT
-    static async listDataOrgDetails(): Promise<IDataOrgListing> {
+    /*
+        The orgs Data-by-Org lists: only those known not to be production and reported connected,
+        with why the rest are not. Given the workspace, the CLI's default org is listed FIRST and
+        marked isDefault (#305) whenever the CLI reports it connected -- production included, since
+        selecting it asks its Organization row and refuses every insert unless it answers IsSandbox.
+    */
+    static async listDataOrgDetails(workspaceRoot?: string,
+                                    homeDirectoryPath?: string,
+                                    environmentVariables?: NodeJS.ProcessEnv): Promise<IDataOrgListing> {
 
         const authorizations = await this.readFreshAuthorizations();
         const connectedOrgStatusListing = await this.listConnectedOrgStatusForAuthorizations(authorizations);
         const connectedOrgListing = this.buildConnectedOrgListing(authorizations, connectedOrgStatusListing, true);
+        const defaultAuthorization = workspaceRoot === undefined
+            ? undefined
+            : this.findDefaultTargetOrgAuthorization(authorizations, workspaceRoot, homeDirectoryPath, environmentVariables);
+        const defaultOrgDetail = defaultAuthorization
+            ? this.buildConnectedOrgListing([defaultAuthorization], connectedOrgStatusListing, false).orgDetails[0]
+            : undefined;
 
-        return { ...connectedOrgListing, hiddenOrgCount: this.countHiddenOrgs(connectedOrgListing.hiddenOrgReasonCounts) };
+        if ( !defaultOrgDetail ) {
+            return { ...connectedOrgListing, hiddenOrgCount: this.countHiddenOrgs(connectedOrgListing.hiddenOrgReasonCounts) };
+        }
+
+        const hiddenOrgs = connectedOrgListing.hiddenOrgs.filter(hiddenOrg => hiddenOrg.username !== defaultOrgDetail.username);
+        const hiddenOrgReasonCounts = this.countHiddenOrgReasons(hiddenOrgs);
+
+        return {
+            orgDetails: [
+                { ...defaultOrgDetail, isDefault: true },
+                ...connectedOrgListing.orgDetails.filter(orgDetail => orgDetail.username !== defaultOrgDetail.username)
+            ],
+            hiddenOrgs: hiddenOrgs,
+            hiddenOrgReasonCounts: hiddenOrgReasonCounts,
+            hiddenOrgCount: this.countHiddenOrgs(hiddenOrgReasonCounts)
+        };
+
+    }
+
+    /*
+        An org named by username or alias, from the LOCAL authorization files alone -- no CLI, no
+        connection -- so the picker can show it while "sf org list" is still checking (#305).
+        isDefault says whether it is the CLI's default org. Nothing here says it is connected.
+    */
+    static async readLocalDataOrgDetail(identifier: string | undefined,
+                                        workspaceRoot: string,
+                                        homeDirectoryPath?: string,
+                                        environmentVariables?: NodeJS.ProcessEnv): Promise<IDataOrgDetail | undefined> {
+
+        const authorizations = await this.readFreshAuthorizations();
+        const defaultAuthorization = this.findDefaultTargetOrgAuthorization(authorizations, workspaceRoot, homeDirectoryPath, environmentVariables);
+        const authorization = identifier === undefined ? defaultAuthorization : this.findAuthorizationByIdentifier(authorizations, identifier);
+        const orgDetail = authorization ? PicklistDependencyCheckService.buildAuthenticatedOrgDetails([authorization])[0] : undefined;
+
+        if ( !orgDetail ) {
+            return undefined;
+        }
+
+        return defaultAuthorization?.username === orgDetail.username ? { ...orgDetail, isDefault: true } : orgDetail;
+
+    }
+
+    private static findDefaultTargetOrgAuthorization(authorizations: OrgAuthorization[],
+                                                        workspaceRoot: string,
+                                                        homeDirectoryPath?: string,
+                                                        environmentVariables?: NodeJS.ProcessEnv): OrgAuthorization | undefined {
+
+        const defaultTargetOrg = this.readDefaultTargetOrgIdentifier(workspaceRoot, homeDirectoryPath, environmentVariables);
+
+        return defaultTargetOrg ? this.findAuthorizationByIdentifier(authorizations, defaultTargetOrg.identifier) : undefined;
+
+    }
+
+    // A USERNAME MATCHES ITS OWN AUTHORIZATION FIRST, SO AN ALIAS THAT HAPPENS TO SPELL ANOTHER ORG'S USERNAME NEVER WINS
+    private static findAuthorizationByIdentifier(authorizations: OrgAuthorization[], identifier: string): OrgAuthorization | undefined {
+
+        const readableAuthorizations = this.readAuthorizations(authorizations);
+
+        return readableAuthorizations.find(authorization => authorization?.username === identifier)
+            ?? readableAuthorizations.find(authorization => Array.isArray(authorization?.aliases) && authorization.aliases.includes(identifier));
 
     }
 
@@ -1062,7 +1171,25 @@ export class SalesforceOrgService {
                                         homeDirectoryPath: string = os.homedir(),
                                         environmentVariables: NodeJS.ProcessEnv = process.env): { identifier: string; configSource: DevHubConfigSource } | undefined {
 
-        for ( const environmentVariableName of [TARGET_DEV_HUB_ENVIRONMENT_VARIABLE, LEGACY_TARGET_DEV_HUB_ENVIRONMENT_VARIABLE] ) {
+        return this.readDefaultOrgSetting(DEFAULT_DEV_HUB_SETTING_NAMES, workspaceRoot, homeDirectoryPath, environmentVariables);
+
+    }
+
+    // THE CLI'S DEFAULT TARGET ORG (#305), READ IN PROCESS THE SAME WAY, SO THE PICKER CAN NAME IT BEFORE "sf org list" ANSWERS
+    static readDefaultTargetOrgIdentifier(workspaceRoot: string,
+                                            homeDirectoryPath: string = os.homedir(),
+                                            environmentVariables: NodeJS.ProcessEnv = process.env): { identifier: string; configSource: DevHubConfigSource } | undefined {
+
+        return this.readDefaultOrgSetting(DEFAULT_TARGET_ORG_SETTING_NAMES, workspaceRoot, homeDirectoryPath, environmentVariables);
+
+    }
+
+    private static readDefaultOrgSetting(settingNames: IDefaultOrgSettingNames,
+                                            workspaceRoot: string,
+                                            homeDirectoryPath: string,
+                                            environmentVariables: NodeJS.ProcessEnv): { identifier: string; configSource: DevHubConfigSource } | undefined {
+
+        for ( const environmentVariableName of settingNames.environmentVariableNames ) {
 
             const environmentValue = environmentVariables[environmentVariableName];
 
@@ -1075,10 +1202,10 @@ export class SalesforceOrgService {
         }
 
         const configCandidates: Array<{ configFilePath: string; configKey: string; configSource: DevHubConfigSource }> = [
-            { configFilePath: path.join(workspaceRoot, '.sf', 'config.json'), configKey: TARGET_DEV_HUB_CONFIG_KEY, configSource: 'project' },
-            { configFilePath: path.join(workspaceRoot, '.sfdx', 'sfdx-config.json'), configKey: LEGACY_TARGET_DEV_HUB_CONFIG_KEY, configSource: 'project' },
-            { configFilePath: path.join(homeDirectoryPath, '.sf', 'config.json'), configKey: TARGET_DEV_HUB_CONFIG_KEY, configSource: 'global' },
-            { configFilePath: path.join(homeDirectoryPath, '.sfdx', 'sfdx-config.json'), configKey: LEGACY_TARGET_DEV_HUB_CONFIG_KEY, configSource: 'global' }
+            { configFilePath: path.join(workspaceRoot, '.sf', 'config.json'), configKey: settingNames.configKey, configSource: 'project' },
+            { configFilePath: path.join(workspaceRoot, '.sfdx', 'sfdx-config.json'), configKey: settingNames.legacyConfigKey, configSource: 'project' },
+            { configFilePath: path.join(homeDirectoryPath, '.sf', 'config.json'), configKey: settingNames.configKey, configSource: 'global' },
+            { configFilePath: path.join(homeDirectoryPath, '.sfdx', 'sfdx-config.json'), configKey: settingNames.legacyConfigKey, configSource: 'global' }
         ];
 
         for ( const configCandidate of configCandidates ) {

@@ -17,6 +17,7 @@ import {
     RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS,
     RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS,
     RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS,
+    RECIPE_COCKPIT_SPINNER_ROTATION_MILLISECONDS,
     RECIPE_COCKPIT_PALETTE
 } from '../RecipeCockpitService';
 import { runPanelScript, IPanelScriptOptions } from './RecipeCockpitPanelHarness';
@@ -60,8 +61,8 @@ describe('RecipeCockpitService, motion (#227)', () => {
                 .forEach(milliseconds => expect(milliseconds).toBeWithin(120, 181));
             const declaredDurations = (motionStyleSheet.match(/\b(\d+)ms\b/g) ?? []).map(duration => parseInt(duration, 10));
             expect(declaredDurations).not.toBeEmpty();
-            // THE PRESS NUDGE IS THE ONE SHORTER TRANSITION: A BUTTON GOING DOWN SHOULD FEEL IMMEDIATE
-            declaredDurations.filter(duration => duration !== 80).forEach(duration => expect(duration).toBeWithin(120, 181));
+            // THE PRESS NUDGE IS THE ONE SHORTER TRANSITION: A BUTTON GOING DOWN SHOULD FEEL IMMEDIATE; THE ORG CHECK'S SPINNER IS A LOOP, NOT A TRANSITION (#305)
+            declaredDurations.filter(duration => duration !== 80 && duration !== RECIPE_COCKPIT_SPINNER_ROTATION_MILLISECONDS).forEach(duration => expect(duration).toBeWithin(120, 181));
 
         });
 
@@ -75,7 +76,8 @@ describe('RecipeCockpitService, motion (#227)', () => {
             expect(reducedMotionBlock.match(/\{/g)).toHaveLength(2);
             // AND THERE IS SOMETHING FOR IT TO TURN OFF
             expect(motionStyleSheet.match(/\btransition:/g)?.length).toBeGreaterThan(3);
-            expect(motionStyleSheet.match(/\banimation:/g)?.length).toBe(3);
+            // REVEAL, CONCEAL, AN EXCLUDED ROW'S REVEAL TURNED OFF, AND THE ORG CHECK'S SPINNER (#305)
+            expect(motionStyleSheet.match(/\banimation:/g)?.length).toBe(4);
 
         });
 

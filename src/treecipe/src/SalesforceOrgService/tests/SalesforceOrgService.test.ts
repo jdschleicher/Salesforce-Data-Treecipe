@@ -35,6 +35,8 @@ import {
     SALESFORCE_CLI_ORG_LIST_TIMEOUT_MILLISECONDS,
     NO_AUTHORIZED_DEV_HUB_MESSAGE,
     TARGET_DEV_HUB_ENVIRONMENT_VARIABLE,
+    TARGET_ORG_ENVIRONMENT_VARIABLE,
+    LEGACY_TARGET_ORG_ENVIRONMENT_VARIABLE,
     ORG_PARENT_SEARCH_RESULT_LIMIT
 } from '../SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -1566,6 +1568,151 @@ describe('SalesforceOrgService', () => {
             writeLegacyConfig(homeDirectoryPath, JSON.stringify({ defaultdevhubusername: 'legacyGlobalHub' }));
             expect(SalesforceOrgService.readDefaultDevHubIdentifier(workspaceRoot, homeDirectoryPath, {}))
                 .toEqual({ identifier: 'legacyGlobalHub', configSource: 'global' });
+
+        });
+
+    });
+
+    describe('the default target org (#305)', () => {
+
+        let temporaryRoot: string;
+        let workspaceRoot: string;
+        let homeDirectoryPath: string;
+
+        const PRODUCTION_AUTHORIZATION = { username: 'prod@example.com', aliases: ['prod'], orgId: '00D2', oauthMethod: 'web', configs: null, isExpired: false, instanceUrl: 'https://acme.my.salesforce.com', isSandbox: false };
+
+        const writeConfigFile = (rootPath: string, folderName: string, fileName: string, configContent: string) => {
+            fs.mkdirSync(path.join(rootPath, folderName), { recursive: true });
+            fs.writeFileSync(path.join(rootPath, folderName, fileName), configContent);
+        };
+
+        const listWithProduction = (connectedStatus: string) => {
+            SalesforceOrgService.clearConnectedOrgStatusCache();
+            const orgListResult = JSON.parse(SF_ORG_LIST_STDOUT).result;
+            answerOrgList({ stdout: buildOrgListStdout({
+                ...orgListResult,
+                nonScratchOrgs: [...orgListResult.nonScratchOrgs, { username: 'prod@example.com', connectedStatus: connectedStatus, instanceUrl: 'https://acme.my.salesforce.com' }]
+            }) });
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([...ORG_AUTHORIZATIONS, PRODUCTION_AUTHORIZATION]);
+        };
+
+        beforeEach(() => {
+            temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-target-org-'));
+            workspaceRoot = path.join(temporaryRoot, 'workspace');
+            homeDirectoryPath = path.join(temporaryRoot, 'home');
+            fs.mkdirSync(workspaceRoot);
+            fs.mkdirSync(homeDirectoryPath);
+        });
+
+        afterEach(() => {
+            fs.rmSync(temporaryRoot, { recursive: true, force: true });
+        });
+
+        it('reads the environment, then the project\'s sf and sfdx config, then the global ones, each sf name before its legacy sfdx one', () => {
+
+            writeConfigFile(workspaceRoot, '.sf', 'config.json', JSON.stringify({ 'target-org': 'projectOrg', 'target-dev-hub': 'projectHub' }));
+            writeConfigFile(workspaceRoot, '.sfdx', 'sfdx-config.json', JSON.stringify({ defaultusername: 'legacyProjectOrg' }));
+            writeConfigFile(homeDirectoryPath, '.sf', 'config.json', JSON.stringify({ 'target-org': 'globalOrg' }));
+            writeConfigFile(homeDirectoryPath, '.sfdx', 'sfdx-config.json', JSON.stringify({ defaultusername: 'legacyGlobalOrg' }));
+
+            expect(SalesforceOrgService.readDefaultTargetOrgIdentifier(workspaceRoot, homeDirectoryPath, { [TARGET_ORG_ENVIRONMENT_VARIABLE]: 'envOrg', [LEGACY_TARGET_ORG_ENVIRONMENT_VARIABLE]: 'legacyEnvOrg' }))
+                .toEqual({ identifier: 'envOrg', configSource: 'environment' });
+            expect(SalesforceOrgService.readDefaultTargetOrgIdentifier(workspaceRoot, homeDirectoryPath, { [LEGACY_TARGET_ORG_ENVIRONMENT_VARIABLE]: 'legacyEnvOrg' }))
+                .toEqual({ identifier: 'legacyEnvOrg', configSource: 'environment' });
+            expect(SalesforceOrgService.readDefaultTargetOrgIdentifier(workspaceRoot, homeDirectoryPath, {})).toEqual({ identifier: 'projectOrg', configSource: 'project' });
+
+            fs.rmSync(path.join(workspaceRoot, '.sf'), { recursive: true });
+            expect(SalesforceOrgService.readDefaultTargetOrgIdentifier(workspaceRoot, homeDirectoryPath, {})).toEqual({ identifier: 'legacyProjectOrg', configSource: 'project' });
+
+            fs.rmSync(path.join(workspaceRoot, '.sfdx'), { recursive: true });
+            expect(SalesforceOrgService.readDefaultTargetOrgIdentifier(workspaceRoot, homeDirectoryPath, {})).toEqual({ identifier: 'globalOrg', configSource: 'global' });
+
+            fs.rmSync(path.join(homeDirectoryPath, '.sf'), { recursive: true });
+            expect(SalesforceOrgService.readDefaultTargetOrgIdentifier(workspaceRoot, homeDirectoryPath, {})).toEqual({ identifier: 'legacyGlobalOrg', configSource: 'global' });
+
+        });
+
+        it('never reads the default Dev Hub as the default org', () => {
+
+            writeConfigFile(workspaceRoot, '.sf', 'config.json', JSON.stringify({ 'target-dev-hub': 'projectHub' }));
+
+            expect(SalesforceOrgService.readDefaultTargetOrgIdentifier(workspaceRoot, homeDirectoryPath, {})).toBeUndefined();
+
+        });
+
+        it.each([
+            ['a config that is not JSON', '{ not json'],
+            ['a config whose target-org is not a string', JSON.stringify({ 'target-org': 42 })],
+            ['a config whose target-org is empty', JSON.stringify({ 'target-org': '  ' })],
+            ['a target-org the CLI could not be handed', JSON.stringify({ 'target-org': '-x' })]
+        ])('answers no default for %s', (_description, configContent) => {
+
+            writeConfigFile(workspaceRoot, '.sf', 'config.json', configContent);
+
+            expect(SalesforceOrgService.readDefaultTargetOrgIdentifier(workspaceRoot, homeDirectoryPath, {})).toBeUndefined();
+
+        });
+
+        it('lists the default org first and marks it, even a production org, and leaves it out of what was hidden', async () => {
+
+            listWithProduction('Connected');
+            writeConfigFile(workspaceRoot, '.sf', 'config.json', JSON.stringify({ 'target-org': 'prod' }));
+
+            const dataOrgListing = await SalesforceOrgService.listDataOrgDetails(workspaceRoot, homeDirectoryPath, {});
+
+            expect(dataOrgListing.orgDetails).toEqual([
+                { targetOrgIdentifier: 'prod', username: 'prod@example.com', alias: 'prod', isDefault: true },
+                CONNECTED_SANDBOX,
+                ACTIVE_SCRATCH_ORG
+            ]);
+            expect(dataOrgListing.hiddenOrgReasonCounts).toEqual({ production: 0, expired: 1, deleted: 1, notConnected: 2 });
+            expect(dataOrgListing.hiddenOrgCount).toBe(4);
+
+        });
+
+        it('moves a default sandbox to the top by username, without listing it twice', async () => {
+
+            listWithProduction('Connected');
+
+            const dataOrgListing = await SalesforceOrgService.listDataOrgDetails(workspaceRoot, homeDirectoryPath, { [TARGET_ORG_ENVIRONMENT_VARIABLE]: 'test-active@example.com' });
+
+            expect(dataOrgListing.orgDetails).toEqual([{ ...ACTIVE_SCRATCH_ORG, isDefault: true }, CONNECTED_SANDBOX]);
+
+        });
+
+        it('still leaves out a default org the CLI does not report connected', async () => {
+
+            listWithProduction('RefreshTokenAuthError');
+
+            const dataOrgListing = await SalesforceOrgService.listDataOrgDetails(workspaceRoot, homeDirectoryPath, { [TARGET_ORG_ENVIRONMENT_VARIABLE]: 'prod' });
+
+            expect(dataOrgListing.orgDetails).toEqual([CONNECTED_SANDBOX, ACTIVE_SCRATCH_ORG]);
+            expect(dataOrgListing.hiddenOrgs).toContainEqual({ username: 'prod@example.com', label: 'prod', reason: 'production' });
+
+        });
+
+        it('lists no default when it names no authorized org, or when no workspace is given', async () => {
+
+            listWithProduction('Connected');
+
+            expect((await SalesforceOrgService.listDataOrgDetails(workspaceRoot, homeDirectoryPath, { [TARGET_ORG_ENVIRONMENT_VARIABLE]: 'nobody' })).orgDetails).toEqual([CONNECTED_SANDBOX, ACTIVE_SCRATCH_ORG]);
+            expect((await SalesforceOrgService.listDataOrgDetails()).orgDetails).toEqual([CONNECTED_SANDBOX, ACTIVE_SCRATCH_ORG]);
+
+        });
+
+        it('reads an org locally by username or alias, marking the default, and starts no CLI process', async () => {
+
+            (AuthInfo.listAllAuthorizations as jest.Mock).mockResolvedValue([...ORG_AUTHORIZATIONS, PRODUCTION_AUTHORIZATION]);
+            (execFile as unknown as jest.Mock).mockReset();
+            const defaultEnvironment = { [TARGET_ORG_ENVIRONMENT_VARIABLE]: 'prod' };
+
+            expect(await SalesforceOrgService.readLocalDataOrgDetail(undefined, workspaceRoot, homeDirectoryPath, defaultEnvironment))
+                .toEqual({ targetOrgIdentifier: 'prod', username: 'prod@example.com', alias: 'prod', isDefault: true });
+            expect(await SalesforceOrgService.readLocalDataOrgDetail('qa@example.com.qa', workspaceRoot, homeDirectoryPath, defaultEnvironment)).toEqual(CONNECTED_SANDBOX);
+            expect(await SalesforceOrgService.readLocalDataOrgDetail('qa', workspaceRoot, homeDirectoryPath, defaultEnvironment)).toEqual(CONNECTED_SANDBOX);
+            expect(await SalesforceOrgService.readLocalDataOrgDetail('gone@example.com', workspaceRoot, homeDirectoryPath, defaultEnvironment)).toBeUndefined();
+            expect(await SalesforceOrgService.readLocalDataOrgDetail(undefined, workspaceRoot, homeDirectoryPath, {})).toBeUndefined();
+            expect(execFile).not.toHaveBeenCalled();
 
         });
 
