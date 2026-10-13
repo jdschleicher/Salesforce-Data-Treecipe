@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.82.1] - salesforceObjectsPath must stay inside the workspace
+## [3.82.2] - salesforceObjectsPath must stay inside the workspace
 
 Closes [#117](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/117).
 
@@ -11,6 +11,19 @@ Closes [#117](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/11
 - **Global value sets are read from inside the workspace too.** `globalValueSets/` is looked for beside the objects directory, found by `ConfigurationService.resolveSalesforceMetadataParentPath` with `path.dirname`. The old helper only split on `/`, so with the resolved Windows path it found no parent and read `<drive>:\globalValueSets\` instead. An objects directory that is the workspace folder itself (`"./"`) used to send that read to the folder above the workspace; it now reads `<workspace>/globalValueSets/`. The `/`-only `VSCodeWorkspaceService.getParentPath` is removed.
 - **Now works:** a value with no `./` prefix (`"force-app/main/default/objects"`), and backslash paths written by hand.
 - **Unchanged:** `"./force-app/main/default/objects/"`, with or without the trailing slash, resolves to the same folder as before.
+
+## [3.82.1] - One implementation of the custom relationship mapping lookup
+
+Closes [#116](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/116).
+
+`RelationshipService` held the custom → OOTB lookup merge twice: `resolveParentReferenceForField`, which `DirectoryProcessor` calls for every lookup it cannot resolve on its own, and `getMergedReferenceLookupMap`, which nothing outside its own eight tests called. The two could drift apart, and those tests guarded code that never ran during recipe generation.
+
+- **Decision: delete the merged map.** Nothing used it, so `resolveParentReferenceForField` stays as the only implementation. Wiring the merged map in would have made one per-field lookup step through every mapping unless the map were built once per walk, and that adds work for a view no feature reads. If a diagnostic view of the effective lookup map is ever wanted, it can be built from the resolver.
+- **No coverage lost.** The merged map's cases now run against the resolver: OOTB fallback with no, `undefined` or empty mappings; several custom mappings each resolving to their own parent; a bare `AccountId` custom key that cannot override the OOTB entry; a `CustomObject__c.AccountId` key that wins for that object only; malformed keys (no object, no field, more than one dot) skipped while valid mappings beside them still resolve; and an empty parent value skipped in favor of the OOTB fallback.
+- **Unreachable code removed.** The merged map's OOTB-override guard could never fire (a valid custom key always has a dot and an OOTB key never does). `getOotbReferenceLookupMap` looked like it cached but built its map again on every call, and is now one frozen static map. `isValidCustomRelationshipKey`'s empty or non-string key check is gone too, since its only caller always passes `Object.Field`.
+- **A field named like an `Object.prototype` member no longer resolves to it.** The OOTB fallback used to read the map with a plain index, so a lookup field named `constructor` resolved to a function. It now checks for an own key and resolves to nothing.
+- **A custom mapping whose parent is not a string is skipped.** `treecipe.config.json` is hand-edited and its values were never type-checked, so `"Obj.Field": 42` came back from a method typed `string | undefined`. It now falls back to the OOTB map like an empty value does. The object-name guard downstream already refused such a value, so no recipe changes.
+- **Unchanged:** a custom key still resolves, the OOTB fallback still applies, an invalid key is still skipped, a field with no mapping still resolves to `undefined`, and the #113 tests that follow a custom mapping through to the relationship trees and recipe files pass without changes.
 
 ## [3.82.0] - Recipe Cockpit: rename and favorite a previously used data set
 
