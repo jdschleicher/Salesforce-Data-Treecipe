@@ -1720,6 +1720,48 @@ describe('the one data set insert, shared by Insert Data Set by Directory and th
 
         });
 
+        test('counts every failed record of the stopping file, and says nothing was deleted when nothing was', async () => {
+
+            writeThreeFiles();
+            jest.spyOn(CollectionsApiService, 'processAndInsertCollectionFile').mockImplementation(async (collectionsApiFilePath: string, _recordTypes, _createdIds, _connection, _allOrNone, allResults: Record<string, Record<string, any[]>>) => {
+                if ( !collectionsApiFilePath.endsWith('collectionsApi-Contact.json') ) {
+                    return true;
+                }
+                allResults.FailureResults.Contact = [{ success: false, errors: [{ statusCode: 'REQUIRED_FIELD_MISSING', message: 'LastName' }] }, { success: false, errors: [{ statusCode: 'REQUIRED_FIELD_MISSING', message: 'LastName' }] }];
+                return false;
+            });
+
+            const insertResult = await insertFolder(buildConnection(), false);
+
+            expect(insertResult).toMatchObject({ outcome: 'stopped', isRolledBack: false, failedRecordCount: 2 });
+            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0]).toBe('Failed to process collectionsApi-Contact.json: 2 records failed.');
+
+        });
+
+        test('names a thrown value that is not an Error by its own text', async () => {
+
+            writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')] }, { Account: 0 });
+            jest.spyOn(CollectionsApiService, 'processAndInsertCollectionFile').mockRejectedValue('socket closed');
+
+            const insertResult = await insertFolder(buildConnection(), false);
+
+            expect(insertResult.requestFailureDetail).toBe('collectionsApi-Account.json failed: socket closed');
+            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0]).toBe('Failed to process collectionsApi-Account.json: socket closed');
+
+        });
+
+        test.each([
+            ['null', null],
+            ['an answer with no errors', { success: false }],
+            ['errors that are not a list', { success: false, errors: 'bad', fileName: 'collectionsApi-Account.json' }],
+            ['a null error entry', { success: false, errors: [null], fileName: 'collectionsApi-Account.json' }],
+            ['an org rejection, which names no file', { success: false, errors: [{ statusCode: 'REQUEST_FAILED', message: 'x' }] }]
+        ])('isRequestFailureResult is false for %s', (_label, objectResult) => {
+
+            expect(CollectionsApiService.isRequestFailureResult(objectResult)).toBe(false);
+
+        });
+
         test('shows nothing of its own when the caller reports how the insert ended (#310)', async () => {
 
             writeThreeFiles();
