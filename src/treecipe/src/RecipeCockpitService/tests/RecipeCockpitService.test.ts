@@ -444,7 +444,12 @@ describe('RecipeCockpitService', () => {
             expect(toggleCentringRule).toContain('align-items: center;');
             expect(toggleCentringRule).toContain('justify-content: center;');
             expect(toggleCentringRule).toContain('padding: 0;');
-            expect(ruleFor(styleSheet, '\\.toggleGlyph path')).toContain('fill: var(--sdt-accent);');
+            // #307: AN OUTLINED CHEVRON, STROKED LIKE THE CHAIN LINK AND THE PIN, NOT A FILLED TRIANGLE
+            const toggleGlyphPathRule = ruleFor(styleSheet, '\\.toggleGlyph path');
+            expect(toggleGlyphPathRule).toContain('fill: none;');
+            expect(toggleGlyphPathRule).toContain('stroke: var(--sdt-accent);');
+            expect(toggleGlyphPathRule).toContain('stroke-linecap: round;');
+            expect(toggleGlyphPathRule).toContain('stroke-linejoin: round;');
             // THE FONT TRIANGLE AT 3.3em IS GONE: IT SAT ON THE BASELINE, OFF CENTRE IN ITS BUTTON
             expect(styleSheet).not.toMatch(/font-size: 3\.3em;/);
             expect(ruleFor(styleSheet, '\\.treeObjectHeader, \\.treeFieldHeader')).toContain('align-items: center;');
@@ -2150,7 +2155,22 @@ describe('RecipeCockpitService', () => {
         const toggleGlyphPathOf = (toggleElement: any) => toggleElement.children[0].children[0].attributes.d;
 
         // #277: THE ▸/▾ IS A PATH CENTRED IN ITS BOX, NOT A FONT GLYPH ON THE TEXT BASELINE; #227: ONE PATH, TURNED BY CSS ON aria-expanded
-        it('draws every Treecipe toggle as one svg triangle that keeps its path and says its state in aria-expanded', () => {
+        // #307: AN OPEN CHEVRON POINTING RIGHT, WHOSE BOX IS CENTRED ON (12, 12) SO THE QUARTER TURN POINTS IT DOWN IN PLACE
+        it('draws the toggle glyph as an open chevron pointing right, centred in its view box', () => {
+
+            expect(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH).not.toMatch(/Z/i);
+            const coordinates = (RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+            const xs = coordinates.filter((_value, index) => index % 2 === 0);
+            const ys = coordinates.filter((_value, index) => index % 2 === 1);
+            expect(xs).toHaveLength(3);
+            expect((Math.min(...xs) + Math.max(...xs)) / 2).toBe(12);
+            expect((Math.min(...ys) + Math.max(...ys)) / 2).toBe(12);
+            expect(xs[1]).toBeGreaterThan(xs[0]);
+            expect(xs[2]).toBe(xs[0]);
+
+        });
+
+        it('draws every Treecipe toggle as one svg chevron that keeps its path and says its state in aria-expanded', () => {
 
             const { panel } = renderTreeRecipe();
             const [firstTreeCard] = treeCardsOf(panel);
