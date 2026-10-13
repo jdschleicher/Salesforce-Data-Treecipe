@@ -1,5 +1,21 @@
 # Change Log
 
+## [3.80.0] - Recipe Cockpit: "Generate permission set…" writes a create/read permission set for a tree into the project
+
+Closes [#306](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/306).
+
+Finding which object and field access the running user lacked before a tree insert meant inserting, reading the failure, editing a permission set and trying again. **Assign permission sets to me…** could only offer permission sets the project already had. A new button beside it writes one that covers the tree.
+
+- **What it grants.** Create and Read on every object the tree inserts (once each, with a recipe, not excluded), and nothing else on the object: no Edit, Delete, View All or Modify All. Every field the recipe lists for those objects gets `readable`, and `editable` unless the org computes it (a formula, roll-up summary or auto number field).
+- **What it leaves out, and counts.** Required and master-detail fields, which Salesforce refuses in `fieldPermissions`; a STANDARD field (any name not ending `__c`/`__pc`) unless its XML says `<required>false</required>`, because a retrieve leaves `<required>` out of standard fields the org requires (`Contact.LastName`, `Opportunity.StageName`); the standard fields only the recipe carries (`Name`, `RecordTypeId`); a field whose source XML is missing or not a `<CustomField>`; and any object or field name that is not an api name. The objects wrapper records neither `<required>` nor `<formula>` (a formula keeps its result type), so each field's XML is read under `salesforceObjectsPath` when the permission set is written, which works for older runs too.
+- **Where.** `<default package directory>/main/default/permissionsets/SDT_Treecipe/SDT_<tree>.permissionset-meta.xml`, never at the first level of `permissionsets/`. The package directory is the one `sfdx-project.json` marks `default`, or its first when none is (as the Salesforce CLI resolves it), from the same strict read of `sfdx-project.json` the assign button uses; a missing or unparseable file is refused with a warning, so the assign button always finds the file. Both the objects path and the folder written to must be inside the workspace: the deepest existing folder is checked before any folder is made, and the folder again once it exists, so a linked `permissionsets/` or `SDT_Treecipe/` makes nothing outside the workspace.
+- **Name and label.** `SDT_` plus the tree's folder name with every other character made one underscore, ends trimmed, cut to 80 (`Account-thru-OtherChildObject__c` → `SDT_Account_thru_OtherChildObject_c`); a folder name that leaves nothing usable is refused. The label is the tree's own name, or its title, on one line and cut to 80. All text is XML-escaped.
+- **Deterministic.** Objects and fields are sorted with `<`, so writing it again for the same tree gives the same bytes on any machine.
+- **Confirm, then write.** A modal names the file, what it grants, whether it overwrites an existing file (Treecipe owns it), and that it will not be deployed. Cancel writes nothing.
+- **Nothing is deployed** (#302 stands). The information notification offers **Open file**, **Copy deploy command** (`sf project deploy start --metadata PermissionSet:<name>`, put on the clipboard and never run) and **Assign permission sets to me…**, which goes through the same router as a click so every assign guard still applies. A test fails if the generate path builds a deploy argv or runs the CLI.
+- **Messages.** The panel posts `generateTreePermissionSet {treeKey}`, matched against `nameableTreeKeys`; it routes to nothing for a card not drawn, a tree whose every object is excluded, or while a recipe write, a scratch org run or a permission set assignment runs, and the host checks those runs again after the modal, right before writing. The object-folder search never walks into an object folder. The button is disabled with its reason in the last three of those cases.
+- **Unchanged:** the assign button's discovery and flow, the sandbox-and-scratch-only rule, and both faker backends.
+
 ## [3.79.1] - Recipe Cockpit: the expand/collapse toggles are an outlined chevron
 
 Closes [#307](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/307).

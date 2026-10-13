@@ -16,6 +16,7 @@ import {
     PermissionSetAssignOutcome,
     RecipeCockpitPermissionSetAssign
 } from './RecipeCockpitPermissionSetAssign';
+import { RecipeCockpitPermissionSetGenerate } from './RecipeCockpitPermissionSetGenerate';
 import {
     DevHubConfigSource,
     IDataOrgDetail,
@@ -322,7 +323,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Treecipe tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy.
+It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Treecipe tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -975,6 +976,14 @@ export const RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL = 'Assign permission set
 
 export const RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL = 'Assign';
 
+export const RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL = 'Generate permission set…';
+
+export const RECIPE_COCKPIT_GENERATE_PERMISSION_SET_CONFIRM_LABEL = 'Write permission set';
+
+export const RECIPE_COCKPIT_GENERATE_PERMISSION_SET_OPEN_LABEL = 'Open file';
+
+export const RECIPE_COCKPIT_GENERATE_PERMISSION_SET_COPY_LABEL = 'Copy deploy command';
+
 export const RECIPE_COCKPIT_PERMISSION_SET_PICK_PLACEHOLDER = 'Choose the permission sets to assign to you for this tree';
 
 export const RECIPE_COCKPIT_PERMISSION_SET_ORG_PLACEHOLDER = 'Choose the sandbox or scratch org to assign this tree\'s permission sets in';
@@ -1140,6 +1149,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'createScratchOrg' }
     | { kind: 'postScratchOrgState'; hostMessage: IRecipeCockpitScratchOrgStateMessage }
     | { kind: 'assignTreePermissionSets'; treeKey: string; isSelectedOrg: boolean }
+    | { kind: 'generateTreePermissionSet'; treeKey: string }
     // A REFUSAL IS A WARNING NOTIFICATION, AND THE STATE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refusePermissionSetAssign'; refusalText?: string; hostMessage: IRecipeCockpitPermissionSetAssignStateMessage }
     | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
@@ -3420,6 +3430,11 @@ export class RecipeCockpitService {
                 await this.assignTreePermissionSetsFromPanel(cockpitPanel, panelAction.treeKey, panelAction.isSelectedOrg);
                 return;
 
+            case 'generateTreePermissionSet':
+
+                await this.generateTreePermissionSetFromPanel(cockpitPanel, panelAction.treeKey);
+                return;
+
             case 'refusePermissionSetAssign':
 
                 if ( panelAction.refusalText ) {
@@ -4711,6 +4726,205 @@ export class RecipeCockpitService {
             }
 
         }
+
+    }
+
+    private static isPermissionSetGenerateInFlight = false;
+
+    /*
+        "Generate permission set…" (#306): one permission set granting Create and Read on every
+        object the tree inserts and access to its recipe fields, written to
+        <default package directory>/main/default/permissionsets/SDT_Treecipe/ after a modal that says
+        it will not be deployed. The cockpit deploys no metadata (#302): the notification offers the
+        deploy command for the clipboard, and "Assign permission sets to me…", which goes through the
+        router like a click so every guard of the assign still holds.
+    */
+    private static async generateTreePermissionSetFromPanel(cockpitPanel: vscode.WebviewPanel, treeKey: string) {
+
+        if ( this.isPermissionSetGenerateInFlight ) {
+            return;
+        }
+
+        this.isPermissionSetGenerateInFlight = true;
+
+        try {
+            await this.performPermissionSetGenerate(cockpitPanel, treeKey);
+        } finally {
+            this.isPermissionSetGenerateInFlight = false;
+        }
+
+    }
+
+    private static async performPermissionSetGenerate(cockpitPanel: vscode.WebviewPanel, treeKey: string) {
+
+        const panelState = this.recipeCockpitPanelState;
+        const workspaceRoot = panelState.workspaceRoot;
+        const recipeViewModel = panelState.recipeDataMessage?.recipe;
+        const tree = recipeViewModel?.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+
+        if ( !recipeViewModel || !tree ) {
+            return;
+        }
+
+        const treeLabel = tree.customName || tree.title;
+        const refuse = (refusalText: string) => {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`No permission set was written for ${this.toSingleLine(treeLabel)}: ${refusalText}`));
+        };
+
+        const permissionSetName = RecipeCockpitPermissionSetGenerate.buildPermissionSetName(tree.folderName);
+        if ( !permissionSetName ) {
+            refuse(`its folder name ${this.toSingleLine(tree.folderName)} does not make a permission set name.`);
+            return;
+        }
+
+        let packageDirectoryPath: string;
+        let objectsDirectoryPath: string;
+        try {
+            packageDirectoryPath = RecipeCockpitPermissionSetGenerate.resolveDefaultPackageDirectoryPath(workspaceRoot);
+            objectsDirectoryPath = path.resolve(workspaceRoot, ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration());
+        } catch (projectError) {
+            refuse(this.describeThrown(projectError));
+            return;
+        }
+
+        if ( !SfdxProjectService.isPathContainedInWorkspace(objectsDirectoryPath, workspaceRoot) ) {
+            refuse('the objects path in treecipe.config.json is outside this workspace.');
+            return;
+        }
+
+        // listTreeInsertObjectApiNames ANSWERS ONLY OBJECTS THE RECIPE HOLDS, SO EACH IS ONE OF recipeViewModel.objects
+        const insertObjectApiNames = new Set(this.listTreeInsertObjectApiNames(recipeViewModel, tree));
+        const plan = await RecipeCockpitPermissionSetGenerate.buildPermissionSetPlan(objectsDirectoryPath, recipeViewModel.objects
+            .filter(objectViewModel => insertObjectApiNames.has(objectViewModel.objectApiName))
+            .map(objectViewModel => ({
+                objectApiName: objectViewModel.objectApiName,
+                fieldApiNames: objectViewModel.fields
+                    .filter(fieldViewModel => !fieldViewModel.isOnlyInRecipeFile)
+                    .map(fieldViewModel => fieldViewModel.fieldApiName)
+            })));
+
+        if ( plan.objectApiNames.length === 0 ) {
+            refuse('none of its objects has an api name.');
+            return;
+        }
+
+        const permissionSetFilePath = RecipeCockpitPermissionSetGenerate.getPermissionSetFilePath(packageDirectoryPath, permissionSetName);
+        const relativeFilePath = path.relative(workspaceRoot, permissionSetFilePath).split(path.sep).join('/');
+        const isOverwrite = fs.existsSync(permissionSetFilePath);
+        const describeCount = (count: number, noun: string) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+        const objectCountText = describeCount(plan.objectApiNames.length, 'object');
+        const fieldCountText = describeCount(plan.fieldPermissions.length, 'field');
+
+        const confirmation = await vscode.window.showWarningMessage(
+            RecipeYamlScalar.escapeForNotification(`${isOverwrite ? 'Overwrite' : 'Write'} the permission set ${permissionSetName} for ${this.toSingleLine(treeLabel)}?`),
+            {
+                modal: true,
+                detail: RecipeYamlScalar.escapeForNotification([
+                    `File: ${relativeFilePath}`,
+                    `Grants Create and Read on ${objectCountText} and access to ${fieldCountText}, read-only where the org computes the value.`,
+                    ...( isOverwrite ? ['The file already exists and will be overwritten: Treecipe owns this file.'] : [] ),
+                    'It will not be deployed: deploy it with your own flow, then assign it with "Assign permission sets to me…".'
+                ].join('\n'))
+            },
+            RECIPE_COCKPIT_GENERATE_PERMISSION_SET_CONFIRM_LABEL
+        );
+
+        if ( confirmation !== RECIPE_COCKPIT_GENERATE_PERMISSION_SET_CONFIRM_LABEL ) {
+            return;
+        }
+
+        // THE ROUTER CHECKED THESE AT THE CLICK; ONE CAN HAVE STARTED WHILE THE MODAL WAS OPEN, AND NOTHING AWAITS BETWEEN HERE AND THE WRITE
+        const currentPanelState = this.recipeCockpitPanelState;
+        if ( currentPanelState.wireLookupStateMessage || currentPanelState.scratchOrgStateMessage?.isRunning || currentPanelState.permissionSetAssignStateMessage?.isRunning ) {
+            refuse('a recipe write, a scratch org run or a permission set assignment started meanwhile. Try again once it has finished.');
+            return;
+        }
+
+        const permissionSetFolderPath = path.dirname(permissionSetFilePath);
+        try {
+            // THE DEEPEST FOLDER THAT EXISTS IS CHECKED BEFORE ANY IS MADE: A LINKED ANCESTOR WOULD OTHERWISE GET FOLDERS MADE OUTSIDE THE WORKSPACE
+            let existingAncestorPath = permissionSetFolderPath;
+            while ( !fs.existsSync(existingAncestorPath) && path.dirname(existingAncestorPath) !== existingAncestorPath ) {
+                existingAncestorPath = path.dirname(existingAncestorPath);
+            }
+            if ( !SfdxProjectService.isPathContainedInWorkspace(existingAncestorPath, workspaceRoot) ) {
+                refuse(`${relativeFilePath} is not inside this workspace.`);
+                return;
+            }
+            fs.mkdirSync(permissionSetFolderPath, { recursive: true });
+            // CHECKED AGAIN ONCE THE FOLDER EXISTS: writeFileSync FOLLOWS A LINKED FOLDER WHEREVER IT POINTS
+            if ( !SfdxProjectService.isPathContainedInWorkspace(permissionSetFolderPath, workspaceRoot) ) {
+                refuse(`${relativeFilePath} is not inside this workspace.`);
+                return;
+            }
+            if ( fs.existsSync(permissionSetFilePath) && !fs.lstatSync(permissionSetFilePath).isFile() ) {
+                refuse(`${relativeFilePath} exists and is not a file, so it was left as it is.`);
+                return;
+            }
+            fs.writeFileSync(permissionSetFilePath, RecipeCockpitPermissionSetGenerate.buildPermissionSetXml(
+                RecipeCockpitPermissionSetGenerate.buildPermissionSetLabel(treeLabel, permissionSetName),
+                tree.folderName,
+                plan
+            ), 'utf8');
+        } catch (writeError) {
+            refuse(this.describeThrown(writeError));
+            return;
+        }
+
+        const leftOutTexts = ([
+            [plan.notGrantableFieldCount, 'required or master-detail field', ', which Salesforce does not take in a permission set'],
+            [plan.requiredUnknownFieldCount, 'standard field', ' without <required>false</required> in its source file'],
+            [plan.unreadableFieldCount, 'field', ' whose source file could not be read'],
+            [plan.skippedNameCount, 'invalid api name', '']
+        ] as Array<[number, string, string]>)
+            .filter(([count]) => count > 0)
+            .map(([count, noun, reason]) => `${describeCount(count, noun)}${reason}`);
+
+        this.showGeneratedPermissionSetNotification(
+            RecipeYamlScalar.escapeForNotification(`Wrote ${permissionSetName} to ${relativeFilePath}: Create and Read on ${objectCountText}, access to ${fieldCountText}.${leftOutTexts.length > 0 ? ` Left out: ${leftOutTexts.join('; ')}.` : ''} Deploy it, then assign it.`),
+            permissionSetName,
+            permissionSetFilePath,
+            workspaceRoot,
+            cockpitPanel,
+            treeKey
+        );
+
+    }
+
+    // NOT AWAITED: THE BUTTONS ACT WHENEVER THE READER CLICKS, ON WHATEVER IS ON SCREEN THEN
+    private static showGeneratedPermissionSetNotification(notificationText: string,
+                                                            permissionSetName: string,
+                                                            permissionSetFilePath: string,
+                                                            workspaceRoot: string,
+                                                            cockpitPanel: vscode.WebviewPanel,
+                                                            treeKey: string) {
+
+        Promise.resolve(vscode.window.showInformationMessage(
+            notificationText,
+            RECIPE_COCKPIT_GENERATE_PERMISSION_SET_OPEN_LABEL,
+            RECIPE_COCKPIT_GENERATE_PERMISSION_SET_COPY_LABEL,
+            RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL
+        ))
+            .then(async chosenAction => {
+
+                if ( chosenAction === RECIPE_COCKPIT_GENERATE_PERMISSION_SET_OPEN_LABEL ) {
+                    await this.openWorkspaceResultFile(permissionSetFilePath, workspaceRoot, 'The generated permission set no longer exists in this workspace.');
+                } else if ( chosenAction === RECIPE_COCKPIT_GENERATE_PERMISSION_SET_COPY_LABEL ) {
+                    await vscode.env.clipboard.writeText(RecipeCockpitPermissionSetGenerate.buildDeployCommand(permissionSetName));
+                } else if ( chosenAction === RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL && this.recipeCockpitPanel === cockpitPanel ) {
+                    const panelState = this.recipeCockpitPanelState;
+                    const assignAction = this.routePanelMessage({
+                        command: 'assignTreePermissionSets',
+                        treeKey: treeKey,
+                        ...( panelState.dataOrgSelection ? { orgIndex: panelState.dataOrgSelection.orgIndex } : {} )
+                    }, panelState);
+                    if ( assignAction ) {
+                        await this.executePanelAction(cockpitPanel, assignAction);
+                    }
+                }
+
+            })
+            .catch(() => undefined);
 
     }
 
@@ -6679,6 +6893,36 @@ export class RecipeCockpitService {
             }
 
             /*
+                "Generate permission set…" (#306) posts the tree's KEY and nothing else: which objects
+                and fields, the name, the folder and the file are all the host's. It writes into the
+                project, so it waits for a recipe write, a scratch org run (which deploys the project)
+                and a permission set assignment (which reads the project's permission sets) to end.
+                A tree whose every object is excluded has nothing to grant. A refusal is silent: the
+                panel disables nothing on the click, so there is no button to give back.
+            */
+            case 'generateTreePermissionSet': {
+
+                const { treeKey } = panelMessage;
+                const recipeDataMessage = panelState.recipeDataMessage;
+
+                if ( typeof treeKey !== 'string'
+                        || !recipeDataMessage
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey)
+                        || panelState.wireLookupStateMessage
+                        || panelState.scratchOrgStateMessage?.isRunning
+                        || panelState.permissionSetAssignStateMessage?.isRunning ) {
+                    return undefined;
+                }
+
+                const tree = recipeDataMessage.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+
+                return tree && this.listTreeInsertObjectApiNames(recipeDataMessage.recipe, tree).length > 0
+                    ? { kind: 'generateTreePermissionSet', treeKey: treeKey }
+                    : undefined;
+
+            }
+
+            /*
                 "Open in browser" (#279) names the org by INDEX, and only the org SELECTED now is
                 opened: an index the panel could have kept from an older listing, or any other org
                 the list holds, is refused. Which username is the host's. A refusal still answers,
@@ -8099,7 +8343,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader, .treeObjectHeader, .treeField, .treeDataset { transition: background-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, box-shadow ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease; }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treePermissionSets {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treePermissionSets, .treeGeneratePermissionSet {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
@@ -8111,7 +8355,7 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
+    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .treeGeneratePermissionSet:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
     .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
@@ -8140,7 +8384,7 @@ ${this.buildPaletteCustomProperties()}
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
     .treeAddFriendChoice, .historyAction { text-decoration: underline; }
-    .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treePermissionSets:disabled {
+    .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treePermissionSets:disabled, .treeGeneratePermissionSet:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
         border-color: var(--sdt-border);
@@ -8396,6 +8640,7 @@ ${this.buildPaletteCustomProperties()}
     const INSERT_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_ACTION_LABEL)};
     const INSERT_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_RUNNING_LABEL)};
     const PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL)};
+    const GENERATE_PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL)};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
     const DATA_ORG_CONNECTION_CHECK_INSERT_REASON = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON)};
     const DATA_ORG_LOADING_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER)};
@@ -10628,8 +10873,21 @@ ${this.buildPaletteCustomProperties()}
         });
 
         controlsElement.appendChild(buttonElement);
-
         treeState.permissionSetButtonElement = buttonElement;
+
+        /*
+            "Generate permission set…" (#306) posts the tree's KEY alone; what is written, where, and
+            the confirmation are the host's. It deploys nothing, so it needs no org and holds no
+            other button.
+        */
+        const generateButtonElement = createElement('button', 'treeGeneratePermissionSet', GENERATE_PERMISSION_SET_ACTION_LABEL);
+        generateButtonElement.addEventListener('click', function () {
+            if (generateButtonElement.disabled || renderedSequence === null) { return; }
+            vscodeApi.postMessage({ command: 'generateTreePermissionSet', treeKey: treeState.tree.treeKey });
+        });
+        controlsElement.appendChild(generateButtonElement);
+        treeState.generatePermissionSetButtonElement = generateButtonElement;
+
         drawTreePermissionSet(treeState);
 
         return controlsElement;
@@ -10641,6 +10899,16 @@ ${this.buildPaletteCustomProperties()}
         if (!treeState.permissionSetButtonElement) { return; }
 
         treeState.permissionSetButtonElement.disabled = isPermissionSetAssignRunning || insertRunningTreeKey !== null || isScratchOrgRunning;
+
+        const generateButtonElement = treeState.generatePermissionSetButtonElement;
+        if (!generateButtonElement) { return; }
+
+        const generateReason = listTreeInsertObjectApiNames(treeState).length === 0 ? 'Every object of this tree is excluded, so there is nothing to grant.'
+            : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
+            : isScratchOrgRunning ? 'A scratch org is being set up.'
+            : '';
+        generateButtonElement.disabled = generateReason !== '';
+        generateButtonElement.setAttribute('title', generateReason || 'Write a permission set granting Create and Read on this tree\\'s objects and access to its fields into this project\\'s permissionsets/SDT_Treecipe folder, after a confirmation. Nothing is deployed.');
 
     }
 
