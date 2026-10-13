@@ -1,5 +1,12 @@
 # Change Log
 
+## [3.82.2] - The extension icon is a PNG, so a release can publish again
+
+The release build failed at `vsce publish` with "The provided icon is not a supported image format": `package.json` named `images/datatreecipe.webp` as the icon, and the Marketplace rejects a WebP icon at publish (`vsce package` still builds with it, so only the release job showed the failure). While it failed, no new version reached the Marketplace, so an installed extension kept showing behavior removed since, such as the Recipe Cockpit's metadata deploy messages (#302).
+
+- **The icon is `images/datatreecipe.png`**, 256 x 256, drawn from the same artwork. The WebP file is removed.
+- **Unchanged:** every command and the extension's code.
+
 ## [3.82.1] - One implementation of the custom relationship mapping lookup
 
 Closes [#116](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/116).
