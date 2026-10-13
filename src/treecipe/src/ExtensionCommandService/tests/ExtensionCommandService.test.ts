@@ -2974,6 +2974,35 @@ describe('ExtensionCommandService', () => {
 
         });
 
+        test.each([
+            ['./../../.ssh', 'is outside this workspace.'],
+            ['/home/someone/.ssh', 'is an absolute path.'],
+        ])('given the objects path %p, abandons the command before any directory is read', async (configuredObjectsPath, expectedReason) => {
+
+            (ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration as jest.Mock).mockReturnValue(configuredObjectsPath);
+            const initializeSpy = jest.spyOn(GlobalValueSetSingleton.getInstance(), 'initialize');
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+            expect(vscode.window.withProgress).not.toHaveBeenCalled();
+            expect(initializeSpy).not.toHaveBeenCalled();
+            expect(processAllObjectsSpy).not.toHaveBeenCalled();
+            expect(createRecipeFilesSpy).not.toHaveBeenCalled();
+            expect(handleCapturedErrorSpy).toHaveBeenCalledTimes(1);
+            expect(handleCapturedErrorSpy.mock.calls[0][0].message).toContain(`is ${JSON.stringify(configuredObjectsPath)}, which ${expectedReason}`);
+
+        });
+
+        test('given an objects path with no ./ prefix, walks the objects directory rather than "<workspace>/undefined"', async () => {
+
+            (ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration as jest.Mock).mockReturnValue('force-app/main/default/objects');
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+            expect(processAllObjectsSpy.mock.calls[0][0].fsPath).toBe(path.resolve(workspaceRoot, 'force-app', 'main', 'default', 'objects'));
+
+        });
+
         test('given the walk is handed the progress port, its cancel reads the notification\'s token', async () => {
 
             let isCancellationRequestedDuringWalk: boolean | undefined;
@@ -3916,6 +3945,18 @@ describe('ExtensionCommandService', () => {
 
             expect(renderedSkippedField.fieldApiName).toBe('Unspecced__c');
             expect(renderedSkippedField.warning).toContain('valueSettings');
+
+        });
+
+        test('given an objects path outside the workspace, opens no panel and names the configured value', async () => {
+
+            (ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration as jest.Mock).mockReturnValue('./../../.ssh');
+
+            await extensionCommandService.openPicklistDependencyExplorer();
+
+            expect(vscode.window.createWebviewPanel).not.toHaveBeenCalled();
+            expect(PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory).not.toHaveBeenCalled();
+            expect(handleCapturedErrorSpy.mock.calls[0][0].message).toContain('"salesforceObjectsPath" in treecipe.config.json is "./../../.ssh", which is outside this workspace.');
 
         });
 

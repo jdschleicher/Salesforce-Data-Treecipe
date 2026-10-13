@@ -575,9 +575,7 @@ export class ExtensionCommandService {
 
             if (workspaceRoot) {
             
-                const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
-                const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
-                const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+                const fullPathToObjectsDirectory = ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot);
                 
                 /* 
                 -- initialize globalvaluesets singleton --
@@ -808,9 +806,7 @@ export class ExtensionCommandService {
     */
     private async generatePicklistDependencyClasses(extensionPath: string, workspaceRoot: string): Promise<IPicklistDependencyGenerationResult | undefined> {
 
-        const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
-        const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
-        const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+        const fullPathToObjectsDirectory = ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot);
 
         if ( !fs.existsSync(fullPathToObjectsDirectory) ) {
             throw new Error(`No objects directory found at "${fullPathToObjectsDirectory}". Check the "salesforceObjectsPath" value in treecipe.config.json, or re-run "Initiate Configuration File", and run the command again.`);
@@ -1568,9 +1564,7 @@ export class ExtensionCommandService {
                 throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
             }
 
-            const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
-            const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
-            const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+            const fullPathToObjectsDirectory = ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot);
 
             if ( !fs.existsSync(fullPathToObjectsDirectory) ) {
                 throw new Error(`No objects directory found at "${fullPathToObjectsDirectory}". Check the "salesforceObjectsPath" value in treecipe.config.json, or re-run "Initiate Configuration File", and run the command again.`);
@@ -1946,9 +1940,7 @@ export class ExtensionCommandService {
                 throw new Error('There doesn\'t seem to be any folders or a workspace in this VSCode Window.');
             }
 
-            const relativePathToObjectsDirectory = ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration();
-            const pathWithoutRelativeSyntax = relativePathToObjectsDirectory.split("./")[1];
-            const fullPathToObjectsDirectory = `${workspaceRoot}/${pathWithoutRelativeSyntax}`;
+            const fullPathToObjectsDirectory = ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot);
 
             if ( !fs.existsSync(fullPathToObjectsDirectory) ) {
                 throw new Error(`No objects directory found at "${fullPathToObjectsDirectory}". Check the "salesforceObjectsPath" value in treecipe.config.json, or re-run "Initiate Configuration File", and run the command again.`);

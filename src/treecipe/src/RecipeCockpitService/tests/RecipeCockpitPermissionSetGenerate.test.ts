@@ -567,7 +567,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             await openCockpit();
             await generate();
 
-            expect(warningTexts().at(-1)).toContain('the objects path in treecipe.config.json is outside this workspace');
+            expect(warningTexts().at(-1)).toContain('"salesforceObjectsPath" in treecipe.config.json is "../../elsewhere", which is outside this workspace');
             expect(fs.existsSync(generatedFilePath())).toBe(false);
 
         });

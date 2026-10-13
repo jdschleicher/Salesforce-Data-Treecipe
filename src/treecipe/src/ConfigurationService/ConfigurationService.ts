@@ -115,6 +115,47 @@ export class ConfigurationService {
 
     }
 
+    // THE OBJECTS DIRECTORY EVERY COMMAND WALKS, OR A THROW BEFORE ANY DIRECTORY IS READ
+    static resolveObjectsDirectoryPath(workspaceRoot: string): string {
+
+        return this.resolveConfiguredObjectsPath(this.getObjectsPathFromTreecipeJSONConfiguration(), workspaceRoot);
+
+    }
+
+    /*
+        salesforceObjectsPath arrives with a cloned repository, so it is held to the workspace
+        rather than trusted. An absolute path is refused even when it lands inside the workspace:
+        the config writer only ever emits a relative one, and an absolute one names one machine.
+        Backslashes are normalized first, as the config writer does, so a hand-written Windows
+        path still resolves -- and so "C:\" cannot slip past the absolute check as a relative name.
+    */
+    static resolveConfiguredObjectsPath(configuredObjectsPath: unknown, workspaceRoot: string): string {
+
+        const configuredValueText = JSON.stringify(configuredObjectsPath) ?? String(configuredObjectsPath);
+        const refuse = (reason: string): never => {
+            throw new Error(`"salesforceObjectsPath" in treecipe.config.json is ${configuredValueText}, which ${reason}. Set it to a path relative to the workspace folder, such as "./force-app/main/default/objects/", or re-run "Initiate Configuration File", and run the command again.`);
+        };
+
+        if ( typeof configuredObjectsPath !== 'string' || configuredObjectsPath.trim() === '' ) {
+            return refuse('is not a path');
+        }
+
+        const forwardSlashObjectsPath = configuredObjectsPath.replace(/\\/g, '/');
+        if ( path.posix.isAbsolute(forwardSlashObjectsPath) || path.win32.isAbsolute(forwardSlashObjectsPath) || /^[A-Za-z]:/.test(forwardSlashObjectsPath) ) {
+            return refuse('is an absolute path');
+        }
+
+        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+        const resolvedObjectsPath = path.resolve(resolvedWorkspaceRoot, ...forwardSlashObjectsPath.split('/'));
+
+        if ( !SfdxProjectService.isPathContainedInWorkspace(resolvedObjectsPath, resolvedWorkspaceRoot) ) {
+            return refuse('is outside this workspace');
+        }
+
+        return resolvedObjectsPath;
+
+    }
+
     static getCustomRelationshipMappings(): Record<string, string> {
 
         const configurationDetail = this.getTreecipeConfigurationDetail();

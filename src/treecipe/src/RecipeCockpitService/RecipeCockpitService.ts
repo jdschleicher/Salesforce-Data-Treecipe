@@ -4781,14 +4781,9 @@ export class RecipeCockpitService {
         let objectsDirectoryPath: string;
         try {
             packageDirectoryPath = RecipeCockpitPermissionSetGenerate.resolveDefaultPackageDirectoryPath(workspaceRoot);
-            objectsDirectoryPath = path.resolve(workspaceRoot, ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration());
+            objectsDirectoryPath = ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot);
         } catch (projectError) {
             refuse(this.describeThrown(projectError));
-            return;
-        }
-
-        if ( !SfdxProjectService.isPathContainedInWorkspace(objectsDirectoryPath, workspaceRoot) ) {
-            refuse('the objects path in treecipe.config.json is outside this workspace.');
             return;
         }
 
