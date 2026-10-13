@@ -794,124 +794,6 @@ describe("Shared Relationship Service Tests", () => {
         });
     });
 
-    describe('getMergedReferenceLookupMap', () => {
-
-        test('given no custom mappings, returns OOTB map only', () => {
-
-            const relationshipService = new RelationshipService();
-            const merged = relationshipService.getMergedReferenceLookupMap();
-
-            expect(merged).toEqual({ "AccountId": "Account" });
-
-        });
-
-        test('given undefined custom mappings, returns OOTB map only', () => {
-
-            const relationshipService = new RelationshipService();
-            const merged = relationshipService.getMergedReferenceLookupMap(undefined);
-
-            expect(merged).toEqual({ "AccountId": "Account" });
-
-        });
-
-        test('given empty custom mappings, returns OOTB map only', () => {
-
-            const relationshipService = new RelationshipService();
-            const merged = relationshipService.getMergedReferenceLookupMap({});
-
-            expect(merged).toEqual({ "AccountId": "Account" });
-
-        });
-
-        test('given valid custom mappings, returns OOTB map merged with custom entries', () => {
-
-            const relationshipService = new RelationshipService();
-            const customMappings = {
-                "CustomObject__c.Primary_Contact__c": "Contact",
-                "Project__c.Owner_Account__c": "Account"
-            };
-
-            const merged = relationshipService.getMergedReferenceLookupMap(customMappings);
-
-            expect(merged).toEqual({
-                "AccountId": "Account",
-                "CustomObject__c.Primary_Contact__c": "Contact",
-                "Project__c.Owner_Account__c": "Account"
-            });
-
-        });
-
-        /*
-            An OOTB key is a bare field api name and a valid custom key is always
-            "ObjectApiName.FieldApiName", so the two key spaces cannot intersect. A custom entry
-            shaped like an OOTB key is therefore rejected as a malformed key -- which is what
-            actually preserves the OOTB entry here, rather than any last-writer-wins ordering.
-        */
-        test('given custom mapping shaped like an OOTB key, the OOTB entry is preserved and the custom entry is not added', () => {
-
-            const relationshipService = new RelationshipService();
-            const customMappings = {
-                "AccountId": "SomeOtherObject__c"
-            };
-
-            const merged = relationshipService.getMergedReferenceLookupMap(customMappings);
-
-            expect(merged["AccountId"]).toBe("Account");
-            expect(merged).toEqual({ "AccountId": "Account" });
-
-        });
-
-        test('given a dotted custom key whose field segment matches an OOTB key, both entries coexist', () => {
-
-            const relationshipService = new RelationshipService();
-            const customMappings = {
-                "CustomObject__c.AccountId": "Some_Other_Account__c"
-            };
-
-            const merged = relationshipService.getMergedReferenceLookupMap(customMappings);
-
-            expect(merged).toEqual({
-                "AccountId": "Account",
-                "CustomObject__c.AccountId": "Some_Other_Account__c"
-            });
-
-        });
-
-        test('given invalid custom keys, invalid entries are skipped and valid entries are kept', () => {
-
-            const relationshipService = new RelationshipService();
-            const customMappings = {
-                "MissingDotKey": "Contact",
-                ".NoObjectPrefix__c": "Contact",
-                "NoFieldSuffix__c.": "Contact",
-                "Too.Many.Dots__c": "Contact",
-                "CustomObject__c.Primary_Contact__c": "Contact"
-            };
-
-            const merged = relationshipService.getMergedReferenceLookupMap(customMappings);
-
-            expect(merged).toEqual({
-                "AccountId": "Account",
-                "CustomObject__c.Primary_Contact__c": "Contact"
-            });
-
-        });
-
-        test('given custom mapping with empty parent value, entry is skipped', () => {
-
-            const relationshipService = new RelationshipService();
-            const customMappings = {
-                "CustomObject__c.Primary_Contact__c": ""
-            };
-
-            const merged = relationshipService.getMergedReferenceLookupMap(customMappings);
-
-            expect(merged).toEqual({ "AccountId": "Account" });
-
-        });
-
-    });
-
     describe('resolveParentReferenceForField', () => {
 
         test('given custom mapping for ObjectApiName.FieldApiName, returns mapped parent', () => {
@@ -1009,6 +891,113 @@ describe("Shared Relationship Service Tests", () => {
             expect(parent).toBe('Account');
 
         });
+
+        test('given empty custom mappings, falls back to OOTB lookup by fieldName', () => {
+
+            const relationshipService = new RelationshipService();
+
+            expect(relationshipService.resolveParentReferenceForField('Contact', 'AccountId', {})).toBe('Account');
+            expect(relationshipService.resolveParentReferenceForField('Contact', 'Primary_Contact__c', {})).toBeUndefined();
+
+        });
+
+        test('given several valid custom mappings, each object/field resolves to its own parent', () => {
+
+            const relationshipService = new RelationshipService();
+            const customMappings = {
+                "CustomObject__c.Primary_Contact__c": "Contact",
+                "Project__c.Owner_Account__c": "Account"
+            };
+
+            expect(relationshipService.resolveParentReferenceForField('CustomObject__c', 'Primary_Contact__c', customMappings)).toBe('Contact');
+            expect(relationshipService.resolveParentReferenceForField('Project__c', 'Owner_Account__c', customMappings)).toBe('Account');
+            expect(relationshipService.resolveParentReferenceForField('Project__c', 'Primary_Contact__c', customMappings)).toBeUndefined();
+
+        });
+
+        /*
+            A valid custom key is always "ObjectApiName.FieldApiName", so a bare key shaped like an
+            OOTB entry is never what the resolver looks up and cannot override it.
+        */
+        test('given custom mapping shaped like an OOTB key, the OOTB parent is still returned', () => {
+
+            const relationshipService = new RelationshipService();
+            const customMappings = {
+                "AccountId": "SomeOtherObject__c"
+            };
+
+            const parent = relationshipService.resolveParentReferenceForField('Contact', 'AccountId', customMappings);
+
+            expect(parent).toBe('Account');
+
+        });
+
+        test('given a dotted custom key whose field segment matches an OOTB key, the custom parent wins for that object only', () => {
+
+            const relationshipService = new RelationshipService();
+            const customMappings = {
+                "CustomObject__c.AccountId": "Some_Other_Account__c"
+            };
+
+            expect(relationshipService.resolveParentReferenceForField('CustomObject__c', 'AccountId', customMappings)).toBe('Some_Other_Account__c');
+            expect(relationshipService.resolveParentReferenceForField('Contact', 'AccountId', customMappings)).toBe('Account');
+
+        });
+
+        test.each([
+            ['', 'NoObjectPrefix__c', ".NoObjectPrefix__c"],
+            ['NoFieldSuffix__c', '', "NoFieldSuffix__c."],
+            ['Too', 'Many.Dots__c', "Too.Many.Dots__c"],
+            ['Too.Many', 'Dots__c', "Too.Many.Dots__c"]
+        ])('given an invalid custom key %#, the mapping is skipped and nothing resolves', (objectApiName, fieldApiName, customKey) => {
+
+            const relationshipService = new RelationshipService();
+            const customMappings = {
+                [customKey]: "Contact",
+                "CustomObject__c.Primary_Contact__c": "Contact"
+            };
+
+            expect(relationshipService.resolveParentReferenceForField(objectApiName, fieldApiName, customMappings)).toBeUndefined();
+            expect(relationshipService.resolveParentReferenceForField('CustomObject__c', 'Primary_Contact__c', customMappings)).toBe('Contact');
+
+        });
+
+        test('given a custom key with no dot, it is never matched and the valid mappings beside it still resolve', () => {
+
+            const relationshipService = new RelationshipService();
+            const customMappings = {
+                "MissingDotKey": "Contact",
+                "CustomObject__c.Primary_Contact__c": "Contact"
+            };
+
+            expect(relationshipService.resolveParentReferenceForField('CustomObject__c', 'MissingDotKey', customMappings)).toBeUndefined();
+            expect(relationshipService.resolveParentReferenceForField('CustomObject__c', 'Primary_Contact__c', customMappings)).toBe('Contact');
+
+        });
+
+        test('given custom mapping with empty parent value, the mapping is skipped and the OOTB fallback applies', () => {
+
+            const relationshipService = new RelationshipService();
+            const customMappings = {
+                "CustomObject__c.Primary_Contact__c": "",
+                "CustomObject__c.AccountId": ""
+            };
+
+            expect(relationshipService.resolveParentReferenceForField('CustomObject__c', 'Primary_Contact__c', customMappings)).toBeUndefined();
+            expect(relationshipService.resolveParentReferenceForField('CustomObject__c', 'AccountId', customMappings)).toBe('Account');
+
+        });
+
+        test.each(['constructor', 'toString', '__proto__', 'hasOwnProperty'])(
+            'given a field named %s, the OOTB fallback does not resolve an Object.prototype member',
+            (fieldApiName) => {
+
+                const relationshipService = new RelationshipService();
+
+                expect(relationshipService.resolveParentReferenceForField('Contact', fieldApiName)).toBeUndefined();
+
+            }
+        );
 
     });
 

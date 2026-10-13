@@ -1,5 +1,17 @@
 # Change Log
 
+## [3.81.1] - One implementation of the custom relationship mapping lookup
+
+Closes [#116](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/116).
+
+`RelationshipService` held the custom → OOTB lookup merge twice: `resolveParentReferenceForField`, which `DirectoryProcessor` calls for every lookup it cannot resolve on its own, and `getMergedReferenceLookupMap`, which nothing outside its own nine tests called. The two could drift apart, and those tests guarded code that never ran during recipe generation.
+
+- **Decision: delete the merged map.** Nothing used it, so `resolveParentReferenceForField` stays as the only implementation. Wiring the merged map in would have made one per-field lookup step through every mapping unless the map were built once per walk, and that adds work for a view no feature reads. If a diagnostic view of the effective lookup map is ever wanted, it can be built from the resolver.
+- **No coverage lost.** The merged map's cases now run against the resolver: OOTB fallback with no, `undefined` or empty mappings; several custom mappings each resolving to their own parent; a bare `AccountId` custom key that cannot override the OOTB entry; a `CustomObject__c.AccountId` key that wins for that object only; malformed keys (no object, no field, more than one dot) skipped while valid mappings beside them still resolve; and an empty parent value skipped in favor of the OOTB fallback.
+- **Unreachable code removed.** The merged map's OOTB-override guard could never fire (a valid custom key always has a dot and an OOTB key never does). `getOotbReferenceLookupMap` looked like it cached but built its map again on every call, and is now one frozen static map. `isValidCustomRelationshipKey`'s empty or non-string key check is gone too, since its only caller always passes `Object.Field`.
+- **A field named like an `Object.prototype` member no longer resolves to it.** The OOTB fallback used to read the map with a plain index, so a lookup field named `constructor` resolved to a function. It now checks for an own key and resolves to nothing.
+- **Unchanged:** a custom key still resolves, the OOTB fallback still applies, an invalid key is still skipped, a field with no mapping still resolves to `undefined`, and the #113 tests that follow a custom mapping through to the relationship trees and recipe files pass without changes.
+
 ## [3.81.0] - A failed insert is a red error with a View errors button
 
 Closes [#310](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/310).
