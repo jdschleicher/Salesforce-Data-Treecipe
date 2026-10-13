@@ -4224,7 +4224,8 @@ export class RecipeCockpitService {
             : orgDetails.findIndex(orgDetail => orgDetail.isDefault === true);
         let forgottenOrgNotice = '';
 
-        if ( rememberedUsername && selectedOrgIndex === -1 && !keepUnlistedUsername ) {
+        // CHECKED AGAINST THE REMEMBERED ORG ITSELF: FALLING BACK TO THE DEFAULT MUST NOT SKIP SAYING WHY THE LAST ONE WENT
+        if ( rememberedUsername && rememberedOrgIndex === -1 && !keepUnlistedUsername ) {
 
             const disconnectedRememberedOrg = hiddenOrgs.find(hiddenOrg => hiddenOrg.username === rememberedUsername && hiddenOrg.reason !== 'production');
 

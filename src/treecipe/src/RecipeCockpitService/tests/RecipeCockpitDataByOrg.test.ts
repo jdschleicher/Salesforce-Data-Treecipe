@@ -337,6 +337,28 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
+        it('says the org chosen last is no longer connected, and forgets it, when it falls back to the default', async () => {
+
+            workspaceStateValues.set(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, 'old@example.com');
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue(buildDataOrgListing(
+                [{ ...SANDBOX_ORG, isDefault: true } as IAuthenticatedOrgDetail, SECOND_ORG],
+                [{ username: 'old@example.com', label: 'old-scratch', reason: 'expired' }]
+            ));
+            const rememberSpy = workspaceState.update;
+            jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
+
+            await openRenderedCockpit();
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+
+            expect(postedNamed('dataOrgList')[0]).toMatchObject({
+                orgLabels: ['qa (default)', 'prod@example.com'],
+                selectedOrgIndex: 0,
+                forgottenOrgNotice: 'The last org used, old-scratch, is no longer connected.'
+            });
+            expect(rememberSpy.mock.calls.map(updateCall => updateCall[1])).toEqual([undefined, 'qa@example.com.qa']);
+
+        });
+
         it('drops a provisional org read for a check a ready has replaced', async () => {
 
             let answerLocalRead: (orgDetail: any) => void = () => undefined;
