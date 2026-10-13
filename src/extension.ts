@@ -16,13 +16,19 @@ export async function activate(context: vscode.ExtensionContext) {
 		VS Code rejects that write, and attempting it on every activation is how a user who opened a
 		single file got a warning about a setting they never chose. Nothing reads this value in that
 		state either, because every command it feeds needs a workspace of its own.
+
+		A Treecipe workspace now activates at window load (#251), so the write is skipped when the
+		workspace already holds the value: otherwise every load would rewrite .vscode/settings.json.
 	*/
-	if ( vscode.workspace.workspaceFolders?.length ) {
+	if ( vscode.workspace.workspaceFolders?.length
+		&& ConfigurationService.getWorkspaceScopedExtensionConfigValue('useSnowfakeryAsDefault') !== false ) {
 		void ConfigurationService.setExtensionConfigValue('useSnowfakeryAsDefault', false);
 	}
 
 	// LETS LAZILY CREATED OUTPUT CHANNELS BE DISPOSED BY VS CODE WITHOUT CREATING THEM AT ACTIVATION
 	VSCodeWorkspaceService.registerExtensionSubscriptions(context.subscriptions);
+
+	VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem(context.subscriptions);
 
 	const initiateConfiguration = vscode.commands.registerCommand('treecipe.initiateConfiguration', () => {
 		const extensionCommandService = new ExtensionCommandService();

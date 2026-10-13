@@ -227,11 +227,12 @@ export const RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL = '✎';
     script with createElementNS and coloured only from the --sdt-* palette by CSS. Joined is included;
     broken -- the links pulled apart, a spark either side of the gap -- is excluded, and a dashed broken
     link is excluded because a parent is. The SHAPE says the state, never the colour alone. Both are
-    stroked in a 24x24 box and turned to the familiar diagonal. They fetch nothing, so the CSP, the
-    nonce-only shell builder and localResourceRoots: [] are unchanged.
+    stroked in a 24x24 box and turned 45 degrees clockwise, so the link runs from the bottom right to
+    the top left (#295). They fetch nothing, so the CSP, the nonce-only shell builder and
+    localResourceRoots: [] are unchanged.
 */
 export const RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX = '0 0 24 24';
-export const RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM = 'rotate(-45 12 12)';
+export const RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM = 'rotate(45 12 12)';
 export const RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH = 'M6 8 H10 A4 4 0 0 1 10 16 H6 A4 4 0 0 1 6 8 Z M14 8 H18 A4 4 0 0 1 18 16 H14 A4 4 0 0 1 14 8 Z';
 export const RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH = 'M4.5 8 H6.5 A4 4 0 0 1 6.5 16 H4.5 A4 4 0 0 1 4.5 8 Z M17.5 8 H19.5 A4 4 0 0 1 19.5 16 H17.5 A4 4 0 0 1 17.5 8 Z M12 3.5 V6 M12 18 V20.5';
 /*
@@ -247,7 +248,17 @@ export const RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = 'fixed';
     centred on (12, 12) in the same 24x24 view box, and filled from the palette by CSS.
 */
 export const RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH = 'M7.5 5 L16.5 12 L7.5 19 Z';
-export const RECIPE_COCKPIT_TOGGLE_EXPANDED_GLYPH_PATH = 'M5 7.5 L19 7.5 L12 16.5 Z';
+/*
+    Motion (#227). The ▸ is ONE path that CSS turns a quarter on aria-expanded, so it rotates rather
+    than swapping. A body the reader opens fades in once it is built; one the reader closes carries
+    "hidden" at once -- aria-hidden and inert while it fades out -- so what is hidden is hidden from
+    assistive technology for the whole animation. Only a reader's click animates: a restore, a
+    focusTree and a search stay instant. prefers-reduced-motion turns every transition and
+    animation off, in the stylesheet and in the script.
+*/
+export const RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS = 160;
+export const RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS = 140;
+export const RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS = 120;
 export const RECIPE_COCKPIT_FAVORITE_TREE_LABEL = '★';
 export const RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL = '☆';
 export const RECIPE_COCKPIT_FAVORITES_ONLY_LABEL = 'Favorites only';
@@ -8004,6 +8015,25 @@ ${this.buildPaletteCustomProperties()}
     .hidden { display: none !important; }
     .muted { color: var(--sdt-muted); }
     :focus-visible { outline: 2px solid var(--sdt-accent); outline-offset: 1px; }
+    button, select, input {
+        transition: color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, background-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, border-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, box-shadow ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, filter ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, transform 80ms ease;
+    }
+    button:active:not(:disabled) { transform: translateY(1px); }
+    @keyframes sdtReveal {
+        from { opacity: 0; transform: translateY(-0.25rem); }
+        to { opacity: 1; transform: none; }
+    }
+    @keyframes sdtConceal {
+        from { opacity: 1; transform: none; visibility: visible; }
+        to { opacity: 0; transform: translateY(-0.25rem); visibility: hidden; }
+    }
+    .motionReveal { animation: sdtReveal ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease-out; }
+    /* EVERY BODY THAT CONCEALS IS A BLOCK div; A FLEX OR GRID ONE WOULD NEED ITS OWN display HERE */
+    .hidden.motionConceal {
+        display: block !important;
+        animation: sdtConceal ${RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS}ms ease-in forwards;
+        pointer-events: none;
+    }
     .loadStatus {
         border-left: 3px solid var(--sdt-accent);
         padding: 0.4rem 0.6rem;
@@ -8075,6 +8105,8 @@ ${this.buildPaletteCustomProperties()}
         cursor: pointer;
     }
     .treeHeader:hover { box-shadow: inset 4px 0 0 var(--sdt-accent); }
+    .treeHeader:active { background-color: var(--sdt-row-hover); }
+    .treeHeader, .treeObjectHeader, .treeField, .treeDataset { transition: background-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, box-shadow ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease; }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
     .treeToggle, .treeObjectToggle, .picklistToggle, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .treeInsertErrors, .scratchOrgViewOutput, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treePermissionSets {
@@ -8102,7 +8134,9 @@ ${this.buildPaletteCustomProperties()}
     }
     .treeToggle, .treeObjectToggle, .picklistToggle { display: inline-flex; align-items: center; justify-content: center; padding: 0; line-height: 1; }
     .picklistToggleSpacer { display: inline-block; height: 1px; }
-    .toggleGlyph { display: block; width: 2.1rem; height: 2.1rem; }
+    .toggleGlyph { display: block; width: 2.1rem; height: 2.1rem; transition: transform ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease; }
+    [aria-expanded="true"] > .toggleGlyph { transform: rotate(90deg); }
+    .noMotion > .toggleGlyph { transition: none; }
     .toggleGlyph path { fill: var(--sdt-accent); stroke: none; }
     .toolbar button, .emptyStateActions button, .treeInsert, .dataOrgLoad, .dataOrgNewScratch {
         color: var(--sdt-on-accent);
@@ -8110,6 +8144,8 @@ ${this.buildPaletteCustomProperties()}
         border-color: var(--sdt-accent);
         font-weight: 600;
     }
+    .toolbar button:hover:not(:disabled), .emptyStateActions button:hover:not(:disabled), .treeInsert:hover:not(:disabled), .dataOrgLoad:hover:not(:disabled), .dataOrgNewScratch:hover:not(:disabled) { filter: brightness(0.92); }
+    .toolbar button:active:not(:disabled), .emptyStateActions button:active:not(:disabled), .treeInsert:active:not(:disabled), .dataOrgLoad:active:not(:disabled), .dataOrgNewScratch:active:not(:disabled) { filter: brightness(0.84); }
     .treeAddFriend { font-weight: 600; }
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
@@ -8126,7 +8162,30 @@ ${this.buildPaletteCustomProperties()}
     .treeTabs { display: flex; gap: 0.5rem; padding: 0.4rem 0.6rem 0 0.6rem; border-bottom: 1px solid var(--sdt-border); }
     .treeTab { color: var(--sdt-muted); border-color: transparent; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; }
     .treeTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; border-bottom-color: var(--sdt-border); }
-    .treeTab.selected { color: var(--sdt-text); border-bottom-color: var(--sdt-accent); font-weight: 600; }
+    .treeTab.selected { color: var(--sdt-text); font-weight: 600; }
+    .treeTab:active:not(:disabled) { background-color: var(--sdt-row-hover); }
+    /*
+        The underline moves to the selected tab (#227): the outgoing tab's shrinks TOWARD the incoming
+        one while the incoming tab's grows FROM the outgoing side. The panel names the direction;
+        a tab chosen by anything but a click carries noMotion, so it is not animated.
+    */
+    .treeTab { position: relative; }
+    .treeTab::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -2px;
+        height: 2px;
+        background-color: var(--sdt-accent);
+        transform: scaleX(0);
+        transition: transform ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease;
+        pointer-events: none;
+    }
+    .treeTab.selected::after { transform: scaleX(1); }
+    .treeTabs.movingRight .treeTab::after, .treeTabs.movingLeft .treeTab.selected::after { transform-origin: right; }
+    .treeTabs.movingLeft .treeTab::after, .treeTabs.movingRight .treeTab.selected::after { transform-origin: left; }
+    .treeTabs.noMotion .treeTab::after { transition: none; }
     .treeObjectHeader { padding: 0.35rem 0.6rem; align-items: center; }
     .treeObject { position: relative; }
     .treeObject.excluded::after {
@@ -8174,6 +8233,9 @@ ${this.buildPaletteCustomProperties()}
         z-index: 1;
     }
     .treeObject.excluded .treeField.fieldExcluded::after { display: none; }
+    /* AN ANIMATING BODY IS ITS OWN STACKING CONTEXT, WHICH WOULD DRAW ITS CONTROLS UNDER THE OVERLAY MID-FADE */
+    .treeObject.excluded .motionReveal { animation: none; }
+    .treeObject.excluded .hidden.motionConceal { display: none !important; }
     .treeFieldInclude {
         position: relative;
         z-index: 2;
@@ -8248,6 +8310,7 @@ ${this.buildPaletteCustomProperties()}
     .treeFieldBulk button:hover:not(:disabled), .treeResetSelection:hover:not(:disabled), .treeWireLookup:hover:not(:disabled), .treeWireAllLookups:hover:not(:disabled), .treeAddParentObject:hover:not(:disabled) { border-color: var(--sdt-accent); }
     .treeFieldBulk button:disabled, .treeWireLookup:disabled, .treeWireAllLookups:disabled, .treeAddParentObject:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); cursor: not-allowed; }
     .treeObjectHeader:hover, .treeField:hover { background-color: var(--sdt-row-hover); }
+    .treeObjectHeader:focus-within, .treeField:focus-within { background-color: var(--sdt-row-hover); }
     .treeObjectName { font-weight: 600; }
     .treeObjectBody { padding-bottom: 0.25rem; }
     .treeField { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
@@ -8307,6 +8370,12 @@ ${this.buildPaletteCustomProperties()}
         font-family: var(--vscode-editor-font-family);
         color: var(--sdt-muted);
     }
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            transition: none !important;
+            animation: none !important;
+        }
+    }
 </style>
 </head>
 <body>
@@ -8351,8 +8420,9 @@ ${this.buildPaletteCustomProperties()}
     const FIELD_PARENT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON)};
     const FIXED_VALUE_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH)};
     const TOGGLE_COLLAPSED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH)};
-    const TOGGLE_EXPANDED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_EXPANDED_GLYPH_PATH)};
-    const toggleGlyphPathElements = new WeakMap();
+    const MOTION_REVEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS};
+    const MOTION_CONCEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS};
+    const motionTimers = new WeakMap();
     const FIXED_VALUE_BADGE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL)};
     const FIXED_VALUE_OBJECT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON)};
     const FIXED_VALUE_UNTICKED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON)};
@@ -8685,6 +8755,45 @@ ${this.buildPaletteCustomProperties()}
         if (isShown) { element.classList.remove('hidden'); } else { element.classList.add('hidden'); }
     }
 
+    function isMotionReduced() {
+        return typeof window.matchMedia === 'function' && !!window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    }
+
+    function endMotion(element) {
+        if (!motionTimers.has(element)) { return; }
+        clearTimeout(motionTimers.get(element));
+        motionTimers.delete(element);
+        element.classList.remove('motionReveal');
+        element.classList.remove('motionConceal');
+        element.removeAttribute('aria-hidden');
+        element.removeAttribute('inert');
+    }
+
+    /*
+        "hidden" is set or cleared FIRST, so it -- and every test of it -- is accurate for the whole
+        animation. A closing body stays drawn only while it fades, aria-hidden and inert meanwhile.
+        A body is revealed after it is built, so an animation never builds a row.
+    */
+    function setShownWithMotion(element, isShown, isAnimated) {
+
+        const wasShown = !element.classList.contains('hidden');
+
+        endMotion(element);
+        setShown(element, isShown);
+
+        if (!isAnimated || wasShown === isShown || isMotionReduced()) { return; }
+
+        if (isShown) {
+            element.classList.add('motionReveal');
+        } else {
+            element.classList.add('motionConceal');
+            element.setAttribute('aria-hidden', 'true');
+            element.setAttribute('inert', '');
+        }
+        motionTimers.set(element, setTimeout(function () { endMotion(element); }, isShown ? MOTION_REVEAL_MILLISECONDS : MOTION_CONCEAL_MILLISECONDS));
+
+    }
+
     /*
         The picker state drawn into one view. While a scratch org run is in flight the picker is
         held: the button, the dropdown, ⟳ and "Choose org…" are disabled, whatever a listing posted
@@ -8838,14 +8947,14 @@ ${this.buildPaletteCustomProperties()}
         pathElement.setAttribute('d', TOGGLE_COLLAPSED_GLYPH_PATH);
         glyphElement.appendChild(pathElement);
         toggleElement.appendChild(glyphElement);
-        toggleGlyphPathElements.set(toggleElement, pathElement);
 
         return toggleElement;
 
     }
 
-    function drawToggle(toggleElement, isExpanded) {
-        toggleGlyphPathElements.get(toggleElement).setAttribute('d', isExpanded ? TOGGLE_EXPANDED_GLYPH_PATH : TOGGLE_COLLAPSED_GLYPH_PATH);
+    // THE STYLESHEET TURNS THE ONE ▸ PATH ON aria-expanded, SO IT ROTATES RATHER THAN SWAPPING (#227)
+    function drawToggle(toggleElement, isExpanded, isAnimated) {
+        if (isAnimated) { toggleElement.classList.remove('noMotion'); } else { toggleElement.classList.add('noMotion'); }
         toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
     }
 
@@ -9411,23 +9520,23 @@ ${this.buildPaletteCustomProperties()}
             const picklistToggleElement = buildToggleElement('picklistToggle');
             let picklistValuesElement = null;
 
-            setPicklistExpanded = function (isExpanding) {
+            setPicklistExpanded = function (isExpanding, isAnimated) {
                 if (isExpanding && !picklistValuesElement) {
-                    picklistValuesElement = createElement('div', 'picklistValues');
+                    picklistValuesElement = createElement('div', 'picklistValues hidden');
                     fieldRowElement.appendChild(picklistValuesElement);
                     requestPicklistValues(treeObjectState.object.objectApiName, field.fieldApiName, picklistValuesElement);
                 }
                 if (picklistValuesElement) {
-                    if (isExpanding) { picklistValuesElement.classList.remove('hidden'); } else { picklistValuesElement.classList.add('hidden'); }
+                    setShownWithMotion(picklistValuesElement, isExpanding, isAnimated);
                 }
                 fieldState.isPicklistExpanded = isExpanding;
-                drawToggle(picklistToggleElement, isExpanding);
+                drawToggle(picklistToggleElement, isExpanding, isAnimated);
             };
 
             picklistToggleElement.setAttribute('aria-label', 'Show or hide the values of ' + field.fieldApiName);
             picklistToggleElement.setAttribute('aria-expanded', 'false');
             picklistToggleElement.addEventListener('click', function () {
-                setPicklistExpanded(!fieldState.isPicklistExpanded);
+                setPicklistExpanded(!fieldState.isPicklistExpanded, true);
                 savePanelPlace();
             });
 
@@ -9688,7 +9797,7 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function setTreeObjectExpanded(treeObjectState, isExpanded) {
+    function setTreeObjectExpanded(treeObjectState, isExpanded, isAnimated) {
 
         if (isExpanded && !treeObjectState.isBodyBuilt) {
             if (treeObjectState.canSelectFields && !treeObjectState.isIteration && treeObjectState.fieldStates.some(function (fieldState) { return !!fieldState.field.lineNumber; })) {
@@ -9703,10 +9812,10 @@ ${this.buildPaletteCustomProperties()}
             drawObjectFieldSelection(treeObjectState);
         }
 
-        if (isExpanded) { treeObjectState.bodyElement.classList.remove('hidden'); } else { treeObjectState.bodyElement.classList.add('hidden'); }
+        setShownWithMotion(treeObjectState.bodyElement, isExpanded, isAnimated);
 
         treeObjectState.isExpanded = isExpanded;
-        drawToggle(treeObjectState.toggleElement, isExpanded);
+        drawToggle(treeObjectState.toggleElement, isExpanded, isAnimated);
 
     }
 
@@ -9811,7 +9920,7 @@ ${this.buildPaletteCustomProperties()}
         toggleElement.setAttribute('aria-label', 'Show or hide the fields of ' + object.objectApiName);
         toggleElement.addEventListener('click', function () {
             treeObjectState.isExpandedByReader = !treeObjectState.isExpanded;
-            setTreeObjectExpanded(treeObjectState, treeObjectState.isExpandedByReader);
+            setTreeObjectExpanded(treeObjectState, treeObjectState.isExpandedByReader, true);
             savePanelPlace();
         });
 
@@ -9895,6 +10004,8 @@ ${this.buildPaletteCustomProperties()}
             addTreeTab(treeState, tabsElement, 'datasets', 'Previously Used Data Sets', createElement('div', 'treeDatasets hidden'));
         }
 
+        treeState.tabsElement = tabsElement;
+
         treeState.bodyElement.appendChild(tabsElement);
         treeState.tabStates.forEach(function (tabState) { treeState.bodyElement.appendChild(tabState.panelElement); });
         treeState.isBodyBuilt = true;
@@ -9911,19 +10022,20 @@ ${this.buildPaletteCustomProperties()}
         tabElement.setAttribute('aria-selected', isSelected ? 'true' : 'false');
         panelElement.setAttribute('role', 'tabpanel');
         panelElement.setAttribute('aria-label', tabLabel);
-        tabElement.addEventListener('click', function () { selectTreeTab(treeState, tabName); });
+        tabElement.addEventListener('click', function () { selectTreeTab(treeState, tabName, true); });
 
         treeState.tabStates.push({ tabName: tabName, tabElement: tabElement, panelElement: panelElement, isBuilt: tabName === 'treecipe' });
         tabsElement.appendChild(tabElement);
 
     }
 
-    function selectTreeTab(treeState, tabName) {
+    function selectTreeTab(treeState, tabName, isAnimated) {
 
         ensureTreeBodyBuilt(treeState);
 
         if (!treeState.tabStates.some(function (tabState) { return tabState.tabName === tabName; })) { return; }
 
+        drawTabMotion(treeState, tabName, isAnimated);
         treeState.selectedTab = tabName;
 
         treeState.tabStates.forEach(function (tabState) {
@@ -9932,11 +10044,11 @@ ${this.buildPaletteCustomProperties()}
 
             if (isSelected) {
                 tabState.tabElement.classList.add('selected');
-                tabState.panelElement.classList.remove('hidden');
             } else {
                 tabState.tabElement.classList.remove('selected');
-                tabState.panelElement.classList.add('hidden');
             }
+            // ONLY THE INCOMING PANEL FADES; THE OUTGOING ONE IS GONE AT ONCE
+            setShownWithMotion(tabState.panelElement, isSelected, isSelected && isAnimated);
 
             tabState.tabElement.setAttribute('aria-selected', isSelected ? 'true' : 'false');
 
@@ -9951,6 +10063,21 @@ ${this.buildPaletteCustomProperties()}
         if (tabName === 'treecipe' && renderedSequence !== null && !isRestoringPlace && treeState.isExpanded) { requestDataOrgs(); }
 
         savePanelPlace();
+
+    }
+
+    function drawTabMotion(treeState, tabName, isAnimated) {
+
+        const tabNames = treeState.tabStates.map(function (tabState) { return tabState.tabName; });
+        const fromIndex = tabNames.indexOf(treeState.selectedTab);
+        const toIndex = tabNames.indexOf(tabName);
+
+        ['movingLeft', 'movingRight', 'noMotion'].forEach(function (className) { treeState.tabsElement.classList.remove(className); });
+        if (!isAnimated) {
+            treeState.tabsElement.classList.add('noMotion');
+        } else if (fromIndex !== toIndex) {
+            treeState.tabsElement.classList.add(toIndex > fromIndex ? 'movingRight' : 'movingLeft');
+        }
 
     }
 
@@ -10191,17 +10318,13 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function setTreeExpanded(treeState, isExpanded) {
+    function setTreeExpanded(treeState, isExpanded, isAnimated) {
 
-        if (isExpanded) {
-            ensureTreeBodyBuilt(treeState);
-            treeState.bodyElement.classList.remove('hidden');
-        } else {
-            treeState.bodyElement.classList.add('hidden');
-        }
+        if (isExpanded) { ensureTreeBodyBuilt(treeState); }
+        setShownWithMotion(treeState.bodyElement, isExpanded, isAnimated);
 
         treeState.isExpanded = isExpanded;
-        drawToggle(treeState.toggleElement, isExpanded);
+        drawToggle(treeState.toggleElement, isExpanded, isAnimated);
 
     }
 
@@ -10302,7 +10425,7 @@ ${this.buildPaletteCustomProperties()}
         */
         treeHeaderElement.addEventListener('click', function () {
             treeState.isExpandedByReader = !treeState.isExpanded;
-            setTreeExpanded(treeState, treeState.isExpandedByReader);
+            setTreeExpanded(treeState, treeState.isExpandedByReader, true);
             // OPENING A CARD ON ITS TREECIPE TAB IS OPENING THAT TAB, WHICH LISTS THE ORGS ITS PICKER OFFERS
             if (treeState.isExpanded && treeState.selectedTab === 'treecipe') { requestDataOrgs(); }
             savePanelPlace();

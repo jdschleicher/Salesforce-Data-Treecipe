@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.75.0] - Recipe Cockpit: "Deploy this metadata…" removed; the permission set button only assigns
+## [3.77.0] - Recipe Cockpit: "Deploy this metadata…" removed; the permission set button only assigns
 
 Closes [#302](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/302). Part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
 
@@ -13,6 +13,38 @@ The Recipe Cockpit no longer deploys metadata. Deploy a tree's objects, fields a
 - **A prompted org that answers it is not a sandbox no longer becomes the selection.** Only an org that passed the sandbox check is remembered as the one chosen above.
 - **Removed code:** `RecipeCockpitMetadataDeploy`, the deployed-object readiness, the deploy-status URL helpers in `ScratchOrgService` (and `sf org open --path`), and `SalesforceOrgService.isUsernameAuthorized`. `RecipeCockpitPermissionSetDeploy` is renamed `RecipeCockpitPermissionSetAssign`.
 - **Unchanged:** the sandbox and scratch-org-only rule and its second check, the confirmation, the 50-pick limit, the one-at-a-time lock with the insert, the org picker and **+ New scratch org**, and the describe refresh for the objects an assignment grants on.
+
+## [3.76.0] - Recipe Cockpit: motion for expanding, collapsing, switching tabs and pressing buttons
+
+Closes [#227](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/227). Part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
+
+Everything in the cockpit used to change in a single frame. It now moves, briefly, where the reader made it move.
+
+- **Expanding and collapsing.** A tree card, a Treecipe object and a picklist row (its first open included) fade and slide open (160 ms) and fade closed (140 ms). The ▸ is one triangle that turns a quarter on `aria-expanded` (`[aria-expanded="true"] > .toggleGlyph { transform: rotate(90deg) }`) instead of being swapped for a second shape, so `RECIPE_COCKPIT_TOGGLE_EXPANDED_GLYPH_PATH` is gone. (The Previous Versions row the issue names was removed in 3.66.0 (#265); there is nothing left to animate there.)
+- **Hidden stays hidden.** The `hidden` class is set or cleared first, so it and `aria-expanded` are accurate for the whole animation. A closing body stays drawn only while it fades, and is `aria-hidden="true"` and `inert` meanwhile; both are removed when the fade ends. Reopening a body mid-fade cancels the fade.
+- **Rows are still built on first expand only.** A body is built first and revealed after, so an animation never builds a row the reader did not open.
+- **Tabs.** The incoming tab panel fades in; the outgoing one is gone at once. Each tab's underline is a bar that shrinks toward the incoming tab while the incoming one grows from the outgoing side, so the underline moves to the active tab. The panel only names the direction (`movingLeft`/`movingRight`) on the tab strip; nothing is positioned through inline styles.
+- **Buttons and rows.** Every button, select and input transitions its colours, border and shadow (120 ms) and nudges down 1px when pressed. The filled accent buttons darken on hover and press. A card header, an object row, a field row and a data set row transition their background, and object and field rows highlight while something in them has keyboard focus.
+- **Only the reader's own click animates.** A restored place, a `focusTree` from the host and a search's auto-expand stay instant, the ▸ included: a toggle turned by anything but a click carries `noMotion`.
+- **An excluded object's body is not faded.** An animating body is its own stacking context, which would draw its checkboxes and pins under the object's dimming overlay for the length of the fade, so it opens and closes at once.
+- **`prefers-reduced-motion: reduce`** turns every transition and animation off (one `*, *::before, *::after` block with `!important`, last in the stylesheet), and the panel script then adds no animation classes at all.
+- **Palette and CSP unchanged.** No new colour: the underline is `--sdt-accent`, hover and press use `--sdt-row-hover` or a `brightness()` filter. The filter dims the white text along with the accent, so `--sdt-on-accent` on the accent falls from 5.17:1 to 4.93:1 on hover and 4.65:1 pressed, still above 4.5:1; a test holds both filtered states to it. No `--vscode-*` colour is read. The shell builder still takes only a nonce, and every rule is in its nonced stylesheet.
+## [3.75.0] - Recipe Cockpit: a status bar item opens the cockpit in Treecipe workspaces
+
+Closes [#251](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/251). Part of epic [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59).
+
+- **`$(list-tree) Treecipe` in the status bar.** A workspace that contains `treecipe/treecipe.config.json` now activates the extension at window load (`workspaceContains:treecipe/treecipe.config.json`, the extension's first activation event). The item sits on the left, with the tooltip *Open Recipe Cockpit*. A workspace without that file activates exactly as before, on its first Treecipe command, and the item appears from then on. The item has its own id and name, so the status bar's right-click menu lists it as *Treecipe Recipe Cockpit* and VS Code remembers if you hide it there.
+- **The same command as the palette.** Clicking runs `treecipe.openRecipeCockpit`, so the `recipeCockpitEnabled` opt-in warning still appears when the flag is off, and an open panel is revealed rather than duplicated.
+- **Showing it does nothing else.** No run is loaded, no org contacted, no `sf` command run, no generated file read and no webview created until it is clicked. There is still no `onWebviewPanel:` activation event and no panel serializer.
+- **New setting `salesforce-data-treecipe.showRecipeCockpitStatusBarItem`** (boolean, default `true`). Turning it off hides the item and turning it on shows it, without a reload. With it off from the start, or in a window with no folder, no item is created at all. The item and its settings listener are disposed with the extension.
+- **No settings write on every load.** `activate` writes `useSnowfakeryAsDefault: false` to the workspace only when the workspace does not already hold that value, so a Treecipe workspace's `.vscode/settings.json` is not rewritten each time the window loads. That flag is not the faker backend choice (`selectedFakerService`), which activation never touches.
+
+## [3.74.1] - Recipe Cockpit: the tree's chain link tilts from bottom right to top left
+
+Closes [#295](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/295).
+
+- The chain-link include/exclude icon on a Treecipe object row now runs from the bottom right to the top left. It used to run from the bottom left to the top right. `RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM` is now `rotate(45 12 12)` (it was `rotate(-45 12 12)`). The joined, broken and dashed auto-excluded links all share that one transform, so all three states turn together.
+- **Unchanged:** the glyph paths, size, colours, the 24×24 viewBox (a ±45° turn of the same path reaches the same corners, so nothing is clipped), `aria-pressed`, titles, labels, the exclusion cascade, the CSP and the nonce-only shell builder.
 
 ## [3.74.0] - Recipe Cockpit: add a lookup's standard parent to the recipe from a template
 
