@@ -156,6 +156,23 @@ export class ConfigurationService {
 
     }
 
+    /*
+        Where globalValueSets/ is looked for: the objects directory's parent, by path.dirname, since
+        the objects path is a native path and a "/" split finds no parent in a Windows one. An objects
+        directory that IS the workspace root has its parent outside the workspace, so the root itself
+        is used instead.
+    */
+    static resolveSalesforceMetadataParentPath(objectsDirectoryPath: string, workspaceRoot: string): string {
+
+        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+        const parentDirectoryPath = path.dirname(objectsDirectoryPath);
+
+        return SfdxProjectService.isPathContainedInWorkspace(parentDirectoryPath, resolvedWorkspaceRoot)
+            ? parentDirectoryPath
+            : resolvedWorkspaceRoot;
+
+    }
+
     static getCustomRelationshipMappings(): Record<string, string> {
 
         const configurationDetail = this.getTreecipeConfigurationDetail();

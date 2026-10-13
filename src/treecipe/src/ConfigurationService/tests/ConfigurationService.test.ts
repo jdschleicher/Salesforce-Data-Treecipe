@@ -880,6 +880,35 @@ describe('Shared ConfigurationService Tests', () => {
 
         });
 
+        test('resolveSalesforceMetadataParentPath answers the objects directory\'s parent', () => {
+
+            expect(ConfigurationService.resolveSalesforceMetadataParentPath(objectsDirectoryPath, workspaceRoot))
+                .toBe(path.join(workspaceRoot, 'force-app', 'main', 'default'));
+
+        });
+
+        test('resolveSalesforceMetadataParentPath answers the workspace root when the objects directory is the root', () => {
+
+            const rootObjectsDirectoryPath = ConfigurationService.resolveConfiguredObjectsPath('./', workspaceRoot);
+
+            expect(ConfigurationService.resolveSalesforceMetadataParentPath(rootObjectsDirectoryPath, workspaceRoot)).toBe(workspaceRoot);
+
+        });
+
+        test('resolveSalesforceMetadataParentPath finds the parent of a Windows path, which has no forward slash', () => {
+
+            const windowsWorkspaceRoot = 'c:\\Users\\someone\\project';
+            jest.spyOn(path, 'resolve').mockImplementation((...pathSegments: string[]) => path.win32.resolve(...pathSegments));
+            jest.spyOn(path, 'dirname').mockImplementation((pathToParent: string) => path.win32.dirname(pathToParent));
+            jest.spyOn(SfdxProjectService, 'isPathContainedInWorkspace').mockImplementation((candidatePath: string, rootPath: string) => (
+                candidatePath === rootPath || candidatePath.startsWith(rootPath + '\\')
+            ));
+
+            expect(ConfigurationService.resolveSalesforceMetadataParentPath(`${windowsWorkspaceRoot}\\force-app\\main\\default\\objects`, windowsWorkspaceRoot))
+                .toBe(`${windowsWorkspaceRoot}\\force-app\\main\\default`);
+
+        });
+
         test('resolveObjectsDirectoryPath reads the configured value', () => {
 
             jest.spyOn(ConfigurationService, 'getObjectsPathFromTreecipeJSONConfiguration').mockReturnValue('force-app/main/default/objects');

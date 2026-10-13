@@ -582,7 +582,7 @@ export class ExtensionCommandService {
                  at this point in the extension commands, where a command is entered to generate a reciipe, we should retrieve the globalvaluesets 
                  as there could be changes that have taken place throughout the vscode instance of the user
                 */
-                const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
+                const pathToSalesforceMetadataParentDirectory = ConfigurationService.resolveSalesforceMetadataParentPath(fullPathToObjectsDirectory, workspaceRoot);
                 let globalValueSetSingleton = GlobalValueSetSingleton.getInstance();
 
                 /*
@@ -849,7 +849,7 @@ export class ExtensionCommandService {
                     initializes it -- the sets may have changed since the window opened.
                 */
                 const isMissingGlobalValueSetsDirectoryWarningShown = false;
-                const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
+                const pathToSalesforceMetadataParentDirectory = ConfigurationService.resolveSalesforceMetadataParentPath(fullPathToObjectsDirectory, workspaceRoot);
                 await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, isMissingGlobalValueSetsDirectoryWarningShown);
 
                 const collectionResult = await PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory(
@@ -2031,7 +2031,7 @@ export class ExtensionCommandService {
 
                 // THE PREVIEW READS THE SAME SPEC DETAILS THE GENERATE COMMAND DOES, SO IT NEEDS THE SAME GLOBAL VALUE SETS
                 const isMissingGlobalValueSetsDirectoryWarningShown = false;
-                const pathToSalesforceMetadataParentDirectory = VSCodeWorkspaceService.getParentPath(fullPathToObjectsDirectory);
+                const pathToSalesforceMetadataParentDirectory = ConfigurationService.resolveSalesforceMetadataParentPath(fullPathToObjectsDirectory, workspaceRoot);
                 await GlobalValueSetSingleton.getInstance().initialize(pathToSalesforceMetadataParentDirectory, isMissingGlobalValueSetsDirectoryWarningShown);
 
                 /*

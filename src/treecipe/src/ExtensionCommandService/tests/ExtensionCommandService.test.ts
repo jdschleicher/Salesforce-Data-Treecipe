@@ -3006,6 +3006,20 @@ describe('ExtensionCommandService', () => {
 
         });
 
+        test.each([
+            ['./force-app/main/default/objects/', ['force-app', 'main', 'default']],
+            ['./', []],
+        ])('given the objects path %p, reads global value sets from a folder inside the workspace', async (configuredObjectsPath, expectedParentSegments) => {
+
+            (ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration as jest.Mock).mockReturnValue(configuredObjectsPath);
+            const initializeSpy = jest.spyOn(GlobalValueSetSingleton.getInstance(), 'initialize').mockResolvedValue(undefined);
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+            expect(initializeSpy.mock.calls[0][0]).toBe(path.resolve(workspaceRoot, ...expectedParentSegments));
+
+        });
+
         test('given an objects path with no ./ prefix, walks the objects directory rather than "<workspace>/undefined"', async () => {
 
             (ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration as jest.Mock).mockReturnValue('force-app/main/default/objects');
