@@ -75,7 +75,7 @@ describe('RecipeCockpitService, motion (#227)', () => {
             expect(reducedMotionBlock.match(/\{/g)).toHaveLength(2);
             // AND THERE IS SOMETHING FOR IT TO TURN OFF
             expect(motionStyleSheet.match(/\btransition:/g)?.length).toBeGreaterThan(3);
-            expect(motionStyleSheet.match(/\banimation:/g)?.length).toBe(2);
+            expect(motionStyleSheet.match(/\banimation:/g)?.length).toBe(3);
 
         });
 
@@ -88,10 +88,19 @@ describe('RecipeCockpitService, motion (#227)', () => {
 
         });
 
-        it('rotates the one ▸ on aria-expanded rather than swapping it', () => {
+        it('rotates the one ▸ on aria-expanded rather than swapping it, and not for a toggle marked noMotion', () => {
 
             expect(motionStyleSheet).toContain('[aria-expanded="true"] > .toggleGlyph { transform: rotate(90deg); }');
             expect(motionStyleSheet).toMatch(/\.toggleGlyph \{[^}]*transition: transform \d+ms ease;/);
+            expect(motionStyleSheet).toContain('.noMotion > .toggleGlyph { transition: none; }');
+
+        });
+
+        // AN ANIMATING BODY IS A STACKING CONTEXT: ITS z-index 2 CONTROLS WOULD DRAW UNDER THE EXCLUDED OBJECT'S z-index 1 OVERLAY
+        it('does not fade the body of an excluded object, so its overlay never flickers over the controls', () => {
+
+            expect(motionStyleSheet).toContain('.treeObject.excluded .motionReveal { animation: none; }');
+            expect(motionStyleSheet).toContain('.treeObject.excluded .hidden.motionConceal { display: none !important; }');
 
         });
 
@@ -119,7 +128,28 @@ describe('RecipeCockpitService, motion (#227)', () => {
 
         });
 
-        // A DARKER ACCENT UNDER --sdt-on-accent ONLY RAISES ITS CONTRAST, AND NO RULE WRITES A COLOUR OF ITS OWN
+        // brightness() MULTIPLIES BOTH THE TEXT AND THE BACKGROUND, SO THE PRESSED STATE IS THE LOWEST CONTRAST A FILLED BUTTON DRAWS
+        it('keeps --sdt-on-accent on the accent at 4.5:1 or more under the hover and pressed brightness filters', () => {
+
+            const channelsOf = (hexColour: string) => [1, 3, 5].map(offset => parseInt(hexColour.substring(offset, offset + 2), 16) / 255);
+            const luminanceOf = (channels: number[]) => {
+                const [red, green, blue] = channels.map(channel => channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4));
+                return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+            };
+            const filteredContrastOf = (brightness: number) => {
+                const [lighter, darker] = [RECIPE_COCKPIT_PALETTE.onAccent, RECIPE_COCKPIT_PALETTE.accent]
+                    .map(hexColour => luminanceOf(channelsOf(hexColour).map(channel => Math.min(1, channel * brightness))))
+                    .sort((first, second) => second - first);
+                return (lighter + 0.05) / (darker + 0.05);
+            };
+            const filterBrightnesses = (motionStyleSheet.match(/filter: brightness\((0\.\d+)\)/g) ?? [])
+                .map(filterDeclaration => parseFloat((filterDeclaration.match(/0\.\d+/) as RegExpMatchArray)[0]));
+
+            expect(filterBrightnesses).toEqual([0.92, 0.84]);
+            filterBrightnesses.forEach(brightness => expect(filteredContrastOf(brightness)).toBeGreaterThanOrEqual(4.5));
+
+        });
+
         it('adds no colour outside the palette', () => {
 
             const outsideRoot = styleSheet.replace(/:root \{[^}]*\}/, '').replace(/\/\*[\s\S]*?\*\//g, '');
@@ -259,8 +289,10 @@ describe('RecipeCockpitService, motion (#227)', () => {
             const picklistToggle = panel.findAll(ratingRow, 'picklistToggle')[0];
 
             picklistToggle.dispatch('click');
-            // THE FIRST OPEN BUILDS THE CONTAINER, WHICH IS SHOWN FROM THE START -- IT IS NOT REVEALED FROM HIDDEN
+            // THE FIRST OPEN BUILDS THE CONTAINER HIDDEN AND REVEALS IT, LIKE EVERY LATER OPEN
             const picklistValues = panel.findAll(ratingRow, 'picklistValues')[0];
+            expect(panel.isHidden(picklistValues)).toBe(false);
+            expect(picklistValues.classList.contains('motionReveal')).toBe(true);
             jest.advanceTimersByTime(RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS);
 
             picklistToggle.dispatch('click');
@@ -316,6 +348,25 @@ describe('RecipeCockpitService, motion (#227)', () => {
             expect(isMoving(treeBodyOf(panel, LEAD_TREE_KEY))).toBe(false);
             expect(isMoving(panel.tabPanelOf(leadCard, 'treeDatasets'))).toBe(false);
             expect(tabListOf(panel, LEAD_TREE_KEY).classList.contains('noMotion')).toBe(true);
+
+        });
+
+        it('turns the ▸ with motion only on the reader\'s click', () => {
+
+            const panel = renderPanel({}, { treeKey: LEAD_TREE_KEY, tab: 'treecipe' });
+            const leadToggle = panel.findAll(treeCardOf(panel, LEAD_TREE_KEY), 'treeToggle')[0];
+            const accountToggle = panel.findAll(treeCardOf(panel, ACCOUNT_TREE_KEY), 'treeToggle')[0];
+
+            expect(leadToggle.attributes['aria-expanded']).toBe('true');
+            expect(leadToggle.classList.contains('noMotion')).toBe(true);
+
+            clickCard(panel, ACCOUNT_TREE_KEY);
+            expect(accountToggle.classList.contains('noMotion')).toBe(false);
+
+            panel.typeIntoFilter('Rating__c', treeCardOf(panel, ACCOUNT_TREE_KEY));
+            const objectToggle = panel.findAll(objectNamed(panel, ACCOUNT_TREE_KEY, 'Account'), 'treeObjectToggle')[0];
+            expect(objectToggle.attributes['aria-expanded']).toBe('true');
+            expect(objectToggle.classList.contains('noMotion')).toBe(true);
 
         });
 

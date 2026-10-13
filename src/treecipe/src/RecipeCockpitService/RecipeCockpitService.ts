@@ -8622,6 +8622,7 @@ ${this.buildPaletteCustomProperties()}
         to { opacity: 0; transform: translateY(-0.25rem); visibility: hidden; }
     }
     .motionReveal { animation: sdtReveal ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease-out; }
+    /* EVERY BODY THAT CONCEALS IS A BLOCK div; A FLEX OR GRID ONE WOULD NEED ITS OWN display HERE */
     .hidden.motionConceal {
         display: block !important;
         animation: sdtConceal ${RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS}ms ease-in forwards;
@@ -8729,6 +8730,7 @@ ${this.buildPaletteCustomProperties()}
     .picklistToggleSpacer { display: inline-block; height: 1px; }
     .toggleGlyph { display: block; width: 2.1rem; height: 2.1rem; transition: transform ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease; }
     [aria-expanded="true"] > .toggleGlyph { transform: rotate(90deg); }
+    .noMotion > .toggleGlyph { transition: none; }
     .toggleGlyph path { fill: var(--sdt-accent); stroke: none; }
     .toolbar button, .emptyStateActions button, .treeInsert, .dataOrgLoad, .dataOrgNewScratch {
         color: var(--sdt-on-accent);
@@ -8825,6 +8827,9 @@ ${this.buildPaletteCustomProperties()}
         z-index: 1;
     }
     .treeObject.excluded .treeField.fieldExcluded::after { display: none; }
+    /* AN ANIMATING BODY IS ITS OWN STACKING CONTEXT, WHICH WOULD DRAW ITS CONTROLS UNDER THE OVERLAY MID-FADE */
+    .treeObject.excluded .motionReveal { animation: none; }
+    .treeObject.excluded .hidden.motionConceal { display: none !important; }
     .treeFieldInclude {
         position: relative;
         z-index: 2;
@@ -9547,7 +9552,8 @@ ${this.buildPaletteCustomProperties()}
     }
 
     // THE STYLESHEET TURNS THE ONE ▸ PATH ON aria-expanded, SO IT ROTATES RATHER THAN SWAPPING (#227)
-    function drawToggle(toggleElement, isExpanded) {
+    function drawToggle(toggleElement, isExpanded, isAnimated) {
+        if (isAnimated) { toggleElement.classList.remove('noMotion'); } else { toggleElement.classList.add('noMotion'); }
         toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
     }
 
@@ -10115,7 +10121,7 @@ ${this.buildPaletteCustomProperties()}
 
             setPicklistExpanded = function (isExpanding, isAnimated) {
                 if (isExpanding && !picklistValuesElement) {
-                    picklistValuesElement = createElement('div', 'picklistValues');
+                    picklistValuesElement = createElement('div', 'picklistValues hidden');
                     fieldRowElement.appendChild(picklistValuesElement);
                     requestPicklistValues(treeObjectState.object.objectApiName, field.fieldApiName, picklistValuesElement);
                 }
@@ -10123,7 +10129,7 @@ ${this.buildPaletteCustomProperties()}
                     setShownWithMotion(picklistValuesElement, isExpanding, isAnimated);
                 }
                 fieldState.isPicklistExpanded = isExpanding;
-                drawToggle(picklistToggleElement, isExpanding);
+                drawToggle(picklistToggleElement, isExpanding, isAnimated);
             };
 
             picklistToggleElement.setAttribute('aria-label', 'Show or hide the values of ' + field.fieldApiName);
@@ -10408,7 +10414,7 @@ ${this.buildPaletteCustomProperties()}
         setShownWithMotion(treeObjectState.bodyElement, isExpanded, isAnimated);
 
         treeObjectState.isExpanded = isExpanded;
-        drawToggle(treeObjectState.toggleElement, isExpanded);
+        drawToggle(treeObjectState.toggleElement, isExpanded, isAnimated);
 
     }
 
@@ -10917,7 +10923,7 @@ ${this.buildPaletteCustomProperties()}
         setShownWithMotion(treeState.bodyElement, isExpanded, isAnimated);
 
         treeState.isExpanded = isExpanded;
-        drawToggle(treeState.toggleElement, isExpanded);
+        drawToggle(treeState.toggleElement, isExpanded, isAnimated);
 
     }
 
