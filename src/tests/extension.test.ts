@@ -6,12 +6,14 @@ import * as vscode from 'vscode';
 jest.mock('vscode', () => ({
     workspace: {
         workspaceFolders: undefined,
-        getConfiguration: jest.fn().mockReturnValue({ get: jest.fn(), update: jest.fn() })
+        getConfiguration: jest.fn().mockReturnValue({ get: jest.fn(), update: jest.fn(), inspect: jest.fn() }),
+        onDidChangeConfiguration: jest.fn().mockReturnValue({ dispose: jest.fn() })
     },
     window: {
         showErrorMessage: jest.fn(),
         showWarningMessage: jest.fn(),
         createOutputChannel: jest.fn(),
+        createStatusBarItem: jest.fn(),
         registerWebviewPanelSerializer: jest.fn().mockReturnValue({ dispose: jest.fn() })
     },
     commands: { registerCommand: jest.fn().mockReturnValue({ dispose: jest.fn() }) },
@@ -51,9 +53,13 @@ describe('activate', () => {
     beforeEach(() => {
 
         jest.spyOn(VSCodeWorkspaceService, 'registerExtensionSubscriptions').mockImplementation(() => undefined);
+        jest.spyOn(VSCodeWorkspaceService, 'registerRecipeCockpitStatusBarItem').mockImplementation(() => undefined);
 
         // A jest.fn() FROM THE MODULE FACTORY, WHICH restoreMocks DOES NOT COVER -- ITS CALLS ACCUMULATE
         (vscode.commands.registerCommand as jest.Mock).mockClear();
+
+        // SO NO TEST INHERITS THE FOLDERS THE ONE BEFORE IT SET ON THE MODULE-FACTORY MOCK
+        (vscode.workspace as { workspaceFolders: unknown }).workspaceFolders = undefined;
 
     });
 
@@ -78,6 +84,62 @@ describe('activate', () => {
         await activate(buildExtensionContext() as never);
 
         expect(setExtensionConfigValueSpy).toHaveBeenCalledWith('useSnowfakeryAsDefault', false);
+
+    });
+
+    // A TREECIPE WORKSPACE NOW ACTIVATES AT WINDOW LOAD (#251), SO A VALUE ALREADY WRITTEN IS NOT WRITTEN AGAIN ON EVERY LOAD
+    it('given the workspace already holds the snowfakery default, writes nothing', async () => {
+
+        (vscode.workspace as { workspaceFolders: unknown }).workspaceFolders = [{ uri: { fsPath: '/workspace' } }];
+        jest.spyOn(ConfigurationService, 'getWorkspaceScopedExtensionConfigValue').mockReturnValue(false);
+        const setExtensionConfigValueSpy = jest.spyOn(ConfigurationService, 'setExtensionConfigValue')
+            .mockResolvedValue(true);
+
+        await activate(buildExtensionContext() as never);
+
+        expect(setExtensionConfigValueSpy).not.toHaveBeenCalled();
+
+    });
+
+    it('given the workspace holds true for the snowfakery default, writes false', async () => {
+
+        (vscode.workspace as { workspaceFolders: unknown }).workspaceFolders = [{ uri: { fsPath: '/workspace' } }];
+        jest.spyOn(ConfigurationService, 'getWorkspaceScopedExtensionConfigValue').mockReturnValue(true);
+        const setExtensionConfigValueSpy = jest.spyOn(ConfigurationService, 'setExtensionConfigValue')
+            .mockResolvedValue(true);
+
+        await activate(buildExtensionContext() as never);
+
+        expect(setExtensionConfigValueSpy).toHaveBeenCalledWith('useSnowfakeryAsDefault', false);
+
+    });
+
+    it('registers the Recipe Cockpit status bar item against the extension subscriptions (#251)', async () => {
+
+        jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
+        const extensionContext = buildExtensionContext();
+
+        await activate(extensionContext as never);
+
+        expect(VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem).toHaveBeenCalledWith(extensionContext.subscriptions);
+
+    });
+
+    /*
+        The status bar item shows at window load only in a Treecipe workspace (#251), and that is
+        decided by the manifest: elsewhere the extension starts on its first command, as before.
+    */
+    it('activates at window load only in a workspace containing treecipe/treecipe.config.json', () => {
+
+        const activationEvents: string[] = require('../../package.json').activationEvents ?? [];
+        expect(activationEvents).toEqual(['workspaceContains:treecipe/treecipe.config.json']);
+
+    });
+
+    it('declares the status bar setting as a boolean that defaults to true', () => {
+
+        const configurationProperties = require('../../package.json').contributes.configuration[0].properties;
+        expect(configurationProperties['salesforce-data-treecipe.showRecipeCockpitStatusBarItem']).toMatchObject({ type: 'boolean', default: true });
 
     });
 

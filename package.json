@@ -3,7 +3,7 @@
   "displayName": "Salesforce Data Treecipe",
   "description": "source-fidelity driven development, pairs well with cumulus-ci",
   "icon": "images/datatreecipe.webp",
-  "version": "3.74.1",
+  "version": "3.75.0",
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -17,7 +17,9 @@
     "Visualization",
     "Programming Languages"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "workspaceContains:treecipe/treecipe.config.json"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -93,6 +95,11 @@
             "type": "boolean",
             "default": false,
             "description": "feature flag for the in-development Recipe Cockpit preview. Enabled per workspace by running \"Salesforce Treecipe: Open Recipe Cockpit\" and accepting the preview warning; turn it off here to hide the panel again"
+          },
+          "salesforce-data-treecipe.showRecipeCockpitStatusBarItem": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show the Treecipe status bar item that opens the Recipe Cockpit. The extension starts at window load in a workspace that contains treecipe/treecipe.config.json; in any other folder the item appears once a Treecipe command has run"
           }
         }
       }
