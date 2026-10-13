@@ -28,6 +28,8 @@ export interface IDataSetInsertResult {
     resultsFilePath: string;
     savedRecordCount: number;
     failedRecordCount: number;
+    // THE FILE AND ERROR OF A REQUEST THAT THREW, FOR A CALLER THAT REPORTS THE OUTCOME ITSELF; UNESCAPED
+    requestFailureDetail?: string;
 }
 
 /*
@@ -217,6 +219,7 @@ export class CollectionsApiService {
         const countRecordFailures = (objectResults: any[] | undefined) => (objectResults ?? []).filter(objectResult => !this.isRequestFailureResult(objectResult)).length;
         let outcome: DataSetInsertOutcome = 'completed';
         let isRolledBack = false;
+        let requestFailureDetail: string | undefined;
 
         await vscode.window.withProgress(
             {
@@ -243,7 +246,8 @@ export class CollectionsApiService {
                       return;
                   }
                   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                  VSCodeWorkspaceService.showNotificationWithWorkspaceFile('error', notificationText, INSERT_VIEW_ERRORS_LABEL,
+                  // THE FILE NAME AND THE ERROR ARE BOTH WORKSPACE OR ORG TEXT, AND A NOTIFICATION RENDERS [label](command:…) AS A LINK
+                  VSCodeWorkspaceService.showNotificationWithWorkspaceFile('error', RecipeYamlScalar.escapeForNotification(notificationText), INSERT_VIEW_ERRORS_LABEL,
                       workspaceRoot && fs.existsSync(fullPathToResultsFile) ? fullPathToResultsFile : undefined,
                       workspaceRoot ?? '', INSERT_RESULTS_FILE_MISSING_TEXT);
               };
@@ -300,14 +304,15 @@ export class CollectionsApiService {
                     */
                     outcome = 'stopped';
                     const errorMessage = String((error as { message?: unknown })?.message ?? error);
+                    requestFailureDetail = `${fileName} failed: ${errorMessage}`;
                     this.recordRequestFailure(allCollectionApiFilesSobjectResults, this.getObjectNameFromCollectionsApiFilePath(collectionsApiFilePath), fileName, errorMessage, fullPathToResultsFile);
-                    showInsertFailure(`Failed to process ${fileName}: ${RecipeYamlScalar.escapeForNotification(errorMessage)}`);
                     if ( allOrNoneSelection ) {
                         isRolledBack = true;
                         if ( fs.existsSync(fullPathToResultsFile) ) {
                             await this.deletePreviouslySavedRecords(fullPathToResultsFile, aliasAuthenticationConnection);
                         }
                     }
+                    showInsertFailure(`Failed to process ${fileName}: ${errorMessage}${isRolledBack ? ' — every record this insert had saved was deleted, because all-or-none was chosen.' : ''}`);
                     break;
 
                 }
@@ -328,7 +333,8 @@ export class CollectionsApiService {
             isRolledBack: isRolledBack,
             resultsFilePath: fullPathToResultsFile,
             savedRecordCount: isRolledBack ? 0 : countResults(allCollectionApiFilesSobjectResults.SuccessResults),
-            failedRecordCount: countResults(allCollectionApiFilesSobjectResults.FailureResults)
+            failedRecordCount: countResults(allCollectionApiFilesSobjectResults.FailureResults),
+            ...(requestFailureDetail === undefined ? {} : { requestFailureDetail })
         };
 
     }
@@ -403,8 +409,10 @@ export class CollectionsApiService {
     /*
         A request that threw has no per-record answer, so the results file would otherwise not say
         why the insert stopped -- or not exist at all, when it was the first file. One entry under
-        the object's FailureResults records the file and the error. A file that cannot be written
-        is left unwritten: the caller's notification then offers no button rather than failing.
+        the object's FailureResults records the file and the error. NOTHING here may throw: the
+        caller rolls back an all-or-none insert after this, and an object named from a file
+        (`collectionsApi-constructor.json`) meets addItemToRecordMap's `in` check on a plain
+        object. Anything that fails leaves the file as it was, and the notification without a button.
     */
     static recordRequestFailure(allCollectionApiFilesSobjectResults: Record<string, Record<string, any[]>>,
                                 objectApiName: string,
@@ -413,9 +421,9 @@ export class CollectionsApiService {
                                 fullPathToResultsFile: string) {
 
         const requestFailure = { success: false, fileName: fileName, errors: [{ statusCode: INSERT_REQUEST_FAILED_STATUS_CODE, message: errorMessage, fields: [] as string[] }] };
-        allCollectionApiFilesSobjectResults.FailureResults = this.addItemToRecordMap(allCollectionApiFilesSobjectResults.FailureResults, objectApiName, requestFailure);
 
         try {
+            allCollectionApiFilesSobjectResults.FailureResults = this.addItemToRecordMap(allCollectionApiFilesSobjectResults.FailureResults, objectApiName, requestFailure);
             this.appendInsertAttemptsFileWithLatestSobjectResults(allCollectionApiFilesSobjectResults, fullPathToResultsFile);
         } catch {
             // THE NOTIFICATION STILL SHOWS, WITHOUT A BUTTON

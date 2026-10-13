@@ -4382,7 +4382,7 @@ export class RecipeCockpitService {
 
         const alias = scratchOrgPlan.alias;
         const showScratchOrgNotification = (severity: 'information' | 'warning' | 'error', notificationText: string, outputFilePath?: string) =>
-            this.showNotificationWithFile(severity, RecipeYamlScalar.escapeForNotification(notificationText), RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL,
+            VSCodeWorkspaceService.showNotificationWithWorkspaceFile(severity, RecipeYamlScalar.escapeForNotification(notificationText), RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL,
                 outputFilePath, workspaceRoot, 'The scratch org result file no longer exists in this workspace.');
 
         if ( setupOutcome.kind === 'createFailed' ) {
@@ -5735,20 +5735,13 @@ export class RecipeCockpitService {
             notificationText = `${recordsText(insertResult.savedRecordCount)} ${insertResult.savedRecordCount === 1 ? 'was' : 'were'} inserted into ${orgLabel} from ${treeLabel}.`;
         }
 
-        this.showNotificationWithFile(severity, notificationText, hasErrors ? RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL : RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
+        if ( insertResult.requestFailureDetail ) {
+            notificationText += ` The request for ${RecipeYamlScalar.escapeForNotification(insertResult.requestFailureDetail)}`;
+        }
+
+        VSCodeWorkspaceService.showNotificationWithWorkspaceFile(severity, notificationText, hasErrors ? RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL : RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
             insertResult.resultsFilePath && fs.existsSync(insertResult.resultsFilePath) ? insertResult.resultsFilePath : undefined,
             workspaceRoot, 'The insert results file no longer exists in this workspace.');
-
-    }
-
-    private static showNotificationWithFile(severity: 'information' | 'warning' | 'error',
-                                            notificationText: string,
-                                            actionLabel: string,
-                                            filePath: string | undefined,
-                                            workspaceRoot: string,
-                                            missingFileText: string) {
-
-        VSCodeWorkspaceService.showNotificationWithWorkspaceFile(severity, notificationText, actionLabel, filePath, workspaceRoot, missingFileText);
 
     }
 

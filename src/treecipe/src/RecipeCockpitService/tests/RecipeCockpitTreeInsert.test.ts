@@ -70,6 +70,7 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
 import { ExtensionCommandService } from '../../ExtensionCommandService/ExtensionCommandService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
@@ -1528,6 +1529,17 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             showInsertNotification(insertResult);
 
             expect((vscode.window as any)[notifyName].mock.calls).toEqual([[expectedText, expectedButton]]);
+
+        });
+
+        it('names a request that threw, with its error escaped, since the shared insert shows nothing of its own (#312 review)', () => {
+
+            showInsertNotification({ outcome: 'stopped', requestFailureDetail: 'collectionsApi-Contact.json failed: Error importing records: [x](command:y)' });
+
+            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls).toEqual([[
+                `The insert of Relationship Tree 1 into qa stopped at a file that could not be inserted. 0 records were kept, because all-or-none was not chosen, and 0 failed. The request for ${RecipeYamlScalar.escapeForNotification('collectionsApi-Contact.json failed: Error importing records: [x](command:y)')}`,
+                RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL
+            ]]);
 
         });
 

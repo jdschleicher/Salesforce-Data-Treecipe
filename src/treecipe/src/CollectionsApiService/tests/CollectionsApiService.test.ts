@@ -1603,9 +1603,11 @@ describe('the one data set insert, shared by Insert Data Set by Directory and th
             // THE CONTACT REQUEST WAS SENT AND THREW; NOTHING AFTER IT IS SENT
             expect(connection.insertedBatches.map(insertedBatch => insertedBatch.objectApiName)).toEqual(['Account', 'Contact']);
             expect(deleteSpy).toHaveBeenCalledTimes(1);
-            expect(insertResult).toMatchObject({ outcome: 'stopped', isRolledBack: true, savedRecordCount: 0, failedRecordCount: 0 });
+            expect(insertResult).toMatchObject({ outcome: 'stopped', isRolledBack: true, savedRecordCount: 0, failedRecordCount: 0, requestFailureDetail: 'collectionsApi-Contact.json failed: Error importing records: Error: INVALID_SESSION_ID: Session expired' });
+            // THE ERROR IS SHOWN ONCE THE ROLLBACK IT DESCRIBES HAS RUN
+            expect(deleteSpy.mock.invocationCallOrder[0]).toBeLessThan((vscode.window.showErrorMessage as jest.Mock).mock.invocationCallOrder[0]);
             expect((vscode.window.showErrorMessage as jest.Mock).mock.calls).toEqual([[
-                RecipeYamlScalar.escapeForNotification('Failed to process collectionsApi-Contact.json: Error importing records: Error: INVALID_SESSION_ID: Session expired'),
+                RecipeYamlScalar.escapeForNotification('Failed to process collectionsApi-Contact.json: Error importing records: Error: INVALID_SESSION_ID: Session expired — every record this insert had saved was deleted, because all-or-none was chosen.'),
                 INSERT_VIEW_ERRORS_LABEL
             ]]);
             expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
@@ -1680,6 +1682,41 @@ describe('the one data set insert, shared by Insert Data Set by Directory and th
 
             expect((vscode.window.showErrorMessage as jest.Mock).mock.calls).toHaveLength(1);
             expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0]).toHaveLength(1);
+
+        });
+
+        test('still rolls back under all-or-none when recording the error throws, as an object named constructor makes it (#312 review)', async () => {
+
+            writeDataSetFolder({
+                Account: [record('Account', 1, 'Account_NickName')],
+                constructor: [record('constructor', 1, 'Constructor_NickName')]
+            }, { Account: 0, constructor: 1 });
+            const connection = buildConnection((objectApiName, records) => {
+                if ( objectApiName === 'constructor' ) {
+                    throw new Error('NOT_FOUND: The requested resource does not exist');
+                }
+                return records.map((_record, recordIndex) => ({ id: `${objectApiName}-${recordIndex}`, success: true, errors: [] }));
+            });
+            const deleteSpy = jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockResolvedValue(undefined);
+
+            const insertResult = await insertFolder(connection, true);
+
+            expect(deleteSpy).toHaveBeenCalledTimes(1);
+            expect(insertResult).toMatchObject({ outcome: 'stopped', isRolledBack: true, savedRecordCount: 0 });
+            expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(1);
+
+        });
+
+        test('escapes the error text, so a link in it cannot run a command', async () => {
+
+            writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')] }, { Account: 0 });
+            const connection = buildConnection(() => { throw new Error('see [here](command:workbench.action.terminal.new)'); });
+
+            await insertFolder(connection, false);
+
+            const shownText: string = (vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0];
+            expect(shownText).not.toContain('[here](command:');
+            expect(shownText).toBe(RecipeYamlScalar.escapeForNotification('Failed to process collectionsApi-Account.json: Error importing records: Error: see [here](command:workbench.action.terminal.new)'));
 
         });
 
