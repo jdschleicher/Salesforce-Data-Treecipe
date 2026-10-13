@@ -5,6 +5,10 @@ import { SalesforceApiName } from "../RecipeService/SalesforceApiName";
 
 export class RelationshipService {
 
+  private static readonly ootbReferenceLookupMap: Readonly<Record<string, string>> = Object.freeze({
+    "AccountId": "Account"
+  });
+
   /*
     The folder Generate Treecipe writes one tree's recipe into, and what the Recipe Cockpit names
     that tree's card by: "<only>-ONLY", or "<first>-thru-<last>" in insert order. One rule, so the
@@ -725,74 +729,28 @@ export class RelationshipService {
     
   }
 
-  getOotbReferenceLookupMap(): Record<string, string> {
-
-    let ootbLookupReferenceToObjectApiNameMap: Record<string, string> | undefined;
-    if (ootbLookupReferenceToObjectApiNameMap) {
-      return ootbLookupReferenceToObjectApiNameMap;
-    }
-
-    ootbLookupReferenceToObjectApiNameMap = {
-      "AccountId": "Account"
-    };
-
-    return ootbLookupReferenceToObjectApiNameMap;
-
-  }
-
-  getMergedReferenceLookupMap(customRelationshipMappings?: Record<string, string>): Record<string, string> {
-
-    const ootbMap = this.getOotbReferenceLookupMap();
-    const merged: Record<string, string> = { ...ootbMap };
-
-    if (!customRelationshipMappings) {
-      return merged;
-    }
-
-    for (const [customKey, parentObjectApiName] of Object.entries(customRelationshipMappings)) {
-
-      if (!this.isValidCustomRelationshipKey(customKey) || !parentObjectApiName) {
-        continue;
-      }
-
-      // OOTB entries always win — custom entries extend, never override
-      if (merged[customKey]) {
-        continue;
-      }
-
-      merged[customKey] = parentObjectApiName;
-
-    }
-
-    return merged;
-
-  }
-
   resolveParentReferenceForField(
     objectApiName: string,
     fieldApiName: string,
     customRelationshipMappings?: Record<string, string>
   ): string | undefined {
 
-    const ootbMap = this.getOotbReferenceLookupMap();
-
     if (customRelationshipMappings) {
       const objectFieldKey = `${objectApiName}.${fieldApiName}`;
       const customMatch = customRelationshipMappings[objectFieldKey];
-      if (customMatch && this.isValidCustomRelationshipKey(objectFieldKey)) {
+      if (typeof customMatch === 'string' && customMatch && this.isValidCustomRelationshipKey(objectFieldKey)) {
         return customMatch;
       }
     }
 
-    return ootbMap[fieldApiName];
+    // own-key check: a field named like an Object.prototype member must not resolve to it
+    return Object.prototype.hasOwnProperty.call(RelationshipService.ootbReferenceLookupMap, fieldApiName)
+      ? RelationshipService.ootbReferenceLookupMap[fieldApiName]
+      : undefined;
 
   }
 
   private isValidCustomRelationshipKey(key: string): boolean {
-
-    if (!key || typeof key !== 'string') {
-      return false;
-    }
 
     const dotIndex = key.indexOf('.');
     if (dotIndex <= 0 || dotIndex === key.length - 1) {
