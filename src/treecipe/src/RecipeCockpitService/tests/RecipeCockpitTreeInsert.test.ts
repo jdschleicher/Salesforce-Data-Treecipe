@@ -59,7 +59,9 @@ import {
     RECIPE_COCKPIT_INSERT_CONFIRM_LABEL,
     RECIPE_COCKPIT_GENERATE_ONLY_CONFIRM_LABEL,
     RECIPE_COCKPIT_GENERATE_ACTION_LABEL,
-    RECIPE_COCKPIT_RUN_FAKER_COMMAND
+    RECIPE_COCKPIT_RUN_FAKER_COMMAND,
+    RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
+    RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL
 } from '../RecipeCockpitService';
 import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
@@ -322,6 +324,18 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
         const useConnection = (connection: FakeConnection) => getConnectionSpy.mockResolvedValue(connection as any);
 
         const insertAccountTree = () => receivedMessageHandler({ command: 'insertTree', treeKey: ACCOUNT_TREE_KEY });
+        // THE TREE INSERT'S RESULT NOTIFICATIONS (#301): NOT A MODAL, AND WITH A BUTTON -- THE SHARED INSERT'S OWN PROGRESS NOTES HAVE NONE
+        const resultNotificationCalls = (notify: unknown) => ( notify as jest.Mock ).mock.calls.filter(notificationCall => notificationCall.length > 1 && !notificationCall[1]?.modal);
+        const insertResultsFilePath = () => path.join(fakeDataSetsFolderPath(), datasetFolderNames()[0], 'InsertAttempts', `insertAttempt-${TIMESTAMP}`, `insertAttemptResults-${TIMESTAMP}.json`);
+        // THE MODAL IS CONFIRMED; A RESULT NOTIFICATION IS LEFT OPEN UNTIL THE TEST CLICKS ITS BUTTON
+        const holdResultNotifications = () => {
+            const clickButton: { answer?: (label: string | undefined) => void } = {};
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options?: { modal?: boolean }) => options?.modal
+                ? RECIPE_COCKPIT_INSERT_CONFIRM_LABEL
+                : new Promise(resolve => { clickButton.answer = resolve; }));
+            return clickButton;
+        };
+        const flushNotificationClick = () => new Promise(resolve => setImmediate(resolve));
 
         beforeEach(() => {
 
@@ -504,10 +518,14 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                     runFolderName: FAKER_JS_RUN,
                     recordCounts: [{ objectApiName: 'Account', recordCount: 2 }, { objectApiName: 'Contact', recordCount: 6 }, { objectApiName: 'OtherChildObject__c', recordCount: 6 }]
                 },
-                insertResult: { treeKey: ACCOUNT_TREE_KEY, savedCount: 14, failedCount: 0, outcome: 'completed', isRolledBack: false },
                 renderSequence: lastRenderSequence(),
                 updateSequence: 1
             }]);
+            // HOW IT WENT IS A NOTIFICATION'S, WITH THE RESULTS FILE ONE CLICK AWAY (#301)
+            expect(resultNotificationCalls(vscode.window.showInformationMessage)).toEqual([
+                ['14 records were inserted into qa (qa@example.com.qa) from Relationship Tree 1.', RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL]
+            ]);
+            expect(resultNotificationCalls(vscode.window.showWarningMessage)).toEqual([]);
             expect(postedNamed('insertState').map(insertState => insertState.isRunning)).toEqual([true, false]);
             expect(postedPanelMessages.at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
 
@@ -841,10 +859,12 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         });
 
-        it('keeps what was inserted when records fail, shows the result in place, and offers View errors for them', async () => {
+        it('keeps what was inserted when records fail, and its warning\'s View errors opens the results file (#301)', async () => {
 
             const connection = buildFakeConnection({ rejectRecord: (objectApiName, record) => objectApiName === 'Contact' && record.attributes.referenceId.startsWith('Contact_Reference_2__') });
             useConnection(connection);
+            const clickButton = holdResultNotifications();
+            const openFileSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
 
             await openSelectedCockpit(FAKER_JS_RUN);
             await insertAccountTree();
@@ -852,30 +872,44 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             expect(connection.deleteCalls).toEqual([]);
             expect(insertedOf(connection, 'Account')).toHaveLength(2);
             expect(insertedOf(connection, 'Contact').length).toBeGreaterThan(0);
-            expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringMatching(/^\d+ records were inserted into qa \(qa@example\.com\.qa\) from Relationship Tree 1 and \d+ failed\. Nothing was rolled back; "View errors" in the Treecipe tab opens the results\.$/));
-            expect(postedNamed('datasetAdded').at(-1).insertResult).toMatchObject({ treeKey: ACCOUNT_TREE_KEY, outcome: 'completed' });
+            expect(resultNotificationCalls(vscode.window.showWarningMessage)).toEqual([[
+                expect.stringMatching(/^\d+ records were inserted into qa \(qa@example\.com\.qa\) from Relationship Tree 1 and \d+ failed\. Nothing was rolled back\.$/),
+                RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL
+            ]]);
+            expect(postedNamed('datasetAdded').at(-1)).not.toHaveProperty('insertResult');
             expect(postedPanelMessages.at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
 
-            // A REVEALED PANEL ASKS AGAIN, AS THE REAL ONE DOES ON ITS NEXT DRAW, AND THE RESULT RIDES ON ITS READINESS
-            await receivedMessageHandler({ command: 'loadDataOrgs' });
+            // THE BUTTON IS WHAT OPENS THE FILE; THE PANEL HAS NO WAY TO
+            clickButton.answer?.(RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL);
+            await flushNotificationClick();
+            expect(openFileSpy).toHaveBeenCalledWith(insertResultsFilePath());
 
-            const insertResults = postedNamed('dataOrgReadiness').at(-1).insertResults;
-            expect(insertResults).toHaveLength(1);
-            expect(insertResults[0]).toMatchObject({ treeKey: ACCOUNT_TREE_KEY, outcome: 'completed' });
-            expect(insertResults[0].failedCount).toBeGreaterThan(0);
-            expect(insertResults[0].savedCount).toBe(connection.insertedRecordsById.size);
-            expect(JSON.stringify(insertResults)).not.toContain('InsertAttempts');
-
-            const openFileSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
-            await receivedMessageHandler({ command: 'viewInsertErrors', treeKey: ACCOUNT_TREE_KEY, resultsFilePath: '/etc/passwd' });
-            expect(openFileSpy).toHaveBeenCalledWith(path.join(fakeDataSetsFolderPath(), datasetFolderNames()[0], 'InsertAttempts', `insertAttempt-${TIMESTAMP}`, `insertAttemptResults-${TIMESTAMP}.json`));
-
-            // AND SAYS SO WHEN THE FILE IS GONE
             openFileSpy.mockClear();
-            fs.rmSync(fakeDataSetsFolderPath(), { recursive: true, force: true });
             await receivedMessageHandler({ command: 'viewInsertErrors', treeKey: ACCOUNT_TREE_KEY });
             expect(openFileSpy).not.toHaveBeenCalled();
-            expect(showWarningMessageSpy).toHaveBeenCalledWith('The results file of that insert no longer exists in this workspace.');
+
+            // A REVEALED PANEL ASKS AGAIN, AND ITS READINESS CARRIES NO INSERT RESULT
+            await receivedMessageHandler({ command: 'loadDataOrgs' });
+            expect(postedNamed('dataOrgReadiness').at(-1)).not.toHaveProperty('insertResults');
+
+        });
+
+        it('opens nothing from View errors once the results file is gone, and says so', async () => {
+
+            const connection = buildFakeConnection({ rejectRecord: (objectApiName, record) => objectApiName === 'Contact' && record.attributes.referenceId.startsWith('Contact_Reference_2__') });
+            useConnection(connection);
+            const clickButton = holdResultNotifications();
+            const openFileSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+
+            await openSelectedCockpit(FAKER_JS_RUN);
+            await insertAccountTree();
+            fs.rmSync(fakeDataSetsFolderPath(), { recursive: true, force: true });
+
+            clickButton.answer?.(RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL);
+            await flushNotificationClick();
+
+            expect(openFileSpy).not.toHaveBeenCalled();
+            expect(showWarningMessageSpy).toHaveBeenCalledWith('The insert results file no longer exists in this workspace.');
 
         });
 
@@ -1015,15 +1049,16 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
             });
 
-            it('inserts, and reports each record the org rejected through the insert result and View errors', async () => {
+            it('inserts, and reports each record the org rejected through the insert\'s warning and its View errors', async () => {
 
                 const connection = buildLackingConnection();
                 useConnection(connection);
+                const clickButton = holdResultNotifications();
                 await openSelectedCockpit(FAKER_JS_RUN);
 
                 await insertAccountTree();
 
-                expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
+                expect(( vscode.window.showWarningMessage as jest.Mock ).mock.calls.filter(notificationCall => notificationCall[1]?.modal)).toHaveLength(1);
                 expect(runFakerCalls()).toHaveLength(1);
                 expect(connection.deleteCalls).toEqual([]);
                 expect(insertedOf(connection, 'Account')).toHaveLength(2);
@@ -1032,14 +1067,15 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 const rejectedCount = connection.insertCalls.filter(insertCall => insertCall.objectApiName === 'OtherChildObject__c')
                     .reduce((count, insertCall) => count + insertCall.records.length, 0);
                 expect(rejectedCount).toBeGreaterThan(0);
-                expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`^${connection.insertedRecordsById.size} records were inserted into qa \\(qa@example\\.com\\.qa\\) from Relationship Tree 1 and ${rejectedCount} failed\\.`)));
-
-                const insertResult = postedNamed('datasetAdded').at(-1).insertResult;
-                expect(insertResult).toMatchObject({ treeKey: ACCOUNT_TREE_KEY, outcome: 'completed', isRolledBack: false, failedCount: rejectedCount, savedCount: connection.insertedRecordsById.size });
+                expect(resultNotificationCalls(vscode.window.showWarningMessage)).toEqual([[
+                    `${connection.insertedRecordsById.size} records were inserted into qa (qa@example.com.qa) from Relationship Tree 1 and ${rejectedCount} failed. Nothing was rolled back.`,
+                    RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL
+                ]]);
 
                 const openFileSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
-                await receivedMessageHandler({ command: 'viewInsertErrors', treeKey: ACCOUNT_TREE_KEY });
-                const resultsFilePath = path.join(fakeDataSetsFolderPath(), datasetFolderNames()[0], 'InsertAttempts', `insertAttempt-${TIMESTAMP}`, `insertAttemptResults-${TIMESTAMP}.json`);
+                clickButton.answer?.(RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL);
+                await flushNotificationClick();
+                const resultsFilePath = insertResultsFilePath();
                 expect(openFileSpy).toHaveBeenCalledWith(resultsFilePath);
                 expect(fs.readFileSync(resultsFilePath, 'utf8')).toContain('FIELD_CUSTOM_VALIDATION_EXCEPTION');
 
@@ -1057,7 +1093,10 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 const savedRecordIds = [...connection.insertedRecordsById.keys()];
                 expect(savedRecordIds.length).toBeGreaterThan(0);
                 expect(connection.deleteCalls.flat().sort()).toEqual(savedRecordIds.sort());
-                expect(postedNamed('datasetAdded').at(-1).insertResult).toMatchObject({ treeKey: ACCOUNT_TREE_KEY, isRolledBack: true });
+                expect(resultNotificationCalls(vscode.window.showWarningMessage)).toEqual([[
+                    expect.stringMatching(/^The insert of Relationship Tree 1 into qa \(qa@example\.com\.qa\) stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen\. \d+ records? failed\.$/),
+                    RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL
+                ]]);
 
             });
 
@@ -1413,7 +1452,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
         it('refuses while a scratch org run or the same tree\'s generate is in flight, inserts beside another tree\'s generate, and answers another tree\'s running insert', () => {
 
             const scratchOrgRunning = buildPanelState();
-            scratchOrgRunning.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true, statusText: '', isFailure: false, hasOutput: false } as any;
+            scratchOrgRunning.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true };
             expect(RecipeCockpitService.routePanelMessage(insertTree, scratchOrgRunning)).toEqual(refusal());
 
             const sameTreeGenerating = buildPanelState();
@@ -1436,34 +1475,79 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         });
 
-        it('opens an insert\'s results only for the selected org\'s tree that had failures', () => {
+        // #301: THE RESULTS FILE IS OPENED FROM THE INSERT'S NOTIFICATION, SO THE PANEL HAS NO MESSAGE THAT OPENS IT
+        it('routes nothing for a posted viewInsertErrors', () => {
 
             const routedPanelState = buildPanelState();
-            const storeResult = (orgUsername: string, failedCount: number) => routedPanelState.dataOrgInsertResults.set(
-                RecipeCockpitService.buildInsertResultKey(orgUsername, ACCOUNT_TREE_KEY),
-                { viewModel: { treeKey: ACCOUNT_TREE_KEY, savedCount: 2, failedCount, outcome: 'completed', isRolledBack: false }, resultsFilePath: '/workspace/results.json' }
-            );
-            const viewErrors = { command: 'viewInsertErrors', treeKey: ACCOUNT_TREE_KEY };
 
-            expect(RecipeCockpitService.routePanelMessage(viewErrors, routedPanelState)).toBeUndefined();
-            storeResult('other@example.com', 4);
-            expect(RecipeCockpitService.routePanelMessage(viewErrors, routedPanelState)).toBeUndefined();
-            storeResult(SANDBOX_ORG.username, 0);
-            expect(RecipeCockpitService.routePanelMessage(viewErrors, routedPanelState)).toBeUndefined();
-            storeResult(SANDBOX_ORG.username, 1);
-            expect(RecipeCockpitService.routePanelMessage(viewErrors, routedPanelState)).toEqual({ kind: 'viewInsertErrors', resultsFilePath: '/workspace/results.json' });
-            expect(RecipeCockpitService.routePanelMessage({ ...viewErrors, resultsFilePath: '/etc/passwd' } as any, routedPanelState)).toEqual({ kind: 'viewInsertErrors', resultsFilePath: '/workspace/results.json' });
-            expect(RecipeCockpitService.routePanelMessage({ command: 'viewInsertErrors', treeKey: LEAD_TREE_KEY }, routedPanelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'viewInsertErrors', treeKey: ACCOUNT_TREE_KEY }, routedPanelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'viewInsertErrors', treeKey: ACCOUNT_TREE_KEY, resultsFilePath: '/etc/passwd' } as any, routedPanelState)).toBeUndefined();
 
-            // A STOP WITH NOTHING COUNTED AS FAILED -- A REQUEST THAT THREW -- STILL OPENS ITS RESULTS (#259 review)
-            routedPanelState.dataOrgInsertResults.set(RecipeCockpitService.buildInsertResultKey(SANDBOX_ORG.username, ACCOUNT_TREE_KEY), {
-                viewModel: { treeKey: ACCOUNT_TREE_KEY, savedCount: 2, failedCount: 0, outcome: 'stopped', isRolledBack: false },
-                resultsFilePath: '/workspace/results.json'
-            });
-            expect(RecipeCockpitService.routePanelMessage(viewErrors, routedPanelState)).toEqual({ kind: 'viewInsertErrors', resultsFilePath: '/workspace/results.json' });
+        });
 
-            routedPanelState.dataOrgSelection = undefined;
-            expect(RecipeCockpitService.routePanelMessage(viewErrors, routedPanelState)).toBeUndefined();
+    });
+
+    // #301: HOW AN INSERT ENDED IS ONE NOTIFICATION, AND THE RESULTS FILE IS ITS BUTTON
+    describe('showTreeInsertNotification', () => {
+
+        const RESULTS_FILE_PATH = path.join(TREE_WORKSPACE_ROOT, 'results.json');
+        const showInsertNotification = (insertResult: Record<string, unknown>) => ( RecipeCockpitService as any ).showTreeInsertNotification(
+            { resultsFilePath: RESULTS_FILE_PATH, isRolledBack: false, savedRecordCount: 0, failedRecordCount: 0, ...insertResult },
+            'Relationship Tree 1',
+            'qa',
+            TREE_WORKSPACE_ROOT
+        );
+
+        beforeEach(() => {
+            (vscode.window.showInformationMessage as jest.Mock).mockReset();
+            (vscode.window.showWarningMessage as jest.Mock).mockReset();
+        });
+
+        it.each([
+            ['a full success', { outcome: 'completed', savedRecordCount: 1 }, 'showInformationMessage', '1 record was inserted into qa from Relationship Tree 1.', RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL],
+            ['records that failed', { outcome: 'completed', savedRecordCount: 3, failedRecordCount: 1 }, 'showWarningMessage', '3 records were inserted into qa from Relationship Tree 1 and 1 failed. Nothing was rolled back.', RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL],
+            ['a stop that kept what it saved', { outcome: 'stopped', savedRecordCount: 1, failedRecordCount: 2 }, 'showWarningMessage', 'The insert of Relationship Tree 1 into qa stopped at a file that could not be inserted. 1 record was kept, because all-or-none was not chosen, and 2 failed.', RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL],
+            ['a stop that rolled back', { outcome: 'stopped', isRolledBack: true, failedRecordCount: 1 }, 'showWarningMessage', 'The insert of Relationship Tree 1 into qa stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen. 1 record failed.', RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL],
+            ['a cancel', { outcome: 'cancelled', isRolledBack: true }, 'showWarningMessage', 'The insert of Relationship Tree 1 into qa was cancelled and every record it had inserted was deleted.', RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL]
+        ])('reports %s in one notification with the button that opens the results file', (_label, insertResult, notifyName, expectedText, expectedButton) => {
+
+            showInsertNotification(insertResult);
+
+            expect((vscode.window as any)[notifyName].mock.calls).toEqual([[expectedText, expectedButton]]);
+
+        });
+
+        it('changes nothing, and throws nothing, when the notification itself fails to show', async () => {
+
+            const openFileSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+            (vscode.window.showInformationMessage as jest.Mock).mockRejectedValue(new Error('no window'));
+
+            expect(() => showInsertNotification({ outcome: 'completed', savedRecordCount: 1 })).not.toThrow();
+            await new Promise(resolve => setImmediate(resolve));
+
+            expect(openFileSpy).not.toHaveBeenCalled();
+
+        });
+
+        it('offers no button when the insert saved no results file', () => {
+
+            showInsertNotification({ outcome: 'completed', savedRecordCount: 2, resultsFilePath: '' });
+
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls).toEqual([['2 records were inserted into qa from Relationship Tree 1.']]);
+
+        });
+
+        it('opens nothing, and says so, when the results file is outside the workspace by the time the button is clicked', async () => {
+
+            const openFileSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+            const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL);
+
+            showInsertNotification({ outcome: 'completed', savedRecordCount: 1, failedRecordCount: 1, resultsFilePath: '/etc/passwd' });
+            await new Promise(resolve => setImmediate(resolve));
+
+            expect(openFileSpy).not.toHaveBeenCalled();
+            expect(warningSpy).toHaveBeenCalledWith('The insert results file no longer exists in this workspace.');
 
         });
 
@@ -1664,7 +1748,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             });
         };
 
-        const postReadiness = (panel: any, otherChildReason = '', insertResults: any[] = []) => panel.postToPanel({
+        const postReadiness = (panel: any, otherChildReason = '') => panel.postToPanel({
             command: 'dataOrgReadiness',
             objects: [
                 { objectApiName: 'Account', disabledReason: '', requiredLookups: [] },
@@ -1673,7 +1757,6 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 { objectApiName: 'Lead', disabledReason: '', requiredLookups: [] }
             ],
             createTargets: [],
-            insertResults: insertResults,
             requestSequence: 3,
             renderSequence: 1
         });
@@ -1761,19 +1844,23 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         });
 
-        it('draws the result of the last insert, and View errors posts the tree key alone', () => {
+        // #301: AN INSERT'S RESULT AND ITS RESULTS FILE ARE THE NOTIFICATION'S, SO THE CARD GROWS NO LINE WHEN ONE ENDS
+        it('draws no insert result and no View errors, and adds no node to the card when an insert ends', () => {
 
             const panel = renderPanel();
             selectOrg(panel);
-            postReadiness(panel, '', [{ treeKey: ACCOUNT_TREE_KEY, savedCount: 12, failedCount: 2, outcome: 'completed' }]);
+            postReadiness(panel);
             const card = accountCard(panel);
+            const descendantsOf = (element: any): any[] => [element, ...element.children.flatMap(descendantsOf)];
 
-            expect(partOf(panel, card, 'treeInsertResult').textContent).toBe('12 inserted · 2 failed');
-            const errorsButton = partOf(panel, card, 'treeInsertErrors');
-            expect(panel.isHidden(errorsButton)).toBe(false);
+            partOf(panel, card, 'treeInsert').dispatch('click');
+            const nodesWhileRunning = descendantsOf(card);
+            panel.postToPanel({ command: 'insertState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
 
-            errorsButton.dispatch('click');
-            expect(postedNamed(panel, 'viewInsertErrors')).toEqual([{ command: 'viewInsertErrors', treeKey: ACCOUNT_TREE_KEY }]);
+            expect(descendantsOf(card)).toEqual(nodesWhileRunning);
+            expect(panel.findAll(card, 'treeInsertResult')).toEqual([]);
+            expect(panel.findAll(card, 'treeInsertErrors')).toEqual([]);
+            expect(postedNamed(panel, 'viewInsertErrors')).toEqual([]);
 
         });
 

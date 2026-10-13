@@ -51,7 +51,8 @@ import {
     RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
     RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL,
     RECIPE_COCKPIT_PERMISSION_SET_ORG_PLACEHOLDER,
-    RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL
+    RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
+    RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL
 } from '../RecipeCockpitService';
 import { PERMISSION_SET_MAX_PICKS, RecipeCockpitPermissionSetDeploy } from '../RecipeCockpitPermissionSetDeploy';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -350,7 +351,8 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
             expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)).toMatchObject({
                 kind: 'postMetadataDeployState',
-                hostMessage: { isRunning: false, treeKey: ACCOUNT_TREE_KEY, isFailure: true, statusText: 'Nothing was deployed or assigned: the org selected above is still being checked. Try again once that check has finished.' }
+                hostMessage: { command: 'metadataDeployState', isRunning: false },
+                refusalText: 'Nothing was deployed or assigned: the org selected above is still being checked. Try again once that check has finished.'
             });
             expect(RecipeCockpitService.routePanelMessage({ command: 'deployTreePermissionSets', treeKey: ACCOUNT_TREE_KEY }, panelState)?.kind).toBe('deployTreePermissionSets');
 
@@ -379,9 +381,10 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
             expect(RecipeCockpitService.routePanelMessage({ ...permissionSetMessage, treeKey: 'Lead-ONLY' }, panelState)?.kind).toBe('postMetadataDeployState');
             expect(RecipeCockpitService.routePanelMessage({ ...permissionSetMessage, treeKey: 7 }, panelState)?.kind).toBe('postMetadataDeployState');
-            expect(RecipeCockpitService.routePanelMessage({ ...permissionSetMessage, orgIndex: 1 }, panelState)).toMatchObject({
+            expect(RecipeCockpitService.routePanelMessage({ ...permissionSetMessage, orgIndex: 1 }, panelState)).toEqual({
                 kind: 'postMetadataDeployState',
-                hostMessage: { isRunning: false, treeKey: ACCOUNT_TREE_KEY, isFailure: true, statusText: expect.stringContaining('has not answered that it is a sandbox') }
+                hostMessage: { command: 'metadataDeployState', isRunning: false },
+                refusalText: expect.stringContaining('has not answered that it is a sandbox')
             });
 
             panelState.dataOrgSelection.orgTypeDetail = { isSandbox: false, organizationType: 'Enterprise Edition' };
@@ -392,13 +395,12 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
         });
 
-        it('answers a refusal with the last ended line, and refuses a selection that has not answered its org type', () => {
+        it('answers a refusal with an idle state and no text of its own, and refuses a selection that has not answered its org type', () => {
 
             const panelState = buildPanelState();
-            const endedState = { command: 'metadataDeployState' as const, isRunning: false, treeKey: ACCOUNT_TREE_KEY, statusText: 'done', isFailure: false, hasOutput: true };
-            panelState.metadataDeployStateMessage = endedState;
+            panelState.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: false };
 
-            expect(RecipeCockpitService.routePanelMessage({ ...permissionSetMessage, treeKey: 'Lead-ONLY' }, panelState)).toEqual({ kind: 'postMetadataDeployState', hostMessage: endedState });
+            expect(RecipeCockpitService.routePanelMessage({ ...permissionSetMessage, treeKey: 'Lead-ONLY' }, panelState)).toEqual({ kind: 'postMetadataDeployState', hostMessage: { command: 'metadataDeployState', isRunning: false } });
 
             panelState.dataOrgSelection.orgTypeDetail = undefined;
             expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)?.kind).toBe('postMetadataDeployState');
@@ -409,7 +411,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
             const panelState = buildPanelState();
 
-            panelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true, statusText: 'Creating scratch org…', isFailure: false, hasOutput: false };
+            panelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true };
             expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)?.kind).toBe('postMetadataDeployState');
 
             panelState.scratchOrgStateMessage = undefined;
@@ -417,7 +419,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             expect(RecipeCockpitService.routePanelMessage(permissionSetMessage, panelState)?.kind).toBe('postMetadataDeployState');
 
             panelState.insertStateMessage = undefined;
-            panelState.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, statusText: 'Deploying 2 permission sets for Account tree…', isFailure: false, hasOutput: false };
+            panelState.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true };
             panelState.dataOrgObjectApiNames = new Set(['Account']);
             panelState.insertableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
             panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.set(ACCOUNT_TREE_KEY, '/workspace/account.yml');
@@ -458,6 +460,8 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
         const deployCalls = () => cliCalls.filter(argumentList => argumentList[0] === 'project');
         const assignCalls = () => cliCalls.filter(argumentList => argumentList[0] === 'org' && argumentList[1] === 'assign');
         const lastDeployState = () => postedNamed('metadataDeployState').at(-1);
+        // HOW A RUN ENDED (#301): THE NOTIFICATIONS THAT ARE NOT A MODAL, AS [text, ...buttons]
+        const runNotifications = (notify: unknown) => ( notify as jest.Mock ).mock.calls.filter(notificationCall => !notificationCall[1]?.modal);
         const flushAsyncWork = () => new Promise(resolve => setImmediate(resolve));
         const panelState = (): IRecipeCockpitPanelState => (RecipeCockpitService as any).recipeCockpitPanelState;
         const quickPick = () => vscode.window.showQuickPick as jest.Mock;
@@ -620,12 +624,9 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             });
 
             const doneText = `Deployed and assigned 2 permission sets for Relationship Tree 1 to ${QA_USERNAME} in qa · ${QA_USERNAME}.`;
-            expect(notificationInformationSpy).toHaveBeenCalledWith(doneText);
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, statusText: doneText, isFailure: false, hasOutput: true });
-            expect(postedNamed('metadataDeployState').map(deployState => deployState.statusText)).toEqual(expect.arrayContaining([
-                'Deploying 2 permission sets for Relationship Tree 1…',
-                `Assigning 2 permission sets to ${QA_USERNAME}…`
-            ]));
+            // THE NOTIFICATION IS ALL THE READER IS TOLD, AND ITS "View output" OPENS THE ASSIGNMENT'S RESULT (#301)
+            expect(runNotifications(vscode.window.showInformationMessage)).toEqual([[doneText, RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL]]);
+            expect(postedNamed('metadataDeployState')).toEqual([{ command: 'metadataDeployState', isRunning: true }, { command: 'metadataDeployState', isRunning: false }]);
 
             const operationsFolderPath = path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME);
             const resultFiles = fs.readdirSync(operationsFolderPath);
@@ -702,7 +703,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             expect(assignCalls()).toHaveLength(1);
             expect(workspaceState.update).toHaveBeenCalledWith(RECIPE_COCKPIT_DATA_ORG_STATE_KEY, QA_USERNAME);
             expect(panelState().dataOrgSelection?.orgDetail.username).toBe(QA_USERNAME);
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: false });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -719,7 +720,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             expect(quickPick()).not.toHaveBeenCalled();
             expect(promptSpy).not.toHaveBeenCalled();
             expect(cliCalls.filter(argumentList => argumentList[1] !== 'list')).toEqual([]);
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: false });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -752,7 +753,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             expect(modalCalls()).toHaveLength(1);
             expect(deployCalls()).toEqual([]);
             expect(assignCalls()).toEqual([]);
-            expect(lastDeployState()).toMatchObject({ isRunning: false, statusText: '' });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -779,7 +780,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             expect(deployCalls()).toEqual([]);
             expect(assignCalls()).toEqual([]);
             expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining('Permission sets are deployed and assigned only in a sandbox or scratch org.'));
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -806,7 +807,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             expect(deployCalls()).toHaveLength(1);
             expect(assignCalls()).toEqual([]);
             expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0]).toContain('failed, so nothing was assigned: Contact_Reader: In field: field - no CustomField named Contact.Email found');
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true, hasOutput: true });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -834,7 +835,23 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             expect(deployCalls()).toEqual([]);
             expect(assignCalls()).toEqual([]);
             expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0]).toContain('is a network UNC path');
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
+
+        });
+
+        // #301: THE RESULT FILE IS THE SUCCESS NOTIFICATION'S BUTTON, NOT A LINK IN THE PANEL
+        it('opens the assignment\'s saved result from the success notification\'s View output', async () => {
+
+            (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL);
+            await openCockpitWithQaSelected();
+
+            await deployPermissionSets();
+            await flushAsyncWork();
+
+            const operationsFolderPath = path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME);
+            const assignResultFileName = fs.readdirSync(operationsFolderPath).find(fileName => fileName.endsWith('-permission-set-assign.json'));
+            expect(VSCodeWorkspaceService.openFileInEditor).toHaveBeenCalledWith(path.join(operationsFolderPath, assignResultFileName));
+            expect(postedNamed('metadataDeployState').at(-1)).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -849,7 +866,8 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             await deployPermissionSets();
 
             expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: false, statusText: expect.stringContaining('Contact_Reader was already assigned.') });
+            expect(runNotifications(vscode.window.showInformationMessage).at(-1)[0]).toContain('Contact_Reader was already assigned.');
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -866,7 +884,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             const errorText = (vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0];
             expect(errorText).toContain(`but Contact_Reader could not be assigned to ${QA_USERNAME}`);
             expect(errorText).toContain('Assigned: Account_Tree_Access.');
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true, hasOutput: true });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -880,7 +898,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             await flushAsyncWork();
             await flushAsyncWork();
 
-            expect(lastDeployState()).toMatchObject({ isRunning: true, statusText: 'Deploying 2 permission sets for Relationship Tree 1…' });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: true });
 
             await receivedMessageHandler({ command: 'deployTreeMetadata', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY });
             await receivedMessageHandler({ command: 'deployTreePermissionSets', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY });
@@ -896,7 +914,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             expect(childKill).toHaveBeenCalled();
             expect(assignCalls()).toEqual([]);
             expect(notificationInformationSpy).toHaveBeenCalledWith(expect.stringContaining('was cancelled, so whether it applied is unknown. Nothing was assigned.'));
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -911,7 +929,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             expect(quickPick()).not.toHaveBeenCalled();
             expect(promptSpy).not.toHaveBeenCalled();
             expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining('Nothing was deployed or assigned: No "sfdx-project.json" found'));
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -926,7 +944,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining('Nothing was deployed or assigned: The Salesforce CLI could not report'));
 
             await deployPermissionSets(ACCOUNT_TREE_KEY, null);
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: false, statusText: '' });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
             expect(modalCalls()).toEqual([]);
             expect(deployCalls()).toEqual([]);
@@ -955,7 +973,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             expect(runSpy).toHaveBeenCalledTimes(1);
             const warningTexts = (vscode.window.showWarningMessage as jest.Mock).mock.calls.map(([warningText]) => warningText);
             expect(warningTexts.at(-1)).toContain('so whether it applied is unknown. Nothing was assigned.');
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -966,12 +984,12 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
             runSpy.mockResolvedValueOnce({ stdout: buildDeployAnswer(), stderr: '', exitCode: 0 }).mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: null, timedOut: true });
             await deployPermissionSets();
-            expect(lastDeployState().statusText).toBe('The permission sets were deployed. The assignment did not finish in time and was stopped, so which permission sets were assigned is unknown.');
+            expect(runNotifications(vscode.window.showWarningMessage).at(-1)[0]).toBe('The permission sets were deployed. The assignment did not finish in time and was stopped, so which permission sets were assigned is unknown.');
 
             runSpy.mockResolvedValueOnce({ stdout: buildDeployAnswer(), stderr: '', exitCode: 0 })
                 .mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: null, spawnError: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) });
             await deployPermissionSets();
-            expect(lastDeployState()).toMatchObject({ isFailure: true, statusText: expect.stringContaining('The Salesforce CLI is required') });
+            expect(runNotifications(vscode.window.showErrorMessage).at(-1)).toEqual([expect.stringContaining('The Salesforce CLI is required')]);
 
             runSpy.mockResolvedValueOnce({ stdout: buildDeployAnswer(), stderr: '', exitCode: 0 }).mockImplementationOnce(async (_argumentList, registerCancellation) => {
                 cancellationToken.isCancellationRequested = true;
@@ -979,11 +997,12 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
                 return { stdout: '', stderr: '', exitCode: null };
             });
             await deployPermissionSets();
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true, statusText: expect.stringContaining('was cancelled after they were deployed') });
+            expect(notificationInformationSpy).toHaveBeenLastCalledWith(expect.stringContaining('was cancelled after they were deployed'));
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
-        it('ends the line and rethrows when the run itself throws, so the panel is given its buttons back', async () => {
+        it('ends the run and rethrows when the run itself throws, so the panel is given its buttons back', async () => {
 
             const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
             await openCockpitWithQaSelected();
@@ -991,7 +1010,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
             await deployPermissionSets();
 
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true, statusText: 'The permission sets of Relationship Tree 1 stopped: boom' });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
             expect(handleCapturedErrorSpy).toHaveBeenCalled();
 
         });
@@ -1002,7 +1021,7 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
             await (RecipeCockpitService as any).deployTreePermissionSetsFromPanel((RecipeCockpitService as any).recipeCockpitPanel, 'Gone-tree', false);
 
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false, treeKey: '', statusText: '', isFailure: false, hasOutput: false });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
             expect(quickPick()).not.toHaveBeenCalled();
 
         });
@@ -1030,11 +1049,14 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
 
             assignHandler = () => ({ stdout: buildAssignAnswer([], [{ message: 'Duplicate PermissionSetAssignment' }]), error: Object.assign(new Error('exit 1'), { code: 1 }) });
             await deployPermissionSets();
-            expect(lastDeployState().statusText).toContain('Account_Tree_Access, Contact_Reader were already assigned.');
+            expect(runNotifications(vscode.window.showInformationMessage).at(-1)[0]).toContain('Account_Tree_Access, Contact_Reader were already assigned.');
 
             assignHandler = () => ({ stdout: buildAssignAnswer([], [{ message: 'insufficient access' }]), error: Object.assign(new Error('exit 1'), { code: 1 }) });
             await deployPermissionSets();
-            expect(lastDeployState()).toMatchObject({ isFailure: true, statusText: `The permission sets were deployed, but Account_Tree_Access, Contact_Reader could not be assigned to ${QA_USERNAME}: insufficient access` });
+            expect(runNotifications(vscode.window.showErrorMessage).at(-1)).toEqual([
+                `The permission sets were deployed, but Account_Tree_Access, Contact_Reader could not be assigned to ${QA_USERNAME}: insufficient access`,
+                RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL
+            ]);
 
         });
 
@@ -1098,11 +1120,11 @@ describe('RecipeCockpitService, "Deploy & assign permission sets…" in the Tree
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', hiddenOrgCount: 0, hiddenOrgNote: '', forgottenOrgNotice: '', renderSequence: 1 });
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: 'Sandbox', isSandbox: true, failureMessage: '', requestSequence: 5, renderSequence: 1 });
 
-            panel.postToPanel({ command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, statusText: 'Deploying 3 components…', isFailure: false, hasOutput: false });
+            panel.postToPanel({ command: 'metadataDeployState', isRunning: true });
             expect(permissionSetButtonOf(panel).disabled).toBe(true);
             expect(permissionSetButtonOf(panel, 'Lead').disabled).toBe(true);
 
-            panel.postToPanel({ command: 'metadataDeployState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, statusText: 'done', isFailure: false, hasOutput: false });
+            panel.postToPanel({ command: 'metadataDeployState', isRunning: false });
             expect(permissionSetButtonOf(panel).disabled).toBe(false);
 
             permissionSetButtonOf(panel).dispatch('click');

@@ -1,5 +1,21 @@
 # Change Log
 
+## [3.75.0] - Recipe Cockpit: run results are VS Code notifications, with their files as buttons
+
+Closes [#301](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/301).
+
+When an insert, a deploy, a permission set assignment or a scratch org run ended, the cockpit added a status line under the card or the org picker. The line pushed every row below it down and repeated the notification VS Code had already shown. A success's notification also had no file link: **View output** was only in the panel line.
+
+- **Nothing in the panel moves when a run ends.** The tree insert's result line and **View errors**, the deploy line on a card with its **View output** and **Open Deployment Status**, and the scratch org line under the picker with its **View output** are gone. While a run goes, its buttons are still disabled exactly as before.
+- **Every outcome is one notification, and the file it wrote is a button on it.**
+  - **Deploy & assign permission sets…** and **Deploy this metadata…**: a success now offers **View output** as well, like every failure. A failed metadata deploy still offers **Open Deployment Status** when the org's page for it can be named.
+  - **+ New scratch org**: a success offers **View output**. The text that was only in the panel line, "It is selected in the Treecipe tab", "press ⟳ to check again" and "No deploy was attempted", is now in the notification. The org is named `alias · username`, so it is not shown with escaped parentheses. The "Listing the new scratch org…" step is shown in a progress notification.
+  - **Tree insert**: one notification for every outcome. A full success is an information message with **View results**. Failed records, a stop or a cancel is a warning with **View errors**. Both open the insert's results file. The text no longer says to use "View errors" in the Treecipe tab.
+  - A deploy the cockpit refuses before it starts (the org is still being checked, or has not answered that it is a sandbox) is now a warning, not a line on the card.
+- **A button opens only a file still in the workspace.** The path is checked again when it is clicked. A file that has gone opens nothing and a warning says so. A run that saved no file shows no button.
+- **Messages.** `scratchOrgState` and `metadataDeployState` carry only `isRunning`. `dataOrgReadiness` no longer carries `insertResults`, and `datasetAdded` no longer carries `insertResult`. A posted `viewInsertErrors`, `viewScratchOrgOutput`, `viewMetadataDeployOutput` or `openMetadataDeployStatus` routes to nothing, so the panel has no message that opens a file.
+- **Unchanged:** `Generates only: <reason>` beside the generate button and the org picker's own status and hidden-orgs note, both of which describe the selection rather than a run; the one-run-per-window locks; the sandbox-and-scratch-only rule; text escaped for notifications; the Deployment Status address going only to the browser; and Insert Data Set by Directory's own notifications.
+
 ## [3.74.1] - Recipe Cockpit: the tree's chain link tilts from bottom right to top left
 
 Closes [#295](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/295).

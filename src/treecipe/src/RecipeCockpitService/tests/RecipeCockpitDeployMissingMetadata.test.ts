@@ -610,7 +610,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             ['an org index that is not a number', { orgIndex: '0' }, undefined],
             ['an org that answered it is production', {}, { isSandbox: false, organizationType: 'Enterprise Edition' }],
             ['an org that never answered', {}, null]
-        ])('refuses %s and says so on the card', (unusedDescription, override, orgTypeDetail) => {
+        ])('refuses %s and says so in a warning, giving the buttons back (#301)', (unusedDescription, override, orgTypeDetail) => {
 
             const panelState = buildDeployablePanelState();
             if ( orgTypeDetail !== undefined ) {
@@ -619,14 +619,8 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
             expect(RecipeCockpitService.routePanelMessage({ ...deployMessage, ...override } as any, panelState)).toEqual({
                 kind: 'postMetadataDeployState',
-                hostMessage: {
-                    command: 'metadataDeployState',
-                    isRunning: false,
-                    treeKey: ACCOUNT_TREE_KEY,
-                    statusText: 'Nothing was deployed: the org selected above has not answered that it is a sandbox. Choose a sandbox or scratch org there.',
-                    isFailure: true,
-                    hasOutput: false
-                }
+                hostMessage: { command: 'metadataDeployState', isRunning: false },
+                refusalText: 'Nothing was deployed: the org selected above has not answered that it is a sandbox. Choose a sandbox or scratch org there.'
             });
 
         });
@@ -639,14 +633,8 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
             expect(RecipeCockpitService.routePanelMessage(deployMessage, panelState)).toEqual({
                 kind: 'postMetadataDeployState',
-                hostMessage: {
-                    command: 'metadataDeployState',
-                    isRunning: false,
-                    treeKey: ACCOUNT_TREE_KEY,
-                    statusText: 'Nothing was deployed: the org selected above is still being checked. Deploy once that check has finished.',
-                    isFailure: true,
-                    hasOutput: false
-                }
+                hostMessage: { command: 'metadataDeployState', isRunning: false },
+                refusalText: 'Nothing was deployed: the org selected above is still being checked. Deploy once that check has finished.'
             });
             // THE PROMPTED PATH CHECKS NOTHING OF THE SELECTION
             expect(RecipeCockpitService.routePanelMessage({ command: 'deployTreeMetadata', treeKey: ACCOUNT_TREE_KEY }, panelState)?.kind).toBe('deployTreeMetadata');
@@ -656,7 +644,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
         it('refuses a second deploy while one runs, and an insert, an org selection, ⟳, a listing or a scratch org meanwhile', () => {
 
             const panelState = buildDeployablePanelState();
-            panelState.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, statusText: 'Deploying 3 components of Account tree…', isFailure: false, hasOutput: false };
+            panelState.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true };
             panelState.dataOrgObjectApiNames = new Set(['Account']);
             panelState.insertableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
             panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.set(ACCOUNT_TREE_KEY, '/workspace/account.yml');
@@ -676,7 +664,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
             const panelState = buildDeployablePanelState();
 
-            panelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true, statusText: 'Creating scratch org…', isFailure: false, hasOutput: false };
+            panelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true };
             expect(RecipeCockpitService.routePanelMessage(deployMessage, panelState)?.kind).toBe('postMetadataDeployState');
 
             panelState.scratchOrgStateMessage = undefined;
@@ -697,60 +685,29 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
         });
 
-        it('opens a failed deploy\'s Deployment Status page only for the card its line is drawn on, and never while a deploy runs (#283)', () => {
+        // #301: "View output" AND "Open Deployment Status" ARE THE NOTIFICATION'S BUTTONS, SO THE PANEL HAS NO MESSAGE FOR EITHER
+        it('routes nothing for a posted openMetadataDeployStatus or viewMetadataDeployOutput, whatever it carries', () => {
 
             const panelState = buildDeployablePanelState();
-            const deployStatusTarget = { treeKey: ACCOUNT_TREE_KEY, orgDetail: panelState.dataOrgDetails[0], deployStatusPath: DEPLOY_STATUS_PATH };
-            const failedState = { command: 'metadataDeployState' as const, isRunning: false, treeKey: ACCOUNT_TREE_KEY, statusText: 'failed', isFailure: true, hasOutput: true, hasDeployStatus: true };
-            const openMessage = { command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY };
-
-            expect(RecipeCockpitService.routePanelMessage(openMessage, panelState)).toBeUndefined();
-
-            panelState.metadataDeployStatusTarget = deployStatusTarget;
-            expect(RecipeCockpitService.routePanelMessage(openMessage, panelState)).toBeUndefined();
-
-            panelState.metadataDeployStateMessage = failedState;
-
-            expect(RecipeCockpitService.routePanelMessage({ ...openMessage, deployUrl: 'https://evil.example/', username: 'prod@example.com', path: '/x' } as any, panelState))
-                .toEqual({ kind: 'openMetadataDeployStatus', deployStatusTarget: deployStatusTarget });
+            panelState.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: false };
 
             [
-                { command: 'openMetadataDeployStatus', treeKey: LEAD_TREE_KEY },
-                { command: 'openMetadataDeployStatus' },
-                { command: 'openMetadataDeployStatus', treeKey: 7 }
+                { command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY },
+                { command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY, deployUrl: 'https://evil.example/', username: 'prod@example.com', path: '/x' },
+                { command: 'viewMetadataDeployOutput' },
+                { command: 'viewMetadataDeployOutput', filePath: '/etc/passwd' }
             ].forEach(panelMessage => expect(RecipeCockpitService.routePanelMessage(panelMessage as any, panelState)).toBeUndefined());
-
-            panelState.metadataDeployStateMessage = { ...failedState, isRunning: true, statusText: 'Deploying…' };
-            expect(RecipeCockpitService.routePanelMessage(openMessage, panelState)).toBeUndefined();
-
-            panelState.metadataDeployStateMessage = { ...failedState, treeKey: LEAD_TREE_KEY };
-            expect(RecipeCockpitService.routePanelMessage(openMessage, panelState)).toBeUndefined();
-
-            panelState.metadataDeployStateMessage = { ...failedState, hasDeployStatus: false };
-            expect(RecipeCockpitService.routePanelMessage(openMessage, panelState)).toBeUndefined();
-
-            panelState.metadataDeployStateMessage = failedState;
-            panelState.metadataDeployStatusTarget = undefined;
-            expect(RecipeCockpitService.routePanelMessage(openMessage, panelState)).toBeUndefined();
-
-            panelState.metadataDeployStatusTarget = deployStatusTarget;
-            expect(JSON.stringify(RecipeCockpitService.buildReplayMessages(panelState))).not.toContain(DEPLOY_ID);
 
         });
 
-        it('opens only the result file the host holds, and replays the deploy\'s line to a reloaded document', () => {
+        it('replays the deploy\'s state to a reloaded document, and nothing else about it', () => {
 
             const panelState = buildDeployablePanelState();
-            const endedState = { command: 'metadataDeployState' as const, isRunning: false, treeKey: ACCOUNT_TREE_KEY, statusText: 'done', isFailure: false, hasOutput: true };
-            panelState.metadataDeployStateMessage = endedState;
+            panelState.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true };
 
-            expect(RecipeCockpitService.routePanelMessage({ command: 'viewMetadataDeployOutput', filePath: '/etc/passwd' }, panelState)).toBeUndefined();
+            const replayedStates = RecipeCockpitService.buildReplayMessages(panelState).filter(hostMessage => hostMessage.command === 'metadataDeployState');
 
-            panelState.metadataDeployOutputFilePath = '/workspace/treecipe/OrgOperations/qa/1-metadata-deploy.json';
-
-            expect(RecipeCockpitService.routePanelMessage({ command: 'viewMetadataDeployOutput', filePath: '/etc/passwd' }, panelState))
-                .toEqual({ kind: 'viewMetadataDeployOutput', outputFilePath: '/workspace/treecipe/OrgOperations/qa/1-metadata-deploy.json' });
-            expect(RecipeCockpitService.buildReplayMessages(panelState)).toContainEqual(endedState);
+            expect(replayedStates).toEqual([{ command: 'metadataDeployState', isRunning: true }]);
 
         });
 
@@ -782,6 +739,8 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
         const postedNamed = (command: string) => postedPanelMessages.filter(hostMessage => hostMessage.command === command);
         const deployCalls = () => cliCalls.filter(argumentList => argumentList[0] === 'project');
         const lastDeployState = () => postedNamed('metadataDeployState').at(-1);
+        // HOW A DEPLOY ENDED (#301): THE NOTIFICATIONS THAT ARE NOT A MODAL, AS [text, ...buttons]
+        const runNotifications = (notify: unknown) => ( notify as jest.Mock ).mock.calls.filter(notificationCall => !notificationCall[1]?.modal);
         const flushAsyncWork = () => new Promise(resolve => setImmediate(resolve));
         const panelState = (): IRecipeCockpitPanelState => (RecipeCockpitService as any).recipeCockpitPanelState;
 
@@ -966,17 +925,11 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             const deployExecOptions = (execFile as unknown as jest.Mock).mock.calls.find(([, argumentList]) => argumentList[0] === 'project')[2];
             expect(deployExecOptions.cwd).toBe(path.resolve(workspaceRoot));
 
-            expect(postedNamed('metadataDeployState').map(deployState => deployState.statusText)).toContain('Deploying 3 components of Relationship Tree 1…');
-            expect(lastDeployState()).toEqual({
-                command: 'metadataDeployState',
-                isRunning: false,
-                treeKey: ACCOUNT_TREE_KEY,
-                statusText: `Deployed 3 components of Relationship Tree 1 to qa · ${QA_USERNAME}.`,
-                isFailure: false,
-                hasOutput: true
-            });
-            expect(notificationInformationSpy).toHaveBeenCalledWith(`Deployed 3 components of Relationship Tree 1 to qa · ${QA_USERNAME}.`);
-            expect(JSON.stringify(postedNamed('metadataDeployState'))).not.toContain(workspaceRoot);
+            // THE STATE SAYS ONLY WHETHER A DEPLOY HOLDS THE BUTTONS; HOW IT WENT IS A NOTIFICATION WITH "View output" (#301)
+            expect(postedNamed('metadataDeployState')).toEqual([{ command: 'metadataDeployState', isRunning: true }, { command: 'metadataDeployState', isRunning: false }]);
+            expect(runNotifications(vscode.window.showInformationMessage)).toEqual([
+                [`Deployed 3 components of Relationship Tree 1 to qa · ${QA_USERNAME}.`, RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL]
+            ]);
 
             // THE CLI'S ANSWER IS THE RESULT: NO DESCRIBE AND NO CONNECTION ONCE IT RETURNED
             expect(connectionsWhenCliRan).toBeGreaterThan(0);
@@ -1015,7 +968,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             expect(modalCalls()[0][0]).toBe(`Deploy 4 components of Relationship Tree 1 to qa · ${QA_USERNAME}?`);
             expect(modalCalls()[0][1].detail).toContain('  Gadget__c/validationRules/Serial_Required.validationRule-meta.xml');
             expect(readManifestMembers(deployedManifests[0])).toEqual(expect.arrayContaining(['CustomObject:OtherChildObject__c', 'CustomObject:Gadget__c']));
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: false });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -1027,8 +980,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             await deploy(ACCOUNT_TREE_KEY);
 
             expect(modalCalls()[0][0]).toBe(`Deploy 1 component of Relationship Tree 1 to qa · ${QA_USERNAME}?`);
-            expect(postedNamed('metadataDeployState').map(deployState => deployState.statusText)).toContain('Deploying 1 component of Relationship Tree 1…');
-            expect(notificationInformationSpy).toHaveBeenCalledWith(expect.stringContaining('Deployed 1 component of Relationship Tree 1'));
+            expect(runNotifications(vscode.window.showInformationMessage)[0][0]).toContain('Deployed 1 component of Relationship Tree 1');
 
         });
 
@@ -1051,7 +1003,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             const promptSpy = jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed').mockImplementation(async (orgListing: Promise<any>) => {
                 const listing = await orgListing;
                 expect(listing.orgDetails).toEqual(listedOrgs.orgDetails);
-                expect(postedNamed('metadataDeployState').at(-1)).toMatchObject({ isRunning: true, statusText: 'Choose the sandbox or scratch org to deploy to…' });
+                expect(postedNamed('metadataDeployState').at(-1)).toEqual({ command: 'metadataDeployState', isRunning: true });
                 return listing.orgDetails.find((orgDetail: any) => orgDetail.username === QA_USERNAME);
             });
 
@@ -1068,7 +1020,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             // THE SELECTION DESCRIBES THE TREE AFRESH, SO ITS READINESS IS WHAT THE ORG HAS AFTER THE DEPLOY
             expect(treeReadiness(ACCOUNT_TREE_KEY, 'OtherChildObject__c')).toMatchObject({ disabledReason: '' });
             expect(postedPanelMessages.indexOf(lastDeployState())).toBeGreaterThan(postedPanelMessages.indexOf(postedNamed('dataOrgList').at(-1)));
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: false });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -1081,7 +1033,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
             expect(modalCalls()).toEqual([]);
             expect(deployCalls()).toEqual([]);
-            expect(lastDeployState()).toMatchObject({ isRunning: false, statusText: '', isFailure: false });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
             promptSpy.mockResolvedValueOnce({ targetOrgIdentifier: 'qa', username: QA_USERNAME, alias: 'qa' });
             (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
@@ -1104,7 +1056,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
             expect(deployCalls()).toEqual([]);
             expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining('Nothing was deployed: The Salesforce CLI could not report'));
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -1132,7 +1084,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             expect(modalCalls()).toEqual([]);
             expect(deployCalls()).toEqual([]);
             expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining('Nothing of the tree Relationship Tree 2 can be deployed: Lead is a standard object with no custom field'));
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true, treeKey: LEAD_TREE_KEY });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -1157,7 +1109,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             releasePost();
             await deployInFlight;
 
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: false });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
             expect(refreshSpy).not.toHaveBeenCalled();
             expect(deployCalls()).toHaveLength(1);
 
@@ -1185,7 +1137,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             await deployInFlight;
             await flushAsyncWork();
 
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: false });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
             expect(postedNamed('dataOrgReadiness')).toHaveLength(readinessPostsBefore);
 
         });
@@ -1246,7 +1198,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             expect(clearSpy).toHaveBeenCalledWith(QA_USERNAME, 'OtherChildObject__c');
             expect(clearSpy).toHaveBeenCalledWith(QA_USERNAME, 'Account');
             expect(postedNamed('dataOrgReadiness')).toHaveLength(readinessPostsBefore);
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true, statusText: 'The deploy of Relationship Tree 1 stopped: parse exploded' });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -1261,7 +1213,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             expect(modalCalls()).toHaveLength(1);
             expect(deployCalls()).toEqual([]);
             expect(clearSpy).not.toHaveBeenCalled();
-            expect(lastDeployState()).toMatchObject({ isRunning: false, statusText: '' });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -1274,7 +1226,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
             expect(deployCalls()).toEqual([]);
             expect(notificationWarningSpy).toHaveBeenCalledWith(expect.stringContaining('Metadata is deployed only to a sandbox or scratch org.'));
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -1313,7 +1265,8 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             expect(promptSpy).not.toHaveBeenCalled();
             expect(modalCalls()).toEqual([]);
             expect(deployCalls()).toEqual([]);
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true, statusText: expect.stringContaining('has not answered that it is a sandbox') });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
+            expect(notificationWarningSpy).toHaveBeenLastCalledWith(expect.stringContaining('has not answered that it is a sandbox'));
 
         });
 
@@ -1336,12 +1289,13 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             expect(openFileSpy).toHaveBeenCalledWith(resultFilePath);
             expect(postedNamed('dataOrgReadiness')).toHaveLength(readinessPostsBefore);
             expect(treeReadiness(ACCOUNT_TREE_KEY, 'OtherChildObject__c').disabledReason).toContain('OtherChildObject__c is not in this org');
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true, hasOutput: true });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
             expect(RecipeCockpitService.routePanelMessage({ command: 'deployTreeMetadata', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY }, panelState())?.kind).toBe('deployTreeMetadata');
 
+            // THE PANEL HAS NO MESSAGE THAT OPENS IT (#301)
             openFileSpy.mockClear();
             await receivedMessageHandler({ command: 'viewMetadataDeployOutput', filePath: '/etc/passwd' });
-            expect(openFileSpy).toHaveBeenCalledWith(resultFilePath);
+            expect(openFileSpy).not.toHaveBeenCalled();
 
         });
 
@@ -1366,6 +1320,24 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
                     : { stdout: withDeployUrl(buildDeployAnswer(['OtherChildObject__c'], [{ fullName: 'Account.Rating__c', problem: 'Value set Ratings not found' }]), deployUrl), error: Object.assign(new Error('exit 1'), { code: 1 }) };
             };
 
+            // THE PAGE IS OPENED ONLY FROM THE ERROR NOTIFICATION'S BUTTON (#301): HOLD THE NEXT ONE OPEN UNTIL THE TEST CLICKS IT
+            const holdErrorNotification = () => {
+                const notification: { click: (label?: string) => void } = { click: () => undefined };
+                (vscode.window.showErrorMessage as jest.Mock).mockImplementationOnce(() => new Promise(resolve => { notification.click = resolve; }));
+                return notification;
+            };
+            const failedDeployNotification = async () => {
+                const notification = holdErrorNotification();
+                await deploy(ACCOUNT_TREE_KEY);
+                await flushAsyncWork();
+                return notification;
+            };
+            const clickOpenStatus = async (notification: { click: (label?: string) => void }) => {
+                notification.click(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL);
+                await flushAsyncWork();
+                await flushAsyncWork();
+            };
+
             beforeEach(() => {
                 orgOpenAnswer = { stdout: JSON.stringify({ status: 0, result: { orgId: '00D000000000001', url: FRONTDOOR_URL, username: QA_USERNAME } }) };
                 (vscode.env.openExternal as jest.Mock).mockReset();
@@ -1378,16 +1350,19 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
                 failWithDeployUrl(buildDeployUrl(QA_INSTANCE_URL));
                 await openCockpitWithQaSelected();
 
-                await deploy(ACCOUNT_TREE_KEY);
-                await flushAsyncWork();
+                const errorNotification = await failedDeployNotification();
 
                 const [errorText, ...errorActions] = (vscode.window.showErrorMessage as jest.Mock).mock.calls[0];
                 expect(errorText).toBe(`The deploy of Relationship Tree 1 to qa · ${QA_USERNAME} failed: Account.Rating__c: Value set Ratings not found`);
                 expect(errorActions).toEqual([RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL, RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL]);
-                expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, statusText: errorText, isFailure: true, hasOutput: true, hasDeployStatus: true });
+                expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
+                // THE PANEL CANNOT OPEN IT, WHATEVER IT POSTS
                 await receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY, path: '/secur/logout.jsp' });
                 await flushAsyncWork();
+                expect(orgOpenCalls()).toEqual([]);
+
+                await clickOpenStatus(errorNotification);
 
                 expect(orgOpenCalls()).toEqual([['org', 'open', '--target-org', QA_USERNAME, '--path', DEPLOY_STATUS_PATH, '--url-only', '--json']]);
                 const orgOpenCall = (execFile as unknown as jest.Mock).mock.calls.find(([, argumentList]) => argumentList[0] === 'org' && argumentList[1] === 'open');
@@ -1411,7 +1386,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
                 await deploy(ACCOUNT_TREE_KEY);
                 await flushAsyncWork();
-                expect(lastDeployState()).toMatchObject({ isRunning: false, hasDeployStatus: true });
+                expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
                 // THE READER CLICKS ONCE THE DEPLOY HAS ENDED
                 chooseOpenStatus(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL);
@@ -1441,11 +1416,6 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
                     await flushAsyncWork();
 
                     expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0].slice(1)).toEqual([RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL]);
-                    expect(lastDeployState()).not.toHaveProperty('hasDeployStatus');
-                    expect(panelState().metadataDeployStatusTarget).toBeUndefined();
-
-                    await receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
-                    await flushAsyncWork();
                     expect(orgOpenCalls()).toEqual([]);
 
                 }
@@ -1457,23 +1427,19 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
                 await openCockpitWithQaSelected();
                 await deploy(ACCOUNT_TREE_KEY);
                 await flushAsyncWork();
-                expect(lastDeployState()).toMatchObject({ isFailure: false });
-                expect(lastDeployState()).not.toHaveProperty('hasDeployStatus');
+                expect(runNotifications(vscode.window.showInformationMessage).at(-1).slice(1)).toEqual([RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL]);
 
                 deployHandler = () => ({ stdout: '', error: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) });
                 await deploy(ACCOUNT_TREE_KEY);
                 await flushAsyncWork();
-                expect(lastDeployState()).toMatchObject({ isFailure: true });
-                expect(lastDeployState()).not.toHaveProperty('hasDeployStatus');
+                expect(runNotifications(vscode.window.showErrorMessage).at(-1).slice(1)).toEqual([]);
 
                 jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockResolvedValueOnce({ stdout: withDeployUrl(buildDeployAnswer([], [{ fullName: 'Account.Rating__c', problem: 'x' }]), buildDeployUrl(QA_INSTANCE_URL)), stderr: '', exitCode: null, timedOut: true });
                 await deploy(ACCOUNT_TREE_KEY);
                 await flushAsyncWork();
-                expect(lastDeployState()).toMatchObject({ isFailure: true });
-                expect(lastDeployState().statusText).toContain('whether it applied is unknown');
-                expect(lastDeployState()).not.toHaveProperty('hasDeployStatus');
+                expect(runNotifications(vscode.window.showWarningMessage).at(-1)[0]).toContain('whether it applied is unknown');
 
-                (vscode.window.showErrorMessage as jest.Mock).mock.calls.concat((vscode.window.showWarningMessage as jest.Mock).mock.calls)
+                (vscode.window.showErrorMessage as jest.Mock).mock.calls.concat((vscode.window.showWarningMessage as jest.Mock).mock.calls, (vscode.window.showInformationMessage as jest.Mock).mock.calls)
                     .forEach(notificationCall => expect(notificationCall).not.toContain(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL));
 
             });
@@ -1482,26 +1448,23 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
                 failWithDeployUrl(buildDeployUrl(QA_INSTANCE_URL));
                 await openCockpitWithQaSelected();
-                await deploy(ACCOUNT_TREE_KEY);
-                await flushAsyncWork();
 
                 const fixedWarning = RecipeYamlScalarEscape(`The Deployment Status page of qa · ${QA_USERNAME} could not be opened. Find the deploy in Setup, under Deployment Status.`);
 
                 orgOpenAnswer = { stdout: JSON.stringify({ status: 1, name: 'SessionError', message: `Opening ${FRONTDOOR_URL} failed` }), error: Object.assign(new Error('exit 1'), { code: 1 }) };
-                await receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
-                await flushAsyncWork();
+                await clickOpenStatus(await failedDeployNotification());
 
                 expect(notificationWarningSpy).toHaveBeenLastCalledWith(fixedWarning);
 
+                const timedOutNotification = await failedDeployNotification();
                 jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockResolvedValueOnce({ stdout: '', stderr: `stuck on ${FRONTDOOR_URL}`, exitCode: null, timedOut: true });
-                await receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
-                await flushAsyncWork();
+                await clickOpenStatus(timedOutNotification);
 
                 expect(notificationWarningSpy).toHaveBeenLastCalledWith(fixedWarning);
 
+                const thrownNotification = await failedDeployNotification();
                 jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockRejectedValueOnce(new Error(`boom ${FRONTDOOR_URL}`));
-                await receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
-                await flushAsyncWork();
+                await clickOpenStatus(thrownNotification);
 
                 expect(notificationWarningSpy).toHaveBeenLastCalledWith(fixedWarning);
                 expect(vscode.env.openExternal).not.toHaveBeenCalled();
@@ -1514,12 +1477,10 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
                 failWithDeployUrl(buildDeployUrl(QA_INSTANCE_URL));
                 await openCockpitWithQaSelected();
-                await deploy(ACCOUNT_TREE_KEY);
-                await flushAsyncWork();
+                const errorNotification = await failedDeployNotification();
 
                 (AuthInfo.listAllAuthorizations as jest.Mock).mockImplementation(async () => ORG_AUTHORIZATIONS.filter((authorization: any) => authorization.username !== QA_USERNAME));
-                await receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
-                await flushAsyncWork();
+                await clickOpenStatus(errorNotification);
 
                 expect(orgOpenCalls()).toEqual([]);
                 expect(vscode.env.openExternal).not.toHaveBeenCalled();
@@ -1527,24 +1488,24 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
             });
 
-            it('opens once for a double click, names an org with no alias by its username, and warns when the browser refuses the address', async () => {
+            it('opens once when two failed deploys\' buttons are clicked together, and warns when the browser refuses the address', async () => {
 
                 failWithDeployUrl(buildDeployUrl(QA_INSTANCE_URL));
                 await openCockpitWithQaSelected();
-                await deploy(ACCOUNT_TREE_KEY);
-                await flushAsyncWork();
-                panelState().metadataDeployStatusTarget.orgDetail = { targetOrgIdentifier: QA_USERNAME, username: QA_USERNAME };
+                const firstNotification = await failedDeployNotification();
+                const secondNotification = await failedDeployNotification();
                 (vscode.env.openExternal as jest.Mock).mockResolvedValue(false);
                 (AuthInfo.listAllAuthorizations as jest.Mock).mockImplementation(async () => [null, ...ORG_AUTHORIZATIONS]);
 
-                const firstOpen = receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
-                await receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
-                await firstOpen;
+                firstNotification.click(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL);
+                secondNotification.click(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL);
+                await flushAsyncWork();
+                await flushAsyncWork();
                 await flushAsyncWork();
 
                 expect(orgOpenCalls()).toHaveLength(1);
                 expect(vscode.env.openExternal).toHaveBeenCalledTimes(1);
-                expect(notificationWarningSpy).toHaveBeenLastCalledWith(RecipeYamlScalarEscape(`The Deployment Status page of ${QA_USERNAME} was not opened: the browser did not accept the address.`));
+                expect(notificationWarningSpy).toHaveBeenLastCalledWith(RecipeYamlScalarEscape(`The Deployment Status page of qa · ${QA_USERNAME} was not opened: the browser did not accept the address.`));
                 expect(JSON.stringify(notificationWarningSpy.mock.calls)).not.toContain(SESSION_ID);
 
             });
@@ -1587,12 +1548,12 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
                 await deploy(ACCOUNT_TREE_KEY);
                 await flushAsyncWork();
 
-                expect(lastDeployState()).toMatchObject({ isRunning: false, hasDeployStatus: true });
+                expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
                 expect(orgOpenCalls()).toEqual([]);
 
             });
 
-            it('carries the link into a reopened panel, and drops it when the next deploy starts', async () => {
+            it('keeps nothing of the page on the panel state, so a reopened panel neither holds nor replays it', async () => {
 
                 failWithDeployUrl(buildDeployUrl(QA_INSTANCE_URL));
                 await openCockpitWithQaSelected();
@@ -1600,25 +1561,10 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
                 await flushAsyncWork();
 
                 await openCockpitWithQaSelected();
-                expect(panelState().metadataDeployStatusTarget).toMatchObject({ treeKey: ACCOUNT_TREE_KEY, deployStatusPath: DEPLOY_STATUS_PATH });
-                expect(postedNamed('metadataDeployState').at(-1)).toMatchObject({ hasDeployStatus: true });
 
-                deployHandler = () => 'hold';
-                const deployInFlight = deploy(ACCOUNT_TREE_KEY);
-                await flushAsyncWork();
-                await flushAsyncWork();
-
-                expect(lastDeployState()).toMatchObject({ isRunning: true });
-                expect(panelState().metadataDeployStatusTarget).toBeUndefined();
-                await receivedMessageHandler({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
-                expect(orgOpenCalls()).toEqual([]);
-
-                heldDeployCallbacks.forEach(answerHeldDeploy => answerHeldDeploy());
-                await deployInFlight;
-                await flushAsyncWork();
-
-                expect(lastDeployState()).toMatchObject({ isRunning: false });
-                expect(lastDeployState()).not.toHaveProperty('hasDeployStatus');
+                expect(panelState()).not.toHaveProperty('metadataDeployStatusTarget');
+                expect(JSON.stringify(RecipeCockpitService.buildReplayMessages(panelState()))).not.toContain(DEPLOY_ID);
+                expect(postedNamed('metadataDeployState').at(-1)).toEqual({ command: 'metadataDeployState', isRunning: false });
 
             });
 
@@ -1636,7 +1582,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
                 RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL
             ]);
             expect(notificationInformationSpy).not.toHaveBeenCalled();
-            expect(lastDeployState()).toMatchObject({ isFailure: true });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -1662,7 +1608,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
             expect(deployCalls()).toEqual([]);
             expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0]).toContain('is a network UNC path');
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -1703,7 +1649,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
             await deploy(ACCOUNT_TREE_KEY);
 
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true, statusText: 'The deploy of Relationship Tree 1 stopped: boom' });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
             expect(handleCapturedErrorSpy).toHaveBeenCalled();
             // THE MANIFEST'S FOLDER IS REMOVED HOWEVER THE DEPLOY ENDED
             const deployArguments = runSpy.mock.calls[0][0] as string[];
@@ -1711,13 +1657,16 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
         });
 
-        it('says so rather than opening anything when the result file is gone', async () => {
+        it('says so rather than opening anything when the result file is gone by the time View output is clicked', async () => {
 
+            let clickViewOutput: (label: string) => void = () => undefined;
+            (vscode.window.showInformationMessage as jest.Mock).mockImplementationOnce(() => new Promise(resolve => { clickViewOutput = resolve; }));
             await openCockpitWithQaSelected();
             await deploy(ACCOUNT_TREE_KEY);
-            fs.rmSync(panelState().metadataDeployOutputFilePath);
+            fs.rmSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME), { recursive: true, force: true });
 
-            await receivedMessageHandler({ command: 'viewMetadataDeployOutput' });
+            clickViewOutput(RECIPE_COCKPIT_METADATA_DEPLOY_VIEW_OUTPUT_LABEL);
+            await flushAsyncWork();
 
             expect(openFileSpy).not.toHaveBeenCalled();
             expect(notificationWarningSpy).toHaveBeenCalledWith('The deploy result file no longer exists in this workspace.');
@@ -1731,7 +1680,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
             await (RecipeCockpitService as any).deployTreeMetadataFromPanel((RecipeCockpitService as any).recipeCockpitPanel, 'Gone-tree', false);
 
-            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false, treeKey: '', statusText: '', isFailure: false, hasOutput: false });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
             expect(promptSpy).not.toHaveBeenCalled();
             expect(deployCalls()).toEqual([]);
 
@@ -1749,7 +1698,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState);
             await receivedMessageHandler({ command: 'ready' });
 
-            expect(panelState().metadataDeployStateMessage).toMatchObject({ isRunning: true, treeKey: ACCOUNT_TREE_KEY });
+            expect(panelState().metadataDeployStateMessage).toEqual({ command: 'metadataDeployState', isRunning: true });
             expect(postedNamed('metadataDeployState').at(-1)).toMatchObject({ isRunning: true });
             expect(RecipeCockpitService.routePanelMessage({ command: 'deployTreeMetadata', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY }, panelState())).toBeUndefined();
 
@@ -1771,7 +1720,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             await flushAsyncWork();
             await flushAsyncWork();
 
-            expect(lastDeployState()).toMatchObject({ isRunning: true, statusText: 'Deploying 3 components of Relationship Tree 1…' });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: true });
 
             await receivedMessageHandler({ command: 'deployTreeMetadata', orgIndex: 0, treeKey: ACCOUNT_TREE_KEY });
             expect(deployCalls()).toHaveLength(1);
@@ -1785,8 +1734,7 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             expect(killSpy).toHaveBeenCalled();
             expect(childKill).toHaveBeenCalled();
             expect(notificationInformationSpy).toHaveBeenCalledWith(expect.stringContaining('was cancelled, so whether it applied is unknown'));
-            expect(lastDeployState()).toMatchObject({ isRunning: false, isFailure: true });
-            expect(lastDeployState().statusText).toContain('whether it applied is unknown');
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false });
 
         });
 
@@ -1865,12 +1813,12 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
 
         });
 
-        it('holds every deploy and the picker while a deploy runs, turns every insert into generate only, draws its line on the card, and offers View output when it ended with a result file', () => {
+        it('holds every deploy and the picker while a deploy runs, turns every insert into generate only, and gives them back when it ends', () => {
 
             const panel = renderTrees();
             selectQa(panel);
 
-            panel.postToPanel({ command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, statusText: 'Deploying 3 components of Relationship Tree 1…', isFailure: false, hasOutput: false });
+            panel.postToPanel({ command: 'metadataDeployState', isRunning: true });
 
             expect(deployButtonOf(panel).disabled).toBe(true);
             expect(deployButtonOf(panel, 'Lead').disabled).toBe(true);
@@ -1879,45 +1827,30 @@ describe('RecipeCockpitService, "Deploy this metadata…" in the Treecipe tab (#
             panel.findAll(panel.cockpitBodyElement, 'treeInsertReason').forEach((reasonElement: any) => expect(reasonElement.textContent).toBe('Generates only: A deploy is running.'));
             expect(firstOf(panel, 'dataOrgRefresh').disabled).toBe(true);
             expect(firstOf(panel, 'dataOrgNewScratch').disabled).toBe(true);
-            expect(panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'metadataDeployStatusText')[0].textContent).toBe('Deploying 3 components of Relationship Tree 1…');
-            expect(panel.isHidden(panel.findAll(cardOf(panel, 'Lead'), 'metadataDeployStatus')[0])).toBe(true);
-            expect(panel.isHidden(panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'metadataDeployViewOutput')[0])).toBe(true);
 
-            panel.postToPanel({ command: 'metadataDeployState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, statusText: 'The deploy failed: x', isFailure: true, hasOutput: true });
+            panel.postToPanel({ command: 'metadataDeployState', isRunning: false });
 
             expect(deployButtonOf(panel).disabled).toBe(false);
             expect(firstOf(panel, 'dataOrgSelect').disabled).toBe(false);
-            expect(panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'metadataDeployStatus')[0].classList.contains('failed')).toBe(true);
-            const viewOutputElement = panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'metadataDeployViewOutput')[0];
-            expect(panel.isHidden(viewOutputElement)).toBe(false);
-            viewOutputElement.dispatch('click');
-            expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'viewMetadataDeployOutput' });
 
         });
 
-        it('draws "Open Deployment Status" on a failed deploy\'s line only when the host says it has the page, and posts the tree key alone (#283)', () => {
+        // #301: HOW A DEPLOY WENT, "View output" AND "Open Deployment Status" ARE THE NOTIFICATION'S, SO NO CARD GROWS A LINE
+        it('draws no deploy line, View output or Open Deployment Status, and adds no node to any card, while a deploy runs or when it ends', () => {
 
             const panel = renderTrees();
             selectQa(panel);
-            const openStatusOf = (objectApiName: string) => panel.findAll(cardOf(panel, objectApiName), 'metadataDeployOpenStatus')[0];
+            const descendantsOf = (element: any): any[] => [element, ...element.children.flatMap(descendantsOf)];
+            const nodesBefore = descendantsOf(panel.cockpitBodyElement);
 
-            panel.postToPanel({ command: 'metadataDeployState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, statusText: 'The deploy failed: x', isFailure: true, hasOutput: true });
-            expect(panel.isHidden(openStatusOf('OtherChildObject__c'))).toBe(true);
-
+            panel.postToPanel({ command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, statusText: 'Deploying 3 components…', isFailure: false, hasOutput: false });
+            expect(descendantsOf(panel.cockpitBodyElement)).toEqual(nodesBefore);
             panel.postToPanel({ command: 'metadataDeployState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, statusText: 'The deploy failed: x', isFailure: true, hasOutput: true, hasDeployStatus: true });
-            const openStatusElement = openStatusOf('OtherChildObject__c');
-            expect(panel.isHidden(openStatusElement)).toBe(false);
-            expect(openStatusElement.textContent).toBe(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL);
-            expect(panel.isHidden(openStatusOf('Lead'))).toBe(true);
+            expect(descendantsOf(panel.cockpitBodyElement)).toEqual(nodesBefore);
 
-            openStatusElement.dispatch('click');
-            expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'openMetadataDeployStatus', treeKey: ACCOUNT_TREE_KEY });
-
-            panel.postToPanel({ command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, statusText: 'Deploying…', isFailure: false, hasOutput: false });
-            expect(panel.isHidden(openStatusOf('OtherChildObject__c'))).toBe(true);
-
-            panel.postToPanel({ command: 'metadataDeployState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, statusText: 'Deployed.', isFailure: false, hasOutput: true, hasDeployStatus: true });
-            expect(panel.isHidden(openStatusOf('OtherChildObject__c'))).toBe(true);
+            ['metadataDeployStatus', 'metadataDeployStatusText', 'metadataDeployViewOutput', 'metadataDeployOpenStatus']
+                .forEach(className => expect(panel.findAll(panel.cockpitBodyElement, className)).toEqual([]));
+            expect(JSON.stringify(nodesBefore.map((element: any) => element.ownTextContent))).not.toContain(RECIPE_COCKPIT_METADATA_DEPLOY_OPEN_STATUS_LABEL);
 
         });
 
