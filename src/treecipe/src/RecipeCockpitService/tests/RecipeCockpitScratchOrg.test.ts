@@ -110,6 +110,12 @@ function buildFakeConnection() {
 
 type CliHandler = (argumentList: string[]) => { stdout: string; error?: unknown } | 'hold';
 
+
+// THE ORG SHOWN WHILE THE CONNECTIONS ARE CHECKED (#305) IS READ FROM THE MACHINE'S OWN AUTHORIZATIONS, SO NO SUITE DEPENDS ON THEM
+beforeEach(() => {
+    jest.spyOn(SalesforceOrgService, 'readLocalDataOrgDetail').mockResolvedValue(undefined);
+});
+
 describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #255)', () => {
 
     describe('routePanelMessage', () => {

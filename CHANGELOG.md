@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.79.0] - Recipe Cockpit: the org picker stays on screen while orgs are checked, and the CLI's default org comes first
+
+Closes [#305](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/305).
+
+Opening a Treecipe tab, or pressing **⟳ Refresh orgs**, used to hide **Choose org…** and the dropdown and disable ⟳ until `sf org list --json --verbose` had pinged every org. All that was left was a line of text, so the panel looked broken.
+
+- **The picker stays drawn during the check.** The dropdown, **⟳ Refresh orgs** and **+ New scratch org** stay visible and enabled, with a spinner to the right of the dropdown and *Checking org connections…* below it. While the check runs, the dropdown's one option is the org you picked last, or else the CLI's default org, or else *Loading orgs…*. Nothing can be selected from it until the list arrives.
+- **The CLI's default org.** `SalesforceOrgService.readDefaultTargetOrgIdentifier` reads it in process, with no CLI process started, in the CLI's order: `SF_TARGET_ORG`, `SFDX_DEFAULTUSERNAME`, the project's `.sf/config.json` `target-org`, its `.sfdx/sfdx-config.json` `defaultusername`, then the global ones. It shares one reader with the default Dev Hub. A config that is missing, not JSON, empty or names something the CLI could not be handed gives no default.
+- **The default org is listed first, labelled `(default)`, even when it is production**, as long as the CLI reports it connected. When no org was picked before, it is selected. Nothing is inserted into it unless it answers `IsSandbox: true`: selecting it asks its Organization row, and a production org is asked nothing more and generates only, with the reason shown. The router's and the insert's own sandbox checks are unchanged. Other production orgs are still never listed.
+- **Every insert waits for the check.** While it runs, each tree's button reads **Generate fake data** with *Generates only: checking the org connection…*.
+- **⟳ stays clickable during a check.** A second click joins the check already running instead of starting another `sf org list`.
+- **The dropdown stays drawn when no org is listed**, showing *No org listed*, with the reason below it as before.
+- **Messages.** The host posts `dataOrgProvisional {orgLabel, requestSequence, renderSequence}`, a label read from the local authorization files, before `dataOrgList`. The panel drops it for another model, an older check, or once the list has arrived. The host starts the listing before it reads that label, so the local read never delays the check.
+- **Unchanged:** the quick-pick org pickers (Insert Data Set by Directory, Run Picklist Dependency Check, the permission set org prompt), the scratch org run's own listing, and Insert Data Set by Directory's Developer Edition rule.
+
 ## [3.78.0] - Recipe Cockpit: the tree insert and "+ New scratch org" report in notifications, with their files as buttons
 
 Closes [#301](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/301).
