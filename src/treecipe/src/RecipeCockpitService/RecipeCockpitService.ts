@@ -4753,13 +4753,32 @@ export class RecipeCockpitService {
             return;
         }
 
+        // THE ROUTER CHECKED THESE AT THE CLICK; ONE CAN HAVE STARTED WHILE THE MODAL WAS OPEN, AND NOTHING AWAITS BETWEEN HERE AND THE WRITE
+        const currentPanelState = this.recipeCockpitPanelState;
+        if ( currentPanelState.wireLookupStateMessage || currentPanelState.scratchOrgStateMessage?.isRunning || currentPanelState.permissionSetAssignStateMessage?.isRunning ) {
+            refuse('a recipe write, a scratch org run or a permission set assignment started meanwhile. Try again once it has finished.');
+            return;
+        }
+
         const permissionSetFolderPath = path.dirname(permissionSetFilePath);
         try {
-            fs.mkdirSync(permissionSetFolderPath, { recursive: true });
-            // CHECKED ONCE THE FOLDER EXISTS: writeFileSync FOLLOWS A LINKED FOLDER WHEREVER IT POINTS
-            if ( !SfdxProjectService.isPathContainedInWorkspace(permissionSetFolderPath, workspaceRoot)
-                    || ( fs.existsSync(permissionSetFilePath) && !fs.lstatSync(permissionSetFilePath).isFile() ) ) {
+            // THE DEEPEST FOLDER THAT EXISTS IS CHECKED BEFORE ANY IS MADE: A LINKED ANCESTOR WOULD OTHERWISE GET FOLDERS MADE OUTSIDE THE WORKSPACE
+            let existingAncestorPath = permissionSetFolderPath;
+            while ( !fs.existsSync(existingAncestorPath) && path.dirname(existingAncestorPath) !== existingAncestorPath ) {
+                existingAncestorPath = path.dirname(existingAncestorPath);
+            }
+            if ( !SfdxProjectService.isPathContainedInWorkspace(existingAncestorPath, workspaceRoot) ) {
                 refuse(`${relativeFilePath} is not inside this workspace.`);
+                return;
+            }
+            fs.mkdirSync(permissionSetFolderPath, { recursive: true });
+            // CHECKED AGAIN ONCE THE FOLDER EXISTS: writeFileSync FOLLOWS A LINKED FOLDER WHEREVER IT POINTS
+            if ( !SfdxProjectService.isPathContainedInWorkspace(permissionSetFolderPath, workspaceRoot) ) {
+                refuse(`${relativeFilePath} is not inside this workspace.`);
+                return;
+            }
+            if ( fs.existsSync(permissionSetFilePath) && !fs.lstatSync(permissionSetFilePath).isFile() ) {
+                refuse(`${relativeFilePath} exists and is not a file, so it was left as it is.`);
                 return;
             }
             fs.writeFileSync(permissionSetFilePath, RecipeCockpitPermissionSetGenerate.buildPermissionSetXml(
@@ -4774,6 +4793,7 @@ export class RecipeCockpitService {
 
         const leftOutTexts = [
             ...( plan.notGrantableFieldCount > 0 ? [`${plan.notGrantableFieldCount} required or master-detail ${plan.notGrantableFieldCount === 1 ? 'field' : 'fields'}, which Salesforce does not take in a permission set`] : [] ),
+            ...( plan.requiredUnknownFieldCount > 0 ? [`${plan.requiredUnknownFieldCount} standard ${plan.requiredUnknownFieldCount === 1 ? 'field' : 'fields'} whose source file does not say ${plan.requiredUnknownFieldCount === 1 ? 'it is' : 'they are'} not required`] : [] ),
             ...( plan.unreadableFieldCount > 0 ? [`${plan.unreadableFieldCount} ${plan.unreadableFieldCount === 1 ? 'field' : 'fields'} whose source file could not be read`] : [] ),
             ...( plan.skippedNameCount > 0 ? [`${plan.skippedNameCount} ${plan.skippedNameCount === 1 ? 'name' : 'names'} that ${plan.skippedNameCount === 1 ? 'is' : 'are'} not an api name`] : [] )
         ];

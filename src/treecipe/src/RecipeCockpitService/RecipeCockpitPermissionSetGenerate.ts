@@ -39,7 +39,16 @@ const READ_ONLY_FIELD_TYPES = new Set(['AutoNumber', 'Summary']);
 // FIELDS SALESFORCE REFUSES IN fieldPermissions: ACCESS FOLLOWS THE PARENT, OR THE FIELD IS ALWAYS VISIBLE
 const NO_FIELD_PERMISSION_TYPES = new Set(['MasterDetail']);
 
-export type GeneratedFieldAccess = 'editable' | 'readOnly' | 'notGrantable' | 'unreadable';
+/*
+    A STANDARD field's source XML, as a retrieve writes it, leaves <required> out even where the org
+    requires it (Contact.LastName, Opportunity.StageName), so silence there says nothing. A standard
+    field is granted only when its XML says <required>false</required>; otherwise it is
+    'requiredUnknown', left out and counted, because a required field fails the reader's deploy.
+*/
+export type GeneratedFieldAccess = 'editable' | 'readOnly' | 'notGrantable' | 'requiredUnknown' | 'unreadable';
+
+// CUSTOM FIELDS, NAMESPACED OR NOT, AND A PERSON ACCOUNT'S CUSTOM CONTACT FIELDS
+const CUSTOM_FIELD_NAME_PATTERN = /__(c|pc)$/i;
 
 export interface IPermissionSetGenerateObject {
     objectApiName: string;
@@ -61,6 +70,8 @@ export interface IPermissionSetGeneratePlan {
     unreadableFieldCount: number;
     // REQUIRED AND MASTER-DETAIL FIELDS, WHICH SALESFORCE REFUSES IN fieldPermissions
     notGrantableFieldCount: number;
+    // STANDARD FIELDS WHOSE SOURCE XML DOES NOT SAY THEY ARE NOT REQUIRED
+    requiredUnknownFieldCount: number;
 }
 
 export class RecipeCockpitPermissionSetGenerate {
@@ -166,10 +177,11 @@ export class RecipeCockpitPermissionSetGenerate {
             }
 
             const folderName = path.basename(folderPath);
-            if ( wantedObjectApiNames.has(folderName)
-                    && !fieldsDirectoryPathsByObject.has(folderName)
-                    && folderEntries.some(folderEntry => folderEntry.isDirectory() && folderEntry.name === 'fields') ) {
-                fieldsDirectoryPathsByObject.set(folderName, path.join(folderPath, 'fields'));
+            // AN OBJECT FOLDER HOLDS NO OTHER OBJECT, SO ITS CHILDREN ARE NEVER WALKED, WANTED OR NOT
+            if ( folderEntries.some(folderEntry => folderEntry.isDirectory() && folderEntry.name === 'fields') ) {
+                if ( wantedObjectApiNames.has(folderName) && !fieldsDirectoryPathsByObject.has(folderName) ) {
+                    fieldsDirectoryPathsByObject.set(folderName, path.join(folderPath, 'fields'));
+                }
                 return;
             }
 
@@ -191,7 +203,9 @@ export class RecipeCockpitPermissionSetGenerate {
 
     }
 
-    static async readFieldAccess(fieldXml: string): Promise<GeneratedFieldAccess> {
+    static async readFieldAccess(fieldXml: string, fieldApiName: string): Promise<GeneratedFieldAccess> {
+
+        const isStandardField = !CUSTOM_FIELD_NAME_PATTERN.test(fieldApiName);
 
         let parsedXml: unknown;
         try {
@@ -202,7 +216,7 @@ export class RecipeCockpitPermissionSetGenerate {
 
         const customField = ( parsedXml as Record<string, unknown> | null )?.CustomField;
         if ( typeof customField === 'string' ) {
-            return 'editable';
+            return isStandardField ? 'requiredUnknown' : 'editable';
         }
         if ( !customField || typeof customField !== 'object' ) {
             return 'unreadable';
@@ -218,6 +232,10 @@ export class RecipeCockpitPermissionSetGenerate {
 
         if ( readText('required')?.toLowerCase() === 'true' || ( fieldType !== undefined && NO_FIELD_PERMISSION_TYPES.has(fieldType) ) ) {
             return 'notGrantable';
+        }
+
+        if ( isStandardField && readText('required')?.toLowerCase() !== 'false' ) {
+            return 'requiredUnknown';
         }
 
         if ( ( fieldType !== undefined && READ_ONLY_FIELD_TYPES.has(fieldType) ) || readText('formula') !== undefined ) {
@@ -236,7 +254,7 @@ export class RecipeCockpitPermissionSetGenerate {
     */
     static async buildPermissionSetPlan(objectsDirectoryPath: string, generateObjects: readonly IPermissionSetGenerateObject[]): Promise<IPermissionSetGeneratePlan> {
 
-        const plan: IPermissionSetGeneratePlan = { objectApiNames: [], fieldPermissions: [], skippedNameCount: 0, unreadableFieldCount: 0, notGrantableFieldCount: 0 };
+        const plan: IPermissionSetGeneratePlan = { objectApiNames: [], fieldPermissions: [], skippedNameCount: 0, unreadableFieldCount: 0, notGrantableFieldCount: 0, requiredUnknownFieldCount: 0 };
         const fieldApiNamesByObject = new Map<string, Set<string>>();
 
         generateObjects.forEach(generateObject => {
@@ -272,7 +290,7 @@ export class RecipeCockpitPermissionSetGenerate {
                 let fieldAccess: GeneratedFieldAccess = 'unreadable';
                 if ( fieldsDirectoryPath ) {
                     try {
-                        fieldAccess = await this.readFieldAccess(fs.readFileSync(path.join(fieldsDirectoryPath, `${fieldApiName}${FIELD_FILE_SUFFIX}`), 'utf8'));
+                        fieldAccess = await this.readFieldAccess(fs.readFileSync(path.join(fieldsDirectoryPath, `${fieldApiName}${FIELD_FILE_SUFFIX}`), 'utf8'), fieldApiName);
                     } catch {
                         fieldAccess = 'unreadable';
                     }
@@ -282,6 +300,8 @@ export class RecipeCockpitPermissionSetGenerate {
                     plan.unreadableFieldCount++;
                 } else if ( fieldAccess === 'notGrantable' ) {
                     plan.notGrantableFieldCount++;
+                } else if ( fieldAccess === 'requiredUnknown' ) {
+                    plan.requiredUnknownFieldCount++;
                 } else {
                     plan.fieldPermissions.push({ field: `${objectApiName}.${fieldApiName}`, isEditable: fieldAccess === 'editable' });
                 }

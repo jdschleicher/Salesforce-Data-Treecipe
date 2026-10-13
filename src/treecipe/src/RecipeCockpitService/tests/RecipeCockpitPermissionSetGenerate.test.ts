@@ -57,6 +57,7 @@ import { IPermissionSetGeneratePlan, PERMISSION_SET_GENERATED_FOLDER_NAME, Recip
 import { RecipeCockpitPermissionSetAssign } from '../RecipeCockpitPermissionSetAssign';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
+import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
@@ -79,14 +80,16 @@ const ACCOUNT_TREE_PLAN: IPermissionSetGeneratePlan = {
     fieldPermissions: [
         { field: 'Account.Annual_Budget__c', isEditable: false },
         { field: 'Account.Legacy_Code__c', isEditable: true },
+        { field: 'Account.ParentId', isEditable: true },
         { field: 'Account.Rating__c', isEditable: true },
         { field: 'Account.Regions__c', isEditable: true },
         { field: 'OtherChildObject__c.Ratio__c', isEditable: true },
         { field: 'OtherChildObject__c.Score__c', isEditable: false }
     ],
     skippedNameCount: 0,
-    unreadableFieldCount: 3,
-    notGrantableFieldCount: 3
+    unreadableFieldCount: 2,
+    notGrantableFieldCount: 2,
+    requiredUnknownFieldCount: 1
 };
 
 describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab (#306)', () => {
@@ -153,7 +156,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
 
         it('reads each field\'s access from its XML: required and master-detail are not grantable, formula, roll-up and auto number are read-only', async () => {
 
-            const access = (body: string) => RecipeCockpitPermissionSetGenerate.readFieldAccess(`<CustomField>${body}</CustomField>`);
+            const access = (body: string) => RecipeCockpitPermissionSetGenerate.readFieldAccess(`<CustomField>${body}</CustomField>`, 'Custom__c');
 
             expect(await access('<type>Text</type>')).toBe('editable');
             expect(await access('<type>Text</type><required>true</required>')).toBe('notGrantable');
@@ -162,9 +165,24 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             expect(await access('<type>Number</type><formula>1</formula>')).toBe('readOnly');
             expect(await access('<type>Summary</type>')).toBe('readOnly');
             expect(await access('<type>AutoNumber</type>')).toBe('readOnly');
-            expect(await RecipeCockpitPermissionSetGenerate.readFieldAccess('<CustomField></CustomField>')).toBe('editable');
-            expect(await RecipeCockpitPermissionSetGenerate.readFieldAccess('<CustomObject><type>Text</type></CustomObject>')).toBe('unreadable');
-            expect(await RecipeCockpitPermissionSetGenerate.readFieldAccess('<CustomField><type>')).toBe('unreadable');
+            expect(await RecipeCockpitPermissionSetGenerate.readFieldAccess('<CustomField></CustomField>', 'Custom__c')).toBe('editable');
+            expect(await RecipeCockpitPermissionSetGenerate.readFieldAccess('<CustomField></CustomField>', 'ns__Person__pc')).toBe('editable');
+            expect(await RecipeCockpitPermissionSetGenerate.readFieldAccess('<CustomObject><type>Text</type></CustomObject>', 'Custom__c')).toBe('unreadable');
+            expect(await RecipeCockpitPermissionSetGenerate.readFieldAccess('<CustomField><type>', 'Custom__c')).toBe('unreadable');
+
+        });
+
+        it('grants a STANDARD field only when its XML says it is not required, since a retrieve leaves <required> out of a standard field the org requires', async () => {
+
+            const standardAccess = (body: string) => RecipeCockpitPermissionSetGenerate.readFieldAccess(`<CustomField>${body}</CustomField>`, 'LastName');
+
+            expect(await RecipeCockpitPermissionSetGenerate.readFieldAccess('<CustomField></CustomField>', 'LastName')).toBe('requiredUnknown');
+            expect(await standardAccess('<fullName>LastName</fullName>')).toBe('requiredUnknown');
+            expect(await standardAccess('<type>Picklist</type>')).toBe('requiredUnknown');
+            expect(await standardAccess('<required>true</required>')).toBe('notGrantable');
+            expect(await standardAccess('<required>false</required><type>Hierarchy</type>')).toBe('editable');
+            expect(await standardAccess('<required>false</required><type>AutoNumber</type>')).toBe('readOnly');
+            expect(await standardAccess('<required>false</required><type>MasterDetail</type>')).toBe('notGrantable');
 
         });
 
@@ -187,7 +205,8 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
                 fieldPermissions: [{ field: 'Account.Rating__c', isEditable: true }],
                 skippedNameCount: 2,
                 unreadableFieldCount: 1,
-                notGrantableFieldCount: 0
+                notGrantableFieldCount: 0,
+                requiredUnknownFieldCount: 0
             });
 
         });
@@ -204,6 +223,12 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
                     .toEqual([['Shallow__c', path.join(temporaryRoot, 'level0', 'Shallow__c', 'fields')]]);
                 expect(RecipeCockpitPermissionSetGenerate.findObjectFieldsDirectoryPaths(path.join(temporaryRoot, 'missing'), ['Shallow__c']).size).toBe(0);
                 expect(RecipeCockpitPermissionSetGenerate.findObjectFieldsDirectoryPaths(temporaryRoot, []).size).toBe(0);
+
+                // AN OBJECT FOLDER IS NEVER WALKED INTO, SO A FOLDER NESTED IN ONE IS NOT AN OBJECT
+                fs.mkdirSync(path.join(temporaryRoot, 'level0', 'Shallow__c', 'Nested__c', 'fields'), { recursive: true });
+                const readdirSpy = jest.spyOn(fs, 'readdirSync');
+                expect(RecipeCockpitPermissionSetGenerate.findObjectFieldsDirectoryPaths(temporaryRoot, ['Nested__c']).size).toBe(0);
+                expect(readdirSpy.mock.calls.map(([folderPath]) => String(folderPath))).not.toContain(path.join(temporaryRoot, 'level0', 'Shallow__c', 'Nested__c'));
             } finally {
                 fs.rmSync(temporaryRoot, { recursive: true, force: true });
             }
@@ -244,7 +269,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             expect(permissionSetXml.endsWith('</PermissionSet>\n')).toBe(true);
 
             expect(await RecipeCockpitPermissionSetAssign.readGrantedObjectApiNames(permissionSetXml)).toIncludeSameMembers([
-                'Account', 'Contact', 'OtherChildObject__c', 'Account', 'Account', 'Account', 'Account', 'OtherChildObject__c', 'OtherChildObject__c'
+                'Account', 'Contact', 'OtherChildObject__c', 'Account', 'Account', 'Account', 'Account', 'Account', 'OtherChildObject__c', 'OtherChildObject__c'
             ]);
 
         });
@@ -401,7 +426,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             const [modalText, modalOptions, confirmLabel] = modalCalls()[0];
             expect(modalText).toContain(`Write the permission set ${ACCOUNT_TREE_PERMISSION_SET_NAME}`);
             expect(modalOptions.detail).toContain(`File: ${ACCOUNT_TREE_FILE_PATH}`);
-            expect(modalOptions.detail).toContain('Grants Create and Read on 3 objects and access to 6 fields');
+            expect(modalOptions.detail).toContain('Grants Create and Read on 3 objects and access to 7 fields');
             expect(modalOptions.detail).toContain('It will not be deployed');
             expect(confirmLabel).toBe(RECIPE_COCKPIT_GENERATE_PERMISSION_SET_CONFIRM_LABEL);
 
@@ -417,8 +442,9 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             expect(informationCalls()).toHaveLength(1);
             const [informationText, ...actions] = informationCalls()[0];
             expect(informationText).toContain(`Wrote ${ACCOUNT_TREE_PERMISSION_SET_NAME} to ${ACCOUNT_TREE_FILE_PATH}`);
-            expect(informationText).toContain('3 required or master-detail fields, which Salesforce does not take in a permission set');
-            expect(informationText).toContain('3 fields whose source file could not be read');
+            expect(informationText).toContain('2 required or master-detail fields, which Salesforce does not take in a permission set');
+            expect(informationText).toContain('2 fields whose source file could not be read');
+            expect(informationText).toContain('1 standard field whose source file does not say it is not required');
             expect(actions).toEqual([RECIPE_COCKPIT_GENERATE_PERMISSION_SET_OPEN_LABEL, RECIPE_COCKPIT_GENERATE_PERMISSION_SET_COPY_LABEL, RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL]);
 
             expect(execFile).not.toHaveBeenCalled();
@@ -534,7 +560,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
 
         it('refuses a tree none of whose objects has an api name', async () => {
 
-            jest.spyOn(RecipeCockpitPermissionSetGenerate, 'buildPermissionSetPlan').mockResolvedValue({ objectApiNames: [], fieldPermissions: [], skippedNameCount: 3, unreadableFieldCount: 0, notGrantableFieldCount: 0 });
+            jest.spyOn(RecipeCockpitPermissionSetGenerate, 'buildPermissionSetPlan').mockResolvedValue({ objectApiNames: [], fieldPermissions: [], skippedNameCount: 3, unreadableFieldCount: 0, notGrantableFieldCount: 0, requiredUnknownFieldCount: 0 });
             await openCockpit();
             await generate();
 
@@ -561,6 +587,62 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
 
         });
 
+        it('makes no folder at all under a permissionsets folder linked out of the workspace', async () => {
+
+            const outsideFolderPath = path.join(temporaryRoot, 'outside');
+            fs.mkdirSync(outsideFolderPath);
+            fs.symlinkSync(outsideFolderPath, path.join(workspaceRoot, 'force-app', 'main', 'default', 'permissionsets'), 'dir');
+
+            await openCockpit();
+            await generate();
+
+            expect(warningTexts().at(-1)).toContain('is not inside this workspace');
+            expect(fs.readdirSync(outsideFolderPath)).toEqual([]);
+
+        });
+
+        it('checks the folder again once it is made, and writes nothing if it then resolves out of the workspace', async () => {
+
+            const permissionSetFolderPath = path.dirname(generatedFilePath());
+            const isContained = SfdxProjectService.isPathContainedInWorkspace.bind(SfdxProjectService);
+            jest.spyOn(SfdxProjectService, 'isPathContainedInWorkspace').mockImplementation((candidatePath, ...rest) => candidatePath === permissionSetFolderPath ? false : isContained(candidatePath, ...rest));
+
+            await openCockpit();
+            await generate();
+
+            expect(warningTexts().at(-1)).toContain('is not inside this workspace');
+            expect(fs.existsSync(generatedFilePath())).toBe(false);
+
+        });
+
+        it('leaves alone a folder, or a link, that sits where the file goes', async () => {
+
+            fs.mkdirSync(generatedFilePath(), { recursive: true });
+            await openCockpit();
+            await generate();
+
+            expect(warningTexts().at(-1)).toContain('exists and is not a file');
+            expect(fs.lstatSync(generatedFilePath()).isDirectory()).toBe(true);
+
+        });
+
+        it('writes nothing when a scratch org run or an assignment started while the modal was open', async () => {
+
+            await openCockpit();
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => {
+                if ( options?.modal ) {
+                    (RecipeCockpitService as any).recipeCockpitPanelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true };
+                    return modalAnswer;
+                }
+                return undefined;
+            });
+            await generate();
+
+            expect(warningTexts().at(-1)).toContain('started meanwhile');
+            expect(fs.existsSync(generatedFilePath())).toBe(false);
+
+        });
+
         it('still writes when a field\'s source file cannot be read, and counts it', async () => {
 
             fs.writeFileSync(path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'Account', 'fields', 'Rating__c.field-meta.xml'), '<CustomField><type>');
@@ -568,7 +650,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             await generate();
 
             expect(fs.readFileSync(generatedFilePath(), 'utf8')).not.toContain('Account.Rating__c');
-            expect(informationCalls()[0][0]).toContain('4 fields whose source file could not be read');
+            expect(informationCalls()[0][0]).toContain('3 fields whose source file could not be read');
 
         });
 
