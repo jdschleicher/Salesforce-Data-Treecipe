@@ -20,6 +20,8 @@ import { RecipeCockpitService, RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT } from '..
 export interface IPanelScriptOptions {
     savedState?: any;
     isStateApiMissing?: boolean;
+    // WHAT window.matchMedia('(prefers-reduced-motion: reduce)') ANSWERS; LEFT OUT, THE WINDOW HAS NO matchMedia AT ALL
+    prefersReducedMotion?: boolean;
 }
 
 export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
@@ -63,6 +65,7 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
                 contains(className: string) { return carriedClassNames.has(className); }
             },
             setAttribute(attributeName: string, attributeValue: string) { this.attributes[attributeName] = String(attributeValue); },
+            removeAttribute(attributeName: string) { delete this.attributes[attributeName]; },
             appendChild(childElement: any) { this.children.push(childElement); childElement.parentNode = this; return childElement; },
             // A ROW ADDED IN PLACE (#226) GOES ABOVE THE ROWS ALREADY THERE; A REFERENCE THAT IS NOT A CHILD THROWS, AS THE DOM'S DOES
             insertBefore(childElement: any, referenceElement: any) {
@@ -102,11 +105,14 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
     };
 
     const scrollToCalls: number[] = [];
-    const fakeWindow = {
+    const fakeWindow: any = {
         scrollY: 0,
         scrollTo(scrollX: number, scrollY: number) { scrollToCalls.push(scrollY); this.scrollY = scrollY; },
         addEventListener: (eventType: string, listener: Function) => { windowListenersByType[eventType] = listener; }
     };
+    if ( panelScriptOptions.prefersReducedMotion !== undefined ) {
+        fakeWindow.matchMedia = (mediaQuery: string) => ({ matches: mediaQuery === '(prefers-reduced-motion: reduce)' && !!panelScriptOptions.prefersReducedMotion });
+    }
 
     let savedState: any = panelScriptOptions.savedState;
     const setStateCalls: any[] = [];

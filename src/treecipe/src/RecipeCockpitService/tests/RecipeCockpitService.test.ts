@@ -37,7 +37,6 @@ import {
     RECIPE_COCKPIT_REFRESH_ORGS_LABEL,
     RECIPE_COCKPIT_PALETTE,
     RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH,
-    RECIPE_COCKPIT_TOGGLE_EXPANDED_GLYPH_PATH,
     RECIPE_COCKPIT_INSERT_DATASET_COMMAND,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_GENERATE_ACTION_LABEL,
@@ -2151,8 +2150,8 @@ describe('RecipeCockpitService', () => {
 
         const toggleGlyphPathOf = (toggleElement: any) => toggleElement.children[0].children[0].attributes.d;
 
-        // #277: THE ▸/▾ IS A PATH CENTRED IN ITS BOX, NOT A FONT GLYPH ON THE TEXT BASELINE
-        it('draws every Treecipe toggle as an svg triangle that turns down when it opens', () => {
+        // #277: THE ▸/▾ IS A PATH CENTRED IN ITS BOX, NOT A FONT GLYPH ON THE TEXT BASELINE; #227: ONE PATH, TURNED BY CSS ON aria-expanded
+        it('draws every Treecipe toggle as one svg triangle that keeps its path and says its state in aria-expanded', () => {
 
             const { panel } = renderTreeRecipe();
             const [firstTreeCard] = treeCardsOf(panel);
@@ -2161,25 +2160,26 @@ describe('RecipeCockpitService', () => {
             expect(treeToggle.textContent).toBe('');
             expect(treeToggle.children[0].namespaceURI).toBe('http://www.w3.org/2000/svg');
             expect(treeToggle.children[0].attributes['aria-hidden']).toBe('true');
+            expect(treeToggle.children[0].attributes.class).toBe('toggleGlyph');
             expect(toggleGlyphPathOf(treeToggle)).toBe(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
 
             expandTree(panel, firstTreeCard);
-            expect(toggleGlyphPathOf(treeToggle)).toBe(RECIPE_COCKPIT_TOGGLE_EXPANDED_GLYPH_PATH);
+            expect(toggleGlyphPathOf(treeToggle)).toBe(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
             expect(treeToggle.attributes['aria-expanded']).toBe('true');
 
             const accountElement = treeObjectNamed(panel, firstTreeCard, 'Account');
             const objectToggle = panel.findAll(accountElement, 'treeObjectToggle')[0];
-            expect(toggleGlyphPathOf(objectToggle)).toBe(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
+            expect(objectToggle.attributes['aria-expanded']).toBe('false');
             expandTreeObject(panel, accountElement);
-            expect(toggleGlyphPathOf(objectToggle)).toBe(RECIPE_COCKPIT_TOGGLE_EXPANDED_GLYPH_PATH);
+            expect(objectToggle.attributes['aria-expanded']).toBe('true');
+            expect(toggleGlyphPathOf(objectToggle)).toBe(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
 
             const picklistToggle = panel.findAll(treeFieldNamed(panel, accountElement, 'Rating__c'), 'picklistToggle')[0];
-            expect(toggleGlyphPathOf(picklistToggle)).toBe(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
             expect(picklistToggle.attributes['aria-expanded']).toBe('false');
             picklistToggle.dispatch('click');
-            expect(toggleGlyphPathOf(picklistToggle)).toBe(RECIPE_COCKPIT_TOGGLE_EXPANDED_GLYPH_PATH);
             expect(picklistToggle.attributes['aria-expanded']).toBe('true');
             picklistToggle.dispatch('click');
+            expect(picklistToggle.attributes['aria-expanded']).toBe('false');
             expect(toggleGlyphPathOf(picklistToggle)).toBe(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
 
         });
