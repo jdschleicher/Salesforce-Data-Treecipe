@@ -916,6 +916,19 @@ describe('ExtensionCommandService', () => {
 
         });
 
+        test('given an objects path outside the workspace, reads no metadata, writes nothing and names the configured value', async () => {
+
+            stubCollectionResult([specDetail]);
+            (ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration as jest.Mock).mockReturnValue('./../../.ssh');
+
+            await extensionCommandService.generatePicklistDependencyTests(extensionPath);
+
+            expect(PicklistDependencyTestService.collectSpecDetailsByObjectsDirectory).not.toHaveBeenCalled();
+            expect(writeSpecsClassFilesSpy).not.toHaveBeenCalled();
+            expect(handleCapturedErrorSpy.mock.calls[0][0].message).toContain('"salesforceObjectsPath" in treecipe.config.json is "./../../.ssh", which is outside this workspace.');
+
+        });
+
         test('given a missing objects directory, reports an actionable error and writes nothing', async () => {
 
             stubCollectionResult([specDetail]);
@@ -4524,6 +4537,19 @@ describe('ExtensionCommandService', () => {
             writeFileSyncSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
 
             handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+
+        });
+
+        it('given an objects path outside the workspace, reads no field file, writes nothing and names the configured value', async () => {
+
+            (ConfigurationService.getObjectsPathFromTreecipeJSONConfiguration as jest.Mock).mockReturnValue('./../../.ssh');
+
+            await extensionCommandService.updatePicklistDependencyMetadata();
+
+            expect(fs.readFileSync).not.toHaveBeenCalled();
+            expect(writeFileSyncSpy).not.toHaveBeenCalled();
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+            expect(handleCapturedErrorSpy.mock.calls[0][0].message).toContain('"salesforceObjectsPath" in treecipe.config.json is "./../../.ssh", which is outside this workspace.');
 
         });
 
