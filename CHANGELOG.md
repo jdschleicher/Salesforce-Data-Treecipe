@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.75.0] - Recipe Cockpit: motion for expanding, collapsing, switching tabs and pressing buttons
+## [3.76.0] - Recipe Cockpit: motion for expanding, collapsing, switching tabs and pressing buttons
 
 Closes [#227](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/227). Part of epic [#173](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/173).
 
@@ -15,6 +15,16 @@ Everything in the cockpit used to change in a single frame. It now moves, briefl
 - **An excluded object's body is not faded.** An animating body is its own stacking context, which would draw its checkboxes and pins under the object's dimming overlay for the length of the fade, so it opens and closes at once.
 - **`prefers-reduced-motion: reduce`** turns every transition and animation off (one `*, *::before, *::after` block with `!important`, last in the stylesheet), and the panel script then adds no animation classes at all.
 - **Palette and CSP unchanged.** No new colour: the underline is `--sdt-accent`, hover and press use `--sdt-row-hover` or a `brightness()` filter. The filter dims the white text along with the accent, so `--sdt-on-accent` on the accent falls from 5.17:1 to 4.93:1 on hover and 4.65:1 pressed, still above 4.5:1; a test holds both filtered states to it. No `--vscode-*` colour is read. The shell builder still takes only a nonce, and every rule is in its nonced stylesheet.
+## [3.75.0] - Recipe Cockpit: a status bar item opens the cockpit in Treecipe workspaces
+
+Closes [#251](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/251). Part of epic [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59).
+
+- **`$(list-tree) Treecipe` in the status bar.** A workspace that contains `treecipe/treecipe.config.json` now activates the extension at window load (`workspaceContains:treecipe/treecipe.config.json`, the extension's first activation event). The item sits on the left, with the tooltip *Open Recipe Cockpit*. A workspace without that file activates exactly as before, on its first Treecipe command, and the item appears from then on. The item has its own id and name, so the status bar's right-click menu lists it as *Treecipe Recipe Cockpit* and VS Code remembers if you hide it there.
+- **The same command as the palette.** Clicking runs `treecipe.openRecipeCockpit`, so the `recipeCockpitEnabled` opt-in warning still appears when the flag is off, and an open panel is revealed rather than duplicated.
+- **Showing it does nothing else.** No run is loaded, no org contacted, no `sf` command run, no generated file read and no webview created until it is clicked. There is still no `onWebviewPanel:` activation event and no panel serializer.
+- **New setting `salesforce-data-treecipe.showRecipeCockpitStatusBarItem`** (boolean, default `true`). Turning it off hides the item and turning it on shows it, without a reload. With it off from the start, or in a window with no folder, no item is created at all. The item and its settings listener are disposed with the extension.
+- **No settings write on every load.** `activate` writes `useSnowfakeryAsDefault: false` to the workspace only when the workspace does not already hold that value, so a Treecipe workspace's `.vscode/settings.json` is not rewritten each time the window loads. That flag is not the faker backend choice (`selectedFakerService`), which activation never touches.
+
 ## [3.74.1] - Recipe Cockpit: the tree's chain link tilts from bottom right to top left
 
 Closes [#295](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/295).

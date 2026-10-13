@@ -10,6 +10,13 @@ import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/Reci
 // WHAT A FAKER-JS RUN FOLDER AND ITS RECIPE FILES ARE NAMED WITH, AND A SNOWFAKERY ONE IS NOT
 export const FAKER_JS_RECIPE_INDICATOR = 'recipe-fakerjs';
 
+export const RECIPE_COCKPIT_COMMAND_ID = 'treecipe.openRecipeCockpit';
+export const RECIPE_COCKPIT_STATUS_BAR_SETTING_KEY = 'showRecipeCockpitStatusBarItem';
+export const RECIPE_COCKPIT_STATUS_BAR_TEXT = '$(list-tree) Treecipe';
+export const RECIPE_COCKPIT_STATUS_BAR_TOOLTIP = 'Open Recipe Cockpit';
+export const RECIPE_COCKPIT_STATUS_BAR_ITEM_ID = 'salesforce-data-treecipe.recipeCockpit';
+export const RECIPE_COCKPIT_STATUS_BAR_ITEM_NAME = 'Treecipe Recipe Cockpit';
+
 
 /*
     The narrow port the directory walk reports through. Two plain functions and no vscode type, so
@@ -870,6 +877,59 @@ export class VSCodeWorkspaceService {
         statusBarPhaseItem.show();
 
         return statusBarPhaseItem;
+
+    }
+
+    /*
+        The status bar entry into the Recipe Cockpit (#251). It runs the SAME command the palette
+        does, so the feature flag, the opt-in warning and the singleton reveal all still apply, and
+        showing it does nothing else: no run is loaded, no org contacted and no webview created
+        until it is clicked.
+
+        Created only once the setting asks for it, so a workspace with the setting off, or a window
+        with no folder, has no item at all. The setting is followed live; the item and the listener
+        are disposed with the extension.
+    */
+    static registerRecipeCockpitStatusBarItem(subscriptions: { push(disposable: vscode.Disposable): void }) {
+
+        if ( !vscode.workspace.workspaceFolders?.length ) {
+            return;
+        }
+
+        let recipeCockpitStatusBarItem: vscode.StatusBarItem | undefined;
+
+        const applyVisibility = () => {
+
+            const isShown = ConfigurationService.getExtensionConfigValue(RECIPE_COCKPIT_STATUS_BAR_SETTING_KEY) !== false;
+
+            if ( !isShown ) {
+                recipeCockpitStatusBarItem?.hide();
+                return;
+            }
+
+            if ( !recipeCockpitStatusBarItem ) {
+                // AN ID AND NAME LABEL THE ITEM IN THE STATUS BAR'S OWN HIDE MENU, AND LET VS CODE REMEMBER A HIDE
+                recipeCockpitStatusBarItem = vscode.window.createStatusBarItem(RECIPE_COCKPIT_STATUS_BAR_ITEM_ID, vscode.StatusBarAlignment.Left);
+                recipeCockpitStatusBarItem.name = RECIPE_COCKPIT_STATUS_BAR_ITEM_NAME;
+                recipeCockpitStatusBarItem.text = RECIPE_COCKPIT_STATUS_BAR_TEXT;
+                recipeCockpitStatusBarItem.tooltip = RECIPE_COCKPIT_STATUS_BAR_TOOLTIP;
+                recipeCockpitStatusBarItem.command = RECIPE_COCKPIT_COMMAND_ID;
+            }
+
+            recipeCockpitStatusBarItem.show();
+
+        };
+
+        applyVisibility();
+
+        const configurationListener = vscode.workspace.onDidChangeConfiguration(configurationChange => {
+            if ( configurationChange.affectsConfiguration(`salesforce-data-treecipe.${RECIPE_COCKPIT_STATUS_BAR_SETTING_KEY}`) ) {
+                applyVisibility();
+            }
+        });
+
+        subscriptions.push(configurationListener);
+        subscriptions.push({ dispose: () => recipeCockpitStatusBarItem?.dispose() });
 
     }
 
