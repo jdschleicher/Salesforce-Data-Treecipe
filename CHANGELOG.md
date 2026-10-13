@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.81.0] - Recipe Cockpit: rename and favorite a previously used data set
+## [3.82.0] - Recipe Cockpit: rename and favorite a previously used data set
 
 A tree card could be named and starred (#235), but its **Previously Used Data Sets** rows could only be told apart by a timestamped folder name. Each row now gets the same two controls.
 
@@ -11,6 +11,20 @@ A tree card could be named and starred (#235), but its **Previously Used Data Se
 - **The search matches a data set's name** as well as its folder name.
 - **Messages.** The panel posts `renameDataset {datasetFolderName}` or `toggleFavoriteDataset {datasetFolderName}`, matched against `nameableDatasetFolderNames`, a new pending/active allow-list of every row the drawn model lists. A row added in place (#226) joins it only once the panel says it is drawn. The host posts `datasetPreferences {renderSequence, datasetFolderName, customName?, isFavorite}`, and the panel redraws that row on every card in place.
 - **Unchanged:** Open, Insert… and Show record counts, `datasetSource.json`, the data set folders on disk, and both faker backends.
+
+## [3.81.0] - A failed insert is a red error with a View errors button
+
+Closes [#310](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/310).
+
+When a Collections API file could not be inserted, the insert showed a yellow warning, `Failed to process collectionsApi-<Object>.json`, with no reason and no way to see what the org answered. Insert Data Set by Directory showed nothing else, so the results file under `InsertAttempts/` had to be found by hand.
+
+- **A file that stops the insert is an error, not a warning.** It names the file and how many records failed, and says when every saved record was deleted because all-or-none was chosen, for example *Failed to process collectionsApi-Contact.json: 1 record failed, and every record this insert had saved was deleted, because all-or-none was chosen.*
+- **A request that throws is an error too,** and still carries the request's error text. Under all-or-none it is shown after the rollback and says every saved record was deleted. The whole message, the file name included, is escaped for the notification.
+- **Both have a View errors button** that opens that attempt's `insertAttemptResults-<timestamp>.json`. The path is checked again when it is clicked: a file that has gone, or is no longer in the workspace, opens nothing and says so. With no workspace folder open there is no button.
+- **A request that throws is recorded in the results file.** One entry under that object's `FailureResults` names the file and the error (`statusCode: REQUEST_FAILED`), so the button has a file to open even when the first file threw. It is not counted as a failed record. If the file cannot be written, the error still shows, without a button.
+- **Recipe Cockpit:** a stopped tree insert is now an **error** with **View errors**, and it is the only notification: the shared insert is told (`isFailureReportedByCaller`) not to show its own. A request that threw is named with its error in that notification (`requestFailureDetail` on the insert's result), so the reason is not only in the file.
+- **Recording the error can never skip the rollback.** An object named from its file, such as `collectionsApi-constructor.json`, used to make recording the error throw before an all-or-none rollback; that step now catches its own failure. Records that failed without stopping the insert are still a warning, and a cancel is unchanged.
+- **Unchanged:** the cancel warning and its rollback, the "All files processed." message, the results file's shape for records the org answered, and every rule on which orgs an insert may reach.
 
 ## [3.80.0] - Recipe Cockpit: "Generate permission set…" writes a create/read permission set for a tree into the project
 

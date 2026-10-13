@@ -3,13 +3,14 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { CollectionsApiService, INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER } from '../CollectionsApiService';
+import { CollectionsApiService, INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER, INSERT_RESULTS_FILE_MISSING_TEXT, INSERT_VIEW_ERRORS_LABEL } from '../CollectionsApiService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { MockDirectoryService } from '../../DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/MockDirectoryService';
 import { MockCollectionsApiService } from './mocks/MockCollectionsApiService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { RecordTypeService } from '../../RecordTypeService/RecordTypeService';
+import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 
 jest.mock('vscode', () => ({
     workspace: {
@@ -1383,9 +1384,13 @@ describe('the one data set insert, shared by Insert Data Set by Directory and th
         ));
         (vscode.window.showWarningMessage as jest.Mock).mockClear();
         (vscode.window.showInformationMessage as jest.Mock).mockClear();
+        (vscode.window.showErrorMessage as jest.Mock).mockReset();
+        // THE DATA SET IS INSIDE THE WORKSPACE, AS A REAL ONE IS: WHAT LETS A FAILURE OFFER ITS RESULTS FILE
+        (vscode.workspace as any).workspaceFolders = [{ uri: { fsPath: datasetFolderPath } }];
     });
 
     afterEach(() => {
+        (vscode.workspace as any).workspaceFolders = undefined;
         fs.rmSync(datasetFolderPath, { recursive: true, force: true });
     });
 
@@ -1565,7 +1570,12 @@ describe('the one data set insert, shared by Insert Data Set by Directory and th
             expect(connection.insertedBatches.map(insertedBatch => insertedBatch.objectApiName)).toEqual(['Account', 'Contact']);
             expect(deleteSpy).toHaveBeenCalledTimes(1);
             expect(insertResult).toMatchObject({ outcome: 'stopped', savedRecordCount: 0, failedRecordCount: 1 });
-            expect(vscode.window.showWarningMessage).toHaveBeenCalledWith('Failed to process collectionsApi-Contact.json');
+            // RED, NOT YELLOW, WITH THE BUTTON THAT OPENS WHAT THE ORG ANSWERED (#310)
+            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls).toEqual([[
+                'Failed to process collectionsApi-Contact.json: 1 record failed, and every record this insert had saved was deleted, because all-or-none was chosen.',
+                INSERT_VIEW_ERRORS_LABEL
+            ]]);
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
             expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
 
         });
@@ -1593,9 +1603,182 @@ describe('the one data set insert, shared by Insert Data Set by Directory and th
             // THE CONTACT REQUEST WAS SENT AND THREW; NOTHING AFTER IT IS SENT
             expect(connection.insertedBatches.map(insertedBatch => insertedBatch.objectApiName)).toEqual(['Account', 'Contact']);
             expect(deleteSpy).toHaveBeenCalledTimes(1);
-            expect(insertResult).toMatchObject({ outcome: 'stopped', isRolledBack: true, savedRecordCount: 0 });
-            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls.at(-1)[0]).toContain('Failed to process collectionsApi-Contact.json: ');
+            expect(insertResult).toMatchObject({ outcome: 'stopped', isRolledBack: true, savedRecordCount: 0, failedRecordCount: 0, requestFailureDetail: 'collectionsApi-Contact.json failed: Error importing records: Error: INVALID_SESSION_ID: Session expired' });
+            // THE ERROR IS SHOWN ONCE THE ROLLBACK IT DESCRIBES HAS RUN
+            expect(deleteSpy.mock.invocationCallOrder[0]).toBeLessThan((vscode.window.showErrorMessage as jest.Mock).mock.invocationCallOrder[0]);
+            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls).toEqual([[
+                RecipeYamlScalar.escapeForNotification('Failed to process collectionsApi-Contact.json: Error importing records: Error: INVALID_SESSION_ID: Session expired — every record this insert had saved was deleted, because all-or-none was chosen.'),
+                INSERT_VIEW_ERRORS_LABEL
+            ]]);
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
             expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+
+        });
+
+        test('a request that throws records the error in the results file, even when it is the first file and nothing was written yet (#310)', async () => {
+
+            writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')] }, { Account: 0 });
+            const connection = buildConnection(() => { throw new Error('REQUEST_LIMIT_EXCEEDED: TotalRequests Limit exceeded.'); });
+
+            const insertResult = await insertFolder(connection, false);
+
+            expect(insertResult).toMatchObject({ outcome: 'stopped', savedRecordCount: 0, failedRecordCount: 0 });
+            expect(JSON.parse(fs.readFileSync(insertResult.resultsFilePath, 'utf8'))).toEqual({
+                SuccessResults: {},
+                FailureResults: {
+                    Account: [{
+                        success: false,
+                        fileName: 'collectionsApi-Account.json',
+                        errors: [{ statusCode: 'REQUEST_FAILED', message: 'Error importing records: Error: REQUEST_LIMIT_EXCEEDED: TotalRequests Limit exceeded.', fields: [] }]
+                    }]
+                }
+            });
+            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0][1]).toBe(INSERT_VIEW_ERRORS_LABEL);
+
+        });
+
+        test('View errors opens the results file, and only while it is still in the workspace (#310)', async () => {
+
+            writeThreeFiles();
+            const openFileSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+            const missingSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+            (vscode.window.showErrorMessage as jest.Mock).mockResolvedValue(INSERT_VIEW_ERRORS_LABEL);
+
+            const insertResult = await insertFolder(throwOnContact(), false);
+            await new Promise(resolve => setImmediate(resolve));
+
+            expect(openFileSpy).toHaveBeenCalledWith(insertResult.resultsFilePath);
+            expect(missingSpy).not.toHaveBeenCalled();
+
+            openFileSpy.mockClear();
+            await VSCodeWorkspaceService.openWorkspaceResultFile(insertResult.resultsFilePath, os.tmpdir() + '-elsewhere', INSERT_RESULTS_FILE_MISSING_TEXT);
+            fs.rmSync(insertResult.resultsFilePath);
+            await VSCodeWorkspaceService.openWorkspaceResultFile(insertResult.resultsFilePath, datasetFolderPath, INSERT_RESULTS_FILE_MISSING_TEXT);
+
+            expect(openFileSpy).not.toHaveBeenCalled();
+            expect(missingSpy.mock.calls).toEqual([[INSERT_RESULTS_FILE_MISSING_TEXT], [INSERT_RESULTS_FILE_MISSING_TEXT]]);
+
+        });
+
+        test('still shows the error, without a button and without throwing, when the results file cannot be written (#310)', async () => {
+
+            writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')] }, { Account: 0 });
+            jest.spyOn(CollectionsApiService, 'appendInsertAttemptsFileWithLatestSobjectResults').mockImplementation(() => { throw new Error('EROFS: read-only file system'); });
+            const connection = buildConnection(() => { throw new Error('Socket hang up'); });
+
+            const insertResult = await insertFolder(connection, false);
+
+            expect(insertResult.outcome).toBe('stopped');
+            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls).toEqual([['Failed to process collectionsApi-Account.json: Error importing records: Error: Socket hang up']]);
+
+        });
+
+        test('offers no button outside a workspace, since there is no workspace to check the file against', async () => {
+
+            (vscode.workspace as any).workspaceFolders = undefined;
+            writeThreeFiles();
+
+            await insertFolder(throwOnContact(), false);
+
+            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls).toHaveLength(1);
+            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0]).toHaveLength(1);
+
+        });
+
+        test('still rolls back under all-or-none when recording the error throws, as an object named constructor makes it (#312 review)', async () => {
+
+            writeDataSetFolder({
+                Account: [record('Account', 1, 'Account_NickName')],
+                constructor: [record('constructor', 1, 'Constructor_NickName')]
+            }, { Account: 0, constructor: 1 });
+            const connection = buildConnection((objectApiName, records) => {
+                if ( objectApiName === 'constructor' ) {
+                    throw new Error('NOT_FOUND: The requested resource does not exist');
+                }
+                return records.map((_record, recordIndex) => ({ id: `${objectApiName}-${recordIndex}`, success: true, errors: [] }));
+            });
+            const deleteSpy = jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockResolvedValue(undefined);
+
+            const insertResult = await insertFolder(connection, true);
+
+            expect(deleteSpy).toHaveBeenCalledTimes(1);
+            expect(insertResult).toMatchObject({ outcome: 'stopped', isRolledBack: true, savedRecordCount: 0 });
+            expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(1);
+
+        });
+
+        test('escapes the error text, so a link in it cannot run a command', async () => {
+
+            writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')] }, { Account: 0 });
+            const connection = buildConnection(() => { throw new Error('see [here](command:workbench.action.terminal.new)'); });
+
+            await insertFolder(connection, false);
+
+            const shownText: string = (vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0];
+            expect(shownText).not.toContain('[here](command:');
+            expect(shownText).toBe(RecipeYamlScalar.escapeForNotification('Failed to process collectionsApi-Account.json: Error importing records: Error: see [here](command:workbench.action.terminal.new)'));
+
+        });
+
+        test('counts every failed record of the stopping file, and says nothing was deleted when nothing was', async () => {
+
+            writeThreeFiles();
+            jest.spyOn(CollectionsApiService, 'processAndInsertCollectionFile').mockImplementation(async (collectionsApiFilePath: string, _recordTypes, _createdIds, _connection, _allOrNone, allResults: Record<string, Record<string, any[]>>) => {
+                if ( !collectionsApiFilePath.endsWith('collectionsApi-Contact.json') ) {
+                    return true;
+                }
+                allResults.FailureResults.Contact = [{ success: false, errors: [{ statusCode: 'REQUIRED_FIELD_MISSING', message: 'LastName' }] }, { success: false, errors: [{ statusCode: 'REQUIRED_FIELD_MISSING', message: 'LastName' }] }];
+                return false;
+            });
+
+            const insertResult = await insertFolder(buildConnection(), false);
+
+            expect(insertResult).toMatchObject({ outcome: 'stopped', isRolledBack: false, failedRecordCount: 2 });
+            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0]).toBe('Failed to process collectionsApi-Contact.json: 2 records failed.');
+
+        });
+
+        test('names a thrown value that is not an Error by its own text', async () => {
+
+            writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')] }, { Account: 0 });
+            jest.spyOn(CollectionsApiService, 'processAndInsertCollectionFile').mockRejectedValue('socket closed');
+
+            const insertResult = await insertFolder(buildConnection(), false);
+
+            expect(insertResult.requestFailureDetail).toBe('collectionsApi-Account.json failed: socket closed');
+            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls[0][0]).toBe('Failed to process collectionsApi-Account.json: socket closed');
+
+        });
+
+        test.each([
+            ['null', null],
+            ['an answer with no errors', { success: false }],
+            ['errors that are not a list', { success: false, errors: 'bad', fileName: 'collectionsApi-Account.json' }],
+            ['a null error entry', { success: false, errors: [null], fileName: 'collectionsApi-Account.json' }],
+            ['an org rejection, which names no file', { success: false, errors: [{ statusCode: 'REQUEST_FAILED', message: 'x' }] }]
+        ])('isRequestFailureResult is false for %s', (_label, objectResult) => {
+
+            expect(CollectionsApiService.isRequestFailureResult(objectResult)).toBe(false);
+
+        });
+
+        test('shows nothing of its own when the caller reports how the insert ended (#310)', async () => {
+
+            writeThreeFiles();
+
+            const insertResult = await CollectionsApiService.upsertDataSetToSelectedOrg(
+                datasetFolderPath,
+                await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(datasetFolderPath),
+                { records: [] },
+                throwOnContact() as any,
+                true,
+                { isFailureReportedByCaller: true }
+            );
+
+            expect(insertResult.outcome).toBe('stopped');
+            expect(fs.existsSync(insertResult.resultsFilePath)).toBe(true);
+            expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+            expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
 
         });
 
