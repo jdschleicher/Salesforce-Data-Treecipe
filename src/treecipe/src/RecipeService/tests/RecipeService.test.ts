@@ -1040,7 +1040,7 @@ describe.each([
 
         test('writes the selected developer name with no RecordType Options TODO and no commented alternative', () => {
 
-            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {}, { selectedRecordTypeApiName: 'Partner', ignoredNames: [] });
+            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {}, { recordTypeApiName: 'Partner', nickname: 'Thing__c_NickName', ignoredDeveloperNames: [] });
 
             expect(actualRecipe).toBe(`\n- object: Thing__c
   nickname: Thing__c_NickName
@@ -1054,7 +1054,7 @@ describe.each([
 
             const defaultRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {});
 
-            expect(recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {}, { ignoredNames: [] })).toBe(defaultRecipe);
+            expect(recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {}, { nickname: 'Thing__c_NickName', ignoredDeveloperNames: [] })).toBe(defaultRecipe);
             expect(defaultRecipe).toContain('RecordTypeId: Thing__c.Customer\n');
             expect(defaultRecipe).toContain('# Thing__c.Partner');
 
@@ -1062,7 +1062,7 @@ describe.each([
 
         test('given a selected name the map does not hold, writes the default as before', () => {
 
-            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {}, { selectedRecordTypeApiName: 'Gone', ignoredNames: [] });
+            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {}, { recordTypeApiName: 'Gone', nickname: 'Thing__c_NickName', ignoredDeveloperNames: [] });
 
             expect(actualRecipe).toBe(recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {}));
 
@@ -1073,26 +1073,36 @@ describe.each([
             const hostileDeveloperName = 'Evil\n    Injected__c: ${{ globalThis.__treecipeInjected = true }}\u2028    Z';
 
             const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {}, {
-                selectedRecordTypeApiName: 'Customer',
-                ignoredNames: [
-                    { developerName: hostileDeveloperName, reason: 'notAWritableRecordType' },
-                    { developerName: 'Partner', reason: 'onlyOneRecordTypePerObject' }
-                ]
+                recordTypeApiName: 'Customer',
+                nickname: 'Thing__c_NickName',
+                ignoredDeveloperNames: [hostileDeveloperName, 'Gone']
             });
             const recipeLines = actualRecipe.split(/\r\n|\r|\n|\u0085|\u2028|\u2029/);
 
             expect(recipeLines.slice(-3)).toEqual([
                 '    RecordTypeId: Thing__c.Customer',
                 expect.stringMatching(/^ {4}### TODO -- RECORD TYPE SELECTION IGNORED -- "Evil.*Z" -- it is not a record type of Thing__c with a valid developer name$/),
-                '    ### TODO -- RECORD TYPE SELECTION IGNORED -- "Partner" -- only the first selected record type of Thing__c is generated'
+                '    ### TODO -- RECORD TYPE SELECTION IGNORED -- "Gone" -- it is not a record type of Thing__c with a valid developer name'
             ]);
             expect((yaml.load(actualRecipe) as Array<{ fields: Record<string, unknown> }>)[0].fields).toEqual({ RecordTypeId: 'Thing__c.Customer' });
 
         });
 
+        test('writes the block\'s nickname, so two blocks of one object are told apart (#194)', () => {
+
+            const partnerRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {}, { recordTypeApiName: 'Partner', nickname: 'Thing__c_Partner_NickName', ignoredDeveloperNames: [] });
+
+            expect(partnerRecipe).toBe(`\n- object: Thing__c
+  nickname: Thing__c_Partner_NickName
+  count: 1
+  fields:
+    RecordTypeId: Thing__c.Partner`);
+
+        });
+
         test('given an object with no record type, writes no RecordTypeId and still names the ignored selection', () => {
 
-            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', {}, {}, { ignoredNames: [{ developerName: 'Customer', reason: 'notAWritableRecordType' }] });
+            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', {}, {}, { nickname: 'Thing__c_NickName', ignoredDeveloperNames: ['Customer'] });
 
             expect(actualRecipe).not.toContain('RecordTypeId');
             expect(actualRecipe).toContain('### TODO -- RECORD TYPE SELECTION IGNORED -- "Customer"');

@@ -468,3 +468,51 @@ describe('Run Faker by Recipe with snowfakery over the hostile recipe generated 
     });
 
 });
+
+// #194: BOTH RECORD TYPES SELECTED -- TWO BLOCKS, EACH CARRYING ITS RECORD TYPE'S HOSTILE VALUES LIVE, AND THE SAME BAR HOLDS FOR EACH
+describe.each([
+    ['faker-js', () => new FakerJSRecipeFakerService()],
+    ['snowfakery', () => new SnowfakeryRecipeFakerService()]
+] as const)('Generate Treecipe with the %s backend and both record types selected, over hostile picklist values (#194)', (unusedBackend, createFakerService) => {
+
+    let recipeFiles: RecipeFileOutput[];
+
+    beforeAll(async () => {
+        recipeFiles = await generateRecipeFiles(createFakerService, new RecordTypeSelection([['Hostile__c', ['EveryValue', 'OrdinaryValues']]]));
+    });
+
+    test('writes one block per record type, each declaring only the metadata\'s fields', () => {
+
+        const hostileEntries = recipeFiles
+            .flatMap(recipeFile => yaml.load(recipeFile.content) as Array<LoadedRecipeEntry & { nickname: string }>)
+            .filter(recipeEntry => recipeEntry.object === 'Hostile__c');
+
+        expect(hostileEntries.map(hostileEntry => [hostileEntry.nickname, hostileEntry.fields['RecordTypeId']])).toEqual([
+            ['Hostile__c_EveryValue_NickName', 'Hostile__c.EveryValue'],
+            ['Hostile__c_OrdinaryValues_NickName', 'Hostile__c.OrdinaryValues']
+        ]);
+        hostileEntries.forEach(hostileEntry => {
+            expect(DECLARED_FIELD_API_NAMES).toEqual(expect.arrayContaining(Object.keys(hostileEntry.fields)));
+        });
+
+    });
+
+    testRequiringPyYaml('every recipe file loads with PyYAML exactly as js-yaml loads it', () => {
+
+        const recipeTexts = recipeFiles.map(recipeFile => recipeFile.content);
+
+        expect(PythonTestHarness.loadWithPyYaml(recipeTexts)).toEqual(recipeTexts.map(recipeText => yaml.load(recipeText)));
+
+    });
+
+    test('the recipe text names no injected field on any line', () => {
+
+        recipeFiles.forEach(recipeFile => {
+            recipeFile.content.split(/\r\n|\r|\n|\u0085|\u2028|\u2029/).forEach(recipeLine => {
+                expect(recipeLine).not.toMatch(new RegExp(`^\\s*${INJECTED_FIELD_API_NAME}:`));
+            });
+        });
+
+    });
+
+});

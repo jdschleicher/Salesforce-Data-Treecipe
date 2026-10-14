@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.84.0] - One recipe block per selected record type
+
+Closes [#194](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/194), slice B of [#192](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/192).
+
+3.83.0 generated an object for the first record type selected and ignored the rest. One Run Faker by Recipe can now produce records for several record types of the same object, for example `Account` Customer *and* Partner.
+
+- **One block per record type, in selection order.** Each selected record type is its own `- object:` block, with its own nickname (`Account_Customer_NickName`, `Account_Partner_NickName`), its own `RecordTypeId` and that record type's picklist expressions (per #193). Every block uses the object's existing `count`. A record type named `child`, whose nickname would collide with the self-lookup iteration's `<Object>_child_NickName`, is nicknamed `<Object>_child_RecordType_NickName`.
+- **faker-js nests a child under the parent's first block only.** A child is a friend of the first selected record type's block and is wired to it. The other blocks of the parent carry no friends, so a parent with several record types does not multiply its children's records. A child that is itself several blocks writes all of them under that one parent block, each wired to it. A lookup to a non-ancestor parent with several blocks is wired to the first block, as #189 wires it to the parent's nickname. `FakerJSRecipeProcessor` and the insert's whole-string nickname swap are unchanged.
+- **snowfakery stays flat, and names the blocks.** A lookup left as `### TODO -- REFERENCE ID REQUIRED` to a parent written as several blocks gets one comment line under it: `### TODO -- RECORD TYPE BLOCKS -- AccountId can reference any record type block of Account: Account_Customer_NickName, Account_Partner_NickName`. The lookup's own line is unchanged, so the Recipe Cockpit's lookup wiring (#151) still recognises it, and a self-lookup never lists the block it is written in. faker-js writes the same line under any lookup it leaves as a TODO.
+- **Every record still names exactly one record type.** Each block's `RecordTypeId` is one `Object.DeveloperName`, which the insert swaps for its org Id per record. A test runs generation, Run Faker, the record type swap and the lookup swap end to end.
+- **The Recipe Cockpit reads each block.** The blocks' nicknames are distinct, so `parseRecipeSource` keeps a later block as an occurrence of its own, as it does a self-lookup iteration.
+- **What the objects wrapper records.** `Fields` and the relationships are still built from the first block. The later blocks are in the new `ObjectInfo.AdditionalRecordTypeRecipes`, which is set only when there are several. An object whose fields are walked twice gets them appended to every block alike.
+- **Unchanged:** with no selection, or one record type per object, every recipe file is byte-identical to 3.83.0 in both backends.
+
 ## [3.83.0] - Generate recipes for a chosen record type
 
 Closes [#193](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/193), slice A of [#192](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/192).

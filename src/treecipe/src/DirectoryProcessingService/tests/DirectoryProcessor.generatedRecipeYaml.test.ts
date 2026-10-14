@@ -72,6 +72,7 @@ import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
 import { RecordTypeSelection } from '../../RecordTypeService/RecordTypeSelection';
+import { RecipeCockpitService } from '../../RecipeCockpitService/RecipeCockpitService';
 
 const MOCK_OBJECTS_PATH = path.join(__dirname, 'mocks', 'MockSalesforceMetadataDirectory', 'objects');
 
@@ -426,11 +427,118 @@ describe.each([
 
         });
 
+        test('given one record type, is byte-identical whether or not names the object lacks follow it', async () => {
+
+            const withUnknownNamesWrapper = await processMockMetadata(createFakerService, new RecordTypeSelection([['Example_Everything__c', ['TwoRecType']], ['Not_An_Object__c', ['Anything']]]));
+
+            expect(withUnknownNamesWrapper.RecipeFiles).toEqual(selectionObjectInfoWrapper.RecipeFiles);
+
+        });
+
         test('given an empty selection, writes byte-identical recipe files', async () => {
 
             const emptySelectionWrapper = await processMockMetadata(createFakerService, new RecordTypeSelection());
 
             expect(emptySelectionWrapper.RecipeFiles).toEqual(defaultObjectInfoWrapper.RecipeFiles);
+
+        });
+
+    });
+
+    /*
+        #194: TwoRecType and OneRecType both chosen. Example_Everything__c is written as one block per
+        record type, in selection order, each with its own nickname, RecordTypeId and picklists; every
+        file still loads under both parsers, and the Recipe Cockpit reads the second block as an
+        occurrence of its own.
+    */
+    describe('given two record types selected (#194)', () => {
+
+        let multiBlockObjectInfoWrapper: ObjectInfoWrapper;
+        let firstOnlyObjectInfoWrapper: ObjectInfoWrapper;
+
+        beforeAll(async () => {
+            multiBlockObjectInfoWrapper = await processMockMetadata(createFakerService, new RecordTypeSelection([['Example_Everything__c', ['TwoRecType', 'OneRecType']]]));
+            firstOnlyObjectInfoWrapper = await processMockMetadata(createFakerService, new RecordTypeSelection([['Example_Everything__c', ['TwoRecType']]]));
+        });
+
+        const multiBlockRecipeTexts = () => multiBlockObjectInfoWrapper.RecipeFiles.map(recipeFile => recipeFile.content);
+        const loadedEverythingRecipes = () => flattenObjectRecipes(multiBlockRecipeTexts().flatMap(recipeText => yaml.load(recipeText) as LoadedObjectRecipe[]))
+            .filter(objectRecipe => objectRecipe.object === 'Example_Everything__c') as Array<LoadedObjectRecipe & { nickname: string }>;
+
+        test('writes one block per record type, in selection order, each with its own nickname and RecordTypeId', () => {
+
+            const blocks = loadedEverythingRecipes().filter(objectRecipe => objectRecipe.nickname !== 'Example_Everything__c_child_NickName');
+
+            expect(blocks.map(block => [block.nickname, block.fields.RecordTypeId])).toEqual([
+                ['Example_Everything__c_TwoRecType_NickName', 'Example_Everything__c.TwoRecType'],
+                ['Example_Everything__c_OneRecType_NickName', 'Example_Everything__c.OneRecType']
+            ]);
+            expect(blocks.map(block => block.fields.Picklist__c)).toEqual([
+                createFakerService().buildPicklistRecipeValueByXMLFieldDetail(['cle', 'willoughby'], {}, 'Picklist__c'),
+                createFakerService().buildPicklistRecipeValueByXMLFieldDetail(['cle', 'eastlake'], {}, 'Picklist__c')
+            ]);
+
+        });
+
+        test('records the blocks after the first on the object, and the fields of the first block only', () => {
+
+            const everythingInfo = multiBlockObjectInfoWrapper.ObjectToObjectInfoMap['Example_Everything__c'];
+
+            expect(everythingInfo.AdditionalRecordTypeRecipes).toHaveLength(1);
+            expect(everythingInfo.Fields).toEqual(firstOnlyObjectInfoWrapper.ObjectToObjectInfoMap['Example_Everything__c'].Fields);
+            Object.keys(multiBlockObjectInfoWrapper.ObjectToObjectInfoMap)
+                .filter(objectApiName => objectApiName !== 'Example_Everything__c')
+                .forEach(objectApiName => expect([objectApiName, multiBlockObjectInfoWrapper.ObjectToObjectInfoMap[objectApiName].AdditionalRecordTypeRecipes]).toEqual([objectApiName, undefined]));
+
+        });
+
+        test('every recipe file loads with js-yaml, and every RecordTypeId is exactly one developer name', () => {
+
+            const recordTypeIds = collectRecordTypeIdsByObject(multiBlockRecipeTexts().map(recipeText => yaml.load(recipeText)));
+
+            expect(Object.keys(recordTypeIds)).toEqual(['Example_Everything__c']);
+            recordTypeIds['Example_Everything__c'].forEach(recordTypeId => {
+                expect(['Example_Everything__c.TwoRecType', 'Example_Everything__c.OneRecType']).toContain(recordTypeId);
+            });
+            multiBlockRecipeTexts().forEach(recipeText => {
+                expect(ExtensionCommandService.findBareRecordTypeVariantLineNumbers(recipeText)).toEqual([]);
+            });
+
+        });
+
+        testRequiringPyYaml('every recipe file loads with PyYAML exactly as js-yaml loads it', () => {
+
+            expect(PythonTestHarness.loadWithPyYaml(multiBlockRecipeTexts())).toEqual(multiBlockRecipeTexts().map(recipeText => yaml.load(recipeText)));
+
+        });
+
+        test('an object whose fields are walked twice gets them appended to every block alike, as FullRecipe always has', async () => {
+
+            jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
+            jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({});
+            jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
+            const directoryProcessor = new DirectoryProcessor();
+            const objectInfoWrapper = await directoryProcessor.processAllObjectsAndRelationships(vscode.Uri.file(MOCK_OBJECTS_PATH), undefined, new RecordTypeSelection([['Example_Everything__c', ['TwoRecType', 'OneRecType']]]));
+
+            await directoryProcessor.processDirectory(vscode.Uri.file(path.join(MOCK_OBJECTS_PATH, 'Example_Everything__c')), objectInfoWrapper);
+
+            const everythingInfo = objectInfoWrapper.ObjectToObjectInfoMap['Example_Everything__c'];
+            expect(everythingInfo.AdditionalRecordTypeRecipes).toHaveLength(1);
+            [everythingInfo.FullRecipe, everythingInfo.AdditionalRecordTypeRecipes[0]].forEach(blockRecipe => {
+                expect(blockRecipe.match(/^ {4}Picklist__c: /gm)).toHaveLength(2);
+                expect(blockRecipe.match(/^- object: /gm)).toHaveLength(1);
+            });
+
+        });
+
+        test('the Recipe Cockpit reads the second block as an occurrence of its own, by nickname', () => {
+
+            const everythingRecipeText = multiBlockRecipeTexts().find(recipeText => recipeText.includes('Example_Everything__c_OneRecType_NickName'));
+            const everythingEntry = RecipeCockpitService.parseRecipeSource(everythingRecipeText).get('Example_Everything__c');
+
+            expect(everythingEntry.nickname).toBe('Example_Everything__c_TwoRecType_NickName');
+            expect(everythingEntry.hasIndistinctOccurrences).toBeUndefined();
+            expect(everythingEntry.iterations.map(iteration => iteration.nickname)).toContain('Example_Everything__c_OneRecType_NickName');
 
         });
 

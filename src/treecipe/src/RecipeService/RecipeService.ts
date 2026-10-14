@@ -3,7 +3,7 @@ import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueS
 import { IRecipeFakerService } from "../RecipeFakerService.ts/IRecipeFakerService";
 import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
-import { IObjectRecordTypeSelection, IRecordTypeSelectionIgnoredName, RecordTypeSelection } from "../RecordTypeService/RecordTypeSelection";
+import { IRecordTypeBlock, RecordTypeSelection } from "../RecordTypeService/RecordTypeSelection";
 import { ValueSetService } from "../ValueSetService/ValueSetService";
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 import { ICompoundComponentRecipe } from "./ICompoundComponentRecipe";
@@ -402,9 +402,9 @@ export class RecipeService {
     */
     buildNoDependentValuesForRecordTypeTodo(xmlFieldDetail: XMLFieldDetail, selectedRecordTypeWrapper: RecordTypeWrapper): string {
 
-        const escapedFieldApiName = RecipeYamlScalar.escapeForComment(String(xmlFieldDetail.apiName ?? ''));
-        const escapedControllingField = RecipeYamlScalar.escapeForComment(String(xmlFieldDetail.controllingField ?? ''));
-        const escapedDeveloperName = RecipeYamlScalar.escapeForComment(String(selectedRecordTypeWrapper.DeveloperName ?? ''));
+        const escapedFieldApiName = RecipeYamlScalar.escapeForComment(String(xmlFieldDetail.apiName));
+        const escapedControllingField = RecipeYamlScalar.escapeForComment(String(xmlFieldDetail.controllingField));
+        const escapedDeveloperName = RecipeYamlScalar.escapeForComment(String(selectedRecordTypeWrapper.DeveloperName));
         return `### TODO -- DEPENDENT PICKLIST -- record type "${escapedDeveloperName}" makes no value of "${escapedFieldApiName}" available under any value of "${escapedControllingField}" it allows; set a value by hand or leave the field out`;
 
     }
@@ -428,13 +428,13 @@ export class RecipeService {
                                 objectName: string, 
                                 recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
                                 salesforceOOTBFakerMappings: Record<string, Record<string, string>>,
-                                objectRecordTypeSelection?: IObjectRecordTypeSelection
+                                recordTypeBlock?: IRecordTypeBlock
                             ): string {
 
         // ADD NEW LINE CHARACTER TO SEPARATE OBJECT RECIPES WHEN THEY ARE ADDED TOGETHER
         let objectRecipeMarkup = 
 `\n- object: ${objectName}
-  nickname: ${objectName}_NickName
+  nickname: ${recordTypeBlock?.nickname ?? RecordTypeSelection.buildDefaultNickname(objectName)}
   count: 1
   fields:`;
 
@@ -451,8 +451,8 @@ export class RecipeService {
                 indented under the value is folded into it by YAML.
             */
             // A SELECTED RECORD TYPE IS THE ONE THE USER WANTS (#193), SO ITS ALTERNATIVES ARE NOT OFFERED
-            const userSelectedRecordTypeApiName = RecipeService.getSelectedRecordTypeWrapper(recordTypeApiToRecordTypeWrapperMap, objectRecordTypeSelection?.selectedRecordTypeApiName)
-                ? objectRecordTypeSelection.selectedRecordTypeApiName
+            const userSelectedRecordTypeApiName = RecipeService.getSelectedRecordTypeWrapper(recordTypeApiToRecordTypeWrapperMap, recordTypeBlock?.recordTypeApiName)
+                ? recordTypeBlock.recordTypeApiName
                 : undefined;
             const selectedRecordTypeApiName = userSelectedRecordTypeApiName ?? RecipeService.selectDefaultRecordTypeApiName(recordTypeApiToRecordTypeWrapperMap);
             const otherRecordTypeApiNames = userSelectedRecordTypeApiName !== undefined
@@ -481,8 +481,8 @@ export class RecipeService {
             objectRecipeMarkup += `\n${this.generateTabs(1)}${this.buildInvalidApiNameTodo('RECORD TYPE SKIPPED -- developer name', skippedRecordTypeDeveloperName, "fix the record type's <fullName> and regenerate")}`;
         });
 
-        objectRecordTypeSelection?.ignoredNames.forEach((ignoredName) => {
-            objectRecipeMarkup += `\n${this.generateTabs(1)}${RecipeService.buildIgnoredRecordTypeSelectionTodo(objectName, ignoredName)}`;
+        recordTypeBlock?.ignoredDeveloperNames.forEach((ignoredDeveloperName) => {
+            objectRecipeMarkup += `\n${this.generateTabs(1)}${RecipeService.buildIgnoredRecordTypeSelectionTodo(objectName, ignoredDeveloperName)}`;
         });
 
         if ( salesforceOOTBFakerMappings[objectName] ) {
@@ -518,13 +518,10 @@ export class RecipeService {
         A selected name comes from the user or a hand-edited file, so it is escaped like any other
         untrusted text written into a comment. The object name is an api name by now (#164).
     */
-    static buildIgnoredRecordTypeSelectionTodo(objectName: string, ignoredName: IRecordTypeSelectionIgnoredName): string {
+    static buildIgnoredRecordTypeSelectionTodo(objectName: string, ignoredDeveloperName: string): string {
 
-        const escapedDeveloperName = RecipeYamlScalar.escapeForComment(String(ignoredName.developerName ?? ''));
-        const reasonText = ignoredName.reason === 'onlyOneRecordTypePerObject'
-            ? `only the first selected record type of ${objectName} is generated`
-            : `it is not a record type of ${objectName} with a valid developer name`;
-        return `### TODO -- RECORD TYPE SELECTION IGNORED -- "${escapedDeveloperName}" -- ${reasonText}`;
+        const escapedDeveloperName = RecipeYamlScalar.escapeForComment(String(ignoredDeveloperName ?? ''));
+        return `### TODO -- RECORD TYPE SELECTION IGNORED -- "${escapedDeveloperName}" -- it is not a record type of ${objectName} with a valid developer name`;
 
     }
 

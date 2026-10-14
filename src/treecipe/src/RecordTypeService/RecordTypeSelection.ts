@@ -1,22 +1,26 @@
 import { RecordTypeWrapper } from './RecordTypesWrapper';
 
-export type RecordTypeSelectionIgnoredReason = 'notAWritableRecordType' | 'onlyOneRecordTypePerObject';
-
-export interface IRecordTypeSelectionIgnoredName {
-    developerName: string;
-    reason: RecordTypeSelectionIgnoredReason;
+export interface IObjectRecordTypeSelection {
+    // EMPTY: NOTHING USABLE WAS SELECTED FOR THE OBJECT, SO GENERATION WRITES TODAY'S DEFAULT AND ITS COMMENTED ALTERNATIVES
+    selectedRecordTypeApiNames: string[];
+    // SELECTED NAMES THE OBJECT DOES NOT HOLD AS A WRITABLE RECORD TYPE
+    ignoredDeveloperNames: string[];
 }
 
-export interface IObjectRecordTypeSelection {
-    // UNDEFINED: NOTHING USABLE WAS SELECTED FOR THE OBJECT, SO GENERATION WRITES TODAY'S DEFAULT AND ITS COMMENTED ALTERNATIVES
-    selectedRecordTypeApiName?: string;
-    ignoredNames: IRecordTypeSelectionIgnoredName[];
+/*
+    One "- object:" block of an object's recipe. recordTypeApiName undefined is the default block,
+    written exactly as before any selection existed.
+*/
+export interface IRecordTypeBlock {
+    recordTypeApiName?: string;
+    nickname: string;
+    ignoredDeveloperNames: string[];
 }
 
 /*
     Which record types the user chose per object (#193): object api name -> developer names, in the
-    order chosen. Generation honours the FIRST usable name of an object; slice B (#194) writes one
-    block per name. Names are matched against the object's WRITABLE record types (the ones
+    order chosen. Each usable name is one block of the object's recipe (#194). Names are matched
+    against the object's WRITABLE record types (the ones
     RecipeService.partitionRecordTypesByWritableDeveloperName keeps), so a selected name only ever
     reaches a recipe if it is a record type the metadata holds under a valid api name.
 */
@@ -69,22 +73,62 @@ export class RecordTypeSelection {
                             writableRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>
                         ): IObjectRecordTypeSelection {
 
-        const resolution: IObjectRecordTypeSelection = { ignoredNames: [] };
+        const resolution: IObjectRecordTypeSelection = { selectedRecordTypeApiNames: [], ignoredDeveloperNames: [] };
         const developerNames = recordTypeSelection?.getDeveloperNames(objectApiName) ?? [];
 
         developerNames.forEach((developerName) => {
 
-            if ( !Object.prototype.hasOwnProperty.call(writableRecordTypeApiToRecordTypeWrapperMap, developerName) ) {
-                resolution.ignoredNames.push({ developerName, reason: 'notAWritableRecordType' });
-            } else if ( resolution.selectedRecordTypeApiName === undefined ) {
-                resolution.selectedRecordTypeApiName = developerName;
+            if ( Object.prototype.hasOwnProperty.call(writableRecordTypeApiToRecordTypeWrapperMap, developerName) ) {
+                resolution.selectedRecordTypeApiNames.push(developerName);
             } else {
-                resolution.ignoredNames.push({ developerName, reason: 'onlyOneRecordTypePerObject' });
+                resolution.ignoredDeveloperNames.push(developerName);
             }
 
         });
 
         return resolution;
+
+    }
+
+    static buildDefaultNickname(objectApiName: string): string {
+
+        return `${objectApiName}_NickName`;
+
+    }
+
+    /*
+        The blocks an object's recipe is written as. With none or one record type selected there is
+        one block under the object's usual nickname, so the recipe is what it was before #194. With
+        several, each block is nicknamed after its record type so the blocks -- and a child's lookup
+        to one of them -- are told apart. A nickname a reserved name already holds (the self-lookup
+        child iteration's, <Object>_child_NickName, for a record type named "child") takes a
+        _RecordType suffix instead. The ignored names are written once, in the first block.
+    */
+    static buildRecordTypeBlocks(objectApiName: string,
+                                    objectRecordTypeSelection: IObjectRecordTypeSelection,
+                                    reservedNicknames: string[] = []
+                                ): IRecordTypeBlock[] {
+
+        const { selectedRecordTypeApiNames, ignoredDeveloperNames } = objectRecordTypeSelection;
+
+        if ( selectedRecordTypeApiNames.length <= 1 ) {
+            return [{
+                ...( selectedRecordTypeApiNames.length === 1 ? { recordTypeApiName: selectedRecordTypeApiNames[0] } : {} ),
+                nickname: RecordTypeSelection.buildDefaultNickname(objectApiName),
+                ignoredDeveloperNames: [...ignoredDeveloperNames]
+            }];
+        }
+
+        return selectedRecordTypeApiNames.map((recordTypeApiName, blockIndex) => {
+
+            const nickname = `${objectApiName}_${recordTypeApiName}_NickName`;
+            return {
+                recordTypeApiName: recordTypeApiName,
+                nickname: reservedNicknames.includes(nickname) ? `${objectApiName}_${recordTypeApiName}_RecordType_NickName` : nickname,
+                ignoredDeveloperNames: blockIndex === 0 ? [...ignoredDeveloperNames] : []
+            };
+
+        });
 
     }
 

@@ -71,21 +71,19 @@ describe('RecordTypeSelection', () => {
 
         test('given no selection, or none for the object, selects nothing and ignores nothing', () => {
 
-            expect(RecordTypeSelection.resolveForObject(undefined, 'Account', writableRecordTypes)).toEqual({ ignoredNames: [] });
-            expect(RecordTypeSelection.resolveForObject(new RecordTypeSelection([['Contact', ['Customer']]]), 'Account', writableRecordTypes)).toEqual({ ignoredNames: [] });
+            const nothingSelected = { selectedRecordTypeApiNames: [], ignoredDeveloperNames: [] };
+            expect(RecordTypeSelection.resolveForObject(undefined, 'Account', writableRecordTypes)).toEqual(nothingSelected);
+            expect(RecordTypeSelection.resolveForObject(new RecordTypeSelection([['Contact', ['Customer']]]), 'Account', writableRecordTypes)).toEqual(nothingSelected);
 
         });
 
-        test('selects the first writable name, and ignores names the object does not have and every later writable name', () => {
+        test('selects every writable name in the order chosen, and ignores names the object does not have', () => {
 
             const recordTypeSelection = new RecordTypeSelection([['Account', ['Gone', 'Partner', 'Customer']]]);
 
             expect(RecordTypeSelection.resolveForObject(recordTypeSelection, 'Account', writableRecordTypes)).toEqual({
-                selectedRecordTypeApiName: 'Partner',
-                ignoredNames: [
-                    { developerName: 'Gone', reason: 'notAWritableRecordType' },
-                    { developerName: 'Customer', reason: 'onlyOneRecordTypePerObject' }
-                ]
+                selectedRecordTypeApiNames: ['Partner', 'Customer'],
+                ignoredDeveloperNames: ['Gone']
             });
 
         });
@@ -95,11 +93,50 @@ describe('RecordTypeSelection', () => {
             const recordTypeSelection = new RecordTypeSelection([['Account', ['constructor', 'toString']]]);
 
             expect(RecordTypeSelection.resolveForObject(recordTypeSelection, 'Account', writableRecordTypes)).toEqual({
-                ignoredNames: [
-                    { developerName: 'constructor', reason: 'notAWritableRecordType' },
-                    { developerName: 'toString', reason: 'notAWritableRecordType' }
-                ]
+                selectedRecordTypeApiNames: [],
+                ignoredDeveloperNames: ['constructor', 'toString']
             });
+
+        });
+
+    });
+
+    describe('buildRecordTypeBlocks (#194)', () => {
+
+        test('given nothing selected, is one default block under the usual nickname, carrying the ignored names', () => {
+
+            expect(RecordTypeSelection.buildRecordTypeBlocks('Account', { selectedRecordTypeApiNames: [], ignoredDeveloperNames: ['Gone'] })).toEqual([
+                { nickname: 'Account_NickName', ignoredDeveloperNames: ['Gone'] }
+            ]);
+
+        });
+
+        test('given one record type, is one block under the usual nickname, as #193 wrote it', () => {
+
+            expect(RecordTypeSelection.buildRecordTypeBlocks('Account', { selectedRecordTypeApiNames: ['Partner'], ignoredDeveloperNames: [] })).toEqual([
+                { recordTypeApiName: 'Partner', nickname: 'Account_NickName', ignoredDeveloperNames: [] }
+            ]);
+
+        });
+
+        test('given several, is one block per record type in selection order, each nicknamed after it, with the ignored names in the first only', () => {
+
+            expect(RecordTypeSelection.buildRecordTypeBlocks('Account', { selectedRecordTypeApiNames: ['Partner', 'Customer'], ignoredDeveloperNames: ['Gone'] })).toEqual([
+                { recordTypeApiName: 'Partner', nickname: 'Account_Partner_NickName', ignoredDeveloperNames: ['Gone'] },
+                { recordTypeApiName: 'Customer', nickname: 'Account_Customer_NickName', ignoredDeveloperNames: [] }
+            ]);
+
+        });
+
+        test('given a record type whose nickname is reserved, as the self-lookup iteration\'s is for "child", gives it a suffix', () => {
+
+            const recordTypeBlocks = RecordTypeSelection.buildRecordTypeBlocks(
+                'Account',
+                { selectedRecordTypeApiNames: ['child', 'Partner'], ignoredDeveloperNames: [] },
+                ['Account_child_NickName']
+            );
+
+            expect(recordTypeBlocks.map(recordTypeBlock => recordTypeBlock.nickname)).toEqual(['Account_child_RecordType_NickName', 'Account_Partner_NickName']);
 
         });
 

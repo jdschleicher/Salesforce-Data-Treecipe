@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { RecordTypeWrapper } from '../RecordTypeService/RecordTypesWrapper';
-import { RecordTypeSelection } from '../RecordTypeService/RecordTypeSelection';
+import { IRecordTypeBlock, RecordTypeSelection } from '../RecordTypeService/RecordTypeSelection';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
@@ -259,11 +259,16 @@ export class DirectoryProcessor {
             const salesforceOOTBFakerMappings:Record<string, Record<string, string>> = this.recipeService.getOOTBExpectedObjectToFakerValueMappings();
             const { writableRecordTypeApiToRecordTypeWrapperMap } = RecipeService.partitionRecordTypesByWritableDeveloperName(recordTypeApiToRecordTypeWrapperMap);
             const objectRecordTypeSelection = RecordTypeSelection.resolveForObject(this.recordTypeSelection, objectName, writableRecordTypeApiToRecordTypeWrapperMap);
+            const [firstRecordTypeBlock, ...additionalRecordTypeBlocks] = RecordTypeSelection.buildRecordTypeBlocks(
+              objectName,
+              objectRecordTypeSelection,
+              [RelationshipService.buildSelfLookupIterationNickname(objectName)]
+            );
 
             if (!(objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe)) {
               /// if initial yaml recipe structure ( - object: Account ) doesn't exist yet for this object, 
               // make it, so processed fields can be added on
-              objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe = this.recipeService.initiateRecipeByObjectName(objectName, recordTypeApiToRecordTypeWrapperMap, salesforceOOTBFakerMappings, objectRecordTypeSelection);
+              objectInfoWrapper.ObjectToObjectInfoMap[objectName].FullRecipe = this.recipeService.initiateRecipeByObjectName(objectName, recordTypeApiToRecordTypeWrapperMap, salesforceOOTBFakerMappings, firstRecordTypeBlock);
             }
 
             if (!(objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail)) {
@@ -277,9 +282,21 @@ export class DirectoryProcessor {
                                                                               objectName, 
                                                                               writableRecordTypeApiToRecordTypeWrapperMap,
                                                                               salesforceOOTBFakerMappings,
-                                                                              objectRecordTypeSelection.selectedRecordTypeApiName
+                                                                              firstRecordTypeBlock.recordTypeApiName
                                                                             );
             objectInfoWrapper.ObjectToObjectInfoMap[objectName].Fields = fieldsInfo;
+
+            if ( additionalRecordTypeBlocks.length > 0 ) {
+              objectInfoWrapper.ObjectToObjectInfoMap[objectName].AdditionalRecordTypeRecipes = await this.buildAdditionalRecordTypeRecipes(
+                objectInfoWrapper.ObjectToObjectInfoMap[objectName].AdditionalRecordTypeRecipes,
+                additionalRecordTypeBlocks,
+                fullPath,
+                objectName,
+                recordTypeApiToRecordTypeWrapperMap,
+                writableRecordTypeApiToRecordTypeWrapperMap,
+                salesforceOOTBFakerMappings
+              );
+            }
 
             fieldsInfo.forEach((fieldDetail) => {
   
@@ -338,6 +355,44 @@ export class DirectoryProcessor {
     }
 
     return objectInfoWrapper;
+
+  }
+
+  /*
+    Every block after the first is the whole object again for ITS record type (#194): the same header
+    and fields, each field's value generated for that record type. The fields are read once more per
+    block rather than kept, so the FieldInfo list -- what the objects wrapper records, and what
+    relationships are built from -- stays the first block's alone.
+  */
+  async buildAdditionalRecordTypeRecipes(existingRecipes: string[] | undefined,
+                                          additionalRecordTypeBlocks: IRecordTypeBlock[],
+                                          fieldsDirectoryUri: vscode.Uri,
+                                          objectName: string,
+                                          recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
+                                          writableRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
+                                          salesforceOOTBFakerMappings: Record<string, Record<string, string>>
+                                        ): Promise<string[]> {
+
+    const additionalRecordTypeRecipes: string[] = [];
+
+    for (const [blockIndex, recordTypeBlock] of additionalRecordTypeBlocks.entries()) {
+
+      let blockRecipe = existingRecipes?.[blockIndex]
+        ?? this.recipeService.initiateRecipeByObjectName(objectName, recordTypeApiToRecordTypeWrapperMap, salesforceOOTBFakerMappings, recordTypeBlock);
+      const blockFieldsInfo = await this.processFieldsDirectory(fieldsDirectoryUri,
+                                                                  objectName,
+                                                                  writableRecordTypeApiToRecordTypeWrapperMap,
+                                                                  salesforceOOTBFakerMappings,
+                                                                  recordTypeBlock.recordTypeApiName
+                                                                );
+      blockFieldsInfo.forEach((fieldDetail) => {
+        blockRecipe = this.recipeService.appendFieldRecipeToObjectRecipe(blockRecipe, fieldDetail.recipeValue, fieldDetail.fieldName);
+      });
+      additionalRecordTypeRecipes.push(blockRecipe);
+
+    }
+
+    return additionalRecordTypeRecipes;
 
   }
 
