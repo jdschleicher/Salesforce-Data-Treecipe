@@ -73,8 +73,17 @@ export class RecordTypeSelection {
                             writableRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>
                         ): IObjectRecordTypeSelection {
 
+        return recordTypeSelection
+            ? recordTypeSelection.resolve(objectApiName, writableRecordTypeApiToRecordTypeWrapperMap)
+            : { selectedRecordTypeApiNames: [], ignoredDeveloperNames: [] };
+
+    }
+
+    // AN INSTANCE METHOD SO A SAVED SELECTION (#196) CAN DROP A STALE ENTRY, AND RECORD WHAT IT SAW, DURING THE ONE WALK THAT LOADS RECORD TYPES
+    resolve(objectApiName: string, writableRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): IObjectRecordTypeSelection {
+
         const resolution: IObjectRecordTypeSelection = { selectedRecordTypeApiNames: [], ignoredDeveloperNames: [] };
-        const developerNames = recordTypeSelection?.getDeveloperNames(objectApiName) ?? [];
+        const developerNames = this.getDeveloperNames(objectApiName) ?? [];
 
         developerNames.forEach((developerName) => {
 

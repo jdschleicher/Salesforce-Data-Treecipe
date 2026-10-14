@@ -39,6 +39,12 @@ export interface ICreatedFileNotificationAction {
     kind: 'revealInExplorer' | 'openInEditor';
 }
 
+// A BUTTON ON THE SAME NOTIFICATION THAT RUNS SOMETHING OTHER THAN OPENING WHAT WAS WRITTEN
+export interface INotificationCommandAction {
+    label: string;
+    run: () => Thenable<unknown> | Promise<unknown>;
+}
+
 export const ORG_CONNECTION_CHECK_PLACEHOLDER = 'Checking org connections…';
 
 export const PARENT_PICKER_RANDOM_LABEL = 'Random parent';
@@ -852,14 +858,23 @@ export class VSCodeWorkspaceService {
         when clicked: the file can be moved or deleted while the toast is up, and a path outside
         the workspace is never revealed or opened whoever built the action.
     */
-    static showCreatedFilesNotification(message: string, actions: ICreatedFileNotificationAction[]): Promise<void> {
+    static showCreatedFilesNotification(message: string,
+                                        actions: ICreatedFileNotificationAction[],
+                                        commandActions: INotificationCommandAction[] = []): Promise<void> {
 
-        const actionLabels = actions.map(action => action.label);
+        const actionLabels = [...actions.map(action => action.label), ...commandActions.map(commandAction => commandAction.label)];
 
         return Promise.resolve(vscode.window.showInformationMessage(message, ...actionLabels))
-            .then(selectedLabel => {
+            .then(async selectedLabel => {
                 const selectedAction = actions.find(action => action.label === selectedLabel);
-                return selectedAction ? this.runCreatedFileNotificationAction(selectedAction) : undefined;
+                if ( selectedAction ) {
+                    return this.runCreatedFileNotificationAction(selectedAction);
+                }
+                const selectedCommandAction = commandActions.find(commandAction => commandAction.label === selectedLabel);
+                if ( selectedCommandAction ) {
+                    await selectedCommandAction.run();
+                }
+                return undefined;
             });
 
     }

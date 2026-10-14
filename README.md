@@ -143,6 +143,29 @@ Add an optional `customRelationshipMappings` property to `treecipe.config.json` 
 * These entries **extend** the built-in lookup map (currently the single entry `AccountId` → `Account`); they never replace it.
 * A key without exactly one dot separator (`"CustomObject__cPrimary_Contact__c"`, `"Too.Many.Dots__c"`) is ignored, and an entry with an empty parent value is skipped. A typo is silently skipped rather than failing the run — if an object is still landing in the wrong tree, check the key spelling first.
 
+#### Optional: `recordTypeSelections`
+
+By default Generate Treecipe writes each object with its first active record type. To generate other record types every time, choose them once in the Recipe Cockpit's **Record types** tab, tick **Remember this selection**, and click **Regenerate with these record types**. The choice is saved here, and every later **Generate Treecipe** uses it without asking:
+
+```json
+{
+    "salesforceObjectsPath": "./force-app/main/default/objects/",
+    "dataFakerService": "faker-js",
+    "recordTypeSelections": {
+        "Account": ["Customer", "Partner"]
+    },
+    "recordTypesWhenSelectionSaved": {
+        "Account": ["Customer", "Partner", "Prospect"]
+    }
+}
+```
+
+* `recordTypeSelections` maps an object API name to the record type developer names to write, in order. Each one is its own recipe block. `recordTypesWhenSelectionSaved` records every record type the object had when the choice was saved, which is how a record type added later is noticed.
+* Generate Treecipe says when it used the saved choice, and its notification has a **Change record types** button that opens the Record types tab.
+* If an entry names a record type or object your metadata no longer has, that object's saved choice is dropped and it is generated with its default record type. If an object has a record type added since the choice was saved, the saved choice is still used and the new record type is not generated. Either way you get one warning, with a **Change record types** button that opens the tab on that object.
+* The file is hand-editable. An entry that is not an object API name mapped to a non-empty list of developer names is ignored with a warning, never an error.
+* **Use defaults** with **Remember this selection** ticked removes both keys. Leave the property out and Generate Treecipe behaves exactly as before.
+
 #### Corresponding Video:
 
 [https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#initiate-treecipe-configuration-with-expected-objects-directory](https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/README.md#initiate-treecipe-configuration-with-expected-objects-directory)
@@ -461,7 +484,8 @@ How it works:
 
 * **It reads what Generate Treecipe already wrote.** Every run leaves a `treecipeObjectsWrapper-<timestamp>.json` next to its recipe files under `treecipe/GeneratedRecipes/`. The panel reads that file rather than re-parsing your metadata, and opens on the **latest** run
 * **It opens on Recipe Trees**: one collapsible card per relationship tree, titled *Relationship Tree N* with the folder the tree was written to (`Account-thru-Contact`, `Lead-ONLY`) and its object and field counts. A card's **Treecipe** tab lists its objects in insert order, each with the lookups tying it to a parent in the same tree, such as `(AccountId → Account)` (a self-lookup shows as `(ParentId)`). An object written twice, such as a self-lookup's nested child iteration, is listed twice: once with its own nickname, and once more as `Account_child_NickName · nested under Account_NickName`, whose `↗ yml` links open the nested occurrence's lines. A self-lookup iteration in a faker-js recipe has a **+**: it lists the friends the Account above it carries that the iteration does not (for example `+ Contact`, `+ Opportunity`), and choosing one adds that friend under the iteration's `friends:` block, one per click, after you confirm. The friend's block is copied from the one under the Account above, its own `friends:` left out, with a nickname of its own (`Contact_child_NickName`) and its lookup to the Account pointed at `Account_child_NickName`, so Run Faker by Recipe gives each child Account its own Contacts. Every other line of the recipe is left exactly as it was, and the cockpit reloads with the new friend listed under the iteration. Field rows show the type with its size (`Text(50)`, `Currency(18,2)`), a dependent picklist says what controls it, and `↗ yml` opens the recipe at the field's line. A picklist row expands to its values, grouped per record type. Runs generated before sizes were recorded show the bare type. A run whose wrapper has no tree data shows one card per recipe file and says so
-* **Each card has two tabs: Treecipe · Previously Used Data Sets.** Treecipe is selected when a card opens. Previously Used Data Sets appears only when the tree has a history. Each data set row names the version of the tree it came from: *current version*, *version of \<date\>*, or *version unknown*
+* **Each card has up to three tabs: Treecipe · Record types · Previously Used Data Sets.** Treecipe is selected when a card opens. Record types appears only for a card listing an object with two or more record types, and Previously Used Data Sets only when the tree has a history. Each data set row names the version of the tree it came from: *current version*, *version of \<date\>*, or *version unknown*
+* **The Record types tab** appears on a card that lists an object with two or more record types. It lists each record type, says which ones the run on screen generated, and shows which picklist fields each one restricts. Tick the record types to write, in order, and click **Regenerate with these record types**, or **Use defaults** to go back to each object's default. Tick **Remember this selection** to save the choice in `treecipe.config.json` so Generate Treecipe reuses it (see [`recordTypeSelections`](#optional-recordtypeselections)). It starts unticked, and without it a regenerate uses the choice for that run only.
 * **The Treecipe tab** is where a data set is built: what is generated, how many records, and where it goes. Its top holds, in order:
   * **Choose org…**: the org the generated data goes to. It is one selection for the whole panel, drawn in every card's Treecipe tab, with the org's type, **⟳ Refresh orgs** and **+ New scratch org**. It lists sandboxes and scratch orgs, plus the Salesforce CLI's default org (`target-org`), which comes first and reads `(default)`. A default org that turns out to be production can be chosen, but nothing is ever inserted into it. It checks the org connections the first time you use it or open a Treecipe tab, never when the panel opens. While the check runs the dropdown stays in place showing the last org you picked, or else the default, with a spinner beside it, and every tree generates only until the check answers. The last org you picked is preselected the next time, without connecting
   * **Reset selection** and **Wire TODO lookups (N)**

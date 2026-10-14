@@ -103,6 +103,32 @@ describe('VSCodeWorkspaceService completion notification', () => {
 
     });
 
+    test('given a command action, shows its label after the file actions and runs only it when clicked', async () => {
+
+        (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Change record types');
+        const runCommandAction = jest.fn().mockResolvedValue(undefined);
+
+        await VSCodeWorkspaceService.showCreatedFilesNotification('Generated', buildActions(configurationFilePath), [{ label: 'Change record types', run: runCommandAction }]);
+
+        expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('Generated', 'Open Configuration File', 'Reveal in Explorer', 'Change record types');
+        expect(runCommandAction).toHaveBeenCalledTimes(1);
+        expect(vscode.workspace.openTextDocument).not.toHaveBeenCalled();
+        expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+
+    });
+
+    test('given a file action is clicked beside a command action, does not run the command action', async () => {
+
+        (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Open Configuration File');
+        const runCommandAction = jest.fn();
+
+        await VSCodeWorkspaceService.showCreatedFilesNotification('Generated', buildActions(configurationFilePath), [{ label: 'Change record types', run: runCommandAction }]);
+
+        expect(runCommandAction).not.toHaveBeenCalled();
+        expect(vscode.workspace.openTextDocument).toHaveBeenCalled();
+
+    });
+
     test('given the notification is dismissed, nothing is opened or revealed', async () => {
 
         (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);

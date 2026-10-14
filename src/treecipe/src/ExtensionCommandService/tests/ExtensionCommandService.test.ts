@@ -111,7 +111,7 @@ function buildFakeOrgQuickPick(fakeOptions: { acceptLabel?: string } = {}) {
 }
 
 import { RunFakerConfirmation } from '../RunFakerConfirmation';
-import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL, VIEW_GENERATION_SUMMARY_ACTION_LABEL, OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL, REVEAL_IN_EXPLORER_ACTION_LABEL, OPEN_CONFIGURATION_FILE_ACTION_LABEL, OPEN_RECIPE_ACTION_LABEL, GENERATE_TREECIPE_PROGRESS_TITLE, GENERATE_TREECIPE_CANCELLED_MESSAGE, RECORD_TYPE_OPTIONS_TODO_MARKER, MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES } from "../ExtensionCommandService";
+import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL, VIEW_GENERATION_SUMMARY_ACTION_LABEL, OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL, REVEAL_IN_EXPLORER_ACTION_LABEL, OPEN_CONFIGURATION_FILE_ACTION_LABEL, OPEN_RECIPE_ACTION_LABEL, GENERATE_TREECIPE_PROGRESS_TITLE, GENERATE_TREECIPE_CANCELLED_MESSAGE, RECORD_TYPE_OPTIONS_TODO_MARKER, MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES, SAVED_RECORD_TYPE_SELECTION_USED_MESSAGE } from "../ExtensionCommandService";
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
 import { RecipeYamlScalar } from "../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
@@ -136,6 +136,8 @@ import {
 } from "../../RecipeCockpitService/RecipeCockpitService";
 import { DirectoryProcessor, RecipeGenerationCancelledError } from "../../DirectoryProcessingService/DirectoryProcessor";
 import { RecordTypeSelection } from '../../RecordTypeService/RecordTypeSelection';
+import { CHANGE_RECORD_TYPES_ACTION_LABEL, SavedRecordTypeSelection } from '../../RecordTypeSelectionService/SavedRecordTypeSelection';
+import { RecordTypeWrapper } from '../../RecordTypeService/RecordTypesWrapper';
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
 import { FakerJSRecipeProcessor } from "../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { SnowfakeryRecipeProcessor } from "../../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor";
@@ -1676,6 +1678,8 @@ describe('ExtensionCommandService', () => {
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
             jest.spyOn(ConfigurationService, 'getObjectsPathFromTreecipeJSONConfiguration')
                 .mockReturnValue('./force-app/main/default/objects');
+            // NO SAVED RECORD TYPE SELECTION (#196): THE CONFIG ITSELF IS NOT READ BY THESE TESTS
+            jest.spyOn(ConfigurationService, 'readSavedRecordTypeSelection').mockReturnValue(undefined);
             jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
 
             /*
@@ -2806,6 +2810,7 @@ describe('ExtensionCommandService', () => {
 
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
             jest.spyOn(ConfigurationService, 'getObjectsPathFromTreecipeJSONConfiguration').mockReturnValue('./force-app/main/default/objects');
+            jest.spyOn(ConfigurationService, 'readSavedRecordTypeSelection').mockReturnValue(undefined);
             jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockReturnValue(new FakerJSRecipeFakerService());
             jest.spyOn(GlobalValueSetSingleton.getInstance(), 'initialize').mockResolvedValue(undefined);
             jest.spyOn(DirectoryProcessor.prototype, 'processAllObjectsAndRelationships').mockResolvedValue({} as any);
@@ -2920,6 +2925,109 @@ describe('ExtensionCommandService', () => {
 
         });
 
+        describe('given a record type selection saved in treecipe.config.json (#196)', () => {
+
+            let readSavedSpy: jest.SpyInstance;
+            let processAllObjectsSpy: jest.SpyInstance;
+
+            const savedSelectionOf = () => new SavedRecordTypeSelection([['Account', ['Partner']]], [['Account', ['Customer', 'Partner']]]);
+
+            beforeEach(() => {
+                readSavedSpy = jest.spyOn(ConfigurationService, 'readSavedRecordTypeSelection');
+                processAllObjectsSpy = jest.spyOn(DirectoryProcessor.prototype, 'processAllObjectsAndRelationships').mockResolvedValue({} as any);
+                (vscode.window.showWarningMessage as jest.Mock).mockReset();
+                (vscode.commands.executeCommand as jest.Mock).mockReset();
+                (ConfigurationService as any).shownRecordTypeSelectionWarnings.clear();
+            });
+
+            test('uses it without asking, says so, and offers Change record types', async () => {
+
+                const savedSelection = savedSelectionOf();
+                readSavedSpy.mockReturnValue(savedSelection);
+                // THE WALK FINDS ACCOUNT WITH THE RECORD TYPES IT WAS SAVED AGAINST, SO THERE IS NOTHING TO WARN ABOUT
+                processAllObjectsSpy.mockImplementation(async (unusedUri: unknown, unusedProgress: unknown, recordTypeSelection: RecordTypeSelection) => {
+                    recordTypeSelection.resolve('Account', { Customer: new RecordTypeWrapper(), Partner: new RecordTypeWrapper() });
+                    return {} as any;
+                });
+
+                await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+                expect(processAllObjectsSpy.mock.calls[0][2]).toBe(savedSelection);
+                const [message, fileActions, commandActions] = showCreatedFilesNotificationSpy.mock.calls[0];
+                expect(message).toContain(SAVED_RECORD_TYPE_SELECTION_USED_MESSAGE);
+                expect(fileActions.map((action: { label: string }) => action.label)).toEqual([REVEAL_IN_EXPLORER_ACTION_LABEL, OPEN_RECIPE_ACTION_LABEL]);
+                expect(commandActions.map((action: { label: string }) => action.label)).toEqual([CHANGE_RECORD_TYPES_ACTION_LABEL]);
+                expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+
+                await commandActions[0].run();
+                expect(vscode.commands.executeCommand).toHaveBeenCalledWith('treecipe.openRecipeCockpit', { focusRecordTypes: true });
+
+            });
+
+            test('reuses it for the Recipe Cockpit\'s Generate Treecipe button, which suppresses the notification', async () => {
+
+                const savedSelection = savedSelectionOf();
+                readSavedSpy.mockReturnValue(savedSelection);
+
+                await new ExtensionCommandService().generateRecipeFromConfigurationDetail({ isCompletionNotificationSuppressed: true });
+
+                expect(processAllObjectsSpy.mock.calls[0][2]).toBe(savedSelection);
+                expect(showCreatedFilesNotificationSpy).not.toHaveBeenCalled();
+
+            });
+
+            test.each([
+                ['a selection', { recordTypeSelection: { Account: ['Customer'] } }],
+                ['Use defaults\' empty selection', { recordTypeSelection: {} }],
+                ['a selection that fails its check', { recordTypeSelection: 'Account.Customer' }]
+            ])('given %s handed to the command, uses that and never reads the saved one', async (unusedDescription, generateTreecipeOptions) => {
+
+                readSavedSpy.mockReturnValue(savedSelectionOf());
+
+                await new ExtensionCommandService().generateRecipeFromConfigurationDetail(generateTreecipeOptions);
+
+                expect(readSavedSpy).not.toHaveBeenCalled();
+                expect(processAllObjectsSpy.mock.calls[0][2]).not.toBeInstanceOf(SavedRecordTypeSelection);
+                expect(showCreatedFilesNotificationSpy.mock.calls[0]).toHaveLength(2);
+
+            });
+
+            test('given none saved, generates and notifies exactly as before', async () => {
+
+                readSavedSpy.mockReturnValue(undefined);
+
+                await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+                expect(processAllObjectsSpy.mock.calls[0][2]).toBeUndefined();
+                expect(showCreatedFilesNotificationSpy.mock.calls[0]).toHaveLength(2);
+                expect(showCreatedFilesNotificationSpy.mock.calls[0][0]).not.toContain(SAVED_RECORD_TYPE_SELECTION_USED_MESSAGE);
+
+            });
+
+            test('warns ONCE about what the walk found, and Change record types opens the tab on that object', async () => {
+
+                const accountRecordTypes = { Customer: new RecordTypeWrapper(), Partner: new RecordTypeWrapper(), Vendor: new RecordTypeWrapper() };
+                readSavedSpy.mockImplementation(savedSelectionOf);
+                processAllObjectsSpy.mockImplementation(async (unusedUri: unknown, unusedProgress: unknown, recordTypeSelection: RecordTypeSelection) => {
+                    recordTypeSelection.resolve('Account', accountRecordTypes);
+                    return {} as any;
+                });
+                (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(CHANGE_RECORD_TYPES_ACTION_LABEL);
+
+                await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+                await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+                await new Promise(resolve => setImmediate(resolve));
+
+                expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
+                const [warning, actionLabel] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
+                expect(warning).toContain('"Account" ("Vendor")');
+                expect(actionLabel).toBe(CHANGE_RECORD_TYPES_ACTION_LABEL);
+                expect(vscode.commands.executeCommand).toHaveBeenCalledWith('treecipe.openRecipeCockpit', { focusRecordTypes: true, objectApiName: 'Account' });
+
+            });
+
+        });
+
         test('given writing the run fails, reports the error and shows no success notification', async () => {
 
             createRecipeFilesSpy.mockRejectedValue(new Error('EACCES: permission denied'));
@@ -2971,6 +3079,7 @@ describe('ExtensionCommandService', () => {
 
             jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
             jest.spyOn(ConfigurationService, 'getObjectsPathFromTreecipeJSONConfiguration').mockReturnValue('./force-app/main/default/objects');
+            jest.spyOn(ConfigurationService, 'readSavedRecordTypeSelection').mockReturnValue(undefined);
             jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockReturnValue(new FakerJSRecipeFakerService());
             jest.spyOn(GlobalValueSetSingleton.getInstance(), 'initialize').mockResolvedValue(undefined);
             processAllObjectsSpy = jest.spyOn(DirectoryProcessor.prototype, 'processAllObjectsAndRelationships').mockResolvedValue({} as any);
@@ -4790,9 +4899,27 @@ describe('ExtensionCommandService', () => {
             await extensionCommandService.openRecipeCockpit(workspaceState);
 
             // THE PANEL LOADS THE LATEST RUN UNDER THE WORKSPACE THE GUARD ABOVE IT CHECKED FOR, AND REMEMBERS DATA-BY-ORG'S ORG IN THE WORKSPACE STATE IT WAS HANDED
-            expect(openRecipeCockpitPanelSpy).toHaveBeenCalledWith('/workspace', workspaceState);
+            expect(openRecipeCockpitPanelSpy).toHaveBeenCalledWith('/workspace', workspaceState, undefined);
             // THE WARNING IS THE OPT-IN, NOT A CONFIRMATION -- A WORKSPACE ACCEPTS IT ONCE
             expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+
+        });
+
+        it.each([
+            ['Change record types for an object', { focusRecordTypes: true, objectApiName: 'Account' }, { objectApiName: 'Account' }],
+            ['Change record types with no object', { focusRecordTypes: true }, {}],
+            ['an object name that is not an api name', { focusRecordTypes: true, objectApiName: 'Account\n[x](command:y)' }, {}],
+            ['a truthy non-boolean', { focusRecordTypes: 'true', objectApiName: 'Account' }, undefined],
+            ['a vscode Uri', { fsPath: '/workspace' }, undefined]
+        ])('given %s as the command argument, opens the panel with the matching Record types focus (#196)', async (unusedDescription, openOptions, expectedFocusRequest) => {
+
+            enableRecipeCockpitFlag(true);
+            const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel').mockResolvedValue({} as any);
+            const workspaceState = { get: jest.fn(), update: jest.fn() };
+
+            await extensionCommandService.openRecipeCockpit(workspaceState, openOptions);
+
+            expect(openRecipeCockpitPanelSpy).toHaveBeenCalledWith('/workspace', workspaceState, expectedFocusRequest);
 
         });
 
