@@ -77,6 +77,9 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
                 return childElement;
             },
             get firstChild() { return this.children[0] ?? null; },
+            // THE RECORD TYPES SECTION SCROLLS TO THE OBJECT "Change record types" NAMES (#321); COUNTED, SINCE THERE IS NO LAYOUT
+            scrolledIntoViewCount: 0,
+            scrollIntoView() { this.scrolledIntoViewCount++; },
             addEventListener(eventType: string, listener: Function) {
                 (listenersByEventType[eventType] = listenersByEventType[eventType] || []).push(listener);
             },
