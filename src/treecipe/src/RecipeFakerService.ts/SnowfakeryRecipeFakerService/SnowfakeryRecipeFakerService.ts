@@ -187,10 +187,6 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
     }
 
     /*
-        Every site that embeds options into random_choice(...) goes through this, so a new call site
-        cannot silently skip the escaping.
-    */
-    /*
         ('a') in Jinja is the STRING a, not a tuple, and random_sample over a string samples its
         characters -- so a multi-select with one value generated a fragment of it. A one-element
         tuple needs the trailing comma; two or more are written exactly as before.
@@ -203,6 +199,10 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
+    /*
+        Every site that embeds options into random_choice(...) goes through this, so a new call site
+        cannot silently skip the escaping.
+    */
     static buildEscapedCommaJoinedPicklistChoices(availablePicklistChoices: string[]): string {
 
         return availablePicklistChoices

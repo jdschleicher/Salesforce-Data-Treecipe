@@ -119,12 +119,22 @@ export class RecordTypeSelection {
             }];
         }
 
+        // A SUFFIXED NICKNAME MUST NOT BE ANOTHER BLOCK'S EITHER: "child" AND "child_RecordType" ARE BOTH DEVELOPER NAMES
+        const takenNicknames = new Set([...reservedNicknames, ...selectedRecordTypeApiNames.map(recordTypeApiName => `${objectApiName}_${recordTypeApiName}_NickName`)]);
+
         return selectedRecordTypeApiNames.map((recordTypeApiName, blockIndex) => {
 
-            const nickname = `${objectApiName}_${recordTypeApiName}_NickName`;
+            let nickname = `${objectApiName}_${recordTypeApiName}_NickName`;
+            let suffix = '';
+            while ( reservedNicknames.includes(nickname) || ( suffix !== '' && takenNicknames.has(nickname) ) ) {
+                suffix += '_RecordType';
+                nickname = `${objectApiName}_${recordTypeApiName}${suffix}_NickName`;
+            }
+            takenNicknames.add(nickname);
+
             return {
                 recordTypeApiName: recordTypeApiName,
-                nickname: reservedNicknames.includes(nickname) ? `${objectApiName}_${recordTypeApiName}_RecordType_NickName` : nickname,
+                nickname: nickname,
                 ignoredDeveloperNames: blockIndex === 0 ? [...ignoredDeveloperNames] : []
             };
 

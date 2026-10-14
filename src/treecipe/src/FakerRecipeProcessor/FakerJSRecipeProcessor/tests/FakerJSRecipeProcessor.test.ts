@@ -1240,3 +1240,87 @@ describe('FakerJSRecipeProcessor reads an escaped when: condition', () => {
     });
 
 });
+
+/*
+    #194 review: two friends of ONE object type under one parent -- two record type blocks of a nested
+    child -- were both given the generated nickname <Object>_<parent nickname>. Their records shared a
+    nickname and a referenceId, and the insert resolves a nickname to the FIRST record holding it, so
+    a reference to the second block landed on the first block's record.
+*/
+describe('FakerJSRecipeProcessor gives sibling friends of one object type distinct nicknames (#194)', () => {
+
+    const recipeWithTwoContactBlocks = [
+        '- object: Account',
+        '  nickname: Account_NickName',
+        '  count: 2',
+        '  fields:',
+        '    Name: Acme',
+        '  friends:',
+        '    - object: Contact',
+        '      nickname: Contact_Buyer_NickName',
+        '      count: 1',
+        '      fields:',
+        '        LastName: Buyer',
+        '        AccountId: Account_NickName',
+        '    - object: Contact',
+        '      nickname: Contact_Seller_NickName',
+        '      count: 1',
+        '      fields:',
+        '        LastName: Seller',
+        '        AccountId: Account_NickName',
+        '- object: Opportunity',
+        '  nickname: Opportunity_NickName',
+        '  count: 2',
+        '  fields:',
+        '    Name: Deal',
+        '    Contact__c: Contact_Seller_NickName',
+        ''
+    ].join('\n');
+
+    type GeneratedRecordJson = { object: string, nickname: string, fields: Record<string, string> };
+
+    test('every Contact record has its own nickname and referenceId, and a reference to the second block resolves to its records', async () => {
+
+        jest.spyOn(fs, 'readFileSync').mockReturnValue(recipeWithTwoContactBlocks);
+        const fakerJSRecipeProcessor = new FakerJSRecipeProcessor();
+
+        const fakerJson = await fakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile('recipe.yml');
+        const generatedRecords = JSON.parse(fakerJson) as GeneratedRecordJson[];
+        const contactRecords = generatedRecords.filter(generatedRecord => generatedRecord.object === 'Contact');
+        const sellerNicknames = contactRecords.filter(contactRecord => contactRecord.fields.LastName === 'Seller').map(contactRecord => contactRecord.nickname);
+        const contactReferenceIds = fakerJSRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerJson).get('Contact').records
+            .map(contactRecord => contactRecord.attributes.referenceId);
+
+        expect(contactRecords).toHaveLength(4);
+        expect(new Set(contactRecords.map(contactRecord => contactRecord.nickname)).size).toBe(4);
+        expect(new Set(contactReferenceIds).size).toBe(4);
+        generatedRecords.filter(generatedRecord => generatedRecord.object === 'Opportunity').forEach(opportunityRecord => {
+            expect(sellerNicknames).toContain(opportunityRecord.fields.Contact__c);
+        });
+
+    });
+
+    test('a single friend of an object type keeps the <Object>_<parent nickname> it always had', async () => {
+
+        jest.spyOn(fs, 'readFileSync').mockReturnValue([
+            '- object: Account',
+            '  nickname: Account_NickName',
+            '  count: 1',
+            '  fields:',
+            '    Name: Acme',
+            '  friends:',
+            '    - object: Contact',
+            '      nickname: Contact_NickName',
+            '      count: 1',
+            '      fields:',
+            '        LastName: Only',
+            ''
+        ].join('\n'));
+
+        const generatedRecords = JSON.parse(await new FakerJSRecipeProcessor().generateFakeDataBySelectedRecipeFile('recipe.yml')) as GeneratedRecordJson[];
+
+        expect(generatedRecords.find(generatedRecord => generatedRecord.object === 'Contact').nickname).toBe('Contact_Account_NickName');
+
+    });
+
+});

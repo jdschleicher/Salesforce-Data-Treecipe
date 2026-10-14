@@ -142,6 +142,24 @@ describe('RecordTypeSelection', () => {
 
     });
 
+    describe('buildRecordTypeBlocks nickname suffixes (#194 review)', () => {
+
+        test('a suffixed nickname never takes another selected record type\'s nickname', () => {
+
+            const recordTypeBlocks = RecordTypeSelection.buildRecordTypeBlocks(
+                'Account',
+                { selectedRecordTypeApiNames: ['child', 'child_RecordType'], ignoredDeveloperNames: [] },
+                ['Account_child_NickName']
+            );
+            const nicknames = recordTypeBlocks.map(recordTypeBlock => recordTypeBlock.nickname);
+
+            expect(nicknames).toEqual(['Account_child_RecordType_RecordType_NickName', 'Account_child_RecordType_NickName']);
+            expect(new Set(nicknames).size).toBe(2);
+
+        });
+
+    });
+
     describe('getRecordTypePicklistValues', () => {
 
         test('answers the record type\'s values for a field it lists, and undefined for one it does not', () => {
