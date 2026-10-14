@@ -611,6 +611,62 @@ describe('DatasetSourceService', () => {
 
         });
 
+        describe('the faker constraints the Recipe Cockpit set (#323)', () => {
+
+            const recipeSourceNames = { recipeRunFolderName: fakerJsRunFolderName, recipeTreeFolderName: 'Account-thru-Contact', recipeFileName: 'recipe.yml' };
+
+            test('buildDatasetSource records them only when there are some, an object or field named __proto__ as a key, and only the two bounds', () => {
+
+                expect(DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 1 }, [], {}, {}, {}, {}))
+                    .not.toHaveProperty('constraintsByObject');
+                expect(DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 1 }, [], {}, {}, {}, { Account: {} }))
+                    .not.toHaveProperty('constraintsByObject');
+
+                const constraintsByField: Record<string, { min?: string; max?: string }> = Object.create(null);
+                constraintsByField['__proto__'] = { min: '1', extra: 'dropped' } as { min: string };
+                const constraintsByObject: Record<string, Record<string, { min?: string; max?: string }>> = Object.create(null);
+                constraintsByObject['__proto__'] = constraintsByField;
+
+                const written = JSON.parse(JSON.stringify(DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Account: 1 }, [], {}, {}, {}, constraintsByObject)));
+
+                expect(Object.keys(written.constraintsByObject)).toEqual(['__proto__']);
+                expect(written.constraintsByObject['__proto__']['__proto__']).toEqual({ min: '1' });
+                expect(written).not.toHaveProperty('fixedValuesByObject');
+
+            });
+
+            test('accepts them, reads them back with no prototype, and reads a source written before them unchanged', () => {
+
+                const constrainingSource: IDatasetSource = { ...validDatasetSource, constraintsByObject: { Account: { NumberOfEmployees: { min: '10', max: '50' }, Founded__c: { max: '-30d' } } } };
+                const parsedDatasetSource = JSON.parse(JSON.stringify({ ...validDatasetSource, constraintsByObject: { Placeholder: { Name: { min: '3' } } } }).replace('"Placeholder"', '"__proto__"'));
+
+                expect(DatasetSourceService.typeCheckDatasetSource(constrainingSource)).toEqual(constrainingSource);
+                expect(DatasetSourceService.typeCheckDatasetSource(validDatasetSource)).not.toHaveProperty('constraintsByObject');
+
+                const constraintsByObject = DatasetSourceService.typeCheckDatasetSource(parsedDatasetSource)?.constraintsByObject as Record<string, Record<string, { min?: string }>>;
+                expect(Object.getPrototypeOf(constraintsByObject)).toBeNull();
+                expect(Object.getPrototypeOf(constraintsByObject['__proto__'])).toBeNull();
+                expect(constraintsByObject['__proto__']['Name']).toEqual({ min: '3' });
+
+            });
+
+            test.each([
+                ['constraints as an array', [['Account', 'x']]],
+                ['constraints as null', null],
+                ['an object entry that is a string', { Account: 'min 1' }],
+                ['an object entry that is null', { Account: null }],
+                ['a constraint that is a string', { Account: { Name: '1' } }],
+                ['a constraint with no bound', { Account: { Name: {} } }],
+                ['a bound that is a number', { Account: { Score__c: { min: 4 } } }],
+                ['a constraint that is an array', { Account: { Name: ['1', '2'] } }]
+            ])('refuses the whole file for %s', (_description, constraintsByObject) => {
+
+                expect(DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, constraintsByObject })).toBeUndefined();
+
+            });
+
+        });
+
         describe('the fixed values the Recipe Cockpit set (#262)', () => {
 
             const recipeSourceNames = { recipeRunFolderName: fakerJsRunFolderName, recipeTreeFolderName: 'Account-thru-Contact', recipeFileName: 'recipe.yml' };

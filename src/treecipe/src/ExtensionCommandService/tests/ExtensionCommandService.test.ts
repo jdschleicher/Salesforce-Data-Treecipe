@@ -2280,6 +2280,24 @@ describe('ExtensionCommandService', () => {
 
             describe('isRunFakerFilteredRecipe', () => {
 
+                test('accepts a copy carrying only faker constraints (#323)', () => {
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], constraintsByObject: { Account: { NumberOfEmployees: { min: '1' }, Founded__c: { min: '-30d', max: 'today' } } } })).toBeTrue();
+                });
+
+                test.each([
+                    ['an empty constraint map and nothing else left out', {}],
+                    ['an object with no constraints and nothing else left out', { Account: {} }],
+                    ['a constraint with no bound', { Account: { NumberOfEmployees: {} } }],
+                    ['a bound that is a number', { Account: { NumberOfEmployees: { min: 1 } } }],
+                    ['a constraint that is a string', { Account: { NumberOfEmployees: '1' } }],
+                    ['a field name that is not an api name', { Account: { 'Name\n- object: Evil': { min: '1' } } }],
+                    ['an object name that is not an api name', { 'Bad Name': { Name: { min: '1' } } }],
+                    ['an object entry that is null', { Account: null }],
+                    ['a constraint map that is an array', [['Account', 'x']]]
+                ])('refuses faker constraints with %s', (_description, constraintsByObject) => {
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], constraintsByObject })).toBeFalse();
+                });
+
                 test('accepts a copy carrying only fixed values (#262)', () => {
                     expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], fixedValuesByObject: { Account: { Name: 'Acme "Ltd"', Active__c: 'true' } } })).toBeTrue();
                 });

@@ -1003,3 +1003,26 @@ describe('buildRandomSampleElementsTuple', () => {
     });
 
 });
+
+describe('SnowfakeryRecipeFakerService.buildConstrainedExpression (#323)', () => {
+
+    const snowfakeryRecipeFakerService = new SnowfakeryRecipeFakerService();
+
+    test.each([
+        ['Number', { kind: 'number', min: '-5', max: '10', scale: 0 }, '${{fake.random_int(min=-5, max=10)}}'],
+        ['Currency', { kind: 'number', min: '0.5', max: '99.99', scale: 2 }, '${{fake.pydecimal(min_value=0.5, max_value=99.99, right_digits=2)}}'],
+        ['Text', { kind: 'length', min: 3, max: 8 }, '${{fake.pystr(min_chars=3, max_chars=8)}}'],
+        ['Date', { kind: 'date', from: { relativeDays: -30 }, to: { relativeDays: 90 } }, `\${{fake.date_between(start_date='-30d', end_date='+90d')}}`],
+        ['Date', { kind: 'date', from: { utcDateTime: '2024-01-01T00:00:00' }, to: { relativeDays: 0 } }, `\${{fake.date_between(start_date=date('2024-01-01'), end_date='today')}}`],
+        ['DateTime', { kind: 'date', from: { relativeDays: 0 }, to: { utcDateTime: '2030-06-01T09:30:00' } },
+            `\${{(fake.date_time_between(start_date='now', end_date=datetime('2030-06-01T09:30:00'))).strftime('%Y-%m-%dT%H:%M:%S.000+0000')}}`]
+    ] as const)('%s %j', (fieldType, constraint, expectedExpression) => {
+        expect(snowfakeryRecipeFakerService.buildConstrainedExpression(fieldType, constraint)).toBe(expectedExpression);
+    });
+
+    test('a constraint of another kind than the field type is refused', () => {
+        expect(() => snowfakeryRecipeFakerService.buildConstrainedExpression('Date', { kind: 'length', min: 1, max: 2 })).toThrow('A length constraint does not apply to a Date field.');
+        expect(() => snowfakeryRecipeFakerService.buildConstrainedExpression('Url', { kind: 'length', min: 1, max: 2 })).toThrow();
+    });
+
+});

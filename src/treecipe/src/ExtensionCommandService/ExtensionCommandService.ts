@@ -10,7 +10,7 @@ import { CHANGE_RECORD_TYPES_ACTION_LABEL, SavedRecordTypeSelection } from "../R
 import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProcessor";
 import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
-import { DatasetSourceService } from "../DatasetSourceService/DatasetSourceService";
+import { DatasetSourceService, IDatasetSourceFieldConstraint } from "../DatasetSourceService/DatasetSourceService";
 import { SfdxProjectService } from "../SfdxProjectService/SfdxProjectService";
 import { SalesforceApiName } from "../RecipeService/SalesforceApiName";
 import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
@@ -54,10 +54,10 @@ export const FILTERED_RECIPE_FILE_PREFIX = 'filteredRecipe-';
 /*
     What the Recipe Cockpit hands Run Faker for a tree with excluded objects (#219) or unticked
     fields (#220), or with record counts (#255) or fixed values (#262) the reader set: the filtered
-    copy the host built from the tree's recipe, what it leaves out and the counts and values it
-    carries. The recipe file itself is never written; the copy is what the processor runs and what
-    the data set keeps. At least one object or field is left out, or one count or value set, or
-    there would be no copy.
+    copy the host built from the tree's recipe, what it leaves out and the counts, values and
+    faker constraints (#323) it carries. The recipe file itself is never written; the copy is what
+    the processor runs and what the data set keeps. At least one object or field is left out, or
+    one count, value or constraint set, or there would be no copy.
 */
 export interface IRunFakerFilteredRecipe {
     recipeText: string;
@@ -65,6 +65,7 @@ export interface IRunFakerFilteredRecipe {
     excludedFieldApiNamesByObject?: Record<string, string[]>;
     objectCountsByObject?: Record<string, number>;
     fixedValuesByObject?: Record<string, Record<string, string>>;
+    constraintsByObject?: Record<string, Record<string, IDatasetSourceFieldConstraint>>;
 }
 /*
     isConfirmed is set by the Recipe Cockpit's tree insert (#255), whose own host modal already named
@@ -325,7 +326,8 @@ export class ExtensionCommandService {
                 filteredRecipe?.excludedObjectApiNames ?? [],
                 filteredRecipe?.excludedFieldApiNamesByObject ?? {},
                 filteredRecipe?.objectCountsByObject ?? {},
-                filteredRecipe?.fixedValuesByObject ?? {}
+                filteredRecipe?.fixedValuesByObject ?? {},
+                filteredRecipe?.constraintsByObject ?? {}
             );
             DatasetSourceService.writeDatasetSourceFile(fullPathToBaseArtifactsFolder, datasetSource);
             datasetFolderPath = fullPathToUniqueTimeStampedFakeDataSetsFolder;
@@ -363,7 +365,7 @@ export class ExtensionCommandService {
             return false;
         }
 
-        const { recipeText, excludedObjectApiNames, excludedFieldApiNamesByObject, objectCountsByObject, fixedValuesByObject } = candidate as Record<string, unknown>;
+        const { recipeText, excludedObjectApiNames, excludedFieldApiNamesByObject, objectCountsByObject, fixedValuesByObject, constraintsByObject } = candidate as Record<string, unknown>;
 
         const isFieldMap = excludedFieldApiNamesByObject === undefined || (
             typeof excludedFieldApiNamesByObject === 'object'
@@ -405,6 +407,21 @@ export class ExtensionCommandService {
         const fixedValueCount = isFixedValueMap && fixedValuesByObject
             ? Object.values(fixedValuesByObject as Record<string, Record<string, string>>).reduce((valueCount, fixedValuesByField) => valueCount + Object.keys(fixedValuesByField).length, 0)
             : 0;
+        const isConstraintMap = constraintsByObject === undefined || (
+            typeof constraintsByObject === 'object'
+            && constraintsByObject !== null
+            && !Array.isArray(constraintsByObject)
+            && Object.entries(constraintsByObject).every(([objectApiName, constraintsByField]) => (
+                SalesforceApiName.isApiName(objectApiName)
+                && typeof constraintsByField === 'object'
+                && constraintsByField !== null
+                && !Array.isArray(constraintsByField)
+                && Object.entries(constraintsByField).every(([fieldApiName, constraint]) => SalesforceApiName.isApiName(fieldApiName) && DatasetSourceService.isFieldConstraint(constraint))
+            ))
+        );
+        const constraintCount = isConstraintMap && constraintsByObject
+            ? Object.values(constraintsByObject as Record<string, Record<string, IDatasetSourceFieldConstraint>>).reduce((boundCount, constraintsByField) => boundCount + Object.keys(constraintsByField).length, 0)
+            : 0;
 
         return typeof recipeText === 'string'
                 && Array.isArray(excludedObjectApiNames)
@@ -412,7 +429,8 @@ export class ExtensionCommandService {
                 && isFieldMap
                 && isCountMap
                 && isFixedValueMap
-                && excludedObjectApiNames.length + excludedFieldCount + objectCountCount + fixedValueCount > 0;
+                && isConstraintMap
+                && excludedObjectApiNames.length + excludedFieldCount + objectCountCount + fixedValueCount + constraintCount > 0;
 
     }
 

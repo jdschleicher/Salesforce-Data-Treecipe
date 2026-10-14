@@ -1,6 +1,7 @@
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { IRecipeFakerService } from "../IRecipeFakerService";
 import { RecipeYamlScalar } from "../RecipeYamlScalar/RecipeYamlScalar";
+import { RecipeFieldConstraint, RecipeFieldConstraintDateBound, ResolvedRecipeFieldConstraint } from "../RecipeFieldConstraint/RecipeFieldConstraint";
 
 export class FakerJSRecipeFakerService implements IRecipeFakerService {
 
@@ -671,6 +672,35 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         return `|
             ${this.openingRecipeSyntax} faker.finance.amount({min: 0, max: ${maxNumbersLeftOfDecimal}, dec: ${effectiveScale}}) ${this.closingRecipeSyntax}`;
 
+    }
+
+    buildConstrainedExpression(fieldType: string, constraint: ResolvedRecipeFieldConstraint): string {
+
+        if ( RecipeFieldConstraint.getConstraintKind(fieldType) !== constraint.kind ) {
+            throw new Error(`A ${constraint.kind} constraint does not apply to a ${fieldType} field.`);
+        }
+
+        if ( constraint.kind === 'number' ) {
+            return constraint.scale === 0
+                ? `${this.openingRecipeSyntax} faker.number.int({min: ${constraint.min}, max: ${constraint.max}}) ${this.closingRecipeSyntax}`
+                : `${this.openingRecipeSyntax} faker.finance.amount({min: ${constraint.min}, max: ${constraint.max}, dec: ${constraint.scale}}) ${this.closingRecipeSyntax}`;
+        }
+
+        if ( constraint.kind === 'length' ) {
+            // SPACED, BECAUSE THE PROCESSOR ENDS AN EXPRESSION AT THE FIRST "}}" IT FINDS
+            return `${this.openingRecipeSyntax} faker.string.alpha({ length: { min: ${constraint.min}, max: ${constraint.max} } }) ${this.closingRecipeSyntax}`;
+        }
+
+        const isoFormat = fieldType === 'DateTime' ? '.toISOString()' : `.toISOString().split('T')[0]`;
+        return `${this.openingRecipeSyntax} faker.date.between({from: ${this.buildDateBoundExpression(constraint.from)}, to: ${this.buildDateBoundExpression(constraint.to)}})${isoFormat} ${this.closingRecipeSyntax}`;
+
+    }
+
+    // A RELATIVE BOUND IS MEASURED WHEN THE RECIPE RUNS, NOT WHEN THE COCKPIT WROTE IT
+    private buildDateBoundExpression(dateBound: RecipeFieldConstraintDateBound): string {
+        return 'relativeDays' in dateBound
+            ? `new Date(Date.now() + ${dateBound.relativeDays} * 86400000)`
+            : `new Date('${dateBound.utcDateTime}Z')`;
     }
 
 }

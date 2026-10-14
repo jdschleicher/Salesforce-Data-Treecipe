@@ -138,7 +138,8 @@ const storedSelections = (fixedValuesByFolderName: Record<string, unknown>, excl
     excludedObjectApiNamesByFolderName: excludedObjectApiNamesByFolderName,
     excludedFieldApiNamesByFolderName: excludedFieldApiNamesByFolderName,
     objectCountsByFolderName: {},
-    fixedValuesByFolderName: fixedValuesByFolderName
+    fixedValuesByFolderName: fixedValuesByFolderName,
+    constraintsByFolderName: {}
 });
 
 const treeOf = (recipe: IRecipeCockpitRecipeViewModel, treeKey: string) => recipe.trees.find(tree => tree.treeKey === treeKey) as IRecipeCockpitTreeViewModel;
@@ -376,7 +377,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
     describe('readTreeSelections and writeTreeSelections', () => {
 
-        it('writes version 4 with a folder, object and field named __proto__ as keys, and reads back every api name', async () => {
+        it('writes the current version with a folder, object and field named __proto__ as keys, and reads back every api name', async () => {
 
             const workspaceState = buildWorkspaceState();
             await expect(RecipeCockpitService.writeTreeSelections(workspaceState, {
@@ -387,11 +388,12 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
                     [ACCOUNT_TREE_KEY, new Map([['Account', new Map([['Legacy_Code__c', 'X-1'], ['__proto__', 'y']])], ['__proto__', new Map([['Name', 'z']])]])],
                     ['__proto__', new Map([['Lead', new Map([['Company', 'Acme']])]])],
                     ['Empty-Tree', new Map([['Lead', new Map()]])]
-                ])
+                ]),
+                constraintsByFolderName: new Map()
             })).resolves.toBeTrue();
 
             const stored = workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY) as any;
-            expect(stored.version).toBe(4);
+            expect(stored.version).toBe(RECIPE_COCKPIT_OBJECT_SELECTION_VERSION);
             expect(Object.keys(stored.fixedValuesByFolderName)).toEqual([ACCOUNT_TREE_KEY, '__proto__']);
             expect(Object.keys(stored.fixedValuesByFolderName[ACCOUNT_TREE_KEY])).toEqual(['Account', '__proto__']);
             expect(Object.keys(stored.fixedValuesByFolderName[ACCOUNT_TREE_KEY].Account)).toEqual(['Legacy_Code__c', '__proto__']);
@@ -846,7 +848,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             await receivedMessageHandler({ command: 'resetTreeSelection', treeKey: ACCOUNT_TREE_KEY });
 
             expect(showWarningMessage).toHaveBeenCalledTimes(1);
-            expect(showWarningMessage.mock.calls[0][1].detail).toContain('every fixed value is cleared');
+            expect(showWarningMessage.mock.calls[0][1].detail).toContain('every fixed value and faker constraint is cleared');
             expect(storedOf(workspaceState)).toEqual(storedSelections({ [LEAD_TREE_KEY]: { Lead: { Company: 'Acme' } } }));
             expect(lastPosted('objectSelection')).not.toHaveProperty('fixedValues');
 

@@ -868,3 +868,35 @@ describe('FakerJSRecipeFakerService writes every picklist value inertly for a se
     });
 
 });
+
+describe('FakerJSRecipeFakerService.buildConstrainedExpression (#323)', () => {
+
+    const fakerJSRecipeFakerService = new FakerJSRecipeFakerService();
+
+    test.each([
+        ['Number', { kind: 'number', min: '-5', max: '10', scale: 0 }, '${{ faker.number.int({min: -5, max: 10}) }}'],
+        ['Currency', { kind: 'number', min: '0.5', max: '99.99', scale: 2 }, '${{ faker.finance.amount({min: 0.5, max: 99.99, dec: 2}) }}'],
+        ['Percent', { kind: 'number', min: '1', max: '50', scale: 0 }, '${{ faker.number.int({min: 1, max: 50}) }}'],
+        ['Text', { kind: 'length', min: 3, max: 8 }, '${{ faker.string.alpha({ length: { min: 3, max: 8 } }) }}'],
+        ['LongTextArea', { kind: 'length', min: 0, max: 0 }, '${{ faker.string.alpha({ length: { min: 0, max: 0 } }) }}'],
+        ['Date', { kind: 'date', from: { relativeDays: -30 }, to: { relativeDays: 90 } },
+            `\${{ faker.date.between({from: new Date(Date.now() + -30 * 86400000), to: new Date(Date.now() + 90 * 86400000)}).toISOString().split('T')[0] }}`],
+        ['DateTime', { kind: 'date', from: { utcDateTime: '2024-01-01T00:00:00' }, to: { relativeDays: 0 } },
+            `\${{ faker.date.between({from: new Date('2024-01-01T00:00:00Z'), to: new Date(Date.now() + 0 * 86400000)}).toISOString() }}`]
+    ] as const)('%s %j', (fieldType, constraint, expectedExpression) => {
+        expect(fakerJSRecipeFakerService.buildConstrainedExpression(fieldType, constraint)).toBe(expectedExpression);
+    });
+
+    test('a constraint of another kind than the field type is refused', () => {
+        expect(() => fakerJSRecipeFakerService.buildConstrainedExpression('Text', { kind: 'number', min: '1', max: '2', scale: 0 })).toThrow('A number constraint does not apply to a Text field.');
+        expect(() => fakerJSRecipeFakerService.buildConstrainedExpression('Email', { kind: 'length', min: 1, max: 2 })).toThrow();
+    });
+
+    test('evaluated with faker, a constrained number stays inside its bounds', () => {
+        const expression = fakerJSRecipeFakerService.buildConstrainedExpression('Number', { kind: 'number', min: '-3', max: '3', scale: 0 });
+        const code = expression.slice(3, -2).trim();
+        const values = Array.from({ length: 200 }, () => new Function('faker', `return (${code})`)(faker) as number);
+        expect(values.every(value => Number.isInteger(value) && value >= -3 && value <= 3)).toBe(true);
+    });
+
+});
