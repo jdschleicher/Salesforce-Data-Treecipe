@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Require_Amount_Minimum</fullName>
+    <active>true</active>
+    <description>Amount must be at least 100</description>
+    <errorConditionFormula>Amount &lt; 100</errorConditionFormula>
+    <errorDisplayField>Amount</errorDisplayField>
+    <errorMessage>Amount must be at least $100.</errorMessage>
+</ValidationRule>

@@ -1,3 +1,4 @@
+import { ValidationRuleAnalyzerService } from "../../../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 import { faker } from "@faker-js/faker";
 import * as yaml from 'js-yaml';
 import { SnowfakeryRecipeFakerService } from '../../SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
@@ -897,6 +898,57 @@ describe('FakerJSRecipeFakerService.buildConstrainedExpression (#323)', () => {
         const code = expression.slice(3, -2).trim();
         const values = Array.from({ length: 200 }, () => new Function('faker', `return (${code})`)(faker) as number);
         expect(values.every(value => Number.isInteger(value) && value >= -3 && value <= 3)).toBe(true);
+    });
+
+});
+
+describe('FakerJSRecipeFakerService.buildRegexExpression (#324)', () => {
+
+    const fakerJSRecipeFakerService = new FakerJSRecipeFakerService();
+
+    const evaluate = (expression: string): string => new Function('faker', `return (${expression.slice(3, -2).trim()})`)(faker) as string;
+    const atomsOf = (pattern: string) => {
+        const parsedPattern = ValidationRuleAnalyzerService.parseGeneratableRegex(pattern);
+        if ( !( 'atoms' in parsedPattern ) ) {
+            throw new Error(parsedPattern.refusal);
+        }
+        return parsedPattern.atoms;
+    };
+
+    test('writes a class of letters and digits through fromRegExp, and literals as one string', () => {
+        expect(fakerJSRecipeFakerService.buildRegexExpression(atomsOf('[A-Z]{3}-\\d{4}')))
+            .toBe(`\${{ faker.helpers.fromRegExp('[A-Z]{3}') + '-' + faker.helpers.fromRegExp('[0-9]{4}') }}`);
+    });
+
+    test('writes a set with punctuation through fromCharacters, and a repeated literal with repeat', () => {
+        expect(fakerJSRecipeFakerService.buildRegexExpression(atomsOf('[ ()-]{2,3}x+')))
+            .toBe(`\${{ faker.string.fromCharacters(' ()-', {min: 2, max: 3}) + 'x'.repeat(faker.number.int({min: 1, max: 9})) }}`);
+    });
+
+    test('compresses a class into ranges fromRegExp reads', () => {
+        expect(FakerJSRecipeFakerService.buildRegExpCharacterClass('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz')).toBe('0-9A-Z_a-z');
+        expect(FakerJSRecipeFakerService.buildRegExpCharacterClass('ab')).toBe('ab');
+        expect(FakerJSRecipeFakerService.buildRegExpCharacterClass('acegz')).toBe('acegz');
+    });
+
+    test('writes nothing for no atoms', () => {
+        expect(fakerJSRecipeFakerService.buildRegexExpression([])).toBeUndefined();
+    });
+
+    test.each([
+        '[A-Z]{3}-\\d{4}',
+        '\\(\\d{3}\\) \\d{3}-\\d{4}',
+        '^[a-z]+_[0-9]{2,5}$',
+        '[^0-9]{4}',
+        '\\w{3,6}\\.\\w{2}',
+        'ID-[A-F0-9]{8}',
+        "it's [xyz]?: #\\d",
+        'a}}b[\\-.]{2}'
+    ])('every value it generates for %s matches the pattern', (pattern) => {
+        const expression = fakerJSRecipeFakerService.buildRegexExpression(atomsOf(pattern));
+        const wholeMatch = new RegExp(`^(?:${pattern.replace(/^\^/, '').replace(/\$$/, '')})$`);
+        const values = Array.from({ length: 200 }, () => evaluate(expression));
+        expect(values.filter(value => !wholeMatch.test(value))).toEqual([]);
     });
 
 });

@@ -2,6 +2,7 @@ import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { IRecipeFakerService } from "../IRecipeFakerService";
 import { RecipeYamlScalar } from "../RecipeYamlScalar/RecipeYamlScalar";
 import { RecipeFieldConstraint, RecipeFieldConstraintDateBound, ResolvedRecipeFieldConstraint } from "../RecipeFieldConstraint/RecipeFieldConstraint";
+import { IValidationRuleRegexAtom } from "../../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 
 export class FakerJSRecipeFakerService implements IRecipeFakerService {
 
@@ -708,6 +709,79 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         return isDateOnly
             ? `new Date((Math.floor(Date.now() / 86400000) + ${dateBound.relativeDays}) * 86400000)`
             : `new Date(Date.now() + ${dateBound.relativeDays} * 86400000)`;
+    }
+
+
+    /*
+        One piece per atom, joined with "+". A class of letters, digits and "_" goes to
+        faker.helpers.fromRegExp as a class it parses exactly ([0-9]{3}); a literal is a JS string;
+        any other set is drawn with faker.string.fromCharacters, because fromRegExp reads only a few
+        punctuation characters inside a class and skips the rest. Every literal and set goes through
+        the picklist escaper, so no character of the pattern can end the string it is written in.
+    */
+    buildRegexExpression(regexAtoms: IValidationRuleRegexAtom[]): string | undefined {
+
+        if ( regexAtoms.length === 0 ) {
+            return undefined;
+        }
+
+        const pieces: string[] = [];
+        let pendingLiteral = '';
+        const flushLiteral = () => {
+            if ( pendingLiteral !== '' ) {
+                pieces.push(`'${FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString(pendingLiteral, "'")}'`);
+                pendingLiteral = '';
+            }
+        };
+
+        regexAtoms.forEach(regexAtom => {
+
+            if ( regexAtom.characters.length === 1 && regexAtom.min === regexAtom.max ) {
+                pendingLiteral += regexAtom.characters.repeat(regexAtom.min);
+                return;
+            }
+            flushLiteral();
+
+            const repeat = regexAtom.min === regexAtom.max ? `${regexAtom.min}` : `${regexAtom.min},${regexAtom.max}`;
+            const escapedCharacters = FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString(regexAtom.characters, "'");
+
+            if ( regexAtom.characters.length === 1 ) {
+                pieces.push(`'${escapedCharacters}'.repeat(faker.number.int({min: ${regexAtom.min}, max: ${regexAtom.max}}))`);
+            } else if ( /^[A-Za-z0-9_]+$/.test(regexAtom.characters) ) {
+                pieces.push(`faker.helpers.fromRegExp('[${FakerJSRecipeFakerService.buildRegExpCharacterClass(regexAtom.characters)}]{${repeat}}')`);
+            } else {
+                pieces.push(`faker.string.fromCharacters('${escapedCharacters}', {min: ${regexAtom.min}, max: ${regexAtom.max}})`);
+            }
+
+        });
+        flushLiteral();
+
+        return `${this.openingRecipeSyntax} ${pieces.join(' + ')} ${this.closingRecipeSyntax}`;
+
+    }
+
+    // "0123456789_abc" IS "0-9_a-c": A RUN OF THREE OR MORE CONSECUTIVE DIGITS OR SAME-CASE LETTERS BECOMES A RANGE
+    static buildRegExpCharacterClass(characters: string): string {
+
+        const codePoints = [...new Set(characters)].map(character => character.charCodeAt(0)).sort((first, second) => first - second);
+        const sameRun = (first: number, second: number) => second === first + 1
+            && /[0-9]/.test(String.fromCharCode(first)) === /[0-9]/.test(String.fromCharCode(second))
+            && /[A-Z]/.test(String.fromCharCode(first)) === /[A-Z]/.test(String.fromCharCode(second))
+            && /[a-z]/.test(String.fromCharCode(first)) === /[a-z]/.test(String.fromCharCode(second));
+
+        let characterClass = '';
+        for ( let runStart = 0; runStart < codePoints.length; ) {
+            let runEnd = runStart;
+            while ( runEnd + 1 < codePoints.length && sameRun(codePoints[runEnd], codePoints[runEnd + 1]) && String.fromCharCode(codePoints[runEnd + 1]) !== '_' ) {
+                runEnd++;
+            }
+            characterClass += runEnd - runStart >= 2
+                ? `${String.fromCharCode(codePoints[runStart])}-${String.fromCharCode(codePoints[runEnd])}`
+                : codePoints.slice(runStart, runEnd + 1).map(codePoint => String.fromCharCode(codePoint)).join('');
+            runStart = runEnd + 1;
+        }
+        return characterClass;
+
     }
 
 }

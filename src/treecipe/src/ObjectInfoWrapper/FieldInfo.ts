@@ -1,4 +1,4 @@
-
+import { IValidationRuleConstraintRecord } from "../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 
 export class FieldInfo {
 
@@ -9,6 +9,14 @@ export class FieldInfo {
   public length?: number;
   public precision?: number;
   public scale?: number;
+
+  /*
+    Set only on a field a validation rule names (#324): every such rule, applied or not, and the value
+    the field generated before any was applied, so the Recipe Cockpit can switch back. A field no
+    rule names carries neither, and serializes as it did before rules were read.
+  */
+  public validationRuleConstraints?: IValidationRuleConstraintRecord[];
+  public unconstrainedRecipeValue?: string;
 
   constructor(
     public objectName: string,

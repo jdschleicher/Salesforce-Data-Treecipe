@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Require_Min_Description_Length</fullName>
+    <active>true</active>
+    <description>Description must be at least 10 characters</description>
+    <errorConditionFormula>LEN(Description) &lt; 10</errorConditionFormula>
+    <errorDisplayField>Description</errorDisplayField>
+    <errorMessage>Description must be at least 10 characters long.</errorMessage>
+</ValidationRule>

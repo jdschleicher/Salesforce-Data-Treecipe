@@ -1,5 +1,6 @@
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
 import { ResolvedRecipeFieldConstraint } from "./RecipeFieldConstraint/RecipeFieldConstraint";
+import { IValidationRuleRegexAtom } from "../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 
 export interface IRecipeFakerService {
 
@@ -43,4 +44,10 @@ export interface IRecipeFakerService {
         constraint whose kind is not the field type's.
     */
     buildConstrainedExpression(fieldType: string, constraint: ResolvedRecipeFieldConstraint): string
+    /*
+        The ONE-LINE expression that generates a value matching a validation rule's REGEX (#324), from
+        the atoms ValidationRuleAnalyzerService parsed it into, or undefined for a backend with no
+        regex generator -- which reports the rule as not applied rather than approximating it.
+    */
+    buildRegexExpression(regexAtoms: IValidationRuleRegexAtom[]): string | undefined
 }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Score_High</fullName>
+    <active>true</active>
+    <errorConditionFormula>Score__c &gt; 5</errorConditionFormula>
+    <errorMessage>Score High failed.</errorMessage>
+</ValidationRule>
