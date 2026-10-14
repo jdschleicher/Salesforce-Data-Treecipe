@@ -6,6 +6,7 @@ import { VSCodeWorkspaceService, ICreatedFileNotificationAction } from "../VSCod
 import { CollectionsApiService } from "../CollectionsApiService/CollectionsApiService";
 import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { RecordTypeSelection } from "../RecordTypeService/RecordTypeSelection";
+import { CHANGE_RECORD_TYPES_ACTION_LABEL, SavedRecordTypeSelection } from "../RecordTypeSelectionService/SavedRecordTypeSelection";
 import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProcessor";
 import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
@@ -77,6 +78,7 @@ export interface IRunFakerOptions {
 export const MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES = 20;
 
 // SHARED WITH THE TESTS SO THE BUTTON LABEL CANNOT DRIFT FROM WHAT IS ASSERTED
+export const SAVED_RECORD_TYPE_SELECTION_USED_MESSAGE = 'It used the record types saved in treecipe.config.json.';
 export const RUN_AGAINST_ORG_ACTION_LABEL = 'Deploy and Run Against Org';
 
 // SHARED WITH THE TESTS SO THE PANEL'S VIEW TYPE CANNOT DRIFT FROM WHAT IS ASSERTED
@@ -599,7 +601,14 @@ export class ExtensionCommandService {
                 */
                 const isMissingGlobalValueSetsDirectoryWarningShown = false;
                 const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
-                const recordTypeSelection = ExtensionCommandService.readRecordTypeSelection(generateTreecipeOptions);
+                /*
+                    A selection handed to the command wins, "Use defaults"' empty one included; only a
+                    run handed none reuses the one saved in treecipe.config.json (#196).
+                */
+                const savedRecordTypeSelection = ExtensionCommandService.hasRecordTypeSelectionOption(generateTreecipeOptions)
+                    ? undefined
+                    : ConfigurationService.readSavedRecordTypeSelection();
+                const recordTypeSelection = savedRecordTypeSelection ?? ExtensionCommandService.readRecordTypeSelection(generateTreecipeOptions);
 
                 const generatedRecipeRun = await this.runWithRecipeGenerationProgress(async (generationProgress) => {
 
@@ -617,8 +626,12 @@ export class ExtensionCommandService {
 
                 });
 
+                if ( savedRecordTypeSelection ) {
+                    ExtensionCommandService.warnOfSavedRecordTypeSelectionReport(savedRecordTypeSelection);
+                }
+
                 if ( !ExtensionCommandService.isCompletionNotificationSuppressed(generateTreecipeOptions) ) {
-                    this.showRecipeRunGeneratedNotification(generatedRecipeRun, workspaceRoot);
+                    this.showRecipeRunGeneratedNotification(generatedRecipeRun, workspaceRoot, savedRecordTypeSelection?.isAnyEntryApplied() === true);
                 }
 
 
@@ -656,6 +669,47 @@ export class ExtensionCommandService {
 
     }
 
+    // THE KEY'S PRESENCE, NOT ITS VALIDITY: A SELECTION THAT FAILS ITS CHECK GENERATES THE DEFAULTS, AS IT ALWAYS HAS, RATHER THAN SOMETHING SAVED
+    static hasRecordTypeSelectionOption(generateTreecipeOptions: unknown): boolean {
+
+        return typeof generateTreecipeOptions === 'object'
+                && generateTreecipeOptions !== null
+                && Object.prototype.hasOwnProperty.call(generateTreecipeOptions, 'recordTypeSelection');
+
+    }
+
+    /*
+        What the walk found out about a saved selection: a dropped entry, a saved object the metadata
+        no longer has, or a record type added since it was saved. One warning, shown once per
+        session, whose button opens the Record types tab on the object to review.
+    */
+    static warnOfSavedRecordTypeSelectionReport(savedRecordTypeSelection: SavedRecordTypeSelection): void {
+
+        const report = savedRecordTypeSelection.buildReport();
+        const warning = ConfigurationService.showRecordTypeSelectionWarningOnce(
+            SavedRecordTypeSelection.buildReportWarning(report),
+            [CHANGE_RECORD_TYPES_ACTION_LABEL]
+        );
+
+        void Promise.resolve(warning).then((selectedLabel) => {
+            if ( selectedLabel === CHANGE_RECORD_TYPES_ACTION_LABEL ) {
+                return ExtensionCommandService.openRecordTypesTab(SavedRecordTypeSelection.findObjectToReview(report));
+            }
+            return undefined;
+        });
+
+    }
+
+    // THROUGH THE COMMAND, SO THE COCKPIT'S FEATURE FLAG AND OPT-IN WARNING APPLY TO THIS BUTTON AS TO THE PALETTE
+    static openRecordTypesTab(objectApiName?: string): Thenable<unknown> {
+
+        return vscode.commands.executeCommand('treecipe.openRecipeCockpit', {
+            focusRecordTypes: true,
+            ...( objectApiName ? { objectApiName } : {} )
+        });
+
+    }
+
     static isCompletionNotificationSuppressed(generateTreecipeOptions: unknown): boolean {
 
         return typeof generateTreecipeOptions === 'object'
@@ -676,7 +730,7 @@ export class ExtensionCommandService {
 
     }
 
-    private showRecipeRunGeneratedNotification(generatedRecipeRun: IGeneratedRecipeRun, workspaceRoot: string) {
+    private showRecipeRunGeneratedNotification(generatedRecipeRun: IGeneratedRecipeRun, workspaceRoot: string, isSavedRecordTypeSelectionUsed = false) {
 
         const displayPath = VSCodeWorkspaceService.toWorkspaceRelativeDisplayPath(generatedRecipeRun.runFolderPath, workspaceRoot);
         const recipeCount = generatedRecipeRun.recipeFilePaths.length;
@@ -688,9 +742,17 @@ export class ExtensionCommandService {
             actions.push({ label: OPEN_RECIPE_ACTION_LABEL, targetPath: generatedRecipeRun.recipeFilePaths[0], kind: 'openInEditor' });
         }
 
+        const generatedMessage = `Generated ${recipeCount} relationship-tree recipe${recipeCount === 1 ? '' : 's'} in "${displayPath}".`;
+
+        if ( !isSavedRecordTypeSelectionUsed ) {
+            void VSCodeWorkspaceService.showCreatedFilesNotification(generatedMessage, actions);
+            return;
+        }
+
         void VSCodeWorkspaceService.showCreatedFilesNotification(
-            `Generated ${recipeCount} relationship-tree recipe${recipeCount === 1 ? '' : 's'} in "${displayPath}".`,
-            actions
+            `${generatedMessage} ${SAVED_RECORD_TYPE_SELECTION_USED_MESSAGE}`,
+            actions,
+            [{ label: CHANGE_RECORD_TYPES_ACTION_LABEL, run: () => ExtensionCommandService.openRecordTypesTab() }]
         );
 
     }
@@ -1830,7 +1892,8 @@ export class ExtensionCommandService {
         the report this raises, which is the one a user cannot diagnose a broken webview without.
         Runs chosen later from the panel's own selector report through the panel's handler.
     */
-    async openRecipeCockpit(workspaceState?: IRecipeCockpitWorkspaceState) {
+    // openOptions COMES FROM "Change record types" (#196), AND FROM ANY CALLER OF THE COMMAND ID, SO IT IS READ BY A CHECK THAT KEEPS ONLY AN API NAME
+    async openRecipeCockpit(workspaceState?: IRecipeCockpitWorkspaceState, openOptions?: unknown) {
 
         try {
 
@@ -1840,7 +1903,7 @@ export class ExtensionCommandService {
                 return;
             }
 
-            await RecipeCockpitService.openRecipeCockpitPanel(VSCodeWorkspaceService.getWorkspaceRoot(), workspaceState);
+            await RecipeCockpitService.openRecipeCockpitPanel(VSCodeWorkspaceService.getWorkspaceRoot(), workspaceState, RecipeCockpitService.readRecordTypesFocusRequest(openOptions));
 
         } catch(error) {
 

@@ -101,11 +101,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	});
 
-	const openRecipeCockpit = vscode.commands.registerCommand("treecipe.openRecipeCockpit", () => {
+	const openRecipeCockpit = vscode.commands.registerCommand("treecipe.openRecipeCockpit", (openOptions?: unknown) => {
 
 		const extensionCommandService = new ExtensionCommandService();
 		// WHERE DATA-BY-ORG REMEMBERS THE ORG IT LAST COUNTED IN, PER WORKSPACE
-		extensionCommandService.openRecipeCockpit(context.workspaceState);
+		return extensionCommandService.openRecipeCockpit(context.workspaceState, openOptions);
 
 	});
 

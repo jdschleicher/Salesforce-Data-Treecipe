@@ -72,6 +72,7 @@ import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
 import { RecordTypeSelection } from '../../RecordTypeService/RecordTypeSelection';
+import { SavedRecordTypeSelection } from '../../RecordTypeSelectionService/SavedRecordTypeSelection';
 import { RecipeCockpitService } from '../../RecipeCockpitService/RecipeCockpitService';
 
 const MOCK_OBJECTS_PATH = path.join(__dirname, 'mocks', 'MockSalesforceMetadataDirectory', 'objects');
@@ -440,6 +441,52 @@ describe.each([
             const emptySelectionWrapper = await processMockMetadata(createFakerService, new RecordTypeSelection());
 
             expect(emptySelectionWrapper.RecipeFiles).toEqual(defaultObjectInfoWrapper.RecipeFiles);
+
+        });
+
+    });
+
+    /*
+        #196: a selection saved in treecipe.config.json goes through the same walk, but an entry that
+        no longer matches the metadata is dropped WHOLE: the object is written exactly as with no
+        selection, with no IGNORED TODO, and the walk leaves a report for the command to warn from.
+    */
+    describe('given a saved record type selection (#196)', () => {
+
+        it('writes a saved selection that still matches exactly as the same selection handed to the command, and reports nothing', async () => {
+
+            const savedSelection = new SavedRecordTypeSelection([['Example_Everything__c', ['TwoRecType', 'OneRecType']]], [['Example_Everything__c', ['OneRecType', 'TwoRecType']]]);
+            const savedWrapper = await processMockMetadata(createFakerService, savedSelection);
+            const handedWrapper = await processMockMetadata(createFakerService, new RecordTypeSelection([['Example_Everything__c', ['TwoRecType', 'OneRecType']]]));
+
+            expect(savedWrapper.RecipeFiles).toEqual(handedWrapper.RecipeFiles);
+            expect(SavedRecordTypeSelection.isReportEmpty(savedSelection.buildReport())).toBe(true);
+
+        });
+
+        it('drops an entry naming a record type the object no longer has, writing the object as with no selection', async () => {
+
+            const savedSelection = new SavedRecordTypeSelection([['Example_Everything__c', ['TwoRecType', 'Gone']], ['Not_An_Object__c', ['Anything']]]);
+            const savedWrapper = await processMockMetadata(createFakerService, savedSelection);
+            const defaultWrapper = await processMockMetadata(createFakerService);
+
+            expect(savedWrapper.RecipeFiles).toEqual(defaultWrapper.RecipeFiles);
+            expect(savedSelection.buildReport()).toEqual({
+                droppedEntries: [{ objectApiName: 'Example_Everything__c', missingDeveloperNames: ['Gone'] }],
+                missingObjectApiNames: ['Not_An_Object__c'],
+                newRecordTypes: []
+            });
+
+        });
+
+        it('generates a record type added since the selection was saved as before, and reports it for that object only', async () => {
+
+            const savedSelection = new SavedRecordTypeSelection([['Example_Everything__c', ['TwoRecType']]], [['Example_Everything__c', ['TwoRecType']]]);
+            const savedWrapper = await processMockMetadata(createFakerService, savedSelection);
+            const handedWrapper = await processMockMetadata(createFakerService, new RecordTypeSelection([['Example_Everything__c', ['TwoRecType']]]));
+
+            expect(savedWrapper.RecipeFiles).toEqual(handedWrapper.RecipeFiles);
+            expect(savedSelection.buildReport().newRecordTypes).toEqual([{ objectApiName: 'Example_Everything__c', developerNames: ['OneRecType'] }]);
 
         });
 

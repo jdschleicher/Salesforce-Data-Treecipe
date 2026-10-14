@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 jest.mock('vscode', () => ({
-    window: { createWebviewPanel: jest.fn(), withProgress: jest.fn(), showInputBox: jest.fn(), showErrorMessage: jest.fn().mockResolvedValue(undefined) },
+    window: { createWebviewPanel: jest.fn(), withProgress: jest.fn(), showInputBox: jest.fn(), showErrorMessage: jest.fn().mockResolvedValue(undefined), showWarningMessage: jest.fn().mockResolvedValue(undefined) },
     commands: { executeCommand: jest.fn() },
     ViewColumn: { One: 1 },
     ProgressLocation: { Notification: 15 },
@@ -17,6 +17,8 @@ import {
     RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_RECORD_TYPES_INTRO,
+    RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE,
+    RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL,
     RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL,
     RECIPE_COCKPIT_USE_DEFAULT_RECORD_TYPES_LABEL
 } from '../RecipeCockpitService';
@@ -26,6 +28,7 @@ import { ExtensionCommandService } from '../../ExtensionCommandService/Extension
 import { RecipeService } from '../../RecipeService/RecipeService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { RecordTypeSelection } from '../../RecordTypeService/RecordTypeSelection';
+import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 
 /*
     The Record types tab (#195): each tree card lists the objects it draws that have two or more
@@ -374,6 +377,27 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         });
 
+        it('carries Remember this selection only when the panel posts exactly true (#196)', () => {
+
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: { Account: ['Partner'] }, isRemembered: true })).toEqual({
+                kind: 'regenerateWithRecordTypes',
+                treeKey: ACCOUNT_TREE_KEY,
+                recordTypeSelection: { Account: ['Partner'] },
+                isRemembered: true
+            });
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: {}, isRemembered: true })).toEqual({ kind: 'regenerateWithRecordTypes', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: {}, isRemembered: true });
+            ['true', 1, false, null].forEach(isRemembered => {
+                expect(route({ treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: { Account: ['Partner'] }, isRemembered: isRemembered })).not.toHaveProperty('isRemembered');
+            });
+
+        });
+
+        it('refuses a remembered request the model did not offer, saving nothing', () => {
+
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: { Account: ['Gone'] }, isRemembered: true })).toEqual(REFUSED);
+
+        });
+
         it('hands Generate Treecipe a selection its own reader accepts as is', () => {
 
             const panelAction = route({ treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: { Account: ['Partner'] } }) as { recordTypeSelection: Record<string, string[]> };
@@ -455,6 +479,94 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         });
 
+        it('given Remember this selection, saves the selection with every record type its objects had, then regenerates with it (#196)', async () => {
+
+            const saveSpy = jest.spyOn(ConfigurationService, 'saveRecordTypeSelections').mockReturnValue('/config');
+
+            await openAndDraw();
+            await receivedMessageHandler({ command: 'regenerateWithRecordTypes', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: { Account: ['Partner'] }, isRemembered: true });
+
+            expect(saveSpy).toHaveBeenCalledTimes(1);
+            expect(saveSpy.mock.calls[0][0]).toEqual({ Account: ['Partner'] });
+            expect({ ...saveSpy.mock.calls[0][1] }).toEqual({ Account: ['Business', 'Partner'] });
+            expect(saveSpy.mock.invocationCallOrder[0]).toBeLessThan((vscode.commands.executeCommand as jest.Mock).mock.invocationCallOrder[0]);
+            expect(vscode.commands.executeCommand).toHaveBeenCalledWith(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND, {
+                isCompletionNotificationSuppressed: true,
+                recordTypeSelection: { Account: ['Partner'] }
+            });
+
+        });
+
+        it('given Use defaults with Remember this selection, forgets the saved selection', async () => {
+
+            const saveSpy = jest.spyOn(ConfigurationService, 'saveRecordTypeSelections').mockReturnValue('/config');
+
+            await openAndDraw();
+            await receivedMessageHandler({ command: 'regenerateWithRecordTypes', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: {}, isRemembered: true });
+
+            expect(saveSpy.mock.calls[0][0]).toEqual({});
+            expect({ ...saveSpy.mock.calls[0][1] }).toEqual({});
+
+        });
+
+        it('saves nothing without Remember this selection', async () => {
+
+            const saveSpy = jest.spyOn(ConfigurationService, 'saveRecordTypeSelections').mockReturnValue('/config');
+
+            await openAndDraw();
+            await receivedMessageHandler({ command: 'regenerateWithRecordTypes', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: { Account: ['Partner'] } });
+
+            expect(saveSpy).not.toHaveBeenCalled();
+
+        });
+
+        it('given the save fails, warns with the reason escaped and still regenerates', async () => {
+
+            jest.spyOn(ConfigurationService, 'saveRecordTypeSelections').mockImplementation(() => { throw new Error('EACCES [x](command:y)'); });
+            (vscode.window.showWarningMessage as jest.Mock).mockClear();
+
+            await openAndDraw();
+            await receivedMessageHandler({ command: 'regenerateWithRecordTypes', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: { Account: ['Partner'] }, isRemembered: true });
+
+            const [warning] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
+            expect(warning).toContain(RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE);
+            expect(warning).toContain('EACCES');
+            expect(warning).not.toContain('[x](command:');
+            expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(1);
+
+        });
+
+        it('opens on the Record types tab of the card listing the object Change record types names, its search set to it, in the newest run (#196)', async () => {
+
+            await RecipeCockpitService.openRecipeCockpitPanel(TREE_WORKSPACE_ROOT, { get: jest.fn(), update: jest.fn().mockResolvedValue(undefined) }, { objectApiName: 'Account' });
+            await receivedMessageHandler({ command: 'ready' });
+
+            const recipeDataMessage = postedPanelMessages.find(hostMessage => hostMessage.command === 'recipeData' && hostMessage.focusTree);
+            expect(recipeDataMessage.focusTree).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'recordTypes', searchText: 'Account' });
+            expect(recipeDataMessage.recipe.selectedRunFolderName).toBe(CURRENT_RUN_FOLDER_NAME);
+
+            // ONCE DRAWN, A REVEAL REPLAYS THE MODEL WITHOUT RE-OPENING THE TAB
+            await receivedMessageHandler({ command: 'rendered', renderSequence: recipeDataMessage.renderSequence });
+            postedPanelMessages = [];
+            await receivedMessageHandler({ command: 'ready' });
+            expect(lastPosted('recipeData')).not.toHaveProperty('focusTree');
+
+        });
+
+        it('stops replaying the Change record types focus once the panel fails to draw', async () => {
+
+            await RecipeCockpitService.openRecipeCockpitPanel(TREE_WORKSPACE_ROOT, { get: jest.fn(), update: jest.fn().mockResolvedValue(undefined) }, { objectApiName: 'Account' });
+            await receivedMessageHandler({ command: 'ready' });
+            expect(lastPosted('recipeData').focusTree).toBeDefined();
+
+            await receivedMessageHandler({ command: 'renderFailed', message: 'draw threw', phase: 'render' });
+            postedPanelMessages = [];
+            await receivedMessageHandler({ command: 'ready' });
+
+            expect(lastPosted('recipeData')).not.toHaveProperty('focusTree');
+
+        });
+
         it('runs nothing for a selection the model did not offer', async () => {
 
             await openAndDraw();
@@ -465,6 +577,44 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
             expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
             expect(postedPanelMessages).toEqual([{ command: 'recordTypeRegenerateState', isRunning: false }]);
+
+        });
+
+    });
+
+    describe('readRecordTypesFocusRequest and resolveRecordTypesFocus (#196)', () => {
+
+        it('reads only the exact option, and keeps an object name only when it is an api name', () => {
+
+            expect(RecipeCockpitService.readRecordTypesFocusRequest({ focusRecordTypes: true, objectApiName: 'Account' })).toEqual({ objectApiName: 'Account' });
+            expect(RecipeCockpitService.readRecordTypesFocusRequest({ focusRecordTypes: true, objectApiName: '../Account' })).toEqual({});
+            expect(RecipeCockpitService.readRecordTypesFocusRequest({ focusRecordTypes: true, objectApiName: 7 })).toEqual({});
+            expect(RecipeCockpitService.readRecordTypesFocusRequest({ focusRecordTypes: 'true' })).toBeUndefined();
+            expect(RecipeCockpitService.readRecordTypesFocusRequest(undefined)).toBeUndefined();
+            expect(RecipeCockpitService.readRecordTypesFocusRequest([true])).toBeUndefined();
+
+        });
+
+        it('focuses the card listing the object, its search set to the object', () => {
+
+            expect(RecipeCockpitService.resolveRecordTypesFocus(loadRecipe(), { objectApiName: 'Account' }))
+                .toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'recordTypes', searchText: 'Account' });
+
+        });
+
+        it('focuses the first card with the tab, with no search, for no object or one no tab lists', () => {
+
+            expect(RecipeCockpitService.resolveRecordTypesFocus(loadRecipe(), {})).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'recordTypes' });
+            expect(RecipeCockpitService.resolveRecordTypesFocus(loadRecipe(), { objectApiName: 'Lead' })).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'recordTypes' });
+
+        });
+
+        it('focuses nothing when no card draws the tab', () => {
+
+            const recipe = loadRecipe();
+            delete accountOf(recipe).recordTypes;
+
+            expect(RecipeCockpitService.resolveRecordTypesFocus(recipe, { objectApiName: 'Account' })).toBeUndefined();
 
         });
 
@@ -684,6 +834,73 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
             panel.typeIntoTabSearch(accountCardOf(panel), 'treeRecordTypes', 'Partner');
             expect(savedTree().searchQueries.recordTypes).toBe('Partner');
+
+        });
+
+        const rememberOf = (panel: ReturnType<typeof runPanelScript>) => buttonOf(panel, 'recordTypesRemember');
+
+        it('draws Remember this selection unticked, and a click on it or its label ticks it (#196)', () => {
+
+            const panel = drawRecipe();
+            const recordTypesPanel = openRecordTypesTab(panel);
+
+            expect(panel.findAll(recordTypesPanel, 'recordTypesRememberLabel').map((element: any) => element.textContent)).toEqual([RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL]);
+            expect(rememberOf(panel).attributes['role']).toBe('checkbox');
+            expect(rememberOf(panel).attributes['aria-checked']).toBe('false');
+
+            rememberOf(panel).dispatch('click');
+            expect(rememberOf(panel).attributes['aria-checked']).toBe('true');
+
+            panel.findAll(recordTypesPanel, 'recordTypesRememberLabel')[0].dispatch('click');
+            expect(rememberOf(panel).attributes['aria-checked']).toBe('false');
+
+        });
+
+        it('sends isRemembered only when it is ticked, with Regenerate and with Use defaults', () => {
+
+            const panel = drawRecipe();
+            openRecordTypesTab(panel);
+
+            checkboxNamed(panel, 'Partner').dispatch('click');
+            rememberOf(panel).dispatch('click');
+            buttonOf(panel, 'recordTypesRegenerate').dispatch('click');
+
+            expect(regenerateMessages(panel)).toEqual([{ command: 'regenerateWithRecordTypes', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: { Account: ['Business', 'Partner'] }, isRemembered: true }]);
+            expect(rememberOf(panel).disabled).toBe(true);
+
+            panel.postToPanel({ command: 'recordTypeRegenerateState', isRunning: false });
+            buttonOf(panel, 'recordTypesDefaults').dispatch('click');
+
+            expect(regenerateMessages(panel)[1]).toEqual({ command: 'regenerateWithRecordTypes', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: {}, isRemembered: true });
+
+        });
+
+        it('starts unticked again with a new model', () => {
+
+            const panel = drawRecipe();
+            openRecordTypesTab(panel);
+            rememberOf(panel).dispatch('click');
+
+            panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 4 });
+            openRecordTypesTab(panel);
+
+            expect(rememberOf(panel).attributes['aria-checked']).toBe('false');
+
+        });
+
+        it('narrows the tab to the object Change record types focuses', () => {
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 6, focusTree: { treeKey: ACCOUNT_TREE_KEY, tab: 'recordTypes', searchText: 'Contact' } });
+
+            const recordTypesPanel = panel.tabPanelOf(accountCardOf(panel), 'treeRecordTypes');
+            expect(panel.isHidden(recordTypesPanel)).toBe(false);
+            expect(panel.findAll(recordTypesPanel, 'tabSearchInput')[0].value).toBe('Contact');
+            expect(panel.isHidden(panel.findAll(recordTypesPanel, 'recordTypeObject')[0])).toBe(true);
+
+            panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 7, focusTree: { treeKey: ACCOUNT_TREE_KEY, tab: 'recordTypes', searchText: 'Account' } });
+            const refocusedPanel = panel.tabPanelOf(accountCardOf(panel), 'treeRecordTypes');
+            expect(panel.isHidden(panel.findAll(refocusedPanel, 'recordTypeObject')[0])).toBe(false);
 
         });
 

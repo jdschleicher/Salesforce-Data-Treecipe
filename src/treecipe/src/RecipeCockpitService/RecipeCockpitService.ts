@@ -308,6 +308,9 @@ export const RECIPE_COCKPIT_OPTIONAL_PLACE_SEARCH_TABS: readonly string[] = Obje
 
 export const RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL = 'Regenerate with these record types';
 export const RECIPE_COCKPIT_USE_DEFAULT_RECORD_TYPES_LABEL = 'Use defaults';
+export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL = 'Remember this selection';
+export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE = 'Save the choice in treecipe/treecipe.config.json, so Generate Treecipe reuses it. With Use defaults, forgets a saved choice.';
+export const RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE = 'The record type selection could not be saved in treecipe.config.json, so it was used for this run only.';
 // WHAT THE TAB SAYS ABOVE ITS ROWS: A REGENERATE IS A GENERATE TREECIPE, WHICH WRITES A NEW RUN OF EVERY TREE
 export const RECIPE_COCKPIT_RECORD_TYPES_INTRO = 'Choose the record types Generate Treecipe writes for each object: one recipe block per ticked record type, each with its own RecordTypeId and picklist values. Regenerating writes a new run of every tree; the run on screen is kept.';
 
@@ -789,6 +792,8 @@ export interface IRecipeCockpitPanelMessage {
     updateSequence?: unknown;
     requestSequence?: unknown;
     recordTypeSelection?: unknown;
+    // "Remember this selection" (#196): ONLY true SAVES
+    isRemembered?: unknown;
 }
 
 export interface IRecipeCockpitLoadPhaseMessage {
@@ -845,6 +850,16 @@ export interface IRecipeCockpitPanelPlace {
 export interface IRecipeCockpitTreeFocus {
     treeKey: string;
     tab: RecipeCockpitTreeTab;
+    // TYPED INTO THE TAB'S SEARCH: SET ONLY BY "Change record types" (#196), TO THE OBJECT IT IS ABOUT
+    searchText?: string;
+}
+
+/*
+    "Change record types" (#196) opens the cockpit on a Record types tab before any model exists, so
+    it names an OBJECT and the card is chosen once the run is loaded.
+*/
+export interface IRecipeCockpitRecordTypesFocusRequest {
+    objectApiName?: string;
 }
 
 export interface IRecipeCockpitLoadFailedMessage {
@@ -1208,7 +1223,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'openSource'; filePath: string; lineNumber: number }
     | { kind: 'selectRun'; runFolderName: string }
     | { kind: 'generateTreecipe' }
-    | { kind: 'regenerateWithRecordTypes'; treeKey: string; recordTypeSelection: Record<string, string[]> }
+    | { kind: 'regenerateWithRecordTypes'; treeKey: string; recordTypeSelection: Record<string, string[]>; isRemembered?: true }
     | { kind: 'refuseRecordTypeRegenerate' }
     | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage }
     | { kind: 'loadDatasetRecordCounts'; datasetFolderName: string; datasetFolderPath: string; renderSequence: number }
@@ -1318,6 +1333,12 @@ export interface IRecipeCockpitPanelState {
     permissionSetAssignStateMessage?: IRecipeCockpitPermissionSetAssignStateMessage;
     // THE PLACE workspaceState KEPT FOR THIS MODEL (#230), REPLAYED UNTIL THE MODEL'S "rendered" SAYS IT WAS DRAWN
     restorePlace?: IRecipeCockpitPanelPlace;
+    /*
+        The Record types tab "Change record types" opened the panel on (#196). An open posts its model
+        before the new document is ready, so like restorePlace it rides on every replay until the
+        model's "rendered".
+    */
+    openFocusTree?: IRecipeCockpitTreeFocus;
     // HOST-ONLY, REPLACED WITH THE MODEL: WHAT A FILTERED COPY NESTS A KEPT FRIEND BY (#219)
     objectLevelsByApiName?: Map<string, number>;
     // THE LAST datasetAdded POSTED (#226): ONLY ITS "partialRendered" PROMOTES THE PENDING HISTORY ALLOW-LISTS
@@ -2942,6 +2963,51 @@ export class RecipeCockpitService {
 
     }
 
+    static isTreeFocus(focusRequest: IRecipeCockpitTreeFocus | IRecipeCockpitRecordTypesFocusRequest): focusRequest is IRecipeCockpitTreeFocus {
+
+        return typeof (focusRequest as IRecipeCockpitTreeFocus).treeKey === 'string';
+
+    }
+
+    /*
+        The options "treecipe.openRecipeCockpit" was run with. The command is callable by id, so only
+        { focusRecordTypes: true } asks for the tab, and an object name is kept only if it is an api
+        name -- it is matched against the loaded model and typed into the tab's search, never opened.
+    */
+    static readRecordTypesFocusRequest(openOptions: unknown): IRecipeCockpitRecordTypesFocusRequest | undefined {
+
+        if ( !this.isPlainRecord(openOptions) || openOptions.focusRecordTypes !== true ) {
+            return undefined;
+        }
+
+        return SalesforceApiName.isApiName(openOptions.objectApiName) ? { objectApiName: openOptions.objectApiName } : {};
+
+    }
+
+    /*
+        The first card whose Record types tab lists the object, its search set to the object's name
+        so the tab shows that object only; with no object, or one no tab lists, the first card that
+        draws the tab at all. Undefined when no card does.
+    */
+    static resolveRecordTypesFocus(recipeViewModel: IRecipeCockpitRecipeViewModel, focusRequest: IRecipeCockpitRecordTypesFocusRequest): IRecipeCockpitTreeFocus | undefined {
+
+        const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
+        const listsRecordTypeObject = (tree: IRecipeCockpitTreeViewModel, objectApiName?: string) => tree.objects.some(treeObject =>
+            ( objectApiName === undefined || treeObject.objectApiName === objectApiName )
+            && !!objectsByApiName.get(treeObject.objectApiName)?.recordTypes);
+
+        const objectTree = focusRequest.objectApiName !== undefined
+            ? recipeViewModel.trees.find(tree => listsRecordTypeObject(tree, focusRequest.objectApiName))
+            : undefined;
+        if ( objectTree ) {
+            return { treeKey: objectTree.treeKey, tab: 'recordTypes', searchText: focusRequest.objectApiName };
+        }
+
+        const anyTree = recipeViewModel.trees.find(tree => listsRecordTypeObject(tree));
+        return anyTree ? { treeKey: anyTree.treeKey, tab: 'recordTypes' } : undefined;
+
+    }
+
     // EVERY HISTORY ACTION THE RENDERED MODEL OFFERS, BY NAME, AND NOTHING ELSE
     static collectTreeHistoryAllowLists(recipeViewModel: IRecipeCockpitRecipeViewModel): IRecipeCockpitTreeHistoryAllowLists {
 
@@ -3068,7 +3134,9 @@ export class RecipeCockpitService {
         the workspace holds, and leaving it on screen under a fresh load's status line would show
         one run while reporting another's progress.
     */
-    static async openRecipeCockpitPanel(workspaceRoot: string, workspaceState?: IRecipeCockpitWorkspaceState): Promise<vscode.WebviewPanel> {
+    static async openRecipeCockpitPanel(workspaceRoot: string,
+                                        workspaceState?: IRecipeCockpitWorkspaceState,
+                                        recordTypesFocusRequest?: IRecipeCockpitRecordTypesFocusRequest): Promise<vscode.WebviewPanel> {
 
         const existingCockpitPanel = this.recipeCockpitPanel;
         // A PLACE STILL WAITING TO BE WRITTEN BELONGS TO THE WORKSPACE STATE IT WAS SAVED UNDER
@@ -3089,10 +3157,14 @@ export class RecipeCockpitService {
             with the model only if that run is the one loaded.
         */
         // A PANEL WHOSE FIRST LOAD HAS NOT DRAWN YET (THE COMMAND RUN TWICE) HAS NOTHING OF ITS OWN TO CARRY EITHER
-        const persistedPanelPlace = previousPanelState?.recipeDataMessage ? undefined : this.readPersistedPanelPlace(workspaceState);
-        const carriedRunFolderName = previousPanelState?.recipeDataMessage?.recipe.selectedRunFolderName
-            || persistedPanelPlace?.runFolderName
-            || undefined;
+        /*
+            "Change record types" (#196) is about the run Generate Treecipe just wrote, which is the
+            newest: neither the run on screen nor a remembered place is carried to it.
+        */
+        const persistedPanelPlace = previousPanelState?.recipeDataMessage || recordTypesFocusRequest ? undefined : this.readPersistedPanelPlace(workspaceState);
+        const carriedRunFolderName = recordTypesFocusRequest
+            ? undefined
+            : previousPanelState?.recipeDataMessage?.recipe.selectedRunFolderName || persistedPanelPlace?.runFolderName || undefined;
 
         const cockpitPanel = existingCockpitPanel
             ?? vscode.window.createWebviewPanel(
@@ -3152,7 +3224,7 @@ export class RecipeCockpitService {
             cockpitPanel,
             workspaceRoot,
             carriedRunFolderName,
-            undefined,
+            recordTypesFocusRequest,
             persistedPanelPlace
         );
 
@@ -3169,7 +3241,7 @@ export class RecipeCockpitService {
     private static async loadRecipeIntoPanel(cockpitPanel: vscode.WebviewPanel,
                                                 workspaceRoot: string,
                                                 requestedRunFolderName?: string,
-                                                focusTree?: IRecipeCockpitTreeFocus,
+                                                focusTree?: IRecipeCockpitTreeFocus | IRecipeCockpitRecordTypesFocusRequest,
                                                 persistedPanelPlace?: IRecipeCockpitPanelPlace): Promise<void> {
 
         const loadSequence = ++this.recipeCockpitLoadSequence;
@@ -3270,11 +3342,15 @@ export class RecipeCockpitService {
 
     private static renderRecipeModel(cockpitPanel: vscode.WebviewPanel,
                                         loadedRecipe: IRecipeCockpitLoadedRecipe,
-                                        focusTree?: IRecipeCockpitTreeFocus,
+                                        focusRequest?: IRecipeCockpitTreeFocus | IRecipeCockpitRecordTypesFocusRequest,
                                         persistedPanelPlace?: IRecipeCockpitPanelPlace) {
 
         const panelState = this.recipeCockpitPanelState;
         const recipeViewModel = loadedRecipe.recipeViewModel;
+        let focusTree: IRecipeCockpitTreeFocus | undefined;
+        if ( focusRequest !== undefined ) {
+            focusTree = this.isTreeFocus(focusRequest) ? focusRequest : this.resolveRecordTypesFocus(recipeViewModel, focusRequest);
+        }
         this.applyTreePreferences(recipeViewModel.trees, this.readTreePreferences(this.recipeCockpitWorkspaceState));
         this.applyDatasetPreferences(recipeViewModel.trees, this.readDatasetPreferences(this.recipeCockpitWorkspaceState));
         this.applyTreeSelections(recipeViewModel, this.readTreeSelections(this.recipeCockpitWorkspaceState));
@@ -3290,6 +3366,7 @@ export class RecipeCockpitService {
             A saved place whose run is gone is dropped (#230): the newest run was loaded in its
             place, and a place is only ever about the run it names.
         */
+        panelState.openFocusTree = focusRequest !== undefined && !this.isTreeFocus(focusRequest) ? focusTree : undefined;
         panelState.restorePlace = persistedPanelPlace && persistedPanelPlace.runFolderName === recipeViewModel.selectedRunFolderName
             ? persistedPanelPlace
             : undefined;
@@ -3356,7 +3433,11 @@ export class RecipeCockpitService {
     */
     private static withRestorePlace(recipeDataMessage: IRecipeCockpitRecipeDataMessage, panelState: IRecipeCockpitPanelState): IRecipeCockpitRecipeDataMessage {
 
-        return panelState.restorePlace ? { ...recipeDataMessage, restorePlace: panelState.restorePlace } : recipeDataMessage;
+        return {
+            ...recipeDataMessage,
+            ...( panelState.restorePlace ? { restorePlace: panelState.restorePlace } : {} ),
+            ...( panelState.openFocusTree ? { focusTree: panelState.openFocusTree } : {} )
+        };
 
     }
 
@@ -3436,8 +3517,9 @@ export class RecipeCockpitService {
 
             case 'activateActions':
 
-                // DRAWN: THE PANEL'S OWN getState HOLDS THE PLACE FROM HERE ON
+                // DRAWN: THE PANEL'S OWN getState HOLDS THE PLACE FROM HERE ON, AND A REVEAL MUST NOT RE-OPEN THE FOCUSED TAB
                 panelState.restorePlace = undefined;
+                panelState.openFocusTree = undefined;
                 panelState.openableSourceKeys = panelState.pendingOpenableSourceKeys;
                 panelState.selectableRunFolderNames = panelState.pendingSelectableRunFolderNames;
                 panelState.loadablePicklistKeys = panelState.pendingLoadablePicklistKeys;
@@ -3475,6 +3557,8 @@ export class RecipeCockpitService {
                     panelState.wireableLookupTargets = new Map();
                     panelState.addableParentTargets = new Map();
                     panelState.acknowledgedRenderSequence = null;
+                    // A REVEAL OF A PANEL THAT FAILED TO DRAW MUST NOT KEEP RE-OPENING THE TAB AN OPEN ASKED FOR
+                    panelState.openFocusTree = undefined;
                     // NOTHING IS ON SCREEN TO DRAW AN ANSWER IN, SO A SELECTION STILL BEING CHECKED STOPS ASKING THE ORG
                     panelState.dataOrgSelection = undefined;
                     panelState.dataOrgRequestSequence++;
@@ -3518,6 +3602,10 @@ export class RecipeCockpitService {
                 return;
 
             case 'regenerateWithRecordTypes':
+
+                if ( panelAction.isRemembered ) {
+                    this.saveRecordTypeSelection(panelState, panelAction.recordTypeSelection);
+                }
 
                 await this.generateTreecipeAndReload(cockpitPanel, panelState, {
                     generateTreecipeOptions: { ...RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS, recordTypeSelection: panelAction.recordTypeSelection },
@@ -4388,6 +4476,37 @@ export class RecipeCockpitService {
             failureMessage: failureMessage,
             renderSequence: renderSequence
         });
+
+    }
+
+    /*
+        "Remember this selection" (#196): the selection goes into treecipe.config.json beside every
+        record type each of its objects had in the model on screen, which is how a record type added
+        later is noticed. A selection the router already matched against what the model offered, so
+        every name is one the panel drew. A failed save is a warning and the regenerate still runs:
+        the reader asked for that run whether or not it could be remembered.
+    */
+    static saveRecordTypeSelection(panelState: IRecipeCockpitPanelState, recordTypeSelection: Record<string, string[]>): boolean {
+
+        const recipeViewModel = panelState.recipeDataMessage?.recipe;
+        const objectsByApiName = recipeViewModel ? this.buildObjectsByApiName(recipeViewModel) : new Map<string, IRecipeCockpitObjectViewModel>();
+        const recordTypesWhenSelectionSaved: Record<string, string[]> = Object.create(null);
+
+        Object.keys(recordTypeSelection).forEach((objectApiName) => {
+            const recordTypes = objectsByApiName.get(objectApiName)?.recordTypes;
+            if ( recordTypes ) {
+                recordTypesWhenSelectionSaved[objectApiName] = recordTypes.map(recordType => recordType.developerName);
+            }
+        });
+
+        try {
+            ConfigurationService.saveRecordTypeSelections(recordTypeSelection, recordTypesWhenSelectionSaved);
+            return true;
+        } catch (saveError) {
+            const failureReason = saveError instanceof Error ? saveError.message : String(saveError);
+            void vscode.window.showWarningMessage(`${RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE} ${RecipeYamlScalar.escapeForNotification(failureReason)}`);
+            return false;
+        }
 
     }
 
@@ -6622,7 +6741,12 @@ export class RecipeCockpitService {
                     return { kind: 'refuseRecordTypeRegenerate' };
                 }
 
-                return { kind: 'regenerateWithRecordTypes', treeKey: treeKey, recordTypeSelection: recordTypeSelection };
+                return {
+                    kind: 'regenerateWithRecordTypes',
+                    treeKey: treeKey,
+                    recordTypeSelection: recordTypeSelection,
+                    ...( panelMessage.isRemembered === true ? { isRemembered: true as const } : {} )
+                };
 
             }
 
@@ -9006,6 +9130,8 @@ ${this.buildPaletteCustomProperties()}
     .recordTypeObjectStatus { font-weight: 400; }
     .recordTypeRow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0.25rem 0 0.25rem 1rem; }
     .recordTypeImpact { flex-basis: 100%; margin-left: 1.65em; }
+    .recordTypesRememberRow { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.75rem; }
+    .recordTypesRememberLabel { cursor: pointer; }
     .recordTypeActions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
     .treeFieldFixedValue {
         position: relative;
@@ -9173,6 +9299,8 @@ ${this.buildPaletteCustomProperties()}
     const OPTIONAL_PLACE_SEARCH_TABS = ${JSON.stringify(RECIPE_COCKPIT_OPTIONAL_PLACE_SEARCH_TABS)};
     const REGENERATE_WITH_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL)};
     const USE_DEFAULT_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_USE_DEFAULT_RECORD_TYPES_LABEL)};
+    const REMEMBER_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL)};
+    const REMEMBER_RECORD_TYPES_TITLE = ${JSON.stringify(RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE)};
     const RECORD_TYPES_INTRO = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_INTRO)};
     const RENAME_TREE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL)};
     const FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITE_TREE_LABEL)};
@@ -9689,6 +9817,9 @@ ${this.buildPaletteCustomProperties()}
     let recordTypeRowStates = [];
     let recordTypeButtonElements = [];
     let isRecordTypeRegenerating = false;
+    // "Remember this selection" (#196): PANEL-WIDE LIKE THE CHOICE, UNTICKED BY DEFAULT AND AGAIN WITH EVERY MODEL
+    let isRecordTypeSelectionRemembered = false;
+    let recordTypeRememberElements = [];
 
     // DATA SET COUNT ROWS WAITING ON THE HOST, AND THE ANSWERS ALREADY HAD -- KEYED BY FOLDER NAMES FROM DISK, SO NO PROTOTYPE
     let pendingDatasetCountElements = Object.create(null);
@@ -11146,6 +11277,28 @@ ${this.buildPaletteCustomProperties()}
         const regenerateElement = createElement('button', 'recordTypesRegenerate', REGENERATE_WITH_RECORD_TYPES_LABEL);
         const defaultsElement = createElement('button', 'historyAction recordTypesDefaults', USE_DEFAULT_RECORD_TYPES_LABEL);
 
+        const rememberRowElement = createElement('div', 'recordTypesRememberRow');
+        const rememberElement = createElement('button', 'treeFieldInclude recordTypesRemember');
+        const rememberLabelElement = createElement('span', 'recordTypesRememberLabel', REMEMBER_RECORD_TYPES_LABEL);
+
+        rememberElement.setAttribute('role', 'checkbox');
+        rememberElement.setAttribute('aria-label', REMEMBER_RECORD_TYPES_LABEL);
+        rememberElement.setAttribute('title', REMEMBER_RECORD_TYPES_TITLE);
+        rememberLabelElement.setAttribute('title', REMEMBER_RECORD_TYPES_TITLE);
+        rememberElement.addEventListener('click', function () {
+            if (rememberElement.disabled) { return; }
+            toggleRecordTypeSelectionRemembered();
+        });
+        rememberLabelElement.addEventListener('click', function () {
+            if (rememberElement.disabled) { return; }
+            toggleRecordTypeSelectionRemembered();
+        });
+
+        rememberRowElement.appendChild(rememberElement);
+        rememberRowElement.appendChild(rememberLabelElement);
+        panelElement.appendChild(rememberRowElement);
+        recordTypeRememberElements.push(rememberElement);
+
         regenerateElement.addEventListener('click', function () { postRecordTypeRegenerate(treeState, buildRecordTypeSelection()); });
         defaultsElement.addEventListener('click', function () { postRecordTypeRegenerate(treeState, {}); });
         defaultsElement.setAttribute('title', 'Regenerate the run with every object\\'s default record type, as Generate Treecipe writes it');
@@ -11179,6 +11332,13 @@ ${this.buildPaletteCustomProperties()}
         }
 
         recordTypeChoices[objectApiName] = choice;
+        drawRecordTypeChoices();
+
+    }
+
+    function toggleRecordTypeSelectionRemembered() {
+
+        isRecordTypeSelectionRemembered = !isRecordTypeSelectionRemembered;
         drawRecordTypeChoices();
 
     }
@@ -11217,7 +11377,9 @@ ${this.buildPaletteCustomProperties()}
 
         isRecordTypeRegenerating = true;
         drawRecordTypeChoices();
-        vscodeApi.postMessage({ command: 'regenerateWithRecordTypes', treeKey: treeState.tree.treeKey, recordTypeSelection: recordTypeSelection });
+        const regenerateMessage = { command: 'regenerateWithRecordTypes', treeKey: treeState.tree.treeKey, recordTypeSelection: recordTypeSelection };
+        if (isRecordTypeSelectionRemembered) { regenerateMessage.isRemembered = true; }
+        vscodeApi.postMessage(regenerateMessage);
 
     }
 
@@ -11246,6 +11408,12 @@ ${this.buildPaletteCustomProperties()}
                     ? 'changed: regenerate to write ' + choice.join(', ')
                     : (object.isRecordTypeSelectionApplied === true ? 'generated: ' : 'generated by default: ') + choice.join(', ');
             });
+        });
+
+        recordTypeRememberElements.forEach(function (rememberElement) {
+            rememberElement.textContent = isRecordTypeSelectionRemembered ? '✓' : '';
+            rememberElement.setAttribute('aria-checked', isRecordTypeSelectionRemembered ? 'true' : 'false');
+            rememberElement.disabled = isRecordTypeRegenerating || insertRunningTreeKey !== null;
         });
 
         recordTypeButtonElements.forEach(function (buttonElement) {
@@ -11395,6 +11563,17 @@ ${this.buildPaletteCustomProperties()}
 
         treeState.isExpandedByReader = true;
         setTreeExpanded(treeState, true);
+
+        // "Change record types" (#196) NARROWS THE RECORD TYPES TAB TO THE OBJECT IT IS ABOUT
+        if (focusTree.tab === 'recordTypes' && typeof focusTree.searchText === 'string') {
+            treeState.searchTexts.recordTypes = focusTree.searchText;
+            treeState.searchQueries.recordTypes = focusTree.searchText.trim().toLowerCase();
+            if (treeState.recordTypesSearch) {
+                treeState.recordTypesSearch.inputElement.value = focusTree.searchText;
+                applyRecordTypesFilter(treeState);
+            }
+        }
+
         selectTreeTab(treeState, focusTree.tab);
 
     }
@@ -12522,6 +12701,8 @@ ${this.buildPaletteCustomProperties()}
         recordTypeRowStates = [];
         recordTypeButtonElements = [];
         isRecordTypeRegenerating = false;
+        isRecordTypeSelectionRemembered = false;
+        recordTypeRememberElements = [];
         pendingDatasetCountElements = Object.create(null);
         answeredDatasetCounts = Object.create(null);
         fieldSearchTexts = new Map();
