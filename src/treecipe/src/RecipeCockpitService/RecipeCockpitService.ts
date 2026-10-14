@@ -162,9 +162,10 @@ export const RECIPE_COCKPIT_TREE_TAB_RENAMES: Readonly<Record<string, string>> =
     Tabs a card no longer has, read from a place of EITHER version after the renames (Previous Versions
     #265, Compare #266, which a version 1 place calls dataByOrg and renames to compare first): a card
     saved on one opens on Treecipe, and that tab's search text and opened rows are dropped -- never
-    moved onto another tab's search. Removing another tab is adding its name here.
+    moved onto another tab's search. Removing another tab is adding its name here. Record types
+    (#321) became a section of the Treecipe tab: a card saved on it opens with that section expanded.
 */
-export const RECIPE_COCKPIT_REMOVED_TREE_TABS: readonly string[] = Object.freeze(['versions', 'compare', 'dataByOrg']);
+export const RECIPE_COCKPIT_REMOVED_TREE_TABS: readonly string[] = Object.freeze(['versions', 'compare', 'dataByOrg', 'recordTypes']);
 export const RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY = 200;
 
 /*
@@ -320,25 +321,20 @@ export const RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL = 'Add to recipe';
 
 /*
     Every tab a card can draw. Treecipe is selected by default; the data sets tab is drawn only for
-    a card with a history, and the record types tab (#195) only for a card listing an object with
-    two or more record types. A card draws them Treecipe, Record types, then Previously Used Data Sets.
+    a card with a history. Record types (#195) is a collapsible section of the Treecipe tab (#321),
+    drawn only on a card listing an object with two or more record types.
 */
-export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'datasets', 'recordTypes'] as const;
+export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'datasets'] as const;
 
 // THE TODO RecipeService WRITES UNDER A DEFAULT RecordTypeId (AND EVERY RECORD-TYPE VARIANT) WHEN AN OBJECT HAS SEVERAL RECORD TYPES
 export const RECIPE_COCKPIT_RECORD_TYPE_OPTIONS_MARKER = '### TODO: -- RecordType Options -- ';
-/*
-    A tab added after place version 2 keeps its search in a saved place only when one was typed, so
-    a place saved before the tab existed, and one that never used it, keeps the shape it had.
-*/
-export const RECIPE_COCKPIT_OPTIONAL_PLACE_SEARCH_TABS: readonly string[] = Object.freeze(['recordTypes']);
-
 export const RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL = 'Regenerate with these record types';
 export const RECIPE_COCKPIT_USE_DEFAULT_RECORD_TYPES_LABEL = 'Use defaults';
 export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL = 'Remember this selection';
 export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE = 'Save the choice in treecipe/treecipe.config.json, so Generate Treecipe reuses it. With Use defaults, forgets a saved choice.';
 export const RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE = 'The record type selection could not be saved in treecipe.config.json, so it was used for this run only.';
-// WHAT THE TAB SAYS ABOVE ITS ROWS: A REGENERATE IS A GENERATE TREECIPE, WHICH WRITES A NEW RUN OF EVERY TREE
+export const RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE = 'Record types';
+// WHAT THE SECTION SAYS ABOVE ITS ROWS: A REGENERATE IS A GENERATE TREECIPE, WHICH WRITES A NEW RUN OF EVERY TREE
 export const RECIPE_COCKPIT_RECORD_TYPES_INTRO = 'Choose the record types Generate Treecipe writes for each object: one recipe block per ticked record type, each with its own RecordTypeId and picklist values. Regenerating writes a new run of every tree; the run on screen is kept.';
 
 export type RecipeCockpitTreeTab = typeof RECIPE_COCKPIT_TREE_TABS[number];
@@ -881,6 +877,8 @@ export interface IRecipeCockpitPanelTreePlace {
     openPicklistKeys: string[];
     // THE DATA SETS TAB'S FAVORITES ONLY; A PLACE SAVED BEFORE IT HAS NONE AND READS AS THE FILTER OFF
     isDatasetFavoritesOnly?: true;
+    // THE TREECIPE TAB'S RECORD TYPES SECTION (#321); A PLACE SAVED BEFORE IT HAS NONE AND READS AS COLLAPSED
+    isRecordTypesExpanded?: true;
 }
 
 export interface IRecipeCockpitPanelPlace {
@@ -896,8 +894,8 @@ export interface IRecipeCockpitPanelPlace {
 export interface IRecipeCockpitTreeFocus {
     treeKey: string;
     tab: RecipeCockpitTreeTab;
-    // TYPED INTO THE TAB'S SEARCH: SET ONLY BY "Change record types" (#196), TO THE OBJECT IT IS ABOUT
-    searchText?: string;
+    // OPENS THE TREECIPE TAB'S RECORD TYPES SECTION (#321), SCROLLED TO THE OBJECT "Change record types" (#196) IS ABOUT
+    recordTypes?: { objectApiName?: string };
 }
 
 /*
@@ -1504,12 +1502,6 @@ export class RecipeCockpitService {
 
             RECIPE_COCKPIT_TREE_TABS.forEach(tabName => {
                 const candidateQuery = Object.prototype.hasOwnProperty.call(candidateQueries, tabName) ? candidateQueries[tabName] : undefined;
-                if ( RECIPE_COCKPIT_OPTIONAL_PLACE_SEARCH_TABS.includes(tabName) ) {
-                    if ( this.isBoundedText(candidateQuery) && candidateQuery !== '' ) {
-                        searchQueries[tabName] = candidateQuery;
-                    }
-                    return;
-                }
                 searchQueries[tabName] = this.isBoundedText(candidateQuery) ? candidateQuery : '';
             });
 
@@ -1523,7 +1515,9 @@ export class RecipeCockpitService {
                 searchQueries: searchQueries,
                 expandedObjectKeys: this.normalizePlaceNames(candidateTree.expandedObjectKeys),
                 openPicklistKeys: this.normalizePlaceNames(candidateTree.openPicklistKeys),
-                ...( candidateTree.isDatasetFavoritesOnly === true ? { isDatasetFavoritesOnly: true as const } : {} )
+                ...( candidateTree.isDatasetFavoritesOnly === true ? { isDatasetFavoritesOnly: true as const } : {} ),
+                // A CARD SAVED ON THE RECORD TYPES TAB, BEFORE IT BECAME A SECTION (#321), OPENS WITH THE SECTION EXPANDED
+                ...( candidateTree.isRecordTypesExpanded === true || candidateTree.selectedTab === 'recordTypes' ? { isRecordTypesExpanded: true as const } : {} )
             }];
 
         });
@@ -3344,9 +3338,9 @@ export class RecipeCockpitService {
     }
 
     /*
-        The first card whose Record types tab lists the object, its search set to the object's name
-        so the tab shows that object only; with no object, or one no tab lists, the first card that
-        draws the tab at all. Undefined when no card does.
+        The first card whose Record types section lists the object, opened there and scrolled to it;
+        with no object, or one no card lists, the first card that draws the section at all.
+        Undefined when no card does.
     */
     static resolveRecordTypesFocus(recipeViewModel: IRecipeCockpitRecipeViewModel, focusRequest: IRecipeCockpitRecordTypesFocusRequest): IRecipeCockpitTreeFocus | undefined {
 
@@ -3359,11 +3353,11 @@ export class RecipeCockpitService {
             ? recipeViewModel.trees.find(tree => listsRecordTypeObject(tree, focusRequest.objectApiName))
             : undefined;
         if ( objectTree ) {
-            return { treeKey: objectTree.treeKey, tab: 'recordTypes', searchText: focusRequest.objectApiName };
+            return { treeKey: objectTree.treeKey, tab: 'treecipe', recordTypes: { objectApiName: focusRequest.objectApiName } };
         }
 
         const anyTree = recipeViewModel.trees.find(tree => listsRecordTypeObject(tree));
-        return anyTree ? { treeKey: anyTree.treeKey, tab: 'recordTypes' } : undefined;
+        return anyTree ? { treeKey: anyTree.treeKey, tab: 'treecipe', recordTypes: {} } : undefined;
 
     }
 
@@ -3968,7 +3962,7 @@ export class RecipeCockpitService {
 
                 await this.generateTreecipeAndReload(cockpitPanel, panelState, {
                     generateTreecipeOptions: { ...RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS, recordTypeSelection: panelAction.recordTypeSelection },
-                    focusTree: { treeKey: panelAction.treeKey, tab: 'recordTypes' }
+                    focusTree: { treeKey: panelAction.treeKey, tab: 'treecipe', recordTypes: {} }
                 });
                 return;
 
@@ -9523,6 +9517,10 @@ ${this.buildPaletteCustomProperties()}
     }
     .treeFieldInclude[aria-checked="false"] { background-color: var(--sdt-surface); border-color: var(--sdt-muted); }
     .treeFieldInclude:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); border-color: var(--sdt-border); cursor: not-allowed; }
+    .recordTypesSection { margin: 0.25rem 0.6rem 0.5rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
+    .recordTypesSectionHeader { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.25rem 0.5rem; cursor: pointer; }
+    .recordTypesSectionTitle { font-weight: 600; }
+    .recordTypesSectionBody { padding: 0 0.75rem 0.75rem; border-top: 1px solid var(--sdt-border); }
     .recordTypesIntro { margin: 0.5rem 0; }
     .recordTypeObject { margin: 0.6rem 0; }
     .recordTypeObjectHeading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; font-weight: 600; }
@@ -9735,7 +9733,7 @@ ${this.buildPaletteCustomProperties()}
     const PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB};
     const TREE_TAB_RENAMES = ${JSON.stringify(RECIPE_COCKPIT_TREE_TAB_RENAMES)};
     const REMOVED_TREE_TABS = ${JSON.stringify(RECIPE_COCKPIT_REMOVED_TREE_TABS)};
-    const OPTIONAL_PLACE_SEARCH_TABS = ${JSON.stringify(RECIPE_COCKPIT_OPTIONAL_PLACE_SEARCH_TABS)};
+    const RECORD_TYPES_SECTION_TITLE = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE)};
     const REGENERATE_WITH_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL)};
     const USE_DEFAULT_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_USE_DEFAULT_RECORD_TYPES_LABEL)};
     const REMEMBER_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL)};
@@ -11465,6 +11463,10 @@ ${this.buildPaletteCustomProperties()}
         treeState.structureSearch = buildTabSearch(treeState, 'treecipe', 'Search objects, fields and faker expressions', applyStructureFilter);
         structureElement.appendChild(treeState.structureSearch.element);
 
+        if (listRecordTypeObjects(treeState).length > 0) {
+            structureElement.appendChild(buildRecordTypesSection(treeState));
+        }
+
         treeState.objectStates.forEach(function (treeObjectState) {
             structureElement.appendChild(treeObjectState.element);
         });
@@ -11476,10 +11478,6 @@ ${this.buildPaletteCustomProperties()}
         treeState.tabStates = [];
         treeState.selectedTab = 'treecipe';
         addTreeTab(treeState, tabsElement, 'treecipe', 'Treecipe', structureElement);
-
-        if (listRecordTypeObjects(treeState).length > 0) {
-            addTreeTab(treeState, tabsElement, 'recordTypes', 'Record types', createElement('div', 'treeRecordTypes hidden'));
-        }
 
         if (treeState.tree.history) {
             addTreeTab(treeState, tabsElement, 'datasets', 'Previously Used Data Sets', createElement('div', 'treeDatasets hidden'));
@@ -11536,7 +11534,6 @@ ${this.buildPaletteCustomProperties()}
             if (isSelected && !tabState.isBuilt) {
                 tabState.isBuilt = true;
                 if (tabState.tabName === 'datasets') { buildDatasetsTab(treeState, tabState.panelElement); }
-                if (tabState.tabName === 'recordTypes') { buildRecordTypesTab(treeState, tabState.panelElement); }
             }
 
         });
@@ -11786,24 +11783,99 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        The Record types tab (#195): every object of the card with two or more record types, each
-        record type a checkbox with what it restricts, and the two buttons that regenerate the run.
-        Built on first select, like the data sets tab. The choice it draws is panel-wide, so a
-        tick here is drawn on every card listing the object.
+        The Record types section of the Treecipe tab (#321, the #195 tab before it): one header line
+        under the search box, collapsed until the reader opens it, saying how many objects it lists
+        and whether the choice still matches the run. Like a tree card, the HEADER is the toggle and
+        the ▸ carries no listener of its own. Its rows are built on first expand.
     */
-    function buildRecordTypesTab(treeState, panelElement) {
+    function buildRecordTypesSection(treeState) {
+
+        const sectionElement = createElement('div', 'recordTypesSection');
+        const headerElement = createElement('div', 'recordTypesSectionHeader');
+        const toggleElement = buildToggleElement('treeObjectToggle recordTypesSectionToggle');
+        const bodyElement = createElement('div', 'recordTypesSectionBody hidden');
+        const summaryElement = createElement('span', 'recordTypesSectionSummary muted');
+
+        toggleElement.setAttribute('aria-label', RECORD_TYPES_SECTION_TITLE + ' (' + displayTitleOf(treeState.tree) + ')');
+        drawToggle(toggleElement, false, false);
+        headerElement.appendChild(toggleElement);
+        headerElement.appendChild(createElement('span', 'recordTypesSectionTitle', RECORD_TYPES_SECTION_TITLE));
+        headerElement.appendChild(summaryElement);
+        headerElement.addEventListener('click', function () {
+            setRecordTypesExpanded(treeState, !treeState.isRecordTypesExpanded, true);
+            savePanelPlace();
+        });
+
+        sectionElement.appendChild(headerElement);
+        sectionElement.appendChild(bodyElement);
+
+        treeState.recordTypesSection = { toggleElement: toggleElement, bodyElement: bodyElement, summaryElement: summaryElement, isBuilt: false };
+        drawRecordTypesSummary(treeState);
+
+        return sectionElement;
+
+    }
+
+    function setRecordTypesExpanded(treeState, isExpanded, isAnimated) {
+
+        const section = treeState.recordTypesSection;
+        if (!section) { return; }
+
+        if (isExpanded && !section.isBuilt) {
+            section.isBuilt = true;
+            buildRecordTypesRows(treeState, section.bodyElement);
+        }
+
+        setShownWithMotion(section.bodyElement, isExpanded, isAnimated);
+        drawToggle(section.toggleElement, isExpanded, isAnimated);
+        treeState.isRecordTypesExpanded = isExpanded;
+
+    }
+
+    // WHAT THE TREECIPE SEARCH MATCHES IN A ROW: THE OBJECT, ITS RECORD TYPES AND THE FIELDS THEY RESTRICT
+    function recordTypeObjectSearchText(object) {
+
+        const searchTextParts = [object.objectApiName];
+        object.recordTypes.forEach(function (recordType) {
+            searchTextParts.push(recordType.developerName);
+            recordType.impacts.forEach(function (impact) { searchTextParts.push(impact.fieldApiName); });
+        });
+        return searchTextParts.join('\\n').toLowerCase();
+
+    }
+
+    function drawRecordTypesSummary(treeState) {
+
+        const section = treeState.recordTypesSection;
+        if (!section) { return; }
+
+        const objects = listRecordTypeObjects(treeState);
+        const searchQuery = treeState.searchQueries.treecipe;
+        const matchingCount = objects.filter(function (object) { return !searchQuery || recordTypeObjectSearchText(object).indexOf(searchQuery) !== -1; }).length;
+        const isChanged = objects.some(function (object) { return !isSameChoice(recordTypeChoices[object.objectApiName] || [], object.generatedRecordTypeDeveloperNames || []); });
+        const isApplied = objects.some(function (object) { return object.isRecordTypeSelectionApplied === true; });
+        const countText = !searchQuery
+            ? pluralize(objects.length, 'object', 'objects')
+            : matchingCount > 0 ? matchingCount + ' of ' + pluralize(objects.length, 'object', 'objects') : 'no matching objects';
+
+        section.summaryElement.textContent = countText + ' · ' + (isChanged ? 'changed' : isApplied ? 'generated from a choice' : 'generated by default');
+
+    }
+
+    /*
+        The section's rows: every object of the card with two or more record types, each record
+        type a checkbox with what it restricts, and the two buttons that regenerate the run. The
+        choice they draw is panel-wide, so a tick here is drawn on every card listing the object.
+    */
+    function buildRecordTypesRows(treeState, panelElement) {
 
         panelElement.appendChild(createElement('div', 'recordTypesIntro muted', RECORD_TYPES_INTRO));
-
-        treeState.recordTypesSearch = buildTabSearch(treeState, 'recordTypes', 'Search objects, record types and fields', applyRecordTypesFilter);
-        panelElement.appendChild(treeState.recordTypesSearch.element);
 
         treeState.recordTypeObjectStates = listRecordTypeObjects(treeState).map(function (object) {
 
             const objectElement = createElement('div', 'recordTypeObject');
             const headingElement = createElement('div', 'recordTypeObjectHeading');
             const statusElement = createElement('span', 'recordTypeObjectStatus muted');
-            const searchTextParts = [object.objectApiName];
 
             headingElement.appendChild(createElement('span', 'recordTypeObjectName', object.objectApiName));
             headingElement.appendChild(statusElement);
@@ -11829,14 +11901,12 @@ ${this.buildPaletteCustomProperties()}
                 objectElement.appendChild(rowElement);
 
                 recordTypeRowStates.push({ objectApiName: object.objectApiName, developerName: recordType.developerName, checkboxElement: checkboxElement });
-                searchTextParts.push(recordType.developerName);
-                recordType.impacts.forEach(function (impact) { searchTextParts.push(impact.fieldApiName); });
 
             });
 
             panelElement.appendChild(objectElement);
 
-            return { object: object, element: objectElement, statusElement: statusElement, searchText: searchTextParts.join('\\n').toLowerCase() };
+            return { object: object, element: objectElement, statusElement: statusElement, searchText: recordTypeObjectSearchText(object) };
 
         });
 
@@ -11880,9 +11950,15 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    // THE TREECIPE TAB'S ONE SEARCH ALSO NARROWS THE SECTION'S ROWS; THE COUNT IS IN ITS HEADER
     function applyRecordTypesFilter(treeState) {
 
-        applyRowSearch(treeState.recordTypeObjectStates, treeState.searchQueries.recordTypes, treeState.recordTypesSearch, 'object', 'objects', false);
+        const searchQuery = treeState.searchQueries.treecipe;
+
+        (treeState.recordTypeObjectStates || []).forEach(function (objectState) {
+            setShown(objectState.element, !searchQuery || objectState.searchText.indexOf(searchQuery) !== -1);
+        });
+        drawRecordTypesSummary(treeState);
 
     }
 
@@ -11976,6 +12052,8 @@ ${this.buildPaletteCustomProperties()}
                     : (object.isRecordTypeSelectionApplied === true ? 'generated: ' : 'generated by default: ') + choice.join(', ');
             });
         });
+
+        treeStates.forEach(drawRecordTypesSummary);
 
         recordTypeRememberElements.forEach(function (rememberElement) {
             rememberElement.textContent = isRecordTypeSelectionRemembered ? '✓' : '';
@@ -12131,17 +12209,16 @@ ${this.buildPaletteCustomProperties()}
         treeState.isExpandedByReader = true;
         setTreeExpanded(treeState, true);
 
-        // "Change record types" (#196) NARROWS THE RECORD TYPES TAB TO THE OBJECT IT IS ABOUT
-        if (focusTree.tab === 'recordTypes' && typeof focusTree.searchText === 'string') {
-            treeState.searchTexts.recordTypes = focusTree.searchText;
-            treeState.searchQueries.recordTypes = focusTree.searchText.trim().toLowerCase();
-            if (treeState.recordTypesSearch) {
-                treeState.recordTypesSearch.inputElement.value = focusTree.searchText;
-                applyRecordTypesFilter(treeState);
-            }
-        }
-
         selectTreeTab(treeState, focusTree.tab);
+
+        // A REGENERATE, AND "Change record types" (#196), RE-OPEN THE RECORD TYPES SECTION, SCROLLED TO THE OBJECT IT IS ABOUT
+        if (focusTree.recordTypes && typeof focusTree.recordTypes === 'object') {
+            setRecordTypesExpanded(treeState, true, false);
+            const objectApiName = focusTree.recordTypes.objectApiName;
+            const objectState = (treeState.recordTypeObjectStates || []).find(function (candidateState) { return candidateState.object.objectApiName === objectApiName; });
+            if (objectState && typeof objectState.element.scrollIntoView === 'function') { objectState.element.scrollIntoView({ block: 'nearest' }); }
+            savePanelPlace();
+        }
 
     }
 
@@ -12230,9 +12307,9 @@ ${this.buildPaletteCustomProperties()}
             element: treeElement,
             toggleElement: toggleElement,
             bodyElement: createElement('div', 'treeBody hidden'),
-            searchQueries: { treecipe: '', datasets: '', recordTypes: '' },
+            searchQueries: { treecipe: '', datasets: '' },
             // WHAT THE READER TYPED IN EACH BOX, AS TYPED -- searchQueries IS ITS TRIMMED, LOWERCASED FORM
-            searchTexts: { treecipe: '', datasets: '', recordTypes: '' },
+            searchTexts: { treecipe: '', datasets: '' },
             isDatasetFavoritesOnly: false,
             datasetFavoritesToggleElement: null,
             // THE TOP OF THE TREECIPE TAB (#255), MADE WITH THE TAB
@@ -12626,6 +12703,8 @@ ${this.buildPaletteCustomProperties()}
             ? pluralize(totalFieldCount, 'field', 'fields')
             : matchingFieldCount > 0 ? matchingFieldCount + ' of ' + pluralize(totalFieldCount, 'field', 'fields') : 'no matches';
 
+        applyRecordTypesFilter(treeState);
+
         if (!searchQuery) {
             treeState.objectStates.forEach(function (treeObjectState) { setTreeObjectExpanded(treeObjectState, treeObjectState.isExpandedByReader); });
             return;
@@ -12960,13 +13039,13 @@ ${this.buildPaletteCustomProperties()}
 
         PANEL_PLACE_TABS.forEach(function (tabName) {
             const searchText = treeState.searchTexts[tabName] || '';
-            if (searchText || OPTIONAL_PLACE_SEARCH_TABS.indexOf(tabName) === -1) { searchQueries[tabName] = searchText; }
+            searchQueries[tabName] = searchText;
             if (treeState.searchQueries[tabName]) { hasSearch = true; }
         });
 
         const selectedTab = treeState.selectedTab || 'treecipe';
 
-        if (!treeState.isExpandedByReader && selectedTab === 'treecipe' && !hasSearch && !treeState.isDatasetFavoritesOnly
+        if (!treeState.isExpandedByReader && selectedTab === 'treecipe' && !hasSearch && !treeState.isDatasetFavoritesOnly && !treeState.isRecordTypesExpanded
                 && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0) {
             return null;
         }
@@ -12981,6 +13060,7 @@ ${this.buildPaletteCustomProperties()}
         };
 
         if (treeState.isDatasetFavoritesOnly) { treePlace.isDatasetFavoritesOnly = true; }
+        if (treeState.isRecordTypesExpanded) { treePlace.isRecordTypesExpanded = true; }
 
         return treePlace;
 
@@ -13066,10 +13146,13 @@ ${this.buildPaletteCustomProperties()}
                     if (!isRemovedTab(currentTabName)) { searchQueries[currentTabName] = savedQueries[tabName]; }
                 });
                 const selectedTab = typeof savedTree.selectedTab === 'string' ? renameTab(savedTree.selectedTab) : savedTree.selectedTab;
-                return Object.assign({}, savedTree, {
+                const upgradedTree = Object.assign({}, savedTree, {
                     selectedTab: isRemovedTab(selectedTab) ? 'treecipe' : selectedTab,
                     searchQueries: searchQueries
                 });
+                // A CARD SAVED ON THE RECORD TYPES TAB, BEFORE IT BECAME A SECTION (#321), OPENS WITH THE SECTION EXPANDED
+                if (selectedTab === 'recordTypes') { upgradedTree.isRecordTypesExpanded = true; }
+                return upgradedTree;
             })
         });
 
@@ -13186,6 +13269,11 @@ ${this.buildPaletteCustomProperties()}
 
             if (typeof savedTree.selectedTab === 'string' && PANEL_PLACE_TABS.indexOf(savedTree.selectedTab) !== -1) {
                 selectTreeTab(treeState, savedTree.selectedTab);
+            }
+
+            if (savedTree.isRecordTypesExpanded === true) {
+                ensureTreeBodyBuilt(treeState);
+                setRecordTypesExpanded(treeState, true, false);
             }
 
             if (savedTree.isExpanded === true) {

@@ -301,21 +301,30 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         });
 
-        it('keeps a typed Record types search in a saved place, and nothing for an empty or malformed one', () => {
+        const normalizeTreePlace = (treePlace: Record<string, unknown>) => RecipeCockpitService.normalizePanelPlace({
+            version: RECIPE_COCKPIT_PANEL_PLACE_VERSION,
+            runFolderName: CURRENT_RUN_FOLDER_NAME,
+            isOrgPickerInUse: false,
+            isFavoritesOnly: false,
+            scrollY: 0,
+            trees: [{ treeKey: ACCOUNT_TREE_KEY, isExpanded: true, selectedTab: 'treecipe', searchQueries: { treecipe: '', datasets: '' }, expandedObjectKeys: [], openPicklistKeys: [], ...treePlace }]
+        })?.trees[0];
 
-            const placeWithSearch = (recordTypesQuery: unknown) => RecipeCockpitService.normalizePanelPlace({
-                version: RECIPE_COCKPIT_PANEL_PLACE_VERSION,
-                runFolderName: CURRENT_RUN_FOLDER_NAME,
-                isOrgPickerInUse: false,
-                isFavoritesOnly: false,
-                scrollY: 0,
-                trees: [{ treeKey: ACCOUNT_TREE_KEY, isExpanded: true, selectedTab: 'recordTypes', searchQueries: { treecipe: '', datasets: '', recordTypes: recordTypesQuery }, expandedObjectKeys: [], openPicklistKeys: [] }]
-            })?.trees[0];
+        it('reads a place saved on the Record types tab as the Treecipe tab with the section expanded, and drops its search (#321)', () => {
 
-            expect(placeWithSearch('Partner')?.searchQueries).toEqual({ treecipe: '', datasets: '', recordTypes: 'Partner' });
-            expect(placeWithSearch('Partner')?.selectedTab).toBe('recordTypes');
-            expect(placeWithSearch('')?.searchQueries).toEqual({ treecipe: '', datasets: '' });
-            expect(placeWithSearch(7)?.searchQueries).toEqual({ treecipe: '', datasets: '' });
+            const treePlace = normalizeTreePlace({ selectedTab: 'recordTypes', searchQueries: { treecipe: 'name', datasets: '', recordTypes: 'Partner' } });
+
+            expect(treePlace?.selectedTab).toBe('treecipe');
+            expect(treePlace?.isRecordTypesExpanded).toBe(true);
+            expect(treePlace?.searchQueries).toEqual({ treecipe: 'name', datasets: '' });
+
+        });
+
+        it('keeps an expanded Record types section in a place, and nothing for any other value (#321)', () => {
+
+            expect(normalizeTreePlace({ isRecordTypesExpanded: true })?.isRecordTypesExpanded).toBe(true);
+            expect(normalizeTreePlace({ isRecordTypesExpanded: 'yes' })).not.toHaveProperty('isRecordTypesExpanded');
+            expect(normalizeTreePlace({})).not.toHaveProperty('isRecordTypesExpanded');
 
         });
 
@@ -462,7 +471,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
                 isCompletionNotificationSuppressed: true,
                 recordTypeSelection: { Account: ['Partner'] }
             });
-            expect(lastPosted('recipeData').focusTree).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'recordTypes' });
+            expect(lastPosted('recipeData').focusTree).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: {} });
 
         });
 
@@ -474,7 +483,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
             await receivedMessageHandler({ command: 'regenerateWithRecordTypes', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: {} });
 
-            expect(lastPosted('recipeData').focusTree).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'recordTypes' });
+            expect(lastPosted('recipeData').focusTree).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: {} });
             expect(vscode.window.showErrorMessage).toHaveBeenCalled();
 
         });
@@ -542,7 +551,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             await receivedMessageHandler({ command: 'ready' });
 
             const recipeDataMessage = postedPanelMessages.find(hostMessage => hostMessage.command === 'recipeData' && hostMessage.focusTree);
-            expect(recipeDataMessage.focusTree).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'recordTypes', searchText: 'Account' });
+            expect(recipeDataMessage.focusTree).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: { objectApiName: 'Account' } });
             expect(recipeDataMessage.recipe.selectedRunFolderName).toBe(CURRENT_RUN_FOLDER_NAME);
 
             // ONCE DRAWN, A REVEAL REPLAYS THE MODEL WITHOUT RE-OPENING THE TAB
@@ -598,14 +607,14 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
         it('focuses the card listing the object, its search set to the object', () => {
 
             expect(RecipeCockpitService.resolveRecordTypesFocus(loadRecipe(), { objectApiName: 'Account' }))
-                .toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'recordTypes', searchText: 'Account' });
+                .toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: { objectApiName: 'Account' } });
 
         });
 
         it('focuses the first card with the tab, with no search, for no object or one no tab lists', () => {
 
-            expect(RecipeCockpitService.resolveRecordTypesFocus(loadRecipe(), {})).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'recordTypes' });
-            expect(RecipeCockpitService.resolveRecordTypesFocus(loadRecipe(), { objectApiName: 'Lead' })).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'recordTypes' });
+            expect(RecipeCockpitService.resolveRecordTypesFocus(loadRecipe(), {})).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: {} });
+            expect(RecipeCockpitService.resolveRecordTypesFocus(loadRecipe(), { objectApiName: 'Lead' })).toEqual({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: {} });
 
         });
 
@@ -631,24 +640,88 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
         };
 
         const accountCardOf = (panel: ReturnType<typeof runPanelScript>) => panel.treeCards()[0];
+        const sectionHeaderOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(accountCardOf(panel), 'recordTypesSectionHeader')[0];
+        const sectionBodyOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(accountCardOf(panel), 'recordTypesSectionBody')[0];
+        const sectionSummaryOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(accountCardOf(panel), 'recordTypesSectionSummary')[0].textContent;
+        const sectionToggleOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(accountCardOf(panel), 'recordTypesSectionToggle')[0];
         const openRecordTypesTab = (panel: ReturnType<typeof runPanelScript>) => {
             panel.expandAllTrees();
-            panel.openTab(accountCardOf(panel), 'Record types');
-            return panel.tabPanelOf(accountCardOf(panel), 'treeRecordTypes');
+            if (sectionToggleOf(panel).attributes['aria-expanded'] !== 'true') { sectionHeaderOf(panel).dispatch('click'); }
+            return sectionBodyOf(panel);
         };
-        const checkboxNamed = (panel: ReturnType<typeof runPanelScript>, developerName: string) => panel.findAll(panel.tabPanelOf(accountCardOf(panel), 'treeRecordTypes'), 'recordTypeInclude')
+        const checkboxNamed = (panel: ReturnType<typeof runPanelScript>, developerName: string) => panel.findAll(sectionBodyOf(panel), 'recordTypeInclude')
             .find((checkboxElement: any) => checkboxElement.attributes['aria-label'] === `${developerName} (Account)`);
         const regenerateMessages = (panel: ReturnType<typeof runPanelScript>) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'regenerateWithRecordTypes');
-        const buttonOf = (panel: ReturnType<typeof runPanelScript>, className: string) => panel.findAll(panel.tabPanelOf(accountCardOf(panel), 'treeRecordTypes'), className)[0];
+        const buttonOf = (panel: ReturnType<typeof runPanelScript>, className: string) => panel.findAll(sectionBodyOf(panel), className)[0];
 
-        it('draws the tab only on a card listing an object with record types', () => {
+        it('draws no Record types tab, and the section only on a card listing an object with record types (#321)', () => {
 
             const panel = drawRecipe();
             panel.expandAllTrees();
 
             const tabLabels = (treeCard: any) => panel.findAll(treeCard, 'treeTab').map((tabElement: any) => tabElement.textContent);
-            expect(tabLabels(panel.treeCards()[0])).toContain('Record types');
-            expect(tabLabels(panel.treeCards()[1])).not.toContain('Record types');
+            expect(tabLabels(panel.treeCards()[0])).not.toContain('Record types');
+            expect(panel.findAll(panel.treeCards()[0], 'recordTypesSection')).toHaveLength(1);
+            expect(panel.findAll(panel.treeCards()[1], 'recordTypesSection')).toHaveLength(0);
+
+        });
+
+        it('places the section under the Treecipe search box and above the first object, collapsed (#321)', () => {
+
+            const panel = drawRecipe();
+            panel.expandAllTrees();
+
+            const structureChildren = panel.tabPanelOf(accountCardOf(panel), 'treeStructure').children;
+            const searchIndex = structureChildren.findIndex((element: any) => element.classList.contains('tabSearch'));
+            const sectionIndex = structureChildren.findIndex((element: any) => element.classList.contains('recordTypesSection'));
+            const firstObjectIndex = structureChildren.findIndex((element: any) => element.classList.contains('treeObject'));
+
+            expect(sectionIndex).toBe(searchIndex + 1);
+            expect(firstObjectIndex).toBe(sectionIndex + 1);
+            expect(panel.isHidden(sectionBodyOf(panel))).toBe(true);
+            expect(sectionToggleOf(panel).attributes['aria-expanded']).toBe('false');
+            expect(panel.findAll(accountCardOf(panel), 'recordTypesSectionTitle')[0].textContent).toBe('Record types');
+            expect(sectionSummaryOf(panel)).toBe('1 object · generated by default');
+            // ITS ROWS ARE BUILT ON FIRST EXPAND
+            expect(panel.findAll(sectionBodyOf(panel), 'recordTypeObject')).toHaveLength(0);
+
+        });
+
+        it('expands and collapses from a click anywhere on its header, the ▸ included (#321)', () => {
+
+            const panel = drawRecipe();
+            panel.expandAllTrees();
+
+            sectionToggleOf(panel).dispatch('click');
+            expect(panel.isHidden(sectionBodyOf(panel))).toBe(false);
+            expect(sectionToggleOf(panel).attributes['aria-expanded']).toBe('true');
+            expect(panel.findAll(sectionBodyOf(panel), 'recordTypeObject')).toHaveLength(1);
+
+            panel.findAll(accountCardOf(panel), 'recordTypesSectionTitle')[0].dispatch('click');
+            expect(panel.isHidden(sectionBodyOf(panel))).toBe(true);
+            expect(sectionToggleOf(panel).attributes['aria-expanded']).toBe('false');
+
+        });
+
+        it('says changed in its header once a choice differs from the run (#321)', () => {
+
+            const panel = drawRecipe();
+            openRecordTypesTab(panel);
+
+            checkboxNamed(panel, 'Partner').dispatch('click');
+            expect(sectionSummaryOf(panel)).toBe('1 object · changed');
+
+            checkboxNamed(panel, 'Partner').dispatch('click');
+            expect(sectionSummaryOf(panel)).toBe('1 object · generated by default');
+
+        });
+
+        it('says generated from a choice when the run was written from one (#321)', () => {
+
+            const panel = drawRecipe(recipe => { accountOf(recipe).isRecordTypeSelectionApplied = true; });
+            panel.expandAllTrees();
+
+            expect(sectionSummaryOf(panel)).toBe('1 object · generated from a choice');
 
         });
 
@@ -803,37 +876,80 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         });
 
-        it('searches objects, record types and the fields they restrict, and hides what does not match', () => {
+        it('narrows its rows with the Treecipe search, which has no box of its own, and never hides a tree object (#321)', () => {
 
             const panel = drawRecipe();
             const recordTypesPanel = openRecordTypesTab(panel);
             const accountGroup = () => panel.findAll(recordTypesPanel, 'recordTypeObject')[0];
-            const matchCount = () => panel.findAll(recordTypesPanel, 'tabMatchCount')[0].textContent;
 
-            panel.typeIntoTabSearch(accountCardOf(panel), 'treeRecordTypes', 'nothing like it');
+            expect(panel.findAll(recordTypesPanel, 'tabSearchInput')).toHaveLength(0);
+
+            panel.typeIntoFilter('nothing like it');
             expect(panel.isHidden(accountGroup())).toBe(true);
-            expect(matchCount()).toBe('no matches');
+            expect(sectionSummaryOf(panel)).toBe('no matching objects · generated by default');
+            expect(panel.objectElements().filter((objectElement: any) => panel.isHidden(objectElement))).toHaveLength(0);
 
-            panel.typeIntoTabSearch(accountCardOf(panel), 'treeRecordTypes', 'PARTNER');
+            panel.typeIntoFilter('PARTNER');
             expect(panel.isHidden(accountGroup())).toBe(false);
 
-            panel.typeIntoTabSearch(accountCardOf(panel), 'treeRecordTypes', 'rating__c');
+            panel.typeIntoFilter('rating__c');
             expect(panel.isHidden(accountGroup())).toBe(false);
-            expect(matchCount()).toBe('1 of 1 object');
+            expect(sectionSummaryOf(panel)).toBe('1 of 1 object · generated by default');
+
+            panel.typeIntoFilter('');
+            expect(sectionSummaryOf(panel)).toBe('1 object · generated by default');
 
         });
 
-        it('keeps the tab and its search in the place, and leaves the search out of a place that never typed one', () => {
+        it('narrows rows built after the search was typed (#321)', () => {
+
+            const panel = drawRecipe();
+            panel.expandAllTrees();
+            panel.typeIntoFilter('nothing like it');
+
+            const recordTypesPanel = openRecordTypesTab(panel);
+
+            expect(panel.isHidden(panel.findAll(recordTypesPanel, 'recordTypeObject')[0])).toBe(true);
+
+        });
+
+        it('keeps the section expanded in the place on the Treecipe tab, and leaves it out once collapsed (#321)', () => {
 
             const panel = drawRecipe();
             openRecordTypesTab(panel);
 
             const savedTree = () => panel.savedState().trees.find((treePlace: any) => treePlace.treeKey === ACCOUNT_TREE_KEY);
-            expect(savedTree().selectedTab).toBe('recordTypes');
+            expect(savedTree().selectedTab).toBe('treecipe');
+            expect(savedTree().isRecordTypesExpanded).toBe(true);
             expect(savedTree().searchQueries).not.toHaveProperty('recordTypes');
 
-            panel.typeIntoTabSearch(accountCardOf(panel), 'treeRecordTypes', 'Partner');
-            expect(savedTree().searchQueries.recordTypes).toBe('Partner');
+            sectionHeaderOf(panel).dispatch('click');
+            expect(savedTree()).not.toHaveProperty('isRecordTypesExpanded');
+
+        });
+
+        it('restores an expanded section, and a place saved on the old Record types tab as one (#321)', () => {
+
+            const savedPlaceWith = (treePlace: Record<string, unknown>) => ({
+                version: RECIPE_COCKPIT_PANEL_PLACE_VERSION,
+                runFolderName: CURRENT_RUN_FOLDER_NAME,
+                isOrgPickerInUse: false,
+                isFavoritesOnly: false,
+                scrollY: 0,
+                trees: [{ treeKey: ACCOUNT_TREE_KEY, isExpanded: true, selectedTab: 'treecipe', searchQueries: { treecipe: '', datasets: '' }, expandedObjectKeys: [], openPicklistKeys: [], ...treePlace }]
+            });
+
+            [{ isRecordTypesExpanded: true }, { selectedTab: 'recordTypes', searchQueries: { treecipe: '', datasets: '', recordTypes: 'Partner' } }].forEach(treePlace => {
+
+                const panel = runPanelScript({ savedState: savedPlaceWith(treePlace) });
+                panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 3 });
+
+                const selectedTabs = panel.findAll(accountCardOf(panel), 'treeTab').filter((tabElement: any) => tabElement.attributes['aria-selected'] === 'true');
+                expect(selectedTabs.map((tabElement: any) => tabElement.textContent)).toEqual(['Treecipe']);
+                expect(panel.isHidden(sectionBodyOf(panel))).toBe(false);
+                expect(panel.isHidden(panel.findAll(sectionBodyOf(panel), 'recordTypeObject')[0])).toBe(false);
+
+            });
 
         });
 
@@ -888,30 +1004,30 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         });
 
-        it('narrows the tab to the object Change record types focuses', () => {
+        it('opens the section on the Treecipe tab, scrolled to the object Change record types names (#321)', () => {
 
             const panel = runPanelScript();
-            panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 6, focusTree: { treeKey: ACCOUNT_TREE_KEY, tab: 'recordTypes', searchText: 'Contact' } });
+            panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 6, focusTree: { treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: { objectApiName: 'Account' } } });
 
-            const recordTypesPanel = panel.tabPanelOf(accountCardOf(panel), 'treeRecordTypes');
-            expect(panel.isHidden(recordTypesPanel)).toBe(false);
-            expect(panel.findAll(recordTypesPanel, 'tabSearchInput')[0].value).toBe('Contact');
-            expect(panel.isHidden(panel.findAll(recordTypesPanel, 'recordTypeObject')[0])).toBe(true);
-
-            panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 7, focusTree: { treeKey: ACCOUNT_TREE_KEY, tab: 'recordTypes', searchText: 'Account' } });
-            const refocusedPanel = panel.tabPanelOf(accountCardOf(panel), 'treeRecordTypes');
-            expect(panel.isHidden(panel.findAll(refocusedPanel, 'recordTypeObject')[0])).toBe(false);
+            const selectedTabs = panel.findAll(accountCardOf(panel), 'treeTab').filter((tabElement: any) => tabElement.attributes['aria-selected'] === 'true');
+            expect(selectedTabs.map((tabElement: any) => tabElement.textContent)).toEqual(['Treecipe']);
+            expect(panel.isHidden(sectionBodyOf(panel))).toBe(false);
+            expect(panel.findAll(sectionBodyOf(panel), 'recordTypeObject')[0].scrolledIntoViewCount).toBe(1);
+            expect(panel.savedState().trees.find((treePlace: any) => treePlace.treeKey === ACCOUNT_TREE_KEY).isRecordTypesExpanded).toBe(true);
 
         });
 
-        it('opens the tab a regenerate reload focuses', () => {
+        it('opens the section a regenerate reload focuses, and scrolls nowhere for an object it does not list (#321)', () => {
 
-            const panel = runPanelScript();
-            panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 5, focusTree: { treeKey: ACCOUNT_TREE_KEY, tab: 'recordTypes' } });
+            [{}, { objectApiName: 'Contact' }].forEach((recordTypes, renderIndex) => {
 
-            const selectedTabs = panel.findAll(accountCardOf(panel), 'treeTab').filter((tabElement: any) => tabElement.attributes['aria-selected'] === 'true');
-            expect(selectedTabs.map((tabElement: any) => tabElement.textContent)).toEqual(['Record types']);
-            expect(panel.isHidden(panel.tabPanelOf(accountCardOf(panel), 'treeRecordTypes'))).toBe(false);
+                const panel = runPanelScript();
+                panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 5 + renderIndex, focusTree: { treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: recordTypes } });
+
+                expect(panel.isHidden(sectionBodyOf(panel))).toBe(false);
+                expect(panel.findAll(sectionBodyOf(panel), 'recordTypeObject')[0].scrolledIntoViewCount).toBe(0);
+
+            });
 
         });
 
