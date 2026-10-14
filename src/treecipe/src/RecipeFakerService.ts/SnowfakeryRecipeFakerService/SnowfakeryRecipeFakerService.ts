@@ -3,6 +3,7 @@
 import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { IRecipeFakerService } from "../IRecipeFakerService";
 import { RecipeYamlScalar } from "../RecipeYamlScalar/RecipeYamlScalar";
+import { RecipeFieldConstraint, RecipeFieldConstraintDateBound, ResolvedRecipeFieldConstraint } from "../RecipeFieldConstraint/RecipeFieldConstraint";
 
 export class SnowfakeryRecipeFakerService implements IRecipeFakerService {
 
@@ -585,6 +586,51 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         const maxNumbersLeftOfDecimal = precision - effectiveScale;
         return `${this.openingRecipeSyntax}fake.pydecimal(left_digits=${maxNumbersLeftOfDecimal}, right_digits=${effectiveScale}, positive=True)${this.closingRecipeSyntax}`;
     
+    }
+
+    buildConstrainedExpression(fieldType: string, constraint: ResolvedRecipeFieldConstraint): string {
+
+        if ( RecipeFieldConstraint.getConstraintKind(fieldType) !== constraint.kind ) {
+            throw new Error(`A ${constraint.kind} constraint does not apply to a ${fieldType} field.`);
+        }
+
+        if ( constraint.kind === 'number' ) {
+            return constraint.scale === 0
+                ? `${this.openingRecipeSyntax}fake.random_int(min=${constraint.min}, max=${constraint.max})${this.closingRecipeSyntax}`
+                : `${this.openingRecipeSyntax}fake.pydecimal(min_value=${constraint.min}, max_value=${constraint.max}, right_digits=${constraint.scale})${this.closingRecipeSyntax}`;
+        }
+
+        if ( constraint.kind === 'length' ) {
+            return `${this.openingRecipeSyntax}fake.pystr(min_chars=${constraint.min}, max_chars=${constraint.max})${this.closingRecipeSyntax}`;
+        }
+
+        const isDateTime = fieldType === 'DateTime';
+        const startDate = this.buildDateBoundExpression(constraint.from, isDateTime);
+        const endDate = this.buildDateBoundExpression(constraint.to, isDateTime);
+
+        return isDateTime
+            ? `${this.openingRecipeSyntax}(fake.date_time_between(start_date=${startDate}, end_date=${endDate})).strftime('%Y-%m-%dT%H:%M:%S.000+0000')${this.closingRecipeSyntax}`
+            : `${this.openingRecipeSyntax}fake.date_between(start_date=${startDate}, end_date=${endDate})${this.closingRecipeSyntax}`;
+
+    }
+
+    /*
+        Faker reads "-30d" itself and measures it when the recipe runs; it does not read an ISO
+        string, so an instant goes through snowfakery's own date() or datetime().
+    */
+    private buildDateBoundExpression(dateBound: RecipeFieldConstraintDateBound, isDateTime: boolean): string {
+
+        if ( 'relativeDays' in dateBound ) {
+            if ( dateBound.relativeDays === 0 ) {
+                return isDateTime ? `'now'` : `'today'`;
+            }
+            return `'${dateBound.relativeDays > 0 ? '+' : '-'}${Math.abs(dateBound.relativeDays)}d'`;
+        }
+
+        return isDateTime
+            ? `datetime('${dateBound.utcDateTime}')`
+            : `date('${dateBound.utcDateTime.slice(0, 10)}')`;
+
     }
 
 }

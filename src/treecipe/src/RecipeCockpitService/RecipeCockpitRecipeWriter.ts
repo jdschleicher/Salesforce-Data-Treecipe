@@ -139,6 +139,19 @@ export interface IRecipeFilterRequest {
     excludedFieldApiNamesByObject?: ReadonlyMap<string, readonly string[]>;
     objectCountsByObject?: ReadonlyMap<string, number>;
     fixedValuesByObject?: ReadonlyMap<string, ReadonlyMap<string, IRecipeFixedValue>>;
+    constrainedExpressionsByObject?: ReadonlyMap<string, ReadonlyMap<string, string>>;
+}
+
+/*
+    A field's constrained faker expression (#323), built by the recipe's own backend from bounds the
+    host already checked, and written in place of the field's line on every kept occurrence of its
+    object, double-quoted so its ": " and "," never read as YAML. A fixed value on the same field
+    wins: it is one value, and a range around one value says nothing more.
+*/
+export interface IRecipeFilterConstrainedExpression {
+    objectApiName: string;
+    fieldApiName: string;
+    expression: string;
 }
 
 /*
@@ -188,6 +201,7 @@ export type RecipeFilterResult =
         droppedFields: IRecipeFilterDroppedField[];
         appliedCounts: IRecipeFilterCount[];
         appliedFixedValues: IRecipeFilterFixedValue[];
+        appliedConstrainedExpressions: IRecipeFilterConstrainedExpression[];
     }
     | { isFiltered: false; refusal: IRecipeWriterRefusal };
 
@@ -325,6 +339,9 @@ const RECORD_TYPE_SECTION_MARKER = '### TODO: -- RecordType Options -- ';
 const FIXED_VALUE_TEMPLATE_OPENERS = ['${', '{{', '{%', '<<', '<%'];
 const FIXED_NUMBER_PATTERN = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
 const FIXED_NUMBER_MAX_EXACT_DIGITS = 15;
+// THE BACKEND BUILT THE EXPRESSION, SO THIS ONLY HOLDS IT TO ONE TEMPLATE: NO SECOND OPENER OF EITHER ENVIRONMENT, AND NO "}}" THAT ENDS faker-js EARLY
+const CONSTRAINED_EXPRESSION_INNER_DELIMITERS = ['${', '{{', '}}', '{%', '%}', '<<', '<%'];
+const CONSTRAINED_EXPRESSION_MAX_LENGTH = 1000;
 // RelationshipService.referenceIdRequiredTodo, ALONE OR WITH THE " -- <Parent>, <Parent>" A NESTED TREE APPENDS (#46) -- A TEST HOLDS THE TWO TOGETHER
 // AN API NAME THAT YAML 1.1 (PyYAML, snowfakery's reader) OR 1.2 (js-yaml) LOADS AS A BOOLEAN OR NULL RATHER THAN A STRING
 const YAML_NON_STRING_PLAIN_SCALAR_PATTERN = /^(?:y|Y|yes|Yes|YES|n|N|no|No|NO|true|True|TRUE|false|False|FALSE|on|On|ON|off|Off|OFF|null|Null|NULL)$/;
@@ -1651,6 +1668,26 @@ export class RecipeCockpitRecipeWriter {
             }
         }
 
+        const constrainedExpressionsByObject = new Map<string, Map<string, string>>();
+        for ( const [objectApiName, expressionsByField] of filterRequest.constrainedExpressionsByObject ?? new Map<string, ReadonlyMap<string, string>>() ) {
+            if ( !API_NAME_PATTERN.test(objectApiName) ) {
+                return refuseFilter('invalid-object-api-name', `"${objectApiName}" is not an object api name.`, objectApiName);
+            }
+            for ( const [fieldApiName, expression] of expressionsByField ) {
+                if ( !API_NAME_PATTERN.test(fieldApiName) ) {
+                    return { isFiltered: false, refusal: { reason: 'invalid-field-api-name', message: `"${fieldApiName}" is not a field api name.`, objectApiName: objectApiName, fieldApiName: fieldApiName } };
+                }
+                const expressionRefusal = this.checkConstrainedExpression(expression);
+                if ( expressionRefusal !== undefined ) {
+                    return { isFiltered: false, refusal: { reason: 'invalid-value', message: `The constrained expression for ${objectApiName}.${fieldApiName} ${expressionRefusal}`, objectApiName: objectApiName, fieldApiName: fieldApiName } };
+                }
+            }
+            const expressionsByUnfixedField = new Map([...expressionsByField].filter(([fieldApiName]) => !fixedValuesByObject.get(objectApiName)?.has(fieldApiName)));
+            if ( expressionsByUnfixedField.size > 0 ) {
+                constrainedExpressionsByObject.set(objectApiName, expressionsByUnfixedField);
+            }
+        }
+
         const recipeLines = this.splitRecipeLines(recipeText);
         const { lines } = recipeLines;
         const scannedObjects = this.scanRecipeObjects(lines);
@@ -1670,8 +1707,8 @@ export class RecipeCockpitRecipeWriter {
         }
 
         // NOTHING EXCLUDED, NO COUNT SET AND NO VALUE FIXED IS THE RECIPE ITSELF, BYTE FOR BYTE
-        if ( excludedObjectApiNames.size === 0 && excludedFieldsByObject.size === 0 && countsByObject.size === 0 && fixedValuesByObject.size === 0 ) {
-            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [], appliedCounts: [], appliedFixedValues: [] };
+        if ( excludedObjectApiNames.size === 0 && excludedFieldsByObject.size === 0 && countsByObject.size === 0 && fixedValuesByObject.size === 0 && constrainedExpressionsByObject.size === 0 ) {
+            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [], appliedCounts: [], appliedFixedValues: [], appliedConstrainedExpressions: [] };
         }
 
         const friendIndex = this.buildScannedFriendIndex(scannedObjects);
@@ -1726,12 +1763,13 @@ export class RecipeCockpitRecipeWriter {
 
         const hasFieldToFix = keptObjects.some(keptObject => {
             const fixedValuesByField = fixedValuesByObject.get(keptObject.objectApiName);
-            return !!fixedValuesByField && keptObject.fields.some(scannedField => fixedValuesByField.has(scannedField.fieldApiName));
+            const expressionsByField = constrainedExpressionsByObject.get(keptObject.objectApiName);
+            return keptObject.fields.some(scannedField => !!fixedValuesByField?.has(scannedField.fieldApiName) || !!expressionsByField?.has(scannedField.fieldApiName));
         });
 
         // NOTHING IN THIS RECIPE IS LEFT OUT, RECOUNTED OR FIXED: THE RECIPE ITSELF, BYTE FOR BYTE
         if ( droppedHeaderIndexes.size === 0 && !hasLookupToDrop && !hasFieldToDrop && countOverridesByLineIndex.size === 0 && !hasFieldToFix ) {
-            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [], appliedCounts: [], appliedFixedValues: [] };
+            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [], appliedCounts: [], appliedFixedValues: [], appliedConstrainedExpressions: [] };
         }
 
         if ( keptObjects.length === 0 ) {
@@ -1815,6 +1853,9 @@ export class RecipeCockpitRecipeWriter {
         const fixedFieldsByLineIndex = new Map<number, { fieldApiName: string; fixedValue: IRecipeFixedValue }>();
         const appliedFixedValueKeys = new Set<string>();
         const appliedFixedValues: IRecipeFilterFixedValue[] = [];
+        const constrainedFieldsByLineIndex = new Map<number, { fieldApiName: string; expression: string }>();
+        const appliedConstrainedExpressionKeys = new Set<string>();
+        const appliedConstrainedExpressions: IRecipeFilterConstrainedExpression[] = [];
 
         keptObjects.forEach(keptObject => {
 
@@ -1823,6 +1864,7 @@ export class RecipeCockpitRecipeWriter {
             const newParent = newParentsByMovedHeaderIndex.get(keptObject.headerIndex);
             const excludedFieldApiNames = excludedFieldsByObject.get(keptObject.objectApiName);
             const fixedValuesByField = fixedValuesByObject.get(keptObject.objectApiName);
+            const expressionsByField = constrainedExpressionsByObject.get(keptObject.objectApiName);
 
             keptObject.fields.forEach(scannedField => {
 
@@ -1846,6 +1888,18 @@ export class RecipeCockpitRecipeWriter {
                     if ( !appliedFixedValueKeys.has(fixedValueKey) ) {
                         appliedFixedValueKeys.add(fixedValueKey);
                         appliedFixedValues.push({ objectApiName: keptObject.objectApiName, fieldApiName: scannedField.fieldApiName, ...fixedValue });
+                    }
+                    return;
+                }
+
+                const expression = expressionsByField?.get(scannedField.fieldApiName);
+                if ( expression !== undefined ) {
+                    constrainedFieldsByLineIndex.set(scannedField.startIndex, { fieldApiName: scannedField.fieldApiName, expression: expression });
+                    removeFieldLines(scannedField, scannedField.startIndex + 1);
+                    const constrainedKey = `${keptObject.objectApiName}\n${scannedField.fieldApiName}`;
+                    if ( !appliedConstrainedExpressionKeys.has(constrainedKey) ) {
+                        appliedConstrainedExpressionKeys.add(constrainedKey);
+                        appliedConstrainedExpressions.push({ objectApiName: keptObject.objectApiName, fieldApiName: scannedField.fieldApiName, expression: expression });
                     }
                     return;
                 }
@@ -1945,11 +1999,14 @@ export class RecipeCockpitRecipeWriter {
 
                 const rewiredField = rewiredFieldsByLineIndex.get(lineIndex);
                 const fixedField = fixedFieldsByLineIndex.get(lineIndex);
+                const constrainedField = constrainedFieldsByLineIndex.get(lineIndex);
                 const countOverride = countOverridesByLineIndex.get(lineIndex);
                 const renderedLine = rewiredField
                     ? `${this.getObjectLayout(newObjectIndent).fieldIndent}${rewiredField.fieldApiName}: ${rewiredField.nickname}`
                     : fixedField
                     ? this.buildFixedValueFieldLine(this.getObjectLayout(newObjectIndent).fieldIndent, fixedField.fieldApiName, fixedField.fixedValue)
+                    : constrainedField
+                    ? this.buildConstrainedExpressionFieldLine(this.getObjectLayout(newObjectIndent).fieldIndent, constrainedField.fieldApiName, constrainedField.expression)
                     : countOverride !== undefined
                         ? `${this.getObjectLayout(newObjectIndent).propertyIndent}count: ${countOverride}`
                         : reindent(lines[lineIndex], indentDelta);
@@ -1987,7 +2044,8 @@ export class RecipeCockpitRecipeWriter {
         const headerParts = [
             ...( leftOutParts.length > 0 ? [`leaving out: ${leftOutParts.join('; ')}`] : [] ),
             ...( appliedCounts.length > 0 ? [`with counts: ${appliedCounts.map(appliedCount => `${appliedCount.objectApiName} ${appliedCount.count}`).join(', ')}`] : [] ),
-            ...( appliedFixedValues.length > 0 ? [`with fixed values: ${appliedFixedValues.map(appliedFixedValue => `${appliedFixedValue.objectApiName}.${appliedFixedValue.fieldApiName}`).join(', ')}`] : [] )
+            ...( appliedFixedValues.length > 0 ? [`with fixed values: ${appliedFixedValues.map(appliedFixedValue => `${appliedFixedValue.objectApiName}.${appliedFixedValue.fieldApiName}`).join(', ')}`] : [] ),
+            ...( appliedConstrainedExpressions.length > 0 ? [`with constrained fields: ${appliedConstrainedExpressions.map(appliedExpression => `${appliedExpression.objectApiName}.${appliedExpression.fieldApiName}`).join(', ')}`] : [] )
         ];
         emit(`# Recipe Cockpit -- a filtered copy of this tree's recipe, ${headerParts.join('; ')}`);
 
@@ -2043,8 +2101,8 @@ export class RecipeCockpitRecipeWriter {
             return { objectApiName: movedObject.objectApiName, ...( newParent ? { newParentObjectApiName: newParent.objectApiName } : {} ) };
         });
 
-        if ( !this.isFilteredRecipeReadBack(filteredRecipeText, keptObjects, finalParentHeaderIndexes, friendIndex, excludedObjectApiNames, excludedFieldsByObject, appliedCounts, fixedValuesByObject) ) {
-            return refuseFilter('unsupported-filter-layout', 'The filtered copy did not read back as the kept objects nested where they were meant to be, with the counts and fixed values that were set, so it was not used.');
+        if ( !this.isFilteredRecipeReadBack(filteredRecipeText, keptObjects, finalParentHeaderIndexes, friendIndex, excludedObjectApiNames, excludedFieldsByObject, appliedCounts, fixedValuesByObject, constrainedExpressionsByObject) ) {
+            return refuseFilter('unsupported-filter-layout', 'The filtered copy did not read back as the kept objects nested where they were meant to be, with the counts, fixed values and constraints that were set, so it was not used.');
         }
 
         return {
@@ -2055,9 +2113,42 @@ export class RecipeCockpitRecipeWriter {
             movedObjects: movedObjects,
             droppedFields: droppedFields,
             appliedCounts: appliedCounts,
-            appliedFixedValues: appliedFixedValues
+            appliedFixedValues: appliedFixedValues,
+            appliedConstrainedExpressions: appliedConstrainedExpressions
         };
 
+    }
+
+    /*
+        Why a constrained expression cannot be written (#323), or undefined. The backend built it from
+        bounds the host checked, so this holds the BACKEND to the shape the copy relies on rather than
+        guarding a reader's text: one "${{ ... }}" and nothing else, on one line, with no second
+        template delimiter of either snowfakery environment inside -- and no "}}", which ends a
+        faker-js expression early. The answer completes "The constrained expression for X ...".
+    */
+    static checkConstrainedExpression(expression: string): string | undefined {
+
+        if ( typeof expression !== 'string' || !expression.startsWith('${{') || !expression.endsWith('}}') || expression.length < 6 ) {
+            return 'is not one "${{ ... }}" expression.';
+        }
+        if ( expression.length > CONSTRAINED_EXPRESSION_MAX_LENGTH ) {
+            return `is longer than ${CONSTRAINED_EXPRESSION_MAX_LENGTH} characters.`;
+        }
+        if ( /[\u0000-\u001f\u007f-\u009f\u2028\u2029\ufeff\ufffe\uffff]/.test(expression) ) {
+            return 'contains a line break or control character.';
+        }
+        const innerCode = expression.slice(3, -2);
+        const innerDelimiter = CONSTRAINED_EXPRESSION_INNER_DELIMITERS.find(delimiter => innerCode.includes(delimiter));
+        if ( innerDelimiter !== undefined ) {
+            return `contains "${innerDelimiter}" inside it.`;
+        }
+        return undefined;
+
+    }
+
+    // DOUBLE-QUOTED, SO ITS ": " AND "," ARE NEVER READ AS YAML; checkConstrainedExpression LEAVES ONLY \ AND " TO ESCAPE
+    static buildConstrainedExpressionFieldLine(fieldIndent: string, fieldApiName: string, expression: string): string {
+        return `${fieldIndent}${fieldApiName}: "${expression.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
     }
 
     /*
@@ -2165,7 +2256,8 @@ export class RecipeCockpitRecipeWriter {
                                             excludedObjectApiNames: Set<string>,
                                             excludedFieldsByObject: Map<string, Set<string>>,
                                             appliedCounts: IRecipeFilterCount[],
-                                            fixedValuesByObject: Map<string, Map<string, IRecipeFixedValue>>): boolean {
+                                            fixedValuesByObject: Map<string, Map<string, IRecipeFixedValue>>,
+                                            constrainedExpressionsByObject: Map<string, Map<string, string>>): boolean {
 
         const describeOccurrence = (scannedObject: IScannedObject | undefined) => scannedObject ? `${scannedObject.objectApiName}\u0000${scannedObject.nicknames.join('\u0000')}` : '';
         const describeExpected = (keptObject: IScannedObject) => {
@@ -2196,6 +2288,14 @@ export class RecipeCockpitRecipeWriter {
                         .filter(scannedField => fixedValuesByField.has(scannedField.fieldApiName))
                         .every(scannedField => scannedField.endIndex === scannedField.startIndex + 1
                                                 && filteredLines[scannedField.startIndex] === this.buildFixedValueFieldLine(fieldIndent, scannedField.fieldApiName, fixedValuesByField.get(scannedField.fieldApiName) as IRecipeFixedValue));
+                })
+                && filteredObjects.every(filteredObject => {
+                    const expressionsByField = constrainedExpressionsByObject.get(filteredObject.objectApiName);
+                    const fieldIndent = this.getObjectLayout(filteredObject.objectIndent).fieldIndent;
+                    return !expressionsByField || filteredObject.fields
+                        .filter(scannedField => expressionsByField.has(scannedField.fieldApiName))
+                        .every(scannedField => scannedField.endIndex === scannedField.startIndex + 1
+                                                && filteredLines[scannedField.startIndex] === this.buildConstrainedExpressionFieldLine(fieldIndent, scannedField.fieldApiName, expressionsByField.get(scannedField.fieldApiName) as string));
                 });
 
     }

@@ -26,7 +26,7 @@ export type GatedTest = {
 */
 export class PythonTestHarness {
 
-    static readonly installCommand = 'python3 -m pip install PyYAML Jinja2';
+    static readonly installCommand = 'python3 -m pip install PyYAML Jinja2 Faker';
 
     static isModuleImportable(moduleName: string): boolean {
 

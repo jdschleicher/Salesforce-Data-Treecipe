@@ -1,4 +1,5 @@
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
+import { ResolvedRecipeFieldConstraint } from "./RecipeFieldConstraint/RecipeFieldConstraint";
 
 export interface IRecipeFakerService {
 
@@ -35,4 +36,11 @@ export interface IRecipeFakerService {
     buildTextRecipeValueWithLength(length: number): string
     buildNumericRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string
     buildCurrencyRecipeValueWithPrecisionAndScale(precision: number, scale?: number): string
+    /*
+        The ONE-LINE expression a field generates with once the Recipe Cockpit constrains it (#323).
+        fieldType is the Salesforce <type>; the constraint is already resolved and in bounds
+        (RecipeFieldConstraint.resolve), so a backend formats it and decides nothing. Throws for a
+        constraint whose kind is not the field type's.
+    */
+    buildConstrainedExpression(fieldType: string, constraint: ResolvedRecipeFieldConstraint): string
 }

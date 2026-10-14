@@ -168,7 +168,7 @@ describe('PythonTestHarness', () => {
 
             const failingTestBody = PythonTestHarness.buildFailingTestBody(PythonTestHarness.findMissingModules(['yaml', 'jinja2']));
 
-            expect(failingTestBody).toThrow("python3 cannot import yaml, and CI is set, so this check fails rather than skipping. Install it with: python3 -m pip install PyYAML Jinja2");
+            expect(failingTestBody).toThrow("python3 cannot import yaml, and CI is set, so this check fails rather than skipping. Install it with: python3 -m pip install PyYAML Jinja2 Faker");
 
         });
 

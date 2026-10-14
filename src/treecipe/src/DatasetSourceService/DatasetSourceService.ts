@@ -70,6 +70,14 @@ export interface IDatasetSource {
     objectCountsByObject?: Record<string, number>;
     // THE VALUES THE RECIPE COCKPIT FIXED (#262), BY OBJECT THEN FIELD; ABSENT WHEN NONE WAS. READ BACK WITH NO PROTOTYPE
     fixedValuesByObject?: Record<string, Record<string, string>>;
+    // THE FAKER CONSTRAINTS THE RECIPE COCKPIT SET (#323), BY OBJECT THEN FIELD, EACH BOUND AS TYPED; ABSENT WHEN NONE WAS. READ BACK WITH NO PROTOTYPE
+    constraintsByObject?: Record<string, Record<string, IDatasetSourceFieldConstraint>>;
+}
+
+// A FIELD'S BOUNDS AS THE READER TYPED THEM (#323); AN ABSENT ONE WAS THE DEFAULT
+export interface IDatasetSourceFieldConstraint {
+    min?: string;
+    max?: string;
 }
 
 export interface IRecipeSourceNames {
@@ -182,12 +190,14 @@ export class DatasetSourceService {
                                 excludedObjectApiNames: string[] = [],
                                 excludedFieldApiNamesByObject: Record<string, string[]> = {},
                                 objectCountsByObject: Record<string, number> = {},
-                                fixedValuesByObject: Record<string, Record<string, string>> = {}): IDatasetSource {
+                                fixedValuesByObject: Record<string, Record<string, string>> = {},
+                                constraintsByObject: Record<string, Record<string, IDatasetSourceFieldConstraint>> = {}): IDatasetSource {
 
         // fromEntries DEFINES EACH KEY, SO AN OBJECT NAMED __proto__ IS RECORDED RATHER THAN SET AS A PROTOTYPE
         const recordedFieldExclusions = Object.entries(excludedFieldApiNamesByObject).filter(([, fieldApiNames]) => fieldApiNames.length > 0);
         const recordedObjectCounts = Object.entries(objectCountsByObject);
         const recordedFixedValues = Object.entries(fixedValuesByObject).filter(([, fixedValuesByField]) => Object.keys(fixedValuesByField).length > 0);
+        const recordedConstraints = Object.entries(constraintsByObject).filter(([, constraintsByField]) => Object.keys(constraintsByField).length > 0);
 
         return {
             schemaVersion: DATASET_SOURCE_SCHEMA_VERSION,
@@ -205,6 +215,9 @@ export class DatasetSourceService {
             ...( recordedObjectCounts.length > 0 ? { objectCountsByObject: Object.fromEntries(recordedObjectCounts) } : {} ),
             ...( recordedFixedValues.length > 0
                 ? { fixedValuesByObject: Object.fromEntries(recordedFixedValues.map(([objectApiName, fixedValuesByField]) => [objectApiName, Object.fromEntries(Object.entries(fixedValuesByField))])) }
+                : {} ),
+            ...( recordedConstraints.length > 0
+                ? { constraintsByObject: Object.fromEntries(recordedConstraints.map(([objectApiName, constraintsByField]) => [objectApiName, Object.fromEntries(Object.entries(constraintsByField).map(([fieldApiName, constraint]) => [fieldApiName, DatasetSourceService.copyFieldConstraint(constraint)]))])) }
                 : {} )
         };
 
@@ -404,6 +417,20 @@ export class DatasetSourceService {
             ))
         );
 
+        // OPTIONAL TOO (#323); PRESENT, IT MUST MAP EACH NAME TO A MAP OF NAMES TO { min?, max? } STRINGS, AT LEAST ONE SET
+        const constraintsByObject = candidate.constraintsByObject;
+        const isConstraintMapValid = constraintsByObject === undefined || (
+            typeof constraintsByObject === 'object'
+            && constraintsByObject !== null
+            && !Array.isArray(constraintsByObject)
+            && Object.values(constraintsByObject).every(constraintsByField => (
+                typeof constraintsByField === 'object'
+                && constraintsByField !== null
+                && !Array.isArray(constraintsByField)
+                && Object.values(constraintsByField).every(constraint => this.isFieldConstraint(constraint))
+            ))
+        );
+
         // OPTIONAL, AND ONLY ON A createInOrg FILE (#254); PRESENT, EACH VALUE IS "random", "blank" OR A LIST OF Ids
         const lookupParentsByField = candidate.lookupParentsByField;
         const isLookupParentMapValid = lookupParentsByField === undefined || (
@@ -425,6 +452,7 @@ export class DatasetSourceService {
                         && isExcludedFieldMapValid
                         && isObjectCountMapValid
                         && isFixedValueMapValid
+                        && isConstraintMapValid
                         && isLookupParentMapValid
                         && isStringOrNull(candidate.recipeRunFolderName)
                         && isStringOrNull(candidate.recipeTreeFolderName)
@@ -470,6 +498,18 @@ export class DatasetSourceService {
             });
         }
 
+        let readConstraints: Record<string, Record<string, IDatasetSourceFieldConstraint>> | undefined;
+        if ( constraintsByObject !== undefined ) {
+            readConstraints = Object.create(null) as Record<string, Record<string, IDatasetSourceFieldConstraint>>;
+            Object.entries(constraintsByObject as Record<string, Record<string, IDatasetSourceFieldConstraint>>).forEach(([objectApiName, constraintsByField]) => {
+                const readByField = Object.create(null) as Record<string, IDatasetSourceFieldConstraint>;
+                Object.entries(constraintsByField).forEach(([fieldApiName, constraint]) => {
+                    readByField[fieldApiName] = this.copyFieldConstraint(constraint);
+                });
+                ( readConstraints as Record<string, Record<string, IDatasetSourceFieldConstraint>> )[objectApiName] = readByField;
+            });
+        }
+
         let readLookupParents: Record<string, LookupParentRecord> | undefined;
         if ( lookupParentsByField !== undefined ) {
             readLookupParents = Object.create(null) as Record<string, LookupParentRecord>;
@@ -496,9 +536,30 @@ export class DatasetSourceService {
             ...( Array.isArray(excludedObjectApiNames) ? { excludedObjectApiNames: [...(excludedObjectApiNames as string[])] } : {} ),
             ...( readFieldExclusions ? { excludedFieldApiNamesByObject: readFieldExclusions } : {} ),
             ...( readObjectCounts ? { objectCountsByObject: readObjectCounts } : {} ),
-            ...( readFixedValues ? { fixedValuesByObject: readFixedValues } : {} )
+            ...( readFixedValues ? { fixedValuesByObject: readFixedValues } : {} ),
+            ...( readConstraints ? { constraintsByObject: readConstraints } : {} )
         };
 
+    }
+
+    static isFieldConstraint(candidate: unknown): candidate is IDatasetSourceFieldConstraint {
+
+        if ( typeof candidate !== 'object' || candidate === null || Array.isArray(candidate) ) {
+            return false;
+        }
+        const { min, max } = candidate as Record<string, unknown>;
+        return ( min !== undefined || max !== undefined )
+            && ( min === undefined || typeof min === 'string' )
+            && ( max === undefined || typeof max === 'string' );
+
+    }
+
+    // ONLY THE TWO BOUNDS, SO NOTHING ELSE A HAND-EDITED FILE CARRIES IS PASSED ON
+    static copyFieldConstraint(constraint: IDatasetSourceFieldConstraint): IDatasetSourceFieldConstraint {
+        return {
+            ...( constraint.min !== undefined ? { min: constraint.min } : {} ),
+            ...( constraint.max !== undefined ? { max: constraint.max } : {} )
+        };
     }
 
     private static matchRecordedNames(datasetSource: IDatasetSource, knownRecipeRuns: IKnownRecipeRun[]): IDatasetSourceReadResult {

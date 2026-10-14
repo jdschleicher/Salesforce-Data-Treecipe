@@ -66,8 +66,10 @@ jobs:
 
     # snowfakery reads a recipe with PyYAML and renders it with Jinja2, and the picklist escaping
     # tests (#155) check generated recipes against both. They skip where python3 lacks either
-    # module, and FAIL where CI is set, so the check cannot silently stop running here. Pinned for
-    # the same reason every other install in this job is.
+    # module, and FAIL where CI is set, so the check cannot silently stop running here. Faker is
+    # what snowfakery's "fake." calls run on: the faker constraint tests (#323) generate with it
+    # and check every value is inside its bounds. Pinned for the same reason every other install
+    # in this job is.
     - name: Use Python 3.12
       uses: actions/setup-python@v5
       with:
@@ -75,9 +77,9 @@ jobs:
 
     # A BLOCK scalar, because ":all: " in a plain one is a YAML mapping indicator: that one line made
     # this whole file unparseable, and GitHub reports an unparseable workflow as a run with no jobs.
-    - name: Install PyYAML and Jinja2 for the recipe escaping tests
+    - name: Install PyYAML, Jinja2 and Faker for the recipe tests
       run: |
-        python3 -m pip install --only-binary=:all: PyYAML==6.0.2 Jinja2==3.1.6 MarkupSafe==3.0.2
+        python3 -m pip install --only-binary=:all: PyYAML==6.0.2 Jinja2==3.1.6 MarkupSafe==3.0.2 Faker==37.1.0 tzdata==2025.2
 
     - name: Run Jest tests
       run: xvfb-run -a npm run jest-test-summary

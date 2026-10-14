@@ -59,7 +59,15 @@ import {
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { RunFakerConfirmation } from '../ExtensionCommandService/RunFakerConfirmation';
 import { IScratchOrgAliasChoice, IScratchOrgPlan, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
-import { PARENT_PICKER_RANDOM_LABEL, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
+import { FAKER_JS_RECIPE_INDICATOR, PARENT_PICKER_RANDOM_LABEL, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
+import {
+    IRecipeFieldConstraintTarget,
+    IStoredRecipeFieldConstraint,
+    RecipeFieldConstraint,
+    RECIPE_FIELD_CONSTRAINT_DATE_FIELD_TYPES,
+    RECIPE_FIELD_CONSTRAINT_LENGTH_FIELD_TYPES,
+    RECIPE_FIELD_CONSTRAINT_NUMBER_FIELD_TYPES
+} from '../RecipeFakerService.ts/RecipeFieldConstraint/RecipeFieldConstraint';
 
 // SHARED WITH THE TESTS SO THE PANEL'S VIEW TYPE CANNOT DRIFT FROM WHAT IS ASSERTED
 export const RECIPE_COCKPIT_VIEW_TYPE = 'treecipe.recipeCockpit';
@@ -199,7 +207,8 @@ export const RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY = 'treecipe.recipeCock
     entry still reads, as objects with nothing unticked.
 */
 export const RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY = 'treecipe.recipeCockpit.objectSelection';
-export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION = 4;
+export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION = 5;
+export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_CONSTRAINTS = 4;
 export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES = 3;
 export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS = 2;
 export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS = 1;
@@ -226,6 +235,17 @@ export const RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX = 'depends on ';
 export const RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hierarchy'];
 export const RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES = ['Number', 'Currency', 'Percent'];
 export const RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH = 32768;
+/*
+    Why a field's ✎ (#323) is disabled, beyond every reason its pin has: a field with a fixed value
+    generates one value, which no range narrows; a standard-field mapping has no metadata to hold a
+    bound to; Email, Phone and Url keep their format, which a length or range would not; and any
+    other type has no constraint to set.
+*/
+export const RECIPE_COCKPIT_CONSTRAINT_FIXED_VALUE_REASON = 'it has a fixed value';
+export const RECIPE_COCKPIT_CONSTRAINT_RECIPE_FILE_ONLY_REASON = 'a standard-field mapping has no metadata to check bounds against';
+export const RECIPE_COCKPIT_CONSTRAINT_FORMAT_REASON = 'its value has to stay a valid ';
+export const RECIPE_COCKPIT_CONSTRAINT_TYPE_REASON = 'this field type has no faker constraints';
+export const RECIPE_COCKPIT_CONSTRAINT_FORMAT_FIELD_TYPES = ['Email', 'Phone', 'Url'];
 export const RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL = 'Reset';
 export const RECIPE_COCKPIT_TREE_PREFERENCES_VERSION = 1;
 export const RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH = 80;
@@ -253,6 +273,13 @@ export const RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH = 'M4.5 8 H6.5 A4 4 0 0 1 6.5
 */
 export const RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH = 'M9 3 H15 L14 9 L17 12 V14 H7 V12 L10 9 Z M12 14 V21';
 export const RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = 'fixed';
+/*
+    A field's ✎ (#323), drawn like the pin: one path -- a pencil -- stroked from the palette, and
+    filled while the field has a constraint, so the shape, aria-pressed, the title and the row's
+    "constrained" badge all say it, never the colour alone.
+*/
+export const RECIPE_COCKPIT_CONSTRAINT_GLYPH_PATH = 'M4 20 L5 15 L15.5 4.5 L19.5 8.5 L9 19 Z M13.5 6.5 L17.5 10.5';
+export const RECIPE_COCKPIT_CONSTRAINT_BADGE_LABEL = 'constrained';
 /*
     The ▸/▾ of a tree card, a Treecipe object and a picklist field (#277), drawn like the chain link: a
     font's triangle sits on the text baseline, so no button rule could centre it. An open chevron (#307)
@@ -578,6 +605,8 @@ export interface IRecipeCockpitTreeViewModel {
     objectCounts?: IRecipeCockpitObjectCountViewModel[];
     // SET ONLY WHEN A FIELD OF THE CARD HAS A FIXED VALUE (#262) A LOCK DOES NOT HOLD BACK
     fixedValues?: IRecipeCockpitFixedValueViewModel[];
+    // SET ONLY WHEN A FIELD OF THE CARD HAS A FAKER CONSTRAINT (#323) NO LOCK, AND NO FIXED VALUE, HOLDS BACK
+    constraints?: IRecipeCockpitFieldConstraintViewModel[];
     // SET ONLY ON A CARD THAT CAN GENERATE WHOSE RECIPE HAS A TODO LOOKUP WITH A PARENT INSERTED BEFORE IT (#151)
     lookupWirings?: IRecipeCockpitLookupWiringViewModel[];
     // SET ONLY ON A CARD THAT CAN GENERATE WHOSE RECIPE HAS A TODO LOOKUP TO A STANDARD PARENT IT DOES NOT WRITE (#294)
@@ -590,6 +619,19 @@ export interface IRecipeCockpitFixedValueViewModel {
     fieldApiName: string;
     value: string;
     kind: RecipeFixedValueKind;
+}
+
+/*
+    The bounds the reader set on a field (#323), as typed -- an absent one is the default -- and the
+    expression the recipe's own backend builds from them, which the row draws in place of its faker
+    expression and the filtered copy writes. Both are the HOST's.
+*/
+export interface IRecipeCockpitFieldConstraintViewModel {
+    objectApiName: string;
+    fieldApiName: string;
+    min?: string;
+    max?: string;
+    expression: string;
 }
 
 export interface IRecipeCockpitObjectCountViewModel {
@@ -628,6 +670,7 @@ export interface IRecipeCockpitRunFakerFilteredRecipe {
     excludedFieldApiNamesByObject?: Record<string, string[]>;
     objectCountsByObject?: Record<string, number>;
     fixedValuesByObject?: Record<string, Record<string, string>>;
+    constraintsByObject?: Record<string, Record<string, IStoredRecipeFieldConstraint>>;
 }
 
 // WHAT workspaceState HOLDS FOR THE STRUCTURE TAB, BY TREE FOLDER NAME
@@ -638,6 +681,8 @@ export interface IRecipeCockpitTreeSelections {
     objectCountsByFolderName: Map<string, Map<string, number>>;
     // THE VALUES THE READER FIXED (#262), BY TREE FOLDER, OBJECT THEN FIELD
     fixedValuesByFolderName: Map<string, Map<string, Map<string, string>>>;
+    // THE BOUNDS THE READER SET (#323), BY TREE FOLDER, OBJECT THEN FIELD, AS TYPED
+    constraintsByFolderName: Map<string, Map<string, Map<string, IStoredRecipeFieldConstraint>>>;
 }
 
 /*
@@ -661,6 +706,7 @@ export interface IRecipeCockpitObjectSelectionMessage {
     fieldSelection?: IRecipeCockpitTreeFieldSelectionViewModel;
     objectCounts?: IRecipeCockpitObjectCountViewModel[];
     fixedValues?: IRecipeCockpitFixedValueViewModel[];
+    constraints?: IRecipeCockpitFieldConstraintViewModel[];
 }
 
 // WHAT workspaceState HOLDS FOR THE CARDS, BY TREE FOLDER NAME; BOTH KEYED BY NAMES FROM DISK, SO NEITHER IS A PLAIN {}
@@ -1251,6 +1297,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'resetTreeSelection'; folderName: string }
     | { kind: 'setObjectCount'; treeKey: string; folderName: string; objectApiName: string; count: number }
     | { kind: 'setFieldFixedValue'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string }
+    | { kind: 'editFieldConstraints'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string }
     | { kind: 'persistPlace'; place: IRecipeCockpitPanelPlace }
     | { kind: 'createScratchOrg' }
     | { kind: 'postScratchOrgState'; hostMessage: IRecipeCockpitScratchOrgStateMessage }
@@ -1900,7 +1947,8 @@ export class RecipeCockpitService {
             excludedObjectApiNamesByFolderName: new Map(),
             excludedFieldApiNamesByFolderName: new Map(),
             objectCountsByFolderName: new Map(),
-            fixedValuesByFolderName: new Map()
+            fixedValuesByFolderName: new Map(),
+            constraintsByFolderName: new Map()
         };
         let storedSelections: unknown;
 
@@ -1910,7 +1958,7 @@ export class RecipeCockpitService {
             return treeSelections;
         }
 
-        const readableVersions: unknown[] = [RECIPE_COCKPIT_OBJECT_SELECTION_VERSION, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS];
+        const readableVersions: unknown[] = [RECIPE_COCKPIT_OBJECT_SELECTION_VERSION, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_CONSTRAINTS, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS];
         if ( !this.isPlainRecord(storedSelections)
                 || !readableVersions.includes(storedSelections.version)
                 || !this.isPlainRecord(storedSelections.excludedObjectApiNamesByFolderName) ) {
@@ -1927,9 +1975,44 @@ export class RecipeCockpitService {
             }
         });
 
-        const hasCounts = storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION || storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES;
+        const hasFixedValues = storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION || storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_CONSTRAINTS;
+        const hasCounts = hasFixedValues || storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES;
         const storedCountsByFolderName = hasCounts ? storedSelections.objectCountsByFolderName : undefined;
-        const storedFixedValuesByFolderName = storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION ? storedSelections.fixedValuesByFolderName : undefined;
+        const storedFixedValuesByFolderName = hasFixedValues ? storedSelections.fixedValuesByFolderName : undefined;
+        const storedConstraintsByFolderName = storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION ? storedSelections.constraintsByFolderName : undefined;
+
+        if ( this.isPlainRecord(storedConstraintsByFolderName) ) {
+            Object.keys(storedConstraintsByFolderName).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
+                const storedByObject = storedConstraintsByFolderName[folderName];
+                if ( !isUsableFolderName(folderName) || !this.isPlainRecord(storedByObject) ) {
+                    return;
+                }
+                const constraintsByObject = new Map<string, Map<string, IStoredRecipeFieldConstraint>>();
+                Object.keys(storedByObject).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(objectApiName => {
+                    const storedByField = storedByObject[objectApiName];
+                    if ( !SalesforceApiName.isApiName(objectApiName) || !this.isPlainRecord(storedByField) ) {
+                        return;
+                    }
+                    const constraintsByField = new Map<string, IStoredRecipeFieldConstraint>();
+                    Object.keys(storedByField).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(fieldApiName => {
+                        const storedConstraint = storedByField[fieldApiName];
+                        // EACH BOUND IS CHECKED AGAINST ITS FIELD WHEN IT IS APPLIED; HERE ONLY WHAT NO FIELD COULD TAKE IS DROPPED
+                        if ( SalesforceApiName.isApiName(fieldApiName) && RecipeFieldConstraint.isStoredConstraint(storedConstraint) ) {
+                            constraintsByField.set(fieldApiName, {
+                                ...( storedConstraint.min !== undefined ? { min: storedConstraint.min } : {} ),
+                                ...( storedConstraint.max !== undefined ? { max: storedConstraint.max } : {} )
+                            });
+                        }
+                    });
+                    if ( constraintsByField.size > 0 ) {
+                        constraintsByObject.set(objectApiName, constraintsByField);
+                    }
+                });
+                if ( constraintsByObject.size > 0 ) {
+                    treeSelections.constraintsByFolderName.set(folderName, constraintsByObject);
+                }
+            });
+        }
 
         if ( this.isPlainRecord(storedFixedValuesByFolderName) ) {
             Object.keys(storedFixedValuesByFolderName).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
@@ -2020,7 +2103,7 @@ export class RecipeCockpitService {
     static async writeTreeSelections(workspaceState: IRecipeCockpitWorkspaceState | undefined, treeSelections: IRecipeCockpitTreeSelections): Promise<boolean> {
 
         if ( !workspaceState ) {
-            VSCodeWorkspaceService.showWarningMessage('The Recipe Cockpit has no workspace to keep excluded objects, unticked fields, record counts and fixed values in. Open a folder and re-open the cockpit.');
+            VSCodeWorkspaceService.showWarningMessage('The Recipe Cockpit has no workspace to keep excluded objects, unticked fields, record counts, fixed values and faker constraints in. Open a folder and re-open the cockpit.');
             return false;
         }
 
@@ -2054,17 +2137,28 @@ export class RecipeCockpitService {
                 .filter(([, storedByObject]) => Object.keys(storedByObject).length > 0)
         );
 
+        const storedConstraintsByFolderName: Record<string, Record<string, Record<string, IStoredRecipeFieldConstraint>>> = Object.fromEntries(
+            [...treeSelections.constraintsByFolderName]
+                .map(([folderName, constraintsByObject]) => [folderName, Object.fromEntries(
+                    [...constraintsByObject]
+                        .filter(([, constraintsByField]) => constraintsByField.size > 0)
+                        .map(([objectApiName, constraintsByField]) => [objectApiName, Object.fromEntries(constraintsByField)])
+                )] as [string, Record<string, Record<string, IStoredRecipeFieldConstraint>>])
+                .filter(([, storedByObject]) => Object.keys(storedByObject).length > 0)
+        );
+
         try {
             await workspaceState.update(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY, {
                 version: RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
                 excludedObjectApiNamesByFolderName: storedByFolderName,
                 excludedFieldApiNamesByFolderName: storedFieldsByFolderName,
                 objectCountsByFolderName: storedCountsByFolderName,
-                fixedValuesByFolderName: storedFixedValuesByFolderName
+                fixedValuesByFolderName: storedFixedValuesByFolderName,
+                constraintsByFolderName: storedConstraintsByFolderName
             });
             return true;
         } catch (writeError) {
-            VSCodeWorkspaceService.showWarningMessage(`The excluded objects, unticked fields, record counts and fixed values could not be saved: ${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}`);
+            VSCodeWorkspaceService.showWarningMessage(`The excluded objects, unticked fields, record counts, fixed values and faker constraints could not be saved: ${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}`);
             return false;
         }
 
@@ -2079,7 +2173,8 @@ export class RecipeCockpitService {
             excludedObjectApiNamesByFolderName: excludedObjectApiNamesByFolderName,
             excludedFieldApiNamesByFolderName: storedSelections.excludedFieldApiNamesByFolderName,
             objectCountsByFolderName: storedSelections.objectCountsByFolderName,
-            fixedValuesByFolderName: storedSelections.fixedValuesByFolderName
+            fixedValuesByFolderName: storedSelections.fixedValuesByFolderName,
+            constraintsByFolderName: storedSelections.constraintsByFolderName
         });
 
     }
@@ -2148,7 +2243,8 @@ export class RecipeCockpitService {
                                     excludedFieldApiNamesByFolderName: Map<string, Map<string, Set<string>>> = new Map(),
                                     onlyFolderName?: string,
                                     objectCountsByFolderName: Map<string, Map<string, number>> = new Map(),
-                                    fixedValuesByFolderName: Map<string, Map<string, Map<string, string>>> = new Map()): IRecipeCockpitTreeViewModel[] {
+                                    fixedValuesByFolderName: Map<string, Map<string, Map<string, string>>> = new Map(),
+                                    constraintsByFolderName: Map<string, Map<string, Map<string, IStoredRecipeFieldConstraint>>> = new Map()): IRecipeCockpitTreeViewModel[] {
 
         const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
 
@@ -2162,6 +2258,7 @@ export class RecipeCockpitService {
             delete tree.fieldSelection;
             delete tree.objectCounts;
             delete tree.fixedValues;
+            delete tree.constraints;
 
             if ( tree.folderName === '' ) {
                 return;
@@ -2192,6 +2289,13 @@ export class RecipeCockpitService {
                 tree.fixedValues = fixedValues;
             }
 
+            // AFTER THE FIXED VALUES, WHICH HOLD A CONSTRAINT BACK
+            const constraints = this.buildTreeConstraints(objectsByApiName, tree, constraintsByFolderName.get(tree.folderName));
+
+            if ( constraints.length > 0 ) {
+                tree.constraints = constraints;
+            }
+
         });
 
         return recipeViewModel.trees;
@@ -2199,7 +2303,7 @@ export class RecipeCockpitService {
     }
 
     static applyTreeSelections(recipeViewModel: IRecipeCockpitRecipeViewModel, treeSelections: IRecipeCockpitTreeSelections): IRecipeCockpitTreeViewModel[] {
-        return this.applyObjectSelections(recipeViewModel, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, undefined, treeSelections.objectCountsByFolderName, treeSelections.fixedValuesByFolderName);
+        return this.applyObjectSelections(recipeViewModel, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, undefined, treeSelections.objectCountsByFolderName, treeSelections.fixedValuesByFolderName, treeSelections.constraintsByFolderName);
     }
 
     // THE KIND A FIELD'S FIXED VALUE IS WRITTEN AS (#262), FROM ITS METADATA TYPE; A FIELD OF NO KNOWN TYPE IS TEXT
@@ -2301,6 +2405,126 @@ export class RecipeCockpitService {
             fixedValuesByObject.set(fixedValue.objectApiName, fixedValuesByField);
         });
         return fixedValuesByObject;
+
+    }
+
+    /*
+        Why a field cannot be given a faker constraint (#323), or undefined when it can: every reason
+        its pin has, then a fixed value (one value, which no range narrows), a standard-field mapping
+        (no metadata to hold a bound to) and a type with no constraint -- Email, Phone and Url keep
+        their format, which a length would not. The panel draws the same rule from the same model.
+    */
+    static findConstraintLockReason(tree: IRecipeCockpitTreeViewModel, objectViewModel: IRecipeCockpitObjectViewModel, fieldViewModel: IRecipeCockpitFieldViewModel): string | undefined {
+
+        const fixedValueLockReason = this.findFixedValueLockReason(tree, objectViewModel, fieldViewModel);
+        if ( fixedValueLockReason !== undefined ) {
+            return fixedValueLockReason;
+        }
+        if ( ( tree.fixedValues ?? [] ).some(fixedValue => fixedValue.objectApiName === objectViewModel.objectApiName && fixedValue.fieldApiName === fieldViewModel.fieldApiName) ) {
+            return RECIPE_COCKPIT_CONSTRAINT_FIXED_VALUE_REASON;
+        }
+        if ( fieldViewModel.isOnlyInRecipeFile ) {
+            return RECIPE_COCKPIT_CONSTRAINT_RECIPE_FILE_ONLY_REASON;
+        }
+        if ( RECIPE_COCKPIT_CONSTRAINT_FORMAT_FIELD_TYPES.includes(fieldViewModel.fieldType) ) {
+            return `${RECIPE_COCKPIT_CONSTRAINT_FORMAT_REASON}${fieldViewModel.fieldType}`;
+        }
+        if ( RecipeFieldConstraint.getConstraintKind(fieldViewModel.fieldType) === undefined ) {
+            return RECIPE_COCKPIT_CONSTRAINT_TYPE_REASON;
+        }
+        return undefined;
+
+    }
+
+    // THE TYPE AND THE SIZE ITS XML RECORDED, FROM "Number(18,2)" OR "Text(80)" -- formatFieldTypeWithSize'S OWN FORM
+    static buildFieldConstraintTarget(fieldViewModel: IRecipeCockpitFieldViewModel): IRecipeFieldConstraintTarget {
+
+        const sizeMatch = /\((\d+)(?:,(\d+))?\)$/.exec(fieldViewModel.fieldTypeWithSize ?? '');
+        const kind = RecipeFieldConstraint.getConstraintKind(fieldViewModel.fieldType);
+
+        if ( sizeMatch && kind === 'number' ) {
+            return { fieldType: fieldViewModel.fieldType, precision: Number(sizeMatch[1]), scale: Number(sizeMatch[2] ?? 0) };
+        }
+        if ( sizeMatch && kind === 'length' && sizeMatch[2] === undefined ) {
+            return { fieldType: fieldViewModel.fieldType, length: Number(sizeMatch[1]) };
+        }
+        return { fieldType: fieldViewModel.fieldType };
+
+    }
+
+    // THE RECIPE'S BACKEND, BY THE FILE NAME RULE THE RUN FAKER PICKER FILTERS WITH
+    static buildConstrainedExpression(objectViewModel: IRecipeCockpitObjectViewModel, fieldViewModel: IRecipeCockpitFieldViewModel, storedConstraint: IStoredRecipeFieldConstraint): string | undefined {
+
+        const resolution = RecipeFieldConstraint.resolve(this.buildFieldConstraintTarget(fieldViewModel), storedConstraint);
+        if ( !( 'constraint' in resolution ) ) {
+            return undefined;
+        }
+
+        const fakerService = path.basename(objectViewModel.recipeFilePath ?? '').includes(FAKER_JS_RECIPE_INDICATOR)
+            ? new FakerJSRecipeFakerService()
+            : new SnowfakeryRecipeFakerService();
+        const expression = fakerService.buildConstrainedExpression(fieldViewModel.fieldType, resolution.constraint);
+
+        return RecipeCockpitRecipeWriter.checkConstrainedExpression(expression) === undefined ? expression : undefined;
+
+    }
+
+    /*
+        The constraints a card generates with (#323): only for a field a ✎ is drawn for and that no
+        lock, and no fixed value, holds back now. A held-back constraint stays stored and comes back
+        with its field. One whose bounds its field no longer takes (its precision or length shrank,
+        or the order of a relative and a fixed date turned) is dropped here rather than refused at
+        Run Faker.
+    */
+    static buildTreeConstraints(objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>,
+                                tree: IRecipeCockpitTreeViewModel,
+                                storedConstraintsByObject: ReadonlyMap<string, ReadonlyMap<string, IStoredRecipeFieldConstraint>> | undefined): IRecipeCockpitFieldConstraintViewModel[] {
+
+        if ( !storedConstraintsByObject || storedConstraintsByObject.size === 0 ) {
+            return [];
+        }
+
+        return this.collectSelectableObjectApiNames(objectsByApiName, tree).flatMap(objectApiName => {
+
+            const storedByField = storedConstraintsByObject.get(objectApiName);
+            const objectViewModel = objectsByApiName.get(objectApiName) as IRecipeCockpitObjectViewModel;
+
+            if ( !storedByField ) {
+                return [];
+            }
+
+            const selectableFieldApiNames = new Set(this.listSelectableFieldApiNames(objectViewModel));
+            return objectViewModel.fields
+                .filter((fieldViewModel, fieldIndex) => selectableFieldApiNames.has(fieldViewModel.fieldApiName)
+                                                        && storedByField.has(fieldViewModel.fieldApiName)
+                                                        && objectViewModel.fields.findIndex(candidate => candidate.fieldApiName === fieldViewModel.fieldApiName) === fieldIndex
+                                                        && this.findConstraintLockReason(tree, objectViewModel, fieldViewModel) === undefined)
+                .flatMap(fieldViewModel => {
+                    const storedConstraint = storedByField.get(fieldViewModel.fieldApiName) as IStoredRecipeFieldConstraint;
+                    const expression = this.buildConstrainedExpression(objectViewModel, fieldViewModel, storedConstraint);
+                    return expression === undefined ? [] : [{
+                        objectApiName: objectApiName,
+                        fieldApiName: fieldViewModel.fieldApiName,
+                        ...( storedConstraint.min !== undefined ? { min: storedConstraint.min } : {} ),
+                        ...( storedConstraint.max !== undefined ? { max: storedConstraint.max } : {} ),
+                        expression: expression
+                    }];
+                });
+
+        });
+
+    }
+
+    // WHAT A CARD GENERATES WITH, BY OBJECT THEN FIELD
+    static listConstrainedExpressionsByObject(tree: IRecipeCockpitTreeViewModel | undefined): Map<string, Map<string, string>> {
+
+        const expressionsByObject = new Map<string, Map<string, string>>();
+        ( tree?.constraints ?? [] ).forEach(constraint => {
+            const expressionsByField = expressionsByObject.get(constraint.objectApiName) ?? new Map<string, string>();
+            expressionsByField.set(constraint.fieldApiName, constraint.expression);
+            expressionsByObject.set(constraint.objectApiName, expressionsByField);
+        });
+        return expressionsByObject;
 
     }
 
@@ -2736,6 +2960,117 @@ export class RecipeCockpitService {
 
     }
 
+    /*
+        A field's ✎ (#323). The BOUNDS never come from the panel: the host asks for each in its own
+        input box, the lower first, each checked while it is typed -- the second against the first as
+        well, so min > max is said in the box -- and the pair again once the second box closes,
+        against the model on screen THEN. An empty bound is the default, both empty clears the
+        constraint, and Escape in either box changes nothing. The recipe file is never written.
+    */
+    private static async editFieldConstraints(cockpitPanel: vscode.WebviewPanel,
+                                                panelState: IRecipeCockpitPanelState,
+                                                panelAction: Extract<RecipeCockpitPanelAction, { kind: 'editFieldConstraints' }>) {
+
+        const findField = () => {
+            const recipeViewModel = panelState.recipeDataMessage?.recipe;
+            const tree = recipeViewModel?.trees.find(candidateTree => candidateTree.treeKey === panelAction.treeKey);
+            const objectViewModel = recipeViewModel?.objects.find(candidateObject => candidateObject.objectApiName === panelAction.objectApiName);
+            const fieldViewModel = objectViewModel?.fields.find(candidateField => candidateField.fieldApiName === panelAction.fieldApiName && candidateField.lineNumber !== undefined);
+            return tree && objectViewModel && fieldViewModel && tree.folderName === panelAction.folderName
+                    && this.findConstraintLockReason(tree, objectViewModel, fieldViewModel) === undefined
+                ? { fieldViewModel: fieldViewModel }
+                : undefined;
+        };
+
+        const fieldBeforePrompt = findField();
+        if ( !fieldBeforePrompt ) {
+            return;
+        }
+
+        const target = this.buildFieldConstraintTarget(fieldBeforePrompt.fieldViewModel);
+        const kind = RecipeFieldConstraint.getConstraintKind(target.fieldType);
+        const storedConstraint = this.readTreeSelections(this.recipeCockpitWorkspaceState).constraintsByFolderName.get(panelAction.folderName)?.get(panelAction.objectApiName)?.get(panelAction.fieldApiName);
+        const fieldLabel = RecipeYamlScalar.escapeForNotification(`${panelAction.objectApiName}.${panelAction.fieldApiName}`);
+        const typeLabel = ` (${this.buildFieldTypeLabel(fieldBeforePrompt.fieldViewModel)})`;
+        const boundLabels = kind === 'length'
+            ? { min: 'Minimum length', max: 'Maximum length' }
+            : kind === 'date'
+            ? { min: 'Earliest date', max: 'Latest date' }
+            : { min: 'Minimum', max: 'Maximum' };
+        const describeForm = (boundName: 'min' | 'max') => kind === 'date'
+            ? RecipeFieldConstraint.describeDateForm(target, boundName).replace(/^Type /, '')
+            : kind === 'length'
+            ? `a whole number of characters, at most ${RecipeFieldConstraint.getLengthCeiling(target)}`
+            : 'a number the field holds';
+
+        const askForBound = (boundName: 'min' | 'max', typedMin?: string) => vscode.window.showInputBox({
+            title: `${boundLabels[boundName]} for ${fieldLabel}`,
+            prompt: `${boundLabels[boundName]} for every record Generate fake data writes for ${fieldLabel}${typeLabel}: ${describeForm(boundName)}. Leave it empty for the default. The recipe file is not changed.`,
+            value: storedConstraint?.[boundName] ?? '',
+            ignoreFocusOut: true,
+            validateInput: (candidateBound: string) => {
+                const trimmedBound = candidateBound.trim();
+                const boundRefusal = trimmedBound === '' ? undefined : RecipeFieldConstraint.checkBound(target, trimmedBound, boundName);
+                if ( boundRefusal !== undefined || boundName === 'min' ) {
+                    return boundRefusal;
+                }
+                const typedBounds = this.buildTypedConstraint(typedMin ?? '', trimmedBound);
+                return typedBounds === undefined ? undefined : this.findConstraintRefusal(target, typedBounds);
+            }
+        });
+
+        const typedMin = await askForBound('min');
+        if ( typedMin === undefined || this.recipeCockpitPanelState !== panelState ) {
+            return;
+        }
+        const typedMax = await askForBound('max', typedMin.trim());
+        if ( typedMax === undefined || this.recipeCockpitPanelState !== panelState ) {
+            return;
+        }
+
+        const fieldAfterPrompt = findField();
+        if ( !fieldAfterPrompt ) {
+            return;
+        }
+
+        const typedConstraint = this.buildTypedConstraint(typedMin.trim(), typedMax.trim());
+        const refusal = typedConstraint === undefined ? undefined : this.findConstraintRefusal(this.buildFieldConstraintTarget(fieldAfterPrompt.fieldViewModel), typedConstraint);
+        if ( refusal !== undefined ) {
+            VSCodeWorkspaceService.showWarningMessage(`The faker constraint for ${fieldLabel} was not set: ${RecipeYamlScalar.escapeForNotification(refusal)}`);
+            return;
+        }
+
+        // READ AGAIN AFTER THE BOXES: A CHOICE MADE ELSEWHERE WHILE THEY WERE OPEN IS NOT WRITTEN BACK
+        const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
+        const constraintsByObject = treeSelections.constraintsByFolderName.get(panelAction.folderName) ?? new Map<string, Map<string, IStoredRecipeFieldConstraint>>();
+        const constraintsByField = constraintsByObject.get(panelAction.objectApiName) ?? new Map<string, IStoredRecipeFieldConstraint>();
+
+        if ( typedConstraint === undefined ) {
+            constraintsByField.delete(panelAction.fieldApiName);
+        } else {
+            constraintsByField.set(panelAction.fieldApiName, typedConstraint);
+        }
+        constraintsByObject.set(panelAction.objectApiName, constraintsByField);
+        treeSelections.constraintsByFolderName.set(panelAction.folderName, constraintsByObject);
+
+        // A CONSTRAINT CHANGES NO FIELD THE INSERT SENDS, SO THE ORG'S READINESS NEED NOT BE CHECKED AGAIN
+        await this.saveAndPostTreeSelections(cockpitPanel, panelState, panelAction.folderName, treeSelections, false);
+
+    }
+
+    // THE BOUNDS AS TYPED, OR undefined WHEN BOTH ARE EMPTY -- WHICH CLEARS THE CONSTRAINT
+    static buildTypedConstraint(typedMin: string, typedMax: string): IStoredRecipeFieldConstraint | undefined {
+        return typedMin === '' && typedMax === ''
+            ? undefined
+            : { ...( typedMin !== '' ? { min: typedMin } : {} ), ...( typedMax !== '' ? { max: typedMax } : {} ) };
+    }
+
+    // WHY THESE BOUNDS CANNOT BE THIS FIELD'S CONSTRAINT, OR undefined; THE REFUSAL QUOTES ONLY BOUNDS isStorableBound ACCEPTED
+    static findConstraintRefusal(target: IRecipeFieldConstraintTarget, typedConstraint: IStoredRecipeFieldConstraint): string | undefined {
+        const resolution = RecipeFieldConstraint.resolve(target, typedConstraint);
+        return 'refusal' in resolution ? resolution.refusal : undefined;
+    }
+
     // A PICKLIST'S ACTIVE VALUES AND EVERY RECORD TYPE'S, FROM THE HOST-ONLY DISPLAY COPY; undefined FOR A FIELD THAT IS NOT A PICKLIST
     private static listDeclaredPicklistValues(panelState: IRecipeCockpitPanelState, objectApiName: string, fieldApiName: string): string[] | undefined {
 
@@ -2755,7 +3090,8 @@ export class RecipeCockpitService {
         if ( !treeSelections.excludedObjectApiNamesByFolderName.has(folderName)
                 && !treeSelections.excludedFieldApiNamesByFolderName.has(folderName)
                 && !treeSelections.objectCountsByFolderName.has(folderName)
-                && !treeSelections.fixedValuesByFolderName.has(folderName) ) {
+                && !treeSelections.fixedValuesByFolderName.has(folderName)
+                && !treeSelections.constraintsByFolderName.has(folderName) ) {
             return;
         }
 
@@ -2763,7 +3099,7 @@ export class RecipeCockpitService {
         const treeLabel = RecipeYamlScalar.escapeForNotification(tree?.customName ?? tree?.title ?? folderName);
         const confirmation = await vscode.window.showWarningMessage(
             `Reset the selection of ${treeLabel}?`,
-            { modal: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every fixed value is cleared. The recipe file is not changed.' },
+            { modal: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every fixed value and faker constraint is cleared. The recipe file is not changed.' },
             RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL
         );
 
@@ -2777,6 +3113,7 @@ export class RecipeCockpitService {
         currentSelections.excludedFieldApiNamesByFolderName.delete(folderName);
         currentSelections.objectCountsByFolderName.delete(folderName);
         currentSelections.fixedValuesByFolderName.delete(folderName);
+        currentSelections.constraintsByFolderName.delete(folderName);
 
         await this.saveAndPostTreeSelections(cockpitPanel, panelState, folderName, currentSelections);
 
@@ -2801,7 +3138,7 @@ export class RecipeCockpitService {
         }
 
         // ONLY THIS FOLDER'S CARDS CHANGED, SO ONLY THEY ARE RECOMPUTED
-        this.applyObjectSelections(recipeDataMessage.recipe, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, folderName, treeSelections.objectCountsByFolderName, treeSelections.fixedValuesByFolderName);
+        this.applyObjectSelections(recipeDataMessage.recipe, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, folderName, treeSelections.objectCountsByFolderName, treeSelections.fixedValuesByFolderName, treeSelections.constraintsByFolderName);
 
         recipeDataMessage.recipe.trees
             .filter(tree => tree.folderName === folderName)
@@ -2812,7 +3149,8 @@ export class RecipeCockpitService {
                 ...( tree.objectSelection ? { objectSelection: tree.objectSelection } : {} ),
                 ...( tree.fieldSelection ? { fieldSelection: tree.fieldSelection } : {} ),
                 ...( tree.objectCounts ? { objectCounts: tree.objectCounts } : {} ),
-                ...( tree.fixedValues ? { fixedValues: tree.fixedValues } : {} )
+                ...( tree.fixedValues ? { fixedValues: tree.fixedValues } : {} ),
+                ...( tree.constraints ? { constraints: tree.constraints } : {} )
             }));
 
         const isOrgCheckIdle = !panelState.scratchOrgStateMessage?.isRunning && !panelState.insertStateMessage?.isRunning;
@@ -2906,6 +3244,7 @@ export class RecipeCockpitService {
         const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByObject(tree);
         const objectCountsByObject = this.listObjectCountsByObject(tree);
         const fixedValuesByObject = this.listFixedValuesByObject(tree);
+        const constrainedExpressionsByObject = this.listConstrainedExpressionsByObject(tree);
         const parentLookupsByObjectApiName = new Map<string, IRecipeFilterLookup[]>();
         tree.objects
             .filter(treeObject => treeObject.iterationNickname === undefined)
@@ -2917,7 +3256,8 @@ export class RecipeCockpitService {
             levelsByObjectApiName: objectLevelsByApiName,
             excludedFieldApiNamesByObject: excludedFieldApiNamesByObject,
             objectCountsByObject: objectCountsByObject,
-            fixedValuesByObject: fixedValuesByObject
+            fixedValuesByObject: fixedValuesByObject,
+            constrainedExpressionsByObject: constrainedExpressionsByObject
         });
 
         if ( 'refusal' in filterResult ) {
@@ -2929,7 +3269,8 @@ export class RecipeCockpitService {
             excludedObjectApiNames: excludedObjectApiNames,
             ...( excludedFieldApiNamesByObject.size > 0 ? { excludedFieldApiNamesByObject: Object.fromEntries(excludedFieldApiNamesByObject) } : {} ),
             ...( filterResult.appliedCounts.length > 0 ? { objectCountsByObject: Object.fromEntries(filterResult.appliedCounts.map(appliedCount => [appliedCount.objectApiName, appliedCount.count])) } : {} ),
-            ...( filterResult.appliedFixedValues.length > 0 ? { fixedValuesByObject: this.groupAppliedFixedValues(filterResult.appliedFixedValues) } : {} )
+            ...( filterResult.appliedFixedValues.length > 0 ? { fixedValuesByObject: this.groupAppliedFixedValues(filterResult.appliedFixedValues) } : {} ),
+            ...( filterResult.appliedConstrainedExpressions.length > 0 ? { constraintsByObject: this.groupAppliedConstraints(tree, filterResult.appliedConstrainedExpressions) } : {} )
         };
 
     }
@@ -2943,6 +3284,24 @@ export class RecipeCockpitService {
             .filter(appliedFixedValue => appliedFixedValue.objectApiName === objectApiName)
             .map(appliedFixedValue => [appliedFixedValue.fieldApiName, appliedFixedValue.value]))]));
 
+
+    }
+
+    // THE BOUNDS AS TYPED FOR EVERY CONSTRAINT THE COPY WROTE, WHICH datasetSource.json RECORDS; fromEntries, SO A __proto__ NAME IS A KEY
+    static groupAppliedConstraints(tree: IRecipeCockpitTreeViewModel, appliedConstrainedExpressions: Array<{ objectApiName: string; fieldApiName: string }>): Record<string, Record<string, IStoredRecipeFieldConstraint>> {
+
+        const objectApiNames = [...new Set(appliedConstrainedExpressions.map(appliedExpression => appliedExpression.objectApiName))];
+        const findConstraint = (objectApiName: string, fieldApiName: string) => ( tree.constraints ?? [] ).find(constraint => constraint.objectApiName === objectApiName && constraint.fieldApiName === fieldApiName);
+
+        return Object.fromEntries(objectApiNames.map(objectApiName => [objectApiName, Object.fromEntries(appliedConstrainedExpressions
+            .filter(appliedExpression => appliedExpression.objectApiName === objectApiName)
+            .map(appliedExpression => {
+                const constraint = findConstraint(objectApiName, appliedExpression.fieldApiName);
+                return [appliedExpression.fieldApiName, {
+                    ...( constraint?.min !== undefined ? { min: constraint.min } : {} ),
+                    ...( constraint?.max !== undefined ? { max: constraint.max } : {} )
+                }];
+            }))]));
 
     }
 
@@ -3746,6 +4105,11 @@ export class RecipeCockpitService {
                 await this.setFieldFixedValue(cockpitPanel, panelState, panelAction);
                 return;
 
+            case 'editFieldConstraints':
+
+                await this.editFieldConstraints(cockpitPanel, panelState, panelAction);
+                return;
+
             case 'toggleFavoriteTree': {
 
                 const treePreferences = this.readTreePreferences(this.recipeCockpitWorkspaceState);
@@ -4315,13 +4679,13 @@ export class RecipeCockpitService {
         const tree = panelState.recipeDataMessage?.recipe.trees.find(candidateTree => candidateTree.treeKey === treeKey);
 
         if ( this.listExcludedObjectApiNames(tree).length === 0 && this.listExcludedFieldApiNamesByObject(tree).size === 0
-                && this.listObjectCountsByObject(tree).size === 0 && !tree?.fixedValues?.length ) {
+                && this.listObjectCountsByObject(tree).size === 0 && !tree?.fixedValues?.length && !tree?.constraints?.length ) {
             return undefined;
         }
 
         const treeLabel = RecipeYamlScalar.escapeForNotification(tree.customName ?? tree.title);
         const refuse = (reason: string) => ({
-            refusalMessage: `${refusalPrefix} ${treeLabel}: ${RecipeYamlScalar.escapeForNotification(reason)} Nothing was generated, rather than the whole tree with what the Treecipe tab leaves out, recounts or fixes put back in.`
+            refusalMessage: `${refusalPrefix} ${treeLabel}: ${RecipeYamlScalar.escapeForNotification(reason)} Nothing was generated, rather than the whole tree with what the Treecipe tab leaves out, recounts, fixes or constrains put back in.`
         });
 
         let recipeText: string;
@@ -6558,6 +6922,7 @@ export class RecipeCockpitService {
         });
         const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByObject(tree);
         const fixedValues = tree.fixedValues ?? [];
+        const constraints = tree.constraints ?? [];
 
         return [
             `Org: ${orgLabel}`,
@@ -6571,6 +6936,9 @@ export class RecipeCockpitService {
                 : [] ),
             ...( fixedValues.length > 0
                 ? [`Fixed values, the same on every record: ${fixedValues.map(fixedValue => RecipeYamlScalar.escapeForNotification(`${fixedValue.objectApiName}.${fixedValue.fieldApiName} = ${fixedValue.value}`)).join(', ')}`]
+                : [] ),
+            ...( constraints.length > 0
+                ? [`Faker constraints: ${constraints.map(constraint => RecipeYamlScalar.escapeForNotification(`${constraint.objectApiName}.${constraint.fieldApiName} ${RecipeFieldConstraint.describeStoredConstraint(constraint)}`)).join(', ')}`]
                 : [] ),
             ...( outsidePickableLookups.length > 0
                 ? [
@@ -7295,6 +7663,37 @@ export class RecipeCockpitService {
                 }
 
                 return { kind: 'setFieldFixedValue', treeKey: treeKey, folderName: tree.folderName, objectApiName: objectApiName, fieldApiName: fieldApiName };
+
+            }
+
+            /*
+                A field's ✎ (#323): the same three names as its checkbox and pin, matched against the
+                same allow-list, and NO bounds -- the host asks for them in its own boxes. A field the
+                rule holds back (every reason the pin has, a fixed value, a standard-field mapping, a
+                type with no constraint) is refused here and again before anything is written.
+            */
+            case 'editFieldConstraints': {
+
+                const { treeKey, objectApiName, nickname, fieldApiName } = panelMessage;
+
+                if ( typeof treeKey !== 'string' || !SalesforceApiName.isApiName(objectApiName) || !SalesforceApiName.isApiName(fieldApiName)
+                        || ( nickname !== undefined && typeof nickname !== 'string' )
+                        || !panelState.recipeDataMessage
+                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(this.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
+                    return undefined;
+                }
+
+                const recipeViewModel = panelState.recipeDataMessage.recipe;
+                const objectViewModel = recipeViewModel.objects.find(candidateObject => candidateObject.objectApiName === objectApiName);
+                const fieldViewModel = objectViewModel?.fields.find(candidateField => candidateField.fieldApiName === fieldApiName && candidateField.lineNumber !== undefined);
+                const tree = recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === treeKey);
+
+                if ( !objectViewModel || !fieldViewModel || !tree?.folderName || ( nickname !== undefined && nickname !== objectViewModel.nickname )
+                        || this.findConstraintLockReason(tree, objectViewModel, fieldViewModel) !== undefined ) {
+                    return undefined;
+                }
+
+                return { kind: 'editFieldConstraints', treeKey: treeKey, folderName: tree.folderName, objectApiName: objectApiName, fieldApiName: fieldApiName };
 
             }
 
@@ -9163,6 +9562,46 @@ ${this.buildPaletteCustomProperties()}
         background-color: var(--sdt-chip-bg);
         border-radius: 3px;
     }
+    .treeFieldConstraint {
+        position: relative;
+        z-index: 2;
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5em;
+        height: 1.5em;
+        padding: 0;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+    .treeFieldConstraint:hover:not(:disabled) { background-color: var(--sdt-row-hover); border-color: var(--sdt-border); }
+    .treeFieldConstraint:disabled { cursor: not-allowed; }
+    .constraintGlyph { display: block; width: 1.1em; height: 1.1em; }
+    .constraintGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .treeFieldConstraint[aria-pressed="true"] .constraintGlyph path { fill: var(--sdt-accent); }
+    .treeFieldConstraint:disabled .constraintGlyph path { stroke: var(--sdt-muted); stroke-dasharray: 2 2.5; }
+    .constraintBadge {
+        position: relative;
+        z-index: 2;
+        padding: 0 0.35em;
+        font-size: 0.85em;
+        font-weight: 600;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border-radius: 3px;
+    }
+    .expressionRow { display: flex; align-items: flex-start; gap: 0.3rem; }
+    .expressionRow > pre { flex: 1 1 auto; min-width: 0; }
+    .constrainedExpression {
+        margin: 0.15rem 0 0 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: var(--vscode-editor-font-family);
+        color: var(--sdt-text);
+    }
     .fixedValue {
         margin: 0.15rem 0 0 0;
         white-space: pre-wrap;
@@ -9325,6 +9764,14 @@ ${this.buildPaletteCustomProperties()}
     const FIXED_VALUE_LOOKUP_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON)};
     const FIXED_VALUE_DEPENDENT_REASON_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX)};
     const FIXED_VALUE_LOOKUP_FIELD_TYPES = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES)};
+    const CONSTRAINT_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_CONSTRAINT_GLYPH_PATH)};
+    const CONSTRAINT_BADGE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CONSTRAINT_BADGE_LABEL)};
+    const CONSTRAINT_FIXED_VALUE_REASON = ${JSON.stringify(RECIPE_COCKPIT_CONSTRAINT_FIXED_VALUE_REASON)};
+    const CONSTRAINT_RECIPE_FILE_ONLY_REASON = ${JSON.stringify(RECIPE_COCKPIT_CONSTRAINT_RECIPE_FILE_ONLY_REASON)};
+    const CONSTRAINT_FORMAT_REASON = ${JSON.stringify(RECIPE_COCKPIT_CONSTRAINT_FORMAT_REASON)};
+    const CONSTRAINT_TYPE_REASON = ${JSON.stringify(RECIPE_COCKPIT_CONSTRAINT_TYPE_REASON)};
+    const CONSTRAINT_FORMAT_FIELD_TYPES = ${JSON.stringify(RECIPE_COCKPIT_CONSTRAINT_FORMAT_FIELD_TYPES)};
+    const CONSTRAINABLE_FIELD_TYPES = ${JSON.stringify([...RECIPE_FIELD_CONSTRAINT_NUMBER_FIELD_TYPES, ...RECIPE_FIELD_CONSTRAINT_LENGTH_FIELD_TYPES, ...RECIPE_FIELD_CONSTRAINT_DATE_FIELD_TYPES])};
     const EVERY_FIELD_UNTICKED_WARNING = ${JSON.stringify(RECIPE_COCKPIT_EVERY_FIELD_UNTICKED_WARNING)};
     const RESET_SELECTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RESET_SELECTION_LABEL)};
     const REFRESH_ORGS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REFRESH_ORGS_LABEL)};
@@ -10084,6 +10531,7 @@ ${this.buildPaletteCustomProperties()}
         }
 
         drawFieldRowFixedValue(treeObjectState, fieldState);
+        drawFieldRowConstraint(treeObjectState, fieldState);
 
         const includeElement = fieldState.includeElement;
         if (!includeElement) { return; }
@@ -10169,10 +10617,6 @@ ${this.buildPaletteCustomProperties()}
         if (fieldState.fixedValueBadgeElement) {
             if (isFixed) { fieldState.fixedValueBadgeElement.classList.remove('hidden'); } else { fieldState.fixedValueBadgeElement.classList.add('hidden'); }
         }
-        if (fieldState.expressionElement) {
-            if (isFixed) { fieldState.expressionElement.classList.add('hidden'); } else { fieldState.expressionElement.classList.remove('hidden'); }
-        }
-
         const buttonElement = fieldState.fixedValueButtonElement;
         if (!buttonElement) { return; }
 
@@ -10186,6 +10630,111 @@ ${this.buildPaletteCustomProperties()}
             : 'Give this field a fixed value instead of its faker expression';
         buttonElement.setAttribute('title', title);
         buttonElement.setAttribute('aria-label', fieldApiName + ': ' + title);
+
+    }
+
+    // THE CONSTRAINT THE HOST SAYS THIS CARD GENERATES THE FIELD WITH (#323), OR null
+    function findConstraint(tree, objectApiName, fieldApiName) {
+
+        const constraints = Array.isArray(tree.constraints) ? tree.constraints : [];
+        return constraints.find(function (candidate) { return candidate.objectApiName === objectApiName && candidate.fieldApiName === fieldApiName; }) || null;
+
+    }
+
+    /*
+        Why a field's ✎ is disabled (#323): the host's own rule (findConstraintLockReason) -- every
+        reason the pin has, then a fixed value, a standard-field mapping and a type with no
+        constraint -- drawn from the model the panel holds. The host re-derives it before it writes.
+    */
+    function findConstraintLockReason(treeObjectState, fieldState) {
+
+        const field = fieldState.field;
+        const fixedValueLockReason = findFixedValueLockReason(treeObjectState, fieldState);
+
+        if (fixedValueLockReason) { return fixedValueLockReason; }
+        if (findFixedValue(treeObjectState.tree, treeObjectState.object.objectApiName, field.fieldApiName) !== null) { return CONSTRAINT_FIXED_VALUE_REASON; }
+        if (field.isOnlyInRecipeFile) { return CONSTRAINT_RECIPE_FILE_ONLY_REASON; }
+        if (CONSTRAINT_FORMAT_FIELD_TYPES.indexOf(field.fieldType) !== -1) { return CONSTRAINT_FORMAT_REASON + field.fieldType; }
+        if (CONSTRAINABLE_FIELD_TYPES.indexOf(field.fieldType) === -1) { return CONSTRAINT_TYPE_REASON; }
+
+        return '';
+
+    }
+
+    function describeConstraint(constraint) {
+        return 'min ' + ( constraint.min !== undefined ? String(constraint.min) : 'default' ) + ' · max ' + ( constraint.max !== undefined ? String(constraint.max) : 'default' );
+    }
+
+    /*
+        A constraint's expression takes the faker expression's place on the row, written with
+        textContent, and the ✎ says so by shape, aria-pressed and title. A fixed value outranks it:
+        the host holds a constraint back while the field has one, so at most one replaces the row.
+    */
+    function drawFieldRowConstraint(treeObjectState, fieldState) {
+
+        const objectApiName = treeObjectState.object.objectApiName;
+        const fieldApiName = fieldState.field.fieldApiName;
+        const isFixed = findFixedValue(treeObjectState.tree, objectApiName, fieldApiName) !== null;
+        const constraint = isFixed ? null : findConstraint(treeObjectState.tree, objectApiName, fieldApiName);
+        const isConstrained = constraint !== null;
+
+        if (fieldState.constrainedExpressionElement) {
+            fieldState.constrainedExpressionElement.textContent = isConstrained ? String(constraint.expression) : '';
+            if (isConstrained) { fieldState.constrainedExpressionElement.classList.remove('hidden'); } else { fieldState.constrainedExpressionElement.classList.add('hidden'); }
+        }
+        if (fieldState.constraintBadgeElement) {
+            if (isConstrained) { fieldState.constraintBadgeElement.classList.remove('hidden'); } else { fieldState.constraintBadgeElement.classList.add('hidden'); }
+        }
+        if (fieldState.expressionElement) {
+            if (isFixed || isConstrained) { fieldState.expressionElement.classList.add('hidden'); } else { fieldState.expressionElement.classList.remove('hidden'); }
+        }
+
+        const buttonElement = fieldState.constraintButtonElement;
+        if (!buttonElement) { return; }
+
+        const lockReason = treeObjectState.isIteration ? '' : findConstraintLockReason(treeObjectState, fieldState);
+        buttonElement.disabled = treeObjectState.isIteration || !!lockReason;
+        buttonElement.setAttribute('aria-pressed', isConstrained ? 'true' : 'false');
+
+        const title = treeObjectState.isIteration ? 'Follows ' + objectApiName + ' above'
+            : lockReason ? 'Cannot be constrained: ' + lockReason
+            : isConstrained ? 'Constrained (' + describeConstraint(constraint) + ') — click to change or clear it'
+            : 'Set the range of values this field generates';
+        buttonElement.setAttribute('title', title);
+        buttonElement.setAttribute('aria-label', fieldApiName + ': ' + title);
+
+    }
+
+    // A FIELD'S ✎ (#323), BUILT LIKE THE PIN; A CLICK POSTS NAMES ONLY -- THE BOUNDS ARE ASKED FOR IN THE HOST'S OWN BOXES
+    function buildFieldConstraintElement(treeObjectState, fieldState) {
+
+        const buttonElement = createElement('button', 'treeFieldConstraint');
+        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
+        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
+        const object = treeObjectState.object;
+
+        glyphElement.setAttribute('class', 'constraintGlyph');
+        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
+        glyphElement.setAttribute('aria-hidden', 'true');
+        glyphElement.setAttribute('focusable', 'false');
+        pathElement.setAttribute('d', CONSTRAINT_GLYPH_PATH);
+        glyphElement.appendChild(pathElement);
+        buttonElement.appendChild(glyphElement);
+
+        buttonElement.addEventListener('click', function () {
+            if (buttonElement.disabled) { return; }
+            const message = {
+                command: 'editFieldConstraints',
+                treeKey: treeObjectState.tree.treeKey,
+                objectApiName: object.objectApiName,
+                fieldApiName: fieldState.field.fieldApiName
+            };
+            if (object.nickname) { message.nickname = object.nickname; }
+            vscodeApi.postMessage(message);
+        });
+        fieldState.constraintButtonElement = buttonElement;
+
+        return buttonElement;
 
     }
 
@@ -10253,6 +10802,7 @@ ${this.buildPaletteCustomProperties()}
         return !!tree.objectSelection
             || ( Array.isArray(tree.objectCounts) && tree.objectCounts.length > 0 )
             || ( Array.isArray(tree.fixedValues) && tree.fixedValues.length > 0 )
+            || ( Array.isArray(tree.constraints) && tree.constraints.length > 0 )
             || ( !!tree.fieldSelection && Array.isArray(tree.fieldSelection.objects) && tree.fieldSelection.objects.some(function (objectFieldSelection) {
                 return Array.isArray(objectFieldSelection.excludedFieldApiNames) && objectFieldSelection.excludedFieldApiNames.length > 0;
             }) );
@@ -10279,6 +10829,7 @@ ${this.buildPaletteCustomProperties()}
         treeState.tree.fieldSelection = objectSelectionMessage.fieldSelection || undefined;
         treeState.tree.objectCounts = objectSelectionMessage.objectCounts || undefined;
         treeState.tree.fixedValues = objectSelectionMessage.fixedValues || undefined;
+        treeState.tree.constraints = objectSelectionMessage.constraints || undefined;
         drawObjectSelection(treeState);
         drawTreeInsert(treeState);
 
@@ -10298,6 +10849,9 @@ ${this.buildPaletteCustomProperties()}
             fixedValueButtonElement: null,
             fixedValueBadgeElement: null,
             fixedValueElement: null,
+            constraintButtonElement: null,
+            constraintBadgeElement: null,
+            constrainedExpressionElement: null,
             expressionElement: null
         };
 
@@ -10486,6 +11040,9 @@ ${this.buildPaletteCustomProperties()}
         fieldState.fixedValueBadgeElement = createElement('span', 'fixedValueBadge hidden', FIXED_VALUE_BADGE_LABEL);
         fieldHeaderElement.appendChild(fieldState.fixedValueBadgeElement);
 
+        fieldState.constraintBadgeElement = createElement('span', 'constraintBadge hidden', CONSTRAINT_BADGE_LABEL);
+        fieldHeaderElement.appendChild(fieldState.constraintBadgeElement);
+
         fieldState.noteElement = createElement('span', 'treeFieldNote muted hidden');
         fieldHeaderElement.appendChild(fieldState.noteElement);
 
@@ -10495,10 +11052,20 @@ ${this.buildPaletteCustomProperties()}
 
         fieldRowElement.appendChild(fieldHeaderElement);
 
-        // THE SEARCH BOX MATCHES A FIELD BY ITS FAKER EXPRESSION, SO THE EXPRESSION IS ON SCREEN WITH THE ROW
-        if (field.recipeValue) {
-            fieldState.expressionElement = createElement('pre', 'expression', field.recipeValue);
-            fieldRowElement.appendChild(fieldState.expressionElement);
+        // THE SEARCH BOX MATCHES A FIELD BY ITS FAKER EXPRESSION, SO THE EXPRESSION IS ON SCREEN WITH THE ROW; ITS ✎ (#323) SITS ON IT
+        const hasConstraintButton = treeObjectState.canSelectFields && !!field.lineNumber;
+        if (field.recipeValue || hasConstraintButton) {
+            const expressionRowElement = createElement('div', 'expressionRow');
+            if (hasConstraintButton) {
+                expressionRowElement.appendChild(buildFieldConstraintElement(treeObjectState, fieldState));
+            }
+            if (field.recipeValue) {
+                fieldState.expressionElement = createElement('pre', 'expression', field.recipeValue);
+                expressionRowElement.appendChild(fieldState.expressionElement);
+            }
+            fieldState.constrainedExpressionElement = createElement('pre', 'constrainedExpression hidden');
+            expressionRowElement.appendChild(fieldState.constrainedExpressionElement);
+            fieldRowElement.appendChild(expressionRowElement);
         }
 
         fieldState.fixedValueElement = createElement('pre', 'fixedValue hidden');
