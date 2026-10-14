@@ -153,6 +153,12 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         describe('applyGeneratedRecordTypes', () => {
 
+            const readRecordTypeBlocks = (recipeTexts: string[]) => {
+                const recordTypeBlocks = RecipeCockpitService.buildEmptyRecordTypeBlocks();
+                recipeTexts.forEach(recipeText => RecipeCockpitService.parseRecipeSource(recipeText, recordTypeBlocks));
+                return recordTypeBlocks;
+            };
+
             const recipeWithBlocks = (recordTypeIdLines: string[][]) => recordTypeIdLines.map((blockLines, blockIndex) => [
                 '- object: Thing__c',
                 `  nickname: Thing__c_${blockIndex}_NickName`,
@@ -166,7 +172,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
                 const thing = buildObjectWithRecordTypes('Thing__c', ['OneRecType', 'TwoRecType', 'Three']);
 
-                RecipeCockpitService.applyGeneratedRecordTypes([thing], [recipeWithBlocks([['    RecordTypeId: Thing__c.TwoRecType'], ['    RecordTypeId: Thing__c.OneRecType']])]);
+                RecipeCockpitService.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([recipeWithBlocks([['    RecordTypeId: Thing__c.TwoRecType'], ['    RecordTypeId: Thing__c.OneRecType']])]));
 
                 expect(thing.generatedRecordTypeDeveloperNames).toEqual(['TwoRecType', 'OneRecType']);
                 expect(thing.isRecordTypeSelectionApplied).toBe(true);
@@ -177,11 +183,11 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
                 const thing = buildObjectWithRecordTypes('Thing__c', ['OneRecType', 'TwoRecType']);
 
-                RecipeCockpitService.applyGeneratedRecordTypes([thing], [recipeWithBlocks([[
+                RecipeCockpitService.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([recipeWithBlocks([[
                     '    RecordTypeId: Thing__c.OneRecType',
                     '                    ### TODO: -- RecordType Options -- From below, choose the expected Record Type Developer Name and ensure the rest of fields on this object recipe is consistent with the record type selection',
                     '                    # Thing__c.TwoRecType'
-                ]])]);
+                ]])]));
 
                 expect(thing.generatedRecordTypeDeveloperNames).toEqual(['OneRecType']);
                 expect(thing.isRecordTypeSelectionApplied).toBeUndefined();
@@ -192,7 +198,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
                 const thing = buildObjectWithRecordTypes('Thing__c', ['Retired', 'Live']);
 
-                RecipeCockpitService.applyGeneratedRecordTypes([thing], [recipeWithBlocks([['    RecordTypeId: Thing__c.Gone'], ['    RecordTypeId: Other__c.Live'], ['    # RecordTypeId: Thing__c.Live']])]);
+                RecipeCockpitService.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([recipeWithBlocks([['    RecordTypeId: Thing__c.Gone'], ['    RecordTypeId: Other__c.Live'], ['    # RecordTypeId: Thing__c.Live']])]));
 
                 expect(thing.generatedRecordTypeDeveloperNames).toEqual(['Live']);
                 expect(thing.isRecordTypeSelectionApplied).toBeUndefined();
@@ -204,7 +210,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
                 const thing = buildObjectWithRecordTypes('Thing__c', ['Retired', 'Live']);
                 thing.recordTypes.forEach(recordType => { recordType.isActive = false; });
 
-                RecipeCockpitService.applyGeneratedRecordTypes([thing], []);
+                RecipeCockpitService.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([]));
 
                 expect(thing.generatedRecordTypeDeveloperNames).toEqual(['Retired']);
 
@@ -227,7 +233,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
                     .join('\n');
                 const readGenerated = (selectedDeveloperNames: string[]) => {
                     const thing = buildObjectWithRecordTypes('Thing__c', ['OneRecType', 'TwoRecType']);
-                    RecipeCockpitService.applyGeneratedRecordTypes([thing], [generatedHeaders(selectedDeveloperNames)]);
+                    RecipeCockpitService.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([generatedHeaders(selectedDeveloperNames)]));
                     return [thing.generatedRecordTypeDeveloperNames, thing.isRecordTypeSelectionApplied];
                 };
 
@@ -259,7 +265,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
                     '    RecordTypeId: Thing__c.TwoRecType'
                 ].join('\n');
 
-                RecipeCockpitService.applyGeneratedRecordTypes([thing], [nestedRecipe]);
+                RecipeCockpitService.applyGeneratedRecordTypes([thing], readRecordTypeBlocks([nestedRecipe]));
 
                 expect(thing.generatedRecordTypeDeveloperNames).toEqual(['OneRecType', 'TwoRecType']);
 
@@ -280,6 +286,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         });
 
+        const REFUSED = { kind: 'refuseRecordTypeRegenerate' };
         const route = (panelMessage: Record<string, unknown>, panelState = buildDrawnPanelState()) => RecipeCockpitService.routePanelMessage({ command: 'regenerateWithRecordTypes', ...panelMessage }, panelState);
 
         it('offers nothing for a tree object the model does not list', () => {
@@ -338,23 +345,32 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             ['a prototype-named object', JSON.parse('{"__proto__": ["Partner"]}')]
         ])('refuses the whole request given %s', (unusedDescription, recordTypeSelection) => {
 
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: recordTypeSelection })).toBeUndefined();
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: recordTypeSelection })).toEqual(REFUSED);
 
         });
 
         it('refuses a card that draws no Record types tab, a card that is not drawn, and a regenerate already running', () => {
 
             const validSelection = { Account: ['Partner'] };
-            expect(route({ treeKey: LEAD_TREE_KEY, recordTypeSelection: validSelection })).toBeUndefined();
-            expect(route({ treeKey: 7, recordTypeSelection: validSelection })).toBeUndefined();
+            expect(route({ treeKey: LEAD_TREE_KEY, recordTypeSelection: validSelection })).toEqual(REFUSED);
+            expect(route({ treeKey: 7, recordTypeSelection: validSelection })).toEqual(REFUSED);
 
             const undrawnPanelState = buildDrawnPanelState();
             undrawnPanelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: validSelection }, undrawnPanelState)).toBeUndefined();
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: validSelection }, undrawnPanelState)).toEqual(REFUSED);
 
             const runningPanelState = buildDrawnPanelState();
             runningPanelState.isGenerateTreecipeInFlight = true;
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: validSelection }, runningPanelState)).toBeUndefined();
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: validSelection }, runningPanelState)).toEqual(REFUSED);
+
+        });
+
+        it('refuses while a tree insert runs, since the reload would clear the org selection the insert was confirmed on', () => {
+
+            const insertingPanelState = buildDrawnPanelState();
+            insertingPanelState.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: LEAD_TREE_KEY };
+
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: { Account: ['Partner'] } }, insertingPanelState)).toEqual(REFUSED);
 
         });
 
@@ -443,9 +459,12 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
             await openAndDraw();
 
+            postedPanelMessages = [];
+
             await receivedMessageHandler({ command: 'regenerateWithRecordTypes', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: { Account: ['Gone'] } });
 
             expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+            expect(postedPanelMessages).toEqual([{ command: 'recordTypeRegenerateState', isRunning: false }]);
 
         });
 
@@ -529,6 +548,54 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             expect(buttonOf(panel, 'recordTypesRegenerate').disabled).toBe(true);
             expect(buttonOf(panel, 'recordTypesDefaults').disabled).toBe(true);
             expect(checkboxNamed(panel, 'Partner').disabled).toBe(true);
+
+        });
+
+        it('gives the tab back when the host refuses the regenerate', () => {
+
+            const panel = drawRecipe();
+            openRecordTypesTab(panel);
+            buttonOf(panel, 'recordTypesRegenerate').dispatch('click');
+
+            panel.postToPanel({ command: 'recordTypeRegenerateState', isRunning: false });
+
+            expect(buttonOf(panel, 'recordTypesRegenerate').disabled).toBe(false);
+            expect(buttonOf(panel, 'recordTypesDefaults').disabled).toBe(false);
+            expect(checkboxNamed(panel, 'Partner').disabled).toBe(false);
+
+        });
+
+        it('gives the tab back with a new model', () => {
+
+            const panel = drawRecipe();
+            openRecordTypesTab(panel);
+            buttonOf(panel, 'recordTypesRegenerate').dispatch('click');
+
+            panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 4 });
+            openRecordTypesTab(panel);
+
+            expect(buttonOf(panel, 'recordTypesRegenerate').disabled).toBe(false);
+
+        });
+
+        it('holds the regenerate buttons while a tree insert runs, and sends nothing', () => {
+
+            const panel = drawRecipe();
+            openRecordTypesTab(panel);
+
+            panel.postToPanel({ command: 'insertState', isRunning: true, treeKey: LEAD_TREE_KEY });
+            buttonOf(panel, 'recordTypesRegenerate').dispatch('click');
+
+            expect(buttonOf(panel, 'recordTypesRegenerate').disabled).toBe(true);
+            expect(buttonOf(panel, 'recordTypesRegenerate').attributes.title).toBe('Wait for the insert to finish');
+            expect(checkboxNamed(panel, 'Partner').disabled).toBe(true);
+            expect(regenerateMessages(panel)).toEqual([]);
+
+            panel.postToPanel({ command: 'insertState', isRunning: false });
+
+            expect(buttonOf(panel, 'recordTypesRegenerate').disabled).toBe(false);
+            expect(buttonOf(panel, 'recordTypesRegenerate').attributes.title).toBeUndefined();
+            expect(checkboxNamed(panel, 'Partner').disabled).toBe(false);
 
         });
 

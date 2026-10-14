@@ -750,6 +750,12 @@ export interface IRecipeSourceFile {
     objectEntries: Map<string, IRecipeSourceObjectEntry>;
 }
 
+// WHAT A RUN'S BLOCKS WRITE AS RecordTypeId, COLLECTED BY THE SAME SCAN parseRecipeSource MAKES (#195)
+export interface IRecipeRecordTypeBlocks {
+    developerNamesByObjectApiName: Map<string, string[]>;
+    defaultWrittenObjectApiNames: Set<string>;
+}
+
 /*
     Everything the cockpit webview can post back.
 
@@ -1004,6 +1010,12 @@ export interface IRecipeCockpitWireLookupStateMessage {
     isRunning: boolean;
 }
 
+// A REFUSED REGENERATE (#195): THE PANEL DISABLED THE RECORD TYPES TAB ON THE CLICK, AND ONLY THIS OR A NEW MODEL GIVES IT BACK
+export interface IRecipeCockpitRecordTypeRegenerateStateMessage {
+    command: 'recordTypeRegenerateState';
+    isRunning: false;
+}
+
 /*
     The "+ New scratch org" run (#200): while isRunning, the button, every "+ Create" and the org
     dropdown are disabled. How the run went is a notification's, with its "View output" button
@@ -1086,6 +1098,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitInsertStateMessage
                                         | IRecipeCockpitAddFriendStateMessage
                                         | IRecipeCockpitWireLookupStateMessage
+                                        | IRecipeCockpitRecordTypeRegenerateStateMessage
                                         | IRecipeCockpitTreePreferencesMessage
                                         | IRecipeCockpitDatasetPreferencesMessage
                                         | IRecipeCockpitObjectSelectionMessage
@@ -1196,6 +1209,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'selectRun'; runFolderName: string }
     | { kind: 'generateTreecipe' }
     | { kind: 'regenerateWithRecordTypes'; treeKey: string; recordTypeSelection: Record<string, string[]> }
+    | { kind: 'refuseRecordTypeRegenerate' }
     | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage }
     | { kind: 'loadDatasetRecordCounts'; datasetFolderName: string; datasetFolderPath: string; renderSequence: number }
     | { kind: 'openDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
@@ -3509,6 +3523,11 @@ export class RecipeCockpitService {
                     generateTreecipeOptions: { ...RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS, recordTypeSelection: panelAction.recordTypeSelection },
                     focusTree: { treeKey: panelAction.treeKey, tab: 'recordTypes' }
                 });
+                return;
+
+            case 'refuseRecordTypeRegenerate':
+
+                this.postToPanel(cockpitPanel, { command: 'recordTypeRegenerateState', isRunning: false });
                 return;
 
             case 'postPicklistValues':
@@ -6594,11 +6613,13 @@ export class RecipeCockpitService {
                 const treeKey = panelMessage.treeKey;
                 const recordTypeSelection = this.readPostedRecordTypeSelection(panelMessage.recordTypeSelection, panelState.treeHistoryAllowLists.selectableRecordTypeKeys);
 
+                // A RELOAD CLEARS THE ORG SELECTION, WHICH WOULD CANCEL AN INSERT THE READER CONFIRMED; THE PANEL DISABLED ITS BUTTONS ON THE CLICK, SO A REFUSAL GIVES THEM BACK
                 if ( panelState.isGenerateTreecipeInFlight
+                        || panelState.insertStateMessage
                         || typeof treeKey !== 'string'
                         || !panelState.treeHistoryAllowLists.recordTypeTreeKeys.has(treeKey)
                         || !recordTypeSelection ) {
-                    return undefined;
+                    return { kind: 'refuseRecordTypeRegenerate' };
                 }
 
                 return { kind: 'regenerateWithRecordTypes', treeKey: treeKey, recordTypeSelection: recordTypeSelection };
@@ -7761,7 +7782,7 @@ export class RecipeCockpitService {
         recipeViewModel.objects = this.attachRecipeSources(normalizedObjectsWrapper.objects, recipeSourceRead.recipeSourceFiles)
             .filter(objectViewModel => !normalizedObjectsWrapper.fieldlessObjectApiNames.has(objectViewModel.objectApiName)
                                         || !!objectViewModel.recipeFilePath);
-        this.applyGeneratedRecordTypes(recipeViewModel.objects, Array.from(recipeSourceRead.recipeTextsByFilePath.values()));
+        this.applyGeneratedRecordTypes(recipeViewModel.objects, recipeSourceRead.recordTypeBlocks);
 
         const recipeTreeBuild = this.buildRecipeTreeViewModels(
             normalizedObjectsWrapper,
@@ -8132,41 +8153,44 @@ export class RecipeCockpitService {
         on every block says the run was generated from a choice. An object whose recipe names none of
         its record types is drawn with the default ticked: the first active one, as generation picks.
     */
-    static applyGeneratedRecordTypes(objects: IRecipeCockpitObjectViewModel[], recipeTexts: string[]): void {
+    static buildEmptyRecordTypeBlocks(): IRecipeRecordTypeBlocks {
 
-        const developerNamesByObjectApiName = new Map<string, string[]>();
-        const defaultWrittenObjectApiNames = new Set<string>();
+        return { developerNamesByObjectApiName: new Map(), defaultWrittenObjectApiNames: new Set() };
 
-        recipeTexts.forEach(recipeText => {
+    }
 
-            const lines = recipeText.split(/\r?\n/);
+    static collectRecordTypeBlocks(lines: string[], scannedObjects: IScannedObject[], recordTypeBlocks: IRecipeRecordTypeBlocks): void {
 
-            RecipeCockpitRecipeWriter.scanRecipeObjects(lines).forEach(scannedObject => {
+        scannedObjects.forEach(scannedObject => {
 
-                const recordTypeIdField = scannedObject.fields.find(scannedField => scannedField.fieldApiName === 'RecordTypeId');
-                if ( !recordTypeIdField ) {
-                    return;
+            const recordTypeIdField = scannedObject.fields.find(scannedField => scannedField.fieldApiName === 'RecordTypeId');
+            if ( !recordTypeIdField ) {
+                return;
+            }
+
+            const recordTypeIdMatch = /^\s*RecordTypeId:[ \t]*([A-Za-z][A-Za-z0-9_]*)\.([A-Za-z][A-Za-z0-9_]*)[ \t]*$/.exec(lines[recordTypeIdField.startIndex]);
+            if ( recordTypeIdMatch && recordTypeIdMatch[1] === scannedObject.objectApiName ) {
+                const developerNames = recordTypeBlocks.developerNamesByObjectApiName.get(scannedObject.objectApiName) ?? [];
+                if ( !developerNames.includes(recordTypeIdMatch[2]) ) {
+                    developerNames.push(recordTypeIdMatch[2]);
                 }
+                recordTypeBlocks.developerNamesByObjectApiName.set(scannedObject.objectApiName, developerNames);
+            }
 
-                const recordTypeIdMatch = /^\s*RecordTypeId:[ \t]*([A-Za-z][A-Za-z0-9_]*)\.([A-Za-z][A-Za-z0-9_]*)[ \t]*$/.exec(lines[recordTypeIdField.startIndex]);
-                if ( recordTypeIdMatch && recordTypeIdMatch[1] === scannedObject.objectApiName ) {
-                    const developerNames = developerNamesByObjectApiName.get(scannedObject.objectApiName) ?? [];
-                    if ( !developerNames.includes(recordTypeIdMatch[2]) ) {
-                        developerNames.push(recordTypeIdMatch[2]);
-                    }
-                    developerNamesByObjectApiName.set(scannedObject.objectApiName, developerNames);
+            for ( let continuationIndex = recordTypeIdField.startIndex + 1; continuationIndex < recordTypeIdField.endIndex; continuationIndex++ ) {
+                if ( lines[continuationIndex].trimStart().startsWith(RECIPE_COCKPIT_RECORD_TYPE_OPTIONS_MARKER) ) {
+                    recordTypeBlocks.defaultWrittenObjectApiNames.add(scannedObject.objectApiName);
+                    break;
                 }
-
-                const isWrittenAsDefault = lines
-                    .slice(recordTypeIdField.startIndex + 1, recordTypeIdField.endIndex)
-                    .some(continuationLine => continuationLine.trimStart().startsWith(RECIPE_COCKPIT_RECORD_TYPE_OPTIONS_MARKER));
-                if ( isWrittenAsDefault ) {
-                    defaultWrittenObjectApiNames.add(scannedObject.objectApiName);
-                }
-
-            });
+            }
 
         });
+
+    }
+
+    static applyGeneratedRecordTypes(objects: IRecipeCockpitObjectViewModel[], recordTypeBlocks: IRecipeRecordTypeBlocks): void {
+
+        const { developerNamesByObjectApiName, defaultWrittenObjectApiNames } = recordTypeBlocks;
 
         objects
             .filter(objectViewModel => !!objectViewModel.recordTypes)
@@ -8389,11 +8413,12 @@ export class RecipeCockpitService {
         links and a notice, not the panel.
     */
     // recipeTextsByFilePath IS EACH FILE'S TEXT AS IT WAS READ HERE, SO THE TREE CARDS' TODO LOOKUPS ARE LISTED WITHOUT READING IT AGAIN (#151)
-    static readRecipeSourceFiles(runFolderPath: string, workspaceRoot: string): { recipeSourceFiles: IRecipeSourceFile[]; notices: string[]; recipeTextsByFilePath: Map<string, string> } {
+    static readRecipeSourceFiles(runFolderPath: string, workspaceRoot: string): { recipeSourceFiles: IRecipeSourceFile[]; notices: string[]; recipeTextsByFilePath: Map<string, string>; recordTypeBlocks: IRecipeRecordTypeBlocks } {
 
         const recipeSourceFiles: IRecipeSourceFile[] = [];
         const notices: string[] = [];
         const recipeTextsByFilePath = new Map<string, string>();
+        const recordTypeBlocks = this.buildEmptyRecordTypeBlocks();
 
         this.collectRecipeFilePaths(runFolderPath)
             .filter(recipeFilePath => SfdxProjectService.isPathContainedInWorkspace(path.resolve(recipeFilePath), path.resolve(workspaceRoot)))
@@ -8403,7 +8428,7 @@ export class RecipeCockpitService {
                     const recipeText = fs.readFileSync(recipeFilePath, 'utf-8');
                     recipeSourceFiles.push({
                         filePath: recipeFilePath,
-                        objectEntries: this.parseRecipeSource(recipeText)
+                        objectEntries: this.parseRecipeSource(recipeText, recordTypeBlocks)
                     });
                     recipeTextsByFilePath.set(recipeFilePath, recipeText);
                 } catch (readError) {
@@ -8412,7 +8437,7 @@ export class RecipeCockpitService {
 
             });
 
-        return { recipeSourceFiles: recipeSourceFiles, notices: notices, recipeTextsByFilePath: recipeTextsByFilePath };
+        return { recipeSourceFiles: recipeSourceFiles, notices: notices, recipeTextsByFilePath: recipeTextsByFilePath, recordTypeBlocks: recordTypeBlocks };
 
     }
 
@@ -8463,11 +8488,14 @@ export class RecipeCockpitService {
         only when NICKNAMES tell the two apart: then it is kept on the first as an iteration, with
         its own lines, and the map stays keyed by api name for everything that asks about an object.
     */
-    static parseRecipeSource(recipeContent: string): Map<string, IRecipeSourceObjectEntry> {
+    static parseRecipeSource(recipeContent: string, recordTypeBlocks?: IRecipeRecordTypeBlocks): Map<string, IRecipeSourceObjectEntry> {
 
         const objectEntries = new Map<string, IRecipeSourceObjectEntry>();
         const { lines } = RecipeCockpitRecipeWriter.splitRecipeLines(recipeContent);
         const scannedObjects = RecipeCockpitRecipeWriter.scanRecipeObjects(lines);
+        if ( recordTypeBlocks ) {
+            this.collectRecordTypeBlocks(lines, scannedObjects, recordTypeBlocks);
+        }
         const scannedFriendIndex = RecipeCockpitRecipeWriter.buildScannedFriendIndex(scannedObjects);
         const scannedObjectsByHeaderIndex = scannedFriendIndex.objectsByHeaderIndex;
 
@@ -11185,7 +11213,7 @@ ${this.buildPaletteCustomProperties()}
 
     function postRecordTypeRegenerate(treeState, recordTypeSelection) {
 
-        if (isRecordTypeRegenerating) { return; }
+        if (isRecordTypeRegenerating || insertRunningTreeKey !== null) { return; }
 
         isRecordTypeRegenerating = true;
         drawRecordTypeChoices();
@@ -11201,7 +11229,7 @@ ${this.buildPaletteCustomProperties()}
             const isLastTicked = isTicked && choice.length === 1;
             rowState.checkboxElement.textContent = isTicked ? '✓' : '';
             rowState.checkboxElement.setAttribute('aria-checked', isTicked ? 'true' : 'false');
-            rowState.checkboxElement.disabled = isRecordTypeRegenerating || isLastTicked;
+            rowState.checkboxElement.disabled = isRecordTypeRegenerating || insertRunningTreeKey !== null || isLastTicked;
             if (isLastTicked) {
                 rowState.checkboxElement.setAttribute('title', 'Each object keeps at least one record type');
             } else {
@@ -11220,7 +11248,14 @@ ${this.buildPaletteCustomProperties()}
             });
         });
 
-        recordTypeButtonElements.forEach(function (buttonElement) { buttonElement.disabled = isRecordTypeRegenerating; });
+        recordTypeButtonElements.forEach(function (buttonElement) {
+            buttonElement.disabled = isRecordTypeRegenerating || insertRunningTreeKey !== null;
+            if (insertRunningTreeKey !== null) {
+                buttonElement.setAttribute('title', 'Wait for the insert to finish');
+            } else {
+                buttonElement.removeAttribute('title');
+            }
+        });
 
     }
 
@@ -11940,6 +11975,7 @@ ${this.buildPaletteCustomProperties()}
         insertRunningTreeKey = runningTreeKey;
         drawTreeInserts();
         drawDataOrgViews();
+        drawRecordTypeChoices();
 
     }
 
@@ -12649,6 +12685,12 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'insertState') {
             setInsertRunning(hostMessage.isRunning ? hostMessage.treeKey : null);
+            return;
+        }
+
+        if (hostMessage.command === 'recordTypeRegenerateState') {
+            isRecordTypeRegenerating = !!hostMessage.isRunning;
+            drawRecordTypeChoices();
             return;
         }
 
