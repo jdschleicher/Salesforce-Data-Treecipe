@@ -197,6 +197,20 @@ describe('SavedRecordTypeSelection (#196)', () => {
 
         });
 
+        it('says an entry was applied only once the walk wrote one that still matches', () => {
+
+            const savedSelection = new SavedRecordTypeSelection([['Account', ['Partner']], ['Contact', ['Gone']]]);
+            expect(savedSelection.isAnyEntryApplied()).toBe(false);
+
+            savedSelection.resolve('Contact', writableMapOf('Vendor'));
+            savedSelection.resolve('Lead', writableMapOf('Web'));
+            expect(savedSelection.isAnyEntryApplied()).toBe(false);
+
+            savedSelection.resolve('Account', writableMapOf('Partner'));
+            expect(savedSelection.isAnyEntryApplied()).toBe(true);
+
+        });
+
         it('resolves an object it has no entry for as no selection', () => {
 
             const savedSelection = new SavedRecordTypeSelection([['Account', ['Partner']]]);

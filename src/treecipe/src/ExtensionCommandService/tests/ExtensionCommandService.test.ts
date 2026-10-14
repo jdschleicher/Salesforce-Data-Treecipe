@@ -3004,6 +3004,25 @@ describe('ExtensionCommandService', () => {
 
             });
 
+            test('given every saved entry dropped, does not claim the saved record types were used, on any run of the session', async () => {
+
+                readSavedSpy.mockImplementation(() => new SavedRecordTypeSelection([['Account', ['Gone']]]));
+                processAllObjectsSpy.mockImplementation(async (unusedUri: unknown, unusedProgress: unknown, recordTypeSelection: RecordTypeSelection) => {
+                    recordTypeSelection.resolve('Account', { Customer: new RecordTypeWrapper() });
+                    return {} as any;
+                });
+
+                await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+                await new ExtensionCommandService().generateRecipeFromConfigurationDetail();
+
+                expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
+                showCreatedFilesNotificationSpy.mock.calls.forEach(notificationCall => {
+                    expect(notificationCall).toHaveLength(2);
+                    expect(notificationCall[0]).not.toContain(SAVED_RECORD_TYPE_SELECTION_USED_MESSAGE);
+                });
+
+            });
+
             test('warns ONCE about what the walk found, and Change record types opens the tab on that object', async () => {
 
                 const accountRecordTypes = { Customer: new RecordTypeWrapper(), Partner: new RecordTypeWrapper(), Vendor: new RecordTypeWrapper() };

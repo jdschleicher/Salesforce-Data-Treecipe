@@ -3557,6 +3557,8 @@ export class RecipeCockpitService {
                     panelState.wireableLookupTargets = new Map();
                     panelState.addableParentTargets = new Map();
                     panelState.acknowledgedRenderSequence = null;
+                    // A REVEAL OF A PANEL THAT FAILED TO DRAW MUST NOT KEEP RE-OPENING THE TAB AN OPEN ASKED FOR
+                    panelState.openFocusTree = undefined;
                     // NOTHING IS ON SCREEN TO DRAW AN ANSWER IN, SO A SELECTION STILL BEING CHECKED STOPS ASKING THE ORG
                     panelState.dataOrgSelection = undefined;
                     panelState.dataOrgRequestSequence++;

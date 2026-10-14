@@ -553,6 +553,20 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         });
 
+        it('stops replaying the Change record types focus once the panel fails to draw', async () => {
+
+            await RecipeCockpitService.openRecipeCockpitPanel(TREE_WORKSPACE_ROOT, { get: jest.fn(), update: jest.fn().mockResolvedValue(undefined) }, { objectApiName: 'Account' });
+            await receivedMessageHandler({ command: 'ready' });
+            expect(lastPosted('recipeData').focusTree).toBeDefined();
+
+            await receivedMessageHandler({ command: 'renderFailed', message: 'draw threw', phase: 'render' });
+            postedPanelMessages = [];
+            await receivedMessageHandler({ command: 'ready' });
+
+            expect(lastPosted('recipeData')).not.toHaveProperty('focusTree');
+
+        });
+
         it('runs nothing for a selection the model did not offer', async () => {
 
             await openAndDraw();

@@ -49,6 +49,7 @@ export class SavedRecordTypeSelection extends RecordTypeSelection {
     private readonly knownDeveloperNamesByObjectApiName: Map<string, string[]>;
     private readonly savedObjectApiNames: string[];
     private readonly resolvedObjectApiNames = new Set<string>();
+    private readonly appliedObjectApiNames = new Set<string>();
     private readonly droppedEntriesByObjectApiName = new Map<string, IDroppedSavedRecordTypeEntry>();
     private readonly newRecordTypesByObjectApiName = new Map<string, INewRecordTypesOfSavedObject>();
 
@@ -170,7 +171,19 @@ export class SavedRecordTypeSelection extends RecordTypeSelection {
             return { selectedRecordTypeApiNames: [], ignoredDeveloperNames: [] };
         }
 
+        this.appliedObjectApiNames.add(objectApiName);
         return super.resolve(objectApiName, writableRecordTypeApiToRecordTypeWrapperMap);
+
+    }
+
+    /*
+        Whether the walk wrote any saved entry. When every one was dropped the run is the defaults,
+        and saying the saved record types were used would be false -- the warning that says
+        otherwise is shown once per session, so a later run would have nothing contradicting it.
+    */
+    isAnyEntryApplied(): boolean {
+
+        return this.appliedObjectApiNames.size > 0;
 
     }
 

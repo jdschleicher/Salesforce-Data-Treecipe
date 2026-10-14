@@ -631,7 +631,7 @@ export class ExtensionCommandService {
                 }
 
                 if ( !ExtensionCommandService.isCompletionNotificationSuppressed(generateTreecipeOptions) ) {
-                    this.showRecipeRunGeneratedNotification(generatedRecipeRun, workspaceRoot, savedRecordTypeSelection !== undefined);
+                    this.showRecipeRunGeneratedNotification(generatedRecipeRun, workspaceRoot, savedRecordTypeSelection?.isAnyEntryApplied() === true);
                 }
 
 
