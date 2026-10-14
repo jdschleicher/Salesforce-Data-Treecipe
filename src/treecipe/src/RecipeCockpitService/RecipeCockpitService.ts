@@ -291,8 +291,25 @@ export const RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_SHOWN = 12;
 // A TODO LOOKUP WHOSE STANDARD PARENT THE RECIPE DOES NOT WRITE ADDS THAT PARENT FROM A TEMPLATE (#294)
 export const RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL = 'Add to recipe';
 
-// IN THE ORDER A CARD DRAWS THEM; TREECIPE IS SELECTED BY DEFAULT, AND THE DATA SETS TAB IS DRAWN ONLY FOR A CARD WITH A HISTORY
-export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'datasets'] as const;
+/*
+    Every tab a card can draw. Treecipe is selected by default; the data sets tab is drawn only for
+    a card with a history, and the record types tab (#195) only for a card listing an object with
+    two or more record types. A card draws them Treecipe, Record types, then Previously Used Data Sets.
+*/
+export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'datasets', 'recordTypes'] as const;
+
+// THE TODO RecipeService WRITES UNDER A DEFAULT RecordTypeId (AND EVERY RECORD-TYPE VARIANT) WHEN AN OBJECT HAS SEVERAL RECORD TYPES
+export const RECIPE_COCKPIT_RECORD_TYPE_OPTIONS_MARKER = '### TODO: -- RecordType Options -- ';
+/*
+    A tab added after place version 2 keeps its search in a saved place only when one was typed, so
+    a place saved before the tab existed, and one that never used it, keeps the shape it had.
+*/
+export const RECIPE_COCKPIT_OPTIONAL_PLACE_SEARCH_TABS: readonly string[] = Object.freeze(['recordTypes']);
+
+export const RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL = 'Regenerate with these record types';
+export const RECIPE_COCKPIT_USE_DEFAULT_RECORD_TYPES_LABEL = 'Use defaults';
+// WHAT THE TAB SAYS ABOVE ITS ROWS: A REGENERATE IS A GENERATE TREECIPE, WHICH WRITES A NEW RUN OF EVERY TREE
+export const RECIPE_COCKPIT_RECORD_TYPES_INTRO = 'Choose the record types Generate Treecipe writes for each object: one recipe block per ticked record type, each with its own RecordTypeId and picklist values. Regenerating writes a new run of every tree; the run on screen is kept.';
 
 export type RecipeCockpitTreeTab = typeof RECIPE_COCKPIT_TREE_TABS[number];
 
@@ -420,6 +437,30 @@ export interface IRecipeCockpitObjectViewModel {
     */
     recordCount?: number;
     countParentObjectApiName?: string;
+    /*
+        Set only on an object with two or more record types under a valid developer name (#195):
+        what the Record types tab offers. generatedRecordTypeDeveloperNames is what the run's recipe
+        writes, in block order, and isRecordTypeSelectionApplied says it was written from a choice
+        rather than as the default -- a later regenerate repeats a choice it was not asked to change.
+    */
+    recordTypes?: IRecipeCockpitRecordTypeViewModel[];
+    generatedRecordTypeDeveloperNames?: string[];
+    isRecordTypeSelectionApplied?: true;
+}
+
+export type RecipeCockpitRecordTypeImpactKind = 'picklist' | 'multiselect' | 'dependent';
+
+// A FIELD A RECORD TYPE RESTRICTS: COUNTS ONLY, SO THE MODEL DOES NOT GROW BY EVERY RECORD TYPE'S VALUES
+export interface IRecipeCockpitRecordTypeImpactViewModel {
+    fieldApiName: string;
+    kind: RecipeCockpitRecordTypeImpactKind;
+    valueCount: number;
+}
+
+export interface IRecipeCockpitRecordTypeViewModel {
+    developerName: string;
+    isActive: boolean;
+    impacts: IRecipeCockpitRecordTypeImpactViewModel[];
 }
 
 // ONE FIELD OF A LATER OCCURRENCE: ONLY ITS LINE AND VALUE -- ITS TYPE AND LABEL ARE THE OBJECT'S OWN FIELD'S
@@ -709,6 +750,12 @@ export interface IRecipeSourceFile {
     objectEntries: Map<string, IRecipeSourceObjectEntry>;
 }
 
+// WHAT A RUN'S BLOCKS WRITE AS RecordTypeId, COLLECTED BY THE SAME SCAN parseRecipeSource MAKES (#195)
+export interface IRecipeRecordTypeBlocks {
+    developerNamesByObjectApiName: Map<string, string[]>;
+    defaultWrittenObjectApiNames: Set<string>;
+}
+
 /*
     Everything the cockpit webview can post back.
 
@@ -741,6 +788,7 @@ export interface IRecipeCockpitPanelMessage {
     included?: unknown;
     updateSequence?: unknown;
     requestSequence?: unknown;
+    recordTypeSelection?: unknown;
 }
 
 export interface IRecipeCockpitLoadPhaseMessage {
@@ -962,6 +1010,12 @@ export interface IRecipeCockpitWireLookupStateMessage {
     isRunning: boolean;
 }
 
+// A REFUSED REGENERATE (#195): THE PANEL DISABLED THE RECORD TYPES TAB ON THE CLICK, AND ONLY THIS OR A NEW MODEL GIVES IT BACK
+export interface IRecipeCockpitRecordTypeRegenerateStateMessage {
+    command: 'recordTypeRegenerateState';
+    isRunning: false;
+}
+
 /*
     The "+ New scratch org" run (#200): while isRunning, the button, every "+ Create" and the org
     dropdown are disabled. How the run went is a notification's, with its "View output" button
@@ -1044,6 +1098,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitInsertStateMessage
                                         | IRecipeCockpitAddFriendStateMessage
                                         | IRecipeCockpitWireLookupStateMessage
+                                        | IRecipeCockpitRecordTypeRegenerateStateMessage
                                         | IRecipeCockpitTreePreferencesMessage
                                         | IRecipeCockpitDatasetPreferencesMessage
                                         | IRecipeCockpitObjectSelectionMessage
@@ -1136,6 +1191,9 @@ export interface IRecipeCockpitTreeHistoryAllowLists {
     selectableObjectKeys: Set<string>;
     // "<treeKey>\n<object>\n<field>" FOR EVERY FIELD CHECKBOX (#220): A SELECTABLE OBJECT'S FIELDS THAT HAVE A LINE IN THE RECIPE
     selectableFieldKeys: Set<string>;
+    // "<object>\n<developerName>" FOR EVERY RECORD TYPE A CARD'S RECORD TYPES TAB OFFERS (#195), AND THE CARDS THAT DRAW THAT TAB
+    selectableRecordTypeKeys: Set<string>;
+    recordTypeTreeKeys: Set<string>;
 }
 
 /*
@@ -1150,6 +1208,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'openSource'; filePath: string; lineNumber: number }
     | { kind: 'selectRun'; runFolderName: string }
     | { kind: 'generateTreecipe' }
+    | { kind: 'regenerateWithRecordTypes'; treeKey: string; recordTypeSelection: Record<string, string[]> }
+    | { kind: 'refuseRecordTypeRegenerate' }
     | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage }
     | { kind: 'loadDatasetRecordCounts'; datasetFolderName: string; datasetFolderPath: string; renderSequence: number }
     | { kind: 'openDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
@@ -1376,6 +1436,12 @@ export class RecipeCockpitService {
 
             RECIPE_COCKPIT_TREE_TABS.forEach(tabName => {
                 const candidateQuery = Object.prototype.hasOwnProperty.call(candidateQueries, tabName) ? candidateQueries[tabName] : undefined;
+                if ( RECIPE_COCKPIT_OPTIONAL_PLACE_SEARCH_TABS.includes(tabName) ) {
+                    if ( this.isBoundedText(candidateQuery) && candidateQuery !== '' ) {
+                        searchQueries[tabName] = candidateQuery;
+                    }
+                    return;
+                }
                 searchQueries[tabName] = this.isBoundedText(candidateQuery) ? candidateQuery : '';
             });
 
@@ -2869,7 +2935,9 @@ export class RecipeCockpitService {
             nameableTreeKeys: new Set(),
             nameableDatasetFolderNames: new Set(),
             selectableObjectKeys: new Set(),
-            selectableFieldKeys: new Set()
+            selectableFieldKeys: new Set(),
+            selectableRecordTypeKeys: new Set(),
+            recordTypeTreeKeys: new Set()
         };
 
     }
@@ -2885,6 +2953,14 @@ export class RecipeCockpitService {
             if ( tree.runFakerRecipeFileName ) {
                 treeHistoryAllowLists.generatableTreeKeys.add(tree.treeKey);
             }
+
+            tree.objects
+                .map(treeObject => objectsByApiName.get(treeObject.objectApiName))
+                .filter((objectViewModel): objectViewModel is IRecipeCockpitObjectViewModel => !!objectViewModel?.recordTypes)
+                .forEach(objectViewModel => {
+                    treeHistoryAllowLists.recordTypeTreeKeys.add(tree.treeKey);
+                    objectViewModel.recordTypes.forEach(recordType => treeHistoryAllowLists.selectableRecordTypeKeys.add(this.buildSelectableRecordTypeKey(objectViewModel.objectApiName, recordType.developerName)));
+                });
 
             if ( tree.folderName !== '' ) {
                 treeHistoryAllowLists.nameableTreeKeys.add(tree.treeKey);
@@ -2904,6 +2980,12 @@ export class RecipeCockpitService {
         });
 
         return treeHistoryAllowLists;
+
+    }
+
+    static buildSelectableRecordTypeKey(objectApiName: string, developerName: string): string {
+
+        return `${objectApiName}\n${developerName}`;
 
     }
 
@@ -3433,6 +3515,19 @@ export class RecipeCockpitService {
             case 'generateTreecipe':
 
                 await this.generateTreecipeAndReload(cockpitPanel, panelState);
+                return;
+
+            case 'regenerateWithRecordTypes':
+
+                await this.generateTreecipeAndReload(cockpitPanel, panelState, {
+                    generateTreecipeOptions: { ...RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS, recordTypeSelection: panelAction.recordTypeSelection },
+                    focusTree: { treeKey: panelAction.treeKey, tab: 'recordTypes' }
+                });
+                return;
+
+            case 'refuseRecordTypeRegenerate':
+
+                this.postToPanel(cockpitPanel, { command: 'recordTypeRegenerateState', isRunning: false });
                 return;
 
             case 'postPicklistValues':
@@ -4302,7 +4397,13 @@ export class RecipeCockpitService {
         palette. The latest run is loaded afterwards whether or not generation wrote one: Generate
         Treecipe reports its own failures, and reloading shows the reader exactly what is on disk.
     */
-    private static async generateTreecipeAndReload(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState) {
+    /*
+        The Record types tab (#195) comes through here too, with its selection in the options and the
+        reload focused back on the tab it was clicked in.
+    */
+    private static async generateTreecipeAndReload(cockpitPanel: vscode.WebviewPanel,
+                                                    panelState: IRecipeCockpitPanelState,
+                                                    regeneration?: { generateTreecipeOptions: object; focusTree: IRecipeCockpitTreeFocus }) {
 
         /*
             In flight until the RELOAD has finished, not only the command, so a second click before
@@ -4321,14 +4422,14 @@ export class RecipeCockpitService {
         try {
 
             try {
-                await vscode.commands.executeCommand(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND, RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS);
+                await vscode.commands.executeCommand(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND, regeneration?.generateTreecipeOptions ?? RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS);
             } catch (commandError) {
                 hasGenerationFailed = true;
                 generationError = commandError;
             }
 
             if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState ) {
-                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot);
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, undefined, regeneration?.focusTree);
             }
 
         } finally {
@@ -6501,6 +6602,31 @@ export class RecipeCockpitService {
                 return { kind: 'generateTreecipe' };
 
             /*
+                The Record types tab's two buttons (#195). The selection is NAMES only, each pair
+                MATCHED against what the confirmed-drawn model offered; one name it did not offer
+                refuses the whole request rather than generating something other than what was
+                asked. An empty selection is "Use defaults". It shares Generate Treecipe's
+                in-flight flag, so neither starts while the other runs or reloads.
+            */
+            case 'regenerateWithRecordTypes': {
+
+                const treeKey = panelMessage.treeKey;
+                const recordTypeSelection = this.readPostedRecordTypeSelection(panelMessage.recordTypeSelection, panelState.treeHistoryAllowLists.selectableRecordTypeKeys);
+
+                // A RELOAD CLEARS THE ORG SELECTION, WHICH WOULD CANCEL AN INSERT THE READER CONFIRMED; THE PANEL DISABLED ITS BUTTONS ON THE CLICK, SO A REFUSAL GIVES THEM BACK
+                if ( panelState.isGenerateTreecipeInFlight
+                        || panelState.insertStateMessage
+                        || typeof treeKey !== 'string'
+                        || !panelState.treeHistoryAllowLists.recordTypeTreeKeys.has(treeKey)
+                        || !recordTypeSelection ) {
+                    return { kind: 'refuseRecordTypeRegenerate' };
+                }
+
+                return { kind: 'regenerateWithRecordTypes', treeKey: treeKey, recordTypeSelection: recordTypeSelection };
+
+            }
+
+            /*
                 Names, not a path, and answered only for a row the CONFIRMED-drawn model marked as a
                 picklist: the key has to be in the active set, which the panel's "rendered" fills
                 and every reload empties.
@@ -7189,6 +7315,40 @@ export class RecipeCockpitService {
     }
 
     // WHERE THE READER ACTED FROM, KEPT ONLY IF IT NAMES A CARD OF THE MODEL ON SCREEN AND ITS DATA SETS TAB
+    /*
+        A posted record type selection (#195): a plain object of object api name -> developer names,
+        every pair one the confirmed-drawn model offered, each object's list non-empty and without
+        repeats. Anything else is undefined -- the request is refused, never trimmed to what passed.
+        The map it answers has no prototype, so an object named "__proto__" stays a key.
+    */
+    static readPostedRecordTypeSelection(postedSelection: unknown, selectableRecordTypeKeys: Set<string>): Record<string, string[]> | undefined {
+
+        if ( !this.isPlainRecord(postedSelection) ) {
+            return undefined;
+        }
+
+        const recordTypeSelection: Record<string, string[]> = Object.create(null);
+
+        for ( const objectApiName of Object.keys(postedSelection) ) {
+
+            const developerNames: unknown = postedSelection[objectApiName];
+
+            if ( !Array.isArray(developerNames)
+                    || developerNames.length === 0
+                    || new Set(developerNames).size !== developerNames.length
+                    || !developerNames.every(developerName => typeof developerName === 'string'
+                                                                && selectableRecordTypeKeys.has(this.buildSelectableRecordTypeKey(objectApiName, developerName))) ) {
+                return undefined;
+            }
+
+            recordTypeSelection[objectApiName] = [...developerNames as string[]];
+
+        }
+
+        return recordTypeSelection;
+
+    }
+
     static readTreeFocus(panelMessage: IRecipeCockpitPanelMessage, panelState: IRecipeCockpitPanelState): IRecipeCockpitTreeFocus | undefined {
 
         const { treeKey, tab } = panelMessage;
@@ -7622,6 +7782,7 @@ export class RecipeCockpitService {
         recipeViewModel.objects = this.attachRecipeSources(normalizedObjectsWrapper.objects, recipeSourceRead.recipeSourceFiles)
             .filter(objectViewModel => !normalizedObjectsWrapper.fieldlessObjectApiNames.has(objectViewModel.objectApiName)
                                         || !!objectViewModel.recipeFilePath);
+        this.applyGeneratedRecordTypes(recipeViewModel.objects, recipeSourceRead.recordTypeBlocks);
 
         const recipeTreeBuild = this.buildRecipeTreeViewModels(
             normalizedObjectsWrapper,
@@ -7819,7 +7980,13 @@ export class RecipeCockpitService {
 
             });
 
-            objects.push({ objectApiName: objectApiName, recipeFilePath: '', fields: fields });
+            const recordTypes = this.readRecordTypeOptions(wrapperObjectRecord?.RecordTypesMap, fields);
+            objects.push({
+                objectApiName: objectApiName,
+                recipeFilePath: '',
+                fields: fields,
+                ...( recordTypes.length >= 2 ? { recordTypes: recordTypes } : {} )
+            });
 
         });
 
@@ -7932,6 +8099,119 @@ export class RecipeCockpitService {
             return { recordTypeDeveloperName: recordTypeDeveloperName, picklistValuesByFieldApiName: picklistValuesByFieldApiName };
 
         });
+
+    }
+
+    /*
+        The record types the Record types tab offers for one object (#195), in the map's own order
+        (RecordTypeService sorted it once, #166). Only a developer name that IS an api name is
+        offered: generation refuses any other (#120), so offering it would offer nothing. Each
+        carries what it restricts -- every picklist field of the object its section lists, and how
+        many values it allows there -- as counts, never the values.
+    */
+    static readRecordTypeOptions(recordTypesMap: unknown, fields: IRecipeCockpitFieldViewModel[]): IRecipeCockpitRecordTypeViewModel[] {
+
+        const recordTypesRecord = this.asRecord(recordTypesMap);
+
+        if ( !recordTypesRecord ) {
+            return [];
+        }
+
+        const picklistFields = fields.filter(field => RECIPE_COCKPIT_PICKLIST_FIELD_TYPES.includes(field.fieldType));
+        const picklistSectionsByDeveloperName = new Map(this.readRecordTypePicklistSections(recordTypesRecord)
+            .map(recordTypeSection => [recordTypeSection.recordTypeDeveloperName, recordTypeSection.picklistValuesByFieldApiName]));
+
+        return Object.keys(recordTypesRecord)
+            .filter(developerName => SalesforceApiName.isApiName(developerName))
+            .map(developerName => {
+
+                // readRecordTypePicklistSections READS EVERY KEY OF THE SAME MAP, SO EVERY OFFERED NAME HAS AN ENTRY
+                const picklistValuesByFieldApiName = picklistSectionsByDeveloperName.get(developerName) as Record<string, string[]>;
+                const impacts: IRecipeCockpitRecordTypeImpactViewModel[] = picklistFields
+                    .filter(field => Object.prototype.hasOwnProperty.call(picklistValuesByFieldApiName, field.fieldApiName))
+                    .map(field => ({
+                        fieldApiName: field.fieldApiName,
+                        kind: field.controllingField ? 'dependent' : ( field.fieldType.toLowerCase() === 'multiselectpicklist' ? 'multiselect' : 'picklist' ),
+                        valueCount: picklistValuesByFieldApiName[field.fieldApiName].length
+                    }));
+
+                return {
+                    developerName: developerName,
+                    isActive: this.asRecord(recordTypesRecord[developerName])?.Active !== false,
+                    impacts: impacts
+                };
+
+            });
+
+    }
+
+    /*
+        Which record types the run's recipes write per object (#195), read from every block's
+        RecordTypeId line ("Object.DeveloperName"), in block order -- a self-lookup iteration repeats
+        its object's first block and adds nothing. A block written as the DEFAULT carries the
+        RecordType Options TODO under that line (two or more record types always do), so its absence
+        on every block says the run was generated from a choice. An object whose recipe names none of
+        its record types is drawn with the default ticked: the first active one, as generation picks.
+    */
+    static buildEmptyRecordTypeBlocks(): IRecipeRecordTypeBlocks {
+
+        return { developerNamesByObjectApiName: new Map(), defaultWrittenObjectApiNames: new Set() };
+
+    }
+
+    static collectRecordTypeBlocks(lines: string[], scannedObjects: IScannedObject[], recordTypeBlocks: IRecipeRecordTypeBlocks): void {
+
+        scannedObjects.forEach(scannedObject => {
+
+            const recordTypeIdField = scannedObject.fields.find(scannedField => scannedField.fieldApiName === 'RecordTypeId');
+            if ( !recordTypeIdField ) {
+                return;
+            }
+
+            const recordTypeIdMatch = /^\s*RecordTypeId:[ \t]*([A-Za-z][A-Za-z0-9_]*)\.([A-Za-z][A-Za-z0-9_]*)[ \t]*$/.exec(lines[recordTypeIdField.startIndex]);
+            if ( recordTypeIdMatch && recordTypeIdMatch[1] === scannedObject.objectApiName ) {
+                const developerNames = recordTypeBlocks.developerNamesByObjectApiName.get(scannedObject.objectApiName) ?? [];
+                if ( !developerNames.includes(recordTypeIdMatch[2]) ) {
+                    developerNames.push(recordTypeIdMatch[2]);
+                }
+                recordTypeBlocks.developerNamesByObjectApiName.set(scannedObject.objectApiName, developerNames);
+            }
+
+            for ( let continuationIndex = recordTypeIdField.startIndex + 1; continuationIndex < recordTypeIdField.endIndex; continuationIndex++ ) {
+                if ( lines[continuationIndex].trimStart().startsWith(RECIPE_COCKPIT_RECORD_TYPE_OPTIONS_MARKER) ) {
+                    recordTypeBlocks.defaultWrittenObjectApiNames.add(scannedObject.objectApiName);
+                    break;
+                }
+            }
+
+        });
+
+    }
+
+    static applyGeneratedRecordTypes(objects: IRecipeCockpitObjectViewModel[], recordTypeBlocks: IRecipeRecordTypeBlocks): void {
+
+        const { developerNamesByObjectApiName, defaultWrittenObjectApiNames } = recordTypeBlocks;
+
+        objects
+            .filter(objectViewModel => !!objectViewModel.recordTypes)
+            .forEach(objectViewModel => {
+
+                const offeredDeveloperNames = objectViewModel.recordTypes.map(recordType => recordType.developerName);
+                const generatedDeveloperNames = (developerNamesByObjectApiName.get(objectViewModel.objectApiName) ?? [])
+                    .filter(developerName => offeredDeveloperNames.includes(developerName));
+
+                if ( generatedDeveloperNames.length === 0 ) {
+                    const defaultRecordType = objectViewModel.recordTypes.find(recordType => recordType.isActive) ?? objectViewModel.recordTypes[0];
+                    objectViewModel.generatedRecordTypeDeveloperNames = [defaultRecordType.developerName];
+                    return;
+                }
+
+                objectViewModel.generatedRecordTypeDeveloperNames = generatedDeveloperNames;
+                if ( !defaultWrittenObjectApiNames.has(objectViewModel.objectApiName) ) {
+                    objectViewModel.isRecordTypeSelectionApplied = true;
+                }
+
+            });
 
     }
 
@@ -8133,11 +8413,12 @@ export class RecipeCockpitService {
         links and a notice, not the panel.
     */
     // recipeTextsByFilePath IS EACH FILE'S TEXT AS IT WAS READ HERE, SO THE TREE CARDS' TODO LOOKUPS ARE LISTED WITHOUT READING IT AGAIN (#151)
-    static readRecipeSourceFiles(runFolderPath: string, workspaceRoot: string): { recipeSourceFiles: IRecipeSourceFile[]; notices: string[]; recipeTextsByFilePath: Map<string, string> } {
+    static readRecipeSourceFiles(runFolderPath: string, workspaceRoot: string): { recipeSourceFiles: IRecipeSourceFile[]; notices: string[]; recipeTextsByFilePath: Map<string, string>; recordTypeBlocks: IRecipeRecordTypeBlocks } {
 
         const recipeSourceFiles: IRecipeSourceFile[] = [];
         const notices: string[] = [];
         const recipeTextsByFilePath = new Map<string, string>();
+        const recordTypeBlocks = this.buildEmptyRecordTypeBlocks();
 
         this.collectRecipeFilePaths(runFolderPath)
             .filter(recipeFilePath => SfdxProjectService.isPathContainedInWorkspace(path.resolve(recipeFilePath), path.resolve(workspaceRoot)))
@@ -8147,7 +8428,7 @@ export class RecipeCockpitService {
                     const recipeText = fs.readFileSync(recipeFilePath, 'utf-8');
                     recipeSourceFiles.push({
                         filePath: recipeFilePath,
-                        objectEntries: this.parseRecipeSource(recipeText)
+                        objectEntries: this.parseRecipeSource(recipeText, recordTypeBlocks)
                     });
                     recipeTextsByFilePath.set(recipeFilePath, recipeText);
                 } catch (readError) {
@@ -8156,7 +8437,7 @@ export class RecipeCockpitService {
 
             });
 
-        return { recipeSourceFiles: recipeSourceFiles, notices: notices, recipeTextsByFilePath: recipeTextsByFilePath };
+        return { recipeSourceFiles: recipeSourceFiles, notices: notices, recipeTextsByFilePath: recipeTextsByFilePath, recordTypeBlocks: recordTypeBlocks };
 
     }
 
@@ -8207,11 +8488,14 @@ export class RecipeCockpitService {
         only when NICKNAMES tell the two apart: then it is kept on the first as an iteration, with
         its own lines, and the map stays keyed by api name for everything that asks about an object.
     */
-    static parseRecipeSource(recipeContent: string): Map<string, IRecipeSourceObjectEntry> {
+    static parseRecipeSource(recipeContent: string, recordTypeBlocks?: IRecipeRecordTypeBlocks): Map<string, IRecipeSourceObjectEntry> {
 
         const objectEntries = new Map<string, IRecipeSourceObjectEntry>();
         const { lines } = RecipeCockpitRecipeWriter.splitRecipeLines(recipeContent);
         const scannedObjects = RecipeCockpitRecipeWriter.scanRecipeObjects(lines);
+        if ( recordTypeBlocks ) {
+            this.collectRecordTypeBlocks(lines, scannedObjects, recordTypeBlocks);
+        }
         const scannedFriendIndex = RecipeCockpitRecipeWriter.buildScannedFriendIndex(scannedObjects);
         const scannedObjectsByHeaderIndex = scannedFriendIndex.objectsByHeaderIndex;
 
@@ -8569,7 +8853,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader, .treeObjectHeader, .treeField, .treeDataset { transition: background-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, box-shadow ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease; }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treePermissionSets, .treeGeneratePermissionSet {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .recordTypesRegenerate, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treePermissionSets, .treeGeneratePermissionSet {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
@@ -8598,19 +8882,19 @@ ${this.buildPaletteCustomProperties()}
     [aria-expanded="true"] > .toggleGlyph { transform: rotate(90deg); }
     .noMotion > .toggleGlyph { transition: none; }
     .toggleGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-    .toolbar button, .emptyStateActions button, .treeInsert, .dataOrgLoad, .dataOrgNewScratch {
+    .toolbar button, .emptyStateActions button, .treeInsert, .recordTypesRegenerate, .dataOrgLoad, .dataOrgNewScratch {
         color: var(--sdt-on-accent);
         background-color: var(--sdt-accent);
         border-color: var(--sdt-accent);
         font-weight: 600;
     }
-    .toolbar button:hover:not(:disabled), .emptyStateActions button:hover:not(:disabled), .treeInsert:hover:not(:disabled), .dataOrgLoad:hover:not(:disabled), .dataOrgNewScratch:hover:not(:disabled) { filter: brightness(0.92); }
-    .toolbar button:active:not(:disabled), .emptyStateActions button:active:not(:disabled), .treeInsert:active:not(:disabled), .dataOrgLoad:active:not(:disabled), .dataOrgNewScratch:active:not(:disabled) { filter: brightness(0.84); }
+    .toolbar button:hover:not(:disabled), .emptyStateActions button:hover:not(:disabled), .treeInsert:hover:not(:disabled), .recordTypesRegenerate:hover:not(:disabled), .dataOrgLoad:hover:not(:disabled), .dataOrgNewScratch:hover:not(:disabled) { filter: brightness(0.92); }
+    .toolbar button:active:not(:disabled), .emptyStateActions button:active:not(:disabled), .treeInsert:active:not(:disabled), .recordTypesRegenerate:active:not(:disabled), .dataOrgLoad:active:not(:disabled), .dataOrgNewScratch:active:not(:disabled) { filter: brightness(0.84); }
     .treeAddFriend { font-weight: 600; }
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
     .treeAddFriendChoice, .historyAction { text-decoration: underline; }
-    .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treePermissionSets:disabled, .treeGeneratePermissionSet:disabled {
+    .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .recordTypesRegenerate:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treePermissionSets:disabled, .treeGeneratePermissionSet:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
         border-color: var(--sdt-border);
@@ -8716,6 +9000,13 @@ ${this.buildPaletteCustomProperties()}
     }
     .treeFieldInclude[aria-checked="false"] { background-color: var(--sdt-surface); border-color: var(--sdt-muted); }
     .treeFieldInclude:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); border-color: var(--sdt-border); cursor: not-allowed; }
+    .recordTypesIntro { margin: 0.5rem 0; }
+    .recordTypeObject { margin: 0.6rem 0; }
+    .recordTypeObjectHeading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; font-weight: 600; }
+    .recordTypeObjectStatus { font-weight: 400; }
+    .recordTypeRow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0.25rem 0 0.25rem 1rem; }
+    .recordTypeImpact { flex-basis: 100%; margin-left: 1.65em; }
+    .recordTypeActions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
     .treeFieldFixedValue {
         position: relative;
         z-index: 2;
@@ -8879,6 +9170,10 @@ ${this.buildPaletteCustomProperties()}
     const PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB};
     const TREE_TAB_RENAMES = ${JSON.stringify(RECIPE_COCKPIT_TREE_TAB_RENAMES)};
     const REMOVED_TREE_TABS = ${JSON.stringify(RECIPE_COCKPIT_REMOVED_TREE_TABS)};
+    const OPTIONAL_PLACE_SEARCH_TABS = ${JSON.stringify(RECIPE_COCKPIT_OPTIONAL_PLACE_SEARCH_TABS)};
+    const REGENERATE_WITH_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL)};
+    const USE_DEFAULT_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_USE_DEFAULT_RECORD_TYPES_LABEL)};
+    const RECORD_TYPES_INTRO = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_INTRO)};
     const RENAME_TREE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL)};
     const FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITE_TREE_LABEL)};
     const NOT_FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL)};
@@ -9383,6 +9678,17 @@ ${this.buildPaletteCustomProperties()}
 
     // ROWS WHOSE VALUES WERE ASKED FOR AND NOT YET ANSWERED, BY OBJECT AND FIELD -- KEYED BY NAMES FROM FILES, SO NO PROTOTYPE
     let pendingPicklistValueElements = Object.create(null);
+
+    /*
+        The Record types tab's choice (#195) is the PANEL's, per object and shared by every card
+        that lists the object: object api name -> developer names, in the order ticked, starting
+        from what the run on screen generates. Keyed by names from files, so no prototype.
+    */
+    let recordTypeChoices = Object.create(null);
+    let recordTypeObjects = [];
+    let recordTypeRowStates = [];
+    let recordTypeButtonElements = [];
+    let isRecordTypeRegenerating = false;
 
     // DATA SET COUNT ROWS WAITING ON THE HOST, AND THE ANSWERS ALREADY HAD -- KEYED BY FOLDER NAMES FROM DISK, SO NO PROTOTYPE
     let pendingDatasetCountElements = Object.create(null);
@@ -10473,6 +10779,10 @@ ${this.buildPaletteCustomProperties()}
         treeState.selectedTab = 'treecipe';
         addTreeTab(treeState, tabsElement, 'treecipe', 'Treecipe', structureElement);
 
+        if (listRecordTypeObjects(treeState).length > 0) {
+            addTreeTab(treeState, tabsElement, 'recordTypes', 'Record types', createElement('div', 'treeRecordTypes hidden'));
+        }
+
         if (treeState.tree.history) {
             addTreeTab(treeState, tabsElement, 'datasets', 'Previously Used Data Sets', createElement('div', 'treeDatasets hidden'));
         }
@@ -10528,6 +10838,7 @@ ${this.buildPaletteCustomProperties()}
             if (isSelected && !tabState.isBuilt) {
                 tabState.isBuilt = true;
                 if (tabState.tabName === 'datasets') { buildDatasetsTab(treeState, tabState.panelElement); }
+                if (tabState.tabName === 'recordTypes') { buildRecordTypesTab(treeState, tabState.panelElement); }
             }
 
         });
@@ -10746,6 +11057,205 @@ ${this.buildPaletteCustomProperties()}
         });
 
         applyDatasetsFilter(treeState);
+
+    }
+
+    // EVERY OBJECT THE CARD DRAWS THAT HAS RECORD TYPES TO CHOOSE FROM, ONCE, IN THE CARD'S ORDER
+    function listRecordTypeObjects(treeState) {
+
+        const listedObjectApiNames = [];
+
+        return treeState.objectStates
+            .filter(function (treeObjectState) { return !treeObjectState.isIteration && Array.isArray(treeObjectState.object.recordTypes); })
+            .map(function (treeObjectState) { return treeObjectState.object; })
+            .filter(function (object) {
+                if (listedObjectApiNames.indexOf(object.objectApiName) !== -1) { return false; }
+                listedObjectApiNames.push(object.objectApiName);
+                return true;
+            });
+
+    }
+
+    function describeRecordTypeImpacts(recordType) {
+
+        if (recordType.impacts.length === 0) { return 'Restricts no picklist values'; }
+
+        const kindLabels = { picklist: 'Picklist', multiselect: 'Multi-select', dependent: 'Dependent picklist' };
+        return recordType.impacts.map(function (impact) {
+            return kindLabels[impact.kind] + ' ' + impact.fieldApiName + ': ' + pluralize(impact.valueCount, 'value', 'values');
+        }).join(' · ');
+
+    }
+
+    /*
+        The Record types tab (#195): every object of the card with two or more record types, each
+        record type a checkbox with what it restricts, and the two buttons that regenerate the run.
+        Built on first select, like the data sets tab. The choice it draws is panel-wide, so a
+        tick here is drawn on every card listing the object.
+    */
+    function buildRecordTypesTab(treeState, panelElement) {
+
+        panelElement.appendChild(createElement('div', 'recordTypesIntro muted', RECORD_TYPES_INTRO));
+
+        treeState.recordTypesSearch = buildTabSearch(treeState, 'recordTypes', 'Search objects, record types and fields', applyRecordTypesFilter);
+        panelElement.appendChild(treeState.recordTypesSearch.element);
+
+        treeState.recordTypeObjectStates = listRecordTypeObjects(treeState).map(function (object) {
+
+            const objectElement = createElement('div', 'recordTypeObject');
+            const headingElement = createElement('div', 'recordTypeObjectHeading');
+            const statusElement = createElement('span', 'recordTypeObjectStatus muted');
+            const searchTextParts = [object.objectApiName];
+
+            headingElement.appendChild(createElement('span', 'recordTypeObjectName', object.objectApiName));
+            headingElement.appendChild(statusElement);
+            objectElement.appendChild(headingElement);
+
+            object.recordTypes.forEach(function (recordType) {
+
+                const rowElement = createElement('div', 'recordTypeRow');
+                const checkboxElement = createElement('button', 'treeFieldInclude recordTypeInclude');
+                const labelElement = createElement('span', 'recordTypeName', recordType.developerName);
+
+                checkboxElement.setAttribute('role', 'checkbox');
+                checkboxElement.setAttribute('aria-label', recordType.developerName + ' (' + object.objectApiName + ')');
+                checkboxElement.addEventListener('click', function () {
+                    if (checkboxElement.disabled) { return; }
+                    toggleRecordTypeChoice(object.objectApiName, recordType.developerName);
+                });
+
+                rowElement.appendChild(checkboxElement);
+                rowElement.appendChild(labelElement);
+                if (!recordType.isActive) { rowElement.appendChild(createElement('span', 'recordTypeInactive muted', 'inactive')); }
+                rowElement.appendChild(createElement('div', 'recordTypeImpact muted', describeRecordTypeImpacts(recordType)));
+                objectElement.appendChild(rowElement);
+
+                recordTypeRowStates.push({ objectApiName: object.objectApiName, developerName: recordType.developerName, checkboxElement: checkboxElement });
+                searchTextParts.push(recordType.developerName);
+                recordType.impacts.forEach(function (impact) { searchTextParts.push(impact.fieldApiName); });
+
+            });
+
+            panelElement.appendChild(objectElement);
+
+            return { object: object, element: objectElement, statusElement: statusElement, searchText: searchTextParts.join('\\n').toLowerCase() };
+
+        });
+
+        const actionsElement = createElement('div', 'recordTypeActions');
+        const regenerateElement = createElement('button', 'recordTypesRegenerate', REGENERATE_WITH_RECORD_TYPES_LABEL);
+        const defaultsElement = createElement('button', 'historyAction recordTypesDefaults', USE_DEFAULT_RECORD_TYPES_LABEL);
+
+        regenerateElement.addEventListener('click', function () { postRecordTypeRegenerate(treeState, buildRecordTypeSelection()); });
+        defaultsElement.addEventListener('click', function () { postRecordTypeRegenerate(treeState, {}); });
+        defaultsElement.setAttribute('title', 'Regenerate the run with every object\\'s default record type, as Generate Treecipe writes it');
+
+        actionsElement.appendChild(regenerateElement);
+        actionsElement.appendChild(defaultsElement);
+        panelElement.appendChild(actionsElement);
+        recordTypeButtonElements.push(regenerateElement, defaultsElement);
+
+        drawRecordTypeChoices();
+        applyRecordTypesFilter(treeState);
+
+    }
+
+    function applyRecordTypesFilter(treeState) {
+
+        applyRowSearch(treeState.recordTypeObjectStates, treeState.searchQueries.recordTypes, treeState.recordTypesSearch, 'object', 'objects', false);
+
+    }
+
+    // A CHOICE KEEPS AT LEAST ONE RECORD TYPE: "NONE" IS NOT A RECORD TYPE, AND "Use defaults" IS HOW TO GO BACK
+    function toggleRecordTypeChoice(objectApiName, developerName) {
+
+        const choice = recordTypeChoices[objectApiName] || [];
+        const choiceIndex = choice.indexOf(developerName);
+
+        if (choiceIndex === -1) {
+            choice.push(developerName);
+        } else if (choice.length > 1) {
+            choice.splice(choiceIndex, 1);
+        }
+
+        recordTypeChoices[objectApiName] = choice;
+        drawRecordTypeChoices();
+
+    }
+
+    function isSameChoice(firstNames, secondNames) {
+
+        return firstNames.length === secondNames.length && firstNames.every(function (name, nameIndex) { return name === secondNames[nameIndex]; });
+
+    }
+
+    /*
+        What a regenerate sends: every object the reader changed, and every object the run on
+        screen was already generated from a choice for -- so regenerating for one object does not
+        put another back to its default. An object left at its default is left out, which
+        generates it exactly as Generate Treecipe always has.
+    */
+    function buildRecordTypeSelection() {
+
+        const recordTypeSelection = Object.create(null);
+
+        recordTypeObjects.forEach(function (object) {
+            const choice = recordTypeChoices[object.objectApiName] || [];
+            const isChanged = !isSameChoice(choice, object.generatedRecordTypeDeveloperNames || []);
+            if (choice.length > 0 && (isChanged || object.isRecordTypeSelectionApplied === true)) {
+                recordTypeSelection[object.objectApiName] = choice.slice();
+            }
+        });
+
+        return recordTypeSelection;
+
+    }
+
+    function postRecordTypeRegenerate(treeState, recordTypeSelection) {
+
+        if (isRecordTypeRegenerating || insertRunningTreeKey !== null) { return; }
+
+        isRecordTypeRegenerating = true;
+        drawRecordTypeChoices();
+        vscodeApi.postMessage({ command: 'regenerateWithRecordTypes', treeKey: treeState.tree.treeKey, recordTypeSelection: recordTypeSelection });
+
+    }
+
+    function drawRecordTypeChoices() {
+
+        recordTypeRowStates.forEach(function (rowState) {
+            const choice = recordTypeChoices[rowState.objectApiName] || [];
+            const isTicked = choice.indexOf(rowState.developerName) !== -1;
+            const isLastTicked = isTicked && choice.length === 1;
+            rowState.checkboxElement.textContent = isTicked ? '✓' : '';
+            rowState.checkboxElement.setAttribute('aria-checked', isTicked ? 'true' : 'false');
+            rowState.checkboxElement.disabled = isRecordTypeRegenerating || insertRunningTreeKey !== null || isLastTicked;
+            if (isLastTicked) {
+                rowState.checkboxElement.setAttribute('title', 'Each object keeps at least one record type');
+            } else {
+                rowState.checkboxElement.removeAttribute('title');
+            }
+        });
+
+        treeStates.forEach(function (treeState) {
+            (treeState.recordTypeObjectStates || []).forEach(function (objectState) {
+                const object = objectState.object;
+                const choice = recordTypeChoices[object.objectApiName] || [];
+                const isChanged = !isSameChoice(choice, object.generatedRecordTypeDeveloperNames || []);
+                objectState.statusElement.textContent = isChanged
+                    ? 'changed: regenerate to write ' + choice.join(', ')
+                    : (object.isRecordTypeSelectionApplied === true ? 'generated: ' : 'generated by default: ') + choice.join(', ');
+            });
+        });
+
+        recordTypeButtonElements.forEach(function (buttonElement) {
+            buttonElement.disabled = isRecordTypeRegenerating || insertRunningTreeKey !== null;
+            if (insertRunningTreeKey !== null) {
+                buttonElement.setAttribute('title', 'Wait for the insert to finish');
+            } else {
+                buttonElement.removeAttribute('title');
+            }
+        });
 
     }
 
@@ -10974,9 +11484,9 @@ ${this.buildPaletteCustomProperties()}
             element: treeElement,
             toggleElement: toggleElement,
             bodyElement: createElement('div', 'treeBody hidden'),
-            searchQueries: { treecipe: '', datasets: '' },
+            searchQueries: { treecipe: '', datasets: '', recordTypes: '' },
             // WHAT THE READER TYPED IN EACH BOX, AS TYPED -- searchQueries IS ITS TRIMMED, LOWERCASED FORM
-            searchTexts: { treecipe: '', datasets: '' },
+            searchTexts: { treecipe: '', datasets: '', recordTypes: '' },
             isDatasetFavoritesOnly: false,
             datasetFavoritesToggleElement: null,
             // THE TOP OF THE TREECIPE TAB (#255), MADE WITH THE TAB
@@ -11278,6 +11788,11 @@ ${this.buildPaletteCustomProperties()}
             return;
         }
 
+        recordTypeObjects = recipe.objects.filter(function (object) { return Array.isArray(object.recordTypes) && object.recordTypes.length > 0; });
+        recordTypeObjects.forEach(function (object) {
+            recordTypeChoices[object.objectApiName] = (object.generatedRecordTypeDeveloperNames || []).slice();
+        });
+
         trees.forEach(function (tree) { renderTree(tree, objectsByApiName); });
 
         noFavoritesElement = createElement('div', 'emptyState hidden', NO_FAVORITES_MESSAGE);
@@ -11460,6 +11975,7 @@ ${this.buildPaletteCustomProperties()}
         insertRunningTreeKey = runningTreeKey;
         drawTreeInserts();
         drawDataOrgViews();
+        drawRecordTypeChoices();
 
     }
 
@@ -11697,7 +12213,8 @@ ${this.buildPaletteCustomProperties()}
         });
 
         PANEL_PLACE_TABS.forEach(function (tabName) {
-            searchQueries[tabName] = treeState.searchTexts[tabName] || '';
+            const searchText = treeState.searchTexts[tabName] || '';
+            if (searchText || OPTIONAL_PLACE_SEARCH_TABS.indexOf(tabName) === -1) { searchQueries[tabName] = searchText; }
             if (treeState.searchQueries[tabName]) { hasSearch = true; }
         });
 
@@ -12000,6 +12517,11 @@ ${this.buildPaletteCustomProperties()}
         dataOrgReadinessByObject = Object.create(null);
         dataOrgReadinessByTreeObjectKey = Object.create(null);
         pendingPicklistValueElements = Object.create(null);
+        recordTypeChoices = Object.create(null);
+        recordTypeObjects = [];
+        recordTypeRowStates = [];
+        recordTypeButtonElements = [];
+        isRecordTypeRegenerating = false;
         pendingDatasetCountElements = Object.create(null);
         answeredDatasetCounts = Object.create(null);
         fieldSearchTexts = new Map();
@@ -12163,6 +12685,12 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'insertState') {
             setInsertRunning(hostMessage.isRunning ? hostMessage.treeKey : null);
+            return;
+        }
+
+        if (hostMessage.command === 'recordTypeRegenerateState') {
+            isRecordTypeRegenerating = !!hostMessage.isRunning;
+            drawRecordTypeChoices();
             return;
         }
 

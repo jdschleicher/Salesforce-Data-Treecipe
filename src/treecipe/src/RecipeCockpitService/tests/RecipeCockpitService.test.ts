@@ -374,7 +374,7 @@ describe('RecipeCockpitService', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
 
-            expect(styleSheet).toMatch(/\n\s*\.toolbar button, \.emptyStateActions button, \.treeInsert, \.dataOrgLoad, \.dataOrgNewScratch \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
+            expect(styleSheet).toMatch(/\n\s*\.toolbar button, \.emptyStateActions button, \.treeInsert, \.recordTypesRegenerate, \.dataOrgLoad, \.dataOrgNewScratch \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
             expect(styleSheet).not.toMatch(/\.treeInsertResult|\.treeInsertErrors|\.scratchOrgStatus|\.scratchOrgViewOutput/);
             // #266: THE COMPARE TAB'S DIFF BADGES, ROWS AND CONTROLS ARE GONE, WITH THEIR RULES
             expect(styleSheet).not.toMatch(/\.diff|\.dataObject|\.dataField|\.treeCompare|\.orgStatus|\.orgProgress|\.orgDescribe|\.statusFilter|\.dataTreeCount|\.describeIn/);
@@ -1974,10 +1974,11 @@ describe('RecipeCockpitService', () => {
             expandTree(panel, firstTreeCard);
 
             expect(panel.isHidden(treeBodyOf(firstTreeCard))).toBe(false);
-            expect(textOf(panel, firstTreeCard, 'treeTab')).toEqual(['Treecipe', 'Previously Used Data Sets']);
-            expect(panel.findAll(firstTreeCard, 'treeTab').map((tabElement: any) => tabElement.attributes['aria-selected'])).toEqual(['true', 'false']);
+            // #195: Account HAS TWO RECORD TYPES, SO THE CARD DRAWS A RECORD TYPES TAB
+            expect(textOf(panel, firstTreeCard, 'treeTab')).toEqual(['Treecipe', 'Record types', 'Previously Used Data Sets']);
+            expect(panel.findAll(firstTreeCard, 'treeTab').map((tabElement: any) => tabElement.attributes['aria-selected'])).toEqual(['true', 'false', 'false']);
             // #266: THE COMPARE TAB IS GONE
-            expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['treecipe', 'datasets']);
+            expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['treecipe', 'datasets', 'recordTypes']);
             // ONLY TREECIPE IS BUILT: THE DATA SETS TAB BUILDS ITS ROWS ON ITS OWN FIRST OPEN
             expect(panel.findAll(firstTreeCard, 'treeDataset')).toEqual([]);
             expect(textOf(panel, firstTreeCard, 'treeObjectName')).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
@@ -3220,7 +3221,7 @@ describe('RecipeCockpitService', () => {
                 expect(RecipeCockpitService.routePanelMessage({ command: 'diffTreeVersion', treeKey: LEAD_TREE_KEY, runFolderName: 'recipe-2026-09-01T00-00-00' }, panelState)).toBeUndefined();
                 expect(RecipeCockpitService.routePanelMessage({ command: 'insertDataset', datasetFolderName: 'dataset-2026-09-21T00-00-00', treeKey: LEAD_TREE_KEY, tab: 'versions' }, panelState))
                     .not.toHaveProperty('focusTree');
-                expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['treecipe', 'datasets']);
+                expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['treecipe', 'datasets', 'recordTypes']);
 
             });
 
