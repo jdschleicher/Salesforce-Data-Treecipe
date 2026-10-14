@@ -186,6 +186,18 @@ describe.each(backends)('RecipeService.applyValidationRules with %s', (backendNa
 
     });
 
+    test('a record type section ISPICKVAL empties is dropped, so no variant chooses from nothing', () => {
+
+        const recordTypeMap: Record<string, RecordTypeWrapper> = {
+            Retail: { DeveloperName: 'Retail', PicklistFieldSectionsToPicklistDetail: { Field__c: ['Lost'], Other__c: ['Lost'] } }
+        };
+
+        expect(RecipeService.excludeRecordTypePicklistValues(recordTypeMap, 'Field__c', new Set(['Lost'])).Retail.PicklistFieldSectionsToPicklistDetail).toEqual({ Other__c: ['Lost'] });
+        const result = apply(fakerService, picklistDetail(['Open', 'Lost']), ['ISPICKVAL(Field__c, "Lost")'], recordTypeMap);
+        expect(result.recipeValue).not.toContain('Retail');
+
+    });
+
     test('ISPICKVAL narrows a selected record type\'s values', () => {
 
         const recordTypeMap: Record<string, RecordTypeWrapper> = {
@@ -296,6 +308,36 @@ describe('RecipeService.applyValidationRules, a regex rule', () => {
             { ruleName: 'Rule_2', type: 'lengthMax', value: '5', applied: false, reason: 'a regex rule on this field decides its value, and a bound cannot be combined with it' }
         ]);
 
+    });
+
+    test('a regex on a sized field is held to its length: open repeats are cut to fit, in pattern order', () => {
+
+        const result = apply(new FakerJSRecipeFakerService(), fieldDetail('Text', { length: 5 }), ['NOT(REGEX(Field__c, "[A-Z]+-\\\\d*"))']);
+
+        expect(loadFieldValue(result.recipeValue)).toBe(`\${{ faker.helpers.fromRegExp('[A-Z]{1,4}') + '-' + faker.helpers.fromRegExp('[0-9]{0}') }}`);
+        expect(result.validationRuleConstraints[0].applied).toBe(true);
+
+    });
+
+    test('a regex whose shortest match is longer than the field is not applied', () => {
+
+        const result = apply(new FakerJSRecipeFakerService(), fieldDetail('Text', { length: 5 }), ['NOT(REGEX(Field__c, "[A-Z]{3}-\\\\d{4}"))']);
+
+        expect(result.recipeValue).toBe(result.unconstrainedRecipeValue);
+        expect(result.validationRuleConstraints[0].reason).toBe("the shortest value the pattern matches is longer than the field's 5 characters");
+
+    });
+
+    test('a Phone field is held to the 40 characters Salesforce allows every phone', () => {
+        expect(RecipeService.getRegexFieldLengthCeiling(fieldDetail('Phone'))).toBe(40);
+        expect(RecipeService.getRegexFieldLengthCeiling(fieldDetail('TextArea'))).toBe(255);
+        expect(RecipeService.getRegexFieldLengthCeiling(fieldDetail('Text', { length: 12 }))).toBe(12);
+    });
+
+    test('fitRegexAtomsToLength keeps every minimum and hands out what is left', () => {
+        expect(RecipeService.fitRegexAtomsToLength([{ characters: 'ab', min: 1, max: 9 }, { characters: 'c', min: 2, max: 9 }], 6))
+            .toEqual([{ characters: 'ab', min: 1, max: 4 }, { characters: 'c', min: 2, max: 2 }]);
+        expect(RecipeService.fitRegexAtomsToLength([{ characters: 'a', min: 7, max: 7 }], 6)).toBeUndefined();
     });
 
     test('snowfakery has no regex generator, so it is not applied there', () => {

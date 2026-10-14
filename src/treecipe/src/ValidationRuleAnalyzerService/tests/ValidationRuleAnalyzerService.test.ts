@@ -222,6 +222,22 @@ describe('ValidationRuleAnalyzerService.parseGeneratableRegex', () => {
         expect(ValidationRuleAnalyzerService.parseGeneratableRegex(pattern)).toEqual({ refusal: expectedRefusal });
     });
 
+    test('a long run of backslashes before a "$" is read in linear time, and "$" after an odd run is a literal', () => {
+        const startedAt = Date.now();
+        expect(ValidationRuleAnalyzerService.parseGeneratableRegex(`${'\\'.repeat(200000)}a$`)).toEqual({ refusal: 'the pattern has more than 100 parts' });
+        expect(Date.now() - startedAt).toBeLessThan(500);
+        expect(ValidationRuleAnalyzerService.parseGeneratableRegex('a\\\\$')).toEqual({ atoms: [{ characters: 'a', min: 1, max: 1 }, { characters: '\\', min: 1, max: 1 }] });
+    });
+
+    test('a formula longer than Salesforce allows is not applied, before any shape is matched', () => {
+        const longFormula = `NOT(REGEX(Code__c, "${'\\\\'.repeat(2000)}a$"))`;
+        expect(ValidationRuleAnalyzerService.analyzeFormula(longFormula, 'Rule')).toEqual({
+            ruleName: 'Rule',
+            notAppliedReason: 'its formula is longer than the 3900 characters Salesforce allows'
+        });
+        expect(ValidationRuleAnalyzerService.analyzeFormula(`Amount__c < ${'1'.repeat(3880)}`, 'Rule').constraint).toBeDefined();
+    });
+
     test('a pattern with more than the maximum parts is refused', () => {
         expect(ValidationRuleAnalyzerService.parseGeneratableRegex('a'.repeat(101))).toEqual({ refusal: 'the pattern has more than 100 parts' });
     });

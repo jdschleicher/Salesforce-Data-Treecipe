@@ -9,7 +9,7 @@ import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 import { ICompoundComponentRecipe } from "./ICompoundComponentRecipe";
 import { SalesforceApiName } from "./SalesforceApiName";
 import { IRecipeFieldConstraintTarget, IStoredRecipeFieldConstraint, RecipeFieldConstraint, ResolvedRecipeFieldConstraint } from "../RecipeFakerService.ts/RecipeFieldConstraint/RecipeFieldConstraint";
-import { IValidationRuleConstraintRecord, IValidationRuleFieldConstraint } from "../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
+import { IValidationRuleConstraintRecord, IValidationRuleFieldConstraint, IValidationRuleRegexAtom } from "../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 import { RecipeCockpitRecipeWriter } from "../RecipeCockpitService/RecipeCockpitRecipeWriter";
 
 export interface IValidationRuleFieldRecipe {
@@ -19,6 +19,8 @@ export interface IValidationRuleFieldRecipe {
 
 // A REGEX RULE REPLACES THE FIELD'S GENERATOR, SO IT APPLIES ONLY WHERE ANY STRING MATCHING IT IS A VALUE THE FIELD TAKES
 export const VALIDATION_RULE_REGEX_FIELD_TYPES = ['Text', 'TextArea', 'LongTextArea', 'Phone'];
+// A Phone FIELD HAS NO <length>; SALESFORCE HOLDS EVERY ONE TO 40 CHARACTERS
+export const VALIDATION_RULE_PHONE_FIELD_LENGTH = 40;
 
 export class RecipeService {
 
@@ -318,15 +320,20 @@ export class RecipeService {
         Object.entries(recordTypeApiToRecordTypeWrapperMap ?? {}).forEach(([recordTypeApiName, recordTypeWrapper]) => {
 
             const fieldSection = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail?.[fieldApiName];
-            filteredRecordTypeMap[recordTypeApiName] = Array.isArray(fieldSection)
-                ? {
-                    ...recordTypeWrapper,
-                    PicklistFieldSectionsToPicklistDetail: {
-                        ...recordTypeWrapper.PicklistFieldSectionsToPicklistDetail,
-                        [fieldApiName]: RecipeService.excludePicklistValues(fieldSection, excludedPicklistValues)
-                    }
-                }
-                : recordTypeWrapper;
+            if ( !Array.isArray(fieldSection) ) {
+                filteredRecordTypeMap[recordTypeApiName] = recordTypeWrapper;
+                return;
+            }
+            // A SECTION THE EXCLUSION EMPTIES IS DROPPED, SO NO BACKEND WRITES A VARIANT CHOOSING FROM NOTHING
+            const remainingValues = RecipeService.excludePicklistValues(fieldSection, excludedPicklistValues);
+            const otherSections = Object.fromEntries(Object.entries(recordTypeWrapper.PicklistFieldSectionsToPicklistDetail)
+                .filter(([sectionFieldApiName]) => sectionFieldApiName !== fieldApiName));
+            filteredRecordTypeMap[recordTypeApiName] = {
+                ...recordTypeWrapper,
+                PicklistFieldSectionsToPicklistDetail: remainingValues.length > 0
+                    ? { ...otherSections, [fieldApiName]: remainingValues }
+                    : otherSections
+            };
 
         });
         return filteredRecordTypeMap;
@@ -750,14 +757,18 @@ ${this.generateTabs(1)}${fieldPropertAndRecipeValue}`;
         if ( regexRules.length > 1 ) {
             regexRules.forEach(ruleConstraint => record(ruleConstraint, `${regexRules.length} regex rules on one field cannot be combined`));
         } else if ( regexRules.length === 1 ) {
-            const regexExpression = VALIDATION_RULE_REGEX_FIELD_TYPES.includes(fieldType)
-                ? this.fakerService.buildRegexExpression(regexRules[0].regexAtoms ?? [])
+            const lengthCeiling = RecipeService.getRegexFieldLengthCeiling(xmlFieldDetail);
+            const fittedAtoms = RecipeService.fitRegexAtomsToLength(regexRules[0].regexAtoms ?? [], lengthCeiling);
+            const regexExpression = VALIDATION_RULE_REGEX_FIELD_TYPES.includes(fieldType) && fittedAtoms !== undefined
+                ? this.fakerService.buildRegexExpression(fittedAtoms)
                 : undefined;
             const regexRefusal = !VALIDATION_RULE_REGEX_FIELD_TYPES.includes(fieldType)
                 ? `a regex rule is applied to a ${VALIDATION_RULE_REGEX_FIELD_TYPES.join(', ')} field, and this is a ${fieldType} field`
-                : ( regexExpression === undefined
-                    ? 'this faker service has no regex generator'
-                    : RecipeService.findConstrainedExpressionRefusal(regexExpression) );
+                : fittedAtoms === undefined
+                    ? `the shortest value the pattern matches is longer than the field's ${lengthCeiling} characters`
+                    : ( regexExpression === undefined
+                        ? 'this faker service has no regex generator'
+                        : RecipeService.findConstrainedExpressionRefusal(regexExpression) );
             if ( regexRefusal !== undefined ) {
                 record(regexRules[0], regexRefusal);
             } else {
@@ -791,6 +802,38 @@ ${this.generateTabs(1)}${fieldPropertAndRecipeValue}`;
             recipeValue: recipeValue,
             validationRuleConstraints: fieldRuleConstraints.map(ruleConstraint => recordsByRule.get(ruleConstraint) as IValidationRuleConstraintRecord)
         };
+
+    }
+
+    static getRegexFieldLengthCeiling(xmlFieldDetail: XMLFieldDetail): number {
+
+        if ( xmlFieldDetail.fieldType === 'Phone' ) {
+            return VALIDATION_RULE_PHONE_FIELD_LENGTH;
+        }
+        return RecipeFieldConstraint.getLengthCeiling({
+            fieldType: xmlFieldDetail.fieldType,
+            ...( Number.isInteger(xmlFieldDetail.length) && xmlFieldDetail.length > 0 ? { length: xmlFieldDetail.length } : {} )
+        });
+
+    }
+
+    /*
+        A pattern's atoms with their repeats held to the field's length, or undefined when even each
+        atom's minimum is too long. Every atom keeps its minimum and the room left is handed out in
+        pattern order, so any value drawn still matches the pattern AND fits the field.
+    */
+    static fitRegexAtomsToLength(regexAtoms: IValidationRuleRegexAtom[], lengthCeiling: number): IValidationRuleRegexAtom[] | undefined {
+
+        let remainingLength = lengthCeiling - regexAtoms.reduce((total, regexAtom) => total + regexAtom.min, 0);
+        if ( remainingLength < 0 ) {
+            return undefined;
+        }
+
+        return regexAtoms.map(regexAtom => {
+            const extraRepeats = Math.min(regexAtom.max - regexAtom.min, remainingLength);
+            remainingLength -= extraRepeats;
+            return { ...regexAtom, max: regexAtom.min + extraRepeats };
+        });
 
     }
 

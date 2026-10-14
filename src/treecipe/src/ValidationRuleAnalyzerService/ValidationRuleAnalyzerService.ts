@@ -76,6 +76,8 @@ export const VALIDATION_RULES_DIRECTORY_NAME = 'validationRules';
 // A FORMULA STRING HOLDING ANY OF THESE IS REFUSED: EACH OPENS A TEMPLATE IN ONE OF THE BACKENDS
 export const VALIDATION_RULE_TEMPLATE_OPENERS = ['${{', '${%', '${', '{{', '{%', '<<', '<%'];
 
+// SALESFORCE'S OWN LIMIT ON <errorConditionFormula>; A LONGER ONE CAME FROM NO ORG, AND IS REFUSED BEFORE ANY SHAPE IS MATCHED
+export const VALIDATION_RULE_MAX_FORMULA_LENGTH = 3900;
 export const VALIDATION_RULE_REGEX_MAX_ATOMS = 100;
 export const VALIDATION_RULE_REGEX_MAX_REPEAT = 1000;
 // "*", "+" AND "{n,}" HAVE NO END; A GENERATED VALUE STOPS THIS MANY REPEATS PAST THE MINIMUM
@@ -157,6 +159,10 @@ export class ValidationRuleAnalyzerService {
         reference, a function this does not know -- is not applied, never partly applied.
     */
     static analyzeFormula(formula: string, ruleName: string): IValidationRuleAnalysis {
+
+        if ( formula.length > VALIDATION_RULE_MAX_FORMULA_LENGTH ) {
+            return { ruleName: ruleName, notAppliedReason: `its formula is longer than the ${VALIDATION_RULE_MAX_FORMULA_LENGTH} characters Salesforce allows` };
+        }
 
         const trimmedFormula = formula.trim();
         const shaped = (fieldReference: string, constraint: Omit<IValidationRuleFieldConstraint, 'ruleName' | 'fieldReference'>): IValidationRuleAnalysis =>
@@ -285,8 +291,15 @@ export class ValidationRuleAnalyzerService {
         }
 
         let body = pattern.startsWith('^') ? pattern.slice(1) : pattern;
-        if ( body.endsWith('$') && ( body.length - body.replace(/\\*\$$/, '').length ) % 2 === 1 ) {
-            body = body.slice(0, -1);
+        // A "$" IS AN ANCHOR WHEN AN EVEN NUMBER OF BACKSLASHES PRECEDES IT; COUNTED BACKWARDS, BECAUSE AN UNANCHORED /\\*\$$/ IS QUADRATIC IN A BACKSLASH RUN
+        if ( body.endsWith('$') ) {
+            let backslashIndex = body.length - 2;
+            while ( backslashIndex >= 0 && body[backslashIndex] === '\\' ) {
+                backslashIndex--;
+            }
+            if ( ( body.length - 2 - backslashIndex ) % 2 === 0 ) {
+                body = body.slice(0, -1);
+            }
         }
         if ( body.length === 0 ) {
             return { refusal: 'the pattern matches only an empty value' };
