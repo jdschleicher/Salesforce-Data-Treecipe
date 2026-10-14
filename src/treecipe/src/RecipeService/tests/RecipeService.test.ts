@@ -992,3 +992,217 @@ describe.each([
     });
 
 });
+
+/*
+    #193. A record type SELECTED for an object is written as the object's RecordTypeId with no
+    alternatives, and every record-type-dependent picklist as a live expression over that record
+    type's values. Both backends, because each writes its own expressions -- RecipeService narrows
+    the values and hands each backend no record type map, so neither writes a commented variant.
+*/
+describe.each([
+    ['faker-js', () => new FakerJSRecipeFakerService()],
+    ['snowfakery', () => new SnowfakeryRecipeFakerService()]
+] as const)('a selected record type, with the %s backend (#193)', (unusedBackend, createFakerService) => {
+
+    const recipeService = new RecipeService(createFakerService());
+    const recordTypeMap: Record<string, RecordTypeWrapper> = {
+        Customer: {
+            DeveloperName: 'Customer',
+            RecordTypeId: '',
+            PicklistFieldSectionsToPicklistDetail: { Rating__c: ['Hot'], Industry__c: ['Banking', 'Energy'], Tags__c: ['red'], Region__c: ['East'], Office__c: ['Boston', 'Denver'] }
+        },
+        Partner: {
+            DeveloperName: 'Partner',
+            RecordTypeId: '',
+            PicklistFieldSectionsToPicklistDetail: { Rating__c: ['Cold', 'Warm'], Industry__c: ['Retail'], Tags__c: ['blue', 'green'], Region__c: ['West'], Office__c: ['Austin'] }
+        }
+    };
+    const buildPicklistFieldDetail = (fieldType: string, apiName: string, values: string[] | undefined, controllingField?: string, controllingValuesByValue: Record<string, string[]> = {}): XMLFieldDetail => ({
+        fieldType: fieldType,
+        apiName: apiName,
+        fieldLabel: apiName,
+        controllingField: controllingField,
+        picklistValues: values?.map((value) => ({
+            picklistOptionApiName: value,
+            label: value,
+            default: false,
+            controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection: controllingValuesByValue[value]
+        })),
+        xmlMarkup: ''
+    });
+    const loadFieldValue = (fieldApiName: string, recipeValue: string): unknown => {
+        const objectRecipe = recipeService.appendFieldRecipeToObjectRecipe(RecipeMockService.getFakeInitialObjectRecipeMarkup(), recipeValue, fieldApiName);
+        return (yaml.load(objectRecipe) as Array<{ fields: Record<string, unknown> }>)[0].fields[fieldApiName];
+    };
+    const fakerService = () => recipeService['fakerService'];
+
+    describe('initiateRecipeByObjectName', () => {
+
+        test('writes the selected developer name with no RecordType Options TODO and no commented alternative', () => {
+
+            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {}, { selectedRecordTypeApiName: 'Partner', ignoredNames: [] });
+
+            expect(actualRecipe).toBe(`\n- object: Thing__c
+  nickname: Thing__c_NickName
+  count: 1
+  fields:
+    RecordTypeId: Thing__c.Partner`);
+
+        });
+
+        test('given no selection, or one that selects nothing, is byte-identical to the default', () => {
+
+            const defaultRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {});
+
+            expect(recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {}, { ignoredNames: [] })).toBe(defaultRecipe);
+            expect(defaultRecipe).toContain('RecordTypeId: Thing__c.Customer\n');
+            expect(defaultRecipe).toContain('# Thing__c.Partner');
+
+        });
+
+        test('given a selected name the map does not hold, writes the default as before', () => {
+
+            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {}, { selectedRecordTypeApiName: 'Gone', ignoredNames: [] });
+
+            expect(actualRecipe).toBe(recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {}));
+
+        });
+
+        test('writes one escaped TODO line per ignored name, after the record type line, and the recipe still loads', () => {
+
+            const hostileDeveloperName = 'Evil\n    Injected__c: ${{ globalThis.__treecipeInjected = true }}\u2028    Z';
+
+            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', recordTypeMap, {}, {
+                selectedRecordTypeApiName: 'Customer',
+                ignoredNames: [
+                    { developerName: hostileDeveloperName, reason: 'notAWritableRecordType' },
+                    { developerName: 'Partner', reason: 'onlyOneRecordTypePerObject' }
+                ]
+            });
+            const recipeLines = actualRecipe.split(/\r\n|\r|\n|\u0085|\u2028|\u2029/);
+
+            expect(recipeLines.slice(-3)).toEqual([
+                '    RecordTypeId: Thing__c.Customer',
+                expect.stringMatching(/^ {4}### TODO -- RECORD TYPE SELECTION IGNORED -- "Evil.*Z" -- it is not a record type of Thing__c with a valid developer name$/),
+                '    ### TODO -- RECORD TYPE SELECTION IGNORED -- "Partner" -- only the first selected record type of Thing__c is generated'
+            ]);
+            expect((yaml.load(actualRecipe) as Array<{ fields: Record<string, unknown> }>)[0].fields).toEqual({ RecordTypeId: 'Thing__c.Customer' });
+
+        });
+
+        test('given an object with no record type, writes no RecordTypeId and still names the ignored selection', () => {
+
+            const actualRecipe = recipeService.initiateRecipeByObjectName('Thing__c', {}, {}, { ignoredNames: [{ developerName: 'Customer', reason: 'notAWritableRecordType' }] });
+
+            expect(actualRecipe).not.toContain('RecordTypeId');
+            expect(actualRecipe).toContain('### TODO -- RECORD TYPE SELECTION IGNORED -- "Customer"');
+            expect((yaml.load(actualRecipe) as Array<{ fields: unknown }>)[0].fields).toBeNull();
+
+        });
+
+    });
+
+    describe('getRecipeFakeValueByXMLFieldDetail', () => {
+
+        test('a picklist is the selected record type\'s values, as the backend writes them with no record type map', () => {
+
+            const fieldDetail = buildPicklistFieldDetail('Picklist', 'Rating__c', ['Cold', 'Hot', 'Warm']);
+
+            const actualRecipeValue = recipeService.getRecipeFakeValueByXMLFieldDetail(fieldDetail, recordTypeMap, 'Partner');
+
+            expect(actualRecipeValue).toBe(fakerService().buildPicklistRecipeValueByXMLFieldDetail(['Cold', 'Warm'], {}, 'Rating__c'));
+            expect(actualRecipeValue).not.toContain('\n');
+            expect(actualRecipeValue).not.toContain('RecordType Options');
+
+        });
+
+        test('a picklist the selected record type does not list keeps every value, with no commented variant', () => {
+
+            const fieldDetail = buildPicklistFieldDetail('Picklist', 'Unlisted__c', ['A', 'B']);
+
+            const actualRecipeValue = recipeService.getRecipeFakeValueByXMLFieldDetail(fieldDetail, recordTypeMap, 'Partner');
+
+            expect(actualRecipeValue).toBe(fakerService().buildPicklistRecipeValueByXMLFieldDetail(['A', 'B'], {}, 'Unlisted__c'));
+
+        });
+
+        test('a picklist with no values of its own takes the selected record type\'s values', () => {
+
+            const fieldDetail = buildPicklistFieldDetail('Picklist', 'Industry__c', undefined);
+
+            const actualRecipeValue = recipeService.getRecipeFakeValueByXMLFieldDetail(fieldDetail, recordTypeMap, 'Customer');
+
+            expect(actualRecipeValue).toBe(fakerService().buildPicklistRecipeValueByXMLFieldDetail(['Banking', 'Energy'], {}, 'Industry__c'));
+
+        });
+
+        test('a multi-select picklist is the selected record type\'s values, with no commented variant', () => {
+
+            const fieldDetail = buildPicklistFieldDetail('MultiselectPicklist', 'Tags__c', ['blue', 'green', 'red']);
+
+            const actualRecipeValue = recipeService.getRecipeFakeValueByXMLFieldDetail(fieldDetail, recordTypeMap, 'Partner');
+
+            expect(actualRecipeValue).toBe(fakerService().buildMultiSelectPicklistRecipeValueByXMLFieldDetail(['blue', 'green'], {}, 'Tags__c'));
+            expect(actualRecipeValue).not.toContain('\n');
+
+        });
+
+        test('a multi-select picklist with no values of its own takes the selected record type\'s values instead of the placeholder', () => {
+
+            const fieldDetail = buildPicklistFieldDetail('MultiselectPicklist', 'Tags__c', undefined);
+
+            expect(recipeService.getRecipeFakeValueByXMLFieldDetail(fieldDetail, recordTypeMap, 'Partner'))
+                .toBe(fakerService().buildMultiSelectPicklistRecipeValueByXMLFieldDetail(['blue', 'green'], {}, 'Tags__c'));
+            expect(recipeService.getRecipeFakeValueByXMLFieldDetail(buildPicklistFieldDetail('MultiselectPicklist', 'Unlisted__c', undefined), recordTypeMap, 'Partner'))
+                .toBe(fakerService().getMultipicklistTODOPlaceholderWithExample());
+
+        });
+
+        test('a dependent picklist keeps only the controlling values and dependent values the selected record type allows', () => {
+
+            const fieldDetail = buildPicklistFieldDetail('Picklist', 'Office__c', ['Boston', 'Denver', 'Austin'], 'Region__c', {
+                Boston: ['East'],
+                Denver: ['East', 'West'],
+                Austin: ['West']
+            });
+
+            const actualRecipeValue = recipeService.getRecipeFakeValueByXMLFieldDetail(fieldDetail, recordTypeMap, 'Partner');
+
+            expect(actualRecipeValue).toBe(fakerService().buildDependentPicklistRecipeFakerValue({ West: ['Austin'] }, {}, 'Region__c', 'Office__c'));
+            expect(actualRecipeValue).not.toContain('RecordType Options');
+            expect(loadFieldValue('Office__c', actualRecipeValue)).toEqual({ if: [{ choice: { when: expect.any(String), pick: { random_choice: ['Austin'] } } }] });
+
+        });
+
+        test('a dependent picklist the selected record type leaves no value of is one comment, which loads as null', () => {
+
+            const fieldDetail = buildPicklistFieldDetail('Picklist', 'Office__c', ['Boston', 'Denver'], 'Region__c', { Boston: ['East'], Denver: ['East'] });
+
+            const actualRecipeValue = recipeService.getRecipeFakeValueByXMLFieldDetail(fieldDetail, recordTypeMap, 'Partner');
+
+            expect(actualRecipeValue).toBe(' ### TODO -- DEPENDENT PICKLIST -- record type "Partner" makes no value of "Office__c" available under any value of "Region__c" it allows; set a value by hand or leave the field out');
+            expect(loadFieldValue('Office__c', actualRecipeValue)).toBeNull();
+
+        });
+
+        test('given no selected record type, every picklist is written exactly as before', () => {
+
+            const fieldDetails = [
+                buildPicklistFieldDetail('Picklist', 'Rating__c', ['Cold', 'Hot', 'Warm']),
+                buildPicklistFieldDetail('MultiselectPicklist', 'Tags__c', ['blue', 'green', 'red']),
+                buildPicklistFieldDetail('Picklist', 'Office__c', ['Boston', 'Austin'], 'Region__c', { Boston: ['East'], Austin: ['West'] })
+            ];
+
+            fieldDetails.forEach((fieldDetail) => {
+                expect(recipeService.getRecipeFakeValueByXMLFieldDetail(fieldDetail, recordTypeMap, undefined))
+                    .toBe(recipeService.getRecipeFakeValueByXMLFieldDetail(fieldDetail, recordTypeMap));
+                expect(recipeService.getRecipeFakeValueByXMLFieldDetail(fieldDetail, recordTypeMap, 'Gone'))
+                    .toBe(recipeService.getRecipeFakeValueByXMLFieldDetail(fieldDetail, recordTypeMap));
+            });
+            expect(recipeService.getRecipeFakeValueByXMLFieldDetail(fieldDetails[0], recordTypeMap)).toContain('RecordType Options');
+
+        });
+
+    });
+
+});

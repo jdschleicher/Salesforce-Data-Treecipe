@@ -5,6 +5,7 @@ import { ObjectInfoWrapper } from "../ObjectInfoWrapper/ObjectInfoWrapper";
 import { VSCodeWorkspaceService, ICreatedFileNotificationAction } from "../VSCodeWorkspace/VSCodeWorkspaceService";
 import { CollectionsApiService } from "../CollectionsApiService/CollectionsApiService";
 import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
+import { RecordTypeSelection } from "../RecordTypeService/RecordTypeSelection";
 import { IFakerRecipeProcessor } from "../FakerRecipeProcessor/IFakerRecipeProcessor";
 import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
@@ -598,6 +599,7 @@ export class ExtensionCommandService {
                 */
                 const isMissingGlobalValueSetsDirectoryWarningShown = false;
                 const objectsTargetUri = vscode.Uri.file(fullPathToObjectsDirectory);
+                const recordTypeSelection = ExtensionCommandService.readRecordTypeSelection(generateTreecipeOptions);
 
                 const generatedRecipeRun = await this.runWithRecipeGenerationProgress(async (generationProgress) => {
 
@@ -606,7 +608,7 @@ export class ExtensionCommandService {
                     DirectoryProcessor.throwIfCancellationRequested(generationProgress);
 
                     const directoryProcessor = new DirectoryProcessor();
-                    const result = await directoryProcessor.processAllObjectsAndRelationships(objectsTargetUri, generationProgress);
+                    const result = await directoryProcessor.processAllObjectsAndRelationships(objectsTargetUri, generationProgress, recordTypeSelection);
                     DirectoryProcessor.throwIfCancellationRequested(generationProgress);
 
                     // PAST THIS POINT THE TOKEN IS NOT READ AGAIN -- A RUN FOLDER IS WRITTEN WHOLE OR NOT AT ALL
@@ -638,6 +640,20 @@ export class ExtensionCommandService {
             
         }
       
+    }
+
+    /*
+        The record types to generate (#193), as { recordTypeSelection: { <Object>: [<DeveloperName>, …] } }.
+        The command is callable by id, so the shape is checked rather than trusted, and every name is
+        still matched against the object's own writable record types before it reaches a recipe.
+    */
+    static readRecordTypeSelection(generateTreecipeOptions: unknown): RecordTypeSelection | undefined {
+
+        if ( typeof generateTreecipeOptions !== 'object' || generateTreecipeOptions === null ) {
+            return undefined;
+        }
+        return RecordTypeSelection.fromUnknown((generateTreecipeOptions as { recordTypeSelection?: unknown }).recordTypeSelection);
+
     }
 
     static isCompletionNotificationSuppressed(generateTreecipeOptions: unknown): boolean {

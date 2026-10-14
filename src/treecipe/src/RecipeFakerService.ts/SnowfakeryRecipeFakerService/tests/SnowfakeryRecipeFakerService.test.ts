@@ -13,7 +13,8 @@ import {
     MULTI_PICKLIST_FIELD_API_NAME,
     ORDINARY_PICKLIST_VALUES,
     OTHER_PICKLIST_VALUE,
-    buildRecipeWithEveryPicklistSink
+    buildRecipeWithEveryPicklistSink,
+    buildRecipeWithEveryPicklistSinkForSelectedRecordType
 } from "../../RecipeYamlScalar/tests/mocks/HostilePicklistValues";
 
 import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
@@ -911,6 +912,93 @@ describe('SnowfakeryRecipeFakerService.getMinimumRequiredFieldsTemplate (#294)',
         expect(loadedObject.count).toBe(1);
         expect(Object.keys(loadedObject.fields ?? {})).toEqual(Object.keys(template[objectApiName]));
         Object.values(loadedObject.fields ?? {}).forEach(loadedValue => expect(typeof loadedValue).toBe('string'));
+
+    });
+
+});
+
+// #193: WITH A RECORD TYPE SELECTED, EVERY HOSTILE VALUE IS IN A LIVE EXPRESSION OR CHOICE LIST, AND THE SAME BAR HOLDS
+describe('SnowfakeryRecipeFakerService writes every picklist value inertly for a selected record type (#193)', () => {
+
+    const snowfakeryRecipeFakerService = new SnowfakeryRecipeFakerService();
+    const loadRecipeFields = (picklistValue: string) =>
+        (yaml.load(buildRecipeWithEveryPicklistSinkForSelectedRecordType(snowfakeryRecipeFakerService, picklistValue)) as LoadedRecipeWithEveryPicklistSink)[0].fields;
+
+    test('given no record type map, writes one line per picklist and multi-select picklist and no commented variant', () => {
+
+        const recipeText = buildRecipeWithEveryPicklistSinkForSelectedRecordType(snowfakeryRecipeFakerService, 'ordinary');
+
+        expect(recipeText).not.toContain('RecordType Options');
+        expect(recipeText).not.toMatch(/^ *#/m);
+
+    });
+
+    test.each(HOSTILE_PICKLIST_VALUES)('a value with %s adds no line and loads as one value in every sink', (unusedDescription, hostileValue) => {
+
+        const ordinaryRecipe = buildRecipeWithEveryPicklistSinkForSelectedRecordType(snowfakeryRecipeFakerService, 'ordinary');
+        const hostileRecipe = buildRecipeWithEveryPicklistSinkForSelectedRecordType(snowfakeryRecipeFakerService, hostileValue);
+        const loadedFields = loadRecipeFields(hostileValue);
+
+        expect(hostileRecipe.split(ANY_YAML_LINE_BREAK)).toHaveLength(ordinaryRecipe.split(ANY_YAML_LINE_BREAK).length);
+        expect(Object.keys(loadedFields)).toEqual([CONTROLLING_FIELD_API_NAME, DEPENDENT_FIELD_API_NAME, MULTI_PICKLIST_FIELD_API_NAME]);
+        expect(loadedFields[DEPENDENT_FIELD_API_NAME].if[0].choice.pick.random_choice).toHaveLength(1);
+
+    });
+
+    PythonTestHarness.testRequiringModules('yaml')('every hostile value loads in PyYAML exactly as js-yaml loads it', () => {
+
+        const hostileRecipes = HOSTILE_PICKLIST_VALUES.map(([, hostileValue]) => buildRecipeWithEveryPicklistSinkForSelectedRecordType(snowfakeryRecipeFakerService, hostileValue));
+
+        expect(PythonTestHarness.loadWithPyYaml(hostileRecipes)).toEqual(hostileRecipes.map(hostileRecipe => yaml.load(hostileRecipe)));
+
+    });
+
+    PythonTestHarness.testRequiringModules('jinja2').each(HOSTILE_PICKLIST_VALUES)('a value with %s renders in Jinja to exactly itself in every sink', (unusedDescription, hostileValue) => {
+
+        const loadedFields = loadRecipeFields(hostileValue);
+        const dependentChoice = loadedFields[DEPENDENT_FIELD_API_NAME].if[0].choice;
+
+        const renderResults = PythonTestHarness.renderWithSnowfakeryJinja([
+            { template: loadedFields[CONTROLLING_FIELD_API_NAME] as string },
+            { template: loadedFields[MULTI_PICKLIST_FIELD_API_NAME] as string },
+            { template: dependentChoice.when, context: { [CONTROLLING_FIELD_API_NAME]: hostileValue } },
+            { template: dependentChoice.when, context: { [CONTROLLING_FIELD_API_NAME]: 'a value no payload is' } },
+            ...dependentChoice.pick.random_choice.map(choiceItem => ({ template: choiceItem as string }))
+        ]);
+
+        expect(renderResults).toEqual([
+            { rendered: hostileValue },
+            { rendered: hostileValue },
+            { rendered: 'True' },
+            { rendered: 'False' },
+            { rendered: hostileValue }
+        ]);
+
+    });
+
+});
+
+// #193 REACHED THIS: A RECORD TYPE OFTEN ALLOWS ONE MULTI-SELECT VALUE, AND ('x') IN JINJA IS A STRING, WHOSE CHARACTERS random_sample PICKED FROM
+describe('buildRandomSampleElementsTuple', () => {
+
+    const snowfakeryRecipeFakerService = new SnowfakeryRecipeFakerService();
+
+    test.each([
+        ['one value, with the trailing comma a one-element tuple needs', ['egg'], "('egg',)"],
+        ['two values, exactly as before', ['egg', 'tofu'], "('egg', 'tofu')"],
+        ['an escaped value', ["Rock 'n' Roll"], "('Rock \\'n\\' Roll',)"]
+    ])('writes %s', (unusedDescription, picklistChoices, expectedTuple) => {
+
+        expect(SnowfakeryRecipeFakerService.buildRandomSampleElementsTuple(picklistChoices)).toBe(expectedTuple);
+
+    });
+
+    PythonTestHarness.testRequiringModules('jinja2')('a multi-select with one value renders to that whole value, not one of its characters', () => {
+
+        const recipeValue = snowfakeryRecipeFakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(['chicken'], {}, 'MultiPicklist__c');
+
+        expect(recipeValue).toBe("${{ (';').join((fake.random_sample(elements=('chicken',)))) }}");
+        expect(PythonTestHarness.renderWithSnowfakeryJinja([{ template: recipeValue }])).toEqual([{ rendered: 'chicken' }]);
 
     });
 

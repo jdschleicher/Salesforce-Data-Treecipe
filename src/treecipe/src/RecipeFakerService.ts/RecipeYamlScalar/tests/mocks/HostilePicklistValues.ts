@@ -1,5 +1,6 @@
 import { RecordTypeWrapper } from '../../../../RecordTypeService/RecordTypesWrapper';
 import { IRecipeFakerService } from '../../../IRecipeFakerService';
+import { RecordTypeSelection } from '../../../../RecordTypeService/RecordTypeSelection';
 
 /*
     Picklist values a metadata author controls, shaped to break out of a generated recipe. Shared by
@@ -95,6 +96,40 @@ export const buildRecipeWithEveryPicklistSink = (fakerService: IRecipeFakerServi
         [CONTROLLING_FIELD_API_NAME, fakerService.buildPicklistRecipeValueByXMLFieldDetail([picklistValue], recordTypeByApiName, CONTROLLING_FIELD_API_NAME)],
         [DEPENDENT_FIELD_API_NAME, fakerService.buildDependentPicklistRecipeFakerValue({ [picklistValue]: [picklistValue, OTHER_PICKLIST_VALUE] }, recordTypeByApiName, CONTROLLING_FIELD_API_NAME, DEPENDENT_FIELD_API_NAME)],
         [MULTI_PICKLIST_FIELD_API_NAME, fakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail([picklistValue, OTHER_PICKLIST_VALUE], recordTypeByApiName, MULTI_PICKLIST_FIELD_API_NAME)]
+    ];
+
+    const fieldLines = fieldRecipeValues.map(([fieldApiName, recipeValue]) => `    ${fieldApiName}: ${recipeValue}`);
+    return ['- object: Example__c', '  nickname: Example__c_1', '  fields:', ...fieldLines, ''].join('\n');
+
+};
+
+/*
+    The same three fields with the WithValue record type SELECTED (#193): each sink is handed what
+    RecipeService hands a backend then -- the record type's own values, narrowed by
+    RecordTypeSelection, and NO record type map -- so every hostile value is now in a live
+    expression or choice list rather than a commented variant.
+*/
+export const buildRecipeWithEveryPicklistSinkForSelectedRecordType = (fakerService: IRecipeFakerService, picklistValue: string): string => {
+
+    const selectedRecordType: RecordTypeWrapper = {
+        DeveloperName: 'WithValue',
+        PicklistFieldSectionsToPicklistDetail: {
+            [CONTROLLING_FIELD_API_NAME]: [picklistValue],
+            [DEPENDENT_FIELD_API_NAME]: [picklistValue],
+            [MULTI_PICKLIST_FIELD_API_NAME]: [picklistValue]
+        }
+    };
+    const narrowedDependentOptions = RecordTypeSelection.narrowControllingValueToPicklistOptions(
+        { [picklistValue]: [picklistValue, OTHER_PICKLIST_VALUE] },
+        selectedRecordType,
+        CONTROLLING_FIELD_API_NAME,
+        DEPENDENT_FIELD_API_NAME
+    );
+
+    const fieldRecipeValues: Array<[string, string]> = [
+        [CONTROLLING_FIELD_API_NAME, fakerService.buildPicklistRecipeValueByXMLFieldDetail(RecordTypeSelection.getRecordTypePicklistValues(selectedRecordType, CONTROLLING_FIELD_API_NAME), {}, CONTROLLING_FIELD_API_NAME)],
+        [DEPENDENT_FIELD_API_NAME, fakerService.buildDependentPicklistRecipeFakerValue(narrowedDependentOptions, {}, CONTROLLING_FIELD_API_NAME, DEPENDENT_FIELD_API_NAME)],
+        [MULTI_PICKLIST_FIELD_API_NAME, fakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(RecordTypeSelection.getRecordTypePicklistValues(selectedRecordType, MULTI_PICKLIST_FIELD_API_NAME), {}, MULTI_PICKLIST_FIELD_API_NAME)]
     ];
 
     const fieldLines = fieldRecipeValues.map(([fieldApiName, recipeValue]) => `    ${fieldApiName}: ${recipeValue}`);

@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.83.0] - Generate recipes for a chosen record type
+
+Closes [#193](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/193), slice A of [#192](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/192).
+
+Generation always used an object's first active record type and wrote every other one, and every picklist value tied to one, as a commented `### TODO`. Getting data for another record type meant editing `RecordTypeId` and every record-type picklist by hand. Generation can now be given a record type per object and writes the object's block for that record type. No UI asks for it yet; the selection panel (#195) and saving the choice (#196) build on this.
+
+- **A typed selection, threaded through generation.** `RecordTypeSelection` (in `RecordTypeService/`) maps an object api name to developer names in the order chosen. `ExtensionCommandService.generateRecipeFromConfigurationDetail` reads it from the command option `{ recordTypeSelection: { <Object>: [<DeveloperName>, …] } }`, type-checking it because the command can be run by id, and passes it through `DirectoryProcessor.processAllObjectsAndRelationships` to `RecipeService`.
+- **The selected record type's block.** `RecordTypeId` is `Obj.<Selected>`, with no `### TODO: -- RecordType Options` block and no commented alternatives. A picklist or multi-select picklist the record type lists is one live expression over that record type's values, with no `# ${{ … }}` variants. That includes a picklist backed by a standard or global value set, and a multi-select picklist that used to get the placeholder. A dependent picklist keeps only the controlling values the record type allows, and under each only the dependent values it allows. A choice left empty is dropped, and if none is left the field is one `### TODO` comment, which loads as `null`. A field the record type does not list (a Checkbox controller never is) is not restricted.
+- **Both backends, through their own escapers.** `RecipeService` narrows the values and hands the backend no record type map, so faker-js and snowfakery write exactly what they write for a field with no record types, and every value still goes through the backend's escaper. The hostile picklist suites run again with a record type selected: the shared sinks (`buildRecipeWithEveryPicklistSinkForSelectedRecordType`) and the real pipeline over the hostile fixture, each loaded with js-yaml and PyYAML, run through Run Faker with faker-js and rendered with snowfakery's Jinja.
+- **A name that cannot be used is named, not guessed at.** A selected developer name the object does not have, or one refused by `partitionRecordTypesByWritableDeveloperName`, is ignored for that object, and the object keeps today's default. One `### TODO -- RECORD TYPE SELECTION IGNORED` line names it, escaped with `RecipeYamlScalar.escapeForComment`. Only the first usable name of an object is generated until #194 writes one block per record type; any later one gets the same kind of TODO.
+- **Fixed: a snowfakery multi-select picklist with one value.** `elements=('x')` is a string in Jinja, not a tuple, so `random_sample` picked characters of the value. One value is now written as `('x',)` (`SnowfakeryRecipeFakerService.buildRandomSampleElementsTuple`), and two or more are written as before. Narrowing to a record type makes a single allowed value common, which is how this surfaced.
+- **Unchanged:** with no selection, an empty one, or one naming no object in the metadata, every recipe file is byte-identical to before in both backends.
+
 ## [3.82.3] - salesforceObjectsPath must stay inside the workspace
 
 Closes [#117](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/117).

@@ -135,6 +135,7 @@ import {
     VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL
 } from "../../RecipeCockpitService/RecipeCockpitService";
 import { DirectoryProcessor, RecipeGenerationCancelledError } from "../../DirectoryProcessingService/DirectoryProcessor";
+import { RecordTypeSelection } from '../../RecordTypeService/RecordTypeSelection';
 import { FakerJSRecipeFakerService } from "../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService";
 import { FakerJSRecipeProcessor } from "../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor";
 import { SnowfakeryRecipeProcessor } from "../../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor";
@@ -2889,6 +2890,33 @@ describe('ExtensionCommandService', () => {
             await new ExtensionCommandService().generateRecipeFromConfigurationDetail(generateTreecipeOptions);
 
             expect(showCreatedFilesNotificationSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+        test('given a record type selection option, hands the walk that selection (#193)', async () => {
+
+            const processAllObjectsSpy = jest.spyOn(DirectoryProcessor.prototype, 'processAllObjectsAndRelationships').mockResolvedValue({} as any);
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail({ recordTypeSelection: { Account: ['Partner', 'Customer'] } });
+
+            const recordTypeSelection = processAllObjectsSpy.mock.calls[0][2] as RecordTypeSelection;
+            expect(recordTypeSelection).toBeInstanceOf(RecordTypeSelection);
+            expect(recordTypeSelection.getDeveloperNames('Account')).toEqual(['Partner', 'Customer']);
+            expect(showCreatedFilesNotificationSpy).toHaveBeenCalledTimes(1);
+
+        });
+
+        test.each([
+            ['no argument', undefined],
+            ['no recordTypeSelection', { isCompletionNotificationSuppressed: true }],
+            ['a recordTypeSelection that is not an object', { recordTypeSelection: 'Account.Partner' }]
+        ])('given %s, hands the walk no record type selection', async (_description, generateTreecipeOptions) => {
+
+            const processAllObjectsSpy = jest.spyOn(DirectoryProcessor.prototype, 'processAllObjectsAndRelationships').mockResolvedValue({} as any);
+
+            await new ExtensionCommandService().generateRecipeFromConfigurationDetail(generateTreecipeOptions);
+
+            expect(processAllObjectsSpy.mock.calls[0][2]).toBeUndefined();
 
         });
 

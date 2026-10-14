@@ -3,6 +3,7 @@ import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueS
 import { IRecipeFakerService } from "../RecipeFakerService.ts/IRecipeFakerService";
 import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
 import { RecordTypeWrapper } from "../RecordTypeService/RecordTypesWrapper";
+import { IObjectRecordTypeSelection, IRecordTypeSelectionIgnoredName, RecordTypeSelection } from "../RecordTypeService/RecordTypeSelection";
 import { ValueSetService } from "../ValueSetService/ValueSetService";
 import { XMLFieldDetail } from "../XMLProcessingService/XMLFieldDetail";
 import { ICompoundComponentRecipe } from "./ICompoundComponentRecipe";
@@ -137,10 +138,26 @@ export class RecipeService {
         this.fakerService.getMapSalesforceFieldToFakerValue();
     }
 
-    getRecipeFakeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string {
+    /*
+        With a record type SELECTED for the object (#193), every picklist sink is narrowed here to that
+        record type's values and the backend is handed NO record type map, so it writes one live
+        expression and no commented variants -- in both backends alike, and still through each
+        backend's own escaper, because the values reach the same builders they always did.
+    */
+    getRecipeFakeValueByXMLFieldDetail(xmlFieldDetail: XMLFieldDetail,
+                                        recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
+                                        selectedRecordTypeApiName?: string): string {
         
         let fakeRecipeValue;
         const fieldType = xmlFieldDetail.fieldType.toLowerCase();
+
+        const selectedRecordTypeWrapper = RecipeService.getSelectedRecordTypeWrapper(recordTypeApiToRecordTypeWrapperMap, selectedRecordTypeApiName);
+        if ( selectedRecordTypeWrapper ) {
+            recordTypeApiToRecordTypeWrapperMap = {};
+        }
+        const selectedRecordTypePicklistValues = selectedRecordTypeWrapper
+            ? RecordTypeSelection.getRecordTypePicklistValues(selectedRecordTypeWrapper, xmlFieldDetail.apiName)
+            : undefined;
 
         try {
             
@@ -150,7 +167,7 @@ export class RecipeService {
                     
                     if (xmlFieldDetail.controllingField) {
                         // THIS SCENARIO INDICATES THAT THE PICKLIST FIELD IS DEPENDENT
-                        fakeRecipeValue = this.getDependentPicklistRecipeFakerValue(xmlFieldDetail, recordTypeApiToRecordTypeWrapperMap);
+                        fakeRecipeValue = this.getDependentPicklistRecipeFakerValue(xmlFieldDetail, recordTypeApiToRecordTypeWrapperMap, selectedRecordTypeWrapper);
                     } else {
                         
                         let availablePicklistValueOptions: string[] = [];
@@ -182,6 +199,10 @@ export class RecipeService {
                             
                         }
 
+                        if ( selectedRecordTypePicklistValues?.length > 0 ) {
+                            availablePicklistValueOptions = selectedRecordTypePicklistValues;
+                        }
+
                         fakeRecipeValue = this.fakerService.buildPicklistRecipeValueByXMLFieldDetail(availablePicklistValueOptions, recordTypeApiToRecordTypeWrapperMap, xmlFieldDetail.apiName );  
                     
                     }
@@ -189,6 +210,13 @@ export class RecipeService {
                     return fakeRecipeValue;
                     
                 case 'multiselectpicklist':
+
+                    if ( selectedRecordTypePicklistValues?.length > 0 ) {
+                        return this.fakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(selectedRecordTypePicklistValues,
+                                                                                                    recordTypeApiToRecordTypeWrapperMap,
+                                                                                                    xmlFieldDetail.apiName
+                                                                                                );
+                    }
 
                     if ( !(xmlFieldDetail.picklistValues) ) {
                         // THIS SCENARIO INDICATEDS THAT THE PICKLIST FIELD UTILIZED A GLOBAL VALUE SET
@@ -310,7 +338,20 @@ export class RecipeService {
 
     }
 
-    getDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail, recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>): string {
+    static getSelectedRecordTypeWrapper(recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>, selectedRecordTypeApiName?: string): RecordTypeWrapper | undefined {
+
+        if ( selectedRecordTypeApiName === undefined
+                || !recordTypeApiToRecordTypeWrapperMap
+                || !Object.prototype.hasOwnProperty.call(recordTypeApiToRecordTypeWrapperMap, selectedRecordTypeApiName) ) {
+            return undefined;
+        }
+        return recordTypeApiToRecordTypeWrapperMap[selectedRecordTypeApiName];
+
+    }
+
+    getDependentPicklistRecipeFakerValue(xmlFieldDetail: XMLFieldDetail,
+                                            recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
+                                            selectedRecordTypeWrapper?: RecordTypeWrapper): string {
 
         const controllingField = xmlFieldDetail.controllingField;
 
@@ -322,7 +363,7 @@ export class RecipeService {
             return '';
         }
 
-        const controllingValueToPicklistOptions = RecipeService.buildControllingValueToPicklistOptions(xmlFieldDetail);
+        let controllingValueToPicklistOptions = RecipeService.buildControllingValueToPicklistOptions(xmlFieldDetail);
 
         if ( Object.keys(controllingValueToPicklistOptions).length === 0 ) {
 
@@ -330,18 +371,42 @@ export class RecipeService {
             const noValueSettingsForControllingFieldRecipe = this.getNoValueSettingsToDoRecipeValue(xmlFieldDetail);
             return noValueSettingsForControllingFieldRecipe;
 
-        } else {
+        }
 
-            return this.fakerService.buildDependentPicklistRecipeFakerValue(
-                controllingValueToPicklistOptions, 
-                recordTypeApiToRecordTypeWrapperMap, 
-                controllingField,
-                xmlFieldDetail.apiName
-            );
+        if ( selectedRecordTypeWrapper ) {
+
+            controllingValueToPicklistOptions = RecordTypeSelection.narrowControllingValueToPicklistOptions(controllingValueToPicklistOptions,
+                                                                                                            selectedRecordTypeWrapper,
+                                                                                                            controllingField,
+                                                                                                            xmlFieldDetail.apiName
+                                                                                                        );
+            if ( Object.keys(controllingValueToPicklistOptions).length === 0 ) {
+                return ` ${this.buildNoDependentValuesForRecordTypeTodo(xmlFieldDetail, selectedRecordTypeWrapper)}`;
+            }
 
         }
 
-        
+        return this.fakerService.buildDependentPicklistRecipeFakerValue(
+            controllingValueToPicklistOptions, 
+            recordTypeApiToRecordTypeWrapperMap, 
+            controllingField,
+            xmlFieldDetail.apiName
+        );
+
+    }
+
+    /*
+        A comment is the field's whole value, so it loads as null -- as a refused controlling field
+        does -- rather than as an if: with no choice to make. The developer name is a writable api
+        name by now; the field name is escaped like every name in a comment.
+    */
+    buildNoDependentValuesForRecordTypeTodo(xmlFieldDetail: XMLFieldDetail, selectedRecordTypeWrapper: RecordTypeWrapper): string {
+
+        const escapedFieldApiName = RecipeYamlScalar.escapeForComment(String(xmlFieldDetail.apiName ?? ''));
+        const escapedControllingField = RecipeYamlScalar.escapeForComment(String(xmlFieldDetail.controllingField ?? ''));
+        const escapedDeveloperName = RecipeYamlScalar.escapeForComment(String(selectedRecordTypeWrapper.DeveloperName ?? ''));
+        return `### TODO -- DEPENDENT PICKLIST -- record type "${escapedDeveloperName}" makes no value of "${escapedFieldApiName}" available under any value of "${escapedControllingField}" it allows; set a value by hand or leave the field out`;
+
     }
 
     getNoValueSettingsToDoRecipeValue(xmlFieldDetail:XMLFieldDetail): string {
@@ -362,7 +427,8 @@ export class RecipeService {
     initiateRecipeByObjectName(
                                 objectName: string, 
                                 recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
-                                salesforceOOTBFakerMappings: Record<string, Record<string, string>> 
+                                salesforceOOTBFakerMappings: Record<string, Record<string, string>>,
+                                objectRecordTypeSelection?: IObjectRecordTypeSelection
                             ): string {
 
         // ADD NEW LINE CHARACTER TO SEPARATE OBJECT RECIPES WHEN THEY ARE ADDED TOGETHER
@@ -384,8 +450,14 @@ export class RecipeService {
                 The others are commented lines, as with record-type picklist variants (#153) -- a bare line
                 indented under the value is folded into it by YAML.
             */
-            const selectedRecordTypeApiName = RecipeService.selectDefaultRecordTypeApiName(recordTypeApiToRecordTypeWrapperMap);
-            const otherRecordTypeApiNames = recordTypeApiNames.filter(recordTypeApiName => recordTypeApiName !== selectedRecordTypeApiName);
+            // A SELECTED RECORD TYPE IS THE ONE THE USER WANTS (#193), SO ITS ALTERNATIVES ARE NOT OFFERED
+            const userSelectedRecordTypeApiName = RecipeService.getSelectedRecordTypeWrapper(recordTypeApiToRecordTypeWrapperMap, objectRecordTypeSelection?.selectedRecordTypeApiName)
+                ? objectRecordTypeSelection.selectedRecordTypeApiName
+                : undefined;
+            const selectedRecordTypeApiName = userSelectedRecordTypeApiName ?? RecipeService.selectDefaultRecordTypeApiName(recordTypeApiToRecordTypeWrapperMap);
+            const otherRecordTypeApiNames = userSelectedRecordTypeApiName !== undefined
+                ? []
+                : recordTypeApiNames.filter(recordTypeApiName => recordTypeApiName !== selectedRecordTypeApiName);
             let recordTypeIdRecipeValue = `${objectName}.${selectedRecordTypeApiName}`;
 
             if ( otherRecordTypeApiNames.length > 0 ) {
@@ -407,6 +479,10 @@ export class RecipeService {
 
         skippedRecordTypeDeveloperNames.forEach((skippedRecordTypeDeveloperName) => {
             objectRecipeMarkup += `\n${this.generateTabs(1)}${this.buildInvalidApiNameTodo('RECORD TYPE SKIPPED -- developer name', skippedRecordTypeDeveloperName, "fix the record type's <fullName> and regenerate")}`;
+        });
+
+        objectRecordTypeSelection?.ignoredNames.forEach((ignoredName) => {
+            objectRecipeMarkup += `\n${this.generateTabs(1)}${RecipeService.buildIgnoredRecordTypeSelectionTodo(objectName, ignoredName)}`;
         });
 
         if ( salesforceOOTBFakerMappings[objectName] ) {
@@ -435,6 +511,20 @@ export class RecipeService {
         const recordTypeApiNames = Object.keys(recordTypeApiToRecordTypeWrapperMap);
         const firstActiveRecordTypeApiName = recordTypeApiNames.find(recordTypeApiName => recordTypeApiToRecordTypeWrapperMap[recordTypeApiName].Active !== false);
         return firstActiveRecordTypeApiName ?? recordTypeApiNames[0];
+
+    }
+
+    /*
+        A selected name comes from the user or a hand-edited file, so it is escaped like any other
+        untrusted text written into a comment. The object name is an api name by now (#164).
+    */
+    static buildIgnoredRecordTypeSelectionTodo(objectName: string, ignoredName: IRecordTypeSelectionIgnoredName): string {
+
+        const escapedDeveloperName = RecipeYamlScalar.escapeForComment(String(ignoredName.developerName ?? ''));
+        const reasonText = ignoredName.reason === 'onlyOneRecordTypePerObject'
+            ? `only the first selected record type of ${objectName} is generated`
+            : `it is not a record type of ${objectName} with a valid developer name`;
+        return `### TODO -- RECORD TYPE SELECTION IGNORED -- "${escapedDeveloperName}" -- ${reasonText}`;
 
     }
 
