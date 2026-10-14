@@ -8,6 +8,8 @@ export class ObjectInfo {
   Fields: FieldInfo[];
   RelationshipDetail: RelationshipDetail;
   FullRecipe: string;
+  // THE SECOND AND LATER RECORD TYPE BLOCKS, SET ONLY WHEN SEVERAL RECORD TYPES WERE SELECTED (#194); FullRecipe IS THE FIRST
+  AdditionalRecordTypeRecipes?: string[];
   RecordTypesMap: Record<string, RecordTypeWrapper>;
   
   constructor(objectApiName:string)  {

@@ -14,7 +14,8 @@ import {
     MULTI_PICKLIST_FIELD_API_NAME,
     ORDINARY_PICKLIST_VALUES,
     OTHER_PICKLIST_VALUE,
-    buildRecipeWithEveryPicklistSink
+    buildRecipeWithEveryPicklistSink,
+    buildRecipeWithEveryPicklistSinkForSelectedRecordType
 } from "../../RecipeYamlScalar/tests/mocks/HostilePicklistValues";
 
 import { PythonTestHarness } from '../../RecipeYamlScalar/tests/mocks/PythonTestHarness';
@@ -814,6 +815,55 @@ describe('FakerJSRecipeFakerService.getMinimumRequiredFieldsTemplate (#294)', ()
         expect(loadedObject.count).toBe(1);
         expect(Object.keys(loadedObject.fields ?? {})).toEqual(Object.keys(template[objectApiName]));
         Object.values(loadedObject.fields ?? {}).forEach(loadedValue => expect(typeof loadedValue).toBe('string'));
+
+    });
+
+});
+
+// #193: WITH A RECORD TYPE SELECTED, EVERY HOSTILE VALUE IS IN A LIVE EXPRESSION OR CHOICE LIST, AND THE SAME BAR HOLDS
+describe('FakerJSRecipeFakerService writes every picklist value inertly for a selected record type (#193)', () => {
+
+    const fakerJSRecipeFakerService = new FakerJSRecipeFakerService();
+    const evaluateFakerJSExpressions = (recipeValue: string): string => recipeValue.replace(/\${{(.*?)}}/g, (unusedMatch: string, fakerJSCode: string) => {
+        const firstElementFaker = { helpers: { arrayElement: (options: string[]) => options[0], arrayElements: (options: string[]) => options.slice(0, 1) } };
+        return new Function('faker', `return (${fakerJSCode.trim()})`)(firstElementFaker);
+    });
+    const loadRecipeFields = (picklistValue: string) =>
+        (yaml.load(buildRecipeWithEveryPicklistSinkForSelectedRecordType(fakerJSRecipeFakerService, picklistValue)) as LoadedRecipeWithEveryPicklistSink)[0].fields;
+
+    afterEach(() => {
+        delete (globalThis as Record<string, unknown>)[INJECTION_MARKER];
+    });
+
+    test('given no record type map, writes one line per picklist and multi-select picklist and no commented variant', () => {
+
+        const recipeText = buildRecipeWithEveryPicklistSinkForSelectedRecordType(fakerJSRecipeFakerService, 'ordinary');
+
+        expect(recipeText).not.toContain('RecordType Options');
+        expect(recipeText).not.toMatch(/^ *#/m);
+
+    });
+
+    test.each(HOSTILE_PICKLIST_VALUES)('a value with %s adds no line, loads as one value in every sink, and evaluates to exactly itself', (unusedDescription, hostileValue) => {
+
+        const ordinaryRecipe = buildRecipeWithEveryPicklistSinkForSelectedRecordType(fakerJSRecipeFakerService, 'ordinary');
+        const hostileRecipe = buildRecipeWithEveryPicklistSinkForSelectedRecordType(fakerJSRecipeFakerService, hostileValue);
+        const loadedFields = loadRecipeFields(hostileValue);
+
+        expect(hostileRecipe.split(ANY_YAML_LINE_BREAK)).toHaveLength(ordinaryRecipe.split(ANY_YAML_LINE_BREAK).length);
+        expect(Object.keys(loadedFields)).toEqual([CONTROLLING_FIELD_API_NAME, DEPENDENT_FIELD_API_NAME, MULTI_PICKLIST_FIELD_API_NAME]);
+        expect(loadedFields[DEPENDENT_FIELD_API_NAME].if[0].choice.pick.random_choice).toEqual([hostileValue]);
+        expect(evaluateFakerJSExpressions(loadedFields[CONTROLLING_FIELD_API_NAME] as string)).toBe(hostileValue);
+        expect(evaluateFakerJSExpressions(loadedFields[MULTI_PICKLIST_FIELD_API_NAME] as string)).toBe(hostileValue);
+        expect(globalThis).not.toHaveProperty(INJECTION_MARKER);
+
+    });
+
+    PythonTestHarness.testRequiringModules('yaml')('every hostile value loads in PyYAML exactly as js-yaml loads it', () => {
+
+        const hostileRecipes = HOSTILE_PICKLIST_VALUES.map(([, hostileValue]) => buildRecipeWithEveryPicklistSinkForSelectedRecordType(fakerJSRecipeFakerService, hostileValue));
+
+        expect(PythonTestHarness.loadWithPyYaml(hostileRecipes)).toEqual(hostileRecipes.map(hostileRecipe => yaml.load(hostileRecipe)));
 
     });
 

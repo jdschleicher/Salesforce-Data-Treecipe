@@ -65,6 +65,7 @@ import {
 } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 
 import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
+import { RecordTypeSelection } from '../../RecordTypeService/RecordTypeSelection';
 
 const HOSTILE_METADATA_PATH = path.join(__dirname, 'mocks', 'HostileSalesforceMetadataDirectory');
 const HOSTILE_OBJECTS_PATH = path.join(HOSTILE_METADATA_PATH, 'objects');
@@ -75,21 +76,21 @@ const DECLARED_FIELD_API_NAMES = ['Controlling__c', 'Dependent__c', 'Global__c',
 
 type LoadedRecipeEntry = { object?: string, fields?: Record<string, unknown> };
 
-async function processHostileMetadata(createFakerService: () => IRecipeFakerService): Promise<ObjectInfoWrapper> {
+async function processHostileMetadata(createFakerService: () => IRecipeFakerService, recordTypeSelection?: RecordTypeSelection): Promise<ObjectInfoWrapper> {
 
     jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
     jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({});
     jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
 
     await GlobalValueSetSingleton.getInstance().initialize(HOSTILE_METADATA_PATH);
-    return new DirectoryProcessor().processAllObjectsAndRelationships(vscode.Uri.file(HOSTILE_OBJECTS_PATH));
+    return new DirectoryProcessor().processAllObjectsAndRelationships(vscode.Uri.file(HOSTILE_OBJECTS_PATH), undefined, recordTypeSelection);
 
 }
 
-async function generateRecipeFiles(createFakerService: () => IRecipeFakerService): Promise<RecipeFileOutput[]> {
+async function generateRecipeFiles(createFakerService: () => IRecipeFakerService, recordTypeSelection?: RecordTypeSelection): Promise<RecipeFileOutput[]> {
 
     // WHAT GENERATE TREECIPE WRITES -- NESTED UNDER friends: FOR faker-js (#46), FLAT FOR SNOWFAKERY
-    return (await processHostileMetadata(createFakerService)).RecipeFiles;
+    return (await processHostileMetadata(createFakerService, recordTypeSelection)).RecipeFiles;
 
 }
 
@@ -337,6 +338,179 @@ describe('faker-js over hostile picklist values nested under a parent\'s friends
             expect(FIXTURE_PICKLIST_VALUES).toContain(hostileRecord.fields['Controlling__c']);
             expect(FIXTURE_PICKLIST_VALUES).toContain(hostileRecord.fields['Dependent__c']);
             expect(FIXTURE_PICKLIST_VALUES).toContain(hostileRecord.fields['Global__c']);
+        });
+
+    });
+
+});
+
+/*
+    #193: with EveryValue SELECTED, every hostile value stops being a commented variant and becomes
+    part of a LIVE expression or choice list -- the controlling picklist, the dependent picklist's
+    when: conditions and choices, and the global value set field all draw from the record type's
+    section. The values still reach the recipe through each backend's escaper, so the same bar holds.
+*/
+describe.each([
+    ['faker-js', () => new FakerJSRecipeFakerService()],
+    ['snowfakery', () => new SnowfakeryRecipeFakerService()]
+] as const)('Generate Treecipe with the %s backend and EveryValue selected, over hostile picklist values (#193)', (unusedBackend, createFakerService) => {
+
+    let recipeFiles: RecipeFileOutput[];
+
+    beforeAll(async () => {
+        recipeFiles = await generateRecipeFiles(createFakerService, new RecordTypeSelection([['Hostile__c', ['EveryValue']]]));
+    });
+
+    const findHostileEntry = (): LoadedRecipeEntry => recipeFiles
+        .flatMap(recipeFile => yaml.load(recipeFile.content) as LoadedRecipeEntry[])
+        .find(recipeEntry => recipeEntry.object === 'Hostile__c');
+
+    test('writes the selected record type and no commented variant, so the checks below are about live values', () => {
+
+        const hostileRecipeText = recipeFiles.find(recipeFile => recipeFile.content.includes('- object: Hostile__c')).content;
+
+        expect(findHostileEntry().fields['RecordTypeId']).toBe('Hostile__c.EveryValue');
+        expect(hostileRecipeText).not.toContain('RecordType Options');
+        expect(Object.keys(findHostileEntry().fields).sort()).toEqual(DECLARED_FIELD_API_NAMES);
+
+    });
+
+    test('every recipe file loads with js-yaml, and declares no field the metadata did not', () => {
+
+        recipeFiles.forEach(recipeFile => {
+            (yaml.load(recipeFile.content) as LoadedRecipeEntry[]).filter(recipeEntry => recipeEntry.object !== undefined).forEach(recipeEntry => {
+                expect(DECLARED_FIELD_API_NAMES).toEqual(expect.arrayContaining(Object.keys(recipeEntry.fields)));
+            });
+        });
+
+    });
+
+    testRequiringPyYaml('every recipe file loads with PyYAML exactly as js-yaml loads it', () => {
+
+        const recipeTexts = recipeFiles.map(recipeFile => recipeFile.content);
+
+        expect(PythonTestHarness.loadWithPyYaml(recipeTexts)).toEqual(recipeTexts.map(recipeText => yaml.load(recipeText)));
+
+    });
+
+    test('the recipe text names no injected field on any line', () => {
+
+        recipeFiles.forEach(recipeFile => {
+            recipeFile.content.split(/\r\n|\r|\n|\u0085|\u2028|\u2029/).forEach(recipeLine => {
+                expect(recipeLine).not.toMatch(new RegExp(`^\\s*${INJECTED_FIELD_API_NAME}:`));
+            });
+        });
+
+    });
+
+});
+
+describe('Run Faker by Recipe with faker-js over the hostile recipe generated for EveryValue (#193)', () => {
+
+    let recipeDirectoryPath: string;
+
+    beforeAll(() => {
+        recipeDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-hostile-selected-'));
+    });
+
+    afterAll(() => {
+        fs.rmSync(recipeDirectoryPath, { recursive: true, force: true });
+    });
+
+    afterEach(() => {
+        delete (globalThis as Record<string, unknown>)[INJECTION_MARKER];
+    });
+
+    test('generates only fixture values, with no hand edit of RecordTypeId, and never evaluates an injected expression', async () => {
+
+        const recipeFiles = await generateRecipeFiles(() => new FakerJSRecipeFakerService(), new RecordTypeSelection([['Hostile__c', ['EveryValue']]]));
+        const hostileRecipeFile = recipeFiles.find(recipeFile => recipeFile.content.includes('- object: Hostile__c'));
+        const recipeFilePath = path.join(recipeDirectoryPath, hostileRecipeFile.fileName);
+        const runnableRecipeText = hostileRecipeFile.content.replace(/^(- object: Hostile__c\n(?: {2}\S.*\n)*?) {2}count: 1\n/m, '$1  count: 200\n');
+        expect(runnableRecipeText).toContain('  count: 200\n');
+        fs.writeFileSync(recipeFilePath, runnableRecipeText);
+
+        const generatedRecords = JSON.parse(await new FakerJSRecipeProcessor().generateFakeDataBySelectedRecipeFile(recipeFilePath)) as Array<{ object: string, fields: Record<string, string> }>;
+        const hostileRecords = generatedRecords.filter(generatedRecord => generatedRecord.object === 'Hostile__c');
+
+        expect(globalThis).not.toHaveProperty(INJECTION_MARKER);
+        expect(hostileRecords).toHaveLength(200);
+        hostileRecords.forEach(hostileRecord => {
+            expect(Object.keys(hostileRecord.fields).sort()).toEqual(DECLARED_FIELD_API_NAMES);
+            expect(hostileRecord.fields['RecordTypeId']).toBe('Hostile__c.EveryValue');
+            expect(FIXTURE_PICKLIST_VALUES).toContain(hostileRecord.fields['Controlling__c']);
+            expect(FIXTURE_PICKLIST_VALUES).toContain(hostileRecord.fields['Dependent__c']);
+            expect(FIXTURE_PICKLIST_VALUES).toContain(hostileRecord.fields['Global__c']);
+        });
+
+    });
+
+});
+
+describe('Run Faker by Recipe with snowfakery over the hostile recipe generated for EveryValue (#193)', () => {
+
+    PythonTestHarness.testRequiringModules('jinja2')('renders every dependent choice to exactly a declared value', async () => {
+
+        const recipeFiles = await generateRecipeFiles(() => new SnowfakeryRecipeFakerService(), new RecordTypeSelection([['Hostile__c', ['EveryValue']]]));
+        const hostileEntry = recipeFiles
+            .flatMap(recipeFile => yaml.load(recipeFile.content) as LoadedRecipeEntry[])
+            .find(recipeEntry => recipeEntry.object === 'Hostile__c');
+        const dependentChoices = (hostileEntry.fields['Dependent__c'] as { if: Array<{ choice: { pick: { random_choice: string[] } } }> }).if;
+        const everyChoiceItem = dependentChoices.flatMap(dependentChoice => dependentChoice.choice.pick.random_choice);
+
+        const renderResults = PythonTestHarness.renderWithSnowfakeryJinja(everyChoiceItem.map(choiceItem => ({ template: choiceItem })));
+
+        expect(everyChoiceItem.length).toBeGreaterThan(0);
+        renderResults.forEach(renderResult => {
+            expect(FIXTURE_PICKLIST_VALUES).toContain(renderResult.rendered);
+        });
+
+    });
+
+});
+
+// #194: BOTH RECORD TYPES SELECTED -- TWO BLOCKS, EACH CARRYING ITS RECORD TYPE'S HOSTILE VALUES LIVE, AND THE SAME BAR HOLDS FOR EACH
+describe.each([
+    ['faker-js', () => new FakerJSRecipeFakerService()],
+    ['snowfakery', () => new SnowfakeryRecipeFakerService()]
+] as const)('Generate Treecipe with the %s backend and both record types selected, over hostile picklist values (#194)', (unusedBackend, createFakerService) => {
+
+    let recipeFiles: RecipeFileOutput[];
+
+    beforeAll(async () => {
+        recipeFiles = await generateRecipeFiles(createFakerService, new RecordTypeSelection([['Hostile__c', ['EveryValue', 'OrdinaryValues']]]));
+    });
+
+    test('writes one block per record type, each declaring only the metadata\'s fields', () => {
+
+        const hostileEntries = recipeFiles
+            .flatMap(recipeFile => yaml.load(recipeFile.content) as Array<LoadedRecipeEntry & { nickname: string }>)
+            .filter(recipeEntry => recipeEntry.object === 'Hostile__c');
+
+        expect(hostileEntries.map(hostileEntry => [hostileEntry.nickname, hostileEntry.fields['RecordTypeId']])).toEqual([
+            ['Hostile__c_EveryValue_NickName', 'Hostile__c.EveryValue'],
+            ['Hostile__c_OrdinaryValues_NickName', 'Hostile__c.OrdinaryValues']
+        ]);
+        hostileEntries.forEach(hostileEntry => {
+            expect(DECLARED_FIELD_API_NAMES).toEqual(expect.arrayContaining(Object.keys(hostileEntry.fields)));
+        });
+
+    });
+
+    testRequiringPyYaml('every recipe file loads with PyYAML exactly as js-yaml loads it', () => {
+
+        const recipeTexts = recipeFiles.map(recipeFile => recipeFile.content);
+
+        expect(PythonTestHarness.loadWithPyYaml(recipeTexts)).toEqual(recipeTexts.map(recipeText => yaml.load(recipeText)));
+
+    });
+
+    test('the recipe text names no injected field on any line', () => {
+
+        recipeFiles.forEach(recipeFile => {
+            recipeFile.content.split(/\r\n|\r|\n|\u0085|\u2028|\u2029/).forEach(recipeLine => {
+                expect(recipeLine).not.toMatch(new RegExp(`^\\s*${INJECTED_FIELD_API_NAME}:`));
+            });
         });
 
     });

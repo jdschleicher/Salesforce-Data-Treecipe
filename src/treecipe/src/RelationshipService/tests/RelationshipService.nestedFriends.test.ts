@@ -786,3 +786,199 @@ describe('a lookup to a second parent that is not an ancestor (#189)', () => {
     });
 
 });
+
+/*
+    #194: an object generated for several record types is several "- object:" blocks -- FullRecipe is
+    the first, AdditionalRecordTypeRecipes the rest -- each nicknamed after its record type, as
+    DirectoryProcessor writes them. faker-js nests a child under the parent's FIRST block only, so a
+    parent with several record types does not multiply its children; snowfakery stays flat.
+*/
+describe('RelationshipService writes an object\'s record type blocks (#194)', () => {
+
+    const toRecordTypeBlock = (fullRecipe: string, objectApiName: string, recordTypeName: string): string => fullRecipe
+        .replace(`  nickname: ${objectApiName}_NickName`, `  nickname: ${objectApiName}_${recordTypeName}_NickName`)
+        .replace('  fields:\n', `  fields:\n    RecordTypeId: ${objectApiName}.${recordTypeName}\n`);
+
+    const buildWrapperWithRecordTypeBlocks = (objectSpecifications: ObjectSpecification[], recordTypeNamesByObjectApiName: Record<string, string[]>): ObjectInfoWrapper => {
+        const objectInfoWrapper = buildObjectInfoWrapper(objectSpecifications);
+        Object.entries(recordTypeNamesByObjectApiName).forEach(([objectApiName, recordTypeNames]) => {
+            const objectInfo = objectInfoWrapper.ObjectToObjectInfoMap[objectApiName];
+            const [firstBlock, ...additionalBlocks] = recordTypeNames.map(recordTypeName => toRecordTypeBlock(objectInfo.FullRecipe, objectApiName, recordTypeName));
+            objectInfo.FullRecipe = firstBlock;
+            objectInfo.AdditionalRecordTypeRecipes = additionalBlocks;
+        });
+        return objectInfoWrapper;
+    };
+
+    const ACCOUNT_AND_CONTACT: ObjectSpecification[] = [
+        { objectApiName: 'Account' },
+        { objectApiName: 'Contact', lookups: { AccountId: 'Account' } }
+    ];
+
+    test('faker-js: two parent blocks carrying the same child -- the child is a friend of the first block only, wired to it', () => {
+
+        const [recipeFile] = new RelationshipService().generateSeparateRecipeFiles(buildWrapperWithRecordTypeBlocks(ACCOUNT_AND_CONTACT, { Account: ['Customer', 'Partner'] }), true);
+        const recipeEntries = yaml.load(recipeFile.content) as LoadedRecipeEntry[];
+
+        expect(recipeEntries.map(recipeEntry => [recipeEntry.object, recipeEntry.nickname, recipeEntry.fields.RecordTypeId])).toEqual([
+            ['Account', 'Account_Customer_NickName', 'Account.Customer'],
+            ['Account', 'Account_Partner_NickName', 'Account.Partner']
+        ]);
+        expect(recipeEntries[0].friends.map(friend => [friend.object, friend.fields.AccountId])).toEqual([['Contact', 'Account_Customer_NickName']]);
+        expect(recipeEntries[1].friends).toBeUndefined();
+        expect(recipeFile.content).toContain('\n# Account (record type block Account_Partner_NickName)\n- object: Account\n  nickname: Account_Partner_NickName\n');
+
+    });
+
+    test('faker-js: a child written as two blocks puts both under the parent\'s first block, each wired to it', () => {
+
+        const [recipeFile] = new RelationshipService().generateSeparateRecipeFiles(
+            buildWrapperWithRecordTypeBlocks(ACCOUNT_AND_CONTACT, { Account: ['Customer', 'Partner'], Contact: ['Buyer', 'Seller'] }),
+            true
+        );
+        const recipeEntries = yaml.load(recipeFile.content) as LoadedRecipeEntry[];
+
+        expect(recipeEntries[0].friends.map(friend => [friend.nickname, friend.fields.RecordTypeId, friend.fields.AccountId])).toEqual([
+            ['Contact_Buyer_NickName', 'Contact.Buyer', 'Account_Customer_NickName'],
+            ['Contact_Seller_NickName', 'Contact.Seller', 'Account_Customer_NickName']
+        ]);
+        expect(recipeFile.content).not.toContain(RelationshipService.recordTypeBlocksTodo);
+
+    });
+
+    test('snowfakery: every block is flat, in order, and a child\'s lookup TODO is followed by a comment naming every parent block', () => {
+
+        const [recipeFile] = new RelationshipService().generateSeparateRecipeFiles(buildWrapperWithRecordTypeBlocks(ACCOUNT_AND_CONTACT, { Account: ['Customer', 'Partner'] }), false);
+        const recipeEntries = yaml.load(recipeFile.content) as LoadedRecipeEntry[];
+
+        expect(recipeFile.content).not.toContain('friends:');
+        expect(recipeEntries.map(recipeEntry => recipeEntry.nickname)).toEqual(['Account_Customer_NickName', 'Account_Partner_NickName', 'Contact_NickName']);
+        expect(recipeEntries[2].fields).toEqual({ Name: '${{ faker.company.name() }}', AccountId: null });
+        expect(recipeFile.content).toContain([
+            `    AccountId: ${RelationshipService.referenceIdRequiredTodo}`,
+            '    ### TODO -- RECORD TYPE BLOCKS -- AccountId can reference any record type block of Account: Account_Customer_NickName, Account_Partner_NickName'
+        ].join('\n'));
+
+    });
+
+    test('a self-lookup TODO in one block names only the OTHER blocks of its object', () => {
+
+        const [recipeFile] = new RelationshipService().generateSeparateRecipeFiles(
+            buildWrapperWithRecordTypeBlocks([{ objectApiName: 'Account', lookups: { ParentId: 'Account' } }], { Account: ['Customer', 'Partner'] }),
+            false
+        );
+
+        expect(recipeFile.content.match(/^ {4}### TODO -- RECORD TYPE BLOCKS -- .*$/gm)).toEqual([
+            '    ### TODO -- RECORD TYPE BLOCKS -- ParentId can reference any record type block of Account: Account_Partner_NickName',
+            '    ### TODO -- RECORD TYPE BLOCKS -- ParentId can reference any record type block of Account: Account_Customer_NickName'
+        ]);
+
+    });
+
+    test('the Recipe Cockpit writer reads each block as its own occurrence, told apart by nickname', () => {
+
+        const [recipeFile] = new RelationshipService().generateSeparateRecipeFiles(buildWrapperWithRecordTypeBlocks(ACCOUNT_AND_CONTACT, { Account: ['Customer', 'Partner'] }), true);
+        const scannedAccounts = RecipeCockpitRecipeWriter.scanRecipeObjects(recipeFile.content.split('\n')).filter(scannedObject => scannedObject.objectApiName === 'Account');
+
+        expect(scannedAccounts.map(scannedAccount => scannedAccount.nicknames)).toEqual([['Account_Customer_NickName'], ['Account_Partner_NickName']]);
+
+    });
+
+    test('end to end, faker-js: every record carries exactly one RecordTypeId, and each Contact resolves to an Account of the first block', async () => {
+
+        const [generatedRecipeContent] = new RelationshipService().generateSeparateRecipeFiles(buildWrapperWithRecordTypeBlocks(ACCOUNT_AND_CONTACT, { Account: ['Customer', 'Partner'] }), true);
+        const recipeContent = generatedRecipeContent.content.replace(/^( {2}count:) 1$/gm, '$1 2');
+
+        const fakerJSRecipeProcessor = new FakerJSRecipeProcessor();
+        let processedYamlWrapper: ProcessedYamlWrapper = { ObjectPropertyToExistingProcessedYaml: {}, VariablePropertyToExistingProcessedYaml: {} };
+        for ( const recipeEntry of yaml.load(recipeContent) as LoadedRecipeEntry[] ) {
+            processedYamlWrapper = await fakerJSRecipeProcessor.processObjectDeclarationForYamlDocumentItem(recipeEntry.object, recipeEntry, processedYamlWrapper);
+        }
+        const fakerJson = JSON.stringify(Object.values(processedYamlWrapper.ObjectPropertyToExistingProcessedYaml).flat());
+        const collectionsByObject = fakerJSRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerJson);
+        const orgRecordTypes = { records: [
+            { SobjectType: 'Account', DeveloperName: 'Customer', Id: '012CUSTOMER' },
+            { SobjectType: 'Account', DeveloperName: 'Partner', Id: '012PARTNER' }
+        ] };
+
+        let referenceIdToOrgId: Record<string, string> = {};
+        const insertedRecordsByObject: Record<string, Record<string, unknown>[]> = {};
+        let insertedRecordCount = 0;
+        ['Account', 'Contact'].forEach(objectApiName => {
+            insertedRecordsByObject[objectApiName] = [];
+            const withRecordTypeIds = CollectionsApiService.updateCollectionApiJsonContentWithOrgRecordTypeIds(JSON.stringify(collectionsByObject.get(objectApiName)), orgRecordTypes);
+            const resolvedRecords = JSON.parse(CollectionsApiService.updateLookupReferencesInCollectionApiJson(withRecordTypeIds, referenceIdToOrgId)).records;
+            const fakeInsertResults = resolvedRecords.map(() => ({ id: `ID${insertedRecordCount++}`, success: true }));
+            referenceIdToOrgId = CollectionsApiService.updateReferenceIdMapWithCreatedRecords(referenceIdToOrgId, fakeInsertResults, resolvedRecords);
+            resolvedRecords.forEach((resolvedRecord, recordIndex) => insertedRecordsByObject[objectApiName].push({ ...resolvedRecord, Id: fakeInsertResults[recordIndex].id }));
+        });
+
+        const accounts = insertedRecordsByObject['Account'];
+        const customerAccountIds = accounts.filter(account => account.RecordTypeId === '012CUSTOMER').map(account => account.Id);
+
+        expect(accounts.map(account => account.RecordTypeId)).toEqual(['012CUSTOMER', '012CUSTOMER', '012PARTNER', '012PARTNER']);
+        // ONE CONTACT PER RECORD OF THE FIRST BLOCK ONLY: THE PARTNER BLOCK CARRIES NO FRIENDS
+        expect(insertedRecordsByObject['Contact'].map(contact => contact.AccountId)).toEqual(customerAccountIds);
+
+    });
+
+    test('an object written as one block is unchanged in both layouts', () => {
+
+        const wrapper = () => buildObjectInfoWrapper(ACCOUNT_AND_CONTACT);
+        const withEmptyAdditionalBlocks = () => {
+            const objectInfoWrapper = wrapper();
+            objectInfoWrapper.ObjectToObjectInfoMap['Account'].AdditionalRecordTypeRecipes = [];
+            return objectInfoWrapper;
+        };
+
+        [true, false].forEach(nestChildObjectsAsFriends => {
+            expect(new RelationshipService().generateSeparateRecipeFiles(withEmptyAdditionalBlocks(), nestChildObjectsAsFriends))
+                .toEqual(new RelationshipService().generateSeparateRecipeFiles(wrapper(), nestChildObjectsAsFriends));
+        });
+
+    });
+
+});
+
+describe('RelationshipService.annotateLookupsToRecordTypeBlocks (#194)', () => {
+
+    test('a polymorphic lookup to two objects with record type blocks names every block of each, parents in name order', () => {
+
+        const objectInfoWrapper = buildObjectInfoWrapper([
+            { objectApiName: 'Opportunity' },
+            { objectApiName: 'Account' },
+            { objectApiName: 'Task', lookups: { WhatId: 'Opportunity' } }
+        ]);
+        new RelationshipService().buildBidirectionalChildAndParentRelationshipReferences(new FieldInfo('Task', 'WhatId', 'WhatId', 'Lookup'), objectInfoWrapper, 'Task', 'Account');
+        const blockNicknamesByObjectName = new Map([
+            ['Opportunity', ['Opportunity_New_NickName', 'Opportunity_Renewal_NickName']],
+            ['Account', ['Account_Customer_NickName', 'Account_Partner_NickName']]
+        ]);
+
+        const annotatedLines = RelationshipService.annotateLookupsToRecordTypeBlocks('Task', [
+            '  nickname: Task_NickName',
+            `    WhatId: ${RelationshipService.referenceIdRequiredTodo} -- Account, Opportunity`,
+            '    Subject: Call'
+        ], blockNicknamesByObjectName, objectInfoWrapper);
+
+        expect(annotatedLines).toEqual([
+            '  nickname: Task_NickName',
+            `    WhatId: ${RelationshipService.referenceIdRequiredTodo} -- Account, Opportunity`,
+            '    ### TODO -- RECORD TYPE BLOCKS -- WhatId can reference any record type block of Account: Account_Customer_NickName, Account_Partner_NickName; Opportunity: Opportunity_New_NickName, Opportunity_Renewal_NickName',
+            '    Subject: Call'
+        ]);
+
+    });
+
+    test('leaves the lines as they are when no parent of the object has blocks, or no line is a lookup TODO', () => {
+
+        const objectInfoWrapper = buildObjectInfoWrapper([{ objectApiName: 'Account' }, { objectApiName: 'Contact', lookups: { AccountId: 'Account' } }]);
+        const contactLines = ['  nickname: Contact_NickName', '    AccountId: Account_NickName'];
+
+        expect(RelationshipService.annotateLookupsToRecordTypeBlocks('Contact', contactLines, new Map(), objectInfoWrapper)).toBe(contactLines);
+        expect(RelationshipService.annotateLookupsToRecordTypeBlocks('Contact', contactLines, new Map([['Opportunity', ['A', 'B']]]), objectInfoWrapper)).toBe(contactLines);
+        expect(RelationshipService.annotateLookupsToRecordTypeBlocks('Contact', contactLines, new Map([['Account', ['A', 'B']]]), objectInfoWrapper)).toEqual(contactLines);
+
+    });
+
+});

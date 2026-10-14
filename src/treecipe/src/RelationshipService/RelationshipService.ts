@@ -330,6 +330,7 @@ export class RelationshipService {
               levelInfo.recipes.push({
                 objectName: objectName,
                 recipe: objectInfo.FullRecipe,
+                additionalRecordTypeRecipes: objectInfo.AdditionalRecordTypeRecipes ?? [],
                 relationshipInfo: this.getObjectRelationshipSummary(objectInfo.RelationshipDetail!)
               });
 
@@ -347,7 +348,7 @@ export class RelationshipService {
       const nestedTreeRecipe = nestChildObjectsAsFriends
         ? this.buildNestedFriendsTreeRecipe(orderedTree, objectInfoWrapper)
         : undefined;
-      orderedTree.combinedRecipe = nestedTreeRecipe ?? this.buildCombinedTreeRecipe(orderedTree);
+      orderedTree.combinedRecipe = nestedTreeRecipe ?? this.buildCombinedTreeRecipe(orderedTree, objectInfoWrapper);
       orderedStructure.relationshipTrees.push(orderedTree);
       orderedStructure.totalObjects += tree.allObjects.length;
 
@@ -360,23 +361,109 @@ export class RelationshipService {
   /**
    * Build a combined recipe string for an entire relationship tree
    */
-  private buildCombinedTreeRecipe(orderedTree: OrderedRelationshipTree): string {
+  private buildCombinedTreeRecipe(orderedTree: OrderedRelationshipTree, objectInfoWrapper: ObjectInfoWrapper): string {
     let combinedRecipe = `# Relationship Tree: ${orderedTree.treeName}\n`;
     combinedRecipe += `# Objects must be processed in this order for proper lookup resolution\n\n`;
+
+    const blockNicknamesByObjectName = RelationshipService.buildRecordTypeBlockNicknamesByObjectName(orderedTree.orderedLevels.flatMap(level => level.recipes));
 
     orderedTree.orderedLevels.forEach(level => {
       combinedRecipe += `# Level ${level.level} - ${level.objects.join(', ')}\n`;
       level.recipes.forEach(recipeInfo => {
         combinedRecipe += `# ${recipeInfo.objectName} (${recipeInfo.relationshipInfo})\n`;
-        combinedRecipe += recipeInfo.recipe;
-        if (!recipeInfo.recipe.endsWith('\n')) {
-          combinedRecipe += '\n';
-        }
+        // EACH SELECTED RECORD TYPE'S BLOCK FOLLOWS THE FIRST, FLAT (#194)
+        [recipeInfo.recipe, ...recipeInfo.additionalRecordTypeRecipes].forEach(blockRecipe => {
+          const annotatedBlockRecipe = RelationshipService.annotateLookupsToRecordTypeBlocks(recipeInfo.objectName, blockRecipe.split('\n'), blockNicknamesByObjectName, objectInfoWrapper).join('\n');
+          combinedRecipe += annotatedBlockRecipe;
+          if (!annotatedBlockRecipe.endsWith('\n')) {
+            combinedRecipe += '\n';
+          }
+        });
         combinedRecipe += '\n';
       });
     });
 
     return combinedRecipe;
+  }
+
+  static readNickname(objectRecipe: string): string | undefined {
+    return /^ {2}nickname:[ \t]*(\S+)[ \t]*$/m.exec(objectRecipe)?.[1];
+  }
+
+  /*
+    The nickname of every block of each object written as SEVERAL record type blocks (#194), the
+    first block's first. An object written as one block is absent, so nothing below changes a tree
+    no selection reached.
+  */
+  static buildRecordTypeBlockNicknamesByObjectName(recipeInfos: RecipeInfo[]): Map<string, string[]> {
+
+    const blockNicknamesByObjectName = new Map<string, string[]>();
+    recipeInfos
+      .filter(recipeInfo => recipeInfo.additionalRecordTypeRecipes.length > 0)
+      .forEach(recipeInfo => {
+        const blockNicknames = [recipeInfo.recipe, ...recipeInfo.additionalRecordTypeRecipes]
+          .map(blockRecipe => RelationshipService.readNickname(blockRecipe))
+          .filter((nickname): nickname is string => nickname !== undefined);
+        blockNicknamesByObjectName.set(recipeInfo.objectName, blockNicknames);
+      });
+    return blockNicknamesByObjectName;
+
+  }
+
+  static readonly recordTypeBlocksTodo = '### TODO -- RECORD TYPE BLOCKS --';
+
+  /*
+    A lookup still left as the REFERENCE ID REQUIRED TODO, to a parent written as several record type
+    blocks, gets one comment line under it naming every block it could reference (#194) -- snowfakery
+    writes every tree flat, so this is how its reader learns the choices. The lookup's own line is
+    untouched, so the Recipe Cockpit's TODO wiring (#151) still recognises it, and a comment at the
+    field's depth ends the field without becoming part of its value.
+  */
+  static annotateLookupsToRecordTypeBlocks(objectName: string,
+                                            objectLines: string[],
+                                            blockNicknamesByObjectName: Map<string, string[]>,
+                                            objectInfoWrapper: ObjectInfoWrapper): string[] {
+
+    if ( blockNicknamesByObjectName.size === 0 ) {
+      return objectLines;
+    }
+
+    const blockParentNamesByLookupFieldName = new Map<string, string[]>();
+    // EVERY OBJECT A TREE WRITES HAS A RelationshipDetail -- buildRelationshipTrees GROUPS NO OTHER
+    const lookupFieldNamesByParentName = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences;
+    Object.keys(lookupFieldNamesByParentName)
+      .filter(parentName => blockNicknamesByObjectName.has(parentName))
+      .sort((first, second) => ( first < second ? -1 : ( first > second ? 1 : 0 ) ))
+      .forEach(parentName => {
+        lookupFieldNamesByParentName[parentName].forEach(lookupFieldName => {
+          blockParentNamesByLookupFieldName.set(lookupFieldName, [...(blockParentNamesByLookupFieldName.get(lookupFieldName) ?? []), parentName]);
+        });
+      });
+
+    if ( blockParentNamesByLookupFieldName.size === 0 ) {
+      return objectLines;
+    }
+
+    // A SELF-LOOKUP NEVER OFFERS THE BLOCK IT IS WRITTEN IN -- A RECORD CANNOT REFERENCE ITS OWN BLOCK'S RECORDS BEFORE THEY ARE INSERTED
+    const ownNickname = RelationshipService.readNickname(objectLines.join('\n'));
+
+    return objectLines.flatMap(objectLine => {
+
+      const lookupLineMatch = /^( *)(\w+): ### TODO -- REFERENCE ID REQUIRED(?: -- .*)?$/.exec(objectLine);
+      const blockParentNames = lookupLineMatch ? blockParentNamesByLookupFieldName.get(lookupLineMatch[2]) : undefined;
+      const blockChoices = ( blockParentNames ?? [] )
+        .map(parentName => [parentName, blockNicknamesByObjectName.get(parentName).filter(nickname => parentName !== objectName || nickname !== ownNickname)] as const)
+        .filter(([, nicknames]) => nicknames.length > 0)
+        .map(([parentName, nicknames]) => `${parentName}: ${nicknames.join(', ')}`)
+        .join('; ');
+      if ( !blockChoices ) {
+        return [objectLine];
+      }
+
+      return [objectLine, `${lookupLineMatch[1]}${RelationshipService.recordTypeBlocksTodo} ${lookupLineMatch[2]} can reference any record type block of ${blockChoices}`];
+
+    });
+
   }
 
   static readonly referenceIdRequiredTodo = '### TODO -- REFERENCE ID REQUIRED';
@@ -456,10 +543,32 @@ export class RelationshipService {
     }
 
     const recipeInfoByObjectName = new Map(recipeInfosInInsertOrder.map(recipeInfo => [recipeInfo.objectName, recipeInfo]));
+    const blockNicknamesByObjectName = RelationshipService.buildRecordTypeBlockNicknamesByObjectName(recipeInfosInInsertOrder);
     const friendObjectNamesByParentName = new Map<string, string[]>();
     friendsParentByObjectName.forEach((parentName, objectName) => {
       friendObjectNamesByParentName.set(parentName, [...(friendObjectNamesByParentName.get(parentName) ?? []), objectName]);
     });
+
+    const renderBlock = (objectName: string, blockRecipe: string, depth: number, ancestorObjectNames: string[]): string[] => {
+      const indentation = ' '.repeat(4 * depth);
+      const wiredLines = this.wireLookupsToParents(objectName, blockRecipe, ancestorObjectNames, recipeInfoByObjectName, objectInfoWrapper);
+      return RelationshipService.annotateLookupsToRecordTypeBlocks(objectName, wiredLines, blockNicknamesByObjectName, objectInfoWrapper)
+        .map(recipeLine => recipeLine ? `${indentation}${recipeLine}` : recipeLine);
+    };
+
+    /*
+      Every block after the first is written right after it at the same depth -- a sibling at the top
+      of the file, or another friend of the same parent block -- wired to the same ancestors. Friends
+      nest under the FIRST block only (#194), so a parent with several record type blocks does not
+      multiply its children's records.
+    */
+    const renderAdditionalRecordTypeBlocks = (objectName: string, depth: number, ancestorObjectNames: string[]): string[] => {
+      const indentation = ' '.repeat(4 * depth);
+      return recipeInfoByObjectName.get(objectName).additionalRecordTypeRecipes.flatMap(blockRecipe => [
+        `${indentation}# ${objectName} (record type block ${RelationshipService.readNickname(blockRecipe)})`,
+        ...renderBlock(objectName, blockRecipe, depth, ancestorObjectNames)
+      ]);
+    };
 
     const renderObject = (objectName: string, depth: number, ancestorObjectNames: string[], isSelfLookupIteration: boolean = false): string[] => {
 
@@ -468,8 +577,7 @@ export class RelationshipService {
       const objectRecipe = isSelfLookupIteration
         ? RelationshipService.renameRecipeNickname(recipeInfo.recipe, RelationshipService.buildSelfLookupIterationNickname(objectName))
         : recipeInfo.recipe;
-      const objectLines = this.wireLookupsToParents(objectName, objectRecipe, ancestorObjectNames, recipeInfoByObjectName, objectInfoWrapper)
-        .map(recipeLine => recipeLine ? `${indentation}${recipeLine}` : recipeLine);
+      const objectLines = renderBlock(objectName, objectRecipe, depth, ancestorObjectNames);
 
       if ( isSelfLookupIteration ) {
         return objectLines;
@@ -479,7 +587,8 @@ export class RelationshipService {
       const friendAncestorObjectNames = [...ancestorObjectNames, objectName];
       const friendLines = (friendObjectNamesByParentName.get(objectName) ?? []).flatMap(friendObjectName => [
         `${friendIndentation}# ${friendObjectName} (${recipeInfoByObjectName.get(friendObjectName).relationshipInfo})`,
-        ...renderObject(friendObjectName, depth + 1, friendAncestorObjectNames)
+        ...renderObject(friendObjectName, depth + 1, friendAncestorObjectNames),
+        ...renderAdditionalRecordTypeBlocks(friendObjectName, depth + 1, friendAncestorObjectNames)
       ]);
 
       if ( selfLookupObjectNames.has(objectName) ) {
@@ -505,7 +614,7 @@ export class RelationshipService {
       .filter(objectName => !friendsParentByObjectName.has(objectName))
       .forEach(rootObjectName => {
         nestedRecipe += `# ${rootObjectName} (${recipeInfoByObjectName.get(rootObjectName).relationshipInfo})\n`;
-        nestedRecipe += `${renderObject(rootObjectName, 0, []).join('\n')}\n\n`;
+        nestedRecipe += `${[...renderObject(rootObjectName, 0, []), ...renderAdditionalRecordTypeBlocks(rootObjectName, 0, [])].join('\n')}\n\n`;
       });
 
     return nestedRecipe;
@@ -561,8 +670,7 @@ export class RelationshipService {
 
     const lookupFieldNamesByParentName = objectInfoWrapper.ObjectToObjectInfoMap[objectName].RelationshipDetail.parentObjectToFieldReferences;
     const levelOf = (lookupObjectName: string): number => objectInfoWrapper.ObjectToObjectInfoMap[lookupObjectName].RelationshipDetail.level;
-    const readNickname = (parentName: string): string | undefined =>
-      /^ {2}nickname:[ \t]*(\S+)[ \t]*$/m.exec(recipeInfoByObjectName.get(parentName).recipe)?.[1];
+    const readNickname = (parentName: string): string | undefined => RelationshipService.readNickname(recipeInfoByObjectName.get(parentName).recipe);
 
     const ancestorNicknameByLookupLine = new Map<string, string>();
     const lowerLevelNicknameByLookupLine = new Map<string, string>();
@@ -808,7 +916,8 @@ interface RecipeLevel {
 // Contains the recipe and metadata for one specific object
 interface RecipeInfo {
   objectName: string;                // Object API name (e.g., "Account")
-  recipe: string;                    // The YAML recipe content for this object
+  recipe: string;                    // The YAML recipe content for this object (its first record type block, when there are several)
+  additionalRecordTypeRecipes: string[]; // Every later record type block (#194); empty when the object is one block
   relationshipInfo: string;          // Human-readable summary of relationships (e.g., "Parents: User | Children: Contact, Opportunity")
 }
 

@@ -137,9 +137,21 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                     ancestorNicknameToEffectiveNickname.set(originalYamlNickname, effectiveNickname);
                 }
 
+                /*
+                    Two friends of ONE object type -- record type blocks of a nested child (#194) -- would
+                    both be <Object>_<parent>, sharing a nickname and a referenceId, and the insert
+                    resolves a nickname to the first record holding it. Such siblings carry their own
+                    YAML nickname in the generated one instead; a lone friend keeps the name it had.
+                */
+                const friendCountByObjectType = new Map<string, number>();
+                friends.forEach(friendEntry => friendCountByObjectType.set(friendEntry.object, (friendCountByObjectType.get(friendEntry.object) ?? 0) + 1));
+
                 for (const friendEntry of friends) {
                     const friendObjectType = friendEntry.object;
-                    const generatedFriendNickname = `${friendObjectType}_${parentNicknameForChildren}`;
+                    const isSiblingOfSameObjectType = friendCountByObjectType.get(friendObjectType) > 1 && typeof friendEntry.nickname === 'string';
+                    const generatedFriendNickname = isSiblingOfSameObjectType
+                        ? `${friendEntry.nickname}_${parentNicknameForChildren}`
+                        : `${friendObjectType}_${parentNicknameForChildren}`;
 
                     const updatedFriendFields = this.replaceAncestorNicknameReferencesInFriendFields(
                         friendEntry.fields,

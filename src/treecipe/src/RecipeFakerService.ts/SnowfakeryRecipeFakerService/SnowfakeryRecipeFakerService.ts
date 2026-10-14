@@ -47,8 +47,7 @@ export class SnowfakeryRecipeFakerService implements IRecipeFakerService {
                                                         associatedFieldApiName
                                                         ): string {
 
-        const commaJoinedPicklistChoices = SnowfakeryRecipeFakerService.buildEscapedCommaJoinedPicklistChoices(availablePicklistChoices);
-        let fakeMultiSelectRecipeValue = `${this.openingRecipeSyntax} (';').join((fake.random_sample(elements=('${commaJoinedPicklistChoices}')))) ${this.closingRecipeSyntax}`;
+        let fakeMultiSelectRecipeValue = `${this.openingRecipeSyntax} (';').join((fake.random_sample(elements=${SnowfakeryRecipeFakerService.buildRandomSampleElementsTuple(availablePicklistChoices)}))) ${this.closingRecipeSyntax}`;
         
         const recordTypeBasedRecipeValues = this.buildRecordTypeBasedMultipicklistRecipeValue(recordTypeNameByRecordTypeWrapper, associatedFieldApiName);
         if ( recordTypeBasedRecipeValues) {
@@ -184,6 +183,19 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             return RecipeYamlScalar.toDoubleQuotedScalar(value);
         }
         return RecipeYamlScalar.toDoubleQuotedScalar(`\${{ '${SnowfakeryRecipeFakerService.escapePicklistValueForJinjaStringLiteral(value)}' }}`);
+
+    }
+
+    /*
+        ('a') in Jinja is the STRING a, not a tuple, and random_sample over a string samples its
+        characters -- so a multi-select with one value generated a fragment of it. A one-element
+        tuple needs the trailing comma; two or more are written exactly as before.
+    */
+    static buildRandomSampleElementsTuple(availablePicklistChoices: string[]): string {
+
+        const commaJoinedPicklistChoices = SnowfakeryRecipeFakerService.buildEscapedCommaJoinedPicklistChoices(availablePicklistChoices);
+        const singleElementTupleComma = availablePicklistChoices.length === 1 ? ',' : '';
+        return `('${commaJoinedPicklistChoices}'${singleElementTupleComma})`;
 
     }
 
@@ -332,8 +344,7 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             const availableRecordTypePicklistValuesForField = recordTypeWrapper.PicklistFieldSectionsToPicklistDetail[associatedFieldApiName];
             if ( availableRecordTypePicklistValuesForField ) {
 
-                const commaJoinedPicklistChoices = SnowfakeryRecipeFakerService.buildEscapedCommaJoinedPicklistChoices(availableRecordTypePicklistValuesForField);
-                const recordTypBasedFakeRecipeValue = `${this.openingRecipeSyntax} (';').join((fake.random_sample(elements=('${commaJoinedPicklistChoices}')))) ${this.closingRecipeSyntax}`;
+                const recordTypBasedFakeRecipeValue = `${this.openingRecipeSyntax} (';').join((fake.random_sample(elements=${SnowfakeryRecipeFakerService.buildRandomSampleElementsTuple(availableRecordTypePicklistValuesForField)}))) ${this.closingRecipeSyntax}`;
                 
                 let recordTypeTodoVerbiage = `${this.generateTabs(5)}### TODO: -- RecordType Options -- ${recordTypeApiNameKey} -- Below is the Multiselect faker recipe for the record type ${recordTypeApiNameKey} for the field ${associatedFieldApiName}`;
                 // COMMENTED OUT: A BARE EXPRESSION INDENTED UNDER THE FIELD'S VALUE IS NOT YAML, AND BOTH PARSERS REJECT THE WHOLE FILE
