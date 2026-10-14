@@ -3324,8 +3324,8 @@ export class RecipeCockpitService {
 
     /*
         The options "treecipe.openRecipeCockpit" was run with. The command is callable by id, so only
-        { focusRecordTypes: true } asks for the tab, and an object name is kept only if it is an api
-        name -- it is matched against the loaded model and typed into the tab's search, never opened.
+        { focusRecordTypes: true } asks for the Record types section, and an object name is kept only
+        if it is an api name -- it is matched against the loaded model and scrolled to, never opened.
     */
     static readRecordTypesFocusRequest(openOptions: unknown): IRecipeCockpitRecordTypesFocusRequest | undefined {
 
@@ -11756,18 +11756,23 @@ ${this.buildPaletteCustomProperties()}
     }
 
     // EVERY OBJECT THE CARD DRAWS THAT HAS RECORD TYPES TO CHOOSE FROM, ONCE, IN THE CARD'S ORDER
+    // A CARD'S OBJECTS ARE FIXED FOR ITS MODEL, AND THE SEARCH AND EVERY TICK ASK FOR THIS LIST (#321), SO IT IS BUILT ONCE PER CARD
     function listRecordTypeObjects(treeState) {
 
-        const listedObjectApiNames = [];
+        if (treeState.listedRecordTypeObjects) { return treeState.listedRecordTypeObjects; }
 
-        return treeState.objectStates
+        const listedObjectApiNames = Object.create(null);
+
+        treeState.listedRecordTypeObjects = treeState.objectStates
             .filter(function (treeObjectState) { return !treeObjectState.isIteration && Array.isArray(treeObjectState.object.recordTypes); })
             .map(function (treeObjectState) { return treeObjectState.object; })
             .filter(function (object) {
-                if (listedObjectApiNames.indexOf(object.objectApiName) !== -1) { return false; }
-                listedObjectApiNames.push(object.objectApiName);
+                if (listedObjectApiNames[object.objectApiName] === true) { return false; }
+                listedObjectApiNames[object.objectApiName] = true;
                 return true;
             });
+
+        return treeState.listedRecordTypeObjects;
 
     }
 
@@ -11832,15 +11837,22 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // WHAT THE TREECIPE SEARCH MATCHES IN A ROW: THE OBJECT, ITS RECORD TYPES AND THE FIELDS THEY RESTRICT
+    // WHAT THE TREECIPE SEARCH MATCHES IN A ROW: THE OBJECT, ITS RECORD TYPES AND THE FIELDS THEY RESTRICT; BUILT ONCE PER OBJECT, NOT PER KEYSTROKE
+    const recordTypeSearchTextByObject = new WeakMap();
+
     function recordTypeObjectSearchText(object) {
+
+        const knownSearchText = recordTypeSearchTextByObject.get(object);
+        if (knownSearchText !== undefined) { return knownSearchText; }
 
         const searchTextParts = [object.objectApiName];
         object.recordTypes.forEach(function (recordType) {
             searchTextParts.push(recordType.developerName);
             recordType.impacts.forEach(function (impact) { searchTextParts.push(impact.fieldApiName); });
         });
-        return searchTextParts.join('\\n').toLowerCase();
+        const searchText = searchTextParts.join('\\n').toLowerCase();
+        recordTypeSearchTextByObject.set(object, searchText);
+        return searchText;
 
     }
 

@@ -13,6 +13,7 @@ Choosing record types meant leaving the tree for its own tab, then switching bac
 - **Focus.** A regenerate reload and **Change record types** (#196) open the card on the Treecipe tab with the section expanded, and **Change record types** scrolls to the object it names. A `focusTree` now carries `recordTypes: { objectApiName? }` instead of naming a tab.
 - **Saved places.** An expanded section is saved as the optional `isRecordTypesExpanded`, so the place version is unchanged and an older place reads as collapsed. A place saved on the Record types tab opens on Treecipe with the section expanded, and its Record types search is dropped rather than moved into the Treecipe search. `recordTypes` joins `RECIPE_COCKPIT_REMOVED_TREE_TABS`, and `RECIPE_COCKPIT_OPTIONAL_PLACE_SEARCH_TABS` is gone with the tab that needed it.
 - **No new colours.** The section uses the existing border, text and muted tokens.
+- **Keystroke cost.** Each card builds its list of record-type objects once per model, and each object's search text is computed once, so a Treecipe search keystroke or a tick does not rebuild either.
 
 ## [3.87.0] - Edit a field's faker constraints in the Recipe Cockpit
 
