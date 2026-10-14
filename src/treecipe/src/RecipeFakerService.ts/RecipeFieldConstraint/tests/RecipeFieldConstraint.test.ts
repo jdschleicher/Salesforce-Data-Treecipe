@@ -190,6 +190,39 @@ describe('RecipeFieldConstraint', () => {
 
     });
 
+    describe('review fixes (#328)', () => {
+
+        test('a max of 0 alone reaches down to the negative ceiling rather than refusing a zero-width range', () => {
+            expect(RecipeFieldConstraint.resolve(numberTarget, { max: '0' })).toEqual({ constraint: { kind: 'number', min: '-99999', max: '0', scale: 0 } });
+        });
+
+        test('today as the earliest date defaults the latest to a year from it, not a zero-width range', () => {
+            expect(RecipeFieldConstraint.resolve(dateTarget, { min: 'today' }, NOW)).toEqual({ constraint: { kind: 'date', from: { relativeDays: 0 }, to: { relativeDays: 365 } } });
+            expect(RecipeFieldConstraint.resolve(dateTimeTarget, { min: '+0d' }, NOW)).toEqual({ constraint: { kind: 'date', from: { relativeDays: 0 }, to: { relativeDays: 365 } } });
+        });
+
+        test('a Date field compares by UTC day, so today and today\'s date are one day', () => {
+            expect(RecipeFieldConstraint.resolve(dateTarget, { min: 'today', max: '2026-10-14' }, NOW)).toHaveProperty('constraint');
+            expect(RecipeFieldConstraint.resolve(dateTarget, { min: '2026-10-14', max: 'today' }, NOW)).toHaveProperty('constraint');
+            expect(RecipeFieldConstraint.resolve(dateTimeTarget, { min: 'today', max: '2026-10-14' }, NOW)).toHaveProperty('refusal');
+        });
+
+        test.each([
+            [{ fieldType: 'Number', precision: 19, scale: 0 }],
+            [{ fieldType: 'Number', precision: 5, scale: 6 }],
+            [{ fieldType: 'Currency', precision: 18, scale: 300000000 }],
+            [{ fieldType: 'Number', precision: 0 }],
+            [{ fieldType: 'Number', precision: 2.5 }],
+            [{ fieldType: 'Text', length: 99999999999 }],
+            [{ fieldType: 'Text', length: 0 }]
+        ])('refuses a size Salesforce does not allow, from a hand-edited wrapper: %j', target => {
+            const refusal = 'The size recorded for this field is not one Salesforce allows, so it cannot be constrained.';
+            expect(RecipeFieldConstraint.checkBound(target, '1', 'min')).toBe(refusal);
+            expect(RecipeFieldConstraint.resolve(target, { min: '1' })).toEqual({ refusal: refusal });
+        });
+
+    });
+
     test('a type with no constraints refuses', () => {
         expect(RecipeFieldConstraint.resolve({ fieldType: 'Email' }, { min: '1' })).toEqual({ refusal: 'This field type has no faker constraints.' });
         expect(RecipeFieldConstraint.checkBound({ fieldType: 'Checkbox' }, '1', 'min')).toBe('This field type has no faker constraints.');

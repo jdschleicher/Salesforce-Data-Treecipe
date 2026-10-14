@@ -880,7 +880,7 @@ describe('FakerJSRecipeFakerService.buildConstrainedExpression (#323)', () => {
         ['Text', { kind: 'length', min: 3, max: 8 }, '${{ faker.string.alpha({ length: { min: 3, max: 8 } }) }}'],
         ['LongTextArea', { kind: 'length', min: 0, max: 0 }, '${{ faker.string.alpha({ length: { min: 0, max: 0 } }) }}'],
         ['Date', { kind: 'date', from: { relativeDays: -30 }, to: { relativeDays: 90 } },
-            `\${{ faker.date.between({from: new Date(Date.now() + -30 * 86400000), to: new Date(Date.now() + 90 * 86400000)}).toISOString().split('T')[0] }}`],
+            `\${{ faker.date.between({from: new Date((Math.floor(Date.now() / 86400000) + -30) * 86400000), to: new Date((Math.floor(Date.now() / 86400000) + 90) * 86400000)}).toISOString().split('T')[0] }}`],
         ['DateTime', { kind: 'date', from: { utcDateTime: '2024-01-01T00:00:00' }, to: { relativeDays: 0 } },
             `\${{ faker.date.between({from: new Date('2024-01-01T00:00:00Z'), to: new Date(Date.now() + 0 * 86400000)}).toISOString() }}`]
     ] as const)('%s %j', (fieldType, constraint, expectedExpression) => {

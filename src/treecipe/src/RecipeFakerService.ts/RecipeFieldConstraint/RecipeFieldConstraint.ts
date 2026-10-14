@@ -52,6 +52,9 @@ const RELATIVE_DAYS_PATTERN = /^([+-]?)(\d{1,5})d$/;
 const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const ISO_DATE_TIME_PATTERN = /^(\d{4}-\d{2}-\d{2})T([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?Z?$/;
 const MILLISECONDS_PER_DAY = 86400000;
+// THE SIZES SALESFORCE ALLOWS; THE OBJECTS WRAPPER IS A WORKSPACE FILE, SO A SIZE OUTSIDE THEM IS REFUSED RATHER THAN BUILT FROM
+const MAX_PRECISION = 18;
+const MAX_LENGTH = 131072;
 
 export class RecipeFieldConstraint {
 
@@ -101,6 +104,11 @@ export class RecipeFieldConstraint {
     static checkBound(target: IRecipeFieldConstraintTarget, bound: string, boundName: 'min' | 'max'): string | undefined {
 
         const kind = this.getConstraintKind(target.fieldType);
+        const targetRefusal = this.findTargetRefusal(target);
+
+        if ( targetRefusal !== undefined ) {
+            return targetRefusal;
+        }
 
         if ( kind === 'number' ) {
             return this.checkNumberBound(target, bound);
@@ -129,6 +137,10 @@ export class RecipeFieldConstraint {
 
         if ( kind === undefined ) {
             return { refusal: 'This field type has no faker constraints.' };
+        }
+        const targetRefusal = this.findTargetRefusal(target);
+        if ( targetRefusal !== undefined ) {
+            return { refusal: targetRefusal };
         }
         if ( storedConstraint.min === undefined && storedConstraint.max === undefined ) {
             return { refusal: 'Set at least one bound.' };
@@ -159,6 +171,18 @@ export class RecipeFieldConstraint {
         return target.fieldType === 'DateTime'
             ? `Type a date as YYYY-MM-DD, a UTC time as YYYY-MM-DDTHH:MM:SSZ, today, or days from the run such as ${example}.`
             : `Type a date as YYYY-MM-DD, today, or days from the run such as ${example}.`;
+
+    }
+
+    static findTargetRefusal(target: IRecipeFieldConstraintTarget): string | undefined {
+
+        const isWholeNumberIn = (value: number | undefined, minimum: number, maximum: number) => value === undefined || ( Number.isInteger(value) && value >= minimum && value <= maximum );
+
+        return isWholeNumberIn(target.precision, 1, MAX_PRECISION)
+                && isWholeNumberIn(target.scale, 0, target.precision ?? MAX_PRECISION)
+                && isWholeNumberIn(target.length, 1, MAX_LENGTH)
+            ? undefined
+            : 'The size recorded for this field is not one Salesforce allows, so it cannot be constrained.';
 
     }
 
@@ -240,7 +264,7 @@ export class RecipeFieldConstraint {
         const typedMin = storedConstraint.min === undefined ? undefined : this.canonicalizeNumber(storedConstraint.min);
         const typedMax = storedConstraint.max === undefined ? undefined : this.canonicalizeNumber(storedConstraint.max);
 
-        const min = typedMin ?? ( typedMax !== undefined && Number(typedMax) < 0 ? `-${ceiling}` : '0' );
+        const min = typedMin ?? ( typedMax !== undefined && Number(typedMax) <= 0 ? `-${ceiling}` : '0' );
         const defaultMax = target.precision === undefined && Number(min) <= RECIPE_FIELD_CONSTRAINT_DEFAULT_NUMBER_MAX ? unsizedDefaultMax : ceiling;
         const max = typedMax ?? defaultMax;
 
@@ -318,6 +342,12 @@ export class RecipeFieldConstraint {
 
     }
 
+    // A Date FIELD IS COMPARED BY UTC DAY: "today" IS THE WHOLE DAY, NOT THE INSTANT THE CHECK RAN
+    static toComparableMilliseconds(target: IRecipeFieldConstraintTarget, dateBound: RecipeFieldConstraintDateBound, now: Date): number {
+        const milliseconds = this.toEpochMilliseconds(dateBound, now);
+        return target.fieldType === 'Date' ? Math.floor(milliseconds / MILLISECONDS_PER_DAY) * MILLISECONDS_PER_DAY : milliseconds;
+    }
+
     static toEpochMilliseconds(dateBound: RecipeFieldConstraintDateBound, now: Date): number {
         return 'relativeDays' in dateBound
             ? now.getTime() + dateBound.relativeDays * MILLISECONDS_PER_DAY
@@ -337,16 +367,19 @@ export class RecipeFieldConstraint {
         const typedTo = storedConstraint.max === undefined ? undefined : this.parseDateBound(target, storedConstraint.max) as RecipeFieldConstraintDateBound;
         const span = RECIPE_FIELD_CONSTRAINT_DEFAULT_SPAN_DAYS;
 
+        const comparable = (dateBound: RecipeFieldConstraintDateBound) => this.toComparableMilliseconds(target, dateBound, now);
+
+        // AN EMPTY BOUND IS A YEAR ENDING TODAY, UNLESS THE TYPED ONE IS TODAY OR LATER (OR A YEAR AGO OR EARLIER): THEN IT IS A YEAR FROM IT
         const from = typedFrom
-            ?? ( typedTo && this.toEpochMilliseconds(typedTo, now) < this.toEpochMilliseconds({ relativeDays: -span }, now)
+            ?? ( typedTo && comparable(typedTo) <= comparable({ relativeDays: -span })
                 ? this.shiftDateBound(typedTo, -span)
                 : { relativeDays: -span } );
         const to = typedTo
-            ?? ( this.toEpochMilliseconds(from, now) > now.getTime()
+            ?? ( comparable(from) >= comparable({ relativeDays: 0 })
                 ? this.shiftDateBound(from, span)
                 : { relativeDays: 0 } );
 
-        if ( this.toEpochMilliseconds(from, now) > this.toEpochMilliseconds(to, now) ) {
+        if ( comparable(from) > comparable(to) ) {
             return { refusal: `The earliest date ${storedConstraint.min ?? 'default'} is later than the latest date ${storedConstraint.max ?? 'default'}.` };
         }
 

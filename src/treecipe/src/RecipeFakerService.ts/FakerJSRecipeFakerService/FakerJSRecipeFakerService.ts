@@ -692,15 +692,22 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
         }
 
         const isoFormat = fieldType === 'DateTime' ? '.toISOString()' : `.toISOString().split('T')[0]`;
-        return `${this.openingRecipeSyntax} faker.date.between({from: ${this.buildDateBoundExpression(constraint.from)}, to: ${this.buildDateBoundExpression(constraint.to)}})${isoFormat} ${this.closingRecipeSyntax}`;
+        return `${this.openingRecipeSyntax} faker.date.between({from: ${this.buildDateBoundExpression(constraint.from, fieldType === 'Date')}, to: ${this.buildDateBoundExpression(constraint.to, fieldType === 'Date')}})${isoFormat} ${this.closingRecipeSyntax}`;
 
     }
 
-    // A RELATIVE BOUND IS MEASURED WHEN THE RECIPE RUNS, NOT WHEN THE COCKPIT WROTE IT
-    private buildDateBoundExpression(dateBound: RecipeFieldConstraintDateBound): string {
-        return 'relativeDays' in dateBound
-            ? `new Date(Date.now() + ${dateBound.relativeDays} * 86400000)`
-            : `new Date('${dateBound.utcDateTime}Z')`;
+    /*
+        A relative bound is measured when the recipe runs, not when the cockpit wrote it. For a Date
+        field it is that day's UTC midnight, as snowfakery's date_between reads it: "today" measured
+        to the instant would fall after a fixed bound of today's date, and faker refuses from > to.
+    */
+    private buildDateBoundExpression(dateBound: RecipeFieldConstraintDateBound, isDateOnly: boolean): string {
+        if ( !( 'relativeDays' in dateBound ) ) {
+            return `new Date('${dateBound.utcDateTime}Z')`;
+        }
+        return isDateOnly
+            ? `new Date((Math.floor(Date.now() / 86400000) + ${dateBound.relativeDays}) * 86400000)`
+            : `new Date(Date.now() + ${dateBound.relativeDays} * 86400000)`;
     }
 
 }
