@@ -465,7 +465,7 @@ export interface IRecipeCockpitObjectViewModel {
     countParentObjectApiName?: string;
     /*
         Set only on an object with two or more record types under a valid developer name (#195):
-        what the Record types tab offers. generatedRecordTypeDeveloperNames is what the run's recipe
+        what the Record types section offers. generatedRecordTypeDeveloperNames is what the run's recipe
         writes, in block order, and isRecordTypeSelectionApplied says it was written from a choice
         rather than as the default -- a later regenerate repeats a choice it was not asked to change.
     */
@@ -899,7 +899,7 @@ export interface IRecipeCockpitTreeFocus {
 }
 
 /*
-    "Change record types" (#196) opens the cockpit on a Record types tab before any model exists, so
+    "Change record types" (#196) opens the cockpit on a Record types section before any model exists, so
     it names an OBJECT and the card is chosen once the run is loaded.
 */
 export interface IRecipeCockpitRecordTypesFocusRequest {
@@ -1379,7 +1379,7 @@ export interface IRecipeCockpitPanelState {
     // THE PLACE workspaceState KEPT FOR THIS MODEL (#230), REPLAYED UNTIL THE MODEL'S "rendered" SAYS IT WAS DRAWN
     restorePlace?: IRecipeCockpitPanelPlace;
     /*
-        The Record types tab "Change record types" opened the panel on (#196). An open posts its model
+        The Record types section "Change record types" opened the panel on (#196). An open posts its model
         before the new document is ready, so like restorePlace it rides on every replay until the
         model's "rendered".
     */
@@ -4875,8 +4875,8 @@ export class RecipeCockpitService {
         Treecipe reports its own failures, and reloading shows the reader exactly what is on disk.
     */
     /*
-        The Record types tab (#195) comes through here too, with its selection in the options and the
-        reload focused back on the tab it was clicked in.
+        The Record types section (#195, #321) comes through here too, with its selection in the
+        options and the reload focused back on the section it was clicked in.
     */
     private static async generateTreecipeAndReload(cockpitPanel: vscode.WebviewPanel,
                                                     panelState: IRecipeCockpitPanelState,
@@ -7083,7 +7083,7 @@ export class RecipeCockpitService {
                 return { kind: 'generateTreecipe' };
 
             /*
-                The Record types tab's two buttons (#195). The selection is NAMES only, each pair
+                The Record types section's two buttons (#195, #321). The selection is NAMES only, each pair
                 MATCHED against what the confirmed-drawn model offered; one name it did not offer
                 refuses the whole request rather than generating something other than what was
                 asked. An empty selection is "Use defaults". It shares Generate Treecipe's
@@ -8620,7 +8620,7 @@ export class RecipeCockpitService {
     }
 
     /*
-        The record types the Record types tab offers for one object (#195), in the map's own order
+        The record types the Record types section offers for one object (#195), in the map's own order
         (RecordTypeService sorted it once, #166). Only a developer name that IS an api name is
         offered: generation refuses any other (#120), so offering it would offer nothing. Each
         carries what it restricts -- every picklist field of the object its section lists, and how
@@ -10253,7 +10253,7 @@ ${this.buildPaletteCustomProperties()}
     let pendingPicklistValueElements = Object.create(null);
 
     /*
-        The Record types tab's choice (#195) is the PANEL's, per object and shared by every card
+        The Record types section's choice (#195) is the PANEL's, per object and shared by every card
         that lists the object: object api name -> developer names, in the order ticked, starting
         from what the run on screen generates. Keyed by names from files, so no prototype.
     */
@@ -11793,6 +11793,9 @@ ${this.buildPaletteCustomProperties()}
         and whether the choice still matches the run. Like a tree card, the HEADER is the toggle and
         the ▸ carries no listener of its own. Its rows are built on first expand.
     */
+    // EACH SECTION'S TOGGLE NAMES ITS BODY AND ITS SUMMARY BY ID, SO A SCREEN READER ANNOUNCES "changed" ON THE TOGGLE (#321)
+    let recordTypesSectionCount = 0;
+
     function buildRecordTypesSection(treeState) {
 
         const sectionElement = createElement('div', 'recordTypesSection');
@@ -11801,7 +11804,12 @@ ${this.buildPaletteCustomProperties()}
         const bodyElement = createElement('div', 'recordTypesSectionBody hidden');
         const summaryElement = createElement('span', 'recordTypesSectionSummary muted');
 
+        recordTypesSectionCount++;
+        bodyElement.setAttribute('id', 'recordTypesSectionBody' + recordTypesSectionCount);
+        summaryElement.setAttribute('id', 'recordTypesSectionSummary' + recordTypesSectionCount);
         toggleElement.setAttribute('aria-label', RECORD_TYPES_SECTION_TITLE + ' (' + displayTitleOf(treeState.tree) + ')');
+        toggleElement.setAttribute('aria-controls', 'recordTypesSectionBody' + recordTypesSectionCount);
+        toggleElement.setAttribute('aria-describedby', 'recordTypesSectionSummary' + recordTypesSectionCount);
         drawToggle(toggleElement, false, false);
         headerElement.appendChild(toggleElement);
         headerElement.appendChild(createElement('span', 'recordTypesSectionTitle', RECORD_TYPES_SECTION_TITLE));
@@ -12224,13 +12232,26 @@ ${this.buildPaletteCustomProperties()}
         selectTreeTab(treeState, focusTree.tab);
 
         // A REGENERATE, AND "Change record types" (#196), RE-OPEN THE RECORD TYPES SECTION, SCROLLED TO THE OBJECT IT IS ABOUT
-        if (focusTree.recordTypes && typeof focusTree.recordTypes === 'object') {
-            setRecordTypesExpanded(treeState, true, false);
-            const objectApiName = focusTree.recordTypes.objectApiName;
-            const objectState = (treeState.recordTypeObjectStates || []).find(function (candidateState) { return candidateState.object.objectApiName === objectApiName; });
-            if (objectState && typeof objectState.element.scrollIntoView === 'function') { objectState.element.scrollIntoView({ block: 'nearest' }); }
+        if (!focusTree.recordTypes || typeof focusTree.recordTypes !== 'object') { return false; }
+
+        setRecordTypesExpanded(treeState, true, false);
+        savePanelPlace();
+
+        const objectApiName = focusTree.recordTypes.objectApiName;
+        const objectState = (treeState.recordTypeObjectStates || []).find(function (candidateState) { return candidateState.object.objectApiName === objectApiName; });
+        if (!objectState || typeof objectState.element.scrollIntoView !== 'function') { return false; }
+
+        // A SEARCH RESTORED FROM THE PLACE WOULD HIDE THE ROW THE READER ASKED TO SEE, SO IT IS CLEARED
+        if (objectState.element.classList.contains('hidden') && treeState.searchQueries.treecipe) {
+            treeState.searchTexts.treecipe = '';
+            treeState.searchQueries.treecipe = '';
+            if (treeState.structureSearch) { treeState.structureSearch.inputElement.value = ''; }
+            applyStructureFilter(treeState);
             savePanelPlace();
         }
+
+        objectState.element.scrollIntoView({ block: 'nearest' });
+        return true;
 
     }
 
@@ -13444,8 +13465,9 @@ ${this.buildPaletteCustomProperties()}
         try {
             restorePlaceAfterRender(savedPlace);
             // A FOCUS IS WHAT THE READER JUST ASKED FOR, SO IT WINS OVER WHERE THEY LAST WERE
-            applyTreeFocus(focusTree);
-            restoreScroll(savedPlace);
+            // AND A FOCUS THAT SCROLLED TO A ROW IS NOT SCROLLED BACK TO THE OFFSET THE PLACE SAVED
+            const hasFocusScrolled = applyTreeFocus(focusTree) === true;
+            if (!hasFocusScrolled) { restoreScroll(savedPlace); }
         } catch (focusError) {
             postRenderFailure('runtime', focusError);
         }
