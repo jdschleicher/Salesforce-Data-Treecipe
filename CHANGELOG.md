@@ -7,9 +7,10 @@ Closes [#338](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/33
 A tree card drew the Record types section only when it listed an object with two or more record types, so on any other tree a reader could not tell the choice existed, or why this tree did not offer it.
 
 - **Every card's Treecipe tab draws the header**, in the same place: under the Treecipe search box, above the first object.
-- **Disabled when there is nothing to choose.** A card with no object offering two or more record types (none, or only one each, which is no choice) draws the header with `aria-disabled="true"`, its ▸ a disabled button with no `aria-expanded`, the title and ▸ in the muted palette colour, and the summary `No objects in this tree have two or more record types in local metadata` (`RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY`), written with `textContent`. It has no body and no listener: a click, the Treecipe search, a restored place saved expanded (or on the old Record types tab) and a focus asking for the section all leave it closed.
+- **Disabled when there is nothing to choose.** A card with no object offering two or more record types (none, or only one each, which is no choice) draws the header as a `group` with `aria-disabled="true"`, its ▸ a disabled button with no `aria-expanded` and described by the summary, the title and ▸ in the muted palette colour, and the summary `No objects in this tree have two or more record types in local metadata` (`RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY`), written with `textContent`. It has no body and no listener: a click, the Treecipe search, a restored place saved expanded (or on the old Record types tab) and a focus asking for the section all leave it closed.
 - **Unchanged:** a card that lists such an object draws the section exactly as before, and the model, the host and generation are untouched.
 - **Tests.** `RecipeCockpitRecordTypes.test.ts` runs the real panel script over a card with no record types, a run whose objects have one record type each, clicks on the header, title and ▸, a search, a restore both ways and a focus.
+
 ## [3.93.0] - Recipe Cockpit: "Record type fields only" and a chip naming the restricting record types
 
 Closes [#320](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/320).

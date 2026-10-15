@@ -695,6 +695,8 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
                 expect(leadToggleOf(panel).disabled).toBe(true);
                 expect(leadToggleOf(panel).attributes).not.toHaveProperty('aria-expanded');
                 expect(leadToggleOf(panel).attributes).not.toHaveProperty('aria-controls');
+                expect(leadSectionOf(panel).attributes['role']).toBe('group');
+                expect(leadToggleOf(panel).attributes['aria-describedby']).toBe(panel.findAll(leadCardOf(panel), 'recordTypesSectionSummary')[0].attributes['id']);
                 expect(panel.findAll(leadCardOf(panel), 'recordTypesSectionBody')).toHaveLength(0);
 
             });
