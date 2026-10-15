@@ -17,6 +17,7 @@ import {
     RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_RECORD_TYPES_INTRO,
+    RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY,
     RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE,
     RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL,
     RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL,
@@ -654,7 +655,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
         const regenerateMessages = (panel: ReturnType<typeof runPanelScript>) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'regenerateWithRecordTypes');
         const buttonOf = (panel: ReturnType<typeof runPanelScript>, className: string) => panel.findAll(sectionBodyOf(panel), className)[0];
 
-        it('draws no Record types tab, and the section only on a card listing an object with record types (#321)', () => {
+        it('draws no Record types tab, and the section on every card, enabled only on one listing an object with record types (#321, #338)', () => {
 
             const panel = drawRecipe();
             panel.expandAllTrees();
@@ -662,7 +663,121 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             const tabLabels = (treeCard: any) => panel.findAll(treeCard, 'treeTab').map((tabElement: any) => tabElement.textContent);
             expect(tabLabels(panel.treeCards()[0])).not.toContain('Record types');
             expect(panel.findAll(panel.treeCards()[0], 'recordTypesSection')).toHaveLength(1);
-            expect(panel.findAll(panel.treeCards()[1], 'recordTypesSection')).toHaveLength(0);
+            expect(panel.findAll(panel.treeCards()[0], 'recordTypesSection')[0].classList.contains('disabled')).toBe(false);
+            expect(panel.findAll(panel.treeCards()[1], 'recordTypesSection')).toHaveLength(1);
+            expect(panel.findAll(panel.treeCards()[1], 'recordTypesSection')[0].classList.contains('disabled')).toBe(true);
+
+        });
+
+        describe('on a card with no object offering two or more record types (#338)', () => {
+
+            const leadCardOf = (panel: ReturnType<typeof runPanelScript>) => panel.treeCards()[1];
+            const leadSectionOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(leadCardOf(panel), 'recordTypesSection')[0];
+            const leadHeaderOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(leadCardOf(panel), 'recordTypesSectionHeader')[0];
+            const leadToggleOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(leadCardOf(panel), 'recordTypesSectionToggle')[0];
+            const leadSummaryOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(leadCardOf(panel), 'recordTypesSectionSummary')[0].textContent;
+            const leadPlaceOf = (panel: ReturnType<typeof runPanelScript>) => (panel.savedState()?.trees || []).find((treePlace: any) => treePlace.treeKey === LEAD_TREE_KEY);
+
+            it('draws the header disabled under the Treecipe search box, saying why, with no body to open', () => {
+
+                const panel = drawRecipe();
+                panel.expandAllTrees();
+
+                const structureChildren = panel.tabPanelOf(leadCardOf(panel), 'treeStructure').children;
+                const searchIndex = structureChildren.findIndex((element: any) => element.classList.contains('tabSearch'));
+                const sectionIndex = structureChildren.findIndex((element: any) => element.classList.contains('recordTypesSection'));
+
+                expect(sectionIndex).toBe(searchIndex + 1);
+                expect(panel.findAll(leadCardOf(panel), 'recordTypesSectionTitle')[0].textContent).toBe('Record types');
+                expect(leadSummaryOf(panel)).toBe(RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY);
+                expect(leadSectionOf(panel).attributes['aria-disabled']).toBe('true');
+                expect(leadHeaderOf(panel).attributes['aria-disabled']).toBe('true');
+                expect(leadToggleOf(panel).disabled).toBe(true);
+                expect(leadToggleOf(panel).attributes).not.toHaveProperty('aria-expanded');
+                expect(leadToggleOf(panel).attributes).not.toHaveProperty('aria-controls');
+                expect(leadSectionOf(panel).attributes['role']).toBe('group');
+                expect(leadToggleOf(panel).attributes['aria-describedby']).toBe(panel.findAll(leadCardOf(panel), 'recordTypesSectionSummary')[0].attributes['id']);
+                expect(panel.findAll(leadCardOf(panel), 'recordTypesSectionBody')).toHaveLength(0);
+
+            });
+
+            it('draws it disabled for objects with only one record type, which the model carries no record types for', () => {
+
+                const panel = drawRecipe(recipe => { delete accountOf(recipe).recordTypes; });
+                panel.expandAllTrees();
+
+                panel.treeCards().forEach((treeCard: any) => {
+                    const sectionElement = panel.findAll(treeCard, 'recordTypesSection')[0];
+                    expect(sectionElement.classList.contains('disabled')).toBe(true);
+                    expect(panel.findAll(treeCard, 'recordTypesSectionSummary')[0].textContent).toBe(RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY);
+                });
+
+            });
+
+            it('opens nothing and saves nothing on a click on its header, title or ▸', () => {
+
+                const panel = drawRecipe();
+                panel.expandAllTrees();
+
+                leadHeaderOf(panel).dispatch('click');
+                panel.findAll(leadCardOf(panel), 'recordTypesSectionTitle')[0].dispatch('click');
+                leadToggleOf(panel).dispatch('click');
+
+                expect(panel.findAll(leadCardOf(panel), 'recordTypeObject')).toHaveLength(0);
+                expect(leadToggleOf(panel).attributes).not.toHaveProperty('aria-expanded');
+                expect(leadPlaceOf(panel)?.isRecordTypesExpanded).toBeUndefined();
+
+            });
+
+            it('keeps its summary through a Treecipe search', () => {
+
+                const panel = drawRecipe();
+                panel.expandAllTrees();
+
+                const searchInput = panel.findAll(leadCardOf(panel), 'tabSearchInput')[0];
+                searchInput.value = 'Lead';
+                searchInput.dispatch('input');
+
+                expect(leadSummaryOf(panel)).toBe(RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY);
+
+            });
+
+            it('opens on Treecipe with nothing expanded from a place that saved it expanded, or on the old Record types tab', () => {
+
+                [{ isRecordTypesExpanded: true }, { selectedTab: 'recordTypes', searchQueries: { treecipe: '', datasets: '', recordTypes: 'Lead' } }].forEach(treePlace => {
+
+                    const panel = runPanelScript({ savedState: {
+                        version: RECIPE_COCKPIT_PANEL_PLACE_VERSION,
+                        runFolderName: CURRENT_RUN_FOLDER_NAME,
+                        isOrgPickerInUse: false,
+                        isFavoritesOnly: false,
+                        scrollY: 0,
+                        trees: [{ treeKey: LEAD_TREE_KEY, isExpanded: true, selectedTab: 'treecipe', searchQueries: { treecipe: '', datasets: '' }, expandedObjectKeys: [], openPicklistKeys: [], ...treePlace }]
+                    } });
+                    panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 3 });
+
+                    const selectedTabs = panel.findAll(leadCardOf(panel), 'treeTab').filter((tabElement: any) => tabElement.attributes['aria-selected'] === 'true');
+                    expect(selectedTabs.map((tabElement: any) => tabElement.textContent)).toEqual(['Treecipe']);
+                    expect(leadSectionOf(panel).classList.contains('disabled')).toBe(true);
+                    expect(panel.findAll(leadCardOf(panel), 'recordTypeObject')).toHaveLength(0);
+                    expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'renderFailed')).toHaveLength(0);
+
+                });
+
+            });
+
+            it('stays closed when a focus asks for its Record types section', () => {
+
+                const panel = runPanelScript();
+                panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 6, focusTree: { treeKey: LEAD_TREE_KEY, tab: 'treecipe', recordTypes: {} } });
+                panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 7, focusTree: { treeKey: LEAD_TREE_KEY, tab: 'treecipe', recordTypes: { objectApiName: 'Lead' } } });
+
+                expect(leadSectionOf(panel).classList.contains('disabled')).toBe(true);
+                expect(panel.findAll(leadCardOf(panel), 'recordTypeObject')).toHaveLength(0);
+                expect(leadPlaceOf(panel)?.isRecordTypesExpanded).toBeUndefined();
+                expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'renderFailed')).toHaveLength(0);
+
+            });
 
         });
 
