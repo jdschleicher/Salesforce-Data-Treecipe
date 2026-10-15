@@ -117,7 +117,8 @@ const storedSelections = (constraintsByFolderName: Record<string, unknown>, fixe
     excludedFieldApiNamesByFolderName: excludedFieldApiNamesByFolderName,
     objectCountsByFolderName: {},
     fixedValuesByFolderName: fixedValuesByFolderName,
-    constraintsByFolderName: constraintsByFolderName
+    constraintsByFolderName: constraintsByFolderName,
+    validationRulesOffByFolderName: {}
 });
 
 const treeOf = (recipe: IRecipeCockpitRecipeViewModel, treeKey: string) => recipe.trees.find(tree => tree.treeKey === treeKey) as IRecipeCockpitTreeViewModel;
@@ -284,11 +285,12 @@ describe('RecipeCockpitService -- faker constraints (#323)', () => {
                     [ACCOUNT_TREE_KEY, new Map([['Account', new Map<string, IStoredRecipeFieldConstraint>([['Legacy_Code__c', { min: '3' }], ['__proto__', { max: '5' }]])]])],
                     ['__proto__', new Map([['Lead', new Map<string, IStoredRecipeFieldConstraint>([['Company', { min: '1', max: '9' }]])]])],
                     ['Empty-Tree', new Map([['Lead', new Map<string, IStoredRecipeFieldConstraint>()]])]
-                ])
+                ]),
+                validationRulesOffByFolderName: new Map()
             })).resolves.toBeTrue();
 
             const stored = workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY) as any;
-            expect(stored.version).toBe(5);
+            expect(stored.version).toBe(RECIPE_COCKPIT_OBJECT_SELECTION_VERSION);
             expect(Object.keys(stored.constraintsByFolderName)).toEqual([ACCOUNT_TREE_KEY, '__proto__']);
             expect(Object.keys(stored.constraintsByFolderName[ACCOUNT_TREE_KEY].Account)).toEqual(['Legacy_Code__c', '__proto__']);
 
@@ -451,7 +453,7 @@ describe('RecipeCockpitService -- faker constraints (#323)', () => {
             const recipe = loadRecipe();
             applyConstraints(recipe, { [ACCOUNT_TREE_KEY]: { OtherChildObject__c: { Score__c: { min: '1', max: '10' } } } });
 
-            const filteredRecipe = RecipeCockpitService.buildRunFakerFilteredRecipe(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8'), treeOf(recipe, ACCOUNT_TREE_KEY), undefined);
+            const filteredRecipe = RecipeCockpitService.buildRunFakerFilteredRecipe(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8'), treeOf(recipe, ACCOUNT_TREE_KEY), undefined, recipe);
 
             if ( 'refusalMessage' in filteredRecipe ) {
                 throw new Error(filteredRecipe.refusalMessage);

@@ -55,9 +55,10 @@ export const FILTERED_RECIPE_FILE_PREFIX = 'filteredRecipe-';
     What the Recipe Cockpit hands Run Faker for a tree with excluded objects (#219) or unticked
     fields (#220), or with record counts (#255) or fixed values (#262) the reader set: the filtered
     copy the host built from the tree's recipe, what it leaves out and the counts, values and
-    faker constraints (#323) it carries. The recipe file itself is never written; the copy is what
-    the processor runs and what the data set keeps. At least one object or field is left out, or
-    one count, value or constraint set, or there would be no copy.
+    faker constraints (#323) it carries, and the fields whose validation rules it switched off
+    (#325). The recipe file itself is never written; the copy is what the processor runs and what
+    the data set keeps. At least one object or field is left out, or one count, value, constraint
+    or switched-off rule set, or there would be no copy.
 */
 export interface IRunFakerFilteredRecipe {
     recipeText: string;
@@ -66,6 +67,7 @@ export interface IRunFakerFilteredRecipe {
     objectCountsByObject?: Record<string, number>;
     fixedValuesByObject?: Record<string, Record<string, string>>;
     constraintsByObject?: Record<string, Record<string, IDatasetSourceFieldConstraint>>;
+    validationRulesOffByObject?: Record<string, string[]>;
 }
 /*
     isConfirmed is set by the Recipe Cockpit's tree insert (#255), whose own host modal already named
@@ -327,7 +329,8 @@ export class ExtensionCommandService {
                 filteredRecipe?.excludedFieldApiNamesByObject ?? {},
                 filteredRecipe?.objectCountsByObject ?? {},
                 filteredRecipe?.fixedValuesByObject ?? {},
-                filteredRecipe?.constraintsByObject ?? {}
+                filteredRecipe?.constraintsByObject ?? {},
+                filteredRecipe?.validationRulesOffByObject ?? {}
             );
             DatasetSourceService.writeDatasetSourceFile(fullPathToBaseArtifactsFolder, datasetSource);
             datasetFolderPath = fullPathToUniqueTimeStampedFakeDataSetsFolder;
@@ -365,21 +368,25 @@ export class ExtensionCommandService {
             return false;
         }
 
-        const { recipeText, excludedObjectApiNames, excludedFieldApiNamesByObject, objectCountsByObject, fixedValuesByObject, constraintsByObject } = candidate as Record<string, unknown>;
+        const { recipeText, excludedObjectApiNames, excludedFieldApiNamesByObject, objectCountsByObject, fixedValuesByObject, constraintsByObject, validationRulesOffByObject } = candidate as Record<string, unknown>;
 
-        const isFieldMap = excludedFieldApiNamesByObject === undefined || (
-            typeof excludedFieldApiNamesByObject === 'object'
-            && excludedFieldApiNamesByObject !== null
-            && !Array.isArray(excludedFieldApiNamesByObject)
-            && Object.entries(excludedFieldApiNamesByObject).every(([objectApiName, fieldApiNames]) => (
+        const isFieldListMap = (fieldListMap: unknown) => fieldListMap === undefined || (
+            typeof fieldListMap === 'object'
+            && fieldListMap !== null
+            && !Array.isArray(fieldListMap)
+            && Object.entries(fieldListMap).every(([objectApiName, fieldApiNames]) => (
                 SalesforceApiName.isApiName(objectApiName)
                 && Array.isArray(fieldApiNames)
                 && fieldApiNames.every(fieldApiName => SalesforceApiName.isApiName(fieldApiName))
             ))
         );
-        const excludedFieldCount = isFieldMap && excludedFieldApiNamesByObject
-            ? Object.values(excludedFieldApiNamesByObject as Record<string, string[]>).reduce((fieldCount, fieldApiNames) => fieldCount + fieldApiNames.length, 0)
-            : 0;
+        const countListedFields = (fieldListMap: unknown) => ( isFieldListMap(fieldListMap) && fieldListMap
+            ? Object.values(fieldListMap as Record<string, string[]>).reduce((fieldCount, fieldApiNames) => fieldCount + fieldApiNames.length, 0)
+            : 0 );
+        const isFieldMap = isFieldListMap(excludedFieldApiNamesByObject);
+        const excludedFieldCount = countListedFields(excludedFieldApiNamesByObject);
+        const isValidationRulesOffMap = isFieldListMap(validationRulesOffByObject);
+        const validationRulesOffCount = countListedFields(validationRulesOffByObject);
         const isCountMap = objectCountsByObject === undefined || (
             typeof objectCountsByObject === 'object'
             && objectCountsByObject !== null
@@ -430,7 +437,8 @@ export class ExtensionCommandService {
                 && isCountMap
                 && isFixedValueMap
                 && isConstraintMap
-                && excludedObjectApiNames.length + excludedFieldCount + objectCountCount + fixedValueCount + constraintCount > 0;
+                && isValidationRulesOffMap
+                && excludedObjectApiNames.length + excludedFieldCount + objectCountCount + fixedValueCount + constraintCount + validationRulesOffCount > 0;
 
     }
 

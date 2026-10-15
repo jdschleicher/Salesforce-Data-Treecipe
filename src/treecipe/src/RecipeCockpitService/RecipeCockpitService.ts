@@ -30,7 +30,7 @@ import {
     ORG_PARENT_SEARCH_RESULT_LIMIT,
     SalesforceOrgService
 } from '../SalesforceOrgService/SalesforceOrgService';
-import { ILookupWiringContext, ILookupWiringRequest, IRecipeFilterLookup, IRecipeFixedValue, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind } from './RecipeCockpitRecipeWriter';
+import { ILookupWiringContext, ILookupWiringRequest, IRecipeFilterLookup, IRecipeFixedValue, IRecipeUnconstrainedValue, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind } from './RecipeCockpitRecipeWriter';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelectionDisabledLookup } from './RecipeCockpitObjectSelection';
 import {
@@ -208,7 +208,8 @@ export const RECIPE_COCKPIT_DATASET_PREFERENCES_STATE_KEY = 'treecipe.recipeCock
     entry still reads, as objects with nothing unticked.
 */
 export const RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY = 'treecipe.recipeCockpit.objectSelection';
-export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION = 5;
+export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION = 6;
+export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_VALIDATION_RULES = 5;
 export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_CONSTRAINTS = 4;
 export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES = 3;
 export const RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS = 2;
@@ -281,6 +282,16 @@ export const RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = 'fixed';
 */
 export const RECIPE_COCKPIT_CONSTRAINT_GLYPH_PATH = 'M4 20 L5 15 L15.5 4.5 L19.5 8.5 L9 19 Z M13.5 6.5 L17.5 10.5';
 export const RECIPE_COCKPIT_CONSTRAINT_BADGE_LABEL = 'constrained';
+/*
+    A field's validation-rule checkbox (#325), at the end of its row: checked while the rules #324
+    applied shape the field, unticked to generate the value it had before them. One box covers every
+    rule on the field. A field whose rules were all not applied draws a muted note instead.
+*/
+export const RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON = 'a fixed value replaces it';
+export const RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL = 'rule not applied';
+export const RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL = 'Replace';
+export const RECIPE_COCKPIT_VALIDATION_RULE_TICK_PROMPT = "Replace your constraints with the validation rule's?";
+export const RECIPE_COCKPIT_VALIDATION_RULE_EDIT_PROMPT = "Replace the validation rule's constraints with your own?";
 /*
     The ▸/▾ of a tree card, a Treecipe object and a picklist field (#277), drawn like the chain link: a
     font's triangle sits on the text baseline, so no button rule could centre it. An open chevron (#307)
@@ -423,6 +434,34 @@ export interface IRecipeCockpitFieldViewModel {
     isOnlyInRecipeFile: boolean;
     lineNumber?: number;
     isPicklist?: boolean;
+    // SET ONLY ON A FIELD A VALIDATION RULE NAMES (#324, #325), SO A WRAPPER WITHOUT RULES POSTS AS IT ALWAYS DID
+    validationRules?: IRecipeCockpitFieldValidationRulesViewModel;
+}
+
+/*
+    What #324 recorded about a field's validation rules (#325). appliedRuleNames is non-empty only
+    when the wrapper also holds both values the box switches between: recipeValue, what the rules
+    wrote, and unconstrainedRecipeValue, what the field generated before them, each as the wrapper
+    records it (written as for a top-level object). unconstrainedExpression is the latter as the row
+    draws it. Rule names and reasons come from workspace files and are only ever written as text.
+*/
+export interface IRecipeCockpitFieldValidationRulesViewModel {
+    appliedRuleNames: string[];
+    notAppliedRules: IRecipeCockpitValidationRuleNotAppliedViewModel[];
+    recipeValue?: string;
+    unconstrainedRecipeValue?: string;
+    unconstrainedExpression?: string;
+}
+
+export interface IRecipeCockpitValidationRuleNotAppliedViewModel {
+    ruleName: string;
+    reason: string;
+}
+
+// A FIELD OF A CARD, BY NAME
+export interface IRecipeCockpitFieldReferenceViewModel {
+    objectApiName: string;
+    fieldApiName: string;
 }
 
 export interface IRecipeCockpitRecordTypePicklistValuesViewModel {
@@ -603,6 +642,12 @@ export interface IRecipeCockpitTreeViewModel {
     fixedValues?: IRecipeCockpitFixedValueViewModel[];
     // SET ONLY WHEN A FIELD OF THE CARD HAS A FAKER CONSTRAINT (#323) NO LOCK, AND NO FIXED VALUE, HOLDS BACK
     constraints?: IRecipeCockpitFieldConstraintViewModel[];
+    /*
+        SET ONLY WHEN A RULE-SHAPED FIELD OF THE CARD GENERATES WITHOUT ITS RULES (#325): the reader
+        unticked its box, or gave it a faker constraint (#323), which replaces what the rules wrote.
+        A field a lock holds back (excluded, unticked, fixed) is not listed.
+    */
+    validationRulesOff?: IRecipeCockpitFieldReferenceViewModel[];
     // SET ONLY ON A CARD THAT CAN GENERATE WHOSE RECIPE HAS A TODO LOOKUP WITH A PARENT INSERTED BEFORE IT (#151)
     lookupWirings?: IRecipeCockpitLookupWiringViewModel[];
     // SET ONLY ON A CARD THAT CAN GENERATE WHOSE RECIPE HAS A TODO LOOKUP TO A STANDARD PARENT IT DOES NOT WRITE (#294)
@@ -667,6 +712,7 @@ export interface IRecipeCockpitRunFakerFilteredRecipe {
     objectCountsByObject?: Record<string, number>;
     fixedValuesByObject?: Record<string, Record<string, string>>;
     constraintsByObject?: Record<string, Record<string, IStoredRecipeFieldConstraint>>;
+    validationRulesOffByObject?: Record<string, string[]>;
 }
 
 // WHAT workspaceState HOLDS FOR THE STRUCTURE TAB, BY TREE FOLDER NAME
@@ -679,6 +725,8 @@ export interface IRecipeCockpitTreeSelections {
     fixedValuesByFolderName: Map<string, Map<string, Map<string, string>>>;
     // THE BOUNDS THE READER SET (#323), BY TREE FOLDER, OBJECT THEN FIELD, AS TYPED
     constraintsByFolderName: Map<string, Map<string, Map<string, IStoredRecipeFieldConstraint>>>;
+    // THE FIELDS WHOSE VALIDATION RULES THE READER UNTICKED (#325), BY TREE FOLDER THEN OBJECT; ONLY THE UNTICKS ARE KEPT
+    validationRulesOffByFolderName: Map<string, Map<string, Set<string>>>;
 }
 
 /*
@@ -703,6 +751,7 @@ export interface IRecipeCockpitObjectSelectionMessage {
     objectCounts?: IRecipeCockpitObjectCountViewModel[];
     fixedValues?: IRecipeCockpitFixedValueViewModel[];
     constraints?: IRecipeCockpitFieldConstraintViewModel[];
+    validationRulesOff?: IRecipeCockpitFieldReferenceViewModel[];
 }
 
 // WHAT workspaceState HOLDS FOR THE CARDS, BY TREE FOLDER NAME; BOTH KEYED BY NAMES FROM DISK, SO NEITHER IS A PLAIN {}
@@ -831,6 +880,7 @@ export interface IRecipeCockpitPanelMessage {
     place?: unknown;
     nickname?: unknown;
     included?: unknown;
+    applied?: unknown;
     updateSequence?: unknown;
     requestSequence?: unknown;
     recordTypeSelection?: unknown;
@@ -1296,6 +1346,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'setObjectCount'; treeKey: string; folderName: string; objectApiName: string; count: number }
     | { kind: 'setFieldFixedValue'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string }
     | { kind: 'editFieldConstraints'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string }
+    | { kind: 'setFieldValidationRuleApplied'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string; isApplied: boolean }
     | { kind: 'persistPlace'; place: IRecipeCockpitPanelPlace }
     | { kind: 'createScratchOrg' }
     | { kind: 'postScratchOrgState'; hostMessage: IRecipeCockpitScratchOrgStateMessage }
@@ -1942,7 +1993,8 @@ export class RecipeCockpitService {
             excludedFieldApiNamesByFolderName: new Map(),
             objectCountsByFolderName: new Map(),
             fixedValuesByFolderName: new Map(),
-            constraintsByFolderName: new Map()
+            constraintsByFolderName: new Map(),
+            validationRulesOffByFolderName: new Map()
         };
         let storedSelections: unknown;
 
@@ -1952,7 +2004,7 @@ export class RecipeCockpitService {
             return treeSelections;
         }
 
-        const readableVersions: unknown[] = [RECIPE_COCKPIT_OBJECT_SELECTION_VERSION, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_CONSTRAINTS, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS];
+        const readableVersions: unknown[] = [RECIPE_COCKPIT_OBJECT_SELECTION_VERSION, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_VALIDATION_RULES, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_CONSTRAINTS, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_COUNTS, RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS];
         if ( !this.isPlainRecord(storedSelections)
                 || !readableVersions.includes(storedSelections.version)
                 || !this.isPlainRecord(storedSelections.excludedObjectApiNamesByFolderName) ) {
@@ -1969,11 +2021,38 @@ export class RecipeCockpitService {
             }
         });
 
-        const hasFixedValues = storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION || storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_CONSTRAINTS;
+        const hasConstraints = storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION || storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_VALIDATION_RULES;
+        const hasFixedValues = hasConstraints || storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_CONSTRAINTS;
         const hasCounts = hasFixedValues || storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES;
         const storedCountsByFolderName = hasCounts ? storedSelections.objectCountsByFolderName : undefined;
         const storedFixedValuesByFolderName = hasFixedValues ? storedSelections.fixedValuesByFolderName : undefined;
-        const storedConstraintsByFolderName = storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION ? storedSelections.constraintsByFolderName : undefined;
+        const storedConstraintsByFolderName = hasConstraints ? storedSelections.constraintsByFolderName : undefined;
+        const storedValidationRulesOffByFolderName = storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION ? storedSelections.validationRulesOffByFolderName : undefined;
+
+        // THE SAME SHAPE AS THE UNTICKED FIELDS, READ THE SAME WAY (#325)
+        const readFieldNamesByFolderName = (storedByFolder: unknown, readInto: Map<string, Map<string, Set<string>>>) => {
+            if ( !this.isPlainRecord(storedByFolder) ) {
+                return;
+            }
+            Object.keys(storedByFolder).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
+                const storedByObject = storedByFolder[folderName];
+                if ( !isUsableFolderName(folderName) || !this.isPlainRecord(storedByObject) ) {
+                    return;
+                }
+                const fieldNamesByObject = new Map<string, Set<string>>();
+                Object.keys(storedByObject).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(objectApiName => {
+                    const fieldApiNames = this.normalizePlaceNames(storedByObject[objectApiName]).filter(fieldApiName => SalesforceApiName.isApiName(fieldApiName));
+                    if ( SalesforceApiName.isApiName(objectApiName) && fieldApiNames.length > 0 ) {
+                        fieldNamesByObject.set(objectApiName, new Set(fieldApiNames));
+                    }
+                });
+                if ( fieldNamesByObject.size > 0 ) {
+                    readInto.set(folderName, fieldNamesByObject);
+                }
+            });
+        };
+
+        readFieldNamesByFolderName(storedValidationRulesOffByFolderName, treeSelections.validationRulesOffByFolderName);
 
         if ( this.isPlainRecord(storedConstraintsByFolderName) ) {
             Object.keys(storedConstraintsByFolderName).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
@@ -2061,30 +2140,7 @@ export class RecipeCockpitService {
 
         const storedFieldsByFolderName = storedSelections.version !== RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS ? storedSelections.excludedFieldApiNamesByFolderName : undefined;
 
-        if ( !this.isPlainRecord(storedFieldsByFolderName) ) {
-            return treeSelections;
-        }
-
-        Object.keys(storedFieldsByFolderName).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
-
-            const storedByObject = storedFieldsByFolderName[folderName];
-            if ( !isUsableFolderName(folderName) || !this.isPlainRecord(storedByObject) ) {
-                return;
-            }
-
-            const excludedFieldsByObject = new Map<string, Set<string>>();
-            Object.keys(storedByObject).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(objectApiName => {
-                const excludedFieldApiNames = this.normalizePlaceNames(storedByObject[objectApiName]).filter(fieldApiName => SalesforceApiName.isApiName(fieldApiName));
-                if ( SalesforceApiName.isApiName(objectApiName) && excludedFieldApiNames.length > 0 ) {
-                    excludedFieldsByObject.set(objectApiName, new Set(excludedFieldApiNames));
-                }
-            });
-
-            if ( excludedFieldsByObject.size > 0 ) {
-                treeSelections.excludedFieldApiNamesByFolderName.set(folderName, excludedFieldsByObject);
-            }
-
-        });
+        readFieldNamesByFolderName(storedFieldsByFolderName, treeSelections.excludedFieldApiNamesByFolderName);
 
         return treeSelections;
 
@@ -2097,7 +2153,7 @@ export class RecipeCockpitService {
     static async writeTreeSelections(workspaceState: IRecipeCockpitWorkspaceState | undefined, treeSelections: IRecipeCockpitTreeSelections): Promise<boolean> {
 
         if ( !workspaceState ) {
-            VSCodeWorkspaceService.showWarningMessage('The Recipe Cockpit has no workspace to keep excluded objects, unticked fields, record counts, fixed values and faker constraints in. Open a folder and re-open the cockpit.');
+            VSCodeWorkspaceService.showWarningMessage('The Recipe Cockpit has no workspace to keep excluded objects, unticked fields, record counts, fixed values, faker constraints and validation rule choices in. Open a folder and re-open the cockpit.');
             return false;
         }
 
@@ -2107,15 +2163,16 @@ export class RecipeCockpitService {
                 .filter(([, excludedObjectApiNames]) => excludedObjectApiNames.size > 0)
                 .map(([folderName, excludedObjectApiNames]) => [folderName, [...excludedObjectApiNames]])
         );
-        const storedFieldsByFolderName: Record<string, Record<string, string[]>> = Object.fromEntries(
-            [...treeSelections.excludedFieldApiNamesByFolderName]
-                .map(([folderName, excludedFieldsByObject]) => [folderName, Object.fromEntries(
-                    [...excludedFieldsByObject]
-                        .filter(([, excludedFieldApiNames]) => excludedFieldApiNames.size > 0)
-                        .map(([objectApiName, excludedFieldApiNames]) => [objectApiName, [...excludedFieldApiNames]])
+        const toStoredFieldNames = (fieldNamesByFolderName: Map<string, Map<string, Set<string>>>): Record<string, Record<string, string[]>> => Object.fromEntries(
+            [...fieldNamesByFolderName]
+                .map(([folderName, fieldNamesByObject]) => [folderName, Object.fromEntries(
+                    [...fieldNamesByObject]
+                        .filter(([, fieldApiNames]) => fieldApiNames.size > 0)
+                        .map(([objectApiName, fieldApiNames]) => [objectApiName, [...fieldApiNames]])
                 )] as [string, Record<string, string[]>])
                 .filter(([, storedByObject]) => Object.keys(storedByObject).length > 0)
         );
+        const storedFieldsByFolderName = toStoredFieldNames(treeSelections.excludedFieldApiNamesByFolderName);
         const storedCountsByFolderName: Record<string, Record<string, number>> = Object.fromEntries(
             [...treeSelections.objectCountsByFolderName]
                 .filter(([, countsByObject]) => countsByObject.size > 0)
@@ -2148,11 +2205,12 @@ export class RecipeCockpitService {
                 excludedFieldApiNamesByFolderName: storedFieldsByFolderName,
                 objectCountsByFolderName: storedCountsByFolderName,
                 fixedValuesByFolderName: storedFixedValuesByFolderName,
-                constraintsByFolderName: storedConstraintsByFolderName
+                constraintsByFolderName: storedConstraintsByFolderName,
+                validationRulesOffByFolderName: toStoredFieldNames(treeSelections.validationRulesOffByFolderName)
             });
             return true;
         } catch (writeError) {
-            VSCodeWorkspaceService.showWarningMessage(`The excluded objects, unticked fields, record counts, fixed values and faker constraints could not be saved: ${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}`);
+            VSCodeWorkspaceService.showWarningMessage(`The excluded objects, unticked fields, record counts, fixed values, faker constraints and validation rule choices could not be saved: ${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}`);
             return false;
         }
 
@@ -2168,7 +2226,8 @@ export class RecipeCockpitService {
             excludedFieldApiNamesByFolderName: storedSelections.excludedFieldApiNamesByFolderName,
             objectCountsByFolderName: storedSelections.objectCountsByFolderName,
             fixedValuesByFolderName: storedSelections.fixedValuesByFolderName,
-            constraintsByFolderName: storedSelections.constraintsByFolderName
+            constraintsByFolderName: storedSelections.constraintsByFolderName,
+            validationRulesOffByFolderName: storedSelections.validationRulesOffByFolderName
         });
 
     }
@@ -2238,7 +2297,8 @@ export class RecipeCockpitService {
                                     onlyFolderName?: string,
                                     objectCountsByFolderName: Map<string, Map<string, number>> = new Map(),
                                     fixedValuesByFolderName: Map<string, Map<string, Map<string, string>>> = new Map(),
-                                    constraintsByFolderName: Map<string, Map<string, Map<string, IStoredRecipeFieldConstraint>>> = new Map()): IRecipeCockpitTreeViewModel[] {
+                                    constraintsByFolderName: Map<string, Map<string, Map<string, IStoredRecipeFieldConstraint>>> = new Map(),
+                                    validationRulesOffByFolderName: Map<string, Map<string, Set<string>>> = new Map()): IRecipeCockpitTreeViewModel[] {
 
         const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
 
@@ -2253,6 +2313,7 @@ export class RecipeCockpitService {
             delete tree.objectCounts;
             delete tree.fixedValues;
             delete tree.constraints;
+            delete tree.validationRulesOff;
 
             if ( tree.folderName === '' ) {
                 return;
@@ -2290,6 +2351,13 @@ export class RecipeCockpitService {
                 tree.constraints = constraints;
             }
 
+            // AFTER THE CONSTRAINTS, EACH OF WHICH SWITCHES ITS FIELD'S RULES OFF
+            const validationRulesOff = this.buildTreeValidationRulesOff(objectsByApiName, tree, validationRulesOffByFolderName.get(tree.folderName));
+
+            if ( validationRulesOff.length > 0 ) {
+                tree.validationRulesOff = validationRulesOff;
+            }
+
         });
 
         return recipeViewModel.trees;
@@ -2297,7 +2365,7 @@ export class RecipeCockpitService {
     }
 
     static applyTreeSelections(recipeViewModel: IRecipeCockpitRecipeViewModel, treeSelections: IRecipeCockpitTreeSelections): IRecipeCockpitTreeViewModel[] {
-        return this.applyObjectSelections(recipeViewModel, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, undefined, treeSelections.objectCountsByFolderName, treeSelections.fixedValuesByFolderName, treeSelections.constraintsByFolderName);
+        return this.applyObjectSelections(recipeViewModel, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, undefined, treeSelections.objectCountsByFolderName, treeSelections.fixedValuesByFolderName, treeSelections.constraintsByFolderName, treeSelections.validationRulesOffByFolderName);
     }
 
     // THE KIND A FIELD'S FIXED VALUE IS WRITTEN AS (#262), FROM ITS METADATA TYPE; A FIELD OF NO KNOWN TYPE IS TEXT
@@ -2427,6 +2495,116 @@ export class RecipeCockpitService {
             return RECIPE_COCKPIT_CONSTRAINT_TYPE_REASON;
         }
         return undefined;
+
+    }
+
+    /*
+        Why a field's validation-rule checkbox is disabled (#325), or undefined when it can be clicked:
+        a field with no applied rule draws no box at all, and one generation leaves out (its object
+        excluded, the field unticked or its parent excluded) or writes a fixed value for has nothing
+        the rules would shape. Every other #220 lock keeps the field generated, so it is no reason
+        here. The panel draws the same rule from the same model.
+    */
+    static findValidationRuleLockReason(tree: IRecipeCockpitTreeViewModel, objectViewModel: IRecipeCockpitObjectViewModel, fieldViewModel: IRecipeCockpitFieldViewModel): string | undefined {
+
+        if ( !this.hasSwitchableValidationRules(fieldViewModel) ) {
+            return RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL;
+        }
+        if ( this.listExcludedObjectApiNames(tree).includes(objectViewModel.objectApiName) ) {
+            return RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON;
+        }
+
+        const objectFieldSelection = ( tree.fieldSelection?.objects ?? [] ).find(candidate => candidate.objectApiName === objectViewModel.objectApiName);
+        const lockedField = objectFieldSelection?.lockedFields.find(candidate => candidate.fieldApiName === fieldViewModel.fieldApiName);
+
+        if ( lockedField?.reason === RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON ) {
+            return lockedField.reason;
+        }
+        if ( objectFieldSelection?.excludedFieldApiNames.includes(fieldViewModel.fieldApiName) ) {
+            return RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON;
+        }
+        if ( ( tree.fixedValues ?? [] ).some(fixedValue => fixedValue.objectApiName === objectViewModel.objectApiName && fixedValue.fieldApiName === fieldViewModel.fieldApiName) ) {
+            return RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON;
+        }
+        return undefined;
+
+    }
+
+    // A FIELD OF A CARD AS THE MODEL ON SCREEN DRAWS IT -- WITH A LINE IN THE RECIPE -- OR undefined
+    static findDrawnField(recipeViewModel: IRecipeCockpitRecipeViewModel | undefined, treeKey: string, objectApiName: string, fieldApiName: string):
+        { tree: IRecipeCockpitTreeViewModel; objectViewModel: IRecipeCockpitObjectViewModel; fieldViewModel: IRecipeCockpitFieldViewModel } | undefined {
+
+        const tree = recipeViewModel?.trees.find(candidateTree => candidateTree.treeKey === treeKey);
+        const objectViewModel = recipeViewModel?.objects.find(candidateObject => candidateObject.objectApiName === objectApiName);
+        const fieldViewModel = objectViewModel?.fields.find(candidateField => candidateField.fieldApiName === fieldApiName && candidateField.lineNumber !== undefined);
+
+        return tree && objectViewModel && fieldViewModel ? { tree: tree, objectViewModel: objectViewModel, fieldViewModel: fieldViewModel } : undefined;
+
+    }
+
+    static hasSwitchableValidationRules(fieldViewModel: IRecipeCockpitFieldViewModel): boolean {
+        return fieldViewModel.lineNumber !== undefined && ( fieldViewModel.validationRules?.appliedRuleNames.length ?? 0 ) > 0;
+    }
+
+    static isValidationRuleOff(tree: IRecipeCockpitTreeViewModel, objectApiName: string, fieldApiName: string): boolean {
+        return ( tree.validationRulesOff ?? [] ).some(fieldReference => fieldReference.objectApiName === objectApiName && fieldReference.fieldApiName === fieldApiName);
+    }
+
+    /*
+        The rule-shaped fields a card generates WITHOUT their rules (#325): those the reader unticked,
+        and those with a faker constraint (#323) -- which replaces what the rules wrote, so a field
+        edited before #325 draws its box unticked rather than silently losing the edit. Only fields a
+        box is drawn for and no lock holds back; a held-back untick stays stored and comes back.
+    */
+    static buildTreeValidationRulesOff(objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>,
+                                        tree: IRecipeCockpitTreeViewModel,
+                                        storedRulesOffByObject: ReadonlyMap<string, ReadonlySet<string>> | undefined): IRecipeCockpitFieldReferenceViewModel[] {
+
+        const constrainedFieldKeys = new Set(( tree.constraints ?? [] ).map(constraint => `${constraint.objectApiName}\n${constraint.fieldApiName}`));
+
+        if ( ( !storedRulesOffByObject || storedRulesOffByObject.size === 0 ) && constrainedFieldKeys.size === 0 ) {
+            return [];
+        }
+
+        return this.collectSelectableObjectApiNames(objectsByApiName, tree).flatMap(objectApiName => {
+
+            const objectViewModel = objectsByApiName.get(objectApiName) as IRecipeCockpitObjectViewModel;
+            const storedFieldApiNames = storedRulesOffByObject?.get(objectApiName);
+            const listedFieldApiNames = new Set<string>();
+
+            // THE CHEAP "IS IT SWITCHED OFF" TEST FIRST, SO A CARD WITH NOTHING OFF NEVER SCANS ITS FIELDS FOR DUPLICATES
+            return objectViewModel.fields
+                .filter(fieldViewModel => ( !!storedFieldApiNames?.has(fieldViewModel.fieldApiName) || constrainedFieldKeys.has(`${objectApiName}\n${fieldViewModel.fieldApiName}`) )
+                                            && this.hasSwitchableValidationRules(fieldViewModel)
+                                            && !listedFieldApiNames.has(fieldViewModel.fieldApiName)
+                                            && this.findValidationRuleLockReason(tree, objectViewModel, fieldViewModel) === undefined
+                                            && !!listedFieldApiNames.add(fieldViewModel.fieldApiName))
+                .map(fieldViewModel => ({ objectApiName: objectApiName, fieldApiName: fieldViewModel.fieldApiName }));
+
+        });
+
+    }
+
+    /*
+        What the copy writes for each field whose rules are off: both values as the wrapper recorded
+        them, so the writer swaps only lines that still hold what the rules wrote. A field the rules
+        did not change (an ISBLANK rule) has nothing to swap and is left out.
+    */
+    static listUnconstrainedValuesByObject(recipeViewModel: IRecipeCockpitRecipeViewModel, tree: IRecipeCockpitTreeViewModel): Map<string, Map<string, IRecipeUnconstrainedValue>> {
+
+        const unconstrainedValuesByObject = new Map<string, Map<string, IRecipeUnconstrainedValue>>();
+        ( tree.validationRulesOff ?? [] ).forEach(fieldReference => {
+            const validationRules = this.findDrawnField(recipeViewModel, tree.treeKey, fieldReference.objectApiName, fieldReference.fieldApiName)?.fieldViewModel.validationRules;
+            if ( validationRules?.recipeValue === undefined || validationRules.unconstrainedRecipeValue === undefined
+                    || validationRules.recipeValue === validationRules.unconstrainedRecipeValue ) {
+                return;
+            }
+            const valuesByField = unconstrainedValuesByObject.get(fieldReference.objectApiName) ?? new Map<string, IRecipeUnconstrainedValue>();
+            valuesByField.set(fieldReference.fieldApiName, { constrainedValue: validationRules.recipeValue, unconstrainedValue: validationRules.unconstrainedRecipeValue });
+            unconstrainedValuesByObject.set(fieldReference.objectApiName, valuesByField);
+        });
+
+        return unconstrainedValuesByObject;
 
     }
 
@@ -2981,6 +3159,14 @@ export class RecipeCockpitService {
             return;
         }
 
+        // A FIELD ITS VALIDATION RULES SHAPE ASKS FIRST (#325): A CONSTRAINT REPLACES WHAT THE RULES WROTE, AND UNTICKS THEIR BOX
+        const isReplacingValidationRules = this.isValidationRuleApplied(panelState, panelAction.treeKey, panelAction.objectApiName, panelAction.fieldApiName);
+        if ( isReplacingValidationRules
+                && ( !( await this.confirmValidationRuleReplace(RECIPE_COCKPIT_VALIDATION_RULE_EDIT_PROMPT, panelAction.objectApiName, panelAction.fieldApiName, 'The field generates with the bounds you set instead of the ones its validation rules imply, and its validation rule box is unticked. The recipe file is not changed.') )
+                    || this.recipeCockpitPanelState !== panelState ) ) {
+            return;
+        }
+
         const target = this.buildFieldConstraintTarget(fieldBeforePrompt.fieldViewModel);
         const kind = RecipeFieldConstraint.getConstraintKind(target.fieldType);
         const storedConstraint = this.readTreeSelections(this.recipeCockpitWorkspaceState).constraintsByFolderName.get(panelAction.folderName)?.get(panelAction.objectApiName)?.get(panelAction.fieldApiName);
@@ -3047,8 +3233,93 @@ export class RecipeCockpitService {
         constraintsByObject.set(panelAction.objectApiName, constraintsByField);
         treeSelections.constraintsByFolderName.set(panelAction.folderName, constraintsByObject);
 
+        // AN EMPTY EDIT IS NO EDIT: THE RULES' OWN BOUNDS STAY, AND SO DOES THE TICK
+        if ( isReplacingValidationRules && typedConstraint !== undefined ) {
+            this.setStoredValidationRuleOff(treeSelections, panelAction.folderName, panelAction.objectApiName, panelAction.fieldApiName, true);
+        }
+
         // A CONSTRAINT CHANGES NO FIELD THE INSERT SENDS, SO THE ORG'S READINESS NEED NOT BE CHECKED AGAIN
         await this.saveAndPostTreeSelections(cockpitPanel, panelState, panelAction.folderName, treeSelections, false);
+
+    }
+
+    /*
+        A field's validation-rule checkbox (#325). Unticking stores the untick. Ticking a field the
+        reader gave a faker constraint (#323) asks first, in the host's own modal, since the rules
+        replace those bounds: confirming removes the constraint, Cancel changes nothing. Re-derived
+        against the model on screen after the modal, so a reload meanwhile writes nothing.
+    */
+    private static async setFieldValidationRuleApplied(cockpitPanel: vscode.WebviewPanel,
+                                                        panelState: IRecipeCockpitPanelState,
+                                                        panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setFieldValidationRuleApplied' }>) {
+
+        const hasConstraint = this.readTreeSelections(this.recipeCockpitWorkspaceState).constraintsByFolderName
+            .get(panelAction.folderName)?.get(panelAction.objectApiName)?.has(panelAction.fieldApiName) === true;
+
+        if ( panelAction.isApplied && hasConstraint
+                && !( await this.confirmValidationRuleReplace(RECIPE_COCKPIT_VALIDATION_RULE_TICK_PROMPT, panelAction.objectApiName, panelAction.fieldApiName, 'The faker constraint you set is removed and the field generates with the bounds its validation rules imply. The recipe file is not changed.') ) ) {
+            return;
+        }
+
+        // RE-DERIVED RIGHT BEFORE THE WRITE: A RELOAD OR A LOCK WHILE THE MODAL WAS OPEN WRITES NOTHING
+        const drawnField = this.recipeCockpitPanelState === panelState
+            ? this.findDrawnField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.fieldApiName)
+            : undefined;
+        if ( !drawnField || drawnField.tree.folderName !== panelAction.folderName
+                || this.findValidationRuleLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) !== undefined ) {
+            return;
+        }
+
+        // READ AGAIN AFTER THE MODAL: A CHOICE MADE ELSEWHERE WHILE IT WAS OPEN IS NOT WRITTEN BACK
+        const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
+        this.setStoredValidationRuleOff(treeSelections, panelAction.folderName, panelAction.objectApiName, panelAction.fieldApiName, !panelAction.isApplied);
+
+        if ( panelAction.isApplied ) {
+            const constraintsByObject = treeSelections.constraintsByFolderName.get(panelAction.folderName);
+            constraintsByObject?.get(panelAction.objectApiName)?.delete(panelAction.fieldApiName);
+        }
+
+        // THE RULES SHAPE A VALUE, NEVER WHICH FIELDS THE INSERT SENDS, SO THE ORG'S READINESS NEED NOT BE CHECKED AGAIN
+        await this.saveAndPostTreeSelections(cockpitPanel, panelState, panelAction.folderName, treeSelections, false);
+
+    }
+
+    // WHETHER A FIELD'S VALIDATION-RULE BOX IS DRAWN TICKED NOW: IT HAS SWITCHABLE RULES, NO LOCK, AND NOTHING SWITCHES THEM OFF
+    private static isValidationRuleApplied(panelState: IRecipeCockpitPanelState, treeKey: string, objectApiName: string, fieldApiName: string): boolean {
+
+        const drawnField = this.findDrawnField(panelState.recipeDataMessage?.recipe, treeKey, objectApiName, fieldApiName);
+
+        return !!drawnField
+                && this.findValidationRuleLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) === undefined
+                && !this.isValidationRuleOff(drawnField.tree, objectApiName, fieldApiName);
+
+    }
+
+    private static async confirmValidationRuleReplace(prompt: string, objectApiName: string, fieldApiName: string, detail: string): Promise<boolean> {
+
+        const fieldLabel = RecipeYamlScalar.escapeForNotification(`${objectApiName}.${fieldApiName}`);
+        const confirmation = await vscode.window.showWarningMessage(
+            prompt,
+            { modal: true, detail: `${fieldLabel}: ${detail}` },
+            RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL
+        );
+
+        return confirmation === RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL;
+
+    }
+
+    static setStoredValidationRuleOff(treeSelections: IRecipeCockpitTreeSelections, folderName: string, objectApiName: string, fieldApiName: string, isOff: boolean) {
+
+        const rulesOffByObject = treeSelections.validationRulesOffByFolderName.get(folderName) ?? new Map<string, Set<string>>();
+        const rulesOffFieldApiNames = rulesOffByObject.get(objectApiName) ?? new Set<string>();
+
+        if ( isOff ) {
+            rulesOffFieldApiNames.add(fieldApiName);
+        } else {
+            rulesOffFieldApiNames.delete(fieldApiName);
+        }
+        rulesOffByObject.set(objectApiName, rulesOffFieldApiNames);
+        treeSelections.validationRulesOffByFolderName.set(folderName, rulesOffByObject);
 
     }
 
@@ -3085,7 +3356,8 @@ export class RecipeCockpitService {
                 && !treeSelections.excludedFieldApiNamesByFolderName.has(folderName)
                 && !treeSelections.objectCountsByFolderName.has(folderName)
                 && !treeSelections.fixedValuesByFolderName.has(folderName)
-                && !treeSelections.constraintsByFolderName.has(folderName) ) {
+                && !treeSelections.constraintsByFolderName.has(folderName)
+                && !treeSelections.validationRulesOffByFolderName.has(folderName) ) {
             return;
         }
 
@@ -3093,7 +3365,7 @@ export class RecipeCockpitService {
         const treeLabel = RecipeYamlScalar.escapeForNotification(tree?.customName ?? tree?.title ?? folderName);
         const confirmation = await vscode.window.showWarningMessage(
             `Reset the selection of ${treeLabel}?`,
-            { modal: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every fixed value and faker constraint is cleared. The recipe file is not changed.' },
+            { modal: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again, every fixed value and faker constraint is cleared and every validation rule is applied again. The recipe file is not changed.' },
             RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL
         );
 
@@ -3108,6 +3380,7 @@ export class RecipeCockpitService {
         currentSelections.objectCountsByFolderName.delete(folderName);
         currentSelections.fixedValuesByFolderName.delete(folderName);
         currentSelections.constraintsByFolderName.delete(folderName);
+        currentSelections.validationRulesOffByFolderName.delete(folderName);
 
         await this.saveAndPostTreeSelections(cockpitPanel, panelState, folderName, currentSelections);
 
@@ -3132,7 +3405,7 @@ export class RecipeCockpitService {
         }
 
         // ONLY THIS FOLDER'S CARDS CHANGED, SO ONLY THEY ARE RECOMPUTED
-        this.applyObjectSelections(recipeDataMessage.recipe, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, folderName, treeSelections.objectCountsByFolderName, treeSelections.fixedValuesByFolderName, treeSelections.constraintsByFolderName);
+        this.applyObjectSelections(recipeDataMessage.recipe, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, folderName, treeSelections.objectCountsByFolderName, treeSelections.fixedValuesByFolderName, treeSelections.constraintsByFolderName, treeSelections.validationRulesOffByFolderName);
 
         recipeDataMessage.recipe.trees
             .filter(tree => tree.folderName === folderName)
@@ -3144,7 +3417,8 @@ export class RecipeCockpitService {
                 ...( tree.fieldSelection ? { fieldSelection: tree.fieldSelection } : {} ),
                 ...( tree.objectCounts ? { objectCounts: tree.objectCounts } : {} ),
                 ...( tree.fixedValues ? { fixedValues: tree.fixedValues } : {} ),
-                ...( tree.constraints ? { constraints: tree.constraints } : {} )
+                ...( tree.constraints ? { constraints: tree.constraints } : {} ),
+                ...( tree.validationRulesOff ? { validationRulesOff: tree.validationRulesOff } : {} )
             }));
 
         const isOrgCheckIdle = !panelState.scratchOrgStateMessage?.isRunning && !panelState.insertStateMessage?.isRunning;
@@ -3232,13 +3506,15 @@ export class RecipeCockpitService {
     */
     static buildRunFakerFilteredRecipe(recipeText: string,
                                         tree: IRecipeCockpitTreeViewModel,
-                                        objectLevelsByApiName: Map<string, number> | undefined): IRecipeCockpitRunFakerFilteredRecipe | { refusalMessage: string } {
+                                        objectLevelsByApiName: Map<string, number> | undefined,
+                                        recipeViewModel: IRecipeCockpitRecipeViewModel): IRecipeCockpitRunFakerFilteredRecipe | { refusalMessage: string } {
 
         const excludedObjectApiNames = this.listExcludedObjectApiNames(tree);
         const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByObject(tree);
         const objectCountsByObject = this.listObjectCountsByObject(tree);
         const fixedValuesByObject = this.listFixedValuesByObject(tree);
         const constrainedExpressionsByObject = this.listConstrainedExpressionsByObject(tree);
+        const unconstrainedValuesByObject = this.listUnconstrainedValuesByObject(recipeViewModel, tree);
         const parentLookupsByObjectApiName = new Map<string, IRecipeFilterLookup[]>();
         tree.objects
             .filter(treeObject => treeObject.iterationNickname === undefined)
@@ -3251,7 +3527,8 @@ export class RecipeCockpitService {
             excludedFieldApiNamesByObject: excludedFieldApiNamesByObject,
             objectCountsByObject: objectCountsByObject,
             fixedValuesByObject: fixedValuesByObject,
-            constrainedExpressionsByObject: constrainedExpressionsByObject
+            constrainedExpressionsByObject: constrainedExpressionsByObject,
+            unconstrainedValuesByObject: unconstrainedValuesByObject
         });
 
         if ( 'refusal' in filterResult ) {
@@ -3264,8 +3541,20 @@ export class RecipeCockpitService {
             ...( excludedFieldApiNamesByObject.size > 0 ? { excludedFieldApiNamesByObject: Object.fromEntries(excludedFieldApiNamesByObject) } : {} ),
             ...( filterResult.appliedCounts.length > 0 ? { objectCountsByObject: Object.fromEntries(filterResult.appliedCounts.map(appliedCount => [appliedCount.objectApiName, appliedCount.count])) } : {} ),
             ...( filterResult.appliedFixedValues.length > 0 ? { fixedValuesByObject: this.groupAppliedFixedValues(filterResult.appliedFixedValues) } : {} ),
-            ...( filterResult.appliedConstrainedExpressions.length > 0 ? { constraintsByObject: this.groupAppliedConstraints(tree, filterResult.appliedConstrainedExpressions) } : {} )
+            ...( filterResult.appliedConstrainedExpressions.length > 0 ? { constraintsByObject: this.groupAppliedConstraints(tree, filterResult.appliedConstrainedExpressions) } : {} ),
+            ...( filterResult.appliedUnconstrainedValues.length > 0 ? { validationRulesOffByObject: this.groupFieldReferences(filterResult.appliedUnconstrainedValues) } : {} )
         };
+
+    }
+
+    // fromEntries, SO AN OBJECT NAMED __proto__ IS RECORDED RATHER THAN SET AS A PROTOTYPE
+    static groupFieldReferences(fieldReferences: IRecipeCockpitFieldReferenceViewModel[]): Record<string, string[]> {
+
+        const objectApiNames = [...new Set(fieldReferences.map(fieldReference => fieldReference.objectApiName))];
+
+        return Object.fromEntries(objectApiNames.map(objectApiName => [objectApiName, fieldReferences
+            .filter(fieldReference => fieldReference.objectApiName === objectApiName)
+            .map(fieldReference => fieldReference.fieldApiName)]));
 
     }
 
@@ -4104,6 +4393,11 @@ export class RecipeCockpitService {
                 await this.editFieldConstraints(cockpitPanel, panelState, panelAction);
                 return;
 
+            case 'setFieldValidationRuleApplied':
+
+                await this.setFieldValidationRuleApplied(cockpitPanel, panelState, panelAction);
+                return;
+
             case 'toggleFavoriteTree': {
 
                 const treePreferences = this.readTreePreferences(this.recipeCockpitWorkspaceState);
@@ -4670,16 +4964,19 @@ export class RecipeCockpitService {
                                                     recipeFilePath: string,
                                                     refusalPrefix: string): IRecipeCockpitRunFakerFilteredRecipe | { refusalMessage: string } | undefined {
 
-        const tree = panelState.recipeDataMessage?.recipe.trees.find(candidateTree => candidateTree.treeKey === treeKey);
+        const recipeViewModel = panelState.recipeDataMessage?.recipe;
+        const tree = recipeViewModel?.trees.find(candidateTree => candidateTree.treeKey === treeKey);
 
-        if ( this.listExcludedObjectApiNames(tree).length === 0 && this.listExcludedFieldApiNamesByObject(tree).size === 0
-                && this.listObjectCountsByObject(tree).size === 0 && !tree?.fixedValues?.length && !tree?.constraints?.length ) {
+        if ( !recipeViewModel || !tree
+                || ( this.listExcludedObjectApiNames(tree).length === 0 && this.listExcludedFieldApiNamesByObject(tree).size === 0
+                    && this.listObjectCountsByObject(tree).size === 0 && !tree.fixedValues?.length && !tree.constraints?.length
+                    && this.listUnconstrainedValuesByObject(recipeViewModel, tree).size === 0 ) ) {
             return undefined;
         }
 
         const treeLabel = RecipeYamlScalar.escapeForNotification(tree.customName ?? tree.title);
         const refuse = (reason: string) => ({
-            refusalMessage: `${refusalPrefix} ${treeLabel}: ${RecipeYamlScalar.escapeForNotification(reason)} Nothing was generated, rather than the whole tree with what the Treecipe tab leaves out, recounts, fixes or constrains put back in.`
+            refusalMessage: `${refusalPrefix} ${treeLabel}: ${RecipeYamlScalar.escapeForNotification(reason)} Nothing was generated, rather than the whole tree with what the Treecipe tab leaves out, recounts, fixes, constrains or switches off put back in.`
         });
 
         let recipeText: string;
@@ -4689,7 +4986,7 @@ export class RecipeCockpitService {
             return refuse(`its recipe could not be read (${String(readError?.code ?? readError)}).`);
         }
 
-        const filteredRecipe = this.buildRunFakerFilteredRecipe(recipeText, tree, panelState.objectLevelsByApiName);
+        const filteredRecipe = this.buildRunFakerFilteredRecipe(recipeText, tree, panelState.objectLevelsByApiName, recipeViewModel);
 
         return 'refusalMessage' in filteredRecipe ? refuse(filteredRecipe.refusalMessage) : filteredRecipe;
 
@@ -6917,6 +7214,10 @@ export class RecipeCockpitService {
         const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByObject(tree);
         const fixedValues = tree.fixedValues ?? [];
         const constraints = tree.constraints ?? [];
+        const validationRulesOff = [...this.listUnconstrainedValuesByObject(recipeViewModel, tree)]
+            .flatMap(([objectApiName, valuesByField]) => [...valuesByField.keys()]
+                .filter(fieldApiName => !constraints.some(constraint => constraint.objectApiName === objectApiName && constraint.fieldApiName === fieldApiName))
+                .map(fieldApiName => `${objectApiName}.${fieldApiName}`));
 
         return [
             `Org: ${orgLabel}`,
@@ -6933,6 +7234,9 @@ export class RecipeCockpitService {
                 : [] ),
             ...( constraints.length > 0
                 ? [`Faker constraints: ${constraints.map(constraint => RecipeYamlScalar.escapeForNotification(`${constraint.objectApiName}.${constraint.fieldApiName} ${RecipeFieldConstraint.describeStoredConstraint(constraint)}`)).join(', ')}`]
+                : [] ),
+            ...( validationRulesOff.length > 0
+                ? [`Validation rules switched off, so the org may reject these values: ${validationRulesOff.map(fieldText => RecipeYamlScalar.escapeForNotification(fieldText)).join(', ')}`]
                 : [] ),
             ...( outsidePickableLookups.length > 0
                 ? [
@@ -7688,6 +7992,34 @@ export class RecipeCockpitService {
                 }
 
                 return { kind: 'editFieldConstraints', treeKey: treeKey, folderName: tree.folderName, objectApiName: objectApiName, fieldApiName: fieldApiName };
+
+            }
+
+            /*
+                A field's validation-rule checkbox (#325): the same three names as its other controls,
+                matched against the same allow-list, and whether the rules should apply. A field with
+                no applied rule, or one a lock holds back, writes nothing.
+            */
+            case 'setFieldValidationRuleApplied': {
+
+                const { treeKey, objectApiName, nickname, fieldApiName, applied } = panelMessage;
+
+                if ( typeof treeKey !== 'string' || !SalesforceApiName.isApiName(objectApiName) || !SalesforceApiName.isApiName(fieldApiName)
+                        || typeof applied !== 'boolean'
+                        || ( nickname !== undefined && typeof nickname !== 'string' )
+                        || !panelState.recipeDataMessage
+                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(this.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
+                    return undefined;
+                }
+
+                const drawnField = this.findDrawnField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, fieldApiName);
+
+                if ( !drawnField || !drawnField.tree.folderName || ( nickname !== undefined && nickname !== drawnField.objectViewModel.nickname )
+                        || this.findValidationRuleLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) !== undefined ) {
+                    return undefined;
+                }
+
+                return { kind: 'setFieldValidationRuleApplied', treeKey: treeKey, folderName: drawnField.tree.folderName, objectApiName: objectApiName, fieldApiName: fieldApiName, isApplied: applied };
 
             }
 
@@ -8475,6 +8807,11 @@ export class RecipeCockpitService {
                     isOnlyInRecipeFile: false
                 };
 
+                const validationRules = this.readFieldValidationRules(wrapperFieldRecord);
+                if ( validationRules ) {
+                    fieldViewModel.validationRules = validationRules;
+                }
+
                 if ( RECIPE_COCKPIT_PICKLIST_FIELD_TYPES.includes(fieldType) ) {
 
                     fieldViewModel.isPicklist = true;
@@ -8902,6 +9239,51 @@ export class RecipeCockpitService {
         structure of a choice-if block, and trimming each line flattened it into a list that no
         longer said which "pick" belonged to which "when".
     */
+    /*
+        A field's validation rules as #324 recorded them (#325), or undefined for a field none names.
+        The wrapper is a workspace file, so every record is type-checked and one that is not is
+        skipped. An applied rule counts only when both values the box switches between are strings:
+        without them nothing could be switched, and the field is drawn as it was before #325.
+    */
+    static readFieldValidationRules(wrapperFieldRecord: Record<string, unknown>): IRecipeCockpitFieldValidationRulesViewModel | undefined {
+
+        const ruleRecords = wrapperFieldRecord.validationRuleConstraints;
+        if ( !Array.isArray(ruleRecords) ) {
+            return undefined;
+        }
+
+        const readableRules = ruleRecords
+            .map(ruleRecord => this.asRecord(ruleRecord))
+            .filter((ruleRecord): ruleRecord is Record<string, unknown> => !!ruleRecord
+                                                                            && typeof ruleRecord.ruleName === 'string'
+                                                                            && ruleRecord.ruleName !== ''
+                                                                            && typeof ruleRecord.applied === 'boolean');
+        const recipeValue = wrapperFieldRecord.recipeValue;
+        const unconstrainedRecipeValue = wrapperFieldRecord.unconstrainedRecipeValue;
+        const canSwitch = typeof recipeValue === 'string' && typeof unconstrainedRecipeValue === 'string';
+        const appliedRuleNames = canSwitch
+            ? [...new Set(readableRules.filter(ruleRecord => ruleRecord.applied).map(ruleRecord => ruleRecord.ruleName as string))]
+            : [];
+        const notAppliedRules = readableRules
+            .filter(ruleRecord => !ruleRecord.applied)
+            .map(ruleRecord => ({ ruleName: ruleRecord.ruleName as string, reason: typeof ruleRecord.reason === 'string' ? ruleRecord.reason : '' }));
+
+        if ( appliedRuleNames.length === 0 && notAppliedRules.length === 0 ) {
+            return undefined;
+        }
+
+        return {
+            appliedRuleNames: appliedRuleNames,
+            notAppliedRules: notAppliedRules,
+            ...( appliedRuleNames.length > 0 ? {
+                recipeValue: recipeValue as string,
+                unconstrainedRecipeValue: unconstrainedRecipeValue as string,
+                unconstrainedExpression: this.buildDisplayExpression(( unconstrainedRecipeValue as string ).split('\n'))
+            } : {} )
+        };
+
+    }
+
     static buildDisplayExpression(expressionLines: string[]): string {
 
         const [firstLine = '', ...continuationLines] = expressionLines;
@@ -9591,6 +9973,7 @@ ${this.buildPaletteCustomProperties()}
         background-color: var(--sdt-chip-bg);
         border-radius: 3px;
     }
+    .validationRuleControl { display: inline-flex; align-items: center; gap: 0.3rem; margin-left: auto; }
     .expressionRow { display: flex; align-items: flex-start; gap: 0.3rem; }
     .expressionRow > pre { flex: 1 1 auto; min-width: 0; }
     .constrainedExpression {
@@ -9765,6 +10148,8 @@ ${this.buildPaletteCustomProperties()}
     const CONSTRAINT_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_CONSTRAINT_GLYPH_PATH)};
     const CONSTRAINT_BADGE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CONSTRAINT_BADGE_LABEL)};
     const CONSTRAINT_FIXED_VALUE_REASON = ${JSON.stringify(RECIPE_COCKPIT_CONSTRAINT_FIXED_VALUE_REASON)};
+    const VALIDATION_RULE_FIXED_VALUE_REASON = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON)};
+    const VALIDATION_RULE_NOT_APPLIED_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL)};
     const CONSTRAINT_RECIPE_FILE_ONLY_REASON = ${JSON.stringify(RECIPE_COCKPIT_CONSTRAINT_RECIPE_FILE_ONLY_REASON)};
     const CONSTRAINT_FORMAT_REASON = ${JSON.stringify(RECIPE_COCKPIT_CONSTRAINT_FORMAT_REASON)};
     const CONSTRAINT_TYPE_REASON = ${JSON.stringify(RECIPE_COCKPIT_CONSTRAINT_TYPE_REASON)};
@@ -10529,6 +10914,7 @@ ${this.buildPaletteCustomProperties()}
         }
 
         drawFieldRowFixedValue(treeObjectState, fieldState);
+        drawFieldRowValidationRule(treeObjectState, fieldState);
         drawFieldRowConstraint(treeObjectState, fieldState);
 
         const includeElement = fieldState.includeElement;
@@ -10628,6 +11014,111 @@ ${this.buildPaletteCustomProperties()}
             : 'Give this field a fixed value instead of its faker expression';
         buttonElement.setAttribute('title', title);
         buttonElement.setAttribute('aria-label', fieldApiName + ': ' + title);
+
+    }
+
+    function hasSwitchableValidationRules(field) {
+        return !!field.lineNumber && !!field.validationRules && Array.isArray(field.validationRules.appliedRuleNames) && field.validationRules.appliedRuleNames.length > 0;
+    }
+
+    // WHETHER THE HOST SAYS THIS CARD GENERATES THE FIELD WITHOUT ITS VALIDATION RULES (#325)
+    function isValidationRuleOff(tree, objectApiName, fieldApiName) {
+        const validationRulesOff = Array.isArray(tree.validationRulesOff) ? tree.validationRulesOff : [];
+        return validationRulesOff.some(function (candidate) { return candidate.objectApiName === objectApiName && candidate.fieldApiName === fieldApiName; });
+    }
+
+    /*
+        Why a field's validation-rule box is disabled (#325): the host's own rule
+        (findValidationRuleLockReason) drawn from the model the panel holds -- a field generation
+        leaves out, or writes a fixed value for, has nothing the rules would shape.
+    */
+    function findValidationRuleLockReason(treeObjectState, fieldState) {
+
+        const tree = treeObjectState.tree;
+        const objectApiName = treeObjectState.object.objectApiName;
+        const fieldApiName = fieldState.field.fieldApiName;
+        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName);
+
+        if (findObjectExclusion(tree, objectApiName)) { return FIXED_VALUE_OBJECT_EXCLUDED_REASON; }
+        if (objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) && objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] === FIELD_PARENT_EXCLUDED_REASON) { return FIELD_PARENT_EXCLUDED_REASON; }
+        if (objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName)) { return FIXED_VALUE_UNTICKED_REASON; }
+        if (findFixedValue(tree, objectApiName, fieldApiName) !== null) { return VALIDATION_RULE_FIXED_VALUE_REASON; }
+
+        return '';
+
+    }
+
+    /*
+        A field's validation-rule box (#325), drawn from the host's answer: ticked while the rules
+        shape the field, and the row's expression is what the rules wrote; unticked, it is what the
+        field generated before them. The state is never colour alone: the mark, aria-checked and the
+        title all say it, and the title names the rules.
+    */
+    function drawFieldRowValidationRule(treeObjectState, fieldState) {
+
+        const field = fieldState.field;
+        const buttonElement = fieldState.validationRuleElement;
+        if (!buttonElement) { return; }
+
+        const objectApiName = treeObjectState.object.objectApiName;
+        const lockReason = treeObjectState.isIteration ? '' : findValidationRuleLockReason(treeObjectState, fieldState);
+        const isApplied = !lockReason && !isValidationRuleOff(treeObjectState.tree, objectApiName, field.fieldApiName);
+        const ruleNames = field.validationRules.appliedRuleNames.join(', ');
+
+        fieldState.isValidationRuleApplied = isApplied;
+        buttonElement.textContent = isApplied ? '✓' : '';
+        buttonElement.setAttribute('aria-checked', isApplied ? 'true' : 'false');
+        buttonElement.disabled = treeObjectState.isIteration || !!lockReason;
+
+        const title = treeObjectState.isIteration ? 'Follows ' + objectApiName + ' above'
+            : lockReason ? 'Validation rules ' + ruleNames + ' cannot be switched: ' + lockReason
+            : isApplied ? 'Validation rules applied: ' + ruleNames + ' — untick to generate without them'
+            : 'Validation rules not applied: ' + ruleNames + ' — tick to apply them';
+        buttonElement.setAttribute('title', title);
+        buttonElement.setAttribute('aria-label', field.fieldApiName + ': ' + title);
+
+        if (fieldState.expressionElement && typeof field.validationRules.unconstrainedExpression === 'string') {
+            fieldState.expressionElement.textContent = isApplied || lockReason ? field.recipeValue : field.validationRules.unconstrainedExpression;
+        }
+
+    }
+
+    // A FIELD'S VALIDATION-RULE BOX (#325): A click posts NAMES and the state asked for; the host decides, and may ask first
+    function buildFieldValidationRuleElement(treeObjectState, fieldState) {
+
+        const controlElement = createElement('span', 'validationRuleControl');
+        const buttonElement = createElement('button', 'treeFieldInclude treeFieldValidationRule');
+        const object = treeObjectState.object;
+
+        controlElement.appendChild(createElement('span', 'muted', 'rules'));
+        buttonElement.setAttribute('role', 'checkbox');
+        buttonElement.addEventListener('click', function () {
+            if (buttonElement.disabled) { return; }
+            const message = {
+                command: 'setFieldValidationRuleApplied',
+                treeKey: treeObjectState.tree.treeKey,
+                objectApiName: object.objectApiName,
+                fieldApiName: fieldState.field.fieldApiName,
+                applied: !fieldState.isValidationRuleApplied
+            };
+            if (object.nickname) { message.nickname = object.nickname; }
+            vscodeApi.postMessage(message);
+        });
+        controlElement.appendChild(buttonElement);
+        fieldState.validationRuleElement = buttonElement;
+
+        return controlElement;
+
+    }
+
+    // A FIELD WHOSE RULES WERE ALL NOT APPLIED (#325) NAMES THEM, AND WHY IN ITS TITLE, IN TEXT ONLY
+    function buildValidationRuleNotAppliedElement(field) {
+
+        const notAppliedRules = field.validationRules.notAppliedRules;
+        const noteElement = createElement('span', 'validationRuleNotApplied muted', VALIDATION_RULE_NOT_APPLIED_LABEL + ': ' + notAppliedRules.map(function (notAppliedRule) { return notAppliedRule.ruleName; }).join(', '));
+        noteElement.setAttribute('title', notAppliedRules.map(function (notAppliedRule) { return notAppliedRule.ruleName + (notAppliedRule.reason ? ' — ' + notAppliedRule.reason : ''); }).join('\\n'));
+
+        return noteElement;
 
     }
 
@@ -10801,6 +11292,7 @@ ${this.buildPaletteCustomProperties()}
             || ( Array.isArray(tree.objectCounts) && tree.objectCounts.length > 0 )
             || ( Array.isArray(tree.fixedValues) && tree.fixedValues.length > 0 )
             || ( Array.isArray(tree.constraints) && tree.constraints.length > 0 )
+            || ( Array.isArray(tree.validationRulesOff) && tree.validationRulesOff.length > 0 )
             || ( !!tree.fieldSelection && Array.isArray(tree.fieldSelection.objects) && tree.fieldSelection.objects.some(function (objectFieldSelection) {
                 return Array.isArray(objectFieldSelection.excludedFieldApiNames) && objectFieldSelection.excludedFieldApiNames.length > 0;
             }) );
@@ -10828,6 +11320,7 @@ ${this.buildPaletteCustomProperties()}
         treeState.tree.objectCounts = objectSelectionMessage.objectCounts || undefined;
         treeState.tree.fixedValues = objectSelectionMessage.fixedValues || undefined;
         treeState.tree.constraints = objectSelectionMessage.constraints || undefined;
+        treeState.tree.validationRulesOff = objectSelectionMessage.validationRulesOff || undefined;
         drawObjectSelection(treeState);
         drawTreeInsert(treeState);
 
@@ -10850,7 +11343,9 @@ ${this.buildPaletteCustomProperties()}
             constraintButtonElement: null,
             constraintBadgeElement: null,
             constrainedExpressionElement: null,
-            expressionElement: null
+            expressionElement: null,
+            validationRuleElement: null,
+            isValidationRuleApplied: true
         };
 
     }
@@ -11046,6 +11541,14 @@ ${this.buildPaletteCustomProperties()}
 
         if (treeObjectState.object.recipeFilePath && field.lineNumber) {
             fieldHeaderElement.appendChild(buildSourceLink('treeFieldSource', '↗ yml', treeObjectState.object.recipeFilePath, field.lineNumber));
+        }
+
+        // AT THE END OF THE ROW (#325): A BOX FOR A FIELD ITS RULES SHAPE, OR A NOTE NAMING RULES THAT COULD NOT BE APPLIED
+        if (treeObjectState.canSelectFields && hasSwitchableValidationRules(field)) {
+            fieldHeaderElement.appendChild(buildFieldValidationRuleElement(treeObjectState, fieldState));
+        } else if (field.validationRules && Array.isArray(field.validationRules.notAppliedRules) && field.validationRules.notAppliedRules.length > 0
+                    && !( Array.isArray(field.validationRules.appliedRuleNames) && field.validationRules.appliedRuleNames.length > 0 )) {
+            fieldHeaderElement.appendChild(buildValidationRuleNotAppliedElement(field));
         }
 
         fieldRowElement.appendChild(fieldHeaderElement);

@@ -138,7 +138,8 @@ const storedSelections = (objectCountsByFolderName: Record<string, unknown>, exc
     excludedFieldApiNamesByFolderName: excludedFieldApiNamesByFolderName,
     objectCountsByFolderName: objectCountsByFolderName,
     fixedValuesByFolderName: {},
-    constraintsByFolderName: {}
+    constraintsByFolderName: {},
+    validationRulesOffByFolderName: {}
 });
 
 const treeOf = (recipe: IRecipeCockpitRecipeViewModel, treeKey: string) => recipe.trees.find(tree => tree.treeKey === treeKey) as IRecipeCockpitTreeViewModel;
@@ -444,14 +445,15 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
                     ['__proto__', new Map([['Lead', 3]])]
                 ]),
                 fixedValuesByFolderName: new Map(),
-                constraintsByFolderName: new Map()
+                constraintsByFolderName: new Map(),
+                validationRulesOffByFolderName: new Map()
             };
 
             await expect(RecipeCockpitService.writeTreeSelections(workspaceState, treeSelections)).resolves.toBeTrue();
 
             const stored = workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY) as any;
             expect(stored.version).toBe(RECIPE_COCKPIT_OBJECT_SELECTION_VERSION);
-            expect(RECIPE_COCKPIT_OBJECT_SELECTION_VERSION).toBe(5);
+            expect(RECIPE_COCKPIT_OBJECT_SELECTION_VERSION).toBe(6);
             expect(Object.keys(stored.objectCountsByFolderName)).toEqual([ACCOUNT_TREE_KEY, '__proto__']);
             expect(Object.keys(stored.objectCountsByFolderName[ACCOUNT_TREE_KEY])).toEqual(['Contact', '__proto__']);
 
@@ -610,7 +612,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             const recipe = loadRecipe();
             applyCounts(recipe, { [ACCOUNT_TREE_KEY]: { Contact: 5 } });
 
-            const filteredRecipe = RecipeCockpitService.buildRunFakerFilteredRecipe(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8'), treeOf(recipe, ACCOUNT_TREE_KEY), undefined);
+            const filteredRecipe = RecipeCockpitService.buildRunFakerFilteredRecipe(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8'), treeOf(recipe, ACCOUNT_TREE_KEY), undefined, recipe);
 
             if ( 'refusalMessage' in filteredRecipe ) {
                 throw new Error(filteredRecipe.refusalMessage);
@@ -850,7 +852,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
 
             expect(showWarningMessage).toHaveBeenCalledTimes(1);
             expect(showWarningMessage.mock.calls[0][1]).toMatchObject({ modal: true });
-            expect(showWarningMessage.mock.calls[0][1].detail).toBe('Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every fixed value and faker constraint is cleared. The recipe file is not changed.');
+            expect(showWarningMessage.mock.calls[0][1].detail).toBe('Every object is included, every field is ticked, every record count goes back to the recipe\'s own again, every fixed value and faker constraint is cleared and every validation rule is applied again. The recipe file is not changed.');
             expect(storedOf(workspaceState)).toEqual(storedSelections({ [LEAD_TREE_KEY]: { Lead: 3 } }));
             expect(lastPosted('objectSelection').treeKey).toBe(ACCOUNT_TREE_KEY);
             expect(lastPosted('objectSelection')).not.toHaveProperty('objectCounts');

@@ -139,7 +139,8 @@ const storedSelections = (fixedValuesByFolderName: Record<string, unknown>, excl
     excludedFieldApiNamesByFolderName: excludedFieldApiNamesByFolderName,
     objectCountsByFolderName: {},
     fixedValuesByFolderName: fixedValuesByFolderName,
-    constraintsByFolderName: {}
+    constraintsByFolderName: {},
+    validationRulesOffByFolderName: {}
 });
 
 const treeOf = (recipe: IRecipeCockpitRecipeViewModel, treeKey: string) => recipe.trees.find(tree => tree.treeKey === treeKey) as IRecipeCockpitTreeViewModel;
@@ -389,7 +390,8 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
                     ['__proto__', new Map([['Lead', new Map([['Company', 'Acme']])]])],
                     ['Empty-Tree', new Map([['Lead', new Map()]])]
                 ]),
-                constraintsByFolderName: new Map()
+                constraintsByFolderName: new Map(),
+                validationRulesOffByFolderName: new Map()
             })).resolves.toBeTrue();
 
             const stored = workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY) as any;
@@ -534,7 +536,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             const recipe = loadRecipe();
             applyFixedValues(recipe, { [ACCOUNT_TREE_KEY]: { Account: { Legacy_Code__c: 'X "1"', Annual_Budget__c: '12.5' } } });
 
-            const filteredRecipe = RecipeCockpitService.buildRunFakerFilteredRecipe(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8'), treeOf(recipe, ACCOUNT_TREE_KEY), undefined);
+            const filteredRecipe = RecipeCockpitService.buildRunFakerFilteredRecipe(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8'), treeOf(recipe, ACCOUNT_TREE_KEY), undefined, recipe);
 
             if ( 'refusalMessage' in filteredRecipe ) {
                 throw new Error(filteredRecipe.refusalMessage);
