@@ -1240,6 +1240,32 @@ export interface IRecipeCockpitOrgOpenStateMessage {
 
 export const RECIPE_COCKPIT_OPEN_ORG_LABEL = 'Open in browser';
 
+/*
+    The version and the CHANGELOG link at the top right (#333). The URL is the HOST's: the shell's
+    default-src 'none' would make a link in the panel dead, and a URL interpolated into the shell is
+    an external reference the shell has none of. The panel posts "openChangelog" with nothing else,
+    and this constant is the only address that message can open.
+*/
+export const RECIPE_COCKPIT_CHANGELOG_URL = 'https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/CHANGELOG.md';
+
+export const RECIPE_COCKPIT_CHANGELOG_LINK_LABEL = 'Open CHANGELOG on GitHub';
+
+// FIXED TEXT: AN ERROR'S OWN MESSAGE IS NEVER QUOTED
+export const RECIPE_COCKPIT_CHANGELOG_NOT_OPENED_MESSAGE = 'The Treecipe CHANGELOG was not opened: the browser did not accept the address.';
+
+// A RELEASE VERSION, OR ONE WITH A PRE-RELEASE SUFFIX; ANYTHING ELSE IS NOT POSTED
+export const RECIPE_COCKPIT_EXTENSION_VERSION_PATTERN = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
+
+export const RECIPE_COCKPIT_GITHUB_GLYPH_VIEW_BOX = '0 0 16 16';
+
+// THE GITHUB MARK (OCTICONS mark-github, MIT), DRAWN WITH createElementNS AND FILLED FROM THE PALETTE
+export const RECIPE_COCKPIT_GITHUB_GLYPH_PATH = 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z';
+
+export interface IRecipeCockpitExtensionInfoMessage {
+    command: 'extensionInfo';
+    version: string;
+}
+
 export const RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL = 'View output';
 
 export const RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL = 'Assign permission sets to me…';
@@ -1295,7 +1321,8 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitScratchOrgStateMessage
                                         | IRecipeCockpitPermissionSetAssignStateMessage
                                         | IRecipeCockpitOrgOpenStateMessage
-                                        | IRecipeCockpitDatasetAddedMessage;
+                                        | IRecipeCockpitDatasetAddedMessage
+                                        | IRecipeCockpitExtensionInfoMessage;
 
 /*
     One data set an action just wrote, posted IN PLACE of a reload (#226): the cards it joins, its
@@ -1437,7 +1464,8 @@ export type RecipeCockpitPanelAction =
     // A REFUSAL IS A WARNING NOTIFICATION, AND THE STATE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refusePermissionSetAssign'; refusalText?: string; hostMessage: IRecipeCockpitPermissionSetAssignStateMessage }
     | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
-    | { kind: 'postOrgOpenState'; hostMessage: IRecipeCockpitOrgOpenStateMessage };
+    | { kind: 'postOrgOpenState'; hostMessage: IRecipeCockpitOrgOpenStateMessage }
+    | { kind: 'openChangelog' };
 
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened --
@@ -1527,6 +1555,8 @@ export interface IRecipeCockpitPanelState {
         no document has acknowledged would activate its every history action, not just the new row's.
     */
     acknowledgedRenderSequence: number | null;
+    // THE INSTALLED VERSION (#333), SET ONLY WHEN IT IS ONE RECIPE_COCKPIT_EXTENSION_VERSION_PATTERN ACCEPTS
+    extensionVersion?: string;
 }
 
 /*
@@ -3846,8 +3876,49 @@ export class RecipeCockpitService {
             datasetUpdateSequence: 0,
             acknowledgedRenderSequence: null,
             pendingAssignableTreeKeys: new Set(),
-            assignableTreeKeys: new Set()
+            assignableTreeKeys: new Set(),
+            ...( this.extensionVersion ? { extensionVersion: this.extensionVersion } : {} )
         };
+
+    }
+
+    // THE INSTALLED VERSION (#333): READ ONCE AT ACTIVATION, AND EVERY PANEL STATE BUILT AFTER CARRIES IT
+    private static extensionVersion: string | undefined;
+
+    static setExtensionVersion(candidateVersion: unknown) {
+
+        this.extensionVersion = this.readExtensionVersion(candidateVersion);
+
+    }
+
+    // package.json SHIPS IN THE .vsix, BUT WHAT IS POSTED IS STILL HELD TO A VERSION'S SHAPE RATHER THAN TRUSTED
+    static readExtensionVersion(candidateVersion: unknown): string | undefined {
+
+        return typeof candidateVersion === 'string' && RECIPE_COCKPIT_EXTENSION_VERSION_PATTERN.test(candidateVersion)
+            ? candidateVersion
+            : undefined;
+
+    }
+
+    /*
+        The CHANGELOG link (#333): one constant address, handed to the reader's browser by VS Code.
+        A browser that refuses it, or a throw, is one fixed warning that quotes nothing.
+    */
+    static async openChangelogInBrowser() {
+
+        try {
+
+            const isOpened = await vscode.env.openExternal(vscode.Uri.parse(RECIPE_COCKPIT_CHANGELOG_URL, true));
+
+            if ( !isOpened ) {
+                VSCodeWorkspaceService.showWarningMessage(RECIPE_COCKPIT_CHANGELOG_NOT_OPENED_MESSAGE);
+            }
+
+        } catch {
+
+            VSCodeWorkspaceService.showWarningMessage(RECIPE_COCKPIT_CHANGELOG_NOT_OPENED_MESSAGE);
+
+        }
 
     }
 
@@ -4552,6 +4623,11 @@ export class RecipeCockpitService {
             case 'openDataOrg':
 
                 await this.openDataOrgInBrowser(panelState, panelAction.orgDetail);
+                return;
+
+            case 'openChangelog':
+
+                await this.openChangelogInBrowser();
                 return;
 
             case 'postOrgOpenState':
@@ -8254,6 +8330,14 @@ export class RecipeCockpitService {
 
             }
 
+            /*
+                The CHANGELOG link (#333) is routed whatever is on screen, even before a model: it
+                opens one constant address, so nothing the message carries is read and there is no
+                rendered value for it to have to come from.
+            */
+            case 'openChangelog':
+                return { kind: 'openChangelog' };
+
         }
 
         return undefined;
@@ -8314,6 +8398,10 @@ export class RecipeCockpitService {
     static buildReplayMessages(panelState: IRecipeCockpitPanelState): RecipeCockpitHostMessage[] {
 
         const replayMessages: RecipeCockpitHostMessage[] = [];
+
+        if ( panelState.extensionVersion ) {
+            replayMessages.push({ command: 'extensionInfo', version: panelState.extensionVersion });
+        }
 
         if ( panelState.recipeDataMessage ) {
             replayMessages.push(this.withRestorePlace(panelState.recipeDataMessage, panelState));
@@ -10188,6 +10276,22 @@ ${this.buildPaletteCustomProperties()}
         font-family: var(--vscode-editor-font-family);
         color: var(--sdt-muted);
     }
+    .cockpitHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    .cockpitMeta { display: flex; align-items: center; gap: 0.4rem; color: var(--sdt-muted); }
+    .cockpitChangelog {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.25rem;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        background-color: transparent;
+        cursor: pointer;
+    }
+    .cockpitChangelog:hover { border-color: var(--sdt-border); background-color: var(--sdt-surface); }
+    .githubGlyph { display: block; width: 18px; height: 18px; }
+    .githubGlyph path { fill: var(--sdt-muted); }
+    .cockpitChangelog:hover .githubGlyph path, .cockpitChangelog:focus-visible .githubGlyph path { fill: var(--sdt-accent); }
     @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after {
             transition: none !important;
@@ -10197,7 +10301,10 @@ ${this.buildPaletteCustomProperties()}
 </style>
 </head>
 <body>
+<div class="cockpitHeader">
 <h1>${RECIPE_COCKPIT_PANEL_TITLE}</h1>
+<div id="cockpitMeta" class="cockpitMeta"></div>
+</div>
 <div id="loadStatus" class="loadStatus">${RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT}</div>
 <div id="cockpitBody"></div>
 <script nonce="${nonce}">
@@ -10206,6 +10313,11 @@ ${this.buildPaletteCustomProperties()}
     const vscodeApi = acquireVsCodeApi();
     const loadStatusElement = document.getElementById('loadStatus');
     const cockpitBodyElement = document.getElementById('cockpitBody');
+    const cockpitMetaElement = document.getElementById('cockpitMeta');
+    const CHANGELOG_LINK_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CHANGELOG_LINK_LABEL)};
+    const GITHUB_GLYPH_VIEW_BOX = ${JSON.stringify(RECIPE_COCKPIT_GITHUB_GLYPH_VIEW_BOX)};
+    const GITHUB_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_GITHUB_GLYPH_PATH)};
+    let cockpitVersionElement = null;
     const AUTO_EXPAND_OBJECT_LIMIT = ${RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT};
     const AUTO_EXPAND_ROW_BUDGET = ${RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET};
     const GENERATE_TREECIPE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL)};
@@ -14290,10 +14402,59 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    /*
+        The version and the CHANGELOG link at the top right (#333), drawn once beside the title and
+        outside the body, so every load, empty state and failure to draw keeps them. The version
+        arrives from the host and is written as text; the link posts no address -- the host owns it.
+    */
+    function renderCockpitMeta() {
+
+        if (!cockpitMetaElement) { return; }
+
+        cockpitVersionElement = createElement('span', 'cockpitVersion', '');
+
+        const changelogElement = createElement('button', 'cockpitChangelog');
+        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
+        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
+
+        changelogElement.setAttribute('type', 'button');
+        changelogElement.setAttribute('aria-label', CHANGELOG_LINK_LABEL);
+        changelogElement.setAttribute('title', CHANGELOG_LINK_LABEL);
+        glyphElement.setAttribute('class', 'githubGlyph');
+        glyphElement.setAttribute('viewBox', GITHUB_GLYPH_VIEW_BOX);
+        glyphElement.setAttribute('aria-hidden', 'true');
+        glyphElement.setAttribute('focusable', 'false');
+        pathElement.setAttribute('d', GITHUB_GLYPH_PATH);
+        glyphElement.appendChild(pathElement);
+        changelogElement.appendChild(glyphElement);
+
+        changelogElement.addEventListener('click', function () {
+            vscodeApi.postMessage({ command: 'openChangelog' });
+        });
+
+        cockpitMetaElement.appendChild(cockpitVersionElement);
+        cockpitMetaElement.appendChild(changelogElement);
+
+    }
+
+    function renderExtensionInfo(hostMessage) {
+
+        if (!cockpitVersionElement) { return; }
+        cockpitVersionElement.textContent = typeof hostMessage.version === 'string' && hostMessage.version ? 'v' + hostMessage.version : '';
+
+    }
+
+    renderCockpitMeta();
+
     window.addEventListener('message', function (hostMessageEvent) {
 
         const hostMessage = hostMessageEvent && hostMessageEvent.data;
         if (!hostMessage) { return; }
+
+        if (hostMessage.command === 'extensionInfo') {
+            renderExtensionInfo(hostMessage);
+            return;
+        }
 
         if (hostMessage.command === 'loadPhase') {
             setLoadStatus(hostMessage.message, false);
