@@ -6168,6 +6168,12 @@ export class RecipeCockpitService {
             return;
         }
 
+        // THE ROUTER CHECKED THESE AT THE CLICK; ONE CAN HAVE STARTED WHILE THE PROMPT OR THE MODAL WAS OPEN
+        const currentPanelState = this.recipeCockpitPanelState;
+        if ( this.isScratchOrgSetupInFlight || currentPanelState.insertStateMessage || currentPanelState.permissionSetAssignStateMessage?.isRunning ) {
+            return refuse(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL);
+        }
+
         let retrieveArguments: string[];
         try {
             retrieveArguments = RecipeCockpitValidationRuleRetrieve.buildValidationRuleRetrieveArguments(objectApiNames, orgDetail.username);
@@ -6182,8 +6188,9 @@ export class RecipeCockpitService {
             workspaceRoot
         );
 
+        // A CANCEL CAN COME AFTER THE CLI WROTE FILES, SO GENERATE TREECIPE IS OFFERED AS AFTER A TIMEOUT
         if ( retrieveRun.isCancelled ) {
-            return refuse(`The retrieve of validation rules from ${orgLabel} was cancelled, so which rule files were written is unknown.`);
+            return this.showValidationRuleRetrieveNotification('warning', `The retrieve of validation rules from ${orgLabel} was cancelled, so which rule files were written is unknown.`, undefined, workspaceRoot, true);
         }
 
         const retrievePayload = ScratchOrgService.readCliJsonPayload(retrieveRun.invocation);
@@ -8050,7 +8057,8 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning ) {
+                // A VALIDATION RULE RETRIEVE (#326) IS WRITING INTO THE SOURCE A SCRATCH ORG RUN WOULD DEPLOY
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning || panelState.validationRuleRetrieveStateMessage?.isRunning ) {
                     return {
                         kind: 'postScratchOrgState',
                         hostMessage: panelState.scratchOrgStateMessage ?? { command: 'scratchOrgState', isRunning: false }
@@ -11146,7 +11154,7 @@ ${this.buildPaletteCustomProperties()}
         // THE MESSAGE CARRIES NOTHING: THE DEV HUB, THE DEFINITION FILE, WHAT IS DEPLOYED AND THE ALIAS ARE ALL THE HOST'S
         dataOrgView.newScratchElement.setAttribute('title', 'Choose a Dev Hub, name the new scratch org, create it through the Dev Hub, deploy the source of this project to it and select it');
         dataOrgView.newScratchElement.addEventListener('click', function () {
-            if (isScratchOrgRunning || isPermissionSetAssignRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
+            if (isScratchOrgRunning || isPermissionSetAssignRunning || isValidationRuleRetrieveRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
             isDataOrgPickerInUse = true;
             isScratchOrgRunning = true;
             drawDataOrgViews();
@@ -11260,7 +11268,8 @@ ${this.buildPaletteCustomProperties()}
         if (isDataOrgStatusFailure) { dataOrgView.statusElement.classList.add('failed'); } else { dataOrgView.statusElement.classList.remove('failed'); }
 
         // AN INSERT IN FLIGHT HOLDS IT TOO: THE HOST WOULD REFUSE A RUN THAT CHANGES THE SELECTION UNDER IT
-        dataOrgView.newScratchElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || insertRunningTreeKey !== null;
+        // SO DOES A VALIDATION RULE RETRIEVE (#326): IT IS WRITING INTO THE SOURCE THE RUN WOULD DEPLOY
+        dataOrgView.newScratchElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isValidationRuleRetrieveRunning || insertRunningTreeKey !== null;
         dataOrgView.newScratchElement.textContent = isScratchOrgRunning ? 'Setting up scratch org…' : '+ New scratch org';
         // A PERMISSION SET ASSIGNMENT HOLDS THE PICKER TOO: IT ASSIGNS IN THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
         dataOrgView.selectElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning;
@@ -13802,6 +13811,7 @@ ${this.buildPaletteCustomProperties()}
             if (retrieveButtonElement.disabled || renderedSequence === null) { return; }
             isValidationRuleRetrieveRunning = true;
             drawTreeInserts();
+            drawDataOrgViews();
             vscodeApi.postMessage({ command: 'retrieveTreeValidationRules', treeKey: treeState.tree.treeKey });
         });
         controlsElement.appendChild(retrieveButtonElement);
@@ -14886,6 +14896,7 @@ ${this.buildPaletteCustomProperties()}
         if (hostMessage.command === 'validationRuleRetrieveState') {
             isValidationRuleRetrieveRunning = !!hostMessage.isRunning;
             drawTreeInserts();
+            drawDataOrgViews();
             return;
         }
 

@@ -601,7 +601,11 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
             await retrieve();
 
-            expect(notifications()).toEqual([expect.objectContaining({ severity: 'warning', text: expect.stringContaining('was cancelled, so which rule files were written is unknown.') })]);
+            expect(notifications()).toEqual([{
+                severity: 'warning',
+                text: expect.stringContaining('was cancelled, so which rule files were written is unknown.'),
+                actions: [RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL]
+            }]);
 
         });
 
@@ -631,6 +635,42 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
             expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND, expect.anything());
             expect(notifications().at(-1)).toEqual(expect.objectContaining({ severity: 'warning', text: expect.stringContaining('Generate Treecipe was not started') }));
+
+        });
+
+        it('starts no retrieve when a scratch org run, an insert or an assignment started while the prompt or the modal was open', async () => {
+
+            await openCockpit();
+            const startMeanwhile = [
+                () => { (RecipeCockpitService as any).isScratchOrgSetupInFlight = true; },
+                () => { panelState().insertStateMessage = { command: 'insertState', isRunning: true, treeKey: 'Lead-ONLY' }; },
+                () => { panelState().permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: 'Lead-ONLY' }; }
+            ];
+
+            for ( const start of startMeanwhile ) {
+                (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
+                panelState().insertStateMessage = undefined;
+                panelState().permissionSetAssignStateMessage = undefined;
+                promptSpy.mockImplementationOnce(async () => { start(); return PROD_ORG; });
+                await (RecipeCockpitService as any).performValidationRuleRetrieve(workspaceRoot, 'Tree', ACCOUNT_TREE_OBJECTS);
+            }
+            (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
+
+            expect(retrieveCalls()).toEqual([]);
+            expect(notifications().map(notification => notification.text)).toEqual(Array(3).fill(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL));
+
+        });
+
+        it('holds + New scratch org while a retrieve runs, since it would deploy the source the retrieve is writing', async () => {
+
+            await openCockpit();
+            panelState().dataOrgObjectApiNames = new Set(ACCOUNT_TREE_OBJECTS);
+            panelState().validationRuleRetrieveStateMessage = { command: 'validationRuleRetrieveState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
+
+            expect(RecipeCockpitService.routePanelMessage({ command: 'createScratchOrg' }, panelState())).toEqual({
+                kind: 'postScratchOrgState',
+                hostMessage: { command: 'scratchOrgState', isRunning: false }
+            });
 
         });
 
@@ -835,8 +875,12 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
             panel.postToPanel({ command: 'validationRuleRetrieveState', isRunning: true, treeKey: 'Lead-ONLY' });
             expect(retrieveButtonOf(panel).disabled).toBe(true);
+            const newScratchButtons = panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'dataOrgNewScratch');
+            expect(newScratchButtons.length).toBeGreaterThan(0);
+            newScratchButtons.forEach((newScratchButton: any) => expect(newScratchButton.disabled).toBe(true));
             expect(retrieveButtonOf(panel).attributes.title).toBe('Validation rules are being retrieved.');
             panel.postToPanel({ command: 'validationRuleRetrieveState', isRunning: false, treeKey: 'Lead-ONLY' });
+            newScratchButtons.forEach((newScratchButton: any) => expect(newScratchButton.disabled).toBe(false));
 
             panel.postToPanel({ command: 'scratchOrgState', isRunning: true });
             expect(retrieveButtonOf(panel).disabled).toBe(true);
