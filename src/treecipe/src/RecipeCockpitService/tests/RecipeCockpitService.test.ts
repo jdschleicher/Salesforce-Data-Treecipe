@@ -542,7 +542,9 @@ describe('RecipeCockpitService', () => {
             });
 
             const ICON_ON_BACKGROUND_PAIRS: [RecipeCockpitPaletteToken, RecipeCockpitPaletteToken][] = [
-                ['accent', 'surface'], ['accent', 'rowHover'], ['muted', 'surface'], ['muted', 'rowHover']
+                ['accent', 'surface'], ['accent', 'rowHover'], ['muted', 'surface'], ['muted', 'rowHover'],
+                // THE GITHUB MARK AT THE TOP RIGHT (#333) SITS ON THE PAGE, AND ON --sdt-surface WHILE HOVERED
+                ['muted', 'page'], ['accent', 'page']
             ];
 
             it.each(ICON_ON_BACKGROUND_PAIRS)('draws the icon in --sdt-%s on --sdt-%s at 3:1 or more', (iconToken, backgroundToken) => {

@@ -1,5 +1,17 @@
 # Change Log
 
+## [3.91.0] - The Recipe Cockpit shows its version and links to this CHANGELOG
+
+Closes [#333](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/333).
+
+Nothing in the Recipe Cockpit said which Treecipe version was running, and the panel had no way to reach what changed between releases. The title row now shows `v<version>` at the top right, with a GitHub icon that opens this file on `main`.
+
+- **Always on screen.** The version and the icon sit in the title row, outside the area each load redraws. They stay through a load, the no-run screen (beside **Generate Treecipe**), a drawn run, and a failure to draw. The run selector, Favorites only and each card's search box are where they were.
+- **The version is the extension's.** `activate` reads `context.extension.packageJSON.version` once (`RecipeCockpitService.setExtensionVersion`). Only a value matching `RECIPE_COCKPIT_EXTENSION_VERSION_PATTERN` (`3.91.0`, or one with a pre-release suffix) is kept. It reaches the panel in its own `extensionInfo` message, replayed first on every `ready`, so the recipe model is unchanged. The panel writes it with `textContent`. With no valid version, nothing is posted and only the icon shows.
+- **The link opens one fixed address.** The icon posts `openChangelog` with nothing else. The router routes it even before a model is drawn and reads nothing from the message, so a forged `url` opens nothing else. The host hands `RECIPE_COCKPIT_CHANGELOG_URL` to `vscode.env.openExternal`. A browser that refuses it, or a throw, is one fixed warning that quotes no error. The URL is never in the shell: its `default-src 'none'` would make a link there dead, and the shell still references no external asset. `buildWebviewShellHtml` still takes only a nonce.
+- **The icon** is the GitHub mark drawn as inline SVG with `createElementNS`, filled with `--sdt-muted` and with `--sdt-accent` on hover or keyboard focus, like the cockpit's other glyphs. It is a `<button>` labelled `Open CHANGELOG on GitHub` (`aria-label` and `title`), so it works from the keyboard. Its colours on the page are added to the contrast test.
+- **Tests.** A new suite, `RecipeCockpitExtensionVersion.test.ts`, covers the version check, the replay order, the router (before any model, and with a forged payload), the browser call and both warnings, the shell, and the real panel script through the harness: the icon and its attributes, the click's one message, the version on all three screens, and a version carrying markup written as text. `extension.test.ts` checks `activate` hands the manifest version over.
+
 ## [3.90.0] - Recipe Cockpit: a validation-rule checkbox at the end of a field row
 
 Closes [#325](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/325), the third sub-issue of [#322](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/322).

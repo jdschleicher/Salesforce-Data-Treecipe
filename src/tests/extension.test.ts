@@ -33,6 +33,7 @@ jest.mock('@salesforce/core', () => ({
 
 import { activate } from '../extension';
 import { ConfigurationService } from '../treecipe/src/ConfigurationService/ConfigurationService';
+import { RecipeCockpitService } from '../treecipe/src/RecipeCockpitService/RecipeCockpitService';
 import { VSCodeWorkspaceService } from '../treecipe/src/VSCodeWorkspace/VSCodeWorkspaceService';
 import { RunFakerConfirmation } from '../treecipe/src/ExtensionCommandService/RunFakerConfirmation';
 import { ExtensionCommandService } from '../treecipe/src/ExtensionCommandService/ExtensionCommandService';
@@ -60,6 +61,19 @@ describe('activate', () => {
 
         // SO NO TEST INHERITS THE FOLDERS THE ONE BEFORE IT SET ON THE MODULE-FACTORY MOCK
         (vscode.workspace as { workspaceFolders: unknown }).workspaceFolders = undefined;
+
+    });
+
+    // THE RECIPE COCKPIT SHOWS THE INSTALLED VERSION AT THE TOP RIGHT (#333)
+    it('hands the manifest version to the Recipe Cockpit, and a context without one hands it nothing', async () => {
+
+        jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
+        const setExtensionVersionSpy = jest.spyOn(RecipeCockpitService, 'setExtensionVersion');
+
+        await activate({ ...buildExtensionContext(), extension: { packageJSON: { version: '3.90.0' } } } as never);
+        await activate(buildExtensionContext() as never);
+
+        expect(setExtensionVersionSpy.mock.calls).toEqual([['3.90.0'], [undefined]]);
 
     });
 
