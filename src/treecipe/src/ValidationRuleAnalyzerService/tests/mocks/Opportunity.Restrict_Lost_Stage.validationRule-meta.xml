@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Restrict_Lost_Stage</fullName>
+    <active>true</active>
+    <description>StageName cannot be set directly to Closed Lost without a reason</description>
+    <errorConditionFormula>ISPICKVAL(StageName, "Closed Lost")</errorConditionFormula>
+    <errorDisplayField>StageName</errorDisplayField>
+    <errorMessage>You cannot set the stage directly to Closed Lost. Please provide a close reason first.</errorMessage>
+</ValidationRule>

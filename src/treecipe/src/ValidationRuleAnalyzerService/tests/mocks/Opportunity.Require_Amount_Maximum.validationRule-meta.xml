@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Require_Amount_Maximum</fullName>
+    <active>true</active>
+    <description>Amount cannot exceed 1000000</description>
+    <errorConditionFormula>Amount &gt; 1000000</errorConditionFormula>
+    <errorDisplayField>Amount</errorDisplayField>
+    <errorMessage>Amount cannot exceed $1,000,000.</errorMessage>
+</ValidationRule>

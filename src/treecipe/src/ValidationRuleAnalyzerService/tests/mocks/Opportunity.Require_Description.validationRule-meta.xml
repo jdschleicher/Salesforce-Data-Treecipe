@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Require_Description</fullName>
+    <active>true</active>
+    <description>Description is required for all opportunities</description>
+    <errorConditionFormula>ISBLANK(Description)</errorConditionFormula>
+    <errorDisplayField>Description</errorDisplayField>
+    <errorMessage>Description is required on all Opportunity records.</errorMessage>
+</ValidationRule>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Launch_After_2024</fullName>
+    <active>true</active>
+    <errorConditionFormula>Launch_Date__c &lt; DATE(2024, 1, 1)</errorConditionFormula>
+    <errorMessage>Launch After 2024 failed.</errorMessage>
+</ValidationRule>

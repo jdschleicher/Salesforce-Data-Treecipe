@@ -17,6 +17,7 @@ import { RelationshipService } from '../RelationshipService/RelationshipService'
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
 import { MermaidService } from '../MermaidService/MermaidService';
+import { IValidationRuleAnalysis, IValidationRuleFieldConstraint, IValidationRuleNotApplied, ValidationRuleAnalyzerService, VALIDATION_RULES_DIRECTORY_NAME } from '../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService';
 
 export interface IGeneratedRecipeRun {
   runFolderPath: string;
@@ -278,11 +279,16 @@ export class DirectoryProcessor {
             }
 
 
+            // READ FROM THE LISTING THIS DIRECTORY ALREADY HAS, SO VALIDATION RULES COST NO SECOND WALK (#324)
+            const validationRuleAnalyses = await this.readValidationRuleAnalyses(directoryPathUri, entries);
+            const ruleConstraintsByField = ValidationRuleAnalyzerService.groupConstraintsByFieldReference(validationRuleAnalyses);
+
             let fieldsInfo: FieldInfo[] = await this.processFieldsDirectory(fullPath, 
                                                                               objectName, 
                                                                               writableRecordTypeApiToRecordTypeWrapperMap,
                                                                               salesforceOOTBFakerMappings,
-                                                                              firstRecordTypeBlock.recordTypeApiName
+                                                                              firstRecordTypeBlock.recordTypeApiName,
+                                                                              ruleConstraintsByField
                                                                             );
             objectInfoWrapper.ObjectToObjectInfoMap[objectName].Fields = fieldsInfo;
 
@@ -294,7 +300,8 @@ export class DirectoryProcessor {
                 objectName,
                 recordTypeApiToRecordTypeWrapperMap,
                 writableRecordTypeApiToRecordTypeWrapperMap,
-                salesforceOOTBFakerMappings
+                salesforceOOTBFakerMappings,
+                ruleConstraintsByField
               );
             }
 
@@ -334,7 +341,10 @@ export class DirectoryProcessor {
 
 
             });
-  
+
+            if ( validationRuleAnalyses.length > 0 ) {
+              this.recordValidationRulesNotApplied(objectInfoWrapper, objectName, validationRuleAnalyses, ruleConstraintsByField, fieldsInfo, salesforceOOTBFakerMappings);
+            }
   
             if ( recordTypeApiToRecordTypeWrapperMap !== undefined && Object.keys(recordTypeApiToRecordTypeWrapperMap).length > 0 ) {
               // if there are keys in the recordTypeMap, add them to the objectsInfoWrapper
@@ -370,7 +380,8 @@ export class DirectoryProcessor {
                                           objectName: string,
                                           recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
                                           writableRecordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
-                                          salesforceOOTBFakerMappings: Record<string, Record<string, string>>
+                                          salesforceOOTBFakerMappings: Record<string, Record<string, string>>,
+                                          ruleConstraintsByField?: ReadonlyMap<string, IValidationRuleFieldConstraint[]>
                                         ): Promise<string[]> {
 
     const additionalRecordTypeRecipes: string[] = [];
@@ -383,7 +394,8 @@ export class DirectoryProcessor {
                                                                   objectName,
                                                                   writableRecordTypeApiToRecordTypeWrapperMap,
                                                                   salesforceOOTBFakerMappings,
-                                                                  recordTypeBlock.recordTypeApiName
+                                                                  recordTypeBlock.recordTypeApiName,
+                                                                  ruleConstraintsByField
                                                                 );
       blockFieldsInfo.forEach((fieldDetail) => {
         blockRecipe = this.recipeService.appendFieldRecipeToObjectRecipe(blockRecipe, fieldDetail.recipeValue, fieldDetail.fieldName);
@@ -401,7 +413,8 @@ export class DirectoryProcessor {
         associatedObjectName: string,
         recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
         salesforceOOTBFakerMappings: Record<string, Record<string, string>>,
-        selectedRecordTypeApiName?: string
+        selectedRecordTypeApiName?: string,
+        ruleConstraintsByField?: ReadonlyMap<string, IValidationRuleFieldConstraint[]>
       ): Promise<FieldInfo[]> {
 
     /* 
@@ -425,7 +438,8 @@ export class DirectoryProcessor {
                                                               associatedObjectName, 
                                                               recordTypeApiToRecordTypeWrapperMap,
                                                               fileName,
-                                                              selectedRecordTypeApiName
+                                                              selectedRecordTypeApiName,
+                                                              ruleConstraintsByField
                                                             );
 
         if ( this.isCompoundAddressField(fieldInfo, associatedObjectName) || this.isCompoundGeolocationField(fieldInfo) ) {
@@ -467,11 +481,19 @@ export class DirectoryProcessor {
                                     associatedObjectName: string,
                                     recordTypeApiToRecordTypeWrapperMap: Record<string, RecordTypeWrapper>,
                                     xmlFieldFileName: string,
-                                    selectedRecordTypeApiName?: string
+                                    selectedRecordTypeApiName?: string,
+                                    ruleConstraintsByField?: ReadonlyMap<string, IValidationRuleFieldConstraint[]>
                                   ):Promise<FieldInfo> {
 
     let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent, xmlFieldFileName);
-    let recipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail, recordTypeApiToRecordTypeWrapperMap, selectedRecordTypeApiName);                                                        
+    const unconstrainedRecipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail, recordTypeApiToRecordTypeWrapperMap, selectedRecordTypeApiName);
+    const fieldRuleConstraints = typeof fieldXMLDetail.apiName === 'string'
+      ? ruleConstraintsByField?.get(fieldXMLDetail.apiName.toLowerCase())
+      : undefined;
+    const validationRuleFieldRecipe = fieldRuleConstraints?.length > 0
+      ? this.recipeService.applyValidationRules(fieldXMLDetail, unconstrainedRecipeValue, fieldRuleConstraints, recordTypeApiToRecordTypeWrapperMap, selectedRecordTypeApiName)
+      : undefined;
+    const recipeValue = validationRuleFieldRecipe?.recipeValue ?? unconstrainedRecipeValue;
 
     let fieldInfo = FieldInfo.create(
       associatedObjectName,
@@ -485,8 +507,102 @@ export class DirectoryProcessor {
     );  
 
     FieldInfo.applyFieldSize(fieldInfo, fieldXMLDetail);
+
+    if ( validationRuleFieldRecipe ) {
+      fieldInfo.validationRuleConstraints = validationRuleFieldRecipe.validationRuleConstraints;
+      fieldInfo.unconstrainedRecipeValue = unconstrainedRecipeValue;
+    }
   
     return fieldInfo;
+
+  }
+
+  /*
+    The object's active validation rules, in file-name order (with "<", so the recipe does not depend
+    on the order the file system lists them), or none when the object directory has no
+    validationRules folder. A file that cannot be read is a rule that was not applied.
+  */
+  async readValidationRuleAnalyses(objectDirectoryUri: vscode.Uri, objectDirectoryEntries: [string, vscode.FileType][]): Promise<IValidationRuleAnalysis[]> {
+
+    const hasValidationRulesDirectory = objectDirectoryEntries.some(
+      ([entryName, entryType]) => entryType === vscode.FileType.Directory && entryName === VALIDATION_RULES_DIRECTORY_NAME
+    );
+    if ( !hasValidationRulesDirectory ) {
+      return [];
+    }
+
+    const validationRulesDirectoryUri = vscode.Uri.joinPath(objectDirectoryUri, VALIDATION_RULES_DIRECTORY_NAME);
+    const ruleFileNames = ( await vscode.workspace.fs.readDirectory(validationRulesDirectoryUri) ?? [] )
+      .filter(([fileName, entryType]) => entryType === vscode.FileType.File && ValidationRuleAnalyzerService.isValidationRuleFileName(fileName))
+      .map(([fileName]) => fileName)
+      .sort((first, second) => ( first < second ? -1 : ( first > second ? 1 : 0 ) ));
+
+    const analyses: IValidationRuleAnalysis[] = [];
+    for ( const ruleFileName of ruleFileNames ) {
+      let ruleXmlContent: string;
+      try {
+        ruleXmlContent = Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(validationRulesDirectoryUri, ruleFileName))).toString('utf8');
+      } catch {
+        analyses.push({ ruleName: ruleFileName, notAppliedReason: 'the file could not be read' });
+        continue;
+      }
+      const analysis = await ValidationRuleAnalyzerService.analyzeValidationRuleXml(ruleXmlContent, ruleFileName);
+      if ( analysis ) {
+        analyses.push(analysis);
+      }
+    }
+    return analyses;
+
+  }
+
+  /*
+    Every rule that was not applied is one TODO line at the end of the object's first block, in rule
+    file order, so the recipe says what generation did not do. A rule naming no field the walk read
+    -- or matching no shape -- is recorded on the object; the rest are on their field's FieldInfo.
+  */
+  recordValidationRulesNotApplied(objectInfoWrapper: ObjectInfoWrapper,
+                                    objectName: string,
+                                    validationRuleAnalyses: IValidationRuleAnalysis[],
+                                    ruleConstraintsByField: ReadonlyMap<string, IValidationRuleFieldConstraint[]>,
+                                    fieldsInfo: FieldInfo[],
+                                    salesforceOOTBFakerMappings: Record<string, Record<string, string>>): void {
+
+    const objectInfo = objectInfoWrapper.ObjectToObjectInfoMap[objectName];
+    const ootbFieldApiNames = Object.keys(salesforceOOTBFakerMappings?.[objectName] ?? {});
+    const objectNotApplied: IValidationRuleNotApplied[] = [];
+    const notAppliedTodos: string[] = [];
+
+    validationRuleAnalyses.forEach(analysis => {
+
+      if ( analysis.constraint === undefined ) {
+        const reason = analysis.notAppliedReason ?? 'it was not applied';
+        objectNotApplied.push({ ruleName: analysis.ruleName, reason: reason });
+        notAppliedTodos.push(this.recipeService.buildValidationRuleNotAppliedTodo(analysis.ruleName, reason));
+        return;
+      }
+
+      const fieldKey = analysis.constraint.fieldReference.toLowerCase();
+      const fieldInfo = fieldsInfo.find(candidate => candidate.validationRuleConstraints !== undefined && candidate.fieldName?.toLowerCase() === fieldKey);
+      if ( fieldInfo === undefined ) {
+        const reason = RecipeService.buildMissingFieldReason(analysis.constraint.fieldReference, ootbFieldApiNames);
+        objectNotApplied.push({ ruleName: analysis.ruleName, reason: reason });
+        notAppliedTodos.push(this.recipeService.buildValidationRuleNotAppliedTodo(analysis.ruleName, reason));
+        return;
+      }
+
+      const ruleRecord = fieldInfo.validationRuleConstraints[( ruleConstraintsByField.get(fieldKey) ?? [] ).indexOf(analysis.constraint)];
+      if ( ruleRecord && !ruleRecord.applied ) {
+        notAppliedTodos.push(this.recipeService.buildValidationRuleNotAppliedTodo(analysis.ruleName, `${fieldInfo.fieldName}: ${ruleRecord.reason}`));
+      }
+
+    });
+
+    if ( objectNotApplied.length > 0 ) {
+      objectInfo.ValidationRulesNotApplied = objectNotApplied;
+    }
+    notAppliedTodos.forEach(notAppliedTodo => {
+      objectInfo.FullRecipe += `\n${this.recipeService.generateTabs(1)}${notAppliedTodo}`;
+    });
 
   }
 

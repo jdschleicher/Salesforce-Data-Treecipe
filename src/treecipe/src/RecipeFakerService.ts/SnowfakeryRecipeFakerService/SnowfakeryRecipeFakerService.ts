@@ -4,6 +4,7 @@ import { RecordTypeWrapper } from "../../RecordTypeService/RecordTypesWrapper";
 import { IRecipeFakerService } from "../IRecipeFakerService";
 import { RecipeYamlScalar } from "../RecipeYamlScalar/RecipeYamlScalar";
 import { RecipeFieldConstraint, RecipeFieldConstraintDateBound, ResolvedRecipeFieldConstraint } from "../RecipeFieldConstraint/RecipeFieldConstraint";
+import { IValidationRuleRegexAtom } from "../../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService";
 
 export class SnowfakeryRecipeFakerService implements IRecipeFakerService {
 
@@ -631,6 +632,12 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
             ? `datetime('${dateBound.utcDateTime}')`
             : `date('${dateBound.utcDateTime.slice(0, 10)}')`;
 
+    }
+
+
+    // SNOWFAKERY HAS NO REGEX GENERATOR, SO A REGEX RULE IS REPORTED NOT APPLIED RATHER THAN APPROXIMATED (#324)
+    buildRegexExpression(unusedRegexAtoms: IValidationRuleRegexAtom[]): string | undefined {
+        return undefined;
     }
 
 }

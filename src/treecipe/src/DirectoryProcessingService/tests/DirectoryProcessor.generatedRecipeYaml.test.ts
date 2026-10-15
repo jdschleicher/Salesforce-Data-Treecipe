@@ -668,3 +668,50 @@ describe('a faker-js recipe from the mock metadata inserts with every wired look
     });
 
 });
+
+/*
+    #324. The same bar over an object with validation rules: a constrained expression is written
+    double-quoted with a "### Driven by" line under it, and every rule not applied is a TODO line at
+    the end of the object's block -- every file must still load in both parsers, and load alike.
+*/
+describe.each([
+    ['faker-js', () => new FakerJSRecipeFakerService()],
+    ['snowfakery', () => new SnowfakeryRecipeFakerService()]
+] as const)('Generate Treecipe with the %s backend, over validation rules', (unusedBackend, createFakerService) => {
+
+    const VALIDATION_RULE_OBJECTS_PATH = path.join(__dirname, 'mocks', 'ValidationRuleSalesforceMetadataDirectory', 'objects');
+    let recipeFiles: RecipeFileOutput[];
+
+    beforeAll(async () => {
+        jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(createFakerService);
+        jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({});
+        jest.spyOn(ConfigurationService, 'getCustomCompoundAddressFields').mockReturnValue([]);
+        recipeFiles = (await new DirectoryProcessor().processAllObjectsAndRelationships(vscode.Uri.file(VALIDATION_RULE_OBJECTS_PATH))).RecipeFiles;
+    });
+
+    test('writes driven and not-applied rule lines, so the checks below are about them', () => {
+
+        const recipeText = recipeFiles.map(recipeFile => recipeFile.content).join('\n');
+
+        expect(recipeText).toMatch(/^ {4}(?: {4})*Amount__c: "\$\{\{.*\}\}"\n {20}(?: {4})*### Driven by ValidationRule "Require_Amount_Maximum", "Require_Amount_Minimum"$/m);
+        expect(recipeText).toMatch(/^ {4}(?: {4})*### TODO -- VALIDATION RULE NOT APPLIED -- "Complex_Formula" -- /m);
+
+    });
+
+    test('js-yaml loads every recipe file it writes', () => {
+
+        recipeFiles.forEach(recipeFile => {
+            expect(() => yaml.load(recipeFile.content)).not.toThrow();
+        });
+
+    });
+
+    testRequiringPyYaml('PyYAML loads every recipe file it writes exactly as js-yaml loads it', () => {
+
+        const recipeTexts = recipeFiles.map(recipeFile => recipeFile.content);
+
+        expect(PythonTestHarness.loadWithPyYaml(recipeTexts)).toEqual(recipeTexts.map(recipeText => yaml.load(recipeText)));
+
+    });
+
+});

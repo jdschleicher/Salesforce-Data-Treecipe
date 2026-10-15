@@ -1026,3 +1026,11 @@ describe('SnowfakeryRecipeFakerService.buildConstrainedExpression (#323)', () =>
     });
 
 });
+
+describe('SnowfakeryRecipeFakerService.buildRegexExpression (#324)', () => {
+
+    test('has no regex generator, so a regex rule is reported not applied rather than approximated', () => {
+        expect(new SnowfakeryRecipeFakerService().buildRegexExpression([{ characters: 'ABC', min: 3, max: 3 }])).toBeUndefined();
+    });
+
+});
