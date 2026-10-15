@@ -396,7 +396,7 @@ export const RECIPE_COCKPIT_HELP_SUMMARY_HEADING = 'What differs from the recipe
 
 export const RECIPE_COCKPIT_HELP_NO_DIFFERENCE = 'No tree differs from its recipe file.';
 
-export const RECIPE_COCKPIT_HELP_BACKEND_NOTE = 'faker-js recipes nest child objects under friends:, snowfakery recipes keep every object at the top. Everything else here works the same for both.';
+export const RECIPE_COCKPIT_HELP_BACKEND_NOTE = 'faker-js recipes nest child objects under friends:, snowfakery recipes keep every object at the top, and snowfakery does not apply a validation rule\'s pattern (REGEX), so those fields have no rules box. Everything else here works the same for both.';
 
 export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] = [
     {
@@ -409,7 +409,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
     {
         heading: 'What the cockpit changes without editing the YAML',
         paragraphs: [
-            'These settings change what is generated, but the recipe file stays exactly as Generate Treecipe wrote it, so you can always regenerate it or compare against it:'
+            'These settings change what is generated, but the recipe file stays exactly as Generate Treecipe wrote it, so it always shows what was generated from your metadata:'
         ],
         items: [
             'Excluded objects (the chain link): the object and its children are left out.',
@@ -10578,17 +10578,27 @@ ${this.buildPaletteCustomProperties()}
         const countOf = function (candidateList) { return Array.isArray(candidateList) ? candidateList.length : 0; };
         const describe = function (count, singular, plural) { return count + ' ' + (count === 1 ? singular : plural); };
 
-        const excludedObjectCount = countOf(tree.objectSelection && tree.objectSelection.exclusions);
-        const untickedFieldCount = (tree.fieldSelection && Array.isArray(tree.fieldSelection.objects) ? tree.fieldSelection.objects : [])
+        const exclusions = tree.objectSelection && Array.isArray(tree.objectSelection.exclusions) ? tree.objectSelection.exclusions : [];
+        // AN EXCLUDED OBJECT KEEPS ITS UNTICKED FIELDS AND STORED COUNT FOR WHEN IT COMES BACK, BUT GENERATION APPLIES NEITHER
+        const excludedObjectApiNames = toStringSet(exclusions.map(function (exclusion) { return exclusion.objectApiName; }));
+        const isGenerated = function (entry) { return !!entry && !hasString(excludedObjectApiNames, entry.objectApiName); };
+        const generatedEntries = function (candidateList) { return Array.isArray(candidateList) ? candidateList.filter(isGenerated) : []; };
+
+        const untickedFieldCount = generatedEntries(tree.fieldSelection && tree.fieldSelection.objects)
             .reduce(function (total, objectFieldSelection) { return total + countOf(objectFieldSelection.excludedFieldApiNames); }, 0);
 
+        // A FAKER BOUND ALSO SWITCHES THE FIELD'S RULES OFF (#325); ONE EDIT IS COUNTED ONCE, AS THE BOUND
+        const constrainedFieldKeys = toStringSet(generatedEntries(tree.constraints).map(function (constraint) { return constraint.objectApiName + '.' + constraint.fieldApiName; }));
+        const rulesOffCount = generatedEntries(tree.validationRulesOff)
+            .filter(function (fieldReference) { return !hasString(constrainedFieldKeys, fieldReference.objectApiName + '.' + fieldReference.fieldApiName); }).length;
+
         return [
-            [excludedObjectCount, 'object excluded', 'objects excluded'],
+            [exclusions.length, 'object excluded', 'objects excluded'],
             [untickedFieldCount, 'field unticked', 'fields unticked'],
-            [countOf(tree.objectCounts), 'count changed', 'counts changed'],
-            [countOf(tree.fixedValues), 'fixed value', 'fixed values'],
-            [countOf(tree.constraints), 'faker bound', 'faker bounds'],
-            [countOf(tree.validationRulesOff), 'field without its rules', 'fields without their rules']
+            [generatedEntries(tree.objectCounts).length, 'count changed', 'counts changed'],
+            [generatedEntries(tree.fixedValues).length, 'fixed value', 'fixed values'],
+            [generatedEntries(tree.constraints).length, 'faker bound', 'faker bounds'],
+            [rulesOffCount, 'field without its rules', 'fields without their rules']
         ].filter(function (difference) { return difference[0] > 0; })
             .map(function (difference) { return describe(difference[0], difference[1], difference[2]); });
 

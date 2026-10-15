@@ -20,7 +20,7 @@ The cockpit opens the newest run, or the one you pick in the run list at the top
 
 ## What the cockpit changes without editing the YAML
 
-These settings change what is generated, but the recipe file stays exactly as Generate Treecipe wrote it, so you can always regenerate it or compare against it:
+These settings change what is generated, but the recipe file stays exactly as Generate Treecipe wrote it, so it always shows what was generated from your metadata:
 
 - **Excluded objects** (the chain link): the object and its children are left out.
 - **Unticked fields**: the field is left out.
@@ -57,4 +57,5 @@ The data set keeps that copy as `filteredRecipe-…` beside `originalRecipe-…`
 ## faker-js and snowfakery
 
 faker-js recipes nest child objects under `friends:`, snowfakery recipes keep every object at the top.
+snowfakery does not apply a validation rule's pattern (`REGEX`), so those fields have no rules box.
 Everything else on this page works the same for both.

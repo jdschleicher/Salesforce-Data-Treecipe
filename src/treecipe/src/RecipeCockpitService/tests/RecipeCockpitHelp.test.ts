@@ -72,7 +72,7 @@ const applyEveryDifference = (tree: IRecipeCockpitTreeViewModel) => {
     tree.objectCounts = [{ objectApiName: 'Account', count: 5 }];
     tree.fixedValues = [{ objectApiName: 'Account', fieldApiName: 'Name', value: 'Acme', kind: 'text' }, { objectApiName: 'Account', fieldApiName: 'Industry', value: 'Energy', kind: 'text' }];
     tree.constraints = [{ objectApiName: 'Account', fieldApiName: 'NumberOfEmployees', min: '1', max: '9', expression: '${{ faker.number.int({ min: 1, max: 9 }) }}' }];
-    tree.validationRulesOff = [{ objectApiName: 'Account', fieldApiName: 'NumberOfEmployees' }];
+    tree.validationRulesOff = [{ objectApiName: 'Account', fieldApiName: 'Rating__c' }];
 };
 
 describe('RecipeCockpitService help section (#332)', () => {
@@ -219,6 +219,34 @@ describe('RecipeCockpitService help section (#332)', () => {
                 `${treeOf(recipe, ACCOUNT_TREE_KEY).title}: 1 object excluded · 3 fields unticked · 1 count changed · 2 fixed values · 1 faker bound · 1 field without its rules`,
                 'Leads only: 1 count changed'
             ]);
+
+        });
+
+        it('leaves out what an excluded object keeps for later, since generation applies none of it', () => {
+
+            const recipe = loadRecipe();
+            const accountTree = treeOf(recipe, ACCOUNT_TREE_KEY);
+            accountTree.objectSelection = { exclusions: [{ objectApiName: 'OtherChildObject__c', kind: 'excluded' }], disabledLookups: [], includedObjectCount: 2, objectCount: 3 };
+            accountTree.fieldSelection = { objects: [
+                { objectApiName: 'OtherChildObject__c', excludedFieldApiNames: ['Score__c', 'Ratio__c'], lockedFields: [] },
+                { objectApiName: 'Account', excludedFieldApiNames: ['Legacy_Code__c'], lockedFields: [] }
+            ] };
+            accountTree.objectCounts = [{ objectApiName: 'OtherChildObject__c', count: 9 }];
+            const panel = drawRecipe(recipe);
+
+            expect(summaryLinesOf(panel)).toEqual([`${accountTree.title}: 1 object excluded · 1 field unticked`]);
+
+        });
+
+        it('counts a faker bound once, though it also switches the field\'s rules off', () => {
+
+            const recipe = loadRecipe();
+            const accountTree = treeOf(recipe, ACCOUNT_TREE_KEY);
+            accountTree.constraints = [{ objectApiName: 'Account', fieldApiName: 'Annual_Budget__c', min: '1', max: '9', expression: '${{ faker.number.int({ min: 1, max: 9 }) }}' }];
+            accountTree.validationRulesOff = [{ objectApiName: 'Account', fieldApiName: 'Annual_Budget__c' }, { objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }];
+            const panel = drawRecipe(recipe);
+
+            expect(summaryLinesOf(panel)).toEqual([`${accountTree.title}: 1 faker bound · 1 field without its rules`]);
 
         });
 

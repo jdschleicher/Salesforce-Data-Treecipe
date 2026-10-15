@@ -13,6 +13,11 @@ The cockpit can show a tree that differs from the `.yml` on disk, and nothing in
 - **Screenshots** come from `developmentSupportScripts/recipe-cockpit-screenshots/captureRecipeCockpitScreenshots.js`, which renders the real shell with a model built from the test fixture workspace in headless Chromium at a fixed viewport. A picture is written only when its bytes change, so a second run on unchanged code leaves git clean. It uses a Playwright already installed outside the project, adds no dependency and never downloads a browser.
 - **`/cockpit-help-sync`** (`.claude/skills/cockpit-help-sync/SKILL.md`) reads the cockpit changes since the guide last changed, updates the help text and the guide together in plain words, re-takes the screenshots and reports what changed and why.
 - **The place.** Whether the section is open is saved as an optional `isHelpExpanded`, so the place version did not change and an older place reads as collapsed.
+- **From review:**
+  - The summary no longer counts an excluded object's unticked fields or stored count, which generation does not apply.
+  - A faker bound on a rule-driven field is counted once, as the bound, not also as a field without its rules.
+  - The backend note now says snowfakery does not apply a validation rule's REGEX pattern.
+  - The help no longer suggests comparing in the cockpit, whose Compare tab was removed in #266.
 - **Tests.** `RecipeCockpitHelp.test.ts` runs the real panel script: the toggle, the four parts, the empty state, the summary for every kind of difference, its redraws, a hostile name, the place both ways, the router and the host opening the url. It also holds the guide to the help: same headings in the same order, a picture under each, every picture in `docs/images/recipe-cockpit/` and at most 200 KB.
 
 ## [3.90.0] - Recipe Cockpit: a validation-rule checkbox at the end of a field row
