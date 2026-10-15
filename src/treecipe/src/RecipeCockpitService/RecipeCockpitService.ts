@@ -316,6 +316,9 @@ export const RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS = 120;
 export const RECIPE_COCKPIT_FAVORITE_TREE_LABEL = '★';
 export const RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL = '☆';
 export const RECIPE_COCKPIT_FAVORITES_ONLY_LABEL = 'Favorites only';
+// THE TREECIPE TAB'S CHECK (#320), AND WHY IT IS DISABLED ON A CARD WITH NO RECORD TYPES TO CHOOSE FROM
+export const RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL = 'Record type fields only';
+export const RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE = 'No object in this tree has more than one record type, so no field depends on one.';
 export const RECIPE_COCKPIT_NO_FAVORITES_MESSAGE = 'No favorite trees in this run. Turn off Favorites only to see all trees.';
 
 export const RECIPE_COCKPIT_INSERT_DATASET_COMMAND = 'treecipe.insertDataSetBySelectedDirectory';
@@ -1031,6 +1034,8 @@ export interface IRecipeCockpitPanelTreePlace {
     isDatasetFavoritesOnly?: true;
     // THE TREECIPE TAB'S RECORD TYPES SECTION (#321); A PLACE SAVED BEFORE IT HAS NONE AND READS AS COLLAPSED
     isRecordTypesExpanded?: true;
+    // THE TREECIPE TAB'S "Record type fields only" CHECK (#320); A PLACE SAVED BEFORE IT HAS NONE AND READS AS OFF
+    isRecordTypeFieldsOnly?: true;
 }
 
 export interface IRecipeCockpitPanelPlace {
@@ -1704,7 +1709,8 @@ export class RecipeCockpitService {
                 openPicklistKeys: this.normalizePlaceNames(candidateTree.openPicklistKeys),
                 ...( candidateTree.isDatasetFavoritesOnly === true ? { isDatasetFavoritesOnly: true as const } : {} ),
                 // A CARD SAVED ON THE RECORD TYPES TAB, BEFORE IT BECAME A SECTION (#321), OPENS WITH THE SECTION EXPANDED
-                ...( candidateTree.isRecordTypesExpanded === true || candidateTree.selectedTab === 'recordTypes' ? { isRecordTypesExpanded: true as const } : {} )
+                ...( candidateTree.isRecordTypesExpanded === true || candidateTree.selectedTab === 'recordTypes' ? { isRecordTypesExpanded: true as const } : {} ),
+                ...( candidateTree.isRecordTypeFieldsOnly === true ? { isRecordTypeFieldsOnly: true as const } : {} )
             }];
 
         });
@@ -10162,6 +10168,17 @@ ${this.buildPaletteCustomProperties()}
         background-color: var(--sdt-chip-bg);
         border-radius: 3px;
     }
+    .recordTypeChip {
+        position: relative;
+        z-index: 2;
+        padding: 0 0.35em;
+        font-size: 0.85em;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border: 1px dashed var(--sdt-chip-text);
+        border-radius: 3px;
+    }
+    .treeRecordTypeFieldsNote { font-size: 0.9em; }
     .validationRuleControl { display: inline-flex; align-items: center; gap: 0.3rem; margin-left: auto; }
     .expressionRow { display: flex; align-items: flex-start; gap: 0.3rem; }
     .expressionRow > pre { flex: 1 1 auto; min-width: 0; }
@@ -10379,6 +10396,8 @@ ${this.buildPaletteCustomProperties()}
     const FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITE_TREE_LABEL)};
     const NOT_FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL)};
     const FAVORITES_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITES_ONLY_LABEL)};
+    const RECORD_TYPE_FIELDS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL)};
+    const NO_RECORD_TYPE_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE)};
     const NO_FAVORITES_MESSAGE = ${JSON.stringify(RECIPE_COCKPIT_NO_FAVORITES_MESSAGE)};
     const HELP_TOGGLE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_TOGGLE_LABEL)};
     const HELP_TOGGLE_ARIA_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_TOGGLE_ARIA_LABEL)};
@@ -11051,6 +11070,54 @@ ${this.buildPaletteCustomProperties()}
         searchElement.appendChild(matchCountElement);
 
         return { element: searchElement, inputElement: inputElement, matchCountElement: matchCountElement };
+
+    }
+
+    /*
+        The fields each object's record types restrict (#320): object api name -> field api name ->
+        the developer names restricting it, in the order the Record types section lists them. Drawn
+        from objects[].recordTypes[].impacts the model already carries, so the host sends nothing new.
+        Keyed by names from files, so no prototype; an impact naming a field the object does not
+        list, one that is not an object, and anything named __proto__ add nothing.
+    */
+    let recordTypeFieldsByObjectApiName = Object.create(null);
+
+    function isRecordLike(candidate) {
+        return !!candidate && typeof candidate === 'object' && !Array.isArray(candidate);
+    }
+
+    function indexRecordTypeFields(objects) {
+
+        const recordTypeFieldsIndex = Object.create(null);
+
+        objects.forEach(function (object) {
+
+            if (!isRecordLike(object) || typeof object.objectApiName !== 'string' || object.objectApiName === '__proto__') { return; }
+            if (!Array.isArray(object.recordTypes) || object.recordTypes.length < 2) { return; }
+
+            const listedFieldApiNames = Object.create(null);
+            (Array.isArray(object.fields) ? object.fields : []).forEach(function (field) {
+                if (isRecordLike(field) && typeof field.fieldApiName === 'string') { listedFieldApiNames[field.fieldApiName] = true; }
+            });
+
+            const developerNamesByFieldApiName = Object.create(null);
+
+            object.recordTypes.forEach(function (recordType) {
+                if (!isRecordLike(recordType) || typeof recordType.developerName !== 'string' || !Array.isArray(recordType.impacts)) { return; }
+                recordType.impacts.forEach(function (impact) {
+                    if (!isRecordLike(impact)) { return; }
+                    const fieldApiName = impact.fieldApiName;
+                    if (typeof fieldApiName !== 'string' || fieldApiName === '__proto__' || listedFieldApiNames[fieldApiName] !== true) { return; }
+                    const developerNames = developerNamesByFieldApiName[fieldApiName] || (developerNamesByFieldApiName[fieldApiName] = []);
+                    if (developerNames.indexOf(recordType.developerName) === -1) { developerNames.push(recordType.developerName); }
+                });
+            });
+
+            recordTypeFieldsIndex[object.objectApiName] = developerNamesByFieldApiName;
+
+        });
+
+        return recordTypeFieldsIndex;
 
     }
 
@@ -11960,6 +12027,7 @@ ${this.buildPaletteCustomProperties()}
             expressionElement: null,
             validationRuleElement: null,
             isValidationRuleApplied: true,
+            recordTypeDeveloperNames: null,
             editorElement: null,
             editorEdit: '',
             editorRefusalElement: null
@@ -12127,6 +12195,14 @@ ${this.buildPaletteCustomProperties()}
 
         if (field.fieldTypeWithSize || field.fieldType) {
             fieldHeaderElement.appendChild(createElement('span', 'fieldType', field.fieldTypeWithSize || field.fieldType));
+        }
+
+        // THE RECORD TYPES THAT RESTRICT THIS FIELD (#320), AS TEXT, WHETHER OR NOT THE CHECK IS ON
+        if (fieldState.recordTypeDeveloperNames) {
+            const recordTypeNamesText = fieldState.recordTypeDeveloperNames.join(', ');
+            const recordTypeChipElement = createElement('span', 'recordTypeChip', recordTypeNamesText);
+            recordTypeChipElement.setAttribute('title', 'Restricted by ' + (fieldState.recordTypeDeveloperNames.length === 1 ? 'record type ' : 'record types ') + recordTypeNamesText);
+            fieldHeaderElement.appendChild(recordTypeChipElement);
         }
 
         const lookupWiring = field.lineNumber ? findLookupWiring(treeObjectState.tree, treeObjectState.object, field.fieldApiName) : null;
@@ -12508,8 +12584,20 @@ ${this.buildPaletteCustomProperties()}
             canSelectFields: !!tree.folderName && !object.hasIndistinctOccurrences,
             bulkButtonElements: [],
             countInputElement: null,
-            countErrorElement: null
+            countErrorElement: null,
+            hasRecordTypes: hasOwnKey(recordTypeFieldsByObjectApiName, object.objectApiName),
+            recordTypeFieldCount: 0
         };
+
+        // AN ITERATION IS THE SAME OBJECT, SO ITS ROWS CARRY THE SAME CHIPS
+        if (treeObjectState.hasRecordTypes) {
+            const developerNamesByFieldApiName = recordTypeFieldsByObjectApiName[object.objectApiName];
+            treeObjectState.fieldStates.forEach(function (fieldState) {
+                if (!hasOwnKey(developerNamesByFieldApiName, fieldState.field.fieldApiName)) { return; }
+                fieldState.recordTypeDeveloperNames = developerNamesByFieldApiName[fieldState.field.fieldApiName];
+                treeObjectState.recordTypeFieldCount++;
+            });
+        }
 
         toggleElement.setAttribute('aria-expanded', 'false');
         toggleElement.setAttribute('aria-label', 'Show or hide the fields of ' + object.objectApiName);
@@ -12581,6 +12669,7 @@ ${this.buildPaletteCustomProperties()}
         structureElement.appendChild(buildTreecipeHeader(treeState));
 
         treeState.structureSearch = buildTabSearch(treeState, 'treecipe', 'Search objects, fields and faker expressions', applyStructureFilter);
+        appendRecordTypeFieldsToggle(treeState, treeState.structureSearch.element);
         structureElement.appendChild(treeState.structureSearch.element);
 
         if (listRecordTypeObjects(treeState).length > 0) {
@@ -12833,6 +12922,63 @@ ${this.buildPaletteCustomProperties()}
         rowState.renameElement.setAttribute('title', 'Rename this data set');
 
         rowState.searchText = (dataset.datasetFolderName + '\\n' + (dataset.customName || '')).toLowerCase();
+
+    }
+
+    /*
+        "Record type fields only" (#320): the Treecipe tab's own check, per card and panel-only, kept
+        in the reader's place. A card whose objects have no record types to choose from draws it
+        disabled with a note saying why, so turning it on can never empty the tab silently.
+    */
+    // A CARD'S OBJECTS ARE FIXED FOR ITS MODEL, SO THE ANSWER IS KEPT ON THE CARD
+    function hasRecordTypeObjects(treeState) {
+        if (typeof treeState.hasRecordTypeObjects !== 'boolean') {
+            treeState.hasRecordTypeObjects = treeState.objectStates.some(function (treeObjectState) { return treeObjectState.hasRecordTypes; });
+        }
+        return treeState.hasRecordTypeObjects;
+    }
+
+    function isRecordTypeFieldsOnlyIn(treeState) {
+        return treeState.isRecordTypeFieldsOnly === true && hasRecordTypeObjects(treeState);
+    }
+
+    function appendRecordTypeFieldsToggle(treeState, searchElement) {
+
+        const toggleElement = createElement('button', 'historyAction treeRecordTypeFieldsToggle');
+        toggleElement.setAttribute('role', 'checkbox');
+        toggleElement.setAttribute('aria-label', RECORD_TYPE_FIELDS_ONLY_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
+
+        if (hasRecordTypeObjects(treeState)) {
+            toggleElement.setAttribute('title', 'Show only the picklist fields a record type restricts');
+            toggleElement.addEventListener('click', function () {
+                treeState.isRecordTypeFieldsOnly = !treeState.isRecordTypeFieldsOnly;
+                applyStructureFilter(treeState);
+                savePanelPlace();
+            });
+        } else {
+            toggleElement.disabled = true;
+            toggleElement.setAttribute('title', NO_RECORD_TYPE_FIELDS_NOTE);
+        }
+
+        treeState.recordTypeFieldsToggleElement = toggleElement;
+        searchElement.appendChild(toggleElement);
+
+        if (!hasRecordTypeObjects(treeState)) {
+            searchElement.appendChild(createElement('span', 'treeRecordTypeFieldsNote muted', NO_RECORD_TYPE_FIELDS_NOTE));
+        }
+
+        drawRecordTypeFieldsToggle(treeState);
+
+    }
+
+    function drawRecordTypeFieldsToggle(treeState) {
+
+        const toggleElement = treeState.recordTypeFieldsToggleElement;
+        if (!toggleElement) { return; }
+
+        const isChecked = isRecordTypeFieldsOnlyIn(treeState);
+        toggleElement.textContent = (isChecked ? '☑ ' : '☐ ') + RECORD_TYPE_FIELDS_ONLY_LABEL;
+        toggleElement.setAttribute('aria-checked', isChecked ? 'true' : 'false');
 
     }
 
@@ -13465,6 +13611,8 @@ ${this.buildPaletteCustomProperties()}
             searchTexts: { treecipe: '', datasets: '' },
             isDatasetFavoritesOnly: false,
             datasetFavoritesToggleElement: null,
+            isRecordTypeFieldsOnly: false,
+            recordTypeFieldsToggleElement: null,
             // THE TOP OF THE TREECIPE TAB (#255), MADE WITH THE TAB
             resetSelectionElement: null,
             insert: null
@@ -13757,6 +13905,7 @@ ${this.buildPaletteCustomProperties()}
         // KEYED BY NAMES FROM THE WRAPPER ON DISK -- "__proto__" MUST BE A KEY, NOT A NEW PROTOTYPE
         const objectsByApiName = Object.create(null);
         recipe.objects.forEach(function (object) { objectsByApiName[object.objectApiName] = object; });
+        recordTypeFieldsByObjectApiName = indexRecordTypeFields(recipe.objects);
 
         const trees = recipe.trees || [];
 
@@ -13824,8 +13973,13 @@ ${this.buildPaletteCustomProperties()}
         if (!treeState.structureSearch) { return; }
 
         const searchQuery = treeState.searchQueries.treecipe;
+        // "Record type fields only" (#320) NARROWS WHAT THE SEARCH MATCHES: A FIELD SHOWS ONLY IF IT PASSES BOTH
+        const isRecordTypeFieldsOnly = isRecordTypeFieldsOnlyIn(treeState);
+        const isFiltered = !!searchQuery || isRecordTypeFieldsOnly;
         let totalFieldCount = 0;
         let matchingFieldCount = 0;
+
+        drawRecordTypeFieldsToggle(treeState);
 
         treeState.objectStates.forEach(function (treeObjectState) {
 
@@ -13833,7 +13987,8 @@ ${this.buildPaletteCustomProperties()}
             let objectMatchingFieldCount = 0;
 
             treeObjectState.fieldStates.forEach(function (fieldState) {
-                fieldState.isMatch = isObjectNameMatch || isFieldTextMatch(fieldState, searchQuery);
+                fieldState.isMatch = (!isRecordTypeFieldsOnly || fieldState.recordTypeDeveloperNames !== null)
+                    && (isObjectNameMatch || isFieldTextMatch(fieldState, searchQuery));
                 if (fieldState.isMatch) { objectMatchingFieldCount++; }
                 applyTreeFieldVisibility(fieldState);
             });
@@ -13843,23 +13998,25 @@ ${this.buildPaletteCustomProperties()}
             totalFieldCount += objectFieldCount;
             matchingFieldCount += objectMatchingFieldCount;
 
-            if (isObjectNameMatch) {
+            if (!isFiltered || (isObjectNameMatch && !isRecordTypeFieldsOnly)) {
                 treeObjectState.countElement.textContent = pluralize(objectFieldCount, 'field', 'fields');
             } else if (objectMatchingFieldCount > 0) {
                 treeObjectState.countElement.textContent = objectMatchingFieldCount + ' of ' + pluralize(objectFieldCount, 'field', 'fields');
+            } else if (isRecordTypeFieldsOnly && treeObjectState.recordTypeFieldCount === 0) {
+                treeObjectState.countElement.textContent = 'no record type fields';
             } else {
                 treeObjectState.countElement.textContent = 'no matching fields';
             }
 
         });
 
-        treeState.structureSearch.matchCountElement.textContent = !searchQuery
+        treeState.structureSearch.matchCountElement.textContent = !isFiltered
             ? pluralize(totalFieldCount, 'field', 'fields')
             : matchingFieldCount > 0 ? matchingFieldCount + ' of ' + pluralize(totalFieldCount, 'field', 'fields') : 'no matches';
 
         applyRecordTypesFilter(treeState);
 
-        if (!searchQuery) {
+        if (!isFiltered) {
             treeState.objectStates.forEach(function (treeObjectState) { setTreeObjectExpanded(treeObjectState, treeObjectState.isExpandedByReader); });
             return;
         }
@@ -14200,7 +14357,7 @@ ${this.buildPaletteCustomProperties()}
         const selectedTab = treeState.selectedTab || 'treecipe';
 
         if (!treeState.isExpandedByReader && selectedTab === 'treecipe' && !hasSearch && !treeState.isDatasetFavoritesOnly && !treeState.isRecordTypesExpanded
-                && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0) {
+                && !isRecordTypeFieldsOnlyIn(treeState) && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0) {
             return null;
         }
 
@@ -14215,6 +14372,7 @@ ${this.buildPaletteCustomProperties()}
 
         if (treeState.isDatasetFavoritesOnly) { treePlace.isDatasetFavoritesOnly = true; }
         if (treeState.isRecordTypesExpanded) { treePlace.isRecordTypesExpanded = true; }
+        if (isRecordTypeFieldsOnlyIn(treeState)) { treePlace.isRecordTypeFieldsOnly = true; }
 
         return treePlace;
 
@@ -14414,6 +14572,9 @@ ${this.buildPaletteCustomProperties()}
             treeState.isDatasetFavoritesOnly = savedTree.isDatasetFavoritesOnly === true;
             if (treeState.datasetRowStates) { applyDatasetsFilter(treeState); }
 
+            // APPLIED BY THE applyStructureFilter BELOW, OR BY THE TREECIPE TAB WHEN IT IS BUILT
+            treeState.isRecordTypeFieldsOnly = savedTree.isRecordTypeFieldsOnly === true;
+
             const hasOpenPicklists = hasAnyString(openPicklistKeys);
 
             treeState.objectStates.forEach(function (treeObjectState) {
@@ -14515,6 +14676,7 @@ ${this.buildPaletteCustomProperties()}
         pendingPicklistValueElements = Object.create(null);
         recordTypeChoices = Object.create(null);
         recordTypeObjects = [];
+        recordTypeFieldsByObjectApiName = Object.create(null);
         recordTypeRowStates = [];
         recordTypeButtonElements = [];
         isRecordTypeRegenerating = false;
