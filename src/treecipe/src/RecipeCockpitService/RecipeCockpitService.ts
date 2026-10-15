@@ -352,6 +352,8 @@ export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL = 'Remember this selecti
 export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE = 'Save the choice in treecipe/treecipe.config.json, so Generate Treecipe reuses it. With Use defaults, forgets a saved choice.';
 export const RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE = 'The record type selection could not be saved in treecipe.config.json, so it was used for this run only.';
 export const RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE = 'Record types';
+// WHAT A CARD WITH NOTHING TO CHOOSE SAYS IN ITS DISABLED RECORD TYPES HEADER (#338); ONE RECORD TYPE IS NO CHOICE, SO IT READS THE SAME AS NONE
+export const RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY = 'No objects in this tree have two or more record types in local metadata';
 // WHAT THE SECTION SAYS ABOVE ITS ROWS: A REGENERATE IS A GENERATE TREECIPE, WHICH WRITES A NEW RUN OF EVERY TREE
 export const RECIPE_COCKPIT_RECORD_TYPES_INTRO = 'Choose the record types Generate Treecipe writes for each object: one recipe block per ticked record type, each with its own RecordTypeId and picklist values. Regenerating writes a new run of every tree; the run on screen is kept.';
 
@@ -10099,6 +10101,10 @@ ${this.buildPaletteCustomProperties()}
     .recordTypesSection { margin: 0.25rem 0.6rem 0.5rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
     .recordTypesSectionHeader { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.25rem 0.5rem; cursor: pointer; }
     .recordTypesSectionTitle { font-weight: 600; }
+    .recordTypesSection.disabled .recordTypesSectionHeader { cursor: default; }
+    .recordTypesSection.disabled .recordTypesSectionTitle { color: var(--sdt-muted); }
+    .recordTypesSection.disabled .recordTypesSectionToggle { cursor: default; }
+    .recordTypesSection.disabled .toggleGlyph path { stroke: var(--sdt-muted); }
     .recordTypesSectionBody { padding: 0 0.75rem 0.75rem; border-top: 1px solid var(--sdt-border); }
     .recordTypesIntro { margin: 0.5rem 0; }
     .recordTypeObject { margin: 0.6rem 0; }
@@ -10394,6 +10400,7 @@ ${this.buildPaletteCustomProperties()}
     const REMEMBER_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL)};
     const REMEMBER_RECORD_TYPES_TITLE = ${JSON.stringify(RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE)};
     const RECORD_TYPES_INTRO = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_INTRO)};
+    const RECORD_TYPES_UNAVAILABLE_SUMMARY = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY)};
     const RENAME_TREE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL)};
     const FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITE_TREE_LABEL)};
     const NOT_FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL)};
@@ -12676,9 +12683,9 @@ ${this.buildPaletteCustomProperties()}
         appendRecordTypeFieldsToggle(treeState, treeState.structureSearch.element);
         structureElement.appendChild(treeState.structureSearch.element);
 
-        if (listRecordTypeObjects(treeState).length > 0) {
-            structureElement.appendChild(buildRecordTypesSection(treeState));
-        }
+        structureElement.appendChild(listRecordTypeObjects(treeState).length > 0
+            ? buildRecordTypesSection(treeState)
+            : buildUnavailableRecordTypesSection(treeState));
 
         treeState.objectStates.forEach(function (treeObjectState) {
             structureElement.appendChild(treeObjectState.element);
@@ -13094,6 +13101,40 @@ ${this.buildPaletteCustomProperties()}
 
         treeState.recordTypesSection = { toggleElement: toggleElement, bodyElement: bodyElement, summaryElement: summaryElement, isBuilt: false };
         drawRecordTypesSummary(treeState);
+
+        return sectionElement;
+
+    }
+
+    /*
+        A card with no object offering two or more record types still draws the header (#338), so
+        the reader learns the section exists and why this tree has nothing in it. It has no body and
+        no listener, and treeState.recordTypesSection stays unset, so a click, a search, a restored
+        place and a focus all stop at the guards every other path already has.
+    */
+    function buildUnavailableRecordTypesSection(treeState) {
+
+        const sectionElement = createElement('div', 'recordTypesSection disabled');
+        const headerElement = createElement('div', 'recordTypesSectionHeader');
+        const toggleElement = buildToggleElement('treeObjectToggle recordTypesSectionToggle');
+
+        toggleElement.disabled = true;
+        toggleElement.setAttribute('aria-label', RECORD_TYPES_SECTION_TITLE + ' (' + displayTitleOf(treeState.tree) + ')');
+        toggleElement.classList.add('noMotion');
+        const summaryElement = createElement('span', 'recordTypesSectionSummary muted', RECORD_TYPES_UNAVAILABLE_SUMMARY);
+
+        recordTypesSectionCount++;
+        summaryElement.setAttribute('id', 'recordTypesSectionSummary' + recordTypesSectionCount);
+        toggleElement.setAttribute('aria-describedby', 'recordTypesSectionSummary' + recordTypesSectionCount);
+        // A GROUP, SO aria-disabled IS READ FROM THE SECTION RATHER THAN IGNORED ON A ROLELESS div
+        sectionElement.setAttribute('role', 'group');
+        sectionElement.setAttribute('aria-label', RECORD_TYPES_SECTION_TITLE);
+        sectionElement.setAttribute('aria-disabled', 'true');
+        headerElement.setAttribute('aria-disabled', 'true');
+        headerElement.appendChild(toggleElement);
+        headerElement.appendChild(createElement('span', 'recordTypesSectionTitle', RECORD_TYPES_SECTION_TITLE));
+        headerElement.appendChild(summaryElement);
+        sectionElement.appendChild(headerElement);
 
         return sectionElement;
 

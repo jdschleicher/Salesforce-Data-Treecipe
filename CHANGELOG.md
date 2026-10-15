@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.94.0] - Recipe Cockpit: edit a field's fixed value and faker bounds inline
+## [3.95.0] - Recipe Cockpit: edit a field's fixed value and faker bounds inline
 
 Closes [#337](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/337), under [#322](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/322).
 
@@ -13,6 +13,17 @@ A field's 📌 (fixed value, #262) and ✎ (faker bounds, #323) used to open VS 
 - **Colours.** The editor uses only `--sdt-*` text/background pairs that are already in the contrast test.
 - **From review.** Enter no longer saves while an IME is composing text, and a fixed-value save routed for a panel that has since closed writes nothing, as a bounds save already did.
 - **Tests.** The fixed-value, constraint and validation-rule suites now drive the editor through the real panel script: open, close, Save, Enter, Clear, Escape, pre-fill, one editor per row, refusals written as text, closing on a lock, and results for another model or another editor being ignored. They cover the router's new payload checks (missing, non-string and oversized values or bounds) and the extension's answers (saved, refused, not saved, and nothing for a forged or locked field), and they check that no input box opens. The panel harness's `dispatch` now takes event fields such as a `keydown` key.
+
+## [3.94.0] - Recipe Cockpit: the Record types section is on every card, disabled when there is nothing to choose
+
+Closes [#338](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/338).
+
+A tree card drew the Record types section only when it listed an object with two or more record types, so on any other tree a reader could not tell the choice existed, or why this tree did not offer it.
+
+- **Every card's Treecipe tab draws the header**, in the same place: under the Treecipe search box, above the first object.
+- **Disabled when there is nothing to choose.** A card with no object offering two or more record types (none, or only one each, which is no choice) draws the header as a `group` with `aria-disabled="true"`, its ▸ a disabled button with no `aria-expanded` and described by the summary, the title and ▸ in the muted palette colour, and the summary `No objects in this tree have two or more record types in local metadata` (`RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY`), written with `textContent`. It has no body and no listener: a click, the Treecipe search, a restored place saved expanded (or on the old Record types tab) and a focus asking for the section all leave it closed.
+- **Unchanged:** a card that lists such an object draws the section exactly as before, and the model, the host and generation are untouched.
+- **Tests.** `RecipeCockpitRecordTypes.test.ts` runs the real panel script over a card with no record types, a run whose objects have one record type each, clicks on the header, title and ▸, a search, a restore both ways and a focus.
 
 ## [3.93.0] - Recipe Cockpit: "Record type fields only" and a chip naming the restricting record types
 
