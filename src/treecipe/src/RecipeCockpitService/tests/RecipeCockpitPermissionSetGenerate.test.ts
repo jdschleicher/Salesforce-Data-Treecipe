@@ -785,9 +785,11 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             expect(generateButton.disabled).toBe(false);
             expect(generateButtonOf(panel, 'Lead')).toBeDefined();
             const controlChildren = panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'treePermissionSetControls')[0].children;
-            expect(controlChildren).toHaveLength(2);
+            // THE ASSIGN BUTTON, THIS ONE, THEN "Retrieve validation rules…" (#326)
+            expect(controlChildren).toHaveLength(3);
             expect(controlChildren[0] === panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'treePermissionSets')[0]).toBe(true);
             expect(controlChildren[1] === generateButton).toBe(true);
+            expect(controlChildren[2].className).toBe('treeRetrieveValidationRules');
 
             generateButton.dispatch('click');
 

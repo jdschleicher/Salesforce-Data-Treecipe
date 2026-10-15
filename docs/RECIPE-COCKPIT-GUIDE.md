@@ -39,7 +39,7 @@ These buttons rewrite the recipe file itself, because the change belongs in the 
 - **Add &lt;parent&gt; to recipe**: adds a standard parent object, such as Account, above the child that needs it.
 - **+** beside an object that looks up to itself: adds a child record under it.
 
-Two more write other files: **Remember this selection** saves record types to `treecipe.config.json`, and **Generate permission set** writes a permission set into your project.
+Three more write other files: **Remember this selection** saves record types to `treecipe.config.json`, **Generate permission set** writes a permission set into your project, and **Retrieve validation rules** writes an org's validation rules into your project.
 
 ![A card's Treecipe tab with Wire TODO lookups at the top and Wire to… on Contact's AccountId lookup](images/recipe-cockpit/what-edits-the-yaml.png)
 
