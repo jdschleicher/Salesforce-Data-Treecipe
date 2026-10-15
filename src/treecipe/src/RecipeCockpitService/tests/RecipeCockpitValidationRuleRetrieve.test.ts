@@ -61,6 +61,7 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { ORG_OPERATIONS_FOLDER_NAME } from '../../ScratchOrgService/ScratchOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const PERMISSION_SET_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'permissionSetWorkspace');
@@ -699,6 +700,22 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             await flushAsyncWork();
 
             expect(openSpy).toHaveBeenCalledWith(expect.stringMatching(/-validation-rule-retrieve\.json$/), workspaceRoot, expect.any(String));
+
+        });
+
+        it('reports a follow-up that throws through the shared error handler, after the run has ended', async () => {
+
+            const handlerSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined as any);
+            jest.spyOn(VSCodeWorkspaceService, 'openWorkspaceResultFile').mockRejectedValue(new Error('editor gone'));
+            notificationAnswer = RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL;
+            retrieveHandler = () => ({ stdout: '{"status":1,"name":"NoOrgFound","message":"No authorization"}', error: Object.assign(new Error('exit 1'), { code: 1 }) });
+            await openCockpit();
+
+            await retrieve();
+            await flushAsyncWork();
+
+            expect(handlerSpy).toHaveBeenCalledWith(expect.objectContaining({ message: 'editor gone' }), 'openRecipeCockpit');
+            expect(postedNamed('validationRuleRetrieveState').at(-1)).toEqual({ command: 'validationRuleRetrieveState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
 
         });
 
