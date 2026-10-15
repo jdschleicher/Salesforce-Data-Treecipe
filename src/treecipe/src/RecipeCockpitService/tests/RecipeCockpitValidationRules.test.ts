@@ -34,6 +34,7 @@ import {
     RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON,
     RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL,
     RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL,
+    RECIPE_COCKPIT_FIELD_EDIT_RULES_KEPT_REFUSAL,
     RECIPE_COCKPIT_VALIDATION_RULE_TICK_PROMPT
 } from '../RecipeCockpitService';
 import { RecipeCockpitRecipeWriter, RecipeFilterResult, IRecipeUnconstrainedValue } from '../RecipeCockpitRecipeWriter';
@@ -686,7 +687,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
 
         const storedOf = (workspaceState: ReturnType<typeof buildWorkspaceState>) => workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY);
         const setAmountApplied = (applied: boolean) => receivedMessageHandler({ command: 'setFieldValidationRuleApplied', treeKey: GADGET_TREE_KEY, objectApiName: 'Gadget__c', fieldApiName: 'Amount__c', applied: applied });
-        const editAmount = () => receivedMessageHandler({ command: 'editFieldConstraints', treeKey: GADGET_TREE_KEY, objectApiName: 'Gadget__c', fieldApiName: 'Amount__c' });
+        const editAmount = (min = '10', max = '20') => receivedMessageHandler({ command: 'editFieldConstraints', treeKey: GADGET_TREE_KEY, objectApiName: 'Gadget__c', fieldApiName: 'Amount__c', min: min, max: max });
 
         beforeEach(() => {
             postedPanelMessages = [];
@@ -766,7 +767,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
 
         });
 
-        it('asks before ✎ edits a ticked field: Cancel opens no box, Replace stores the bounds and unticks the box; an unticked field is not asked', async () => {
+        it('asks before ✎ saves bounds on a ticked field: Cancel writes nothing and says why under the editor, Replace stores the bounds and unticks the box; an unticked field is not asked (#337)', async () => {
 
             const workspaceState = buildWorkspaceState();
             await openAndDraw(workspaceState);
@@ -779,11 +780,16 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
                 { modal: true, detail: 'Gadget__c.Amount__c: The field generates with the bounds you set instead of the ones its validation rules imply, and its validation rule box is unticked. The recipe file is not changed.' },
                 RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL
             );
-            expect(showInputBox).not.toHaveBeenCalled();
+            expect(lastPosted('fieldEditResult')).toMatchObject({ edit: 'constraint', fieldApiName: 'Amount__c', refusal: RECIPE_COCKPIT_FIELD_EDIT_RULES_KEPT_REFUSAL });
             expect(storedOf(workspaceState)).toBeUndefined();
 
+            // BOUNDS THE FIELD CANNOT TAKE ARE REFUSED BEFORE THE MODAL
+            showWarningMessage.mockClear();
+            await editAmount('20', '10');
+            expect(showWarningMessage).not.toHaveBeenCalled();
+            expect(lastPosted('fieldEditResult').refusal).toBe('The minimum 20 is greater than the maximum 10.');
+
             showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL);
-            showInputBox.mockResolvedValueOnce('10').mockResolvedValueOnce('20');
             await editAmount();
 
             expect(storedOf(workspaceState)).toEqual(storedSelections({
@@ -791,13 +797,14 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
                 validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c'] } }
             }));
             expect(lastPosted('objectSelection').validationRulesOff).toEqual([{ objectApiName: 'Gadget__c', fieldApiName: 'Amount__c' }]);
+            expect(lastPosted('fieldEditResult')).not.toHaveProperty('refusal');
 
             showWarningMessage.mockClear();
-            showInputBox.mockResolvedValueOnce('').mockResolvedValueOnce('');
-            await editAmount();
+            await editAmount('', '');
 
             expect(showWarningMessage).not.toHaveBeenCalled();
             expect(storedOf(workspaceState)).toEqual(storedSelections({ validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c'] } } }));
+            expect(showInputBox).not.toHaveBeenCalled();
 
         });
 
@@ -823,31 +830,30 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
 
         });
 
-        it('leaves the box ticked when ✎\'s Replace is confirmed and both bounds are left empty', async () => {
+        it('asks nothing and leaves the box ticked when ✎ saves both bounds empty on a ticked field', async () => {
 
             const workspaceState = buildWorkspaceState();
             await openAndDraw(workspaceState);
 
-            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL);
-            showInputBox.mockResolvedValueOnce('').mockResolvedValueOnce('');
-            await editAmount();
+            await editAmount('', '');
 
-            expect(showWarningMessage).toHaveBeenCalledTimes(1);
+            expect(showWarningMessage).not.toHaveBeenCalled();
             expect(storedOf(workspaceState)).toEqual(storedSelections({}));
             expect(lastPosted('objectSelection')).not.toHaveProperty('validationRulesOff');
 
         });
 
-        it('opens no bound box when the panel closes while ✎\'s modal is open', async () => {
+        it('writes nothing and answers nothing when the panel closes while ✎\'s modal is open', async () => {
 
             const workspaceState = buildWorkspaceState();
             await openAndDraw(workspaceState);
             showWarningMessage.mockImplementationOnce(async () => { disposeHandler?.(); return RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL; });
+            postedPanelMessages = [];
 
             await editAmount();
 
-            expect(showInputBox).not.toHaveBeenCalled();
             expect(storedOf(workspaceState)).toBeUndefined();
+            expect(lastPosted('fieldEditResult')).toBeUndefined();
 
         });
 

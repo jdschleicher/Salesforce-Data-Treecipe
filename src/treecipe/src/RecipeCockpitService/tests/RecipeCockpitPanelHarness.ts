@@ -84,9 +84,10 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
                 (listenersByEventType[eventType] = listenersByEventType[eventType] || []).push(listener);
             },
             listenersByEventType: listenersByEventType,
-            dispatch(eventType: string) {
+            // eventInit CARRIES WHAT A REAL EVENT WOULD, SUCH AS THE key OF A keydown
+            dispatch(eventType: string, eventInit: Record<string, unknown> = {}) {
                 let isPropagationStopped = false;
-                const event = { type: eventType, target: this, stopPropagation: () => { isPropagationStopped = true; } };
+                const event = { ...eventInit, type: eventType, target: this, stopPropagation: () => { isPropagationStopped = true; } };
                 for (let currentElement: any = this; currentElement && !isPropagationStopped; currentElement = currentElement.parentNode) {
                     if ( currentElement.disabled ) { continue; }
                     (currentElement.listenersByEventType[eventType] || []).forEach((listener: Function) => listener(event));

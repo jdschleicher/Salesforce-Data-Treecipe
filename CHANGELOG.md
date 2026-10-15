@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.93.0] - Recipe Cockpit: edit a field's fixed value and faker bounds inline
+
+Closes [#337](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/337), under [#322](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/322).
+
+A field's 📌 (fixed value, #262) and ✎ (faker bounds, #323) used to open VS Code input boxes at the top of the window, two in a row for the bounds. Both now open a small editor right under the field's row.
+
+- **The editor.** 📌 shows one box and ✎ shows two (Minimum/Maximum, Minimum length/Maximum length, or Earliest/Latest, depending on the field's type). Each box is pre-filled with what the card generates with now, and a hint says what to type. Save (or Enter) saves; Clear goes back to the faker expression; Cancel (or Escape, or clicking the same button again) closes the editor without saving. A row has one editor at a time: clicking the other button switches it. The button that opened it shows `aria-expanded`, and an editor closes if a redraw locks its field.
+- **Refusals show in place.** A value or bound the field cannot hold, min > max, or a template opener is answered under the boxes, and the editor stays open. Nothing is stored and no notification pops up. A save the workspace storage refused says so the same way.
+- **The extension still decides.** The panel now sends the typed value or bounds, which is a change from #262/#323, decided in #337. The router accepts only a string within length limits (`RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH`, `RECIPE_FIELD_CONSTRAINT_MAX_BOUND_LENGTH`) for a field in `selectableFieldKeys` that no lock holds back. The extension then checks the value against the model on screen at the moment of the write, with the same `validateFixedValueInput` and `RecipeFieldConstraint.resolve` the input boxes used, and answers with a new `fieldEditResult` message. The panel writes a refusal with `textContent`. The recipe file is never written.
+- **Validation rules (#325).** Saving bounds on a field whose rules are ticked still asks the host's Replace question first, but only for bounds that pass the checks. Cancel there keeps the rules and says so under the editor. Saving both bounds empty asks nothing and keeps the rules.
+- **Colours.** The editor uses only `--sdt-*` text/background pairs that are already in the contrast test.
+- **Tests.** The fixed-value, constraint and validation-rule suites now drive the editor through the real panel script: open, close, Save, Enter, Clear, Escape, pre-fill, one editor per row, refusals written as text, closing on a lock, and results for another model or another editor being ignored. They cover the router's new payload checks (missing, non-string and oversized values or bounds) and the extension's answers (saved, refused, not saved, and nothing for a forged or locked field), and they check that no input box opens. The panel harness's `dispatch` now takes event fields such as a `keydown` key.
+
 ## [3.92.0] - Recipe Cockpit: a ? help section and an illustrated guide
 
 Closes [#332](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/332), under [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59).
