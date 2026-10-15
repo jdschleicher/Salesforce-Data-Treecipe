@@ -2560,19 +2560,25 @@ export class RecipeCockpitService {
                                         tree: IRecipeCockpitTreeViewModel,
                                         storedRulesOffByObject: ReadonlyMap<string, ReadonlySet<string>> | undefined): IRecipeCockpitFieldReferenceViewModel[] {
 
-        const isConstrained = (objectApiName: string, fieldApiName: string) => ( tree.constraints ?? [] )
-            .some(constraint => constraint.objectApiName === objectApiName && constraint.fieldApiName === fieldApiName);
+        const constrainedFieldKeys = new Set(( tree.constraints ?? [] ).map(constraint => `${constraint.objectApiName}\n${constraint.fieldApiName}`));
+
+        if ( ( !storedRulesOffByObject || storedRulesOffByObject.size === 0 ) && constrainedFieldKeys.size === 0 ) {
+            return [];
+        }
 
         return this.collectSelectableObjectApiNames(objectsByApiName, tree).flatMap(objectApiName => {
 
             const objectViewModel = objectsByApiName.get(objectApiName) as IRecipeCockpitObjectViewModel;
             const storedFieldApiNames = storedRulesOffByObject?.get(objectApiName);
+            const listedFieldApiNames = new Set<string>();
 
+            // THE CHEAP "IS IT SWITCHED OFF" TEST FIRST, SO A CARD WITH NOTHING OFF NEVER SCANS ITS FIELDS FOR DUPLICATES
             return objectViewModel.fields
-                .filter((fieldViewModel, fieldIndex) => this.hasSwitchableValidationRules(fieldViewModel)
-                                                        && objectViewModel.fields.findIndex(candidate => candidate.fieldApiName === fieldViewModel.fieldApiName) === fieldIndex
-                                                        && ( !!storedFieldApiNames?.has(fieldViewModel.fieldApiName) || isConstrained(objectApiName, fieldViewModel.fieldApiName) )
-                                                        && this.findValidationRuleLockReason(tree, objectViewModel, fieldViewModel) === undefined)
+                .filter(fieldViewModel => ( !!storedFieldApiNames?.has(fieldViewModel.fieldApiName) || constrainedFieldKeys.has(`${objectApiName}\n${fieldViewModel.fieldApiName}`) )
+                                            && this.hasSwitchableValidationRules(fieldViewModel)
+                                            && !listedFieldApiNames.has(fieldViewModel.fieldApiName)
+                                            && this.findValidationRuleLockReason(tree, objectViewModel, fieldViewModel) === undefined
+                                            && !!listedFieldApiNames.add(fieldViewModel.fieldApiName))
                 .map(fieldViewModel => ({ objectApiName: objectApiName, fieldApiName: fieldViewModel.fieldApiName }));
 
         });
@@ -3227,7 +3233,8 @@ export class RecipeCockpitService {
         constraintsByObject.set(panelAction.objectApiName, constraintsByField);
         treeSelections.constraintsByFolderName.set(panelAction.folderName, constraintsByObject);
 
-        if ( isReplacingValidationRules ) {
+        // AN EMPTY EDIT IS NO EDIT: THE RULES' OWN BOUNDS STAY, AND SO DOES THE TICK
+        if ( isReplacingValidationRules && typedConstraint !== undefined ) {
             this.setStoredValidationRuleOff(treeSelections, panelAction.folderName, panelAction.objectApiName, panelAction.fieldApiName, true);
         }
 

@@ -542,6 +542,16 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
 
         });
 
+        it('lists a field once even when a hand-edited wrapper repeats it', () => {
+
+            const recipe = loadRecipe();
+            objectOf(recipe, 'Gadget__c').fields.push({ ...fieldOf(recipe, 'Gadget__c', 'Amount__c') });
+            applySelections(recipe, { validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c'] } } });
+
+            expect(treeOf(recipe).validationRulesOff).toEqual([{ objectApiName: 'Gadget__c', fieldApiName: 'Amount__c' }]);
+
+        });
+
         it('has nothing to swap for a field its rules did not change', () => {
 
             const recipe = loadRecipe();
@@ -810,6 +820,21 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
             });
             await setAmountApplied(true);
             expect(storedOf(lockingWorkspaceState)).toEqual({ ...constrained, excludedObjectApiNamesByFolderName: { [GADGET_TREE_KEY]: ['Gadget__c'] } });
+
+        });
+
+        it('leaves the box ticked when ✎\'s Replace is confirmed and both bounds are left empty', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            await openAndDraw(workspaceState);
+
+            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL);
+            showInputBox.mockResolvedValueOnce('').mockResolvedValueOnce('');
+            await editAmount();
+
+            expect(showWarningMessage).toHaveBeenCalledTimes(1);
+            expect(storedOf(workspaceState)).toEqual(storedSelections({}));
+            expect(lastPosted('objectSelection')).not.toHaveProperty('validationRulesOff');
 
         });
 
