@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.93.0] - Recipe Cockpit: retrieve a tree's validation rules from an org
+## [3.96.0] - Recipe Cockpit: retrieve a tree's validation rules from an org
 
 Closes [#326](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/326), under [#322](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/322).
 
@@ -15,6 +15,64 @@ Closes [#326](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/32
 - **Nothing is deployed.** A test fails if the retrieve path builds a deploy argv, and the module does not spell a deploy subcommand.
 - **The opt-in warning and the ? help** now say what the retrieve reads and writes, and `docs/RECIPE-COCKPIT-GUIDE.md` follows the help.
 - **Tests.** `RecipeCockpitValidationRuleRetrieve.test.ts` covers the argv and its refusals, the local file count (links and outside paths), every shape of `--json`, the router, the host against a faked org prompt and CLI (prompt every time, cancel, failure, partial failure, cancel mid-run, one per window, Generate Treecipe, View output), and the panel script's button.
+
+## [3.95.0] - Recipe Cockpit: edit a field's fixed value and faker bounds inline
+
+Closes [#337](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/337), under [#322](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/322).
+
+A field's 📌 (fixed value, #262) and ✎ (faker bounds, #323) used to open VS Code input boxes at the top of the window, two in a row for the bounds. Both now open a small editor right under the field's row.
+
+- **The editor.** 📌 shows one box and ✎ shows two (Minimum/Maximum, Minimum length/Maximum length, or Earliest/Latest, depending on the field's type). Each box is pre-filled with what the card generates with now, and a hint says what to type. Save (or Enter) saves; Clear goes back to the faker expression; Cancel (or Escape, or clicking the same button again) closes the editor without saving. A row has one editor at a time: clicking the other button switches it. The button that opened it shows `aria-expanded`, and an editor closes if a redraw locks its field.
+- **Refusals show in place.** A value or bound the field cannot hold, min > max, or a template opener is answered under the boxes, and the editor stays open. Nothing is stored and no notification pops up. A save the workspace storage refused says so the same way.
+- **The extension still decides.** The panel now sends the typed value or bounds, which is a change from #262/#323, decided in #337. The router accepts only a string within length limits (`RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH`, `RECIPE_FIELD_CONSTRAINT_MAX_BOUND_LENGTH`) for a field in `selectableFieldKeys` that no lock holds back. The extension then checks the value against the model on screen at the moment of the write, with the same `validateFixedValueInput` and `RecipeFieldConstraint.resolve` the input boxes used, and answers with a new `fieldEditResult` message. The panel writes a refusal with `textContent`. The recipe file is never written.
+- **Validation rules (#325).** Saving bounds on a field whose rules are ticked still asks the host's Replace question first, but only for bounds that pass the checks. Cancel there keeps the rules and says so under the editor. Saving both bounds empty asks nothing and keeps the rules.
+- **Colours.** The editor uses only `--sdt-*` text/background pairs that are already in the contrast test.
+- **From review.** Enter no longer saves while an IME is composing text, and a fixed-value save routed for a panel that has since closed writes nothing, as a bounds save already did.
+- **Tests.** The fixed-value, constraint and validation-rule suites now drive the editor through the real panel script: open, close, Save, Enter, Clear, Escape, pre-fill, one editor per row, refusals written as text, closing on a lock, and results for another model or another editor being ignored. They cover the router's new payload checks (missing, non-string and oversized values or bounds) and the extension's answers (saved, refused, not saved, and nothing for a forged or locked field), and they check that no input box opens. The panel harness's `dispatch` now takes event fields such as a `keydown` key.
+
+## [3.94.0] - Recipe Cockpit: the Record types section is on every card, disabled when there is nothing to choose
+
+Closes [#338](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/338).
+
+A tree card drew the Record types section only when it listed an object with two or more record types, so on any other tree a reader could not tell the choice existed, or why this tree did not offer it.
+
+- **Every card's Treecipe tab draws the header**, in the same place: under the Treecipe search box, above the first object.
+- **Disabled when there is nothing to choose.** A card with no object offering two or more record types (none, or only one each, which is no choice) draws the header as a `group` with `aria-disabled="true"`, its ▸ a disabled button with no `aria-expanded` and described by the summary, the title and ▸ in the muted palette colour, and the summary `No objects in this tree have two or more record types in local metadata` (`RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY`), written with `textContent`. It has no body and no listener: a click, the Treecipe search, a restored place saved expanded (or on the old Record types tab) and a focus asking for the section all leave it closed.
+- **Unchanged:** a card that lists such an object draws the section exactly as before, and the model, the host and generation are untouched.
+- **Tests.** `RecipeCockpitRecordTypes.test.ts` runs the real panel script over a card with no record types, a run whose objects have one record type each, clicks on the header, title and ▸, a search, a restore both ways and a focus.
+
+## [3.93.0] - Recipe Cockpit: "Record type fields only" and a chip naming the restricting record types
+
+Closes [#320](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/320).
+
+Nothing on the Treecipe tab marked which fields depend on record types. Seeing which picklists a record type limits meant opening the Record types section or expanding each picklist row.
+
+- **The check.** Each card's Treecipe tab has a **Record type fields only** check in its search row, off by default and per card. It is a `role="checkbox"` button with `aria-checked`, drawn `☐`/`☑`, so its state is never colour alone.
+- **What counts.** A picklist, multi-select or dependent picklist field that at least one of the object's record types restricts: the Record types section's own `objects[].recordTypes[].impacts`. An object counts only with two or more record types, as the section does.
+- **With the check on:**
+  - Fields that are not restricted are hidden.
+  - Objects with such a field expand, within the existing `RECIPE_COCKPIT_AUTO_EXPAND_*` limits.
+  - An object with none stays listed, collapsed, as "no record type fields". The filter never hides an object.
+  - The match count says how many fields are left.
+- **Works with the search.** A field shows only when it matches the search AND passes the check. Clearing either redraws at once. Turning the check off gives back what the reader had opened.
+- **Row chip.** Each restricted field's row names the record types that restrict it, in the Record types section's order (`Business, Partner`), whether or not the check is on. An iteration of the object carries the same chips. The chip is text, using the palette's existing chip pair plus a dashed border, so the contrast test needs no new pair.
+- **A card with no record types.** The check is disabled with the note "No object in this tree has more than one record type, so no field depends on one." (`RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE`).
+- **The place.** The check is saved as the card's optional `isRecordTypeFieldsOnly`, kept by `normalizePanelPlace` only when `true`, so the place version did not change and an older place loads with the check off.
+- **No new host data.** The panel indexes the impacts once per model (`indexRecordTypeFields`). The index is keyed by name with `Object.create(null)` and skips:
+  - an impact that is not an object;
+  - an impact naming a field the object does not list;
+  - any field or object named `__proto__`.
+
+  Using the check posts nothing but the reader's place.
+- **Tests.** `RecipeCockpitRecordTypeFields.test.ts` runs the real panel script through the harness and covers:
+  - the check on and off;
+  - the check together with the search;
+  - the per-card state and the auto-expand limit;
+  - the disabled card and its note;
+  - the chip's text, order and singular form, and the chip on an iteration;
+  - every ignored impact;
+  - the place: save, restore, a card restored collapsed, an older place, and `normalizePanelPlace`;
+  - that the model carries nothing new and the check asks the host for nothing.
 
 ## [3.92.0] - Recipe Cockpit: a ? help section and an illustrated guide
 

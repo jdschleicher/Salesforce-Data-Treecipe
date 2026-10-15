@@ -28,6 +28,7 @@ import {
     RECIPE_COCKPIT_CONSTRAINT_RECIPE_FILE_ONLY_REASON,
     RECIPE_COCKPIT_CONSTRAINT_TYPE_REASON,
     RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX,
+    RECIPE_COCKPIT_FIELD_EDIT_NOT_SAVED_REFUSAL,
     RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
     RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON,
     RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON,
@@ -41,7 +42,7 @@ import {
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
 import { RecipeCockpitRecipeWriter, RecipeFilterResult } from '../RecipeCockpitRecipeWriter';
-import { IStoredRecipeFieldConstraint } from '../../RecipeFakerService.ts/RecipeFieldConstraint/RecipeFieldConstraint';
+import { IStoredRecipeFieldConstraint, RECIPE_FIELD_CONSTRAINT_MAX_BOUND_LENGTH } from '../../RecipeFakerService.ts/RecipeFieldConstraint/RecipeFieldConstraint';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -496,11 +497,11 @@ describe('RecipeCockpitService -- faker constraints (#323)', () => {
 
         const route = (payload: Record<string, unknown>, panelState = buildDrawnPanelState()) => RecipeCockpitService.routePanelMessage({ command: 'editFieldConstraints', ...payload } as any, panelState);
 
-        it('routes a drawn, free field to its folder, with no bounds', () => {
+        it('routes a drawn, free field to its folder with both bounds as typed, trimmed, which the host checks before writing (#337)', () => {
 
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', min: '1', max: '2' }))
-                .toEqual({ kind: 'editFieldConstraints', treeKey: ACCOUNT_TREE_KEY, folderName: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' });
-            expect(route({ treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Company' })).toMatchObject({ kind: 'editFieldConstraints', folderName: LEAD_TREE_KEY });
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', min: ' 1 ', max: 'abc', extra: 'ignored' }))
+                .toEqual({ kind: 'editFieldConstraints', treeKey: ACCOUNT_TREE_KEY, folderName: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', min: '1', max: 'abc' });
+            expect(route({ treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Company', min: '', max: '' })).toMatchObject({ kind: 'editFieldConstraints', folderName: LEAD_TREE_KEY, min: '', max: '' });
 
         });
 
@@ -516,10 +517,13 @@ describe('RecipeCockpitService -- faker constraints (#323)', () => {
             ['an object name that is not an api name', { objectApiName: 'Account Name' }],
             ['a key that is not a string', { treeKey: 7 }],
             ['a nickname the object is not drawn with', { nickname: 'Account_NickName' }],
-            ['the ungrouped card, which has no folder', { treeKey: '', objectApiName: 'Lead', fieldApiName: 'Company' }]
+            ['the ungrouped card, which has no folder', { treeKey: '', objectApiName: 'Lead', fieldApiName: 'Company' }],
+            ['no lower bound', { min: undefined }],
+            ['an upper bound that is not a string', { max: 10 }],
+            ['a bound longer than a stored bound can be', { min: '1'.repeat(RECIPE_FIELD_CONSTRAINT_MAX_BOUND_LENGTH + 1) }]
         ])('does nothing for %s', (_caseName, payload) => {
 
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', ...payload })).toBeUndefined();
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', min: '1', max: '2', ...payload })).toBeUndefined();
 
         });
 
@@ -527,11 +531,11 @@ describe('RecipeCockpitService -- faker constraints (#323)', () => {
 
             const panelState = buildDrawnPanelState(recipe => applyConstraints(recipe, {}, { [ACCOUNT_TREE_KEY]: { Account: { Annual_Budget__c: '1' } } }, { [ACCOUNT_TREE_KEY]: ['Contact'] }, { [ACCOUNT_TREE_KEY]: { Account: ['Legacy_Code__c'] } }));
 
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Annual_Budget__c' }, panelState)).toBeUndefined();
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }, panelState)).toBeUndefined();
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', fieldApiName: 'LastName' }, panelState)).toBeUndefined();
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'OtherChildObject__c', fieldApiName: 'Score__c' }, panelState)).toBeUndefined();
-            expect(route({ treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Company' }, panelState)).toMatchObject({ kind: 'editFieldConstraints' });
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Annual_Budget__c', min: '1', max: '' }, panelState)).toBeUndefined();
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', min: '1', max: '' }, panelState)).toBeUndefined();
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', fieldApiName: 'LastName', min: '1', max: '' }, panelState)).toBeUndefined();
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'OtherChildObject__c', fieldApiName: 'Score__c', min: '1', max: '' }, panelState)).toBeUndefined();
+            expect(route({ treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Company', min: '1', max: '' }, panelState)).toMatchObject({ kind: 'editFieldConstraints' });
 
         });
 
@@ -542,8 +546,8 @@ describe('RecipeCockpitService -- faker constraints (#323)', () => {
             const modelLessPanelState = buildDrawnPanelState();
             modelLessPanelState.recipeDataMessage = undefined;
 
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }, undrawnPanelState)).toBeUndefined();
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }, modelLessPanelState)).toBeUndefined();
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', min: '1', max: '' }, undrawnPanelState)).toBeUndefined();
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', min: '1', max: '' }, modelLessPanelState)).toBeUndefined();
 
         });
 
@@ -583,7 +587,7 @@ describe('RecipeCockpitService -- faker constraints (#323)', () => {
         };
 
         const storedOf = (workspaceState: ReturnType<typeof buildWorkspaceState>) => workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY);
-        const editScore = () => receivedMessageHandler({ command: 'editFieldConstraints', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'OtherChildObject__c', fieldApiName: 'Score__c' });
+        const editScore = (min: unknown, max: unknown) => receivedMessageHandler({ command: 'editFieldConstraints', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'OtherChildObject__c', fieldApiName: 'Score__c', min: min, max: max });
 
         beforeEach(() => {
             postedPanelMessages = [];
@@ -599,113 +603,96 @@ describe('RecipeCockpitService -- faker constraints (#323)', () => {
             disposeHandler = undefined;
         });
 
-        it('asks for each bound in the host\'s own box, stores them as typed, posts the card back in place, and clears them when both are empty; the recipe file never changes', async () => {
+        it('stores the bounds the inline editor posts, posts the card back in place and then the result, clears them when both are empty, and opens no box; the recipe file never changes (#337)', async () => {
 
             const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
             const workspaceState = buildWorkspaceState();
             const recipeDataMessage = await openAndDraw(workspaceState);
 
-            showInputBox.mockResolvedValueOnce(' 1 ').mockResolvedValueOnce('10');
-            await editScore();
-
-            const [minimumBox, maximumBox] = showInputBox.mock.calls.map(call => call[0]);
-            expect(minimumBox).toMatchObject({ title: 'Minimum for OtherChildObject__c.Score__c', value: '', ignoreFocusOut: true });
-            expect(minimumBox.prompt).toContain('(Number(18,0))');
-            expect(minimumBox.validateInput('')).toBeUndefined();
-            expect(minimumBox.validateInput('1.5')).toBe('This field takes whole numbers only.');
-            expect(minimumBox.validateInput('abc')).toBe('Type a plain number, such as 42, -7 or 3.25.');
-            expect(maximumBox.title).toBe('Maximum for OtherChildObject__c.Score__c');
-            expect(maximumBox.validateInput('0')).toBe('The minimum 1 is greater than the maximum 0.');
-            expect(maximumBox.validateInput('1')).toBe('The minimum and maximum are both 1; give the field a fixed value instead.');
-            expect(maximumBox.validateInput('')).toBeUndefined();
-            expect(maximumBox.validateInput('10')).toBeUndefined();
+            await editScore(' 1 ', '10');
 
             expect(storedOf(workspaceState)).toEqual(storedSelections({ [ACCOUNT_TREE_KEY]: { OtherChildObject__c: { Score__c: { min: '1', max: '10' } } } }));
-            expect(lastPosted('objectSelection')).toMatchObject({
-                command: 'objectSelection',
+            const objectSelectionIndex = postedPanelMessages.findIndex(hostMessage => hostMessage.command === 'objectSelection');
+            const resultIndex = postedPanelMessages.findIndex(hostMessage => hostMessage.command === 'fieldEditResult');
+            expect(postedPanelMessages[objectSelectionIndex]).toMatchObject({
                 renderSequence: recipeDataMessage.renderSequence,
                 treeKey: ACCOUNT_TREE_KEY,
                 constraints: [{ objectApiName: 'OtherChildObject__c', fieldApiName: 'Score__c', min: '1', max: '10', expression: SCORE_EXPRESSION }]
             });
+            expect(resultIndex).toBeGreaterThan(objectSelectionIndex);
+            expect(postedPanelMessages[resultIndex]).toEqual({
+                command: 'fieldEditResult', renderSequence: recipeDataMessage.renderSequence, treeKey: ACCOUNT_TREE_KEY,
+                objectApiName: 'OtherChildObject__c', fieldApiName: 'Score__c', edit: 'constraint'
+            });
 
-            // A REVEAL REPLAYS THE STORED MODEL, WHICH CARRIES THE CONSTRAINT; THE BOXES OPEN ON IT
-            postedPanelMessages = [];
-            await receivedMessageHandler({ command: 'ready' });
-            expect(treeOf(lastPosted('recipeData').recipe, ACCOUNT_TREE_KEY).constraints).toHaveLength(1);
-            await receivedMessageHandler({ command: 'rendered', renderSequence: lastPosted('recipeData').renderSequence });
+            await editScore('', '5');
+            expect(storedOf(workspaceState)).toEqual(storedSelections({ [ACCOUNT_TREE_KEY]: { OtherChildObject__c: { Score__c: { max: '5' } } } }));
 
-            showInputBox.mockResolvedValueOnce('').mockResolvedValueOnce('');
-            await editScore();
+            await editScore('', '');
 
-            expect(showInputBox.mock.calls[2][0].value).toBe('1');
-            expect(showInputBox.mock.calls[3][0].value).toBe('10');
             expect(storedOf(workspaceState)).toEqual(storedSelections({}));
             expect(lastPosted('objectSelection')).not.toHaveProperty('constraints');
+            expect(lastPosted('fieldEditResult')).not.toHaveProperty('refusal');
+            expect(showInputBox).not.toHaveBeenCalled();
             expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
 
         });
 
-        it('refuses a length past the field\'s <length> and a bound past its precision in the box', async () => {
+        it.each([
+            ['a decimal for a whole-number field', 'OtherChildObject__c', 'Score__c', '1.5', '', 'This field takes whole numbers only.'],
+            ['text for a number', 'OtherChildObject__c', 'Score__c', 'abc', '', 'Type a plain number, such as 42, -7 or 3.25.'],
+            ['a minimum past the maximum', 'OtherChildObject__c', 'Score__c', '9', '2', 'The minimum 9 is greater than the maximum 2.'],
+            ['equal bounds', 'OtherChildObject__c', 'Score__c', '1', '1', 'The minimum and maximum are both 1; give the field a fixed value instead.'],
+            ['a length past the field\'s <length>', 'Account', 'Legacy_Code__c', '51', '', 'This field takes at most 50 characters.'],
+            ['a bound past its precision', 'OtherChildObject__c', 'Ratio__c', '1000', '', 'This field takes at most 3 digits before the decimal point (precision 5, scale 2).'],
+            ['a bound past its scale', 'OtherChildObject__c', 'Ratio__c', '', '1.005', 'This field takes at most 2 decimal places.']
+        ])('answers %s with its refusal, for the editor to show, and writes nothing', async (_caseName, objectApiName, fieldApiName, min, max, refusal) => {
 
             const workspaceState = buildWorkspaceState();
-            await openAndDraw(workspaceState);
-
-            showInputBox.mockResolvedValueOnce(undefined);
-            await receivedMessageHandler({ command: 'editFieldConstraints', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' });
-            expect(showInputBox.mock.calls[0][0].title).toBe('Minimum length for Account.Legacy_Code__c');
-            expect(showInputBox.mock.calls[0][0].validateInput('51')).toBe('This field takes at most 50 characters.');
-
-            showInputBox.mockResolvedValueOnce(undefined);
-            await receivedMessageHandler({ command: 'editFieldConstraints', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'OtherChildObject__c', fieldApiName: 'Ratio__c' });
-            expect(showInputBox.mock.calls[1][0].validateInput('1000')).toBe('This field takes at most 3 digits before the decimal point (precision 5, scale 2).');
-            expect(showInputBox.mock.calls[1][0].validateInput('1.005')).toBe('This field takes at most 2 decimal places.');
-
-        });
-
-        it('writes nothing when either box is dismissed', async () => {
-
-            const workspaceState = buildWorkspaceState();
-            await openAndDraw(workspaceState);
-            workspaceState.update.mockClear();
-
-            showInputBox.mockResolvedValueOnce(undefined);
-            await editScore();
-            showInputBox.mockResolvedValueOnce('1').mockResolvedValueOnce(undefined);
-            await editScore();
-
-            expect(showInputBox).toHaveBeenCalledTimes(3);
-            expect(workspaceState.update).not.toHaveBeenCalled();
-
-        });
-
-        it('warns and writes nothing for bounds that fail the check once the boxes close', async () => {
-
-            const workspaceState = buildWorkspaceState();
-            await openAndDraw(workspaceState);
+            const recipeDataMessage = await openAndDraw(workspaceState);
             workspaceState.update.mockClear();
             const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
 
-            showInputBox.mockResolvedValueOnce('9').mockResolvedValueOnce('2');
-            await editScore();
+            await receivedMessageHandler({ command: 'editFieldConstraints', treeKey: ACCOUNT_TREE_KEY, objectApiName: objectApiName, fieldApiName: fieldApiName, min: min, max: max });
 
-            expect(warningSpy).toHaveBeenCalledWith('The faker constraint for OtherChildObject__c.Score__c was not set: The minimum 9 is greater than the maximum 2.');
+            expect(lastPosted('fieldEditResult')).toEqual({
+                command: 'fieldEditResult', renderSequence: recipeDataMessage.renderSequence, treeKey: ACCOUNT_TREE_KEY,
+                objectApiName: objectApiName, fieldApiName: fieldApiName, edit: 'constraint', refusal: refusal
+            });
+            expect(lastPosted('objectSelection')).toBeUndefined();
             expect(workspaceState.update).not.toHaveBeenCalled();
+            expect(warningSpy).not.toHaveBeenCalled();
 
         });
 
-        it('opens no box and writes nothing for a forged or locked field', async () => {
+        it('answers a save the workspace storage refused as not saved', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            await openAndDraw(workspaceState);
+            workspaceState.update.mockRejectedValueOnce(new Error('read-only'));
+            jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+
+            await editScore('1', '10');
+
+            expect(lastPosted('fieldEditResult').refusal).toBe(RECIPE_COCKPIT_FIELD_EDIT_NOT_SAVED_REFUSAL);
+
+        });
+
+        it('writes nothing and answers nothing for a forged or locked field', async () => {
 
             const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({}, { [ACCOUNT_TREE_KEY]: { OtherChildObject__c: { Score__c: '4' } } }) });
             await openAndDraw(workspaceState);
             workspaceState.update.mockClear();
 
-            await editScore();
-            await receivedMessageHandler({ command: 'editFieldConstraints', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'ParentId' });
-            await receivedMessageHandler({ command: 'editFieldConstraints', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Name' });
-            await receivedMessageHandler({ command: 'editFieldConstraints', treeKey: 'Forged-Folder', objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' });
+            await editScore('1', '2');
+            await receivedMessageHandler({ command: 'editFieldConstraints', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'ParentId', min: '1', max: '2' });
+            await receivedMessageHandler({ command: 'editFieldConstraints', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Name', min: '1', max: '2' });
+            await receivedMessageHandler({ command: 'editFieldConstraints', treeKey: 'Forged-Folder', objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', min: '1', max: '2' });
+            await receivedMessageHandler({ command: 'editFieldConstraints', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', min: 1, max: '2' });
 
             expect(showInputBox).not.toHaveBeenCalled();
             expect(workspaceState.update).not.toHaveBeenCalled();
+            expect(lastPosted('fieldEditResult')).toBeUndefined();
 
         });
 
@@ -827,17 +814,94 @@ describe('RecipeCockpitService -- faker constraints (#323)', () => {
 
         });
 
-        it('posts a click as names only, with the nickname the object is drawn with', () => {
+        it('opens an inline min/max editor under the row on a click, labelled for the field\'s kind, and closes it on Cancel or Escape (#337)', () => {
+
+            const panel = drawRecipe();
+            panel.postToPanel({ command: 'rendered' });
+            const other = expanded(panel, 'OtherChildObject__c');
+            const account = expanded(panel, 'Account');
+            const row = rowOf(panel, other, 'Score__c');
+            const pencil = pencilOf(panel, other, 'Score__c');
+
+            pencil.dispatch('click');
+            const editor = only(panel, row, 'fieldEditor');
+            const inputs = panel.findAll(editor, 'fieldEditorInput');
+
+            expect(panel.isHidden(editor)).toBeFalse();
+            expect(editor.attributes['aria-label']).toBe('Faker bounds for OtherChildObject__c.Score__c');
+            expect(pencil.attributes['aria-expanded']).toBe('true');
+            expect(panel.findAll(editor, 'fieldEditorBoundLabel').map((labelElement: any) => labelElement.textContent)).toEqual(['Minimum', 'Maximum']);
+            expect(inputs.map((inputElement: any) => [inputElement.value, inputElement.attributes.placeholder, inputElement.attributes.maxlength]))
+                .toEqual([['', 'default', String(RECIPE_FIELD_CONSTRAINT_MAX_BOUND_LENGTH)], ['', 'default', String(RECIPE_FIELD_CONSTRAINT_MAX_BOUND_LENGTH)]]);
+            expect(inputs[0].attributes['aria-label']).toBe('Minimum for OtherChildObject__c.Score__c');
+
+            only(panel, editor, 'fieldEditorCancel').dispatch('click');
+            expect(panel.isHidden(editor)).toBeTrue();
+            expect(pencil.attributes['aria-expanded']).toBe('false');
+
+            pencilOf(panel, account, 'Legacy_Code__c').dispatch('click');
+            const lengthEditor = only(panel, rowOf(panel, account, 'Legacy_Code__c'), 'fieldEditor');
+            expect(panel.findAll(lengthEditor, 'fieldEditorBoundLabel').map((labelElement: any) => labelElement.textContent)).toEqual(['Minimum length', 'Maximum length']);
+            only(panel, lengthEditor, 'fieldEditorInput').dispatch('keydown', { key: 'Escape' });
+            expect(panel.isHidden(lengthEditor)).toBeTrue();
+            expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'editFieldConstraints')).toEqual([]);
+
+        });
+
+        it('posts both bounds trimmed on Save or Enter, and both empty on Clear, with the nickname the object is drawn with', () => {
 
             const panel = drawRecipe(recipe => { objectOf(recipe, 'OtherChildObject__c').nickname = 'Other_NickName'; });
+            panel.postToPanel({ command: 'rendered' });
             const other = expanded(panel, 'OtherChildObject__c');
+            const row = rowOf(panel, other, 'Score__c');
 
             pencilOf(panel, other, 'Score__c').dispatch('click');
             pencilOf(panel, other, 'Contact__c').dispatch('click');
+            const [minimumInput, maximumInput] = panel.findAll(row, 'fieldEditorInput');
+            minimumInput.value = ' 1 ';
+            maximumInput.value = '10';
+            only(panel, row, 'fieldEditorSave').dispatch('click');
+            minimumInput.value = '';
+            maximumInput.dispatch('keydown', { key: 'Enter' });
+            only(panel, row, 'fieldEditorClear').dispatch('click');
 
+            const base = { command: 'editFieldConstraints', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'OtherChildObject__c', fieldApiName: 'Score__c', nickname: 'Other_NickName' };
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'editFieldConstraints')).toEqual([
-                { command: 'editFieldConstraints', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'OtherChildObject__c', fieldApiName: 'Score__c', nickname: 'Other_NickName' }
+                { ...base, min: '1', max: '10' },
+                { ...base, min: '', max: '10' },
+                { ...base, min: '', max: '' }
             ]);
+
+        });
+
+        it('pre-fills the bounds the card generates with, shows a refusal as text, closes once saved, and has one editor per row', () => {
+
+            const panel = drawRecipe();
+            panel.postToPanel({ command: 'rendered' });
+            const account = expanded(panel, 'Account');
+            const row = rowOf(panel, account, 'Legacy_Code__c');
+            panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3, constraints: [{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', min: '2', expression: 'x' }] });
+
+            pencilOf(panel, account, 'Legacy_Code__c').dispatch('click');
+            const editor = only(panel, row, 'fieldEditor');
+            expect(panel.findAll(editor, 'fieldEditorInput').map((inputElement: any) => inputElement.value)).toEqual(['2', '']);
+
+            const result = { command: 'fieldEditResult', renderSequence: 3, treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', edit: 'constraint' };
+            panel.postToPanel({ ...result, refusal: 'The minimum 9 is greater than the maximum 2.' });
+            expect(only(panel, editor, 'fieldEditorRefusal').textContent).toBe('The minimum 9 is greater than the maximum 2.');
+            expect(panel.isHidden(only(panel, editor, 'fieldEditorRefusal'))).toBeFalse();
+
+            // THE PIN OPENS ITS OWN EDITOR IN THE SAME PLACE, CLOSING THE ✎'S
+            panel.findAll(row, 'treeFieldFixedValue')[0].dispatch('click');
+            expect(editor.attributes['aria-label']).toBe('Fixed value for Account.Legacy_Code__c');
+            expect(pencilOf(panel, account, 'Legacy_Code__c').attributes['aria-expanded']).toBe('false');
+            panel.postToPanel({ ...result });
+            expect(panel.isHidden(editor)).toBeFalse();
+
+            pencilOf(panel, account, 'Legacy_Code__c').dispatch('click');
+            panel.postToPanel({ ...result });
+            expect(panel.isHidden(editor)).toBeTrue();
+            expect(panel.findAll(row, 'fieldEditor')).toHaveLength(1);
 
         });
 

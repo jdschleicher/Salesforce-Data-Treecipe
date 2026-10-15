@@ -72,6 +72,7 @@ import {
     RecipeFieldConstraint,
     RECIPE_FIELD_CONSTRAINT_DATE_FIELD_TYPES,
     RECIPE_FIELD_CONSTRAINT_LENGTH_FIELD_TYPES,
+    RECIPE_FIELD_CONSTRAINT_MAX_BOUND_LENGTH,
     RECIPE_FIELD_CONSTRAINT_NUMBER_FIELD_TYPES
 } from '../RecipeFakerService.ts/RecipeFieldConstraint/RecipeFieldConstraint';
 
@@ -243,6 +244,9 @@ export const RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX = 'depends on ';
 export const RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hierarchy'];
 export const RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES = ['Number', 'Currency', 'Percent'];
 export const RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH = 32768;
+// WHAT A FIELD'S INLINE EDITOR (#337) SAYS WHEN THE HOST DID NOT STORE WHAT WAS TYPED, FOR A REASON OTHER THAN THE VALUE
+export const RECIPE_COCKPIT_FIELD_EDIT_NOT_SAVED_REFUSAL = 'Not saved: the workspace storage could not be written.';
+export const RECIPE_COCKPIT_FIELD_EDIT_RULES_KEPT_REFUSAL = 'Not saved: the field keeps the bounds its validation rules imply.';
 /*
     Why a field's ✎ (#323) is disabled, beyond every reason its pin has: a field with a fixed value
     generates one value, which no range narrows; a standard-field mapping has no metadata to hold a
@@ -318,6 +322,9 @@ export const RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS = 120;
 export const RECIPE_COCKPIT_FAVORITE_TREE_LABEL = '★';
 export const RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL = '☆';
 export const RECIPE_COCKPIT_FAVORITES_ONLY_LABEL = 'Favorites only';
+// THE TREECIPE TAB'S CHECK (#320), AND WHY IT IS DISABLED ON A CARD WITH NO RECORD TYPES TO CHOOSE FROM
+export const RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL = 'Record type fields only';
+export const RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE = 'No object in this tree has more than one record type, so no field depends on one.';
 export const RECIPE_COCKPIT_NO_FAVORITES_MESSAGE = 'No favorite trees in this run. Turn off Favorites only to see all trees.';
 
 export const RECIPE_COCKPIT_INSERT_DATASET_COMMAND = 'treecipe.insertDataSetBySelectedDirectory';
@@ -351,6 +358,8 @@ export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL = 'Remember this selecti
 export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE = 'Save the choice in treecipe/treecipe.config.json, so Generate Treecipe reuses it. With Use defaults, forgets a saved choice.';
 export const RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE = 'The record type selection could not be saved in treecipe.config.json, so it was used for this run only.';
 export const RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE = 'Record types';
+// WHAT A CARD WITH NOTHING TO CHOOSE SAYS IN ITS DISABLED RECORD TYPES HEADER (#338); ONE RECORD TYPE IS NO CHOICE, SO IT READS THE SAME AS NONE
+export const RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY = 'No objects in this tree have two or more record types in local metadata';
 // WHAT THE SECTION SAYS ABOVE ITS ROWS: A REGENERATE IS A GENERATE TREECIPE, WHICH WRITES A NEW RUN OF EVERY TREE
 export const RECIPE_COCKPIT_RECORD_TYPES_INTRO = 'Choose the record types Generate Treecipe writes for each object: one recipe block per ticked record type, each with its own RecordTypeId and picklist values. Regenerating writes a new run of every tree; the run on screen is kept.';
 
@@ -839,6 +848,21 @@ export interface IRecipeCockpitObjectSelectionMessage {
     validationRulesOff?: IRecipeCockpitFieldReferenceViewModel[];
 }
 
+/*
+    How a field's inline edit (#337) ended: saved (the card's objectSelection follows) or refused,
+    with the reason the panel writes under the editor through textContent. Tagged with the model it
+    is about, so an answer for a model no longer on screen is dropped.
+*/
+export interface IRecipeCockpitFieldEditResultMessage {
+    command: 'fieldEditResult';
+    renderSequence: number;
+    treeKey: string;
+    objectApiName: string;
+    fieldApiName: string;
+    edit: 'fixedValue' | 'constraint';
+    refusal?: string;
+}
+
 // WHAT workspaceState HOLDS FOR THE CARDS, BY TREE FOLDER NAME; BOTH KEYED BY NAMES FROM DISK, SO NEITHER IS A PLAIN {}
 export interface IRecipeCockpitTreePreferences {
     customNamesByFolderName: Map<string, string>;
@@ -971,6 +995,10 @@ export interface IRecipeCockpitPanelMessage {
     recordTypeSelection?: unknown;
     // "Remember this selection" (#196): ONLY true SAVES
     isRemembered?: unknown;
+    // A FIELD'S INLINE EDITOR (#337): A FIXED VALUE, OR A CONSTRAINT'S BOUNDS, AS TYPED -- CHECKED AGAIN BY THE HOST
+    value?: unknown;
+    min?: unknown;
+    max?: unknown;
 }
 
 export interface IRecipeCockpitLoadPhaseMessage {
@@ -1014,6 +1042,8 @@ export interface IRecipeCockpitPanelTreePlace {
     isDatasetFavoritesOnly?: true;
     // THE TREECIPE TAB'S RECORD TYPES SECTION (#321); A PLACE SAVED BEFORE IT HAS NONE AND READS AS COLLAPSED
     isRecordTypesExpanded?: true;
+    // THE TREECIPE TAB'S "Record type fields only" CHECK (#320); A PLACE SAVED BEFORE IT HAS NONE AND READS AS OFF
+    isRecordTypeFieldsOnly?: true;
 }
 
 export interface IRecipeCockpitPanelPlace {
@@ -1346,6 +1376,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitTreePreferencesMessage
                                         | IRecipeCockpitDatasetPreferencesMessage
                                         | IRecipeCockpitObjectSelectionMessage
+                                        | IRecipeCockpitFieldEditResultMessage
                                         | IRecipeCockpitScratchOrgStateMessage
                                         | IRecipeCockpitPermissionSetAssignStateMessage
                                         | IRecipeCockpitValidationRuleRetrieveStateMessage
@@ -1482,8 +1513,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'setAllFieldsIncluded'; treeKey: string; folderName: string; objectApiName: string; isIncluded: boolean }
     | { kind: 'resetTreeSelection'; folderName: string }
     | { kind: 'setObjectCount'; treeKey: string; folderName: string; objectApiName: string; count: number }
-    | { kind: 'setFieldFixedValue'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string }
-    | { kind: 'editFieldConstraints'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string }
+    | { kind: 'setFieldFixedValue'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string; value: string }
+    | { kind: 'editFieldConstraints'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string; min: string; max: string }
     | { kind: 'setFieldValidationRuleApplied'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string; isApplied: boolean }
     | { kind: 'persistPlace'; place: IRecipeCockpitPanelPlace }
     | { kind: 'createScratchOrg' }
@@ -1714,7 +1745,8 @@ export class RecipeCockpitService {
                 openPicklistKeys: this.normalizePlaceNames(candidateTree.openPicklistKeys),
                 ...( candidateTree.isDatasetFavoritesOnly === true ? { isDatasetFavoritesOnly: true as const } : {} ),
                 // A CARD SAVED ON THE RECORD TYPES TAB, BEFORE IT BECAME A SECTION (#321), OPENS WITH THE SECTION EXPANDED
-                ...( candidateTree.isRecordTypesExpanded === true || candidateTree.selectedTab === 'recordTypes' ? { isRecordTypesExpanded: true as const } : {} )
+                ...( candidateTree.isRecordTypesExpanded === true || candidateTree.selectedTab === 'recordTypes' ? { isRecordTypesExpanded: true as const } : {} ),
+                ...( candidateTree.isRecordTypeFieldsOnly === true ? { isRecordTypeFieldsOnly: true as const } : {} )
             }];
 
         });
@@ -3207,167 +3239,100 @@ export class RecipeCockpitService {
     }
 
     /*
-        A field's pin (#262). The VALUE never comes from the panel: the host asks for it in its own
-        input box, checks it while it is typed and again once the box closes -- against the model on
-        screen THEN, since a reload may have come in meanwhile -- and an empty answer clears it. A
-        field a lock holds back, or no longer drawn, writes nothing. The recipe file is never written.
+        A field's pin (#262), saved from its inline editor (#337). The panel posts the value as typed,
+        so it is checked here against the field the model on screen holds NOW -- the same check the
+        editor's own refusal comes from -- and '' clears it. A refused value writes nothing and is
+        answered under the editor; a field a lock holds back, or no longer drawn, writes nothing. The
+        recipe file is never written.
     */
     private static async setFieldFixedValue(cockpitPanel: vscode.WebviewPanel,
                                             panelState: IRecipeCockpitPanelState,
                                             panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setFieldFixedValue' }>) {
 
-        const findField = () => {
-            const recipeViewModel = panelState.recipeDataMessage?.recipe;
-            const tree = recipeViewModel?.trees.find(candidateTree => candidateTree.treeKey === panelAction.treeKey);
-            const objectViewModel = recipeViewModel?.objects.find(candidateObject => candidateObject.objectApiName === panelAction.objectApiName);
-            const fieldViewModel = objectViewModel?.fields.find(candidateField => candidateField.fieldApiName === panelAction.fieldApiName && candidateField.lineNumber !== undefined);
-            return tree && objectViewModel && fieldViewModel && tree.folderName === panelAction.folderName
-                    && this.findFixedValueLockReason(tree, objectViewModel, fieldViewModel) === undefined
-                ? { fieldViewModel: fieldViewModel }
-                : undefined;
-        };
-
-        const fieldBeforePrompt = findField();
-        if ( !fieldBeforePrompt ) {
+        const drawnField = this.recipeCockpitPanelState === panelState
+            ? this.findDrawnField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.fieldApiName)
+            : undefined;
+        if ( !drawnField || drawnField.tree.folderName !== panelAction.folderName || drawnField.fieldViewModel.lineNumber === undefined
+                || this.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) !== undefined ) {
             return;
         }
 
-        const { fieldViewModel } = fieldBeforePrompt;
         const declaredPicklistValues = this.listDeclaredPicklistValues(panelState, panelAction.objectApiName, panelAction.fieldApiName);
-        const storedValue = this.readTreeSelections(this.recipeCockpitWorkspaceState).fixedValuesByFolderName.get(panelAction.folderName)?.get(panelAction.objectApiName)?.get(panelAction.fieldApiName);
-        const fieldLabel = RecipeYamlScalar.escapeForNotification(`${panelAction.objectApiName}.${panelAction.fieldApiName}`);
-        const typeLabel = fieldViewModel.fieldTypeWithSize ? ` (${this.buildFieldTypeLabel(fieldViewModel)})` : '';
-
-        const typedValue = await vscode.window.showInputBox({
-            title: `Fixed value for ${fieldLabel}`,
-            prompt: `Every record Generate fake data writes gets this value for ${fieldLabel}${typeLabel} instead of its faker expression. Leave it empty to go back to the faker expression. The recipe file is not changed.`,
-            value: storedValue ?? '',
-            ignoreFocusOut: true,
-            validateInput: (candidateValue: string) => candidateValue === '' ? undefined : this.validateFixedValueInput(candidateValue, fieldViewModel, declaredPicklistValues)
-        });
-
-        if ( typedValue === undefined || this.recipeCockpitPanelState !== panelState ) {
-            return;
-        }
-
-        const fieldAfterPrompt = findField();
-        if ( !fieldAfterPrompt ) {
-            return;
-        }
-
-        const refusal = typedValue === '' ? undefined : this.validateFixedValueInput(typedValue, fieldAfterPrompt.fieldViewModel, declaredPicklistValues);
+        const refusal = panelAction.value === '' ? undefined : this.validateFixedValueInput(panelAction.value, drawnField.fieldViewModel, declaredPicklistValues);
         if ( refusal !== undefined ) {
-            VSCodeWorkspaceService.showWarningMessage(`The fixed value for ${fieldLabel} was not set: ${RecipeYamlScalar.escapeForNotification(refusal)}`);
+            this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'fixedValue', refusal);
             return;
         }
 
-        // READ AGAIN AFTER THE BOX: A CHOICE MADE ELSEWHERE WHILE IT WAS OPEN IS NOT WRITTEN BACK
         const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
         const fixedValuesByObject = treeSelections.fixedValuesByFolderName.get(panelAction.folderName) ?? new Map<string, Map<string, string>>();
         const fixedValuesByField = fixedValuesByObject.get(panelAction.objectApiName) ?? new Map<string, string>();
 
-        if ( typedValue === '' ) {
+        if ( panelAction.value === '' ) {
             fixedValuesByField.delete(panelAction.fieldApiName);
         } else {
-            fixedValuesByField.set(panelAction.fieldApiName, typedValue);
+            fixedValuesByField.set(panelAction.fieldApiName, panelAction.value);
         }
         fixedValuesByObject.set(panelAction.objectApiName, fixedValuesByField);
         treeSelections.fixedValuesByFolderName.set(panelAction.folderName, fixedValuesByObject);
 
         // A FIXED VALUE CHANGES NO FIELD THE INSERT SENDS, SO THE ORG'S READINESS NEED NOT BE CHECKED AGAIN
-        await this.saveAndPostTreeSelections(cockpitPanel, panelState, panelAction.folderName, treeSelections, false);
+        const isSaved = await this.saveAndPostTreeSelections(cockpitPanel, panelState, panelAction.folderName, treeSelections, false);
+        this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'fixedValue', isSaved ? undefined : RECIPE_COCKPIT_FIELD_EDIT_NOT_SAVED_REFUSAL);
 
     }
 
     /*
-        A field's ✎ (#323). The BOUNDS never come from the panel: the host asks for each in its own
-        input box, the lower first, each checked while it is typed -- the second against the first as
-        well, so min > max is said in the box -- and the pair again once the second box closes,
-        against the model on screen THEN. An empty bound is the default, both empty clears the
-        constraint, and Escape in either box changes nothing. The recipe file is never written.
+        A field's ✎ (#323), saved from its inline editor (#337). The panel posts both bounds as typed,
+        so they are checked here as a pair against the field the model on screen holds NOW, and both
+        empty clears the constraint. A field its validation rules shape (#325) asks first, in the
+        host's own modal, since a constraint replaces what the rules wrote and unticks their box; it
+        is asked only for bounds that pass, and the field is re-derived after it. A refusal, or
+        Cancel in the modal, writes nothing and is answered under the editor. The recipe file is
+        never written.
     */
     private static async editFieldConstraints(cockpitPanel: vscode.WebviewPanel,
                                                 panelState: IRecipeCockpitPanelState,
                                                 panelAction: Extract<RecipeCockpitPanelAction, { kind: 'editFieldConstraints' }>) {
 
         const findField = () => {
-            const recipeViewModel = panelState.recipeDataMessage?.recipe;
-            const tree = recipeViewModel?.trees.find(candidateTree => candidateTree.treeKey === panelAction.treeKey);
-            const objectViewModel = recipeViewModel?.objects.find(candidateObject => candidateObject.objectApiName === panelAction.objectApiName);
-            const fieldViewModel = objectViewModel?.fields.find(candidateField => candidateField.fieldApiName === panelAction.fieldApiName && candidateField.lineNumber !== undefined);
-            return tree && objectViewModel && fieldViewModel && tree.folderName === panelAction.folderName
-                    && this.findConstraintLockReason(tree, objectViewModel, fieldViewModel) === undefined
-                ? { fieldViewModel: fieldViewModel }
+            const drawnField = this.recipeCockpitPanelState === panelState
+                ? this.findDrawnField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.fieldApiName)
+                : undefined;
+            return drawnField && drawnField.tree.folderName === panelAction.folderName && drawnField.fieldViewModel.lineNumber !== undefined
+                    && this.findConstraintLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) === undefined
+                ? drawnField
                 : undefined;
         };
 
-        const fieldBeforePrompt = findField();
-        if ( !fieldBeforePrompt ) {
+        const fieldBeforeConfirm = findField();
+        if ( !fieldBeforeConfirm ) {
             return;
         }
 
-        // A FIELD ITS VALIDATION RULES SHAPE ASKS FIRST (#325): A CONSTRAINT REPLACES WHAT THE RULES WROTE, AND UNTICKS THEIR BOX
-        const isReplacingValidationRules = this.isValidationRuleApplied(panelState, panelAction.treeKey, panelAction.objectApiName, panelAction.fieldApiName);
-        if ( isReplacingValidationRules
-                && ( !( await this.confirmValidationRuleReplace(RECIPE_COCKPIT_VALIDATION_RULE_EDIT_PROMPT, panelAction.objectApiName, panelAction.fieldApiName, 'The field generates with the bounds you set instead of the ones its validation rules imply, and its validation rule box is unticked. The recipe file is not changed.') )
-                    || this.recipeCockpitPanelState !== panelState ) ) {
-            return;
-        }
-
-        const target = this.buildFieldConstraintTarget(fieldBeforePrompt.fieldViewModel);
-        const kind = RecipeFieldConstraint.getConstraintKind(target.fieldType);
-        const storedConstraint = this.readTreeSelections(this.recipeCockpitWorkspaceState).constraintsByFolderName.get(panelAction.folderName)?.get(panelAction.objectApiName)?.get(panelAction.fieldApiName);
-        const fieldLabel = RecipeYamlScalar.escapeForNotification(`${panelAction.objectApiName}.${panelAction.fieldApiName}`);
-        const typeLabel = ` (${this.buildFieldTypeLabel(fieldBeforePrompt.fieldViewModel)})`;
-        const boundLabels = kind === 'length'
-            ? { min: 'Minimum length', max: 'Maximum length' }
-            : kind === 'date'
-            ? { min: 'Earliest date', max: 'Latest date' }
-            : { min: 'Minimum', max: 'Maximum' };
-        const describeForm = (boundName: 'min' | 'max') => kind === 'date'
-            ? RecipeFieldConstraint.describeDateForm(target, boundName).replace(/^Type /, '')
-            : kind === 'length'
-            ? `a whole number of characters, at most ${RecipeFieldConstraint.getLengthCeiling(target)}`
-            : 'a number the field holds';
-
-        const askForBound = (boundName: 'min' | 'max', typedMin?: string) => vscode.window.showInputBox({
-            title: `${boundLabels[boundName]} for ${fieldLabel}`,
-            prompt: `${boundLabels[boundName]} for every record Generate fake data writes for ${fieldLabel}${typeLabel}: ${describeForm(boundName)}. Leave it empty for the default. The recipe file is not changed.`,
-            value: storedConstraint?.[boundName] ?? '',
-            ignoreFocusOut: true,
-            validateInput: (candidateBound: string) => {
-                const trimmedBound = candidateBound.trim();
-                const boundRefusal = trimmedBound === '' ? undefined : RecipeFieldConstraint.checkBound(target, trimmedBound, boundName);
-                if ( boundRefusal !== undefined || boundName === 'min' ) {
-                    return boundRefusal;
-                }
-                const typedBounds = this.buildTypedConstraint(typedMin ?? '', trimmedBound);
-                return typedBounds === undefined ? undefined : this.findConstraintRefusal(target, typedBounds);
-            }
-        });
-
-        const typedMin = await askForBound('min');
-        if ( typedMin === undefined || this.recipeCockpitPanelState !== panelState ) {
-            return;
-        }
-        const typedMax = await askForBound('max', typedMin.trim());
-        if ( typedMax === undefined || this.recipeCockpitPanelState !== panelState ) {
-            return;
-        }
-
-        const fieldAfterPrompt = findField();
-        if ( !fieldAfterPrompt ) {
-            return;
-        }
-
-        const typedConstraint = this.buildTypedConstraint(typedMin.trim(), typedMax.trim());
-        const refusal = typedConstraint === undefined ? undefined : this.findConstraintRefusal(this.buildFieldConstraintTarget(fieldAfterPrompt.fieldViewModel), typedConstraint);
+        const typedConstraint = this.buildTypedConstraint(panelAction.min, panelAction.max);
+        const refusal = typedConstraint === undefined ? undefined : this.findConstraintRefusal(this.buildFieldConstraintTarget(fieldBeforeConfirm.fieldViewModel), typedConstraint);
         if ( refusal !== undefined ) {
-            VSCodeWorkspaceService.showWarningMessage(`The faker constraint for ${fieldLabel} was not set: ${RecipeYamlScalar.escapeForNotification(refusal)}`);
+            this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'constraint', refusal);
             return;
         }
 
-        // READ AGAIN AFTER THE BOXES: A CHOICE MADE ELSEWHERE WHILE THEY WERE OPEN IS NOT WRITTEN BACK
+        // AN EMPTY EDIT IS NO EDIT: THE RULES' OWN BOUNDS STAY, AND SO DOES THE TICK, SO ONLY BOUNDS ASK
+        const isReplacingValidationRules = typedConstraint !== undefined
+            && this.isValidationRuleApplied(panelState, panelAction.treeKey, panelAction.objectApiName, panelAction.fieldApiName);
+        if ( isReplacingValidationRules ) {
+            const isConfirmed = await this.confirmValidationRuleReplace(RECIPE_COCKPIT_VALIDATION_RULE_EDIT_PROMPT, panelAction.objectApiName, panelAction.fieldApiName, 'The field generates with the bounds you set instead of the ones its validation rules imply, and its validation rule box is unticked. The recipe file is not changed.');
+            if ( !isConfirmed ) {
+                this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'constraint', RECIPE_COCKPIT_FIELD_EDIT_RULES_KEPT_REFUSAL);
+                return;
+            }
+            // RE-DERIVED AFTER THE MODAL: A RELOAD OR A LOCK WHILE IT WAS OPEN WRITES NOTHING
+            if ( !findField() ) {
+                return;
+            }
+        }
+
+        // READ AFTER THE MODAL: A CHOICE MADE ELSEWHERE WHILE IT WAS OPEN IS NOT WRITTEN BACK
         const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
         const constraintsByObject = treeSelections.constraintsByFolderName.get(panelAction.folderName) ?? new Map<string, Map<string, IStoredRecipeFieldConstraint>>();
         const constraintsByField = constraintsByObject.get(panelAction.objectApiName) ?? new Map<string, IStoredRecipeFieldConstraint>();
@@ -3380,13 +3345,37 @@ export class RecipeCockpitService {
         constraintsByObject.set(panelAction.objectApiName, constraintsByField);
         treeSelections.constraintsByFolderName.set(panelAction.folderName, constraintsByObject);
 
-        // AN EMPTY EDIT IS NO EDIT: THE RULES' OWN BOUNDS STAY, AND SO DOES THE TICK
-        if ( isReplacingValidationRules && typedConstraint !== undefined ) {
+        if ( isReplacingValidationRules ) {
             this.setStoredValidationRuleOff(treeSelections, panelAction.folderName, panelAction.objectApiName, panelAction.fieldApiName, true);
         }
 
         // A CONSTRAINT CHANGES NO FIELD THE INSERT SENDS, SO THE ORG'S READINESS NEED NOT BE CHECKED AGAIN
-        await this.saveAndPostTreeSelections(cockpitPanel, panelState, panelAction.folderName, treeSelections, false);
+        const isSaved = await this.saveAndPostTreeSelections(cockpitPanel, panelState, panelAction.folderName, treeSelections, false);
+        this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'constraint', isSaved ? undefined : RECIPE_COCKPIT_FIELD_EDIT_NOT_SAVED_REFUSAL);
+
+    }
+
+    // HOW AN INLINE EDIT (#337) ENDED, FOR THE MODEL STILL ON SCREEN ONLY
+    private static postFieldEditResult(cockpitPanel: vscode.WebviewPanel,
+                                        panelState: IRecipeCockpitPanelState,
+                                        panelAction: { treeKey: string; objectApiName: string; fieldApiName: string },
+                                        edit: 'fixedValue' | 'constraint',
+                                        refusal: string | undefined) {
+
+        const recipeDataMessage = panelState.recipeDataMessage;
+        if ( !recipeDataMessage || this.recipeCockpitPanelState !== panelState ) {
+            return;
+        }
+
+        this.postToPanel(cockpitPanel, {
+            command: 'fieldEditResult',
+            renderSequence: recipeDataMessage.renderSequence,
+            treeKey: panelAction.treeKey,
+            objectApiName: panelAction.objectApiName,
+            fieldApiName: panelAction.fieldApiName,
+            edit: edit,
+            ...( refusal !== undefined ? { refusal: refusal } : {} )
+        });
 
     }
 
@@ -3542,13 +3531,13 @@ export class RecipeCockpitService {
                                                     panelState: IRecipeCockpitPanelState,
                                                     folderName: string,
                                                     treeSelections: IRecipeCockpitTreeSelections,
-                                                    isReadinessAffected = true) {
+                                                    isReadinessAffected = true): Promise<boolean> {
 
         const isWritten = await this.writeTreeSelections(this.recipeCockpitWorkspaceState, treeSelections);
         const recipeDataMessage = panelState.recipeDataMessage;
 
         if ( !isWritten || !recipeDataMessage || this.recipeCockpitPanelState !== panelState ) {
-            return;
+            return isWritten;
         }
 
         // ONLY THIS FOLDER'S CARDS CHANGED, SO ONLY THEY ARE RECOMPUTED
@@ -3572,6 +3561,8 @@ export class RecipeCockpitService {
         if ( isOrgCheckIdle && isReadinessAffected ) {
             await this.refreshDataOrgReadinessForFolder(cockpitPanel, panelState, folderName);
         }
+
+        return true;
 
     }
 
@@ -8383,17 +8374,20 @@ export class RecipeCockpitService {
             }
 
             /*
-                A field's pin (#262): the same three names as its checkbox, matched against the same
-                allow-list, and NO value -- the host asks for it in its own box. A field a lock holds
-                back (#220's, a lookup, RecordTypeId, a dependent picklist, an unticked field or an
-                excluded object's) is refused here and again before anything is written.
+                A field's pin (#262), saved from its inline editor (#337): the same three names as its
+                checkbox, matched against the same allow-list, and the value AS TYPED -- a string no
+                longer than any fixed value can be, '' clearing it. Only its shape is checked here; the
+                host checks the value itself against the field before anything is written. A field a
+                lock holds back (#220's, a lookup, RecordTypeId, a dependent picklist, an unticked field
+                or an excluded object's) is refused here and again before anything is written.
             */
             case 'setFieldFixedValue': {
 
-                const { treeKey, objectApiName, nickname, fieldApiName } = panelMessage;
+                const { treeKey, objectApiName, nickname, fieldApiName, value } = panelMessage;
 
                 if ( typeof treeKey !== 'string' || !SalesforceApiName.isApiName(objectApiName) || !SalesforceApiName.isApiName(fieldApiName)
                         || ( nickname !== undefined && typeof nickname !== 'string' )
+                        || typeof value !== 'string' || value.length > RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH
                         || !panelState.recipeDataMessage
                         || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(this.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
                     return undefined;
@@ -8409,22 +8403,26 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                return { kind: 'setFieldFixedValue', treeKey: treeKey, folderName: tree.folderName, objectApiName: objectApiName, fieldApiName: fieldApiName };
+                return { kind: 'setFieldFixedValue', treeKey: treeKey, folderName: tree.folderName, objectApiName: objectApiName, fieldApiName: fieldApiName, value: value };
 
             }
 
             /*
-                A field's ✎ (#323): the same three names as its checkbox and pin, matched against the
-                same allow-list, and NO bounds -- the host asks for them in its own boxes. A field the
-                rule holds back (every reason the pin has, a fixed value, a standard-field mapping, a
-                type with no constraint) is refused here and again before anything is written.
+                A field's ✎ (#323), saved from its inline editor (#337): the same three names as its
+                checkbox and pin, matched against the same allow-list, and both bounds AS TYPED --
+                strings no longer than a stored bound can be, '' for the default. The host checks the
+                bounds against the field before anything is written. A field the rule holds back (every
+                reason the pin has, a fixed value, a standard-field mapping, a type with no constraint)
+                is refused here and again before anything is written.
             */
             case 'editFieldConstraints': {
 
-                const { treeKey, objectApiName, nickname, fieldApiName } = panelMessage;
+                const { treeKey, objectApiName, nickname, fieldApiName, min, max } = panelMessage;
 
                 if ( typeof treeKey !== 'string' || !SalesforceApiName.isApiName(objectApiName) || !SalesforceApiName.isApiName(fieldApiName)
                         || ( nickname !== undefined && typeof nickname !== 'string' )
+                        || typeof min !== 'string' || min.length > RECIPE_FIELD_CONSTRAINT_MAX_BOUND_LENGTH
+                        || typeof max !== 'string' || max.length > RECIPE_FIELD_CONSTRAINT_MAX_BOUND_LENGTH
                         || !panelState.recipeDataMessage
                         || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(this.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
                     return undefined;
@@ -8440,7 +8438,7 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                return { kind: 'editFieldConstraints', treeKey: treeKey, folderName: tree.folderName, objectApiName: objectApiName, fieldApiName: fieldApiName };
+                return { kind: 'editFieldConstraints', treeKey: treeKey, folderName: tree.folderName, objectApiName: objectApiName, fieldApiName: fieldApiName, min: min.trim(), max: max.trim() };
 
             }
 
@@ -10417,6 +10415,10 @@ ${this.buildPaletteCustomProperties()}
     .recordTypesSection { margin: 0.25rem 0.6rem 0.5rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
     .recordTypesSectionHeader { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.25rem 0.5rem; cursor: pointer; }
     .recordTypesSectionTitle { font-weight: 600; }
+    .recordTypesSection.disabled .recordTypesSectionHeader { cursor: default; }
+    .recordTypesSection.disabled .recordTypesSectionTitle { color: var(--sdt-muted); }
+    .recordTypesSection.disabled .recordTypesSectionToggle { cursor: default; }
+    .recordTypesSection.disabled .toggleGlyph path { stroke: var(--sdt-muted); }
     .recordTypesSectionBody { padding: 0 0.75rem 0.75rem; border-top: 1px solid var(--sdt-border); }
     .recordTypesIntro { margin: 0.5rem 0; }
     .recordTypeObject { margin: 0.6rem 0; }
@@ -10488,6 +10490,17 @@ ${this.buildPaletteCustomProperties()}
         background-color: var(--sdt-chip-bg);
         border-radius: 3px;
     }
+    .recordTypeChip {
+        position: relative;
+        z-index: 2;
+        padding: 0 0.35em;
+        font-size: 0.85em;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border: 1px dashed var(--sdt-chip-text);
+        border-radius: 3px;
+    }
+    .treeRecordTypeFieldsNote { font-size: 0.9em; }
     .validationRuleControl { display: inline-flex; align-items: center; gap: 0.3rem; margin-left: auto; }
     .expressionRow { display: flex; align-items: flex-start; gap: 0.3rem; }
     .expressionRow > pre { flex: 1 1 auto; min-width: 0; }
@@ -10505,6 +10518,46 @@ ${this.buildPaletteCustomProperties()}
         font-family: var(--vscode-editor-font-family);
         color: var(--sdt-text);
     }
+    .fieldEditor {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        margin: 0.3rem 0 0.2rem 0;
+        padding: 0.4rem 0.5rem;
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 6px;
+    }
+    .fieldEditorInputs, .fieldEditorActions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+    .fieldEditorBound { display: inline-flex; align-items: baseline; gap: 0.3rem; }
+    .fieldEditorInput {
+        flex: 1 1 12rem;
+        min-width: 0;
+        padding: 0.15rem 0.3rem;
+        font-family: var(--vscode-editor-font-family);
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+    }
+    .fieldEditorBound .fieldEditorInput { flex: 0 1 12rem; }
+    .fieldEditorInput:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
+    .fieldEditorHint { font-size: 0.85em; }
+    .fieldEditorRefusal { color: var(--sdt-removed); font-size: 0.9em; }
+    .fieldEditorActions button {
+        padding: 0.15rem 0.6rem;
+        font: inherit;
+        color: var(--sdt-accent);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    .fieldEditorActions button:hover { border-color: var(--sdt-accent); }
+    .fieldEditorActions .fieldEditorSave { color: var(--sdt-on-accent); background-color: var(--sdt-accent); border-color: var(--sdt-accent); }
     .treeFieldNote, .treeFieldWarning { position: relative; z-index: 2; font-size: 0.85em; }
     .treeFieldWarning { color: var(--sdt-changed); }
     .treeFieldBulk { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding: 0.2rem 0.6rem 0.2rem 2.1rem; position: relative; z-index: 2; }
@@ -10662,10 +10715,13 @@ ${this.buildPaletteCustomProperties()}
     const REMEMBER_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL)};
     const REMEMBER_RECORD_TYPES_TITLE = ${JSON.stringify(RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE)};
     const RECORD_TYPES_INTRO = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_INTRO)};
+    const RECORD_TYPES_UNAVAILABLE_SUMMARY = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY)};
     const RENAME_TREE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL)};
     const FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITE_TREE_LABEL)};
     const NOT_FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL)};
     const FAVORITES_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITES_ONLY_LABEL)};
+    const RECORD_TYPE_FIELDS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL)};
+    const NO_RECORD_TYPE_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE)};
     const NO_FAVORITES_MESSAGE = ${JSON.stringify(RECIPE_COCKPIT_NO_FAVORITES_MESSAGE)};
     const HELP_TOGGLE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_TOGGLE_LABEL)};
     const HELP_TOGGLE_ARIA_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_TOGGLE_ARIA_LABEL)};
@@ -10708,6 +10764,11 @@ ${this.buildPaletteCustomProperties()}
     const RESET_SELECTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RESET_SELECTION_LABEL)};
     const REFRESH_ORGS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REFRESH_ORGS_LABEL)};
     const OPEN_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OPEN_ORG_LABEL)};
+    const FIXED_VALUE_MAX_LENGTH = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH)};
+    const CONSTRAINT_MAX_BOUND_LENGTH = ${JSON.stringify(RECIPE_FIELD_CONSTRAINT_MAX_BOUND_LENGTH)};
+    const CONSTRAINT_NUMBER_FIELD_TYPES = ${JSON.stringify(RECIPE_FIELD_CONSTRAINT_NUMBER_FIELD_TYPES)};
+    const CONSTRAINT_LENGTH_FIELD_TYPES = ${JSON.stringify(RECIPE_FIELD_CONSTRAINT_LENGTH_FIELD_TYPES)};
+    const FIXED_VALUE_NUMBER_FIELD_TYPES = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES)};
 
     let treeStates = [];
     let treesViewElement = null;
@@ -11339,6 +11400,54 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    /*
+        The fields each object's record types restrict (#320): object api name -> field api name ->
+        the developer names restricting it, in the order the Record types section lists them. Drawn
+        from objects[].recordTypes[].impacts the model already carries, so the host sends nothing new.
+        Keyed by names from files, so no prototype; an impact naming a field the object does not
+        list, one that is not an object, and anything named __proto__ add nothing.
+    */
+    let recordTypeFieldsByObjectApiName = Object.create(null);
+
+    function isRecordLike(candidate) {
+        return !!candidate && typeof candidate === 'object' && !Array.isArray(candidate);
+    }
+
+    function indexRecordTypeFields(objects) {
+
+        const recordTypeFieldsIndex = Object.create(null);
+
+        objects.forEach(function (object) {
+
+            if (!isRecordLike(object) || typeof object.objectApiName !== 'string' || object.objectApiName === '__proto__') { return; }
+            if (!Array.isArray(object.recordTypes) || object.recordTypes.length < 2) { return; }
+
+            const listedFieldApiNames = Object.create(null);
+            (Array.isArray(object.fields) ? object.fields : []).forEach(function (field) {
+                if (isRecordLike(field) && typeof field.fieldApiName === 'string') { listedFieldApiNames[field.fieldApiName] = true; }
+            });
+
+            const developerNamesByFieldApiName = Object.create(null);
+
+            object.recordTypes.forEach(function (recordType) {
+                if (!isRecordLike(recordType) || typeof recordType.developerName !== 'string' || !Array.isArray(recordType.impacts)) { return; }
+                recordType.impacts.forEach(function (impact) {
+                    if (!isRecordLike(impact)) { return; }
+                    const fieldApiName = impact.fieldApiName;
+                    if (typeof fieldApiName !== 'string' || fieldApiName === '__proto__' || listedFieldApiNames[fieldApiName] !== true) { return; }
+                    const developerNames = developerNamesByFieldApiName[fieldApiName] || (developerNamesByFieldApiName[fieldApiName] = []);
+                    if (developerNames.indexOf(recordType.developerName) === -1) { developerNames.push(recordType.developerName); }
+                });
+            });
+
+            recordTypeFieldsIndex[object.objectApiName] = developerNamesByFieldApiName;
+
+        });
+
+        return recordTypeFieldsIndex;
+
+    }
+
     // ROWS WHOSE VALUES WERE ASKED FOR AND NOT YET ANSWERED, BY OBJECT AND FIELD -- KEYED BY NAMES FROM FILES, SO NO PROTOTYPE
     let pendingPicklistValueElements = Object.create(null);
 
@@ -11712,6 +11821,8 @@ ${this.buildPaletteCustomProperties()}
         const lockReason = treeObjectState.isIteration ? '' : findFixedValueLockReason(treeObjectState, fieldState);
         buttonElement.disabled = treeObjectState.isIteration || !!lockReason;
         buttonElement.setAttribute('aria-pressed', isFixed ? 'true' : 'false');
+        buttonElement.setAttribute('aria-expanded', fieldState.editorEdit === 'fixedValue' ? 'true' : 'false');
+        if (buttonElement.disabled && fieldState.editorEdit === 'fixedValue') { closeFieldEditor(fieldState); }
 
         const title = treeObjectState.isIteration ? 'Follows ' + objectApiName + ' above'
             : lockReason ? 'Cannot have a fixed value: ' + lockReason
@@ -11889,6 +12000,8 @@ ${this.buildPaletteCustomProperties()}
         const lockReason = treeObjectState.isIteration ? '' : findConstraintLockReason(treeObjectState, fieldState);
         buttonElement.disabled = treeObjectState.isIteration || !!lockReason;
         buttonElement.setAttribute('aria-pressed', isConstrained ? 'true' : 'false');
+        buttonElement.setAttribute('aria-expanded', fieldState.editorEdit === 'constraint' ? 'true' : 'false');
+        if (buttonElement.disabled && fieldState.editorEdit === 'constraint') { closeFieldEditor(fieldState); }
 
         const title = treeObjectState.isIteration ? 'Follows ' + objectApiName + ' above'
             : lockReason ? 'Cannot be constrained: ' + lockReason
@@ -11899,13 +12012,12 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // A FIELD'S ✎ (#323), BUILT LIKE THE PIN; A CLICK POSTS NAMES ONLY -- THE BOUNDS ARE ASKED FOR IN THE HOST'S OWN BOXES
+    // A FIELD'S ✎ (#323), BUILT LIKE THE PIN; A CLICK OPENS ITS INLINE EDITOR (#337) UNDER THE ROW
     function buildFieldConstraintElement(treeObjectState, fieldState) {
 
         const buttonElement = createElement('button', 'treeFieldConstraint');
         const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
         const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
-        const object = treeObjectState.object;
 
         glyphElement.setAttribute('class', 'constraintGlyph');
         glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
@@ -11917,14 +12029,7 @@ ${this.buildPaletteCustomProperties()}
 
         buttonElement.addEventListener('click', function () {
             if (buttonElement.disabled) { return; }
-            const message = {
-                command: 'editFieldConstraints',
-                treeKey: treeObjectState.tree.treeKey,
-                objectApiName: object.objectApiName,
-                fieldApiName: fieldState.field.fieldApiName
-            };
-            if (object.nickname) { message.nickname = object.nickname; }
-            vscodeApi.postMessage(message);
+            toggleFieldEditor(treeObjectState, fieldState, 'constraint');
         });
         fieldState.constraintButtonElement = buttonElement;
 
@@ -11934,14 +12039,13 @@ ${this.buildPaletteCustomProperties()}
 
     /*
         A field's pin (#262): a real button, keyboard operable, its glyph built node by node like the
-        chain link. A click posts NAMES only -- the value is asked for in the host's own input box.
+        chain link. A click opens its inline editor (#337) under the row.
     */
     function buildFieldFixedValueElement(treeObjectState, fieldState) {
 
         const buttonElement = createElement('button', 'treeFieldFixedValue');
         const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
         const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
-        const object = treeObjectState.object;
 
         glyphElement.setAttribute('class', 'fixedValueGlyph');
         glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
@@ -11953,14 +12057,7 @@ ${this.buildPaletteCustomProperties()}
 
         buttonElement.addEventListener('click', function () {
             if (buttonElement.disabled) { return; }
-            const message = {
-                command: 'setFieldFixedValue',
-                treeKey: treeObjectState.tree.treeKey,
-                objectApiName: object.objectApiName,
-                fieldApiName: fieldState.field.fieldApiName
-            };
-            if (object.nickname) { message.nickname = object.nickname; }
-            vscodeApi.postMessage(message);
+            toggleFieldEditor(treeObjectState, fieldState, 'fixedValue');
         });
         fieldState.fixedValueButtonElement = buttonElement;
 
@@ -12032,6 +12129,213 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    /*
+        A field's inline editor (#337): the pin's one box, or the ✎'s two, under the row, with Save,
+        Clear and Cancel. Enter saves and Escape cancels. Save posts the NAMES the pin and ✎ always
+        posted plus what was typed; the host checks it against the field again and answers with
+        fieldEditResult -- a refusal is written under the boxes with textContent and the editor
+        stays open, a save closes it once the card has been redrawn. One editor per row: opening the
+        other one, or clicking the same button again, closes it.
+    */
+    function toggleFieldEditor(treeObjectState, fieldState, edit) {
+
+        const isSameEditOpen = fieldState.editorEdit === edit;
+        closeFieldEditor(fieldState);
+        if (!isSameEditOpen) { openFieldEditor(treeObjectState, fieldState, edit); }
+        drawFieldRowFixedValue(treeObjectState, fieldState);
+        drawFieldRowConstraint(treeObjectState, fieldState);
+
+    }
+
+    function closeFieldEditor(fieldState) {
+
+        if (!fieldState.editorElement || !fieldState.editorEdit) { return; }
+
+        const openerElement = fieldState.editorEdit === 'constraint' ? fieldState.constraintButtonElement : fieldState.fixedValueButtonElement;
+        fieldState.editorElement.textContent = '';
+        fieldState.editorElement.classList.add('hidden');
+        fieldState.editorEdit = '';
+        fieldState.editorRefusalElement = null;
+        if (openerElement) {
+            openerElement.setAttribute('aria-expanded', 'false');
+            if (!openerElement.disabled && typeof openerElement.focus === 'function') { openerElement.focus(); }
+        }
+
+    }
+
+    function getConstraintEditKind(fieldType) {
+        if (CONSTRAINT_NUMBER_FIELD_TYPES.indexOf(fieldType) !== -1) { return 'number'; }
+        if (CONSTRAINT_LENGTH_FIELD_TYPES.indexOf(fieldType) !== -1) { return 'length'; }
+        return 'date';
+    }
+
+    function describeFixedValueForm(field) {
+
+        if (field.fieldType === 'Checkbox') { return 'Type true or false.'; }
+        if (field.fieldType === 'Date') { return 'Type a date as YYYY-MM-DD, such as 2026-01-31.'; }
+        if (field.fieldType === 'DateTime') { return 'Type a date and time as ISO 8601 with a zone, such as 2026-01-31T09:30:00Z.'; }
+        if (FIXED_VALUE_NUMBER_FIELD_TYPES.indexOf(field.fieldType) !== -1) { return 'Type a plain number, such as 42, -7 or 3.25.'; }
+        if (field.fieldType === 'MultiselectPicklist') { return 'Type values this picklist declares, separated by ;.'; }
+        if (field.isPicklist) { return 'Type a value this picklist declares.'; }
+        return 'Type the text every record gets.';
+
+    }
+
+    function describeConstraintForm(field, kind) {
+
+        if (kind === 'number') { return 'Type the smallest and largest number this field generates.'; }
+        if (kind === 'length') { return 'Type the shortest and longest text, in characters, this field generates.'; }
+        return field.fieldType === 'DateTime'
+            ? 'Type a date as YYYY-MM-DD, a UTC time as YYYY-MM-DDTHH:MM:SSZ, today, or days from the run such as -30d or +90d.'
+            : 'Type a date as YYYY-MM-DD, today, or days from the run such as -30d or +90d.';
+
+    }
+
+    function buildFieldEditorInput(maxLength, value, ariaLabel, placeholder) {
+
+        const inputElement = createElement('input', 'fieldEditorInput');
+        inputElement.setAttribute('type', 'text');
+        inputElement.setAttribute('maxlength', String(maxLength));
+        inputElement.setAttribute('aria-label', ariaLabel);
+        if (placeholder) { inputElement.setAttribute('placeholder', placeholder); }
+        inputElement.value = value;
+
+        return inputElement;
+
+    }
+
+    function openFieldEditor(treeObjectState, fieldState, edit) {
+
+        if (!fieldState.rowElement) { return; }
+
+        const field = fieldState.field;
+        const tree = treeObjectState.tree;
+        const object = treeObjectState.object;
+        const fieldLabel = object.objectApiName + '.' + field.fieldApiName;
+
+        if (!fieldState.editorElement) {
+            fieldState.editorElement = createElement('div', 'fieldEditor hidden');
+            fieldState.editorElement.setAttribute('role', 'group');
+            fieldState.rowElement.appendChild(fieldState.editorElement);
+        }
+
+        const editorElement = fieldState.editorElement;
+        const inputsElement = createElement('div', 'fieldEditorInputs');
+        const inputElements = [];
+        let collectTyped = null;
+
+        if (edit === 'fixedValue') {
+
+            editorElement.setAttribute('aria-label', 'Fixed value for ' + fieldLabel);
+            const fixedValue = findFixedValue(tree, object.objectApiName, field.fieldApiName);
+            const valueElement = buildFieldEditorInput(FIXED_VALUE_MAX_LENGTH, fixedValue === null ? '' : fixedValue, 'Fixed value for ' + fieldLabel, '');
+            inputElements.push(valueElement);
+            inputsElement.appendChild(valueElement);
+            collectTyped = function (isClearing) { return { value: isClearing ? '' : String(valueElement.value) }; };
+
+        } else {
+
+            const kind = getConstraintEditKind(field.fieldType);
+            const boundLabels = kind === 'length' ? ['Minimum length', 'Maximum length'] : kind === 'date' ? ['Earliest', 'Latest'] : ['Minimum', 'Maximum'];
+            const constraint = findConstraint(tree, object.objectApiName, field.fieldApiName);
+            editorElement.setAttribute('aria-label', 'Faker bounds for ' + fieldLabel);
+
+            ['min', 'max'].forEach(function (boundName, boundIndex) {
+                const boundElement = createElement('label', 'fieldEditorBound');
+                const storedBound = constraint && constraint[boundName] !== undefined ? String(constraint[boundName]) : '';
+                const boundInputElement = buildFieldEditorInput(CONSTRAINT_MAX_BOUND_LENGTH, storedBound, boundLabels[boundIndex] + ' for ' + fieldLabel, 'default');
+                boundElement.appendChild(createElement('span', 'fieldEditorBoundLabel', boundLabels[boundIndex]));
+                boundElement.appendChild(boundInputElement);
+                inputElements.push(boundInputElement);
+                inputsElement.appendChild(boundElement);
+            });
+            collectTyped = function (isClearing) {
+                return {
+                    min: isClearing ? '' : String(inputElements[0].value).trim(),
+                    max: isClearing ? '' : String(inputElements[1].value).trim()
+                };
+            };
+
+        }
+
+        const hintText = ( edit === 'fixedValue' ? describeFixedValueForm(field) : describeConstraintForm(field, getConstraintEditKind(field.fieldType)) )
+            + ( edit === 'fixedValue' ? ' Empty goes back to the faker expression.' : ' Leave one empty for its default; both empty goes back to the faker expression.' )
+            + ' The recipe file is not changed.';
+        const hintElement = createElement('div', 'fieldEditorHint muted', hintText);
+        const refusalElement = createElement('div', 'fieldEditorRefusal hidden');
+        refusalElement.setAttribute('role', 'alert');
+
+        const post = function (isClearing) {
+            const message = {
+                command: edit === 'fixedValue' ? 'setFieldFixedValue' : 'editFieldConstraints',
+                treeKey: tree.treeKey,
+                objectApiName: object.objectApiName,
+                fieldApiName: field.fieldApiName
+            };
+            if (object.nickname) { message.nickname = object.nickname; }
+            const typed = collectTyped(isClearing);
+            Object.keys(typed).forEach(function (typedKey) { message[typedKey] = typed[typedKey]; });
+            refusalElement.textContent = '';
+            refusalElement.classList.add('hidden');
+            vscodeApi.postMessage(message);
+        };
+
+        const actionsElement = createElement('div', 'fieldEditorActions');
+        const saveElement = createElement('button', 'fieldEditorSave', 'Save');
+        const clearElement = createElement('button', 'fieldEditorClear', 'Clear');
+        const cancelElement = createElement('button', 'fieldEditorCancel', 'Cancel');
+        saveElement.addEventListener('click', function (event) { event.stopPropagation(); post(false); });
+        clearElement.addEventListener('click', function (event) { event.stopPropagation(); post(true); });
+        cancelElement.addEventListener('click', function (event) { event.stopPropagation(); toggleFieldEditor(treeObjectState, fieldState, edit); });
+        actionsElement.appendChild(saveElement);
+        actionsElement.appendChild(clearElement);
+        actionsElement.appendChild(cancelElement);
+
+        inputElements.forEach(function (inputElement) {
+            inputElement.addEventListener('keydown', function (event) {
+                // AN IME COMPOSING CJK TEXT CONFIRMS A CANDIDATE WITH ENTER, WHICH IS NOT A SAVE
+                if (event.isComposing) { return; }
+                if (event.key === 'Enter') { event.stopPropagation(); post(false); }
+                if (event.key === 'Escape') { event.stopPropagation(); toggleFieldEditor(treeObjectState, fieldState, edit); }
+            });
+        });
+
+        editorElement.textContent = '';
+        editorElement.appendChild(inputsElement);
+        editorElement.appendChild(hintElement);
+        editorElement.appendChild(refusalElement);
+        editorElement.appendChild(actionsElement);
+        editorElement.classList.remove('hidden');
+        fieldState.editorEdit = edit;
+        fieldState.editorRefusalElement = refusalElement;
+
+        if (typeof inputElements[0].focus === 'function') { inputElements[0].focus(); }
+
+    }
+
+    // HOW AN INLINE EDIT ENDED (#337), FOR THE MODEL ON SCREEN: A REFUSAL UNDER THE BOXES, OR THE EDITOR CLOSED
+    function renderFieldEditResult(fieldEditResultMessage) {
+
+        if (renderedSequence === null || fieldEditResultMessage.renderSequence !== renderedSequence) { return; }
+
+        const treeState = findTreeState(fieldEditResultMessage.treeKey);
+        if (!treeState) { return; }
+
+        treeState.objectStates.forEach(function (treeObjectState) {
+            if (treeObjectState.object.objectApiName !== fieldEditResultMessage.objectApiName) { return; }
+            treeObjectState.fieldStates.forEach(function (fieldState) {
+                if (fieldState.field.fieldApiName !== fieldEditResultMessage.fieldApiName || fieldState.editorEdit !== fieldEditResultMessage.edit) { return; }
+                if (typeof fieldEditResultMessage.refusal === 'string' && fieldState.editorRefusalElement) {
+                    fieldState.editorRefusalElement.textContent = fieldEditResultMessage.refusal;
+                    fieldState.editorRefusalElement.classList.remove('hidden');
+                    return;
+                }
+                toggleFieldEditor(treeObjectState, fieldState, fieldState.editorEdit);
+            });
+        });
+
+    }
+
     function buildTreeFieldState(field) {
 
         return {
@@ -12051,7 +12355,11 @@ ${this.buildPaletteCustomProperties()}
             constrainedExpressionElement: null,
             expressionElement: null,
             validationRuleElement: null,
-            isValidationRuleApplied: true
+            isValidationRuleApplied: true,
+            recordTypeDeveloperNames: null,
+            editorElement: null,
+            editorEdit: '',
+            editorRefusalElement: null
         };
 
     }
@@ -12216,6 +12524,14 @@ ${this.buildPaletteCustomProperties()}
 
         if (field.fieldTypeWithSize || field.fieldType) {
             fieldHeaderElement.appendChild(createElement('span', 'fieldType', field.fieldTypeWithSize || field.fieldType));
+        }
+
+        // THE RECORD TYPES THAT RESTRICT THIS FIELD (#320), AS TEXT, WHETHER OR NOT THE CHECK IS ON
+        if (fieldState.recordTypeDeveloperNames) {
+            const recordTypeNamesText = fieldState.recordTypeDeveloperNames.join(', ');
+            const recordTypeChipElement = createElement('span', 'recordTypeChip', recordTypeNamesText);
+            recordTypeChipElement.setAttribute('title', 'Restricted by ' + (fieldState.recordTypeDeveloperNames.length === 1 ? 'record type ' : 'record types ') + recordTypeNamesText);
+            fieldHeaderElement.appendChild(recordTypeChipElement);
         }
 
         const lookupWiring = field.lineNumber ? findLookupWiring(treeObjectState.tree, treeObjectState.object, field.fieldApiName) : null;
@@ -12597,8 +12913,20 @@ ${this.buildPaletteCustomProperties()}
             canSelectFields: !!tree.folderName && !object.hasIndistinctOccurrences,
             bulkButtonElements: [],
             countInputElement: null,
-            countErrorElement: null
+            countErrorElement: null,
+            hasRecordTypes: hasOwnKey(recordTypeFieldsByObjectApiName, object.objectApiName),
+            recordTypeFieldCount: 0
         };
+
+        // AN ITERATION IS THE SAME OBJECT, SO ITS ROWS CARRY THE SAME CHIPS
+        if (treeObjectState.hasRecordTypes) {
+            const developerNamesByFieldApiName = recordTypeFieldsByObjectApiName[object.objectApiName];
+            treeObjectState.fieldStates.forEach(function (fieldState) {
+                if (!hasOwnKey(developerNamesByFieldApiName, fieldState.field.fieldApiName)) { return; }
+                fieldState.recordTypeDeveloperNames = developerNamesByFieldApiName[fieldState.field.fieldApiName];
+                treeObjectState.recordTypeFieldCount++;
+            });
+        }
 
         toggleElement.setAttribute('aria-expanded', 'false');
         toggleElement.setAttribute('aria-label', 'Show or hide the fields of ' + object.objectApiName);
@@ -12670,11 +12998,12 @@ ${this.buildPaletteCustomProperties()}
         structureElement.appendChild(buildTreecipeHeader(treeState));
 
         treeState.structureSearch = buildTabSearch(treeState, 'treecipe', 'Search objects, fields and faker expressions', applyStructureFilter);
+        appendRecordTypeFieldsToggle(treeState, treeState.structureSearch.element);
         structureElement.appendChild(treeState.structureSearch.element);
 
-        if (listRecordTypeObjects(treeState).length > 0) {
-            structureElement.appendChild(buildRecordTypesSection(treeState));
-        }
+        structureElement.appendChild(listRecordTypeObjects(treeState).length > 0
+            ? buildRecordTypesSection(treeState)
+            : buildUnavailableRecordTypesSection(treeState));
 
         treeState.objectStates.forEach(function (treeObjectState) {
             structureElement.appendChild(treeObjectState.element);
@@ -12925,6 +13254,63 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    /*
+        "Record type fields only" (#320): the Treecipe tab's own check, per card and panel-only, kept
+        in the reader's place. A card whose objects have no record types to choose from draws it
+        disabled with a note saying why, so turning it on can never empty the tab silently.
+    */
+    // A CARD'S OBJECTS ARE FIXED FOR ITS MODEL, SO THE ANSWER IS KEPT ON THE CARD
+    function hasRecordTypeObjects(treeState) {
+        if (typeof treeState.hasRecordTypeObjects !== 'boolean') {
+            treeState.hasRecordTypeObjects = treeState.objectStates.some(function (treeObjectState) { return treeObjectState.hasRecordTypes; });
+        }
+        return treeState.hasRecordTypeObjects;
+    }
+
+    function isRecordTypeFieldsOnlyIn(treeState) {
+        return treeState.isRecordTypeFieldsOnly === true && hasRecordTypeObjects(treeState);
+    }
+
+    function appendRecordTypeFieldsToggle(treeState, searchElement) {
+
+        const toggleElement = createElement('button', 'historyAction treeRecordTypeFieldsToggle');
+        toggleElement.setAttribute('role', 'checkbox');
+        toggleElement.setAttribute('aria-label', RECORD_TYPE_FIELDS_ONLY_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
+
+        if (hasRecordTypeObjects(treeState)) {
+            toggleElement.setAttribute('title', 'Show only the picklist fields a record type restricts');
+            toggleElement.addEventListener('click', function () {
+                treeState.isRecordTypeFieldsOnly = !treeState.isRecordTypeFieldsOnly;
+                applyStructureFilter(treeState);
+                savePanelPlace();
+            });
+        } else {
+            toggleElement.disabled = true;
+            toggleElement.setAttribute('title', NO_RECORD_TYPE_FIELDS_NOTE);
+        }
+
+        treeState.recordTypeFieldsToggleElement = toggleElement;
+        searchElement.appendChild(toggleElement);
+
+        if (!hasRecordTypeObjects(treeState)) {
+            searchElement.appendChild(createElement('span', 'treeRecordTypeFieldsNote muted', NO_RECORD_TYPE_FIELDS_NOTE));
+        }
+
+        drawRecordTypeFieldsToggle(treeState);
+
+    }
+
+    function drawRecordTypeFieldsToggle(treeState) {
+
+        const toggleElement = treeState.recordTypeFieldsToggleElement;
+        if (!toggleElement) { return; }
+
+        const isChecked = isRecordTypeFieldsOnlyIn(treeState);
+        toggleElement.textContent = (isChecked ? '☑ ' : '☐ ') + RECORD_TYPE_FIELDS_ONLY_LABEL;
+        toggleElement.setAttribute('aria-checked', isChecked ? 'true' : 'false');
+
+    }
+
     // THE DATA SETS TAB'S OWN FAVORITES ONLY: PANEL-ONLY, KEPT IN THE READER'S PLACE PER CARD
     function buildDatasetFavoritesToggle(treeState) {
 
@@ -13033,6 +13419,40 @@ ${this.buildPaletteCustomProperties()}
 
         treeState.recordTypesSection = { toggleElement: toggleElement, bodyElement: bodyElement, summaryElement: summaryElement, isBuilt: false };
         drawRecordTypesSummary(treeState);
+
+        return sectionElement;
+
+    }
+
+    /*
+        A card with no object offering two or more record types still draws the header (#338), so
+        the reader learns the section exists and why this tree has nothing in it. It has no body and
+        no listener, and treeState.recordTypesSection stays unset, so a click, a search, a restored
+        place and a focus all stop at the guards every other path already has.
+    */
+    function buildUnavailableRecordTypesSection(treeState) {
+
+        const sectionElement = createElement('div', 'recordTypesSection disabled');
+        const headerElement = createElement('div', 'recordTypesSectionHeader');
+        const toggleElement = buildToggleElement('treeObjectToggle recordTypesSectionToggle');
+
+        toggleElement.disabled = true;
+        toggleElement.setAttribute('aria-label', RECORD_TYPES_SECTION_TITLE + ' (' + displayTitleOf(treeState.tree) + ')');
+        toggleElement.classList.add('noMotion');
+        const summaryElement = createElement('span', 'recordTypesSectionSummary muted', RECORD_TYPES_UNAVAILABLE_SUMMARY);
+
+        recordTypesSectionCount++;
+        summaryElement.setAttribute('id', 'recordTypesSectionSummary' + recordTypesSectionCount);
+        toggleElement.setAttribute('aria-describedby', 'recordTypesSectionSummary' + recordTypesSectionCount);
+        // A GROUP, SO aria-disabled IS READ FROM THE SECTION RATHER THAN IGNORED ON A ROLELESS div
+        sectionElement.setAttribute('role', 'group');
+        sectionElement.setAttribute('aria-label', RECORD_TYPES_SECTION_TITLE);
+        sectionElement.setAttribute('aria-disabled', 'true');
+        headerElement.setAttribute('aria-disabled', 'true');
+        headerElement.appendChild(toggleElement);
+        headerElement.appendChild(createElement('span', 'recordTypesSectionTitle', RECORD_TYPES_SECTION_TITLE));
+        headerElement.appendChild(summaryElement);
+        sectionElement.appendChild(headerElement);
 
         return sectionElement;
 
@@ -13554,6 +13974,8 @@ ${this.buildPaletteCustomProperties()}
             searchTexts: { treecipe: '', datasets: '' },
             isDatasetFavoritesOnly: false,
             datasetFavoritesToggleElement: null,
+            isRecordTypeFieldsOnly: false,
+            recordTypeFieldsToggleElement: null,
             // THE TOP OF THE TREECIPE TAB (#255), MADE WITH THE TAB
             resetSelectionElement: null,
             insert: null
@@ -13873,6 +14295,7 @@ ${this.buildPaletteCustomProperties()}
         // KEYED BY NAMES FROM THE WRAPPER ON DISK -- "__proto__" MUST BE A KEY, NOT A NEW PROTOTYPE
         const objectsByApiName = Object.create(null);
         recipe.objects.forEach(function (object) { objectsByApiName[object.objectApiName] = object; });
+        recordTypeFieldsByObjectApiName = indexRecordTypeFields(recipe.objects);
 
         const trees = recipe.trees || [];
 
@@ -13940,8 +14363,13 @@ ${this.buildPaletteCustomProperties()}
         if (!treeState.structureSearch) { return; }
 
         const searchQuery = treeState.searchQueries.treecipe;
+        // "Record type fields only" (#320) NARROWS WHAT THE SEARCH MATCHES: A FIELD SHOWS ONLY IF IT PASSES BOTH
+        const isRecordTypeFieldsOnly = isRecordTypeFieldsOnlyIn(treeState);
+        const isFiltered = !!searchQuery || isRecordTypeFieldsOnly;
         let totalFieldCount = 0;
         let matchingFieldCount = 0;
+
+        drawRecordTypeFieldsToggle(treeState);
 
         treeState.objectStates.forEach(function (treeObjectState) {
 
@@ -13949,7 +14377,8 @@ ${this.buildPaletteCustomProperties()}
             let objectMatchingFieldCount = 0;
 
             treeObjectState.fieldStates.forEach(function (fieldState) {
-                fieldState.isMatch = isObjectNameMatch || isFieldTextMatch(fieldState, searchQuery);
+                fieldState.isMatch = (!isRecordTypeFieldsOnly || fieldState.recordTypeDeveloperNames !== null)
+                    && (isObjectNameMatch || isFieldTextMatch(fieldState, searchQuery));
                 if (fieldState.isMatch) { objectMatchingFieldCount++; }
                 applyTreeFieldVisibility(fieldState);
             });
@@ -13959,23 +14388,25 @@ ${this.buildPaletteCustomProperties()}
             totalFieldCount += objectFieldCount;
             matchingFieldCount += objectMatchingFieldCount;
 
-            if (isObjectNameMatch) {
+            if (!isFiltered || (isObjectNameMatch && !isRecordTypeFieldsOnly)) {
                 treeObjectState.countElement.textContent = pluralize(objectFieldCount, 'field', 'fields');
             } else if (objectMatchingFieldCount > 0) {
                 treeObjectState.countElement.textContent = objectMatchingFieldCount + ' of ' + pluralize(objectFieldCount, 'field', 'fields');
+            } else if (isRecordTypeFieldsOnly && treeObjectState.recordTypeFieldCount === 0) {
+                treeObjectState.countElement.textContent = 'no record type fields';
             } else {
                 treeObjectState.countElement.textContent = 'no matching fields';
             }
 
         });
 
-        treeState.structureSearch.matchCountElement.textContent = !searchQuery
+        treeState.structureSearch.matchCountElement.textContent = !isFiltered
             ? pluralize(totalFieldCount, 'field', 'fields')
             : matchingFieldCount > 0 ? matchingFieldCount + ' of ' + pluralize(totalFieldCount, 'field', 'fields') : 'no matches';
 
         applyRecordTypesFilter(treeState);
 
-        if (!searchQuery) {
+        if (!isFiltered) {
             treeState.objectStates.forEach(function (treeObjectState) { setTreeObjectExpanded(treeObjectState, treeObjectState.isExpandedByReader); });
             return;
         }
@@ -14316,7 +14747,7 @@ ${this.buildPaletteCustomProperties()}
         const selectedTab = treeState.selectedTab || 'treecipe';
 
         if (!treeState.isExpandedByReader && selectedTab === 'treecipe' && !hasSearch && !treeState.isDatasetFavoritesOnly && !treeState.isRecordTypesExpanded
-                && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0) {
+                && !isRecordTypeFieldsOnlyIn(treeState) && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0) {
             return null;
         }
 
@@ -14331,6 +14762,7 @@ ${this.buildPaletteCustomProperties()}
 
         if (treeState.isDatasetFavoritesOnly) { treePlace.isDatasetFavoritesOnly = true; }
         if (treeState.isRecordTypesExpanded) { treePlace.isRecordTypesExpanded = true; }
+        if (isRecordTypeFieldsOnlyIn(treeState)) { treePlace.isRecordTypeFieldsOnly = true; }
 
         return treePlace;
 
@@ -14530,6 +14962,9 @@ ${this.buildPaletteCustomProperties()}
             treeState.isDatasetFavoritesOnly = savedTree.isDatasetFavoritesOnly === true;
             if (treeState.datasetRowStates) { applyDatasetsFilter(treeState); }
 
+            // APPLIED BY THE applyStructureFilter BELOW, OR BY THE TREECIPE TAB WHEN IT IS BUILT
+            treeState.isRecordTypeFieldsOnly = savedTree.isRecordTypeFieldsOnly === true;
+
             const hasOpenPicklists = hasAnyString(openPicklistKeys);
 
             treeState.objectStates.forEach(function (treeObjectState) {
@@ -14631,6 +15066,7 @@ ${this.buildPaletteCustomProperties()}
         pendingPicklistValueElements = Object.create(null);
         recordTypeChoices = Object.create(null);
         recordTypeObjects = [];
+        recordTypeFieldsByObjectApiName = Object.create(null);
         recordTypeRowStates = [];
         recordTypeButtonElements = [];
         isRecordTypeRegenerating = false;
@@ -14880,6 +15316,11 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'objectSelection') {
             renderObjectSelection(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'fieldEditResult') {
+            renderFieldEditResult(hostMessage);
             return;
         }
 
