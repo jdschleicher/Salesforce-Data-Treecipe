@@ -76,7 +76,8 @@ const storedSelections = (excludedObjectApiNamesByFolderName: Record<string, unk
     excludedFieldApiNamesByFolderName: excludedFieldApiNamesByFolderName,
     objectCountsByFolderName: {},
     fixedValuesByFolderName: {},
-    constraintsByFolderName: {}
+    constraintsByFolderName: {},
+    validationRulesOffByFolderName: {}
 });
 
 const ACCOUNT_RATING_LOCK = { objects: [{ objectApiName: 'Account', excludedFieldApiNames: [] as string[], lockedFields: [{ fieldApiName: 'Rating__c', reason: 'controls Sub_Rating__c' }] }] };

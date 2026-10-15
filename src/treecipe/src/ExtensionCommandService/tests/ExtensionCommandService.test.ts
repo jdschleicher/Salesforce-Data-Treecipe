@@ -2206,6 +2206,27 @@ describe('ExtensionCommandService', () => {
 
             });
 
+            test('runs a copy carrying switched-off validation rules (#325) and faker constraints (#323), and records both in datasetSource.json', async () => {
+
+                const [fakerJsCase] = backendCases;
+                arrangeRun(fakerJsCase, `treecipe/GeneratedRecipes/${fakerJsCase.runFolderName}/Account-thru-Contact`);
+                const recipeFilePath = recipeFilePathOf(fakerJsCase);
+                ( fakerJsCase.processorPrototype.generateFakeDataBySelectedRecipeFile as jest.Mock ).mockResolvedValue(fakerJsCase.fakerOutput);
+
+                const datasetFolderPath = await extensionCommandService.runFakerGenerationByRecipeFile(recipeFilePath, {
+                    recipeText: countedRecipeText,
+                    excludedObjectApiNames: [],
+                    constraintsByObject: { Account: { NumberOfEmployees: { min: '10' } } },
+                    validationRulesOffByObject: { Account: ['AnnualRevenue'] }
+                }, { isConfirmed: true });
+
+                expect(ErrorHandlingService.handleCapturedError).not.toHaveBeenCalled();
+                const writtenSource = readWrittenDatasetSource(path.basename(datasetFolderPath as string));
+                expect(writtenSource.validationRulesOffByObject).toEqual({ Account: ['AnnualRevenue'] });
+                expect(writtenSource.constraintsByObject).toEqual({ Account: { NumberOfEmployees: { min: '10' } } });
+
+            });
+
             test('runs a copy carrying only record counts, and records them in datasetSource.json', async () => {
 
                 const [fakerJsCase] = backendCases;
@@ -2296,6 +2317,20 @@ describe('ExtensionCommandService', () => {
                     ['a constraint map that is an array', [['Account', 'x']]]
                 ])('refuses faker constraints with %s', (_description, constraintsByObject) => {
                     expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], constraintsByObject })).toBeFalse();
+                });
+
+                test('accepts a copy carrying only switched-off validation rules (#325)', () => {
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], validationRulesOffByObject: { Account: ['NumberOfEmployees'] } })).toBeTrue();
+                });
+
+                test.each([
+                    ['an empty map and nothing else left out', {}],
+                    ['an object with no fields and nothing else left out', { Account: [] }],
+                    ['a field name that is not an api name', { Account: ['Name\n- object: Evil'] }],
+                    ['an object name that is not an api name', { 'Bad Name': ['Name'] }],
+                    ['a field list that is a string', { Account: 'Name' }]
+                ])('refuses switched-off validation rules with %s', (_description, validationRulesOffByObject) => {
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], validationRulesOffByObject })).toBeFalse();
                 });
 
                 test('accepts a copy carrying only fixed values (#262)', () => {

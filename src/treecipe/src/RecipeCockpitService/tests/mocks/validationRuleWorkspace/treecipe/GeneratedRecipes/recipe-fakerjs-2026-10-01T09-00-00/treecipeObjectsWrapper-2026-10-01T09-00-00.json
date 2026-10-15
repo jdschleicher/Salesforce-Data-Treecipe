@@ -1,0 +1,380 @@
+{
+  "ObjectToObjectInfoMap": {
+    "Gadget__c": {
+      "ApiName": "Gadget__c",
+      "FullRecipe": "\n- object: Gadget__c\n  nickname: Gadget__c_NickName\n  count: 1\n  fields:\n    Amount__c: \"${{ faker.finance.amount({min: 100.00, max: 49999.99, dec: 2}) }}\"\n                    ### Driven by ValidationRule \"Require_Amount_Maximum\", \"Require_Amount_Minimum\"\n    Code__c: \"${{ faker.helpers.fromRegExp('[A-Z]{3}') + '-' + faker.helpers.fromRegExp('[0-9]{4}') }}\"\n                    ### Driven by ValidationRule \"Code_Format\"\n    Contact_Phone__c: \"${{ '(' + faker.helpers.fromRegExp('[0-9]{3}') + ') ' + faker.helpers.fromRegExp('[0-9]{3}') + '-' + faker.helpers.fromRegExp('[0-9]{4}') }}\"\n                    ### Driven by ValidationRule \"Phone_Format\"\n    Description__c: ${{ faker.lorem.paragraph() }}\n    Launch_Date__c: \"${{ faker.date.between({from: new Date('2024-01-01T00:00:00Z'), to: new Date('2029-12-31T00:00:00Z')}).toISOString().split('T')[0] }}\"\n                    ### Driven by ValidationRule \"Launch_After_2024\", \"Launch_Before_2030\"\n    Notes__c: \"${{ faker.string.alpha({ length: { min: 10, max: 200 } }) }}\"\n                    ### Driven by ValidationRule \"Notes_Max_Length\", \"Notes_Min_Length\"\n    Quantity__c: \"${{ faker.number.int({min: 1, max: 500}) }}\"\n                    ### Driven by ValidationRule \"Quantity_Cap\", \"Quantity_Positive\"\n    Region__c: ${{ faker.helpers.arrayElement([`East`,`West`]) }}\n    Score__c: |\n            ${{ faker.number.int({min: 0, max: 999}) }}\n    Ship_Date__c: \"${{ faker.date.between({from: new Date((Math.floor(Date.now() / 86400000) + 0) * 86400000), to: new Date((Math.floor(Date.now() / 86400000) + 365) * 86400000)}).toISOString().split('T')[0] }}\"\n                    ### Driven by ValidationRule \"Ship_Date_Future\"\n    Stage__c: ${{ faker.helpers.arrayElement([`Open`,`Won`]) }}\n                    ### Driven by ValidationRule \"Restrict_Lost_Stage\"\n    Town__c: \n      if:\n        - choice:\n            when: ${{ Region__c == 'East' }}\n            pick:\n                random_choice:\n                    - Boston\n        - choice:\n            when: ${{ Region__c == 'West' }}\n            pick:\n                random_choice:\n                    - Seattle\n                    ### Driven by ValidationRule \"Restrict_Portland\"\n    ### TODO -- VALIDATION RULE NOT APPLIED -- \"Complex_Formula\" -- its formula is not one of the single-field shapes Treecipe applies\n    ### TODO -- VALIDATION RULE NOT APPLIED -- \"Missing_Field\" -- Nonexistent__c is not a field Treecipe read from this object's fields folder\n    ### TODO -- VALIDATION RULE NOT APPLIED -- \"Score_High\" -- Score__c: together these rules leave no value to generate: The minimum 10 is greater than the maximum 5.\n    ### TODO -- VALIDATION RULE NOT APPLIED -- \"Score_Low\" -- Score__c: together these rules leave no value to generate: The minimum 10 is greater than the maximum 5.",
+      "RelationshipDetail": {
+        "objectApiName": "Gadget__c",
+        "level": 0,
+        "parentObjectToFieldReferences": {},
+        "childObjectToFieldReferences": {
+          "Widget__c": [
+            "Gadget__c"
+          ]
+        },
+        "isProcessed": true,
+        "relationshipTreeId": "tree_Gadget__c_1792064079101"
+      },
+      "Fields": [
+        {
+          "objectName": "Gadget__c",
+          "fieldName": "Amount__c",
+          "fieldLabel": "Amount",
+          "type": "Currency",
+          "recipeValue": "\"${{ faker.finance.amount({min: 100.00, max: 49999.99, dec: 2}) }}\"\n                    ### Driven by ValidationRule \"Require_Amount_Maximum\", \"Require_Amount_Minimum\"",
+          "precision": 10,
+          "scale": 2,
+          "validationRuleConstraints": [
+            {
+              "ruleName": "Require_Amount_Maximum",
+              "type": "numericMax",
+              "value": "50000",
+              "isExclusive": true,
+              "applied": true
+            },
+            {
+              "ruleName": "Require_Amount_Minimum",
+              "type": "numericMin",
+              "value": "100",
+              "applied": true
+            }
+          ],
+          "unconstrainedRecipeValue": "|\n            ${{ faker.finance.amount({min: 0, max: 99999999, dec: 2}) }}"
+        },
+        {
+          "objectName": "Gadget__c",
+          "fieldName": "Code__c",
+          "fieldLabel": "Code",
+          "type": "Text",
+          "recipeValue": "\"${{ faker.helpers.fromRegExp('[A-Z]{3}') + '-' + faker.helpers.fromRegExp('[0-9]{4}') }}\"\n                    ### Driven by ValidationRule \"Code_Format\"",
+          "length": 20,
+          "validationRuleConstraints": [
+            {
+              "ruleName": "Code_Format",
+              "type": "regex",
+              "value": "[A-Z]{3}-\\d{4}",
+              "applied": true
+            }
+          ],
+          "unconstrainedRecipeValue": "${{ faker.lorem.text(20).substring(0, 20) }}"
+        },
+        {
+          "objectName": "Gadget__c",
+          "fieldName": "Contact_Phone__c",
+          "fieldLabel": "Contact Phone",
+          "type": "Phone",
+          "recipeValue": "\"${{ '(' + faker.helpers.fromRegExp('[0-9]{3}') + ') ' + faker.helpers.fromRegExp('[0-9]{3}') + '-' + faker.helpers.fromRegExp('[0-9]{4}') }}\"\n                    ### Driven by ValidationRule \"Phone_Format\"",
+          "validationRuleConstraints": [
+            {
+              "ruleName": "Phone_Format",
+              "type": "regex",
+              "value": "\\(\\d{3}\\) \\d{3}-\\d{4}",
+              "applied": true
+            }
+          ],
+          "unconstrainedRecipeValue": "|\n                ${{ faker.phone.number({style:'national'}) }}"
+        },
+        {
+          "objectName": "Gadget__c",
+          "fieldName": "Description__c",
+          "fieldLabel": "Description",
+          "type": "TextArea",
+          "recipeValue": "${{ faker.lorem.paragraph() }}",
+          "validationRuleConstraints": [
+            {
+              "ruleName": "Require_Description",
+              "type": "required",
+              "applied": true
+            }
+          ],
+          "unconstrainedRecipeValue": "${{ faker.lorem.paragraph() }}"
+        },
+        {
+          "objectName": "Gadget__c",
+          "fieldName": "Launch_Date__c",
+          "fieldLabel": "Launch Date",
+          "type": "Date",
+          "recipeValue": "\"${{ faker.date.between({from: new Date('2024-01-01T00:00:00Z'), to: new Date('2029-12-31T00:00:00Z')}).toISOString().split('T')[0] }}\"\n                    ### Driven by ValidationRule \"Launch_After_2024\", \"Launch_Before_2030\"",
+          "validationRuleConstraints": [
+            {
+              "ruleName": "Launch_After_2024",
+              "type": "dateMin",
+              "value": "2024-01-01",
+              "applied": true
+            },
+            {
+              "ruleName": "Launch_Before_2030",
+              "type": "dateMax",
+              "value": "2029-12-31",
+              "applied": true
+            }
+          ],
+          "unconstrainedRecipeValue": "|\n                ${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}"
+        },
+        {
+          "objectName": "Gadget__c",
+          "fieldName": "Notes__c",
+          "fieldLabel": "Notes",
+          "type": "LongTextArea",
+          "recipeValue": "\"${{ faker.string.alpha({ length: { min: 10, max: 200 } }) }}\"\n                    ### Driven by ValidationRule \"Notes_Max_Length\", \"Notes_Min_Length\"",
+          "length": 1000,
+          "validationRuleConstraints": [
+            {
+              "ruleName": "Notes_Max_Length",
+              "type": "lengthMax",
+              "value": "200",
+              "applied": true
+            },
+            {
+              "ruleName": "Notes_Min_Length",
+              "type": "lengthMin",
+              "value": "10",
+              "applied": true
+            }
+          ],
+          "unconstrainedRecipeValue": "${{ faker.lorem.text(1000).substring(0, 1000) }}"
+        },
+        {
+          "objectName": "Gadget__c",
+          "fieldName": "Quantity__c",
+          "fieldLabel": "Quantity",
+          "type": "Number",
+          "recipeValue": "\"${{ faker.number.int({min: 1, max: 500}) }}\"\n                    ### Driven by ValidationRule \"Quantity_Cap\", \"Quantity_Positive\"",
+          "precision": 5,
+          "scale": 0,
+          "validationRuleConstraints": [
+            {
+              "ruleName": "Quantity_Cap",
+              "type": "numericMax",
+              "value": "500",
+              "applied": true
+            },
+            {
+              "ruleName": "Quantity_Positive",
+              "type": "numericMin",
+              "value": "0",
+              "isExclusive": true,
+              "applied": true
+            }
+          ],
+          "unconstrainedRecipeValue": "|\n            ${{ faker.number.int({min: 0, max: 99999}) }}"
+        },
+        {
+          "objectName": "Gadget__c",
+          "fieldName": "Region__c",
+          "fieldLabel": "Region",
+          "type": "Picklist",
+          "picklistValues": [
+            {
+              "picklistOptionApiName": "East",
+              "label": "East",
+              "default": false,
+              "isActive": true
+            },
+            {
+              "picklistOptionApiName": "West",
+              "label": "West",
+              "default": false,
+              "isActive": true
+            }
+          ],
+          "recipeValue": "${{ faker.helpers.arrayElement([`East`,`West`]) }}"
+        },
+        {
+          "objectName": "Gadget__c",
+          "fieldName": "Score__c",
+          "fieldLabel": "Score",
+          "type": "Number",
+          "recipeValue": "|\n            ${{ faker.number.int({min: 0, max: 999}) }}",
+          "precision": 3,
+          "scale": 0,
+          "validationRuleConstraints": [
+            {
+              "ruleName": "Score_High",
+              "type": "numericMax",
+              "value": "5",
+              "applied": false,
+              "reason": "together these rules leave no value to generate: The minimum 10 is greater than the maximum 5."
+            },
+            {
+              "ruleName": "Score_Low",
+              "type": "numericMin",
+              "value": "10",
+              "applied": false,
+              "reason": "together these rules leave no value to generate: The minimum 10 is greater than the maximum 5."
+            }
+          ],
+          "unconstrainedRecipeValue": "|\n            ${{ faker.number.int({min: 0, max: 999}) }}"
+        },
+        {
+          "objectName": "Gadget__c",
+          "fieldName": "Ship_Date__c",
+          "fieldLabel": "Ship Date",
+          "type": "Date",
+          "recipeValue": "\"${{ faker.date.between({from: new Date((Math.floor(Date.now() / 86400000) + 0) * 86400000), to: new Date((Math.floor(Date.now() / 86400000) + 365) * 86400000)}).toISOString().split('T')[0] }}\"\n                    ### Driven by ValidationRule \"Ship_Date_Future\"",
+          "validationRuleConstraints": [
+            {
+              "ruleName": "Ship_Date_Future",
+              "type": "dateMin",
+              "value": "today",
+              "applied": true
+            }
+          ],
+          "unconstrainedRecipeValue": "|\n                ${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}"
+        },
+        {
+          "objectName": "Gadget__c",
+          "fieldName": "Stage__c",
+          "fieldLabel": "Stage",
+          "type": "Picklist",
+          "picklistValues": [
+            {
+              "picklistOptionApiName": "Open",
+              "label": "Open",
+              "default": false,
+              "isActive": true
+            },
+            {
+              "picklistOptionApiName": "Won",
+              "label": "Won",
+              "default": false,
+              "isActive": true
+            },
+            {
+              "picklistOptionApiName": "Lost",
+              "label": "Lost",
+              "default": false,
+              "isActive": true
+            }
+          ],
+          "recipeValue": "${{ faker.helpers.arrayElement([`Open`,`Won`]) }}\n                    ### Driven by ValidationRule \"Restrict_Lost_Stage\"",
+          "validationRuleConstraints": [
+            {
+              "ruleName": "Restrict_Lost_Stage",
+              "type": "picklistExclude",
+              "value": "Lost",
+              "applied": true
+            }
+          ],
+          "unconstrainedRecipeValue": "${{ faker.helpers.arrayElement([`Open`,`Won`,`Lost`]) }}"
+        },
+        {
+          "objectName": "Gadget__c",
+          "fieldName": "Town__c",
+          "fieldLabel": "Town",
+          "type": "Picklist",
+          "picklistValues": [
+            {
+              "picklistOptionApiName": "Boston",
+              "label": "Boston",
+              "default": false,
+              "isActive": true,
+              "controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection": [
+                "East"
+              ]
+            },
+            {
+              "picklistOptionApiName": "Seattle",
+              "label": "Seattle",
+              "default": false,
+              "isActive": true,
+              "controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection": [
+                "West"
+              ]
+            },
+            {
+              "picklistOptionApiName": "Portland",
+              "label": "Portland",
+              "default": false,
+              "isActive": true,
+              "controllingValuesFromParentPicklistThatMakeThisValueAvailableAsASelection": [
+                "West"
+              ]
+            }
+          ],
+          "controllingField": "Region__c",
+          "recipeValue": "\n      if:\n        - choice:\n            when: ${{ Region__c == 'East' }}\n            pick:\n                random_choice:\n                    - Boston\n        - choice:\n            when: ${{ Region__c == 'West' }}\n            pick:\n                random_choice:\n                    - Seattle\n                    ### Driven by ValidationRule \"Restrict_Portland\"",
+          "validationRuleConstraints": [
+            {
+              "ruleName": "Restrict_Portland",
+              "type": "picklistExclude",
+              "value": "Portland",
+              "applied": true
+            }
+          ],
+          "unconstrainedRecipeValue": "\n      if:\n        - choice:\n            when: ${{ Region__c == 'East' }}\n            pick:\n                random_choice:\n                    - Boston\n        - choice:\n            when: ${{ Region__c == 'West' }}\n            pick:\n                random_choice:\n                    - Seattle\n                    - Portland"
+        }
+      ],
+      "ValidationRulesNotApplied": [
+        {
+          "ruleName": "Complex_Formula",
+          "reason": "its formula is not one of the single-field shapes Treecipe applies"
+        },
+        {
+          "ruleName": "Missing_Field",
+          "reason": "Nonexistent__c is not a field Treecipe read from this object's fields folder"
+        }
+      ]
+    },
+    "Widget__c": {
+      "ApiName": "Widget__c",
+      "FullRecipe": "\n- object: Widget__c\n  nickname: Widget__c_NickName\n  count: 1\n  fields:\n    Gadget__c: ### TODO -- REFERENCE ID REQUIRED\n    Weight__c: |\n            ${{ faker.finance.amount({min: 0, max: 99999, dec: 1}) }}",
+      "RelationshipDetail": {
+        "objectApiName": "Widget__c",
+        "level": 1,
+        "parentObjectToFieldReferences": {
+          "Gadget__c": [
+            "Gadget__c"
+          ]
+        },
+        "childObjectToFieldReferences": {},
+        "isProcessed": true,
+        "relationshipTreeId": "tree_Gadget__c_1792064079101"
+      },
+      "Fields": [
+        {
+          "objectName": "Widget__c",
+          "fieldName": "Gadget__c",
+          "fieldLabel": "Gadget",
+          "type": "Lookup",
+          "referenceTo": "Gadget__c",
+          "recipeValue": "### TODO -- REFERENCE ID REQUIRED"
+        },
+        {
+          "objectName": "Widget__c",
+          "fieldName": "Weight__c",
+          "fieldLabel": "Weight",
+          "type": "Number",
+          "recipeValue": "|\n            ${{ faker.finance.amount({min: 0, max: 99999, dec: 1}) }}",
+          "precision": 6,
+          "scale": 1
+        }
+      ]
+    }
+  },
+  "RelationshipTrees": [
+    {
+      "treeId": "tree_Gadget__c_1792064079101",
+      "topLevelObjects": [
+        "Gadget__c"
+      ],
+      "allObjects": [
+        "Gadget__c",
+        "Widget__c"
+      ],
+      "maxLevel": 1
+    }
+  ],
+  "RecipeFiles": [
+    {
+      "fileName": "recipe_relationshiptree_1.yml",
+      "content": "",
+      "objectCount": 2,
+      "maxLevel": 1,
+      "objects": [
+        "Gadget__c",
+        "Widget__c"
+      ]
+    }
+  ]
+}
