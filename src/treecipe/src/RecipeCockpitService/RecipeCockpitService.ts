@@ -12701,8 +12701,12 @@ ${this.buildPaletteCustomProperties()}
         in the reader's place. A card whose objects have no record types to choose from draws it
         disabled with a note saying why, so turning it on can never empty the tab silently.
     */
+    // A CARD'S OBJECTS ARE FIXED FOR ITS MODEL, SO THE ANSWER IS KEPT ON THE CARD
     function hasRecordTypeObjects(treeState) {
-        return treeState.objectStates.some(function (treeObjectState) { return treeObjectState.hasRecordTypes; });
+        if (typeof treeState.hasRecordTypeObjects !== 'boolean') {
+            treeState.hasRecordTypeObjects = treeState.objectStates.some(function (treeObjectState) { return treeObjectState.hasRecordTypes; });
+        }
+        return treeState.hasRecordTypeObjects;
     }
 
     function isRecordTypeFieldsOnlyIn(treeState) {
@@ -13754,8 +13758,8 @@ ${this.buildPaletteCustomProperties()}
             let objectMatchingFieldCount = 0;
 
             treeObjectState.fieldStates.forEach(function (fieldState) {
-                fieldState.isMatch = (isObjectNameMatch || isFieldTextMatch(fieldState, searchQuery))
-                    && (!isRecordTypeFieldsOnly || fieldState.recordTypeDeveloperNames !== null);
+                fieldState.isMatch = (!isRecordTypeFieldsOnly || fieldState.recordTypeDeveloperNames !== null)
+                    && (isObjectNameMatch || isFieldTextMatch(fieldState, searchQuery));
                 if (fieldState.isMatch) { objectMatchingFieldCount++; }
                 applyTreeFieldVisibility(fieldState);
             });
@@ -14443,6 +14447,7 @@ ${this.buildPaletteCustomProperties()}
         pendingPicklistValueElements = Object.create(null);
         recordTypeChoices = Object.create(null);
         recordTypeObjects = [];
+        recordTypeFieldsByObjectApiName = Object.create(null);
         recordTypeRowStates = [];
         recordTypeButtonElements = [];
         isRecordTypeRegenerating = false;
