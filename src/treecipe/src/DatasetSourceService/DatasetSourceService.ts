@@ -72,6 +72,8 @@ export interface IDatasetSource {
     fixedValuesByObject?: Record<string, Record<string, string>>;
     // THE FAKER CONSTRAINTS THE RECIPE COCKPIT SET (#323), BY OBJECT THEN FIELD, EACH BOUND AS TYPED; ABSENT WHEN NONE WAS. READ BACK WITH NO PROTOTYPE
     constraintsByObject?: Record<string, Record<string, IDatasetSourceFieldConstraint>>;
+    // THE FIELDS WHOSE VALIDATION RULES THE RECIPE COCKPIT SWITCHED OFF (#325), BY OBJECT; ABSENT WHEN NONE WAS. READ BACK WITH NO PROTOTYPE
+    validationRulesOffByObject?: Record<string, string[]>;
 }
 
 // A FIELD'S BOUNDS AS THE READER TYPED THEM (#323); AN ABSENT ONE WAS THE DEFAULT
@@ -191,13 +193,15 @@ export class DatasetSourceService {
                                 excludedFieldApiNamesByObject: Record<string, string[]> = {},
                                 objectCountsByObject: Record<string, number> = {},
                                 fixedValuesByObject: Record<string, Record<string, string>> = {},
-                                constraintsByObject: Record<string, Record<string, IDatasetSourceFieldConstraint>> = {}): IDatasetSource {
+                                constraintsByObject: Record<string, Record<string, IDatasetSourceFieldConstraint>> = {},
+                                validationRulesOffByObject: Record<string, string[]> = {}): IDatasetSource {
 
         // fromEntries DEFINES EACH KEY, SO AN OBJECT NAMED __proto__ IS RECORDED RATHER THAN SET AS A PROTOTYPE
         const recordedFieldExclusions = Object.entries(excludedFieldApiNamesByObject).filter(([, fieldApiNames]) => fieldApiNames.length > 0);
         const recordedObjectCounts = Object.entries(objectCountsByObject);
         const recordedFixedValues = Object.entries(fixedValuesByObject).filter(([, fixedValuesByField]) => Object.keys(fixedValuesByField).length > 0);
         const recordedConstraints = Object.entries(constraintsByObject).filter(([, constraintsByField]) => Object.keys(constraintsByField).length > 0);
+        const recordedValidationRulesOff = Object.entries(validationRulesOffByObject).filter(([, fieldApiNames]) => fieldApiNames.length > 0);
 
         return {
             schemaVersion: DATASET_SOURCE_SCHEMA_VERSION,
@@ -218,6 +222,9 @@ export class DatasetSourceService {
                 : {} ),
             ...( recordedConstraints.length > 0
                 ? { constraintsByObject: Object.fromEntries(recordedConstraints.map(([objectApiName, constraintsByField]) => [objectApiName, Object.fromEntries(Object.entries(constraintsByField).map(([fieldApiName, constraint]) => [fieldApiName, DatasetSourceService.copyFieldConstraint(constraint)]))])) }
+                : {} ),
+            ...( recordedValidationRulesOff.length > 0
+                ? { validationRulesOffByObject: Object.fromEntries(recordedValidationRulesOff.map(([objectApiName, fieldApiNames]) => [objectApiName, [...fieldApiNames]])) }
                 : {} )
         };
 
@@ -403,6 +410,17 @@ export class DatasetSourceService {
             && Object.values(objectCountsByObject).every(objectCount => typeof objectCount === 'number' && Number.isSafeInteger(objectCount) && objectCount >= 1)
         );
 
+        // OPTIONAL TOO (#325); THE SAME SHAPE AS THE UNTICKED FIELDS
+        const validationRulesOffByObject = candidate.validationRulesOffByObject;
+        const isValidationRulesOffMapValid = validationRulesOffByObject === undefined || (
+            typeof validationRulesOffByObject === 'object'
+            && validationRulesOffByObject !== null
+            && !Array.isArray(validationRulesOffByObject)
+            && Object.values(validationRulesOffByObject).every(fieldApiNames => (
+                Array.isArray(fieldApiNames) && fieldApiNames.every(fieldApiName => typeof fieldApiName === 'string')
+            ))
+        );
+
         // OPTIONAL TOO (#262); PRESENT, IT MUST MAP EACH NAME TO A MAP OF NAMES TO STRINGS
         const fixedValuesByObject = candidate.fixedValuesByObject;
         const isFixedValueMapValid = fixedValuesByObject === undefined || (
@@ -453,6 +471,7 @@ export class DatasetSourceService {
                         && isObjectCountMapValid
                         && isFixedValueMapValid
                         && isConstraintMapValid
+                        && isValidationRulesOffMapValid
                         && isLookupParentMapValid
                         && isStringOrNull(candidate.recipeRunFolderName)
                         && isStringOrNull(candidate.recipeTreeFolderName)
@@ -475,6 +494,14 @@ export class DatasetSourceService {
             readFieldExclusions = Object.create(null) as Record<string, string[]>;
             Object.entries(excludedFieldApiNamesByObject as Record<string, string[]>).forEach(([objectApiName, fieldApiNames]) => {
                 ( readFieldExclusions as Record<string, string[]> )[objectApiName] = [...fieldApiNames];
+            });
+        }
+
+        let readValidationRulesOff: Record<string, string[]> | undefined;
+        if ( validationRulesOffByObject !== undefined ) {
+            readValidationRulesOff = Object.create(null) as Record<string, string[]>;
+            Object.entries(validationRulesOffByObject as Record<string, string[]>).forEach(([objectApiName, fieldApiNames]) => {
+                ( readValidationRulesOff as Record<string, string[]> )[objectApiName] = [...fieldApiNames];
             });
         }
 
@@ -537,7 +564,8 @@ export class DatasetSourceService {
             ...( readFieldExclusions ? { excludedFieldApiNamesByObject: readFieldExclusions } : {} ),
             ...( readObjectCounts ? { objectCountsByObject: readObjectCounts } : {} ),
             ...( readFixedValues ? { fixedValuesByObject: readFixedValues } : {} ),
-            ...( readConstraints ? { constraintsByObject: readConstraints } : {} )
+            ...( readConstraints ? { constraintsByObject: readConstraints } : {} ),
+            ...( readValidationRulesOff ? { validationRulesOffByObject: readValidationRulesOff } : {} )
         };
 
     }

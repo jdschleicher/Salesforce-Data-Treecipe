@@ -667,6 +667,51 @@ describe('DatasetSourceService', () => {
 
         });
 
+        describe('the fields whose validation rules the Recipe Cockpit switched off (#325)', () => {
+
+            const recipeSourceNames = { recipeRunFolderName: fakerJsRunFolderName, recipeTreeFolderName: 'Gadget__c-thru-Widget__c', recipeFileName: 'recipe.yml' };
+
+            test('buildDatasetSource records them only when there are some, an object named __proto__ as a key', () => {
+
+                expect(DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Gadget__c: 1 }, [], {}, {}, {}, {}, { Gadget__c: [] }))
+                    .not.toHaveProperty('validationRulesOffByObject');
+
+                const validationRulesOffByObject: Record<string, string[]> = Object.create(null);
+                validationRulesOffByObject['__proto__'] = ['Amount__c'];
+                const written = JSON.parse(JSON.stringify(DatasetSourceService.buildDatasetSource(recipeSourceNames, 'faker-js', '2026-09-02T10:00:00.000Z', { Gadget__c: 1 }, [], {}, {}, {}, {}, validationRulesOffByObject)));
+
+                expect(Object.keys(written.validationRulesOffByObject)).toEqual(['__proto__']);
+                expect(written.validationRulesOffByObject['__proto__']).toEqual(['Amount__c']);
+
+            });
+
+            test('accepts them, reads them back with no prototype, and reads a source written before them unchanged', () => {
+
+                const switchingSource: IDatasetSource = { ...validDatasetSource, validationRulesOffByObject: { Gadget__c: ['Amount__c', 'Stage__c'] } };
+                const parsedDatasetSource = JSON.parse(JSON.stringify({ ...validDatasetSource, validationRulesOffByObject: { Placeholder: ['Name'] } }).replace('"Placeholder"', '"__proto__"'));
+
+                expect(DatasetSourceService.typeCheckDatasetSource(switchingSource)).toEqual(switchingSource);
+                expect(DatasetSourceService.typeCheckDatasetSource(validDatasetSource)).not.toHaveProperty('validationRulesOffByObject');
+
+                const validationRulesOffByObject = DatasetSourceService.typeCheckDatasetSource(parsedDatasetSource)?.validationRulesOffByObject as Record<string, string[]>;
+                expect(Object.getPrototypeOf(validationRulesOffByObject)).toBeNull();
+                expect(validationRulesOffByObject['__proto__']).toEqual(['Name']);
+
+            });
+
+            test.each([
+                ['a list instead of a map', ['Amount__c']],
+                ['null', null],
+                ['an object entry that is a string', { Gadget__c: 'Amount__c' }],
+                ['a field that is a number', { Gadget__c: [7] }]
+            ])('refuses the whole file for %s', (_description, validationRulesOffByObject) => {
+
+                expect(DatasetSourceService.typeCheckDatasetSource({ ...validDatasetSource, validationRulesOffByObject })).toBeUndefined();
+
+            });
+
+        });
+
         describe('the fixed values the Recipe Cockpit set (#262)', () => {
 
             const recipeSourceNames = { recipeRunFolderName: fakerJsRunFolderName, recipeTreeFolderName: 'Account-thru-Contact', recipeFileName: 'recipe.yml' };

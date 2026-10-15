@@ -1,0 +1,57 @@
+# Relationship Tree: RelationshipTree_1
+# Objects must be processed in this order for proper lookup resolution
+
+# Level 0 - Gadget__c
+# Gadget__c (Children: Widget__c)
+
+- object: Gadget__c
+  nickname: Gadget__c_NickName
+  count: 1
+  fields:
+    Amount__c: "${{fake.pydecimal(min_value=100.00, max_value=49999.99, right_digits=2)}}"
+                    ### Driven by ValidationRule "Require_Amount_Maximum", "Require_Amount_Minimum"
+    Code__c: ${{fake.text(max_nb_chars=20)}}
+    Contact_Phone__c: ${{fake.phone_number()}}
+    Description__c: ${{fake.paragraph()}}
+    Launch_Date__c: "${{fake.date_between(start_date=date('2024-01-01'), end_date=date('2029-12-31'))}}"
+                    ### Driven by ValidationRule "Launch_After_2024", "Launch_Before_2030"
+    Notes__c: "${{fake.pystr(min_chars=10, max_chars=200)}}"
+                    ### Driven by ValidationRule "Notes_Max_Length", "Notes_Min_Length"
+    Quantity__c: "${{fake.random_int(min=1, max=500)}}"
+                    ### Driven by ValidationRule "Quantity_Cap", "Quantity_Positive"
+    Region__c: ${{ random_choice('East', 'West') }}
+    Score__c: ${{fake.random_int(min=0, max=999)}}
+    Ship_Date__c: "${{fake.date_between(start_date='today', end_date='+365d')}}"
+                    ### Driven by ValidationRule "Ship_Date_Future"
+    Stage__c: ${{ random_choice('Open', 'Won') }}
+                    ### Driven by ValidationRule "Restrict_Lost_Stage"
+    Town__c: 
+      if:
+        - choice:
+            when: ${{ Region__c == 'East' }}
+            pick:
+                random_choice:
+                    - Boston
+        - choice:
+            when: ${{ Region__c == 'West' }}
+            pick:
+                random_choice:
+                    - Seattle
+                    ### Driven by ValidationRule "Restrict_Portland"
+    ### TODO -- VALIDATION RULE NOT APPLIED -- "Code_Format" -- Code__c: this faker service has no regex generator
+    ### TODO -- VALIDATION RULE NOT APPLIED -- "Complex_Formula" -- its formula is not one of the single-field shapes Treecipe applies
+    ### TODO -- VALIDATION RULE NOT APPLIED -- "Missing_Field" -- Nonexistent__c is not a field Treecipe read from this object's fields folder
+    ### TODO -- VALIDATION RULE NOT APPLIED -- "Phone_Format" -- Contact_Phone__c: this faker service has no regex generator
+    ### TODO -- VALIDATION RULE NOT APPLIED -- "Score_High" -- Score__c: together these rules leave no value to generate: The minimum 10 is greater than the maximum 5.
+    ### TODO -- VALIDATION RULE NOT APPLIED -- "Score_Low" -- Score__c: together these rules leave no value to generate: The minimum 10 is greater than the maximum 5.
+
+# Level 1 - Widget__c
+# Widget__c (Parents: Gadget__c)
+
+- object: Widget__c
+  nickname: Widget__c_NickName
+  count: 1
+  fields:
+    Gadget__c: ### TODO -- REFERENCE ID REQUIRED
+    Weight__c: ${{fake.pydecimal(left_digits=99999, right_digits=1, positive=True)}}
+

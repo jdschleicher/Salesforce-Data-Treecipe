@@ -1,0 +1,55 @@
+# Relationship Tree: RelationshipTree_1
+# Child objects are nested under their parent's friends: block -- a friend's count is records PER parent record
+
+# Gadget__c (Children: Widget__c)
+- object: Gadget__c
+  nickname: Gadget__c_NickName
+  count: 1
+  fields:
+    Amount__c: "${{ faker.finance.amount({min: 100.00, max: 49999.99, dec: 2}) }}"
+                    ### Driven by ValidationRule "Require_Amount_Maximum", "Require_Amount_Minimum"
+    Code__c: "${{ faker.helpers.fromRegExp('[A-Z]{3}') + '-' + faker.helpers.fromRegExp('[0-9]{4}') }}"
+                    ### Driven by ValidationRule "Code_Format"
+    Contact_Phone__c: "${{ '(' + faker.helpers.fromRegExp('[0-9]{3}') + ') ' + faker.helpers.fromRegExp('[0-9]{3}') + '-' + faker.helpers.fromRegExp('[0-9]{4}') }}"
+                    ### Driven by ValidationRule "Phone_Format"
+    Description__c: ${{ faker.lorem.paragraph() }}
+    Launch_Date__c: "${{ faker.date.between({from: new Date('2024-01-01T00:00:00Z'), to: new Date('2029-12-31T00:00:00Z')}).toISOString().split('T')[0] }}"
+                    ### Driven by ValidationRule "Launch_After_2024", "Launch_Before_2030"
+    Notes__c: "${{ faker.string.alpha({ length: { min: 10, max: 200 } }) }}"
+                    ### Driven by ValidationRule "Notes_Max_Length", "Notes_Min_Length"
+    Quantity__c: "${{ faker.number.int({min: 1, max: 500}) }}"
+                    ### Driven by ValidationRule "Quantity_Cap", "Quantity_Positive"
+    Region__c: ${{ faker.helpers.arrayElement([`East`,`West`]) }}
+    Score__c: |
+            ${{ faker.number.int({min: 0, max: 999}) }}
+    Ship_Date__c: "${{ faker.date.between({from: new Date((Math.floor(Date.now() / 86400000) + 0) * 86400000), to: new Date((Math.floor(Date.now() / 86400000) + 365) * 86400000)}).toISOString().split('T')[0] }}"
+                    ### Driven by ValidationRule "Ship_Date_Future"
+    Stage__c: ${{ faker.helpers.arrayElement([`Open`,`Won`]) }}
+                    ### Driven by ValidationRule "Restrict_Lost_Stage"
+    Town__c: 
+      if:
+        - choice:
+            when: ${{ Region__c == 'East' }}
+            pick:
+                random_choice:
+                    - Boston
+        - choice:
+            when: ${{ Region__c == 'West' }}
+            pick:
+                random_choice:
+                    - Seattle
+                    ### Driven by ValidationRule "Restrict_Portland"
+    ### TODO -- VALIDATION RULE NOT APPLIED -- "Complex_Formula" -- its formula is not one of the single-field shapes Treecipe applies
+    ### TODO -- VALIDATION RULE NOT APPLIED -- "Missing_Field" -- Nonexistent__c is not a field Treecipe read from this object's fields folder
+    ### TODO -- VALIDATION RULE NOT APPLIED -- "Score_High" -- Score__c: together these rules leave no value to generate: The minimum 10 is greater than the maximum 5.
+    ### TODO -- VALIDATION RULE NOT APPLIED -- "Score_Low" -- Score__c: together these rules leave no value to generate: The minimum 10 is greater than the maximum 5.
+  friends:
+    # Widget__c (Parents: Gadget__c)
+    - object: Widget__c
+      nickname: Widget__c_NickName
+      count: 1
+      fields:
+        Gadget__c: Gadget__c_NickName
+        Weight__c: |
+                ${{ faker.finance.amount({min: 0, max: 99999, dec: 1}) }}
+

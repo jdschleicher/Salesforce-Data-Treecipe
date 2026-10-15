@@ -140,6 +140,20 @@ export interface IRecipeFilterRequest {
     objectCountsByObject?: ReadonlyMap<string, number>;
     fixedValuesByObject?: ReadonlyMap<string, ReadonlyMap<string, IRecipeFixedValue>>;
     constrainedExpressionsByObject?: ReadonlyMap<string, ReadonlyMap<string, string>>;
+    unconstrainedValuesByObject?: ReadonlyMap<string, ReadonlyMap<string, IRecipeUnconstrainedValue>>;
+}
+
+/*
+    A field whose validation rules the reader switched off (#325). Both values are as the objects
+    wrapper records them -- written as for a top-level object, continuation lines included -- and
+    the field's lines are swapped only on an occurrence that still holds EXACTLY what the rules
+    wrote: anything else is a recipe the rules no longer describe (a hand edit, or a later record
+    type block written with other values), and the copy is refused rather than guessed at. A fixed
+    value or a constrained expression on the same field wins, as it would over the rules.
+*/
+export interface IRecipeUnconstrainedValue {
+    constrainedValue: string;
+    unconstrainedValue: string;
 }
 
 /*
@@ -202,6 +216,7 @@ export type RecipeFilterResult =
         appliedCounts: IRecipeFilterCount[];
         appliedFixedValues: IRecipeFilterFixedValue[];
         appliedConstrainedExpressions: IRecipeFilterConstrainedExpression[];
+        appliedUnconstrainedValues: IRecipeFilterDroppedField[];
     }
     | { isFiltered: false; refusal: IRecipeWriterRefusal };
 
@@ -1688,6 +1703,27 @@ export class RecipeCockpitRecipeWriter {
             }
         }
 
+        const unconstrainedValuesByObject = new Map<string, Map<string, IRecipeUnconstrainedValue>>();
+        for ( const [objectApiName, valuesByField] of filterRequest.unconstrainedValuesByObject ?? new Map<string, ReadonlyMap<string, IRecipeUnconstrainedValue>>() ) {
+            if ( !API_NAME_PATTERN.test(objectApiName) ) {
+                return refuseFilter('invalid-object-api-name', `"${objectApiName}" is not an object api name.`, objectApiName);
+            }
+            for ( const [fieldApiName, unconstrainedValue] of valuesByField ) {
+                if ( !API_NAME_PATTERN.test(fieldApiName) ) {
+                    return { isFiltered: false, refusal: { reason: 'invalid-field-api-name', message: `"${fieldApiName}" is not a field api name.`, objectApiName: objectApiName, fieldApiName: fieldApiName } };
+                }
+                if ( !this.buildFieldLines(fieldApiName, unconstrainedValue.constrainedValue, this.getObjectLayout(0))
+                        || !this.buildFieldLines(fieldApiName, unconstrainedValue.unconstrainedValue, this.getObjectLayout(0)) ) {
+                    return { isFiltered: false, refusal: { reason: 'invalid-value', message: `The value ${objectApiName}.${fieldApiName} generates without its validation rules does not keep the recipe layout.`, objectApiName: objectApiName, fieldApiName: fieldApiName } };
+                }
+            }
+            const valuesByFreeField = new Map([...valuesByField].filter(([fieldApiName]) => !fixedValuesByObject.get(objectApiName)?.has(fieldApiName)
+                                                                                            && !constrainedExpressionsByObject.get(objectApiName)?.has(fieldApiName)));
+            if ( valuesByFreeField.size > 0 ) {
+                unconstrainedValuesByObject.set(objectApiName, valuesByFreeField);
+            }
+        }
+
         const recipeLines = this.splitRecipeLines(recipeText);
         const { lines } = recipeLines;
         const scannedObjects = this.scanRecipeObjects(lines);
@@ -1707,8 +1743,8 @@ export class RecipeCockpitRecipeWriter {
         }
 
         // NOTHING EXCLUDED, NO COUNT SET AND NO VALUE FIXED IS THE RECIPE ITSELF, BYTE FOR BYTE
-        if ( excludedObjectApiNames.size === 0 && excludedFieldsByObject.size === 0 && countsByObject.size === 0 && fixedValuesByObject.size === 0 && constrainedExpressionsByObject.size === 0 ) {
-            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [], appliedCounts: [], appliedFixedValues: [], appliedConstrainedExpressions: [] };
+        if ( excludedObjectApiNames.size === 0 && excludedFieldsByObject.size === 0 && countsByObject.size === 0 && fixedValuesByObject.size === 0 && constrainedExpressionsByObject.size === 0 && unconstrainedValuesByObject.size === 0 ) {
+            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [], appliedCounts: [], appliedFixedValues: [], appliedConstrainedExpressions: [], appliedUnconstrainedValues: [] };
         }
 
         const friendIndex = this.buildScannedFriendIndex(scannedObjects);
@@ -1764,12 +1800,15 @@ export class RecipeCockpitRecipeWriter {
         const hasFieldToFix = keptObjects.some(keptObject => {
             const fixedValuesByField = fixedValuesByObject.get(keptObject.objectApiName);
             const expressionsByField = constrainedExpressionsByObject.get(keptObject.objectApiName);
-            return keptObject.fields.some(scannedField => !!fixedValuesByField?.has(scannedField.fieldApiName) || !!expressionsByField?.has(scannedField.fieldApiName));
+            const unconstrainedByField = unconstrainedValuesByObject.get(keptObject.objectApiName);
+            return keptObject.fields.some(scannedField => !!fixedValuesByField?.has(scannedField.fieldApiName)
+                                                            || !!expressionsByField?.has(scannedField.fieldApiName)
+                                                            || !!unconstrainedByField?.has(scannedField.fieldApiName));
         });
 
         // NOTHING IN THIS RECIPE IS LEFT OUT, RECOUNTED OR FIXED: THE RECIPE ITSELF, BYTE FOR BYTE
         if ( droppedHeaderIndexes.size === 0 && !hasLookupToDrop && !hasFieldToDrop && countOverridesByLineIndex.size === 0 && !hasFieldToFix ) {
-            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [], appliedCounts: [], appliedFixedValues: [], appliedConstrainedExpressions: [] };
+            return { isFiltered: true, recipeText: recipeText, droppedObjectApiNames: [], droppedLookups: [], movedObjects: [], droppedFields: [], appliedCounts: [], appliedFixedValues: [], appliedConstrainedExpressions: [], appliedUnconstrainedValues: [] };
         }
 
         if ( keptObjects.length === 0 ) {
@@ -1856,6 +1895,10 @@ export class RecipeCockpitRecipeWriter {
         const constrainedFieldsByLineIndex = new Map<number, { fieldApiName: string; expression: string }>();
         const appliedConstrainedExpressionKeys = new Set<string>();
         const appliedConstrainedExpressions: IRecipeFilterConstrainedExpression[] = [];
+        const unconstrainedFieldsByLineIndex = new Map<number, { fieldApiName: string; value: string }>();
+        const appliedUnconstrainedKeys = new Set<string>();
+        const appliedUnconstrainedValues: IRecipeFilterDroppedField[] = [];
+        let unconstrainedMismatch: IRecipeFilterDroppedField | undefined;
 
         keptObjects.forEach(keptObject => {
 
@@ -1865,6 +1908,7 @@ export class RecipeCockpitRecipeWriter {
             const excludedFieldApiNames = excludedFieldsByObject.get(keptObject.objectApiName);
             const fixedValuesByField = fixedValuesByObject.get(keptObject.objectApiName);
             const expressionsByField = constrainedExpressionsByObject.get(keptObject.objectApiName);
+            const unconstrainedByField = unconstrainedValuesByObject.get(keptObject.objectApiName);
 
             keptObject.fields.forEach(scannedField => {
 
@@ -1904,6 +1948,25 @@ export class RecipeCockpitRecipeWriter {
                     return;
                 }
 
+                const unconstrainedValue = unconstrainedByField?.get(scannedField.fieldApiName);
+                if ( unconstrainedValue !== undefined ) {
+                    const ruleWrittenLines = this.buildFieldLines(scannedField.fieldApiName, unconstrainedValue.constrainedValue, this.getObjectLayout(keptObject.objectIndent)) as string[];
+                    const isRuleWritten = ruleWrittenLines.length === scannedField.endIndex - scannedField.startIndex
+                                            && ruleWrittenLines.every((ruleWrittenLine, lineOffset) => lines[scannedField.startIndex + lineOffset] === ruleWrittenLine);
+                    if ( !isRuleWritten ) {
+                        unconstrainedMismatch = unconstrainedMismatch ?? { objectApiName: keptObject.objectApiName, fieldApiName: scannedField.fieldApiName };
+                        return;
+                    }
+                    unconstrainedFieldsByLineIndex.set(scannedField.startIndex, { fieldApiName: scannedField.fieldApiName, value: unconstrainedValue.unconstrainedValue });
+                    removeFieldLines(scannedField, scannedField.startIndex + 1);
+                    const unconstrainedKey = `${keptObject.objectApiName}\n${scannedField.fieldApiName}`;
+                    if ( !appliedUnconstrainedKeys.has(unconstrainedKey) ) {
+                        appliedUnconstrainedKeys.add(unconstrainedKey);
+                        appliedUnconstrainedValues.push({ objectApiName: keptObject.objectApiName, fieldApiName: scannedField.fieldApiName });
+                    }
+                    return;
+                }
+
                 const parentObjectApiName = parentsByFieldApiName.get(scannedField.fieldApiName);
                 const isSingleLine = scannedField.endIndex === scannedField.startIndex + 1;
                 const fieldValue = isSingleLine ? lines[scannedField.startIndex].slice(fieldIndent.length + scannedField.fieldApiName.length + 1).trim() : undefined;
@@ -1934,6 +1997,18 @@ export class RecipeCockpitRecipeWriter {
             }
 
         });
+
+        if ( unconstrainedMismatch !== undefined ) {
+            return {
+                isFiltered: false,
+                refusal: {
+                    reason: 'unsupported-filter-layout',
+                    message: `${unconstrainedMismatch.objectApiName}.${unconstrainedMismatch.fieldApiName} in the recipe is not the value its validation rules wrote, so they could not be switched off.`,
+                    objectApiName: unconstrainedMismatch.objectApiName,
+                    fieldApiName: unconstrainedMismatch.fieldApiName
+                }
+            };
+        }
 
         const movedHeaderIndexes = new Set(objectsToMove.map(objectToMove => objectToMove.headerIndex));
         const renderedLines: Array<{ text: string; ending: string }> = [];
@@ -1997,6 +2072,14 @@ export class RecipeCockpitRecipeWriter {
                     continue;
                 }
 
+                const unconstrainedField = unconstrainedFieldsByLineIndex.get(lineIndex);
+                if ( unconstrainedField ) {
+                    ( this.buildFieldLines(unconstrainedField.fieldApiName, unconstrainedField.value, this.getObjectLayout(newObjectIndent)) as string[] )
+                        .forEach(unconstrainedLine => emit(unconstrainedLine, lineIndex));
+                    lineIndex++;
+                    continue;
+                }
+
                 const rewiredField = rewiredFieldsByLineIndex.get(lineIndex);
                 const fixedField = fixedFieldsByLineIndex.get(lineIndex);
                 const constrainedField = constrainedFieldsByLineIndex.get(lineIndex);
@@ -2045,7 +2128,8 @@ export class RecipeCockpitRecipeWriter {
             ...( leftOutParts.length > 0 ? [`leaving out: ${leftOutParts.join('; ')}`] : [] ),
             ...( appliedCounts.length > 0 ? [`with counts: ${appliedCounts.map(appliedCount => `${appliedCount.objectApiName} ${appliedCount.count}`).join(', ')}`] : [] ),
             ...( appliedFixedValues.length > 0 ? [`with fixed values: ${appliedFixedValues.map(appliedFixedValue => `${appliedFixedValue.objectApiName}.${appliedFixedValue.fieldApiName}`).join(', ')}`] : [] ),
-            ...( appliedConstrainedExpressions.length > 0 ? [`with constrained fields: ${appliedConstrainedExpressions.map(appliedExpression => `${appliedExpression.objectApiName}.${appliedExpression.fieldApiName}`).join(', ')}`] : [] )
+            ...( appliedConstrainedExpressions.length > 0 ? [`with constrained fields: ${appliedConstrainedExpressions.map(appliedExpression => `${appliedExpression.objectApiName}.${appliedExpression.fieldApiName}`).join(', ')}`] : [] ),
+            ...( appliedUnconstrainedValues.length > 0 ? [`with validation rules off: ${appliedUnconstrainedValues.map(appliedValue => `${appliedValue.objectApiName}.${appliedValue.fieldApiName}`).join(', ')}`] : [] )
         ];
         emit(`# Recipe Cockpit -- a filtered copy of this tree's recipe, ${headerParts.join('; ')}`);
 
@@ -2101,8 +2185,8 @@ export class RecipeCockpitRecipeWriter {
             return { objectApiName: movedObject.objectApiName, ...( newParent ? { newParentObjectApiName: newParent.objectApiName } : {} ) };
         });
 
-        if ( !this.isFilteredRecipeReadBack(filteredRecipeText, keptObjects, finalParentHeaderIndexes, friendIndex, excludedObjectApiNames, excludedFieldsByObject, appliedCounts, fixedValuesByObject, constrainedExpressionsByObject) ) {
-            return refuseFilter('unsupported-filter-layout', 'The filtered copy did not read back as the kept objects nested where they were meant to be, with the counts, fixed values and constraints that were set, so it was not used.');
+        if ( !this.isFilteredRecipeReadBack(filteredRecipeText, keptObjects, finalParentHeaderIndexes, friendIndex, excludedObjectApiNames, excludedFieldsByObject, appliedCounts, fixedValuesByObject, constrainedExpressionsByObject, unconstrainedValuesByObject) ) {
+            return refuseFilter('unsupported-filter-layout', 'The filtered copy did not read back as the kept objects nested where they were meant to be, with the counts, fixed values, constraints and validation rules that were set, so it was not used.');
         }
 
         return {
@@ -2114,7 +2198,8 @@ export class RecipeCockpitRecipeWriter {
             droppedFields: droppedFields,
             appliedCounts: appliedCounts,
             appliedFixedValues: appliedFixedValues,
-            appliedConstrainedExpressions: appliedConstrainedExpressions
+            appliedConstrainedExpressions: appliedConstrainedExpressions,
+            appliedUnconstrainedValues: appliedUnconstrainedValues
         };
 
     }
@@ -2257,7 +2342,8 @@ export class RecipeCockpitRecipeWriter {
                                             excludedFieldsByObject: Map<string, Set<string>>,
                                             appliedCounts: IRecipeFilterCount[],
                                             fixedValuesByObject: Map<string, Map<string, IRecipeFixedValue>>,
-                                            constrainedExpressionsByObject: Map<string, Map<string, string>>): boolean {
+                                            constrainedExpressionsByObject: Map<string, Map<string, string>>,
+                                            unconstrainedValuesByObject: Map<string, Map<string, IRecipeUnconstrainedValue>>): boolean {
 
         const describeOccurrence = (scannedObject: IScannedObject | undefined) => scannedObject ? `${scannedObject.objectApiName}\u0000${scannedObject.nicknames.join('\u0000')}` : '';
         const describeExpected = (keptObject: IScannedObject) => {
@@ -2296,6 +2382,17 @@ export class RecipeCockpitRecipeWriter {
                         .filter(scannedField => expressionsByField.has(scannedField.fieldApiName))
                         .every(scannedField => scannedField.endIndex === scannedField.startIndex + 1
                                                 && filteredLines[scannedField.startIndex] === this.buildConstrainedExpressionFieldLine(fieldIndent, scannedField.fieldApiName, expressionsByField.get(scannedField.fieldApiName) as string));
+                })
+                && filteredObjects.every(filteredObject => {
+                    const unconstrainedByField = unconstrainedValuesByObject.get(filteredObject.objectApiName);
+                    const layout = this.getObjectLayout(filteredObject.objectIndent);
+                    return !unconstrainedByField || filteredObject.fields
+                        .filter(scannedField => unconstrainedByField.has(scannedField.fieldApiName))
+                        .every(scannedField => {
+                            const expectedLines = this.buildFieldLines(scannedField.fieldApiName, ( unconstrainedByField.get(scannedField.fieldApiName) as IRecipeUnconstrainedValue ).unconstrainedValue, layout) as string[];
+                            return expectedLines.length === scannedField.endIndex - scannedField.startIndex
+                                    && expectedLines.every((expectedLine, lineOffset) => filteredLines[scannedField.startIndex + lineOffset] === expectedLine);
+                        });
                 });
 
     }
