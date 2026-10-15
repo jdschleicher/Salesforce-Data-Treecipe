@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.91.0] - Recipe Cockpit: a ? help section and an illustrated guide
+
+Closes [#332](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/332), under [#59](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/59).
+
+The cockpit can show a tree that differs from the `.yml` on disk, and nothing in the panel said which settings leave the file alone, which buttons rewrite it, or where the difference is kept.
+
+- **A ? at the right of the toolbar** opens a collapsible help section under it (collapsed by default, `aria-expanded`, drawn in the no-run empty state too). It has four parts: where recipes come from (naming the run on screen), what the cockpit changes without editing the YAML (excluded objects, unticked fields, record counts, fixed values, faker bounds, the rules box), what does edit the YAML (Wire to… / Wire TODO lookups, Add &lt;parent&gt; to recipe, +, plus Remember this selection and Generate permission set, which write other files), and where the changes are stored (workspace storage per tree folder, the `filteredRecipe-…` copy, `datasetSource.json`, Reset selection). A note says only faker-js nests under `friends:`.
+- **A live summary** lists each card with a folder that differs from its recipe file, for example `Relationship Tree 1: 1 object excluded · 1 field unticked · 1 count changed · 1 fixed value`. It is counted in the panel from the tree fields the model already carries and redrawn on `objectSelection` and `treePreferences`, so the model posts nothing new. The ungrouped card is never listed. Names are written through `textContent`.
+- **Open the full guide** posts `openHelpGuide` and nothing else. The host opens `RECIPE_COCKPIT_HELP_GUIDE_URL` with `vscode.env.openExternal`; the url never reaches the shell, the model or any panel message. The router accepts it once any model is posted, the empty state included, and ignores anything else the message carries.
+- **The guide** is `docs/RECIPE-COCKPIT-GUIDE.md`, with the help's four headings in the same order and one screenshot under each, in `docs/images/recipe-cockpit/`. `docs/` is already left out of the `.vsix`.
+- **Screenshots** come from `developmentSupportScripts/recipe-cockpit-screenshots/captureRecipeCockpitScreenshots.js`, which renders the real shell with a model built from the test fixture workspace in headless Chromium at a fixed viewport. A picture is written only when its bytes change, so a second run on unchanged code leaves git clean. It uses a Playwright already installed outside the project, adds no dependency and never downloads a browser.
+- **`/cockpit-help-sync`** (`.claude/skills/cockpit-help-sync/SKILL.md`) reads the cockpit changes since the guide last changed, updates the help text and the guide together in plain words, re-takes the screenshots and reports what changed and why.
+- **The place.** Whether the section is open is saved as an optional `isHelpExpanded`, so the place version did not change and an older place reads as collapsed.
+- **Tests.** `RecipeCockpitHelp.test.ts` runs the real panel script: the toggle, the four parts, the empty state, the summary for every kind of difference, its redraws, a hostile name, the place both ways, the router and the host opening the url. It also holds the guide to the help: same headings in the same order, a picture under each, every picture in `docs/images/recipe-cockpit/` and at most 200 KB.
+
 ## [3.90.0] - Recipe Cockpit: a validation-rule checkbox at the end of a field row
 
 Closes [#325](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/325), the third sub-issue of [#322](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/322).
