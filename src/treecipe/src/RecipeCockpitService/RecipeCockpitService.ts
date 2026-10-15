@@ -18,6 +18,12 @@ import {
 } from './RecipeCockpitPermissionSetAssign';
 import { RecipeCockpitPermissionSetGenerate } from './RecipeCockpitPermissionSetGenerate';
 import {
+    RecipeCockpitValidationRuleRetrieve,
+    VALIDATION_RULE_RETRIEVE_MAX_OBJECTS,
+    VALIDATION_RULE_RETRIEVE_TIMEOUT_MILLISECONDS,
+    ValidationRuleRetrieveOutcome
+} from './RecipeCockpitValidationRuleRetrieve';
+import {
     DevHubConfigSource,
     IDataOrgDetail,
     IOrgDescribeSource,
@@ -440,7 +446,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             '+ beside an object that looks up to itself: adds a child record under it.'
         ],
         closingParagraphs: [
-            'Two more write other files: Remember this selection saves record types to treecipe.config.json, and Generate permission set writes a permission set into your project.'
+            'Three more write other files: Remember this selection saves record types to treecipe.config.json, Generate permission set writes a permission set into your project, and Retrieve validation rules writes an org\'s validation rules into your project.'
         ]
     },
     {
@@ -474,7 +480,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Treecipe tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either.
+It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Treecipe tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", on every tree, asks every time in the command palette for any connected org, production included, and retrieves that tree's validation rules from it into this project after a confirmation: it only reads from that org and deploys nothing.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -1259,6 +1265,17 @@ export interface IRecipeCockpitPermissionSetAssignStateMessage {
 }
 
 /*
+    "Retrieve validation rules…" (#326): while isRunning, every card's retrieve button is disabled.
+    treeKey names the card whose button was clicked. It carries no text: how the retrieve went is a
+    VS Code notification. Stored and replayed.
+*/
+export interface IRecipeCockpitValidationRuleRetrieveStateMessage {
+    command: 'validationRuleRetrieveState';
+    isRunning: boolean;
+    treeKey: string;
+}
+
+/*
     "Open in browser" (#279): the panel disabled the button on the click, and this says the open has
     finished -- whether it opened, refused or failed is a notification's, since the URL it opened
     carries a session id and nothing about it is ever posted.
@@ -1314,6 +1331,17 @@ export const RECIPE_COCKPIT_PERMISSION_SET_PICK_PLACEHOLDER = 'Choose the permis
 
 export const RECIPE_COCKPIT_PERMISSION_SET_ORG_PLACEHOLDER = 'Choose the sandbox or scratch org to assign this tree\'s permission sets in';
 
+export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL = 'Retrieve validation rules…';
+
+export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL = 'Retrieve';
+
+// #326: ASKED EVERY TIME, IN THE COMMAND PALETTE, OVER EVERY CONNECTED ORG: A RETRIEVE ONLY READS
+export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER = 'Choose the org to retrieve this tree\'s validation rules from';
+
+export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL = 'Generate Treecipe';
+
+export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL = 'No validation rules were retrieved: an insert, a scratch org run or a permission set assignment is running. Try again once it has finished.';
+
 export const RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL = 'Create scratch org';
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER = 'Choose the Dev Hub to create the scratch org through';
@@ -1351,6 +1379,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitFieldEditResultMessage
                                         | IRecipeCockpitScratchOrgStateMessage
                                         | IRecipeCockpitPermissionSetAssignStateMessage
+                                        | IRecipeCockpitValidationRuleRetrieveStateMessage
                                         | IRecipeCockpitOrgOpenStateMessage
                                         | IRecipeCockpitDatasetAddedMessage
                                         | IRecipeCockpitExtensionInfoMessage;
@@ -1492,6 +1521,9 @@ export type RecipeCockpitPanelAction =
     | { kind: 'postScratchOrgState'; hostMessage: IRecipeCockpitScratchOrgStateMessage }
     | { kind: 'assignTreePermissionSets'; treeKey: string; isSelectedOrg: boolean }
     | { kind: 'generateTreePermissionSet'; treeKey: string }
+    | { kind: 'retrieveTreeValidationRules'; treeKey: string }
+    // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
+    | { kind: 'refuseValidationRuleRetrieve'; refusalText?: string; hostMessage: IRecipeCockpitValidationRuleRetrieveStateMessage }
     // A REFUSAL IS A WARNING NOTIFICATION, AND THE STATE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refusePermissionSetAssign'; refusalText?: string; hostMessage: IRecipeCockpitPermissionSetAssignStateMessage }
     | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
@@ -1568,6 +1600,8 @@ export interface IRecipeCockpitPanelState {
     pendingAssignableTreeKeys: Set<string>;
     assignableTreeKeys: Set<string>;
     permissionSetAssignStateMessage?: IRecipeCockpitPermissionSetAssignStateMessage;
+    // "Retrieve validation rules…" (#326): ONE PER WINDOW, STORED AND REPLAYED LIKE THE ASSIGNMENT'S
+    validationRuleRetrieveStateMessage?: IRecipeCockpitValidationRuleRetrieveStateMessage;
     // THE PLACE workspaceState KEPT FOR THIS MODEL (#230), REPLAYED UNTIL THE MODEL'S "rendered" SAYS IT WAS DRAWN
     restorePlace?: IRecipeCockpitPanelPlace;
     /*
@@ -3975,6 +4009,7 @@ export class RecipeCockpitService {
 
         this.adoptScratchOrgRunState(this.recipeCockpitPanelState);
         this.adoptPermissionSetAssignRunState(this.recipeCockpitPanelState);
+        this.adoptValidationRuleRetrieveRunState(this.recipeCockpitPanelState);
         this.recipeCockpitPanelState.isOrgOpenInFlight = this.isOrgOpenInFlightForWindow;
 
         if ( previousPanelState ) {
@@ -3984,6 +4019,8 @@ export class RecipeCockpitService {
             this.recipeCockpitPanelState.scratchOrgStateMessage = previousPanelState.scratchOrgStateMessage;
             // SO DOES A PERMISSION SET ASSIGNMENT'S (#274)
             this.recipeCockpitPanelState.permissionSetAssignStateMessage = previousPanelState.permissionSetAssignStateMessage;
+            // AND A VALIDATION RULE RETRIEVE'S (#326)
+            this.recipeCockpitPanelState.validationRuleRetrieveStateMessage = previousPanelState.validationRuleRetrieveStateMessage;
         }
 
         if ( !existingCockpitPanel ) {
@@ -4601,6 +4638,19 @@ export class RecipeCockpitService {
             case 'generateTreePermissionSet':
 
                 await this.generateTreePermissionSetFromPanel(cockpitPanel, panelAction.treeKey);
+                return;
+
+            case 'retrieveTreeValidationRules':
+
+                await this.retrieveTreeValidationRulesFromPanel(cockpitPanel, panelAction.treeKey);
+                return;
+
+            case 'refuseValidationRuleRetrieve':
+
+                if ( panelAction.refusalText ) {
+                    VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(panelAction.refusalText));
+                }
+                this.postToPanel(cockpitPanel, panelAction.hostMessage);
                 return;
 
             case 'refusePermissionSetAssign':
@@ -5998,6 +6048,231 @@ export class RecipeCockpitService {
             }
 
         }
+
+    }
+
+    private static isValidationRuleRetrieveInFlight = false;
+
+    private static validationRuleRetrieveRunStateMessage: IRecipeCockpitValidationRuleRetrieveStateMessage | undefined;
+
+    // KEPT FOR THE WINDOW WHILE RUNNING, STORED ON WHICHEVER PANEL STATE IS CURRENT, AND POSTED TO WHICHEVER PANEL IS OPEN
+    private static setValidationRuleRetrieveState(retrieveStateMessage: IRecipeCockpitValidationRuleRetrieveStateMessage) {
+
+        this.validationRuleRetrieveRunStateMessage = retrieveStateMessage.isRunning ? retrieveStateMessage : undefined;
+        this.recipeCockpitPanelState.validationRuleRetrieveStateMessage = retrieveStateMessage;
+
+        if ( this.recipeCockpitPanel ) {
+            this.postToPanel(this.recipeCockpitPanel, retrieveStateMessage);
+        }
+
+    }
+
+    private static adoptValidationRuleRetrieveRunState(panelState: IRecipeCockpitPanelState) {
+
+        if ( this.isValidationRuleRetrieveInFlight && this.validationRuleRetrieveRunStateMessage ) {
+            panelState.validationRuleRetrieveStateMessage = this.validationRuleRetrieveRunStateMessage;
+        }
+
+    }
+
+    /*
+        "Retrieve validation rules…" (#326), for one tree of the model on screen: the org is ALWAYS
+        asked for in the command palette, over every connected org (a retrieve only reads), even when
+        the Treecipe tab has one selected; then a modal names the objects, the org, where new files go
+        and how many local rule files the org's version overwrites; then one
+        "sf project retrieve start" runs in project mode, cancellable. Nothing is deployed, and the
+        recipe is not regenerated: the notification offers Generate Treecipe, which applies the rules
+        (#324). One retrieve per window.
+    */
+    private static async retrieveTreeValidationRulesFromPanel(cockpitPanel: vscode.WebviewPanel, treeKey: string) {
+
+        const panelState = this.recipeCockpitPanelState;
+        const tree = panelState.recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+
+        if ( this.isValidationRuleRetrieveInFlight || !tree ) {
+            this.postToPanel(cockpitPanel, this.validationRuleRetrieveRunStateMessage
+                ?? { command: 'validationRuleRetrieveState', isRunning: false, treeKey: treeKey });
+            return;
+        }
+
+        this.isValidationRuleRetrieveInFlight = true;
+        this.setValidationRuleRetrieveState({ command: 'validationRuleRetrieveState', isRunning: true, treeKey: treeKey });
+
+        try {
+            await this.performValidationRuleRetrieve(panelState.workspaceRoot, tree.customName || tree.title, tree.objects.map(treeObject => treeObject.objectApiName));
+        } finally {
+            this.isValidationRuleRetrieveInFlight = false;
+            this.setValidationRuleRetrieveState({ command: 'validationRuleRetrieveState', isRunning: false, treeKey: treeKey });
+        }
+
+    }
+
+    private static async performValidationRuleRetrieve(workspaceRoot: string, treeLabel: string, treeObjectApiNames: string[]) {
+
+        const refuse = (refusalText: string) => this.showValidationRuleRetrieveNotification('warning', refusalText, undefined, workspaceRoot, false);
+
+        const { retrievable: objectApiNames, refused: refusedObjectApiNames } = RecipeCockpitValidationRuleRetrieve.partitionObjectApiNames(treeObjectApiNames);
+
+        if ( objectApiNames.length === 0 ) {
+            return refuse(`No validation rules were retrieved: no object of ${treeLabel} has an api name.`);
+        }
+
+        if ( objectApiNames.length > VALIDATION_RULE_RETRIEVE_MAX_OBJECTS ) {
+            return refuse(`No validation rules were retrieved: ${treeLabel} has ${objectApiNames.length} objects, and at most ${VALIDATION_RULE_RETRIEVE_MAX_OBJECTS} can be retrieved at once.`);
+        }
+
+        let packageDirectoryPaths: string[];
+        let defaultPackageDirectoryPath: string;
+        try {
+            packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
+            defaultPackageDirectoryPath = RecipeCockpitPermissionSetGenerate.resolveDefaultPackageDirectoryPath(workspaceRoot);
+        } catch (projectError) {
+            return refuse(`No validation rules were retrieved: ${this.describeThrown(projectError)}`);
+        }
+
+        let orgDetail: IAuthenticatedOrgDetail | undefined;
+        try {
+            orgDetail = await SalesforceOrgService.promptForAuthorizedOrg(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER);
+        } catch (listError) {
+            return refuse(`No validation rules were retrieved: ${this.describeThrown(listError)}`);
+        }
+
+        if ( !orgDetail ) {
+            return;
+        }
+
+        // NO PARENTHESES: A NOTIFICATION ESCAPES THEM, AND THIS LABEL IS IN EVERY ONE THIS RUN SHOWS
+        const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
+        const packageDirectoryRelativePath = path.relative(workspaceRoot, defaultPackageDirectoryPath).split(path.sep).join('/') || '.';
+        const localRuleFileCount = RecipeCockpitValidationRuleRetrieve.countLocalValidationRuleFiles(workspaceRoot, packageDirectoryPaths, objectApiNames);
+
+        const confirmation = await vscode.window.showWarningMessage(
+            RecipeYamlScalar.escapeForNotification(`Retrieve the validation rules of ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} of ${this.toSingleLine(treeLabel)} from ${this.toSingleLine(orgLabel)}?`),
+            {
+                modal: true,
+                detail: RecipeYamlScalar.escapeForNotification(RecipeCockpitValidationRuleRetrieve.buildConfirmationDetail(treeLabel, orgLabel, objectApiNames, packageDirectoryRelativePath, localRuleFileCount))
+            },
+            RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL
+        );
+
+        if ( confirmation !== RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL ) {
+            return;
+        }
+
+        // THE ROUTER CHECKED THESE AT THE CLICK; ONE CAN HAVE STARTED WHILE THE PROMPT OR THE MODAL WAS OPEN
+        const currentPanelState = this.recipeCockpitPanelState;
+        if ( this.isScratchOrgSetupInFlight || currentPanelState.insertStateMessage || currentPanelState.permissionSetAssignStateMessage?.isRunning ) {
+            return refuse(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL);
+        }
+
+        let retrieveArguments: string[];
+        try {
+            retrieveArguments = RecipeCockpitValidationRuleRetrieve.buildValidationRuleRetrieveArguments(objectApiNames, orgDetail.username);
+        } catch (argumentError) {
+            return refuse(`No validation rules were retrieved: ${this.describeThrown(argumentError)}`);
+        }
+
+        const retrieveRun = await this.runCancellableCli(
+            RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: retrieving validation rules from ${orgDetail.username}`),
+            retrieveArguments,
+            VALIDATION_RULE_RETRIEVE_TIMEOUT_MILLISECONDS,
+            workspaceRoot
+        );
+
+        // A CANCEL CAN COME AFTER THE CLI WROTE FILES, SO GENERATE TREECIPE IS OFFERED AS AFTER A TIMEOUT
+        if ( retrieveRun.isCancelled ) {
+            return this.showValidationRuleRetrieveNotification('warning', `The retrieve of validation rules from ${orgLabel} was cancelled, so which rule files were written is unknown.`, undefined, workspaceRoot, true);
+        }
+
+        const retrievePayload = ScratchOrgService.readCliJsonPayload(retrieveRun.invocation);
+        const retrieveOutcome: ValidationRuleRetrieveOutcome = RecipeCockpitValidationRuleRetrieve.parseValidationRuleRetrieveOutput(retrieveRun.invocation, objectApiNames, retrievePayload);
+        const retrieveOutputFilePath = retrieveRun.invocation.spawnError || retrieveRun.invocation.isOutputTooLarge
+            ? undefined
+            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, 'validation-rule-retrieve', retrieveRun.invocation, new Date(), retrievePayload);
+        const refusedText = refusedObjectApiNames.length > 0
+            ? ` Skipped ${refusedObjectApiNames.length} ${refusedObjectApiNames.length === 1 ? 'name that is' : 'names that are'} not an api name.`
+            : '';
+
+        switch ( retrieveOutcome.kind ) {
+
+            case 'retrieved': {
+                const { ruleCount, objectApiNamesWithRules, failureMessages } = retrieveOutcome;
+                const retrievedText = ruleCount === 0
+                    ? `${orgLabel} holds no validation rule for the ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} of ${treeLabel}, so nothing was written.`
+                    : `Retrieved ${ruleCount} validation ${ruleCount === 1 ? 'rule' : 'rules'} for ${objectApiNamesWithRules.length} of ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} of ${treeLabel} from ${orgLabel}: ${objectApiNamesWithRules.join(', ')}. Generate Treecipe applies them to the recipe.`;
+                if ( failureMessages.length > 0 ) {
+                    return this.showValidationRuleRetrieveNotification('warning', `${retrievedText} ${failureMessages.length} could not be retrieved: ${failureMessages.join('; ')}.${refusedText}`, retrieveOutputFilePath, workspaceRoot, ruleCount > 0);
+                }
+                return this.showValidationRuleRetrieveNotification(refusedText ? 'warning' : 'information', `${retrievedText}${refusedText}`, refusedText ? retrieveOutputFilePath : undefined, workspaceRoot, ruleCount > 0);
+            }
+
+            case 'cliNotInstalled':
+                return refuse(retrieveOutcome.failureMessage);
+
+            case 'unconfirmed':
+                return this.showValidationRuleRetrieveNotification('warning', retrieveOutcome.failureMessage, retrieveOutputFilePath, workspaceRoot, true);
+
+            case 'failed':
+                return this.showValidationRuleRetrieveNotification('warning', `No validation rules were retrieved from ${orgLabel}: ${retrieveOutcome.failureMessage}`, retrieveOutputFilePath, workspaceRoot, false);
+
+        }
+
+    }
+
+    /*
+        A retrieve's ONE notification: information on a success, a warning otherwise. "Generate
+        Treecipe" is offered whenever rule files may have been written, since #324 applies the rules
+        at generation; "View output" whenever a warning has a result file. NOT AWAITED: the run ends,
+        and gives the panel its button back, without waiting for the reader.
+    */
+    private static showValidationRuleRetrieveNotification(severity: 'information' | 'warning',
+                                                            notificationText: string,
+                                                            outputFilePath: string | undefined,
+                                                            workspaceRoot: string,
+                                                            isGenerateOffered: boolean) {
+
+        const actions = [
+            ...( isGenerateOffered ? [RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL] : [] ),
+            ...( outputFilePath ? [RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL] : [] )
+        ];
+        const escapedText = RecipeYamlScalar.escapeForNotification(notificationText);
+        const shown = severity === 'information'
+            ? vscode.window.showInformationMessage(escapedText, ...actions)
+            : vscode.window.showWarningMessage(escapedText, ...actions);
+
+        Promise.resolve(shown)
+            .then(async chosenAction => {
+                if ( chosenAction === RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL ) {
+                    await this.generateTreecipeAfterValidationRuleRetrieve();
+                } else if ( chosenAction === RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL && outputFilePath ) {
+                    await VSCodeWorkspaceService.openWorkspaceResultFile(outputFilePath, workspaceRoot, 'The validation rule retrieve result file no longer exists in this workspace.');
+                }
+            })
+            .catch(retrieveFollowUpError => ErrorHandlingService.handleCapturedError(retrieveFollowUpError, 'openRecipeCockpit'));
+
+    }
+
+    /*
+        The notification's "Generate Treecipe": through the open cockpit when there is one, so the
+        panel reloads the run it writes, and refused while an insert holds the selection or a
+        generation is already running. With no cockpit open it runs the command itself.
+    */
+    private static async generateTreecipeAfterValidationRuleRetrieve() {
+
+        const cockpitPanel = this.recipeCockpitPanel;
+        const panelState = this.recipeCockpitPanelState;
+
+        if ( !cockpitPanel ) {
+            await vscode.commands.executeCommand(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND);
+            return;
+        }
+
+        if ( panelState.isGenerateTreecipeInFlight || panelState.insertStateMessage ) {
+            VSCodeWorkspaceService.showWarningMessage('Generate Treecipe was not started: a generation or an insert is running. Run it once that has finished.');
+            return;
+        }
+
+        await this.generateTreecipeAndReload(cockpitPanel, panelState);
 
     }
 
@@ -7773,7 +8048,8 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning ) {
+                // A VALIDATION RULE RETRIEVE (#326) IS WRITING INTO THE SOURCE A SCRATCH ORG RUN WOULD DEPLOY
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning || panelState.validationRuleRetrieveStateMessage?.isRunning ) {
                     return {
                         kind: 'postScratchOrgState',
                         hostMessage: panelState.scratchOrgStateMessage ?? { command: 'scratchOrgState', isRunning: false }
@@ -8295,6 +8571,40 @@ export class RecipeCockpitService {
             }
 
             /*
+                "Retrieve validation rules…" (#326) posts the tree's KEY and nothing else: the objects
+                are the host's, and the org is ALWAYS asked for in the command palette, so an org
+                index the message carries is never read. One retrieve per window; it waits for an
+                insert, a scratch org run (which deploys the project) and a permission set assignment
+                to end. Every refusal gives the clicked button back, and a busy one says why.
+            */
+            case 'retrieveTreeValidationRules': {
+
+                const { treeKey } = panelMessage;
+
+                // A RELOADED DOCUMENT MAY NOT KNOW A RETRIEVE IS RUNNING: IT IS TOLD, AND THE RETRIEVE'S OWN END GIVES THE BUTTONS BACK
+                if ( panelState.validationRuleRetrieveStateMessage?.isRunning ) {
+                    return { kind: 'refuseValidationRuleRetrieve', hostMessage: panelState.validationRuleRetrieveStateMessage };
+                }
+
+                const notRunning: IRecipeCockpitValidationRuleRetrieveStateMessage = { command: 'validationRuleRetrieveState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '' };
+
+                if ( typeof treeKey !== 'string'
+                        || !panelState.recipeDataMessage
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+                    return { kind: 'refuseValidationRuleRetrieve', hostMessage: notRunning };
+                }
+
+                if ( panelState.insertStateMessage
+                        || panelState.scratchOrgStateMessage?.isRunning
+                        || panelState.permissionSetAssignStateMessage?.isRunning ) {
+                    return { kind: 'refuseValidationRuleRetrieve', refusalText: RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL, hostMessage: notRunning };
+                }
+
+                return { kind: 'retrieveTreeValidationRules', treeKey: treeKey };
+
+            }
+
+            /*
                 "Open in browser" (#279) names the org by INDEX, and only the org SELECTED now is
                 opened: an index the panel could have kept from an older listing, or any other org
                 the list holds, is refused. Which username is the host's. A refusal still answers,
@@ -8425,6 +8735,10 @@ export class RecipeCockpitService {
 
         if ( panelState.scratchOrgStateMessage ) {
             replayMessages.push(panelState.scratchOrgStateMessage);
+        }
+
+        if ( panelState.validationRuleRetrieveStateMessage ) {
+            replayMessages.push(panelState.validationRuleRetrieveStateMessage);
         }
 
         if ( panelState.permissionSetAssignStateMessage ) {
@@ -9951,7 +10265,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader, .treeObjectHeader, .treeField, .treeDataset { transition: background-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, box-shadow ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease; }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .recordTypesRegenerate, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treePermissionSets, .treeGeneratePermissionSet {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .recordTypesRegenerate, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treePermissionSets, .treeGeneratePermissionSet, .treeRetrieveValidationRules {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
@@ -9963,7 +10277,7 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .treeGeneratePermissionSet:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
+    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .treeGeneratePermissionSet:hover:not(:disabled), .treeRetrieveValidationRules:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
     .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
@@ -9992,7 +10306,7 @@ ${this.buildPaletteCustomProperties()}
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
     .treeAddFriendChoice, .historyAction { text-decoration: underline; }
-    .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .recordTypesRegenerate:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treePermissionSets:disabled, .treeGeneratePermissionSet:disabled {
+    .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .recordTypesRegenerate:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treePermissionSets:disabled, .treeGeneratePermissionSet:disabled, .treeRetrieveValidationRules:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
         border-color: var(--sdt-border);
@@ -10384,6 +10698,7 @@ ${this.buildPaletteCustomProperties()}
     const INSERT_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_RUNNING_LABEL)};
     const PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL)};
     const GENERATE_PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL)};
+    const VALIDATION_RULE_RETRIEVE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL)};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
     const DATA_ORG_CONNECTION_CHECK_INSERT_REASON = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON)};
     const DATA_ORG_LOADING_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER)};
@@ -10500,6 +10815,8 @@ ${this.buildPaletteCustomProperties()}
     let isScratchOrgRunning = false;
     // "Assign permission sets to me…" (#274, #302): WHETHER AN ASSIGNMENT HOLDS THE PICKER, EVERY INSERT AND EVERY ASSIGN BUTTON DISABLED
     let isPermissionSetAssignRunning = false;
+    // "Retrieve validation rules…" (#326): SET ON THE CLICK, CLEARED BY THE HOST'S validationRuleRetrieveState
+    let isValidationRuleRetrieveRunning = false;
     // "Open in browser" (#279): SET ON THE CLICK, CLEARED BY THE HOST'S orgOpenState
     let isOrgOpenRunning = false;
     // THE renderSequence THE PICKER ASKED FOR ITS ORGS UNDER -- ONE ASK PER MODEL, MADE THE FIRST TIME A TREECIPE TAB OPENS OR THE PICKER IS USED
@@ -10898,7 +11215,7 @@ ${this.buildPaletteCustomProperties()}
         // THE MESSAGE CARRIES NOTHING: THE DEV HUB, THE DEFINITION FILE, WHAT IS DEPLOYED AND THE ALIAS ARE ALL THE HOST'S
         dataOrgView.newScratchElement.setAttribute('title', 'Choose a Dev Hub, name the new scratch org, create it through the Dev Hub, deploy the source of this project to it and select it');
         dataOrgView.newScratchElement.addEventListener('click', function () {
-            if (isScratchOrgRunning || isPermissionSetAssignRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
+            if (isScratchOrgRunning || isPermissionSetAssignRunning || isValidationRuleRetrieveRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
             isDataOrgPickerInUse = true;
             isScratchOrgRunning = true;
             drawDataOrgViews();
@@ -11012,7 +11329,8 @@ ${this.buildPaletteCustomProperties()}
         if (isDataOrgStatusFailure) { dataOrgView.statusElement.classList.add('failed'); } else { dataOrgView.statusElement.classList.remove('failed'); }
 
         // AN INSERT IN FLIGHT HOLDS IT TOO: THE HOST WOULD REFUSE A RUN THAT CHANGES THE SELECTION UNDER IT
-        dataOrgView.newScratchElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || insertRunningTreeKey !== null;
+        // SO DOES A VALIDATION RULE RETRIEVE (#326): IT IS WRITING INTO THE SOURCE THE RUN WOULD DEPLOY
+        dataOrgView.newScratchElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isValidationRuleRetrieveRunning || insertRunningTreeKey !== null;
         dataOrgView.newScratchElement.textContent = isScratchOrgRunning ? 'Setting up scratch org…' : '+ New scratch org';
         // A PERMISSION SET ASSIGNMENT HOLDS THE PICKER TOO: IT ASSIGNS IN THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
         dataOrgView.selectElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning;
@@ -13905,6 +14223,22 @@ ${this.buildPaletteCustomProperties()}
         controlsElement.appendChild(generateButtonElement);
         treeState.generatePermissionSetButtonElement = generateButtonElement;
 
+        /*
+            "Retrieve validation rules…" (#326) posts the tree's KEY alone, never an org: the host
+            asks for the org in the command palette every time. One retrieve per window, so every
+            card's button is disabled on the click until the host's validationRuleRetrieveState.
+        */
+        const retrieveButtonElement = createElement('button', 'treeRetrieveValidationRules', VALIDATION_RULE_RETRIEVE_ACTION_LABEL);
+        retrieveButtonElement.addEventListener('click', function () {
+            if (retrieveButtonElement.disabled || renderedSequence === null) { return; }
+            isValidationRuleRetrieveRunning = true;
+            drawTreeInserts();
+            drawDataOrgViews();
+            vscodeApi.postMessage({ command: 'retrieveTreeValidationRules', treeKey: treeState.tree.treeKey });
+        });
+        controlsElement.appendChild(retrieveButtonElement);
+        treeState.retrieveValidationRulesButtonElement = retrieveButtonElement;
+
         drawTreePermissionSet(treeState);
 
         return controlsElement;
@@ -13926,6 +14260,17 @@ ${this.buildPaletteCustomProperties()}
             : '';
         generateButtonElement.disabled = generateReason !== '';
         generateButtonElement.setAttribute('title', generateReason || 'Write a permission set granting Create and Read on this tree\\'s objects and access to its fields into this project\\'s permissionsets/SDT_Treecipe folder, after a confirmation. Nothing is deployed.');
+
+        const retrieveButtonElement = treeState.retrieveValidationRulesButtonElement;
+        if (!retrieveButtonElement) { return; }
+
+        const retrieveReason = isValidationRuleRetrieveRunning ? 'Validation rules are being retrieved.'
+            : insertRunningTreeKey !== null ? 'A tree is being inserted.'
+            : isScratchOrgRunning ? 'A scratch org is being set up.'
+            : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
+            : '';
+        retrieveButtonElement.disabled = retrieveReason !== '';
+        retrieveButtonElement.setAttribute('title', retrieveReason || 'Retrieve the validation rules of this tree\\'s objects from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; Generate Treecipe then applies them.');
 
     }
 
@@ -14986,6 +15331,13 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'permissionSetAssignState') {
             renderPermissionSetAssignState(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'validationRuleRetrieveState') {
+            isValidationRuleRetrieveRunning = !!hostMessage.isRunning;
+            drawTreeInserts();
+            drawDataOrgViews();
             return;
         }
 

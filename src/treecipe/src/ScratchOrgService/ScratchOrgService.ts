@@ -22,7 +22,7 @@ export const SCRATCH_ORG_DEFINITION_FILE_RELATIVE_PATH = path.join('config', 'pr
 
 export const ORG_OPERATIONS_FOLDER_NAME = 'OrgOperations';
 
-export type OrgOperationName = 'scratch-create' | 'scratch-deploy' | 'permission-set-assign';
+export type OrgOperationName = 'scratch-create' | 'scratch-deploy' | 'permission-set-assign' | 'validation-rule-retrieve';
 
 export type ScratchOrgSetupPhase = 'creating' | 'deploying';
 

@@ -1,5 +1,21 @@
 # Change Log
 
+## [3.96.0] - Recipe Cockpit: retrieve a tree's validation rules from an org
+
+Closes [#326](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/326), under [#322](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/322).
+
+#324 applies only the validation rules that are in the project, and many projects never retrieved them, so their trees generated data the org's rules reject.
+
+- **Retrieve validation rules…** sits beside **Generate permission set…** on every card with a folder. It posts `retrieveTreeValidationRules {treeKey}` and nothing else, matched against `nameableTreeKeys`. The objects are the host's, from the tree on screen.
+- **The org is always asked for, in the command palette.** `SalesforceOrgService.promptForAuthorizedOrg` runs over every connected org, through `VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed`. It asks every time, even with one org, and even when the Treecipe tab has an org selected. An org index the panel posts is never read. Production is listed, a decision on #326: a retrieve only reads from the org. Dismissing the pick is a quiet cancel.
+- **A host modal** names the tree, the org (`alias · username`), every object, and the default package directory where new rule files go. It also says how many local `*.validationRule-meta.xml` files for those objects the org's version will overwrite, counted under every package directory without following links. Everything shown goes through `escapeForNotification`.
+- **The retrieve** is `sf project retrieve start --json --target-org <username> --metadata ValidationRule:<Object>.*`, one `--metadata` per object. It runs in project mode through `runCancellableCli`, and a cancel kills the process tree. Every object name passes `SalesforceApiName` before the argv is built, and an argv over 80 objects is refused. The package directories come from the strict `resolveDeployablePackageDirectoryPaths`, so a project that cannot be deployed opens no prompt.
+- **The `--json` is untrusted.** It counts as a retrieve only on `status === 0` with `result.success === true`. Each `ValidationRule` file is counted under the tree object its full name names, and a `Failed` or `Error` file is named with what the CLI said. The outcome is ONE notification: information on success, a warning otherwise. It names the rule and object counts and offers **Generate Treecipe** whenever rule files may have been written. A warning also offers **View output**, which opens the result file under `treecipe/OrgOperations/<username>/` (`…-validation-rule-retrieve.json`). Generate Treecipe runs through the open cockpit so the run reloads, and is refused while an insert or another generation runs.
+- **One retrieve per window.** `validationRuleRetrieveState {isRunning, treeKey}` is stored, replayed on `ready` and adopted by a panel built mid-run. While one runs, every card's button is disabled. It is refused, with a warning, while an insert, a scratch-org run or a permission set assignment is running, checked at the click and again after the modal. While a retrieve runs, **+ New scratch org** is disabled and refused, because it would deploy the source the retrieve is writing. A cancelled retrieve still offers **Generate Treecipe**, since the CLI may have written files before it stopped.
+- **Nothing is deployed.** A test fails if the retrieve path builds a deploy argv, and the module does not spell a deploy subcommand.
+- **The opt-in warning and the ? help** now say what the retrieve reads and writes, and `docs/RECIPE-COCKPIT-GUIDE.md` follows the help.
+- **Tests.** `RecipeCockpitValidationRuleRetrieve.test.ts` covers the argv and its refusals, the local file count (links and outside paths), every shape of `--json`, the router, the host against a faked org prompt and CLI (prompt every time, cancel, failure, partial failure, cancel mid-run, one per window, Generate Treecipe, View output), and the panel script's button.
+
 ## [3.95.0] - Recipe Cockpit: edit a field's fixed value and faker bounds inline
 
 Closes [#337](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/337), under [#322](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/322).
