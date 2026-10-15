@@ -2223,11 +2223,12 @@ describe('RecipeCockpitService', () => {
             expect(picklistToggle.tagName).toBe('button');
             expect(picklistToggle.textContent).toBe(RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL);
             expect(panel.findAll(picklistToggle, 'toggleGlyph')).toEqual([]);
-            expect(picklistToggle.attributes['aria-label']).toBe('Show or hide the values of Rating__c');
+            expect(picklistToggle.attributes['aria-label']).toBe('Show values of Rating__c');
             expect(picklistToggle.attributes['aria-expanded']).toBe('false');
             picklistToggle.dispatch('click');
             expect(picklistToggle.attributes['aria-expanded']).toBe('true');
             expect(picklistToggle.textContent).toBe(RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL);
+            expect(picklistToggle.attributes['aria-label']).toBe('Hide values of Rating__c');
             picklistToggle.dispatch('click');
             expect(picklistToggle.attributes['aria-expanded']).toBe('false');
             expect(picklistToggle.textContent).toBe(RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL);

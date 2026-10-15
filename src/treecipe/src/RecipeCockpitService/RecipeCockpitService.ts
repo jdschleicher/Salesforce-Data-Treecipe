@@ -3182,7 +3182,8 @@ export class RecipeCockpitService {
     }
 
     /*
-        All / None (#220). None stores every field with a line in the recipe except those a lock
+        All / None (#220). The panel no longer draws the buttons (#343); the route stays, held to the
+        same allow-list, so they can come back by drawing them again. None stores every field with a line in the recipe except those a lock
         holds for a reason of its own (RecordTypeId, a parent-excluded lookup); a controlling field is
         stored too, because unticking every dependent with it is what frees it.
     */
@@ -12077,7 +12078,7 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // ONE OBJECT'S All / None AND ITS WARNING, THEN EVERY ROW IT HAS BUILT
+    // ONE OBJECT'S WARNING, THEN EVERY ROW IT HAS BUILT
     function drawObjectFieldSelection(treeObjectState) {
 
         const tree = treeObjectState.tree;
@@ -12088,7 +12089,6 @@ ${this.buildPaletteCustomProperties()}
 
         treeObjectState.fieldWarningElement.textContent = isEveryFieldExcluded ? EVERY_FIELD_UNTICKED_WARNING : '';
         if (isEveryFieldExcluded) { treeObjectState.fieldWarningElement.classList.remove('hidden'); } else { treeObjectState.fieldWarningElement.classList.add('hidden'); }
-
 
         if (!treeObjectState.isBodyBuilt) { return; }
 
@@ -12492,9 +12492,11 @@ ${this.buildPaletteCustomProperties()}
                 fieldState.isPicklistExpanded = isExpanding;
                 picklistToggleElement.textContent = isExpanding ? PICKLIST_HIDE_VALUES_LABEL : PICKLIST_SHOW_VALUES_LABEL;
                 picklistToggleElement.setAttribute('aria-expanded', isExpanding ? 'true' : 'false');
+                picklistToggleElement.setAttribute('aria-label', (isExpanding ? PICKLIST_HIDE_VALUES_LABEL : PICKLIST_SHOW_VALUES_LABEL) + ' of ' + field.fieldApiName);
             };
 
-            picklistToggleElement.setAttribute('aria-label', 'Show or hide the values of ' + field.fieldApiName);
+            // THE NAME STARTS WITH THE TEXT ON THE BUTTON, SO A VOICE COMMAND OF WHAT IS ON SCREEN REACHES IT
+            picklistToggleElement.setAttribute('aria-label', PICKLIST_SHOW_VALUES_LABEL + ' of ' + field.fieldApiName);
             picklistToggleElement.setAttribute('aria-expanded', 'false');
             picklistToggleElement.addEventListener('click', function () {
                 setPicklistExpanded(!fieldState.isPicklistExpanded, true);
