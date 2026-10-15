@@ -22,6 +22,8 @@ import {
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitTreeViewModel,
     RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX,
+    RECIPE_COCKPIT_FIELD_EDIT_NOT_SAVED_REFUSAL,
+    RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH,
     RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL,
     RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
     RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
@@ -632,11 +634,13 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
         const route = (payload: Record<string, unknown>, panelState = buildDrawnPanelState()) => RecipeCockpitService.routePanelMessage({ command: 'setFieldFixedValue', ...payload } as any, panelState);
 
-        it('routes a drawn, free field to its folder, with no value', () => {
+        it('routes a drawn, free field to its folder with the value as typed, which the host checks before writing (#337)', () => {
 
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'ignored' }))
-                .toEqual({ kind: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, folderName: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' });
-            expect(route({ treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status' })).toMatchObject({ kind: 'setFieldFixedValue', folderName: LEAD_TREE_KEY });
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: '${{ 7*7 }}', extra: 'ignored' }))
+                .toEqual({ kind: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, folderName: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: '${{ 7*7 }}' });
+            expect(route({ treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status', value: '' })).toMatchObject({ kind: 'setFieldFixedValue', folderName: LEAD_TREE_KEY, value: '' });
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'x'.repeat(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH) }))
+                .toMatchObject({ kind: 'setFieldFixedValue' });
 
         });
 
@@ -651,10 +655,13 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             ['a key that is not a string', { treeKey: 7 }],
             ['a nickname the object is not drawn with', { nickname: 'Account_NickName' }],
             ['a nickname that is not a string', { nickname: 7 }],
-            ['the ungrouped card, which has no folder', { treeKey: '', objectApiName: 'Lead', fieldApiName: 'Company' }]
+            ['the ungrouped card, which has no folder', { treeKey: '', objectApiName: 'Lead', fieldApiName: 'Company' }],
+            ['no value', { value: undefined }],
+            ['a value that is not a string', { value: 7 }],
+            ['a value longer than any fixed value can be', { value: 'x'.repeat(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH + 1) }]
         ])('does nothing for %s', (_caseName, payload) => {
 
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', ...payload })).toBeUndefined();
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1', ...payload })).toBeUndefined();
 
         });
 
@@ -662,9 +669,9 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
             const panelState = buildDrawnPanelState(recipe => applyFixedValues(recipe, {}, { [ACCOUNT_TREE_KEY]: ['Contact'] }, { [ACCOUNT_TREE_KEY]: { Account: ['Legacy_Code__c'] } }));
 
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }, panelState)).toBeUndefined();
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', fieldApiName: 'LastName' }, panelState)).toBeUndefined();
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Annual_Budget__c' }, panelState)).toMatchObject({ kind: 'setFieldFixedValue' });
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X' }, panelState)).toBeUndefined();
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', fieldApiName: 'LastName', value: 'X' }, panelState)).toBeUndefined();
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Annual_Budget__c', value: '1' }, panelState)).toMatchObject({ kind: 'setFieldFixedValue' });
 
         });
 
@@ -675,8 +682,8 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             const modelLessPanelState = buildDrawnPanelState();
             modelLessPanelState.recipeDataMessage = undefined;
 
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }, undrawnPanelState)).toBeUndefined();
-            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }, modelLessPanelState)).toBeUndefined();
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X' }, undrawnPanelState)).toBeUndefined();
+            expect(route({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X' }, modelLessPanelState)).toBeUndefined();
 
         });
 
@@ -731,87 +738,109 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             disposeHandler = undefined;
         });
 
-        it('asks for the value in the host\'s own box, stores it, posts the card back in place, and clears it on an empty answer; the recipe file never changes', async () => {
+        it('stores the value the inline editor posts, posts the card back in place and then the result, clears it on an empty value, and opens no box; the recipe file never changes (#337)', async () => {
 
             const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
             const workspaceState = buildWorkspaceState();
             const recipeDataMessage = await openAndDraw(workspaceState);
 
-            showInputBox.mockResolvedValueOnce('X-1');
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' });
+            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1' });
 
-            const inputBoxOptions = showInputBox.mock.calls[0][0];
-            expect(inputBoxOptions).toMatchObject({ title: 'Fixed value for Account.Legacy_Code__c', value: '', ignoreFocusOut: true });
-            expect(inputBoxOptions.prompt).toContain('(Text(50))');
-            expect(inputBoxOptions.validateInput('')).toBeUndefined();
-            expect(inputBoxOptions.validateInput('x'.repeat(51))).toBe('Text(50) takes at most 50 characters.');
             expect(storedOf(workspaceState)).toEqual(storedSelections({ [ACCOUNT_TREE_KEY]: { Account: { Legacy_Code__c: 'X-1' } } }));
-            expect(lastPosted('objectSelection')).toMatchObject({
-                command: 'objectSelection',
+            const objectSelectionIndex = postedPanelMessages.findIndex(hostMessage => hostMessage.command === 'objectSelection');
+            const resultIndex = postedPanelMessages.findIndex(hostMessage => hostMessage.command === 'fieldEditResult');
+            expect(postedPanelMessages[objectSelectionIndex]).toMatchObject({
                 renderSequence: recipeDataMessage.renderSequence,
                 treeKey: ACCOUNT_TREE_KEY,
                 fixedValues: [{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1', kind: 'text' }]
             });
+            expect(resultIndex).toBeGreaterThan(objectSelectionIndex);
+            expect(postedPanelMessages[resultIndex]).toEqual({
+                command: 'fieldEditResult', renderSequence: recipeDataMessage.renderSequence, treeKey: ACCOUNT_TREE_KEY,
+                objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', edit: 'fixedValue'
+            });
 
-            // A REVEAL REPLAYS THE STORED MODEL, WHICH CARRIES THE VALUE; THE BOX OPENS ON IT
+            // A REVEAL REPLAYS THE STORED MODEL, WHICH CARRIES THE VALUE
             postedPanelMessages = [];
             await receivedMessageHandler({ command: 'ready' });
             expect(treeOf(lastPosted('recipeData').recipe, ACCOUNT_TREE_KEY).fixedValues).toEqual([{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1', kind: 'text' }]);
             await receivedMessageHandler({ command: 'rendered', renderSequence: lastPosted('recipeData').renderSequence });
 
-            showInputBox.mockResolvedValueOnce('');
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' });
+            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: '' });
 
-            expect(showInputBox.mock.calls[1][0].value).toBe('X-1');
             expect(storedOf(workspaceState)).toEqual(storedSelections({}));
             expect(lastPosted('objectSelection')).not.toHaveProperty('fixedValues');
+            expect(lastPosted('fieldEditResult')).not.toHaveProperty('refusal');
+            expect(showInputBox).not.toHaveBeenCalled();
             expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
 
         });
 
-        it('holds a picklist to the values its metadata declares, and writes nothing on a dismissed box', async () => {
+        it('answers a value the field cannot hold with its refusal, for the editor to show, and writes nothing', async () => {
 
             const workspaceState = buildWorkspaceState();
-            await openAndDraw(workspaceState);
-            workspaceState.update.mockClear();
-
-            showInputBox.mockResolvedValueOnce(undefined);
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status' });
-
-            expect(showInputBox.mock.calls[0][0].validateInput('Pending')).toBe('"Pending" is not a value this picklist declares.');
-            expect(showInputBox.mock.calls[0][0].validateInput('Closed')).toBeUndefined();
-            expect(workspaceState.update).not.toHaveBeenCalled();
-
-        });
-
-        it('warns and writes nothing for a value that fails the check once the box closes', async () => {
-
-            const workspaceState = buildWorkspaceState();
-            await openAndDraw(workspaceState);
+            const recipeDataMessage = await openAndDraw(workspaceState);
             workspaceState.update.mockClear();
             const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
 
-            showInputBox.mockResolvedValueOnce('${{ 7*7 }}');
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' });
+            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: '${{ 7*7 }}' });
+            expect(lastPosted('fieldEditResult')).toEqual({
+                command: 'fieldEditResult', renderSequence: recipeDataMessage.renderSequence, treeKey: ACCOUNT_TREE_KEY,
+                objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', edit: 'fixedValue',
+                refusal: 'This value has "${" in it, which a faker backend would read as the start of a template.'
+            });
 
-            expect(warningSpy).toHaveBeenCalledWith('The fixed value for Account.Legacy_Code__c was not set: This value has "${" in it, which a faker backend would read as the start of a template.');
+            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'x'.repeat(51) });
+            expect(lastPosted('fieldEditResult').refusal).toBe('Text(50) takes at most 50 characters.');
+
+            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status', value: 'Pending' });
+            expect(lastPosted('fieldEditResult').refusal).toBe('"Pending" is not a value this picklist declares.');
+
+            expect(lastPosted('objectSelection')).toBeUndefined();
             expect(workspaceState.update).not.toHaveBeenCalled();
+            expect(warningSpy).not.toHaveBeenCalled();
+
+            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status', value: 'Closed' });
+            expect(storedOf(workspaceState)).toEqual(storedSelections({ [LEAD_TREE_KEY]: { Lead: { Status: 'Closed' } } }));
 
         });
 
-        it('opens no box and writes nothing for a forged or locked field', async () => {
+        it('answers a save the workspace storage refused as not saved', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            await openAndDraw(workspaceState);
+            workspaceState.update.mockRejectedValueOnce(new Error('read-only'));
+            jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+
+            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1' });
+
+            expect(lastPosted('fieldEditResult').refusal).toBe(RECIPE_COCKPIT_FIELD_EDIT_NOT_SAVED_REFUSAL);
+            expect(lastPosted('objectSelection')).toBeUndefined();
+
+        });
+
+        it('writes nothing and answers nothing for a forged or locked field', async () => {
 
             const workspaceState = buildWorkspaceState();
             await openAndDraw(workspaceState);
             workspaceState.update.mockClear();
 
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'ParentId' });
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Sub_Rating__c' });
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: 'Forged-Folder', objectApiName: 'Account', fieldApiName: 'Name' });
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Task', fieldApiName: 'Subject' });
+            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'ParentId', value: 'x' });
+            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Sub_Rating__c', value: 'x' });
+            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: 'Forged-Folder', objectApiName: 'Account', fieldApiName: 'Name', value: 'x' });
+            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Task', fieldApiName: 'Subject', value: 'x' });
+            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 7 });
+
+            // A SAVE ROUTED FOR A PANEL CLOSED SINCE WRITES NOTHING
+            const panelState = (RecipeCockpitService as any).recipeCockpitPanelState;
+            const routedAction = RecipeCockpitService.routePanelMessage({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1' } as any, panelState);
+            disposeHandler?.();
+            disposeHandler = undefined;
+            await (RecipeCockpitService as any).setFieldFixedValue(undefined, panelState, routedAction);
 
             expect(showInputBox).not.toHaveBeenCalled();
             expect(workspaceState.update).not.toHaveBeenCalled();
+            expect(lastPosted('fieldEditResult')).toBeUndefined();
 
         });
 
@@ -942,17 +971,119 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
         });
 
-        it('posts a click as names only, with the nickname the object is drawn with', () => {
+        it('opens an inline editor under the row on a click, posts nothing until Save, and closes it on a second click or Cancel (#337)', () => {
+
+            const panel = drawRecipe();
+            panel.postToPanel({ command: 'rendered' });
+            const account = expanded(panel, 'Account');
+            const row = rowOf(panel, account, 'Legacy_Code__c');
+            const pin = pinOf(panel, account, 'Legacy_Code__c');
+
+            expect(panel.findAll(row, 'fieldEditor')).toEqual([]);
+            pin.dispatch('click');
+
+            const editor = only(panel, row, 'fieldEditor');
+            expect(panel.isHidden(editor)).toBeFalse();
+            expect(editor.attributes.role).toBe('group');
+            expect(editor.attributes['aria-label']).toBe('Fixed value for Account.Legacy_Code__c');
+            expect(pin.attributes['aria-expanded']).toBe('true');
+            expect(only(panel, editor, 'fieldEditorInput').value).toBe('');
+            expect(only(panel, editor, 'fieldEditorInput').attributes.maxlength).toBe(String(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH));
+            expect(only(panel, editor, 'fieldEditorHint').textContent).toBe('Type the text every record gets. Empty goes back to the faker expression. The recipe file is not changed.');
+            expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'setFieldFixedValue')).toEqual([]);
+
+            pin.dispatch('click');
+            expect(panel.isHidden(editor)).toBeTrue();
+            expect(editor.children).toEqual([]);
+            expect(pin.attributes['aria-expanded']).toBe('false');
+
+            pin.dispatch('click');
+            only(panel, editor, 'fieldEditorCancel').dispatch('click');
+            expect(panel.isHidden(editor)).toBeTrue();
+
+            pin.dispatch('click');
+            only(panel, editor, 'fieldEditorInput').dispatch('keydown', { key: 'Escape' });
+            expect(panel.isHidden(editor)).toBeTrue();
+            expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'setFieldFixedValue')).toEqual([]);
+
+        });
+
+        it('posts the value typed on Save or Enter, and an empty one on Clear, with the nickname the object is drawn with', () => {
 
             const panel = drawRecipe(recipe => { objectOf(recipe, 'Account').nickname = 'Account_NickName'; });
+            panel.postToPanel({ command: 'rendered' });
             const account = expanded(panel, 'Account');
+            const row = rowOf(panel, account, 'Legacy_Code__c');
 
             pinOf(panel, account, 'Legacy_Code__c').dispatch('click');
             pinOf(panel, account, 'ParentId').dispatch('click');
+            const input = only(panel, row, 'fieldEditorInput');
+            input.value = ' X-1 ';
+            only(panel, row, 'fieldEditorSave').dispatch('click');
+            input.value = 'X-2';
+            input.dispatch('keydown', { key: 'Enter' });
+            input.dispatch('keydown', { key: 'a' });
+            input.value = 'X-3';
+            input.dispatch('keydown', { key: 'Enter', isComposing: true });
+            only(panel, row, 'fieldEditorClear').dispatch('click');
 
+            const base = { command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', nickname: 'Account_NickName' };
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'setFieldFixedValue')).toEqual([
-                { command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', nickname: 'Account_NickName' }
+                { ...base, value: ' X-1 ' },
+                { ...base, value: 'X-2' },
+                { ...base, value: '' }
             ]);
+            expect(panel.findAll(rowOf(panel, account, 'ParentId'), 'fieldEditor')).toEqual([]);
+
+        });
+
+        it('pre-fills the stored value, writes a refusal under the box as text and keeps it open, and closes it once saved', () => {
+
+            const panel = drawRecipe();
+            panel.postToPanel({ command: 'rendered' });
+            const account = expanded(panel, 'Account');
+            const row = rowOf(panel, account, 'Legacy_Code__c');
+            panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3, fixedValues: [{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1', kind: 'text' }] });
+
+            pinOf(panel, account, 'Legacy_Code__c').dispatch('click');
+            const editor = only(panel, row, 'fieldEditor');
+            expect(only(panel, editor, 'fieldEditorInput').value).toBe('X-1');
+            expect(panel.isHidden(only(panel, editor, 'fieldEditorRefusal'))).toBeTrue();
+
+            const result = { command: 'fieldEditResult', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', edit: 'fixedValue' };
+            panel.postToPanel({ ...result, renderSequence: 99, refusal: 'stale' });
+            panel.postToPanel({ ...result, renderSequence: 3, edit: 'constraint', refusal: 'other editor' });
+            expect(panel.isHidden(only(panel, editor, 'fieldEditorRefusal'))).toBeTrue();
+
+            panel.postToPanel({ ...result, renderSequence: 3, refusal: '<img src=x> is [not](command:x) a value' });
+            const refusal = only(panel, editor, 'fieldEditorRefusal');
+            expect(refusal.textContent).toBe('<img src=x> is [not](command:x) a value');
+            expect(refusal.children).toEqual([]);
+            expect(refusal.attributes.role).toBe('alert');
+            expect(panel.isHidden(refusal)).toBeFalse();
+            expect(panel.isHidden(editor)).toBeFalse();
+
+            // A NEW SAVE CLEARS THE OLD REFUSAL UNTIL THE HOST ANSWERS AGAIN
+            only(panel, editor, 'fieldEditorSave').dispatch('click');
+            expect(panel.isHidden(refusal)).toBeTrue();
+
+            panel.postToPanel({ ...result, renderSequence: 3 });
+            expect(panel.isHidden(editor)).toBeTrue();
+
+        });
+
+        it('closes an open editor when a redraw locks its field', () => {
+
+            const panel = drawRecipe();
+            panel.postToPanel({ command: 'rendered' });
+            const account = expanded(panel, 'Account');
+            const row = rowOf(panel, account, 'Legacy_Code__c');
+
+            pinOf(panel, account, 'Legacy_Code__c').dispatch('click');
+            expect(panel.isHidden(only(panel, row, 'fieldEditor'))).toBeFalse();
+
+            panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3, fieldSelection: { objects: [{ objectApiName: 'Account', excludedFieldApiNames: ['Legacy_Code__c'], lockedFields: [] }] } });
+            expect(panel.isHidden(only(panel, row, 'fieldEditor'))).toBeTrue();
 
         });
 
