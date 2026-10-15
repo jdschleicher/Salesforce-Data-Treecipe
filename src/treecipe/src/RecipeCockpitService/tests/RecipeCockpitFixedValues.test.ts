@@ -831,6 +831,13 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Task', fieldApiName: 'Subject', value: 'x' });
             await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 7 });
 
+            // A SAVE ROUTED FOR A PANEL CLOSED SINCE WRITES NOTHING
+            const panelState = (RecipeCockpitService as any).recipeCockpitPanelState;
+            const routedAction = RecipeCockpitService.routePanelMessage({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1' } as any, panelState);
+            disposeHandler?.();
+            disposeHandler = undefined;
+            await (RecipeCockpitService as any).setFieldFixedValue(undefined, panelState, routedAction);
+
             expect(showInputBox).not.toHaveBeenCalled();
             expect(workspaceState.update).not.toHaveBeenCalled();
             expect(lastPosted('fieldEditResult')).toBeUndefined();
@@ -1016,6 +1023,8 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             input.value = 'X-2';
             input.dispatch('keydown', { key: 'Enter' });
             input.dispatch('keydown', { key: 'a' });
+            input.value = 'X-3';
+            input.dispatch('keydown', { key: 'Enter', isComposing: true });
             only(panel, row, 'fieldEditorClear').dispatch('click');
 
             const base = { command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', nickname: 'Account_NickName' };

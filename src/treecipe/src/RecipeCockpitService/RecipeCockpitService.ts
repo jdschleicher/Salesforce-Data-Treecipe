@@ -3213,7 +3213,9 @@ export class RecipeCockpitService {
                                             panelState: IRecipeCockpitPanelState,
                                             panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setFieldFixedValue' }>) {
 
-        const drawnField = this.findDrawnField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.fieldApiName);
+        const drawnField = this.recipeCockpitPanelState === panelState
+            ? this.findDrawnField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.fieldApiName)
+            : undefined;
         if ( !drawnField || drawnField.tree.folderName !== panelAction.folderName || drawnField.fieldViewModel.lineNumber === undefined
                 || this.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) !== undefined ) {
             return;
@@ -11966,6 +11968,8 @@ ${this.buildPaletteCustomProperties()}
 
         inputElements.forEach(function (inputElement) {
             inputElement.addEventListener('keydown', function (event) {
+                // AN IME COMPOSING CJK TEXT CONFIRMS A CANDIDATE WITH ENTER, WHICH IS NOT A SAVE
+                if (event.isComposing) { return; }
                 if (event.key === 'Enter') { event.stopPropagation(); post(false); }
                 if (event.key === 'Escape') { event.stopPropagation(); toggleFieldEditor(treeObjectState, fieldState, edit); }
             });
