@@ -99,9 +99,11 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
     const loadStatusElement = buildFakeElement('div', 'loadStatus');
     loadStatusElement.textContent = RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT;
     const cockpitBodyElement = buildFakeElement('div');
+    // THE TOP RIGHT OF THE TITLE ROW (#333): THE VERSION AND THE CHANGELOG LINK, OUTSIDE THE BODY
+    const cockpitMetaElement = buildFakeElement('div', 'cockpitMeta');
 
     const fakeDocument = {
-        getElementById: (elementId: string) => ({ loadStatus: loadStatusElement, cockpitBody: cockpitBodyElement } as any)[elementId],
+        getElementById: (elementId: string) => ({ loadStatus: loadStatusElement, cockpitBody: cockpitBodyElement, cockpitMeta: cockpitMetaElement } as any)[elementId],
         createElement: (tagName: string) => buildFakeElement(tagName),
         // THE TREE GLYPH IS INLINE SVG (#219); ITS NAMESPACE IS KEPT SO A TEST CAN SAY IT WAS NOT AN HTML ELEMENT
         createElementNS: (namespaceUri: string, tagName: string) => Object.assign(buildFakeElement(tagName), { namespaceURI: namespaceUri })
@@ -168,6 +170,7 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
         scrollTo: (scrollY: number) => { fakeWindow.scrollY = scrollY; windowListenersByType['scroll']({ type: 'scroll' }); },
         loadStatusElement,
         cockpitBodyElement,
+        cockpitMetaElement,
         findAll,
         isHidden,
         treeCards,
