@@ -137,7 +137,6 @@ const storedSelections = (objectCountsByFolderName: Record<string, unknown>, exc
     excludedObjectApiNamesByFolderName: excludedObjectApiNamesByFolderName,
     excludedFieldApiNamesByFolderName: excludedFieldApiNamesByFolderName,
     objectCountsByFolderName: objectCountsByFolderName,
-    fixedValuesByFolderName: {},
     constraintsByFolderName: {},
     validationRulesOffByFolderName: {}
 });
@@ -852,7 +851,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
 
             expect(showWarningMessage).toHaveBeenCalledTimes(1);
             expect(showWarningMessage.mock.calls[0][1]).toMatchObject({ modal: true });
-            expect(showWarningMessage.mock.calls[0][1].detail).toBe('Every object is included, every field is ticked, every record count goes back to the recipe\'s own again, every fixed value and faker constraint is cleared and every validation rule is applied again. The recipe file is not changed.');
+            expect(showWarningMessage.mock.calls[0][1].detail).toBe('Every object is included, every field is ticked, every record count goes back to the recipe\'s own again, every faker constraint is cleared and every validation rule is applied again. The recipe file is not changed, so a fixed value written into it stays: clear it with its field\'s pin.');
             expect(storedOf(workspaceState)).toEqual(storedSelections({ [LEAD_TREE_KEY]: { Lead: 3 } }));
             expect(lastPosted('objectSelection').treeKey).toBe(ACCOUNT_TREE_KEY);
             expect(lastPosted('objectSelection')).not.toHaveProperty('objectCounts');

@@ -75,7 +75,6 @@ const storedSelections = (excludedObjectApiNamesByFolderName: Record<string, unk
     excludedObjectApiNamesByFolderName: excludedObjectApiNamesByFolderName,
     excludedFieldApiNamesByFolderName: excludedFieldApiNamesByFolderName,
     objectCountsByFolderName: {},
-    fixedValuesByFolderName: {},
     constraintsByFolderName: {},
     validationRulesOffByFolderName: {}
 });

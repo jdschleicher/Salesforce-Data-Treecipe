@@ -30,7 +30,8 @@ import {
     ORG_PARENT_SEARCH_RESULT_LIMIT,
     SalesforceOrgService
 } from '../SalesforceOrgService/SalesforceOrgService';
-import { ILookupWiringContext, ILookupWiringRequest, IRecipeFilterLookup, IRecipeFixedValue, IRecipeUnconstrainedValue, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind } from './RecipeCockpitRecipeWriter';
+import { ILookupWiringContext, ILookupWiringRequest, IPinnedFieldRestoreRequest, IRecipeFilterLookup, IRecipeFixedValue, IRecipeUnconstrainedValue, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind } from './RecipeCockpitRecipeWriter';
+import { IFixedValueEntry, IFixedValueFileRead, RecipeCockpitFixedValueStore } from './RecipeCockpitFixedValueStore';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelectionDisabledLookup } from './RecipeCockpitObjectSelection';
 import {
@@ -241,6 +242,16 @@ export const RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH = 32768;
 // WHAT A FIELD'S INLINE EDITOR (#337) SAYS WHEN THE HOST DID NOT STORE WHAT WAS TYPED, FOR A REASON OTHER THAN THE VALUE
 export const RECIPE_COCKPIT_FIELD_EDIT_NOT_SAVED_REFUSAL = 'Not saved: the workspace storage could not be written.';
 export const RECIPE_COCKPIT_FIELD_EDIT_RULES_KEPT_REFUSAL = 'Not saved: the field keeps the bounds its validation rules imply.';
+// A PIN WRITES THE RECIPE FILE (#342): HOW AN INLINE EDIT ENDS WHEN THAT WRITE DOES NOT HAPPEN
+export const RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL = 'Not saved: the recipe file was not changed.';
+export const RECIPE_COCKPIT_FIELD_EDIT_WRITE_RUNNING_REFUSAL = 'Not saved: another change to this recipe file is still being written. Try again once it finishes.';
+export const RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL = 'Write fixed value';
+export const RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL = 'Put back';
+// A CUSTOM GEOLOCATION FIELD'S COMPONENTS: THE WRAPPER TYPES THEM Text, BUT THE INSERT TAKES ONLY A NUMBER IN RANGE (#342)
+export const RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES: Readonly<Record<string, { suffix: string; limit: number }>> = {
+    Latitude: { suffix: '__Latitude__s', limit: 90 },
+    Longitude: { suffix: '__Longitude__s', limit: 180 }
+};
 /*
     Why a field's ✎ (#323) is disabled, beyond every reason its pin has: a field with a fixed value
     generates one value, which no range narrows; a standard-field mapping has no metadata to hold a
@@ -424,7 +435,6 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Excluded objects (the chain link): the object and its children are left out.',
             'Unticked fields: the field is left out.',
             'Record counts: how many records an object gets.',
-            'Fixed values (the pin): one value for every record.',
             'Faker bounds (✎): a narrower range, length or date window.',
             'The rules box: a field generated without the limits its validation rules set.'
         ]
@@ -437,7 +447,8 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         items: [
             'Wire to… and Wire TODO lookups: fill a lookup\'s TODO with its parent\'s nickname.',
             'Add <parent> to recipe: adds a standard parent object, such as Account, above the child that needs it.',
-            '+ beside an object that looks up to itself: adds a child record under it.'
+            '+ beside an object that looks up to itself: adds a child record under it.',
+            'Fixed values (the pin): one value for every record, written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.'
         ],
         closingParagraphs: [
             'Two more write other files: Remember this selection saves record types to treecipe.config.json, and Generate permission set writes a permission set into your project.'
@@ -448,7 +459,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'The settings that leave the YAML alone are kept by VS Code for this workspace on this machine, per tree. They carry over when you regenerate the same objects, but they are not in your repository, so a teammate or a fresh clone starts without them.',
             'When you generate, the cockpit applies them to a copy of the recipe. The data set keeps that copy as filteredRecipe-… beside originalRecipe-… in its BaseArtifactFiles folder, and datasetSource.json lists what was changed.',
-            'Reset selection on a card clears its settings.'
+            'Reset selection on a card clears its settings. A fixed value is in the recipe file, so Reset leaves it: clear it with its pin.'
         ]
     }
 ];
@@ -1420,6 +1431,8 @@ export interface IRecipeCockpitLoadedRecipe {
     picklistDisplayValuesByObjectApiName: RecipeCockpitPicklistDisplayValuesByObjectApiName;
     treeHistoryTargets: IRecipeCockpitTreeHistoryTargets;
     objectLevelsByApiName?: Map<string, number>;
+    // WHAT EACH CARD'S FIXED-VALUES FILE PINS (#342), BY TREE FOLDER, THEN OBJECT, THEN FIELD
+    pinnedFixedValuesByFolderName?: Map<string, Map<string, Map<string, string>>>;
 }
 
 /*
@@ -1578,6 +1591,8 @@ export interface IRecipeCockpitPanelState {
     openFocusTree?: IRecipeCockpitTreeFocus;
     // HOST-ONLY, REPLACED WITH THE MODEL: WHAT A FILTERED COPY NESTS A KEPT FRIEND BY (#219)
     objectLevelsByApiName?: Map<string, number>;
+    // HOST-ONLY, REPLACED WITH THE MODEL: WHAT THE CARDS' FIXED-VALUES FILES PIN (#342), WHICH workspaceState NO LONGER HOLDS
+    pinnedFixedValuesByFolderName?: Map<string, Map<string, Map<string, string>>>;
     // THE LAST datasetAdded POSTED (#226): ONLY ITS "partialRendered" PROMOTES THE PENDING HISTORY ALLOW-LISTS
     datasetUpdateSequence: number;
     /*
@@ -2167,10 +2182,10 @@ export class RecipeCockpitService {
         });
 
         const hasConstraints = storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION || storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_VALIDATION_RULES;
-        const hasFixedValues = hasConstraints || storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_CONSTRAINTS;
-        const hasCounts = hasFixedValues || storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES;
+        // A FIXED VALUE IS IN THE RECIPE FILE SINCE #342, SO ONE A VERSION 4-6 ENTRY STILL HOLDS IS NOT READ
+        const hasCounts = hasConstraints || storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_CONSTRAINTS
+                            || storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES;
         const storedCountsByFolderName = hasCounts ? storedSelections.objectCountsByFolderName : undefined;
-        const storedFixedValuesByFolderName = hasFixedValues ? storedSelections.fixedValuesByFolderName : undefined;
         const storedConstraintsByFolderName = hasConstraints ? storedSelections.constraintsByFolderName : undefined;
         const storedValidationRulesOffByFolderName = storedSelections.version === RECIPE_COCKPIT_OBJECT_SELECTION_VERSION ? storedSelections.validationRulesOffByFolderName : undefined;
 
@@ -2232,38 +2247,6 @@ export class RecipeCockpitService {
             });
         }
 
-        if ( this.isPlainRecord(storedFixedValuesByFolderName) ) {
-            Object.keys(storedFixedValuesByFolderName).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
-                const storedByObject = storedFixedValuesByFolderName[folderName];
-                if ( !isUsableFolderName(folderName) || !this.isPlainRecord(storedByObject) ) {
-                    return;
-                }
-                const fixedValuesByObject = new Map<string, Map<string, string>>();
-                Object.keys(storedByObject).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(objectApiName => {
-                    const storedByField = storedByObject[objectApiName];
-                    if ( !SalesforceApiName.isApiName(objectApiName) || !this.isPlainRecord(storedByField) ) {
-                        return;
-                    }
-                    const fixedValuesByField = new Map<string, string>();
-                    Object.keys(storedByField).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(fieldApiName => {
-                        const fixedValue = storedByField[fieldApiName];
-                        // THE KIND IS CHECKED AGAINST THE FIELD WHEN IT IS APPLIED; HERE ONLY WHAT NO KIND COULD WRITE IS DROPPED
-                        if ( SalesforceApiName.isApiName(fieldApiName) && typeof fixedValue === 'string'
-                                && fixedValue.length <= RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH
-                                && RecipeCockpitRecipeWriter.checkFixedValue({ value: fixedValue, kind: 'text' }) === undefined ) {
-                            fixedValuesByField.set(fieldApiName, fixedValue);
-                        }
-                    });
-                    if ( fixedValuesByField.size > 0 ) {
-                        fixedValuesByObject.set(objectApiName, fixedValuesByField);
-                    }
-                });
-                if ( fixedValuesByObject.size > 0 ) {
-                    treeSelections.fixedValuesByFolderName.set(folderName, fixedValuesByObject);
-                }
-            });
-        }
-
         if ( this.isPlainRecord(storedCountsByFolderName) ) {
             Object.keys(storedCountsByFolderName).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
                 const storedByObject = storedCountsByFolderName[folderName];
@@ -2298,7 +2281,7 @@ export class RecipeCockpitService {
     static async writeTreeSelections(workspaceState: IRecipeCockpitWorkspaceState | undefined, treeSelections: IRecipeCockpitTreeSelections): Promise<boolean> {
 
         if ( !workspaceState ) {
-            VSCodeWorkspaceService.showWarningMessage('The Recipe Cockpit has no workspace to keep excluded objects, unticked fields, record counts, fixed values, faker constraints and validation rule choices in. Open a folder and re-open the cockpit.');
+            VSCodeWorkspaceService.showWarningMessage('The Recipe Cockpit has no workspace to keep excluded objects, unticked fields, record counts, faker constraints and validation rule choices in. Open a folder and re-open the cockpit.');
             return false;
         }
 
@@ -2323,16 +2306,6 @@ export class RecipeCockpitService {
                 .filter(([, countsByObject]) => countsByObject.size > 0)
                 .map(([folderName, countsByObject]) => [folderName, Object.fromEntries(countsByObject)])
         );
-        const storedFixedValuesByFolderName: Record<string, Record<string, Record<string, string>>> = Object.fromEntries(
-            [...treeSelections.fixedValuesByFolderName]
-                .map(([folderName, fixedValuesByObject]) => [folderName, Object.fromEntries(
-                    [...fixedValuesByObject]
-                        .filter(([, fixedValuesByField]) => fixedValuesByField.size > 0)
-                        .map(([objectApiName, fixedValuesByField]) => [objectApiName, Object.fromEntries(fixedValuesByField)])
-                )] as [string, Record<string, Record<string, string>>])
-                .filter(([, storedByObject]) => Object.keys(storedByObject).length > 0)
-        );
-
         const storedConstraintsByFolderName: Record<string, Record<string, Record<string, IStoredRecipeFieldConstraint>>> = Object.fromEntries(
             [...treeSelections.constraintsByFolderName]
                 .map(([folderName, constraintsByObject]) => [folderName, Object.fromEntries(
@@ -2349,13 +2322,12 @@ export class RecipeCockpitService {
                 excludedObjectApiNamesByFolderName: storedByFolderName,
                 excludedFieldApiNamesByFolderName: storedFieldsByFolderName,
                 objectCountsByFolderName: storedCountsByFolderName,
-                fixedValuesByFolderName: storedFixedValuesByFolderName,
                 constraintsByFolderName: storedConstraintsByFolderName,
                 validationRulesOffByFolderName: toStoredFieldNames(treeSelections.validationRulesOffByFolderName)
             });
             return true;
         } catch (writeError) {
-            VSCodeWorkspaceService.showWarningMessage(`The excluded objects, unticked fields, record counts, fixed values, faker constraints and validation rule choices could not be saved: ${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}`);
+            VSCodeWorkspaceService.showWarningMessage(`The excluded objects, unticked fields, record counts, faker constraints and validation rule choices could not be saved: ${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}`);
             return false;
         }
 
@@ -2509,6 +2481,75 @@ export class RecipeCockpitService {
 
     }
 
+    // workspaceState'S SELECTIONS WITH THE PINS THE FIXED-VALUES FILES HOLD (#342) IN PLACE OF ANY IT KEPT
+    static withPinnedFixedValues(treeSelections: IRecipeCockpitTreeSelections, pinnedFixedValuesByFolderName: Map<string, Map<string, Map<string, string>>> | undefined): IRecipeCockpitTreeSelections {
+        return { ...treeSelections, fixedValuesByFolderName: pinnedFixedValuesByFolderName ?? new Map() };
+    }
+
+    /*
+        What a card's fixed-values file (#342) pins, read beside its recipe: only a file inside the
+        workspace, and only a field whose every recorded occurrence still holds the line the pin
+        wrote -- one edited by hand since is the reader's line now, so it is not drawn as pinned, and
+        a notice says so. A file that is there and cannot be read pins nothing, with a notice.
+    */
+    static readPinnedFixedValues(recipeFilePath: string, workspaceRoot: string, recipeText: string | undefined): { valuesByObject: Map<string, Map<string, string>>; notices: string[] } {
+
+        const fixedValueFilePath = RecipeCockpitFixedValueStore.buildFilePath(recipeFilePath);
+        const fixedValueFileLabel = path.basename(fixedValueFilePath);
+        const fixedValueRead = this.readFixedValueFile(fixedValueFilePath, workspaceRoot);
+
+        if ( fixedValueRead.isUnreadable ) {
+            return { valuesByObject: new Map(), notices: [`"${fixedValueFileLabel}" is not a fixed-values file the Recipe Cockpit can read, so no field of its recipe is shown as pinned.`] };
+        }
+        if ( fixedValueRead.entries.length === 0 || recipeText === undefined ) {
+            return { valuesByObject: new Map(), notices: [] };
+        }
+
+        const changedFieldLabels: string[] = [];
+        const currentEntries = fixedValueRead.entries.filter(entry => {
+            const restoreResult = RecipeCockpitRecipeWriter.restorePinnedField(recipeText, entry.objectApiName, entry.fieldApiName, this.buildPinnedFieldRestoreRequests(entry, undefined));
+            const isChanged = 'refusal' in restoreResult && restoreResult.refusal.reason === 'pinned-field-changed';
+            if ( isChanged ) {
+                changedFieldLabels.push(`${entry.objectApiName}.${entry.fieldApiName}`);
+            }
+            return !isChanged;
+        });
+
+        return {
+            valuesByObject: RecipeCockpitFixedValueStore.listValuesByObject(currentEntries),
+            notices: changedFieldLabels.length > 0
+                ? [`${changedFieldLabels.join(', ')} ${changedFieldLabels.length === 1 ? 'was' : 'were'} changed in the recipe since ${changedFieldLabels.length === 1 ? 'it was' : 'they were'} pinned, so ${changedFieldLabels.length === 1 ? 'it is' : 'they are'} not shown as pinned. "${fixedValueFileLabel}" still holds the earlier ${changedFieldLabels.length === 1 ? 'value' : 'values'}.`]
+                : []
+        };
+
+    }
+
+    // NO FILE IS NO ENTRIES; ONE OUTSIDE THE WORKSPACE IS NEVER READ
+    static readFixedValueFile(fixedValueFilePath: string, workspaceRoot: string): IFixedValueFileRead {
+
+        if ( !this.isUsableWorkspacePath(fixedValueFilePath, workspaceRoot) ) {
+            return { entries: [], isUnreadable: false };
+        }
+
+        try {
+            return RecipeCockpitFixedValueStore.parse(fs.readFileSync(fixedValueFilePath, 'utf-8'));
+        } catch {
+            return { entries: [], isUnreadable: true };
+        }
+
+    }
+
+    // EACH RECORDED OCCURRENCE, WITH ITS ORIGINAL LINES WHEN THE FILE KEPT THEM AND THE RE-DERIVED VALUE OTHERWISE
+    static buildPinnedFieldRestoreRequests(entry: IFixedValueEntry, fallbackValueText: string | undefined): IPinnedFieldRestoreRequest[] {
+        return entry.occurrences.map(occurrence => ({
+            occurrenceIndex: occurrence.occurrenceIndex,
+            ...( occurrence.nickname !== undefined ? { nickname: occurrence.nickname } : {} ),
+            writtenLine: occurrence.writtenLine,
+            ...( occurrence.originalText !== undefined ? { originalText: occurrence.originalText } : {} ),
+            ...( occurrence.originalText === undefined && fallbackValueText !== undefined ? { valueText: fallbackValueText } : {} )
+        }));
+    }
+
     static applyTreeSelections(recipeViewModel: IRecipeCockpitRecipeViewModel, treeSelections: IRecipeCockpitTreeSelections): IRecipeCockpitTreeViewModel[] {
         return this.applyObjectSelections(recipeViewModel, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, undefined, treeSelections.objectCountsByFolderName, treeSelections.fixedValuesByFolderName, treeSelections.constraintsByFolderName, treeSelections.validationRulesOffByFolderName);
     }
@@ -2518,7 +2559,14 @@ export class RecipeCockpitService {
         if ( fieldViewModel.fieldType === 'Checkbox' ) {
             return 'boolean';
         }
-        return RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES.includes(fieldViewModel.fieldType) ? 'number' : 'text';
+        return RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES.includes(fieldViewModel.fieldType) || this.findGeolocationComponent(fieldViewModel) !== undefined ? 'number' : 'text';
+    }
+
+    // Latitude OR Longitude FOR A CUSTOM GEOLOCATION FIELD'S COMPONENT, WHICH GENERATE TREECIPE LISTS AS Text
+    static findGeolocationComponent(fieldViewModel: IRecipeCockpitFieldViewModel): string | undefined {
+        return fieldViewModel.fieldType === 'Text'
+            ? Object.keys(RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES).find(componentKey => fieldViewModel.fieldApiName.endsWith(RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES[componentKey].suffix))
+            : undefined;
     }
 
     /*
@@ -2889,6 +2937,14 @@ export class RecipeCockpitService {
             }
         }
 
+        const geolocationComponent = this.findGeolocationComponent(fieldViewModel);
+        if ( geolocationComponent !== undefined ) {
+            const limit = RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES[geolocationComponent].limit;
+            if ( Math.abs(Number(value)) > limit ) {
+                return `A ${geolocationComponent.toLowerCase()} is a number from -${limit} to ${limit}.`;
+            }
+        }
+
         if ( kind === 'text' && sizeMatch && sizeMatch[2] === undefined && value.length > Number(sizeMatch[1]) ) {
             return `${typeLabel} takes at most ${sizeMatch[1]} characters.`;
         }
@@ -3205,11 +3261,14 @@ export class RecipeCockpitService {
     }
 
     /*
-        A field's pin (#262), saved from its inline editor (#337). The panel posts the value as typed,
-        so it is checked here against the field the model on screen holds NOW -- the same check the
-        editor's own refusal comes from -- and '' clears it. A refused value writes nothing and is
-        answered under the editor; a field a lock holds back, or no longer drawn, writes nothing. The
-        recipe file is never written.
+        A field's pin (#262), saved from its inline editor (#337) and, since #342, written into the
+        card's recipe FILE. The panel posts the value as typed, so it is checked here against the
+        field the model on screen holds NOW -- the same check the editor's own refusal comes from. A
+        value pins the field: its lines become the value on every occurrence of its object, and the
+        lines they replaced go into the fixed-values file beside the recipe. '' is Clear, which puts
+        those lines back. Either asks in a modal first and shares the one recipe write lock with a
+        wiring and an added parent; a write reloads the card, every other ending is answered under the
+        editor. A field a lock holds back, or no longer drawn, writes nothing and is answered nothing.
     */
     private static async setFieldFixedValue(cockpitPanel: vscode.WebviewPanel,
                                             panelState: IRecipeCockpitPanelState,
@@ -3223,28 +3282,293 @@ export class RecipeCockpitService {
             return;
         }
 
-        const declaredPicklistValues = this.listDeclaredPicklistValues(panelState, panelAction.objectApiName, panelAction.fieldApiName);
-        const refusal = panelAction.value === '' ? undefined : this.validateFixedValueInput(panelAction.value, drawnField.fieldViewModel, declaredPicklistValues);
-        if ( refusal !== undefined ) {
-            this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'fixedValue', refusal);
+        if ( panelState.wireLookupStateMessage ) {
+            this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'fixedValue', RECIPE_COCKPIT_FIELD_EDIT_WRITE_RUNNING_REFUSAL);
             return;
         }
 
-        const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
-        const fixedValuesByObject = treeSelections.fixedValuesByFolderName.get(panelAction.folderName) ?? new Map<string, Map<string, string>>();
-        const fixedValuesByField = fixedValuesByObject.get(panelAction.objectApiName) ?? new Map<string, string>();
-
-        if ( panelAction.value === '' ) {
-            fixedValuesByField.delete(panelAction.fieldApiName);
-        } else {
-            fixedValuesByField.set(panelAction.fieldApiName, panelAction.value);
+        const declaredPicklistValues = this.listDeclaredPicklistValues(panelState, panelAction.objectApiName, panelAction.fieldApiName);
+        const valueRefusal = panelAction.value === '' ? undefined : this.validateFixedValueInput(panelAction.value, drawnField.fieldViewModel, declaredPicklistValues);
+        if ( valueRefusal !== undefined ) {
+            this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'fixedValue', valueRefusal);
+            return;
         }
-        fixedValuesByObject.set(panelAction.objectApiName, fixedValuesByField);
-        treeSelections.fixedValuesByFolderName.set(panelAction.folderName, fixedValuesByObject);
 
-        // A FIXED VALUE CHANGES NO FIELD THE INSERT SENDS, SO THE ORG'S READINESS NEED NOT BE CHECKED AGAIN
-        const isSaved = await this.saveAndPostTreeSelections(cockpitPanel, panelState, panelAction.folderName, treeSelections, false);
-        this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'fixedValue', isSaved ? undefined : RECIPE_COCKPIT_FIELD_EDIT_NOT_SAVED_REFUSAL);
+        const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(panelAction.treeKey);
+        if ( !recipeFilePath ) {
+            this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'fixedValue', 'Not saved: this card has no single recipe file to write the value into.');
+            return;
+        }
+
+        let writeRefusal: string | undefined;
+        await this.runRecipeLookupWrite(cockpitPanel, panelState, panelAction.treeKey, async () => {
+            const writeOutcome = panelAction.value === ''
+                ? await this.clearFixedValueFromRecipe(recipeFilePath, panelState.workspaceRoot, drawnField.objectViewModel, drawnField.fieldViewModel)
+                : await this.writeFixedValueToRecipe(recipeFilePath, panelState.workspaceRoot, panelAction.objectApiName, panelAction.fieldApiName, { value: panelAction.value, kind: this.getFixedValueKind(drawnField.fieldViewModel) });
+            writeRefusal = writeOutcome.refusal;
+            return writeOutcome.isWritten;
+        });
+
+        if ( writeRefusal !== undefined ) {
+            this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'fixedValue', writeRefusal);
+        }
+
+    }
+
+    /*
+        Pins a field in the recipe file (#342). The fixed-values file is written FIRST and put back as
+        it was when the recipe cannot be, so a recipe never holds a pin that file cannot clear. A
+        fixed-values file that is there and cannot be read is never overwritten -- it may be a pin the
+        reader still needs -- and one that is a link is never written through.
+    */
+    private static async writeFixedValueToRecipe(recipeFilePath: string,
+                                                    workspaceRoot: string,
+                                                    objectApiName: string,
+                                                    fieldApiName: string,
+                                                    fixedValue: IRecipeFixedValue): Promise<{ isWritten: boolean; refusal?: string }> {
+
+        const fixedValueFilePath = RecipeCockpitFixedValueStore.buildFilePath(recipeFilePath);
+        const recipeFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath));
+        const fixedValueFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(fixedValueFilePath));
+        const fieldLabel = `${RecipeYamlScalar.escapeForNotification(objectApiName)}.${RecipeYamlScalar.escapeForNotification(fieldApiName)}`;
+
+        const planned = this.planFixedValueWrite(recipeFilePath, workspaceRoot, objectApiName, fieldApiName, fixedValue);
+        if ( 'refusal' in planned ) {
+            return { isWritten: false, refusal: planned.refusal };
+        }
+
+        const confirmation = await vscode.window.showWarningMessage(
+            `Write a fixed value into ${fieldLabel}?`,
+            {
+                modal: true,
+                detail: [
+                    `This writes to "${recipeFileLabel}": ${fieldLabel} becomes ${RecipeYamlScalar.escapeForNotification(RecipeCockpitRecipeWriter.toFixedValueScalar(fixedValue))} on every ${RecipeYamlScalar.escapeForNotification(objectApiName)} in it, so Run Faker by Recipe generates it from the palette too. Every other line of the file is left as it is.`,
+                    '',
+                    `The lines it replaces are kept in "${fixedValueFileLabel}" beside the recipe, so Clear can put them back exactly.`
+                ].join('\n')
+            },
+            RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL
+        );
+
+        if ( confirmation !== RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL ) {
+            return { isWritten: false, refusal: RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL };
+        }
+
+        // PLANNED AGAIN AFTER THE MODAL: EITHER FILE CAN HAVE CHANGED WHILE IT WAS OPEN
+        const confirmed = this.planFixedValueWrite(recipeFilePath, workspaceRoot, objectApiName, fieldApiName, fixedValue);
+        if ( 'refusal' in confirmed ) {
+            return { isWritten: false, refusal: confirmed.refusal };
+        }
+
+        const writeRefusal = this.writeRecipeWithFixedValueFile(recipeFilePath, confirmed.recipeText, fixedValueFilePath, confirmed.entries);
+        if ( writeRefusal !== undefined ) {
+            return { isWritten: false, refusal: writeRefusal };
+        }
+
+        VSCodeWorkspaceService.showInformationMessage(`Wrote the fixed value of ${fieldLabel} into "${recipeFileLabel}".`);
+        return { isWritten: true };
+
+    }
+
+    private static planFixedValueWrite(recipeFilePath: string,
+                                        workspaceRoot: string,
+                                        objectApiName: string,
+                                        fieldApiName: string,
+                                        fixedValue: IRecipeFixedValue): { recipeText: string; entries: IFixedValueEntry[] } | { refusal: string } {
+
+        const fixedValueFilePath = RecipeCockpitFixedValueStore.buildFilePath(recipeFilePath);
+        const located = this.readFixedValueTarget(recipeFilePath, fixedValueFilePath, workspaceRoot);
+        if ( 'refusal' in located ) {
+            return located;
+        }
+
+        const pinResult = RecipeCockpitRecipeWriter.pinField(located.recipeText, objectApiName, fieldApiName, fixedValue);
+        if ( 'refusal' in pinResult ) {
+            return { refusal: `Not saved: ${pinResult.refusal.message}` };
+        }
+
+        return {
+            recipeText: pinResult.recipeText,
+            entries: RecipeCockpitFixedValueStore.upsertEntry(located.entries, { objectApiName: objectApiName, fieldApiName: fieldApiName, value: fixedValue.value, occurrences: pinResult.occurrences })
+        };
+
+    }
+
+    /*
+        Clear (#342): the lines the fixed-values file recorded go back on every occurrence it pinned.
+        An occurrence it holds no usable lines for gets the field's value as Generate Treecipe
+        wrote it instead -- the objects wrapper's own, or, for a standard field the wrapper does not
+        list, the recipe backend's mapping -- and the modal says it is re-derived rather than put back.
+    */
+    private static async clearFixedValueFromRecipe(recipeFilePath: string,
+                                                    workspaceRoot: string,
+                                                    objectViewModel: IRecipeCockpitObjectViewModel,
+                                                    fieldViewModel: IRecipeCockpitFieldViewModel): Promise<{ isWritten: boolean; refusal?: string }> {
+
+        const fixedValueFilePath = RecipeCockpitFixedValueStore.buildFilePath(recipeFilePath);
+        const recipeFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath));
+        const fixedValueFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(fixedValueFilePath));
+        const fieldLabel = `${RecipeYamlScalar.escapeForNotification(objectViewModel.objectApiName)}.${RecipeYamlScalar.escapeForNotification(fieldViewModel.fieldApiName)}`;
+        const fallbackValueText = this.resolveFixedValueFallback(recipeFilePath, workspaceRoot, objectViewModel.objectApiName, fieldViewModel);
+
+        const planned = this.planFixedValueClear(recipeFilePath, workspaceRoot, objectViewModel.objectApiName, fieldViewModel.fieldApiName, fallbackValueText);
+        if ( 'refusal' in planned ) {
+            return { isWritten: false, refusal: planned.refusal };
+        }
+
+        const confirmation = await vscode.window.showWarningMessage(
+            `Clear the fixed value of ${fieldLabel}?`,
+            {
+                modal: true,
+                detail: planned.isRederived
+                    ? `This writes to "${recipeFileLabel}": "${fixedValueFileLabel}" has no recorded lines for ${fieldLabel}, so it gets back the value Generate Treecipe wrote for it rather than the exact lines it had. Every other line of the file is left as it is.`
+                    : `This writes to "${recipeFileLabel}": ${fieldLabel} gets back the lines it had before it was pinned, recorded in "${fixedValueFileLabel}". Every other line of the file is left as it is.`
+            },
+            RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL
+        );
+
+        if ( confirmation !== RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL ) {
+            return { isWritten: false, refusal: RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL };
+        }
+
+        const confirmed = this.planFixedValueClear(recipeFilePath, workspaceRoot, objectViewModel.objectApiName, fieldViewModel.fieldApiName, fallbackValueText);
+        if ( 'refusal' in confirmed ) {
+            return { isWritten: false, refusal: confirmed.refusal };
+        }
+        if ( confirmed.isRederived !== planned.isRederived ) {
+            return { isWritten: false, refusal: `Not saved: "${path.basename(fixedValueFilePath)}" changed while the dialog was open.` };
+        }
+
+        const writeRefusal = this.writeRecipeWithFixedValueFile(recipeFilePath, confirmed.recipeText, fixedValueFilePath, confirmed.entries);
+        if ( writeRefusal !== undefined ) {
+            return { isWritten: false, refusal: writeRefusal };
+        }
+
+        VSCodeWorkspaceService.showInformationMessage(`Cleared the fixed value of ${fieldLabel} in "${recipeFileLabel}".`);
+        return { isWritten: true };
+
+    }
+
+    private static planFixedValueClear(recipeFilePath: string,
+                                        workspaceRoot: string,
+                                        objectApiName: string,
+                                        fieldApiName: string,
+                                        fallbackValueText: string | undefined): { recipeText: string; entries: IFixedValueEntry[]; isRederived: boolean } | { refusal: string } {
+
+        const fixedValueFilePath = RecipeCockpitFixedValueStore.buildFilePath(recipeFilePath);
+        const located = this.readFixedValueTarget(recipeFilePath, fixedValueFilePath, workspaceRoot);
+        if ( 'refusal' in located ) {
+            return located;
+        }
+
+        const entry = RecipeCockpitFixedValueStore.findEntry(located.entries, objectApiName, fieldApiName);
+        if ( !entry ) {
+            return { refusal: `Not saved: "${path.basename(fixedValueFilePath)}" holds no fixed value for ${objectApiName}.${fieldApiName}.` };
+        }
+
+        const isRederived = entry.occurrences.some(occurrence => occurrence.originalText === undefined);
+        if ( isRederived && fallbackValueText === undefined ) {
+            return { refusal: `Not saved: "${path.basename(fixedValueFilePath)}" has no recorded lines for ${objectApiName}.${fieldApiName}, and there is no value Generate Treecipe wrote for it to put back instead.` };
+        }
+
+        const restoreResult = RecipeCockpitRecipeWriter.restorePinnedField(located.recipeText, objectApiName, fieldApiName, this.buildPinnedFieldRestoreRequests(entry, fallbackValueText));
+        if ( 'refusal' in restoreResult ) {
+            return { refusal: `Not saved: ${restoreResult.refusal.message}` };
+        }
+
+        return { recipeText: restoreResult.recipeText, entries: RecipeCockpitFixedValueStore.removeEntry(located.entries, objectApiName, fieldApiName), isRederived: isRederived };
+
+    }
+
+    /*
+        The value a field is re-derived to when no lines were recorded for it: the objects wrapper's
+        own recipe value, which is what Generate Treecipe wrote for the field by its type, size,
+        picklist values and validation rules, or, for a standard field the wrapper never lists, the
+        value the recipe's own backend maps it to. undefined when neither has one.
+    */
+    static resolveFixedValueFallback(recipeFilePath: string, workspaceRoot: string, objectApiName: string, fieldViewModel: IRecipeCockpitFieldViewModel): string | undefined {
+
+        if ( !fieldViewModel.isOnlyInRecipeFile ) {
+            return fieldViewModel.recipeValue !== '' ? fieldViewModel.recipeValue : undefined;
+        }
+
+        const generatedRecipesFolderPath = path.join(workspaceRoot, ConfigurationService.getGeneratedRecipesFolderPath());
+        const fakerService = VSCodeWorkspaceService.readRecipeFakerService(generatedRecipesFolderPath, recipeFilePath);
+        if ( !fakerService ) {
+            return undefined;
+        }
+
+        const standardFieldValues = ( fakerService === 'faker-js' ? new FakerJSRecipeFakerService() : new SnowfakeryRecipeFakerService() ).getOOTBObjectApiNameToFieldApiNameMap();
+        const valuesByField = Object.prototype.hasOwnProperty.call(standardFieldValues, objectApiName) ? standardFieldValues[objectApiName] : undefined;
+        return valuesByField && Object.prototype.hasOwnProperty.call(valuesByField, fieldViewModel.fieldApiName) ? valuesByField[fieldViewModel.fieldApiName] : undefined;
+
+    }
+
+    // THE RECIPE'S TEXT AND THE FIXED-VALUES FILE'S ENTRIES, OR WHY NEITHER IS TO BE WRITTEN
+    private static readFixedValueTarget(recipeFilePath: string, fixedValueFilePath: string, workspaceRoot: string): { recipeText: string; entries: IFixedValueEntry[] } | { refusal: string } {
+
+        if ( !this.isUsableWorkspacePath(recipeFilePath, workspaceRoot) ) {
+            return { refusal: `Not saved: "${path.basename(recipeFilePath)}" no longer exists in this workspace. Re-open the Recipe Cockpit to load the runs currently on disk.` };
+        }
+        if ( this.isLinkPath(fixedValueFilePath) || ( fs.existsSync(fixedValueFilePath) && !this.isUsableWorkspacePath(fixedValueFilePath, workspaceRoot) ) ) {
+            return { refusal: `Not saved: "${path.basename(fixedValueFilePath)}" is a link or is outside this workspace, so it is not written.` };
+        }
+
+        const fixedValueRead = this.readFixedValueFile(fixedValueFilePath, workspaceRoot);
+        if ( fixedValueRead.isUnreadable ) {
+            return { refusal: `Not saved: "${path.basename(fixedValueFilePath)}" is not a fixed-values file the Recipe Cockpit can read. Fix it, or delete it to start again.` };
+        }
+
+        try {
+            return { recipeText: fs.readFileSync(recipeFilePath, 'utf-8'), entries: fixedValueRead.entries };
+        } catch {
+            return { refusal: `Not saved: "${path.basename(recipeFilePath)}" could not be read.` };
+        }
+
+    }
+
+    private static isLinkPath(candidatePath: string): boolean {
+        try {
+            return fs.lstatSync(candidatePath).isSymbolicLink();
+        } catch {
+            return false;
+        }
+    }
+
+    /*
+        The fixed-values file first, then the recipe; when the recipe cannot be written the
+        fixed-values file goes back to what it was, or away when there was none. A file left with no
+        entry is removed rather than kept empty.
+    */
+    private static writeRecipeWithFixedValueFile(recipeFilePath: string, recipeText: string, fixedValueFilePath: string, entries: IFixedValueEntry[]): string | undefined {
+
+        const previousFixedValueText = fs.existsSync(fixedValueFilePath) ? fs.readFileSync(fixedValueFilePath, 'utf-8') : undefined;
+
+        try {
+            if ( entries.length > 0 ) {
+                fs.writeFileSync(fixedValueFilePath, RecipeCockpitFixedValueStore.serialize(entries));
+            } else if ( previousFixedValueText !== undefined ) {
+                fs.unlinkSync(fixedValueFilePath);
+            }
+        } catch (writeError) {
+            return `Not saved: "${path.basename(fixedValueFilePath)}" could not be written (${String(writeError?.message ?? writeError)}).`;
+        }
+
+        try {
+            fs.writeFileSync(recipeFilePath, recipeText);
+            return undefined;
+        } catch (writeError) {
+            try {
+                if ( previousFixedValueText !== undefined ) {
+                    fs.writeFileSync(fixedValueFilePath, previousFixedValueText);
+                } else if ( fs.existsSync(fixedValueFilePath) ) {
+                    fs.unlinkSync(fixedValueFilePath);
+                }
+            } catch {
+                // THE RECIPE IS UNCHANGED, SO A FIXED-VALUES FILE LEFT AHEAD OF IT SHOWS ITS FIELDS AS CHANGED SINCE THEY WERE PINNED, NOT AS PINNED
+            }
+            return `Not saved: "${path.basename(recipeFilePath)}" could not be written (${String(writeError?.message ?? writeError)}).`;
+        }
 
     }
 
@@ -3457,7 +3781,6 @@ export class RecipeCockpitService {
         if ( !treeSelections.excludedObjectApiNamesByFolderName.has(folderName)
                 && !treeSelections.excludedFieldApiNamesByFolderName.has(folderName)
                 && !treeSelections.objectCountsByFolderName.has(folderName)
-                && !treeSelections.fixedValuesByFolderName.has(folderName)
                 && !treeSelections.constraintsByFolderName.has(folderName)
                 && !treeSelections.validationRulesOffByFolderName.has(folderName) ) {
             return;
@@ -3467,7 +3790,7 @@ export class RecipeCockpitService {
         const treeLabel = RecipeYamlScalar.escapeForNotification(tree?.customName ?? tree?.title ?? folderName);
         const confirmation = await vscode.window.showWarningMessage(
             `Reset the selection of ${treeLabel}?`,
-            { modal: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again, every fixed value and faker constraint is cleared and every validation rule is applied again. The recipe file is not changed.' },
+            { modal: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again, every faker constraint is cleared and every validation rule is applied again. The recipe file is not changed, so a fixed value written into it stays: clear it with its field\'s pin.' },
             RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL
         );
 
@@ -3480,7 +3803,6 @@ export class RecipeCockpitService {
         currentSelections.excludedObjectApiNamesByFolderName.delete(folderName);
         currentSelections.excludedFieldApiNamesByFolderName.delete(folderName);
         currentSelections.objectCountsByFolderName.delete(folderName);
-        currentSelections.fixedValuesByFolderName.delete(folderName);
         currentSelections.constraintsByFolderName.delete(folderName);
         currentSelections.validationRulesOffByFolderName.delete(folderName);
 
@@ -3506,8 +3828,8 @@ export class RecipeCockpitService {
             return isWritten;
         }
 
-        // ONLY THIS FOLDER'S CARDS CHANGED, SO ONLY THEY ARE RECOMPUTED
-        this.applyObjectSelections(recipeDataMessage.recipe, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, folderName, treeSelections.objectCountsByFolderName, treeSelections.fixedValuesByFolderName, treeSelections.constraintsByFolderName, treeSelections.validationRulesOffByFolderName);
+        // ONLY THIS FOLDER'S CARDS CHANGED, SO ONLY THEY ARE RECOMPUTED; THEIR PINS ARE THE ONES THEIR FIXED-VALUES FILES HELD AT LOAD (#342)
+        this.applyObjectSelections(recipeDataMessage.recipe, treeSelections.excludedObjectApiNamesByFolderName, treeSelections.excludedFieldApiNamesByFolderName, folderName, treeSelections.objectCountsByFolderName, panelState.pinnedFixedValuesByFolderName ?? new Map(), treeSelections.constraintsByFolderName, treeSelections.validationRulesOffByFolderName);
 
         recipeDataMessage.recipe.trees
             .filter(tree => tree.folderName === folderName)
@@ -4140,7 +4462,7 @@ export class RecipeCockpitService {
         }
         this.applyTreePreferences(recipeViewModel.trees, this.readTreePreferences(this.recipeCockpitWorkspaceState));
         this.applyDatasetPreferences(recipeViewModel.trees, this.readDatasetPreferences(this.recipeCockpitWorkspaceState));
-        this.applyTreeSelections(recipeViewModel, this.readTreeSelections(this.recipeCockpitWorkspaceState));
+        this.applyTreeSelections(recipeViewModel, this.withPinnedFixedValues(this.readTreeSelections(this.recipeCockpitWorkspaceState), loadedRecipe.pinnedFixedValuesByFolderName));
         const recipeDataMessage: IRecipeCockpitRecipeDataMessage = {
             command: 'recipeData',
             recipe: recipeViewModel,
@@ -4163,6 +4485,7 @@ export class RecipeCockpitService {
         panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
         panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
         panelState.objectLevelsByApiName = loadedRecipe.objectLevelsByApiName;
+        panelState.pinnedFixedValuesByFolderName = loadedRecipe.pinnedFixedValuesByFolderName;
         panelState.loadFailedMessage = undefined;
         panelState.loadPhaseMessage = '';
         panelState.reportedFailureDescriptions = new Set();
@@ -8833,6 +9156,9 @@ export class RecipeCockpitService {
             recipeViewModel.trees
         );
 
+        const pinnedFixedValuesByFolderName = new Map<string, Map<string, Map<string, string>>>();
+        const fixedValueNotices: string[] = [];
+
         recipeViewModel.trees.forEach(tree => {
             const treeHistory = treeHistoryBuild.historiesByTreeKey.get(tree.treeKey);
             if ( treeHistory ) {
@@ -8849,6 +9175,11 @@ export class RecipeCockpitService {
                 if ( addableParents.length > 0 ) {
                     tree.addableParents = addableParents;
                 }
+                const pinnedFixedValues = this.readPinnedFixedValues(runFakerRecipeFilePath, workspaceRoot, recipeSourceRead.recipeTextsByFilePath.get(runFakerRecipeFilePath));
+                fixedValueNotices.push(...pinnedFixedValues.notices);
+                if ( tree.folderName && pinnedFixedValues.valuesByObject.size > 0 ) {
+                    pinnedFixedValuesByFolderName.set(tree.folderName, pinnedFixedValues.valuesByObject);
+                }
             }
         });
 
@@ -8860,7 +9191,7 @@ export class RecipeCockpitService {
             ? [`The run "${requestedRunFolderName}" is no longer on disk, so the latest run is shown instead.`]
             : [];
 
-        recipeViewModel.notices = [...missingRunNotices, ...normalizedObjectsWrapper.notices, ...recipeSourceRead.notices, ...recipeTreeBuild.notices, ...unmatchedDatasetNotices];
+        recipeViewModel.notices = [...missingRunNotices, ...normalizedObjectsWrapper.notices, ...recipeSourceRead.notices, ...recipeTreeBuild.notices, ...fixedValueNotices, ...unmatchedDatasetNotices];
 
         if ( recipeViewModel.objects.length === 0 ) {
             recipeViewModel.emptyStateMessage = normalizedObjectsWrapper.isObjectsWrapper
@@ -8872,7 +9203,8 @@ export class RecipeCockpitService {
             recipeViewModel: recipeViewModel,
             picklistDisplayValuesByObjectApiName: normalizedObjectsWrapper.picklistDisplayValuesByObjectApiName,
             treeHistoryTargets: treeHistoryBuild.targets,
-            ...( normalizedObjectsWrapper.objectLevelsByApiName ? { objectLevelsByApiName: normalizedObjectsWrapper.objectLevelsByApiName } : {} )
+            ...( normalizedObjectsWrapper.objectLevelsByApiName ? { objectLevelsByApiName: normalizedObjectsWrapper.objectLevelsByApiName } : {} ),
+            ...( pinnedFixedValuesByFolderName.size > 0 ? { pinnedFixedValuesByFolderName: pinnedFixedValuesByFolderName } : {} )
         };
 
     }
@@ -10454,6 +10786,7 @@ ${this.buildPaletteCustomProperties()}
     const CONSTRAINT_NUMBER_FIELD_TYPES = ${JSON.stringify(RECIPE_FIELD_CONSTRAINT_NUMBER_FIELD_TYPES)};
     const CONSTRAINT_LENGTH_FIELD_TYPES = ${JSON.stringify(RECIPE_FIELD_CONSTRAINT_LENGTH_FIELD_TYPES)};
     const FIXED_VALUE_NUMBER_FIELD_TYPES = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_NUMBER_FIELD_TYPES)};
+    const GEOLOCATION_COMPONENT_RANGES = ${JSON.stringify(RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES)};
 
     let treeStates = [];
     let treesViewElement = null;
@@ -10769,7 +11102,6 @@ ${this.buildPaletteCustomProperties()}
             [exclusions.length, 'object excluded', 'objects excluded'],
             [untickedFieldCount, 'field unticked', 'fields unticked'],
             [generatedEntries(tree.objectCounts).length, 'count changed', 'counts changed'],
-            [generatedEntries(tree.fixedValues).length, 'fixed value', 'fixed values'],
             [generatedEntries(tree.constraints).length, 'faker bound', 'faker bounds'],
             [rulesOffCount, 'field without its rules', 'fields without their rules']
         ].filter(function (difference) { return difference[0] > 0; })
@@ -11774,7 +12106,6 @@ ${this.buildPaletteCustomProperties()}
     function hasTreeSelection(tree) {
         return !!tree.objectSelection
             || ( Array.isArray(tree.objectCounts) && tree.objectCounts.length > 0 )
-            || ( Array.isArray(tree.fixedValues) && tree.fixedValues.length > 0 )
             || ( Array.isArray(tree.constraints) && tree.constraints.length > 0 )
             || ( Array.isArray(tree.validationRulesOff) && tree.validationRulesOff.length > 0 )
             || ( !!tree.fieldSelection && Array.isArray(tree.fieldSelection.objects) && tree.fieldSelection.objects.some(function (objectFieldSelection) {
@@ -11857,6 +12188,13 @@ ${this.buildPaletteCustomProperties()}
         if (field.fieldType === 'Date') { return 'Type a date as YYYY-MM-DD, such as 2026-01-31.'; }
         if (field.fieldType === 'DateTime') { return 'Type a date and time as ISO 8601 with a zone, such as 2026-01-31T09:30:00Z.'; }
         if (FIXED_VALUE_NUMBER_FIELD_TYPES.indexOf(field.fieldType) !== -1) { return 'Type a plain number, such as 42, -7 or 3.25.'; }
+        const geolocationComponent = field.fieldType === 'Text'
+            ? Object.keys(GEOLOCATION_COMPONENT_RANGES).find(function (componentKey) { return field.fieldApiName.endsWith(GEOLOCATION_COMPONENT_RANGES[componentKey].suffix); })
+            : undefined;
+        if (geolocationComponent !== undefined) {
+            const limit = GEOLOCATION_COMPONENT_RANGES[geolocationComponent].limit;
+            return 'Type a ' + geolocationComponent.toLowerCase() + ' from -' + limit + ' to ' + limit + '.';
+        }
         if (field.fieldType === 'MultiselectPicklist') { return 'Type values this picklist declares, separated by ;.'; }
         if (field.isPicklist) { return 'Type a value this picklist declares.'; }
         return 'Type the text every record gets.';
@@ -11941,8 +12279,9 @@ ${this.buildPaletteCustomProperties()}
         }
 
         const hintText = ( edit === 'fixedValue' ? describeFixedValueForm(field) : describeConstraintForm(field, getConstraintEditKind(field.fieldType)) )
-            + ( edit === 'fixedValue' ? ' Empty goes back to the faker expression.' : ' Leave one empty for its default; both empty goes back to the faker expression.' )
-            + ' The recipe file is not changed.';
+            + ( edit === 'fixedValue'
+                ? ' Save writes it into the recipe file; Clear puts back the lines the field had.'
+                : ' Leave one empty for its default; both empty goes back to the faker expression. The recipe file is not changed.' );
         const hintElement = createElement('div', 'fieldEditorHint muted', hintText);
         const refusalElement = createElement('div', 'fieldEditorRefusal hidden');
         refusalElement.setAttribute('role', 'alert');

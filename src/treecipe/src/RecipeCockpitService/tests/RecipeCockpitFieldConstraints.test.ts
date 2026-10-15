@@ -46,6 +46,7 @@ import { IStoredRecipeFieldConstraint, RECIPE_FIELD_CONSTRAINT_MAX_BOUND_LENGTH 
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { pinFieldInRecipeFile } from './RecipeCockpitFixedValueFiles';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
 /*
@@ -117,7 +118,8 @@ const storedSelections = (constraintsByFolderName: Record<string, unknown>, fixe
     excludedObjectApiNamesByFolderName: excludedObjectApiNamesByFolderName,
     excludedFieldApiNamesByFolderName: excludedFieldApiNamesByFolderName,
     objectCountsByFolderName: {},
-    fixedValuesByFolderName: fixedValuesByFolderName,
+    // A FIXED VALUE IS IN THE RECIPE FILE SINCE #342: A STORED ONE IS WHAT AN OLDER VERSION LEFT, AND IS NOT READ
+    ...( Object.keys(fixedValuesByFolderName).length > 0 ? { fixedValuesByFolderName: fixedValuesByFolderName } : {} ),
     constraintsByFolderName: constraintsByFolderName,
     validationRulesOffByFolderName: {}
 });
@@ -325,7 +327,7 @@ describe('RecipeCockpitService -- faker constraints (#323)', () => {
 
         });
 
-        it('reads a version 4 entry, written before constraints, as no constraints and the same fixed values, and keeps the fixed values on a write', async () => {
+        it('reads a version 4 entry, written before constraints, as no constraints and no fixed values (#342), and drops those fixed values on a write', async () => {
 
             const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: {
                 ...storedSelections({ [ACCOUNT_TREE_KEY]: { Account: { Legacy_Code__c: { min: '3' } } } }, { [ACCOUNT_TREE_KEY]: { Account: { Name: 'Acme' } } }),
@@ -334,10 +336,10 @@ describe('RecipeCockpitService -- faker constraints (#323)', () => {
 
             const read = RecipeCockpitService.readTreeSelections(workspaceState);
             expect(read.constraintsByFolderName).toEqual(new Map());
-            expect(read.fixedValuesByFolderName.get(ACCOUNT_TREE_KEY)?.get('Account')?.get('Name')).toBe('Acme');
+            expect(read.fixedValuesByFolderName).toEqual(new Map());
 
             await RecipeCockpitService.writeObjectSelections(workspaceState, new Map([[LEAD_TREE_KEY, new Set(['Lead'])]]));
-            expect((workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY) as any).fixedValuesByFolderName).toEqual({ [ACCOUNT_TREE_KEY]: { Account: { Name: 'Acme' } } });
+            expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).not.toHaveProperty('fixedValuesByFolderName');
 
         });
 
@@ -680,8 +682,14 @@ describe('RecipeCockpitService -- faker constraints (#323)', () => {
 
         it('writes nothing and answers nothing for a forged or locked field', async () => {
 
-            const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({}, { [ACCOUNT_TREE_KEY]: { OtherChildObject__c: { Score__c: '4' } } }) });
-            await openAndDraw(workspaceState);
+            // A PINNED FIELD IS LOCKED, AND A PIN IS IN THE RECIPE FILE SINCE #342
+            const restoreRecipe = pinFieldInRecipeFile(ACCOUNT_RECIPE_FILE_PATH, 'OtherChildObject__c', 'Score__c', { value: '4', kind: 'number' });
+            const workspaceState = buildWorkspaceState();
+            try {
+                await openAndDraw(workspaceState);
+            } finally {
+                restoreRecipe();
+            }
             workspaceState.update.mockClear();
 
             await editScore('1', '2');
@@ -732,7 +740,7 @@ describe('RecipeCockpitService -- faker constraints (#323)', () => {
             await receivedMessageHandler({ command: 'resetTreeSelection', treeKey: ACCOUNT_TREE_KEY });
 
             expect(showWarningMessage).toHaveBeenCalledTimes(1);
-            expect(showWarningMessage.mock.calls[0][1].detail).toContain('every fixed value and faker constraint is cleared');
+            expect(showWarningMessage.mock.calls[0][1].detail).toContain('every faker constraint is cleared');
             expect(storedOf(workspaceState)).toEqual(storedSelections({ [LEAD_TREE_KEY]: { Lead: { Company: { min: '2' } } } }));
             expect(lastPosted('objectSelection')).not.toHaveProperty('constraints');
 

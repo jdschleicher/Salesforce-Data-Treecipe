@@ -104,7 +104,7 @@ class RecipeCockpitScreenshots {
 
     }
 
-    // ONE OF MOST KINDS OF SELECTION, DERIVED BY THE HOST'S OWN RULE RATHER THAN WRITTEN INTO THE MODEL BY HAND
+    // ONE OF EACH KIND OF SELECTION KEPT OUTSIDE THE RECIPE FILE (A FIXED VALUE IS WRITTEN INTO IT SINCE #342), DERIVED BY THE HOST'S OWN RULE RATHER THAN WRITTEN INTO THE MODEL BY HAND
     static applyFixtureSelection(RecipeCockpitService, recipe) {
 
         RecipeCockpitService.applyObjectSelections(
@@ -112,8 +112,7 @@ class RecipeCockpitScreenshots {
             new Map([[FIXTURE_TREE_FOLDER_NAME, new Set(['OtherChildObject__c'])]]),
             new Map([[FIXTURE_TREE_FOLDER_NAME, new Map([['Account', new Set(['Legacy_Code__c'])]])]]),
             undefined,
-            new Map([[FIXTURE_TREE_FOLDER_NAME, new Map([['Account', 5]])]]),
-            new Map([[FIXTURE_TREE_FOLDER_NAME, new Map([['Account', new Map([['Annual_Budget__c', '25000']])]])]])
+            new Map([[FIXTURE_TREE_FOLDER_NAME, new Map([['Account', 5]])]])
         );
 
         return recipe;
