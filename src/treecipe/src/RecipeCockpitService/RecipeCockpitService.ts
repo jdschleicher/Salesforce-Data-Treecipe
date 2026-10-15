@@ -367,6 +367,85 @@ const RECIPE_FILE_EXTENSIONS = ['.yml', '.yaml'];
 */
 export const RECIPE_COCKPIT_ISSUES_URL = 'https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues?q=is%3Aissue+label%3Arecipe-cockpit';
 
+/*
+    The help section (#332). Its text is the panel's and is written through textContent; the guide's
+    url is the HOST's alone, opened by "openHelpGuide", which carries nothing. docs/RECIPE-COCKPIT-GUIDE.md
+    has the same headings in the same order, and a test holds the two together, so a change to one
+    is a change to both -- the /cockpit-help-sync skill makes it.
+*/
+export interface IRecipeCockpitHelpSection {
+    heading: string;
+    paragraphs: string[];
+    items?: string[];
+    closingParagraphs?: string[];
+}
+
+export const RECIPE_COCKPIT_HELP_GUIDE_URL = 'https://github.com/jdschleicher/Salesforce-Data-Treecipe/blob/main/docs/RECIPE-COCKPIT-GUIDE.md';
+
+export const RECIPE_COCKPIT_HELP_TOGGLE_LABEL = '?';
+
+export const RECIPE_COCKPIT_HELP_TOGGLE_ARIA_LABEL = 'About this cockpit';
+
+export const RECIPE_COCKPIT_HELP_TITLE = 'About the Recipe Cockpit';
+
+export const RECIPE_COCKPIT_HELP_RUN_PREFIX = 'On screen now: ';
+
+export const RECIPE_COCKPIT_HELP_GUIDE_LABEL = 'Open the full guide';
+
+export const RECIPE_COCKPIT_HELP_SUMMARY_HEADING = 'What differs from the recipe files right now';
+
+export const RECIPE_COCKPIT_HELP_NO_DIFFERENCE = 'No tree differs from its recipe file.';
+
+export const RECIPE_COCKPIT_HELP_BACKEND_NOTE = 'faker-js recipes nest child objects under friends:, snowfakery recipes keep every object at the top, and snowfakery does not apply a validation rule\'s pattern (REGEX), so those fields have no rules box. Everything else here works the same for both.';
+
+export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] = [
+    {
+        heading: 'Where recipes come from',
+        paragraphs: [
+            'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
+            'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.'
+        ]
+    },
+    {
+        heading: 'What the cockpit changes without editing the YAML',
+        paragraphs: [
+            'These settings change what is generated, but the recipe file stays exactly as Generate Treecipe wrote it, so it always shows what was generated from your metadata:'
+        ],
+        items: [
+            'Excluded objects (the chain link): the object and its children are left out.',
+            'Unticked fields: the field is left out.',
+            'Record counts: how many records an object gets.',
+            'Fixed values (the pin): one value for every record.',
+            'Faker bounds (✎): a narrower range, length or date window.',
+            'The rules box: a field generated without the limits its validation rules set.'
+        ]
+    },
+    {
+        heading: 'What does edit the YAML',
+        paragraphs: [
+            'These buttons rewrite the recipe file itself, because the change belongs in the recipe:'
+        ],
+        items: [
+            'Wire to… and Wire TODO lookups: fill a lookup\'s TODO with its parent\'s nickname.',
+            'Add <parent> to recipe: adds a standard parent object, such as Account, above the child that needs it.',
+            '+ beside an object that looks up to itself: adds a child record under it.'
+        ],
+        closingParagraphs: [
+            'Two more write other files: Remember this selection saves record types to treecipe.config.json, and Generate permission set writes a permission set into your project.'
+        ]
+    },
+    {
+        heading: 'Where your changes are stored',
+        paragraphs: [
+            'The settings that leave the YAML alone are kept by VS Code for this workspace on this machine, per tree. They carry over when you regenerate the same objects, but they are not in your repository, so a teammate or a fresh clone starts without them.',
+            'When you generate, the cockpit applies them to a copy of the recipe. The data set keeps that copy as filteredRecipe-… beside originalRecipe-… in its BaseArtifactFiles folder, and datasetSource.json lists what was changed.',
+            'Reset selection on a card clears its settings.'
+        ]
+    }
+];
+
+export const RECIPE_COCKPIT_HELP_SECTION_HEADINGS: readonly string[] = RECIPE_COCKPIT_HELP_SECTIONS.map(helpSection => helpSection.heading);
+
 export const ENABLE_RECIPE_COCKPIT_ACTION_LABEL = 'Enable Recipe Cockpit';
 
 export const VIEW_RECIPE_COCKPIT_ISSUES_ACTION_LABEL = 'View Known Issues';
@@ -937,6 +1016,8 @@ export interface IRecipeCockpitPanelPlace {
     isOrgPickerInUse: boolean;
     // A PLACE SAVED BEFORE #235 HAS NONE, AND READS AS THE FILTER OFF -- WHICH IS WHAT IT WAS
     isFavoritesOnly: boolean;
+    // THE HELP SECTION (#332); A PLACE SAVED BEFORE IT HAS NONE AND READS AS COLLAPSED
+    isHelpExpanded?: true;
     scrollY: number;
     trees: IRecipeCockpitPanelTreePlace[];
 }
@@ -1344,6 +1425,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'openSource'; filePath: string; lineNumber: number }
     | { kind: 'selectRun'; runFolderName: string }
     | { kind: 'generateTreecipe' }
+    | { kind: 'openHelpGuide' }
     | { kind: 'regenerateWithRecordTypes'; treeKey: string; recordTypeSelection: Record<string, string[]>; isRemembered?: true }
     | { kind: 'refuseRecordTypeRegenerate' }
     | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage }
@@ -1608,6 +1690,7 @@ export class RecipeCockpitService {
             runFolderName: runFolderName,
             isOrgPickerInUse: candidatePlace.isOrgPickerInUse === true,
             isFavoritesOnly: candidatePlace.isFavoritesOnly === true,
+            ...( candidatePlace.isHelpExpanded === true ? { isHelpExpanded: true as const } : {} ),
             scrollY: typeof scrollY === 'number' && Number.isFinite(scrollY) && scrollY > 0 ? scrollY : 0,
             trees: trees
         };
@@ -4312,6 +4395,11 @@ export class RecipeCockpitService {
             case 'generateTreecipe':
 
                 await this.generateTreecipeAndReload(cockpitPanel, panelState);
+                return;
+
+            case 'openHelpGuide':
+
+                await vscode.env.openExternal(vscode.Uri.parse(RECIPE_COCKPIT_HELP_GUIDE_URL, true));
                 return;
 
             case 'regenerateWithRecordTypes':
@@ -7463,6 +7551,15 @@ export class RecipeCockpitService {
                 return { kind: 'generateTreecipe' };
 
             /*
+                The help section's "Open the full guide" (#332) carries nothing: the url is the host's,
+                so nothing the panel sends can name another address. Routed once any model is posted,
+                the empty state's included, since the help is drawn there too.
+            */
+            case 'openHelpGuide':
+
+                return panelState.recipeDataMessage ? { kind: 'openHelpGuide' } : undefined;
+
+            /*
                 The Record types section's two buttons (#195, #321). The selection is NAMES only, each pair
                 MATCHED against what the confirmed-drawn model offered; one name it did not offer
                 refuses the whole request rather than generating something other than what was
@@ -9804,6 +9901,22 @@ ${this.buildPaletteCustomProperties()}
         padding: 0.6rem 0.8rem;
         margin-top: 0.75rem;
     }
+    .toolbar .helpToggle { margin-left: auto; border-radius: 999px; padding: 0.4rem 0.75rem; }
+    .helpSection {
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 8px;
+        padding: 0.6rem 0.9rem;
+        margin: 0.25rem 0 0.75rem 0;
+    }
+    .helpTitle { font-weight: 600; font-size: 1.1em; }
+    .helpRun { margin-top: 0.2rem; }
+    .helpPart { margin-top: 0.6rem; }
+    .helpHeading { font-weight: 600; }
+    .helpParagraph { margin: 0.3rem 0; }
+    .helpList { margin: 0.3rem 0; padding-left: 1.2rem; }
+    .helpActions { margin-top: 0.6rem; }
     .sourceLink {
         background: none;
         border: none;
@@ -10239,6 +10352,15 @@ ${this.buildPaletteCustomProperties()}
     const NOT_FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL)};
     const FAVORITES_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITES_ONLY_LABEL)};
     const NO_FAVORITES_MESSAGE = ${JSON.stringify(RECIPE_COCKPIT_NO_FAVORITES_MESSAGE)};
+    const HELP_TOGGLE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_TOGGLE_LABEL)};
+    const HELP_TOGGLE_ARIA_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_TOGGLE_ARIA_LABEL)};
+    const HELP_TITLE = ${JSON.stringify(RECIPE_COCKPIT_HELP_TITLE)};
+    const HELP_RUN_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_HELP_RUN_PREFIX)};
+    const HELP_GUIDE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_GUIDE_LABEL)};
+    const HELP_SUMMARY_HEADING = ${JSON.stringify(RECIPE_COCKPIT_HELP_SUMMARY_HEADING)};
+    const HELP_NO_DIFFERENCE = ${JSON.stringify(RECIPE_COCKPIT_HELP_NO_DIFFERENCE)};
+    const HELP_BACKEND_NOTE = ${JSON.stringify(RECIPE_COCKPIT_HELP_BACKEND_NOTE)};
+    const HELP_SECTIONS = ${JSON.stringify(RECIPE_COCKPIT_HELP_SECTIONS)};
     const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
     const TREE_GLYPH_VIEW_BOX = ${JSON.stringify(RECIPE_COCKPIT_TREE_GLYPH_VIEW_BOX)};
     const TREE_GLYPH_TRANSFORM = ${JSON.stringify(RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM)};
@@ -10348,6 +10470,12 @@ ${this.buildPaletteCustomProperties()}
     // WHETHER ONLY FAVORITE CARDS ARE SHOWN (#235); IT OUTLIVES A MODEL, SO A RELOAD AFTER RUN FAKER KEEPS THE READER'S VIEW
     let isFavoritesOnly = false;
     let favoritesToggleElement = null;
+    // THE HELP SECTION (#332) OUTLIVES A MODEL IN THIS DOCUMENT; ITS SUMMARY IS DRAWN FROM THE TREES OF THE MODEL ON SCREEN
+    let isHelpExpanded = false;
+    let helpToggleElement = null;
+    let helpSectionElement = null;
+    let helpSummaryElement = null;
+    let helpTrees = [];
     let favoritesCountElement = null;
     let noFavoritesElement = null;
 
@@ -10438,6 +10566,153 @@ ${this.buildPaletteCustomProperties()}
         if (hasObjects && (recipe.trees || []).some(function (tree) { return !!tree.folderName; })) {
             renderFavoritesToggle(toolbarElement);
         }
+
+        renderHelp(toolbarElement, recipe, hasObjects);
+
+    }
+
+    /*
+        The help section (#332): where the recipes come from, what the cockpit changes without
+        editing them, what does edit them and where the changes are kept, then one line per card
+        that differs from its recipe file now. Everything is this file's own text or a name from the
+        model, written through textContent; the guide's url is the host's, and the button posts
+        nothing but the command.
+    */
+    function renderHelp(toolbarElement, recipe, hasObjects) {
+
+        helpTrees = hasObjects ? (recipe.trees || []) : [];
+
+        helpToggleElement = createElement('button', 'helpToggle', HELP_TOGGLE_LABEL);
+        helpToggleElement.setAttribute('aria-label', HELP_TOGGLE_ARIA_LABEL);
+        helpToggleElement.setAttribute('title', HELP_TOGGLE_ARIA_LABEL);
+        helpToggleElement.setAttribute('aria-controls', 'cockpitHelp');
+        helpToggleElement.addEventListener('click', function () {
+            setHelpExpanded(!isHelpExpanded, true);
+            savePanelPlace();
+        });
+        toolbarElement.appendChild(helpToggleElement);
+
+        helpSectionElement = createElement('section', 'helpSection hidden');
+        helpSectionElement.setAttribute('id', 'cockpitHelp');
+        helpSectionElement.setAttribute('aria-label', HELP_TITLE);
+        helpSectionElement.appendChild(createElement('div', 'helpTitle', HELP_TITLE));
+
+        if (hasObjects && recipe.selectedRunFolderName) {
+            helpSectionElement.appendChild(createElement('div', 'helpRun muted', HELP_RUN_PREFIX + recipe.selectedRunFolderName));
+        }
+
+        HELP_SECTIONS.forEach(function (helpSection) {
+            const helpPartElement = createElement('div', 'helpPart');
+            helpPartElement.appendChild(createElement('div', 'helpHeading', helpSection.heading));
+            appendHelpParagraphs(helpPartElement, helpSection.paragraphs);
+            if (Array.isArray(helpSection.items) && helpSection.items.length > 0) {
+                const helpListElement = createElement('ul', 'helpList');
+                helpSection.items.forEach(function (helpItem) { helpListElement.appendChild(createElement('li', '', helpItem)); });
+                helpPartElement.appendChild(helpListElement);
+            }
+            appendHelpParagraphs(helpPartElement, helpSection.closingParagraphs);
+            helpSectionElement.appendChild(helpPartElement);
+        });
+
+        helpSectionElement.appendChild(createElement('p', 'helpParagraph muted', HELP_BACKEND_NOTE));
+
+        if (hasObjects) {
+            const helpSummaryPartElement = createElement('div', 'helpPart');
+            helpSummaryPartElement.appendChild(createElement('div', 'helpHeading', HELP_SUMMARY_HEADING));
+            helpSummaryElement = createElement('ul', 'helpList helpSummary');
+            helpSummaryPartElement.appendChild(helpSummaryElement);
+            helpSectionElement.appendChild(helpSummaryPartElement);
+            drawHelpSummary();
+        }
+
+        // emptyStateActions GIVES THE BUTTON THE FILLED ACCENT STYLE EVERY PRIMARY BUTTON HAS
+        const helpActionsElement = createElement('div', 'emptyStateActions helpActions');
+        const helpGuideElement = createElement('button', 'helpGuideOpen', HELP_GUIDE_LABEL);
+        helpGuideElement.addEventListener('click', function () {
+            vscodeApi.postMessage({ command: 'openHelpGuide' });
+        });
+        helpActionsElement.appendChild(helpGuideElement);
+        helpSectionElement.appendChild(helpActionsElement);
+
+        cockpitBodyElement.appendChild(helpSectionElement);
+
+        setHelpExpanded(isHelpExpanded, false);
+
+    }
+
+    function appendHelpParagraphs(containerElement, paragraphs) {
+        (paragraphs || []).forEach(function (paragraph) {
+            containerElement.appendChild(createElement('p', 'helpParagraph', paragraph));
+        });
+    }
+
+    function setHelpExpanded(isExpanded, isAnimated) {
+
+        isHelpExpanded = isExpanded;
+        if (!helpToggleElement || !helpSectionElement) { return; }
+
+        helpToggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+        setShownWithMotion(helpSectionElement, isExpanded, isAnimated);
+
+    }
+
+    /*
+        One line per card with a folder that generates something other than its recipe file, from
+        the same fields the card draws its selection from. A card with no folder (the ungrouped one)
+        can hold no selection, so it is never listed.
+    */
+    function drawHelpSummary() {
+
+        if (!helpSummaryElement) { return; }
+
+        helpSummaryElement.textContent = '';
+
+        const summaryLines = [];
+        helpTrees.forEach(function (tree) {
+            if (!tree.folderName) { return; }
+            const differences = describeTreeDifferences(tree);
+            if (differences.length > 0) { summaryLines.push(displayTitleOf(tree) + ': ' + differences.join(' · ')); }
+        });
+
+        if (summaryLines.length === 0) {
+            helpSummaryElement.appendChild(createElement('li', 'muted', HELP_NO_DIFFERENCE));
+            return;
+        }
+
+        summaryLines.forEach(function (summaryLine) {
+            helpSummaryElement.appendChild(createElement('li', '', summaryLine));
+        });
+
+    }
+
+    function describeTreeDifferences(tree) {
+
+        const countOf = function (candidateList) { return Array.isArray(candidateList) ? candidateList.length : 0; };
+        const describe = function (count, singular, plural) { return count + ' ' + (count === 1 ? singular : plural); };
+
+        const exclusions = tree.objectSelection && Array.isArray(tree.objectSelection.exclusions) ? tree.objectSelection.exclusions : [];
+        // AN EXCLUDED OBJECT KEEPS ITS UNTICKED FIELDS AND STORED COUNT FOR WHEN IT COMES BACK, BUT GENERATION APPLIES NEITHER
+        const excludedObjectApiNames = toStringSet(exclusions.map(function (exclusion) { return exclusion.objectApiName; }));
+        const isGenerated = function (entry) { return !!entry && !hasString(excludedObjectApiNames, entry.objectApiName); };
+        const generatedEntries = function (candidateList) { return Array.isArray(candidateList) ? candidateList.filter(isGenerated) : []; };
+
+        const untickedFieldCount = generatedEntries(tree.fieldSelection && tree.fieldSelection.objects)
+            .reduce(function (total, objectFieldSelection) { return total + countOf(objectFieldSelection.excludedFieldApiNames); }, 0);
+
+        // A FAKER BOUND ALSO SWITCHES THE FIELD'S RULES OFF (#325); ONE EDIT IS COUNTED ONCE, AS THE BOUND
+        const constrainedFieldKeys = toStringSet(generatedEntries(tree.constraints).map(function (constraint) { return constraint.objectApiName + '.' + constraint.fieldApiName; }));
+        const rulesOffCount = generatedEntries(tree.validationRulesOff)
+            .filter(function (fieldReference) { return !hasString(constrainedFieldKeys, fieldReference.objectApiName + '.' + fieldReference.fieldApiName); }).length;
+
+        return [
+            [exclusions.length, 'object excluded', 'objects excluded'],
+            [untickedFieldCount, 'field unticked', 'fields unticked'],
+            [generatedEntries(tree.objectCounts).length, 'count changed', 'counts changed'],
+            [generatedEntries(tree.fixedValues).length, 'fixed value', 'fixed values'],
+            [generatedEntries(tree.constraints).length, 'faker bound', 'faker bounds'],
+            [rulesOffCount, 'field without its rules', 'fields without their rules']
+        ].filter(function (difference) { return difference[0] > 0; })
+            .map(function (difference) { return describe(difference[0], difference[1], difference[2]); });
 
     }
 
@@ -11435,6 +11710,7 @@ ${this.buildPaletteCustomProperties()}
         treeState.tree.validationRulesOff = objectSelectionMessage.validationRulesOff || undefined;
         drawObjectSelection(treeState);
         drawTreeInsert(treeState);
+        drawHelpSummary();
 
     }
 
@@ -13080,6 +13356,7 @@ ${this.buildPaletteCustomProperties()}
 
         });
 
+        drawHelpSummary();
         applyFavoritesFilter();
 
     }
@@ -13735,7 +14012,7 @@ ${this.buildPaletteCustomProperties()}
 
     function buildPanelPlace() {
 
-        return {
+        const panelPlace = {
             version: PANEL_PLACE_VERSION,
             runFolderName: renderedRunFolderName,
             isOrgPickerInUse: isDataOrgPickerInUse,
@@ -13743,6 +14020,9 @@ ${this.buildPaletteCustomProperties()}
             scrollY: typeof window.scrollY === 'number' ? window.scrollY : 0,
             trees: treeStates.map(buildTreePlace).filter(Boolean)
         };
+        if (isHelpExpanded) { panelPlace.isHelpExpanded = true; }
+
+        return panelPlace;
 
     }
 
@@ -13834,6 +14114,7 @@ ${this.buildPaletteCustomProperties()}
 
         if (savedPlace && savedPlace.isOrgPickerInUse === true) { isDataOrgPickerInUse = true; }
         if (savedPlace) { isFavoritesOnly = savedPlace.isFavoritesOnly === true; }
+        if (savedPlace) { isHelpExpanded = savedPlace.isHelpExpanded === true; }
 
     }
 
@@ -13977,6 +14258,10 @@ ${this.buildPaletteCustomProperties()}
     function resetPanelState() {
 
         cockpitBodyElement.textContent = '';
+        helpToggleElement = null;
+        helpSectionElement = null;
+        helpSummaryElement = null;
+        helpTrees = [];
         treeStates = [];
         treesViewElement = null;
         dataOrgViews = [];
