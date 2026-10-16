@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Rating__c</fullName>
+    <label>Rating</label>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetName>Account_Ratings</valueSetName>
+    </valueSet>
+    <type>Picklist</type>
+</CustomField>
