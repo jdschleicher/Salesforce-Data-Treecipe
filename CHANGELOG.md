@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.96.1] - Recipe Cockpit: one checkbox size, a "Show values" button, no All / None
+
+Closes [#343](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/343).
+
+- **"Record type fields only" is the cockpit's own checkbox.** It drew a text `☐`/`☑` inside a full button. It is now the same 1.25em `treeFieldInclude` box every field, record type and "Remember this selection" checkbox draws, with its label beside it, as "Remember this selection" has. Clicking the label toggles it too. It keeps `role="checkbox"`, `aria-checked`, its `aria-label` and title, the disabled state with its note, and `isRecordTypeFieldsOnly` in the reader's place.
+- **A picklist's values open from a "Show values" button.** The chevron is replaced, in the same slot before the field name, by a text button reading **Show values** while closed and **Hide values** while open (`RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL`, `RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL`). `aria-expanded`, loading the values on first open and a restored open row are unchanged. Its accessible name starts with the text on the button (`Show values of <Field>`), so a voice command naming what is on screen reaches it. The button and the spacer on rows that are not picklists share one fixed width, so every field name still lines up.
+- **All / None are hidden.** An expanded object no longer draws them, and there is no way to show them for now. The host still routes `setAllFieldsIncluded`, so bringing them back is only drawing them again.
+- **The guide's pictures are re-taken.** The help text and `docs/RECIPE-COCKPIT-GUIDE.md` named none of the three, so neither changed.
+- **Tests.** The record type check's box, label and disabled label, the picklist button's text in both states, its width rule, and that no All / None or `.treeFieldBulk` rule is drawn.
+
 ## [3.96.0] - Recipe Cockpit: retrieve a tree's validation rules from an org
 
 Closes [#326](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/326), under [#322](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/322).

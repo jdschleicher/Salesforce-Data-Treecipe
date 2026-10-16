@@ -324,6 +324,8 @@ export const RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL = '☆';
 export const RECIPE_COCKPIT_FAVORITES_ONLY_LABEL = 'Favorites only';
 // THE TREECIPE TAB'S CHECK (#320), AND WHY IT IS DISABLED ON A CARD WITH NO RECORD TYPES TO CHOOSE FROM
 export const RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL = 'Record type fields only';
+export const RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL = 'Show values';
+export const RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL = 'Hide values';
 export const RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE = 'No object in this tree has more than one record type, so no field depends on one.';
 export const RECIPE_COCKPIT_NO_FAVORITES_MESSAGE = 'No favorite trees in this run. Turn off Favorites only to see all trees.';
 
@@ -3180,7 +3182,8 @@ export class RecipeCockpitService {
     }
 
     /*
-        All / None (#220). None stores every field with a line in the recipe except those a lock
+        All / None (#220). The panel no longer draws the buttons (#343); the route stays, held to the
+        same allow-list, so they can come back by drawing them again. None stores every field with a line in the recipe except those a lock
         holds for a reason of its own (RecordTypeId, a parent-excluded lookup); a controlling field is
         stored too, because unticking every dependent with it is what frees it.
     */
@@ -10282,13 +10285,19 @@ ${this.buildPaletteCustomProperties()}
     }
     .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
     .dataOrgRefreshIcon { font-size: 1.5em; line-height: 1; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .picklistToggleSpacer {
+    .treeToggle, .treeObjectToggle {
         box-sizing: border-box;
         flex: none;
         width: 2.6rem;
         height: 2.6rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        line-height: 1;
     }
-    .treeToggle, .treeObjectToggle, .picklistToggle { display: inline-flex; align-items: center; justify-content: center; padding: 0; line-height: 1; }
+    .picklistToggle, .picklistToggleSpacer { box-sizing: border-box; flex: none; width: 7.5rem; }
+    .picklistToggle { display: inline-flex; align-items: center; justify-content: center; padding: 0.4rem 0.6rem; line-height: 1; white-space: nowrap; }
     .picklistToggleSpacer { display: inline-block; height: 1px; }
     .toggleGlyph { display: block; width: 2.1rem; height: 2.1rem; transition: transform ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease; }
     [aria-expanded="true"] > .toggleGlyph { transform: rotate(90deg); }
@@ -10501,6 +10510,9 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 3px;
     }
     .treeRecordTypeFieldsNote { font-size: 0.9em; }
+    .treeRecordTypeFieldsCheck { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .treeRecordTypeFieldsLabel { cursor: pointer; }
+    .treeRecordTypeFieldsCheck.disabled .treeRecordTypeFieldsLabel { color: var(--sdt-muted); cursor: not-allowed; }
     .validationRuleControl { display: inline-flex; align-items: center; gap: 0.3rem; margin-left: auto; }
     .expressionRow { display: flex; align-items: flex-start; gap: 0.3rem; }
     .expressionRow > pre { flex: 1 1 auto; min-width: 0; }
@@ -10560,8 +10572,7 @@ ${this.buildPaletteCustomProperties()}
     .fieldEditorActions .fieldEditorSave { color: var(--sdt-on-accent); background-color: var(--sdt-accent); border-color: var(--sdt-accent); }
     .treeFieldNote, .treeFieldWarning { position: relative; z-index: 2; font-size: 0.85em; }
     .treeFieldWarning { color: var(--sdt-changed); }
-    .treeFieldBulk { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding: 0.2rem 0.6rem 0.2rem 2.1rem; position: relative; z-index: 2; }
-    .treeFieldBulk button, .treeResetSelection, .treeWireLookup, .treeWireAllLookups, .treeAddParentObject {
+    .treeResetSelection, .treeWireLookup, .treeWireAllLookups, .treeAddParentObject {
         min-height: 1.9rem;
         padding: 0.2rem 0.6rem;
         font: inherit;
@@ -10572,8 +10583,8 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeFieldBulk button:hover:not(:disabled), .treeResetSelection:hover:not(:disabled), .treeWireLookup:hover:not(:disabled), .treeWireAllLookups:hover:not(:disabled), .treeAddParentObject:hover:not(:disabled) { border-color: var(--sdt-accent); }
-    .treeFieldBulk button:disabled, .treeWireLookup:disabled, .treeWireAllLookups:disabled, .treeAddParentObject:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); cursor: not-allowed; }
+    .treeResetSelection:hover:not(:disabled), .treeWireLookup:hover:not(:disabled), .treeWireAllLookups:hover:not(:disabled), .treeAddParentObject:hover:not(:disabled) { border-color: var(--sdt-accent); }
+    .treeWireLookup:disabled, .treeWireAllLookups:disabled, .treeAddParentObject:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); cursor: not-allowed; }
     .treeObjectHeader:hover, .treeField:hover { background-color: var(--sdt-row-hover); }
     .treeObjectHeader:focus-within, .treeField:focus-within { background-color: var(--sdt-row-hover); }
     .treeObjectName { font-weight: 600; }
@@ -10721,6 +10732,8 @@ ${this.buildPaletteCustomProperties()}
     const NOT_FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL)};
     const FAVORITES_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITES_ONLY_LABEL)};
     const RECORD_TYPE_FIELDS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL)};
+    const PICKLIST_SHOW_VALUES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL)};
+    const PICKLIST_HIDE_VALUES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL)};
     const NO_RECORD_TYPE_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE)};
     const NO_FAVORITES_MESSAGE = ${JSON.stringify(RECIPE_COCKPIT_NO_FAVORITES_MESSAGE)};
     const HELP_TOGGLE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_TOGGLE_LABEL)};
@@ -12065,7 +12078,7 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // ONE OBJECT'S All / None AND ITS WARNING, THEN EVERY ROW IT HAS BUILT
+    // ONE OBJECT'S WARNING, THEN EVERY ROW IT HAS BUILT
     function drawObjectFieldSelection(treeObjectState) {
 
         const tree = treeObjectState.tree;
@@ -12076,8 +12089,6 @@ ${this.buildPaletteCustomProperties()}
 
         treeObjectState.fieldWarningElement.textContent = isEveryFieldExcluded ? EVERY_FIELD_UNTICKED_WARNING : '';
         if (isEveryFieldExcluded) { treeObjectState.fieldWarningElement.classList.remove('hidden'); } else { treeObjectState.fieldWarningElement.classList.add('hidden'); }
-
-        treeObjectState.bulkButtonElements.forEach(function (bulkButtonElement) { bulkButtonElement.disabled = isObjectExcluded; });
 
         if (!treeObjectState.isBodyBuilt) { return; }
 
@@ -12450,28 +12461,6 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function buildFieldBulkElement(treeObjectState) {
-
-        const bulkElement = createElement('div', 'treeFieldBulk');
-        const object = treeObjectState.object;
-
-        [['All', true], ['None', false]].forEach(function (bulkChoice) {
-            const bulkButtonElement = createElement('button', bulkChoice[1] ? 'treeFieldAll' : 'treeFieldNone', bulkChoice[0]);
-            bulkButtonElement.setAttribute('aria-label', (bulkChoice[1] ? 'Tick every field of ' : 'Untick every field of ') + object.objectApiName);
-            bulkButtonElement.addEventListener('click', function () {
-                if (bulkButtonElement.disabled) { return; }
-                const message = { command: 'setAllFieldsIncluded', treeKey: treeObjectState.tree.treeKey, objectApiName: object.objectApiName, included: bulkChoice[1] };
-                if (object.nickname) { message.nickname = object.nickname; }
-                vscodeApi.postMessage(message);
-            });
-            bulkElement.appendChild(bulkButtonElement);
-            treeObjectState.bulkButtonElements.push(bulkButtonElement);
-        });
-
-        return bulkElement;
-
-    }
-
     function buildTreeFieldRow(treeObjectState, fieldState) {
 
         const field = fieldState.field;
@@ -12488,7 +12477,7 @@ ${this.buildPaletteCustomProperties()}
 
         if (field.isPicklist) {
 
-            const picklistToggleElement = buildToggleElement('picklistToggle');
+            const picklistToggleElement = createElement('button', 'picklistToggle', PICKLIST_SHOW_VALUES_LABEL);
             let picklistValuesElement = null;
 
             setPicklistExpanded = function (isExpanding, isAnimated) {
@@ -12501,10 +12490,13 @@ ${this.buildPaletteCustomProperties()}
                     setShownWithMotion(picklistValuesElement, isExpanding, isAnimated);
                 }
                 fieldState.isPicklistExpanded = isExpanding;
-                drawToggle(picklistToggleElement, isExpanding, isAnimated);
+                picklistToggleElement.textContent = isExpanding ? PICKLIST_HIDE_VALUES_LABEL : PICKLIST_SHOW_VALUES_LABEL;
+                picklistToggleElement.setAttribute('aria-expanded', isExpanding ? 'true' : 'false');
+                picklistToggleElement.setAttribute('aria-label', (isExpanding ? PICKLIST_HIDE_VALUES_LABEL : PICKLIST_SHOW_VALUES_LABEL) + ' of ' + field.fieldApiName);
             };
 
-            picklistToggleElement.setAttribute('aria-label', 'Show or hide the values of ' + field.fieldApiName);
+            // THE NAME STARTS WITH THE TEXT ON THE BUTTON, SO A VOICE COMMAND OF WHAT IS ON SCREEN REACHES IT
+            picklistToggleElement.setAttribute('aria-label', PICKLIST_SHOW_VALUES_LABEL + ' of ' + field.fieldApiName);
             picklistToggleElement.setAttribute('aria-expanded', 'false');
             picklistToggleElement.addEventListener('click', function () {
                 setPicklistExpanded(!fieldState.isPicklistExpanded, true);
@@ -12514,7 +12506,7 @@ ${this.buildPaletteCustomProperties()}
             fieldHeaderElement.appendChild(picklistToggleElement);
 
         } else {
-            // A ROW WITHOUT A ▸ KEEPS ITS SLOT, SO EVERY FIELD NAME OF AN OBJECT LINES UP
+            // A ROW WITHOUT THE BUTTON KEEPS ITS SLOT, SO EVERY FIELD NAME OF AN OBJECT LINES UP
             const toggleSpacerElement = createElement('span', 'picklistToggleSpacer');
             toggleSpacerElement.setAttribute('aria-hidden', 'true');
             fieldHeaderElement.appendChild(toggleSpacerElement);
@@ -12800,9 +12792,6 @@ ${this.buildPaletteCustomProperties()}
     function setTreeObjectExpanded(treeObjectState, isExpanded, isAnimated) {
 
         if (isExpanded && !treeObjectState.isBodyBuilt) {
-            if (treeObjectState.canSelectFields && !treeObjectState.isIteration && treeObjectState.fieldStates.some(function (fieldState) { return !!fieldState.field.lineNumber; })) {
-                treeObjectState.bodyElement.appendChild(buildFieldBulkElement(treeObjectState));
-            }
             treeObjectState.fieldStates.forEach(function (fieldState) {
                 fieldState.rowElement = buildTreeFieldRow(treeObjectState, fieldState);
                 applyTreeFieldVisibility(fieldState);
@@ -12911,7 +12900,6 @@ ${this.buildPaletteCustomProperties()}
             tree: tree,
             // A CARD WITH A FOLDER KEEPS ITS UNTICKED FIELDS (#220); AN ITERATION'S BOXES FOLLOW ITS OBJECT AND ARE DRAWN DISABLED
             canSelectFields: !!tree.folderName && !object.hasIndistinctOccurrences,
-            bulkButtonElements: [],
             countInputElement: null,
             countErrorElement: null,
             hasRecordTypes: hasOwnKey(recordTypeFieldsByObjectApiName, object.objectApiName),
@@ -13273,24 +13261,35 @@ ${this.buildPaletteCustomProperties()}
 
     function appendRecordTypeFieldsToggle(treeState, searchElement) {
 
-        const toggleElement = createElement('button', 'historyAction treeRecordTypeFieldsToggle');
+        // THE SAME BOX EVERY OTHER CHECKBOX DRAWS (#343), WITH ITS LABEL BESIDE IT AS "Remember this selection" HAS
+        const checkElement = createElement('span', 'treeRecordTypeFieldsCheck');
+        const toggleElement = createElement('button', 'treeFieldInclude treeRecordTypeFieldsToggle');
+        const labelElement = createElement('span', 'treeRecordTypeFieldsLabel', RECORD_TYPE_FIELDS_ONLY_LABEL);
         toggleElement.setAttribute('role', 'checkbox');
         toggleElement.setAttribute('aria-label', RECORD_TYPE_FIELDS_ONLY_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
 
         if (hasRecordTypeObjects(treeState)) {
-            toggleElement.setAttribute('title', 'Show only the picklist fields a record type restricts');
-            toggleElement.addEventListener('click', function () {
+            const title = 'Show only the picklist fields a record type restricts';
+            const toggleRecordTypeFieldsOnly = function () {
+                if (toggleElement.disabled) { return; }
                 treeState.isRecordTypeFieldsOnly = !treeState.isRecordTypeFieldsOnly;
                 applyStructureFilter(treeState);
                 savePanelPlace();
-            });
+            };
+            toggleElement.setAttribute('title', title);
+            labelElement.setAttribute('title', title);
+            toggleElement.addEventListener('click', toggleRecordTypeFieldsOnly);
+            labelElement.addEventListener('click', toggleRecordTypeFieldsOnly);
         } else {
             toggleElement.disabled = true;
             toggleElement.setAttribute('title', NO_RECORD_TYPE_FIELDS_NOTE);
+            checkElement.classList.add('disabled');
         }
 
         treeState.recordTypeFieldsToggleElement = toggleElement;
-        searchElement.appendChild(toggleElement);
+        checkElement.appendChild(toggleElement);
+        checkElement.appendChild(labelElement);
+        searchElement.appendChild(checkElement);
 
         if (!hasRecordTypeObjects(treeState)) {
             searchElement.appendChild(createElement('span', 'treeRecordTypeFieldsNote muted', NO_RECORD_TYPE_FIELDS_NOTE));
@@ -13306,7 +13305,7 @@ ${this.buildPaletteCustomProperties()}
         if (!toggleElement) { return; }
 
         const isChecked = isRecordTypeFieldsOnlyIn(treeState);
-        toggleElement.textContent = (isChecked ? '☑ ' : '☐ ') + RECORD_TYPE_FIELDS_ONLY_LABEL;
+        toggleElement.textContent = isChecked ? '✓' : '';
         toggleElement.setAttribute('aria-checked', isChecked ? 'true' : 'false');
 
     }

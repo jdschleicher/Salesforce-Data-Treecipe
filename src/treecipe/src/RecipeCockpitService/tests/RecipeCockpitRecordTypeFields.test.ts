@@ -64,16 +64,29 @@ describe('RecipeCockpitService, "Record type fields only" and the record type ch
 
     describe('the check', () => {
 
-        it('sits in the Treecipe tab\'s search row, off by default, as a checkbox', () => {
+        // #343: THE SAME treeFieldInclude BOX EVERY OTHER CHECKBOX DRAWS, ITS LABEL BESIDE IT
+        it('sits in the Treecipe tab\'s search row, off by default, as the cockpit\'s own checkbox box with its label', () => {
 
             const panel = drawRecipe();
             const checkElement = checkOf(panel, accountCardOf(panel));
+            const wrapperElement = checkElement.parentNode;
+            const labelElement = wrapperElement.children[1];
 
-            expect(checkElement.parentNode.classList.contains('tabSearch')).toBe(true);
+            expect(wrapperElement.classList.contains('treeRecordTypeFieldsCheck')).toBe(true);
+            expect(wrapperElement.parentNode.classList.contains('tabSearch')).toBe(true);
+            expect(checkElement.classList.contains('treeFieldInclude')).toBe(true);
+            expect(checkElement.classList.contains('historyAction')).toBe(false);
             expect(checkElement.attributes.role).toBe('checkbox');
             expect(checkElement.attributes['aria-checked']).toBe('false');
-            expect(checkElement.textContent).toBe('☐ ' + RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL);
+            expect(checkElement.textContent).toBe('');
             expect(checkElement.disabled).toBe(false);
+            expect(labelElement.classList.contains('treeRecordTypeFieldsLabel')).toBe(true);
+            expect(labelElement.textContent).toBe(RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL);
+            expect(wrapperElement.textContent).not.toMatch(/[☐☑]/);
+
+            labelElement.dispatch('click');
+            expect(checkElement.attributes['aria-checked']).toBe('true');
+            expect(checkElement.textContent).toBe('✓');
 
         });
 
@@ -89,7 +102,7 @@ describe('RecipeCockpitService, "Record type fields only" and the record type ch
             const otherChild = objectNamed(panel, accountCard, 'OtherChildObject__c');
 
             expect(checkOf(panel, accountCard).attributes['aria-checked']).toBe('true');
-            expect(checkOf(panel, accountCard).textContent).toBe('☑ ' + RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL);
+            expect(checkOf(panel, accountCard).textContent).toBe('✓');
             expect(isObjectExpanded(panel, account)).toBe(true);
             expect(panel.visibleFieldNamesOf(account)).toEqual(['Rating__c']);
             expect(panel.objectCountOf(account)).toBe('1 of 8 fields');
@@ -230,7 +243,9 @@ describe('RecipeCockpitService, "Record type fields only" and the record type ch
             expect(RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE).toBe('No object in this tree has more than one record type, so no field depends on one.');
 
             checkElement.dispatch('click');
+            checkElement.parentNode.children[1].dispatch('click');
             expect(checkElement.attributes['aria-checked']).toBe('false');
+            expect(checkElement.parentNode.classList.contains('disabled')).toBe(true);
             expect(matchCountOf(panel, leadCard)).toBe('2 fields');
 
         });
@@ -318,8 +333,8 @@ describe('RecipeCockpitService, "Record type fields only" and the record type ch
             expect(chipRule).toContain('color: var(--sdt-chip-text);');
             expect(chipRule).toContain('background-color: var(--sdt-chip-bg);');
             expect(chipRule).toContain('border: 1px dashed var(--sdt-chip-text);');
-            // THE CHECK IS A historyAction, AND THE NOTE IS muted: BOTH ALREADY IN THE CONTRAST TEST'S PAIRS
-            expect(shellHtml).toContain("createElement('button', 'historyAction treeRecordTypeFieldsToggle')");
+            // THE CHECK IS A treeFieldInclude BOX (#343), AND THE NOTE IS muted: BOTH ALREADY IN THE CONTRAST TEST'S PAIRS
+            expect(shellHtml).toContain("createElement('button', 'treeFieldInclude treeRecordTypeFieldsToggle')");
             expect(shellHtml).toContain("createElement('span', 'treeRecordTypeFieldsNote muted', NO_RECORD_TYPE_FIELDS_NOTE)");
 
         });

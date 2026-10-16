@@ -895,20 +895,22 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
         const checkboxOf = (panel: ReturnType<typeof runPanelScript>, objectElement: any, fieldApiName: string) => panel.findAll(panel.fieldRowNamed(objectElement, fieldApiName), 'treeFieldInclude')[0];
         const noteOf = (panel: ReturnType<typeof runPanelScript>, objectElement: any, fieldApiName: string) => panel.findAll(panel.fieldRowNamed(objectElement, fieldApiName), 'treeFieldNote')[0];
 
-        it('draws a ticked checkbox on each field with a recipe line, and All / None at the top of the object', () => {
+        // #343: ALL / NONE ARE HIDDEN, WITH NO WAY TO SHOW THEM; THE HOST STILL ROUTES setAllFieldsIncluded
+        it('draws a ticked checkbox on each field with a recipe line, and no All / None', () => {
 
             const panel = drawRecipe();
             const contact = expanded(panel, 'Contact');
             const lastNameBox = checkboxOf(panel, contact, 'LastName');
-            const bulkButtons = panel.findAll(panel.objectBodyOf(contact), 'treeFieldBulk')[0].children;
 
             expect(lastNameBox.tagName).toBe('button');
             expect(lastNameBox.attributes.role).toBe('checkbox');
             expect(lastNameBox.attributes['aria-checked']).toBe('true');
             expect(lastNameBox.textContent).toBe('✓');
             expect(lastNameBox.disabled).toBeFalse();
-            expect(panel.objectBodyOf(contact).children[0].classList.contains('treeFieldBulk')).toBeTrue();
-            expect(bulkButtons.map((buttonElement: any) => buttonElement.textContent)).toEqual(['All', 'None']);
+            expect(panel.findAll(panel.objectBodyOf(contact), 'treeFieldBulk')).toEqual([]);
+            expect(panel.findAll(panel.objectBodyOf(contact), 'treeFieldAll')).toEqual([]);
+            expect(panel.findAll(panel.objectBodyOf(contact), 'treeFieldNone')).toEqual([]);
+            expect(panel.objectBodyOf(contact).children[0].classList.contains('treeField')).toBeTrue();
 
         });
 
@@ -929,11 +931,9 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             const contact = expanded(panel, 'Contact');
 
             checkboxOf(panel, contact, 'LastName').dispatch('click');
-            panel.findAll(panel.objectBodyOf(contact), 'treeFieldNone')[0].dispatch('click');
 
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'setFieldIncluded' || hostMessage.command === 'setAllFieldsIncluded')).toEqual([
-                { command: 'setFieldIncluded', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', fieldApiName: 'LastName', included: false },
-                { command: 'setAllFieldsIncluded', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', included: false }
+                { command: 'setFieldIncluded', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', fieldApiName: 'LastName', included: false }
             ]);
             expect(checkboxOf(panel, contact, 'LastName').attributes['aria-checked']).toBe('true');
 
@@ -991,7 +991,6 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             expect(checkboxOf(panel, contact, 'LastName').disabled).toBeTrue();
             expect(checkboxOf(panel, contact, 'AccountId').disabled).toBeTrue();
             expect(checkboxOf(panel, contact, 'AccountId').attributes.title).toBe('Contact is excluded, so its fields are read-only');
-            panel.findAll(panel.objectBodyOf(contact), 'treeFieldBulk')[0].children.forEach((buttonElement: any) => expect(buttonElement.disabled).toBeTrue());
 
         });
 
