@@ -22,9 +22,13 @@ export const SCRATCH_ORG_DEFINITION_FILE_RELATIVE_PATH = path.join('config', 'pr
 
 export const ORG_OPERATIONS_FOLDER_NAME = 'OrgOperations';
 
-export type OrgOperationName = 'scratch-create' | 'permission-set-assign' | 'validation-rule-retrieve';
+export type OrgOperationName = 'scratch-create' | 'permission-set-assign' | 'validation-rule-retrieve'
+    | 'permission-set-deploy' | 'field-deploy' | 'global-value-set-deploy' | 'record-type-deploy';
 
 export type ScratchOrgSetupPhase = 'creating';
+
+// A DEPLOY'S --json LISTS EVERY FILE AND COMPONENT, SO A LARGE PROJECT'S ANSWER OUTGROWS THE 8 MB OTHER COMMANDS USE (THE TROUBLESHOOTING TAB'S DEPLOYS, #346)
+export const SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES = 1024 * 1024 * 256;
 
 // WHAT A SAVED RESULT NEVER CARRIES: THE CREATE'S authFields WHOLE, AND ANY KEY THAT NAMES A CREDENTIAL ANYWHERE ELSE
 export const ORG_OPERATION_REDACTED_KEYS: readonly string[] = ['authFields'];
@@ -76,6 +80,18 @@ export type OrgOpenParseResult =
 export type ScratchOrgCreateParseResult =
     { isCreated: true; username: string }
     | { isCreated: false; failureMessage: string };
+
+/*
+    What a deploy's --json says about its components (#200, read by the Troubleshooting tab's
+    deploys since #346). The package.xml entry the CLI lists among the successes is not a
+    component anyone asked for, so it is not counted.
+*/
+export interface IDeployComponentCounts {
+    isSucceeded: boolean;
+    componentSuccessCount: number;
+    componentFailureCount: number;
+    numberComponentsDeployed?: number;
+}
 
 /*
     How a setup ended. Once a username exists the org is KEPT -- nothing here deletes one -- so a
@@ -401,6 +417,25 @@ export class ScratchOrgService {
         }
 
         return { isCreated: false, failureMessage: this.buildCliFailureDetail(payload, invocationResult) };
+
+    }
+
+    // A DEPLOY SUCCEEDED ONLY ON status 0, result.success true AND NO COMPONENT FAILURE: ANYTHING ELSE, A MALFORMED ANSWER INCLUDED, IS A FAILURE
+    static readDeployComponentCounts(payload: Record<string, unknown> | undefined): IDeployComponentCounts {
+
+        const result = payload?.result !== null && typeof payload?.result === 'object' && !Array.isArray(payload?.result) ? payload.result as Record<string, unknown> : undefined;
+        const details = result?.details !== null && typeof result?.details === 'object' ? result.details as Record<string, unknown> : undefined;
+        const toEntries = (entries: unknown): unknown[] => Array.isArray(entries) ? entries : entries !== null && typeof entries === 'object' ? [entries] : [];
+        const componentFailures = toEntries(details?.componentFailures);
+        const componentSuccesses = toEntries(details?.componentSuccesses)
+            .filter(componentSuccess => !( componentSuccess !== null && typeof componentSuccess === 'object' && ( componentSuccess as Record<string, unknown> ).fullName === 'package.xml' ));
+
+        return {
+            isSucceeded: payload?.status === 0 && result?.success === true && componentFailures.length === 0,
+            componentSuccessCount: componentSuccesses.length,
+            componentFailureCount: componentFailures.length,
+            ...( typeof result?.numberComponentsDeployed === 'number' ? { numberComponentsDeployed: result.numberComponentsDeployed } : {} )
+        };
 
     }
 

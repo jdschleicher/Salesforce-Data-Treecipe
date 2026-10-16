@@ -346,11 +346,9 @@ describe('ScratchOrgService (#200)', () => {
         });
 
         // #358: "+ New scratch org" CREATES AND SELECTS; WHAT REACHES THE ORG IS THE READER'S TO DEPLOY
-        it('builds no "sf project deploy" argv in the scratch org service or the cockpit', () => {
+        it('builds no "sf project deploy" argv in the scratch org service', () => {
 
-            [path.join(__dirname, '..', 'ScratchOrgService.ts'), path.join(__dirname, '..', '..', 'RecipeCockpitService', 'RecipeCockpitService.ts')].forEach(sourceFilePath => {
-                expect(fs.readFileSync(sourceFilePath, 'utf-8')).not.toMatch(/['"]project['"]\s*,\s*['"]deploy['"]/);
-            });
+            expect(fs.readFileSync(path.join(__dirname, '..', 'ScratchOrgService.ts'), 'utf-8')).not.toMatch(/['"]project['"]\s*,\s*['"]deploy['"]/);
             expect(ScratchOrgService).not.toHaveProperty('buildSourceDeployArguments');
             expect(ScratchOrgService).not.toHaveProperty('parseSourceDeployOutput');
 
@@ -517,6 +515,35 @@ describe('ScratchOrgService (#200)', () => {
         it('are failures of the create, naming the spawn error', () => {
 
             expect(ScratchOrgService.parseScratchOrgCreateOutput(invocation('', null, { spawnError }))).toEqual({ isCreated: false, failureMessage: 'The Salesforce CLI could not be started: spawn EACCES' });
+
+        });
+
+    });
+
+    // READ BY THE TROUBLESHOOTING TAB'S DEPLOYS (#346); THE SCRATCH ORG RUN DEPLOYS NOTHING SINCE #358
+    describe('readDeployComponentCounts', () => {
+
+        it('reads a malformed answer as a failure with nothing counted, and counts the successes, never package.xml, when the CLI gives no total', () => {
+
+            [undefined, {}, { status: 0 }, { status: 0, result: null }, { status: 0, result: [] }, { status: 0, result: 'x' }].forEach(payload => {
+                expect(ScratchOrgService.readDeployComponentCounts(payload as Record<string, unknown> | undefined))
+                    .toEqual({ isSucceeded: false, componentSuccessCount: 0, componentFailureCount: 0 });
+            });
+
+            const withoutTotal = { status: 0, result: { success: true, details: { componentSuccesses: [{ fullName: 'package.xml' }, { fullName: 'Account' }, { fullName: 'Contact' }] } } };
+            expect(ScratchOrgService.readDeployComponentCounts(withoutTotal)).toEqual({ isSucceeded: true, componentSuccessCount: 2, componentFailureCount: 0 });
+            expect(ScratchOrgService.readDeployComponentCounts({ ...withoutTotal, result: { ...withoutTotal.result, numberComponentsDeployed: 3 } }))
+                .toEqual({ isSucceeded: true, componentSuccessCount: 2, componentFailureCount: 0, numberComponentsDeployed: 3 });
+
+        });
+
+        it.each([
+            ['a non-zero status', { status: 1, result: { success: true } }],
+            ['success not literally true', { status: 0, result: { success: 'true' } }],
+            ['one component failure written as an object', { status: 0, result: { success: true, details: { componentFailures: { fullName: 'Account' } } } }]
+        ])('is a failure on %s', (_label, payload) => {
+
+            expect(ScratchOrgService.readDeployComponentCounts(payload as Record<string, unknown>).isSucceeded).toBe(false);
 
         });
 

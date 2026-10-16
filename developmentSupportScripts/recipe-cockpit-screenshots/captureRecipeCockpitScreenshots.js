@@ -154,6 +154,23 @@ class RecipeCockpitScreenshots {
         await page.waitForSelector('.dataOrgSpinner', { state: 'hidden' }).catch(() => undefined);
     }
 
+    // THE CONTAINER'S FULL WIDTH, FROM THE TOP OF ITS index-th startSelector MATCH TO THE CONTAINER'S BOTTOM
+    static async screenshotFrom(page, containerSelector, startSelector, index) {
+
+        const containerBox = await page.locator(containerSelector).boundingBox();
+        const startBox = await page.locator(startSelector).nth(index).boundingBox();
+
+        if (!containerBox || !startBox) {
+            throw new Error(`${containerSelector} or ${startSelector} #${index} is not on the page.`);
+        }
+
+        return page.screenshot({
+            fullPage: true,
+            clip: { x: containerBox.x, y: startBox.y, width: containerBox.width, height: containerBox.y + containerBox.height - startBox.y }
+        });
+
+    }
+
     static async writeIfChanged(fileName, imageBytes) {
 
         if (imageBytes.length > MAXIMUM_IMAGE_BYTES) {
@@ -199,10 +216,11 @@ class RecipeCockpitScreenshots {
             await this.writeIfChanged('what-edits-the-yaml.png', await page.locator('.treeCard').first().screenshot());
             await page.close();
 
-            // THE HELP ITSELF, ITS SUMMARY NAMING THE CARD THAT DIFFERS
+            // THE HELP FROM "Where your changes are stored" DOWN: ITS SUMMARY NAMING THE CARD THAT DIFFERS. THE WHOLE SECTION
+            // PASSED THE GUIDE'S SIZE LIMIT ONCE THE HELP GREW (#355), AND ITS OTHER PARTS HAVE PICTURES OF THEIR OWN
             page = await this.openCockpit(browser, this.applyFixtureSelection(RecipeCockpitService, this.loadFixtureRecipe(RecipeCockpitService)));
             await page.locator('.helpToggle').click();
-            await this.writeIfChanged('where-changes-are-stored.png', await page.locator('.helpSection').screenshot());
+            await this.writeIfChanged('where-changes-are-stored.png', await this.screenshotFrom(page, '.helpSection', '.helpSection .helpPart', 3));
             await page.close();
 
         } finally {

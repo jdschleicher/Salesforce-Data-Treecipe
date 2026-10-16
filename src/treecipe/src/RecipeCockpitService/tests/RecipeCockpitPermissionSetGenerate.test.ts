@@ -770,6 +770,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1 });
             panel.postToPanel({ command: 'rendered' });
             panel.expandAllTrees();
+            panel.openTroubleshootingTabs();
             return panel;
         };
 
@@ -784,12 +785,12 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             expect(generateButton.textContent).toBe('Generate permission set…');
             expect(generateButton.disabled).toBe(false);
             expect(generateButtonOf(panel, 'Lead')).toBeDefined();
-            const controlChildren = panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'treePermissionSetControls')[0].children;
-            // THE ASSIGN BUTTON, THIS ONE, THEN "Retrieve validation rules…" (#326)
+            const controlChildren = panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'troubleshootingControls')[0].children;
+            // THE TROUBLESHOOTING TAB'S PERMISSION SETS SECTION (#346): THE ASSIGN BUTTON, THIS ONE, THEN "Deploy permission set…"
             expect(controlChildren).toHaveLength(3);
             expect(controlChildren[0] === panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'treePermissionSets')[0]).toBe(true);
             expect(controlChildren[1] === generateButton).toBe(true);
-            expect(controlChildren[2].className).toBe('treeRetrieveValidationRules');
+            expect(controlChildren[2].className).toBe('troubleshootingDeploy troubleshootingDeploy-permissionSet');
 
             generateButton.dispatch('click');
 
