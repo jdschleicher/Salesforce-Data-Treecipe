@@ -244,26 +244,6 @@ export class SfdxProjectService {
 
     }
 
-    /*
-        Whether a deploy of this project would copy a local FILE or an ENVIRONMENT VARIABLE into the
-        metadata it sends (sfdx-project.json "replacements" with replaceWithFile or replaceWithEnv).
-        Tolerant: an unreadable file answers false, since the strict read has already refused it.
-    */
-    static hasFileOrEnvironmentReplacements(workspaceRoot: string): boolean {
-
-        try {
-            const replacements: unknown = this.readSfdxProjectJson(this.getSfdxProjectFilePath(workspaceRoot))?.replacements;
-            return Array.isArray(replacements) && replacements.some(replacement => (
-                replacement !== null
-                && typeof replacement === 'object'
-                && ( 'replaceWithFile' in replacement || 'replaceWithEnv' in replacement )
-            ));
-        } catch {
-            return false;
-        }
-
-    }
-
     static isExistingFile(filePath: string): boolean {
 
         try {

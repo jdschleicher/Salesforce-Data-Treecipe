@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.99.0] - Recipe Cockpit: "+ New scratch org" creates and selects the org, and deploys nothing
+
+Closes [#358](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/358).
+
+Since #200, **+ New scratch org** created a scratch org and then deployed every package directory in `sfdx-project.json` to it, all or nothing. Every create waited on that deploy, and one component that would not deploy turned a working new org into an error. It now only creates the org, so it starts empty and you deploy what you need.
+
+- **One process.** The run is `sf org create scratch` and nothing else. `ScratchOrgService` no longer builds a `project deploy` argv (`buildSourceDeployArguments`, `parseSourceDeployOutput`, `readDeployComponentCounts`, the `deploying` phase and the 256 MB deploy buffer are gone), and no `…-scratch-deploy.json` result is written. A test fails if the scratch org service or the cockpit builds a deploy argv.
+- **One outcome for a created org.** A created org is `created`, a cancel that landed as the create succeeded included, since the org is kept. Its notification says `Scratch org <alias · username> is ready. Nothing was deployed to it.` and whether it is selected. It offers **Copy deploy command**, which puts `sf project deploy start --target-org <username>` on the clipboard and runs nothing, and **View output** for the create's saved result. A failed or cancelled create is reported as before, without "No deploy was attempted."
+- **The confirmation.** It asks "Create a scratch org through the Dev Hub …? Nothing is deployed to it." and no longer lists the package directories, the all-or-nothing deploy or sfdx-project.json's `replacements`, which only a deploy applies (`SfdxProjectService.hasFileOrEnvironmentReplacements` went with it). It still names the Dev Hub and where its setting came from, the definition file's edition, admin email and username, the alias and any alias move, the 7 days, and that nothing deletes an org. The project checks before the Dev Hub picker are unchanged.
+- **Fewer locks.** A scratch org run no longer holds **Retrieve validation rules…** or **Generate permission set…**, and a retrieve no longer holds **+ New scratch org**: those locks existed only because the run deployed the project's source. The run still holds the org picker, ⟳, the tree insert and **Assign permission sets to me…**, since it changes the selection.
+- **Help and guide.** The ? help, `docs/RECIPE-COCKPIT-GUIDE.md`, the button's title, the preview warning and the README say the button creates and selects without deploying, and the help screenshot was re-taken.
+- **Tests.** The scratch org suites now cover the create-only run (one process, one result file), Copy deploy command, the confirmation's wording, and a cancel that lands as the create succeeds. The deploy fixtures and deploy tests are removed. The retrieve and permission set suites check that a scratch org run no longer holds them.
+
 ## [3.98.0] - Recipe Cockpit: the org controls get their own section, above a Treecipes section
 
 Closes [#348](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/348).

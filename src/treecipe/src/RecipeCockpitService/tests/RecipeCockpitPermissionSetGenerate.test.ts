@@ -339,7 +339,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
 
         });
 
-        it('routes nothing while a recipe write, a scratch org run or a permission set assignment holds the window', () => {
+        it('routes nothing while a recipe write or a permission set assignment holds the window, and is not held by a scratch org run (#358)', () => {
 
             const writing = buildPanelState();
             writing.wireLookupStateMessage = { command: 'wireLookupState', isRunning: true };
@@ -347,7 +347,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
 
             const creating = buildPanelState();
             creating.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true };
-            expect(RecipeCockpitService.routePanelMessage(generateMessage, creating)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage(generateMessage, creating)).toEqual({ kind: 'generateTreePermissionSet', treeKey: ACCOUNT_TREE_KEY });
 
             const assigning = buildPanelState();
             assigning.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
@@ -666,12 +666,12 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
 
         });
 
-        it('writes nothing when a scratch org run or an assignment started while the modal was open', async () => {
+        it('writes nothing when an assignment started while the modal was open', async () => {
 
             await openCockpit();
             (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => {
                 if ( options?.modal ) {
-                    (RecipeCockpitService as any).recipeCockpitPanelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true };
+                    (RecipeCockpitService as any).recipeCockpitPanelState.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
                     return modalAnswer;
                 }
                 return undefined;

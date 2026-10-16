@@ -437,7 +437,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.',
-            'Under the run list, the Org section picks the org a card can insert into, opens it in your browser or makes a new scratch org. The Treecipes section below it holds the cards. Click either heading to fold it away.'
+            'Under the run list, the Org section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. The Treecipes section below it holds the cards. Click either heading to fold it away.'
         ]
     },
     {
@@ -499,7 +499,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Treecipe tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", on every tree, asks every time in the command palette for any connected org, production included, and retrieves that tree's validation rules from it into this project after a confirmation: it only reads from that org and deploys nothing.
+It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Treecipe tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", on every tree, asks every time in the command palette for any connected org, production included, and retrieves that tree's validation rules from it into this project after a confirmation: it only reads from that org and deploys nothing.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -1362,7 +1362,7 @@ export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER = 'Choose t
 
 export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL = 'Generate Treecipe';
 
-export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL = 'No validation rules were retrieved: an insert, a scratch org run or a permission set assignment is running. Try again once it has finished.';
+export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL = 'No validation rules were retrieved: an insert or a permission set assignment is running. Try again once it has finished.';
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL = 'Create scratch org';
 
@@ -1375,9 +1375,10 @@ export const RECIPE_COCKPIT_SCRATCH_ORG_ALIAS_PLACEHOLDER = 'for example qa-acco
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL = 'View output';
 
+export const RECIPE_COCKPIT_SCRATCH_ORG_COPY_DEPLOY_LABEL = 'Copy deploy command';
+
 export const RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT: Record<ScratchOrgSetupPhase | 'listing', string> = {
     creating: 'Creating scratch org…',
-    deploying: 'Deploying source…',
     listing: 'Listing the new scratch org…'
 };
 
@@ -6064,7 +6065,7 @@ export class RecipeCockpitService {
         const devHubLabel = this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan));
 
         const confirmation = await vscode.window.showWarningMessage(
-            `Create a scratch org through the Dev Hub ${devHubLabel} and deploy this project's source to it?`,
+            `Create a scratch org through the Dev Hub ${devHubLabel}? Nothing is deployed to it.`,
             { modal: true, detail: this.buildScratchOrgConfirmationDetail(scratchOrgPlan) },
             RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL
         );
@@ -6103,7 +6104,7 @@ export class RecipeCockpitService {
                 outputFilePath, workspaceRoot, 'The scratch org result file no longer exists in this workspace.');
 
         if ( setupOutcome.kind === 'createFailed' ) {
-            showScratchOrgNotification('error', `The scratch org ${alias} was not created: ${setupOutcome.failureMessage} No deploy was attempted.`, setupOutcome.outputFilePath);
+            showScratchOrgNotification('error', `The scratch org ${alias} was not created: ${setupOutcome.failureMessage}`, setupOutcome.outputFilePath);
             return;
         }
 
@@ -6125,30 +6126,41 @@ export class RecipeCockpitService {
             ? 'It is selected in the Treecipe tab.'
             : `The Salesforce CLI does not list ${orgText} as connected yet, so no org was selected in its place: press ⟳ to check again.`;
 
-        if ( setupOutcome.kind === 'deployFailed' ) {
-            const failureHeadline = setupOutcome.componentFailureCount > 0
-                ? `Deploy to ${alias} failed — ${setupOutcome.componentFailureCount} component ${setupOutcome.componentFailureCount === 1 ? 'failure' : 'failures'}`
-                : `Deploy to ${alias} failed — ${setupOutcome.failureMessage}`;
-            showScratchOrgNotification('error', `${failureHeadline}. The scratch org is kept, but it has none of the project's metadata until a deploy succeeds. ${selectionText}`, setupOutcome.outputFilePath);
-            return;
-        }
+        this.showCreatedScratchOrgNotification(isListed ? 'information' : 'warning',
+            `Scratch org ${orgText} is ready. Nothing was deployed to it. ${selectionText}`,
+            setupOutcome.username,
+            setupOutcome.outputFilePath,
+            workspaceRoot);
 
-        if ( setupOutcome.kind === 'deployUnconfirmed' ) {
-            showScratchOrgNotification('warning', `The deploy to ${alias} ran, but its answer was too large to read, so whether it succeeded is unknown. Check it with "sf project deploy report --target-org ${setupOutcome.username}". The scratch org ${orgText} is kept. ${selectionText}`);
-            return;
-        }
+    }
 
-        if ( setupOutcome.kind === 'deployCancelled' ) {
-            const cancelledText = setupOutcome.isDeployStarted
-                ? `The deploy to ${alias} was stopped partway, so some components may be missing. The scratch org ${orgText} is kept.`
-                : `Cancelled after the scratch org ${orgText} was created, before anything was deployed to it: it has none of the project's metadata. It is kept.`;
-            showScratchOrgNotification('information', `${cancelledText} ${selectionText}`);
-            return;
-        }
+    /*
+        #358: the run deploys nothing, so the notification hands the reader the deploy to run
+        themselves -- to the CLIPBOARD only, never run -- beside the create's own output. Not
+        awaited: the run ends without waiting for a click.
+    */
+    private static showCreatedScratchOrgNotification(severity: 'information' | 'warning',
+                                                        notificationText: string,
+                                                        username: string,
+                                                        outputFilePath: string | undefined,
+                                                        workspaceRoot: string) {
 
-        showScratchOrgNotification(isListed ? 'information' : 'warning',
-            `Scratch org ${orgText} is ready: ${setupOutcome.deployedComponentCount} ${setupOutcome.deployedComponentCount === 1 ? 'component' : 'components'} deployed. ${selectionText}`,
-            setupOutcome.outputFilePath);
+        const actions = [RECIPE_COCKPIT_SCRATCH_ORG_COPY_DEPLOY_LABEL, ...( outputFilePath ? [RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL] : [] )];
+        const escapedText = RecipeYamlScalar.escapeForNotification(notificationText);
+
+        Promise.resolve(severity === 'information'
+            ? vscode.window.showInformationMessage(escapedText, ...actions)
+            : vscode.window.showWarningMessage(escapedText, ...actions))
+            .then(async chosenAction => {
+
+                if ( chosenAction === RECIPE_COCKPIT_SCRATCH_ORG_COPY_DEPLOY_LABEL ) {
+                    await vscode.env.clipboard.writeText(ScratchOrgService.buildSourceDeployCommandText(username));
+                } else if ( chosenAction === RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL && outputFilePath ) {
+                    await VSCodeWorkspaceService.openWorkspaceResultFile(outputFilePath, workspaceRoot, 'The scratch org result file no longer exists in this workspace.');
+                }
+
+            })
+            .catch(() => undefined);
 
     }
 
@@ -6289,9 +6301,8 @@ export class RecipeCockpitService {
     /*
         Names what was resolved AND what the repository's own files decide, since the reader is
         confirming both: where the Dev Hub setting came from (a cloned project's .sf/config.json can
-        choose among the reader's Dev Hubs), what the definition sets for the admin, whether the
-        deploy copies local files or environment variables in, and that the metadata deployed is
-        the repository's.
+        choose among the reader's Dev Hubs) and what the definition sets for the admin. Nothing is
+        deployed (#358), so no package directory or replacement is named.
     */
     static buildScratchOrgConfirmationDetail(scratchOrgPlan: IScratchOrgPlan): string {
 
@@ -6314,17 +6325,13 @@ export class RecipeCockpitService {
                 : `Dev Hub: ${this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan))}`,
             `Definition file: ${scratchOrgPlan.definitionFileRelativePath}`,
             ...definitionLines,
-            `Package directories to deploy: ${scratchOrgPlan.packageDirectoryPaths.map(packageDirectoryPath => this.toSingleLine(packageDirectoryPath)).join(', ')}`,
             scratchOrgPlan.aliasHolderUsername
                 ? this.toSingleLine(`Alias: ${scratchOrgPlan.alias} — currently ${scratchOrgPlan.aliasHolderUsername}; the Salesforce CLI will move it to the new org`)
                 : this.toSingleLine(`Alias: ${scratchOrgPlan.alias}`),
             `Duration: ${scratchOrgPlan.durationDays} days`,
             '',
-            'This deploys metadata authored in this repository, and the definition file decides who administers the new org.',
-            ...( scratchOrgPlan.hasFileOrEnvironmentReplacements
-                ? ['sfdx-project.json has "replacements" that copy local files or environment variables into the deployed metadata.']
-                : [] ),
-            'The deploy is all or nothing: if any component fails, none is deployed. The scratch org is kept whatever happens, and nothing here deletes an org.'
+            'The definition file, authored in this repository, decides who administers the new org.',
+            'Nothing is deployed to the new org: deploy what you need yourself once it is ready. The scratch org is kept whatever happens, and nothing here deletes an org.'
         ].join('\n');
 
     }
@@ -6541,7 +6548,7 @@ export class RecipeCockpitService {
 
         // THE ROUTER CHECKED THESE AT THE CLICK; ONE CAN HAVE STARTED WHILE THE PROMPT OR THE MODAL WAS OPEN
         const currentPanelState = this.recipeCockpitPanelState;
-        if ( this.isScratchOrgSetupInFlight || currentPanelState.insertStateMessage || currentPanelState.permissionSetAssignStateMessage?.isRunning ) {
+        if ( currentPanelState.insertStateMessage || currentPanelState.permissionSetAssignStateMessage?.isRunning ) {
             return refuse(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL);
         }
 
@@ -6757,8 +6764,8 @@ export class RecipeCockpitService {
 
         // THE ROUTER CHECKED THESE AT THE CLICK; ONE CAN HAVE STARTED WHILE THE MODAL WAS OPEN, AND NOTHING AWAITS BETWEEN HERE AND THE WRITE
         const currentPanelState = this.recipeCockpitPanelState;
-        if ( currentPanelState.wireLookupStateMessage || currentPanelState.scratchOrgStateMessage?.isRunning || currentPanelState.permissionSetAssignStateMessage?.isRunning ) {
-            refuse('a recipe write, a scratch org run or a permission set assignment started meanwhile. Try again once it has finished.');
+        if ( currentPanelState.wireLookupStateMessage || currentPanelState.permissionSetAssignStateMessage?.isRunning ) {
+            refuse('a recipe write or a permission set assignment started meanwhile. Try again once it has finished.');
             return;
         }
 
@@ -8417,8 +8424,8 @@ export class RecipeCockpitService {
                 return { kind: 'refreshDataOrgs' };
 
             /*
-                "+ New scratch org" carries NOTHING: the Dev Hub, the definition file, what is deployed
-                and the alias are all the host's. It is honoured only beside a confirmed-drawn
+                "+ New scratch org" carries NOTHING: the Dev Hub, the definition file and the alias are
+                all the host's, and nothing is deployed (#358). It is honoured only beside a confirmed-drawn
                 Data-by-Org picker, and never while a run or a Create is in flight -- whatever the panel
                 sends. A refusal while nothing runs still answers, since the panel disabled the button.
             */
@@ -8428,8 +8435,7 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                // A VALIDATION RULE RETRIEVE (#326) IS WRITING INTO THE SOURCE A SCRATCH ORG RUN WOULD DEPLOY
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning || panelState.validationRuleRetrieveStateMessage?.isRunning ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning ) {
                     return {
                         kind: 'postScratchOrgState',
                         hostMessage: panelState.scratchOrgStateMessage ?? { command: 'scratchOrgState', isRunning: false }
@@ -8923,8 +8929,8 @@ export class RecipeCockpitService {
             /*
                 "Generate permission set…" (#306) posts the tree's KEY and nothing else: which objects
                 and fields, the name, the folder and the file are all the host's. It writes into the
-                project, so it waits for a recipe write, a scratch org run (which deploys the project)
-                and a permission set assignment (which reads the project's permission sets) to end.
+                project, so it waits for a recipe write and a permission set assignment (which reads
+                the project's permission sets) to end; a scratch org run deploys nothing (#358).
                 A tree whose every object is excluded has nothing to grant. A refusal is silent: the
                 panel disables nothing on the click, so there is no button to give back.
             */
@@ -8937,7 +8943,6 @@ export class RecipeCockpitService {
                         || !recipeDataMessage
                         || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey)
                         || panelState.wireLookupStateMessage
-                        || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning ) {
                     return undefined;
                 }
@@ -8954,8 +8959,8 @@ export class RecipeCockpitService {
                 "Retrieve validation rules…" (#326) posts the tree's KEY and nothing else: the objects
                 are the host's, and the org is ALWAYS asked for in the command palette, so an org
                 index the message carries is never read. One retrieve per window; it waits for an
-                insert, a scratch org run (which deploys the project) and a permission set assignment
-                to end. Every refusal gives the clicked button back, and a busy one says why.
+                insert and a permission set assignment to end, and a scratch org run, which deploys
+                nothing (#358), does not hold it. Every refusal gives the clicked button back, and a busy one says why.
             */
             case 'retrieveTreeValidationRules': {
 
@@ -8975,7 +8980,6 @@ export class RecipeCockpitService {
                 }
 
                 if ( panelState.insertStateMessage
-                        || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning ) {
                     return { kind: 'refuseValidationRuleRetrieve', refusalText: RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL, hostMessage: notRunning };
                 }
@@ -11623,9 +11627,9 @@ ${this.buildPaletteCustomProperties()}
         });
 
         // THE MESSAGE CARRIES NOTHING: THE DEV HUB, THE DEFINITION FILE, WHAT IS DEPLOYED AND THE ALIAS ARE ALL THE HOST'S
-        dataOrgView.newScratchElement.setAttribute('title', 'Choose a Dev Hub, name the new scratch org, create it through the Dev Hub, deploy the source of this project to it and select it');
+        dataOrgView.newScratchElement.setAttribute('title', 'Choose a Dev Hub, name the new scratch org, create it through the Dev Hub and select it. Nothing is deployed to it.');
         dataOrgView.newScratchElement.addEventListener('click', function () {
-            if (isScratchOrgRunning || isPermissionSetAssignRunning || isValidationRuleRetrieveRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
+            if (isScratchOrgRunning || isPermissionSetAssignRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
             isDataOrgPickerInUse = true;
             isScratchOrgRunning = true;
             drawDataOrgViews();
@@ -11740,7 +11744,7 @@ ${this.buildPaletteCustomProperties()}
 
         // AN INSERT IN FLIGHT HOLDS IT TOO: THE HOST WOULD REFUSE A RUN THAT CHANGES THE SELECTION UNDER IT
         // SO DOES A VALIDATION RULE RETRIEVE (#326): IT IS WRITING INTO THE SOURCE THE RUN WOULD DEPLOY
-        dataOrgView.newScratchElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isValidationRuleRetrieveRunning || insertRunningTreeKey !== null;
+        dataOrgView.newScratchElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || insertRunningTreeKey !== null;
         dataOrgView.newScratchElement.textContent = isScratchOrgRunning ? 'Setting up scratch org…' : '+ New scratch org';
         // A PERMISSION SET ASSIGNMENT HOLDS THE PICKER TOO: IT ASSIGNS IN THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
         dataOrgView.selectElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning;
@@ -14658,7 +14662,6 @@ ${this.buildPaletteCustomProperties()}
 
         const generateReason = listTreeInsertObjectApiNames(treeState).length === 0 ? 'Every object of this tree is excluded, so there is nothing to grant.'
             : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
-            : isScratchOrgRunning ? 'A scratch org is being set up.'
             : '';
         generateButtonElement.disabled = generateReason !== '';
         generateButtonElement.setAttribute('title', generateReason || 'Write a permission set granting Create and Read on this tree\\'s objects and access to its fields into this project\\'s permissionsets/SDT_Treecipe folder, after a confirmation. Nothing is deployed.');
@@ -14668,7 +14671,6 @@ ${this.buildPaletteCustomProperties()}
 
         const retrieveReason = isValidationRuleRetrieveRunning ? 'Validation rules are being retrieved.'
             : insertRunningTreeKey !== null ? 'A tree is being inserted.'
-            : isScratchOrgRunning ? 'A scratch org is being set up.'
             : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
             : '';
         retrieveButtonElement.disabled = retrieveReason !== '';

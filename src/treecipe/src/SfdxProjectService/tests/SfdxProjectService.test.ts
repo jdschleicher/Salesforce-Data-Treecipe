@@ -404,31 +404,4 @@ describe('SfdxProjectService', () => {
 
     });
 
-    describe('hasFileOrEnvironmentReplacements', () => {
-
-        test.each([
-            ['a file replacement', '{ "replacements": [{ "filename": "a", "replaceWithFile": "b" }] }', true],
-            ['an environment replacement', '{ "replacements": [{ "glob": "**", "replaceWithEnv": "HOME" }] }', true],
-            ['only string replacements', '{ "replacements": [{ "filename": "a", "stringToReplace": "x" }] }', false],
-            ['no replacements', '{ "packageDirectories": [] }', false],
-            ['a replacements value that is not a list', '{ "replacements": { "replaceWithFile": "b" } }', false],
-            ['null entries', '{ "replacements": [null, 7] }', false]
-        ])('answers for %s', (_label, sfdxProjectJsonContent, expectedAnswer) => {
-
-            mockSfdxProjectJson(sfdxProjectJsonContent);
-
-            expect(SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot)).toBe(expectedAnswer);
-
-        });
-
-        test('answers false for a project file it cannot read', () => {
-
-            mockSfdxProjectJson('{');
-
-            expect(SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot)).toBe(false);
-
-        });
-
-    });
-
 });
