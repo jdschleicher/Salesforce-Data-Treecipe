@@ -57,6 +57,7 @@ import {
     RECIPE_COCKPIT_TREE_TABS,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL
 } from '../RecipeCockpitService';
+import { RecipeCockpitMetadataDeploy } from '../RecipeCockpitMetadataDeploy';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { ORG_OPERATIONS_FOLDER_NAME, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES } from '../../ScratchOrgService/ScratchOrgService';
@@ -326,6 +327,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
             SalesforceOrgService.clearConnectedOrgStatusCache();
             SalesforceOrgService.clearDescribeCache();
+            RecipeCockpitService.clearTroubleshootingSummaries();
             (RecipeCockpitService as any).isMetadataDeployInFlight = false;
             (RecipeCockpitService as any).metadataDeployRunStateMessage = undefined;
             (RecipeCockpitService as any).isPermissionSetAssignInFlight = false;
@@ -684,11 +686,28 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             }]);
             expect(cliCalls.filter(argumentList => argumentList[1] !== 'list')).toEqual([]);
 
+            // ASKED AGAIN, IT IS ANSWERED FROM WHAT WAS READ: THE PROJECT IS NOT READ A SECOND TIME
+            const summarizeSpy = jest.spyOn(RecipeCockpitMetadataDeploy, 'summarizeTreeMetadata');
             fs.writeFileSync(path.join(workspaceRoot, 'sfdx-project.json'), '{ not json');
             await receivedMessageHandler({ command: 'loadTroubleshootingSummary', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence() });
             await flushAsyncWork();
 
+            expect(summarizeSpy).not.toHaveBeenCalled();
+            expect(postedNamed('troubleshootingSummary').at(-1)).toMatchObject({ customFieldCount: 6 });
+
+            // ONCE CLEARED IT IS READ AGAIN, AND A PROJECT THAT CANNOT BE READ IS NOT KEPT
+            RecipeCockpitService.clearTroubleshootingSummaries();
+            await receivedMessageHandler({ command: 'loadTroubleshootingSummary', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence() });
+            await flushAsyncWork();
+
             expect(postedNamed('troubleshootingSummary').at(-1)).toMatchObject({ customFieldCount: 0, failureMessage: expect.stringMatching(/^Nothing can be deployed: /) });
+
+            fs.copyFileSync(path.join(METADATA_DEPLOY_WORKSPACE_ROOT, 'sfdx-project.json'), path.join(workspaceRoot, 'sfdx-project.json'));
+            await receivedMessageHandler({ command: 'loadTroubleshootingSummary', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence() });
+            await flushAsyncWork();
+
+            expect(postedNamed('troubleshootingSummary').at(-1)).toMatchObject({ customFieldCount: 6 });
+            expect(postedNamed('troubleshootingSummary').at(-1)).not.toHaveProperty('failureMessage');
 
         });
 
@@ -840,6 +859,63 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
             expect(deployCalls()).toEqual([]);
             expect(lastWarning()?.text).toBe(`Nothing was deployed: the package.xml could not be written under treecipe/${ORG_OPERATIONS_FOLDER_NAME} in this workspace.`);
+
+        });
+
+        it('names the project\'s replacements in the confirmation, since they copy local files or environment variables into the deploy', async () => {
+
+            const projectFilePath = path.join(workspaceRoot, 'sfdx-project.json');
+            const project = JSON.parse(fs.readFileSync(projectFilePath, 'utf-8'));
+            fs.writeFileSync(projectFilePath, JSON.stringify({ ...project, replacements: [{ filename: 'x', stringToReplace: 'y', replaceWithEnv: 'SECRET_TOKEN' }] }));
+            await openCockpitWithQaSelected();
+            modalAnswer = undefined;
+
+            await deploy('deployTreeRecordTypes');
+
+            expect(modalCalls()[0][1].detail).toContain('sfdx-project.json has \u0022replacements\u0022'.replace(/\\u0022/g, '"'));
+
+        });
+
+        it('shows a landed deploy\'s notification only once the run has ended, then reads and posts the tree\'s counts again', async () => {
+
+            await openCockpitWithQaSelected();
+            let isRunningWhenShown: boolean | undefined;
+            (vscode.window.showInformationMessage as jest.Mock).mockImplementation(async () => {
+                isRunningWhenShown = lastDeployState()?.isRunning;
+                return undefined;
+            });
+            const summariesBefore = postedNamed('troubleshootingSummary').length;
+
+            await deploy('deployTreeFields');
+            await flushAsyncWork();
+
+            expect(isRunningWhenShown).toBe(false);
+            expect(postedNamed('troubleshootingSummary').length).toBe(summariesBefore + 1);
+            expect(postedNamed('troubleshootingSummary').at(-1)).toMatchObject({ treeKey: ACCOUNT_TREE_KEY, customFieldCount: 6 });
+
+        });
+
+        it('offers the assign follow-up for the org the sets were deployed to: with another org selected, it posts no index, so the assign asks', async () => {
+
+            await openCockpit();
+            jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed').mockImplementation(async (orgListing: Promise<any>) => {
+                const listing = await orgListing;
+                return listing.orgDetails.find((orgDetail: any) => orgDetail.username === QA_USERNAME);
+            });
+            (vscode.window.showInformationMessage as jest.Mock).mockImplementation(async (_text: string, ...actions: string[]) => {
+                // THE READER SELECTED ANOTHER ORG ABOVE BEFORE CLICKING THE BUTTON
+                const currentState = panelState();
+                currentState.dataOrgDetails = [{ targetOrgIdentifier: 'dev', username: 'dev@example.com.dev', alias: 'dev' }];
+                currentState.dataOrgSelection = { orgIndex: 0, orgDetail: currentState.dataOrgDetails[0], requestSequence: 99, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' }, isReadinessPosted: true };
+                return actions.includes(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL) ? RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL : undefined;
+            });
+            const routeSpy = jest.spyOn(RecipeCockpitService, 'routePanelMessage');
+
+            await deploy('deployTreePermissionSet', ACCOUNT_TREE_KEY, null);
+            await flushAsyncWork();
+            await flushAsyncWork();
+
+            expect(routeSpy).toHaveBeenCalledWith({ command: 'assignTreePermissionSets', treeKey: ACCOUNT_TREE_KEY }, expect.anything());
 
         });
 

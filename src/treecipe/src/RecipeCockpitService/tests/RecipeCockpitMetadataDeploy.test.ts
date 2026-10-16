@@ -143,6 +143,42 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
 
         });
 
+        it('reads one object\'s fields and record types from every package directory that holds a folder for it, the first file of a name winning', async () => {
+
+            const secondObjectFolderPath = path.join(workspaceRoot, 'unpackaged', 'objects', 'Account');
+            fs.mkdirSync(path.join(secondObjectFolderPath, 'fields'), { recursive: true });
+            fs.mkdirSync(path.join(secondObjectFolderPath, 'recordTypes'), { recursive: true });
+            fs.writeFileSync(path.join(secondObjectFolderPath, 'fields', 'Regions__c.field-meta.xml'), '<CustomField><type>MultiselectPicklist</type></CustomField>');
+            fs.writeFileSync(path.join(secondObjectFolderPath, 'fields', 'Annual_Budget__c.field-meta.xml'), '<Profile/>');
+            fs.writeFileSync(path.join(secondObjectFolderPath, 'recordTypes', 'Wholesale.recordType-meta.xml'), '<RecordType/>');
+
+            const summary = await summarize([{ objectApiName: 'Account', fieldApiNames: ['Annual_Budget__c', 'Regions__c'] }]);
+
+            expect(summary.customFields).toEqual(['Account.Annual_Budget__c', 'Account.Regions__c']);
+            expect(summary.unreadableFields).toEqual([]);
+            expect(summary.recordTypes).toEqual(['Account.Business', 'Account.Partner', 'Account.Wholesale']);
+
+        });
+
+        it('never lists a fields or recordTypes folder that is a link, even inside an object folder that is not', async () => {
+
+            const outsideFolderPath = path.join(temporaryRoot, 'outside-fields');
+            fs.mkdirSync(outsideFolderPath);
+            fs.writeFileSync(path.join(outsideFolderPath, 'Outside__c.field-meta.xml'), '<CustomField><type>Text</type></CustomField>');
+            fs.writeFileSync(path.join(outsideFolderPath, 'Outside.recordType-meta.xml'), '<RecordType/>');
+            const contactFolderPath = path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'Contact');
+            fs.rmSync(path.join(contactFolderPath, 'fields'), { recursive: true });
+            fs.symlinkSync(outsideFolderPath, path.join(contactFolderPath, 'fields'));
+            fs.symlinkSync(outsideFolderPath, path.join(contactFolderPath, 'recordTypes'));
+
+            const summary = await summarize([{ objectApiName: 'Contact', fieldApiNames: ['Outside__c'] }]);
+
+            expect(summary.customFields).toEqual([]);
+            expect(summary.unreadableFields).toEqual(['Contact.Outside__c']);
+            expect(summary.recordTypes).toEqual([]);
+
+        });
+
         it('matches an object folder case-insensitively and names it as the tree does', async () => {
 
             const summary = await summarize([{ objectApiName: 'account', fieldApiNames: ['annual_budget__c'] }]);
@@ -418,6 +454,16 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
             expect(detail).toContain('Account.F19__c and 3 more');
             expect(detail).not.toContain('Account.F20__c');
             expect(detail).not.toMatch(/[()]/);
+
+        });
+
+        it('warns when sfdx-project.json has replacements that copy local files or environment variables into what is deployed', () => {
+
+            const components = [{ type: 'RecordType' as const, member: 'Account.Business' }];
+
+            expect(RecipeCockpitMetadataDeploy.buildConfirmationDetail('recordTypes', 'T', 'qa', 'force-app', components, undefined, true))
+                .toContain('sfdx-project.json has "replacements" that copy local files or environment variables into the deployed metadata.');
+            expect(RecipeCockpitMetadataDeploy.buildConfirmationDetail('recordTypes', 'T', 'qa', 'force-app', components)).not.toContain('replacements');
 
         });
 

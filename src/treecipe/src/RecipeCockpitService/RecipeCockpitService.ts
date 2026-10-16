@@ -1471,6 +1471,9 @@ export const RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL = 'Nothing was deployed: an inse
 
 export const RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL = 'Troubleshooting';
 
+// HOW MANY TREE SUMMARIES THE HOST KEEPS BEFORE IT STARTS AGAIN
+export const RECIPE_COCKPIT_TROUBLESHOOTING_SUMMARY_CACHE_LIMIT = 50;
+
 export const RECIPE_COCKPIT_TROUBLESHOOTING_INTRO = 'Fixes for an insert that failed. Deploys reach only a sandbox or scratch org: the one selected in the Org section, or one you choose.';
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL = 'Create scratch org';
@@ -1782,6 +1785,8 @@ interface IRecipeCockpitPermissionSetClosingState {
 interface IRecipeCockpitMetadataDeployClosingState {
     cliStartedFor?: { orgDetail: IAuthenticatedOrgDetail; objectApiNames: string[] };
     isDeployed?: boolean;
+    // A LANDED DEPLOY'S NOTIFICATION, SHOWN ONCE THE RUN HAS ENDED SO ITS "Assign permission sets to me…" IS NOT REFUSED AS BUSY
+    showOutcome?: () => void;
 }
 
 // ONE LOOKUP'S ANSWER, WITH EVERY Id ITS OWN SEARCHES RETURNED: ONLY THOSE MAY BE WRITTEN (#254)
@@ -6628,7 +6633,16 @@ export class RecipeCockpitService {
     /*
         The Troubleshooting tab's counts (#346), read from the project's STRICT package directories
         when the tab is opened. Posted only while the model it was read for is still on screen.
+        Reading every field file of a large tree takes seconds, so an answer is kept per model, tree
+        and selection, a request already being read joins it, and every action that writes what it
+        counts (a deploy, a retrieve, a generated permission set) clears it and posts it again.
     */
+    private static troubleshootingSummaries = new Map<string, Promise<IRecipeCockpitTroubleshootingSummaryMessage>>();
+
+    static clearTroubleshootingSummaries() {
+        this.troubleshootingSummaries.clear();
+    }
+
     private static async postTroubleshootingSummary(cockpitPanel: vscode.WebviewPanel, treeKey: string, renderSequence: number) {
 
         const panelState = this.recipeCockpitPanelState;
@@ -6638,6 +6652,33 @@ export class RecipeCockpitService {
         if ( !recipeViewModel || !tree ) {
             return;
         }
+
+        const deployObjects = this.listTreeDeployObjects(recipeViewModel, tree);
+        const summaryKey = JSON.stringify([panelState.workspaceRoot, renderSequence, treeKey, deployObjects]);
+        let summaryRead = this.troubleshootingSummaries.get(summaryKey);
+
+        if ( !summaryRead ) {
+            if ( this.troubleshootingSummaries.size >= RECIPE_COCKPIT_TROUBLESHOOTING_SUMMARY_CACHE_LIMIT ) {
+                this.troubleshootingSummaries.clear();
+            }
+            summaryRead = this.readTroubleshootingSummary(panelState.workspaceRoot, treeKey, renderSequence, deployObjects);
+            this.troubleshootingSummaries.set(summaryKey, summaryRead);
+        }
+
+        const summaryMessage = await summaryRead;
+
+        // A PROJECT THAT COULD NOT BE READ IS ASKED AGAIN NEXT TIME: THE READER IS LIKELY FIXING IT
+        if ( summaryMessage.failureMessage && this.troubleshootingSummaries.get(summaryKey) === summaryRead ) {
+            this.troubleshootingSummaries.delete(summaryKey);
+        }
+
+        if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState.recipeDataMessage?.renderSequence === renderSequence ) {
+            this.postToPanel(cockpitPanel, summaryMessage);
+        }
+
+    }
+
+    private static async readTroubleshootingSummary(workspaceRoot: string, treeKey: string, renderSequence: number, deployObjects: IMetadataDeployObject[]): Promise<IRecipeCockpitTroubleshootingSummaryMessage> {
 
         const summaryMessage: IRecipeCockpitTroubleshootingSummaryMessage = {
             command: 'troubleshootingSummary',
@@ -6654,10 +6695,9 @@ export class RecipeCockpitService {
 
         try {
 
-            const packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(panelState.workspaceRoot);
-            const deployObjects = this.listTreeDeployObjects(recipeViewModel, tree);
-            const summary = await RecipeCockpitMetadataDeploy.summarizeTreeMetadata(panelState.workspaceRoot, packageDirectoryPaths, deployObjects);
-            const discovery = await RecipeCockpitPermissionSetAssign.discoverPermissionSets(deployObjects.map(deployObject => deployObject.objectApiName), panelState.workspaceRoot, packageDirectoryPaths);
+            const packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
+            const summary = await RecipeCockpitMetadataDeploy.summarizeTreeMetadata(workspaceRoot, packageDirectoryPaths, deployObjects);
+            const discovery = await RecipeCockpitPermissionSetAssign.discoverPermissionSets(deployObjects.map(deployObject => deployObject.objectApiName), workspaceRoot, packageDirectoryPaths);
 
             summaryMessage.permissionSetCount = discovery.permissionSets.length;
             summaryMessage.customFieldCount = summary.customFields.length;
@@ -6673,8 +6713,20 @@ export class RecipeCockpitService {
 
         }
 
-        if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState.recipeDataMessage?.renderSequence === renderSequence ) {
-            this.postToPanel(cockpitPanel, summaryMessage);
+        return summaryMessage;
+
+    }
+
+    // AN ACTION THAT WROTE INTO THE PROJECT OR THE ORG: WHAT ITS CARD COUNTS IS READ AGAIN AND POSTED, ON WHATEVER IS ON SCREEN NOW
+    private static async refreshTroubleshootingSummary(treeKey: string) {
+
+        this.clearTroubleshootingSummaries();
+
+        const cockpitPanel = this.recipeCockpitPanel;
+        const renderSequence = this.recipeCockpitPanelState.recipeDataMessage?.renderSequence;
+
+        if ( cockpitPanel && renderSequence !== undefined && this.recipeCockpitPanelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+            await this.postTroubleshootingSummary(cockpitPanel, treeKey, renderSequence);
         }
 
     }
@@ -6741,6 +6793,8 @@ export class RecipeCockpitService {
 
                 this.isMetadataDeployInFlight = false;
                 this.setMetadataDeployState({ command: 'metadataDeployState', isRunning: false, treeKey: treeKey, deployKind: deployKind });
+                closingState.showOutcome?.();
+                await this.refreshTroubleshootingSummary(treeKey);
 
             }
 
@@ -6871,7 +6925,7 @@ export class RecipeCockpitService {
             RecipeYamlScalar.escapeForNotification(`Deploy ${componentText} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgLabel)}?`),
             {
                 modal: true,
-                detail: RecipeYamlScalar.escapeForNotification(RecipeCockpitMetadataDeploy.buildConfirmationDetail(deployKind, treeLabel, orgLabel, packageDirectoryRelativePath, components, summary))
+                detail: RecipeYamlScalar.escapeForNotification(RecipeCockpitMetadataDeploy.buildConfirmationDetail(deployKind, treeLabel, orgLabel, packageDirectoryRelativePath, components, summary, SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot)))
             },
             RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL
         );
@@ -6938,14 +6992,17 @@ export class RecipeCockpitService {
         switch ( deployOutcome.kind ) {
 
             case 'deployed':
-                this.showMetadataDeployNotification(
-                    'information',
-                    `Deployed ${componentText} for ${treeLabel} to ${orgLabel}.`,
-                    deployOutputFilePath,
-                    workspaceRoot,
-                    deployKind === 'permissionSet' ? { cockpitPanel: cockpitPanel, treeKey: tree.treeKey } : undefined
-                );
-                return { ...cliStarted, isDeployed: true };
+                return {
+                    ...cliStarted,
+                    isDeployed: true,
+                    showOutcome: () => this.showMetadataDeployNotification(
+                        'information',
+                        `Deployed ${componentText} for ${treeLabel} to ${orgLabel}.`,
+                        deployOutputFilePath,
+                        workspaceRoot,
+                        deployKind === 'permissionSet' ? { cockpitPanel: cockpitPanel, treeKey: tree.treeKey, orgUsername: orgDetail.username } : undefined
+                    )
+                };
 
             case 'cliNotInstalled':
                 return refuse(deployOutcome.failureMessage, cliStarted);
@@ -6989,7 +7046,7 @@ export class RecipeCockpitService {
                                                     notificationText: string,
                                                     outputFilePath: string | undefined,
                                                     workspaceRoot: string,
-                                                    assignFollowUp?: { cockpitPanel: vscode.WebviewPanel; treeKey: string }) {
+                                                    assignFollowUp?: { cockpitPanel: vscode.WebviewPanel; treeKey: string; orgUsername: string }) {
 
         const actions = [
             ...( outputFilePath ? [RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL] : [] ),
@@ -7006,10 +7063,12 @@ export class RecipeCockpitService {
                     await VSCodeWorkspaceService.openWorkspaceResultFile(outputFilePath, workspaceRoot, 'The deploy result file no longer exists in this workspace.');
                 } else if ( chosenAction === RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL && assignFollowUp && this.recipeCockpitPanel === assignFollowUp.cockpitPanel ) {
                     const panelState = this.recipeCockpitPanelState;
+                    // THE SELECTION ONLY WHEN IT IS THE ORG THE SETS WERE DEPLOYED TO; OTHERWISE THE ASSIGN ASKS FOR AN ORG ITSELF
+                    const isDeployedOrgSelected = panelState.dataOrgSelection?.orgDetail.username === assignFollowUp.orgUsername;
                     const assignAction = this.routePanelMessage({
                         command: 'assignTreePermissionSets',
                         treeKey: assignFollowUp.treeKey,
-                        ...( panelState.dataOrgSelection ? { orgIndex: panelState.dataOrgSelection.orgIndex } : {} )
+                        ...( isDeployedOrgSelected && panelState.dataOrgSelection ? { orgIndex: panelState.dataOrgSelection.orgIndex } : {} )
                     }, panelState);
                     if ( assignAction ) {
                         await this.executePanelAction(assignFollowUp.cockpitPanel, assignAction);
@@ -7072,6 +7131,7 @@ export class RecipeCockpitService {
         } finally {
             this.isValidationRuleRetrieveInFlight = false;
             this.setValidationRuleRetrieveState({ command: 'validationRuleRetrieveState', isRunning: false, treeKey: treeKey });
+            await this.refreshTroubleshootingSummary(treeKey);
         }
 
     }
@@ -7267,6 +7327,7 @@ export class RecipeCockpitService {
             await this.performPermissionSetGenerate(cockpitPanel, treeKey);
         } finally {
             this.isPermissionSetGenerateInFlight = false;
+            await this.refreshTroubleshootingSummary(treeKey);
         }
 
     }

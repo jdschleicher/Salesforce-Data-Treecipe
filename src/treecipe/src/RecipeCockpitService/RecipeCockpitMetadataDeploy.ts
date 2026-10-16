@@ -52,6 +52,9 @@ export const METADATA_DEPLOY_FAILURES_SHOWN = 5;
 
 export const METADATA_DEPLOY_TIMEOUT_MILLISECONDS = 30 * 60 * 1000;
 
+// HOW MANY FIELD FILES ARE READ BEFORE THE SUMMARY HANDS THE EXTENSION HOST BACK TO ITS EVENT LOOP
+export const METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES = 200;
+
 export const METADATA_DEPLOY_PACKAGE_XML_SUFFIX = '-package.xml';
 
 const FIELD_FILE_SUFFIX = '.field-meta.xml';
@@ -166,13 +169,15 @@ export class RecipeCockpitMetadataDeploy {
     }
 
     /*
-        Each tree object's folder under an objects folder of a package directory, matched
-        case-insensitively as Salesforce reads names; the first package directory holding it wins.
+        Every folder of each tree object under an objects folder of a package directory, matched
+        case-insensitively as Salesforce reads names, in package directory order: an unlocked-package
+        project can keep one object's fields in several package directories, and the CLI deploys a
+        member from whichever holds it.
     */
-    static findObjectFolderPaths(workspaceRoot: string, packageDirectoryPaths: readonly string[], objectApiNames: readonly string[]): Map<string, string> {
+    static findObjectFolderPaths(workspaceRoot: string, packageDirectoryPaths: readonly string[], objectApiNames: readonly string[]): Map<string, string[]> {
 
         const objectApiNameByLowerName = new Map(objectApiNames.map(objectApiName => [objectApiName.toLowerCase(), objectApiName]));
-        const objectFolderPathsByObject = new Map<string, string>();
+        const objectFolderPathsByObject = new Map<string, string[]>();
 
         this.findMetadataFolderPaths(workspaceRoot, packageDirectoryPaths, 'objects').forEach(objectsFolderPath => {
             this.listEntries(objectsFolderPath)
@@ -181,8 +186,8 @@ export class RecipeCockpitMetadataDeploy {
                 .sort()
                 .forEach(objectFolderName => {
                     const objectApiName = objectApiNameByLowerName.get(objectFolderName.toLowerCase());
-                    if ( objectApiName && !objectFolderPathsByObject.has(objectApiName) ) {
-                        objectFolderPathsByObject.set(objectApiName, path.join(objectsFolderPath, objectFolderName));
+                    if ( objectApiName ) {
+                        objectFolderPathsByObject.set(objectApiName, [...( objectFolderPathsByObject.get(objectApiName) ?? [] ), path.join(objectsFolderPath, objectFolderName)]);
                     }
                 });
         });
@@ -274,27 +279,34 @@ export class RecipeCockpitMetadataDeploy {
         const objectFolderPathsByObject = this.findObjectFolderPaths(workspaceRoot, packageDirectoryPaths, objectApiNames);
         const namedValueSetNames = new Set<string>();
         const recordTypes = new Set<string>();
+        let readFileCount = 0;
 
         for ( const objectApiName of objectApiNames ) {
 
-            const objectFolderPath = objectFolderPathsByObject.get(objectApiName);
-            const fieldFileNamesByLowerName = new Map<string, string>();
-            if ( objectFolderPath ) {
-                this.listEntries(path.join(objectFolderPath, 'fields'))
+            const objectFolderPaths = objectFolderPathsByObject.get(objectApiName) ?? [];
+            // THE FIRST FOLDER HOLDING A FIELD'S FILE WINS
+            const fieldFilePathsByLowerName = new Map<string, string>();
+            objectFolderPaths.forEach(objectFolderPath => {
+                this.listSubfolderEntries(objectFolderPath, 'fields')
                     .filter(entry => entry.isFile() && entry.name.endsWith(FIELD_FILE_SUFFIX))
-                    .forEach(entry => fieldFileNamesByLowerName.set(entry.name.toLowerCase(), entry.name));
-            }
+                    .filter(entry => !fieldFilePathsByLowerName.has(entry.name.toLowerCase()))
+                    .forEach(entry => fieldFilePathsByLowerName.set(entry.name.toLowerCase(), path.join(objectFolderPath, 'fields', entry.name)));
+            });
 
             for ( const fieldApiName of [...( fieldApiNamesByObject.get(objectApiName) as Set<string> )].sort() ) {
 
                 const member = `${objectApiName}.${fieldApiName}`;
                 const isCustomField = this.isCustomFieldName(fieldApiName);
-                const fieldFileName = fieldFileNamesByLowerName.get(`${fieldApiName}${FIELD_FILE_SUFFIX}`.toLowerCase());
+                const fieldFilePath = fieldFilePathsByLowerName.get(`${fieldApiName}${FIELD_FILE_SUFFIX}`.toLowerCase());
 
                 let valueSetName: string | undefined;
-                if ( objectFolderPath && fieldFileName ) {
+                if ( fieldFilePath ) {
+                    readFileCount++;
+                    if ( readFileCount % METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES === 0 ) {
+                        await new Promise<void>(resolve => setImmediate(resolve));
+                    }
                     try {
-                        valueSetName = await this.readValueSetName(fs.readFileSync(path.join(objectFolderPath, 'fields', fieldFileName), 'utf-8'));
+                        valueSetName = await this.readValueSetName(fs.readFileSync(fieldFilePath, 'utf-8'));
                     } catch {
                         valueSetName = undefined;
                     }
@@ -318,8 +330,8 @@ export class RecipeCockpitMetadataDeploy {
 
             }
 
-            if ( objectFolderPath ) {
-                this.listEntries(path.join(objectFolderPath, 'recordTypes'))
+            for ( const objectFolderPath of objectFolderPaths ) {
+                this.listSubfolderEntries(objectFolderPath, 'recordTypes')
                     .filter(entry => entry.isFile() && entry.name.endsWith(RECORD_TYPE_FILE_SUFFIX))
                     .map(entry => entry.name.slice(0, -RECORD_TYPE_FILE_SUFFIX.length))
                     .forEach(developerName => {
@@ -595,7 +607,8 @@ export class RecipeCockpitMetadataDeploy {
                                     orgLabel: string,
                                     packageDirectoryRelativePath: string,
                                     components: readonly IMetadataDeployComponent[],
-                                    summary?: IMetadataDeploySummary): string {
+                                    summary?: IMetadataDeploySummary,
+                                    hasFileOrEnvironmentReplacements = false): string {
 
         const toSingleLine = (text: string) => String(text).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');
         const type = METADATA_DEPLOY_TYPE_BY_KIND[deployKind];
@@ -626,8 +639,28 @@ export class RecipeCockpitMetadataDeploy {
             `${members.length} ${type}: ${this.describeCappedList(members)}`,
             ...notes,
             '',
-            'Only these components are deployed, through a generated package.xml. Nothing else in the object folders is.'
+            'Only these components are deployed, through a generated package.xml. Nothing else in the object folders is.',
+            ...( hasFileOrEnvironmentReplacements
+                ? ['sfdx-project.json has "replacements" that copy local files or environment variables into the deployed metadata.']
+                : [] )
         ].join('\n');
+
+    }
+
+    // A fields OR recordTypes FOLDER THAT IS A LINK IS NEVER LISTED: ITS FILES COULD BE ANYWHERE
+    private static listSubfolderEntries(objectFolderPath: string, subfolderName: string): fs.Dirent[] {
+
+        const subfolderPath = path.join(objectFolderPath, subfolderName);
+
+        try {
+            if ( !fs.lstatSync(subfolderPath).isDirectory() ) {
+                return [];
+            }
+        } catch {
+            return [];
+        }
+
+        return this.listEntries(subfolderPath);
 
     }
 
