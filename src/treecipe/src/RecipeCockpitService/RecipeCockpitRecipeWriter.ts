@@ -354,6 +354,8 @@ export interface IScannedObject {
     lastFieldsBlockLineIndex: number;
     propertyLineIndexes: Record<RecipeObjectProperty, number[]>;
     commentedOutFieldMarkers: IScannedField[];
+    // EVERY LINE OF THE OBJECT'S OWN BLOCK CARRYING A TODO COMMENT (#354) -- A FRIEND'S LINES ARE THE FRIEND'S
+    todoLineIndexes: number[];
 }
 
 /*
@@ -390,6 +392,10 @@ interface IOpenScannedObject {
 
 const COMMENTED_OUT_MARKER_TEXT = '### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- ';
 const OBJECT_HEADER_PATTERN = /^( *)- object:\s*(\S+)\s*$/;
+// THE START OF A COMMENT WHOSE TEXT IS A TODO -- GENERATED ("### TODO -- ...", "### TODO: ...") OR HAND-WRITTEN ("# TODO ...") (#354)
+const TODO_COMMENT_START_PATTERN = /^#+[ \t]*TODO\b/;
+// WHAT MAY STAND BEFORE A YAML QUOTED SCALAR'S OPENING QUOTE: NOTHING, A KEY'S ":", A LIST ITEM'S "-", OR A FLOW COLLECTION
+const QUOTED_SCALAR_LEAD_CHARACTERS = new Set(['', ':', '-', ',', '[', '{']);
 const FRIENDS_INDENT_STEP = 4;
 const API_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 const RECORD_TYPE_ID_FIELD_API_NAME = 'RecordTypeId';
@@ -2811,6 +2817,94 @@ export class RecipeCockpitRecipeWriter {
 
     }
 
+    /*
+        The line's comment, from its "#", when its text starts with TODO (#354); undefined otherwise.
+        A comment is a "#" at the start of the line or after a space or tab, outside a YAML quoted
+        scalar and outside a "{{ ... }}" template and the quoted strings in it -- so a picklist value
+        or a fixed value holding " # TODO" is a value, not a TODO. One pass over the line, so a long
+        line costs its length and nothing more.
+    */
+    static readTodoCommentText(recipeLine: string): string | undefined {
+
+        if ( !recipeLine.includes('TODO') ) {
+            return undefined;
+        }
+
+        const commentStartIndex = this.findCommentStartIndex(recipeLine);
+        if ( commentStartIndex < 0 ) {
+            return undefined;
+        }
+
+        const commentText = recipeLine.slice(commentStartIndex);
+        return TODO_COMMENT_START_PATTERN.test(commentText) ? commentText.trim() : undefined;
+
+    }
+
+    private static findCommentStartIndex(recipeLine: string): number {
+
+        let quoteCharacter = '';
+        let isBackslashEscaped = false;
+        let templateDepth = 0;
+        let previousCharacter = '';
+        let previousNonBlankCharacter = '';
+
+        for ( let characterIndex = 0; characterIndex < recipeLine.length; characterIndex++ ) {
+
+            const character = recipeLine[characterIndex];
+            const nextCharacter = recipeLine[characterIndex + 1];
+            const isAfterBlank = previousCharacter === '' || previousCharacter === ' ' || previousCharacter === '\t';
+            previousCharacter = character;
+
+            if ( quoteCharacter ) {
+                // A YAML SINGLE-QUOTED SCALAR ESCAPES ITS QUOTE AS ''; EVERY OTHER STRING HERE ESCAPES WITH A BACKSLASH
+                if ( isBackslashEscaped && character === '\\' ) {
+                    characterIndex++;
+                    previousCharacter = '';
+                } else if ( character === quoteCharacter && !isBackslashEscaped && nextCharacter === quoteCharacter ) {
+                    characterIndex++;
+                } else if ( character === quoteCharacter ) {
+                    quoteCharacter = '';
+                }
+                continue;
+            }
+
+            if ( character === '{' && nextCharacter === '{' ) {
+                templateDepth++;
+                characterIndex++;
+                continue;
+            }
+
+            if ( templateDepth > 0 ) {
+                if ( character === '}' && nextCharacter === '}' ) {
+                    templateDepth--;
+                    characterIndex++;
+                } else if ( character === '"' || character === "'" ) {
+                    quoteCharacter = character;
+                    isBackslashEscaped = true;
+                }
+                continue;
+            }
+
+            if ( (character === '"' || character === "'") && isAfterBlank && QUOTED_SCALAR_LEAD_CHARACTERS.has(previousNonBlankCharacter) ) {
+                quoteCharacter = character;
+                isBackslashEscaped = character === '"';
+                continue;
+            }
+
+            if ( character === '#' && isAfterBlank ) {
+                return characterIndex;
+            }
+
+            if ( character !== ' ' && character !== '\t' ) {
+                previousNonBlankCharacter = character;
+            }
+
+        }
+
+        return -1;
+
+    }
+
     static splitRecipeLines(recipeText: string): IRecipeLines {
 
         const lines: string[] = [];
@@ -2881,7 +2975,8 @@ export class RecipeCockpitRecipeWriter {
                     fields: [],
                     lastFieldsBlockLineIndex: -1,
                     propertyLineIndexes: { nickname: [], count: [] },
-                    commentedOutFieldMarkers: []
+                    commentedOutFieldMarkers: [],
+                    todoLineIndexes: []
                 };
                 scannedObjects.push(scannedObject);
                 openObjects.push({
@@ -2909,6 +3004,9 @@ export class RecipeCockpitRecipeWriter {
             }
 
             const { scannedObject, layout } = openObject;
+            if ( this.readTodoCommentText(recipeLine) !== undefined ) {
+                scannedObject.todoLineIndexes.push(lineIndex);
+            }
             const fieldMatch = layout.fieldLinePattern.exec(recipeLine);
 
             if ( openObject.isInFieldsBlock && fieldMatch ) {
@@ -2968,6 +3066,15 @@ export class RecipeCockpitRecipeWriter {
             }
 
         });
+
+        // A COMMENTED-OUT FIELD IS ONE TODO, ITS MARKER: THE FIELD'S OWN LINES UNDER IT ARE ITS CONTENT, A LOOKUP'S TODO VALUE INCLUDED (#354)
+        scannedObjects
+            .filter(scannedObject => scannedObject.commentedOutFieldMarkers.length > 0 && scannedObject.todoLineIndexes.length > 0)
+            .forEach(scannedObject => {
+                scannedObject.todoLineIndexes = scannedObject.todoLineIndexes.filter(todoLineIndex => !scannedObject.commentedOutFieldMarkers.some(marker => (
+                    todoLineIndex > marker.startIndex && todoLineIndex < marker.endIndex
+                )));
+            });
 
         return scannedObjects;
 
