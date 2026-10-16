@@ -15,13 +15,13 @@ A few words used below:
 
 Generate Treecipe reads your object metadata and writes a run: a folder under `treecipe/GeneratedRecipes` holding the recipe files and a list of the objects it read.
 The cockpit opens the newest run, or the one you pick in the run list at the top.
-Under the run list, the **Org** section picks the org a card can insert into, opens it in your browser (**Open in browser**) or makes a new scratch org (**+ New scratch org**).
-The **Treecipes** section below it holds the cards; click either heading to fold it away.
+Under the run list, the **Target Org Management** section picks the org a card can insert into, opens it in your browser (**Open in browser**) or makes a new scratch org (**+ New scratch org**). It is always open.
+The **Treecipes** section below it holds the cards; click its heading to fold it away.
 
 Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply.
 Tick **TODOs only** on a card's Treecipe tab to see just the fields and objects with one, each TODO with a link to its line in the recipe.
 
-![The cockpit toolbar with the run list, Favorites only and the ? button, above the Org section and the Treecipes section's tree cards](images/recipe-cockpit/where-recipes-come-from.png)
+![The cockpit toolbar with the run list, Favorites only and the ? button, above the Target Org Management section and the Treecipes section's tree cards](images/recipe-cockpit/where-recipes-come-from.png)
 
 ## What the cockpit changes without editing the YAML
 
@@ -59,7 +59,7 @@ When you generate, the cockpit applies them to a copy of the recipe.
 The data set keeps that copy as `filteredRecipe-…` beside `originalRecipe-…` in its `BaseArtifactFiles` folder, and `datasetSource.json` lists what was changed.
 **Reset selection** on a card clears its settings. A fixed value is in the recipe file, so Reset leaves it: clear it with its pin.
 
-![The help section's summary, listing which cards differ from their recipe files](images/recipe-cockpit/where-changes-are-stored.png)
+![The help section open, listing which cards differ from their recipe files](images/recipe-cockpit/where-changes-are-stored.png)
 
 ## faker-js and snowfakery
 
