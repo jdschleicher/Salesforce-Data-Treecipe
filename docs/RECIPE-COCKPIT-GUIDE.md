@@ -16,6 +16,9 @@ A few words used below:
 Generate Treecipe reads your object metadata and writes a run: a folder under `treecipe/GeneratedRecipes` holding the recipe files and a list of the objects it read.
 The cockpit opens the newest run, or the one you pick in the run list at the top.
 
+Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply.
+Tick **TODOs only** on a card's Treecipe tab to see just the fields and objects with one, each TODO with a link to its line in the recipe.
+
 ![The cockpit toolbar with the run list, Favorites only and the ? button, above two tree cards](images/recipe-cockpit/where-recipes-come-from.png)
 
 ## What the cockpit changes without editing the YAML

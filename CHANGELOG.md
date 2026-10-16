@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.98.0] - Recipe Cockpit: a "TODOs only" filter shows every TODO comment of a tree's recipe
+
+Closes [#354](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/354).
+
+A generated recipe marks what still needs a hand edit with `### TODO` comments: lookups with no reference yet, record type options, missing value sets, formula fields to remove, validation rules not applied, skipped names, fields the cockpit commented out. The only way to see them was to open the `.yml` and search it.
+
+- **TODOs only.** Each card's Treecipe tab has a **TODOs only** check beside **Record type fields only**, labelled with the card's TODO count. It narrows the rows with the tab's search: only fields whose recipe lines carry a TODO comment stay, objects with one are opened (within the usual auto-expand limits), and an object with none stays on screen as "no TODOs". A card whose recipe has no TODO draws the check disabled and says why. The check is saved in the reader's place as the optional `isTodosOnly`, so the place version did not change.
+- **What counts.** Any comment whose text starts with `TODO`: the generated `### TODO …` and `### TODO: …` lines and a hand-written `# TODO …`, on a line of its own or after a field's value. Only lines inside an object's block are read; a comment above every object belongs to none.
+- **Where each one shows.** A TODO inside a field's lines (its value, a record type variant, a dependent picklist note) is listed under that field's row. One on no field (a validation rule not applied, a record type selection ignored, a commented-out field's marker) is listed at the top of the object's rows. A self-lookup iteration keeps its own, told apart by nickname; an occurrence the cockpit cannot tell apart from the first lists its TODOs on the first. Each TODO is written as text with an **↗ yml** link to its own line, and that line joins the open-source allow-list.
+- **One scan.** `RecipeCockpitRecipeWriter.scanRecipeObjects` records each object's TODO lines (`todoLineIndexes`) in the scan the cockpit already makes, and `parseRecipeSource` places them. `todos` is set on a field, iteration or object only when it has one, so a recipe with no TODO posts exactly the model it did. No recipe file is written, and generation and insert are unchanged.
+- **Help and guide.** "Where recipes come from" in the ? help and `docs/RECIPE-COCKPIT-GUIDE.md` now names the check.
+- **Tests.** `RecipeCockpitTodos.test.ts` covers the scan (generated, hand-written, after a value, friends), where each TODO is placed (fields, objects, iterations, indistinct occurrences), the real pipeline's output with each backend, the open-source allow-list, the check with and without the search, hostile TODO text, and the saved place.
+
 ## [3.97.0] - Recipe Cockpit: a pinned value is written into the recipe file, and Clear puts the field back
 
 Closes [#342](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/342).

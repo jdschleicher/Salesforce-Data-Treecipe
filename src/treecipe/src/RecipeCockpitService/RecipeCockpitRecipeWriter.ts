@@ -354,6 +354,8 @@ export interface IScannedObject {
     lastFieldsBlockLineIndex: number;
     propertyLineIndexes: Record<RecipeObjectProperty, number[]>;
     commentedOutFieldMarkers: IScannedField[];
+    // EVERY LINE OF THE OBJECT'S OWN BLOCK CARRYING A TODO COMMENT (#354) -- A FRIEND'S LINES ARE THE FRIEND'S
+    todoLineIndexes: number[];
 }
 
 /*
@@ -390,6 +392,8 @@ interface IOpenScannedObject {
 
 const COMMENTED_OUT_MARKER_TEXT = '### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- ';
 const OBJECT_HEADER_PATTERN = /^( *)- object:\s*(\S+)\s*$/;
+// A COMMENT WHOSE TEXT STARTS WITH TODO -- GENERATED ("### TODO -- ...", "### TODO: ...") OR HAND-WRITTEN ("# TODO ...") -- WHOLE LINE OR AFTER A VALUE (#354)
+const TODO_COMMENT_PATTERN = /(?:^|[ \t])(#+[ \t]*TODO\b.*)$/;
 const FRIENDS_INDENT_STEP = 4;
 const API_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 const RECORD_TYPE_ID_FIELD_API_NAME = 'RecordTypeId';
@@ -2811,6 +2815,14 @@ export class RecipeCockpitRecipeWriter {
 
     }
 
+    // THE TODO COMMENT ON A LINE scanRecipeObjects LISTED IN todoLineIndexes, FROM ITS FIRST "#" (#354)
+    static readTodoCommentText(recipeLine: string): string | undefined {
+
+        const todoMatch = TODO_COMMENT_PATTERN.exec(recipeLine);
+        return todoMatch ? todoMatch[1].trim() : undefined;
+
+    }
+
     static splitRecipeLines(recipeText: string): IRecipeLines {
 
         const lines: string[] = [];
@@ -2881,7 +2893,8 @@ export class RecipeCockpitRecipeWriter {
                     fields: [],
                     lastFieldsBlockLineIndex: -1,
                     propertyLineIndexes: { nickname: [], count: [] },
-                    commentedOutFieldMarkers: []
+                    commentedOutFieldMarkers: [],
+                    todoLineIndexes: []
                 };
                 scannedObjects.push(scannedObject);
                 openObjects.push({
@@ -2909,6 +2922,9 @@ export class RecipeCockpitRecipeWriter {
             }
 
             const { scannedObject, layout } = openObject;
+            if ( TODO_COMMENT_PATTERN.test(recipeLine) ) {
+                scannedObject.todoLineIndexes.push(lineIndex);
+            }
             const fieldMatch = layout.fieldLinePattern.exec(recipeLine);
 
             if ( openObject.isInFieldsBlock && fieldMatch ) {
