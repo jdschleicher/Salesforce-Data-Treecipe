@@ -205,7 +205,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             const hiddenPanel = runPanelScript();
             render(hiddenPanel, recipe);
             openCard(hiddenPanel, LEAD_TREE_KEY);
-            hiddenPanel.findAll(treeCardOf(hiddenPanel, LEAD_TREE_KEY), 'dataOrgLoad')[0].dispatch('click');
+            hiddenPanel.findAll(hiddenPanel.cockpitBodyElement, 'dataOrgLoad')[0].dispatch('click');
             openCard(hiddenPanel, LEAD_TREE_KEY);
 
             expect(isCardOpen(hiddenPanel, LEAD_TREE_KEY)).toBe(false);

@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.98.0] - Recipe Cockpit: the org controls get their own section, above a Treecipes section
+
+Closes [#348](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/348).
+
+The org picker (Choose org…, the org dropdown, **Open in browser**, **⟳ Refresh orgs** and **+ New scratch org**) was drawn again at the top of every card's Treecipe tab (#255): one panel-wide selection, shown once per opened card, and only after a card was opened.
+
+- **One Org section.** Right under the run list is an **Org** section holding the one org picker, its hidden-orgs note and its status line. A card's Treecipe tab no longer draws it, and starts with Reset selection, Wire TODO lookups and the generate button, which still names the org it inserts into or says why it generates only.
+- **A Treecipes section.** Every tree card is in a **Treecipes** section under the Org section.
+- **Both fold.** Each section's heading is its toggle, like the Record types section's: the whole header is clickable, the ▸ turns, the body names itself through `aria-controls`, and the motion is the cockpit's own (instant on a restore or a focus, none under reduced motion). Both start open. A folded section is kept with the reader's place as the optional `isOrgSectionCollapsed` / `isTreecipesSectionCollapsed`, so the place version did not change and an older place opens both. A focus onto a card (after an insert, a generate, Add friend, Change record types) opens a folded Treecipes section first.
+- **Drawn only when there is something to show.** The Org section is drawn only when some card can generate, as the per-card picker was. A run with no trees, and the empty state with no run, draw neither section.
+- **Nothing else changed.** Orgs are still listed only when the reader asks (Choose org…, ⟳, opening a card's Treecipe tab, or a picker already used), never on panel open or a restore. Every message, allow-list, run lock and production guard is unchanged, and folding the Org section keeps the selection.
+- **Help and guide.** "Where recipes come from" in the ? help and `docs/RECIPE-COCKPIT-GUIDE.md` names the two sections, and the screenshots were re-taken.
+- **Tests.** `RecipeCockpitSections.test.ts` covers the order, one picker and none in a card, the toggles, the place (saved, restored, older, same-run reload, host normalization), a focus into a folded Treecipes section, no sections without trees, and no org listing on open. The org suites were updated where they found the picker inside a card.
+
 ## [3.97.0] - Recipe Cockpit: a pinned value is written into the recipe file, and Clear puts the field back
 
 Closes [#342](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/342).
