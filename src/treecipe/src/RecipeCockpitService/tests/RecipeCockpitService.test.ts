@@ -37,6 +37,8 @@ import {
     RECIPE_COCKPIT_REFRESH_ORGS_LABEL,
     RECIPE_COCKPIT_PALETTE,
     RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH,
+    RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL,
+    RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL,
     RECIPE_COCKPIT_INSERT_DATASET_COMMAND,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_GENERATE_ACTION_LABEL,
@@ -407,10 +409,12 @@ describe('RecipeCockpitService', () => {
             // #263: THE FAVORITE (☆) BUTTON'S SIZE IS EVERY BUTTON'S DEFAULT, SET AFTER font: inherit SO IT IS NOT RESET
             expect((sharedButtonRule as RegExpMatchArray)[2]).toMatch(/font: inherit;\s*font-size: 1\.1em;/);
             // #151: "Wire to…" AND "Wire TODO lookups", AND #294's "Add <Parent> to recipe", ARE THE SMALL ROW BUTTONS RESET SELECTION IS
-            expect(ruleFor(styleSheet, '\\.treeFieldBulk button, \\.treeResetSelection, \\.treeWireLookup, \\.treeWireAllLookups, \\.treeAddParentObject')).toMatch(/font: inherit;\s*font-size: 1\.1em;/);
+            expect(ruleFor(styleSheet, '\\.treeResetSelection, \\.treeWireLookup, \\.treeWireAllLookups, \\.treeAddParentObject')).toMatch(/font: inherit;\s*font-size: 1\.1em;/);
             expect(ruleFor(styleSheet, '\\.treeFavorite, \\.treeRename')).toContain('font-size: 1.1em;');
             // #263: THE ⟳ GLYPH DRAWS SMALL IN MOST FONTS, SO IT IS SIZED ABOVE THE BUTTON'S OWN 1.1em
             expect(ruleFor(styleSheet, '\\.dataOrgRefreshIcon')).toContain('font-size: 1.5em;');
+            // #343: ALL / NONE ARE HIDDEN, WITH THEIR RULES
+            expect(styleSheet).not.toMatch(/\.treeFieldBulk/);
             // #263: REGENERATE RECIPE AND ITS NOTE ARE GONE, WITH THEIR RULES
             expect(styleSheet).not.toMatch(/\.regenerate/);
             // #293: ▶ Run Faker IS GONE, WITH EVERY RULE THAT NAMED IT
@@ -433,11 +437,18 @@ describe('RecipeCockpitService', () => {
         });
 
         // #244 MADE THE ▸/▾ BIG ENOUGH TO READ AT A GLANCE; #277 GAVE THE PICKLIST'S THE SAME SIZE AND CENTRED ALL THREE
-        it('draws the tree card, Treecipe object and picklist toggles as one centred 2.6rem box, and the field rows centred on it', () => {
+        // #343: THE PICKLIST'S IS A TEXT BUTTON NOW, OF ONE FIXED WIDTH ITS SPACER SHARES
+        it('draws the tree card and Treecipe object toggles as one centred 2.6rem box, the picklist button and its spacer one width, and the field rows centred on them', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
-            const toggleBoxRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle, \\.picklistToggle, \\.picklistToggleSpacer');
-            const toggleCentringRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle, \\.picklistToggle');
+            const toggleBoxRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle');
+            const toggleCentringRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle');
+            const picklistWidthRule = ruleFor(styleSheet, '\\.picklistToggle, \\.picklistToggleSpacer');
+
+            expect(picklistWidthRule).toContain('width: 7.5rem;');
+            expect(picklistWidthRule).toContain('flex: none;');
+            expect(ruleFor(styleSheet, '\\.picklistToggle')).toContain('white-space: nowrap;');
+            expect(styleSheet).not.toMatch(/\.picklistToggle[^{]*\{[^}]*height: 2\.6rem/);
 
             expect(toggleBoxRule).toContain('width: 2.6rem;');
             expect(toggleBoxRule).toContain('height: 2.6rem;');
@@ -2197,17 +2208,36 @@ describe('RecipeCockpitService', () => {
             expect(objectToggle.attributes['aria-expanded']).toBe('true');
             expect(toggleGlyphPathOf(objectToggle)).toBe(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
 
+        });
+
+        // #343: A PICKLIST'S VALUES OPEN FROM A BUTTON THAT SAYS WHAT IT DOES, NOT FROM A CHEVRON
+        it('draws a picklist\'s toggle as a "Show values" / "Hide values" text button that says its state in aria-expanded', () => {
+
+            const { panel } = renderTreeRecipe();
+            const [firstTreeCard] = treeCardsOf(panel);
+            expandTree(panel, firstTreeCard);
+            const accountElement = treeObjectNamed(panel, firstTreeCard, 'Account');
+            expandTreeObject(panel, accountElement);
+
             const picklistToggle = panel.findAll(treeFieldNamed(panel, accountElement, 'Rating__c'), 'picklistToggle')[0];
+            expect(picklistToggle.tagName).toBe('button');
+            expect(picklistToggle.textContent).toBe(RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL);
+            expect(panel.findAll(picklistToggle, 'toggleGlyph')).toEqual([]);
+            expect(picklistToggle.attributes['aria-label']).toBe('Show values of Rating__c');
             expect(picklistToggle.attributes['aria-expanded']).toBe('false');
             picklistToggle.dispatch('click');
             expect(picklistToggle.attributes['aria-expanded']).toBe('true');
+            expect(picklistToggle.textContent).toBe(RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL);
+            expect(picklistToggle.attributes['aria-label']).toBe('Hide values of Rating__c');
             picklistToggle.dispatch('click');
             expect(picklistToggle.attributes['aria-expanded']).toBe('false');
-            expect(toggleGlyphPathOf(picklistToggle)).toBe(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
+            expect(picklistToggle.textContent).toBe(RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL);
+            expect(RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL).toBe('Show values');
+            expect(RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL).toBe('Hide values');
 
         });
 
-        it('gives a field with no picklist a hidden slot where the ▸ goes, so every field name lines up', () => {
+        it('gives a field with no picklist a hidden slot where the values button goes, so every field name lines up', () => {
 
             const { panel } = renderTreeRecipe();
             const [firstTreeCard] = treeCardsOf(panel);

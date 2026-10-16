@@ -1244,11 +1244,12 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             ['treeDeploy', 'metadataDeployStatus', 'metadataDeployViewOutput', 'metadataDeployOpenStatus'].forEach(className => {
                 expect(panel.findAll(accountCard, className)).toEqual([]);
             });
-            // THE ASSIGN BUTTON, THEN "Generate permission set…" (#306), AND NOTHING ELSE
+            // THE ASSIGN BUTTON, THEN "Generate permission set…" (#306) AND "Retrieve validation rules…" (#326), AND NOTHING ELSE
             const controlChildren = panel.findAll(accountCard, 'treePermissionSetControls')[0].children;
-            expect(controlChildren).toHaveLength(2);
+            expect(controlChildren).toHaveLength(3);
             expect(controlChildren[0] === permissionSetButton).toBe(true);
             expect(controlChildren[1].className).toBe('treeGeneratePermissionSet');
+            expect(controlChildren[2].className).toBe('treeRetrieveValidationRules');
 
             permissionSetButton.dispatch('click');
 

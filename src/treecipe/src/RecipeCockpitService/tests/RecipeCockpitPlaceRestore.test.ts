@@ -17,7 +17,9 @@ import {
     IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB,
-    RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY
+    RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY,
+    RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL,
+    RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -112,7 +114,9 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Account')).toBe(true);
             expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Contact')).toBe(false);
             expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').attributes['aria-expanded']).toBe('true');
+            expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').textContent).toBe(RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL);
             expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Regions__c').attributes['aria-expanded']).toBe('false');
+            expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Regions__c').textContent).toBe(RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL);
 
             expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(true);
             expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previously Used Data Sets');

@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.96.0] - Recipe Cockpit: a pinned value is written into the recipe file, and Clear puts the field back
+## [3.97.0] - Recipe Cockpit: a pinned value is written into the recipe file, and Clear puts the field back
 
 Closes [#342](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/342).
 
@@ -15,6 +15,31 @@ A field's 📌 fixed value (#262, #337) used to live only in VS Code's workspace
 - **Geolocation components.** A custom Geolocation field's `__Latitude__s`/`__Longitude__s` components, which the wrapper types `Text`, are pinned as numbers from -90 to 90 and from -180 to 180.
 - **Help and guide.** "Fixed values" moved under "What does edit the YAML" in the ? help and `docs/RECIPE-COCKPIT-GUIDE.md`, and the screenshots were re-taken.
 - **Tests.** `RecipeCockpitFixedValueWrites.test.ts` runs Generate Treecipe's real pipeline with each backend, then pins and clears every field it writes. That covers every type in the mock metadata, record type variants, a configured compound Address, a Geolocation, standard fields, nested friends, CRLF and no final newline, and the validation rule run. Each recipe must come back byte for byte, and every pinned occurrence must load with the value. The suite also covers the writer's refusals and the store's handling of hostile JSON. The executor tests cover Save, re-pin, Clear, a cancelled modal, the write lock, a recipe the disk refuses, a hand-edited pin, an unreadable store, and the re-derived Clear.
+## [3.96.1] - Recipe Cockpit: one checkbox size, a "Show values" button, no All / None
+
+Closes [#343](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/343).
+
+- **"Record type fields only" is the cockpit's own checkbox.** It drew a text `☐`/`☑` inside a full button. It is now the same 1.25em `treeFieldInclude` box every field, record type and "Remember this selection" checkbox draws, with its label beside it, as "Remember this selection" has. Clicking the label toggles it too. It keeps `role="checkbox"`, `aria-checked`, its `aria-label` and title, the disabled state with its note, and `isRecordTypeFieldsOnly` in the reader's place.
+- **A picklist's values open from a "Show values" button.** The chevron is replaced, in the same slot before the field name, by a text button reading **Show values** while closed and **Hide values** while open (`RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL`, `RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL`). `aria-expanded`, loading the values on first open and a restored open row are unchanged. Its accessible name starts with the text on the button (`Show values of <Field>`), so a voice command naming what is on screen reaches it. The button and the spacer on rows that are not picklists share one fixed width, so every field name still lines up.
+- **All / None are hidden.** An expanded object no longer draws them, and there is no way to show them for now. The host still routes `setAllFieldsIncluded`, so bringing them back is only drawing them again.
+- **The guide's pictures are re-taken.** The help text and `docs/RECIPE-COCKPIT-GUIDE.md` named none of the three, so neither changed.
+- **Tests.** The record type check's box, label and disabled label, the picklist button's text in both states, its width rule, and that no All / None or `.treeFieldBulk` rule is drawn.
+
+## [3.96.0] - Recipe Cockpit: retrieve a tree's validation rules from an org
+
+Closes [#326](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/326), under [#322](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/322).
+
+#324 applies only the validation rules that are in the project, and many projects never retrieved them, so their trees generated data the org's rules reject.
+
+- **Retrieve validation rules…** sits beside **Generate permission set…** on every card with a folder. It posts `retrieveTreeValidationRules {treeKey}` and nothing else, matched against `nameableTreeKeys`. The objects are the host's, from the tree on screen.
+- **The org is always asked for, in the command palette.** `SalesforceOrgService.promptForAuthorizedOrg` runs over every connected org, through `VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed`. It asks every time, even with one org, and even when the Treecipe tab has an org selected. An org index the panel posts is never read. Production is listed, a decision on #326: a retrieve only reads from the org. Dismissing the pick is a quiet cancel.
+- **A host modal** names the tree, the org (`alias · username`), every object, and the default package directory where new rule files go. It also says how many local `*.validationRule-meta.xml` files for those objects the org's version will overwrite, counted under every package directory without following links. Everything shown goes through `escapeForNotification`.
+- **The retrieve** is `sf project retrieve start --json --target-org <username> --metadata ValidationRule:<Object>.*`, one `--metadata` per object. It runs in project mode through `runCancellableCli`, and a cancel kills the process tree. Every object name passes `SalesforceApiName` before the argv is built, and an argv over 80 objects is refused. The package directories come from the strict `resolveDeployablePackageDirectoryPaths`, so a project that cannot be deployed opens no prompt.
+- **The `--json` is untrusted.** It counts as a retrieve only on `status === 0` with `result.success === true`. Each `ValidationRule` file is counted under the tree object its full name names, and a `Failed` or `Error` file is named with what the CLI said. The outcome is ONE notification: information on success, a warning otherwise. It names the rule and object counts and offers **Generate Treecipe** whenever rule files may have been written. A warning also offers **View output**, which opens the result file under `treecipe/OrgOperations/<username>/` (`…-validation-rule-retrieve.json`). Generate Treecipe runs through the open cockpit so the run reloads, and is refused while an insert or another generation runs.
+- **One retrieve per window.** `validationRuleRetrieveState {isRunning, treeKey}` is stored, replayed on `ready` and adopted by a panel built mid-run. While one runs, every card's button is disabled. It is refused, with a warning, while an insert, a scratch-org run or a permission set assignment is running, checked at the click and again after the modal. While a retrieve runs, **+ New scratch org** is disabled and refused, because it would deploy the source the retrieve is writing. A cancelled retrieve still offers **Generate Treecipe**, since the CLI may have written files before it stopped.
+- **Nothing is deployed.** A test fails if the retrieve path builds a deploy argv, and the module does not spell a deploy subcommand.
+- **The opt-in warning and the ? help** now say what the retrieve reads and writes, and `docs/RECIPE-COCKPIT-GUIDE.md` follows the help.
+- **Tests.** `RecipeCockpitValidationRuleRetrieve.test.ts` covers the argv and its refusals, the local file count (links and outside paths), every shape of `--json`, the router, the host against a faked org prompt and CLI (prompt every time, cancel, failure, partial failure, cancel mid-run, one per window, Generate Treecipe, View output), and the panel script's button.
 
 ## [3.95.0] - Recipe Cockpit: edit a field's fixed value and faker bounds inline
 
