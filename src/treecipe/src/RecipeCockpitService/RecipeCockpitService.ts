@@ -6127,7 +6127,7 @@ export class RecipeCockpitService {
     /*
         "+ New scratch org" (#200). The plan is resolved on the host and refused before any process
         when an input is missing; the modal names what was resolved, and Cancel runs nothing. Then
-        create and deploy run under one cancellable notification, which reports their phase, and how
+        the create alone runs under one cancellable notification (#358: nothing is deployed), and how
         the run ended is a notification with a "View output" button (#301). Once a username exists the org is kept whatever followed, and the
         connected-org cache is dropped BEFORE re-listing -- the session's cached "sf org list"
         predates the org -- so it is selected by username from a fresh answer, or reported not
@@ -12467,7 +12467,7 @@ ${this.buildPaletteCustomProperties()}
             vscodeApi.postMessage({ command: 'openDataOrg', orgIndex: dataOrgSelectedIndex });
         });
 
-        // THE MESSAGE CARRIES NOTHING: THE DEV HUB, THE DEFINITION FILE, WHAT IS DEPLOYED AND THE ALIAS ARE ALL THE HOST'S
+        // THE MESSAGE CARRIES NOTHING: THE DEV HUB, THE DEFINITION FILE AND THE ALIAS ARE ALL THE HOST'S, AND NOTHING IS DEPLOYED (#358)
         dataOrgView.newScratchElement.setAttribute('title', 'Choose a Dev Hub, name the new scratch org, create it through the Dev Hub and select it. Nothing is deployed to it.');
         dataOrgView.newScratchElement.addEventListener('click', function () {
             if (isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
