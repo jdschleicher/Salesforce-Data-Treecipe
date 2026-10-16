@@ -616,6 +616,22 @@ describe('RecipeCockpitRecipeWriter.listChangedPinnedFields (#342 review)', () =
 
     });
 
+    it('answers changed for an edited expression whose line was edited by hand since, and not for one still as written (#356)', () => {
+
+        const original = '- object: Account\n  nickname: Account_NickName\n  fields:\n    Name: ${{ faker.company.name() }}\n';
+        const pinResult = RecipeCockpitRecipeWriter.pinField(original, 'Account', 'Name', { value: '${{ faker.string.alpha(4) }}', kind: 'expression' });
+        if ( 'refusal' in pinResult ) {
+            throw new Error(pinResult.refusal.message);
+        }
+        const pinnedField = { objectApiName: 'Account', fieldApiName: 'Name', restoreRequests: toRestoreRequests(pinResult.occurrences) };
+        const handEdited = pinResult.recipeText.replace('faker.string.alpha(4)', 'faker.string.alpha(9)');
+
+        expect(RecipeCockpitRecipeWriter.listChangedPinnedFields(pinResult.recipeText, [pinnedField])).toEqual([false]);
+        expect(RecipeCockpitRecipeWriter.listChangedPinnedFields(handEdited, [pinnedField])).toEqual([true]);
+        expect('refusal' in RecipeCockpitRecipeWriter.restorePinnedField(handEdited, 'Account', 'Name', pinnedField.restoreRequests)).toBeTrue();
+
+    });
+
     it('checks 500 pins of an 11,000-object recipe in one scan, where a restore per pin took seconds', () => {
 
         const recipeLines: string[] = [];
