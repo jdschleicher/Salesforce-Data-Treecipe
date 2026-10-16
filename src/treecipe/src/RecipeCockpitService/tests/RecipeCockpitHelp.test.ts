@@ -216,7 +216,7 @@ describe('RecipeCockpitService help section (#332)', () => {
             const panel = drawRecipe(recipe);
 
             expect(summaryLinesOf(panel)).toEqual([
-                `${treeOf(recipe, ACCOUNT_TREE_KEY).title}: 1 object excluded · 3 fields unticked · 1 count changed · 2 fixed values · 1 faker bound · 1 field without its rules`,
+                `${treeOf(recipe, ACCOUNT_TREE_KEY).title}: 1 object excluded · 3 fields unticked · 1 count changed · 1 faker bound · 1 field without its rules`,
                 'Leads only: 1 count changed'
             ]);
 

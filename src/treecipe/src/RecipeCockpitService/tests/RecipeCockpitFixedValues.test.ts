@@ -7,7 +7,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 jest.mock('vscode', () => ({
-    window: { createWebviewPanel: jest.fn(), withProgress: jest.fn(), showWarningMessage: jest.fn(), showInputBox: jest.fn() },
+    window: { createWebviewPanel: jest.fn(), withProgress: jest.fn(), showWarningMessage: jest.fn(), showInformationMessage: jest.fn(), showInputBox: jest.fn() },
     commands: { executeCommand: jest.fn() },
     ViewColumn: { One: 1 },
     ProgressLocation: { Notification: 15 },
@@ -22,9 +22,12 @@ import {
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitTreeViewModel,
     RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX,
-    RECIPE_COCKPIT_FIELD_EDIT_NOT_SAVED_REFUSAL,
+    RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL,
+    RECIPE_COCKPIT_FIELD_EDIT_WRITE_RUNNING_REFUSAL,
     RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH,
     RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL,
+    RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL,
+    RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL,
     RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
     RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
     RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON,
@@ -35,6 +38,8 @@ import {
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES,
     RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL,
+    RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LENGTH,
+    RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LINES,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
@@ -43,13 +48,17 @@ import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipe
 import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
 import { HOSTILE_PICKLIST_VALUES, ORDINARY_PICKLIST_VALUES } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { pinFieldInRecipeFile, restoreRecipeFiles } from './RecipeCockpitFixedValueFiles';
+import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
+import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 
 /*
     #262: a pin beside each field's checkbox gives the field a fixed value that the generate button and the
-    whole-tree insert generate in place of its faker expression. It is kept by tree folder beside the
-    excluded objects, unticked fields and counts, and rides on the filtered copy: the recipe file is
-    never written.
+    whole-tree insert generate in place of its faker expression. Since #342 it is written into the recipe
+    FILE, with the lines it replaced kept in the fixed-values file beside it, and Clear puts them back.
 */
 
 const recipeWriterMocksPath = path.join(__dirname, 'mocks', 'recipeWriter');
@@ -62,6 +71,8 @@ const CURRENT_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
 const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
 const LEAD_TREE_KEY = 'Lead-ONLY';
 const ACCOUNT_RECIPE_FILE_PATH = path.join(HISTORY_GENERATED_RECIPES_PATH, CURRENT_RUN_FOLDER_NAME, ACCOUNT_TREE_KEY, `recipe--${ACCOUNT_TREE_KEY}-2026-09-20T10-00-00.yml`);
+const LEAD_RECIPE_FILE_PATH = path.join(HISTORY_GENERATED_RECIPES_PATH, CURRENT_RUN_FOLDER_NAME, LEAD_TREE_KEY, `recipe--${LEAD_TREE_KEY}-2026-09-20T10-00-00.yml`);
+const ACCOUNT_FIXED_VALUE_FILE_PATH = RecipeCockpitFixedValueStore.buildFilePath(ACCOUNT_RECIPE_FILE_PATH);
 
 function readFixture(fileName: string): string {
     return fs.readFileSync(path.join(recipeWriterMocksPath, fileName), 'utf8');
@@ -135,12 +146,13 @@ const buildWorkspaceState = (initialValues: Record<string, unknown> = {}) => {
     };
 };
 
+// WHAT AN OLDER VERSION STORED: A FIXED VALUE IN workspaceState IS NOT READ SINCE #342, AND IS NOT WRITTEN BACK
 const storedSelections = (fixedValuesByFolderName: Record<string, unknown>, excludedObjectApiNamesByFolderName: Record<string, unknown> = {}, excludedFieldApiNamesByFolderName: Record<string, unknown> = {}) => ({
     version: RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     excludedObjectApiNamesByFolderName: excludedObjectApiNamesByFolderName,
     excludedFieldApiNamesByFolderName: excludedFieldApiNamesByFolderName,
     objectCountsByFolderName: {},
-    fixedValuesByFolderName: fixedValuesByFolderName,
+    ...( Object.keys(fixedValuesByFolderName).length > 0 ? { fixedValuesByFolderName: fixedValuesByFolderName } : {} ),
     constraintsByFolderName: {},
     validationRulesOffByFolderName: {}
 });
@@ -380,50 +392,31 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
     describe('readTreeSelections and writeTreeSelections', () => {
 
-        it('writes the current version with a folder, object and field named __proto__ as keys, and reads back every api name', async () => {
+        it('no longer reads a fixed value workspaceState holds, of any version, and drops it on the next write (#342)', async () => {
+
+            const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [LEAD_TREE_KEY]: { Lead: { Company: 'Acme' } } }) });
+
+            expect(RecipeCockpitService.readTreeSelections(workspaceState).fixedValuesByFolderName).toEqual(new Map());
+
+            await RecipeCockpitService.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
+
+            expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).toEqual(storedSelections({}, { [ACCOUNT_TREE_KEY]: ['Contact'] }));
+
+        });
+
+        it('never writes the fixed values it is handed into workspaceState', async () => {
 
             const workspaceState = buildWorkspaceState();
             await expect(RecipeCockpitService.writeTreeSelections(workspaceState, {
                 excludedObjectApiNamesByFolderName: new Map(),
                 excludedFieldApiNamesByFolderName: new Map(),
                 objectCountsByFolderName: new Map(),
-                fixedValuesByFolderName: new Map([
-                    [ACCOUNT_TREE_KEY, new Map([['Account', new Map([['Legacy_Code__c', 'X-1'], ['__proto__', 'y']])], ['__proto__', new Map([['Name', 'z']])]])],
-                    ['__proto__', new Map([['Lead', new Map([['Company', 'Acme']])]])],
-                    ['Empty-Tree', new Map([['Lead', new Map()]])]
-                ]),
+                fixedValuesByFolderName: new Map([[ACCOUNT_TREE_KEY, new Map([['Account', new Map([['Legacy_Code__c', 'X-1']])]])]]),
                 constraintsByFolderName: new Map(),
                 validationRulesOffByFolderName: new Map()
             })).resolves.toBeTrue();
 
-            const stored = workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY) as any;
-            expect(stored.version).toBe(RECIPE_COCKPIT_OBJECT_SELECTION_VERSION);
-            expect(Object.keys(stored.fixedValuesByFolderName)).toEqual([ACCOUNT_TREE_KEY, '__proto__']);
-            expect(Object.keys(stored.fixedValuesByFolderName[ACCOUNT_TREE_KEY])).toEqual(['Account', '__proto__']);
-            expect(Object.keys(stored.fixedValuesByFolderName[ACCOUNT_TREE_KEY].Account)).toEqual(['Legacy_Code__c', '__proto__']);
-
-            expect(RecipeCockpitService.readTreeSelections(workspaceState).fixedValuesByFolderName).toEqual(new Map([
-                [ACCOUNT_TREE_KEY, new Map([['Account', new Map([['Legacy_Code__c', 'X-1']])]])],
-                ['__proto__', new Map([['Lead', new Map([['Company', 'Acme']])]])]
-            ]));
-
-        });
-
-        it('drops every value no kind could write, and every name that is not an api name', () => {
-
-            const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({
-                [ACCOUNT_TREE_KEY]: {
-                    Account: { Legacy_Code__c: 'ok', Name: 'a\nb', Rating__c: '${{ 7*7 }}', Score__c: 4, 'Bad Name': 'x', Empty__c: '', Long__c: 'x'.repeat(40000) },
-                    'Bad Object': { Name: 'x' },
-                    Contact: 'not a map'
-                },
-                '': { Lead: { Company: 'x' } },
-                [LEAD_TREE_KEY]: ['Lead']
-            }) });
-
-            expect(RecipeCockpitService.readTreeSelections(workspaceState).fixedValuesByFolderName).toEqual(new Map([
-                [ACCOUNT_TREE_KEY, new Map([['Account', new Map([['Legacy_Code__c', 'ok']])]])]
-            ]));
+            expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).not.toHaveProperty('fixedValuesByFolderName');
 
         });
 
@@ -440,16 +433,6 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             expect(treeSelections.fixedValuesByFolderName.size).toBe(0);
             expect(treeSelections.excludedObjectApiNamesByFolderName).toEqual(new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
             expect(treeSelections.objectCountsByFolderName).toEqual(new Map([[LEAD_TREE_KEY, new Map([['Lead', 3]])]]));
-
-        });
-
-        it('keeps the stored fixed values when #219\'s writeObjectSelections writes the objects', async () => {
-
-            const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [LEAD_TREE_KEY]: { Lead: { Company: 'Acme' } } }) });
-
-            await RecipeCockpitService.writeObjectSelections(workspaceState, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
-
-            expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).toEqual(storedSelections({ [LEAD_TREE_KEY]: { Lead: { Company: 'Acme' } } }, { [ACCOUNT_TREE_KEY]: ['Contact'] }));
 
         });
 
@@ -552,11 +535,67 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
     });
 
+    describe('buildRestorePreview (#342 review)', () => {
+
+        it('shows the lines left-aligned and escaped like a notification, and cuts a long one short', () => {
+
+            expect(RecipeCockpitService.buildRestorePreview('        Picklist__c: ${{faker.helpers.arrayElement([\'a\'])}}\n                    ### TODO: -- RecordType Options -- One'))
+                .toBe(`${RecipeYamlScalar.escapeForNotification('Picklist__c: ${{faker.helpers.arrayElement([\'a\'])}}')}\n            ### TODO: -- RecordType Options -- One`);
+
+            const manyLines = ['    Field__c: |', ...Array.from({ length: 20 }, (_unused, lineIndex) => `        line ${lineIndex}`)].join('\n');
+            const preview = RecipeCockpitService.buildRestorePreview(manyLines);
+            expect(preview.split('\n')).toHaveLength(RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LINES + 1);
+            expect(preview).toEndWith('\n…');
+            expect(RecipeCockpitService.buildRestorePreview(`    Field__c: ${'x'.repeat(2000)}`)).toHaveLength(RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LENGTH + 2);
+
+        });
+
+    });
+
     describe('validateFixedValueInput', () => {
 
         const recipe = loadRecipe();
         const validate = (objectApiName: string, fieldApiName: string, value: string, declaredValues?: string[]) =>
             RecipeCockpitService.validateFixedValueInput(value, fieldOf(recipe, objectApiName, fieldApiName), declaredValues);
+
+        it('holds a custom geolocation component, which the wrapper types Text, to a number in its range, written plain (#342)', () => {
+
+            const componentOf = (fieldApiName: string): IRecipeCockpitFieldViewModel => ({ ...fieldOf(recipe, 'Account', 'Legacy_Code__c'), fieldApiName: fieldApiName, fieldType: 'Text', fieldTypeWithSize: 'Text' });
+            const latitude = componentOf('Site_Location__Latitude__s');
+            const longitude = componentOf('Site_Location__Longitude__s');
+
+            expect(RecipeCockpitService.getFixedValueKind(latitude)).toBe('number');
+            expect(RecipeCockpitService.validateFixedValueInput('-45.5', latitude, undefined)).toBeUndefined();
+            expect(RecipeCockpitService.validateFixedValueInput('90', latitude, undefined)).toBeUndefined();
+            expect(RecipeCockpitService.validateFixedValueInput('90.01', latitude, undefined)).toBe('A latitude is a number from -90 to 90.');
+            expect(RecipeCockpitService.validateFixedValueInput('-180', longitude, undefined)).toBeUndefined();
+            expect(RecipeCockpitService.validateFixedValueInput('181', longitude, undefined)).toBe('A longitude is a number from -180 to 180.');
+            expect(RecipeCockpitService.validateFixedValueInput('north', latitude, undefined)).toBe('Type a plain number, such as 42, -7 or 3.25.');
+            // A FIELD THAT ONLY ENDS LIKE ONE, OF ANOTHER TYPE, IS NOT A COMPONENT
+            expect(RecipeCockpitService.getFixedValueKind({ ...latitude, fieldType: 'Number' })).toBe('number');
+            expect(RecipeCockpitService.getFixedValueKind({ ...latitude, fieldApiName: 'Latitude__c' })).toBe('text');
+
+        });
+
+        it('re-derives a field from the objects wrapper\'s value, and a standard field the wrapper does not list from the recipe backend\'s mapping (#342)', () => {
+
+            const legacyCode = fieldOf(recipe, 'Account', 'Legacy_Code__c');
+            expect(RecipeCockpitService.resolveFixedValueFallback(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, 'Account', legacyCode)).toBe('${{fake.Word}}');
+            expect(RecipeCockpitService.resolveFixedValueFallback(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, 'Account', { ...legacyCode, recipeValue: '' })).toBeUndefined();
+
+            const standardName: IRecipeCockpitFieldViewModel = { ...legacyCode, fieldApiName: 'Name', isOnlyInRecipeFile: true, recipeValue: '"Pinned"' };
+            const snowfakeryName = new SnowfakeryRecipeFakerService().getOOTBObjectApiNameToFieldApiNameMap().Account.Name;
+            expect(RecipeCockpitService.resolveFixedValueFallback(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, 'Account', standardName)).toBe(snowfakeryName);
+
+            const fakerJsRecipeFilePath = path.join(HISTORY_GENERATED_RECIPES_PATH, 'recipe-fakerjs-2026-09-20T10-00-00', 'tree', 'recipe-fakerjs--tree.yml');
+            expect(RecipeCockpitService.resolveFixedValueFallback(fakerJsRecipeFilePath, HISTORY_WORKSPACE_ROOT, 'Account', standardName)).toBe(new FakerJSRecipeFakerService().getOOTBObjectApiNameToFieldApiNameMap().Account.Name);
+            // A FILE NAME AND A RUN FOLDER THAT DISAGREE ON THE BACKEND NAME NONE, SO NOTHING IS RE-DERIVED
+            const mismatchedRecipeFilePath = path.join(path.dirname(ACCOUNT_RECIPE_FILE_PATH), 'recipe-fakerjs--tree.yml');
+            expect(RecipeCockpitService.resolveFixedValueFallback(mismatchedRecipeFilePath, HISTORY_WORKSPACE_ROOT, 'Account', standardName)).toBeUndefined();
+            expect(RecipeCockpitService.resolveFixedValueFallback(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, 'Account', { ...standardName, fieldApiName: 'Nope__c' })).toBeUndefined();
+            expect(RecipeCockpitService.resolveFixedValueFallback(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, '__proto__', { ...standardName, fieldApiName: 'constructor' })).toBeUndefined();
+
+        });
 
         it('holds a number to its precision and scale', () => {
             expect(validate('Account', 'Annual_Budget__c', '9999999999999999.99')).toBeUndefined();
@@ -733,102 +772,453 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             jest.spyOn(VSCodeWorkspaceService, 'createStatusBarPhaseItem').mockImplementation((initialMessage: string) => ({ text: initialMessage, dispose: jest.fn() }) as any);
         });
 
+        // THE SAVES BELOW WRITE THE MOCK RECIPES; EVERY TEST STARTS AND ENDS WITH THEM AS COMMITTED
+        const committedRecipes = [ACCOUNT_RECIPE_FILE_PATH, LEAD_RECIPE_FILE_PATH].map(recipeFilePath => ({ recipeFilePath, recipeText: fs.readFileSync(recipeFilePath, 'utf8') }));
+
         afterEach(() => {
             disposeHandler?.();
             disposeHandler = undefined;
+            committedRecipes.forEach(({ recipeFilePath, recipeText }) => restoreRecipeFiles(recipeFilePath, recipeText, undefined));
         });
 
-        it('stores the value the inline editor posts, posts the card back in place and then the result, clears it on an empty value, and opens no box; the recipe file never changes (#337)', async () => {
+        const save = (fieldApiName: string, value: string, treeKey = ACCOUNT_TREE_KEY, objectApiName = 'Account') =>
+            receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: treeKey, objectApiName: objectApiName, fieldApiName: fieldApiName, value: value });
+        const fixedValueEntries = () => RecipeCockpitFixedValueStore.parse(fs.existsSync(ACCOUNT_FIXED_VALUE_FILE_PATH) ? fs.readFileSync(ACCOUNT_FIXED_VALUE_FILE_PATH, 'utf8') : undefined).entries;
+
+        it('Save asks in a modal, writes the value into the recipe and the lines it replaced beside it, and reloads the card pinned; Clear puts the recipe back byte for byte (#342)', async () => {
 
             const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
             const workspaceState = buildWorkspaceState();
             const recipeDataMessage = await openAndDraw(workspaceState);
 
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1' });
+            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL);
+            await save('Legacy_Code__c', 'X-1');
 
-            expect(storedOf(workspaceState)).toEqual(storedSelections({ [ACCOUNT_TREE_KEY]: { Account: { Legacy_Code__c: 'X-1' } } }));
-            const objectSelectionIndex = postedPanelMessages.findIndex(hostMessage => hostMessage.command === 'objectSelection');
-            const resultIndex = postedPanelMessages.findIndex(hostMessage => hostMessage.command === 'fieldEditResult');
-            expect(postedPanelMessages[objectSelectionIndex]).toMatchObject({
-                renderSequence: recipeDataMessage.renderSequence,
-                treeKey: ACCOUNT_TREE_KEY,
-                fixedValues: [{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1', kind: 'text' }]
-            });
-            expect(resultIndex).toBeGreaterThan(objectSelectionIndex);
-            expect(postedPanelMessages[resultIndex]).toEqual({
-                command: 'fieldEditResult', renderSequence: recipeDataMessage.renderSequence, treeKey: ACCOUNT_TREE_KEY,
-                objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', edit: 'fixedValue'
-            });
+            expect(showWarningMessage).toHaveBeenCalledTimes(1);
+            expect(showWarningMessage.mock.calls[0][1]).toMatchObject({ modal: true });
+            expect(showWarningMessage.mock.calls[0][1].detail).toContain(path.basename(ACCOUNT_FIXED_VALUE_FILE_PATH));
+            expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore.replace('    Legacy_Code__c: ${{fake.Word}}', '    Legacy_Code__c: "X-1"'));
+            expect(fixedValueEntries()).toEqual([{
+                objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1',
+                occurrences: [expect.objectContaining({ occurrenceIndex: 0, writtenLine: '    Legacy_Code__c: "X-1"', originalText: '    Legacy_Code__c: ${{fake.Word}}' })]
+            }]);
+            expect(storedOf(workspaceState)).toBeUndefined();
+            expect(showInputBox).not.toHaveBeenCalled();
 
-            // A REVEAL REPLAYS THE STORED MODEL, WHICH CARRIES THE VALUE
-            postedPanelMessages = [];
-            await receivedMessageHandler({ command: 'ready' });
-            expect(treeOf(lastPosted('recipeData').recipe, ACCOUNT_TREE_KEY).fixedValues).toEqual([{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1', kind: 'text' }]);
+            // THE WRITE HOLDS THE ONE RECIPE WRITE LOCK, AND A RELOAD DRAWS THE CARD PINNED FROM THE FILE
+            expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'wireLookupState').map(hostMessage => hostMessage.isRunning)).toEqual([true, false]);
+            const reloaded = lastPosted('recipeData');
+            expect(reloaded.renderSequence).toBeGreaterThan(recipeDataMessage.renderSequence);
+            expect(treeOf(reloaded.recipe, ACCOUNT_TREE_KEY).fixedValues).toEqual([{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1', kind: 'text' }]);
+            expect(lastPosted('fieldEditResult')).toBeUndefined();
+            await receivedMessageHandler({ command: 'rendered', renderSequence: reloaded.renderSequence });
+
+            // PINNED AGAIN, THE FILE STILL HOLDS THE LINES GENERATE TREECIPE WROTE
+            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL);
+            await save('Legacy_Code__c', 'Y-2');
+            expect(fixedValueEntries()[0].occurrences[0]).toMatchObject({ writtenLine: '    Legacy_Code__c: "Y-2"', originalText: '    Legacy_Code__c: ${{fake.Word}}' });
             await receivedMessageHandler({ command: 'rendered', renderSequence: lastPosted('recipeData').renderSequence });
 
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: '' });
+            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL);
+            await save('Legacy_Code__c', '');
 
-            expect(storedOf(workspaceState)).toEqual(storedSelections({}));
-            expect(lastPosted('objectSelection')).not.toHaveProperty('fixedValues');
-            expect(lastPosted('fieldEditResult')).not.toHaveProperty('refusal');
-            expect(showInputBox).not.toHaveBeenCalled();
+            expect(showWarningMessage.mock.calls[2][1].detail).toContain('gets back the lines it had before it was pinned');
+            // A CHANGE TO THE FIXED-VALUES FILE ALONE IS NEVER PUT BACK UNSEEN: THE MODAL SHOWS THE LINES
+            expect(showWarningMessage.mock.calls[2][1].detail).toEndWith('It puts back:\nLegacy_Code__c: ${{fake.Word}}');
             expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
+            expect(fs.existsSync(ACCOUNT_FIXED_VALUE_FILE_PATH)).toBeFalse();
+            expect(treeOf(lastPosted('recipeData').recipe, ACCOUNT_TREE_KEY)).not.toHaveProperty('fixedValues');
 
         });
 
-        it('answers a value the field cannot hold with its refusal, for the editor to show, and writes nothing', async () => {
+        it('writes nothing, and answers the editor, when either modal is cancelled', async () => {
 
+            const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
+            const recipeDataMessage = await openAndDraw(buildWorkspaceState());
+
+            showWarningMessage.mockResolvedValueOnce(undefined);
+            await save('Legacy_Code__c', 'X-1');
+
+            expect(lastPosted('fieldEditResult')).toEqual({
+                command: 'fieldEditResult', renderSequence: recipeDataMessage.renderSequence, treeKey: ACCOUNT_TREE_KEY,
+                objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', edit: 'fixedValue', refusal: RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL
+            });
+            expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
+            expect(fs.existsSync(ACCOUNT_FIXED_VALUE_FILE_PATH)).toBeFalse();
+            expect(lastPosted('recipeData').renderSequence).toBe(recipeDataMessage.renderSequence);
+
+            const restoreRecipe = pinFieldInRecipeFile(ACCOUNT_RECIPE_FILE_PATH, 'Account', 'Legacy_Code__c', { value: 'X-1', kind: 'text' });
+            const pinnedRecipe = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
+            try {
+                await receivedMessageHandler({ command: 'ready' });
+                await receivedMessageHandler({ command: 'rendered', renderSequence: lastPosted('recipeData').renderSequence });
+                showWarningMessage.mockResolvedValueOnce(undefined);
+                await save('Legacy_Code__c', '');
+                expect(lastPosted('fieldEditResult').refusal).toBe(RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL);
+                expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(pinnedRecipe);
+            } finally {
+                restoreRecipe();
+            }
+
+        });
+
+        it('answers a value the field cannot hold with its refusal, for the editor to show, and asks and writes nothing', async () => {
+
+            const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
             const workspaceState = buildWorkspaceState();
             const recipeDataMessage = await openAndDraw(workspaceState);
             workspaceState.update.mockClear();
             const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
 
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: '${{ 7*7 }}' });
+            await save('Legacy_Code__c', '${{ 7*7 }}');
             expect(lastPosted('fieldEditResult')).toEqual({
                 command: 'fieldEditResult', renderSequence: recipeDataMessage.renderSequence, treeKey: ACCOUNT_TREE_KEY,
                 objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', edit: 'fixedValue',
                 refusal: 'This value has "${" in it, which a faker backend would read as the start of a template.'
             });
 
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'x'.repeat(51) });
+            await save('Legacy_Code__c', 'x'.repeat(51));
             expect(lastPosted('fieldEditResult').refusal).toBe('Text(50) takes at most 50 characters.');
 
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status', value: 'Pending' });
+            await save('Status', 'Pending', LEAD_TREE_KEY, 'Lead');
             expect(lastPosted('fieldEditResult').refusal).toBe('"Pending" is not a value this picklist declares.');
 
-            expect(lastPosted('objectSelection')).toBeUndefined();
+            expect(showWarningMessage).not.toHaveBeenCalled();
             expect(workspaceState.update).not.toHaveBeenCalled();
             expect(warningSpy).not.toHaveBeenCalled();
+            expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
 
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status', value: 'Closed' });
-            expect(storedOf(workspaceState)).toEqual(storedSelections({ [LEAD_TREE_KEY]: { Lead: { Status: 'Closed' } } }));
+            const leadRecipeBefore = fs.readFileSync(LEAD_RECIPE_FILE_PATH, 'utf8');
+            try {
+                showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL);
+                await save('Status', 'Closed', LEAD_TREE_KEY, 'Lead');
+                expect(fs.readFileSync(LEAD_RECIPE_FILE_PATH, 'utf8')).toContain('    Status: "Closed"\n');
+            } finally {
+                restoreRecipeFiles(LEAD_RECIPE_FILE_PATH, leadRecipeBefore, undefined);
+            }
 
         });
 
-        it('answers a save the workspace storage refused as not saved', async () => {
+        it('answers a save while another recipe write runs, and asks and writes nothing', async () => {
 
-            const workspaceState = buildWorkspaceState();
-            await openAndDraw(workspaceState);
-            workspaceState.update.mockRejectedValueOnce(new Error('read-only'));
-            jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+            await openAndDraw(buildWorkspaceState());
+            const panelState = (RecipeCockpitService as any).recipeCockpitPanelState as IRecipeCockpitPanelState;
+            panelState.wireLookupStateMessage = { command: 'wireLookupState', isRunning: true };
 
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1' });
+            await save('Legacy_Code__c', 'X-1');
 
-            expect(lastPosted('fieldEditResult').refusal).toBe(RECIPE_COCKPIT_FIELD_EDIT_NOT_SAVED_REFUSAL);
-            expect(lastPosted('objectSelection')).toBeUndefined();
+            expect(lastPosted('fieldEditResult').refusal).toBe(RECIPE_COCKPIT_FIELD_EDIT_WRITE_RUNNING_REFUSAL);
+            expect(showWarningMessage).not.toHaveBeenCalled();
+            expect(fs.existsSync(ACCOUNT_FIXED_VALUE_FILE_PATH)).toBeFalse();
+
+        });
+
+        it('answers a recipe the disk refuses as not saved, and puts the fixed-values file back as it was', async () => {
+
+            const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
+            await openAndDraw(buildWorkspaceState());
+            const realRenameSync = fs.renameSync;
+            const writeSpy = jest.spyOn(fs, 'renameSync').mockImplementation(((sourcePath: fs.PathLike, targetPath: fs.PathLike) => {
+                if ( targetPath === ACCOUNT_RECIPE_FILE_PATH ) {
+                    throw new Error('read-only');
+                }
+                return realRenameSync(sourcePath, targetPath);
+            }) as typeof fs.renameSync);
+
+            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL);
+            await save('Legacy_Code__c', 'X-1');
+            writeSpy.mockRestore();
+
+            expect(lastPosted('fieldEditResult').refusal).toContain('could not be written (read-only)');
+            expect(fs.existsSync(ACCOUNT_FIXED_VALUE_FILE_PATH)).toBeFalse();
+            expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
+            // THE WRITE GOES TO A FILE BESIDE THE RECIPE AND IS RENAMED OVER IT; A FAILED ONE LEAVES NO TEMPORARY FILE
+            expect(fs.readdirSync(path.dirname(ACCOUNT_RECIPE_FILE_PATH)).filter(fileName => fileName.endsWith('.tmp'))).toEqual([]);
+
+        });
+
+        it('does not draw a field edited by hand since it was pinned as pinned, and says so', async () => {
+
+            const restoreRecipe = pinFieldInRecipeFile(ACCOUNT_RECIPE_FILE_PATH, 'Account', 'Legacy_Code__c', { value: 'X-1', kind: 'text' });
+            try {
+                fs.writeFileSync(ACCOUNT_RECIPE_FILE_PATH, fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8').replace('Legacy_Code__c: "X-1"', 'Legacy_Code__c: "typed by hand"'));
+                const recipe = (await openAndDraw(buildWorkspaceState())).recipe;
+                expect(treeOf(recipe, ACCOUNT_TREE_KEY)).not.toHaveProperty('fixedValues');
+                expect(recipe.notices).toContainEqual(expect.stringContaining('Account.Legacy_Code__c was changed in the recipe since it was pinned'));
+            } finally {
+                restoreRecipe();
+            }
+
+        });
+
+        it('names every field edited by hand since it was pinned in one notice, and reads an occurrence the file names no nickname for', async () => {
+
+            const restoreRecipe = pinFieldInRecipeFile(ACCOUNT_RECIPE_FILE_PATH, 'Account', 'Legacy_Code__c', { value: 'X-1', kind: 'text' });
+            pinFieldInRecipeFile(ACCOUNT_RECIPE_FILE_PATH, 'Contact', 'LastName', { value: 'Smith', kind: 'text' });
+            try {
+                fs.writeFileSync(ACCOUNT_RECIPE_FILE_PATH, fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8').replace('Legacy_Code__c: "X-1"', 'Legacy_Code__c: "a"').replace('LastName: "Smith"', 'LastName: "b"'));
+                const recipe = (await openAndDraw(buildWorkspaceState())).recipe;
+                expect(recipe.notices).toContainEqual(`Account.Legacy_Code__c, Contact.LastName were changed in the recipe since they were pinned, so they are not shown as pinned. "${path.basename(ACCOUNT_FIXED_VALUE_FILE_PATH)}" still holds the earlier values.`);
+            } finally {
+                restoreRecipe();
+            }
+
+            // AN OCCURRENCE RECORDED WITHOUT A NICKNAME MATCHES ONLY AN OCCURRENCE WITHOUT ONE
+            const entry = { objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 'X-1', occurrences: [{ occurrenceIndex: 0, writtenLine: '    Legacy_Code__c: "X-1"' }] };
+            expect(RecipeCockpitService.buildPinnedFieldRestoreRequests(entry, '${{fake.Word}}')).toEqual([{ occurrenceIndex: 0, writtenLine: '    Legacy_Code__c: "X-1"', valueText: '${{fake.Word}}' }]);
+
+        });
+
+        it('pins nothing from a fixed-values file it cannot read, says so, and never writes over it', async () => {
+
+            fs.writeFileSync(ACCOUNT_FIXED_VALUE_FILE_PATH, '{ not a fixed-values file');
+            try {
+                const recipe = (await openAndDraw(buildWorkspaceState())).recipe;
+                expect(recipe.notices).toContainEqual(expect.stringContaining('is not a fixed-values file the Recipe Cockpit can read'));
+
+                await save('Legacy_Code__c', 'X-1');
+                expect(lastPosted('fieldEditResult').refusal).toContain('is not a fixed-values file the Recipe Cockpit can read');
+                expect(showWarningMessage).not.toHaveBeenCalled();
+                expect(fs.readFileSync(ACCOUNT_FIXED_VALUE_FILE_PATH, 'utf8')).toBe('{ not a fixed-values file');
+            } finally {
+                fs.unlinkSync(ACCOUNT_FIXED_VALUE_FILE_PATH);
+            }
+
+        });
+
+        it('Clear re-derives a field the fixed-values file holds no lines for from the objects wrapper\'s value, and says so in the modal', async () => {
+
+            const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
+            const restoreRecipe = pinFieldInRecipeFile(ACCOUNT_RECIPE_FILE_PATH, 'Account', 'Legacy_Code__c', { value: 'X-1', kind: 'text' });
+            try {
+                const entries = fixedValueEntries().map(entry => ({ ...entry, occurrences: entry.occurrences.map(({ originalText: _unused, ...occurrence }) => occurrence) }));
+                fs.writeFileSync(ACCOUNT_FIXED_VALUE_FILE_PATH, RecipeCockpitFixedValueStore.serialize(entries));
+                await openAndDraw(buildWorkspaceState());
+
+                showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL);
+                await save('Legacy_Code__c', '');
+
+                expect(showWarningMessage.mock.calls[0][1].detail).toContain('has no recorded lines for Account.Legacy_Code__c');
+                expect(showWarningMessage.mock.calls[0][1].detail).toEndWith('It puts back:\nLegacy_Code__c: ${{fake.Word}}');
+                expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
+                expect(fs.existsSync(ACCOUNT_FIXED_VALUE_FILE_PATH)).toBeFalse();
+            } finally {
+                restoreRecipe();
+            }
+
+        });
+
+        it('refuses, before any modal, a value the recipe holds as a nickname, a Clear of a field it holds no pin for, and a card with no recipe file to write', async () => {
+
+            const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
+            await openAndDraw(buildWorkspaceState());
+
+            await save('Legacy_Code__c', 'Contact_NickName');
+            expect(lastPosted('fieldEditResult').refusal).toBe('Not saved: The fixed value for Account.Legacy_Code__c is the nickname of an object in this recipe, which generation would read as a reference to that record.');
+
+            await save('Legacy_Code__c', '');
+            expect(lastPosted('fieldEditResult').refusal).toBe(`Not saved: "${path.basename(ACCOUNT_FIXED_VALUE_FILE_PATH)}" holds no fixed value for Account.Legacy_Code__c.`);
+
+            const panelState = (RecipeCockpitService as any).recipeCockpitPanelState as IRecipeCockpitPanelState;
+            panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.delete(ACCOUNT_TREE_KEY);
+            await save('Legacy_Code__c', 'X-1');
+            expect(lastPosted('fieldEditResult').refusal).toBe('Not saved: this card has no single recipe file to write the value into.');
+
+            expect(showWarningMessage).not.toHaveBeenCalled();
+            expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
+
+        });
+
+        it('Clear refuses a pin edited by hand since, and changes nothing', async () => {
+
+            const restoreRecipe = pinFieldInRecipeFile(ACCOUNT_RECIPE_FILE_PATH, 'Account', 'Legacy_Code__c', { value: 'X-1', kind: 'text' });
+            try {
+                await openAndDraw(buildWorkspaceState());
+                const editedRecipe = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8').replace('Legacy_Code__c: "X-1"', 'Legacy_Code__c: "typed by hand"');
+                fs.writeFileSync(ACCOUNT_RECIPE_FILE_PATH, editedRecipe);
+
+                await save('Legacy_Code__c', '');
+
+                expect(lastPosted('fieldEditResult').refusal).toContain('Not saved: Account.Legacy_Code__c is no longer the fixed value the Recipe Cockpit wrote');
+                expect(showWarningMessage).not.toHaveBeenCalled();
+                expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(editedRecipe);
+            } finally {
+                restoreRecipe();
+            }
+
+        });
+
+        it('plans each write again after the modal, and writes nothing when either file changed while it was open', async () => {
+
+            await openAndDraw(buildWorkspaceState());
+
+            // SAVE: THE FIXED-VALUES FILE BECOMES UNREADABLE WHILE THE MODAL IS OPEN
+            showWarningMessage.mockImplementationOnce(() => {
+                fs.writeFileSync(ACCOUNT_FIXED_VALUE_FILE_PATH, 'not json');
+                return Promise.resolve(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL);
+            });
+            await save('Legacy_Code__c', 'X-1');
+            expect(lastPosted('fieldEditResult').refusal).toContain('is not a fixed-values file the Recipe Cockpit can read');
+            fs.unlinkSync(ACCOUNT_FIXED_VALUE_FILE_PATH);
+
+            const restoreRecipe = pinFieldInRecipeFile(ACCOUNT_RECIPE_FILE_PATH, 'Account', 'Legacy_Code__c', { value: 'X-1', kind: 'text' });
+            try {
+                await receivedMessageHandler({ command: 'ready' });
+                await receivedMessageHandler({ command: 'rendered', renderSequence: lastPosted('recipeData').renderSequence });
+                const pinnedRecipe = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
+
+                // CLEAR: THE PINNED LINE IS EDITED BY HAND WHILE THE MODAL IS OPEN
+                showWarningMessage.mockImplementationOnce(() => {
+                    fs.writeFileSync(ACCOUNT_RECIPE_FILE_PATH, pinnedRecipe.replace('Legacy_Code__c: "X-1"', 'Legacy_Code__c: "typed"'));
+                    return Promise.resolve(RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL);
+                });
+                await save('Legacy_Code__c', '');
+                expect(lastPosted('fieldEditResult').refusal).toContain('is no longer the fixed value the Recipe Cockpit wrote');
+                fs.writeFileSync(ACCOUNT_RECIPE_FILE_PATH, pinnedRecipe);
+
+                // CLEAR: THE RECORDED LINES ARE REMOVED WHILE THE MODAL IS OPEN, SO WHAT WOULD BE WRITTEN IS NOT WHAT WAS CONFIRMED
+                const fixedValueText = fs.readFileSync(ACCOUNT_FIXED_VALUE_FILE_PATH, 'utf8');
+                showWarningMessage.mockImplementationOnce(() => {
+                    const entries = fixedValueEntries().map(entry => ({ ...entry, occurrences: entry.occurrences.map(({ originalText: _unused, ...occurrence }) => occurrence) }));
+                    fs.writeFileSync(ACCOUNT_FIXED_VALUE_FILE_PATH, RecipeCockpitFixedValueStore.serialize(entries));
+                    return Promise.resolve(RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL);
+                });
+                await save('Legacy_Code__c', '');
+                expect(lastPosted('fieldEditResult').refusal).toBe(`Not saved: "${path.basename(ACCOUNT_FIXED_VALUE_FILE_PATH)}" changed while the dialog was open.`);
+                expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(pinnedRecipe);
+                fs.writeFileSync(ACCOUNT_FIXED_VALUE_FILE_PATH, fixedValueText);
+            } finally {
+                restoreRecipe();
+            }
+
+        });
+
+        it('answers a fixed-values file the disk refuses, and a Clear whose recipe write fails puts the fixed-values file back', async () => {
+
+            await openAndDraw(buildWorkspaceState());
+            const realRenameSync = fs.renameSync;
+            const failWritesTo = (failingPath: string) => jest.spyOn(fs, 'renameSync').mockImplementation(((sourcePath: fs.PathLike, targetPath: fs.PathLike) => {
+                if ( targetPath === failingPath ) {
+                    throw new Error('read-only');
+                }
+                return realRenameSync(sourcePath, targetPath);
+            }) as typeof fs.renameSync);
+
+            const fixedValueWriteSpy = failWritesTo(ACCOUNT_FIXED_VALUE_FILE_PATH);
+            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL);
+            await save('Legacy_Code__c', 'X-1');
+            fixedValueWriteSpy.mockRestore();
+            expect(lastPosted('fieldEditResult').refusal).toBe(`Not saved: "${path.basename(ACCOUNT_FIXED_VALUE_FILE_PATH)}" could not be written (read-only).`);
+
+            // WHAT IS THROWN NEED NOT BE AN Error, AND IS SAID AS IT IS
+            const thrownText = (): unknown => 'disk gone';
+            const recipeThrowSpy = jest.spyOn(fs, 'renameSync').mockImplementation(((sourcePath: fs.PathLike, targetPath: fs.PathLike) => {
+                if ( targetPath === ACCOUNT_RECIPE_FILE_PATH || targetPath === ACCOUNT_FIXED_VALUE_FILE_PATH ) {
+                    throw thrownText();
+                }
+                return realRenameSync(sourcePath, targetPath);
+            }) as typeof fs.renameSync);
+            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL);
+            await save('Legacy_Code__c', 'X-1');
+            expect(lastPosted('fieldEditResult').refusal).toBe(`Not saved: "${path.basename(ACCOUNT_FIXED_VALUE_FILE_PATH)}" could not be written (disk gone).`);
+            recipeThrowSpy.mockRestore();
+            const recipeOnlyThrowSpy = jest.spyOn(fs, 'renameSync').mockImplementation(((sourcePath: fs.PathLike, targetPath: fs.PathLike) => {
+                if ( targetPath === ACCOUNT_RECIPE_FILE_PATH ) {
+                    throw thrownText();
+                }
+                return realRenameSync(sourcePath, targetPath);
+            }) as typeof fs.renameSync);
+            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL);
+            await save('Legacy_Code__c', 'X-1');
+            recipeOnlyThrowSpy.mockRestore();
+            expect(lastPosted('fieldEditResult').refusal).toBe(`Not saved: "${path.basename(ACCOUNT_RECIPE_FILE_PATH)}" could not be written (disk gone).`);
+            expect(fs.existsSync(ACCOUNT_FIXED_VALUE_FILE_PATH)).toBeFalse();
+
+            const restoreRecipe = pinFieldInRecipeFile(ACCOUNT_RECIPE_FILE_PATH, 'Account', 'Legacy_Code__c', { value: 'X-1', kind: 'text' });
+            try {
+                await receivedMessageHandler({ command: 'ready' });
+                await receivedMessageHandler({ command: 'rendered', renderSequence: lastPosted('recipeData').renderSequence });
+                const pinnedRecipe = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
+                const fixedValueText = fs.readFileSync(ACCOUNT_FIXED_VALUE_FILE_PATH, 'utf8');
+
+                const recipeWriteSpy = failWritesTo(ACCOUNT_RECIPE_FILE_PATH);
+                showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL);
+                await save('Legacy_Code__c', '');
+                recipeWriteSpy.mockRestore();
+
+                expect(lastPosted('fieldEditResult').refusal).toContain('could not be written (read-only)');
+                expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(pinnedRecipe);
+                expect(fs.readFileSync(ACCOUNT_FIXED_VALUE_FILE_PATH, 'utf8')).toBe(fixedValueText);
+            } finally {
+                restoreRecipe();
+            }
+
+        });
+
+        it('never writes through a fixed-values file that is a link', async () => {
+
+            const outsideDirectoryPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-fixed-value-link-'));
+            const outsideFilePath = path.join(outsideDirectoryPath, 'outside.json');
+            fs.symlinkSync(outsideFilePath, ACCOUNT_FIXED_VALUE_FILE_PATH);
+            try {
+                await openAndDraw(buildWorkspaceState());
+                await save('Legacy_Code__c', 'X-1');
+
+                expect(lastPosted('fieldEditResult').refusal).toBe(`Not saved: "${path.basename(ACCOUNT_FIXED_VALUE_FILE_PATH)}" is a link or is outside this workspace, so it is not written.`);
+                expect(fs.existsSync(outsideFilePath)).toBeFalse();
+            } finally {
+                fs.unlinkSync(ACCOUNT_FIXED_VALUE_FILE_PATH);
+                fs.rmSync(outsideDirectoryPath, { recursive: true, force: true });
+            }
+
+        });
+
+        it('reads a fixed-values path it cannot read as a file as unreadable, with a notice', async () => {
+
+            fs.mkdirSync(ACCOUNT_FIXED_VALUE_FILE_PATH);
+            try {
+                const recipe = (await openAndDraw(buildWorkspaceState())).recipe;
+                expect(recipe.notices).toContainEqual(expect.stringContaining('is not a fixed-values file the Recipe Cockpit can read'));
+            } finally {
+                fs.rmdirSync(ACCOUNT_FIXED_VALUE_FILE_PATH);
+            }
+
+        });
+
+        it('plans nothing for a recipe that is gone or cannot be read, and refuses a re-derived Clear with no value to re-derive', () => {
+
+            const service = RecipeCockpitService as any;
+            const missingRecipeFilePath = path.join(path.dirname(ACCOUNT_RECIPE_FILE_PATH), 'gone.yml');
+            const fixedValue = { value: 'X-1', kind: 'text' };
+
+            expect(service.planFixedValueWrite(missingRecipeFilePath, HISTORY_WORKSPACE_ROOT, 'Account', 'Legacy_Code__c', fixedValue).refusal).toContain('"gone.yml" no longer exists in this workspace');
+            expect(service.planFixedValueClear(missingRecipeFilePath, HISTORY_WORKSPACE_ROOT, 'Account', 'Legacy_Code__c', undefined).refusal).toContain('"gone.yml" no longer exists in this workspace');
+            // A FOLDER IS IN THE WORKSPACE BUT IS NO FILE TO READ
+            expect(service.planFixedValueWrite(path.dirname(ACCOUNT_RECIPE_FILE_PATH), HISTORY_WORKSPACE_ROOT, 'Account', 'Legacy_Code__c', fixedValue).refusal).toContain('could not be read');
+
+            const restoreRecipe = pinFieldInRecipeFile(ACCOUNT_RECIPE_FILE_PATH, 'Account', 'Legacy_Code__c', { value: 'X-1', kind: 'text' });
+            try {
+                const entries = fixedValueEntries().map(entry => ({ ...entry, occurrences: entry.occurrences.map(({ originalText: _unused, ...occurrence }) => occurrence) }));
+                fs.writeFileSync(ACCOUNT_FIXED_VALUE_FILE_PATH, RecipeCockpitFixedValueStore.serialize(entries));
+                expect(service.planFixedValueClear(ACCOUNT_RECIPE_FILE_PATH, HISTORY_WORKSPACE_ROOT, 'Account', 'Legacy_Code__c', undefined).refusal)
+                    .toContain('has no recorded lines for Account.Legacy_Code__c, and there is no value Generate Treecipe wrote for it to put back instead');
+            } finally {
+                restoreRecipe();
+            }
 
         });
 
         it('writes nothing and answers nothing for a forged or locked field', async () => {
 
+            const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
             const workspaceState = buildWorkspaceState();
             await openAndDraw(workspaceState);
             workspaceState.update.mockClear();
 
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'ParentId', value: 'x' });
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Sub_Rating__c', value: 'x' });
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: 'Forged-Folder', objectApiName: 'Account', fieldApiName: 'Name', value: 'x' });
-            await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Task', fieldApiName: 'Subject', value: 'x' });
+            await save('ParentId', 'x');
+            await save('Sub_Rating__c', 'x');
+            await save('Name', 'x', 'Forged-Folder');
+            await save('Subject', 'x', ACCOUNT_TREE_KEY, 'Task');
             await receivedMessageHandler({ command: 'setFieldFixedValue', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: 7 });
 
             // A SAVE ROUTED FOR A PANEL CLOSED SINCE WRITES NOTHING
@@ -839,30 +1229,35 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             await (RecipeCockpitService as any).setFieldFixedValue(undefined, panelState, routedAction);
 
             expect(showInputBox).not.toHaveBeenCalled();
+            expect(showWarningMessage).not.toHaveBeenCalled();
             expect(workspaceState.update).not.toHaveBeenCalled();
             expect(lastPosted('fieldEditResult')).toBeUndefined();
-
-        });
-
-        it('runs a card with a fixed value on a filtered copy that carries it, and never writes the recipe', async () => {
-
-            const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
-            await openAndDraw(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [ACCOUNT_TREE_KEY]: { Contact: { LastName: 'Smith' } } }) }));
-
-            await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
-
-            const runFakerCall = executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND);
-            expect(runFakerCall).toHaveLength(3);
-            expect(runFakerCall?.[1]).toBe(ACCOUNT_RECIPE_FILE_PATH);
-            expect(runFakerCall?.[2]).toMatchObject({ excludedObjectApiNames: [], fixedValuesByObject: { Contact: { LastName: 'Smith' } } });
-            expect(readFieldLines(runFakerCall?.[2].recipeText, 'Contact', 'LastName')).toEqual([['    LastName: "Smith"']]);
             expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
 
         });
 
-        it('runs a card whose only stored value a lock holds back on its recipe exactly as before', async () => {
+        it('runs a card with a pinned field on a filtered copy that carries the same value the recipe holds', async () => {
 
-            await openAndDraw(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [ACCOUNT_TREE_KEY]: { Account: { ParentId: 'x' } } }) }));
+            const restoreRecipe = pinFieldInRecipeFile(ACCOUNT_RECIPE_FILE_PATH, 'Contact', 'LastName', { value: 'Smith', kind: 'text' });
+            try {
+                await openAndDraw(buildWorkspaceState());
+                await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
+
+                const runFakerCall = executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND);
+                expect(runFakerCall).toHaveLength(3);
+                expect(runFakerCall?.[1]).toBe(ACCOUNT_RECIPE_FILE_PATH);
+                expect(runFakerCall?.[2]).toMatchObject({ excludedObjectApiNames: [], fixedValuesByObject: { Contact: { LastName: 'Smith' } } });
+                expect(readFieldLines(runFakerCall?.[2].recipeText, 'Contact', 'LastName')).toEqual([['    LastName: "Smith"']]);
+                expect(readFieldLines(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8'), 'Contact', 'LastName')).toEqual([['    LastName: "Smith"']]);
+            } finally {
+                restoreRecipe();
+            }
+
+        });
+
+        it('runs a card whose only stored value an older version kept in workspaceState on its recipe exactly as before', async () => {
+
+            await openAndDraw(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [ACCOUNT_TREE_KEY]: { Contact: { LastName: 'Smith' } } }) }));
 
             await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
 
@@ -870,18 +1265,19 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
         });
 
-        it('Reset asks for a folder whose only change is a fixed value, and clears it', async () => {
+        it('Reset asks nothing for a folder whose only change is a pinned field, which is in the recipe file and stays', async () => {
 
-            const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [ACCOUNT_TREE_KEY]: { Account: { Name: 'Acme' } }, [LEAD_TREE_KEY]: { Lead: { Company: 'Acme' } } }) });
-            await openAndDraw(workspaceState);
+            const restoreRecipe = pinFieldInRecipeFile(ACCOUNT_RECIPE_FILE_PATH, 'Account', 'Legacy_Code__c', { value: 'X-1', kind: 'text' });
+            const pinnedRecipe = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
+            try {
+                await openAndDraw(buildWorkspaceState());
+                await receivedMessageHandler({ command: 'resetTreeSelection', treeKey: ACCOUNT_TREE_KEY });
 
-            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL);
-            await receivedMessageHandler({ command: 'resetTreeSelection', treeKey: ACCOUNT_TREE_KEY });
-
-            expect(showWarningMessage).toHaveBeenCalledTimes(1);
-            expect(showWarningMessage.mock.calls[0][1].detail).toContain('every fixed value and faker constraint is cleared');
-            expect(storedOf(workspaceState)).toEqual(storedSelections({ [LEAD_TREE_KEY]: { Lead: { Company: 'Acme' } } }));
-            expect(lastPosted('objectSelection')).not.toHaveProperty('fixedValues');
+                expect(showWarningMessage).not.toHaveBeenCalled();
+                expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(pinnedRecipe);
+            } finally {
+                restoreRecipe();
+            }
 
         });
 
@@ -989,7 +1385,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             expect(pin.attributes['aria-expanded']).toBe('true');
             expect(only(panel, editor, 'fieldEditorInput').value).toBe('');
             expect(only(panel, editor, 'fieldEditorInput').attributes.maxlength).toBe(String(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH));
-            expect(only(panel, editor, 'fieldEditorHint').textContent).toBe('Type the text every record gets. Empty goes back to the faker expression. The recipe file is not changed.');
+            expect(only(panel, editor, 'fieldEditorHint').textContent).toBe('Type the text every record gets. Save writes it into the recipe file; Clear puts back the lines the field had.');
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'setFieldFixedValue')).toEqual([]);
 
             pin.dispatch('click');
@@ -1087,7 +1483,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
         });
 
-        it('shows a fixed value in place of the expression, as text, from an objectSelection for the model on screen, and Reset while one is set', () => {
+        it('shows a fixed value in place of the expression, as text, from an objectSelection for the model on screen, and no Reset for it, since it is in the recipe file (#342)', () => {
 
             const panel = drawRecipe();
             panel.postToPanel({ command: 'rendered' });
@@ -1109,7 +1505,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             expect(panel.isHidden(only(panel, row, 'fixedValueBadge'))).toBeFalse();
             expect(pinOf(panel, account, 'Legacy_Code__c').attributes['aria-pressed']).toBe('true');
             expect(pinOf(panel, account, 'Legacy_Code__c').attributes.title).toBe('Fixed value — click to change or clear it');
-            expect(panel.isHidden(resetElement)).toBeFalse();
+            expect(panel.isHidden(resetElement)).toBeTrue();
             expect(panel.isHidden(only(panel, rowOf(panel, account, 'Annual_Budget__c'), 'fixedValue'))).toBeTrue();
 
             panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3 });

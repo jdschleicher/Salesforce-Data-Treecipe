@@ -37,11 +37,11 @@ For each change, decide which section it affects, or put it under "doesn't affec
 | Section | Affected when a change… |
 |---|---|
 | **Where recipes come from** | changes where the cockpit reads recipes from: the run folder, the run list, what a card is |
-| **What the cockpit changes without editing the YAML** | adds or removes a setting stored outside the recipe file that changes what is generated (today: excluded objects, unticked fields, record counts, fixed values, faker bounds, the rules box) |
-| **What does edit the YAML** | adds or removes a button that writes the `.yml` file (today: Wire to… / Wire TODO lookups, Add &lt;parent&gt; to recipe, +), or one that writes another project file (Remember this selection, Generate permission set) |
+| **What the cockpit changes without editing the YAML** | adds or removes a setting stored outside the recipe file that changes what is generated (today: excluded objects, unticked fields, record counts, faker bounds, the rules box) |
+| **What does edit the YAML** | adds or removes a button that writes the `.yml` file (today: Wire to… / Wire TODO lookups, Add &lt;parent&gt; to recipe, +, the pin's fixed value), or one that writes another project file (Remember this selection, Generate permission set) |
 | **Where your changes are stored** | changes where those settings are kept (`workspaceState`, by tree folder), what the data set records (`filteredRecipe-…`, `originalRecipe-…`, `datasetSource.json`), or how they are cleared (Reset selection) |
 
-Also check whether a change adds a kind of difference the **per-tree summary** should count. The summary is `describeTreeDifferences` in the panel script, and it reads the tree fields `objectSelection`, `fieldSelection`, `objectCounts`, `fixedValues`, `constraints` and `validationRulesOff`. A new tree field set by `applyObjectSelections` belongs in it, with a test in `RecipeCockpitHelp.test.ts`.
+Also check whether a change adds a kind of difference the **per-tree summary** should count. The summary is `describeTreeDifferences` in the panel script, and it reads the tree fields `objectSelection`, `fieldSelection`, `objectCounts`, `constraints` and `validationRulesOff` (a fixed value is in the recipe file, so it is no difference from it). A new tree field set by `applyObjectSelections` belongs in it, with a test in `RecipeCockpitHelp.test.ts`.
 
 A visual-only change (spacing, colours, a moved button) affects only the screenshots, not the text.
 

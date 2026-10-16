@@ -73,7 +73,6 @@ const storedSelections = (excludedObjectApiNamesByFolderName: Record<string, unk
     excludedObjectApiNamesByFolderName: excludedObjectApiNamesByFolderName,
     excludedFieldApiNamesByFolderName: excludedFieldApiNamesByFolderName,
     objectCountsByFolderName: {},
-    fixedValuesByFolderName: {},
     constraintsByFolderName: {},
     validationRulesOffByFolderName: {}
 });
@@ -839,7 +838,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             await receivedMessageHandler({ command: 'resetTreeSelection', treeKey: ACCOUNT_TREE_KEY });
             expect(showWarningMessage).toHaveBeenCalledWith(
                 'Reset the selection of Relationship Tree 1?',
-                { modal: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again, every fixed value and faker constraint is cleared and every validation rule is applied again. The recipe file is not changed.' },
+                { modal: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again, every faker constraint is cleared and every validation rule is applied again. The recipe file is not changed, so a fixed value written into it stays: clear it with its field\'s pin.' },
                 RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL
             );
             expect(( storedOf(workspaceState) as any ).excludedObjectApiNamesByFolderName[ACCOUNT_TREE_KEY]).toEqual(['Contact']);

@@ -287,7 +287,8 @@ const storedSelections = (choices: ISelectionChoices = {}) => ({
     excludedObjectApiNamesByFolderName: choices.excludedObjects ?? {},
     excludedFieldApiNamesByFolderName: choices.excludedFields ?? {},
     objectCountsByFolderName: {},
-    fixedValuesByFolderName: choices.fixedValues ?? {},
+    // A FIXED VALUE IS IN THE RECIPE FILE SINCE #342: A STORED ONE IS WHAT AN OLDER VERSION LEFT, AND IS NOT READ
+    ...( choices.fixedValues ? { fixedValuesByFolderName: choices.fixedValues } : {} ),
     constraintsByFolderName: choices.constraints ?? {},
     validationRulesOffByFolderName: choices.validationRulesOff ?? {}
 });
@@ -390,7 +391,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
             const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
 
             await expect(RecipeCockpitService.writeTreeSelections(workspaceState, RecipeCockpitService.readTreeSelections(workspaceState))).resolves.toBeFalse();
-            expect(warningSpy).toHaveBeenCalledWith('The excluded objects, unticked fields, record counts, fixed values, faker constraints and validation rule choices could not be saved: disk full');
+            expect(warningSpy).toHaveBeenCalledWith('The excluded objects, unticked fields, record counts, faker constraints and validation rule choices could not be saved: disk full');
 
         });
 
