@@ -801,7 +801,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
         const insertReasonsOf = (panel: any) => textOf(panel, 'treeInsertReason');
         const insertButtonsOf = (panel: any) => panel.findAll(panel.cockpitBodyElement, 'treeInsert');
 
-        it('puts no org picker in the toolbar and no view switch, asks for no orgs when the panel opens, and draws one picker view per opened card', () => {
+        it('puts no org picker in the toolbar or in a card and no view switch, asks for no orgs when the panel opens, and draws ONE picker view in the Org section (#348)', () => {
 
             const { panel } = renderDataOrgPanel();
             const toolbarElement = panel.cockpitBodyElement.children[0];
@@ -809,18 +809,19 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             expect(panel.findAll(panel.cockpitBodyElement, 'viewButton')).toEqual([]);
             expect(panel.findAll(panel.cockpitBodyElement, 'dataTreeCard')).toEqual([]);
             expect(panel.findAll(toolbarElement, 'dataOrgControls')).toEqual([]);
-            expect(panel.findAll(panel.cockpitBodyElement, 'dataOrgView')).toEqual([]);
             expect(postedNamed(panel, 'loadDataOrgs')).toEqual([]);
 
             panel.expandAllTrees();
 
+            const viewElements = panel.findAll(panel.cockpitBodyElement, 'dataOrgView');
+            expect(viewElements).toHaveLength(1);
+            expect(viewElements[0].parentNode.attributes.id).toBe('cockpitOrgSectionBody');
+            expect(panel.findAll(viewElements[0], 'dataOrgLoad').map((element: any) => element.textContent)).toEqual(['Choose org…']);
+            expect(panel.findAll(viewElements[0], 'dataOrgSelect')).toHaveLength(1);
+            expect(panel.findAll(viewElements[0], 'dataOrgRefresh')).toHaveLength(1);
             panel.treeCards().forEach((treeCard: any) => {
                 const treecipeHeaderElement = panel.findAll(treeCard, 'treecipeHeader')[0];
-                const viewElements = panel.findAll(treecipeHeaderElement, 'dataOrgView');
-                expect(viewElements).toHaveLength(1);
-                expect(panel.findAll(viewElements[0], 'dataOrgLoad').map((element: any) => element.textContent)).toEqual(['Choose org…']);
-                expect(panel.findAll(viewElements[0], 'dataOrgSelect')).toHaveLength(1);
-                expect(panel.findAll(viewElements[0], 'dataOrgRefresh')).toHaveLength(1);
+                expect(panel.findAll(treecipeHeaderElement, 'dataOrgView')).toEqual([]);
                 expect(panel.findAll(treecipeHeaderElement, 'treeInsert')).toHaveLength(1);
             });
             expect(panel.findAll(toolbarElement, 'dataOrgControls')).toEqual([]);
@@ -859,15 +860,15 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             const { panel } = renderDataOrgPanel({ treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe' });
             const accountCard = panel.treeCards()[0];
 
-            panel.findAll(accountCard, 'dataOrgLoad')[0].dispatch('click');
-            panel.findAll(accountCard, 'dataOrgLoad')[0].dispatch('click');
+            viewOf(panel, 'dataOrgLoad').dispatch('click');
+            viewOf(panel, 'dataOrgLoad').dispatch('click');
             panel.openTab(accountCard, 'Treecipe');
 
             expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
 
         });
 
-        it('draws one selection into every card\'s picker view and insert, including a card opened only after it arrived, and counts no records in the org', () => {
+        it('draws one selection into the picker and every card\'s insert, including a card opened only after it arrived, and counts no records in the org', () => {
 
             const { panel } = renderDataOrgPanel();
             const [firstCard, secondCard] = panel.treeCards();
@@ -880,35 +881,35 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             panel.findAll(secondCard, 'treeHeader')[0].dispatch('click');
 
             expect(panel.findAll(secondCard, 'treeInsertReason').map((element: any) => element.textContent)).toEqual(['Generates only: first reason']);
-            expect(panel.findAll(secondCard, 'dataOrgSelect')[0].value).toBe('0');
-            expect(panel.findAll(secondCard, 'dataOrgType')[0].textContent).toBe('Sandbox');
+            expect(viewOf(panel, 'dataOrgSelect').value).toBe('0');
+            expect(viewOf(panel, 'dataOrgType').textContent).toBe('Sandbox');
             expect(panel.findAll(panel.cockpitBodyElement, 'dataObjectCount')).toEqual([]);
             expect(postedNamed(panel, 'selectDataOrg')).toEqual([]);
 
         });
 
-        it('offers the posted labels in a native select and posts back only the chosen index, from whichever card\'s view it was chosen in', () => {
+        it('offers the posted labels in a native select and posts back only the chosen index', () => {
 
             const { panel } = renderDataOrgPanel();
             openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa', 'prod@example.com'], selectedOrgIndex: null, noOrgsMessage: '', renderSequence: 1 });
 
             const selectElements = panel.findAll(panel.cockpitBodyElement, 'dataOrgSelect');
-            expect(selectElements).toHaveLength(2);
+            expect(selectElements).toHaveLength(1);
             selectElements.forEach((selectElement: any) => {
                 expect(selectElement.tagName).toBe('select');
                 expect(selectElement.children.map((optionElement: any) => [optionElement.value, optionElement.textContent])).toEqual([['', 'Choose org…'], ['0', 'qa'], ['1', 'prod@example.com']]);
             });
-            expect(textOf(panel, 'dataOrgStatus')).toEqual(['Choose an org to insert into.', 'Choose an org to insert into.']);
+            expect(textOf(panel, 'dataOrgStatus')).toEqual(['Choose an org to insert into.']);
 
-            selectElements[1].value = '1';
-            selectElements[1].dispatch('change');
+            selectElements[0].value = '1';
+            selectElements[0].dispatch('change');
 
             expect(postedNamed(panel, 'selectDataOrg')).toEqual([{ command: 'selectDataOrg', orgIndex: 1 }]);
 
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 1, orgLabel: 'prod@example.com', orgTypeLabel: 'Sandbox', isSandbox: true, failureMessage: '', requestSequence: 1, renderSequence: 1 });
 
-            expect(selectElements.map((selectElement: any) => selectElement.value)).toEqual(['1', '1']);
+            expect(selectElements.map((selectElement: any) => selectElement.value)).toEqual(['1']);
 
         });
 
@@ -921,7 +922,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             expect(panel.isHidden(viewOf(panel, 'dataOrgHiddenNote'))).toBe(false);
             const expectedNote = `The last org used, <b>old</b>, is no longer connected. ${hiddenOrgNote}`;
-            expect(textOf(panel, 'dataOrgHiddenNote')).toEqual([expectedNote, expectedNote]);
+            expect(textOf(panel, 'dataOrgHiddenNote')).toEqual([expectedNote]);
 
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', hiddenOrgCount: 0, hiddenOrgNote: '', forgottenOrgNotice: '', renderSequence: 1 });
             expect(panel.isHidden(viewOf(panel, 'dataOrgHiddenNote'))).toBe(true);
@@ -945,11 +946,11 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             panel.findAll(panel.cockpitBodyElement, 'dataOrgSelect').forEach((selectElement: any) => {
                 expect(optionsOf(selectElement)).toEqual([['', RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER]]);
             });
-            const [controlsElement] = panel.findAll(panel.treeCards()[0], 'dataOrgControls');
+            const controlsElement = viewOf(panel, 'dataOrgControls');
             const controlClasses = controlsElement.children.map((element: any) => element.className.split(' ')[0]);
             expect(controlClasses.indexOf('dataOrgSpinner')).toBe(controlClasses.indexOf('dataOrgSelect') + 1);
             expect(viewOf(panel, 'dataOrgSpinner').attributes['aria-hidden']).toBe('true');
-            expect(textOf(panel, 'dataOrgStatus')).toEqual([RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT, RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT]);
+            expect(textOf(panel, 'dataOrgStatus')).toEqual([RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT]);
 
         });
 
@@ -1096,7 +1097,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: ORG_TYPE_UNKNOWN_LABEL, isSandbox: null, failureMessage: 'Could not connect to qa: expired.', requestSequence: 1, renderSequence: 1 });
 
-            expect(textOf(panel, 'dataOrgStatus')).toEqual(['Could not connect to qa: expired.', 'Could not connect to qa: expired.']);
+            expect(textOf(panel, 'dataOrgStatus')).toEqual(['Could not connect to qa: expired.']);
             expect(viewOf(panel, 'dataOrgStatus').classList.contains('failed')).toBe(true);
             expect(insertReasonsOf(panel)).toEqual(['Generates only: Could not connect to qa: expired.', 'Generates only: Could not connect to qa: expired.']);
             // #293: NEVER DISABLED BY THE ORG -- IT GENERATES ONLY
@@ -1151,7 +1152,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
                 expect(panel.isHidden(selectElement)).toBe(false);
                 expect(optionsOf(selectElement)).toEqual([['', RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER]]);
             });
-            expect(textOf(panel, 'dataOrgStatus')).toEqual([RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT, RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT]);
+            expect(textOf(panel, 'dataOrgStatus')).toEqual([RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT]);
             const checkingReason = `Generates only: ${RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON}`;
             expect(insertReasonsOf(panel)).toEqual([checkingReason, checkingReason]);
             // #293: NEVER DISABLED BY THE ORG -- IT GENERATES ONLY
@@ -1160,16 +1161,17 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
         });
 
         // #305: THE HOST JOINS A CHECK ALREADY IN FLIGHT, SO A SECOND CLICK STARTS NO SECOND "sf org list"
-        it('keeps ⟳ enabled in every view while the check is out, so a second click asks again', () => {
+        it('keeps ⟳ enabled while the check is out, so a second click asks again', () => {
 
             const { panel } = renderDataOrgPanel();
             openTreecipeViews(panel);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: null, noOrgsMessage: '', renderSequence: 1 });
 
             const refreshElements = panel.findAll(panel.cockpitBodyElement, 'dataOrgRefresh');
+            expect(refreshElements).toHaveLength(1);
             refreshElements[0].dispatch('click');
-            expect(refreshElements.map((element: any) => element.disabled)).toEqual([false, false]);
-            refreshElements[1].dispatch('click');
+            expect(refreshElements[0].disabled).toBe(false);
+            refreshElements[0].dispatch('click');
 
             expect(postedNamed(panel, 'refreshDataOrgs')).toHaveLength(2);
 

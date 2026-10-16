@@ -1932,7 +1932,7 @@ describe('RecipeCockpitService', () => {
 
             expect(panel.isHidden(viewOf(panel, 'treesView'))).toBe(false);
             // THE VIEW SWITCH, THE GLOBAL FIND BOX AND 🔍 ARE GONE, WITH EVERY NODE THEY DREW; SO IS THE CLASSIC LIST
-            ['viewButton', 'dataOrgView', 'dataTreeCard', 'filterInput', 'treeMatchCount', 'treeMatch', 'treeScope', 'treeScopeStatus', 'treeScopeClear',
+            ['viewButton', 'dataTreeCard', 'filterInput', 'treeMatchCount', 'treeMatch', 'treeScope', 'treeScopeStatus', 'treeScopeClear',
                 'classicView', 'classicControls', 'object', 'field', 'matchCount'].forEach(className => {
                 expect(panel.findAll(panel.cockpitBodyElement, className)).toEqual([]);
             });

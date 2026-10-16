@@ -875,7 +875,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
             panel.postToPanel({ command: 'validationRuleRetrieveState', isRunning: true, treeKey: 'Lead-ONLY' });
             expect(retrieveButtonOf(panel).disabled).toBe(true);
-            const newScratchButtons = panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'dataOrgNewScratch');
+            const newScratchButtons = panel.findAll(panel.cockpitBodyElement, 'dataOrgNewScratch');
             expect(newScratchButtons.length).toBeGreaterThan(0);
             newScratchButtons.forEach((newScratchButton: any) => expect(newScratchButton.disabled).toBe(true));
             expect(retrieveButtonOf(panel).attributes.title).toBe('Validation rules are being retrieved.');
