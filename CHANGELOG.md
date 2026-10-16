@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.100.0] - Recipe Cockpit: the org section is "Target Org Management", and it is always open
+
+Closes [#355](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/355).
+
+#348 put the org picker in its own **Org** section and let it fold. Folded, it hid the org every card's generate button depends on.
+
+- **A clearer name.** The section is titled **Target Org Management** (`RECIPE_COCKPIT_ORG_SECTION_TITLE`), on its header and its `aria-label`.
+- **Always open.** The section has no ▸ and its header does nothing on a click (`buildStaticCockpitSection`, no `aria-expanded` or `aria-controls`); its body is always shown.
+- **An older place still opens it.** `isOrgSectionCollapsed` is gone from the reader's place: the panel no longer saves or reads it, and `normalizePanelPlace` drops it, so a place saved by 3.98.0 with the section folded opens with it showing. The place version did not change.
+- **The Treecipes section is unchanged.** It still folds, is still kept as `isTreecipesSectionCollapsed`, and a focus onto a card still opens it.
+- **Help and guide.** "Where recipes come from" in the ? help and `docs/RECIPE-COCKPIT-GUIDE.md` use the new name and say only the Treecipes heading folds; the screenshots were re-taken.
+- **A smaller help picture.** With this wording and 3.99.0's TODO paragraph, the whole help section came out at 212 KB, over the guide's 200 KB limit. `where-changes-are-stored.png` now shows the help from "Where your changes are stored" down to **Open the full guide** (64 KB): the live summary its caption describes. The other sections have pictures of their own. The screenshot script crops it with a new `screenshotFrom`.
+- **Tests.** `RecipeCockpitSections.test.ts` checks the title, that the section has no toggle and stays open on a click, that nothing is saved for it, that a 3.98.0 place (with any value) opens it, and keeps every Treecipes fold case.
 ## [3.99.0] - Recipe Cockpit: a "TODOs only" filter shows every TODO comment of a tree's recipe
 
 Closes [#354](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/354).

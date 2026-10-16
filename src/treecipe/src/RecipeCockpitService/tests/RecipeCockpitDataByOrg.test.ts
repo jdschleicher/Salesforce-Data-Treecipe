@@ -801,7 +801,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
         const insertReasonsOf = (panel: any) => textOf(panel, 'treeInsertReason');
         const insertButtonsOf = (panel: any) => panel.findAll(panel.cockpitBodyElement, 'treeInsert');
 
-        it('puts no org picker in the toolbar or in a card and no view switch, asks for no orgs when the panel opens, and draws ONE picker view in the Org section (#348)', () => {
+        it('puts no org picker in the toolbar or in a card and no view switch, asks for no orgs when the panel opens, and draws ONE picker view in the Target Org Management section (#348, #355)', () => {
 
             const { panel } = renderDataOrgPanel();
             const toolbarElement = panel.cockpitBodyElement.children[0];

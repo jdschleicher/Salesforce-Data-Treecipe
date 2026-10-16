@@ -378,8 +378,8 @@ export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL = 'Remember this selecti
 export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE = 'Save the choice in treecipe/treecipe.config.json, so Generate Treecipe reuses it. With Use defaults, forgets a saved choice.';
 export const RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE = 'The record type selection could not be saved in treecipe.config.json, so it was used for this run only.';
 export const RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE = 'Record types';
-// THE PANEL'S TWO SECTIONS (#348): THE ONE ORG PICKER, THEN EVERY TREE CARD
-export const RECIPE_COCKPIT_ORG_SECTION_TITLE = 'Org';
+// THE PANEL'S TWO SECTIONS (#348): THE ONE ORG PICKER, ALWAYS OPEN (#355), THEN EVERY TREE CARD
+export const RECIPE_COCKPIT_ORG_SECTION_TITLE = 'Target Org Management';
 export const RECIPE_COCKPIT_TREECIPES_SECTION_TITLE = 'Treecipes';
 // WHAT A CARD WITH NOTHING TO CHOOSE SAYS IN ITS DISABLED RECORD TYPES HEADER (#338); ONE RECORD TYPE IS NO CHOICE, SO IT READS THE SAME AS NONE
 export const RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY = 'No objects in this tree have two or more record types in local metadata';
@@ -442,7 +442,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.',
-            'Under the run list, the Org section picks the org a card can insert into, opens it in your browser or makes a new scratch org. The Treecipes section below it holds the cards. Click either heading to fold it away.',
+            'Under the run list, the Target Org Management section picks the org a card can insert into, opens it in your browser or makes a new scratch org. It is always open. The Treecipes section below it holds the cards; click its heading to fold it away.',
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, each TODO with a link to its line in the recipe.'
         ]
     },
@@ -1101,8 +1101,7 @@ export interface IRecipeCockpitPanelPlace {
     isFavoritesOnly: boolean;
     // THE HELP SECTION (#332); A PLACE SAVED BEFORE IT HAS NONE AND READS AS COLLAPSED
     isHelpExpanded?: true;
-    // THE ORG AND TREECIPES SECTIONS (#348); A PLACE SAVED BEFORE THEM HAS NEITHER AND READS AS BOTH OPEN
-    isOrgSectionCollapsed?: true;
+    // THE TREECIPES SECTION (#348); A PLACE SAVED BEFORE IT READS AS OPEN. THE ORG SECTION NEVER FOLDS (#355), SO A 3.98.0 PLACE'S isOrgSectionCollapsed IS IGNORED
     isTreecipesSectionCollapsed?: true;
     scrollY: number;
     trees: IRecipeCockpitPanelTreePlace[];
@@ -1812,7 +1811,6 @@ export class RecipeCockpitService {
             isOrgPickerInUse: candidatePlace.isOrgPickerInUse === true,
             isFavoritesOnly: candidatePlace.isFavoritesOnly === true,
             ...( candidatePlace.isHelpExpanded === true ? { isHelpExpanded: true as const } : {} ),
-            ...( candidatePlace.isOrgSectionCollapsed === true ? { isOrgSectionCollapsed: true as const } : {} ),
             ...( candidatePlace.isTreecipesSectionCollapsed === true ? { isTreecipesSectionCollapsed: true as const } : {} ),
             scrollY: typeof scrollY === 'number' && Number.isFinite(scrollY) && scrollY > 0 ? scrollY : 0,
             trees: trees
@@ -11131,6 +11129,7 @@ ${this.buildPaletteCustomProperties()}
     .treecipeHeader { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
     .cockpitSection { margin: 0.6rem 0; }
     .cockpitSectionHeader { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; cursor: pointer; border-bottom: 1px solid var(--sdt-border); }
+    .cockpitSectionHeader.cockpitSectionStatic { cursor: default; }
     .cockpitSectionTitle { font-weight: 600; font-size: 1.1em; }
     #cockpitOrgSectionBody { padding: 0.5rem 0.6rem; margin-top: 0.4rem; background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 8px; }
     .treecipeActions, .treeInsertControls, .treePermissionSetControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
@@ -11373,8 +11372,7 @@ ${this.buildPaletteCustomProperties()}
     let helpSectionElement = null;
     let helpSummaryElement = null;
     let helpTrees = [];
-    // THE ORG AND TREECIPES SECTIONS (#348) START OPEN AND, LIKE THE HELP, OUTLIVE A MODEL IN THIS DOCUMENT
-    let isOrgSectionCollapsed = false;
+    // THE TREECIPES SECTION (#348) STARTS OPEN AND, LIKE THE HELP, ITS FOLD OUTLIVES A MODEL IN THIS DOCUMENT; THE ORG SECTION NEVER FOLDS (#355)
     let isTreecipesSectionCollapsed = false;
     let orgSection = null;
     let treecipesSection = null;
@@ -14730,7 +14728,7 @@ ${this.buildPaletteCustomProperties()}
 
     /*
         The top of a card's Treecipe tab: Reset selection, then "Generate fake data and insert into
-        <org>". The org picker is the panel's Org section since #348, not a view per card. Each posts
+        <org>". The org picker is the panel's Target Org Management section since #348, not a view per card. Each posts
         the tree's KEY alone; which org, which recipe file, which counts and which objects are the
         host's.
     */
@@ -15434,7 +15432,6 @@ ${this.buildPaletteCustomProperties()}
             trees: treeStates.map(buildTreePlace).filter(Boolean)
         };
         if (isHelpExpanded) { panelPlace.isHelpExpanded = true; }
-        if (isOrgSectionCollapsed) { panelPlace.isOrgSectionCollapsed = true; }
         if (isTreecipesSectionCollapsed) { panelPlace.isTreecipesSectionCollapsed = true; }
 
         return panelPlace;
@@ -15530,7 +15527,6 @@ ${this.buildPaletteCustomProperties()}
         if (savedPlace && savedPlace.isOrgPickerInUse === true) { isDataOrgPickerInUse = true; }
         if (savedPlace) { isFavoritesOnly = savedPlace.isFavoritesOnly === true; }
         if (savedPlace) { isHelpExpanded = savedPlace.isHelpExpanded === true; }
-        if (savedPlace) { isOrgSectionCollapsed = savedPlace.isOrgSectionCollapsed === true; }
         if (savedPlace) { isTreecipesSectionCollapsed = savedPlace.isTreecipesSectionCollapsed === true; }
 
     }
@@ -15680,9 +15676,7 @@ ${this.buildPaletteCustomProperties()}
 
         // ONLY WHEN SOME CARD CAN GENERATE: WITH NOTHING TO GENERATE THERE IS NOTHING TO PICK AN ORG FOR
         if (trees.some(function (tree) { return !!tree.runFakerRecipeFileName; })) {
-            orgSection = buildCockpitSection('cockpitOrgSection', ORG_SECTION_TITLE, !isOrgSectionCollapsed, function (isExpanded) {
-                isOrgSectionCollapsed = !isExpanded;
-            });
+            orgSection = buildStaticCockpitSection('cockpitOrgSection', ORG_SECTION_TITLE);
             orgSection.bodyElement.appendChild(buildDataOrgView().element);
             cockpitBodyElement.appendChild(orgSection.element);
         }
@@ -15697,8 +15691,26 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    // THE TARGET ORG MANAGEMENT SECTION (#355): THE SAME HEADER AND BODY AS A FOLDABLE SECTION, WITH NO TOGGLE AND NO LISTENER
+    function buildStaticCockpitSection(sectionId, title) {
+
+        const sectionElement = createElement('section', 'cockpitSection');
+        const headerElement = createElement('div', 'cockpitSectionHeader cockpitSectionStatic');
+        const bodyElement = createElement('div', 'cockpitSectionBody');
+
+        sectionElement.setAttribute('id', sectionId);
+        sectionElement.setAttribute('aria-label', title);
+        bodyElement.setAttribute('id', sectionId + 'Body');
+        headerElement.appendChild(createElement('span', 'cockpitSectionTitle', title));
+        sectionElement.appendChild(headerElement);
+        sectionElement.appendChild(bodyElement);
+
+        return { element: sectionElement, bodyElement: bodyElement };
+
+    }
+
     /*
-        One of the panel's two sections (#348). As on a tree card and the Record types section, the
+        The panel's foldable Treecipes section (#348). As on a tree card and the Record types section, the
         HEADER is the toggle and the ▸ carries no listener of its own; the body is built before it is
         shown, so a toggle never builds anything.
     */
