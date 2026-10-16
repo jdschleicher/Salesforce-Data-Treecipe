@@ -307,6 +307,13 @@ export interface IPinnedFieldRestoreRequest {
     valueText?: string;
 }
 
+// ONE PINNED FIELD AS THE COCKPIT'S LOAD CHECKS IT (listChangedPinnedFields)
+export interface IPinnedFieldCheck {
+    objectApiName: string;
+    fieldApiName: string;
+    restoreRequests: readonly IPinnedFieldRestoreRequest[];
+}
+
 export type RecipeFieldRestoreResult =
     | { isRestored: true; recipeText: string }
     | { isRestored: false; refusal: IRecipeWriterRefusal };
@@ -559,10 +566,15 @@ export class RecipeCockpitRecipeWriter {
     /*
         Clear for a pinned field (#342): every requested occurrence must still hold EXACTLY the one
         line pinField wrote -- a hand edit, or a file regenerated since, is refused whole and changes
-        nothing, as restoreCommentedOutField refuses a commented-out field that was altered. A line
-        put back may not carry a bare CR or a line break only PyYAML sees, and the result must scan
-        to the same objects and fields as before, the restored field spanning exactly the lines put
-        back; anything else would be a line this writer never checked.
+        nothing, as restoreCommentedOutField refuses a commented-out field that was altered. Every
+        occurrence is checked before any replacement is built. An occurrence is found by its first
+        nickname when exactly one occurrence holds it, and by its place otherwise, so an object added
+        above it since does not move it. An occurrence the request does not name that holds a pinned
+        line is a COPY made since the pin (Add friend copies a block one level deeper) and is put back
+        too, from a recorded original moved to its depth, so Clear never leaves the value behind. A
+        line put back may not carry a bare CR or a line break only PyYAML sees, and the result must
+        scan to the same objects and fields as before, each restored field spanning exactly the lines
+        put back; anything else would be a line this writer never checked.
     */
     static restorePinnedField(recipeText: string, objectApiName: string, fieldApiName: string, restoreRequests: readonly IPinnedFieldRestoreRequest[]): RecipeFieldRestoreResult {
 
@@ -581,46 +593,53 @@ export class RecipeCockpitRecipeWriter {
         const recipeLines = this.splitRecipeLines(recipeText);
         const scannedObjects = this.scanRecipeObjects(recipeLines.lines);
         const objectOccurrences = scannedObjects.filter(scannedObject => scannedObject.objectApiName === objectApiName);
-        const changedRefusal = () => refuseRestore(this.refuse('pinned-field-changed', `${objectApiName}.${fieldApiName} is no longer the fixed value the Recipe Cockpit wrote, so it is not put back. Edit the recipe by hand, or pin and clear it again.`, objectApiName, fieldApiName));
+        const recordedTargets = this.locateRecordedPinTargets(recipeLines.lines, objectOccurrences, fieldApiName, restoreRequests);
+        if ( !recordedTargets ) {
+            return refuseRestore(this.refuse('pinned-field-changed', `${objectApiName}.${fieldApiName} is no longer the fixed value the Recipe Cockpit wrote, so it is not put back. Edit the recipe by hand, or pin and clear it again.`, objectApiName, fieldApiName));
+        }
+        const targets: { occurrenceIndex: number; scannedObject: IScannedObject; scannedField: IScannedField; request?: IPinnedFieldRestoreRequest }[] = [...recordedTargets];
 
+        const pinnedLineTexts = new Set(restoreRequests.map(restoreRequest => restoreRequest.writtenLine.trimStart()));
+        objectOccurrences.forEach((scannedObject, occurrenceIndex) => {
+            const scannedField = targets.some(target => target.occurrenceIndex === occurrenceIndex) ? undefined : this.findPinnedLineField(scannedObject, fieldApiName);
+            if ( scannedField && pinnedLineTexts.has(recipeLines.lines[scannedField.startIndex].trimStart()) ) {
+                targets.push({ occurrenceIndex: occurrenceIndex, scannedObject: scannedObject, scannedField: scannedField });
+            }
+        });
+
+        const recordedSource = restoreRequests.find(restoreRequest => restoreRequest.originalText !== undefined);
+        const derivedValueText = restoreRequests.find(restoreRequest => restoreRequest.valueText !== undefined)?.valueText;
         const splices: { span: ILineSpan; replacementLines: string[]; replacementInteriorEndings: string[] }[] = [];
         const lineCountsByOccurrenceIndex = new Map<number, number>();
 
-        for ( const restoreRequest of restoreRequests ) {
-
-            const scannedObject = objectOccurrences[restoreRequest.occurrenceIndex];
-            if ( !scannedObject || scannedObject.nicknames[0] !== restoreRequest.nickname || lineCountsByOccurrenceIndex.has(restoreRequest.occurrenceIndex) ) {
-                return changedRefusal();
-            }
-
-            const scannedFields = scannedObject.fields.filter(scannedField => scannedField.fieldApiName === fieldApiName);
-            if ( scannedFields.length !== 1 || scannedObject.fieldsLineIndexes.length !== 1
-                    || scannedFields[0].endIndex - scannedFields[0].startIndex !== 1
-                    || recipeLines.lines[scannedFields[0].startIndex] !== restoreRequest.writtenLine ) {
-                return changedRefusal();
-            }
+        for ( const { occurrenceIndex, scannedObject, scannedField, request } of targets ) {
 
             const layout = this.getObjectLayout(scannedObject.objectIndent);
+            const originalText = request
+                ? request.originalText
+                : recordedSource && this.reindentFieldText(recordedSource.originalText as string, this.countIndent(recordedSource.writtenLine), layout.fieldIndent.length);
+            const valueText = request ? request.valueText : derivedValueText;
+
             let replacement: IRecipeLines | undefined;
-            if ( restoreRequest.originalText !== undefined ) {
-                replacement = this.splitRecipeLines(restoreRequest.originalText);
-            } else if ( restoreRequest.valueText !== undefined ) {
-                const fieldLines = this.buildFieldLines(fieldApiName, restoreRequest.valueText, layout);
+            if ( originalText !== undefined ) {
+                replacement = this.splitRecipeLines(originalText);
+            } else if ( valueText !== undefined ) {
+                const fieldLines = this.buildFieldLines(fieldApiName, valueText, layout);
                 replacement = fieldLines ? { lines: fieldLines, lineEndings: fieldLines.map(() => '\n') } : undefined;
             }
 
             if ( !replacement || replacement.lines.some(replacementLine => /[\r\u0085\u2028\u2029]/.test(replacementLine))
                     || layout.fieldLinePattern.exec(replacement.lines[0])?.[1] !== fieldApiName ) {
-                return refuseRestore(this.refuseInvalidValue(objectApiName, fieldApiName, restoreRequest.nickname));
+                return refuseRestore(this.refuseInvalidValue(objectApiName, fieldApiName, scannedObject.nicknames[0]));
             }
 
             // A RE-DERIVED VALUE TAKES THE ENDING THE FILE ALREADY USES THERE, SO A CRLF FILE STAYS CRLF
-            const interiorEndings = restoreRequest.originalText !== undefined
+            const interiorEndings = originalText !== undefined
                 ? replacement.lineEndings.slice(0, -1)
-                : replacement.lines.slice(1).map(() => recipeLines.lineEndings[scannedFields[0].startIndex] || '\n');
+                : replacement.lines.slice(1).map(() => recipeLines.lineEndings[scannedField.startIndex] || '\n');
 
-            splices.push({ span: scannedFields[0], replacementLines: replacement.lines, replacementInteriorEndings: interiorEndings });
-            lineCountsByOccurrenceIndex.set(restoreRequest.occurrenceIndex, replacement.lines.length);
+            splices.push({ span: scannedField, replacementLines: replacement.lines, replacementInteriorEndings: interiorEndings });
+            lineCountsByOccurrenceIndex.set(occurrenceIndex, replacement.lines.length);
 
         }
 
@@ -631,6 +650,96 @@ export class RecipeCockpitRecipeWriter {
         }
 
         return { isRestored: true, recipeText: this.joinRecipeLines(patchedLines) };
+
+    }
+
+    /*
+        Which pinned fields were changed since their pin, for the cockpit's load: ONE split and scan of
+        the recipe however many pins it checks, an index of occurrences by object, and per pin exactly
+        the checks restorePinnedField makes before it builds anything (locateRecordedPinTargets), so
+        the load and Clear cannot disagree. Answers one boolean per pin, in order.
+    */
+    static listChangedPinnedFields(recipeText: string, pinnedFields: readonly IPinnedFieldCheck[]): boolean[] {
+
+        const { lines } = this.splitRecipeLines(recipeText);
+        const occurrencesByObjectApiName = new Map<string, IScannedObject[]>();
+        this.scanRecipeObjects(lines).forEach(scannedObject => {
+            const objectOccurrences = occurrencesByObjectApiName.get(scannedObject.objectApiName) ?? [];
+            objectOccurrences.push(scannedObject);
+            occurrencesByObjectApiName.set(scannedObject.objectApiName, objectOccurrences);
+        });
+
+        return pinnedFields.map(pinnedField => !this.locateRecordedPinTargets(lines, occurrencesByObjectApiName.get(pinnedField.objectApiName) ?? [], pinnedField.fieldApiName, pinnedField.restoreRequests));
+
+    }
+
+    // EACH RECORDED OCCURRENCE WITH ITS ONE-LINE FIELD, OR undefined WHEN ANY OF THEM NO LONGER HOLDS EXACTLY THE LINE ITS PIN WROTE
+    private static locateRecordedPinTargets(lines: string[], objectOccurrences: IScannedObject[], fieldApiName: string, restoreRequests: readonly IPinnedFieldRestoreRequest[]):
+        { occurrenceIndex: number; scannedObject: IScannedObject; scannedField: IScannedField; request: IPinnedFieldRestoreRequest }[] | undefined {
+
+        const targets: { occurrenceIndex: number; scannedObject: IScannedObject; scannedField: IScannedField; request: IPinnedFieldRestoreRequest }[] = [];
+        for ( const restoreRequest of restoreRequests ) {
+            const occurrenceIndex = this.findPinnedOccurrenceIndex(objectOccurrences, restoreRequest);
+            const scannedObject = occurrenceIndex === undefined ? undefined : objectOccurrences[occurrenceIndex];
+            const scannedField = scannedObject ? this.findPinnedLineField(scannedObject, fieldApiName) : undefined;
+            if ( occurrenceIndex === undefined || !scannedObject || !scannedField
+                    || targets.some(target => target.occurrenceIndex === occurrenceIndex)
+                    || lines[scannedField.startIndex] !== restoreRequest.writtenLine ) {
+                return undefined;
+            }
+            targets.push({ occurrenceIndex: occurrenceIndex, scannedObject: scannedObject, scannedField: scannedField, request: restoreRequest });
+        }
+        return targets;
+
+    }
+
+    // THE FIELD WHEN THE OCCURRENCE HOLDS IT ONCE, ON ONE LINE, IN ONE fields: BLOCK -- THE ONLY SHAPE A PIN WRITES
+    private static findPinnedLineField(scannedObject: IScannedObject, fieldApiName: string): IScannedField | undefined {
+        const scannedFields = scannedObject.fields.filter(scannedField => scannedField.fieldApiName === fieldApiName);
+        return scannedFields.length === 1 && scannedObject.fieldsLineIndexes.length === 1 && scannedFields[0].endIndex - scannedFields[0].startIndex === 1
+            ? scannedFields[0]
+            : undefined;
+    }
+
+    /*
+        A field's lines moved from one field column to another, as insertFriend moves a block one level
+        deeper: every non-empty line gains (or loses) the same spaces. undefined when the first line is
+        not at fromIndent, or a line has fewer spaces than it would lose.
+    */
+    static reindentFieldText(fieldText: string, fromIndent: number, toIndent: number): string | undefined {
+
+        const fieldLines = this.splitRecipeLines(fieldText);
+        const indentDelta = toIndent - fromIndent;
+
+        if ( this.countIndent(fieldLines.lines[0]) !== fromIndent
+                || ( indentDelta < 0 && fieldLines.lines.some(fieldLine => fieldLine !== '' && this.countIndent(fieldLine) < -indentDelta) ) ) {
+            return undefined;
+        }
+
+        return this.joinRecipeLines({
+            lines: fieldLines.lines.map(fieldLine => ( fieldLine === '' ? fieldLine : indentDelta >= 0 ? `${' '.repeat(indentDelta)}${fieldLine}` : fieldLine.slice(-indentDelta) )),
+            lineEndings: fieldLines.lineEndings
+        });
+
+    }
+
+    static countIndent(line: string): number {
+        return line.length - line.replace(/^ +/, '').length;
+    }
+
+    // BY ITS FIRST NICKNAME WHEN EXACTLY ONE OCCURRENCE HOLDS IT; OTHERWISE BY ITS PLACE, WHICH MUST STILL HOLD THAT NICKNAME, OR NONE
+    private static findPinnedOccurrenceIndex(objectOccurrences: IScannedObject[], restoreRequest: IPinnedFieldRestoreRequest): number | undefined {
+
+        if ( restoreRequest.nickname !== undefined ) {
+            const nicknameIndexes = objectOccurrences
+                .map((scannedObject, occurrenceIndex) => ( scannedObject.nicknames[0] === restoreRequest.nickname ? occurrenceIndex : -1 ))
+                .filter(occurrenceIndex => occurrenceIndex >= 0);
+            if ( nicknameIndexes.length === 1 ) {
+                return nicknameIndexes[0];
+            }
+        }
+
+        return objectOccurrences[restoreRequest.occurrenceIndex]?.nicknames[0] === restoreRequest.nickname ? restoreRequest.occurrenceIndex : undefined;
 
     }
 

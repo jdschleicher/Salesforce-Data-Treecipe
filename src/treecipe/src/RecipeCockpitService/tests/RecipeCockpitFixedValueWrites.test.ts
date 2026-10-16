@@ -302,14 +302,16 @@ describe('RecipeCockpitRecipeWriter.restorePinnedField (#342)', () => {
 
     });
 
-    it('refuses an occurrence whose nickname or place no longer matches', () => {
+    it('finds an occurrence by its nickname wherever it moved, by its place only without one, and refuses a nickname or place no longer there', () => {
 
         const pinResult = pinIndustry();
         const wrongNickname = toRestoreRequests(pinResult.occurrences).map(request => ({ ...request, nickname: 'Other_NickName' }));
-        const wrongIndex = toRestoreRequests(pinResult.occurrences).map(request => ({ ...request, occurrenceIndex: 3 }));
+        const movedPlace = toRestoreRequests(pinResult.occurrences).map(request => ({ ...request, occurrenceIndex: 3 }));
+        const noNicknameWrongPlace = toRestoreRequests(pinResult.occurrences).map(({ nickname: _unused, ...request }) => ({ ...request, occurrenceIndex: 3 }));
 
         expect(RecipeCockpitRecipeWriter.restorePinnedField(pinResult.recipeText, 'Account', 'Industry', wrongNickname)).toMatchObject({ isRestored: false, refusal: { reason: 'pinned-field-changed' } });
-        expect(RecipeCockpitRecipeWriter.restorePinnedField(pinResult.recipeText, 'Account', 'Industry', wrongIndex)).toMatchObject({ isRestored: false, refusal: { reason: 'pinned-field-changed' } });
+        expect(RecipeCockpitRecipeWriter.restorePinnedField(pinResult.recipeText, 'Account', 'Industry', movedPlace)).toEqual({ isRestored: true, recipeText: flatRecipe });
+        expect(RecipeCockpitRecipeWriter.restorePinnedField(pinResult.recipeText, 'Account', 'Industry', noNicknameWrongPlace)).toMatchObject({ isRestored: false, refusal: { reason: 'pinned-field-changed' } });
         expect(RecipeCockpitRecipeWriter.restorePinnedField(pinResult.recipeText, 'Account', 'Industry', [])).toMatchObject({ isRestored: false, refusal: { reason: 'field-not-found' } });
 
     });
@@ -378,6 +380,151 @@ describe('RecipeCockpitRecipeWriter.restorePinnedField (#342)', () => {
 
 });
 
+describe('a pinned block copied by Add friend (#342 review)', () => {
+
+    const selfLookupRecipe = fs.readFileSync(path.join(RECIPE_WRITER_MOCKS_PATH, 'recipe-fakerjs-selfLookupFriends--RelationshipTree_1.yml'), 'utf8');
+    const closedWon: IRecipeFixedValue = { value: 'Closed Won', kind: 'text' };
+    const insertOpportunityFriend = (recipeText: string): string => {
+        const insertResult = RecipeCockpitRecipeWriter.insertFriend(recipeText, 'Account', 'Account_child_NickName', 'Opportunity');
+        if ( 'refusal' in insertResult ) {
+            throw new Error(insertResult.refusal.message);
+        }
+        return insertResult.recipeText;
+    };
+    const pinStageName = (recipeText: string, fixedValue: IRecipeFixedValue) => {
+        const pinResult = RecipeCockpitRecipeWriter.pinField(recipeText, 'Opportunity', 'StageName', fixedValue);
+        if ( 'refusal' in pinResult ) {
+            throw new Error(pinResult.refusal.message);
+        }
+        return pinResult;
+    };
+
+    it('Clear puts back the copy too, from the recorded lines moved to its depth, so no pinned value is left behind', () => {
+
+        const pinResult = pinStageName(selfLookupRecipe, closedWon);
+        expect(pinResult.occurrences).toHaveLength(1);
+        const copiedRecipe = insertOpportunityFriend(pinResult.recipeText);
+        expect(copiedRecipe.split('\n').filter(recipeLine => recipeLine.trimStart() === 'StageName: "Closed Won"')).toHaveLength(2);
+
+        const restoreResult = RecipeCockpitRecipeWriter.restorePinnedField(copiedRecipe, 'Opportunity', 'StageName', toRestoreRequests(pinResult.occurrences));
+
+        expect(restoreResult).toEqual({ isRestored: true, recipeText: insertOpportunityFriend(selfLookupRecipe) });
+
+    });
+
+    it('pinned again after the copy, keeps the copy\'s lines from before the FIRST pin, so a later Clear still puts back what Generate Treecipe wrote', () => {
+
+        const firstPin = pinStageName(selfLookupRecipe, closedWon);
+        const firstEntries = [{ objectApiName: 'Opportunity', fieldApiName: 'StageName', value: closedWon.value, occurrences: firstPin.occurrences }];
+        const copiedRecipe = insertOpportunityFriend(firstPin.recipeText);
+
+        const secondPin = pinStageName(copiedRecipe, { value: 'Closed Lost', kind: 'text' });
+        expect(secondPin.occurrences).toHaveLength(2);
+        const secondEntries = RecipeCockpitFixedValueStore.upsertEntry(firstEntries, { objectApiName: 'Opportunity', fieldApiName: 'StageName', value: 'Closed Lost', occurrences: secondPin.occurrences });
+        secondEntries[0].occurrences.forEach(occurrence => expect(occurrence.originalText?.trimStart()).toBe('StageName: Prospecting'));
+
+        const restoreResult = RecipeCockpitRecipeWriter.restorePinnedField(secondPin.recipeText, 'Opportunity', 'StageName', toRestoreRequests(secondEntries[0].occurrences));
+        expect(restoreResult).toEqual({ isRestored: true, recipeText: insertOpportunityFriend(selfLookupRecipe) });
+
+    });
+
+    it('re-derives a copy when nothing was recorded, and refuses one it has neither lines nor a value for', () => {
+
+        const pinResult = pinStageName(selfLookupRecipe, closedWon);
+        const copiedRecipe = insertOpportunityFriend(pinResult.recipeText);
+        const bareRequests = pinResult.occurrences.map(({ originalText: _unused, ...occurrence }) => occurrence);
+
+        const derived = RecipeCockpitRecipeWriter.restorePinnedField(copiedRecipe, 'Opportunity', 'StageName', bareRequests.map(request => ({ ...request, valueText: 'Prospecting' })));
+        expect(derived).toEqual({ isRestored: true, recipeText: insertOpportunityFriend(selfLookupRecipe) });
+        expect(RecipeCockpitRecipeWriter.restorePinnedField(copiedRecipe, 'Opportunity', 'StageName', bareRequests)).toMatchObject({ isRestored: false, refusal: { reason: 'invalid-value' } });
+
+    });
+
+});
+
+describe('RecipeCockpitRecipeWriter.restorePinnedField checks every occurrence first (#342 review)', () => {
+
+    it('answers pinned-field-changed for a later hand edit even when an earlier occurrence has no recorded lines', () => {
+
+        const twoBlocksRecipe = [
+            '- object: Account',
+            '  nickname: Account_One_NickName',
+            '  fields:',
+            '    Industry: ${{faker.company.buzzNoun()}}',
+            '- object: Account',
+            '  nickname: Account_Two_NickName',
+            '  fields:',
+            '    Industry: ${{faker.company.buzzNoun()}}',
+            ''
+        ].join('\n');
+        const pinResult = RecipeCockpitRecipeWriter.pinField(twoBlocksRecipe, 'Account', 'Industry', PINNED);
+        if ( 'refusal' in pinResult ) {
+            throw new Error(pinResult.refusal.message);
+        }
+        const editedRecipe = pinResult.recipeText.split('\n').map((recipeLine, lineIndex) => ( lineIndex === 7 ? '    Industry: "typed by hand"' : recipeLine )).join('\n');
+        const requests = pinResult.occurrences.map((occurrence, occurrenceIndex) => {
+            const { originalText, ...withoutOriginal } = occurrence;
+            return occurrenceIndex === 0 ? withoutOriginal : { ...withoutOriginal, originalText: originalText };
+        });
+
+        expect(RecipeCockpitRecipeWriter.restorePinnedField(editedRecipe, 'Account', 'Industry', requests)).toMatchObject({ isRestored: false, refusal: { reason: 'pinned-field-changed' } });
+
+    });
+
+});
+
+describe('RecipeCockpitRecipeWriter.listChangedPinnedFields (#342 review)', () => {
+
+    it('answers what restorePinnedField would: changed only for a hand edit, a moved nickname found, a missing one refused', () => {
+
+        const recipe = '- object: Account\n  nickname: Account_NickName\n  fields:\n    Name: "Acme"\n    Phone: "1"\n';
+        const pinned = (fieldApiName: string, writtenLine: string, nickname = 'Account_NickName') => ({ objectApiName: 'Account', fieldApiName: fieldApiName, restoreRequests: [{ occurrenceIndex: 0, nickname: nickname, writtenLine: writtenLine }] });
+
+        expect(RecipeCockpitRecipeWriter.listChangedPinnedFields(recipe, [
+            pinned('Name', '    Name: "Acme"'),
+            pinned('Phone', '    Phone: "2"'),
+            pinned('Name', '    Name: "Acme"', 'Gone_NickName'),
+            { objectApiName: 'Contact', fieldApiName: 'Name', restoreRequests: [{ occurrenceIndex: 0, writtenLine: '    Name: "Acme"' }] }
+        ])).toEqual([false, true, true, true]);
+
+    });
+
+    it('checks 500 pins of an 11,000-object recipe in one scan, where a restore per pin took seconds', () => {
+
+        const recipeLines: string[] = [];
+        for ( let objectIndex = 0; objectIndex < 11000; objectIndex++ ) {
+            recipeLines.push(`- object: Object${objectIndex}__c`, `  nickname: Object${objectIndex}__c_NickName`, '  count: 1', '  fields:');
+            for ( let fieldIndex = 0; fieldIndex < 10; fieldIndex++ ) {
+                recipeLines.push(fieldIndex === 0 ? '    Field0__c: "Pinned"' : `    Field${fieldIndex}__c: \${{faker.lorem.word()}}`);
+            }
+        }
+        const recipeText = `${recipeLines.join('\n')}\n`;
+        const pinnedFields = Array.from({ length: 500 }, (_unused, pinIndex) => ({
+            objectApiName: `Object${pinIndex * 20}__c`,
+            fieldApiName: 'Field0__c',
+            restoreRequests: [{ occurrenceIndex: 0, nickname: `Object${pinIndex * 20}__c_NickName`, writtenLine: '    Field0__c: "Pinned"' }]
+        }));
+
+        const startedAt = Date.now();
+        const changedFlags = RecipeCockpitRecipeWriter.listChangedPinnedFields(recipeText, pinnedFields);
+        expect(Date.now() - startedAt).toBeLessThan(3000);
+        expect(changedFlags.every(isChanged => !isChanged)).toBeTrue();
+
+    });
+
+});
+
+describe('RecipeCockpitRecipeWriter.reindentFieldText (#342 review)', () => {
+
+    it('moves every non-empty line by the same spaces, and refuses lines it cannot move', () => {
+        expect(RecipeCockpitRecipeWriter.reindentFieldText('    A: |\n\n        x', 4, 8)).toBe('        A: |\n\n            x');
+        expect(RecipeCockpitRecipeWriter.reindentFieldText('        A: |\r\n            x', 8, 4)).toBe('    A: |\r\n        x');
+        expect(RecipeCockpitRecipeWriter.reindentFieldText('  A: x', 4, 8)).toBeUndefined();
+        expect(RecipeCockpitRecipeWriter.reindentFieldText('        A: x\n  y', 8, 4)).toBeUndefined();
+    });
+
+});
+
 describe('RecipeCockpitFixedValueStore (#342)', () => {
 
     const entry = (objectApiName: string, fieldApiName: string, value: string, occurrences: IFixedValueEntry['occurrences']): IFixedValueEntry => ({ objectApiName, fieldApiName, value, occurrences });
@@ -421,7 +568,7 @@ describe('RecipeCockpitFixedValueStore (#342)', () => {
 
     });
 
-    it('drops every entry and occurrence it cannot trust, and keeps an occurrence without lines it cannot put back', () => {
+    it('drops every entry and occurrence it cannot trust, a written line that is not the line its value writes included, and keeps an occurrence without lines it cannot put back', () => {
 
         const fileText = JSON.stringify({
             version: RECIPE_COCKPIT_FIXED_VALUE_FILE_VERSION,
@@ -432,16 +579,20 @@ describe('RecipeCockpitFixedValueStore (#342)', () => {
                 { objectApiName: 'Account', fieldApiName: 'Fax', value: 7, occurrences: [occurrence(0, '    Fax: 7')] },
                 { objectApiName: 'Account', fieldApiName: 'Site', value: 'x', occurrences: 'none' },
                 { objectApiName: 'Account', fieldApiName: 'Industry', value: 'x', occurrences: [
-                    occurrence(-1, '    Industry: x'),
-                    { occurrenceIndex: 1.5, writtenLine: '    Industry: x' },
+                    occurrence(-1, '    Industry: "x"'),
+                    { occurrenceIndex: 1.5, writtenLine: '    Industry: "x"' },
                     occurrence(2, '    Phone: x'),
-                    occurrence(3, '    Industry: x\n    Evil__c: y'),
-                    { occurrenceIndex: 4, nickname: 7, writtenLine: '    Industry: x' },
-                    occurrence(5, '    Industry: x', '    Industry: ok'),
-                    occurrence(5, '    Industry: x', '    Industry: twice'),
-                    occurrence(6, '    Industry: x', '    Phone: not this field'),
-                    occurrence(7, '    Industry: x', '    Industry: a\r    Evil__c: b'),
-                    occurrence(8, '    Industry: x', '    Industry: a\u2029b')
+                    occurrence(3, '    Industry: "x"\n    Evil__c: y'),
+                    { occurrenceIndex: 4, nickname: 7, writtenLine: '    Industry: "x"' },
+                    occurrence(5, '    Industry: "x"', '    Industry: ok'),
+                    occurrence(5, '    Industry: "x"', '    Industry: twice'),
+                    occurrence(6, '    Industry: "x"', '    Phone: not this field'),
+                    occurrence(7, '    Industry: "x"', '    Industry: a\r    Evil__c: b'),
+                    occurrence(8, '    Industry: "x"', '    Industry: a\u2029b'),
+                    // A LINE THAT IS NOT WHAT THE VALUE WRITES WOULD DRAW A PIN THE RECIPE DOES NOT HOLD
+                    occurrence(9, '    Industry: x'),
+                    occurrence(10, '    Industry: "other"'),
+                    occurrence(11, '    Industry: ${{ 7*7 }}')
                 ] },
                 { objectApiName: 'Account', fieldApiName: 'Industry', value: 'second', occurrences: [occurrence(0, '    Industry: second')] },
                 'not an entry'
@@ -452,10 +603,10 @@ describe('RecipeCockpitFixedValueStore (#342)', () => {
             isUnreadable: false,
             entries: [
                 entry('Account', 'Industry', 'x', [
-                    occurrence(5, '    Industry: x', '    Industry: ok'),
-                    occurrence(6, '    Industry: x'),
-                    occurrence(7, '    Industry: x'),
-                    occurrence(8, '    Industry: x')
+                    occurrence(5, '    Industry: "x"', '    Industry: ok'),
+                    occurrence(6, '    Industry: "x"'),
+                    occurrence(7, '    Industry: "x"'),
+                    occurrence(8, '    Industry: "x"')
                 ])
             ]
         });

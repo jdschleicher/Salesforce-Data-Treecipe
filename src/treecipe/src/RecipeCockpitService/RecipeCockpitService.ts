@@ -253,6 +253,8 @@ export const RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL = 'Not saved: the recip
 export const RECIPE_COCKPIT_FIELD_EDIT_WRITE_RUNNING_REFUSAL = 'Not saved: another change to this recipe file is still being written. Try again once it finishes.';
 export const RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL = 'Write fixed value';
 export const RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL = 'Put back';
+export const RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LINES = 12;
+export const RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LENGTH = 800;
 // A CUSTOM GEOLOCATION FIELD'S COMPONENTS: THE WRAPPER TYPES THEM Text, BUT THE INSERT TAKES ONLY A NUMBER IN RANGE (#342)
 export const RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES: Readonly<Record<string, { suffix: string; limit: number }>> = {
     Latitude: { suffix: '__Latitude__s', limit: 90 },
@@ -2541,15 +2543,14 @@ export class RecipeCockpitService {
             return { valuesByObject: new Map(), notices: [] };
         }
 
-        const changedFieldLabels: string[] = [];
-        const currentEntries = fixedValueRead.entries.filter(entry => {
-            const restoreResult = RecipeCockpitRecipeWriter.restorePinnedField(recipeText, entry.objectApiName, entry.fieldApiName, this.buildPinnedFieldRestoreRequests(entry, undefined));
-            const isChanged = 'refusal' in restoreResult && restoreResult.refusal.reason === 'pinned-field-changed';
-            if ( isChanged ) {
-                changedFieldLabels.push(`${entry.objectApiName}.${entry.fieldApiName}`);
-            }
-            return !isChanged;
-        });
+        // ONE SCAN FOR EVERY PIN OF THE FILE: A CHECK PER PIN OVER THE WHOLE RECIPE WAS ~200 ms EACH AT 11,000 OBJECTS
+        const changedFlags = RecipeCockpitRecipeWriter.listChangedPinnedFields(recipeText, fixedValueRead.entries.map(entry => ({
+            objectApiName: entry.objectApiName,
+            fieldApiName: entry.fieldApiName,
+            restoreRequests: this.buildPinnedFieldRestoreRequests(entry, undefined)
+        })));
+        const changedFieldLabels = fixedValueRead.entries.filter((_entry, entryIndex) => changedFlags[entryIndex]).map(entry => `${entry.objectApiName}.${entry.fieldApiName}`);
+        const currentEntries = fixedValueRead.entries.filter((_entry, entryIndex) => !changedFlags[entryIndex]);
 
         return {
             valuesByObject: RecipeCockpitFixedValueStore.listValuesByObject(currentEntries),
@@ -3457,9 +3458,14 @@ export class RecipeCockpitService {
             `Clear the fixed value of ${fieldLabel}?`,
             {
                 modal: true,
-                detail: planned.isRederived
-                    ? `This writes to "${recipeFileLabel}": "${fixedValueFileLabel}" has no recorded lines for ${fieldLabel}, so it gets back the value Generate Treecipe wrote for it rather than the exact lines it had. Every other line of the file is left as it is.`
-                    : `This writes to "${recipeFileLabel}": ${fieldLabel} gets back the lines it had before it was pinned, recorded in "${fixedValueFileLabel}". Every other line of the file is left as it is.`
+                detail: [
+                    planned.isRederived
+                        ? `This writes to "${recipeFileLabel}": "${fixedValueFileLabel}" has no recorded lines for ${fieldLabel}, so it gets back the value Generate Treecipe wrote for it rather than the exact lines it had. Every other line of the file is left as it is.`
+                        : `This writes to "${recipeFileLabel}": ${fieldLabel} gets back the lines it had before it was pinned, recorded in "${fixedValueFileLabel}". Every other line of the file is left as it is.`,
+                    '',
+                    'It puts back:',
+                    this.buildRestorePreview(planned.previewText)
+                ].join('\n')
             },
             RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL
         );
@@ -3472,7 +3478,7 @@ export class RecipeCockpitService {
         if ( 'refusal' in confirmed ) {
             return { isWritten: false, refusal: confirmed.refusal };
         }
-        if ( confirmed.isRederived !== planned.isRederived ) {
+        if ( confirmed.isRederived !== planned.isRederived || confirmed.previewText !== planned.previewText ) {
             return { isWritten: false, refusal: `Not saved: "${path.basename(fixedValueFilePath)}" changed while the dialog was open.` };
         }
 
@@ -3490,7 +3496,7 @@ export class RecipeCockpitService {
                                         workspaceRoot: string,
                                         objectApiName: string,
                                         fieldApiName: string,
-                                        fallbackValueText: string | undefined): { recipeText: string; entries: IFixedValueEntry[]; isRederived: boolean } | { refusal: string } {
+                                        fallbackValueText: string | undefined): { recipeText: string; entries: IFixedValueEntry[]; isRederived: boolean; previewText: string } | { refusal: string } {
 
         const fixedValueFilePath = RecipeCockpitFixedValueStore.buildFilePath(recipeFilePath);
         const located = this.readFixedValueTarget(recipeFilePath, fixedValueFilePath, workspaceRoot);
@@ -3513,7 +3519,13 @@ export class RecipeCockpitService {
             return { refusal: `Not saved: ${restoreResult.refusal.message}` };
         }
 
-        return { recipeText: restoreResult.recipeText, entries: RecipeCockpitFixedValueStore.removeEntry(located.entries, objectApiName, fieldApiName), isRederived: isRederived };
+        return {
+            recipeText: restoreResult.recipeText,
+            entries: RecipeCockpitFixedValueStore.removeEntry(located.entries, objectApiName, fieldApiName),
+            isRederived: isRederived,
+            // WHAT THE MODAL SHOWS: THE FIRST RECORDED LINES, ELSE THE RE-DERIVED VALUE -- A CHANGE ONLY TO THE FIXED-VALUES FILE IS NOT PUT BACK UNSEEN
+            previewText: entry.occurrences.find(occurrence => occurrence.originalText !== undefined)?.originalText ?? `${fieldApiName}: ${fallbackValueText}`
+        };
 
     }
 
@@ -3538,6 +3550,20 @@ export class RecipeCockpitService {
         const standardFieldValues = ( fakerService === 'faker-js' ? new FakerJSRecipeFakerService() : new SnowfakeryRecipeFakerService() ).getOOTBObjectApiNameToFieldApiNameMap();
         const valuesByField = Object.prototype.hasOwnProperty.call(standardFieldValues, objectApiName) ? standardFieldValues[objectApiName] : undefined;
         return valuesByField && Object.prototype.hasOwnProperty.call(valuesByField, fieldViewModel.fieldApiName) ? valuesByField[fieldViewModel.fieldApiName] : undefined;
+
+    }
+
+    // LINES AS THE MODAL SHOWS THEM: ONE PER LINE, LEFT-ALIGNED, ESCAPED LIKE A NOTIFICATION, AND CUT SHORT PAST A SCREEN'S WORTH
+    static buildRestorePreview(previewText: string): string {
+
+        const previewLines = previewText.split(/\r\n|\n/);
+        const commonIndent = Math.min(...previewLines.filter(previewLine => previewLine.trim() !== '').map(previewLine => RecipeCockpitRecipeWriter.countIndent(previewLine)));
+        const shownLines = previewLines.slice(0, RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LINES)
+            .map(previewLine => RecipeYamlScalar.escapeForNotification(previewLine.slice(Math.min(commonIndent, RecipeCockpitRecipeWriter.countIndent(previewLine)))));
+        const previewBody = shownLines.join('\n');
+        const isCut = previewLines.length > RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LINES || previewBody.length > RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LENGTH;
+
+        return isCut ? `${previewBody.slice(0, RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LENGTH)}\n…` : previewBody;
 
     }
 
@@ -3577,13 +3603,32 @@ export class RecipeCockpitService {
         fixed-values file goes back to what it was, or away when there was none. A file left with no
         entry is removed rather than kept empty.
     */
+    /*
+        Written beside the target and renamed over it, so a write that stops part way (a full disk, a
+        killed host) leaves the recipe as it was rather than cut short. A rename replaces a link at the
+        target rather than writing through it.
+    */
+    private static writeFileReplacing(filePath: string, fileText: string): void {
+
+        const temporaryFilePath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`);
+
+        try {
+            fs.writeFileSync(temporaryFilePath, fileText, { flag: 'wx' });
+            fs.renameSync(temporaryFilePath, filePath);
+        } catch (writeError) {
+            fs.rmSync(temporaryFilePath, { force: true });
+            throw writeError;
+        }
+
+    }
+
     private static writeRecipeWithFixedValueFile(recipeFilePath: string, recipeText: string, fixedValueFilePath: string, entries: IFixedValueEntry[]): string | undefined {
 
         const previousFixedValueText = fs.existsSync(fixedValueFilePath) ? fs.readFileSync(fixedValueFilePath, 'utf-8') : undefined;
 
         try {
             if ( entries.length > 0 ) {
-                fs.writeFileSync(fixedValueFilePath, RecipeCockpitFixedValueStore.serialize(entries));
+                this.writeFileReplacing(fixedValueFilePath, RecipeCockpitFixedValueStore.serialize(entries));
             } else if ( previousFixedValueText !== undefined ) {
                 fs.unlinkSync(fixedValueFilePath);
             }
@@ -3592,12 +3637,12 @@ export class RecipeCockpitService {
         }
 
         try {
-            fs.writeFileSync(recipeFilePath, recipeText);
+            this.writeFileReplacing(recipeFilePath, recipeText);
             return undefined;
         } catch (writeError) {
             try {
                 if ( previousFixedValueText !== undefined ) {
-                    fs.writeFileSync(fixedValueFilePath, previousFixedValueText);
+                    this.writeFileReplacing(fixedValueFilePath, previousFixedValueText);
                 } else if ( fs.existsSync(fixedValueFilePath) ) {
                     fs.unlinkSync(fixedValueFilePath);
                 }

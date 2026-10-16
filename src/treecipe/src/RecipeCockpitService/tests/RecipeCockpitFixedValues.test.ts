@@ -38,6 +38,8 @@ import {
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION,
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIXED_VALUES,
     RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL,
+    RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LENGTH,
+    RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LINES,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
@@ -46,6 +48,7 @@ import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipe
 import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
 import { HOSTILE_PICKLIST_VALUES, ORDINARY_PICKLIST_VALUES } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 import { pinFieldInRecipeFile, restoreRecipeFiles } from './RecipeCockpitFixedValueFiles';
 import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -532,6 +535,23 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
     });
 
+    describe('buildRestorePreview (#342 review)', () => {
+
+        it('shows the lines left-aligned and escaped like a notification, and cuts a long one short', () => {
+
+            expect(RecipeCockpitService.buildRestorePreview('        Picklist__c: ${{faker.helpers.arrayElement([\'a\'])}}\n                    ### TODO: -- RecordType Options -- One'))
+                .toBe(`${RecipeYamlScalar.escapeForNotification('Picklist__c: ${{faker.helpers.arrayElement([\'a\'])}}')}\n            ### TODO: -- RecordType Options -- One`);
+
+            const manyLines = ['    Field__c: |', ...Array.from({ length: 20 }, (_unused, lineIndex) => `        line ${lineIndex}`)].join('\n');
+            const preview = RecipeCockpitService.buildRestorePreview(manyLines);
+            expect(preview.split('\n')).toHaveLength(RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LINES + 1);
+            expect(preview).toEndWith('\n…');
+            expect(RecipeCockpitService.buildRestorePreview(`    Field__c: ${'x'.repeat(2000)}`)).toHaveLength(RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LENGTH + 2);
+
+        });
+
+    });
+
     describe('validateFixedValueInput', () => {
 
         const recipe = loadRecipe();
@@ -803,6 +823,8 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             await save('Legacy_Code__c', '');
 
             expect(showWarningMessage.mock.calls[2][1].detail).toContain('gets back the lines it had before it was pinned');
+            // A CHANGE TO THE FIXED-VALUES FILE ALONE IS NEVER PUT BACK UNSEEN: THE MODAL SHOWS THE LINES
+            expect(showWarningMessage.mock.calls[2][1].detail).toEndWith('It puts back:\nLegacy_Code__c: ${{fake.Word}}');
             expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
             expect(fs.existsSync(ACCOUNT_FIXED_VALUE_FILE_PATH)).toBeFalse();
             expect(treeOf(lastPosted('recipeData').recipe, ACCOUNT_TREE_KEY)).not.toHaveProperty('fixedValues');
@@ -895,13 +917,13 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
             const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
             await openAndDraw(buildWorkspaceState());
-            const realWriteFileSync = fs.writeFileSync;
-            const writeSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(((filePath: fs.PathOrFileDescriptor, ...rest: any[]) => {
-                if ( filePath === ACCOUNT_RECIPE_FILE_PATH ) {
+            const realRenameSync = fs.renameSync;
+            const writeSpy = jest.spyOn(fs, 'renameSync').mockImplementation(((sourcePath: fs.PathLike, targetPath: fs.PathLike) => {
+                if ( targetPath === ACCOUNT_RECIPE_FILE_PATH ) {
                     throw new Error('read-only');
                 }
-                return (realWriteFileSync as any)(filePath, ...rest);
-            }) as typeof fs.writeFileSync);
+                return realRenameSync(sourcePath, targetPath);
+            }) as typeof fs.renameSync);
 
             showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL);
             await save('Legacy_Code__c', 'X-1');
@@ -910,6 +932,8 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             expect(lastPosted('fieldEditResult').refusal).toContain('could not be written (read-only)');
             expect(fs.existsSync(ACCOUNT_FIXED_VALUE_FILE_PATH)).toBeFalse();
             expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
+            // THE WRITE GOES TO A FILE BESIDE THE RECIPE AND IS RENAMED OVER IT; A FAILED ONE LEAVES NO TEMPORARY FILE
+            expect(fs.readdirSync(path.dirname(ACCOUNT_RECIPE_FILE_PATH)).filter(fileName => fileName.endsWith('.tmp'))).toEqual([]);
 
         });
 
@@ -975,6 +999,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
                 await save('Legacy_Code__c', '');
 
                 expect(showWarningMessage.mock.calls[0][1].detail).toContain('has no recorded lines for Account.Legacy_Code__c');
+                expect(showWarningMessage.mock.calls[0][1].detail).toEndWith('It puts back:\nLegacy_Code__c: ${{fake.Word}}');
                 expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
                 expect(fs.existsSync(ACCOUNT_FIXED_VALUE_FILE_PATH)).toBeFalse();
             } finally {
@@ -1071,13 +1096,13 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
         it('answers a fixed-values file the disk refuses, and a Clear whose recipe write fails puts the fixed-values file back', async () => {
 
             await openAndDraw(buildWorkspaceState());
-            const realWriteFileSync = fs.writeFileSync;
-            const failWritesTo = (failingPath: string) => jest.spyOn(fs, 'writeFileSync').mockImplementation(((filePath: fs.PathOrFileDescriptor, ...rest: any[]) => {
-                if ( filePath === failingPath ) {
+            const realRenameSync = fs.renameSync;
+            const failWritesTo = (failingPath: string) => jest.spyOn(fs, 'renameSync').mockImplementation(((sourcePath: fs.PathLike, targetPath: fs.PathLike) => {
+                if ( targetPath === failingPath ) {
                     throw new Error('read-only');
                 }
-                return (realWriteFileSync as any)(filePath, ...rest);
-            }) as typeof fs.writeFileSync);
+                return realRenameSync(sourcePath, targetPath);
+            }) as typeof fs.renameSync);
 
             const fixedValueWriteSpy = failWritesTo(ACCOUNT_FIXED_VALUE_FILE_PATH);
             showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL);
@@ -1087,22 +1112,22 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
             // WHAT IS THROWN NEED NOT BE AN Error, AND IS SAID AS IT IS
             const thrownText = (): unknown => 'disk gone';
-            const recipeThrowSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(((filePath: fs.PathOrFileDescriptor, ...rest: any[]) => {
-                if ( filePath === ACCOUNT_RECIPE_FILE_PATH || filePath === ACCOUNT_FIXED_VALUE_FILE_PATH ) {
+            const recipeThrowSpy = jest.spyOn(fs, 'renameSync').mockImplementation(((sourcePath: fs.PathLike, targetPath: fs.PathLike) => {
+                if ( targetPath === ACCOUNT_RECIPE_FILE_PATH || targetPath === ACCOUNT_FIXED_VALUE_FILE_PATH ) {
                     throw thrownText();
                 }
-                return (realWriteFileSync as any)(filePath, ...rest);
-            }) as typeof fs.writeFileSync);
+                return realRenameSync(sourcePath, targetPath);
+            }) as typeof fs.renameSync);
             showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL);
             await save('Legacy_Code__c', 'X-1');
             expect(lastPosted('fieldEditResult').refusal).toBe(`Not saved: "${path.basename(ACCOUNT_FIXED_VALUE_FILE_PATH)}" could not be written (disk gone).`);
             recipeThrowSpy.mockRestore();
-            const recipeOnlyThrowSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(((filePath: fs.PathOrFileDescriptor, ...rest: any[]) => {
-                if ( filePath === ACCOUNT_RECIPE_FILE_PATH ) {
+            const recipeOnlyThrowSpy = jest.spyOn(fs, 'renameSync').mockImplementation(((sourcePath: fs.PathLike, targetPath: fs.PathLike) => {
+                if ( targetPath === ACCOUNT_RECIPE_FILE_PATH ) {
                     throw thrownText();
                 }
-                return (realWriteFileSync as any)(filePath, ...rest);
-            }) as typeof fs.writeFileSync);
+                return realRenameSync(sourcePath, targetPath);
+            }) as typeof fs.renameSync);
             showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL);
             await save('Legacy_Code__c', 'X-1');
             recipeOnlyThrowSpy.mockRestore();
