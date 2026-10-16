@@ -351,6 +351,11 @@ export const RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL = 'Record type fields 
 export const RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL = 'Show values';
 export const RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL = 'Hide values';
 export const RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE = 'No object in this tree has more than one record type, so no field depends on one.';
+// THE TREECIPE TAB'S "TODOs only" CHECK (#354), AND WHY IT IS DISABLED ON A CARD WHOSE RECIPE HAS NO TODO COMMENT
+export const RECIPE_COCKPIT_TODOS_ONLY_LABEL = 'TODOs only';
+// WHAT A FIELD'S TODO ROW SAYS WHEN THE TODO IS IN THE VALUE THE ROW ALREADY DRAWS (#354)
+export const RECIPE_COCKPIT_TODO_IN_VALUE_LABEL = 'TODO in the value above';
+export const RECIPE_COCKPIT_NO_TODOS_NOTE = 'No object of this tree has a TODO comment in the recipe.';
 export const RECIPE_COCKPIT_NO_FAVORITES_MESSAGE = 'No favorite trees in this run. Turn off Favorites only to see all trees.';
 
 export const RECIPE_COCKPIT_INSERT_DATASET_COMMAND = 'treecipe.insertDataSetBySelectedDirectory';
@@ -452,7 +457,8 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.',
-            'Under the run list, the Org section picks the org a card can insert into, opens it in your browser or makes a new scratch org. The Treecipes section below it holds the cards. Click either heading to fold it away.'
+            'Under the run list, the Org section picks the org a card can insert into, opens it in your browser or makes a new scratch org. The Treecipes section below it holds the cards. Click either heading to fold it away.',
+            'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, each TODO with a link to its line in the recipe.'
         ]
     },
     {
@@ -565,6 +571,19 @@ export interface IRecipeCockpitFieldViewModel {
     isPicklist?: boolean;
     // SET ONLY ON A FIELD A VALIDATION RULE NAMES (#324, #325), SO A WRAPPER WITHOUT RULES POSTS AS IT ALWAYS DID
     validationRules?: IRecipeCockpitFieldValidationRulesViewModel;
+    // SET ONLY ON A FIELD WHOSE RECIPE LINES CARRY A TODO COMMENT (#354), SO A RECIPE WITHOUT ONE POSTS AS IT ALWAYS DID
+    todos?: IRecipeCockpitTodoViewModel[];
+}
+
+/*
+    One TODO comment of a recipe file (#354): its line and its text from the first "#". The text
+    comes from a file the reader can edit, so the panel only ever writes it as text. On a FIELD the
+    text is left out when the field's posted recipeValue already holds it -- the row draws that
+    value, and every generated lookup and record type variant would otherwise post its TODO twice.
+*/
+export interface IRecipeCockpitTodoViewModel {
+    lineNumber: number;
+    text?: string;
 }
 
 /*
@@ -640,6 +659,8 @@ export interface IRecipeCockpitObjectViewModel {
     recordTypes?: IRecipeCockpitRecordTypeViewModel[];
     generatedRecordTypeDeveloperNames?: string[];
     isRecordTypeSelectionApplied?: true;
+    // THE TODO COMMENTS OF THE OBJECT'S BLOCK THAT SIT ON NO FIELD (#354): A VALIDATION RULE NOT APPLIED, A COMMENTED-OUT FIELD...
+    todos?: IRecipeCockpitTodoViewModel[];
 }
 
 export type RecipeCockpitRecordTypeImpactKind = 'picklist' | 'multiselect' | 'dependent';
@@ -662,6 +683,7 @@ export interface IRecipeCockpitObjectIterationFieldViewModel {
     fieldApiName: string;
     lineNumber: number;
     recipeValue: string;
+    todos?: IRecipeCockpitTodoViewModel[];
 }
 
 /*
@@ -684,6 +706,7 @@ export interface IRecipeCockpitObjectIterationViewModel {
     parentNickname?: string;
     fields: IRecipeCockpitObjectIterationFieldViewModel[];
     insertableFriendObjectApiNames?: string[];
+    todos?: IRecipeCockpitTodoViewModel[];
 }
 
 // ONE LOOKUP TYING AN OBJECT TO A PARENT IN ITS OWN TREE; A SELF-LOOKUP NAMES ITS OWN OBJECT AS THE PARENT
@@ -960,6 +983,7 @@ export interface IRecipeCockpitWrapperTree {
 export interface IRecipeSourceFieldEntry {
     lineNumber: number;
     valueText: string;
+    todos?: IRecipeCockpitTodoViewModel[];
 }
 
 export interface IRecipeSourceObjectEntry {
@@ -972,6 +996,7 @@ export interface IRecipeSourceObjectEntry {
     // A LATER OCCURRENCE WAS LEFT TO THE FIRST: NO NICKNAME TELLS THEM APART, SO THE OBJECT CANNOT BE EXCLUDED (#219)
     hasIndistinctOccurrences?: true;
     hasRecordTypeSections?: true;
+    todos?: IRecipeCockpitTodoViewModel[];
 }
 
 export interface IRecipeSourceObjectIterationEntry {
@@ -981,6 +1006,7 @@ export interface IRecipeSourceObjectIterationEntry {
     parentNickname?: string;
     fieldEntries: Map<string, IRecipeSourceFieldEntry>;
     insertableFriendObjectApiNames?: string[];
+    todos?: IRecipeCockpitTodoViewModel[];
 }
 
 export interface IRecipeSourceFile {
@@ -1079,6 +1105,8 @@ export interface IRecipeCockpitPanelTreePlace {
     isRecordTypesExpanded?: true;
     // THE TREECIPE TAB'S "Record type fields only" CHECK (#320); A PLACE SAVED BEFORE IT HAS NONE AND READS AS OFF
     isRecordTypeFieldsOnly?: true;
+    // THE TREECIPE TAB'S "TODOs only" CHECK (#354); A PLACE SAVED BEFORE IT HAS NONE AND READS AS OFF
+    isTodosOnly?: true;
 }
 
 export interface IRecipeCockpitPanelPlace {
@@ -1871,7 +1899,8 @@ export class RecipeCockpitService {
                 ...( candidateTree.isDatasetFavoritesOnly === true ? { isDatasetFavoritesOnly: true as const } : {} ),
                 // A CARD SAVED ON THE RECORD TYPES TAB, BEFORE IT BECAME A SECTION (#321), OPENS WITH THE SECTION EXPANDED
                 ...( candidateTree.isRecordTypesExpanded === true || candidateTree.selectedTab === 'recordTypes' ? { isRecordTypesExpanded: true as const } : {} ),
-                ...( candidateTree.isRecordTypeFieldsOnly === true ? { isRecordTypeFieldsOnly: true as const } : {} )
+                ...( candidateTree.isRecordTypeFieldsOnly === true ? { isRecordTypeFieldsOnly: true as const } : {} ),
+                ...( candidateTree.isTodosOnly === true ? { isTodosOnly: true as const } : {} )
             }];
 
         });
@@ -9990,19 +10019,30 @@ export class RecipeCockpitService {
                 return;
             }
 
+            // EVERY TODO COMMENT THE PANEL LISTS IS ITS OWN LINK (#354); ONE ON ITS OWNER'S LINE IS THAT LINE'S KEY ALREADY
+            const pushTodoKeys = (todos: IRecipeCockpitTodoViewModel[] | undefined, ownerLineNumber: number | undefined) => ( todos ?? [] )
+                .filter(todo => todo.lineNumber !== ownerLineNumber)
+                .forEach(todo => openableSourceKeys.push(this.buildOpenSourceKey(objectViewModel.recipeFilePath, todo.lineNumber)));
+
             if ( objectViewModel.lineNumber ) {
                 openableSourceKeys.push(this.buildOpenSourceKey(objectViewModel.recipeFilePath, objectViewModel.lineNumber));
             }
+            pushTodoKeys(objectViewModel.todos, objectViewModel.lineNumber);
 
             objectViewModel.fields.forEach(fieldViewModel => {
                 if ( fieldViewModel.lineNumber ) {
                     openableSourceKeys.push(this.buildOpenSourceKey(objectViewModel.recipeFilePath, fieldViewModel.lineNumber));
                 }
+                pushTodoKeys(fieldViewModel.todos, fieldViewModel.lineNumber);
             });
 
             ( objectViewModel.iterations ?? [] ).forEach(iteration => {
                 openableSourceKeys.push(this.buildOpenSourceKey(objectViewModel.recipeFilePath, iteration.lineNumber));
-                iteration.fields.forEach(iterationField => openableSourceKeys.push(this.buildOpenSourceKey(objectViewModel.recipeFilePath, iterationField.lineNumber)));
+                pushTodoKeys(iteration.todos, iteration.lineNumber);
+                iteration.fields.forEach(iterationField => {
+                    openableSourceKeys.push(this.buildOpenSourceKey(objectViewModel.recipeFilePath, iterationField.lineNumber));
+                    pushTodoKeys(iterationField.todos, iterationField.lineNumber);
+                });
             });
 
         });
@@ -10968,6 +11008,7 @@ export class RecipeCockpitService {
                     fieldEntries: this.readRecipeSourceFieldEntries(scannedObject, lines),
                     ...( RecipeCockpitRecipeWriter.hasRecordTypeSections(lines, scannedObject) ? { hasRecordTypeSections: true } : {} )
                 });
+                this.attachRecipeSourceTodos(objectEntries.get(scannedObject.objectApiName), scannedObject, lines);
                 return;
             }
 
@@ -10976,6 +11017,8 @@ export class RecipeCockpitService {
             const firstScannedObject = scannedObjectsByHeaderIndex.get(firstObjectEntry.lineNumber - 1);
             if ( nickname === undefined || readDistinctNickname(firstScannedObject) === undefined ) {
                 firstObjectEntry.hasIndistinctOccurrences = true;
+                // THE FIRST OCCURRENCE IS THE ONE ROW DRAWN FOR THEM ALL, SO IT LISTS THEIR TODOS TOO (#354)
+                this.attachRecipeSourceTodos(firstObjectEntry, scannedObject, lines);
                 return;
             }
 
@@ -10989,10 +11032,49 @@ export class RecipeCockpitService {
                 fieldEntries: this.readRecipeSourceFieldEntries(scannedObject, lines),
                 ...( insertableFriendObjectApiNames.length > 0 ? { insertableFriendObjectApiNames: insertableFriendObjectApiNames } : {} )
             }];
+            this.attachRecipeSourceTodos(firstObjectEntry.iterations[firstObjectEntry.iterations.length - 1], scannedObject, lines);
 
         });
 
         return objectEntries;
+
+    }
+
+    /*
+        Puts each TODO comment of one occurrence's block on the field whose lines hold it, or on the
+        entry itself when it sits on no field (#354). A field the entry does not list -- a later
+        indistinct occurrence's own field -- puts its TODO on the entry, so none is lost. todos is
+        set only when there is one, so a recipe without a TODO is read as it always was.
+    */
+    private static attachRecipeSourceTodos(
+        sourceEntry: { fieldEntries: Map<string, IRecipeSourceFieldEntry>; todos?: IRecipeCockpitTodoViewModel[] },
+        scannedObject: IScannedObject,
+        lines: string[]
+    ): void {
+
+        let fieldIndex = 0;
+
+        scannedObject.todoLineIndexes.forEach(todoLineIndex => {
+
+            const todo: IRecipeCockpitTodoViewModel = {
+                lineNumber: todoLineIndex + 1,
+                text: RecipeCockpitRecipeWriter.readTodoCommentText(lines[todoLineIndex]) ?? ''
+            };
+
+            while ( fieldIndex < scannedObject.fields.length && scannedObject.fields[fieldIndex].endIndex <= todoLineIndex ) {
+                fieldIndex++;
+            }
+
+            const scannedField = scannedObject.fields[fieldIndex];
+            const fieldEntry = scannedField && scannedField.startIndex <= todoLineIndex
+                ? sourceEntry.fieldEntries.get(scannedField.fieldApiName)
+                : undefined;
+            const todoOwner = fieldEntry ?? sourceEntry;
+
+            // PUSHED, NEVER SPREAD: ONE OWNER CAN HOLD THOUSANDS, AND A COPY PER TODO WAS 14 s FOR 50,000
+            ( todoOwner.todos ??= [] ).push(todo);
+
+        });
 
     }
 
@@ -11073,9 +11155,17 @@ export class RecipeCockpitService {
                     recipeValue: fieldEntry.valueText,
                     controllingField: '',
                     isOnlyInRecipeFile: true,
-                    lineNumber: fieldEntry.lineNumber
+                    lineNumber: fieldEntry.lineNumber,
+                    ...( fieldEntry.todos ? { todos: this.buildFieldTodoViewModels(fieldEntry.todos, fieldEntry.valueText) } : {} )
                 });
 
+            });
+
+            locatedWrapperFields.forEach(fieldViewModel => {
+                const fieldTodos = objectEntry.fieldEntries.get(fieldViewModel.fieldApiName)?.todos;
+                if ( fieldTodos ) {
+                    fieldViewModel.todos = this.buildFieldTodoViewModels(fieldTodos, fieldViewModel.recipeValue);
+                }
             });
 
             const locatedFields = [...locatedWrapperFields, ...recipeFileOnlyFields]
@@ -11093,6 +11183,7 @@ export class RecipeCockpitService {
                 ...( objectEntry.hasRecordTypeSections ? { hasRecordTypeSections: true } : {} ),
                 ...( objectEntry.recordCount !== undefined ? { recordCount: objectEntry.recordCount } : {} ),
                 ...( objectEntry.countParentObjectApiName !== undefined ? { countParentObjectApiName: objectEntry.countParentObjectApiName } : {} ),
+                ...( objectEntry.todos ? { todos: objectEntry.todos.slice() } : {} ),
                 ...( objectEntry.iterations ? {
                     nickname: objectEntry.nickname,
                     iterations: objectEntry.iterations.map(iteration => ({
@@ -11103,14 +11194,26 @@ export class RecipeCockpitService {
                         fields: Array.from(iteration.fieldEntries, ([fieldApiName, fieldEntry]) => ({
                             fieldApiName: fieldApiName,
                             lineNumber: fieldEntry.lineNumber,
-                            recipeValue: fieldEntry.valueText
+                            recipeValue: fieldEntry.valueText,
+                            ...( fieldEntry.todos ? { todos: this.buildFieldTodoViewModels(fieldEntry.todos, fieldEntry.valueText) } : {} )
                         })),
-                        ...( iteration.insertableFriendObjectApiNames ? { insertableFriendObjectApiNames: iteration.insertableFriendObjectApiNames.slice() } : {} )
+                        ...( iteration.insertableFriendObjectApiNames ? { insertableFriendObjectApiNames: iteration.insertableFriendObjectApiNames.slice() } : {} ),
+                        ...( iteration.todos ? { todos: iteration.todos.slice() } : {} )
                     }))
                 } : {} )
             };
 
         });
+
+    }
+
+    // A FIELD'S TODOS AS POSTED (#354): A TODO ITS DRAWN VALUE ALREADY HOLDS CARRIES ONLY ITS LINE
+    static buildFieldTodoViewModels(todos: IRecipeCockpitTodoViewModel[], recipeValue: string): IRecipeCockpitTodoViewModel[] {
+
+        return todos.map(todo => ( todo.text !== undefined && !recipeValue.includes(todo.text)
+            ? { lineNumber: todo.lineNumber, text: todo.text }
+            : { lineNumber: todo.lineNumber }
+        ));
 
     }
 
@@ -11555,6 +11658,13 @@ ${this.buildPaletteCustomProperties()}
     .treeRecordTypeFieldsCheck { display: inline-flex; align-items: center; gap: 0.4rem; }
     .treeRecordTypeFieldsLabel { cursor: pointer; }
     .treeRecordTypeFieldsCheck.disabled .treeRecordTypeFieldsLabel { color: var(--sdt-muted); cursor: not-allowed; }
+    .treeTodosCheck { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .treeTodosLabel { cursor: pointer; }
+    .treeTodosCheck.disabled .treeTodosLabel { color: var(--sdt-muted); cursor: not-allowed; }
+    .treeTodosNote { font-size: 0.9em; }
+    .treeTodos { position: relative; z-index: 2; margin: 0.15rem 0 0.25rem 0; }
+    .treeTodo { display: flex; align-items: baseline; gap: 0.4rem; font-size: 0.85em; }
+    .treeTodoText { white-space: pre-wrap; word-break: break-word; font-family: var(--vscode-editor-font-family); }
     .validationRuleControl { display: inline-flex; align-items: center; gap: 0.3rem; margin-left: auto; }
     .expressionRow { display: flex; align-items: flex-start; gap: 0.3rem; }
     .expressionRow > pre { flex: 1 1 auto; min-width: 0; }
@@ -11792,6 +11902,9 @@ ${this.buildPaletteCustomProperties()}
     const PICKLIST_SHOW_VALUES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL)};
     const PICKLIST_HIDE_VALUES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL)};
     const NO_RECORD_TYPE_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE)};
+    const TODOS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODOS_ONLY_LABEL)};
+    const TODO_IN_VALUE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODO_IN_VALUE_LABEL)};
+    const NO_TODOS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_TODOS_NOTE)};
     const NO_FAVORITES_MESSAGE = ${JSON.stringify(RECIPE_COCKPIT_NO_FAVORITES_MESSAGE)};
     const HELP_TOGGLE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_TOGGLE_LABEL)};
     const HELP_TOGGLE_ARIA_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_TOGGLE_ARIA_LABEL)};
@@ -13445,6 +13558,7 @@ ${this.buildPaletteCustomProperties()}
             validationRuleElement: null,
             isValidationRuleApplied: true,
             recordTypeDeveloperNames: null,
+            todos: Array.isArray(field.todos) ? field.todos : [],
             editorElement: null,
             editorEdit: '',
             editorRefusalElement: null
@@ -13643,6 +13757,10 @@ ${this.buildPaletteCustomProperties()}
         }
 
         fieldRowElement.appendChild(fieldHeaderElement);
+
+        if (fieldState.todos.length > 0) {
+            fieldRowElement.appendChild(buildTodoListElement(treeObjectState.object.recipeFilePath, fieldState.todos));
+        }
 
         // THE SEARCH BOX MATCHES A FIELD BY ITS FAKER EXPRESSION, SO THE EXPRESSION IS ON SCREEN WITH THE ROW; ITS ✎ (#323) SITS ON IT
         const hasConstraintButton = treeObjectState.canSelectFields && !!field.lineNumber;
@@ -13869,6 +13987,9 @@ ${this.buildPaletteCustomProperties()}
     function setTreeObjectExpanded(treeObjectState, isExpanded, isAnimated) {
 
         if (isExpanded && !treeObjectState.isBodyBuilt) {
+            if (treeObjectState.objectTodos.length > 0) {
+                treeObjectState.bodyElement.appendChild(buildTodoListElement(treeObjectState.object.recipeFilePath, treeObjectState.objectTodos));
+            }
             treeObjectState.fieldStates.forEach(function (fieldState) {
                 fieldState.rowElement = buildTreeFieldRow(treeObjectState, fieldState);
                 applyTreeFieldVisibility(fieldState);
@@ -13980,8 +14101,13 @@ ${this.buildPaletteCustomProperties()}
             countInputElement: null,
             countErrorElement: null,
             hasRecordTypes: hasOwnKey(recordTypeFieldsByObjectApiName, object.objectApiName),
-            recordTypeFieldCount: 0
+            recordTypeFieldCount: 0,
+            // THE TODO COMMENTS OF THE BLOCK THAT SIT ON NO FIELD, AND EVERY TODO OF THE OCCURRENCE (#354)
+            objectTodos: Array.isArray(object.todos) ? object.todos : [],
+            todoCount: 0
         };
+
+        treeObjectState.todoCount = treeObjectState.fieldStates.reduce(function (todoCount, fieldState) { return todoCount + fieldState.todos.length; }, treeObjectState.objectTodos.length);
 
         // AN ITERATION IS THE SAME OBJECT, SO ITS ROWS CARRY THE SAME CHIPS
         if (treeObjectState.hasRecordTypes) {
@@ -14064,6 +14190,7 @@ ${this.buildPaletteCustomProperties()}
 
         treeState.structureSearch = buildTabSearch(treeState, 'treecipe', 'Search objects, fields and faker expressions', applyStructureFilter);
         appendRecordTypeFieldsToggle(treeState, treeState.structureSearch.element);
+        appendTodosToggle(treeState, treeState.structureSearch.element);
         structureElement.appendChild(treeState.structureSearch.element);
 
         structureElement.appendChild(listRecordTypeObjects(treeState).length > 0
@@ -14380,6 +14507,94 @@ ${this.buildPaletteCustomProperties()}
         }
 
         drawRecordTypeFieldsToggle(treeState);
+
+    }
+
+    /*
+        "TODOs only" (#354): the Treecipe tab's own check, per card and panel-only, kept in the
+        reader's place. It narrows the rows to the fields whose recipe lines carry a TODO comment,
+        with the search, and never hides an object. A card with no TODO draws it disabled.
+    */
+    function todoCountOf(treeState) {
+        if (typeof treeState.todoCount !== 'number') {
+            treeState.todoCount = treeState.objectStates.reduce(function (todoCount, treeObjectState) { return todoCount + treeObjectState.todoCount; }, 0);
+        }
+        return treeState.todoCount;
+    }
+
+    function isTodosOnlyIn(treeState) {
+        return treeState.isTodosOnly === true && todoCountOf(treeState) > 0;
+    }
+
+    function appendTodosToggle(treeState, searchElement) {
+
+        const todoCount = todoCountOf(treeState);
+        const checkElement = createElement('span', 'treeTodosCheck');
+        const toggleElement = createElement('button', 'treeFieldInclude treeTodosToggle');
+        const labelElement = createElement('span', 'treeTodosLabel', todoCount > 0 ? TODOS_ONLY_LABEL + ' (' + todoCount + ')' : TODOS_ONLY_LABEL);
+        toggleElement.setAttribute('role', 'checkbox');
+        toggleElement.setAttribute('aria-label', TODOS_ONLY_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
+
+        if (todoCount > 0) {
+            const title = 'Show only the fields and objects with a TODO comment in the recipe (' + pluralize(todoCount, 'TODO', 'TODOs') + ')';
+            const toggleTodosOnly = function () {
+                if (toggleElement.disabled) { return; }
+                treeState.isTodosOnly = !treeState.isTodosOnly;
+                applyStructureFilter(treeState);
+                savePanelPlace();
+            };
+            toggleElement.setAttribute('title', title);
+            labelElement.setAttribute('title', title);
+            toggleElement.addEventListener('click', toggleTodosOnly);
+            labelElement.addEventListener('click', toggleTodosOnly);
+        } else {
+            toggleElement.disabled = true;
+            toggleElement.setAttribute('title', NO_TODOS_NOTE);
+            checkElement.classList.add('disabled');
+        }
+
+        treeState.todosToggleElement = toggleElement;
+        checkElement.appendChild(toggleElement);
+        checkElement.appendChild(labelElement);
+        searchElement.appendChild(checkElement);
+
+        if (todoCount === 0) {
+            searchElement.appendChild(createElement('span', 'treeTodosNote muted', NO_TODOS_NOTE));
+        }
+
+        drawTodosToggle(treeState);
+
+    }
+
+    function drawTodosToggle(treeState) {
+
+        const toggleElement = treeState.todosToggleElement;
+        if (!toggleElement) { return; }
+
+        const isChecked = isTodosOnlyIn(treeState);
+        toggleElement.textContent = isChecked ? '✓' : '';
+        toggleElement.setAttribute('aria-checked', isChecked ? 'true' : 'false');
+
+    }
+
+    // A FIELD'S OR AN OBJECT'S TODO COMMENTS (#354): THE TEXT, AS TEXT, AND A LINK TO ITS LINE
+    function buildTodoListElement(recipeFilePath, todos) {
+
+        const listElement = createElement('div', 'treeTodos');
+
+        todos.forEach(function (todo) {
+            const todoElement = createElement('div', 'treeTodo');
+            // A TODO WITH NO TEXT IS ONE THE FIELD'S DRAWN VALUE ALREADY SHOWS: THE ROW POINTS AT IT RATHER THAN POSTING IT TWICE
+            todoElement.appendChild(typeof todo.text === 'string'
+                ? createElement('span', 'treeTodoText', todo.text)
+                : createElement('span', 'treeTodoText muted', TODO_IN_VALUE_LABEL + ' (line ' + todo.lineNumber + ')'));
+            if (recipeFilePath && todo.lineNumber) {
+                todoElement.appendChild(buildSourceLink('treeTodoSource', '↗ yml', recipeFilePath, todo.lineNumber));
+            }
+            listElement.appendChild(todoElement);
+        });
+
+        return listElement;
 
     }
 
@@ -14999,7 +15214,9 @@ ${this.buildPaletteCustomProperties()}
             const iterationField = iterationFieldsByApiName[field.fieldApiName];
             return Object.assign({}, field, {
                 lineNumber: iterationField ? iterationField.lineNumber : undefined,
-                recipeValue: iterationField ? iterationField.recipeValue : field.recipeValue
+                recipeValue: iterationField ? iterationField.recipeValue : field.recipeValue,
+                // THE OCCURRENCE'S OWN TODOS (#354): THE OBJECT'S ARE THE FIRST OCCURRENCE'S
+                todos: iterationField && Array.isArray(iterationField.todos) ? iterationField.todos : undefined
             });
         });
 
@@ -15013,7 +15230,8 @@ ${this.buildPaletteCustomProperties()}
                 recipeValue: iterationField.recipeValue,
                 controllingField: '',
                 isOnlyInRecipeFile: true,
-                lineNumber: iterationField.lineNumber
+                lineNumber: iterationField.lineNumber,
+                todos: Array.isArray(iterationField.todos) ? iterationField.todos : undefined
             });
         });
 
@@ -15023,7 +15241,8 @@ ${this.buildPaletteCustomProperties()}
             lineNumber: iteration.lineNumber,
             nickname: iteration.nickname,
             iteration: iteration,
-            fields: fields
+            fields: fields,
+            todos: Array.isArray(iteration.todos) ? iteration.todos : undefined
         };
 
     }
@@ -15062,6 +15281,8 @@ ${this.buildPaletteCustomProperties()}
             datasetFavoritesToggleElement: null,
             isRecordTypeFieldsOnly: false,
             recordTypeFieldsToggleElement: null,
+            isTodosOnly: false,
+            todosToggleElement: null,
             // THE TOP OF THE TREECIPE TAB (#255), MADE WITH THE TAB
             resetSelectionElement: null,
             insert: null
@@ -15640,11 +15861,14 @@ ${this.buildPaletteCustomProperties()}
         const searchQuery = treeState.searchQueries.treecipe;
         // "Record type fields only" (#320) NARROWS WHAT THE SEARCH MATCHES: A FIELD SHOWS ONLY IF IT PASSES BOTH
         const isRecordTypeFieldsOnly = isRecordTypeFieldsOnlyIn(treeState);
-        const isFiltered = !!searchQuery || isRecordTypeFieldsOnly;
+        // "TODOs only" (#354) NARROWS THE SAME WAY, AND AN OBJECT'S OWN TODOS COUNT AS A MATCH SO IT STILL OPENS
+        const isTodosOnly = isTodosOnlyIn(treeState);
+        const isFiltered = !!searchQuery || isRecordTypeFieldsOnly || isTodosOnly;
         let totalFieldCount = 0;
         let matchingFieldCount = 0;
 
         drawRecordTypeFieldsToggle(treeState);
+        drawTodosToggle(treeState);
 
         treeState.objectStates.forEach(function (treeObjectState) {
 
@@ -15653,22 +15877,31 @@ ${this.buildPaletteCustomProperties()}
 
             treeObjectState.fieldStates.forEach(function (fieldState) {
                 fieldState.isMatch = (!isRecordTypeFieldsOnly || fieldState.recordTypeDeveloperNames !== null)
+                    && (!isTodosOnly || fieldState.todos.length > 0)
                     && (isObjectNameMatch || isFieldTextMatch(fieldState, searchQuery));
                 if (fieldState.isMatch) { objectMatchingFieldCount++; }
                 applyTreeFieldVisibility(fieldState);
             });
 
             const objectFieldCount = treeObjectState.fieldStates.length;
+            const hasMatchingObjectTodos = isTodosOnly && !isRecordTypeFieldsOnly && isObjectNameMatch && treeObjectState.objectTodos.length > 0;
             treeObjectState.matchingFieldCount = objectMatchingFieldCount;
+            treeObjectState.hasMatchingObjectTodos = hasMatchingObjectTodos;
             totalFieldCount += objectFieldCount;
             matchingFieldCount += objectMatchingFieldCount;
 
-            if (!isFiltered || (isObjectNameMatch && !isRecordTypeFieldsOnly)) {
+            if (!isFiltered || (isObjectNameMatch && !isRecordTypeFieldsOnly && !isTodosOnly)) {
                 treeObjectState.countElement.textContent = pluralize(objectFieldCount, 'field', 'fields');
+            } else if (isTodosOnly && treeObjectState.todoCount === 0) {
+                treeObjectState.countElement.textContent = 'no TODOs';
+            } else if (isTodosOnly && !searchQuery && !isRecordTypeFieldsOnly) {
+                treeObjectState.countElement.textContent = pluralize(treeObjectState.todoCount, 'TODO', 'TODOs');
             } else if (objectMatchingFieldCount > 0) {
                 treeObjectState.countElement.textContent = objectMatchingFieldCount + ' of ' + pluralize(objectFieldCount, 'field', 'fields');
             } else if (isRecordTypeFieldsOnly && treeObjectState.recordTypeFieldCount === 0) {
                 treeObjectState.countElement.textContent = 'no record type fields';
+            } else if (hasMatchingObjectTodos) {
+                treeObjectState.countElement.textContent = pluralize(treeObjectState.objectTodos.length, 'TODO', 'TODOs') + ' on the object';
             } else {
                 treeObjectState.countElement.textContent = 'no matching fields';
             }
@@ -15687,7 +15920,7 @@ ${this.buildPaletteCustomProperties()}
         }
 
         expandMatchesWithinBudget(treeState.objectStates,
-            function (treeObjectState) { return treeObjectState.matchingFieldCount; },
+            function (treeObjectState) { return treeObjectState.matchingFieldCount + (treeObjectState.hasMatchingObjectTodos ? 1 : 0); },
             function (treeObjectState) { return treeObjectState.fieldStates.length; },
             setTreeObjectExpanded);
 
@@ -16024,7 +16257,7 @@ ${this.buildPaletteCustomProperties()}
         const selectedTab = treeState.selectedTab || 'treecipe';
 
         if (!treeState.isExpandedByReader && selectedTab === 'treecipe' && !hasSearch && !treeState.isDatasetFavoritesOnly && !treeState.isRecordTypesExpanded
-                && !isRecordTypeFieldsOnlyIn(treeState) && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0) {
+                && !isRecordTypeFieldsOnlyIn(treeState) && !isTodosOnlyIn(treeState) && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0) {
             return null;
         }
 
@@ -16040,6 +16273,7 @@ ${this.buildPaletteCustomProperties()}
         if (treeState.isDatasetFavoritesOnly) { treePlace.isDatasetFavoritesOnly = true; }
         if (treeState.isRecordTypesExpanded) { treePlace.isRecordTypesExpanded = true; }
         if (isRecordTypeFieldsOnlyIn(treeState)) { treePlace.isRecordTypeFieldsOnly = true; }
+        if (isTodosOnlyIn(treeState)) { treePlace.isTodosOnly = true; }
 
         return treePlace;
 
@@ -16245,6 +16479,7 @@ ${this.buildPaletteCustomProperties()}
 
             // APPLIED BY THE applyStructureFilter BELOW, OR BY THE TREECIPE TAB WHEN IT IS BUILT
             treeState.isRecordTypeFieldsOnly = savedTree.isRecordTypeFieldsOnly === true;
+            treeState.isTodosOnly = savedTree.isTodosOnly === true;
 
             const hasOpenPicklists = hasAnyString(openPicklistKeys);
 
