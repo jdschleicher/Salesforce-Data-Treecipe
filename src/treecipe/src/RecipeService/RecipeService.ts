@@ -680,10 +680,10 @@ ${this.generateTabs(1)}${fieldPropertAndRecipeValue}`;
     /*
         What a field's validation rules come to (#324). Rules are grouped by what they constrain and
         each group is applied whole or not at all: bounds of one kind are intersected (tightest min,
-        tightest max) and handed to RecipeFieldConstraint, the same rule the Recipe Cockpit's ✎ is held
-        to (#323), so an empty intersection applies none of them; several ISPICKVAL exclusions drop
-        their values together; a regex replaces the generator. The expression is the backend's own
-        buildConstrainedExpression or buildRegexExpression, checked like a cockpit constraint and
+        tightest max) and handed to RecipeFieldConstraint (#323's rule), so an empty intersection
+        applies none of them; several ISPICKVAL exclusions drop their values together; a regex
+        replaces the generator. The expression is the backend's own buildConstrainedExpression or
+        buildRegexExpression, checked by RecipeCockpitRecipeWriter.checkConstrainedExpression and
         written double-quoted, with one "### Driven by ValidationRule" line naming the rules that
         changed it. Every rule is recorded, with why it was not applied when it was not.
     */
