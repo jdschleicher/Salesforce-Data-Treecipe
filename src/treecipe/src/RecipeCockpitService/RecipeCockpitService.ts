@@ -373,7 +373,7 @@ export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL = 'Remember this selecti
 export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE = 'Save the choice in treecipe/treecipe.config.json, so Generate Treecipe reuses it. With Use defaults, forgets a saved choice.';
 export const RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE = 'The record type selection could not be saved in treecipe.config.json, so it was used for this run only.';
 export const RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE = 'Record types';
-// THE PANEL'S TWO SECTIONS (#348): THE ONE ORG PICKER, THEN EVERY TREE CARD
+// THE PANEL'S TWO SECTIONS (#348): THE ONE ORG PICKER, ALWAYS OPEN (#355), THEN EVERY TREE CARD
 export const RECIPE_COCKPIT_ORG_SECTION_TITLE = 'Target Org Management';
 export const RECIPE_COCKPIT_TREECIPES_SECTION_TITLE = 'Treecipes';
 // WHAT A CARD WITH NOTHING TO CHOOSE SAYS IN ITS DISABLED RECORD TYPES HEADER (#338); ONE RECORD TYPE IS NO CHOICE, SO IT READS THE SAME AS NONE
@@ -11259,7 +11259,7 @@ ${this.buildPaletteCustomProperties()}
     let helpSectionElement = null;
     let helpSummaryElement = null;
     let helpTrees = [];
-    // THE ORG AND TREECIPES SECTIONS (#348) START OPEN AND, LIKE THE HELP, OUTLIVE A MODEL IN THIS DOCUMENT
+    // THE TREECIPES SECTION (#348) STARTS OPEN AND, LIKE THE HELP, ITS FOLD OUTLIVES A MODEL IN THIS DOCUMENT; THE ORG SECTION NEVER FOLDS (#355)
     let isTreecipesSectionCollapsed = false;
     let orgSection = null;
     let treecipesSection = null;
