@@ -25,6 +25,7 @@ import {
     RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL,
     RECIPE_COCKPIT_FIELD_EDIT_WRITE_RUNNING_REFUSAL,
     RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH,
+    RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL,
     RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL,
     RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL,
     RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL,
@@ -153,7 +154,6 @@ const storedSelections = (fixedValuesByFolderName: Record<string, unknown>, excl
     excludedFieldApiNamesByFolderName: excludedFieldApiNamesByFolderName,
     objectCountsByFolderName: {},
     ...( Object.keys(fixedValuesByFolderName).length > 0 ? { fixedValuesByFolderName: fixedValuesByFolderName } : {} ),
-    constraintsByFolderName: {},
     validationRulesOffByFolderName: {}
 });
 
@@ -412,7 +412,6 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
                 excludedFieldApiNamesByFolderName: new Map(),
                 objectCountsByFolderName: new Map(),
                 fixedValuesByFolderName: new Map([[ACCOUNT_TREE_KEY, new Map([['Account', new Map([['Legacy_Code__c', 'X-1']])]])]]),
-                constraintsByFolderName: new Map(),
                 validationRulesOffByFolderName: new Map()
             })).resolves.toBeTrue();
 
@@ -831,6 +830,51 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
         });
 
+        it('Save writes an edited faker expression, double-quoted, names it so in the modal, reloads it as an expression edit, and Clear puts the recipe back (#356)', async () => {
+
+            const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
+            await openAndDraw(buildWorkspaceState());
+            const edited = '${{ fake.pystr(min_chars=3, max_chars="8") }}';
+
+            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL);
+            await save('Legacy_Code__c', edited);
+
+            expect(showWarningMessage.mock.calls[0][0]).toBe('Write an edited faker expression into Account.Legacy_Code__c?');
+            // THE MODAL SHOWS THE LINE IT WRITES, ESCAPED AS A NOTIFICATION IS
+            expect(showWarningMessage.mock.calls[0][1].detail).toContain('becomes "${{ fake.pystr\\u0028min_chars=3, max_chars=\\"8\\"\\u0029 }}"');
+            const writtenLine = '    Legacy_Code__c: "${{ fake.pystr(min_chars=3, max_chars=\\"8\\") }}"';
+            expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore.replace('    Legacy_Code__c: ${{fake.Word}}', writtenLine));
+            expect(fixedValueEntries()).toEqual([{
+                objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: edited,
+                occurrences: [expect.objectContaining({ writtenLine: writtenLine, originalText: '    Legacy_Code__c: ${{fake.Word}}' })]
+            }]);
+            const reloaded = lastPosted('recipeData');
+            expect(treeOf(reloaded.recipe, ACCOUNT_TREE_KEY).fixedValues).toEqual([{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', value: edited, kind: 'expression' }]);
+            await receivedMessageHandler({ command: 'rendered', renderSequence: reloaded.renderSequence });
+
+            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL);
+            await save('Legacy_Code__c', '');
+
+            expect(showWarningMessage.mock.calls[1][0]).toStartWith('Clear the edit of ');
+            expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
+            expect(fs.existsSync(ACCOUNT_FIXED_VALUE_FILE_PATH)).toBeFalse();
+
+        });
+
+        it('writes nothing, and answers nothing, when the panel closes while the save modal is open', async () => {
+
+            const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
+            await openAndDraw(buildWorkspaceState());
+            showWarningMessage.mockImplementationOnce(async () => { disposeHandler?.(); disposeHandler = undefined; return undefined; });
+            postedPanelMessages = [];
+
+            await save('Legacy_Code__c', '${{ fake.Word }}');
+
+            expect(lastPosted('fieldEditResult')).toBeUndefined();
+            expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
+
+        });
+
         it('writes nothing, and answers the editor, when either modal is cancelled', async () => {
 
             const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
@@ -870,12 +914,20 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             workspaceState.update.mockClear();
             const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
 
-            await save('Legacy_Code__c', '${{ 7*7 }}');
+            await save('Legacy_Code__c', 'a ${{ 7*7 }}');
             expect(lastPosted('fieldEditResult')).toEqual({
                 command: 'fieldEditResult', renderSequence: recipeDataMessage.renderSequence, treeKey: ACCOUNT_TREE_KEY,
                 objectApiName: 'Account', fieldApiName: 'Legacy_Code__c', edit: 'fixedValue',
                 refusal: 'This value has "${" in it, which a faker backend would read as the start of a template.'
             });
+
+            // A VALUE STARTING WITH ${{ IS AN EDITED EXPRESSION (#356), HELD TO THE ONE-EXPRESSION SHAPE RATHER THAN THE FIELD'S TYPE
+            await save('Legacy_Code__c', '${{ fake.Word }} trailing');
+            expect(lastPosted('fieldEditResult').refusal).toBe('This expression is not one "${{ ... }}" expression. Type one ${{ ... }} on one line, or a value with no ${{.');
+            await save('Legacy_Code__c', '${{ fake.Word }}${{ fake.Word }}');
+            expect(lastPosted('fieldEditResult').refusal).toBe('This expression contains "${" inside it. Type one ${{ ... }} on one line, or a value with no ${{.');
+            await save('Legacy_Code__c', '${{ "<<" }}');
+            expect(lastPosted('fieldEditResult').refusal).toBe('This expression contains "<<" inside it. Type one ${{ ... }} on one line, or a value with no ${{.');
 
             await save('Legacy_Code__c', 'x'.repeat(51));
             expect(lastPosted('fieldEditResult').refusal).toBe('Text(50) takes at most 50 characters.');
@@ -1292,7 +1344,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
             const detail = RecipeCockpitService.buildInsertConfirmationDetail('my-sandbox', undefined, treeOf(recipe, ACCOUNT_TREE_KEY), recipe, new Map([['Account', 1]]), [], 'snowfakery', 'recipe.yml');
 
-            expect(detail).toContain('Fixed values, the same on every record: Account.Legacy_Code__c = \\u005bx\\u005d\\u0028command:y\\u0029');
+            expect(detail).toContain('Edited fields: Account.Legacy_Code__c = \\u005bx\\u005d\\u0028command:y\\u0029');
 
         });
 
@@ -1323,7 +1375,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
         const pinOf = (panel: Panel, objectElement: any, fieldApiName: string) => panel.findAll(rowOf(panel, objectElement, fieldApiName), 'treeFieldFixedValue')[0];
         const only = (panel: Panel, element: any, className: string) => panel.findAll(element, className)[0];
 
-        it('draws a pin right of each field\'s checkbox, built node by node with the pin path', () => {
+        it('draws the edit button right of each field\'s checkbox, built node by node with the pencil path (#356)', () => {
 
             const panel = drawRecipe();
             const account = expanded(panel, 'Account');
@@ -1337,7 +1389,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             expect(pin.children[0].children[0].attributes.d).toBe(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH);
             expect(pin.attributes['aria-pressed']).toBe('false');
             expect(pin.disabled).toBeFalse();
-            expect(pin.attributes.title).toBe('Give this field a fixed value instead of its faker expression');
+            expect(pin.attributes.title).toBe('Edit the faker expression, or give the field a fixed value');
 
         });
 
@@ -1347,13 +1399,13 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             const account = expanded(panel, 'Account');
 
             expect(pinOf(panel, account, 'ParentId').disabled).toBeTrue();
-            expect(pinOf(panel, account, 'ParentId').attributes.title).toBe(`Cannot have a fixed value: ${RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON}`);
-            expect(pinOf(panel, account, 'Sub_Rating__c').attributes.title).toBe(`Cannot have a fixed value: ${RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX}Rating__c`);
-            expect(pinOf(panel, account, 'Rating__c').attributes.title).toBe(`Cannot have a fixed value: ${RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX}Sub_Rating__c`);
+            expect(pinOf(panel, account, 'ParentId').attributes.title).toBe(`Cannot be edited: ${RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON}`);
+            expect(pinOf(panel, account, 'Sub_Rating__c').attributes.title).toBe(`Cannot be edited: ${RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX}Rating__c`);
+            expect(pinOf(panel, account, 'Rating__c').attributes.title).toBe(`Cannot be edited: ${RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX}Sub_Rating__c`);
             expect(pinOf(panel, expanded(panel, 'Contact'), 'AccountId').disabled).toBeTrue();
 
             panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3, fieldSelection: { objects: [{ objectApiName: 'Account', excludedFieldApiNames: ['Legacy_Code__c'], lockedFields: [] }] } });
-            expect(pinOf(panel, account, 'Legacy_Code__c').attributes.title).toBe(`Cannot have a fixed value: ${RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON}`);
+            expect(pinOf(panel, account, 'Legacy_Code__c').attributes.title).toBe(`Cannot be edited: ${RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON}`);
 
         });
 
@@ -1362,7 +1414,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             const panel = drawRecipe(recipe => { treeOf(recipe, ACCOUNT_TREE_KEY).objects.find(treeObject => treeObject.objectApiName === 'Account')?.parentLookups.push({ fieldApiName: 'Legacy_Code__c', parentObjectApiName: 'Account' }); });
             const account = expanded(panel, 'Account');
 
-            expect(pinOf(panel, account, 'Legacy_Code__c').attributes.title).toBe(`Cannot have a fixed value: ${RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON}`);
+            expect(pinOf(panel, account, 'Legacy_Code__c').attributes.title).toBe(`Cannot be edited: ${RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_REASON}`);
             expect(pinOf(panel, account, 'Annual_Budget__c').disabled).toBeFalse();
 
         });
@@ -1381,11 +1433,15 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             const editor = only(panel, row, 'fieldEditor');
             expect(panel.isHidden(editor)).toBeFalse();
             expect(editor.attributes.role).toBe('group');
-            expect(editor.attributes['aria-label']).toBe('Fixed value for Account.Legacy_Code__c');
+            expect(editor.attributes['aria-label']).toBe('Edit Account.Legacy_Code__c');
             expect(pin.attributes['aria-expanded']).toBe('true');
-            expect(only(panel, editor, 'fieldEditorInput').value).toBe('');
+            // IT STARTS FROM THE FIELD'S CURRENT FAKER EXPRESSION (#356)
+            expect(only(panel, editor, 'fieldEditorInput').value).toBe('${{fake.Word}}');
             expect(only(panel, editor, 'fieldEditorInput').attributes.maxlength).toBe(String(RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH));
-            expect(only(panel, editor, 'fieldEditorHint').textContent).toBe('Type the text every record gets. Save writes it into the recipe file; Clear puts back the lines the field had.');
+            expect(only(panel, editor, 'fieldEditorHint').textContent).toBe('Saved as a faker expression: one ${{ ... }} on one line. Change its arguments, or call another faker method. Save writes it into the recipe file; Clear puts back the lines the field had.');
+            only(panel, editor, 'fieldEditorInput').value = 'X-1';
+            only(panel, editor, 'fieldEditorInput').dispatch('input');
+            expect(only(panel, editor, 'fieldEditorHint').textContent).toBe('Saved as a fixed value. Type the text every record gets. Start with ${{ to save a faker expression instead. Save writes it into the recipe file; Clear puts back the lines the field had.');
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'setFieldFixedValue')).toEqual([]);
 
             pin.dispatch('click');
@@ -1515,6 +1571,49 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             expect(panel.isHidden(only(panel, row, 'fixedValueBadge'))).toBeTrue();
             expect(pinOf(panel, account, 'Legacy_Code__c').attributes['aria-pressed']).toBe('false');
             expect(panel.isHidden(resetElement)).toBeTrue();
+
+        });
+
+        it('draws an edited expression as "edited", in place of the expression, and pre-fills the editor with it (#356)', () => {
+
+            const panel = drawRecipe();
+            panel.postToPanel({ command: 'rendered' });
+            const account = expanded(panel, 'Account');
+            const row = rowOf(panel, account, 'Annual_Budget__c');
+            const edited = '${{ random_number(min=1, max=99) }}';
+
+            panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3, fixedValues: [{ objectApiName: 'Account', fieldApiName: 'Annual_Budget__c', value: edited, kind: 'expression' }] });
+
+            expect(only(panel, row, 'fixedValue').textContent).toBe(edited);
+            expect(panel.isHidden(only(panel, row, 'expression'))).toBeTrue();
+            expect(only(panel, row, 'fixedValueBadge').textContent).toBe(RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL);
+            expect(pinOf(panel, account, 'Annual_Budget__c').attributes.title).toBe('Edited expression — click to change or clear it');
+
+            pinOf(panel, account, 'Annual_Budget__c').dispatch('click');
+            const input = only(panel, row, 'fieldEditorInput');
+            expect(input.value).toBe(edited);
+
+            // A TYPED EXPRESSION IS POSTED TRIMMED; A LITERAL AS TYPED
+            input.value = '  ${{ random_number(min=1, max=5) }} ';
+            only(panel, row, 'fieldEditorSave').dispatch('click');
+            expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'setFieldFixedValue').map(hostMessage => hostMessage.value)).toEqual(['${{ random_number(min=1, max=5) }}']);
+
+        });
+
+        it('starts the editor from the first expression line of a picklist with record type variants, and from the expression a quoted line holds (#356)', () => {
+
+            const panel = drawRecipe(recipe => {
+                fieldOf(recipe, 'Account', 'Legacy_Code__c').recipeValue = '${{ random_choice(\'A\', \'B\') }}\n### TODO -- RecordType Options --\n# ${{ random_choice(\'C\') }}';
+                fieldOf(recipe, 'Account', 'Annual_Budget__c').recipeValue = '"${{ random_number(min=1, max=\\"9\\") }}"';
+            });
+            panel.postToPanel({ command: 'rendered' });
+            const account = expanded(panel, 'Account');
+
+            pinOf(panel, account, 'Legacy_Code__c').dispatch('click');
+            expect(only(panel, rowOf(panel, account, 'Legacy_Code__c'), 'fieldEditorInput').value).toBe('${{ random_choice(\'A\', \'B\') }}');
+
+            pinOf(panel, account, 'Annual_Budget__c').dispatch('click');
+            expect(only(panel, rowOf(panel, account, 'Annual_Budget__c'), 'fieldEditorInput').value).toBe('${{ random_number(min=1, max="9") }}');
 
         });
 

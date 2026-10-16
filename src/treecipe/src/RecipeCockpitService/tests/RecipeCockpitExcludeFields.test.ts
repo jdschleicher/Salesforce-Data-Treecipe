@@ -73,7 +73,6 @@ const storedSelections = (excludedObjectApiNamesByFolderName: Record<string, unk
     excludedObjectApiNamesByFolderName: excludedObjectApiNamesByFolderName,
     excludedFieldApiNamesByFolderName: excludedFieldApiNamesByFolderName,
     objectCountsByFolderName: {},
-    constraintsByFolderName: {},
     validationRulesOffByFolderName: {}
 });
 
@@ -286,7 +285,6 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
                 ]),
                 objectCountsByFolderName: new Map([[ACCOUNT_TREE_KEY, new Map([['Contact', 6]])]]),
                 fixedValuesByFolderName: new Map(),
-                constraintsByFolderName: new Map(),
                 validationRulesOffByFolderName: new Map()
             };
 
@@ -306,7 +304,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
         it('says so and answers false when there is no workspace, or the write fails', async () => {
 
             const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
-            const emptySelections = { excludedObjectApiNamesByFolderName: new Map(), excludedFieldApiNamesByFolderName: new Map(), objectCountsByFolderName: new Map(), fixedValuesByFolderName: new Map(), constraintsByFolderName: new Map(), validationRulesOffByFolderName: new Map() };
+            const emptySelections = { excludedObjectApiNamesByFolderName: new Map(), excludedFieldApiNamesByFolderName: new Map(), objectCountsByFolderName: new Map(), fixedValuesByFolderName: new Map(), validationRulesOffByFolderName: new Map() };
             const failingWorkspaceState = buildWorkspaceState();
             failingWorkspaceState.update.mockImplementation(() => Promise.reject('read-only [x](command:y)'));
 
@@ -342,7 +340,6 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
                 excludedFieldApiNamesByFolderName: new Map([[ACCOUNT_TREE_KEY, new Map([['Account', new Set(['Legacy_Code__c'])]])]]),
                 objectCountsByFolderName: new Map(),
                 fixedValuesByFolderName: new Map(),
-                constraintsByFolderName: new Map(),
                 validationRulesOffByFolderName: new Map()
             });
 
@@ -838,7 +835,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             await receivedMessageHandler({ command: 'resetTreeSelection', treeKey: ACCOUNT_TREE_KEY });
             expect(showWarningMessage).toHaveBeenCalledWith(
                 'Reset the selection of Relationship Tree 1?',
-                { modal: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again, every faker constraint is cleared and every validation rule is applied again. The recipe file is not changed, so a fixed value written into it stays: clear it with its field\'s pin.' },
+                { modal: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every validation rule is applied again. The recipe file is not changed, so an edit written into it stays: clear it with its field\'s edit button.' },
                 RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL
             );
             expect(( storedOf(workspaceState) as any ).excludedObjectApiNamesByFolderName[ACCOUNT_TREE_KEY]).toEqual(['Contact']);

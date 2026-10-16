@@ -2,6 +2,7 @@ import * as matchers from 'jest-extended';
 expect.extend(matchers);
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 
@@ -53,6 +54,8 @@ import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRe
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { IPinnedFieldRestoreRequest, IRecipeFixedValue, RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
 import { IFixedValueEntry, RecipeCockpitFixedValueStore, RECIPE_COCKPIT_FIXED_VALUE_FILE_VERSION } from '../RecipeCockpitFixedValueStore';
+import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
+import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
 
 const MOCK_OBJECTS_PATH = path.join(__dirname, '..', '..', 'DirectoryProcessingService', 'tests', 'mocks', 'MockSalesforceMetadataDirectory', 'objects');
 const VALIDATION_RULE_RUNS_PATH = path.join(__dirname, 'mocks', 'validationRuleWorkspace', 'treecipe', 'GeneratedRecipes');
@@ -100,9 +103,15 @@ const toRestoreRequests = (occurrences: IFixedValueEntry['occurrences']): IPinne
 type LoadedObject = { object: string; fields: Record<string, unknown> | null; friends?: LoadedObject[] };
 const flattenLoaded = (loadedObjects: LoadedObject[]): LoadedObject[] => loadedObjects.flatMap(loadedObject => [loadedObject, ...flattenLoaded(loadedObject.friends ?? [])]);
 
-function expectRoundTrip(recipeText: string, objectApiName: string, fieldApiName: string): string[] {
+// AN EDITED FAKER EXPRESSION (#356), ONE PER BACKEND, EACH GENERATING FOUR LETTERS
+const EDITED_EXPRESSIONS = {
+    'faker-js': '${{ faker.string.alpha({ length: 4, casing: "upper" }) }}',
+    snowfakery: '${{ fake.pystr(min_chars=4, max_chars=4) }}'
+} as const;
 
-    const pinResult = RecipeCockpitRecipeWriter.pinField(recipeText, objectApiName, fieldApiName, PINNED);
+function expectRoundTrip(recipeText: string, objectApiName: string, fieldApiName: string, pinned: IRecipeFixedValue = PINNED): string[] {
+
+    const pinResult = RecipeCockpitRecipeWriter.pinField(recipeText, objectApiName, fieldApiName, pinned);
     if ( 'refusal' in pinResult ) {
         throw new Error(`${objectApiName}.${fieldApiName} could not be pinned: ${pinResult.refusal.message}`);
     }
@@ -110,7 +119,7 @@ function expectRoundTrip(recipeText: string, objectApiName: string, fieldApiName
     // EVERY OCCURRENCE OF THE OBJECT THAT HAS THE FIELD LOADS WITH THE VALUE, IN A FILE THAT STILL LOADS
     const pinnedObjects = flattenLoaded(yaml.load(pinResult.recipeText) as LoadedObject[]).filter(loadedObject => loadedObject.object === objectApiName && loadedObject.fields && fieldApiName in loadedObject.fields);
     expect(pinnedObjects.length).toBe(pinResult.occurrences.length);
-    pinnedObjects.forEach(pinnedObject => expect(pinnedObject.fields?.[fieldApiName]).toBe(PINNED.value));
+    pinnedObjects.forEach(pinnedObject => expect(pinnedObject.fields?.[fieldApiName]).toBe(pinned.value));
 
     const restoreResult = RecipeCockpitRecipeWriter.restorePinnedField(pinResult.recipeText, objectApiName, fieldApiName, toRestoreRequests(pinResult.occurrences));
     if ( 'refusal' in restoreResult ) {
@@ -172,6 +181,117 @@ describe.each([
 
 });
 
+describe.each([
+    ['faker-js', () => new FakerJSRecipeFakerService()],
+    ['snowfakery', () => new SnowfakeryRecipeFakerService()]
+] as const)('editing the faker expression of every field Generate Treecipe writes with the %s backend (#356)', (backend, createFakerService) => {
+
+    const edited: IRecipeFixedValue = { value: EDITED_EXPRESSIONS[backend], kind: 'expression' };
+
+    it('writes the expression double-quoted on every occurrence, loads it as that one string, and Clear puts back every field byte for byte', async () => {
+
+        const recipeTexts = await generateRecipeTexts(createFakerService);
+        let editedFieldCount = 0;
+
+        recipeTexts.forEach(recipeText => {
+            listObjectFields(recipeText).forEach(({ objectApiName, fieldApiName }) => {
+                expectRoundTrip(recipeText, objectApiName, fieldApiName, edited);
+                editedFieldCount += 1;
+            });
+        });
+
+        expect(editedFieldCount).toBeGreaterThan(100);
+        const pinResult = RecipeCockpitRecipeWriter.pinField(recipeTexts[0], listObjectFields(recipeTexts[0])[0].objectApiName, listObjectFields(recipeTexts[0])[0].fieldApiName, edited);
+        expect('occurrences' in pinResult && pinResult.occurrences[0].writtenLine.endsWith(`: "${edited.value.replace(/"/g, '\\"')}"`)).toBeTrue();
+
+    });
+
+    it('puts back the validation rule run\'s fields, their "### Driven by ValidationRule" line included', () => {
+        listValidationRuleRecipeTexts().forEach(recipeText => {
+            listObjectFields(recipeText).forEach(({ objectApiName, fieldApiName }) => expectRoundTrip(recipeText, objectApiName, fieldApiName, edited));
+        });
+    });
+
+    it('is told apart from a literal by the store, which keeps the entry only while its written line is the expression\'s', () => {
+
+        const recipeText = listValidationRuleRecipeTexts()[0];
+        const { objectApiName, fieldApiName } = listObjectFields(recipeText)[0];
+        const pinResult = RecipeCockpitRecipeWriter.pinField(recipeText, objectApiName, fieldApiName, edited);
+        if ( 'refusal' in pinResult ) {
+            throw new Error(pinResult.refusal.message);
+        }
+        const entry: IFixedValueEntry = { objectApiName: objectApiName, fieldApiName: fieldApiName, value: edited.value, occurrences: pinResult.occurrences };
+
+        expect(RecipeCockpitFixedValueStore.parse(RecipeCockpitFixedValueStore.serialize([entry])).entries).toEqual([entry]);
+
+        // A LINE WRITTEN UNQUOTED IS NOT ONE THE CODE WRITES FOR THE VALUE, SO IT IS NOT DRAWN AS EDITED
+        const unquotedEntry = { ...entry, occurrences: entry.occurrences.map(occurrence => ({ ...occurrence, writtenLine: occurrence.writtenLine.replace(/: "(.*)"$/, ': $1') })) };
+        expect(RecipeCockpitFixedValueStore.parse(RecipeCockpitFixedValueStore.serialize([unquotedEntry])).entries).toEqual([]);
+
+    });
+
+});
+
+describe('an edited expression generates (#356)', () => {
+
+    const ONE_OBJECT_RECIPE = [
+        '- object: Account',
+        '  nickname: Account_NickName',
+        '  count: 5',
+        '  fields:',
+        '    Name: ${{ faker.company.name() }}',
+        '    Description: |',
+        '                    ${{ faker.lorem.paragraph() }}',
+        ''
+    ].join('\n');
+
+    it('with faker-js, through the real recipe processor', async () => {
+
+        const pinResult = RecipeCockpitRecipeWriter.pinField(ONE_OBJECT_RECIPE, 'Account', 'Description', { value: EDITED_EXPRESSIONS['faker-js'], kind: 'expression' });
+        if ( 'refusal' in pinResult ) {
+            throw new Error(pinResult.refusal.message);
+        }
+        const temporaryFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'edited-expression-'));
+
+        try {
+            const recipeFilePath = path.join(temporaryFolderPath, 'recipe.yml');
+            fs.writeFileSync(recipeFilePath, pinResult.recipeText);
+            const records = JSON.parse(await new FakerJSRecipeProcessor().generateFakeDataBySelectedRecipeFile(recipeFilePath)) as Array<{ fields: Record<string, unknown> }>;
+
+            expect(records).toHaveLength(5);
+            records.forEach(record => expect(record.fields.Description).toMatch(/^[A-Z]{4}$/));
+        } finally {
+            fs.rmSync(temporaryFolderPath, { recursive: true, force: true });
+        }
+
+    });
+
+    PythonTestHarness.testRequiringModules('yaml', 'jinja2', 'faker')('with snowfakery, read with PyYAML and rendered with Jinja and Faker', () => {
+
+        const snowfakeryRecipe = ONE_OBJECT_RECIPE.replace('faker.company.name()', 'fake.company').replace('faker.lorem.paragraph()', 'fake.paragraph');
+        const pinResult = RecipeCockpitRecipeWriter.pinField(snowfakeryRecipe, 'Account', 'Description', { value: EDITED_EXPRESSIONS.snowfakery, kind: 'expression' });
+        if ( 'refusal' in pinResult ) {
+            throw new Error(pinResult.refusal.message);
+        }
+
+        const values = PythonTestHarness.runPython([
+            'import json, sys, yaml, jinja2',
+            'from faker import Faker',
+            'environment = jinja2.Environment(block_start_string="${%", block_end_string="%}", variable_start_string="${{", variable_end_string="}}")',
+            'environment.globals.update(fake=Faker())',
+            'request = json.load(sys.stdin)',
+            'recipe = yaml.safe_load(request["recipeText"])[0]',
+            'template = environment.from_string(recipe["fields"]["Description"])',
+            'print(json.dumps([template.render() for _ in range(recipe["count"])]))'
+        ].join('\n'), { recipeText: pinResult.recipeText }) as string[];
+
+        expect(values).toHaveLength(5);
+        values.forEach(value => expect(value).toMatch(/^[A-Za-z]{4}$/));
+
+    });
+
+});
+
 describe('pinning and clearing a field its validation rules drive (#324, #342)', () => {
 
     it('puts back the rules\' value and its "### Driven by ValidationRule" line, with both backends', () => {
@@ -226,7 +346,14 @@ describe('RecipeCockpitRecipeWriter.pinField (#342)', () => {
         ['a template opener', { value: '${{ 7*7 }}', kind: 'text' as const }, 'invalid-value'],
         ['a line break', { value: 'a\nb', kind: 'text' as const }, 'invalid-value'],
         ['a U+2028', { value: 'a\u2028b', kind: 'text' as const }, 'invalid-value'],
-        ['a number that is not one', { value: '4x', kind: 'number' as const }, 'invalid-value']
+        ['a number that is not one', { value: '4x', kind: 'number' as const }, 'invalid-value'],
+        ['an expression with text after it (#356)', { value: '${{ faker.person.lastName() }} jr', kind: 'expression' as const }, 'invalid-value'],
+        ['two expressions', { value: '${{ faker.person.lastName() }}${{ faker.person.lastName() }}', kind: 'expression' as const }, 'invalid-value'],
+        ['an expression with an inner }}', { value: '${{ ({a:{b:1}}).a }}', kind: 'expression' as const }, 'invalid-value'],
+        ['an expression with a snowfakery legacy delimiter', { value: '${{ "<<x>>" }}', kind: 'expression' as const }, 'invalid-value'],
+        ['an expression with a Jinja block', { value: '${{ "{% x %}" }}', kind: 'expression' as const }, 'invalid-value'],
+        ['an expression with a line break', { value: '${{ faker.person.lastName()\n }}', kind: 'expression' as const }, 'invalid-value'],
+        ['an expression longer than the writer takes', { value: `\${{ '${'x'.repeat(1000)}' }}`, kind: 'expression' as const }, 'invalid-value']
     ])('refuses %s, and changes nothing', (unusedCase, fixedValue, reason) => {
         const pinResult = RecipeCockpitRecipeWriter.pinField(nestedRecipe, 'Contact', 'LastName', fixedValue);
         expect('refusal' in pinResult && pinResult.refusal.reason).toBe(reason);
@@ -486,6 +613,22 @@ describe('RecipeCockpitRecipeWriter.listChangedPinnedFields (#342 review)', () =
             pinned('Name', '    Name: "Acme"', 'Gone_NickName'),
             { objectApiName: 'Contact', fieldApiName: 'Name', restoreRequests: [{ occurrenceIndex: 0, writtenLine: '    Name: "Acme"' }] }
         ])).toEqual([false, true, true, true]);
+
+    });
+
+    it('answers changed for an edited expression whose line was edited by hand since, and not for one still as written (#356)', () => {
+
+        const original = '- object: Account\n  nickname: Account_NickName\n  fields:\n    Name: ${{ faker.company.name() }}\n';
+        const pinResult = RecipeCockpitRecipeWriter.pinField(original, 'Account', 'Name', { value: '${{ faker.string.alpha(4) }}', kind: 'expression' });
+        if ( 'refusal' in pinResult ) {
+            throw new Error(pinResult.refusal.message);
+        }
+        const pinnedField = { objectApiName: 'Account', fieldApiName: 'Name', restoreRequests: toRestoreRequests(pinResult.occurrences) };
+        const handEdited = pinResult.recipeText.replace('faker.string.alpha(4)', 'faker.string.alpha(9)');
+
+        expect(RecipeCockpitRecipeWriter.listChangedPinnedFields(pinResult.recipeText, [pinnedField])).toEqual([false]);
+        expect(RecipeCockpitRecipeWriter.listChangedPinnedFields(handEdited, [pinnedField])).toEqual([true]);
+        expect('refusal' in RecipeCockpitRecipeWriter.restorePinnedField(handEdited, 'Account', 'Name', pinnedField.restoreRequests)).toBeTrue();
 
     });
 
