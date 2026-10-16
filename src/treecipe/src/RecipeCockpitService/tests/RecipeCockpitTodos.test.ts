@@ -92,6 +92,26 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
 
         });
 
+        // A RECIPE FROM A CLONED REPOSITORY CONTROLS ITS LINES: ONE CUT SHORT BY A LONE CR OR U+2028 WAS QUADRATIC, 13 s AT 240 KB
+        it('reads a long line of "#TODO"s that ends in a lone CR or U+2028 in linear time', () => {
+
+            ['\r', '\u2028'].forEach(lineTerminator => {
+
+                const longLine = '    Name: x' + ' #TODO'.repeat(40000) + lineTerminator;
+                const { lines } = RecipeCockpitRecipeWriter.splitRecipeLines(['- object: Account', '  fields:', longLine].join('\n'));
+                const startedAt = Date.now();
+
+                const [account] = RecipeCockpitRecipeWriter.scanRecipeObjects(lines);
+                const todoText = RecipeCockpitRecipeWriter.readTodoCommentText(lines[2]);
+
+                expect(Date.now() - startedAt).toBeLessThan(1000);
+                expect(account.todoLineIndexes).toEqual([2]);
+                expect(todoText?.startsWith('#TODO #TODO')).toBe(true);
+
+            });
+
+        });
+
         it('gives a friend its own TODOs and leaves its parent\'s to the parent', () => {
 
             const { lines } = RecipeCockpitRecipeWriter.splitRecipeLines([

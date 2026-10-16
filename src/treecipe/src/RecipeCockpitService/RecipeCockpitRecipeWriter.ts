@@ -393,7 +393,8 @@ interface IOpenScannedObject {
 const COMMENTED_OUT_MARKER_TEXT = '### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- ';
 const OBJECT_HEADER_PATTERN = /^( *)- object:\s*(\S+)\s*$/;
 // A COMMENT WHOSE TEXT STARTS WITH TODO -- GENERATED ("### TODO -- ...", "### TODO: ...") OR HAND-WRITTEN ("# TODO ...") -- WHOLE LINE OR AFTER A VALUE (#354)
-const TODO_COMMENT_PATTERN = /(?:^|[ \t])(#+[ \t]*TODO\b.*)$/;
+// [\s\S]*, NEVER .*: A LINE KEEPS A LONE CR OR U+2028, WHICH "." DOES NOT MATCH, AND "$" FAILING THERE RE-SCANNED THE LINE FROM EVERY "#TODO" -- QUADRATIC
+const TODO_COMMENT_PATTERN = /(?:^|[ \t])(#+[ \t]*TODO\b[\s\S]*)$/;
 const FRIENDS_INDENT_STEP = 4;
 const API_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 const RECORD_TYPE_ID_FIELD_API_NAME = 'RecordTypeId';
