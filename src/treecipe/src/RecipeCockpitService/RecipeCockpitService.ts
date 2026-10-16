@@ -342,6 +342,8 @@ export const RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL = 'Hide values';
 export const RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE = 'No object in this tree has more than one record type, so no field depends on one.';
 // THE TREECIPE TAB'S "TODOs only" CHECK (#354), AND WHY IT IS DISABLED ON A CARD WHOSE RECIPE HAS NO TODO COMMENT
 export const RECIPE_COCKPIT_TODOS_ONLY_LABEL = 'TODOs only';
+// WHAT A FIELD'S TODO ROW SAYS WHEN THE TODO IS IN THE VALUE THE ROW ALREADY DRAWS (#354)
+export const RECIPE_COCKPIT_TODO_IN_VALUE_LABEL = 'TODO in the value above';
 export const RECIPE_COCKPIT_NO_TODOS_NOTE = 'No object of this tree has a TODO comment in the recipe.';
 export const RECIPE_COCKPIT_NO_FAVORITES_MESSAGE = 'No favorite trees in this run. Turn off Favorites only to see all trees.';
 
@@ -559,11 +561,13 @@ export interface IRecipeCockpitFieldViewModel {
 
 /*
     One TODO comment of a recipe file (#354): its line and its text from the first "#". The text
-    comes from a file the reader can edit, so the panel only ever writes it as text.
+    comes from a file the reader can edit, so the panel only ever writes it as text. On a FIELD the
+    text is left out when the field's posted recipeValue already holds it -- the row draws that
+    value, and every generated lookup and record type variant would otherwise post its TODO twice.
 */
 export interface IRecipeCockpitTodoViewModel {
     lineNumber: number;
-    text: string;
+    text?: string;
 }
 
 /*
@@ -10411,7 +10415,8 @@ export class RecipeCockpitService {
                 : undefined;
             const todoOwner = fieldEntry ?? sourceEntry;
 
-            todoOwner.todos = [...(todoOwner.todos ?? []), todo];
+            // PUSHED, NEVER SPREAD: ONE OWNER CAN HOLD THOUSANDS, AND A COPY PER TODO WAS 14 s FOR 50,000
+            ( todoOwner.todos ??= [] ).push(todo);
 
         });
 
@@ -10474,8 +10479,7 @@ export class RecipeCockpitService {
                 return {
                     ...fieldViewModel,
                     ...( fieldEntry && fieldViewModel.recipeValue.startsWith(RelationshipService.referenceIdRequiredTodo) ? { recipeValue: fieldEntry.valueText } : {} ),
-                    lineNumber: fieldEntry?.lineNumber,
-                    ...( fieldEntry?.todos ? { todos: fieldEntry.todos.slice() } : {} )
+                    lineNumber: fieldEntry?.lineNumber
                 };
             });
 
@@ -10496,9 +10500,16 @@ export class RecipeCockpitService {
                     controllingField: '',
                     isOnlyInRecipeFile: true,
                     lineNumber: fieldEntry.lineNumber,
-                    ...( fieldEntry.todos ? { todos: fieldEntry.todos.slice() } : {} )
+                    ...( fieldEntry.todos ? { todos: this.buildFieldTodoViewModels(fieldEntry.todos, fieldEntry.valueText) } : {} )
                 });
 
+            });
+
+            locatedWrapperFields.forEach(fieldViewModel => {
+                const fieldTodos = objectEntry.fieldEntries.get(fieldViewModel.fieldApiName)?.todos;
+                if ( fieldTodos ) {
+                    fieldViewModel.todos = this.buildFieldTodoViewModels(fieldTodos, fieldViewModel.recipeValue);
+                }
             });
 
             const locatedFields = [...locatedWrapperFields, ...recipeFileOnlyFields]
@@ -10528,7 +10539,7 @@ export class RecipeCockpitService {
                             fieldApiName: fieldApiName,
                             lineNumber: fieldEntry.lineNumber,
                             recipeValue: fieldEntry.valueText,
-                            ...( fieldEntry.todos ? { todos: fieldEntry.todos.slice() } : {} )
+                            ...( fieldEntry.todos ? { todos: this.buildFieldTodoViewModels(fieldEntry.todos, fieldEntry.valueText) } : {} )
                         })),
                         ...( iteration.insertableFriendObjectApiNames ? { insertableFriendObjectApiNames: iteration.insertableFriendObjectApiNames.slice() } : {} ),
                         ...( iteration.todos ? { todos: iteration.todos.slice() } : {} )
@@ -10537,6 +10548,16 @@ export class RecipeCockpitService {
             };
 
         });
+
+    }
+
+    // A FIELD'S TODOS AS POSTED (#354): A TODO ITS DRAWN VALUE ALREADY HOLDS CARRIES ONLY ITS LINE
+    static buildFieldTodoViewModels(todos: IRecipeCockpitTodoViewModel[], recipeValue: string): IRecipeCockpitTodoViewModel[] {
+
+        return todos.map(todo => ( todo.text !== undefined && !recipeValue.includes(todo.text)
+            ? { lineNumber: todo.lineNumber, text: todo.text }
+            : { lineNumber: todo.lineNumber }
+        ));
 
     }
 
@@ -11217,6 +11238,7 @@ ${this.buildPaletteCustomProperties()}
     const PICKLIST_HIDE_VALUES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL)};
     const NO_RECORD_TYPE_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE)};
     const TODOS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODOS_ONLY_LABEL)};
+    const TODO_IN_VALUE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODO_IN_VALUE_LABEL)};
     const NO_TODOS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_TODOS_NOTE)};
     const NO_FAVORITES_MESSAGE = ${JSON.stringify(RECIPE_COCKPIT_NO_FAVORITES_MESSAGE)};
     const HELP_TOGGLE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HELP_TOGGLE_LABEL)};
@@ -13882,7 +13904,10 @@ ${this.buildPaletteCustomProperties()}
 
         todos.forEach(function (todo) {
             const todoElement = createElement('div', 'treeTodo');
-            todoElement.appendChild(createElement('span', 'treeTodoText', String(todo.text)));
+            // A TODO WITH NO TEXT IS ONE THE FIELD'S DRAWN VALUE ALREADY SHOWS: THE ROW POINTS AT IT RATHER THAN POSTING IT TWICE
+            todoElement.appendChild(typeof todo.text === 'string'
+                ? createElement('span', 'treeTodoText', todo.text)
+                : createElement('span', 'treeTodoText muted', TODO_IN_VALUE_LABEL + ' (line ' + todo.lineNumber + ')'));
             if (recipeFilePath && todo.lineNumber) {
                 todoElement.appendChild(buildSourceLink('treeTodoSource', '↗ yml', recipeFilePath, todo.lineNumber));
             }

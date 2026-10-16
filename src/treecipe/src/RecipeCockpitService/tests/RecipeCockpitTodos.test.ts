@@ -3,6 +3,7 @@ import * as path from 'path';
 jest.mock('vscode', () => ({}), { virtual: true });
 
 import {
+    RECIPE_COCKPIT_TODO_IN_VALUE_LABEL,
     RecipeCockpitService,
     IRecipeCockpitObjectViewModel,
     IRecipeCockpitRecipeViewModel,
@@ -39,7 +40,7 @@ const loadTreeRecipe = () => loadRun(TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME);
 
 const objectOf = (recipe: IRecipeCockpitRecipeViewModel, objectApiName: string) => recipe.objects.find(objectViewModel => objectViewModel.objectApiName === objectApiName) as IRecipeCockpitObjectViewModel;
 const fieldOf = (objectViewModel: IRecipeCockpitObjectViewModel, fieldApiName: string) => objectViewModel.fields.find(field => field.fieldApiName === fieldApiName);
-const todoTextsOf = (todos: { text: string }[] | undefined) => (todos ?? []).map(todo => todo.text);
+const todoTextsOf = (todos: { text?: string }[] | undefined) => (todos ?? []).map(todo => todo.text);
 
 type Panel = ReturnType<typeof runPanelScript>;
 
@@ -89,6 +90,48 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
                 '# TODO hand-written',
                 '# TODO: check the length'
             ]);
+
+        });
+
+        it('reads a "# TODO" inside a quoted scalar, a template or its strings as part of the value', () => {
+
+            const valueLines = [
+                '    Name: "Fix # TODO later"',
+                '    Code__c: \'it\'\'s # TODO\'',
+                '    Status__c: ${{ faker.helpers.arrayElement([\'Open\', \'Item # TODO\']) }}',
+                '    Stage__c: ${{ random_choice("a \\" # TODO") }}',
+                '    Notes__c: O\'Brien # TODO: a comment after a plain value'
+            ];
+
+            expect(valueLines.map(valueLine => RecipeCockpitRecipeWriter.readTodoCommentText(valueLine))).toEqual([
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                '# TODO: a comment after a plain value'
+            ]);
+            expect(RecipeCockpitRecipeWriter.readTodoCommentText('    Name: "x" # TODO after a quoted value')).toBe('# TODO after a quoted value');
+            expect(RecipeCockpitRecipeWriter.readTodoCommentText('    Name: ${{ x }} # TODO after a template')).toBe('# TODO after a template');
+            expect(RecipeCockpitRecipeWriter.readTodoCommentText('    # a note # TODO')).toBeUndefined();
+
+        });
+
+        it('counts a commented-out field once, by its marker, and not the field\'s own TODO under it', () => {
+
+            const recipeText = [
+                '- object: Contact',
+                '  fields:',
+                '    LastName: ${{fake.LastName}}',
+                '    AccountId: ### TODO -- REFERENCE ID REQUIRED'
+            ].join('\n');
+            const commentedOut = RecipeCockpitRecipeWriter.commentOutField(recipeText, 'Contact', 'AccountId', 'not needed');
+            expect(commentedOut.isApplied).toBe(true);
+
+            const commentedLines = RecipeCockpitRecipeWriter.splitRecipeLines((commentedOut as { recipeText: string }).recipeText).lines;
+            const [contact] = RecipeCockpitRecipeWriter.scanRecipeObjects(commentedLines);
+
+            expect(contact.todoLineIndexes).toHaveLength(1);
+            expect(RecipeCockpitRecipeWriter.readTodoCommentText(commentedLines[contact.todoLineIndexes[0]])).toMatch(/^### TODO -- RECIPE COCKPIT -- FIELD COMMENTED OUT -- AccountId/);
 
         });
 
@@ -209,8 +252,9 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
             const recipe = loadTreeRecipe();
             const account = objectOf(recipe, 'Account');
 
-            expect(todoTextsOf(fieldOf(account, 'Regions__c')?.todos)).toEqual(['### TODO -- NO PICKLIST VALUES']);
-            expect(todoTextsOf(fieldOf(account, 'ParentId')?.todos)).toEqual(['### TODO -- REFERENCE ID REQUIRED']);
+            // THE ROW DRAWS EACH VALUE, WHICH HOLDS ITS TODO, SO ONLY THE LINE IS POSTED
+            expect(fieldOf(account, 'Regions__c')?.todos).toEqual([{ lineNumber: 20 }]);
+            expect(fieldOf(account, 'ParentId')?.todos).toEqual([{ lineNumber: 21 }]);
             expect(fieldOf(account, 'Name')).not.toHaveProperty('todos');
             expect(account).not.toHaveProperty('todos');
             expect(objectOf(recipe, 'Lead').fields.some(field => 'todos' in field)).toBe(false);
@@ -225,7 +269,7 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
             const snowfakeryGadgetTodos = todoTextsOf(objectOf(snowfakeryRecipe, 'Gadget__c').todos);
             expect(snowfakeryGadgetTodos).toHaveLength(6);
             snowfakeryGadgetTodos.forEach(todoText => expect(todoText).toMatch(/^### TODO -- VALIDATION RULE NOT APPLIED -- "/));
-            expect(todoTextsOf(fieldOf(objectOf(snowfakeryRecipe, 'Widget__c'), 'Gadget__c')?.todos)).toEqual(['### TODO -- REFERENCE ID REQUIRED']);
+            expect(fieldOf(objectOf(snowfakeryRecipe, 'Widget__c'), 'Gadget__c')?.todos).toEqual([{ lineNumber: expect.any(Number) }]);
 
             // THE NESTED faker-js FRIEND IS WIRED TO ITS PARENT, SO ITS LOOKUP IS NO TODO
             const fakerJsGadgetTodos = todoTextsOf(objectOf(fakerJsRecipe, 'Gadget__c').todos);
@@ -300,7 +344,7 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
             expect(panel.objectCountOf(account)).toBe('3 TODOs');
             expect(panel.visibleFieldNamesOf(contact)).toEqual(['AccountId']);
             expect(panel.objectCountOf(contact)).toBe('1 TODO');
-            expect(todoTextsIn(panel, panel.fieldRowNamed(account, 'ParentId'))).toEqual(['### TODO -- REFERENCE ID REQUIRED']);
+            expect(todoTextsIn(panel, panel.fieldRowNamed(account, 'ParentId'))).toEqual([`${RECIPE_COCKPIT_TODO_IN_VALUE_LABEL} (line 21)`]);
 
         });
 
@@ -330,6 +374,81 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
             const account = objectNamed(panel, accountCard, 'Account');
             expect(panel.visibleFieldNamesOf(account)).toEqual(['OwnerId']);
             expect(panel.objectCountOf(objectNamed(panel, accountCard, 'Contact'))).toBe('no matching fields');
+
+        });
+
+        it('counts the fields that pass both the check and the search, out of the object\'s fields', () => {
+
+            const panel = drawRecipe();
+            const accountCard = panel.treeCards()[0];
+
+            checkOf(panel, accountCard).dispatch('click');
+            panel.typeIntoFilter('id', accountCard);
+
+            const account = objectNamed(panel, accountCard, 'Account');
+            expect(panel.visibleFieldNamesOf(account)).toEqual(['ParentId', 'OwnerId']);
+            expect(panel.objectCountOf(account)).toMatch(/^2 of \d+ fields$/);
+
+        });
+
+        it('opens an object the search names for the TODOs on the object itself, and says how many', () => {
+
+            const panel = drawRecipe(loadRun(VALIDATION_RULE_WORKSPACE_ROOT, SNOWFAKERY_RUN_FOLDER_NAME));
+            const card = panel.treeCards()[0];
+
+            checkOf(panel, card).dispatch('click');
+            panel.typeIntoFilter('gadget__c', card);
+
+            const gadget = objectNamed(panel, card, 'Gadget__c');
+            expect(isObjectExpanded(panel, gadget)).toBe(true);
+            expect(panel.objectCountOf(gadget)).toBe('6 TODOs on the object');
+
+        });
+
+        it('combines with "Record type fields only": a field shows only when it is both', () => {
+
+            const panel = drawRecipe();
+            const accountCard = panel.treeCards()[0];
+
+            checkOf(panel, accountCard).dispatch('click');
+            panel.findAll(panel.tabPanelOf(accountCard, 'treeStructure'), 'treeRecordTypeFieldsToggle')[0].dispatch('click');
+
+            const account = objectNamed(panel, accountCard, 'Account');
+            expect(panel.visibleFieldNamesOf(account)).toEqual([]);
+            expect(panel.objectCountOf(account)).toBe('no matching fields');
+            expect(panel.objectCountOf(objectNamed(panel, accountCard, 'Contact'))).toBe('no record type fields');
+
+        });
+
+        it('draws an iteration\'s own TODOs, and never the first occurrence\'s, on the iteration', () => {
+
+            const recipe = loadTreeRecipe();
+            const account = objectOf(recipe, 'Account');
+            account.nickname = 'Account_NickName';
+            account.iterations = [{
+                nickname: 'Account_child_NickName',
+                lineNumber: 30,
+                parentObjectApiName: 'Account',
+                parentNickname: 'Account_NickName',
+                fields: [
+                    { fieldApiName: 'ParentId', lineNumber: 31, recipeValue: 'Account_NickName' },
+                    { fieldApiName: 'Phone', lineNumber: 32, recipeValue: '### TODO call', todos: [{ lineNumber: 32 }] }
+                ],
+                todos: [{ lineNumber: 33, text: '### TODO on the iteration' }]
+            }];
+            const accountTree = recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY);
+            const accountTreeObject = accountTree.objects.find(treeObject => treeObject.objectApiName === 'Account');
+            accountTree.objects.splice(1, 0, { ...accountTreeObject, iterationNickname: 'Account_child_NickName' });
+
+            const panel = drawRecipe(recipe);
+            const accountCard = panel.treeCards()[0];
+            checkOf(panel, accountCard).dispatch('click');
+
+            const iterationElement = panel.findAll(accountCard, 'treeObject')[1];
+            expect(panel.visibleFieldNamesOf(iterationElement)).toEqual(['Phone']);
+            expect(todoTextsIn(panel, panel.objectBodyOf(iterationElement).children[0])).toEqual(['### TODO on the iteration']);
+            expect(panel.objectCountOf(iterationElement)).toBe('2 TODOs');
+            expect(labelOf(panel, accountCard).textContent).toBe(`${RECIPE_COCKPIT_TODOS_ONLY_LABEL} (7)`);
 
         });
 
