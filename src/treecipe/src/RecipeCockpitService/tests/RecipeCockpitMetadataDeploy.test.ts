@@ -129,6 +129,20 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
 
         });
 
+        it('walks a folder once when two package directories overlap, and names one skipped or unreadable item in the singular', async () => {
+
+            const summary = await summarize([{ objectApiName: 'Account', fieldApiNames: ['Annual_Budget__c', 'Regions__c', 'Bad Field__c'] }], ['force-app', 'force-app/main']);
+
+            expect(summary.customFields).toEqual(['Account.Annual_Budget__c']);
+            expect(summary.recordTypes).toEqual(['Account.Business', 'Account.Partner']);
+            const detail = RecipeCockpitMetadataDeploy.buildConfirmationDetail('fields', 'T', 'qa', 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields'), { ...summary, missingGlobalValueSets: ['Only_Set'] });
+            expect(detail).toContain('Not deployed: 1 custom field whose source file is missing or could not be read: Account.Regions__c');
+            expect(detail).toContain('Skipped: 1 name that is not a Salesforce api name.');
+            expect(RecipeCockpitMetadataDeploy.buildConfirmationDetail('globalValueSets', 'T', 'qa', 'force-app', [{ type: 'GlobalValueSet', member: 'A_Set' }], { ...summary, missingGlobalValueSets: ['Only_Set'] }))
+                .toContain('Not deployed: 1 global value set a field names that this project does not hold: Only_Set');
+
+        });
+
         it('matches an object folder case-insensitively and names it as the tree does', async () => {
 
             const summary = await summarize([{ objectApiName: 'account', fieldApiNames: ['annual_budget__c'] }]);
@@ -367,6 +381,13 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
                 componentFailureCount: 4,
                 componentFailureMessages: ['Account.Rating__c: Value set Account_Ratings not found', 'a component: it could not be deployed']
             });
+
+        });
+
+        it('reads a result that is not an object as a failure that names no component', () => {
+
+            expect(RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(invocation(JSON.stringify({ status: 0, result: [] })))).toMatchObject({ kind: 'failed', componentFailureMessages: [] });
+            expect(RecipeCockpitMetadataDeploy.readComponentFailureMessages(undefined)).toEqual([]);
 
         });
 

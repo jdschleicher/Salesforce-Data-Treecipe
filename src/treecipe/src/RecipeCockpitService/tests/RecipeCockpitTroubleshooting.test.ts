@@ -817,6 +817,32 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
         });
 
+        it('warns, and gives the button back, when the router refuses a deploy while an assignment runs', async () => {
+
+            await openCockpitWithQaSelected();
+            panelState().permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
+
+            await deploy('deployTreeFields');
+
+            expect(lastWarning()).toEqual({ text: RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL, actions: [] });
+            expect(lastDeployState()).toEqual({ command: 'metadataDeployState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, deployKind: 'fields' });
+            expect(modalCalls()).toEqual([]);
+
+        });
+
+        it('deploys nothing when the package.xml cannot be written', async () => {
+
+            fs.mkdirSync(path.join(workspaceRoot, 'treecipe'), { recursive: true });
+            fs.writeFileSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME), 'a file where the folder goes');
+            await openCockpitWithQaSelected();
+
+            await deploy('deployTreeRecordTypes');
+
+            expect(deployCalls()).toEqual([]);
+            expect(lastWarning()?.text).toBe(`Nothing was deployed: the package.xml could not be written under treecipe/${ORG_OPERATIONS_FOLDER_NAME} in this workspace.`);
+
+        });
+
         it('builds no deploy argv on any path but the generated manifest\'s', () => {
 
             const source = fs.readFileSync(path.join(__dirname, '..', 'RecipeCockpitService.ts'), 'utf-8');
