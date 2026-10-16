@@ -22,12 +22,12 @@ export const SCRATCH_ORG_DEFINITION_FILE_RELATIVE_PATH = path.join('config', 'pr
 
 export const ORG_OPERATIONS_FOLDER_NAME = 'OrgOperations';
 
-export type OrgOperationName = 'scratch-create' | 'scratch-deploy' | 'permission-set-assign' | 'validation-rule-retrieve'
+export type OrgOperationName = 'scratch-create' | 'permission-set-assign' | 'validation-rule-retrieve'
     | 'permission-set-deploy' | 'field-deploy' | 'global-value-set-deploy' | 'record-type-deploy';
 
-export type ScratchOrgSetupPhase = 'creating' | 'deploying';
+export type ScratchOrgSetupPhase = 'creating';
 
-// A DEPLOY'S --json LISTS EVERY FILE AND COMPONENT, SO A LARGE PROJECT'S ANSWER OUTGROWS THE 8 MB OTHER COMMANDS USE
+// A DEPLOY'S --json LISTS EVERY FILE AND COMPONENT, SO A LARGE PROJECT'S ANSWER OUTGROWS THE 8 MB OTHER COMMANDS USE (THE TROUBLESHOOTING TAB'S DEPLOYS, #346)
 export const SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES = 1024 * 1024 * 256;
 
 // WHAT A SAVED RESULT NEVER CARRIES: THE CREATE'S authFields WHOLE, AND ANY KEY THAT NAMES A CREDENTIAL ANYWHERE ELSE
@@ -42,8 +42,7 @@ export const ORG_OPERATION_REDACTED_VALUE = '[redacted by Salesforce Data Treeci
 /*
     What the repository's own files decide about the org, named in the confirmation because the
     reader confirms them: a definition file can set the admin's email and the username (so whoever
-    wrote it may be able to take over the org through a password reset), and sfdx-project.json's
-    replacements can copy local files or environment variables into the deployed metadata.
+    wrote it may be able to take over the org through a password reset).
 */
 export interface IScratchOrgDefinitionSummary {
     edition?: string;
@@ -59,8 +58,6 @@ export interface IScratchOrgPlan {
     workspaceRoot: string;
     definitionFilePath: string;
     definitionFileRelativePath: string;
-    // AS sfdx-project.json DECLARES THEM: THE CLI RESOLVES THEM ITSELF, SINCE THE DEPLOY NAMES NO --source-dir
-    packageDirectoryPaths: string[];
     devHub: IDevHubOrgDetail;
     // THE READER'S OWN (#279): NO DEFAULT, AND CHECKED AGAIN HERE WHATEVER THE INPUT BOX ALREADY SAID
     alias: string;
@@ -68,7 +65,6 @@ export interface IScratchOrgPlan {
     aliasHolderUsername?: string;
     durationDays: number;
     definitionSummary: IScratchOrgDefinitionSummary;
-    hasFileOrEnvironmentReplacements: boolean;
 }
 
 // WHAT THE READER ANSWERED IN THE ALIAS BOX, AND WHICH ORG HOLDS THAT ALIAS NOW, IF ANY
@@ -86,8 +82,9 @@ export type ScratchOrgCreateParseResult =
     | { isCreated: false; failureMessage: string };
 
 /*
-    What the scratch org deploy's --json says about its components (#200). The package.xml entry
-    the CLI lists among the successes is not a component anyone asked for, so it is not counted.
+    What a deploy's --json says about its components (#200, read by the Troubleshooting tab's
+    deploys since #346). The package.xml entry the CLI lists among the successes is not a
+    component anyone asked for, so it is not counted.
 */
 export interface IDeployComponentCounts {
     isSucceeded: boolean;
@@ -96,23 +93,14 @@ export interface IDeployComponentCounts {
     numberComponentsDeployed?: number;
 }
 
-export type SourceDeployParseResult =
-    { isDeployed: true; deployedComponentCount: number }
-    | { isDeployed: false; componentFailureCount: number; failureMessage: string };
-
 /*
-    How a setup ended. Once a username exists the org is KEPT whatever happened next -- nothing here
-    deletes one -- so every outcome past the create carries it, for the caller to list and select.
+    How a setup ended. Once a username exists the org is KEPT -- nothing here deletes one -- so a
+    create that succeeded is 'created' even when a cancel landed as it finished (#358).
 */
 export type ScratchOrgSetupOutcome =
     { kind: 'createFailed'; failureMessage: string; outputFilePath?: string }
     | { kind: 'createCancelled' }
-    | { kind: 'deployed'; username: string; deployedComponentCount: number; outputFilePath?: string }
-    | { kind: 'deployFailed'; username: string; componentFailureCount: number; failureMessage: string; outputFilePath?: string }
-    // THE DEPLOY RAN BUT ITS ANSWER WAS TOO LARGE TO READ: IT MAY WELL HAVE SUCCEEDED, SO IT IS NOT REPORTED AS FAILED
-    | { kind: 'deployUnconfirmed'; username: string }
-    // isDeployStarted IS FALSE FOR A CANCEL THAT LANDED BETWEEN THE CREATE AND THE DEPLOY
-    | { kind: 'deployCancelled'; username: string; isDeployStarted: boolean };
+    | { kind: 'created'; username: string; outputFilePath?: string };
 
 export interface IScratchOrgSetupHooks {
     onPhase: (phase: ScratchOrgSetupPhase) => void;
@@ -123,8 +111,8 @@ export interface IScratchOrgSetupHooks {
 }
 
 /*
-    Creates a scratch org through the Dev Hub the reader picked (#243) and deploys the project's
-    source to it (#200). It imports no vscode itself: the cockpit owns the confirmation, the progress and the panel, and this
+    Creates a scratch org through the Dev Hub the reader picked (#243), and deploys NOTHING to it
+    (#358): what reaches the new org is the reader's to deploy. It imports no vscode itself: the cockpit owns the confirmation, the progress and the panel, and this
     service owns the argv, the reading of the CLI's --json answer and the result files.
 
     Every process goes through PicklistDependencyCheckService.runSalesforceCli -- execFile with an
@@ -181,8 +169,8 @@ export class ScratchOrgService {
 
     /*
         Refuses, before any process, every input the setup cannot run with: the project file, then
-        the definition file. Both are checked BEFORE the Dev Hub is asked for, so a project that
-        cannot be deployed refuses without a picker. No Dev Hub chosen is no plan: undefined, and
+        the definition file. Both are checked BEFORE the Dev Hub is asked for, so an unusable
+        project refuses without a picker. No Dev Hub chosen is no plan: undefined, and
         nothing was started. The definition path is fixed, and still checked to resolve inside the
         workspace, because config/ can be a symlink out of it.
     */
@@ -190,7 +178,8 @@ export class ScratchOrgService {
                                         chooseDevHub: () => Promise<IDevHubOrgDetail | undefined>,
                                         chooseAlias: (devHub: IDevHubOrgDetail) => Promise<IScratchOrgAliasChoice | undefined>): Promise<IScratchOrgPlan | undefined> {
 
-        const packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
+        // THE STRICT READ STAYS A CHECK (#358): THE CLI RUNS IN PROJECT MODE FROM THIS WORKSPACE
+        SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
 
         const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
         const definitionFilePath = path.join(resolvedWorkspaceRoot, SCRATCH_ORG_DEFINITION_FILE_RELATIVE_PATH);
@@ -226,13 +215,11 @@ export class ScratchOrgService {
             workspaceRoot: resolvedWorkspaceRoot,
             definitionFilePath: definitionFilePath,
             definitionFileRelativePath: SCRATCH_ORG_DEFINITION_FILE_RELATIVE_PATH,
-            packageDirectoryPaths: packageDirectoryPaths,
             devHub: devHub,
             alias: aliasChoice.alias,
             ...( aliasChoice.aliasHolderUsername ? { aliasHolderUsername: aliasChoice.aliasHolderUsername } : {} ),
             durationDays: SCRATCH_ORG_DURATION_DAYS,
-            definitionSummary: this.readDefinitionSummary(definitionFilePath),
-            hasFileOrEnvironmentReplacements: SfdxProjectService.hasFileOrEnvironmentReplacements(resolvedWorkspaceRoot)
+            definitionSummary: this.readDefinitionSummary(definitionFilePath)
         };
 
     }
@@ -280,16 +267,14 @@ export class ScratchOrgService {
     }
 
     /*
-        No --source-dir, so the CLI deploys every package directory sfdx-project.json names, and no
-        --ignore-errors, so the deploy is all or nothing: one failing component rolls it back. The
-        target is the USERNAME the create answered with, never the alias: the reader chose the
-        alias (#279), and an alias can be re-pointed between the create and the deploy.
+        The deploy the reader may run next, for the clipboard only (#358): nothing here runs it. The
+        USERNAME the create answered with, never the alias, which can be re-pointed.
     */
-    static buildSourceDeployArguments(username: string): string[] {
+    static buildSourceDeployCommandText(username: string): string {
 
         PicklistDependencyCheckService.assertValidTargetOrgIdentifier(username);
 
-        return ['project', 'deploy', 'start', '--target-org', username, '--json'];
+        return `sf project deploy start --target-org ${username}`;
 
     }
 
@@ -432,24 +417,6 @@ export class ScratchOrgService {
         }
 
         return { isCreated: false, failureMessage: this.buildCliFailureDetail(payload, invocationResult) };
-
-    }
-
-    static parseSourceDeployOutput(invocationResult: ISalesforceCliInvocationResult,
-                                    payload: Record<string, unknown> | undefined = this.readCliJsonPayload(invocationResult)): SourceDeployParseResult {
-
-        if ( invocationResult.spawnError ) {
-            return { isDeployed: false, componentFailureCount: 0, failureMessage: invocationResult.spawnError.code === 'ENOENT' ? this.buildCliRequiredMessage() : `The Salesforce CLI could not be started: ${invocationResult.spawnError.message}` };
-        }
-
-        const deployComponentCounts = this.readDeployComponentCounts(payload);
-        const componentFailureCount = deployComponentCounts.componentFailureCount;
-
-        if ( deployComponentCounts.isSucceeded ) {
-            return { isDeployed: true, deployedComponentCount: deployComponentCounts.numberComponentsDeployed ?? deployComponentCounts.componentSuccessCount };
-        }
-
-        return { isDeployed: false, componentFailureCount: componentFailureCount, failureMessage: this.buildCliFailureDetail(payload, invocationResult) };
 
     }
 
@@ -598,15 +565,13 @@ export class ScratchOrgService {
     }
 
     /*
-        Create, then deploy, each killed by a cancellation. A create the reader cancelled reports
-        nothing about an org -- the Dev Hub may still have made one -- and a deploy that did not
-        finish keeps the org it was deploying to. A spawn failure writes no file.
+        The create alone, killed by a cancellation. A create the reader cancelled reports nothing
+        about an org -- the Dev Hub may still have made one. A spawn failure writes no file.
     */
     static async runScratchOrgSetup(scratchOrgPlan: IScratchOrgPlan, setupHooks: IScratchOrgSetupHooks): Promise<ScratchOrgSetupOutcome> {
 
         const now = setupHooks.now ?? (() => new Date());
         const createOptions: ISalesforceCliProjectOptions = { workingDirectoryPath: scratchOrgPlan.workspaceRoot };
-        const deployOptions: ISalesforceCliProjectOptions = { workingDirectoryPath: scratchOrgPlan.workspaceRoot, maxBufferBytes: SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES };
 
         setupHooks.onPhase('creating');
 
@@ -637,41 +602,11 @@ export class ScratchOrgService {
 
         }
 
-        const username = createResult.username;
-        this.writeOrgOperationResult(scratchOrgPlan.workspaceRoot, username, 'scratch-create', createInvocation, now(), createPayload);
-
-        if ( setupHooks.isCancellationRequested() ) {
-            return { kind: 'deployCancelled', username: username, isDeployStarted: false };
-        }
-
-        setupHooks.onPhase('deploying');
-
-        const deployInvocation = await PicklistDependencyCheckService.runSalesforceCli(
-            this.buildSourceDeployArguments(username),
-            setupHooks.registerCancellation,
-            undefined,
-            deployOptions
-        );
-
-        if ( setupHooks.isCancellationRequested() ) {
-            return { kind: 'deployCancelled', username: username, isDeployStarted: true };
-        }
-
-        if ( deployInvocation.isOutputTooLarge ) {
-            return { kind: 'deployUnconfirmed', username: username };
-        }
-
-        const deployPayload = this.readCliJsonPayload(deployInvocation);
-        const deployResult = this.parseSourceDeployOutput(deployInvocation, deployPayload);
-        const outputFilePath = deployInvocation.spawnError
-            ? undefined
-            : this.writeOrgOperationResult(scratchOrgPlan.workspaceRoot, username, 'scratch-deploy', deployInvocation, now(), deployPayload);
-
-        if ( 'failureMessage' in deployResult ) {
-            return { kind: 'deployFailed', username: username, componentFailureCount: deployResult.componentFailureCount, failureMessage: deployResult.failureMessage, outputFilePath: outputFilePath };
-        }
-
-        return { kind: 'deployed', username: username, deployedComponentCount: deployResult.deployedComponentCount, outputFilePath: outputFilePath };
+        return {
+            kind: 'created',
+            username: createResult.username,
+            outputFilePath: this.writeOrgOperationResult(scratchOrgPlan.workspaceRoot, createResult.username, 'scratch-create', createInvocation, now(), createPayload)
+        };
 
     }
 

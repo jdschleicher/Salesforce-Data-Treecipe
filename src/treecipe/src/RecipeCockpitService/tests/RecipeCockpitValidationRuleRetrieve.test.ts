@@ -306,7 +306,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
         });
 
-        it('is refused, with a reason, while an insert, a scratch org run or a permission set assignment is running', () => {
+        it('is refused, with a reason, while an insert or a permission set assignment is running, and not for a scratch org run, which deploys nothing (#358)', () => {
 
             const busyRefusal = { kind: 'refuseValidationRuleRetrieve', refusalText: RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL, hostMessage: notRunning() };
             const panelState = buildPanelState();
@@ -316,7 +316,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
             panelState.insertStateMessage = undefined;
             panelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true };
-            expect(RecipeCockpitService.routePanelMessage(retrieveMessage, panelState)).toEqual(busyRefusal);
+            expect(RecipeCockpitService.routePanelMessage(retrieveMessage, panelState)).toEqual({ kind: 'retrieveTreeValidationRules', treeKey: ACCOUNT_TREE_KEY });
 
             panelState.scratchOrgStateMessage = undefined;
             panelState.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
@@ -638,11 +638,10 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
         });
 
-        it('starts no retrieve when a scratch org run, an insert or an assignment started while the prompt or the modal was open', async () => {
+        it('starts no retrieve when an insert or an assignment started while the prompt or the modal was open', async () => {
 
             await openCockpit();
             const startMeanwhile = [
-                () => { (RecipeCockpitService as any).isScratchOrgSetupInFlight = true; },
                 () => { panelState().insertStateMessage = { command: 'insertState', isRunning: true, treeKey: 'Lead-ONLY' }; },
                 () => { panelState().permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: 'Lead-ONLY' }; }
             ];
@@ -657,20 +656,17 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
 
             expect(retrieveCalls()).toEqual([]);
-            expect(notifications().map(notification => notification.text)).toEqual(Array(3).fill(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL));
+            expect(notifications().map(notification => notification.text)).toEqual(Array(2).fill(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL));
 
         });
 
-        it('holds + New scratch org while a retrieve runs, since it would deploy the source the retrieve is writing', async () => {
+        it('does not hold + New scratch org while a retrieve runs, since a scratch org run deploys nothing (#358)', async () => {
 
             await openCockpit();
             panelState().dataOrgObjectApiNames = new Set(ACCOUNT_TREE_OBJECTS);
             panelState().validationRuleRetrieveStateMessage = { command: 'validationRuleRetrieveState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
 
-            expect(RecipeCockpitService.routePanelMessage({ command: 'createScratchOrg' }, panelState())).toEqual({
-                kind: 'postScratchOrgState',
-                hostMessage: { command: 'scratchOrgState', isRunning: false }
-            });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'createScratchOrg' }, panelState())).toEqual({ kind: 'createScratchOrg' });
 
         });
 
@@ -870,7 +866,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
         });
 
-        it('is held while a retrieve, an insert, a scratch org run or a permission set assignment runs, and says why', () => {
+        it('is held while a retrieve, an insert or a permission set assignment runs, and says why, but never holds or is held by a scratch org run (#358)', () => {
 
             const panel = renderTrees();
 
@@ -878,14 +874,12 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             expect(retrieveButtonOf(panel).disabled).toBe(true);
             const newScratchButtons = panel.findAll(panel.cockpitBodyElement, 'dataOrgNewScratch');
             expect(newScratchButtons.length).toBeGreaterThan(0);
-            newScratchButtons.forEach((newScratchButton: any) => expect(newScratchButton.disabled).toBe(true));
+            newScratchButtons.forEach((newScratchButton: any) => expect(newScratchButton.disabled).toBe(false));
             expect(retrieveButtonOf(panel).attributes.title).toBe('Validation rules are being retrieved.');
             panel.postToPanel({ command: 'validationRuleRetrieveState', isRunning: false, treeKey: 'Lead-ONLY' });
-            newScratchButtons.forEach((newScratchButton: any) => expect(newScratchButton.disabled).toBe(false));
 
             panel.postToPanel({ command: 'scratchOrgState', isRunning: true });
-            expect(retrieveButtonOf(panel).disabled).toBe(true);
-            expect(retrieveButtonOf(panel).attributes.title).toBe('A scratch org is being set up.');
+            expect(retrieveButtonOf(panel).disabled).toBe(false);
             panel.postToPanel({ command: 'scratchOrgState', isRunning: false });
 
             panel.postToPanel({ command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY });
