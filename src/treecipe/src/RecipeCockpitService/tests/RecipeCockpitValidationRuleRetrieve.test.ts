@@ -836,6 +836,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             panel.postToPanel({ command: 'recipeData', recipe: loadTreeRecipe(), renderSequence: 1 });
             panel.postToPanel({ command: 'rendered' });
             panel.expandAllTrees();
+            panel.openTroubleshootingTabs();
             return panel;
         };
 

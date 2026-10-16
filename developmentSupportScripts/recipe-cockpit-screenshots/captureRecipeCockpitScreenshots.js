@@ -202,7 +202,8 @@ class RecipeCockpitScreenshots {
             // THE HELP ITSELF, ITS SUMMARY NAMING THE CARD THAT DIFFERS
             page = await this.openCockpit(browser, this.applyFixtureSelection(RecipeCockpitService, this.loadFixtureRecipe(RecipeCockpitService)));
             await page.locator('.helpToggle').click();
-            await this.writeIfChanged('where-changes-are-stored.png', await page.locator('.helpSection').screenshot());
+            // ONLY ITS SUMMARY PART: THE WHOLE SECTION GREW PAST THE GUIDE'S SIZE LIMIT
+            await this.writeIfChanged('where-changes-are-stored.png', await page.locator('.helpSection .helpPart:has(.helpSummary)').screenshot());
             await page.close();
 
         } finally {

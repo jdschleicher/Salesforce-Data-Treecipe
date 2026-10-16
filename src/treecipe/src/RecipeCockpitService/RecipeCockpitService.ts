@@ -18,6 +18,17 @@ import {
 } from './RecipeCockpitPermissionSetAssign';
 import { RecipeCockpitPermissionSetGenerate } from './RecipeCockpitPermissionSetGenerate';
 import {
+    IMetadataDeployComponent,
+    IMetadataDeployObject,
+    IMetadataDeploySummary,
+    METADATA_DEPLOY_FAILURES_SHOWN,
+    METADATA_DEPLOY_OPERATION_BY_KIND,
+    METADATA_DEPLOY_TIMEOUT_MILLISECONDS,
+    MetadataDeployKind,
+    MetadataDeployOutcome,
+    RecipeCockpitMetadataDeploy
+} from './RecipeCockpitMetadataDeploy';
+import {
     RecipeCockpitValidationRuleRetrieve,
     VALIDATION_RULE_RETRIEVE_MAX_OBJECTS,
     VALIDATION_RULE_RETRIEVE_TIMEOUT_MILLISECONDS,
@@ -65,7 +76,7 @@ import {
 } from './RecipeCockpitTreeHistory';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { RunFakerConfirmation } from '../ExtensionCommandService/RunFakerConfirmation';
-import { IScratchOrgAliasChoice, IScratchOrgPlan, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
+import { IScratchOrgAliasChoice, IScratchOrgPlan, ORG_OPERATIONS_FOLDER_NAME, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
 import { FAKER_JS_RECIPE_INDICATOR, PARENT_PICKER_RANDOM_LABEL, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import {
     IRecipeFieldConstraintTarget,
@@ -361,9 +372,10 @@ export const RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL = 'Add to recipe';
 /*
     Every tab a card can draw. Treecipe is selected by default; the data sets tab is drawn only for
     a card with a history. Record types (#195) is a collapsible section of the Treecipe tab (#321),
-    drawn only on a card listing an object with two or more record types.
+    drawn only on a card listing an object with two or more record types. Troubleshooting (#346) is
+    drawn on every card with a folder.
 */
-export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'datasets'] as const;
+export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'datasets', 'troubleshooting'] as const;
 
 // THE TODO RecipeService WRITES UNDER A DEFAULT RecordTypeId (AND EVERY RECORD-TYPE VARIANT) WHEN AN OBJECT HAS SEVERAL RECORD TYPES
 export const RECIPE_COCKPIT_RECORD_TYPE_OPTIONS_MARKER = '### TODO: -- RecordType Options -- ';
@@ -382,6 +394,9 @@ export const RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY = 'No objects in th
 export const RECIPE_COCKPIT_RECORD_TYPES_INTRO = 'Choose the record types Generate Treecipe writes for each object: one recipe block per ticked record type, each with its own RecordTypeId and picklist values. Regenerating writes a new run of every tree; the run on screen is kept.';
 
 export type RecipeCockpitTreeTab = typeof RECIPE_COCKPIT_TREE_TABS[number];
+
+// TABS ADDED SINCE THE PLACE VERSION: A PLACE CARRIES THEIR SEARCH ONLY WHEN THERE IS ONE, SO THE VERSION DID NOT CHANGE
+export const RECIPE_COCKPIT_OPTIONAL_SEARCH_TABS: readonly RecipeCockpitTreeTab[] = Object.freeze(['troubleshooting'] as RecipeCockpitTreeTab[]);
 
 export const RECIPE_COCKPIT_TREE_DATA_MISSING_NOTICE = 'This run\'s objects wrapper has no relationship tree data, so each recipe file is shown as its own card, with its objects in file order and no lookups. Run "Generate Treecipe" again to see the run\'s relationship trees.';
 
@@ -465,7 +480,8 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Fixed values (the pin): one value for every record, written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.'
         ],
         closingParagraphs: [
-            'Three more write other files: Remember this selection saves record types to treecipe.config.json, Generate permission set writes a permission set into your project, and Retrieve validation rules writes an org\'s validation rules into your project.'
+            'Three more write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set writes a permission set into your project and Retrieve validation rules writes an org\'s validation rules into your project.',
+            'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set, Deploy fields (custom fields only), Deploy global value sets and Deploy record types each send just those parts of your project, after a confirmation that lists them.'
         ]
     },
     {
@@ -499,7 +515,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Treecipe tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", on every tree, asks every time in the command palette for any connected org, production included, and retrieves that tree's validation rules from it into this project after a confirmation: it only reads from that org and deploys nothing.
+It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and deploys this project's source to it, after you confirm; the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", on every tree, asks every time in the command palette for any connected org, production included, and retrieves that tree's validation rules from it into this project after a confirmation: it only reads from that org and deploys nothing. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields…" (only the tree's custom fields, never a standard field, an object definition or a layout), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under treecipe/OrgOperations, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -1298,6 +1314,38 @@ export interface IRecipeCockpitValidationRuleRetrieveStateMessage {
 }
 
 /*
+    The Troubleshooting tab's deploys (#346): while isRunning, every deploy button, every insert, the
+    assignment, the retrieve and the org picker are disabled. treeKey and deployKind name the button
+    clicked. It carries no text: how the deploy went is a VS Code notification. Stored and replayed.
+*/
+export interface IRecipeCockpitMetadataDeployStateMessage {
+    command: 'metadataDeployState';
+    isRunning: boolean;
+    treeKey: string;
+    deployKind: MetadataDeployKind;
+}
+
+/*
+    What each Troubleshooting section would deploy (#346), read from the project when the tab is
+    opened: COUNTS only -- the names are the host's, and are named in the deploy's own confirmation.
+    renderSequence names the model it was read for, and the panel drops it for any other.
+    failureMessage is set, and every count 0, when the project could not be read.
+*/
+export interface IRecipeCockpitTroubleshootingSummaryMessage {
+    command: 'troubleshootingSummary';
+    renderSequence: number;
+    treeKey: string;
+    permissionSetCount: number;
+    customFieldCount: number;
+    standardFieldCount: number;
+    unreadableFieldCount: number;
+    globalValueSetCount: number;
+    missingGlobalValueSetCount: number;
+    recordTypeCount: number;
+    failureMessage?: string;
+}
+
+/*
     "Open in browser" (#279): the panel disabled the button on the click, and this says the open has
     finished -- whether it opened, refused or failed is a notification's, since the URL it opened
     carries a session id and nothing about it is ever posted.
@@ -1362,7 +1410,40 @@ export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER = 'Choose t
 
 export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL = 'Generate Treecipe';
 
-export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL = 'No validation rules were retrieved: an insert, a scratch org run or a permission set assignment is running. Try again once it has finished.';
+export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL = 'No validation rules were retrieved: an insert, a scratch org run, a permission set assignment or a metadata deploy is running. Try again once it has finished.';
+
+/*
+    The Troubleshooting tab's deploys (#346): each section's own button, its confirmation, and what a
+    deploy says when another run holds the window. The org is the Treecipe tab's selection or one
+    picked from the same non-production list, and must answer that it is a sandbox.
+*/
+export const RECIPE_COCKPIT_DEPLOY_ACTION_LABELS: Readonly<Record<MetadataDeployKind, string>> = Object.freeze({
+    permissionSet: 'Deploy permission set…',
+    fields: 'Deploy fields…',
+    globalValueSets: 'Deploy global value sets…',
+    recordTypes: 'Deploy record types…'
+});
+
+export const RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND: Readonly<Record<MetadataDeployKind, string>> = Object.freeze({
+    permissionSet: 'deployTreePermissionSet',
+    fields: 'deployTreeFields',
+    globalValueSets: 'deployTreeGlobalValueSets',
+    recordTypes: 'deployTreeRecordTypes'
+});
+
+export const RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL = 'Deploy';
+
+export const RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL = 'View output';
+
+export const RECIPE_COCKPIT_DEPLOY_PERMISSION_SET_PICK_PLACEHOLDER = 'Choose the permission sets to deploy';
+
+export const RECIPE_COCKPIT_DEPLOY_ORG_PLACEHOLDER = 'Choose the sandbox or scratch org to deploy to';
+
+export const RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL = 'Nothing was deployed: an insert, a scratch org run, a permission set assignment, a validation rule retrieve or another deploy is running. Try again once it has finished.';
+
+export const RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL = 'Troubleshooting';
+
+export const RECIPE_COCKPIT_TROUBLESHOOTING_INTRO = 'Fixes for an insert that failed. Deploys reach only a sandbox or scratch org: the one selected in the Org section, or one you choose.';
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL = 'Create scratch org';
 
@@ -1402,6 +1483,8 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitScratchOrgStateMessage
                                         | IRecipeCockpitPermissionSetAssignStateMessage
                                         | IRecipeCockpitValidationRuleRetrieveStateMessage
+                                        | IRecipeCockpitMetadataDeployStateMessage
+                                        | IRecipeCockpitTroubleshootingSummaryMessage
                                         | IRecipeCockpitOrgOpenStateMessage
                                         | IRecipeCockpitDatasetAddedMessage
                                         | IRecipeCockpitExtensionInfoMessage;
@@ -1546,6 +1629,10 @@ export type RecipeCockpitPanelAction =
     | { kind: 'assignTreePermissionSets'; treeKey: string; isSelectedOrg: boolean }
     | { kind: 'generateTreePermissionSet'; treeKey: string }
     | { kind: 'retrieveTreeValidationRules'; treeKey: string }
+    | { kind: 'deployTreeMetadataComponents'; treeKey: string; deployKind: MetadataDeployKind; isSelectedOrg: boolean }
+    // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
+    | { kind: 'refuseMetadataDeploy'; refusalText?: string; hostMessage: IRecipeCockpitMetadataDeployStateMessage }
+    | { kind: 'loadTroubleshootingSummary'; treeKey: string; renderSequence: number }
     // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refuseValidationRuleRetrieve'; refusalText?: string; hostMessage: IRecipeCockpitValidationRuleRetrieveStateMessage }
     // A REFUSAL IS A WARNING NOTIFICATION, AND THE STATE GIVES THE CLICKED BUTTON BACK
@@ -1626,6 +1713,8 @@ export interface IRecipeCockpitPanelState {
     permissionSetAssignStateMessage?: IRecipeCockpitPermissionSetAssignStateMessage;
     // "Retrieve validation rules…" (#326): ONE PER WINDOW, STORED AND REPLAYED LIKE THE ASSIGNMENT'S
     validationRuleRetrieveStateMessage?: IRecipeCockpitValidationRuleRetrieveStateMessage;
+    // THE TROUBLESHOOTING TAB'S DEPLOYS (#346): ONE PER WINDOW, STORED AND REPLAYED LIKE THE ASSIGNMENT'S
+    metadataDeployStateMessage?: IRecipeCockpitMetadataDeployStateMessage;
     // THE PLACE workspaceState KEPT FOR THIS MODEL (#230), REPLAYED UNTIL THE MODEL'S "rendered" SAYS IT WAS DRAWN
     restorePlace?: IRecipeCockpitPanelPlace;
     /*
@@ -1659,6 +1748,12 @@ interface IRecipeCockpitPermissionSetClosingState {
     orgDetail?: IAuthenticatedOrgDetail;
     isConfirmed?: boolean;
     isAssigned?: boolean;
+}
+
+// HOW A TROUBLESHOOTING DEPLOY ENDED (#346): WHICH ORG'S DESCRIBES OF WHICH OBJECTS TO DROP ONCE THE CLI RAN, AND WHETHER IT LANDED
+interface IRecipeCockpitMetadataDeployClosingState {
+    cliStartedFor?: { orgDetail: IAuthenticatedOrgDetail; objectApiNames: string[] };
+    isDeployed?: boolean;
 }
 
 // ONE LOOKUP'S ANSWER, WITH EVERY Id ITS OWN SEARCHES RETURNED: ONLY THOSE MAY BE WRITTEN (#254)
@@ -1756,6 +1851,10 @@ export class RecipeCockpitService {
 
             RECIPE_COCKPIT_TREE_TABS.forEach(tabName => {
                 const candidateQuery = Object.prototype.hasOwnProperty.call(candidateQueries, tabName) ? candidateQueries[tabName] : undefined;
+                // A TAB ADDED SINCE THE PLACE VERSION (#346) KEEPS ITS SEARCH ONLY WHEN THERE IS ONE, SO AN OLDER PLACE READS AS IT WAS
+                if ( RECIPE_COCKPIT_OPTIONAL_SEARCH_TABS.includes(tabName) && !( this.isBoundedText(candidateQuery) && candidateQuery !== '' ) ) {
+                    return;
+                }
                 searchQueries[tabName] = this.isBoundedText(candidateQuery) ? candidateQuery : '';
             });
 
@@ -4389,6 +4488,7 @@ export class RecipeCockpitService {
         this.adoptScratchOrgRunState(this.recipeCockpitPanelState);
         this.adoptPermissionSetAssignRunState(this.recipeCockpitPanelState);
         this.adoptValidationRuleRetrieveRunState(this.recipeCockpitPanelState);
+        this.adoptMetadataDeployRunState(this.recipeCockpitPanelState);
         this.recipeCockpitPanelState.isOrgOpenInFlight = this.isOrgOpenInFlightForWindow;
 
         if ( previousPanelState ) {
@@ -4400,6 +4500,8 @@ export class RecipeCockpitService {
             this.recipeCockpitPanelState.permissionSetAssignStateMessage = previousPanelState.permissionSetAssignStateMessage;
             // AND A VALIDATION RULE RETRIEVE'S (#326)
             this.recipeCockpitPanelState.validationRuleRetrieveStateMessage = previousPanelState.validationRuleRetrieveStateMessage;
+            // AND A METADATA DEPLOY'S (#346)
+            this.recipeCockpitPanelState.metadataDeployStateMessage = previousPanelState.metadataDeployStateMessage;
         }
 
         if ( !existingCockpitPanel ) {
@@ -5031,6 +5133,24 @@ export class RecipeCockpitService {
                     VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(panelAction.refusalText));
                 }
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
+                return;
+
+            case 'deployTreeMetadataComponents':
+
+                await this.deployTreeMetadataFromPanel(cockpitPanel, panelAction.treeKey, panelAction.deployKind, panelAction.isSelectedOrg);
+                return;
+
+            case 'refuseMetadataDeploy':
+
+                if ( panelAction.refusalText ) {
+                    VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(panelAction.refusalText));
+                }
+                this.postToPanel(cockpitPanel, panelAction.hostMessage);
+                return;
+
+            case 'loadTroubleshootingSummary':
+
+                await this.postTroubleshootingSummary(cockpitPanel, panelAction.treeKey, panelAction.renderSequence);
                 return;
 
             case 'refusePermissionSetAssign':
@@ -6431,6 +6551,446 @@ export class RecipeCockpitService {
 
     }
 
+    private static isMetadataDeployInFlight = false;
+
+    private static metadataDeployRunStateMessage: IRecipeCockpitMetadataDeployStateMessage | undefined;
+
+    // KEPT FOR THE WINDOW WHILE RUNNING, STORED ON WHICHEVER PANEL STATE IS CURRENT, AND POSTED TO WHICHEVER PANEL IS OPEN
+    private static setMetadataDeployState(deployStateMessage: IRecipeCockpitMetadataDeployStateMessage) {
+
+        this.metadataDeployRunStateMessage = deployStateMessage.isRunning ? deployStateMessage : undefined;
+        this.recipeCockpitPanelState.metadataDeployStateMessage = deployStateMessage;
+
+        if ( this.recipeCockpitPanel ) {
+            this.postToPanel(this.recipeCockpitPanel, deployStateMessage);
+        }
+
+    }
+
+    // A PANEL STATE BUILT WHILE A DEPLOY RUNS (A REOPEN) HOLDS WHAT THE RUN HOLDS
+    private static adoptMetadataDeployRunState(panelState: IRecipeCockpitPanelState) {
+
+        if ( this.isMetadataDeployInFlight && this.metadataDeployRunStateMessage ) {
+            panelState.metadataDeployStateMessage = this.metadataDeployRunStateMessage;
+        }
+
+    }
+
+    // WHAT A TREE'S DEPLOYS ARE READ FOR: THE OBJECTS ITS INSERT SENDS, EACH WITH ITS RECIPE FIELDS LESS THE UNTICKED ONES
+    static listTreeDeployObjects(recipeViewModel: IRecipeCockpitRecipeViewModel, tree: IRecipeCockpitTreeViewModel): IMetadataDeployObject[] {
+
+        const insertObjectApiNames = new Set(this.listTreeInsertObjectApiNames(recipeViewModel, tree));
+        const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByObject(tree);
+
+        return recipeViewModel.objects
+            .filter(objectViewModel => insertObjectApiNames.has(objectViewModel.objectApiName))
+            .map(objectViewModel => {
+                const excludedFieldApiNames = new Set(excludedFieldApiNamesByObject.get(objectViewModel.objectApiName) ?? []);
+                return {
+                    objectApiName: objectViewModel.objectApiName,
+                    fieldApiNames: objectViewModel.fields
+                        .map(fieldViewModel => fieldViewModel.fieldApiName)
+                        .filter(fieldApiName => !excludedFieldApiNames.has(fieldApiName))
+                };
+            });
+
+    }
+
+    /*
+        The Troubleshooting tab's counts (#346), read from the project's STRICT package directories
+        when the tab is opened. Posted only while the model it was read for is still on screen.
+    */
+    private static async postTroubleshootingSummary(cockpitPanel: vscode.WebviewPanel, treeKey: string, renderSequence: number) {
+
+        const panelState = this.recipeCockpitPanelState;
+        const recipeViewModel = panelState.recipeDataMessage?.recipe;
+        const tree = recipeViewModel?.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+
+        if ( !recipeViewModel || !tree ) {
+            return;
+        }
+
+        const summaryMessage: IRecipeCockpitTroubleshootingSummaryMessage = {
+            command: 'troubleshootingSummary',
+            renderSequence: renderSequence,
+            treeKey: treeKey,
+            permissionSetCount: 0,
+            customFieldCount: 0,
+            standardFieldCount: 0,
+            unreadableFieldCount: 0,
+            globalValueSetCount: 0,
+            missingGlobalValueSetCount: 0,
+            recordTypeCount: 0
+        };
+
+        try {
+
+            const packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(panelState.workspaceRoot);
+            const deployObjects = this.listTreeDeployObjects(recipeViewModel, tree);
+            const summary = await RecipeCockpitMetadataDeploy.summarizeTreeMetadata(panelState.workspaceRoot, packageDirectoryPaths, deployObjects);
+            const discovery = await RecipeCockpitPermissionSetAssign.discoverPermissionSets(deployObjects.map(deployObject => deployObject.objectApiName), panelState.workspaceRoot, packageDirectoryPaths);
+
+            summaryMessage.permissionSetCount = discovery.permissionSets.length;
+            summaryMessage.customFieldCount = summary.customFields.length;
+            summaryMessage.standardFieldCount = summary.standardFields.length;
+            summaryMessage.unreadableFieldCount = summary.unreadableFields.length;
+            summaryMessage.globalValueSetCount = summary.globalValueSets.length;
+            summaryMessage.missingGlobalValueSetCount = summary.missingGlobalValueSets.length;
+            summaryMessage.recordTypeCount = summary.recordTypes.length;
+
+        } catch (projectError) {
+
+            summaryMessage.failureMessage = `Nothing can be deployed: ${this.describeThrown(projectError)}`;
+
+        }
+
+        if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState.recipeDataMessage?.renderSequence === renderSequence ) {
+            this.postToPanel(cockpitPanel, summaryMessage);
+        }
+
+    }
+
+    /*
+        A Troubleshooting deploy (#346): one section's components, named in a host modal, deployed
+        through a generated package.xml to a sandbox or scratch org. One per window, and while it
+        runs nothing else may insert, assign, retrieve, create a scratch org or change the
+        selection. The org is the selection (checked by the router to have answered that it is a
+        sandbox) or one the reader picks from the same non-production list; either way it is asked
+        again on the connection after the modal, and production is never deployed to. Every outcome
+        is a VS Code notification. Once the CLI has run, that org's describes of the objects the
+        deploy touches are dropped, and a deploy that landed on the selection re-checks the cards
+        listing them.
+    */
+    private static async deployTreeMetadataFromPanel(cockpitPanel: vscode.WebviewPanel, treeKey: string, deployKind: MetadataDeployKind, isSelectedOrg: boolean) {
+
+        const panelState = this.recipeCockpitPanelState;
+        const recipeViewModel = panelState.recipeDataMessage?.recipe;
+        const tree = recipeViewModel?.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+        const deploySelection = isSelectedOrg ? panelState.dataOrgSelection : undefined;
+
+        if ( this.isMetadataDeployInFlight || !recipeViewModel || !tree || ( isSelectedOrg && !deploySelection ) ) {
+            this.postToPanel(cockpitPanel, this.metadataDeployRunStateMessage
+                ?? { command: 'metadataDeployState', isRunning: false, treeKey: treeKey, deployKind: deployKind });
+            return;
+        }
+
+        this.isMetadataDeployInFlight = true;
+        let closingState: IRecipeCockpitMetadataDeployClosingState = {};
+
+        this.setMetadataDeployState({ command: 'metadataDeployState', isRunning: true, treeKey: treeKey, deployKind: deployKind });
+
+        try {
+
+            closingState = await this.performMetadataDeploy(
+                cockpitPanel,
+                panelState.workspaceRoot,
+                recipeViewModel,
+                tree,
+                deployKind,
+                deploySelection ? async () => deploySelection.orgDetail : async () => this.promptForDeployOrg()
+            );
+
+        } finally {
+
+            try {
+
+                const { cliStartedFor } = closingState;
+
+                if ( cliStartedFor ) {
+                    cliStartedFor.objectApiNames.forEach(objectApiName => SalesforceOrgService.clearDescribeCache(cliStartedFor.orgDetail.username, objectApiName));
+                }
+
+                const currentPanel = this.recipeCockpitPanel;
+                const currentPanelState = this.recipeCockpitPanelState;
+
+                if ( closingState.isDeployed === true && cliStartedFor && deploySelection && currentPanel && currentPanelState.dataOrgSelection === deploySelection ) {
+                    const lowerObjectNames = new Set(cliStartedFor.objectApiNames.map(objectApiName => objectApiName.toLowerCase()));
+                    await this.refreshDataOrgReadinessForTrees(currentPanel, currentPanelState, recipeTree => recipeTree.objects.some(treeObject => lowerObjectNames.has(treeObject.objectApiName.toLowerCase())));
+                }
+
+            } finally {
+
+                this.isMetadataDeployInFlight = false;
+                this.setMetadataDeployState({ command: 'metadataDeployState', isRunning: false, treeKey: treeKey, deployKind: deployKind });
+
+            }
+
+        }
+
+    }
+
+    private static async promptForDeployOrg(): Promise<IAuthenticatedOrgDetail | undefined> {
+
+        return await VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(
+            SalesforceOrgService.listDataOrgDetails().then(dataOrgListing => ({
+                orgDetails: dataOrgListing.orgDetails,
+                emptyListMessage: this.buildDataOrgNoOrgsMessage(dataOrgListing.hiddenOrgReasonCounts)
+            })),
+            RECIPE_COCKPIT_DEPLOY_ORG_PLACEHOLDER
+        );
+
+    }
+
+    // THE READER'S PICK, THIS TREE'S GENERATED SET FIRST AND PRESELECTED; undefined WHEN THE PICK WAS DISMISSED OR LEFT EMPTY
+    private static async promptForDeployPermissionSets(permissionSets: IPermissionSetCandidate[], generatedPermissionSetName: string | undefined, treeObjectCount: number): Promise<IPermissionSetCandidate[] | undefined> {
+
+        const lowerGeneratedName = generatedPermissionSetName?.toLowerCase();
+        const orderedPermissionSets = [
+            ...permissionSets.filter(permissionSet => permissionSet.name.toLowerCase() === lowerGeneratedName),
+            ...permissionSets.filter(permissionSet => permissionSet.name.toLowerCase() !== lowerGeneratedName)
+        ];
+
+        const pickedItems = await vscode.window.showQuickPick(
+            orderedPermissionSets.map(permissionSet => ({
+                label: permissionSet.name,
+                description: RecipeCockpitPermissionSetAssign.describeCoverage(permissionSet, treeObjectCount),
+                detail: permissionSet.relativeFilePath,
+                picked: permissionSet.name.toLowerCase() === lowerGeneratedName,
+                permissionSet: permissionSet
+            })),
+            { canPickMany: true, ignoreFocusOut: true, matchOnDescription: true, placeHolder: RECIPE_COCKPIT_DEPLOY_PERMISSION_SET_PICK_PLACEHOLDER }
+        );
+
+        return pickedItems && pickedItems.length > 0 ? pickedItems.map(pickedItem => pickedItem.permissionSet) : undefined;
+
+    }
+
+    /*
+        Everything that decides WHAT is deployed is read and picked BEFORE an org is asked for, so a
+        project with nothing to deploy opens no prompt; a dismissed pick, org prompt or modal is a
+        quiet cancel that writes nothing. The package.xml is written only after the org has
+        answered, on the connection, that it is a sandbox.
+    */
+    private static async performMetadataDeploy(cockpitPanel: vscode.WebviewPanel,
+                                                workspaceRoot: string,
+                                                recipeViewModel: IRecipeCockpitRecipeViewModel,
+                                                tree: IRecipeCockpitTreeViewModel,
+                                                deployKind: MetadataDeployKind,
+                                                resolveOrgDetail: () => Promise<IAuthenticatedOrgDetail | undefined>): Promise<IRecipeCockpitMetadataDeployClosingState> {
+
+        const treeLabel = tree.customName || tree.title;
+        const refuse = (refusalText: string, closingState: IRecipeCockpitMetadataDeployClosingState = {}): IRecipeCockpitMetadataDeployClosingState => {
+            this.showMetadataDeployNotification('warning', refusalText, undefined, workspaceRoot);
+            return closingState;
+        };
+
+        let packageDirectoryPaths: string[];
+        let packageDirectoryPath: string;
+        try {
+            packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
+            packageDirectoryPath = RecipeCockpitPermissionSetGenerate.resolveDefaultPackageDirectoryPath(workspaceRoot);
+        } catch (projectError) {
+            return refuse(`Nothing was deployed: ${this.describeThrown(projectError)}`);
+        }
+
+        const deployObjects = this.listTreeDeployObjects(recipeViewModel, tree);
+        const treeObjectApiNames = deployObjects.map(deployObject => deployObject.objectApiName);
+        let components: IMetadataDeployComponent[];
+        let summary: IMetadataDeploySummary | undefined;
+        let touchedObjectApiNames: string[];
+
+        if ( deployKind === 'permissionSet' ) {
+
+            const discovery = await RecipeCockpitPermissionSetAssign.discoverPermissionSets(treeObjectApiNames, workspaceRoot, packageDirectoryPaths);
+            if ( discovery.permissionSets.length === 0 ) {
+                return refuse(`No permission set in this workspace's source grants access to any object of ${treeLabel}, so nothing was deployed. Generate permission set… writes one.`);
+            }
+
+            const pickedPermissionSets = await this.promptForDeployPermissionSets(discovery.permissionSets, RecipeCockpitPermissionSetGenerate.buildPermissionSetName(tree.folderName), treeObjectApiNames.length);
+            if ( !pickedPermissionSets ) {
+                return {};
+            }
+
+            components = pickedPermissionSets.map(permissionSet => ({ type: 'PermissionSet', member: permissionSet.name }));
+            touchedObjectApiNames = [...new Set(pickedPermissionSets.flatMap(permissionSet => permissionSet.grantedObjectApiNames))].filter(objectApiName => SalesforceApiName.isApiName(objectApiName));
+
+        } else {
+
+            summary = await RecipeCockpitMetadataDeploy.summarizeTreeMetadata(workspaceRoot, packageDirectoryPaths, deployObjects);
+            components = RecipeCockpitMetadataDeploy.listSummaryComponents(summary, deployKind);
+
+            if ( components.length === 0 ) {
+                const missingText = deployKind === 'fields' ? 'custom field whose source file this project holds'
+                    : deployKind === 'globalValueSets' ? 'global value set its fields name that this project holds'
+                    : 'record type in this project';
+                return refuse(`${treeLabel} has no ${missingText}, so nothing was deployed.`);
+            }
+
+            touchedObjectApiNames = deployKind === 'globalValueSets'
+                ? treeObjectApiNames
+                : [...new Set(components.map(component => component.member.split('.')[0]))];
+
+        }
+
+        let orgDetail: IAuthenticatedOrgDetail | undefined;
+        try {
+            orgDetail = await resolveOrgDetail();
+        } catch (listError) {
+            return refuse(`Nothing was deployed: ${this.describeThrown(listError)}`);
+        }
+
+        if ( !orgDetail ) {
+            return {};
+        }
+
+        // NO PARENTHESES: A NOTIFICATION ESCAPES THEM, AND THIS LABEL IS IN EVERY ONE THIS RUN SHOWS
+        const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
+        const packageDirectoryRelativePath = path.relative(workspaceRoot, packageDirectoryPath).split(path.sep).join('/') || '.';
+        const componentText = `${components.length} ${components.length === 1 ? 'component' : 'components'}`;
+
+        const confirmation = await vscode.window.showWarningMessage(
+            RecipeYamlScalar.escapeForNotification(`Deploy ${componentText} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgLabel)}?`),
+            {
+                modal: true,
+                detail: RecipeYamlScalar.escapeForNotification(RecipeCockpitMetadataDeploy.buildConfirmationDetail(deployKind, treeLabel, orgLabel, packageDirectoryRelativePath, components, summary))
+            },
+            RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL
+        );
+
+        if ( confirmation !== RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL ) {
+            return {};
+        }
+
+        // THE ROUTER CHECKED THESE AT THE CLICK; ONE CAN HAVE STARTED WHILE THE PROMPT OR THE MODAL WAS OPEN
+        const currentPanelState = this.recipeCockpitPanelState;
+        if ( this.isScratchOrgSetupInFlight
+                || currentPanelState.insertStateMessage
+                || currentPanelState.permissionSetAssignStateMessage?.isRunning
+                || this.isValidationRuleRetrieveInFlight ) {
+            return refuse(RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL);
+        }
+
+        let orgTypeDetail: IOrgTypeDetail | undefined;
+        try {
+            orgTypeDetail = await SalesforceOrgService.queryOrganizationType(SalesforceOrgService.toQuerySource(await SalesforceOrgService.getConnection(orgDetail.username)));
+        } catch (connectionError) {
+            return refuse(`Nothing was deployed: could not connect to ${orgLabel}: ${this.describeThrown(connectionError)}`);
+        }
+
+        if ( orgTypeDetail?.isSandbox !== true ) {
+            return refuse(`Nothing was deployed: ${orgLabel} ${orgTypeDetail ? `answered that it is ${SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail)}` : 'could not say whether it is a sandbox'}. Metadata is deployed only to a sandbox or scratch org.`);
+        }
+
+        const operationName = METADATA_DEPLOY_OPERATION_BY_KIND[deployKind];
+        const operationDate = new Date();
+        let deployArguments: string[];
+        try {
+            const packageXml = RecipeCockpitMetadataDeploy.buildPackageXml(components, this.readSourceApiVersion(workspaceRoot));
+            const packageXmlFilePath = RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(workspaceRoot, orgDetail.username, operationName, operationDate);
+            const writtenFilePath = packageXmlFilePath ? RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, packageXmlFilePath, packageXml) : undefined;
+            if ( !writtenFilePath ) {
+                return refuse(`Nothing was deployed: the package.xml could not be written under treecipe/${ORG_OPERATIONS_FOLDER_NAME} in this workspace.`);
+            }
+            deployArguments = RecipeCockpitMetadataDeploy.buildMetadataDeployArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, writtenFilePath), orgDetail.username);
+        } catch (argumentError) {
+            return refuse(this.describeThrown(argumentError));
+        }
+
+        const cliStarted: IRecipeCockpitMetadataDeployClosingState = { cliStartedFor: { orgDetail: orgDetail, objectApiNames: touchedObjectApiNames } };
+
+        const deployRun = await this.runCancellableCli(
+            RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: deploying ${componentText} to ${orgDetail.username}`),
+            deployArguments,
+            METADATA_DEPLOY_TIMEOUT_MILLISECONDS,
+            workspaceRoot,
+            SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES
+        );
+
+        if ( deployRun.isCancelled ) {
+            return refuse(`The deploy of ${componentText} for ${treeLabel} to ${orgLabel} was cancelled, so whether it landed is unknown.`, cliStarted);
+        }
+
+        const deployPayload = ScratchOrgService.readCliJsonPayload(deployRun.invocation);
+        const deployOutcome: MetadataDeployOutcome = RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(deployRun.invocation, deployPayload);
+        const deployOutputFilePath = deployRun.invocation.spawnError || deployRun.invocation.isOutputTooLarge
+            ? undefined
+            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, operationName, deployRun.invocation, operationDate, deployPayload);
+
+        switch ( deployOutcome.kind ) {
+
+            case 'deployed':
+                this.showMetadataDeployNotification(
+                    'information',
+                    `Deployed ${componentText} for ${treeLabel} to ${orgLabel}.`,
+                    deployOutputFilePath,
+                    workspaceRoot,
+                    deployKind === 'permissionSet' ? { cockpitPanel: cockpitPanel, treeKey: tree.treeKey } : undefined
+                );
+                return { ...cliStarted, isDeployed: true };
+
+            case 'cliNotInstalled':
+                return refuse(deployOutcome.failureMessage, cliStarted);
+
+            case 'unconfirmed':
+                this.showMetadataDeployNotification('warning', deployOutcome.failureMessage, deployOutputFilePath, workspaceRoot);
+                return cliStarted;
+
+            case 'failed': {
+                const shownFailures = deployOutcome.componentFailureMessages.slice(0, METADATA_DEPLOY_FAILURES_SHOWN);
+                const hiddenFailureCount = deployOutcome.componentFailureMessages.length - shownFailures.length;
+                const failureText = shownFailures.length > 0
+                    ? `${shownFailures.join('; ')}${hiddenFailureCount > 0 ? `; and ${hiddenFailureCount} more` : ''}`
+                    : deployOutcome.failureMessage;
+                this.showMetadataDeployNotification('warning', `Nothing was deployed to ${orgLabel}: ${failureText}`, deployOutputFilePath, workspaceRoot);
+                return cliStarted;
+            }
+
+        }
+
+    }
+
+    // sfdx-project.json's sourceApiVersion, ONLY IN THE SHAPE A package.xml TAKES; THE CLI CHOOSES WHEN THERE IS NONE
+    private static readSourceApiVersion(workspaceRoot: string): string | undefined {
+
+        try {
+            return RecipeCockpitMetadataDeploy.readApiVersion(SfdxProjectService.readSfdxProjectJson(SfdxProjectService.getSfdxProjectFilePath(workspaceRoot)).sourceApiVersion);
+        } catch {
+            return undefined;
+        }
+
+    }
+
+    /*
+        A success is INFORMATION, every other outcome a WARNING. "View output" opens the CLI's result
+        file when there is one; a permission set deploy that landed also offers "Assign permission
+        sets to me…", routed through routePanelMessage like a click so every assign guard holds. NOT
+        AWAITED: the run ends, and gives the panel its buttons back, without waiting for a click.
+    */
+    private static showMetadataDeployNotification(severity: 'information' | 'warning',
+                                                    notificationText: string,
+                                                    outputFilePath: string | undefined,
+                                                    workspaceRoot: string,
+                                                    assignFollowUp?: { cockpitPanel: vscode.WebviewPanel; treeKey: string }) {
+
+        const actions = [
+            ...( outputFilePath ? [RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL] : [] ),
+            ...( assignFollowUp ? [RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL] : [] )
+        ];
+        const escapedText = RecipeYamlScalar.escapeForNotification(notificationText);
+        const shown = severity === 'information'
+            ? vscode.window.showInformationMessage(escapedText, ...actions)
+            : vscode.window.showWarningMessage(escapedText, ...actions);
+
+        Promise.resolve(shown)
+            .then(async chosenAction => {
+                if ( chosenAction === RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL && outputFilePath ) {
+                    await VSCodeWorkspaceService.openWorkspaceResultFile(outputFilePath, workspaceRoot, 'The deploy result file no longer exists in this workspace.');
+                } else if ( chosenAction === RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL && assignFollowUp && this.recipeCockpitPanel === assignFollowUp.cockpitPanel ) {
+                    const panelState = this.recipeCockpitPanelState;
+                    const assignAction = this.routePanelMessage({
+                        command: 'assignTreePermissionSets',
+                        treeKey: assignFollowUp.treeKey,
+                        ...( panelState.dataOrgSelection ? { orgIndex: panelState.dataOrgSelection.orgIndex } : {} )
+                    }, panelState);
+                    if ( assignAction ) {
+                        await this.executePanelAction(assignFollowUp.cockpitPanel, assignAction);
+                    }
+                }
+            })
+            .catch(() => undefined);
+
+    }
+
     private static isValidationRuleRetrieveInFlight = false;
 
     private static validationRuleRetrieveRunStateMessage: IRecipeCockpitValidationRuleRetrieveStateMessage | undefined;
@@ -6541,7 +7101,7 @@ export class RecipeCockpitService {
 
         // THE ROUTER CHECKED THESE AT THE CLICK; ONE CAN HAVE STARTED WHILE THE PROMPT OR THE MODAL WAS OPEN
         const currentPanelState = this.recipeCockpitPanelState;
-        if ( this.isScratchOrgSetupInFlight || currentPanelState.insertStateMessage || currentPanelState.permissionSetAssignStateMessage?.isRunning ) {
+        if ( this.isScratchOrgSetupInFlight || currentPanelState.insertStateMessage || currentPanelState.permissionSetAssignStateMessage?.isRunning || this.isMetadataDeployInFlight ) {
             return refuse(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL);
         }
 
@@ -6757,8 +7317,8 @@ export class RecipeCockpitService {
 
         // THE ROUTER CHECKED THESE AT THE CLICK; ONE CAN HAVE STARTED WHILE THE MODAL WAS OPEN, AND NOTHING AWAITS BETWEEN HERE AND THE WRITE
         const currentPanelState = this.recipeCockpitPanelState;
-        if ( currentPanelState.wireLookupStateMessage || currentPanelState.scratchOrgStateMessage?.isRunning || currentPanelState.permissionSetAssignStateMessage?.isRunning ) {
-            refuse('a recipe write, a scratch org run or a permission set assignment started meanwhile. Try again once it has finished.');
+        if ( currentPanelState.wireLookupStateMessage || currentPanelState.scratchOrgStateMessage?.isRunning || currentPanelState.permissionSetAssignStateMessage?.isRunning || this.isMetadataDeployInFlight ) {
+            refuse('a recipe write, a scratch org run, a permission set assignment or a metadata deploy started meanwhile. Try again once it has finished.');
             return;
         }
 
@@ -7087,7 +7647,8 @@ export class RecipeCockpitService {
     private static async runCancellableCli(progressTitle: string,
                                             cliArguments: string[],
                                             timeoutMilliseconds: number,
-                                            workspaceRoot: string): Promise<{ invocation: ISalesforceCliInvocationResult; isCancelled: boolean }> {
+                                            workspaceRoot: string,
+                                            maxBufferBytes: number = PERMISSION_SET_MAX_BUFFER_BYTES): Promise<{ invocation: ISalesforceCliInvocationResult; isCancelled: boolean }> {
 
         let isCancelled = false;
 
@@ -7113,7 +7674,7 @@ export class RecipeCockpitService {
                     }
                 },
                 timeoutMilliseconds,
-                { workingDirectoryPath: path.resolve(workspaceRoot), maxBufferBytes: PERMISSION_SET_MAX_BUFFER_BYTES }
+                { workingDirectoryPath: path.resolve(workspaceRoot), maxBufferBytes: maxBufferBytes }
             );
 
         });
@@ -8378,7 +8939,7 @@ export class RecipeCockpitService {
                 // A RUN ENDS BY LISTING THE ORGS ITSELF; A SECOND LISTING MEANWHILE WOULD DISCARD ITS ANSWER AND FORGET ITS ORG
                 // AN INSERT IN FLIGHT HOLDS THE SELECTION IT CONFIRMED; ITS RELOAD ASKS AGAIN ONCE IT HAS ENDED
                 // A PERMISSION SET ASSIGNMENT HOLDS THE SELECTION IT ASSIGNS IN, AND CHECKS IT AGAIN WHEN IT ENDS
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
                     return undefined;
                 }
 
@@ -8391,6 +8952,7 @@ export class RecipeCockpitService {
                 if ( typeof orgIndex !== 'number'
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
+                        || panelState.metadataDeployStateMessage?.isRunning
                         || panelState.insertStateMessage
                         || !Number.isInteger(orgIndex)
                         || orgIndex < 0
@@ -8410,7 +8972,7 @@ export class RecipeCockpitService {
             */
             case 'refreshDataOrgs':
 
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
                     return undefined;
                 }
 
@@ -8429,7 +8991,7 @@ export class RecipeCockpitService {
                 }
 
                 // A VALIDATION RULE RETRIEVE (#326) IS WRITING INTO THE SOURCE A SCRATCH ORG RUN WOULD DEPLOY
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning || panelState.validationRuleRetrieveStateMessage?.isRunning ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning || panelState.validationRuleRetrieveStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
                     return {
                         kind: 'postScratchOrgState',
                         hostMessage: panelState.scratchOrgStateMessage ?? { command: 'scratchOrgState', isRunning: false }
@@ -8460,6 +9022,7 @@ export class RecipeCockpitService {
                 // A SCRATCH ORG RUN IS ABOUT TO CHANGE THE SELECTION, SO NOTHING IS INSERTED WHILE IT IS IN FLIGHT
                 const isRoutable = !panelState.scratchOrgStateMessage?.isRunning
                                     && !panelState.permissionSetAssignStateMessage?.isRunning
+                                    && !panelState.metadataDeployStateMessage?.isRunning
                                     && typeof treeKey === 'string'
                                     && !panelState.generateStateMessages.has(treeKey)
                                     && !!panelState.recipeDataMessage
@@ -8903,6 +9466,10 @@ export class RecipeCockpitService {
                     return refuse();
                 }
 
+                if ( panelState.metadataDeployStateMessage?.isRunning ) {
+                    return refuse('Nothing was assigned: a metadata deploy is running. Try again once it has finished.');
+                }
+
                 if ( orgIndex === undefined || orgIndex === null ) {
                     return { kind: 'assignTreePermissionSets', treeKey: treeKey, isSelectedOrg: false };
                 }
@@ -8938,7 +9505,8 @@ export class RecipeCockpitService {
                         || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey)
                         || panelState.wireLookupStateMessage
                         || panelState.scratchOrgStateMessage?.isRunning
-                        || panelState.permissionSetAssignStateMessage?.isRunning ) {
+                        || panelState.permissionSetAssignStateMessage?.isRunning
+                        || panelState.metadataDeployStateMessage?.isRunning ) {
                     return undefined;
                 }
 
@@ -8976,11 +9544,94 @@ export class RecipeCockpitService {
 
                 if ( panelState.insertStateMessage
                         || panelState.scratchOrgStateMessage?.isRunning
-                        || panelState.permissionSetAssignStateMessage?.isRunning ) {
+                        || panelState.permissionSetAssignStateMessage?.isRunning
+                        || panelState.metadataDeployStateMessage?.isRunning ) {
                     return { kind: 'refuseValidationRuleRetrieve', refusalText: RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL, hostMessage: notRunning };
                 }
 
                 return { kind: 'retrieveTreeValidationRules', treeKey: treeKey };
+
+            }
+
+            /*
+                The Troubleshooting tab's deploys (#346) post the tree's KEY, and the INDEX of the org
+                the Treecipe tab has selected when it has one; neither decides what is deployed, which
+                the host reads from the project for the tree it holds. The key must be a card with a
+                folder the panel confirmed drawing. An index must BE the selection, still name the same
+                username, and that org must have answered that it is a sandbox: a forged message for
+                production stops here, before any connection or process. With no index the host asks
+                for an org from the same non-production list the picker draws. One deploy per window,
+                none while an insert, a scratch org run, an assignment or a retrieve runs, and none of
+                those while it runs. Every refusal gives the clicked button back.
+            */
+            case 'deployTreePermissionSet':
+            case 'deployTreeFields':
+            case 'deployTreeGlobalValueSets':
+            case 'deployTreeRecordTypes': {
+
+                const { orgIndex, treeKey } = panelMessage;
+                const deployKind = ( Object.keys(RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND) as MetadataDeployKind[])
+                    .find(candidateKind => RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND[candidateKind] === panelMessage.command) as MetadataDeployKind;
+                const dataOrgSelection = panelState.dataOrgSelection;
+
+                // A RELOADED DOCUMENT MAY NOT KNOW A DEPLOY IS RUNNING: IT IS TOLD, AND THE DEPLOY'S OWN END GIVES THE BUTTONS BACK
+                if ( panelState.metadataDeployStateMessage?.isRunning ) {
+                    return { kind: 'refuseMetadataDeploy', hostMessage: panelState.metadataDeployStateMessage };
+                }
+
+                const refuse = (refusalText?: string): RecipeCockpitPanelAction => ({
+                    kind: 'refuseMetadataDeploy',
+                    ...( refusalText ? { refusalText: refusalText } : {} ),
+                    hostMessage: { command: 'metadataDeployState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '', deployKind: deployKind }
+                });
+
+                if ( typeof treeKey !== 'string'
+                        || !panelState.recipeDataMessage
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+                    return refuse();
+                }
+
+                if ( panelState.insertStateMessage
+                        || panelState.scratchOrgStateMessage?.isRunning
+                        || panelState.permissionSetAssignStateMessage?.isRunning
+                        || panelState.validationRuleRetrieveStateMessage?.isRunning ) {
+                    return refuse(RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL);
+                }
+
+                if ( orgIndex === undefined || orgIndex === null ) {
+                    return { kind: 'deployTreeMetadataComponents', treeKey: treeKey, deployKind: deployKind, isSelectedOrg: false };
+                }
+
+                if ( typeof orgIndex === 'number'
+                        && Number.isInteger(orgIndex)
+                        && !!dataOrgSelection
+                        && dataOrgSelection.orgIndex === orgIndex
+                        && panelState.dataOrgDetails[orgIndex]?.username === dataOrgSelection.orgDetail.username
+                        && dataOrgSelection.orgTypeDetail?.isSandbox === true ) {
+                    return { kind: 'deployTreeMetadataComponents', treeKey: treeKey, deployKind: deployKind, isSelectedOrg: true };
+                }
+
+                return refuse('Nothing was deployed: the org selected above has not answered that it is a sandbox. Choose a sandbox or scratch org there.');
+
+            }
+
+            /*
+                What each Troubleshooting section would deploy (#346), read from local files when the
+                tab is opened, for a card with a folder the panel confirmed drawing. It reads the
+                project and nothing else, so it is answered whatever else runs.
+            */
+            case 'loadTroubleshootingSummary': {
+
+                const { treeKey, renderSequence } = panelMessage;
+
+                if ( typeof treeKey !== 'string'
+                        || !panelState.recipeDataMessage
+                        || renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+                    return undefined;
+                }
+
+                return { kind: 'loadTroubleshootingSummary', treeKey: treeKey, renderSequence: renderSequence as number };
 
             }
 
@@ -9008,6 +9659,7 @@ export class RecipeCockpitService {
                         || panelState.dataOrgObjectApiNames.size === 0
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
+                        || panelState.metadataDeployStateMessage?.isRunning
                         || !dataOrgSelection
                         || dataOrgSelection.orgIndex !== orgIndex
                         || panelState.dataOrgDetails[orgIndex]?.username !== dataOrgSelection.orgDetail.username ) {
@@ -9119,6 +9771,10 @@ export class RecipeCockpitService {
 
         if ( panelState.validationRuleRetrieveStateMessage ) {
             replayMessages.push(panelState.validationRuleRetrieveStateMessage);
+        }
+
+        if ( panelState.metadataDeployStateMessage ) {
+            replayMessages.push(panelState.metadataDeployStateMessage);
         }
 
         if ( panelState.permissionSetAssignStateMessage ) {
@@ -11023,7 +11679,11 @@ ${this.buildPaletteCustomProperties()}
     .cockpitSectionHeader { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; cursor: pointer; border-bottom: 1px solid var(--sdt-border); }
     .cockpitSectionTitle { font-weight: 600; font-size: 1.1em; }
     #cockpitOrgSectionBody { padding: 0.5rem 0.6rem; margin-top: 0.4rem; background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 8px; }
-    .treecipeActions, .treeInsertControls, .treePermissionSetControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
+    .treecipeActions, .treeInsertControls, .troubleshootingControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
+    .troubleshootingIntro { margin: 0.25rem 0.6rem 0.5rem; }
+    .troubleshootingSection { margin: 0.25rem 0.6rem 0.5rem; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
+    .troubleshootingSectionTitle { font-weight: 600; }
+    .troubleshootingSummary { margin-top: 0.2rem; }
     .treeRecordCount { display: inline-flex; align-items: baseline; gap: 0.3rem; }
     .treeRecordCountInput {
         width: 5.5rem;
@@ -11100,6 +11760,10 @@ ${this.buildPaletteCustomProperties()}
     const PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL)};
     const GENERATE_PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL)};
     const VALIDATION_RULE_RETRIEVE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL)};
+    const DEPLOY_ACTION_LABELS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_LABELS)};
+    const DEPLOY_COMMANDS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND)};
+    const TROUBLESHOOTING_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL)};
+    const TROUBLESHOOTING_INTRO = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_INTRO)};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
     const DATA_ORG_CONNECTION_CHECK_INSERT_REASON = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON)};
     const DATA_ORG_LOADING_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER)};
@@ -11107,6 +11771,7 @@ ${this.buildPaletteCustomProperties()}
     const PANEL_PLACE_VERSION = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION};
     const PANEL_PLACE_SCROLL_SAVE_DELAY = ${RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY};
     const PANEL_PLACE_TABS = ${JSON.stringify(RECIPE_COCKPIT_TREE_TABS)};
+    const OPTIONAL_SEARCH_TABS = ${JSON.stringify(RECIPE_COCKPIT_OPTIONAL_SEARCH_TABS)};
     const PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB};
     const TREE_TAB_RENAMES = ${JSON.stringify(RECIPE_COCKPIT_TREE_TAB_RENAMES)};
     const REMOVED_TREE_TABS = ${JSON.stringify(RECIPE_COCKPIT_REMOVED_TREE_TABS)};
@@ -11223,6 +11888,9 @@ ${this.buildPaletteCustomProperties()}
     let isPermissionSetAssignRunning = false;
     // "Retrieve validation rules…" (#326): SET ON THE CLICK, CLEARED BY THE HOST'S validationRuleRetrieveState
     let isValidationRuleRetrieveRunning = false;
+    // THE TROUBLESHOOTING TAB'S DEPLOYS (#346): SET ON THE CLICK, CLEARED BY THE HOST'S metadataDeployState; THE KEY NAMES THE BUTTON CLICKED
+    let isMetadataDeployRunning = false;
+    let metadataDeployRunningKey = null;
     // "Open in browser" (#279): SET ON THE CLICK, CLEARED BY THE HOST'S orgOpenState
     let isOrgOpenRunning = false;
     // THE renderSequence THE PICKER ASKED FOR ITS ORGS UNDER -- ONE ASK PER MODEL, MADE THE FIRST TIME A TREECIPE TAB OPENS OR THE PICKER IS USED
@@ -11616,7 +12284,7 @@ ${this.buildPaletteCustomProperties()}
         // THE SELECTION'S INDEX ONLY: THE HOST OPENS THE ORG IT HAS SELECTED, AND NOTHING COMES BACK BUT "DONE"
         dataOrgView.openOrgElement.setAttribute('title', 'Log in to the selected org in your browser');
         dataOrgView.openOrgElement.addEventListener('click', function () {
-            if (isOrgOpenRunning || isScratchOrgRunning || isPermissionSetAssignRunning || dataOrgSelectedIndex === null) { return; }
+            if (isOrgOpenRunning || isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || dataOrgSelectedIndex === null) { return; }
             isOrgOpenRunning = true;
             drawDataOrgViews();
             vscodeApi.postMessage({ command: 'openDataOrg', orgIndex: dataOrgSelectedIndex });
@@ -11625,7 +12293,7 @@ ${this.buildPaletteCustomProperties()}
         // THE MESSAGE CARRIES NOTHING: THE DEV HUB, THE DEFINITION FILE, WHAT IS DEPLOYED AND THE ALIAS ARE ALL THE HOST'S
         dataOrgView.newScratchElement.setAttribute('title', 'Choose a Dev Hub, name the new scratch org, create it through the Dev Hub, deploy the source of this project to it and select it');
         dataOrgView.newScratchElement.addEventListener('click', function () {
-            if (isScratchOrgRunning || isPermissionSetAssignRunning || isValidationRuleRetrieveRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
+            if (isScratchOrgRunning || isPermissionSetAssignRunning || isValidationRuleRetrieveRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || renderedSequence === null) { return; }
             isDataOrgPickerInUse = true;
             isScratchOrgRunning = true;
             drawDataOrgViews();
@@ -11740,15 +12408,16 @@ ${this.buildPaletteCustomProperties()}
 
         // AN INSERT IN FLIGHT HOLDS IT TOO: THE HOST WOULD REFUSE A RUN THAT CHANGES THE SELECTION UNDER IT
         // SO DOES A VALIDATION RULE RETRIEVE (#326): IT IS WRITING INTO THE SOURCE THE RUN WOULD DEPLOY
-        dataOrgView.newScratchElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isValidationRuleRetrieveRunning || insertRunningTreeKey !== null;
+        dataOrgView.newScratchElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isValidationRuleRetrieveRunning || isMetadataDeployRunning || insertRunningTreeKey !== null;
         dataOrgView.newScratchElement.textContent = isScratchOrgRunning ? 'Setting up scratch org…' : '+ New scratch org';
         // A PERMISSION SET ASSIGNMENT HOLDS THE PICKER TOO: IT ASSIGNS IN THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
-        dataOrgView.selectElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning;
-        dataOrgView.loadElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning;
-        dataOrgView.refreshElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning;
+        // AND A METADATA DEPLOY (#346): IT DEPLOYS TO THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
+        dataOrgView.selectElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
+        dataOrgView.loadElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
+        dataOrgView.refreshElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
 
         setShown(dataOrgView.openOrgElement, isDataOrgSelectShown && dataOrgSelectedIndex !== null);
-        dataOrgView.openOrgElement.disabled = isOrgOpenRunning || isScratchOrgRunning || isPermissionSetAssignRunning;
+        dataOrgView.openOrgElement.disabled = isOrgOpenRunning || isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
         dataOrgView.openOrgElement.textContent = isOrgOpenRunning ? 'Opening…' : OPEN_ORG_LABEL;
 
     }
@@ -12532,7 +13201,11 @@ ${this.buildPaletteCustomProperties()}
         treeState.tree.validationRulesOff = objectSelectionMessage.validationRulesOff || undefined;
         drawObjectSelection(treeState);
         drawTreeInsert(treeState);
+        drawTreePermissionSet(treeState);
         drawHelpSummary();
+
+        // WHAT THE TROUBLESHOOTING TAB COUNTS LEAVES OUT EXCLUDED OBJECTS AND UNTICKED FIELDS (#346)
+        if (treeState.selectedTab === 'troubleshooting') { requestTroubleshootingSummary(treeState); }
 
     }
 
@@ -13413,6 +14086,10 @@ ${this.buildPaletteCustomProperties()}
             addTreeTab(treeState, tabsElement, 'datasets', 'Previously Used Data Sets', createElement('div', 'treeDatasets hidden'));
         }
 
+        if (treeState.tree.folderName) {
+            addTreeTab(treeState, tabsElement, 'troubleshooting', TROUBLESHOOTING_TAB_LABEL, createElement('div', 'treeTroubleshooting hidden'));
+        }
+
         treeState.tabsElement = tabsElement;
 
         treeState.bodyElement.appendChild(tabsElement);
@@ -13464,7 +14141,10 @@ ${this.buildPaletteCustomProperties()}
             if (isSelected && !tabState.isBuilt) {
                 tabState.isBuilt = true;
                 if (tabState.tabName === 'datasets') { buildDatasetsTab(treeState, tabState.panelElement); }
+                if (tabState.tabName === 'troubleshooting') { buildTroubleshootingTab(treeState, tabState.panelElement); }
             }
+
+            if (isSelected && tabState.tabName === 'troubleshooting') { requestTroubleshootingSummary(treeState); }
 
         });
 
@@ -14375,9 +15055,9 @@ ${this.buildPaletteCustomProperties()}
             element: treeElement,
             toggleElement: toggleElement,
             bodyElement: createElement('div', 'treeBody hidden'),
-            searchQueries: { treecipe: '', datasets: '' },
+            searchQueries: { treecipe: '', datasets: '', troubleshooting: '' },
             // WHAT THE READER TYPED IN EACH BOX, AS TYPED -- searchQueries IS ITS TRIMMED, LOWERCASED FORM
-            searchTexts: { treecipe: '', datasets: '' },
+            searchTexts: { treecipe: '', datasets: '', troubleshooting: '' },
             isDatasetFavoritesOnly: false,
             datasetFavoritesToggleElement: null,
             isRecordTypeFieldsOnly: false,
@@ -14540,10 +15220,6 @@ ${this.buildPaletteCustomProperties()}
             headerElement.appendChild(buildTreeInsertElement(treeState));
         }
 
-        if (tree.folderName && tree.objects.length > 0) {
-            headerElement.appendChild(buildTreePermissionSetElement(treeState));
-        }
-
         drawTreeName(treeState);
 
         return headerElement;
@@ -14586,21 +15262,189 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        "Assign permission sets to me…" (#274, #302), on every card with a folder whatever the org
-        answered. Posts the tree's KEY, and the index of the org the Treecipe tab has selected when
-        it has one; with none the host asks for an org itself. Which permission sets are offered is
-        the host's. Every assign button and insert is disabled on the click, and only the host's
+        The Troubleshooting tab (#346), on every card with a folder: what to do when an insert
+        failed, in four sections. Built on first select, like the data sets tab, and searched by its
+        own box, which hides the sections that do not match. What each deploy section would deploy
+        is read by the host from the project each time the tab is selected; only COUNTS come back,
+        and a section with nothing to deploy draws its button disabled with the reason.
+    */
+    function buildTroubleshootingTab(treeState, panelElement) {
+
+        const tree = treeState.tree;
+
+        treeState.troubleshootingSearch = buildTabSearch(treeState, 'troubleshooting', 'Search troubleshooting actions', applyTroubleshootingFilter);
+        panelElement.appendChild(treeState.troubleshootingSearch.element);
+        panelElement.appendChild(createElement('div', 'troubleshootingIntro muted', TROUBLESHOOTING_INTRO));
+
+        treeState.troubleshootingSections = [];
+        treeState.deployButtons = Object.create(null);
+        treeState.deploySummaryElements = Object.create(null);
+
+        const addSection = function (title, buildContent) {
+            const sectionElement = createElement('div', 'troubleshootingSection');
+            sectionElement.setAttribute('role', 'group');
+            sectionElement.setAttribute('aria-label', title);
+            sectionElement.appendChild(createElement('div', 'troubleshootingSectionTitle', title));
+            const controlsElement = createElement('div', 'troubleshootingControls');
+            buildContent(sectionElement, controlsElement);
+            sectionElement.appendChild(controlsElement);
+            panelElement.appendChild(sectionElement);
+            const sectionState = { title: title, element: sectionElement, controlsElement: controlsElement };
+            treeState.troubleshootingSections.push(sectionState);
+            return sectionState;
+        };
+
+        addSection('Permission sets', function (sectionElement, controlsElement) {
+            if (tree.objects.length > 0) { controlsElement.appendChild(buildAssignPermissionSetButton(treeState)); }
+            controlsElement.appendChild(buildGeneratePermissionSetButton(treeState));
+            addDeploySection(treeState, sectionElement, controlsElement, 'permissionSet');
+        });
+
+        addSection('Validation rules', function (sectionElement, controlsElement) {
+            controlsElement.appendChild(buildRetrieveValidationRulesButton(treeState));
+        });
+
+        addSection('Field deployment', function (sectionElement, controlsElement) {
+            addDeploySection(treeState, sectionElement, controlsElement, 'fields');
+        });
+
+        addSection('Dependent metadata', function (sectionElement, controlsElement) {
+            addDeploySection(treeState, sectionElement, controlsElement, 'globalValueSets');
+            addDeploySection(treeState, sectionElement, controlsElement, 'recordTypes');
+        });
+
+        drawTreePermissionSet(treeState);
+        applyTroubleshootingFilter(treeState);
+
+    }
+
+    function addDeploySection(treeState, sectionElement, controlsElement, deployKind) {
+
+        const summaryElement = createElement('div', 'troubleshootingSummary muted', 'Reading this project…');
+        const buttonElement = createElement('button', 'troubleshootingDeploy troubleshootingDeploy-' + deployKind, DEPLOY_ACTION_LABELS[deployKind]);
+
+        buttonElement.addEventListener('click', function () {
+            if (buttonElement.disabled || renderedSequence === null) { return; }
+            isMetadataDeployRunning = true;
+            metadataDeployRunningKey = treeState.tree.treeKey + '\\n' + deployKind;
+            drawTreeInserts();
+            drawDataOrgViews();
+            const deployMessage = { command: DEPLOY_COMMANDS[deployKind], treeKey: treeState.tree.treeKey };
+            if (dataOrgSelectedIndex !== null) { deployMessage.orgIndex = dataOrgSelectedIndex; }
+            vscodeApi.postMessage(deployMessage);
+        });
+
+        sectionElement.appendChild(summaryElement);
+        controlsElement.appendChild(buttonElement);
+        treeState.deployButtons[deployKind] = buttonElement;
+        treeState.deploySummaryElements[deployKind] = summaryElement;
+
+    }
+
+    function applyTroubleshootingFilter(treeState) {
+
+        const searchQuery = treeState.searchQueries.troubleshooting;
+        const sections = treeState.troubleshootingSections || [];
+        let matchingCount = 0;
+
+        sections.forEach(function (sectionState) {
+            // WHAT THE SECTION DRAWS: ITS TITLE, WHAT IT WOULD DEPLOY AND ITS BUTTONS
+            const searchText = [sectionState.title]
+                .concat(Array.prototype.map.call(sectionState.element.children, function (childElement) { return String(childElement.textContent || ''); }))
+                .concat(Array.prototype.map.call(sectionState.controlsElement.children, function (childElement) { return String(childElement.textContent || ''); }))
+                .join('\\n')
+                .toLowerCase();
+            const isMatch = !searchQuery || searchText.indexOf(searchQuery) !== -1;
+            if (isMatch) { matchingCount++; sectionState.element.classList.remove('hidden'); } else { sectionState.element.classList.add('hidden'); }
+        });
+
+        if (treeState.troubleshootingSearch) {
+            treeState.troubleshootingSearch.matchCountElement.textContent = !searchQuery
+                ? pluralize(sections.length, 'section', 'sections')
+                : matchingCount > 0 ? matchingCount + ' of ' + pluralize(sections.length, 'section', 'sections') : 'no matches';
+        }
+
+    }
+
+    // ASKED EACH TIME THE TAB IS SELECTED; ONE SELECTED BEFORE THE MODEL WAS ACKNOWLEDGED (A RESTORE) ASKS ONCE IT IS
+    function requestTroubleshootingSummary(treeState) {
+
+        if (renderedSequence === null) {
+            treeState.isTroubleshootingSummaryWanted = true;
+            return;
+        }
+
+        treeState.isTroubleshootingSummaryWanted = false;
+        vscodeApi.postMessage({ command: 'loadTroubleshootingSummary', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
+
+    }
+
+    function renderTroubleshootingSummary(summaryMessage) {
+
+        if (renderedSequence === null || summaryMessage.renderSequence !== renderedSequence) { return; }
+
+        const treeState = treeStates.find(function (candidateTreeState) { return candidateTreeState.tree.treeKey === summaryMessage.treeKey; });
+        if (!treeState) { return; }
+
+        treeState.troubleshootingSummary = summaryMessage;
+        drawTreePermissionSet(treeState);
+        applyTroubleshootingFilter(treeState);
+
+    }
+
+    // WHAT A SECTION SAYS IT WOULD DEPLOY, AND WHY ITS BUTTON IS DISABLED WHEN THERE IS NOTHING
+    function describeDeploySummary(summary, deployKind) {
+
+        if (!summary) { return { text: 'Reading this project…', emptyReason: 'Reading this project…' }; }
+        if (summary.failureMessage) { return { text: summary.failureMessage, emptyReason: summary.failureMessage }; }
+
+        if (deployKind === 'permissionSet') {
+            return {
+                text: pluralize(summary.permissionSetCount, 'permission set', 'permission sets') + ' in this project grant access to this tree.',
+                emptyReason: summary.permissionSetCount === 0 ? 'No permission set in this project grants access to this tree. Generate permission set… writes one.' : ''
+            };
+        }
+
+        if (deployKind === 'fields') {
+            const notes = [];
+            if (summary.standardFieldCount > 0) { notes.push(pluralize(summary.standardFieldCount, 'standard field', 'standard fields') + ' never deployed'); }
+            if (summary.unreadableFieldCount > 0) { notes.push(pluralize(summary.unreadableFieldCount, 'custom field', 'custom fields') + ' with no readable source file'); }
+            return {
+                text: pluralize(summary.customFieldCount, 'CustomField', 'CustomField') + (notes.length > 0 ? '; ' + notes.join('; ') : '') + '.',
+                emptyReason: summary.customFieldCount === 0 ? 'This tree has no custom field whose source file this project holds.' : ''
+            };
+        }
+
+        if (deployKind === 'globalValueSets') {
+            return {
+                text: pluralize(summary.globalValueSetCount, 'GlobalValueSet', 'GlobalValueSet')
+                    + (summary.missingGlobalValueSetCount > 0 ? '; ' + pluralize(summary.missingGlobalValueSetCount, 'named value set', 'named value sets') + ' this project does not hold' : '') + '.',
+                emptyReason: summary.globalValueSetCount === 0 ? 'No field of this tree names a global value set this project holds.' : ''
+            };
+        }
+
+        return {
+            text: pluralize(summary.recordTypeCount, 'RecordType', 'RecordType') + '.',
+            emptyReason: summary.recordTypeCount === 0 ? 'No object of this tree has a record type in this project.' : ''
+        };
+
+    }
+
+    /*
+        "Assign permission sets to me…" (#274, #302), in the Troubleshooting tab (#346). Posts the
+        tree's KEY, and the index of the org the Treecipe tab has selected when it has one; with
+        none the host asks for an org itself. Which permission sets are offered is the host's.
+        Every assign button and insert is disabled on the click, and only the host's
         permissionSetAssignState gives them back. How it went is a VS Code notification, never a
         line here.
     */
-    function buildTreePermissionSetElement(treeState) {
+    function buildAssignPermissionSetButton(treeState) {
 
-        const controlsElement = createElement('div', 'treePermissionSetControls');
         const buttonElement = createElement('button', 'treePermissionSets', PERMISSION_SET_ACTION_LABEL);
 
         buttonElement.setAttribute('title', 'Choose the permission sets in this workspace\\'s source that grant access to this tree\\'s objects and assign the ones the org selected above, or a sandbox you choose, already holds to the user that org is authorized as, after a confirmation. Nothing is deployed.');
         buttonElement.addEventListener('click', function () {
-            if (isPermissionSetAssignRunning || insertRunningTreeKey !== null || isScratchOrgRunning || renderedSequence === null) { return; }
+            if (isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || isScratchOrgRunning || renderedSequence === null) { return; }
             isPermissionSetAssignRunning = true;
             drawTreeInserts();
             drawDataOrgViews();
@@ -14609,27 +15453,37 @@ ${this.buildPaletteCustomProperties()}
             vscodeApi.postMessage(permissionSetMessage);
         });
 
-        controlsElement.appendChild(buttonElement);
         treeState.permissionSetButtonElement = buttonElement;
 
-        /*
-            "Generate permission set…" (#306) posts the tree's KEY alone; what is written, where, and
-            the confirmation are the host's. It deploys nothing, so it needs no org and holds no
-            other button.
-        */
+        return buttonElement;
+
+    }
+
+    /*
+        "Generate permission set…" (#306) posts the tree's KEY alone; what is written, where, and
+        the confirmation are the host's. It deploys nothing, so it needs no org and holds no
+        other button.
+    */
+    function buildGeneratePermissionSetButton(treeState) {
+
         const generateButtonElement = createElement('button', 'treeGeneratePermissionSet', GENERATE_PERMISSION_SET_ACTION_LABEL);
         generateButtonElement.addEventListener('click', function () {
             if (generateButtonElement.disabled || renderedSequence === null) { return; }
             vscodeApi.postMessage({ command: 'generateTreePermissionSet', treeKey: treeState.tree.treeKey });
         });
-        controlsElement.appendChild(generateButtonElement);
         treeState.generatePermissionSetButtonElement = generateButtonElement;
 
-        /*
-            "Retrieve validation rules…" (#326) posts the tree's KEY alone, never an org: the host
-            asks for the org in the command palette every time. One retrieve per window, so every
-            card's button is disabled on the click until the host's validationRuleRetrieveState.
-        */
+        return generateButtonElement;
+
+    }
+
+    /*
+        "Retrieve validation rules…" (#326) posts the tree's KEY alone, never an org: the host
+        asks for the org in the command palette every time. One retrieve per window, so every
+        card's button is disabled on the click until the host's validationRuleRetrieveState.
+    */
+    function buildRetrieveValidationRulesButton(treeState) {
+
         const retrieveButtonElement = createElement('button', 'treeRetrieveValidationRules', VALIDATION_RULE_RETRIEVE_ACTION_LABEL);
         retrieveButtonElement.addEventListener('click', function () {
             if (retrieveButtonElement.disabled || renderedSequence === null) { return; }
@@ -14638,41 +15492,60 @@ ${this.buildPaletteCustomProperties()}
             drawDataOrgViews();
             vscodeApi.postMessage({ command: 'retrieveTreeValidationRules', treeKey: treeState.tree.treeKey });
         });
-        controlsElement.appendChild(retrieveButtonElement);
         treeState.retrieveValidationRulesButtonElement = retrieveButtonElement;
 
-        drawTreePermissionSet(treeState);
-
-        return controlsElement;
+        return retrieveButtonElement;
 
     }
 
     function drawTreePermissionSet(treeState) {
 
-        if (!treeState.permissionSetButtonElement) { return; }
-
-        treeState.permissionSetButtonElement.disabled = isPermissionSetAssignRunning || insertRunningTreeKey !== null || isScratchOrgRunning;
+        if (treeState.permissionSetButtonElement) {
+            treeState.permissionSetButtonElement.disabled = isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || isScratchOrgRunning;
+        }
 
         const generateButtonElement = treeState.generatePermissionSetButtonElement;
-        if (!generateButtonElement) { return; }
-
-        const generateReason = listTreeInsertObjectApiNames(treeState).length === 0 ? 'Every object of this tree is excluded, so there is nothing to grant.'
-            : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
-            : isScratchOrgRunning ? 'A scratch org is being set up.'
-            : '';
-        generateButtonElement.disabled = generateReason !== '';
-        generateButtonElement.setAttribute('title', generateReason || 'Write a permission set granting Create and Read on this tree\\'s objects and access to its fields into this project\\'s permissionsets/SDT_Treecipe folder, after a confirmation. Nothing is deployed.');
+        if (generateButtonElement) {
+            const generateReason = listTreeInsertObjectApiNames(treeState).length === 0 ? 'Every object of this tree is excluded, so there is nothing to grant.'
+                : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
+                : isMetadataDeployRunning ? 'Metadata is being deployed.'
+                : isScratchOrgRunning ? 'A scratch org is being set up.'
+                : '';
+            generateButtonElement.disabled = generateReason !== '';
+            generateButtonElement.setAttribute('title', generateReason || 'Write a permission set granting Create and Read on this tree\\'s objects and access to its fields into this project\\'s permissionsets/SDT_Treecipe folder, after a confirmation. Nothing is deployed.');
+        }
 
         const retrieveButtonElement = treeState.retrieveValidationRulesButtonElement;
-        if (!retrieveButtonElement) { return; }
+        if (retrieveButtonElement) {
+            const retrieveReason = isValidationRuleRetrieveRunning ? 'Validation rules are being retrieved.'
+                : insertRunningTreeKey !== null ? 'A tree is being inserted.'
+                : isScratchOrgRunning ? 'A scratch org is being set up.'
+                : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
+                : isMetadataDeployRunning ? 'Metadata is being deployed.'
+                : '';
+            retrieveButtonElement.disabled = retrieveReason !== '';
+            retrieveButtonElement.setAttribute('title', retrieveReason || 'Retrieve the validation rules of this tree\\'s objects from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; Generate Treecipe then applies them.');
+        }
 
-        const retrieveReason = isValidationRuleRetrieveRunning ? 'Validation rules are being retrieved.'
-            : insertRunningTreeKey !== null ? 'A tree is being inserted.'
-            : isScratchOrgRunning ? 'A scratch org is being set up.'
-            : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
-            : '';
-        retrieveButtonElement.disabled = retrieveReason !== '';
-        retrieveButtonElement.setAttribute('title', retrieveReason || 'Retrieve the validation rules of this tree\\'s objects from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; Generate Treecipe then applies them.');
+        const deployButtons = treeState.deployButtons || {};
+        Object.keys(deployButtons).forEach(function (deployKind) {
+
+            const buttonElement = deployButtons[deployKind];
+            const described = describeDeploySummary(treeState.troubleshootingSummary, deployKind);
+            const busyReason = isMetadataDeployRunning ? 'Metadata is being deployed.'
+                : insertRunningTreeKey !== null ? 'A tree is being inserted.'
+                : isScratchOrgRunning ? 'A scratch org is being set up.'
+                : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
+                : isValidationRuleRetrieveRunning ? 'Validation rules are being retrieved.'
+                : '';
+            const deployReason = described.emptyReason || busyReason;
+
+            treeState.deploySummaryElements[deployKind].textContent = described.text;
+            buttonElement.disabled = deployReason !== '';
+            buttonElement.textContent = metadataDeployRunningKey === treeState.tree.treeKey + '\\n' + deployKind ? 'Deploying…' : DEPLOY_ACTION_LABELS[deployKind];
+            buttonElement.setAttribute('title', deployReason || 'Deploy these components of this tree, through a generated package.xml, to the sandbox or scratch org selected above, or one you choose, after a confirmation.');
+
+        });
 
     }
 
@@ -14851,6 +15724,7 @@ ${this.buildPaletteCustomProperties()}
         if (insertRunningTreeKey !== null && insertRunningTreeKey !== treeState.tree.treeKey) { return 'Another tree is being inserted.'; }
         if (isScratchOrgRunning) { return 'A scratch org is being set up.'; }
         if (isPermissionSetAssignRunning) { return 'Permission sets are being assigned.'; }
+        if (isMetadataDeployRunning) { return 'Metadata is being deployed.'; }
 
         const insertObjectApiNames = listTreeInsertObjectApiNames(treeState);
         if (insertObjectApiNames.length === 0) { return 'Every object of this tree is excluded.'; }
@@ -15142,6 +16016,7 @@ ${this.buildPaletteCustomProperties()}
 
         PANEL_PLACE_TABS.forEach(function (tabName) {
             const searchText = treeState.searchTexts[tabName] || '';
+            if (OPTIONAL_SEARCH_TABS.indexOf(tabName) !== -1 && !searchText) { return; }
             searchQueries[tabName] = searchText;
             if (treeState.searchQueries[tabName]) { hasSearch = true; }
         });
@@ -15625,6 +16500,8 @@ ${this.buildPaletteCustomProperties()}
             // AND A FOCUS THAT SCROLLED TO A ROW IS NOT SCROLLED BACK TO THE OFFSET THE PLACE SAVED
             const hasFocusScrolled = applyTreeFocus(focusTree) === true;
             if (!hasFocusScrolled) { restoreScroll(savedPlace); }
+            // A TROUBLESHOOTING TAB SELECTED BEFORE THE ACK (#346) ASKS FOR ITS COUNTS NOW
+            treeStates.forEach(function (treeState) { if (treeState.isTroubleshootingSummaryWanted) { requestTroubleshootingSummary(treeState); } });
         } catch (focusError) {
             postRenderFailure('runtime', focusError);
         }
@@ -15807,6 +16684,19 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'permissionSetAssignState') {
             renderPermissionSetAssignState(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'metadataDeployState') {
+            isMetadataDeployRunning = !!hostMessage.isRunning;
+            metadataDeployRunningKey = isMetadataDeployRunning ? hostMessage.treeKey + '\\n' + hostMessage.deployKind : null;
+            drawTreeInserts();
+            drawDataOrgViews();
+            return;
+        }
+
+        if (hostMessage.command === 'troubleshootingSummary') {
+            renderTroubleshootingSummary(hostMessage);
             return;
         }
 
