@@ -30,15 +30,10 @@ import {
     RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE,
-    RECIPE_COCKPIT_VALIDATION_RULE_EDIT_PROMPT,
     RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON,
-    RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL,
-    RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL,
-    RECIPE_COCKPIT_FIELD_EDIT_RULES_KEPT_REFUSAL,
-    RECIPE_COCKPIT_VALIDATION_RULE_TICK_PROMPT
+    RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL
 } from '../RecipeCockpitService';
 import { RecipeCockpitRecipeWriter, RecipeFilterResult, IRecipeUnconstrainedValue } from '../RecipeCockpitRecipeWriter';
-import { IStoredRecipeFieldConstraint } from '../../RecipeFakerService.ts/RecipeFieldConstraint/RecipeFieldConstraint';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
@@ -265,7 +260,6 @@ const toFieldSets = (byFolder: Record<string, Record<string, string[]>>) => new 
 
 interface ISelectionChoices {
     validationRulesOff?: Record<string, Record<string, string[]>>;
-    constraints?: Record<string, Record<string, Record<string, IStoredRecipeFieldConstraint>>>;
     fixedValues?: Record<string, Record<string, Record<string, string>>>;
     excludedObjects?: Record<string, string[]>;
     excludedFields?: Record<string, Record<string, string[]>>;
@@ -278,7 +272,6 @@ const applySelections = (recipe: IRecipeCockpitRecipeViewModel, choices: ISelect
     undefined,
     new Map(),
     toMaps(choices.fixedValues ?? {}),
-    toMaps(choices.constraints ?? {}),
     toFieldSets(choices.validationRulesOff ?? {})
 );
 
@@ -289,7 +282,6 @@ const storedSelections = (choices: ISelectionChoices = {}) => ({
     objectCountsByFolderName: {},
     // A FIXED VALUE IS IN THE RECIPE FILE SINCE #342: A STORED ONE IS WHAT AN OLDER VERSION LEFT, AND IS NOT READ
     ...( choices.fixedValues ? { fixedValuesByFolderName: choices.fixedValues } : {} ),
-    constraintsByFolderName: choices.constraints ?? {},
     validationRulesOffByFolderName: choices.validationRulesOff ?? {}
 });
 
@@ -363,7 +355,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
 
     describe('readTreeSelections and writeTreeSelections', () => {
 
-        it('writes version 6 with only the unticks, names named __proto__ as keys, and reads back every api name', async () => {
+        it('writes version 7 with only the unticks, names named __proto__ as keys, and reads back every api name', async () => {
 
             const workspaceState = buildWorkspaceState();
             await expect(RecipeCockpitService.writeTreeSelections(workspaceState, {
@@ -371,12 +363,11 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
                 excludedFieldApiNamesByFolderName: new Map(),
                 objectCountsByFolderName: new Map(),
                 fixedValuesByFolderName: new Map(),
-                constraintsByFolderName: new Map(),
                 validationRulesOffByFolderName: toFieldSets({ [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c', '__proto__'] }, ['__proto__']: { Lead: ['Company'] }, ['Empty-Tree']: { Lead: [] } })
             })).resolves.toBeTrue();
 
             const stored = workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY) as any;
-            expect(stored.version).toBe(6);
+            expect(stored.version).toBe(7);
             expect(stored.validationRulesOffByFolderName).toEqual({ [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c', '__proto__'] }, ['__proto__']: { Lead: ['Company'] } });
             expect(Object.keys(stored.validationRulesOffByFolderName)).toEqual([GADGET_TREE_KEY, '__proto__']);
             expect(RecipeCockpitService.readTreeSelections(workspaceState).validationRulesOffByFolderName)
@@ -391,7 +382,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
             const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
 
             await expect(RecipeCockpitService.writeTreeSelections(workspaceState, RecipeCockpitService.readTreeSelections(workspaceState))).resolves.toBeFalse();
-            expect(warningSpy).toHaveBeenCalledWith('The excluded objects, unticked fields, record counts, faker constraints and validation rule choices could not be saved: disk full');
+            expect(warningSpy).toHaveBeenCalledWith('The excluded objects, unticked fields, record counts and validation rule choices could not be saved: disk full');
 
         });
 
@@ -403,19 +394,20 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
 
         });
 
-        it('reads a version 5 entry, written before #325, as every rule applied and the same constraints, and keeps them on a write', async () => {
+        it('reads a version 5 entry, written before #325, as every rule applied, and drops its bounds (#356) on a write', async () => {
 
             const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: {
-                ...storedSelections({ constraints: { [GADGET_TREE_KEY]: { Gadget__c: { Amount__c: { min: '200' } } } }, validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Quantity__c'] } } }),
+                ...storedSelections({ validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Quantity__c'] } } }),
+                constraintsByFolderName: { [GADGET_TREE_KEY]: { Gadget__c: { Amount__c: { min: '200' } } } },
                 version: RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_VALIDATION_RULES
             } });
 
             const treeSelections = RecipeCockpitService.readTreeSelections(workspaceState);
             expect(treeSelections.validationRulesOffByFolderName).toEqual(new Map());
-            expect(treeSelections.constraintsByFolderName).toEqual(toMaps({ [GADGET_TREE_KEY]: { Gadget__c: { Amount__c: { min: '200' } } } }));
+            expect(treeSelections).not.toHaveProperty('constraintsByFolderName');
 
             await RecipeCockpitService.writeObjectSelections(workspaceState, new Map());
-            expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).toEqual(storedSelections({ constraints: { [GADGET_TREE_KEY]: { Gadget__c: { Amount__c: { min: '200' } } } } }));
+            expect(workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY)).toEqual(storedSelections({}));
 
         });
 
@@ -432,17 +424,15 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
 
         });
 
-        it('lists a stored untick, and a field with a faker constraint, which replaces what its rules wrote', () => {
+        it('lists a stored untick of a field with applied rules, and nothing else', () => {
 
             const recipe = loadRecipe();
             applySelections(recipe, {
-                validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c', 'Score__c', 'Region__c', 'Not_A_Field__c'] } },
-                constraints: { [GADGET_TREE_KEY]: { Gadget__c: { Notes__c: { min: '20' } } } }
+                validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c', 'Score__c', 'Region__c', 'Not_A_Field__c'] } }
             });
 
             expect(treeOf(recipe).validationRulesOff).toEqual([
-                { objectApiName: 'Gadget__c', fieldApiName: 'Amount__c' },
-                { objectApiName: 'Gadget__c', fieldApiName: 'Notes__c' }
+                { objectApiName: 'Gadget__c', fieldApiName: 'Amount__c' }
             ]);
 
         });
@@ -568,18 +558,17 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
 
     describe('buildInsertConfirmationDetail', () => {
 
-        it('names each field generated without its rules, leaving out one a constraint already names and one the rules did not change', () => {
+        it('names each field generated without its rules, leaving out one the rules did not change', () => {
 
             const recipe = loadRecipe();
             applySelections(recipe, {
-                validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c', 'Stage__c', 'Description__c'] } },
-                constraints: { [GADGET_TREE_KEY]: { Gadget__c: { Notes__c: { min: '20' } } } }
+                validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c', 'Stage__c', 'Description__c'] } }
             });
 
             const detail = RecipeCockpitService.buildInsertConfirmationDetail('my-sandbox', undefined, treeOf(recipe), recipe, new Map([['Gadget__c', 1]]), [], 'faker-js', 'recipe.yml');
 
             expect(detail).toContain('Validation rules switched off, so the org may reject these values: Gadget__c.Amount__c, Gadget__c.Stage__c\n');
-            expect(detail).toContain('Faker constraints: Gadget__c.Notes__c min 20');
+            expect(detail).not.toContain('Faker constraints');
 
         });
 
@@ -688,7 +677,6 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
 
         const storedOf = (workspaceState: ReturnType<typeof buildWorkspaceState>) => workspaceState.storedValues.get(RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY);
         const setAmountApplied = (applied: boolean) => receivedMessageHandler({ command: 'setFieldValidationRuleApplied', treeKey: GADGET_TREE_KEY, objectApiName: 'Gadget__c', fieldApiName: 'Amount__c', applied: applied });
-        const editAmount = (min = '10', max = '20') => receivedMessageHandler({ command: 'editFieldConstraints', treeKey: GADGET_TREE_KEY, objectApiName: 'Gadget__c', fieldApiName: 'Amount__c', min: min, max: max });
 
         beforeEach(() => {
             postedPanelMessages = [];
@@ -729,8 +717,6 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
                 treeKey: GADGET_TREE_KEY,
                 validationRulesOff: [{ objectApiName: 'Gadget__c', fieldApiName: 'Amount__c' }]
             });
-            expect(lastPosted('objectSelection')).not.toHaveProperty('constraints');
-
             await setAmountApplied(true);
 
             expect(showWarningMessage).not.toHaveBeenCalled();
@@ -740,121 +726,33 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
 
         });
 
-        it('asks before ticking a field the reader constrained: Cancel changes nothing, Replace removes the constraint', async () => {
-
-            const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ constraints: { [GADGET_TREE_KEY]: { Gadget__c: { Amount__c: { min: '200' } } } } }) });
-            const recipeDataMessage = await openAndDraw(workspaceState);
-            workspaceState.update.mockClear();
-
-            expect(treeOf(recipeDataMessage.recipe).validationRulesOff).toEqual([{ objectApiName: 'Gadget__c', fieldApiName: 'Amount__c' }]);
-
-            showWarningMessage.mockResolvedValueOnce(undefined);
-            await setAmountApplied(true);
-
-            expect(showWarningMessage).toHaveBeenCalledWith(
-                RECIPE_COCKPIT_VALIDATION_RULE_TICK_PROMPT,
-                { modal: true, detail: 'Gadget__c.Amount__c: The faker constraint you set is removed and the field generates with the bounds its validation rules imply. The recipe file is not changed.' },
-                RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL
-            );
-            expect(RECIPE_COCKPIT_VALIDATION_RULE_TICK_PROMPT).toBe('Replace your constraints with the validation rule\'s?');
-            expect(workspaceState.update).not.toHaveBeenCalled();
-
-            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL);
-            await setAmountApplied(true);
-
-            expect(storedOf(workspaceState)).toEqual(storedSelections({}));
-            expect(lastPosted('objectSelection')).not.toHaveProperty('validationRulesOff');
-            expect(lastPosted('objectSelection')).not.toHaveProperty('constraints');
-
-        });
-
-        it('asks before ✎ saves bounds on a ticked field: Cancel writes nothing and says why under the editor, Replace stores the bounds and unticks the box; an unticked field is not asked (#337)', async () => {
+        it('writes nothing when the field is locked meanwhile, and routes nothing for a posted editFieldConstraints (#356)', async () => {
 
             const workspaceState = buildWorkspaceState();
             await openAndDraw(workspaceState);
+            await receivedMessageHandler({ command: 'setObjectIncluded', treeKey: GADGET_TREE_KEY, objectApiName: 'Gadget__c', included: false });
+            const lockedStored = storedOf(workspaceState);
 
-            showWarningMessage.mockResolvedValueOnce(undefined);
-            await editAmount();
+            await setAmountApplied(false);
+            await receivedMessageHandler({ command: 'editFieldConstraints', treeKey: GADGET_TREE_KEY, objectApiName: 'Gadget__c', fieldApiName: 'Amount__c', min: '10', max: '20' });
 
-            expect(showWarningMessage).toHaveBeenCalledWith(
-                RECIPE_COCKPIT_VALIDATION_RULE_EDIT_PROMPT,
-                { modal: true, detail: 'Gadget__c.Amount__c: The field generates with the bounds you set instead of the ones its validation rules imply, and its validation rule box is unticked. The recipe file is not changed.' },
-                RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL
-            );
-            expect(lastPosted('fieldEditResult')).toMatchObject({ edit: 'constraint', fieldApiName: 'Amount__c', refusal: RECIPE_COCKPIT_FIELD_EDIT_RULES_KEPT_REFUSAL });
-            expect(storedOf(workspaceState)).toBeUndefined();
-
-            // BOUNDS THE FIELD CANNOT TAKE ARE REFUSED BEFORE THE MODAL
-            showWarningMessage.mockClear();
-            await editAmount('20', '10');
+            expect(storedOf(workspaceState)).toEqual(lockedStored);
             expect(showWarningMessage).not.toHaveBeenCalled();
-            expect(lastPosted('fieldEditResult').refusal).toBe('The minimum 20 is greater than the maximum 10.');
-
-            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL);
-            await editAmount();
-
-            expect(storedOf(workspaceState)).toEqual(storedSelections({
-                constraints: { [GADGET_TREE_KEY]: { Gadget__c: { Amount__c: { min: '10', max: '20' } } } },
-                validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c'] } }
-            }));
-            expect(lastPosted('objectSelection').validationRulesOff).toEqual([{ objectApiName: 'Gadget__c', fieldApiName: 'Amount__c' }]);
-            expect(lastPosted('fieldEditResult')).not.toHaveProperty('refusal');
-
-            showWarningMessage.mockClear();
-            await editAmount('', '');
-
-            expect(showWarningMessage).not.toHaveBeenCalled();
-            expect(storedOf(workspaceState)).toEqual(storedSelections({ validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c'] } } }));
             expect(showInputBox).not.toHaveBeenCalled();
 
         });
 
-        it('writes nothing when the panel closes, or the field is locked, while the modal is open', async () => {
-
-            const constrained = storedSelections({ constraints: { [GADGET_TREE_KEY]: { Gadget__c: { Amount__c: { min: '200' } } } } });
-
-            const closingWorkspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: constrained });
-            await openAndDraw(closingWorkspaceState);
-            closingWorkspaceState.update.mockClear();
-            showWarningMessage.mockImplementationOnce(async () => { disposeHandler?.(); return RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL; });
-            await setAmountApplied(true);
-            expect(closingWorkspaceState.update).not.toHaveBeenCalled();
-
-            const lockingWorkspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: constrained });
-            await openAndDraw(lockingWorkspaceState);
-            showWarningMessage.mockImplementationOnce(async () => {
-                await receivedMessageHandler({ command: 'setObjectIncluded', treeKey: GADGET_TREE_KEY, objectApiName: 'Gadget__c', included: false });
-                return RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL;
-            });
-            await setAmountApplied(true);
-            expect(storedOf(lockingWorkspaceState)).toEqual({ ...constrained, excludedObjectApiNamesByFolderName: { [GADGET_TREE_KEY]: ['Gadget__c'] } });
-
-        });
-
-        it('asks nothing and leaves the box ticked when ✎ saves both bounds empty on a ticked field', async () => {
+        it('writes nothing once the panel that drew the field is closed', async () => {
 
             const workspaceState = buildWorkspaceState();
             await openAndDraw(workspaceState);
+            const handleMessage = receivedMessageHandler;
+            disposeHandler?.();
+            disposeHandler = undefined;
 
-            await editAmount('', '');
-
-            expect(showWarningMessage).not.toHaveBeenCalled();
-            expect(storedOf(workspaceState)).toEqual(storedSelections({}));
-            expect(lastPosted('objectSelection')).not.toHaveProperty('validationRulesOff');
-
-        });
-
-        it('writes nothing and answers nothing when the panel closes while ✎\'s modal is open', async () => {
-
-            const workspaceState = buildWorkspaceState();
-            await openAndDraw(workspaceState);
-            showWarningMessage.mockImplementationOnce(async () => { disposeHandler?.(); return RECIPE_COCKPIT_VALIDATION_RULE_REPLACE_CONFIRM_LABEL; });
-            postedPanelMessages = [];
-
-            await editAmount();
+            await handleMessage({ command: 'setFieldValidationRuleApplied', treeKey: GADGET_TREE_KEY, objectApiName: 'Gadget__c', fieldApiName: 'Amount__c', applied: false });
 
             expect(storedOf(workspaceState)).toBeUndefined();
-            expect(lastPosted('fieldEditResult')).toBeUndefined();
 
         });
 
@@ -1009,16 +907,6 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
             expect(boxOf(panel, gadget, 'Amount__c').attributes['aria-checked']).toBe('true');
             expect(expression.textContent).toBe(fieldOf(recipe, 'Gadget__c', 'Amount__c').recipeValue);
             expect(panel.isHidden(resetElement)).toBeTrue();
-
-        });
-
-        it('draws a field the reader constrained before #325 unticked', () => {
-
-            const { panel } = drawRecipe({ constraints: { [GADGET_TREE_KEY]: { Gadget__c: { Amount__c: { min: '200' } } } } });
-            const gadget = gadgetOf(panel);
-
-            expect(boxOf(panel, gadget, 'Amount__c').attributes['aria-checked']).toBe('false');
-            expect(boxOf(panel, gadget, 'Quantity__c').attributes['aria-checked']).toBe('true');
 
         });
 

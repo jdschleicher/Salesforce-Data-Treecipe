@@ -27,7 +27,6 @@ These settings change what is generated, but the recipe file stays exactly as Ge
 - **Excluded objects** (the chain link): the object and its children are left out.
 - **Unticked fields**: the field is left out.
 - **Record counts**: how many records an object gets.
-- **Faker bounds** (✎): a narrower range, length or date window.
 - **The rules box**: a field generated without the limits its validation rules set.
 
 ![A card with one object excluded, a field unticked and a count changed](images/recipe-cockpit/changes-without-editing-the-yaml.png)
@@ -39,7 +38,7 @@ These buttons rewrite the recipe file itself, because the change belongs in the 
 - **Wire to…** and **Wire TODO lookups**: fill a lookup's TODO with its parent's nickname.
 - **Add &lt;parent&gt; to recipe**: adds a standard parent object, such as Account, above the child that needs it.
 - **+** beside an object that looks up to itself: adds a child record under it.
-- **Fixed values** (the pin): one value for every record, written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a `.fixedValues.json` file beside the recipe, and **Clear** puts them back exactly.
+- **Edit** (the pencil on a field): opens the field's faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a `.fixedValues.json` file beside the recipe, and **Clear** puts them back exactly.
 
 Three more write other files: **Remember this selection** saves record types to `treecipe.config.json`, **Generate permission set** writes a permission set into your project, and **Retrieve validation rules** writes an org's validation rules into your project.
 
@@ -52,7 +51,7 @@ They carry over when you regenerate the same objects, but they are not in your r
 
 When you generate, the cockpit applies them to a copy of the recipe.
 The data set keeps that copy as `filteredRecipe-…` beside `originalRecipe-…` in its `BaseArtifactFiles` folder, and `datasetSource.json` lists what was changed.
-**Reset selection** on a card clears its settings. A fixed value is in the recipe file, so Reset leaves it: clear it with its pin.
+**Reset selection** on a card clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field's pencil.
 
 ![The help section open, listing which cards differ from their recipe files](images/recipe-cockpit/where-changes-are-stored.png)
 

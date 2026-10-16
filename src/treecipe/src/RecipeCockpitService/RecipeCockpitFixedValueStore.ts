@@ -180,7 +180,7 @@ export class RecipeCockpitFixedValueStore {
 
         const fieldLinePattern = new RegExp(`^ *${fieldApiName}:`);
         // THE LINE A PIN OF THIS VALUE WRITES, FOR WHICHEVER KIND COULD WRITE IT: A writtenLine THAT IS NOT ONE WOULD DRAW A PIN THE RECIPE DOES NOT HOLD
-        const pinnedLineTexts = new Set((['text', 'number', 'boolean'] as RecipeFixedValueKind[])
+        const pinnedLineTexts = new Set((['text', 'number', 'boolean', 'expression'] as RecipeFixedValueKind[])
             .filter(kind => RecipeCockpitRecipeWriter.checkFixedValue({ value: value, kind: kind }) === undefined)
             .map(kind => `${fieldApiName}: ${RecipeCockpitRecipeWriter.toFixedValueScalar({ value: value, kind: kind })}`));
         const occurrences: IFixedValueOccurrence[] = [];

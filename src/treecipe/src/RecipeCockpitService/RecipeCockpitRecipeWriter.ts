@@ -173,9 +173,11 @@ export interface IRecipeFilterConstrainedExpression {
     A value the reader typed for a field (#262), written in place of its faker expression on every
     kept occurrence of its object. kind decides the YAML scalar: text is always double-quoted, so
     "Yes" or "007" stays the string it was typed as; a number and a boolean are written plain so
-    both backends generate the type the field holds.
+    both backends generate the type the field holds. An expression (#356) is one "${{ ... }}" the
+    reader edited, held to checkConstrainedExpression and double-quoted like text, which can never
+    hold "${" -- so a written line says by itself which of the two it is.
 */
-export type RecipeFixedValueKind = 'text' | 'number' | 'boolean';
+export type RecipeFixedValueKind = 'text' | 'number' | 'boolean' | 'expression';
 
 export interface IRecipeFixedValue {
     value: string;
@@ -2626,6 +2628,9 @@ export class RecipeCockpitRecipeWriter {
         if ( typeof fixedValue?.value !== 'string' || fixedValue.value.length === 0 ) {
             return 'is empty.';
         }
+        if ( fixedValue.kind === 'expression' ) {
+            return this.checkConstrainedExpression(fixedValue.value);
+        }
         if ( /[\u0000-\u001f\u007f-\u009f\u2028\u2029\ufeff\ufffe\uffff]/.test(fixedValue.value) ) {
             return 'has a line break or another control character in it.';
         }
@@ -2654,7 +2659,7 @@ export class RecipeCockpitRecipeWriter {
     */
     static toFixedValueScalar(fixedValue: IRecipeFixedValue): string {
         const isExactAsNumber = fixedValue.value.replace(/[-.]/g, '').replace(/^0+/, '').length <= FIXED_NUMBER_MAX_EXACT_DIGITS;
-        return fixedValue.kind === 'text' || ( fixedValue.kind === 'number' && !isExactAsNumber )
+        return fixedValue.kind === 'text' || fixedValue.kind === 'expression' || ( fixedValue.kind === 'number' && !isExactAsNumber )
             ? `"${fixedValue.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
             : fixedValue.value;
     }
