@@ -1226,6 +1226,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             panel.postToPanel({ command: 'recipeData', recipe: loadTreeRecipe(), renderSequence: 1 });
             panel.postToPanel({ command: 'rendered' });
             panel.expandAllTrees();
+            panel.openTroubleshootingTabs();
             return panel;
         };
 
@@ -1244,12 +1245,14 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             ['treeDeploy', 'metadataDeployStatus', 'metadataDeployViewOutput', 'metadataDeployOpenStatus'].forEach(className => {
                 expect(panel.findAll(accountCard, className)).toEqual([]);
             });
-            // THE ASSIGN BUTTON, THEN "Generate permission set…" (#306) AND "Retrieve validation rules…" (#326), AND NOTHING ELSE
-            const controlChildren = panel.findAll(accountCard, 'treePermissionSetControls')[0].children;
+            // IN THE TROUBLESHOOTING TAB'S PERMISSION SETS SECTION (#346): THE ASSIGN BUTTON, "Generate permission set…" (#306) AND "Deploy permission set…"
+            const controlChildren = panel.findAll(accountCard, 'troubleshootingControls')[0].children;
             expect(controlChildren).toHaveLength(3);
             expect(controlChildren[0] === permissionSetButton).toBe(true);
             expect(controlChildren[1].className).toBe('treeGeneratePermissionSet');
-            expect(controlChildren[2].className).toBe('treeRetrieveValidationRules');
+            expect(controlChildren[2].className).toBe('troubleshootingDeploy troubleshootingDeploy-permissionSet');
+            // "Retrieve validation rules…" (#326) HAS A SECTION OF ITS OWN
+            expect(panel.findAll(accountCard, 'troubleshootingControls')[1].children.map((childElement: any) => childElement.className)).toEqual(['treeRetrieveValidationRules']);
 
             permissionSetButton.dispatch('click');
 
@@ -1282,7 +1285,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
 
         it('is named in the preview warning, which no longer offers a metadata deploy', () => {
 
-            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('"Assign permission sets to me…", on every tree\'s Treecipe tab, assigns the permission sets you pick');
+            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('"Assign permission sets to me…", on every tree\'s Troubleshooting tab, assigns the permission sets you pick');
             expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('It deploys nothing');
             expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).not.toContain('Deploy this metadata');
 

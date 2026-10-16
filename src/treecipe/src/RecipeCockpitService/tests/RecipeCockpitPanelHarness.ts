@@ -187,6 +187,10 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
         expandObject: (objectElement: any) => findAll(objectHeaderOf(objectElement), 'treeObjectToggle')[0].dispatch('click'),
         // EVERY CARD OPENED BY ITS TOGGLE, AS A READER WOULD, SO ITS STRUCTURE TAB IS ATTACHED
         expandAllTrees: () => treeCards().forEach(treeCard => findAll(treeCard, 'treeToggle')[0].dispatch('click')),
+        // THE TROUBLESHOOTING TAB OF EVERY CARD THAT DRAWS ONE (#346), BUILT AND SELECTED; THE CARDS MUST BE OPEN
+        openTroubleshootingTabs: () => treeCards().forEach(treeCard => findAll(treeCard, 'treeTab')
+            .filter((candidateElement: any) => candidateElement.textContent === 'Troubleshooting')
+            .forEach((tabElement: any) => tabElement.dispatch('click'))),
         // A CARD'S TAB, BY THE LABEL ITS BUTTON DRAWS; ITS PANEL, BY THE CLASS THE PANEL CARRIES
         openTab: (treeCard: any, tabLabel: string) => findAll(treeCard, 'treeTab')
             .find((candidateElement: any) => candidateElement.textContent === tabLabel).dispatch('click'),

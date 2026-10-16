@@ -15,10 +15,13 @@ A few words used below:
 
 Generate Treecipe reads your object metadata and writes a run: a folder under `treecipe/GeneratedRecipes` holding the recipe files and a list of the objects it read.
 The cockpit opens the newest run, or the one you pick in the run list at the top.
-Under the run list, the **Org** section picks the org a card can insert into, opens it in your browser (**Open in browser**) or makes a new scratch org (**+ New scratch org**).
-The **Treecipes** section below it holds the cards; click either heading to fold it away.
+Under the run list, the **Target Org Management** section picks the org a card can insert into, opens it in your browser (**Open in browser**) or makes a new scratch org (**+ New scratch org**). It is always open.
+The **Treecipes** section below it holds the cards; click its heading to fold it away.
 
-![The cockpit toolbar with the run list, Favorites only and the ? button, above the Org section and the Treecipes section's tree cards](images/recipe-cockpit/where-recipes-come-from.png)
+Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply.
+Tick **TODOs only** on a card's Treecipe tab to see just the fields and objects with one, each TODO with a link to its line in the recipe.
+
+![The cockpit toolbar with the run list, Favorites only and the ? button, above the Target Org Management section and the Treecipes section's tree cards](images/recipe-cockpit/where-recipes-come-from.png)
 
 ## What the cockpit changes without editing the YAML
 
@@ -40,7 +43,9 @@ These buttons rewrite the recipe file itself, because the change belongs in the 
 - **+** beside an object that looks up to itself: adds a child record under it.
 - **Edit** (the pencil on a field): opens the field's faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a `.fixedValues.json` file beside the recipe, and **Clear** puts them back exactly.
 
-Three more write other files: **Remember this selection** saves record types to `treecipe.config.json`, **Generate permission set** writes a permission set into your project, and **Retrieve validation rules** writes an org's validation rules into your project.
+Three more write other files: **Remember this selection** saves record types to `treecipe.config.json`, and on a card's **Troubleshooting** tab, **Generate permission set** writes a permission set into your project and **Retrieve validation rules** writes an org's validation rules into your project.
+
+The **Troubleshooting** tab also deploys to a sandbox or scratch org, never production: **Deploy permission set**, **Deploy fields** (custom fields only), **Deploy global value sets** and **Deploy record types** each send just those parts of your project, after a confirmation that lists them.
 
 ![A card's Treecipe tab with Wire TODO lookups at the top and Wire to… on Contact's AccountId lookup](images/recipe-cockpit/what-edits-the-yaml.png)
 
