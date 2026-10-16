@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.102.0] - Recipe Cockpit: one edit button that starts from the field's faker expression
+## [3.103.0] - Recipe Cockpit: one edit button that starts from the field's faker expression
 
 Closes [#356](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/356).
 
@@ -14,6 +14,19 @@ A field row had two buttons for changing what it generates: a pin that wrote one
 - **Validation rules.** Bounds no longer switch a field's rules off, so the two "replace the constraints?" prompts are gone. An edited field locks its rules box, as a pinned one did; Clear brings back the rule-driven lines.
 - **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the one edit button, and the summary of what differs no longer counts faker bounds.
 - **Tests.** `RecipeCockpitFixedValueWrites.test.ts` edits and clears an expression on every field Generate Treecipe's real pipeline writes, with each backend and on the validation rule run. Each recipe must come back byte for byte. It also generates an edited expression through the real faker-js processor, and through PyYAML, Jinja and Faker for snowfakery, and checks the writer's refusals. `RecipeCockpitFixedValues.test.ts` covers the pencil, the prefill, the hint, the trimmed post, the "edited" badge, the host save and Clear of an expression, and an expression's refusals. `RecipeCockpitFieldConstraints.test.ts` keeps the writer's constrained-expression tests, and checks that a version 6 selection reads without its bounds and writes version 7, that `editFieldConstraints` routes to nothing, and that no row draws a ✎.
+## [3.102.0] - Recipe Cockpit: "+ New scratch org" creates and selects the org, and deploys nothing
+
+Closes [#358](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/358).
+
+Since #200, **+ New scratch org** created a scratch org and then deployed every package directory in `sfdx-project.json` to it, all or nothing. Every create waited on that deploy, and one component that would not deploy turned a working new org into an error. It now only creates the org, so it starts empty and you deploy what you need.
+
+- **One process.** The run is `sf org create scratch` and nothing else. `ScratchOrgService` no longer builds a `project deploy` argv (`buildSourceDeployArguments`, `parseSourceDeployOutput` and the `deploying` phase are gone), and no `…-scratch-deploy.json` result is written. A test fails if the scratch org service builds a deploy argv, and the cockpit's run is checked to start only the create and the re-list. `readDeployComponentCounts` and the 256 MB deploy buffer stay, since 3.101.0's Troubleshooting deploys read them.
+- **One outcome for a created org.** A created org is `created`, a cancel that landed as the create succeeded included, since the org is kept. Its notification says `Scratch org <alias · username> is ready. Nothing was deployed to it.` and whether it is selected. It offers **Copy deploy command**, which puts `sf project deploy start --target-org <username>` on the clipboard and runs nothing, and **View output** for the create's saved result. A failed or cancelled create is reported as before, without "No deploy was attempted."
+- **The confirmation.** It asks "Create a scratch org through the Dev Hub …? Nothing is deployed to it." and no longer lists the package directories, the all-or-nothing deploy or sfdx-project.json's `replacements`, which only a deploy applies (the Troubleshooting deploys' confirmation still names them). It still names the Dev Hub and where its setting came from, the definition file's edition, admin email and username, the alias and any alias move, the 7 days, and that nothing deletes an org. The project checks before the Dev Hub picker are unchanged.
+- **Fewer locks.** A scratch org run no longer holds **Retrieve validation rules…** or **Generate permission set…**, and a retrieve no longer holds **+ New scratch org**: those locks existed only because the run deployed the project's source. The run still holds the org picker, ⟳, the tree insert, **Assign permission sets to me…** and the Troubleshooting tab's deploys, and they still hold it, since each changes or uses the selection.
+- **Help and guide.** The ? help, `docs/RECIPE-COCKPIT-GUIDE.md`, the button's title, the preview warning and the README say the button creates and selects without deploying. The screenshots were re-taken and none changed.
+- **Tests.** The scratch org suites now cover the create-only run (one process, one result file), Copy deploy command, the confirmation's wording, and a cancel that lands as the create succeeds. The scratch org's deploy fixtures and deploy tests are removed; `readDeployComponentCounts` keeps its own tests. The retrieve and permission set suites check that a scratch org run no longer holds them.
+
 ## [3.101.0] - Recipe Cockpit: a Troubleshooting tab with permission set actions and sandbox-only deploys
 
 Closes [#346](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/346).

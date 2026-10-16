@@ -28,7 +28,6 @@ import {
     SCRATCH_ORG_ALIAS_MAX_LENGTH,
     SCRATCH_ORG_DURATION_DAYS,
     ORG_OPERATION_REDACTED_VALUE,
-    SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES,
     ScratchOrgService,
     ScratchOrgSetupPhase
 } from '../ScratchOrgService';
@@ -41,8 +40,6 @@ const readFixture = (fixtureName: string) => fs.readFileSync(path.join(MOCKS_PAT
 
 const SCRATCH_CREATE_SUCCESS = readFixture('scratchCreateSuccess.json');
 const SCRATCH_CREATE_LIMIT_REACHED = readFixture('scratchCreateLimitReached.json');
-const DEPLOY_SUCCESS = readFixture('deploySuccess.json');
-const DEPLOY_ONE_COMPONENT_FAILURE = readFixture('deployOneComponentFailure.json');
 
 const NEW_SCRATCH_USERNAME = 'test-newscratch@example.com';
 const DEV_HUB_AUTHORIZATION = { username: 'hub@example.com', aliases: ['devhub'], isDevHub: true, instanceUrl: 'https://acme.my.salesforce.com' };
@@ -171,11 +168,12 @@ describe('ScratchOrgService (#200)', () => {
 
     describe('resolveScratchOrgPlan', () => {
 
-        it('resolves every package directory, the definition file, the chosen Dev Hub, the alias and 7 days, and starts no process', async () => {
+        it('resolves the definition file, the chosen Dev Hub, the alias and 7 days, names nothing to deploy (#358), and starts no process', async () => {
 
             const scratchOrgPlan = await resolvePlan();
 
-            expect(scratchOrgPlan.packageDirectoryPaths).toEqual(['force-app', 'unpackaged']);
+            expect(scratchOrgPlan).not.toHaveProperty('packageDirectoryPaths');
+            expect(scratchOrgPlan).not.toHaveProperty('hasFileOrEnvironmentReplacements');
             expect(scratchOrgPlan.definitionFilePath).toBe(path.join(path.resolve(workspaceRoot), 'config', 'project-scratch-def.json'));
             expect(scratchOrgPlan.definitionFileRelativePath).toBe(path.join('config', 'project-scratch-def.json'));
             expect(scratchOrgPlan.devHub).toEqual(CHOSEN_DEV_HUB);
@@ -183,7 +181,6 @@ describe('ScratchOrgService (#200)', () => {
             expect(scratchOrgPlan.aliasHolderUsername).toBeUndefined();
             expect(scratchOrgPlan.durationDays).toBe(7);
             expect(scratchOrgPlan.definitionSummary).toEqual({ edition: 'Developer', adminEmail: undefined, username: undefined });
-            expect(scratchOrgPlan.hasFileOrEnvironmentReplacements).toBe(false);
             expect(execFile).not.toHaveBeenCalled();
 
         });
@@ -303,12 +300,10 @@ describe('ScratchOrgService (#200)', () => {
             workspaceRoot: '/workspace',
             definitionFilePath: '/workspace/config/project-scratch-def.json',
             definitionFileRelativePath: 'config/project-scratch-def.json',
-            packageDirectoryPaths: ['force-app'],
             devHub: { targetOrgIdentifier: 'devhub', username: 'hub@example.com', alias: 'devhub', configSource: 'project' },
             alias: 'qa-accounts',
             durationDays: SCRATCH_ORG_DURATION_DAYS,
-            definitionSummary: {},
-            hasFileOrEnvironmentReplacements: false
+            definitionSummary: {}
         };
 
         it('creates with the definition file relative to the workspace, the alias the reader chose, 7 days and the chosen Dev Hub by USERNAME (#243)', () => {
@@ -321,16 +316,6 @@ describe('ScratchOrgService (#200)', () => {
                 '--target-dev-hub', 'hub@example.com',
                 '--json'
             ]);
-
-        });
-
-        it('deploys to the USERNAME of the new org with no --source-dir and no --ignore-errors, so the CLI deploys every package directory all or nothing (#279)', () => {
-
-            const deployArguments = ScratchOrgService.buildSourceDeployArguments(NEW_SCRATCH_USERNAME);
-
-            expect(deployArguments).toEqual(['project', 'deploy', 'start', '--target-org', NEW_SCRATCH_USERNAME, '--json']);
-            expect(deployArguments).not.toContain('--ignore-errors');
-            expect(deployArguments).not.toContain('--source-dir');
 
         });
 
@@ -357,6 +342,15 @@ describe('ScratchOrgService (#200)', () => {
                 expect(fs.readFileSync(sourceFilePath, 'utf-8')).not.toMatch(/['"]org['"]\s*,\s*['"]delete['"]/);
             });
             expect(fs.readFileSync(path.join(__dirname, '..', 'ScratchOrgService.ts'), 'utf-8')).not.toMatch(/['"]delete['"]/);
+
+        });
+
+        // #358: "+ New scratch org" CREATES AND SELECTS; WHAT REACHES THE ORG IS THE READER'S TO DEPLOY
+        it('builds no "sf project deploy" argv in the scratch org service', () => {
+
+            expect(fs.readFileSync(path.join(__dirname, '..', 'ScratchOrgService.ts'), 'utf-8')).not.toMatch(/['"]project['"]\s*,\s*['"]deploy['"]/);
+            expect(ScratchOrgService).not.toHaveProperty('buildSourceDeployArguments');
+            expect(ScratchOrgService).not.toHaveProperty('parseSourceDeployOutput');
 
         });
 
@@ -518,31 +512,18 @@ describe('ScratchOrgService (#200)', () => {
 
         const spawnError = Object.assign(new Error('spawn EACCES'), { code: 'EACCES' });
 
-        it('are failures of the create and of the deploy, naming the spawn error', () => {
+        it('are failures of the create, naming the spawn error', () => {
 
             expect(ScratchOrgService.parseScratchOrgCreateOutput(invocation('', null, { spawnError }))).toEqual({ isCreated: false, failureMessage: 'The Salesforce CLI could not be started: spawn EACCES' });
-            expect(ScratchOrgService.parseSourceDeployOutput(invocation('', null, { spawnError }))).toEqual({ isDeployed: false, componentFailureCount: 0, failureMessage: 'The Salesforce CLI could not be started: spawn EACCES' });
-
-        });
-
-        it('says the CLI is required when the deploy cannot find sf', () => {
-
-            expect(ScratchOrgService.parseSourceDeployOutput(invocation('', null, { spawnError: Object.assign(new Error('x'), { code: 'ENOENT' }) })))
-                .toEqual({ isDeployed: false, componentFailureCount: 0, failureMessage: ScratchOrgService.buildCliRequiredMessage() });
 
         });
 
     });
 
-    describe('parseSourceDeployOutput', () => {
+    // READ BY THE TROUBLESHOOTING TAB'S DEPLOYS (#346); THE SCRATCH ORG RUN DEPLOYS NOTHING SINCE #358
+    describe('readDeployComponentCounts', () => {
 
-        it('reads a successful deploy\'s component count', () => {
-
-            expect(ScratchOrgService.parseSourceDeployOutput(invocation(DEPLOY_SUCCESS))).toEqual({ isDeployed: true, deployedComponentCount: 3 });
-
-        });
-
-        it('reads a malformed answer as a failure with nothing counted, and counts the successes when the CLI gives no total', () => {
+        it('reads a malformed answer as a failure with nothing counted, and counts the successes, never package.xml, when the CLI gives no total', () => {
 
             [undefined, {}, { status: 0 }, { status: 0, result: null }, { status: 0, result: [] }, { status: 0, result: 'x' }].forEach(payload => {
                 expect(ScratchOrgService.readDeployComponentCounts(payload as Record<string, unknown> | undefined))
@@ -551,32 +532,18 @@ describe('ScratchOrgService (#200)', () => {
 
             const withoutTotal = { status: 0, result: { success: true, details: { componentSuccesses: [{ fullName: 'package.xml' }, { fullName: 'Account' }, { fullName: 'Contact' }] } } };
             expect(ScratchOrgService.readDeployComponentCounts(withoutTotal)).toEqual({ isSucceeded: true, componentSuccessCount: 2, componentFailureCount: 0 });
-            expect(ScratchOrgService.parseSourceDeployOutput(invocation(JSON.stringify(withoutTotal)))).toEqual({ isDeployed: true, deployedComponentCount: 2 });
-
-            // ONE FAILURE THE CLI WRITES AS AN OBJECT RATHER THAN A LIST IS STILL A FAILURE
-            expect(ScratchOrgService.readDeployComponentCounts({ status: 0, result: { success: true, details: { componentFailures: { fullName: 'Account' } } } }))
-                .toMatchObject({ isSucceeded: false, componentFailureCount: 1 });
-
-        });
-
-        it('counts the component failures of a failed deploy, among its successes', () => {
-
-            expect(ScratchOrgService.parseSourceDeployOutput(invocation(DEPLOY_ONE_COMPONENT_FAILURE, 1))).toEqual({
-                isDeployed: false,
-                componentFailureCount: 1,
-                failureMessage: 'FailedDeployError: Deploy failed.'
-            });
+            expect(ScratchOrgService.readDeployComponentCounts({ ...withoutTotal, result: { ...withoutTotal.result, numberComponentsDeployed: 3 } }))
+                .toEqual({ isSucceeded: true, componentSuccessCount: 2, componentFailureCount: 0, numberComponentsDeployed: 3 });
 
         });
 
         it.each([
-            ['not JSON', 'oops'],
-            ['success with a non-zero status', '{"status":1,"result":{"success":true}}'],
-            ['status 0 with success not literally true', '{"status":0,"result":{"success":"true"}}'],
-            ['status 0 and success with a component failure', '{"status":0,"result":{"success":true,"details":{"componentFailures":{"fullName":"X"}}}}']
-        ])('reports malformed output (%s) as a failure', (_label, stdout) => {
+            ['a non-zero status', { status: 1, result: { success: true } }],
+            ['success not literally true', { status: 0, result: { success: 'true' } }],
+            ['one component failure written as an object', { status: 0, result: { success: true, details: { componentFailures: { fullName: 'Account' } } } }]
+        ])('is a failure on %s', (_label, payload) => {
 
-            expect(ScratchOrgService.parseSourceDeployOutput(invocation(stdout)).isDeployed).toBe(false);
+            expect(ScratchOrgService.readDeployComponentCounts(payload as Record<string, unknown>).isSucceeded).toBe(false);
 
         });
 
@@ -643,32 +610,12 @@ describe('ScratchOrgService (#200)', () => {
 
     });
 
-    describe('a deploy that cannot start', () => {
-
-        it('keeps the org and writes no deploy file', async () => {
-
-            (execFile as unknown as jest.Mock).mockImplementation((_command: string, argumentList: string[], _options: unknown, callback: Function) => {
-                setImmediate(() => argumentList[0] === 'org'
-                    ? callback(null, SCRATCH_CREATE_SUCCESS, '')
-                    : callback(Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }), '', ''));
-                return { kill: jest.fn() };
-            });
-
-            const scratchOrgPlan = await resolvePlan();
-            const outcome = await ScratchOrgService.runScratchOrgSetup(scratchOrgPlan, { onPhase: jest.fn(), registerCancellation: jest.fn(), isCancellationRequested: () => false, now: () => PLAN_DATE });
-
-            expect(outcome).toEqual({ kind: 'deployFailed', username: NEW_SCRATCH_USERNAME, componentFailureCount: 0, failureMessage: ScratchOrgService.buildCliRequiredMessage(), outputFilePath: undefined });
-
-        });
-
-    });
-
     describe('buildOrgOperationResultFilePath', () => {
 
         it('is treecipe/OrgOperations/<folder>/<timestamp>-<operation>.json', () => {
 
-            expect(ScratchOrgService.buildOrgOperationResultFilePath(workspaceRoot, NEW_SCRATCH_USERNAME, 'scratch-deploy', PLAN_DATE))
-                .toBe(path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, NEW_SCRATCH_USERNAME, '20261010-142233-scratch-deploy.json'));
+            expect(ScratchOrgService.buildOrgOperationResultFilePath(workspaceRoot, NEW_SCRATCH_USERNAME, 'scratch-create', PLAN_DATE))
+                .toBe(path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, NEW_SCRATCH_USERNAME, '20261010-142233-scratch-create.json'));
 
         });
 
@@ -734,26 +681,22 @@ describe('ScratchOrgService (#200)', () => {
             killedProcessCount = 0;
         });
 
-        it('creates, then deploys to the new USERNAME with the workspace as the working directory, through execFile with no shell, and saves both results', async () => {
+        it('only creates (#358): ONE process, with the workspace as the working directory, through execFile with no shell, and saves its result', async () => {
 
-            answerCliCalls([{ stdout: SCRATCH_CREATE_SUCCESS }, { stdout: DEPLOY_SUCCESS }]);
+            answerCliCalls([{ stdout: SCRATCH_CREATE_SUCCESS }]);
 
             const { outcome, reportedPhases } = await runSetup();
 
-            expect(reportedPhases).toEqual(['creating', 'deploying']);
-            expect(cliCalls.map(cliCall => cliCall.argumentList.slice(0, 3))).toEqual([['org', 'create', 'scratch'], ['project', 'deploy', 'start']]);
-            cliCalls.forEach(cliCall => {
-                expect(cliCall.command).toBe(process.platform === 'win32' ? `"${installedSalesforceCliPath}"` : installedSalesforceCliPath);
-                expect(cliCall.options).toMatchObject({ shell: process.platform === 'win32', cwd: path.resolve(workspaceRoot) });
-            });
-            expect(cliCalls[1].argumentList).not.toContain('--ignore-errors');
+            expect(reportedPhases).toEqual(['creating']);
+            expect(cliCalls).toHaveLength(1);
+            expect(cliCalls[0].argumentList.slice(0, 3)).toEqual(['org', 'create', 'scratch']);
+            expect(cliCalls[0].command).toBe(process.platform === 'win32' ? `"${installedSalesforceCliPath}"` : installedSalesforceCliPath);
+            expect(cliCalls[0].options).toMatchObject({ shell: process.platform === 'win32', cwd: path.resolve(workspaceRoot), maxBuffer: 1024 * 1024 * 8 });
             expect(cliCalls[0].argumentList).toEqual(expect.arrayContaining(['--alias', CHOSEN_ALIAS]));
-            expect(cliCalls[1].argumentList).toEqual(['project', 'deploy', 'start', '--target-org', NEW_SCRATCH_USERNAME, '--json']);
 
             const operationsFolderPath = path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, NEW_SCRATCH_USERNAME);
-            expect(outcome).toEqual({ kind: 'deployed', username: NEW_SCRATCH_USERNAME, deployedComponentCount: 3, outputFilePath: path.join(operationsFolderPath, '20261010-142233-scratch-deploy.json') });
-            expect(fs.readdirSync(operationsFolderPath).sort()).toEqual(['20261010-142233-scratch-create.json', '20261010-142233-scratch-deploy.json']);
-            expect(JSON.parse(fs.readFileSync(path.join(operationsFolderPath, '20261010-142233-scratch-deploy.json'), 'utf-8'))).toEqual(JSON.parse(DEPLOY_SUCCESS));
+            expect(outcome).toEqual({ kind: 'created', username: NEW_SCRATCH_USERNAME, outputFilePath: path.join(operationsFolderPath, '20261010-142233-scratch-create.json') });
+            expect(fs.readdirSync(operationsFolderPath)).toEqual(['20261010-142233-scratch-create.json']);
 
             // THE CREATE'S authFields CARRY THE NEW ORG'S ACCESS TOKEN, AND THE FOLDER SITS IN A WORKSPACE THAT IS USUALLY COMMITTED
             const savedCreate = fs.readFileSync(path.join(operationsFolderPath, '20261010-142233-scratch-create.json'), 'utf-8');
@@ -764,7 +707,7 @@ describe('ScratchOrgService (#200)', () => {
 
         });
 
-        it('attempts no deploy when the create fails, and saves its output under the requested alias', async () => {
+        it('saves a failed create\'s output under the requested alias', async () => {
 
             answerCliCalls([{ stdout: SCRATCH_CREATE_LIMIT_REACHED, error: exitError(1) }]);
 
@@ -774,17 +717,6 @@ describe('ScratchOrgService (#200)', () => {
             expect(outcome.kind).toBe('createFailed');
             expect(( outcome as { outputFilePath: string } ).outputFilePath)
                 .toBe(path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, 'qa-accounts', '20261010-142233-scratch-create.json'));
-
-        });
-
-        it('keeps the org and counts the component failures when the deploy fails', async () => {
-
-            answerCliCalls([{ stdout: SCRATCH_CREATE_SUCCESS }, { stdout: DEPLOY_ONE_COMPONENT_FAILURE, error: exitError(1) }]);
-
-            const { outcome } = await runSetup();
-
-            expect(outcome).toMatchObject({ kind: 'deployFailed', username: NEW_SCRATCH_USERNAME, componentFailureCount: 1 });
-            expect(fs.existsSync(( outcome as { outputFilePath: string } ).outputFilePath)).toBe(true);
 
         });
 
@@ -801,7 +733,7 @@ describe('ScratchOrgService (#200)', () => {
 
         it('on Windows creates nothing from a UNC project folder, which cmd.exe would swap for the Windows folder, and says how to open it instead (#285)', async () => {
 
-            answerCliCalls([{ stdout: SCRATCH_CREATE_SUCCESS }, { stdout: DEPLOY_SUCCESS }]);
+            answerCliCalls([{ stdout: SCRATCH_CREATE_SUCCESS }]);
             const uncWorkspaceRoot = '\\\\wsl.localhost\\Ubuntu\\home\\me\\project';
             const scratchOrgPlan = { ...await resolvePlan(), workspaceRoot: uncWorkspaceRoot };
             jest.spyOn(PicklistDependencyCheckService, 'isWindowsPlatform').mockReturnValue(true);
@@ -831,18 +763,7 @@ describe('ScratchOrgService (#200)', () => {
 
         });
 
-        it('kills the deploy and keeps the org when cancelled during it', async () => {
-
-            answerCliCalls([{ stdout: SCRATCH_CREATE_SUCCESS }, { stdout: '', error: Object.assign(new Error('killed'), { code: null, signal: 'SIGTERM' }) }]);
-
-            const { outcome } = await runSetup({ requestedAtPhase: 'deploying' });
-
-            expect(killedProcessCount).toBe(1);
-            expect(outcome).toEqual({ kind: 'deployCancelled', username: NEW_SCRATCH_USERNAME, isDeployStarted: true });
-
-        });
-
-        it('reports a create that answered malformed JSON as a failure and deploys nothing', async () => {
+        it('reports a create that answered malformed JSON as a failure, selecting nothing', async () => {
 
             answerCliCalls([{ stdout: '{"status":0,"result":{}}' }]);
 
@@ -869,27 +790,9 @@ describe('ScratchOrgService (#200)', () => {
             const scratchOrgPlan = await resolvePlan();
             const outcome = await ScratchOrgService.runScratchOrgSetup(scratchOrgPlan, { onPhase: jest.fn(), registerCancellation: jest.fn(), isCancellationRequested: () => isCancelled, now: () => PLAN_DATE });
 
-            expect(outcome).toEqual({ kind: 'deployCancelled', username: NEW_SCRATCH_USERNAME, isDeployStarted: false });
-            expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME, NEW_SCRATCH_USERNAME, '20261010-142233-scratch-create.json'))).toBe(true);
-
-        });
-
-        it('reports a deploy whose answer outgrew the buffer as unconfirmed, not failed, and gives the deploy a larger buffer', async () => {
-
-            const bufferSizes: number[] = [];
-            (execFile as unknown as jest.Mock).mockImplementation((_command: string, argumentList: string[], options: { maxBuffer: number }, callback: Function) => {
-                bufferSizes.push(options.maxBuffer);
-                setImmediate(() => argumentList[0] === 'org'
-                    ? callback(null, SCRATCH_CREATE_SUCCESS, '')
-                    : callback(Object.assign(new Error('stdout maxBuffer length exceeded'), { code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' }), '', ''));
-                return { pid: 9, kill: jest.fn() };
-            });
-
-            const scratchOrgPlan = await resolvePlan();
-            const outcome = await ScratchOrgService.runScratchOrgSetup(scratchOrgPlan, { onPhase: jest.fn(), registerCancellation: jest.fn(), isCancellationRequested: () => false, now: () => PLAN_DATE });
-
-            expect(outcome).toEqual({ kind: 'deployUnconfirmed', username: NEW_SCRATCH_USERNAME });
-            expect(bufferSizes).toEqual([1024 * 1024 * 8, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES]);
+            const createFilePath = path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, NEW_SCRATCH_USERNAME, '20261010-142233-scratch-create.json');
+            expect(outcome).toEqual({ kind: 'created', username: NEW_SCRATCH_USERNAME, outputFilePath: createFilePath });
+            expect(fs.existsSync(createFilePath)).toBe(true);
 
         });
 
@@ -947,15 +850,6 @@ describe('ScratchOrgService (#200)', () => {
             fs.rmSync(path.join(workspaceRoot, 'unpackaged'), { recursive: true });
 
             await expect(resolvePlan()).rejects.toThrow('The package directory "unpackaged"');
-
-        });
-
-        it('notes replacements that copy local files or environment variables into the deploy', async () => {
-
-            const sfdxProjectFilePath = path.join(workspaceRoot, 'sfdx-project.json');
-            fs.writeFileSync(sfdxProjectFilePath, JSON.stringify({ ...JSON.parse(fs.readFileSync(sfdxProjectFilePath, 'utf-8')), replacements: [{ filename: 'x', stringToReplace: 'y', replaceWithEnv: 'HOME' }] }));
-
-            expect(( await resolvePlan() ).hasFileOrEnvironmentReplacements).toBe(true);
 
         });
 
