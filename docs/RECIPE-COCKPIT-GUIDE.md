@@ -15,8 +15,8 @@ A few words used below:
 
 Generate Treecipe reads your object metadata and writes a run: a folder under `treecipe/GeneratedRecipes` holding the recipe files and a list of the objects it read.
 The cockpit opens the newest run, or the one you pick in the run list at the top.
-Under the run list, the **Target Org Management** section picks the org a card can insert into, opens it in your browser (**Open in browser**) or makes a new scratch org (**+ New scratch org**), which it creates and selects without deploying anything to it. It is always open.
-The **Treecipes** section below it holds the cards; click its heading to fold it away.
+Under the run list, the **Target Org Management** section picks the org a card can insert into, opens it in your browser (**Open in browser**) or makes a new scratch org (**+ New scratch org**), which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll.
+The **Treecipes** section below it holds the cards.
 
 Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply.
 Tick **TODOs only** on a card's Treecipe tab to see just the fields and objects with one, each TODO with a link to its line in the recipe.

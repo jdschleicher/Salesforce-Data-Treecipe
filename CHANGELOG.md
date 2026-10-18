@@ -1,5 +1,17 @@
 # Change Log
 
+## [3.104.0] - Recipe Cockpit: the Treecipes section no longer folds, and Target Org Management stays pinned while the cards scroll
+
+Closes [#364](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/364).
+
+Folding the **Treecipes** section (#348) hid every tree card, and the **Target Org Management** section scrolled away with them, so a reader far down a card could not see which org an insert would reach.
+
+- **Treecipes no longer folds.** Its header is drawn like Target Org Management's: a title with no ▸, no listener and no `aria-expanded`. A click on it changes nothing, and a `focusTree` no longer has a folded section to open.
+- **Target Org Management is pinned.** `#cockpitOrgSection` is `position: sticky; top: 0` on `--sdt-page`, above every other layer of the cards, so the picker, Open in browser, ⟳ and + New scratch org stay on screen while the cards scroll under it. A row scrolled into view (a `focusTree`, the Record types focus) stops below it: the page carries `scroll-padding-top` (`RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING`) only while the section is drawn. The toolbar, the ? help and the version line still scroll. Only the stylesheet changed, and no colour pair was added.
+- **Saved places.** A 3.98.0+ place's `isTreecipesSectionCollapsed` is ignored by the panel and dropped by `normalizePanelPlace`, as #355 did for `isOrgSectionCollapsed`; the place version did not change. `buildCockpitSection` and `setCockpitSectionExpanded` are removed, since nothing else used them.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say the org section stays at the top while you scroll and no longer say the Treecipes section folds. Screenshots re-taken.
+- **Tests.** `RecipeCockpitSections.test.ts` checks that both headers have no toggle, that a click on either leaves its cards shown and saves nothing, that a saved fold of either is ignored (and dropped on the host) whatever its value, that a focus still opens its card, and that the pinned rule is sticky at the top, on the page colour, above every other `z-index`, with the scroll padding, while the toolbar and help are not pinned.
+
 ## [3.103.0] - Recipe Cockpit: one edit button that starts from the field's faker expression
 
 Closes [#356](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/356).
