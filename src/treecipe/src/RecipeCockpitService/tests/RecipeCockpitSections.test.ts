@@ -17,6 +17,7 @@ import {
     RECIPE_COCKPIT_NO_RUN_MESSAGE,
     RECIPE_COCKPIT_ORG_SECTION_TITLE,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
+    RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING,
     RECIPE_COCKPIT_TREECIPES_SECTION_TITLE
 } from '../RecipeCockpitService';
 import { IPanelScriptOptions, runPanelScript } from './RecipeCockpitPanelHarness';
@@ -24,8 +25,9 @@ import { IPanelScriptOptions, runPanelScript } from './RecipeCockpitPanelHarness
 /*
     #348: the org controls are one section under the toolbar, and every tree card is in a
     Treecipes section under it. The org picker is drawn once, never inside a card.
-    #355: the org section is titled Target Org Management and never folds; only the Treecipes
-    header is a toggle, and only whether IT was closed is kept with the reader's place.
+    #355: the org section is titled Target Org Management and never folds.
+    #364: the Treecipes section never folds either, and the org section is pinned to the top of
+    the panel while the cards scroll under it; neither fold is kept with the reader's place.
 */
 
 const HISTORY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'historyWorkspace');
@@ -52,14 +54,19 @@ const sectionOf = (panel: Panel, sectionId: string) => panel.findAll(panel.cockp
 const orgSectionOf = (panel: Panel) => sectionOf(panel, 'cockpitOrgSection');
 const treecipesSectionOf = (panel: Panel) => sectionOf(panel, 'cockpitTreecipesSection');
 const headerOf = (sectionElement: any) => sectionElement.children[0];
-const toggleOf = (sectionElement: any) => headerOf(sectionElement).children[0];
 const bodyOf = (sectionElement: any) => sectionElement.children[1];
-const isOpen = (panel: Panel, sectionElement: any) => toggleOf(sectionElement).attributes['aria-expanded'] === 'true' && !panel.isHidden(bodyOf(sectionElement));
-const expectOrgSectionAlwaysOpen = (panel: Panel) => {
-    const sectionElement = orgSectionOf(panel);
+const expectSectionAlwaysOpen = (panel: Panel, sectionElement: any) => {
+    expect(sectionElement).toBeDefined();
     expect(panel.isHidden(bodyOf(sectionElement))).toBeFalse();
-    expect(panel.findAll(headerOf(sectionElement), 'cockpitSectionToggle')).toEqual([]);
     expect(headerOf(sectionElement).children.map((element: any) => element.tagName)).toEqual(['span']);
+    expect(headerOf(sectionElement).classList.contains('cockpitSectionStatic')).toBeTrue();
+    expect(headerOf(sectionElement).attributes).not.toHaveProperty('aria-expanded');
+    expect(headerOf(sectionElement).attributes).not.toHaveProperty('aria-controls');
+};
+const expectOrgSectionAlwaysOpen = (panel: Panel) => expectSectionAlwaysOpen(panel, orgSectionOf(panel));
+const expectTreecipesSectionAlwaysOpen = (panel: Panel) => {
+    expectSectionAlwaysOpen(panel, treecipesSectionOf(panel));
+    panel.treeCards().forEach((treeCard: any) => expect(panel.isHidden(treeCard)).toBeFalse());
 };
 const commandsPosted = (panel: Panel) => panel.postedHostMessages.map((hostMessage: any) => hostMessage.command);
 
@@ -121,23 +128,15 @@ describe('RecipeCockpitService, the Target Org Management and Treecipes sections
 
         });
 
-        it('draws the org section with no toggle and its body always shown, and the Treecipes section open with a toggle that names its body', () => {
+        it('draws both sections with no toggle and their bodies always shown (#355, #364)', () => {
 
             const panel = drawRecipe(loadRecipe());
 
             expectOrgSectionAlwaysOpen(panel);
+            expectTreecipesSectionAlwaysOpen(panel);
             expect(bodyOf(orgSectionOf(panel)).attributes.id).toBe('cockpitOrgSectionBody');
-            expect(headerOf(orgSectionOf(panel)).classList.contains('cockpitSectionStatic')).toBeTrue();
-            panel.findAll(orgSectionOf(panel), 'cockpitSectionHeader').forEach((element: any) => {
-                expect(element.attributes).not.toHaveProperty('aria-expanded');
-                expect(element.attributes).not.toHaveProperty('aria-controls');
-            });
-
-            const treecipesSection = treecipesSectionOf(panel);
-            expect(isOpen(panel, treecipesSection)).toBeTrue();
-            expect(bodyOf(treecipesSection).attributes.id).toBe('cockpitTreecipesSectionBody');
-            expect(toggleOf(treecipesSection).attributes['aria-controls']).toBe('cockpitTreecipesSectionBody');
-            expect(toggleOf(treecipesSection).tagName).toBe('button');
+            expect(bodyOf(treecipesSectionOf(panel)).attributes.id).toBe('cockpitTreecipesSectionBody');
+            expect(panel.findAll(panel.cockpitBodyElement, 'cockpitSectionToggle')).toEqual([]);
 
         });
 
@@ -149,24 +148,21 @@ describe('RecipeCockpitService, the Target Org Management and Treecipes sections
             panel.findAll(headerOf(orgSectionOf(panel)), 'cockpitSectionTitle')[0].dispatch('click');
 
             expectOrgSectionAlwaysOpen(panel);
-            expect(isOpen(panel, treecipesSectionOf(panel))).toBeTrue();
+            expectTreecipesSectionAlwaysOpen(panel);
             expect(panel.savedState() ?? {}).not.toHaveProperty('isOrgSectionCollapsed');
 
         });
 
-        it('closes and reopens the Treecipes section from a click anywhere on its header, without touching the org section', () => {
+        it('leaves the Treecipes section open on a click on its header or title, and saves nothing for it (#364)', () => {
 
             const panel = drawRecipe(loadRecipe());
 
+            headerOf(treecipesSectionOf(panel)).dispatch('click');
             panel.findAll(headerOf(treecipesSectionOf(panel)), 'cockpitSectionTitle')[0].dispatch('click');
 
-            expect(isOpen(panel, treecipesSectionOf(panel))).toBeFalse();
-            expect(toggleOf(treecipesSectionOf(panel)).attributes['aria-expanded']).toBe('false');
+            expectTreecipesSectionAlwaysOpen(panel);
             expectOrgSectionAlwaysOpen(panel);
-
-            toggleOf(treecipesSectionOf(panel)).dispatch('click');
-
-            expect(isOpen(panel, treecipesSectionOf(panel))).toBeTrue();
+            expect(panel.savedState() ?? {}).not.toHaveProperty('isTreecipesSectionCollapsed');
 
         });
 
@@ -177,7 +173,7 @@ describe('RecipeCockpitService, the Target Org Management and Treecipes sections
 
             expect(orgSectionOf(panel)).toBeUndefined();
             expect(panel.findAll(panel.cockpitBodyElement, 'dataOrgView')).toEqual([]);
-            expect(isOpen(panel, treecipesSectionOf(panel))).toBeTrue();
+            expectTreecipesSectionAlwaysOpen(panel);
 
         });
 
@@ -209,6 +205,23 @@ describe('RecipeCockpitService, the Target Org Management and Treecipes sections
 
         });
 
+        it('pins the org section to the top of the panel over the cards, on the page colour, and pads a scrolled-to row below it (#364)', () => {
+
+            const shellHtml = RecipeCockpitService.buildWebviewShellHtml('nonce');
+            const pinnedRule = shellHtml.split('\n').find(line => line.trim().startsWith('#cockpitOrgSection {'));
+
+            expect(pinnedRule).toBeDefined();
+            expect(pinnedRule).toContain('position: sticky;');
+            expect(pinnedRule).toContain('top: 0;');
+            expect(pinnedRule).toContain('background-color: var(--sdt-page);');
+            const zIndex = Number(/z-index: (\d+);/.exec(pinnedRule ?? '')?.[1]);
+            const otherZIndexes = (shellHtml.match(/z-index: \d+;/g) ?? []).map(rule => Number(/\d+/.exec(rule)?.[0])).filter(value => value !== zIndex);
+            expect(zIndex).toBeGreaterThan(Math.max(...otherZIndexes));
+            expect(shellHtml).toContain(`html:has(#cockpitOrgSection) { scroll-padding-top: ${RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING}; }`);
+            expect(shellHtml).not.toMatch(/\.(toolbar|helpSection|cockpitHeader)[^{]*\{[^}]*position: sticky/);
+
+        });
+
         it('styles the sections only from the palette', () => {
 
             const shellHtml = RecipeCockpitService.buildWebviewShellHtml('nonce');
@@ -226,41 +239,26 @@ describe('RecipeCockpitService, the Target Org Management and Treecipes sections
 
     describe('the place', () => {
 
-        it('saves a closed Treecipes section with the place, and restores it closed in a rebuilt document', () => {
+        it('saves neither fold with the place, whatever the reader clicked (#364)', () => {
 
             jest.useFakeTimers();
             try {
 
-                const hiddenPanel = drawRecipe(loadRecipe());
-                headerOf(treecipesSectionOf(hiddenPanel)).dispatch('click');
+                const panel = drawRecipe(loadRecipe());
+                headerOf(treecipesSectionOf(panel)).dispatch('click');
+                headerOf(orgSectionOf(panel)).dispatch('click');
+                panel.expandAllTrees();
 
-                expect(hiddenPanel.savedState()).toMatchObject({ isTreecipesSectionCollapsed: true });
-                expect(hiddenPanel.savedState()).not.toHaveProperty('isOrgSectionCollapsed');
-                const savePlaceMessages = hiddenPanel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'savePlace');
-                expect(savePlaceMessages.at(-1).place).toMatchObject({ isTreecipesSectionCollapsed: true });
-                expect(savePlaceMessages.at(-1).place).not.toHaveProperty('isOrgSectionCollapsed');
-
-                const panel = drawRecipe(loadRecipe(), { savedState: hiddenPanel.savedState() });
-
-                expectOrgSectionAlwaysOpen(panel);
-                expect(isOpen(panel, treecipesSectionOf(panel))).toBeFalse();
-                expect(toggleOf(treecipesSectionOf(panel)).classList.contains('noMotion')).toBeTrue();
-                expect(bodyOf(treecipesSectionOf(panel)).classList.contains('motionConceal')).toBeFalse();
+                expect(panel.savedState()).not.toHaveProperty('isTreecipesSectionCollapsed');
+                expect(panel.savedState()).not.toHaveProperty('isOrgSectionCollapsed');
+                panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'savePlace').forEach((hostMessage: any) => {
+                    expect(hostMessage.place).not.toHaveProperty('isTreecipesSectionCollapsed');
+                    expect(hostMessage.place).not.toHaveProperty('isOrgSectionCollapsed');
+                });
 
             } finally {
                 jest.useRealTimers();
             }
-
-        });
-
-        it('saves neither field while the Treecipes section is open', () => {
-
-            const panel = drawRecipe(loadRecipe());
-            headerOf(treecipesSectionOf(panel)).dispatch('click');
-            headerOf(treecipesSectionOf(panel)).dispatch('click');
-
-            expect(panel.savedState()).not.toHaveProperty('isOrgSectionCollapsed');
-            expect(panel.savedState()).not.toHaveProperty('isTreecipesSectionCollapsed');
 
         });
 
@@ -269,65 +267,56 @@ describe('RecipeCockpitService, the Target Org Management and Treecipes sections
             const panel = drawRecipe(loadRecipe(), { savedState: savedPlace({}) });
 
             expectOrgSectionAlwaysOpen(panel);
-            expect(isOpen(panel, treecipesSectionOf(panel))).toBeTrue();
+            expectTreecipesSectionAlwaysOpen(panel);
 
         });
 
-        it('opens the org section for a place saved by 3.98.0 with it folded, whatever the value (#355)', () => {
+        it('opens both sections for a place saved by 3.98.0+ with either folded, whatever the value (#355, #364)', () => {
 
-            [true, 'yes', 1, false].forEach(isOrgSectionCollapsed => {
-                const panel = drawRecipe(loadRecipe(), { savedState: savedPlace({ isOrgSectionCollapsed, isTreecipesSectionCollapsed: true }) });
+            [true, 'yes', 1, false].forEach(collapsedValue => {
+                const panel = drawRecipe(loadRecipe(), { savedState: savedPlace({ isOrgSectionCollapsed: collapsedValue, isTreecipesSectionCollapsed: collapsedValue }) });
 
                 expectOrgSectionAlwaysOpen(panel);
-                expect(isOpen(panel, treecipesSectionOf(panel))).toBeFalse();
+                expectTreecipesSectionAlwaysOpen(panel);
                 expect(commandsPosted(panel)).not.toContain('renderFailed');
+                expect(panel.savedState() ?? {}).not.toHaveProperty('isTreecipesSectionCollapsed');
             });
 
         });
 
-        it('keeps a closed section across a reload of the same run in the same document', () => {
+        it('keeps both sections open across a reload of the same run in the same document', () => {
 
             const panel = drawRecipe(loadRecipe());
             headerOf(treecipesSectionOf(panel)).dispatch('click');
 
             panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 2 });
 
-            expect(isOpen(panel, treecipesSectionOf(panel))).toBeFalse();
+            expectTreecipesSectionAlwaysOpen(panel);
             expectOrgSectionAlwaysOpen(panel);
 
         });
 
-        it('keeps isTreecipesSectionCollapsed on the host only when it is exactly true, drops isOrgSectionCollapsed, and the place version did not change', () => {
+        it('drops isTreecipesSectionCollapsed and isOrgSectionCollapsed on the host, and the place version did not change', () => {
 
-            const normalized = RecipeCockpitService.normalizePanelPlace(savedPlace({ isOrgSectionCollapsed: true, isTreecipesSectionCollapsed: true }));
-            expect(normalized).not.toBeUndefined();
-            expect(normalized).not.toHaveProperty('isOrgSectionCollapsed');
-            expect(normalized?.isTreecipesSectionCollapsed).toBeTrue();
-
-            const notTrue = RecipeCockpitService.normalizePanelPlace(savedPlace({ isOrgSectionCollapsed: 'yes', isTreecipesSectionCollapsed: 1 }));
-            expect(notTrue).not.toHaveProperty('isOrgSectionCollapsed');
-            expect(notTrue).not.toHaveProperty('isTreecipesSectionCollapsed');
-            expect(RecipeCockpitService.normalizePanelPlace(savedPlace({}))).not.toHaveProperty('isOrgSectionCollapsed');
+            [true, 'yes', 1].forEach(collapsedValue => {
+                const normalized = RecipeCockpitService.normalizePanelPlace(savedPlace({ isOrgSectionCollapsed: collapsedValue, isTreecipesSectionCollapsed: collapsedValue }));
+                expect(normalized).not.toBeUndefined();
+                expect(normalized).not.toHaveProperty('isOrgSectionCollapsed');
+                expect(normalized).not.toHaveProperty('isTreecipesSectionCollapsed');
+            });
             expect(RECIPE_COCKPIT_PANEL_PLACE_VERSION).toBe(2);
 
         });
 
-        it('opens a closed Treecipes section for a focus onto one of its cards', () => {
+        it('opens a focused card for a place saved with the Treecipes section folded', () => {
 
-            const panel = drawRecipe(loadRecipe(), { savedState: savedPlace({ isTreecipesSectionCollapsed: true }) }, { treeKey: LEAD_TREE_KEY, tab: 'treecipe' });
+            const panel = drawRecipe(loadRecipe(), { savedState: savedPlace({ isTreecipesSectionCollapsed: true, isOrgSectionCollapsed: true }) }, { treeKey: LEAD_TREE_KEY, tab: 'treecipe' });
             const leadCard = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeFolder')[0]?.textContent === LEAD_TREE_KEY);
 
-            expect(isOpen(panel, treecipesSectionOf(panel))).toBeTrue();
+            expectTreecipesSectionAlwaysOpen(panel);
+            expectOrgSectionAlwaysOpen(panel);
             expect(panel.isHidden(panel.findAll(leadCard, 'treeBody')[0])).toBeFalse();
             expect(panel.savedState()).not.toHaveProperty('isTreecipesSectionCollapsed');
-
-        });
-
-        it('draws the org section open for a focus onto a card', () => {
-
-            const panel = drawRecipe(loadRecipe(), { savedState: savedPlace({ isOrgSectionCollapsed: true }) }, { treeKey: LEAD_TREE_KEY, tab: 'treecipe' });
-
-            expectOrgSectionAlwaysOpen(panel);
 
         });
 
