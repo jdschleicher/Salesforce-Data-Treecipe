@@ -334,7 +334,7 @@ describe('RecipeCockpitService, "Record type fields only" and the record type ch
             expect(chipRule).toContain('background-color: var(--sdt-chip-bg);');
             expect(chipRule).toContain('border: 1px dashed var(--sdt-chip-text);');
             // THE CHECK IS A treeFieldInclude BOX (#343), AND THE NOTE IS muted: BOTH ALREADY IN THE CONTRAST TEST'S PAIRS
-            expect(shellHtml).toContain("createElement('button', 'treeFieldInclude treeRecordTypeFieldsToggle')");
+            expect(shellHtml).toContain("createButton('check', 'treeFieldInclude treeRecordTypeFieldsToggle')");
             expect(shellHtml).toContain("createElement('span', 'treeRecordTypeFieldsNote muted', NO_RECORD_TYPE_FIELDS_NOTE)");
 
         });

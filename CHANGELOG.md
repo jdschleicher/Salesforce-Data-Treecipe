@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.104.0] - Recipe Cockpit: one button design system, so every button is styled by a named kind
+
+Closes [#363](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/363).
+
+The Troubleshooting tab's four deploy buttons (**Deploy permission set…**, **Deploy fields…**, **Deploy global value sets…**, **Deploy record types…**, from 3.101.0) were drawn as plain browser buttons, unlike **Assign permission sets to me…** and **Retrieve validation rules…** beside them. A button was styled only when its class had been added by hand to each of four selector lists (base, hover, filled, disabled), and nothing checked that.
+
+- **Named button kinds.** Every button the panel draws now carries `sdtButton` and exactly one kind: `primary` (filled accent, for the one main action of an area), `secondary` (outlined accent, for every other action), `icon` (a glyph that shows a border on hover), `check` (the tick boxes) or `link` (a recipe line link). `sdtButton-compact` is a smaller size that goes with any kind. Each kind's look and its hover, pressed and disabled states are defined once. A button's own class now sets only its size and layout, and keeps its name, so nothing that finds a button by class changed.
+- **The deploy buttons are `secondary`,** the same as the actions beside them. A deploy that cannot run (nothing to deploy, or a run in progress) uses the shared disabled style.
+- **One way to make a button.** The panel script makes every button with `createButton(kind, className, text, size?)`, which refuses an unknown kind. `RecipeCockpitButtonKinds.test.ts` fails if a button is made any other way, if any drawn button lacks exactly one kind (it opens every tab, section and the field editor), or if a hover, pressed or disabled rule lists two button classes again.
+- **What looks different.** Only the deploy buttons, and a few buttons when disabled that had no disabled style before: ▸ toggles (the unavailable Record types section's), ☆ and ✎, **Reset selection**, and the field editor's Save, Clear and Cancel. The four guide screenshots re-take byte for byte. The kinds use colour pairs the contrast test already checks, so the palette is unchanged.
 ## [3.103.0] - Recipe Cockpit: one edit button that starts from the field's faker expression
 
 Closes [#356](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/356).

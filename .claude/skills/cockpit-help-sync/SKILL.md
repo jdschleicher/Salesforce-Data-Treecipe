@@ -45,7 +45,7 @@ Also check whether a change adds a kind of difference the **per-tree summary** s
 
 A visual-only change (spacing, colours, a moved button) affects only the screenshots, not the text.
 
-**Never invent behaviour.** Every note must come from code you read or a CHANGELOG entry. Use the exact button labels the panel draws: grep the `*_LABEL` constants and the panel script's `createElement('button', …)` calls. If you can't confirm something, leave it out and say so in the report.
+**Never invent behaviour.** Every note must come from code you read or a CHANGELOG entry. Use the exact button labels the panel draws: grep the `*_LABEL` constants and the panel script's `createButton(…)` calls. If you can't confirm something, leave it out and say so in the report.
 
 ## Step 3: Update both places together
 
