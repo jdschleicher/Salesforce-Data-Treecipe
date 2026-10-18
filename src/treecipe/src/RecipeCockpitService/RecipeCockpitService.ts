@@ -78,6 +78,15 @@ import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { RunFakerConfirmation } from '../ExtensionCommandService/RunFakerConfirmation';
 import { IScratchOrgAliasChoice, IScratchOrgPlan, ORG_OPERATIONS_FOLDER_NAME, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
 import { PARENT_PICKER_RANDOM_LABEL, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
+import {
+    RECIPE_COCKPIT_QUERY_EXPORT_FORMATS,
+    RECIPE_COCKPIT_QUERY_MAX_LENGTH,
+    RECIPE_COCKPIT_QUERY_PREVIEW_ROW_LIMIT,
+    RECIPE_COCKPIT_QUERY_RECORD_CAP,
+    RecipeCockpitQuery,
+    RecipeCockpitQueryExportFormat
+} from './RecipeCockpitQuery';
+import { ISOQLTreeQuery, SOQL_QUERY_KIND_LABELS, SOQLQueryKind } from '../SOQLTemplateService/SOQLTemplateService';
 
 // SHARED WITH THE TESTS SO THE PANEL'S VIEW TYPE CANNOT DRIFT FROM WHAT IS ASSERTED
 export const RECIPE_COCKPIT_VIEW_TYPE = 'treecipe.recipeCockpit';
@@ -354,7 +363,7 @@ export const RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL = 'Add to recipe';
     drawn only on a card listing an object with two or more record types. Troubleshooting (#346) is
     drawn on every card with a folder.
 */
-export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'datasets', 'troubleshooting'] as const;
+export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'datasets', 'troubleshooting', 'query'] as const;
 
 // THE TODO RecipeService WRITES UNDER A DEFAULT RecordTypeId (AND EVERY RECORD-TYPE VARIANT) WHEN AN OBJECT HAS SEVERAL RECORD TYPES
 export const RECIPE_COCKPIT_RECORD_TYPE_OPTIONS_MARKER = '### TODO: -- RecordType Options -- ';
@@ -375,7 +384,7 @@ export const RECIPE_COCKPIT_RECORD_TYPES_INTRO = 'Choose the record types Genera
 export type RecipeCockpitTreeTab = typeof RECIPE_COCKPIT_TREE_TABS[number];
 
 // TABS ADDED SINCE THE PLACE VERSION: A PLACE CARRIES THEIR SEARCH ONLY WHEN THERE IS ONE, SO THE VERSION DID NOT CHANGE
-export const RECIPE_COCKPIT_OPTIONAL_SEARCH_TABS: readonly RecipeCockpitTreeTab[] = Object.freeze(['troubleshooting'] as RecipeCockpitTreeTab[]);
+export const RECIPE_COCKPIT_OPTIONAL_SEARCH_TABS: readonly RecipeCockpitTreeTab[] = Object.freeze(['troubleshooting', 'query'] as RecipeCockpitTreeTab[]);
 
 export const RECIPE_COCKPIT_TREE_DATA_MISSING_NOTICE = 'This run\'s objects wrapper has no relationship tree data, so each recipe file is shown as its own card, with its objects in file order and no lookups. Run "Generate Treecipe" again to see the run\'s relationship trees.';
 
@@ -460,7 +469,8 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         ],
         closingParagraphs: [
             'Three more write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set writes a permission set into your project and Retrieve validation rules writes an org\'s validation rules into your project.',
-            'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set, Deploy fields (custom fields only), Deploy global value sets and Deploy record types each send just those parts of your project, after a confirmation that lists them.'
+            'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set, Deploy fields (custom fields only), Deploy global value sets and Deploy record types each send just those parts of your project, after a confirmation that lists them.',
+            'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against any connected org you pick in the command palette (a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.'
         ]
     },
     {
@@ -468,7 +478,8 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'The settings that leave the YAML alone are kept by VS Code for this workspace on this machine, per tree. They carry over when you regenerate the same objects, but they are not in your repository, so a teammate or a fresh clone starts without them.',
             'When you generate, the cockpit applies them to a copy of the recipe. The data set keeps that copy as filteredRecipe-… beside originalRecipe-… in its BaseArtifactFiles folder, and datasetSource.json lists what was changed.',
-            'Reset selection on a card clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field\'s pencil.'
+            'Reset selection on a card clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field\'s pencil.',
+            'Edits on the Query tab are kept the same way, per tree; Reset beside a query puts back the generated text.'
         ]
     }
 ];
@@ -494,7 +505,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", on every tree, asks every time in the command palette for any connected org, production included, and retrieves that tree's validation rules from it into this project after a confirmation: it only reads from that org and deploys nothing. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields…" (only the tree's custom fields, never a standard field, an object definition or a layout), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under treecipe/OrgOperations, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
+It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", on every tree, asks every time in the command palette for any connected org, production included, and retrieves that tree's validation rules from it into this project after a confirmation: it only reads from that org and deploys nothing. The Query tab, on every tree, runs a query you can edit against any connected org you pick in the command palette every time, production included: a query only reads, and what it returns is written only when you export it, under treecipe/QueryResults. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields…" (only the tree's custom fields, never a standard field, an object definition or a layout), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under treecipe/OrgOperations, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -983,6 +994,10 @@ export interface IRecipeRecordTypeBlocks {
 */
 export interface IRecipeCockpitPanelMessage {
     command?: string;
+    // THE QUERY TAB (#367): WHICH GENERATED QUERY, THE READER'S TEXT FOR IT, AND AN EXPORT'S FORMAT
+    queryKey?: unknown;
+    queryText?: unknown;
+    exportFormat?: unknown;
     filePath?: unknown;
     lineNumber?: unknown;
     runFolderName?: unknown;
@@ -1326,6 +1341,57 @@ export interface IRecipeCockpitTroubleshootingSummaryMessage {
 }
 
 /*
+    The Query tab (#367): one tree's generated queries, read from the run's objects wrapper when the
+    tab is opened, each with the reader's saved edit when there is one. renderSequence names the
+    model they were read for, and the panel drops them for any other. failureMessage is set, and
+    queries empty, when the wrapper could not be read.
+*/
+export interface IRecipeCockpitTreeQueryViewModel {
+    queryKey: string;
+    objectApiName: string;
+    kindLabel: string;
+    notes: string[];
+    generatedText: string;
+    editedText?: string;
+}
+
+export interface IRecipeCockpitTreeQueriesMessage {
+    command: 'treeQueries';
+    renderSequence: number;
+    treeKey: string;
+    queries: IRecipeCockpitTreeQueryViewModel[];
+    failureMessage?: string;
+}
+
+/*
+    One query run per window (#367): while isRunning, every Run button is disabled. treeKey and
+    queryKey name the button clicked. How the run went is a VS Code notification. Stored and replayed.
+*/
+export interface IRecipeCockpitTreeQueryStateMessage {
+    command: 'treeQueryState';
+    isRunning: boolean;
+    treeKey: string;
+    queryKey: string;
+}
+
+/*
+    A run's PREVIEW (#367): the first rows as text, never the whole result, which the host holds for
+    the export. renderSequence names the model it was run on; the panel draws it only on that model.
+*/
+export interface IRecipeCockpitTreeQueryResultMessage {
+    command: 'treeQueryResult';
+    renderSequence: number;
+    treeKey: string;
+    queryKey: string;
+    orgLabel: string;
+    totalSize: number;
+    recordCount: number;
+    isTruncated: boolean;
+    columns: string[];
+    rows: string[][];
+}
+
+/*
     "Open in browser" (#279): the panel disabled the button on the click, and this says the open has
     finished -- whether it opened, refused or failed is a notification's, since the URL it opened
     carries a session id and nothing about it is ever posted.
@@ -1428,6 +1494,25 @@ export const RECIPE_COCKPIT_TROUBLESHOOTING_SUMMARY_CACHE_LIMIT = 50;
 
 export const RECIPE_COCKPIT_TROUBLESHOOTING_INTRO = 'Fixes for an insert that failed. Deploys reach only a sandbox or scratch org: the one selected in the Org section, or one you choose.';
 
+export const RECIPE_COCKPIT_QUERY_TAB_LABEL = 'Query';
+
+export const RECIPE_COCKPIT_QUERY_INTRO = 'The SOQL Generate Treecipe wrote for this tree. Edit a query, run it against any connected org you choose, then export what it returned as JSON or CSV. A query only reads.';
+
+export const RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER = 'Choose the org to run the query against (it only reads)';
+
+export const RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL = 'Open file';
+
+// THE READER'S EDITS OF A TREE'S QUERIES (#367), BY TREE FOLDER, THEN QUERY KEY
+export const RECIPE_COCKPIT_QUERY_EDITS_STATE_KEY = 'treecipe.recipeCockpit.queryEdits';
+
+export const RECIPE_COCKPIT_QUERY_EDITS_VERSION = 1;
+
+// HOW MANY TREES' QUERY LISTS THE HOST KEEPS BEFORE IT STARTS AGAIN
+export const RECIPE_COCKPIT_QUERY_LIST_CACHE_LIMIT = 50;
+
+// THE LONGEST QUERY KEY A MESSAGE MAY CARRY: <object api name, at most 80>:<kind>:<index>
+const RECIPE_COCKPIT_QUERY_KEY_MAX_LENGTH = 200;
+
 export const RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL = 'Create scratch org';
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER = 'Choose the Dev Hub to create the scratch org through';
@@ -1469,6 +1554,9 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitValidationRuleRetrieveStateMessage
                                         | IRecipeCockpitMetadataDeployStateMessage
                                         | IRecipeCockpitTroubleshootingSummaryMessage
+                                        | IRecipeCockpitTreeQueriesMessage
+                                        | IRecipeCockpitTreeQueryStateMessage
+                                        | IRecipeCockpitTreeQueryResultMessage
                                         | IRecipeCockpitOrgOpenStateMessage
                                         | IRecipeCockpitDatasetAddedMessage
                                         | IRecipeCockpitExtensionInfoMessage;
@@ -1540,6 +1628,8 @@ export interface IRecipeCockpitLoadedRecipe {
     objectLevelsByApiName?: Map<string, number>;
     // WHAT EACH CARD'S FIXED-VALUES FILE PINS (#342), BY TREE FOLDER, THEN OBJECT, THEN FIELD
     pinnedFixedValuesByFolderName?: Map<string, Map<string, Map<string, string>>>;
+    // THE WRAPPER THE MODEL WAS READ FROM, WHICH THE QUERY TAB READS AGAIN (#367); UNSET WHEN IT COULD NOT BE READ
+    objectsWrapperFilePath?: string;
 }
 
 /*
@@ -1616,6 +1706,11 @@ export type RecipeCockpitPanelAction =
     // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refuseMetadataDeploy'; refusalText?: string; hostMessage: IRecipeCockpitMetadataDeployStateMessage }
     | { kind: 'loadTroubleshootingSummary'; treeKey: string; renderSequence: number }
+    | { kind: 'loadTreeQueries'; treeKey: string; renderSequence: number }
+    | { kind: 'saveTreeQueryEdit'; treeKey: string; queryKey: string; queryText: string }
+    | { kind: 'runTreeQuery'; treeKey: string; queryKey: string; queryText: string }
+    | { kind: 'postTreeQueryState'; hostMessage: IRecipeCockpitTreeQueryStateMessage }
+    | { kind: 'exportTreeQueryResult'; treeKey: string; queryKey: string; exportFormat: RecipeCockpitQueryExportFormat }
     // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refuseValidationRuleRetrieve'; refusalText?: string; hostMessage: IRecipeCockpitValidationRuleRetrieveStateMessage }
     // A REFUSAL IS A WARNING NOTIFICATION, AND THE STATE GIVES THE CLICKED BUTTON BACK
@@ -1698,6 +1793,12 @@ export interface IRecipeCockpitPanelState {
     validationRuleRetrieveStateMessage?: IRecipeCockpitValidationRuleRetrieveStateMessage;
     // THE TROUBLESHOOTING TAB'S DEPLOYS (#346): ONE PER WINDOW, STORED AND REPLAYED LIKE THE ASSIGNMENT'S
     metadataDeployStateMessage?: IRecipeCockpitMetadataDeployStateMessage;
+    // THE QUERY TAB'S RUN (#367): ONE PER WINDOW, STORED AND REPLAYED LIKE THE RETRIEVE'S
+    treeQueryStateMessage?: IRecipeCockpitTreeQueryStateMessage;
+    // THE LAST PREVIEW POSTED (#367), REPLAYED WHILE ITS MODEL IS THE ONE ON SCREEN
+    treeQueryResultMessage?: IRecipeCockpitTreeQueryResultMessage;
+    // HOST-ONLY, REPLACED WITH THE MODEL: THE WRAPPER THE QUERY TAB'S QUERIES ARE READ FROM (#367)
+    objectsWrapperFilePath?: string;
     // THE PLACE workspaceState KEPT FOR THIS MODEL (#230), REPLAYED UNTIL THE MODEL'S "rendered" SAYS IT WAS DRAWN
     restorePlace?: IRecipeCockpitPanelPlace;
     /*
@@ -4144,6 +4245,7 @@ export class RecipeCockpitService {
         this.adoptPermissionSetAssignRunState(this.recipeCockpitPanelState);
         this.adoptValidationRuleRetrieveRunState(this.recipeCockpitPanelState);
         this.adoptMetadataDeployRunState(this.recipeCockpitPanelState);
+        this.adoptTreeQueryRunState(this.recipeCockpitPanelState);
         this.recipeCockpitPanelState.isOrgOpenInFlight = this.isOrgOpenInFlightForWindow;
 
         if ( previousPanelState ) {
@@ -4157,6 +4259,8 @@ export class RecipeCockpitService {
             this.recipeCockpitPanelState.validationRuleRetrieveStateMessage = previousPanelState.validationRuleRetrieveStateMessage;
             // AND A METADATA DEPLOY'S (#346)
             this.recipeCockpitPanelState.metadataDeployStateMessage = previousPanelState.metadataDeployStateMessage;
+            // AND A QUERY RUN'S (#367)
+            this.recipeCockpitPanelState.treeQueryStateMessage = previousPanelState.treeQueryStateMessage;
         }
 
         if ( !existingCockpitPanel ) {
@@ -4337,6 +4441,8 @@ export class RecipeCockpitService {
         panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
         panelState.objectLevelsByApiName = loadedRecipe.objectLevelsByApiName;
         panelState.pinnedFixedValuesByFolderName = loadedRecipe.pinnedFixedValuesByFolderName;
+        panelState.objectsWrapperFilePath = loadedRecipe.objectsWrapperFilePath;
+        panelState.treeQueryResultMessage = undefined;
         panelState.loadFailedMessage = undefined;
         panelState.loadPhaseMessage = '';
         panelState.reportedFailureDescriptions = new Set();
@@ -4801,6 +4907,31 @@ export class RecipeCockpitService {
             case 'loadTroubleshootingSummary':
 
                 await this.postTroubleshootingSummary(cockpitPanel, panelAction.treeKey, panelAction.renderSequence);
+                return;
+
+            case 'loadTreeQueries':
+
+                this.postTreeQueries(cockpitPanel, panelAction.treeKey, panelAction.renderSequence);
+                return;
+
+            case 'saveTreeQueryEdit':
+
+                await this.saveTreeQueryEdit(panelAction.treeKey, panelAction.queryKey, panelAction.queryText);
+                return;
+
+            case 'runTreeQuery':
+
+                await this.runTreeQueryFromPanel(cockpitPanel, panelAction.treeKey, panelAction.queryKey, panelAction.queryText);
+                return;
+
+            case 'postTreeQueryState':
+
+                this.postToPanel(cockpitPanel, panelAction.hostMessage);
+                return;
+
+            case 'exportTreeQueryResult':
+
+                this.exportTreeQueryResult(panelAction.treeKey, panelAction.queryKey, panelAction.exportFormat);
                 return;
 
             case 'refusePermissionSetAssign':
@@ -6350,6 +6481,403 @@ export class RecipeCockpitService {
         if ( cockpitPanel && renderSequence !== undefined && this.recipeCockpitPanelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
             await this.postTroubleshootingSummary(cockpitPanel, treeKey, renderSequence);
         }
+
+    }
+
+    static isQueryKeyShaped(queryKey: unknown): queryKey is string {
+
+        return typeof queryKey === 'string' && queryKey !== '' && queryKey.length <= RECIPE_COCKPIT_QUERY_KEY_MAX_LENGTH;
+
+    }
+
+    /*
+        A tree's queries (#367), read from the objects wrapper of the run on screen and kept per
+        model and tree: the tab asks each time it is selected, and a run, an edit or an export
+        matches its query key against this list, never a list the panel sent. A wrapper that cannot
+        be read is the tab's message, never a failure of the cockpit.
+    */
+    private static treeQueryLists = new Map<string, ISOQLTreeQuery[]>();
+
+    static clearTreeQueryLists() {
+        this.treeQueryLists.clear();
+    }
+
+    private static readTreeQueries(treeKey: string): { renderSequence: number; folderName: string; queries?: ISOQLTreeQuery[]; failureMessage?: string } | undefined {
+
+        const panelState = this.recipeCockpitPanelState;
+        const recipeDataMessage = panelState.recipeDataMessage;
+        const tree = recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+
+        if ( !recipeDataMessage || !tree?.folderName ) {
+            return undefined;
+        }
+
+        const listKey = JSON.stringify([panelState.workspaceRoot, recipeDataMessage.renderSequence, treeKey]);
+        const listedQueries = this.treeQueryLists.get(listKey);
+
+        const treeRead = { renderSequence: recipeDataMessage.renderSequence, folderName: tree.folderName };
+
+        if ( listedQueries ) {
+            return { ...treeRead, queries: listedQueries };
+        }
+
+        // A MODEL IS ONLY EVER BUILT FROM A WRAPPER IT READ, SO A PATH IS THERE; WHAT CAN FAIL IS READING IT AGAIN
+        const objectsWrapperFilePath = panelState.objectsWrapperFilePath ?? '';
+
+        let parsedObjectsWrapper: unknown;
+        try {
+            parsedObjectsWrapper = JSON.parse(fs.readFileSync(objectsWrapperFilePath, 'utf-8'));
+        } catch (readError) {
+            return { ...treeRead, failureMessage: `The objects wrapper "${path.basename(objectsWrapperFilePath)}" could not be read again: ${this.describeThrown(readError)} Run "Generate Treecipe" again.` };
+        }
+
+        const treeQueries = RecipeCockpitQuery.listTreeQueries(parsedObjectsWrapper, tree.objects.map(treeObject => treeObject.objectApiName));
+
+        if ( this.treeQueryLists.size >= RECIPE_COCKPIT_QUERY_LIST_CACHE_LIMIT ) {
+            this.treeQueryLists.clear();
+        }
+        this.treeQueryLists.set(listKey, treeQueries);
+
+        return { ...treeRead, queries: treeQueries };
+
+    }
+
+    private static postTreeQueries(cockpitPanel: vscode.WebviewPanel, treeKey: string, renderSequence: number) {
+
+        const treeQueryRead = this.readTreeQueries(treeKey);
+
+        if ( !treeQueryRead ) {
+            return;
+        }
+
+        const queriesMessage: IRecipeCockpitTreeQueriesMessage = { command: 'treeQueries', renderSequence: renderSequence, treeKey: treeKey, queries: [] };
+
+        if ( !treeQueryRead.queries ) {
+            queriesMessage.failureMessage = treeQueryRead.failureMessage;
+        } else {
+            const editedTexts = this.readQueryEdits(this.recipeCockpitWorkspaceState).get(treeQueryRead.folderName);
+            queriesMessage.queries = treeQueryRead.queries.map(treeQuery => {
+                const editedText = editedTexts?.get(treeQuery.queryKey);
+                return {
+                    queryKey: treeQuery.queryKey,
+                    objectApiName: treeQuery.objectApiName,
+                    kindLabel: SOQL_QUERY_KIND_LABELS[treeQuery.kind],
+                    notes: treeQuery.notes,
+                    generatedText: treeQuery.text,
+                    ...( editedText !== undefined && editedText !== treeQuery.text ? { editedText: editedText } : {} )
+                };
+            });
+        }
+
+        if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState.recipeDataMessage?.renderSequence === renderSequence ) {
+            this.postToPanel(cockpitPanel, queriesMessage);
+        }
+
+    }
+
+    /*
+        The reader's edits (#367), as workspaceState kept them, each checked on its own: folder and
+        query key bounded names, the text a string no longer than a query may be. Maps, so a folder
+        or key named __proto__ is a key like any other.
+    */
+    static readQueryEdits(workspaceState: IRecipeCockpitWorkspaceState | undefined): Map<string, Map<string, string>> {
+
+        const queryEdits = new Map<string, Map<string, string>>();
+        let storedEdits: unknown;
+
+        try {
+            storedEdits = workspaceState?.get<unknown>(RECIPE_COCKPIT_QUERY_EDITS_STATE_KEY);
+        } catch {
+            return queryEdits;
+        }
+
+        if ( !this.isPlainRecord(storedEdits) || storedEdits.version !== RECIPE_COCKPIT_QUERY_EDITS_VERSION || !this.isPlainRecord(storedEdits.editsByFolderName) ) {
+            return queryEdits;
+        }
+
+        const editsByFolderName = storedEdits.editsByFolderName;
+
+        Object.keys(editsByFolderName).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(folderName => {
+            const storedFolderEdits = editsByFolderName[folderName];
+            if ( !this.isBoundedText(folderName) || folderName === '' || !this.isPlainRecord(storedFolderEdits) ) {
+                return;
+            }
+            const folderEdits = new Map<string, string>();
+            Object.keys(storedFolderEdits).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(queryKey => {
+                const editedText = storedFolderEdits[queryKey];
+                if ( this.isQueryKeyShaped(queryKey) && typeof editedText === 'string' && editedText !== '' && editedText.length <= RECIPE_COCKPIT_QUERY_MAX_LENGTH ) {
+                    folderEdits.set(queryKey, editedText);
+                }
+            });
+            if ( folderEdits.size > 0 ) {
+                queryEdits.set(folderName, folderEdits);
+            }
+        });
+
+        return queryEdits;
+
+    }
+
+    static async writeQueryEdits(workspaceState: IRecipeCockpitWorkspaceState | undefined, queryEdits: Map<string, Map<string, string>>): Promise<boolean> {
+
+        if ( !workspaceState ) {
+            VSCodeWorkspaceService.showWarningMessage('The Recipe Cockpit has no workspace to keep query edits in. Open a folder and re-open the cockpit.');
+            return false;
+        }
+
+        // fromEntries DEFINES EACH KEY, SO A FOLDER OR QUERY KEY NAMED __proto__ IS STORED RATHER THAN SET AS A PROTOTYPE
+        const editsByFolderName = Object.fromEntries([...queryEdits].map(([folderName, folderEdits]) => [folderName, Object.fromEntries(folderEdits)]));
+
+        try {
+            await workspaceState.update(RECIPE_COCKPIT_QUERY_EDITS_STATE_KEY, { version: RECIPE_COCKPIT_QUERY_EDITS_VERSION, editsByFolderName: editsByFolderName });
+            return true;
+        } catch (updateError) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The query edit could not be saved: ${this.describeThrown(updateError)}`));
+            return false;
+        }
+
+    }
+
+    // AN EMPTY TEXT, OR THE GENERATED ONE, IS RESET: THE EDIT IS REMOVED RATHER THAN KEPT EQUAL TO WHAT IS GENERATED
+    private static async saveTreeQueryEdit(treeKey: string, queryKey: string, queryText: string) {
+
+        const treeQueryRead = this.readTreeQueries(treeKey);
+        const treeQuery = treeQueryRead?.queries?.find(candidateQuery => candidateQuery.queryKey === queryKey);
+
+        if ( !treeQueryRead || !treeQuery ) {
+            return;
+        }
+
+        const queryEdits = this.readQueryEdits(this.recipeCockpitWorkspaceState);
+        const folderEdits = queryEdits.get(treeQueryRead.folderName) ?? new Map<string, string>();
+
+        if ( queryText === '' || queryText === treeQuery.text ) {
+            folderEdits.delete(queryKey);
+        } else {
+            folderEdits.set(queryKey, queryText);
+        }
+
+        if ( folderEdits.size > 0 ) {
+            queryEdits.set(treeQueryRead.folderName, folderEdits);
+        } else {
+            queryEdits.delete(treeQueryRead.folderName);
+        }
+
+        await this.writeQueryEdits(this.recipeCockpitWorkspaceState, queryEdits);
+
+    }
+
+    private static isTreeQueryInFlight = false;
+
+    private static treeQueryRunStateMessage: IRecipeCockpitTreeQueryStateMessage | undefined;
+
+    /*
+        The last run's whole result (#367), which only an export of the SAME tree folder and query
+        reads. One is kept, so a large result is held only until the next run.
+    */
+    private static heldTreeQueryResult: {
+        // THE WORKSPACE, TREE FOLDER AND QUERY KEY IT WAS RUN FOR, AS ONE KEY
+        resultKey: string;
+        folderName: string;
+        objectApiName: string;
+        kind: SOQLQueryKind;
+        orgLabel: string;
+        records: Record<string, unknown>[];
+    } | undefined;
+
+    static clearHeldTreeQueryResult() {
+        this.heldTreeQueryResult = undefined;
+    }
+
+    private static setTreeQueryState(queryStateMessage: IRecipeCockpitTreeQueryStateMessage) {
+
+        this.treeQueryRunStateMessage = queryStateMessage.isRunning ? queryStateMessage : undefined;
+        this.recipeCockpitPanelState.treeQueryStateMessage = queryStateMessage;
+
+        if ( this.recipeCockpitPanel ) {
+            this.postToPanel(this.recipeCockpitPanel, queryStateMessage);
+        }
+
+    }
+
+    private static adoptTreeQueryRunState(panelState: IRecipeCockpitPanelState) {
+
+        if ( this.isTreeQueryInFlight && this.treeQueryRunStateMessage ) {
+            panelState.treeQueryStateMessage = this.treeQueryRunStateMessage;
+        }
+
+    }
+
+    /*
+        "Run" (#367): the text is held to one SELECT, the org is ALWAYS asked for in the command
+        palette over every connected org (a query only reads, as a retrieve does, #326), and the
+        query is sent on a connection opened by that org's username, every page read up to the cap
+        and cancellable between pages. The whole result is held for an export, a preview is posted,
+        and how it went is ONE notification. One run per window.
+    */
+    private static async runTreeQueryFromPanel(cockpitPanel: vscode.WebviewPanel, treeKey: string, queryKey: string, queryText: string) {
+
+        const notRunning: IRecipeCockpitTreeQueryStateMessage = { command: 'treeQueryState', isRunning: false, treeKey: treeKey, queryKey: queryKey };
+
+        if ( this.isTreeQueryInFlight ) {
+            this.postToPanel(cockpitPanel, this.treeQueryRunStateMessage ?? notRunning);
+            return;
+        }
+
+        const treeQueryRead = this.readTreeQueries(treeKey);
+        const treeQuery = treeQueryRead?.queries?.find(candidateQuery => candidateQuery.queryKey === queryKey);
+
+        if ( !treeQueryRead?.queries || !treeQuery ) {
+            this.postToPanel(cockpitPanel, notRunning);
+            return;
+        }
+
+        const queryCheck = RecipeCockpitQuery.checkQueryText(queryText);
+
+        if ( 'refusal' in queryCheck ) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The query was not run: ${queryCheck.refusal}`));
+            this.postToPanel(cockpitPanel, notRunning);
+            return;
+        }
+
+        this.isTreeQueryInFlight = true;
+        this.setTreeQueryState({ command: 'treeQueryState', isRunning: true, treeKey: treeKey, queryKey: queryKey });
+
+        try {
+            await this.performTreeQuery(treeKey, treeQueryRead.renderSequence, treeQueryRead.folderName, treeQuery, queryCheck.query);
+        } finally {
+            this.isTreeQueryInFlight = false;
+            this.setTreeQueryState(notRunning);
+        }
+
+    }
+
+    private static async performTreeQuery(treeKey: string, renderSequence: number, folderName: string, treeQuery: ISOQLTreeQuery, queryText: string) {
+
+        const workspaceRoot = this.recipeCockpitPanelState.workspaceRoot;
+
+        let orgDetail: IAuthenticatedOrgDetail | undefined;
+        try {
+            orgDetail = await SalesforceOrgService.promptForAuthorizedOrg(RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER);
+        } catch (listError) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The query was not run: ${this.describeThrown(listError)}`));
+            return;
+        }
+
+        if ( !orgDetail ) {
+            return;
+        }
+
+        const orgUsername = orgDetail.username;
+        // NO PARENTHESES: A NOTIFICATION ESCAPES THEM
+        const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgUsername}` : orgUsername;
+        const queryLabel = `${treeQuery.objectApiName} ${SOQL_QUERY_KIND_LABELS[treeQuery.kind]}`;
+
+        let queryResult: Awaited<ReturnType<typeof RecipeCockpitQuery.fetchQueryRecords>>;
+        try {
+            queryResult = await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: running the ${queryLabel} in ${orgLabel}`),
+                cancellable: true
+            }, async (_progress, cancellationToken) => {
+                const connection = await SalesforceOrgService.getConnection(orgUsername);
+                return await RecipeCockpitQuery.fetchQueryRecords({
+                    query: async (soql: string) => await connection.query(soql),
+                    queryMore: async (nextRecordsUrl: string) => await connection.queryMore(nextRecordsUrl)
+                }, queryText, RECIPE_COCKPIT_QUERY_RECORD_CAP, () => cancellationToken.isCancellationRequested);
+            });
+        } catch (queryError) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The ${queryLabel} failed in ${orgLabel}: ${this.describeThrown(queryError)}`));
+            return;
+        }
+
+        if ( queryResult.isCancelled ) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The ${queryLabel} in ${orgLabel} was cancelled, so nothing was kept to export.`));
+            return;
+        }
+
+        this.heldTreeQueryResult = {
+            resultKey: JSON.stringify([workspaceRoot, folderName, treeQuery.queryKey]),
+            folderName: folderName,
+            objectApiName: treeQuery.objectApiName,
+            kind: treeQuery.kind,
+            orgLabel: orgLabel,
+            records: queryResult.records
+        };
+
+        const preview = RecipeCockpitQuery.buildPreview(queryResult.records, RECIPE_COCKPIT_QUERY_PREVIEW_ROW_LIMIT);
+        const recordCount = queryResult.records.length;
+        const recordsText = `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
+
+        // DRAWN ONLY ON THE MODEL IT WAS RUN ON: A RELOAD SINCE IS ANOTHER MODEL, AND KEEPS ITS OWN TAB
+        if ( this.recipeCockpitPanelState.recipeDataMessage?.renderSequence === renderSequence ) {
+            const resultMessage: IRecipeCockpitTreeQueryResultMessage = {
+                command: 'treeQueryResult',
+                renderSequence: renderSequence,
+                treeKey: treeKey,
+                queryKey: treeQuery.queryKey,
+                orgLabel: orgLabel,
+                totalSize: queryResult.totalSize,
+                recordCount: recordCount,
+                isTruncated: queryResult.isTruncated,
+                columns: preview.columns,
+                rows: preview.rows
+            };
+            this.recipeCockpitPanelState.treeQueryResultMessage = resultMessage;
+            if ( this.recipeCockpitPanel ) {
+                this.postToPanel(this.recipeCockpitPanel, resultMessage);
+            }
+        }
+
+        if ( queryResult.isTruncated ) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(
+                `The ${queryLabel} matched ${queryResult.totalSize} records in ${orgLabel}, and only the first ${recordsText} were read: at most ${RECIPE_COCKPIT_QUERY_RECORD_CAP} are. Narrow the query to export them all.`));
+            return;
+        }
+
+        VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(`The ${queryLabel} returned ${recordsText} from ${orgLabel}.`));
+
+    }
+
+    /*
+        "Export JSON" / "Export CSV" (#367): the result held for the same tree folder and query, and
+        nothing else, written under treecipe/QueryResults/<folder>/. The panel posts only names; the
+        path is the host's and opened only through the notification's "Open file".
+    */
+    private static exportTreeQueryResult(treeKey: string, queryKey: string, exportFormat: RecipeCockpitQueryExportFormat) {
+
+        const workspaceRoot = this.recipeCockpitPanelState.workspaceRoot;
+        const tree = this.recipeCockpitPanelState.recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+        const heldResult = this.heldTreeQueryResult;
+
+        if ( !heldResult || heldResult.resultKey !== JSON.stringify([workspaceRoot, tree?.folderName, queryKey]) ) {
+            VSCodeWorkspaceService.showWarningMessage('Nothing was exported: run this query first. Only the last query run is kept to export.');
+            return;
+        }
+
+        const exportContent = exportFormat === 'json'
+            ? RecipeCockpitQuery.buildJsonExport(heldResult.records)
+            : RecipeCockpitQuery.buildCsvExport(heldResult.records);
+        const exportFilePath = RecipeCockpitQuery.writeQueryExport(workspaceRoot, heldResult.folderName, heldResult.objectApiName, heldResult.kind, exportFormat, exportContent, new Date());
+
+        if ( !exportFilePath ) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Nothing was exported: the ${exportFormat.toUpperCase()} file could not be written under treecipe/QueryResults in this workspace.`));
+            return;
+        }
+
+        const recordCount = heldResult.records.length;
+        const relativeFilePath = path.relative(workspaceRoot, exportFilePath).split(path.sep).join('/');
+
+        Promise.resolve(vscode.window.showInformationMessage(
+            RecipeYamlScalar.escapeForNotification(`Exported ${recordCount} ${recordCount === 1 ? 'record' : 'records'} from ${heldResult.orgLabel} to ${relativeFilePath}.`),
+            RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL
+        ))
+            .then(async chosenAction => {
+                if ( chosenAction === RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL ) {
+                    await VSCodeWorkspaceService.openWorkspaceResultFile(exportFilePath, workspaceRoot, 'The exported file no longer exists in this workspace.');
+                }
+            })
+            .catch(exportFollowUpError => ErrorHandlingService.handleCapturedError(exportFollowUpError, 'openRecipeCockpit'));
 
     }
 
@@ -9306,6 +9834,88 @@ export class RecipeCockpitService {
             }
 
             /*
+                The Query tab (#367) posts the tree's KEY, a query KEY and, to save or run, the
+                reader's text: never an org, a path or an object. The key must be a card with a
+                folder the panel confirmed drawing; the host matches the query key against the
+                queries it read for that tree, and holds the text to one SELECT before it is sent.
+                A query only reads, and its org is asked for in the command palette every time, so
+                nothing else running holds it.
+            */
+            case 'loadTreeQueries': {
+
+                const { treeKey, renderSequence } = panelMessage;
+
+                if ( typeof treeKey !== 'string'
+                        || !panelState.recipeDataMessage
+                        || renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+                    return undefined;
+                }
+
+                return { kind: 'loadTreeQueries', treeKey: treeKey, renderSequence: renderSequence as number };
+
+            }
+
+            case 'saveTreeQueryEdit': {
+
+                const { treeKey, queryKey, queryText } = panelMessage;
+
+                if ( typeof treeKey !== 'string'
+                        || !this.isQueryKeyShaped(queryKey)
+                        || typeof queryText !== 'string'
+                        || queryText.length > RECIPE_COCKPIT_QUERY_MAX_LENGTH
+                        || !panelState.recipeDataMessage
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+                    return undefined;
+                }
+
+                return { kind: 'saveTreeQueryEdit', treeKey: treeKey, queryKey: queryKey, queryText: queryText };
+
+            }
+
+            case 'runTreeQuery': {
+
+                const { treeKey, queryKey, queryText } = panelMessage;
+
+                // A RELOADED DOCUMENT MAY NOT KNOW A QUERY IS RUNNING: IT IS TOLD, AND THE RUN'S OWN END GIVES THE BUTTONS BACK
+                if ( panelState.treeQueryStateMessage?.isRunning ) {
+                    return { kind: 'postTreeQueryState', hostMessage: panelState.treeQueryStateMessage };
+                }
+
+                if ( typeof treeKey !== 'string'
+                        || !this.isQueryKeyShaped(queryKey)
+                        || typeof queryText !== 'string'
+                        || queryText.length > RECIPE_COCKPIT_QUERY_MAX_LENGTH
+                        || !panelState.recipeDataMessage
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+                    return {
+                        kind: 'postTreeQueryState',
+                        hostMessage: { command: 'treeQueryState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '', queryKey: typeof queryKey === 'string' ? queryKey : '' }
+                    };
+                }
+
+                return { kind: 'runTreeQuery', treeKey: treeKey, queryKey: queryKey, queryText: queryText };
+
+            }
+
+            case 'exportTreeQueryResult': {
+
+                const { treeKey, queryKey, exportFormat } = panelMessage;
+                const matchedFormat = RECIPE_COCKPIT_QUERY_EXPORT_FORMATS.find(candidateFormat => candidateFormat === exportFormat);
+
+                if ( typeof treeKey !== 'string'
+                        || !this.isQueryKeyShaped(queryKey)
+                        || !matchedFormat
+                        || !panelState.recipeDataMessage
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+                    return undefined;
+                }
+
+                return { kind: 'exportTreeQueryResult', treeKey: treeKey, queryKey: queryKey, exportFormat: matchedFormat };
+
+            }
+
+            /*
                 "Open in browser" (#279) names the org by INDEX, and only the org SELECTED now is
                 opened: an index the panel could have kept from an older listing, or any other org
                 the list holds, is refused. Which username is the host's. A refusal still answers,
@@ -9445,6 +10055,14 @@ export class RecipeCockpitService {
 
         if ( panelState.metadataDeployStateMessage ) {
             replayMessages.push(panelState.metadataDeployStateMessage);
+        }
+
+        if ( panelState.treeQueryStateMessage ) {
+            replayMessages.push(panelState.treeQueryStateMessage);
+        }
+
+        if ( panelState.treeQueryResultMessage && panelState.treeQueryResultMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
+            replayMessages.push(panelState.treeQueryResultMessage);
         }
 
         if ( panelState.permissionSetAssignStateMessage ) {
@@ -9912,7 +10530,8 @@ export class RecipeCockpitService {
             picklistDisplayValuesByObjectApiName: normalizedObjectsWrapper.picklistDisplayValuesByObjectApiName,
             treeHistoryTargets: treeHistoryBuild.targets,
             ...( normalizedObjectsWrapper.objectLevelsByApiName ? { objectLevelsByApiName: normalizedObjectsWrapper.objectLevelsByApiName } : {} ),
-            ...( pinnedFixedValuesByFolderName.size > 0 ? { pinnedFixedValuesByFolderName: pinnedFixedValuesByFolderName } : {} )
+            ...( pinnedFixedValuesByFolderName.size > 0 ? { pinnedFixedValuesByFolderName: pinnedFixedValuesByFolderName } : {} ),
+            objectsWrapperFilePath: selectedRun.objectsWrapperFilePath
         };
 
     }
@@ -11054,7 +11673,7 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader, .treeObjectHeader, .treeField, .treeDataset { transition: background-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, box-shadow ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease; }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .recordTypesRegenerate, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treePermissionSets, .treeGeneratePermissionSet, .treeRetrieveValidationRules {
+    .treeToggle, .treeObjectToggle, .picklistToggle, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .recordTypesRegenerate, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treePermissionSets, .treeGeneratePermissionSet, .treeRetrieveValidationRules, .treeQueryRun, .treeQueryReset, .treeQueryExport {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
@@ -11066,7 +11685,7 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .treeGeneratePermissionSet:hover:not(:disabled), .treeRetrieveValidationRules:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
+    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .treeGeneratePermissionSet:hover:not(:disabled), .treeRetrieveValidationRules:hover:not(:disabled), .treeQueryRun:hover:not(:disabled), .treeQueryReset:hover:not(:disabled), .treeQueryExport:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
     .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
@@ -11101,7 +11720,7 @@ ${this.buildPaletteCustomProperties()}
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
     .treeAddFriendChoice, .historyAction { text-decoration: underline; }
-    .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .recordTypesRegenerate:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treePermissionSets:disabled, .treeGeneratePermissionSet:disabled, .treeRetrieveValidationRules:disabled {
+    .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .recordTypesRegenerate:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treePermissionSets:disabled, .treeGeneratePermissionSet:disabled, .treeRetrieveValidationRules:disabled, .treeQueryRun:disabled, .treeQueryReset:disabled, .treeQueryExport:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
         border-color: var(--sdt-border);
@@ -11405,6 +12024,26 @@ ${this.buildPaletteCustomProperties()}
     .troubleshootingSection { margin: 0.25rem 0.6rem 0.5rem; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
     .troubleshootingSectionTitle { font-weight: 600; }
     .troubleshootingSummary { margin-top: 0.2rem; }
+    .treeQueryNote { font-size: 0.9em; }
+    .treeQueryEdited { margin-left: 0.4rem; font-weight: normal; font-size: 0.85em; }
+    .treeQueryText {
+        display: block;
+        box-sizing: border-box;
+        width: 100%;
+        margin-top: 0.3rem;
+        padding: 0.3rem 0.4rem;
+        font-family: var(--vscode-editor-font-family);
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+        resize: vertical;
+    }
+    .treeQueryText:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
+    .treeQueryResult { margin-top: 0.4rem; }
+    .treeQueryTableWrap { overflow: auto; max-height: 24rem; margin-top: 0.2rem; }
+    .treeQueryTable { border-collapse: collapse; font-size: 0.9em; }
+    .treeQueryTable th, .treeQueryTable td { border: 1px solid var(--sdt-border); padding: 0.15rem 0.4rem; text-align: left; vertical-align: top; white-space: pre-wrap; }
     .treeRecordCount { display: inline-flex; align-items: baseline; gap: 0.3rem; }
     .treeRecordCountInput {
         width: 5.5rem;
@@ -11485,6 +12124,9 @@ ${this.buildPaletteCustomProperties()}
     const DEPLOY_COMMANDS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND)};
     const TROUBLESHOOTING_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL)};
     const TROUBLESHOOTING_INTRO = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_INTRO)};
+    const QUERY_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_QUERY_TAB_LABEL)};
+    const QUERY_INTRO = ${JSON.stringify(RECIPE_COCKPIT_QUERY_INTRO)};
+    const QUERY_MAX_LENGTH = ${RECIPE_COCKPIT_QUERY_MAX_LENGTH};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
     const DATA_ORG_CONNECTION_CHECK_INSERT_REASON = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON)};
     const DATA_ORG_LOADING_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER)};
@@ -11603,6 +12245,8 @@ ${this.buildPaletteCustomProperties()}
     let isPermissionSetAssignRunning = false;
     // "Retrieve validation rules…" (#326): SET ON THE CLICK, CLEARED BY THE HOST'S validationRuleRetrieveState
     let isValidationRuleRetrieveRunning = false;
+    // THE QUERY TAB'S RUN (#367): SET ON THE CLICK, CLEARED BY THE HOST'S treeQueryState; ONE PER WINDOW
+    let isTreeQueryRunning = false;
     // THE TROUBLESHOOTING TAB'S DEPLOYS (#346): SET ON THE CLICK, CLEARED BY THE HOST'S metadataDeployState; THE KEY NAMES THE BUTTON CLICKED
     let isMetadataDeployRunning = false;
     let metadataDeployRunningKey = null;
@@ -13696,6 +14340,7 @@ ${this.buildPaletteCustomProperties()}
 
         if (treeState.tree.folderName) {
             addTreeTab(treeState, tabsElement, 'troubleshooting', TROUBLESHOOTING_TAB_LABEL, createElement('div', 'treeTroubleshooting hidden'));
+            addTreeTab(treeState, tabsElement, 'query', QUERY_TAB_LABEL, createElement('div', 'treeQueries hidden'));
         }
 
         treeState.tabsElement = tabsElement;
@@ -13750,9 +14395,11 @@ ${this.buildPaletteCustomProperties()}
                 tabState.isBuilt = true;
                 if (tabState.tabName === 'datasets') { buildDatasetsTab(treeState, tabState.panelElement); }
                 if (tabState.tabName === 'troubleshooting') { buildTroubleshootingTab(treeState, tabState.panelElement); }
+                if (tabState.tabName === 'query') { buildQueryTab(treeState, tabState.panelElement); }
             }
 
             if (isSelected && tabState.tabName === 'troubleshooting') { requestTroubleshootingSummary(treeState); }
+            if (isSelected && tabState.tabName === 'query') { requestTreeQueries(treeState); }
 
         });
 
@@ -14755,9 +15402,9 @@ ${this.buildPaletteCustomProperties()}
             element: treeElement,
             toggleElement: toggleElement,
             bodyElement: createElement('div', 'treeBody hidden'),
-            searchQueries: { treecipe: '', datasets: '', troubleshooting: '' },
+            searchQueries: { treecipe: '', datasets: '', troubleshooting: '', query: '' },
             // WHAT THE READER TYPED IN EACH BOX, AS TYPED -- searchQueries IS ITS TRIMMED, LOWERCASED FORM
-            searchTexts: { treecipe: '', datasets: '', troubleshooting: '' },
+            searchTexts: { treecipe: '', datasets: '', troubleshooting: '', query: '' },
             isDatasetFavoritesOnly: false,
             datasetFavoritesToggleElement: null,
             isRecordTypeFieldsOnly: false,
@@ -15091,6 +15738,294 @@ ${this.buildPaletteCustomProperties()}
         treeState.troubleshootingSummary = summaryMessage;
         drawTreePermissionSet(treeState);
         applyTroubleshootingFilter(treeState);
+
+    }
+
+    /*
+        The Query tab (#367), on every card with a folder: the SOQL Generate Treecipe wrote for the
+        tree, read by the host from the run's objects wrapper each time the tab is selected. Each
+        query is a text box the reader edits; an edit is saved when the box loses focus and before
+        a run, and Reset puts back the generated text. Run posts the KEY and the text, never an org:
+        the host asks for the org in the command palette. Only a PREVIEW comes back, written with
+        textContent; Export asks the host to write the whole result it holds.
+    */
+    function buildQueryTab(treeState, panelElement) {
+
+        treeState.querySearch = buildTabSearch(treeState, 'query', 'Search queries', applyQueryFilter);
+        panelElement.appendChild(treeState.querySearch.element);
+        panelElement.appendChild(createElement('div', 'troubleshootingIntro muted', QUERY_INTRO));
+
+        treeState.queryListElement = createElement('div', 'treeQueryList');
+        treeState.queryListElement.appendChild(createElement('div', 'troubleshootingIntro muted', 'Reading this run’s queries…'));
+        panelElement.appendChild(treeState.queryListElement);
+        treeState.queryStates = [];
+
+        applyQueryFilter(treeState);
+
+    }
+
+    // ASKED EACH TIME THE TAB IS SELECTED; ONE SELECTED BEFORE THE MODEL WAS ACKNOWLEDGED (A RESTORE) ASKS ONCE IT IS
+    function requestTreeQueries(treeState) {
+
+        if (renderedSequence === null) {
+            treeState.isTreeQueriesWanted = true;
+            return;
+        }
+
+        treeState.isTreeQueriesWanted = false;
+        vscodeApi.postMessage({ command: 'loadTreeQueries', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
+
+    }
+
+    // AN EDIT ALREADY ON SCREEN IS KEPT: THE TAB ASKS AGAIN ON EVERY SELECT, AND THE READER MAY BE MID-EDIT
+    function renderTreeQueries(queriesMessage) {
+
+        if (renderedSequence === null || queriesMessage.renderSequence !== renderedSequence) { return; }
+
+        const treeState = treeStates.find(function (candidateTreeState) { return candidateTreeState.tree.treeKey === queriesMessage.treeKey; });
+        if (!treeState || !treeState.queryListElement) { return; }
+
+        if (treeState.queryStates.length > 0 && !queriesMessage.failureMessage) { return; }
+
+        treeState.queryListElement.textContent = '';
+        treeState.queryStates = [];
+
+        if (queriesMessage.failureMessage) {
+            treeState.queryListElement.appendChild(createElement('div', 'troubleshootingIntro muted', String(queriesMessage.failureMessage)));
+        } else if (!Array.isArray(queriesMessage.queries) || queriesMessage.queries.length === 0) {
+            treeState.queryListElement.appendChild(createElement('div', 'troubleshootingIntro muted', 'This tree has no generated queries.'));
+        } else {
+            queriesMessage.queries.forEach(function (treeQuery) { buildTreeQuery(treeState, treeQuery); });
+        }
+
+        if (treeState.pendingQueryResult) {
+            const pendingQueryResult = treeState.pendingQueryResult;
+            treeState.pendingQueryResult = null;
+            renderTreeQueryResult(pendingQueryResult);
+        }
+
+        drawTreeQueryButtons();
+        applyQueryFilter(treeState);
+
+    }
+
+    function buildTreeQuery(treeState, treeQuery) {
+
+        const generatedText = String(treeQuery.generatedText || '');
+        const queryTitle = String(treeQuery.objectApiName) + ' · ' + String(treeQuery.kindLabel);
+        const queryElement = createElement('div', 'troubleshootingSection treeQuery');
+        const textElement = createElement('textarea', 'treeQueryText');
+        const editedElement = createElement('span', 'treeQueryEdited muted hidden', 'edited');
+        const refusalElement = createElement('div', 'fieldEditorRefusal hidden');
+        const controlsElement = createElement('div', 'troubleshootingControls');
+        const runButtonElement = createElement('button', 'treeQueryRun', 'Run…');
+        const resetButtonElement = createElement('button', 'treeQueryReset', 'Reset');
+        const exportJsonButtonElement = createElement('button', 'treeQueryExport treeQueryExport-json', 'Export JSON');
+        const exportCsvButtonElement = createElement('button', 'treeQueryExport treeQueryExport-csv', 'Export CSV');
+        const resultElement = createElement('div', 'treeQueryResult hidden');
+        const titleElement = createElement('div', 'troubleshootingSectionTitle', queryTitle);
+
+        queryElement.setAttribute('role', 'group');
+        queryElement.setAttribute('aria-label', queryTitle);
+        titleElement.appendChild(editedElement);
+        queryElement.appendChild(titleElement);
+        (Array.isArray(treeQuery.notes) ? treeQuery.notes : []).forEach(function (note) {
+            queryElement.appendChild(createElement('div', 'treeQueryNote muted', String(note)));
+        });
+
+        textElement.value = typeof treeQuery.editedText === 'string' ? treeQuery.editedText : generatedText;
+        textElement.setAttribute('aria-label', 'SOQL for ' + queryTitle);
+        textElement.setAttribute('spellcheck', 'false');
+        textElement.setAttribute('maxlength', String(QUERY_MAX_LENGTH));
+        textElement.setAttribute('rows', String(Math.min(12, Math.max(3, generatedText.split('\\n').length))));
+        queryElement.appendChild(textElement);
+        queryElement.appendChild(refusalElement);
+
+        const queryState = {
+            queryKey: String(treeQuery.queryKey),
+            objectApiName: String(treeQuery.objectApiName),
+            kindLabel: String(treeQuery.kindLabel),
+            notes: Array.isArray(treeQuery.notes) ? treeQuery.notes.map(String) : [],
+            generatedText: generatedText,
+            savedText: textElement.value,
+            element: queryElement,
+            textElement: textElement,
+            editedElement: editedElement,
+            refusalElement: refusalElement,
+            runButtonElement: runButtonElement,
+            exportButtonElements: [exportJsonButtonElement, exportCsvButtonElement],
+            resultElement: resultElement,
+            hasResult: false
+        };
+
+        const drawEdited = function () {
+            if (textElement.value !== generatedText) { editedElement.classList.remove('hidden'); } else { editedElement.classList.add('hidden'); }
+        };
+
+        const saveEdit = function () {
+            if (renderedSequence === null || textElement.value === queryState.savedText) { return; }
+            queryState.savedText = textElement.value;
+            vscodeApi.postMessage({ command: 'saveTreeQueryEdit', treeKey: treeState.tree.treeKey, queryKey: queryState.queryKey, queryText: textElement.value === generatedText ? '' : textElement.value });
+        };
+
+        textElement.addEventListener('input', function () {
+            drawEdited();
+            refusalElement.classList.add('hidden');
+            applyQueryFilter(treeState);
+        });
+        textElement.addEventListener('change', saveEdit);
+
+        runButtonElement.addEventListener('click', function () {
+            if (runButtonElement.disabled || renderedSequence === null) { return; }
+            const refusal = describeQueryRefusal(textElement.value);
+            if (refusal) {
+                refusalElement.textContent = refusal;
+                refusalElement.setAttribute('role', 'alert');
+                refusalElement.classList.remove('hidden');
+                return;
+            }
+            saveEdit();
+            isTreeQueryRunning = true;
+            drawTreeQueryButtons();
+            vscodeApi.postMessage({ command: 'runTreeQuery', treeKey: treeState.tree.treeKey, queryKey: queryState.queryKey, queryText: textElement.value });
+        });
+
+        resetButtonElement.addEventListener('click', function () {
+            if (resetButtonElement.disabled) { return; }
+            textElement.value = generatedText;
+            drawEdited();
+            refusalElement.classList.add('hidden');
+            saveEdit();
+            applyQueryFilter(treeState);
+        });
+
+        [['json', exportJsonButtonElement], ['csv', exportCsvButtonElement]].forEach(function (exportEntry) {
+            const exportButtonElement = exportEntry[1];
+            exportButtonElement.addEventListener('click', function () {
+                if (exportButtonElement.disabled || renderedSequence === null) { return; }
+                vscodeApi.postMessage({ command: 'exportTreeQueryResult', treeKey: treeState.tree.treeKey, queryKey: queryState.queryKey, exportFormat: exportEntry[0] });
+            });
+        });
+
+        controlsElement.appendChild(runButtonElement);
+        controlsElement.appendChild(resetButtonElement);
+        controlsElement.appendChild(exportJsonButtonElement);
+        controlsElement.appendChild(exportCsvButtonElement);
+        queryElement.appendChild(controlsElement);
+        queryElement.appendChild(resultElement);
+
+        drawEdited();
+        treeState.queryStates.push(queryState);
+        treeState.queryListElement.appendChild(queryElement);
+
+    }
+
+    // THE HOST HOLDS THE TEXT TO THE SAME RULE; THIS ONLY SAYS SO BEFORE AN ORG IS ASKED FOR
+    function describeQueryRefusal(queryText) {
+
+        const trimmedText = String(queryText || '').trim();
+
+        if (!trimmedText) { return 'The query is empty.'; }
+        if (trimmedText.length > QUERY_MAX_LENGTH) { return 'The query is longer than ' + QUERY_MAX_LENGTH + ' characters.'; }
+        if (!/^select\\s/i.test(trimmedText)) { return 'The query must be one SOQL SELECT statement.'; }
+
+        return '';
+
+    }
+
+    function drawTreeQueryButtons() {
+
+        treeStates.forEach(function (treeState) {
+            (treeState.queryStates || []).forEach(function (queryState) {
+                queryState.runButtonElement.disabled = isTreeQueryRunning;
+                queryState.exportButtonElements.forEach(function (exportButtonElement) {
+                    exportButtonElement.disabled = isTreeQueryRunning || !queryState.hasResult;
+                    exportButtonElement.setAttribute('title', queryState.hasResult ? 'Write what this query returned to treecipe/QueryResults' : 'Run this query first');
+                });
+            });
+        });
+
+    }
+
+    /*
+        One preview at a time, as the host keeps one result: every other query's preview and Export
+        buttons go. A preview for a tab whose queries have not arrived yet waits for them.
+    */
+    function renderTreeQueryResult(resultMessage) {
+
+        if (renderedSequence === null || resultMessage.renderSequence !== renderedSequence) { return; }
+
+        const treeState = treeStates.find(function (candidateTreeState) { return candidateTreeState.tree.treeKey === resultMessage.treeKey; });
+        if (!treeState) { return; }
+
+        const queryState = (treeState.queryStates || []).find(function (candidateQueryState) { return candidateQueryState.queryKey === resultMessage.queryKey; });
+        if (!queryState) {
+            treeState.pendingQueryResult = resultMessage;
+            return;
+        }
+
+        treeStates.forEach(function (eachTreeState) {
+            (eachTreeState.queryStates || []).forEach(function (eachQueryState) {
+                eachQueryState.hasResult = false;
+                eachQueryState.resultElement.textContent = '';
+                eachQueryState.resultElement.classList.add('hidden');
+            });
+        });
+
+        const columns = Array.isArray(resultMessage.columns) ? resultMessage.columns.map(String) : [];
+        const rows = Array.isArray(resultMessage.rows) ? resultMessage.rows : [];
+        const recordCount = Number(resultMessage.recordCount) || 0;
+        let summaryText = pluralize(recordCount, 'record', 'records') + ' from ' + String(resultMessage.orgLabel || 'the org');
+        if (resultMessage.isTruncated) { summaryText += ', the first of ' + String(resultMessage.totalSize) + ' it matched'; }
+        if (rows.length < recordCount) { summaryText += '. Showing the first ' + rows.length + '; Export writes them all.'; }
+
+        queryState.resultElement.appendChild(createElement('div', 'treeQueryResultSummary muted', summaryText));
+
+        if (columns.length > 0) {
+            const tableWrapElement = createElement('div', 'treeQueryTableWrap');
+            const tableElement = createElement('table', 'treeQueryTable');
+            const headElement = createElement('thead', '');
+            const headRowElement = createElement('tr', '');
+            columns.forEach(function (column) { headRowElement.appendChild(createElement('th', '', column)); });
+            headElement.appendChild(headRowElement);
+            tableElement.appendChild(headElement);
+            const bodyElement = createElement('tbody', '');
+            rows.forEach(function (row) {
+                const rowElement = createElement('tr', 'treeQueryRow');
+                columns.forEach(function (_column, columnIndex) {
+                    rowElement.appendChild(createElement('td', '', Array.isArray(row) && row[columnIndex] !== undefined ? String(row[columnIndex]) : ''));
+                });
+                bodyElement.appendChild(rowElement);
+            });
+            tableElement.appendChild(bodyElement);
+            tableWrapElement.appendChild(tableElement);
+            queryState.resultElement.appendChild(tableWrapElement);
+        }
+
+        queryState.hasResult = true;
+        queryState.resultElement.classList.remove('hidden');
+        drawTreeQueryButtons();
+
+    }
+
+    function applyQueryFilter(treeState) {
+
+        const searchQuery = treeState.searchQueries.query;
+        const queryStates = treeState.queryStates || [];
+        let matchingCount = 0;
+
+        queryStates.forEach(function (queryState) {
+            // WHAT THE QUERY DRAWS: ITS OBJECT, KIND, NOTES AND THE TEXT IN ITS BOX NOW
+            const searchText = [queryState.objectApiName, queryState.kindLabel].concat(queryState.notes).concat([String(queryState.textElement.value || '')]).join('\\n').toLowerCase();
+            const isMatch = !searchQuery || searchText.indexOf(searchQuery) !== -1;
+            if (isMatch) { matchingCount++; queryState.element.classList.remove('hidden'); } else { queryState.element.classList.add('hidden'); }
+        });
+
+        if (treeState.querySearch) {
+            treeState.querySearch.matchCountElement.textContent = !searchQuery
+                ? pluralize(queryStates.length, 'query', 'queries')
+                : matchingCount > 0 ? matchingCount + ' of ' + pluralize(queryStates.length, 'query', 'queries') : 'no matches';
+        }
 
     }
 
@@ -16230,6 +17165,8 @@ ${this.buildPaletteCustomProperties()}
             if (!hasFocusScrolled) { restoreScroll(savedPlace); }
             // A TROUBLESHOOTING TAB SELECTED BEFORE THE ACK (#346) ASKS FOR ITS COUNTS NOW
             treeStates.forEach(function (treeState) { if (treeState.isTroubleshootingSummaryWanted) { requestTroubleshootingSummary(treeState); } });
+            // AND A QUERY TAB'S QUERIES (#367)
+            treeStates.forEach(function (treeState) { if (treeState.isTreeQueriesWanted) { requestTreeQueries(treeState); } });
         } catch (focusError) {
             postRenderFailure('runtime', focusError);
         }
@@ -16425,6 +17362,22 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'troubleshootingSummary') {
             renderTroubleshootingSummary(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'treeQueries') {
+            renderTreeQueries(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'treeQueryState') {
+            isTreeQueryRunning = !!hostMessage.isRunning;
+            drawTreeQueryButtons();
+            return;
+        }
+
+        if (hostMessage.command === 'treeQueryResult') {
+            renderTreeQueryResult(hostMessage);
             return;
         }
 

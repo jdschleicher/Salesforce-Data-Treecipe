@@ -6,6 +6,24 @@ const LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hiearchy'];
 
 const TEXT_FIELD_TYPES = ['Text', 'TextArea', 'LongTextArea', 'Html', 'Email', 'Phone', 'Url'];
 
+export type SOQLQueryKind = 'base' | 'childToParent' | 'parentToChild' | 'recordType';
+
+export const SOQL_QUERY_KIND_LABELS: Readonly<Record<SOQLQueryKind, string>> = Object.freeze({
+    base: 'Base Query',
+    childToParent: 'Child-to-Parent Query',
+    parentToChild: 'Parent-to-Child Query',
+    recordType: 'Record Type Filtered Query'
+});
+
+// ONE RUNNABLE QUERY OF A TREE (#367): THE TEMPLATE'S "--" LINES ARE ITS NOTES, SINCE SOQL HAS NO COMMENTS
+export interface ISOQLTreeQuery {
+    queryKey: string;
+    objectApiName: string;
+    kind: SOQLQueryKind;
+    notes: string[];
+    text: string;
+}
+
 export class SOQLTemplateService {
 
     static generateSOQLTemplateMarkdownForTree(objectInfoWrapper: ObjectInfoWrapper, treeObjectNames: string[], timestamp: string): string {
@@ -18,6 +36,55 @@ export class SOQLTemplateService {
         }
 
         return this.generateSOQLTemplateMarkdown(treeWrapper, timestamp);
+
+    }
+
+    /*
+        The same queries the tree's markdown holds, as data (#367): per object in name order, the
+        base query, then each child-to-parent, parent-to-child and record type query in the order
+        the markdown writes them. The SOSL template is not listed: it is not a query the cockpit runs.
+    */
+    static listTreeQueries(objectInfoWrapper: ObjectInfoWrapper, treeObjectNames: string[]): ISOQLTreeQuery[] {
+
+        const treeQueries: ISOQLTreeQuery[] = [];
+        const objectNames = [...new Set(treeObjectNames)]
+            .filter(objectName => Object.prototype.hasOwnProperty.call(objectInfoWrapper.ObjectToObjectInfoMap, objectName))
+            .sort();
+
+        // NO PROTOTYPE: A CHILD REFERENCE NAMED "constructor" MUST NOT READ AS AN OBJECT OF THE TREE
+        const treeWrapper = new ObjectInfoWrapper();
+        treeWrapper.ObjectToObjectInfoMap = Object.create(null);
+        for (const objectName of objectNames) {
+            treeWrapper.ObjectToObjectInfoMap[objectName] = objectInfoWrapper.ObjectToObjectInfoMap[objectName];
+        }
+
+        for (const objectName of objectNames) {
+
+            const objectInfo = objectInfoWrapper.ObjectToObjectInfoMap[objectName];
+
+            const queriesByKind: [SOQLQueryKind, string[]][] = [
+                ['base', [this.buildSelectAllQuery(objectName, objectInfo)]],
+                ['childToParent', this.buildChildToParentQueries(objectName, objectInfo, treeWrapper)],
+                ['parentToChild', this.buildParentToChildSubqueries(objectName, objectInfo, treeWrapper)],
+                ['recordType', this.buildRecordTypeFilteredQueries(objectName, objectInfo)]
+            ];
+
+            for (const [kind, templates] of queriesByKind) {
+                templates.forEach((template, templateIndex) => {
+                    const templateLines = template.split('\n');
+                    treeQueries.push({
+                        queryKey: `${objectName}:${kind}:${templateIndex}`,
+                        objectApiName: objectName,
+                        kind: kind,
+                        notes: templateLines.filter(line => line.startsWith('-- ')).map(line => line.slice(3)),
+                        text: templateLines.filter(line => !line.startsWith('-- ')).join('\n')
+                    });
+                });
+            }
+
+        }
+
+        return treeQueries;
 
     }
 

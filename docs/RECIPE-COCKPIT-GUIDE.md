@@ -47,6 +47,8 @@ Three more write other files: **Remember this selection** saves record types to 
 
 The **Troubleshooting** tab also deploys to a sandbox or scratch org, never production: **Deploy permission set**, **Deploy fields** (custom fields only), **Deploy global value sets** and **Deploy record types** each send just those parts of your project, after a confirmation that lists them.
 
+The **Query** tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree (the same queries as the tree folder's `soql-sosl-templates--….md`). Edit a query, **Run…** it against any connected org you pick in the command palette (a query only reads), and **Export JSON** or **Export CSV** what came back, under `treecipe/QueryResults/<tree folder>/`, which git ignores. A run reads at most 50,000 records and the tab previews the first 50.
+
 ![A card's Treecipe tab with Wire TODO lookups at the top and Wire to… on Contact's AccountId lookup](images/recipe-cockpit/what-edits-the-yaml.png)
 
 ## Where your changes are stored
@@ -57,6 +59,7 @@ They carry over when you regenerate the same objects, but they are not in your r
 When you generate, the cockpit applies them to a copy of the recipe.
 The data set keeps that copy as `filteredRecipe-…` beside `originalRecipe-…` in its `BaseArtifactFiles` folder, and `datasetSource.json` lists what was changed.
 **Reset selection** on a card clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field's pencil.
+Edits on the **Query** tab are kept the same way, per tree; **Reset** beside a query puts back the generated text.
 
 ![The help section open, listing which cards differ from their recipe files](images/recipe-cockpit/where-changes-are-stored.png)
 
