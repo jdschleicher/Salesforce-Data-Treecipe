@@ -148,7 +148,14 @@ describe('RecipeCockpitService, button kinds (#363)', () => {
     it('styles a button\'s states only through its kind: no hover, active or disabled rule lists two button classes', () => {
 
         const html = shellHtml();
-        const buttonClassNames = new Set(Array.from(panelScriptOf(html).matchAll(/createButton\('[^']*', (?:isSelected \? )?'([A-Za-z]+)/g), match => match[1]));
+        // THE LITERAL CLASSES AT EACH CALL, AND EVERY CLASS A DRAWN BUTTON CARRIES: A CLASS HANDED IN THROUGH A VARIABLE (treeToggle) COUNTS TOO
+        const drawnClassNames = collectButtons([renderEverything().cockpitBodyElement])
+            .flatMap(buttonElement => buttonElement.className.split(' '))
+            .filter((className: string) => className !== 'sdtButton' && !className.startsWith('sdtButton-') && className !== 'hidden' && className !== 'selected');
+        const buttonClassNames = new Set([
+            ...Array.from(panelScriptOf(html).matchAll(/createButton\('[^']*', (?:isSelected \? )?'([A-Za-z]+)/g), match => match[1]),
+            ...drawnClassNames
+        ]);
         const stateRules = Array.from(styleSheetOf(html).matchAll(/\n\s*([^{}\n]*:(?:hover|active|disabled)[^{}\n]*) \{/g), match => match[1]);
         const namedButtonClasses = (selector: string) => Array.from(selector.matchAll(/\.([A-Za-z][A-Za-z0-9_-]*)/g), match => match[1]).filter(className => buttonClassNames.has(className));
 
