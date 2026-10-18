@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.106.0] - Recipe Cockpit: the Troubleshooting tab shows one sub-tab at a time
+
+Closes [#365](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/365).
+
+The Troubleshooting tab (#346) stacked four sections under one search box, so finding one action meant scrolling past the rest. It is now a row of sub-tabs, one area at a time.
+
+- **Six sub-tabs, left to right:** **TODO's**, **Fields**, **Permissions**, **Validation Rules**, **Record Types** and **Global Value Sets**. TODO's is selected until you pick another, and the one you pick is kept with the rest of your place, so it is there after a reopen or a window reload. The underline moves like a card's tabs, and not at all under reduced motion.
+- **Where each action went.** Fields holds **Deploy fields…**; Permissions holds **Assign permission sets to me…**, **Generate permission set…** and **Deploy permission set…**; Validation Rules holds **Retrieve validation rules…**; Record Types and Global Value Sets each hold their deploy, which used to share "Dependent metadata". What each button does, its confirmation, its sandbox-only check and its notification are unchanged.
+- **TODO's.** Every TODO comment of the card's recipe, grouped by object, each with its field (or "on the object"), its text and an **↗ yml** link to its line. A field TODO the model sends without its text (the field's own value holds it, #354) has its text read back from that value. The label counts them ("TODO's (5)"); a card with none says so. **TODOs only** stays on the Treecipe tab.
+- **A search per sub-tab.** Each sub-tab has its own box, which hides the TODOs or actions it does not match and counts the rest. Its text survives switching sub-tabs and is kept in the place. The tab-wide "Search troubleshooting actions" box and the four section titles are gone, and so is the intro line above them.
+- **The place.** A card's place gains the optional `troubleshootingSubTab` (never the first) and `troubleshootingSearchQueries` (only non-empty searches), so the place version did not change. An older place, or one naming a sub-tab that does not exist, opens on TODO's, and a tab-wide Troubleshooting search saved before this is dropped.
+- **Help and guide.** "Where recipes come from" and "What does edit the YAML" in the ? help and `docs/RECIPE-COCKPIT-GUIDE.md` name the sub-tabs. No screenshot shows the Troubleshooting tab, so none changed.
+- **Tests.** `RecipeCockpitTroubleshootingSubTabs.test.ts` covers the order, the default, switching and its motion, where each action sits, the TODO list (grouping, text read back, links, search, the empty card, hostile text, a pathological value), each sub-tab's own search, and the place (saved, restored, older, unknown, a focused reload, host normalization). The Troubleshooting and permission set suites now find their buttons in their sub-tabs.
+
 ## [3.105.0] - Recipe Cockpit: one button design system, so every button is styled by a named kind
 
 Closes [#363](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/363).
