@@ -376,20 +376,17 @@ describe('RecipeCockpitService', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
 
-            expect(styleSheet).toMatch(/\n\s*\.toolbar button, \.emptyStateActions button, \.treeInsert, \.recordTypesRegenerate, \.dataOrgLoad, \.dataOrgNewScratch \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
+            // #363: THE FILLED STYLE IS ONE KIND, NOT A LIST OF BUTTON CLASSES
+            expect(styleSheet).toMatch(/\n\s*\.sdtButton-primary \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
             expect(styleSheet).not.toMatch(/\.treeInsertResult|\.treeInsertErrors|\.scratchOrgStatus|\.scratchOrgViewOutput/);
             // #266: THE COMPARE TAB'S DIFF BADGES, ROWS AND CONTROLS ARE GONE, WITH THEIR RULES
             expect(styleSheet).not.toMatch(/\.diff|\.dataObject|\.dataField|\.treeCompare|\.orgStatus|\.orgProgress|\.orgDescribe|\.statusFilter|\.dataTreeCount|\.describeIn/);
-            expect(styleSheet).toMatch(/\.sourceLink \{[^}]*color: var\(--sdt-accent\);/);
+            expect(styleSheet).toMatch(/\.sdtButton-link \{[^}]*color: var\(--sdt-accent\);/);
 
         });
 
-        const COCKPIT_BUTTON_SELECTORS = [
-            '.treeToggle', '.treeObjectToggle', '.picklistToggle',
-            '.treeTab', '.historyAction', '.treeAddFriend', '.treeAddFriendChoice',
-            '.toolbar button', '.emptyStateActions button', '.dataOrgRefresh',
-            '.treeInsert', '.dataOrgLoad', '.dataOrgNewScratch'
-        ];
+        // #363: THE SHARED RULE NAMES THE TWO BORDERED KINDS, AND NO BUTTON CLASS
+        const COCKPIT_BUTTON_SELECTORS = ['.sdtButton-primary', '.sdtButton-secondary'];
 
         const ruleFor = (styleSheet: string, selectorPattern: string): string =>
             styleSheet.match(new RegExp('(^|\\n)\\s*' + selectorPattern + ' \\{[^}]*\\}'))?.[0] ?? '';
@@ -398,18 +395,21 @@ describe('RecipeCockpitService', () => {
         it('sizes every cockpit button from one shared rule with a minimum height, padding and a visible border', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
-            const sharedButtonRule = styleSheet.match(/\n\s*([^{}\n]*\.treeToggle[^{}\n]*) \{([^}]*)\}/);
+            const sharedButtonRule = styleSheet.match(/\n\s*(\.sdtButton-primary, \.sdtButton-secondary) \{([^}]*)\}/);
 
             expect(sharedButtonRule).not.toBeNull();
             const sharedSelectors = (sharedButtonRule as RegExpMatchArray)[1].split(',').map(selector => selector.trim());
-            COCKPIT_BUTTON_SELECTORS.forEach(selector => expect(sharedSelectors).toContain(selector));
+            expect(sharedSelectors).toEqual(COCKPIT_BUTTON_SELECTORS);
             expect((sharedButtonRule as RegExpMatchArray)[2]).toContain('min-height: 2.25rem;');
             expect((sharedButtonRule as RegExpMatchArray)[2]).toMatch(/padding: 0\.4rem 0\.8rem;/);
             expect((sharedButtonRule as RegExpMatchArray)[2]).toContain('border: 1px solid var(--sdt-border);');
             // #263: THE FAVORITE (☆) BUTTON'S SIZE IS EVERY BUTTON'S DEFAULT, SET AFTER font: inherit SO IT IS NOT RESET
             expect((sharedButtonRule as RegExpMatchArray)[2]).toMatch(/font: inherit;\s*font-size: 1\.1em;/);
             // #151: "Wire to…" AND "Wire TODO lookups", AND #294's "Add <Parent> to recipe", ARE THE SMALL ROW BUTTONS RESET SELECTION IS
-            expect(ruleFor(styleSheet, '\\.treeResetSelection, \\.treeWireLookup, \\.treeWireAllLookups, \\.treeAddParentObject')).toMatch(/font: inherit;\s*font-size: 1\.1em;/);
+            // #363: THEY ARE secondary BUTTONS, SO THEIR FONT IS THE KIND'S; THEIR RULE ONLY MAKES THEM SMALLER
+            const smallRowButtonRule = ruleFor(styleSheet, '\\.treeResetSelection, \\.treeWireLookup, \\.treeWireAllLookups, \\.treeAddParentObject');
+            expect(smallRowButtonRule).toContain('min-height: 1.9rem;');
+            expect(smallRowButtonRule).not.toMatch(/color|border|font/);
             expect(ruleFor(styleSheet, '\\.treeFavorite, \\.treeRename')).toContain('font-size: 1.1em;');
             // #263: THE ⟳ GLYPH DRAWS SMALL IN MOST FONTS, SO IT IS SIZED ABOVE THE BUTTON'S OWN 1.1em
             expect(ruleFor(styleSheet, '\\.dataOrgRefreshIcon')).toContain('font-size: 1.5em;');
@@ -474,13 +474,12 @@ describe('RecipeCockpitService', () => {
         it('draws every disabled cockpit button in the disabled tokens with a not-allowed cursor', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
-            const disabledRule = styleSheet.match(/\n\s*([^{}\n]*\.treeAddFriend:disabled[^{}\n]*) \{([^}]*)\}/);
+            const disabledRule = styleSheet.match(/\n\s*([^{}\n]*\.sdtButton-primary:disabled[^{}\n]*) \{([^}]*)\}/);
 
             expect(disabledRule).not.toBeNull();
             const disabledSelectors = (disabledRule as RegExpMatchArray)[1].split(',').map(selector => selector.trim());
-            ['.treeAddFriend:disabled', '.treeAddFriendChoice:disabled', '.toolbar button:disabled',
-                '.emptyStateActions button:disabled', '.treeInsert:disabled', '.dataOrgRefresh:disabled',
-                '.dataOrgLoad:disabled', '.dataOrgNewScratch:disabled', '.treeRecordCountInput:disabled'].forEach(selector => expect(disabledSelectors).toContain(selector));
+            // #363: ONE RULE PER KIND, SO A NEW BUTTON IS DISABLED IN THE SHARED STYLE BY ITS KIND ALONE
+            expect(disabledSelectors).toEqual(['.sdtButton-primary:disabled', '.sdtButton-secondary:disabled', '.treeRecordCountInput:disabled']);
             expect((disabledRule as RegExpMatchArray)[2]).toContain('color: var(--sdt-disabled-text);');
             expect((disabledRule as RegExpMatchArray)[2]).toContain('background-color: var(--sdt-disabled-bg);');
             expect((disabledRule as RegExpMatchArray)[2]).toContain('cursor: not-allowed;');
@@ -3677,7 +3676,7 @@ describe('RecipeCockpitService', () => {
                     const actionGroup = headerChildren[headerChildren.length - 1];
 
                     expect(actionGroup.classList.contains('treeHeaderActions')).toBe(true);
-                    expect(actionGroup.children.map((actionElement: any) => actionElement.className)).toEqual(['treeFavorite', 'treeRename']);
+                    expect(actionGroup.children.map((actionElement: any) => actionElement.className)).toEqual(['sdtButton sdtButton-secondary treeFavorite', 'sdtButton sdtButton-secondary treeRename']);
                     expect(panel.findAll(panel.cockpitBodyElement, 'treeScope')).toEqual([]);
 
                     expandCard(panel, 'Lead-ONLY');
@@ -3686,7 +3685,7 @@ describe('RecipeCockpitService', () => {
                     expect(panel.findAll(actionGroup, 'treeResetSelection')).toEqual([]);
                     const treecipeHeader = panel.findAll(panel.tabPanelOf(leadCard, 'treeStructure'), 'treecipeHeader')[0];
                     const treecipeActions = panel.findAll(treecipeHeader, 'treecipeActions')[0];
-                    expect(treecipeActions.children.map((actionElement: any) => actionElement.className)).toEqual(['treeResetSelection hidden']);
+                    expect(treecipeActions.children.map((actionElement: any) => actionElement.className)).toEqual(['sdtButton sdtButton-secondary treeResetSelection hidden']);
                     expect(panel.findAll(treecipeHeader, 'treeInsert')).toHaveLength(1);
 
                 });

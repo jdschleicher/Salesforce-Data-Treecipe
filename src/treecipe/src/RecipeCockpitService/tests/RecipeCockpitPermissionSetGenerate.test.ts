@@ -790,7 +790,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             expect(controlChildren).toHaveLength(3);
             expect(controlChildren[0] === panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'treePermissionSets')[0]).toBe(true);
             expect(controlChildren[1] === generateButton).toBe(true);
-            expect(controlChildren[2].className).toBe('troubleshootingDeploy troubleshootingDeploy-permissionSet');
+            expect(controlChildren[2].className).toBe('sdtButton sdtButton-secondary troubleshootingDeploy troubleshootingDeploy-permissionSet');
 
             generateButton.dispatch('click');
 

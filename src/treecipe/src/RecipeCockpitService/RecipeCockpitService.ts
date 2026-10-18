@@ -123,6 +123,14 @@ export const RECIPE_COCKPIT_PALETTE: Readonly<Record<RecipeCockpitPaletteToken, 
     excludedOverlay: 'rgba(148, 163, 184, 0.40)'
 });
 
+/*
+    Every button the panel draws is ONE of these kinds (#363), styled by one rule each in the shell,
+    so a new button cannot come out as a browser default by missing a selector list. A button's own
+    class keeps only its size and layout. compact is a size, not a kind: it can go with any kind.
+*/
+export type RecipeCockpitButtonKind = 'primary' | 'secondary' | 'icon' | 'check' | 'link';
+export const RECIPE_COCKPIT_BUTTON_KINDS: readonly RecipeCockpitButtonKind[] = Object.freeze(['primary', 'secondary', 'icon', 'check', 'link'] as RecipeCockpitButtonKind[]);
+
 export const RECIPE_COCKPIT_LOAD_PHASES = {
     findingRuns: 'Finding generated recipe runs…',
     readingRun: 'Reading the generated recipe run…'
@@ -11018,17 +11026,6 @@ ${this.buildPaletteCustomProperties()}
     .helpParagraph { margin: 0.3rem 0; }
     .helpList { margin: 0.3rem 0; padding-left: 1.2rem; }
     .helpActions { margin-top: 0.6rem; }
-    .sourceLink {
-        background: none;
-        border: none;
-        padding: 0;
-        font: inherit;
-        color: var(--sdt-accent);
-        text-align: left;
-        cursor: pointer;
-    }
-    .sourceLink:focus-visible { outline-offset: -1px; }
-    .sourceLink:hover { text-decoration: underline; }
     .treeCard {
         background-color: var(--sdt-surface);
         border: 1px solid var(--sdt-border);
@@ -11054,7 +11051,13 @@ ${this.buildPaletteCustomProperties()}
     .treeHeader, .treeObjectHeader, .treeField, .treeDataset { transition: background-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, box-shadow ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease; }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
-    .treeToggle, .treeObjectToggle, .picklistToggle, .treeFavorite, .treeRename, .treeTab, .historyAction, .treeAddFriend, .treeAddFriendChoice, .toolbar button, .emptyStateActions button, .dataOrgRefresh, .treeInsert, .recordTypesRegenerate, .dataOrgLoad, .dataOrgNewScratch, .dataOrgOpen, .treePermissionSets, .treeGeneratePermissionSet, .treeRetrieveValidationRules {
+    /*
+        THE BUTTON KINDS (#363): every button the panel makes carries sdtButton and exactly one
+        sdtButton-<kind>, and these rules are the only place a button's colours, border and states
+        are set. A button's own class adds size and layout only, so a new button is styled by its
+        kind or fails the button-kind test; it is never a browser default.
+    */
+    .sdtButton-primary, .sdtButton-secondary {
         min-height: 2.25rem;
         min-width: 2.25rem;
         padding: 0.4rem 0.8rem;
@@ -11066,7 +11069,7 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 6px;
         cursor: pointer;
     }
-    .treeToggle:hover:not(:disabled), .treeObjectToggle:hover:not(:disabled), .picklistToggle:hover:not(:disabled), .treeFavorite:hover:not(:disabled), .treeRename:hover:not(:disabled), .treeTab:hover:not(:disabled), .historyAction:hover:not(:disabled), .treeAddFriend:hover:not(:disabled), .treeAddFriendChoice:hover:not(:disabled), .dataOrgRefresh:hover:not(:disabled), .treePermissionSets:hover:not(:disabled), .treeGeneratePermissionSet:hover:not(:disabled), .treeRetrieveValidationRules:hover:not(:disabled), .dataOrgOpen:hover:not(:disabled) {
+    .sdtButton-secondary:hover:not(:disabled) {
         border-color: var(--sdt-accent);
     }
     .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
@@ -11089,25 +11092,50 @@ ${this.buildPaletteCustomProperties()}
     [aria-expanded="true"] > .toggleGlyph { transform: rotate(90deg); }
     .noMotion > .toggleGlyph { transition: none; }
     .toggleGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-    .toolbar button, .emptyStateActions button, .treeInsert, .recordTypesRegenerate, .dataOrgLoad, .dataOrgNewScratch {
+    .sdtButton-primary {
         color: var(--sdt-on-accent);
         background-color: var(--sdt-accent);
         border-color: var(--sdt-accent);
         font-weight: 600;
     }
-    .toolbar button:hover:not(:disabled), .emptyStateActions button:hover:not(:disabled), .treeInsert:hover:not(:disabled), .recordTypesRegenerate:hover:not(:disabled), .dataOrgLoad:hover:not(:disabled), .dataOrgNewScratch:hover:not(:disabled) { filter: brightness(0.92); }
-    .toolbar button:active:not(:disabled), .emptyStateActions button:active:not(:disabled), .treeInsert:active:not(:disabled), .recordTypesRegenerate:active:not(:disabled), .dataOrgLoad:active:not(:disabled), .dataOrgNewScratch:active:not(:disabled) { filter: brightness(0.84); }
+    .sdtButton-primary:hover:not(:disabled) { filter: brightness(0.92); }
+    .sdtButton-primary:active:not(:disabled) { filter: brightness(0.84); }
     .treeAddFriend { font-weight: 600; }
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
     .treeAddFriendChoice, .historyAction { text-decoration: underline; }
-    .treeAddFriend:disabled, .treeAddFriendChoice:disabled, .toolbar button:disabled, .emptyStateActions button:disabled, .treeInsert:disabled, .recordTypesRegenerate:disabled, .dataOrgRefresh:disabled, .treeTab:disabled, .historyAction:disabled, .dataOrgLoad:disabled, .dataOrgNewScratch:disabled, .dataOrgOpen:disabled, .treeRecordCountInput:disabled, .treePermissionSets:disabled, .treeGeneratePermissionSet:disabled, .treeRetrieveValidationRules:disabled {
+    .sdtButton-primary:disabled, .sdtButton-secondary:disabled, .treeRecordCountInput:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
         border-color: var(--sdt-border);
         cursor: not-allowed;
         opacity: 1;
     }
+    .sdtButton-compact { min-height: 0; min-width: 0; padding: 0.15rem 0.6rem; font-size: inherit; }
+    .sdtButton-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        color: var(--sdt-text);
+        background-color: transparent;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .sdtButton-icon:hover:not(:disabled) { background-color: var(--sdt-row-hover); border-color: var(--sdt-border); }
+    .sdtButton-icon:disabled { cursor: not-allowed; }
+    .sdtButton-link {
+        background: none;
+        border: none;
+        padding: 0;
+        font: inherit;
+        color: var(--sdt-accent);
+        text-align: left;
+        cursor: pointer;
+    }
+    .sdtButton-link:focus-visible { outline-offset: -1px; }
+    .sdtButton-link:hover { text-decoration: underline; }
     .treeAddFriends { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding-left: 1.5rem; }
     .treeBody { border-top: 1px solid var(--sdt-border); }
     .treeTabs { display: flex; gap: 0.5rem; padding: 0.4rem 0.6rem 0 0.6rem; border-bottom: 1px solid var(--sdt-border); }
@@ -11153,22 +11181,8 @@ ${this.buildPaletteCustomProperties()}
         width: 2.6rem;
         height: 2.6rem;
     }
-    .treeObjectInclude {
-        position: relative;
-        z-index: 2;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0.15rem;
-        color: var(--sdt-text);
-        background-color: transparent;
-        border: 1px solid transparent;
-        border-radius: 4px;
-        cursor: pointer;
-    }
+    .treeObjectInclude { position: relative; z-index: 2; padding: 0.15rem; }
     .treeObjectIncludeSpacer { display: inline-block; }
-    .treeObjectInclude:hover:not(:disabled) { background-color: var(--sdt-row-hover); border-color: var(--sdt-border); }
-    .treeObjectInclude:disabled { cursor: not-allowed; }
     .treeGlyph { display: block; width: 2.1rem; height: 2.1rem; }
     .treeGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .treeGlyph.excluded path, .treeGlyph.autoExcluded path { stroke: var(--sdt-muted); }
@@ -11187,7 +11201,7 @@ ${this.buildPaletteCustomProperties()}
     /* AN ANIMATING BODY IS ITS OWN STACKING CONTEXT, WHICH WOULD DRAW ITS CONTROLS UNDER THE OVERLAY MID-FADE */
     .treeObject.excluded .motionReveal { animation: none; }
     .treeObject.excluded .hidden.motionConceal { display: none !important; }
-    .treeFieldInclude {
+    .sdtButton-check {
         position: relative;
         z-index: 2;
         display: inline-flex;
@@ -11205,8 +11219,8 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 3px;
         cursor: pointer;
     }
-    .treeFieldInclude[aria-checked="false"] { background-color: var(--sdt-surface); border-color: var(--sdt-muted); }
-    .treeFieldInclude:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); border-color: var(--sdt-border); cursor: not-allowed; }
+    .sdtButton-check[aria-checked="false"] { background-color: var(--sdt-surface); border-color: var(--sdt-muted); }
+    .sdtButton-check:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); border-color: var(--sdt-border); cursor: not-allowed; }
     .recordTypesSection { margin: 0.25rem 0.6rem 0.5rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
     .recordTypesSectionHeader { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.25rem 0.5rem; cursor: pointer; }
     .recordTypesSectionTitle { font-weight: 600; }
@@ -11224,22 +11238,7 @@ ${this.buildPaletteCustomProperties()}
     .recordTypesRememberRow { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.75rem; }
     .recordTypesRememberLabel { cursor: pointer; }
     .recordTypeActions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
-    .treeFieldFixedValue {
-        position: relative;
-        z-index: 2;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 1.5em;
-        height: 1.5em;
-        padding: 0;
-        background: transparent;
-        border: 1px solid transparent;
-        border-radius: 3px;
-        cursor: pointer;
-    }
-    .treeFieldFixedValue:hover:not(:disabled) { background-color: var(--sdt-row-hover); border-color: var(--sdt-border); }
-    .treeFieldFixedValue:disabled { cursor: not-allowed; }
+    .treeFieldFixedValue { position: relative; z-index: 2; width: 1.5em; height: 1.5em; border-radius: 3px; }
     .fixedValueGlyph { display: block; width: 1.1em; height: 1.1em; }
     .fixedValueGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .treeFieldFixedValue[aria-pressed="true"] .fixedValueGlyph path { fill: var(--sdt-accent); }
@@ -11321,32 +11320,9 @@ ${this.buildPaletteCustomProperties()}
     .fieldEditorInput:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
     .fieldEditorHint { font-size: 0.85em; }
     .fieldEditorRefusal { color: var(--sdt-removed); font-size: 0.9em; }
-    .fieldEditorActions button {
-        padding: 0.15rem 0.6rem;
-        font: inherit;
-        color: var(--sdt-accent);
-        background-color: var(--sdt-surface);
-        border: 1px solid var(--sdt-border);
-        border-radius: 6px;
-        cursor: pointer;
-    }
-    .fieldEditorActions button:hover { border-color: var(--sdt-accent); }
-    .fieldEditorActions .fieldEditorSave { color: var(--sdt-on-accent); background-color: var(--sdt-accent); border-color: var(--sdt-accent); }
     .treeFieldNote, .treeFieldWarning { position: relative; z-index: 2; font-size: 0.85em; }
     .treeFieldWarning { color: var(--sdt-changed); }
-    .treeResetSelection, .treeWireLookup, .treeWireAllLookups, .treeAddParentObject {
-        min-height: 1.9rem;
-        padding: 0.2rem 0.6rem;
-        font: inherit;
-        font-size: 1.1em;
-        color: var(--sdt-accent);
-        background-color: var(--sdt-surface);
-        border: 1px solid var(--sdt-border);
-        border-radius: 6px;
-        cursor: pointer;
-    }
-    .treeResetSelection:hover:not(:disabled), .treeWireLookup:hover:not(:disabled), .treeWireAllLookups:hover:not(:disabled), .treeAddParentObject:hover:not(:disabled) { border-color: var(--sdt-accent); }
-    .treeWireLookup:disabled, .treeWireAllLookups:disabled, .treeAddParentObject:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); cursor: not-allowed; }
+    .treeResetSelection, .treeWireLookup, .treeWireAllLookups, .treeAddParentObject { min-height: 1.9rem; padding: 0.2rem 0.6rem; }
     .treeObjectHeader:hover, .treeField:hover { background-color: var(--sdt-row-hover); }
     .treeObjectHeader:focus-within, .treeField:focus-within { background-color: var(--sdt-row-hover); }
     .treeObjectName { font-weight: 600; }
@@ -11428,17 +11404,8 @@ ${this.buildPaletteCustomProperties()}
     }
     .cockpitHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
     .cockpitMeta { display: flex; align-items: center; gap: 0.4rem; color: var(--sdt-muted); }
-    .cockpitChangelog {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0.25rem;
-        border: 1px solid transparent;
-        border-radius: 4px;
-        background-color: transparent;
-        cursor: pointer;
-    }
-    .cockpitChangelog:hover { border-color: var(--sdt-border); background-color: var(--sdt-surface); }
+    .cockpitChangelog { padding: 0.25rem; }
+    .cockpitChangelog:hover:not(:disabled) { background-color: var(--sdt-surface); }
     .githubGlyph { display: block; width: 18px; height: 18px; }
     .githubGlyph path { fill: var(--sdt-muted); }
     .cockpitChangelog:hover .githubGlyph path, .cockpitChangelog:focus-visible .githubGlyph path { fill: var(--sdt-accent); }
@@ -11483,6 +11450,7 @@ ${this.buildPaletteCustomProperties()}
     const GENERATE_PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL)};
     const VALIDATION_RULE_RETRIEVE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL)};
     const DEPLOY_ACTION_LABELS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_LABELS)};
+    const BUTTON_KINDS = ${JSON.stringify(RECIPE_COCKPIT_BUTTON_KINDS)};
     const DEPLOY_COMMANDS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND)};
     const TROUBLESHOOTING_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL)};
     const TROUBLESHOOTING_INTRO = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_INTRO)};
@@ -11663,6 +11631,15 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    // THE ONLY WAY THE PANEL MAKES A BUTTON (#363): ITS KIND STYLES IT, ITS OWN CLASS ONLY SIZES AND PLACES IT
+    function createButton(kind, className, textContent, size) {
+
+        if (BUTTON_KINDS.indexOf(kind) === -1) { throw new Error('Unknown button kind: ' + kind); }
+        const buttonClassName = 'sdtButton sdtButton-' + kind + (size === 'compact' ? ' sdtButton-compact' : '') + (className ? ' ' + className : '');
+        return createElement('button', buttonClassName, textContent);
+
+    }
+
     function setLoadStatus(statusMessage, isFailure) {
 
         if (!statusMessage) {
@@ -11691,7 +11668,7 @@ ${this.buildPaletteCustomProperties()}
             return createElement('span', className, labelText);
         }
 
-        const sourceLinkElement = createElement('button', className + ' sourceLink', labelText);
+        const sourceLinkElement = createButton('link', className + ' sourceLink', labelText);
         sourceLinkElement.setAttribute('title', 'Open in the recipe file');
         sourceLinkElement.addEventListener('click', function () {
             vscodeApi.postMessage({ command: 'openSource', filePath: filePath, lineNumber: lineNumber });
@@ -11752,7 +11729,7 @@ ${this.buildPaletteCustomProperties()}
 
         helpTrees = hasObjects ? (recipe.trees || []) : [];
 
-        helpToggleElement = createElement('button', 'helpToggle', HELP_TOGGLE_LABEL);
+        helpToggleElement = createButton('primary', 'helpToggle', HELP_TOGGLE_LABEL);
         helpToggleElement.setAttribute('aria-label', HELP_TOGGLE_ARIA_LABEL);
         helpToggleElement.setAttribute('title', HELP_TOGGLE_ARIA_LABEL);
         helpToggleElement.setAttribute('aria-controls', 'cockpitHelp');
@@ -11795,9 +11772,9 @@ ${this.buildPaletteCustomProperties()}
             drawHelpSummary();
         }
 
-        // emptyStateActions GIVES THE BUTTON THE FILLED ACCENT STYLE EVERY PRIMARY BUTTON HAS
+        // A PRIMARY BUTTON: THE ONE MAIN ACTION OF THE HELP SECTION (#363)
         const helpActionsElement = createElement('div', 'emptyStateActions helpActions');
-        const helpGuideElement = createElement('button', 'helpGuideOpen', HELP_GUIDE_LABEL);
+        const helpGuideElement = createButton('primary', 'helpGuideOpen', HELP_GUIDE_LABEL);
         helpGuideElement.addEventListener('click', function () {
             vscodeApi.postMessage({ command: 'openHelpGuide' });
         });
@@ -11886,7 +11863,7 @@ ${this.buildPaletteCustomProperties()}
 
         const favoritesElement = createElement('span', 'favoritesControls');
 
-        favoritesToggleElement = createElement('button', 'favoritesToggle');
+        favoritesToggleElement = createButton('primary', 'favoritesToggle');
         favoritesToggleElement.setAttribute('title', 'Show only the trees marked as favorites');
         favoritesToggleElement.addEventListener('click', function () {
             isFavoritesOnly = !isFavoritesOnly;
@@ -11952,13 +11929,13 @@ ${this.buildPaletteCustomProperties()}
 
         const dataOrgView = {
             element: viewElement,
-            loadElement: createElement('button', 'dataOrgLoad', 'Choose org…'),
+            loadElement: createButton('primary', 'dataOrgLoad', 'Choose org…'),
             selectElement: createElement('select', 'dataOrgSelect hidden'),
             spinnerElement: createElement('span', 'dataOrgSpinner hidden'),
             typeElement: createElement('span', 'dataOrgType hidden'),
-            openOrgElement: createElement('button', 'dataOrgOpen hidden', OPEN_ORG_LABEL),
-            refreshElement: createElement('button', 'dataOrgRefresh hidden'),
-            newScratchElement: createElement('button', 'dataOrgNewScratch', '+ New scratch org'),
+            openOrgElement: createButton('secondary', 'dataOrgOpen hidden', OPEN_ORG_LABEL),
+            refreshElement: createButton('secondary', 'dataOrgRefresh hidden'),
+            newScratchElement: createButton('primary', 'dataOrgNewScratch', '+ New scratch org'),
             hiddenNoteElement: createElement('div', 'dataOrgHiddenNote muted hidden'),
             statusElement: createElement('div', 'dataOrgStatus muted hidden'),
             drawnLabels: null
@@ -12278,7 +12255,7 @@ ${this.buildPaletteCustomProperties()}
     */
     function buildToggleElement(className) {
 
-        const toggleElement = createElement('button', className);
+        const toggleElement = createButton('secondary', className);
         const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
         const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
 
@@ -12320,7 +12297,7 @@ ${this.buildPaletteCustomProperties()}
 
     function buildIncludeElement(treeObjectState, treeKey) {
 
-        const includeElement = createElement('button', 'treeObjectInclude');
+        const includeElement = createButton('icon', 'treeObjectInclude');
         const object = treeObjectState.object;
 
         treeObjectState.glyphElement = buildTreeGlyph(treeObjectState);
@@ -12727,7 +12704,7 @@ ${this.buildPaletteCustomProperties()}
     function buildFieldValidationRuleElement(treeObjectState, fieldState) {
 
         const controlElement = createElement('span', 'validationRuleControl');
-        const buttonElement = createElement('button', 'treeFieldInclude treeFieldValidationRule');
+        const buttonElement = createButton('check', 'treeFieldInclude treeFieldValidationRule');
         const object = treeObjectState.object;
 
         controlElement.appendChild(createElement('span', 'muted', 'rules'));
@@ -12768,7 +12745,7 @@ ${this.buildPaletteCustomProperties()}
     */
     function buildFieldFixedValueElement(treeObjectState, fieldState) {
 
-        const buttonElement = createElement('button', 'treeFieldFixedValue');
+        const buttonElement = createButton('icon', 'treeFieldFixedValue');
         const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
         const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
 
@@ -12975,9 +12952,9 @@ ${this.buildPaletteCustomProperties()}
         };
 
         const actionsElement = createElement('div', 'fieldEditorActions');
-        const saveElement = createElement('button', 'fieldEditorSave', 'Save');
-        const clearElement = createElement('button', 'fieldEditorClear', 'Clear');
-        const cancelElement = createElement('button', 'fieldEditorCancel', 'Cancel');
+        const saveElement = createButton('primary', 'fieldEditorSave', 'Save', 'compact');
+        const clearElement = createButton('secondary', 'fieldEditorClear', 'Clear', 'compact');
+        const cancelElement = createButton('secondary', 'fieldEditorCancel', 'Cancel', 'compact');
         saveElement.addEventListener('click', function (event) { event.stopPropagation(); post(false); });
         clearElement.addEventListener('click', function (event) { event.stopPropagation(); post(true); });
         cancelElement.addEventListener('click', function (event) { event.stopPropagation(); toggleFieldEditor(treeObjectState, fieldState, edit); });
@@ -13120,7 +13097,7 @@ ${this.buildPaletteCustomProperties()}
     */
     function buildFieldIncludeElement(treeObjectState, fieldState) {
 
-        const includeElement = createElement('button', 'treeFieldInclude');
+        const includeElement = createButton('check', 'treeFieldInclude');
         const object = treeObjectState.object;
 
         includeElement.setAttribute('role', 'checkbox');
@@ -13158,7 +13135,7 @@ ${this.buildPaletteCustomProperties()}
 
         if (field.isPicklist) {
 
-            const picklistToggleElement = createElement('button', 'picklistToggle', PICKLIST_SHOW_VALUES_LABEL);
+            const picklistToggleElement = createButton('secondary', 'picklistToggle', PICKLIST_SHOW_VALUES_LABEL);
             let picklistValuesElement = null;
 
             setPicklistExpanded = function (isExpanding, isAnimated) {
@@ -13281,7 +13258,7 @@ ${this.buildPaletteCustomProperties()}
         const friendObjectApiNames = object.iteration.insertableFriendObjectApiNames || [];
         if (friendObjectApiNames.length === 0) { return; }
 
-        const addFriendElement = createElement('button', 'treeAddFriend', ADD_FRIEND_ACTION_LABEL);
+        const addFriendElement = createButton('secondary', 'treeAddFriend', ADD_FRIEND_ACTION_LABEL);
         const addFriendsElement = createElement('div', 'treeAddFriends hidden');
 
         addFriendElement.setAttribute('title', 'Add one of the friends of ' + object.objectApiName + ' under ' + object.nickname);
@@ -13296,7 +13273,7 @@ ${this.buildPaletteCustomProperties()}
         addFriendsElement.appendChild(createElement('span', 'muted', 'Add under ' + object.nickname + ':'));
 
         friendObjectApiNames.forEach(function (friendObjectApiName) {
-            const choiceElement = createElement('button', 'treeAddFriendChoice', '+ ' + friendObjectApiName);
+            const choiceElement = createButton('secondary', 'treeAddFriendChoice', '+ ' + friendObjectApiName);
             choiceElement.setAttribute('aria-label', 'Add ' + friendObjectApiName + ' under ' + object.nickname);
             choiceElement.addEventListener('click', function () {
                 if (isAddFriendRunning) { return; }
@@ -13359,7 +13336,7 @@ ${this.buildPaletteCustomProperties()}
     */
     function buildWireLookupElement(tree, wiring) {
 
-        const wireElement = createElement('button', 'treeWireLookup', WIRE_LOOKUP_ACTION_LABEL);
+        const wireElement = createButton('secondary', 'treeWireLookup', WIRE_LOOKUP_ACTION_LABEL);
         const fieldLabel = wiring.objectApiName + (wiring.objectNickname ? ' (' + wiring.objectNickname + ')' : '') + '.' + wiring.fieldApiName;
 
         wireElement.setAttribute('title', wiring.candidateNicknames.length === 1
@@ -13406,7 +13383,7 @@ ${this.buildPaletteCustomProperties()}
     */
     function buildAddParentObjectElement(tree, addition) {
 
-        const addElement = createElement('button', 'treeAddParentObject', 'Add ' + addition.parentObjectApiName + ' to recipe');
+        const addElement = createButton('secondary', 'treeAddParentObject', 'Add ' + addition.parentObjectApiName + ' to recipe');
         const fieldLabel = addition.objectApiName + (addition.objectNickname ? ' (' + addition.objectNickname + ')' : '') + '.' + addition.fieldApiName;
 
         addElement.setAttribute('title', 'Add a ' + addition.parentObjectApiName + ' block with its minimum required fields to the recipe file and point this lookup at it, after a confirmation');
@@ -13431,7 +13408,7 @@ ${this.buildPaletteCustomProperties()}
         const singleCandidateCount = (tree.lookupWirings || []).filter(function (wiring) { return wiring.candidateNicknames.length === 1; }).length;
         if (singleCandidateCount === 0) { return null; }
 
-        const wireAllElement = createElement('button', 'treeWireAllLookups', WIRE_ALL_LOOKUPS_ACTION_LABEL + ' (' + singleCandidateCount + ')');
+        const wireAllElement = createButton('secondary', 'treeWireAllLookups', WIRE_ALL_LOOKUPS_ACTION_LABEL + ' (' + singleCandidateCount + ')');
         wireAllElement.setAttribute('title', 'Point every TODO lookup of this tree that has exactly one record to choose from at that record\\'s nickname, in the recipe file, after a confirmation that lists them');
         wireAllElement.addEventListener('click', function () {
             if (isWireLookupRunning) { return; }
@@ -13709,7 +13686,7 @@ ${this.buildPaletteCustomProperties()}
     function addTreeTab(treeState, tabsElement, tabName, tabLabel, panelElement) {
 
         const isSelected = tabName === treeState.selectedTab;
-        const tabElement = createElement('button', isSelected ? 'treeTab selected' : 'treeTab', tabLabel);
+        const tabElement = createButton('secondary', isSelected ? 'treeTab selected' : 'treeTab', tabLabel);
 
         tabElement.setAttribute('role', 'tab');
         tabElement.setAttribute('aria-selected', isSelected ? 'true' : 'false');
@@ -13847,7 +13824,7 @@ ${this.buildPaletteCustomProperties()}
 
     function buildHistoryAction(className, labelText, titleText, hostMessage) {
 
-        const actionElement = createElement('button', 'historyAction ' + className, labelText);
+        const actionElement = createButton('secondary', 'historyAction ' + className, labelText);
         actionElement.setAttribute('title', titleText);
         actionElement.addEventListener('click', function () { vscodeApi.postMessage(hostMessage); });
         return actionElement;
@@ -13866,7 +13843,7 @@ ${this.buildPaletteCustomProperties()}
         const actionMessage = { datasetFolderName: dataset.datasetFolderName, treeKey: treeState.tree.treeKey, tab: 'datasets' };
         const rowState = { element: datasetElement, dataset: dataset, searchText: '', nameElement: null, favoriteElement: null, renameElement: null };
 
-        rowState.favoriteElement = createElement('button', 'historyAction treeDatasetFavorite');
+        rowState.favoriteElement = createButton('secondary', 'historyAction treeDatasetFavorite');
         rowState.favoriteElement.addEventListener('click', function () {
             vscodeApi.postMessage({ command: 'toggleFavoriteDataset', datasetFolderName: dataset.datasetFolderName });
         });
@@ -13882,7 +13859,7 @@ ${this.buildPaletteCustomProperties()}
 
         datasetHeaderElement.appendChild(createElement('span', 'treeDatasetFolder muted', dataset.datasetFolderName));
 
-        rowState.renameElement = createElement('button', 'historyAction treeDatasetRename', RENAME_TREE_ACTION_LABEL);
+        rowState.renameElement = createButton('secondary', 'historyAction treeDatasetRename', RENAME_TREE_ACTION_LABEL);
         rowState.renameElement.addEventListener('click', function () {
             vscodeApi.postMessage({ command: 'renameDataset', datasetFolderName: dataset.datasetFolderName });
         });
@@ -13900,7 +13877,7 @@ ${this.buildPaletteCustomProperties()}
         if (dataset.recordCounts) {
             countsElement.textContent = formatRecordCounts(dataset.recordCounts);
         } else {
-            const loadCountsElement = createElement('button', 'historyAction treeDatasetCountsLoad', 'Show record counts');
+            const loadCountsElement = createButton('secondary', 'historyAction treeDatasetCountsLoad', 'Show record counts');
             loadCountsElement.setAttribute('title', 'Count the records in the Collections API files of this data set');
             loadCountsElement.addEventListener('click', function () { requestDatasetRecordCounts(dataset.datasetFolderName, countsElement); });
             countsElement.appendChild(loadCountsElement);
@@ -13954,7 +13931,7 @@ ${this.buildPaletteCustomProperties()}
 
         // THE SAME BOX EVERY OTHER CHECKBOX DRAWS (#343), WITH ITS LABEL BESIDE IT AS "Remember this selection" HAS
         const checkElement = createElement('span', 'treeRecordTypeFieldsCheck');
-        const toggleElement = createElement('button', 'treeFieldInclude treeRecordTypeFieldsToggle');
+        const toggleElement = createButton('check', 'treeFieldInclude treeRecordTypeFieldsToggle');
         const labelElement = createElement('span', 'treeRecordTypeFieldsLabel', RECORD_TYPE_FIELDS_ONLY_LABEL);
         toggleElement.setAttribute('role', 'checkbox');
         toggleElement.setAttribute('aria-label', RECORD_TYPE_FIELDS_ONLY_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
@@ -14010,7 +13987,7 @@ ${this.buildPaletteCustomProperties()}
 
         const todoCount = todoCountOf(treeState);
         const checkElement = createElement('span', 'treeTodosCheck');
-        const toggleElement = createElement('button', 'treeFieldInclude treeTodosToggle');
+        const toggleElement = createButton('check', 'treeFieldInclude treeTodosToggle');
         const labelElement = createElement('span', 'treeTodosLabel', todoCount > 0 ? TODOS_ONLY_LABEL + ' (' + todoCount + ')' : TODOS_ONLY_LABEL);
         toggleElement.setAttribute('role', 'checkbox');
         toggleElement.setAttribute('aria-label', TODOS_ONLY_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
@@ -14092,7 +14069,7 @@ ${this.buildPaletteCustomProperties()}
     // THE DATA SETS TAB'S OWN FAVORITES ONLY: PANEL-ONLY, KEPT IN THE READER'S PLACE PER CARD
     function buildDatasetFavoritesToggle(treeState) {
 
-        const toggleElement = createElement('button', 'historyAction treeDatasetFavoritesToggle');
+        const toggleElement = createButton('secondary', 'historyAction treeDatasetFavoritesToggle');
         toggleElement.setAttribute('title', 'Show only the data sets marked as favorites');
         toggleElement.addEventListener('click', function () {
             treeState.isDatasetFavoritesOnly = !treeState.isDatasetFavoritesOnly;
@@ -14311,7 +14288,7 @@ ${this.buildPaletteCustomProperties()}
             object.recordTypes.forEach(function (recordType) {
 
                 const rowElement = createElement('div', 'recordTypeRow');
-                const checkboxElement = createElement('button', 'treeFieldInclude recordTypeInclude');
+                const checkboxElement = createButton('check', 'treeFieldInclude recordTypeInclude');
                 const labelElement = createElement('span', 'recordTypeName', recordType.developerName);
 
                 checkboxElement.setAttribute('role', 'checkbox');
@@ -14338,11 +14315,11 @@ ${this.buildPaletteCustomProperties()}
         });
 
         const actionsElement = createElement('div', 'recordTypeActions');
-        const regenerateElement = createElement('button', 'recordTypesRegenerate', REGENERATE_WITH_RECORD_TYPES_LABEL);
-        const defaultsElement = createElement('button', 'historyAction recordTypesDefaults', USE_DEFAULT_RECORD_TYPES_LABEL);
+        const regenerateElement = createButton('primary', 'recordTypesRegenerate', REGENERATE_WITH_RECORD_TYPES_LABEL);
+        const defaultsElement = createButton('secondary', 'historyAction recordTypesDefaults', USE_DEFAULT_RECORD_TYPES_LABEL);
 
         const rememberRowElement = createElement('div', 'recordTypesRememberRow');
-        const rememberElement = createElement('button', 'treeFieldInclude recordTypesRemember');
+        const rememberElement = createButton('check', 'treeFieldInclude recordTypesRemember');
         const rememberLabelElement = createElement('span', 'recordTypesRememberLabel', REMEMBER_RECORD_TYPES_LABEL);
 
         rememberElement.setAttribute('role', 'checkbox');
@@ -14811,13 +14788,13 @@ ${this.buildPaletteCustomProperties()}
         // ONLY A CARD WITH A FOLDER: THE NAME AND THE FAVORITE ARE KEPT BY FOLDER, AND THE UNGROUPED CARD HAS NONE
         if (tree.folderName) {
 
-            treeState.favoriteElement = createElement('button', 'treeFavorite');
+            treeState.favoriteElement = createButton('secondary', 'treeFavorite');
             treeState.favoriteElement.addEventListener('click', function () {
                 vscodeApi.postMessage({ command: 'toggleFavoriteTree', treeKey: tree.treeKey });
             });
             actionsElement.appendChild(treeState.favoriteElement);
 
-            treeState.renameElement = createElement('button', 'treeRename', RENAME_TREE_ACTION_LABEL);
+            treeState.renameElement = createButton('secondary', 'treeRename', RENAME_TREE_ACTION_LABEL);
             treeState.renameElement.addEventListener('click', function () {
                 vscodeApi.postMessage({ command: 'renameTree', treeKey: tree.treeKey });
             });
@@ -14898,7 +14875,7 @@ ${this.buildPaletteCustomProperties()}
         const actionsElement = createElement('div', 'treecipeActions');
 
         if (tree.folderName) {
-            treeState.resetSelectionElement = createElement('button', 'treeResetSelection hidden', RESET_SELECTION_LABEL);
+            treeState.resetSelectionElement = createButton('secondary', 'treeResetSelection hidden', RESET_SELECTION_LABEL);
             treeState.resetSelectionElement.setAttribute('title', 'Include every object, tick every field and set every count back to the recipe\\'s own');
             treeState.resetSelectionElement.addEventListener('click', function () {
                 vscodeApi.postMessage({ command: 'resetTreeSelection', treeKey: tree.treeKey });
@@ -14928,7 +14905,7 @@ ${this.buildPaletteCustomProperties()}
 
         const controlsElement = createElement('div', 'treeInsertControls');
         const insert = {
-            buttonElement: createElement('button', 'treeInsert', INSERT_ACTION_LABEL),
+            buttonElement: createButton('primary', 'treeInsert', INSERT_ACTION_LABEL),
             reasonElement: createElement('span', 'treeInsertReason muted')
         };
 
@@ -15019,7 +14996,7 @@ ${this.buildPaletteCustomProperties()}
     function addDeploySection(treeState, sectionElement, controlsElement, deployKind) {
 
         const summaryElement = createElement('div', 'troubleshootingSummary muted', 'Reading this project…');
-        const buttonElement = createElement('button', 'troubleshootingDeploy troubleshootingDeploy-' + deployKind, DEPLOY_ACTION_LABELS[deployKind]);
+        const buttonElement = createButton('secondary', 'troubleshootingDeploy troubleshootingDeploy-' + deployKind, DEPLOY_ACTION_LABELS[deployKind]);
 
         buttonElement.addEventListener('click', function () {
             if (buttonElement.disabled || renderedSequence === null) { return; }
@@ -15138,7 +15115,7 @@ ${this.buildPaletteCustomProperties()}
     */
     function buildAssignPermissionSetButton(treeState) {
 
-        const buttonElement = createElement('button', 'treePermissionSets', PERMISSION_SET_ACTION_LABEL);
+        const buttonElement = createButton('secondary', 'treePermissionSets', PERMISSION_SET_ACTION_LABEL);
 
         buttonElement.setAttribute('title', 'Choose the permission sets in this workspace\\'s source that grant access to this tree\\'s objects and assign the ones the org selected above, or a sandbox you choose, already holds to the user that org is authorized as, after a confirmation. Nothing is deployed.');
         buttonElement.addEventListener('click', function () {
@@ -15164,7 +15141,7 @@ ${this.buildPaletteCustomProperties()}
     */
     function buildGeneratePermissionSetButton(treeState) {
 
-        const generateButtonElement = createElement('button', 'treeGeneratePermissionSet', GENERATE_PERMISSION_SET_ACTION_LABEL);
+        const generateButtonElement = createButton('secondary', 'treeGeneratePermissionSet', GENERATE_PERMISSION_SET_ACTION_LABEL);
         generateButtonElement.addEventListener('click', function () {
             if (generateButtonElement.disabled || renderedSequence === null) { return; }
             vscodeApi.postMessage({ command: 'generateTreePermissionSet', treeKey: treeState.tree.treeKey });
@@ -15182,7 +15159,7 @@ ${this.buildPaletteCustomProperties()}
     */
     function buildRetrieveValidationRulesButton(treeState) {
 
-        const retrieveButtonElement = createElement('button', 'treeRetrieveValidationRules', VALIDATION_RULE_RETRIEVE_ACTION_LABEL);
+        const retrieveButtonElement = createButton('secondary', 'treeRetrieveValidationRules', VALIDATION_RULE_RETRIEVE_ACTION_LABEL);
         retrieveButtonElement.addEventListener('click', function () {
             if (retrieveButtonElement.disabled || renderedSequence === null) { return; }
             isValidationRuleRetrieveRunning = true;
@@ -16195,7 +16172,7 @@ ${this.buildPaletteCustomProperties()}
     function buildGenerateTreecipeElement() {
 
         const generateElement = createElement('div', 'emptyStateActions');
-        const generateButtonElement = createElement('button', 'generateTreecipe', GENERATE_TREECIPE_ACTION_LABEL);
+        const generateButtonElement = createButton('primary', 'generateTreecipe', GENERATE_TREECIPE_ACTION_LABEL);
 
         generateButtonElement.addEventListener('click', function () {
             generateButtonElement.disabled = true;
@@ -16220,7 +16197,7 @@ ${this.buildPaletteCustomProperties()}
 
         cockpitVersionElement = createElement('span', 'cockpitVersion', '');
 
-        const changelogElement = createElement('button', 'cockpitChangelog');
+        const changelogElement = createButton('icon', 'cockpitChangelog');
         const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
         const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
 

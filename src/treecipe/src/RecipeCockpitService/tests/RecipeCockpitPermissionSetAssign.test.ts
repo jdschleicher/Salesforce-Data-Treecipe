@@ -1249,10 +1249,10 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             const controlChildren = panel.findAll(accountCard, 'troubleshootingControls')[0].children;
             expect(controlChildren).toHaveLength(3);
             expect(controlChildren[0] === permissionSetButton).toBe(true);
-            expect(controlChildren[1].className).toBe('treeGeneratePermissionSet');
-            expect(controlChildren[2].className).toBe('troubleshootingDeploy troubleshootingDeploy-permissionSet');
+            expect(controlChildren[1].className).toBe('sdtButton sdtButton-secondary treeGeneratePermissionSet');
+            expect(controlChildren[2].className).toBe('sdtButton sdtButton-secondary troubleshootingDeploy troubleshootingDeploy-permissionSet');
             // "Retrieve validation rules…" (#326) HAS A SECTION OF ITS OWN
-            expect(panel.findAll(accountCard, 'troubleshootingControls')[1].children.map((childElement: any) => childElement.className)).toEqual(['treeRetrieveValidationRules']);
+            expect(panel.findAll(accountCard, 'troubleshootingControls')[1].children.map((childElement: any) => childElement.className)).toEqual(['sdtButton sdtButton-secondary treeRetrieveValidationRules']);
 
             permissionSetButton.dispatch('click');
 

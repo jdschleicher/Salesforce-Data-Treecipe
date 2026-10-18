@@ -125,8 +125,8 @@ describe('RecipeCockpitService, motion (#227)', () => {
             expect(motionStyleSheet).toMatch(/\.treeHeader, \.treeObjectHeader, \.treeField, \.treeDataset \{ transition: background-color \d+ms ease, box-shadow \d+ms ease; \}/);
             expect(motionStyleSheet).toContain('.treeObjectHeader:focus-within, .treeField:focus-within { background-color: var(--sdt-row-hover); }');
             expect(motionStyleSheet).toContain('.treeHeader:active { background-color: var(--sdt-row-hover); }');
-            expect(motionStyleSheet).toMatch(/\.treeInsert:hover:not\(:disabled\)[^{]*\{ filter: brightness\(0\.92\); \}/);
-            expect(motionStyleSheet).toMatch(/\.treeInsert:active:not\(:disabled\)[^{]*\{ filter: brightness\(0\.84\); \}/);
+            expect(motionStyleSheet).toMatch(/\.sdtButton-primary:hover:not\(:disabled\) \{ filter: brightness\(0\.92\); \}/);
+            expect(motionStyleSheet).toMatch(/\.sdtButton-primary:active:not\(:disabled\) \{ filter: brightness\(0\.84\); \}/);
 
         });
 
