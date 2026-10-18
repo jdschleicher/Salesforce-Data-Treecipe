@@ -375,6 +375,8 @@ export const RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE = 'Record types';
 // THE PANEL'S TWO SECTIONS (#348): THE ONE ORG PICKER, ALWAYS OPEN (#355), THEN EVERY TREE CARD
 export const RECIPE_COCKPIT_ORG_SECTION_TITLE = 'Target Org Management';
 export const RECIPE_COCKPIT_TREECIPES_SECTION_TITLE = 'Treecipes';
+// THE PINNED ORG SECTION (#364) COVERS THE TOP OF THE PANEL, SO A ROW SCROLLED INTO VIEW STOPS BELOW IT
+export const RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING = '10rem';
 // WHAT A CARD WITH NOTHING TO CHOOSE SAYS IN ITS DISABLED RECORD TYPES HEADER (#338); ONE RECORD TYPE IS NO CHOICE, SO IT READS THE SAME AS NONE
 export const RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY = 'No objects in this tree have two or more record types in local metadata';
 // WHAT THE SECTION SAYS ABOVE ITS ROWS: A REGENERATE IS A GENERATE TREECIPE, WHICH WRITES A NEW RUN OF EVERY TREE
@@ -439,7 +441,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.',
-            'Under the run list, the Target Org Management section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. It is always open. The Treecipes section below it holds the cards; click its heading to fold it away.',
+            'Under the run list, the Target Org Management section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll. The Treecipes section below it holds the cards.',
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, each TODO with a link to its line in the recipe.'
         ]
     },
@@ -1078,8 +1080,7 @@ export interface IRecipeCockpitPanelPlace {
     isFavoritesOnly: boolean;
     // THE HELP SECTION (#332); A PLACE SAVED BEFORE IT HAS NONE AND READS AS COLLAPSED
     isHelpExpanded?: true;
-    // THE TREECIPES SECTION (#348); A PLACE SAVED BEFORE IT READS AS OPEN. THE ORG SECTION NEVER FOLDS (#355), SO A 3.98.0 PLACE'S isOrgSectionCollapsed IS IGNORED
-    isTreecipesSectionCollapsed?: true;
+    // NEITHER SECTION FOLDS (#355, #364), SO A 3.98.0+ PLACE'S isOrgSectionCollapsed AND isTreecipesSectionCollapsed ARE IGNORED AND DROPPED
     scrollY: number;
     trees: IRecipeCockpitPanelTreePlace[];
 }
@@ -1876,7 +1877,6 @@ export class RecipeCockpitService {
             isOrgPickerInUse: candidatePlace.isOrgPickerInUse === true,
             isFavoritesOnly: candidatePlace.isFavoritesOnly === true,
             ...( candidatePlace.isHelpExpanded === true ? { isHelpExpanded: true as const } : {} ),
-            ...( candidatePlace.isTreecipesSectionCollapsed === true ? { isTreecipesSectionCollapsed: true as const } : {} ),
             scrollY: typeof scrollY === 'number' && Number.isFinite(scrollY) && scrollY > 0 ? scrollY : 0,
             trees: trees
         };
@@ -11372,8 +11372,9 @@ ${this.buildPaletteCustomProperties()}
     .dataOrgStatus.failed { color: var(--sdt-removed); }
     .treecipeHeader { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
     .cockpitSection { margin: 0.6rem 0; }
-    .cockpitSectionHeader { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; cursor: pointer; border-bottom: 1px solid var(--sdt-border); }
-    .cockpitSectionHeader.cockpitSectionStatic { cursor: default; }
+    .cockpitSectionHeader { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; cursor: default; border-bottom: 1px solid var(--sdt-border); }
+    #cockpitOrgSection { position: sticky; top: 0; z-index: 10; margin: 0; padding: 0.6rem 0; background-color: var(--sdt-page); border-bottom: 1px solid var(--sdt-border); }
+    html:has(#cockpitOrgSection) { scroll-padding-top: ${RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING}; }
     .cockpitSectionTitle { font-weight: 600; font-size: 1.1em; }
     #cockpitOrgSectionBody { padding: 0.5rem 0.6rem; margin-top: 0.4rem; background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 8px; }
     .treecipeActions, .treeInsertControls, .troubleshootingControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
@@ -11611,10 +11612,8 @@ ${this.buildPaletteCustomProperties()}
     let helpSectionElement = null;
     let helpSummaryElement = null;
     let helpTrees = [];
-    // THE TREECIPES SECTION (#348) STARTS OPEN AND, LIKE THE HELP, ITS FOLD OUTLIVES A MODEL IN THIS DOCUMENT; THE ORG SECTION NEVER FOLDS (#355)
-    let isTreecipesSectionCollapsed = false;
+    // NEITHER THE ORG SECTION (#355) NOR THE TREECIPES SECTION (#364) FOLDS
     let orgSection = null;
-    let treecipesSection = null;
     let favoritesCountElement = null;
     let noFavoritesElement = null;
 
@@ -14605,9 +14604,6 @@ ${this.buildPaletteCustomProperties()}
 
         if (!treeState) { return; }
 
-        // A CARD IN A COLLAPSED TREECIPES SECTION (#348) WOULD BE OPENED OUT OF SIGHT
-        if (treecipesSection && !treecipesSection.isExpanded) { setCockpitSectionExpanded(treecipesSection, true, false); }
-
         // WHAT THE READER JUST ACTED ON IS SHOWN, EVEN WHEN IT IS NOT A FAVORITE
         if (isHiddenByFavorites(treeState)) {
             isFavoritesOnly = false;
@@ -15765,7 +15761,6 @@ ${this.buildPaletteCustomProperties()}
             trees: treeStates.map(buildTreePlace).filter(Boolean)
         };
         if (isHelpExpanded) { panelPlace.isHelpExpanded = true; }
-        if (isTreecipesSectionCollapsed) { panelPlace.isTreecipesSectionCollapsed = true; }
 
         return panelPlace;
 
@@ -15860,7 +15855,6 @@ ${this.buildPaletteCustomProperties()}
         if (savedPlace && savedPlace.isOrgPickerInUse === true) { isDataOrgPickerInUse = true; }
         if (savedPlace) { isFavoritesOnly = savedPlace.isFavoritesOnly === true; }
         if (savedPlace) { isHelpExpanded = savedPlace.isHelpExpanded === true; }
-        if (savedPlace) { isTreecipesSectionCollapsed = savedPlace.isTreecipesSectionCollapsed === true; }
 
     }
 
@@ -16014,9 +16008,7 @@ ${this.buildPaletteCustomProperties()}
             cockpitBodyElement.appendChild(orgSection.element);
         }
 
-        treecipesSection = buildCockpitSection('cockpitTreecipesSection', TREECIPES_SECTION_TITLE, !isTreecipesSectionCollapsed, function (isExpanded) {
-            isTreecipesSectionCollapsed = !isExpanded;
-        });
+        const treecipesSection = buildStaticCockpitSection('cockpitTreecipesSection', TREECIPES_SECTION_TITLE);
         treecipesSection.bodyElement.appendChild(treesViewElement);
         cockpitBodyElement.appendChild(treecipesSection.element);
 
@@ -16024,7 +16016,7 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // THE TARGET ORG MANAGEMENT SECTION (#355): THE SAME HEADER AND BODY AS A FOLDABLE SECTION, WITH NO TOGGLE AND NO LISTENER
+    // THE TARGET ORG MANAGEMENT (#355) AND TREECIPES (#364) SECTIONS: A HEADER AND A BODY, WITH NO TOGGLE AND NO LISTENER
     function buildStaticCockpitSection(sectionId, title) {
 
         const sectionElement = createElement('section', 'cockpitSection');
@@ -16042,52 +16034,6 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    /*
-        The panel's foldable Treecipes section (#348). As on a tree card and the Record types section, the
-        HEADER is the toggle and the ▸ carries no listener of its own; the body is built before it is
-        shown, so a toggle never builds anything.
-    */
-    function buildCockpitSection(sectionId, title, isExpanded, onToggle) {
-
-        const sectionElement = createElement('section', 'cockpitSection');
-        const headerElement = createElement('div', 'cockpitSectionHeader');
-        const toggleElement = buildToggleElement('treeObjectToggle cockpitSectionToggle');
-        const bodyElement = createElement('div', 'cockpitSectionBody');
-
-        sectionElement.setAttribute('id', sectionId);
-        sectionElement.setAttribute('aria-label', title);
-        bodyElement.setAttribute('id', sectionId + 'Body');
-        toggleElement.setAttribute('aria-label', title);
-        toggleElement.setAttribute('aria-controls', sectionId + 'Body');
-        headerElement.appendChild(toggleElement);
-        headerElement.appendChild(createElement('span', 'cockpitSectionTitle', title));
-        sectionElement.appendChild(headerElement);
-        sectionElement.appendChild(bodyElement);
-
-        const cockpitSection = { element: sectionElement, toggleElement: toggleElement, bodyElement: bodyElement, isExpanded: isExpanded, onToggle: onToggle };
-
-        headerElement.addEventListener('click', function () {
-            setCockpitSectionExpanded(cockpitSection, !cockpitSection.isExpanded, true);
-            savePanelPlace();
-        });
-
-        setCockpitSectionExpanded(cockpitSection, isExpanded, false);
-
-        return cockpitSection;
-
-    }
-
-    function setCockpitSectionExpanded(cockpitSection, isExpanded, isAnimated) {
-
-        if (!cockpitSection) { return; }
-
-        cockpitSection.isExpanded = isExpanded;
-        cockpitSection.onToggle(isExpanded);
-        setShownWithMotion(cockpitSection.bodyElement, isExpanded, isAnimated);
-        drawToggle(cockpitSection.toggleElement, isExpanded, isAnimated);
-
-    }
-
     // EVERYTHING ONE MODEL'S DRAW HELD, DROPPED BEFORE THE NEXT DRAW OR A FAILURE NOTICE REPLACES IT
     function resetPanelState() {
 
@@ -16099,7 +16045,6 @@ ${this.buildPaletteCustomProperties()}
         treeStates = [];
         treesViewElement = null;
         orgSection = null;
-        treecipesSection = null;
         dataOrgViews = [];
         dataOrgLabels = null;
         isDataOrgLoadShown = true;
