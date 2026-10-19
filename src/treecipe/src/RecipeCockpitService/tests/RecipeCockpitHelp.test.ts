@@ -85,20 +85,22 @@ describe('RecipeCockpitService help section (#332)', () => {
         return panel;
     };
 
-    const toggleOf = (panel: Panel) => panel.findAll(panel.cockpitBodyElement, 'helpToggle')[0];
+    const toggleOf = (panel: Panel) => panel.findAll(panel.cockpitMetaElement, 'helpToggle')[0];
     const sectionOf = (panel: Panel) => panel.findAll(panel.cockpitBodyElement, 'helpSection')[0];
     const textsOf = (panel: Panel, rootElement: any, className: string) => panel.findAll(rootElement, className).map((element: any) => element.textContent);
     const summaryLinesOf = (panel: Panel) => panel.findAll(sectionOf(panel), 'helpSummary')[0].children.map((element: any) => element.textContent);
 
     describe('the toggle and the section', () => {
 
-        it('draws "?" at the end of the toolbar, collapsed, naming the section it controls', () => {
+        it('draws "?" last on the top-right line, outside the body, collapsed, naming the section it controls (#350)', () => {
 
             const panel = drawRecipe(loadRecipe());
             const toolbar = panel.findAll(panel.cockpitBodyElement, 'toolbar')[0];
             const toggle = toggleOf(panel);
 
-            expect(toolbar.children[toolbar.children.length - 1]).toBe(toggle);
+            expect(panel.cockpitMetaElement.children[panel.cockpitMetaElement.children.length - 1]).toBe(toggle);
+            expect(panel.findAll(panel.cockpitBodyElement, 'helpToggle')).toHaveLength(0);
+            expect(toggle.disabled).toBeFalse();
             expect(toggle.tagName).toBe('button');
             expect(toggle.textContent).toBe('?');
             expect(toggle.attributes['aria-label']).toBe(RECIPE_COCKPIT_HELP_TOGGLE_ARIA_LABEL);
@@ -167,6 +169,36 @@ describe('RecipeCockpitService help section (#332)', () => {
             expect(panel.findAll(sectionOf(panel), 'helpRun')).toHaveLength(0);
             expect(panel.findAll(sectionOf(panel), 'helpSummary')).toHaveLength(0);
             expect(panel.findAll(panel.cockpitBodyElement, 'generateTreecipe')).toHaveLength(1);
+
+        });
+
+        it('keeps the same "?" across models, disabled before the first one and after a failure to draw (#350)', () => {
+
+            const panel = runPanelScript();
+            const toggle = toggleOf(panel);
+
+            expect(toggle.disabled).toBeTrue();
+            expect(toggle.attributes).not.toHaveProperty('aria-expanded');
+            expect(toggle.attributes).not.toHaveProperty('aria-controls');
+
+            panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 3 });
+            toggle.dispatch('click');
+            panel.postToPanel({ command: 'recipeData', recipe: emptyRecipe(), renderSequence: 4 });
+
+            expect(toggleOf(panel)).toBe(toggle);
+            expect(panel.findAll(panel.cockpitMetaElement, 'helpToggle')).toHaveLength(1);
+            expect(toggle.disabled).toBeFalse();
+            expect(toggle.attributes['aria-expanded']).toBe('true');
+            expect(toggle.attributes['aria-controls']).toBe(sectionOf(panel).attributes.id);
+            expect(panel.isHidden(sectionOf(panel))).toBeFalse();
+
+            panel.postToPanel({ command: 'recipeData', recipe: { runs: null, objects: [] }, renderSequence: 5 });
+
+            expect(toggleOf(panel)).toBe(toggle);
+            expect(sectionOf(panel)).toBeUndefined();
+            expect(toggle.disabled).toBeTrue();
+            expect(toggle.attributes).not.toHaveProperty('aria-expanded');
+            expect(toggle.attributes).not.toHaveProperty('aria-controls');
 
         });
 
