@@ -147,6 +147,84 @@ describe('RecipeCockpitQuery.fetchQueryRecords (#367)', () => {
 
 });
 
+describe('RecipeCockpitQuery bounds what one run holds by its values, not only its records (#367)', () => {
+
+    it('counts every value a record holds, a parent\'s and a subquery\'s included, and never "attributes"', () => {
+
+        expect(RecipeCockpitQuery.countValues({ attributes: { type: 'Contact' }, Id: '1', Account: { attributes: {}, Name: 'A', Owner: { Alias: 'x' } }, Cases: { records: [{ Subject: 's' }, { Subject: 't' }] } })).toBe(5);
+        expect(RecipeCockpitQuery.countValues({})).toBe(0);
+
+    });
+
+    it('stops at the value budget, says it was truncated, and reads no page past it', async () => {
+
+        const page = (pageIndex: number) => ({
+            totalSize: 30,
+            done: pageIndex === 2,
+            nextRecordsUrl: `/next/${pageIndex + 1}`,
+            records: Array.from({ length: 10 }, (_unused, recordIndex) => ({ Id: `${pageIndex}-${recordIndex}`, Name: 'n', Phone: 'p' }))
+        });
+        const queryMore = jest.fn(async (nextRecordsUrl: string) => page(Number(nextRecordsUrl.split('/').pop())));
+
+        const queryResult = await RecipeCockpitQuery.fetchQueryRecords({ query: async () => page(0), queryMore }, 'SELECT Id, Name, Phone FROM Account', 1000, () => false, 40);
+
+        expect(queryResult.records).toHaveLength(13);
+        expect(queryResult).toMatchObject({ totalSize: 30, isTruncated: true, isCancelled: false });
+        expect(queryMore).toHaveBeenCalledTimes(1);
+
+    });
+
+    it('previews at most the column limit, and says how many it left out', () => {
+
+        const wideRecord = Object.fromEntries(Array.from({ length: 60 }, (_unused, index) => [`Field${index}__c`, index]));
+        const preview = RecipeCockpitQuery.buildPreview([wideRecord]);
+
+        expect(preview.columns).toHaveLength(50);
+        expect(preview.hiddenColumnCount).toBe(10);
+        expect(preview.rows[0]).toHaveLength(50);
+
+    });
+
+});
+
+describe('RecipeCockpitQuery.isQueryResultsFolderGitIgnored (#367)', () => {
+
+    let workspaceRoot: string;
+
+    beforeEach(() => {
+        workspaceRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'treecipe-query-gitignore-'));
+        fs.mkdirSync(path.join(workspaceRoot, 'treecipe', 'QueryResults'), { recursive: true });
+    });
+
+    afterEach(() => {
+        fs.rmSync(workspaceRoot, { recursive: true, force: true });
+    });
+
+    const withGitignore = (gitignoreText: string) => {
+        fs.writeFileSync(path.join(workspaceRoot, 'treecipe', 'QueryResults', '.gitignore'), gitignoreText);
+        return RecipeCockpitQuery.isQueryResultsFolderGitIgnored(workspaceRoot);
+    };
+
+    it('answers true only for a file whose lines ignore everything and un-ignore nothing', () => {
+
+        expect(withGitignore('*\n')).toBe(true);
+        expect(withGitignore('# org data\r\n  *  \r\n')).toBe(true);
+        expect(withGitignore('*\n!*.csv\n')).toBe(false);
+        expect(withGitignore('*.json\n')).toBe(false);
+        expect(withGitignore('')).toBe(false);
+
+    });
+
+    it('answers false with no file, or with a folder where the file goes', () => {
+
+        expect(RecipeCockpitQuery.isQueryResultsFolderGitIgnored(workspaceRoot)).toBe(false);
+        fs.mkdirSync(path.join(workspaceRoot, 'treecipe', 'QueryResults', '.gitignore'));
+        expect(RecipeCockpitQuery.isQueryResultsFolderGitIgnored(workspaceRoot)).toBe(false);
+
+    });
+
+});
+
 describe('RecipeCockpitQuery exports (#367)', () => {
 
     const records: Record<string, unknown>[] = [

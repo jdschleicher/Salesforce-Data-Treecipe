@@ -18,10 +18,22 @@ import { ISOQLTreeQuery, SOQLQueryKind, SOQLTemplateService } from '../SOQLTempl
     panel writes it with textContent.
 */
 
-export const RECIPE_COCKPIT_QUERY_MAX_LENGTH = 10000;
+// SOQL'S OWN LIMIT: A WIDE OBJECT'S GENERATED BASE QUERY PASSES 10,000 CHARACTERS AT ABOUT 400 FIELDS
+export const RECIPE_COCKPIT_QUERY_MAX_LENGTH = 100000;
 
 // THE MOST RECORDS ONE RUN FETCHES: PAST IT THE RUN STOPS AND SAYS THE RESULT WAS TRUNCATED
 export const RECIPE_COCKPIT_QUERY_RECORD_CAP = 50000;
+
+/*
+    The most VALUES one run holds, which is what memory follows: a record count alone does not
+    bound it, since the generated base query selects every field. Measured at ~176 bytes held per
+    value, 50,000 records of 300 fields was ~2 GB on the extension host and a JSON export threw;
+    1,000,000 values holds ~176 MB and builds either export in under a second.
+*/
+export const RECIPE_COCKPIT_QUERY_VALUE_BUDGET = 1000000;
+
+// THE MOST COLUMNS A PREVIEW POSTS: AN 800-FIELD OBJECT WOULD OTHERWISE POST 40,000 CELLS
+export const RECIPE_COCKPIT_QUERY_PREVIEW_COLUMN_LIMIT = 50;
 
 export const RECIPE_COCKPIT_QUERY_PREVIEW_ROW_LIMIT = 50;
 
@@ -63,6 +75,8 @@ export interface IRecipeCockpitQueryResult {
 export interface IRecipeCockpitQueryPreview {
     columns: string[];
     rows: string[][];
+    // COLUMNS THE PREVIEW LEFT OUT, WHICH AN EXPORT STILL WRITES
+    hiddenColumnCount: number;
 }
 
 export class RecipeCockpitQuery {
@@ -180,26 +194,30 @@ export class RecipeCockpitQuery {
     static async fetchQueryRecords(pageSource: IRecipeCockpitQueryPageSource,
                                     queryText: string,
                                     recordCap: number = RECIPE_COCKPIT_QUERY_RECORD_CAP,
-                                    isCancellationRequested: () => boolean = () => false): Promise<IRecipeCockpitQueryResult> {
+                                    isCancellationRequested: () => boolean = () => false,
+                                    valueBudget: number = RECIPE_COCKPIT_QUERY_VALUE_BUDGET): Promise<IRecipeCockpitQueryResult> {
 
         const records: Record<string, unknown>[] = [];
+        let valueCount = 0;
         let page = this.readQueryPage(await pageSource.query(queryText));
         const totalSize = page.totalSize ?? page.records.length;
 
         for (;;) {
 
             for ( const pageRecord of page.records ) {
-                if ( records.length >= recordCap ) {
+                const recordValueCount = this.countValues(pageRecord);
+                if ( records.length >= recordCap || valueCount + recordValueCount > valueBudget ) {
                     return { records: records, totalSize: totalSize, isTruncated: true, isCancelled: false };
                 }
                 records.push(pageRecord);
+                valueCount += recordValueCount;
             }
 
             if ( page.done ) {
                 return { records: records, totalSize: totalSize, isTruncated: false, isCancelled: false };
             }
 
-            if ( records.length >= recordCap ) {
+            if ( records.length >= recordCap || valueCount >= valueBudget ) {
                 return { records: records, totalSize: totalSize, isTruncated: true, isCancelled: false };
             }
 
@@ -214,6 +232,22 @@ export class RecipeCockpitQuery {
             page = this.readQueryPage(await pageSource.queryMore(page.nextRecordsUrl));
 
         }
+
+    }
+
+    // EVERY VALUE A RECORD HOLDS, A PARENT'S AND A SUBQUERY'S INCLUDED: WHAT HOLDING IT COSTS
+    static countValues(value: unknown): number {
+
+        if ( Array.isArray(value) ) {
+            return value.reduce((valueCount: number, item: unknown) => valueCount + this.countValues(item), 0);
+        }
+
+        const valueRecord = this.asRecord(value);
+        if ( !valueRecord ) {
+            return 1;
+        }
+
+        return Object.keys(valueRecord).reduce((valueCount, key) => key === 'attributes' ? valueCount : valueCount + this.countValues(valueRecord[key]), 0);
 
     }
 
@@ -318,12 +352,36 @@ export class RecipeCockpitQuery {
 
     }
 
+    /*
+        Whether treecipe/QueryResults/.gitignore still ignores everything under it. The writer only
+        ever creates it ("wx"), so a file the repository already carried, or one edited since, is
+        read rather than trusted: it ignores everything only as a plain file whose lines are a "*"
+        and nothing that un-ignores ("!") a path.
+    */
+    static isQueryResultsFolderGitIgnored(workspaceRoot: string): boolean {
+
+        const gitignoreFilePath = path.join(path.resolve(workspaceRoot), 'treecipe', RECIPE_COCKPIT_QUERY_RESULTS_FOLDER_NAME, '.gitignore');
+
+        try {
+            if ( !fs.lstatSync(gitignoreFilePath).isFile() ) {
+                return false;
+            }
+            const ignoreLines = fs.readFileSync(gitignoreFilePath, 'utf-8').split(/\r?\n/).map(line => line.trim()).filter(line => line !== '' && !line.startsWith('#'));
+            return ignoreLines.includes('*') && !ignoreLines.some(line => line.startsWith('!'));
+        } catch {
+            return false;
+        }
+
+    }
+
     static buildPreview(records: readonly Record<string, unknown>[], rowLimit: number = RECIPE_COCKPIT_QUERY_PREVIEW_ROW_LIMIT): IRecipeCockpitQueryPreview {
 
-        const { columns, flattenedRecords } = this.flattenRecords(records.slice(0, rowLimit));
+        const { columns: allColumns, flattenedRecords } = this.flattenRecords(records.slice(0, rowLimit));
+        const columns = allColumns.slice(0, RECIPE_COCKPIT_QUERY_PREVIEW_COLUMN_LIMIT);
 
         return {
             columns: columns,
+            hiddenColumnCount: allColumns.length - columns.length,
             rows: flattenedRecords.map(flattenedRecord => columns.map(column => {
                 const cellText = this.toCellText(flattenedRecord.get(column));
                 return cellText.length > RECIPE_COCKPIT_QUERY_PREVIEW_CELL_MAX_LENGTH

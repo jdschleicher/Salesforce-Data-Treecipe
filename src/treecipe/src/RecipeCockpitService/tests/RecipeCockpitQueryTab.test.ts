@@ -124,7 +124,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             const panelState = buildPanelState();
             const notRunning = (treeKey: string, queryKey: string) => ({ kind: 'postTreeQueryState', hostMessage: { command: 'treeQueryState', isRunning: false, treeKey: treeKey, queryKey: queryKey } });
 
-            expect(RecipeCockpitService.routePanelMessage({ command: 'saveTreeQueryEdit', treeKey: ACCOUNT_TREE_KEY, queryKey: 'Contact:base:0', queryText: 'x'.repeat(10001) }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'saveTreeQueryEdit', treeKey: ACCOUNT_TREE_KEY, queryKey: 'Contact:base:0', queryText: 'x'.repeat(100001) }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'saveTreeQueryEdit', treeKey: ACCOUNT_TREE_KEY, queryKey: '', queryText: '' }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'runTreeQuery', treeKey: 'Lead-ONLY', queryKey: 'Lead:base:0', queryText: 'SELECT Id FROM Lead' }, panelState)).toEqual(notRunning('Lead-ONLY', 'Lead:base:0'));
             expect(RecipeCockpitService.routePanelMessage({ command: 'runTreeQuery', treeKey: ACCOUNT_TREE_KEY, queryKey: 7, queryText: 'SELECT Id FROM Contact' }, panelState)).toEqual(notRunning(ACCOUNT_TREE_KEY, ''));
@@ -294,7 +294,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             await loadQueries();
 
             await send({ command: 'saveTreeQueryEdit', treeKey: ACCOUNT_TREE_KEY, queryKey: 'Contact:base:0', queryText: 'SELECT Id FROM Contact LIMIT 5' });
-            expect(storedWorkspaceState.get(RECIPE_COCKPIT_QUERY_EDITS_STATE_KEY)).toEqual({ version: 1, editsByFolderName: { [ACCOUNT_TREE_KEY]: { 'Contact:base:0': 'SELECT Id FROM Contact LIMIT 5' } } });
+            expect(storedWorkspaceState.get(RECIPE_COCKPIT_QUERY_EDITS_STATE_KEY)).toEqual({ version: 1, editsByFolderName: { [ACCOUNT_TREE_KEY]: { 'Contact:base:0': { generatedText: CONTACT_BASE_QUERY.text, editedText: 'SELECT Id FROM Contact LIMIT 5' } } } });
 
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;
             await openCockpit();
@@ -311,16 +311,38 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
 
         });
 
+        it('drops an edit, rather than drawing it on another query, once its key generates other text (a regeneration moved it)', async () => {
+
+            const accountChildToParent = ACCOUNT_TREE_QUERIES.find(treeQuery => treeQuery.queryKey === 'Account:childToParent:0')!;
+            storedWorkspaceState.set(RECIPE_COCKPIT_QUERY_EDITS_STATE_KEY, {
+                version: 1,
+                editsByFolderName: { [ACCOUNT_TREE_KEY]: {
+                    'Account:childToParent:0': { generatedText: 'SELECT Id, ParentId FROM Account', editedText: 'SELECT Id, ParentId FROM Account LIMIT 3' },
+                    'Contact:base:0': { generatedText: CONTACT_BASE_QUERY.text, editedText: 'SELECT Id FROM Contact LIMIT 2' }
+                } }
+            });
+
+            await openCockpit();
+            const queries = (await loadQueries()).queries;
+
+            expect(queries.find((treeQuery: any) => treeQuery.queryKey === 'Account:childToParent:0')).toEqual(expect.not.objectContaining({ editedText: expect.anything() }));
+            expect(queries.find((treeQuery: any) => treeQuery.queryKey === 'Account:childToParent:0').generatedText).toBe(accountChildToParent.text);
+            expect(queries.find((treeQuery: any) => treeQuery.queryKey === 'Contact:base:0').editedText).toBe('SELECT Id FROM Contact LIMIT 2');
+
+        });
+
         it('reads back only edits it could have written, and stores a __proto__ key as a key', () => {
 
             const stateOf = (storedValue: unknown) => ({ get: <T>() => storedValue as T, update: jest.fn() });
+            const edit = (editedText: string) => ({ generatedText: 'SELECT Id FROM Account', editedText: editedText });
 
-            const stored = JSON.parse('{"version":1,"editsByFolderName":{"__proto__":{"__proto__":"SELECT Id FROM Account"},"Tree":{"k":7,"ok":"SELECT Id FROM Lead","":"x"},"Other":"nope"}}');
+            const stored = JSON.parse(JSON.stringify({ version: 1, editsByFolderName: { Tree: { k: 7, ok: edit('SELECT Id FROM Lead'), noGenerated: { editedText: 'SELECT Id FROM Lead' }, '': edit('x') }, Other: 'nope' } }));
+            stored.editsByFolderName = JSON.parse(JSON.stringify(stored.editsByFolderName).replace('{"Tree"', '{"__proto__":{"__proto__":' + JSON.stringify(edit('SELECT Id FROM Account LIMIT 1')) + '},"Tree"'));
             const queryEdits = RecipeCockpitService.readQueryEdits(stateOf(stored));
 
             expect([...queryEdits.keys()]).toEqual(['__proto__', 'Tree']);
-            expect(queryEdits.get('__proto__')?.get('__proto__')).toBe('SELECT Id FROM Account');
-            expect([...(queryEdits.get('Tree') ?? new Map())]).toEqual([['ok', 'SELECT Id FROM Lead']]);
+            expect(queryEdits.get('__proto__')?.get('__proto__')).toEqual(edit('SELECT Id FROM Account LIMIT 1'));
+            expect([...(queryEdits.get('Tree') ?? new Map())]).toEqual([['ok', edit('SELECT Id FROM Lead')]]);
             expect(RecipeCockpitService.readQueryEdits(stateOf({ version: 2, editsByFolderName: {} })).size).toBe(0);
             expect(RecipeCockpitService.readQueryEdits({ get: () => { throw new Error('gone'); }, update: jest.fn() } as any).size).toBe(0);
 
@@ -350,7 +372,8 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
                 recordCount: 2,
                 isTruncated: false,
                 columns: ['Id', 'LastName', 'AccountId'],
-                rows: [['003000000000001AAA', 'Smith', ''], ['003000000000002AAA', '=cmd', '001000000000001AAA']]
+                rows: [['003000000000001AAA', 'Smith', ''], ['003000000000002AAA', '=cmd', '001000000000001AAA']],
+                hiddenColumnCount: 0
             });
             expect(postedNamed('treeQueryState').slice(0, 2)).toEqual([
                 { command: 'treeQueryState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, queryKey: 'Contact:base:0' },
@@ -490,6 +513,52 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
 
         });
 
+        it('warns, and still writes the file, when treecipe/QueryResults/.gitignore does not ignore everything', async () => {
+
+            await openCockpit();
+            await loadQueries();
+            await run();
+            fs.mkdirSync(resultsFolderPath(), { recursive: true });
+            fs.writeFileSync(path.join(resultsFolderPath(), '.gitignore'), '*\n!*.csv\n');
+
+            await send({ command: 'exportTreeQueryResult', treeKey: ACCOUNT_TREE_KEY, queryKey: 'Contact:base:0', exportFormat: 'csv' });
+
+            const exportNotice = notifications().find(notice => notice.text.startsWith('Exported'));
+            expect(exportNotice).toMatchObject({ severity: 'warning', actions: [RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL] });
+            expect(exportNotice?.text).toContain('could be committed');
+            expect(fs.readdirSync(path.join(resultsFolderPath(), ACCOUNT_TREE_KEY))).toHaveLength(1);
+
+        });
+
+        it('warns rather than throwing when an export cannot be built', async () => {
+
+            await openCockpit();
+            await loadQueries();
+            await run();
+            jest.spyOn(RecipeCockpitQuery, 'buildJsonExport').mockImplementation(() => { throw new RangeError('Invalid string length'); });
+
+            await send({ command: 'exportTreeQueryResult', treeKey: ACCOUNT_TREE_KEY, queryKey: 'Contact:base:0', exportFormat: 'json' });
+
+            expect(notifications().at(-1)?.text).toBe('Nothing was exported: the JSON file could not be built: Invalid string length');
+            expect(fs.existsSync(resultsFolderPath())).toBe(false);
+
+        });
+
+        it('lets a result go when a new model is drawn, so it is never exported from a model it was not run on', async () => {
+
+            await openCockpit();
+            await loadQueries();
+            await run();
+
+            (RecipeCockpitService as any).recipeCockpitPanel = undefined;
+            await openCockpit();
+            await send({ command: 'exportTreeQueryResult', treeKey: ACCOUNT_TREE_KEY, queryKey: 'Contact:base:0', exportFormat: 'json' });
+
+            expect(notifications().at(-1)?.text).toBe('Nothing was exported: run this query first. Only the last query run is kept to export.');
+            expect(fs.existsSync(resultsFolderPath())).toBe(false);
+
+        });
+
         it('runs one query per window: a run while one runs starts nothing and is told it is running', async () => {
 
             await openCockpit();
@@ -569,7 +638,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             expect(RecipeCockpitService.readQueryEdits(undefined).size).toBe(0);
 
             const failingState = { get: jest.fn(), update: jest.fn().mockRejectedValue(new Error('disk full')) };
-            expect(await RecipeCockpitService.writeQueryEdits(failingState, new Map([['Tree', new Map([['k', 'SELECT Id FROM Account']])]]))).toBe(false);
+            expect(await RecipeCockpitService.writeQueryEdits(failingState, new Map([['Tree', new Map([['k', { generatedText: 'SELECT Id FROM Account', editedText: 'SELECT Id FROM Account LIMIT 1' }]])]]))).toBe(false);
 
             expect(notifications().map(notice => notice.text)).toEqual([
                 'The Recipe Cockpit has no workspace to keep query edits in. Open a folder and re-open the cockpit.',
@@ -810,7 +879,8 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
                 recordCount: 100,
                 isTruncated: true,
                 columns: ['Id', 'LastName'],
-                rows: [['1', '<img src=x onerror=alert(1)>'], ['2', 'Jones']]
+                rows: [['1', '<img src=x onerror=alert(1)>'], ['2', 'Jones']],
+                hiddenColumnCount: 3
             });
 
             panel.postToPanel(resultMessage('Contact:base:0', 2));
@@ -818,7 +888,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
 
             panel.postToPanel(resultMessage('Contact:base:0'));
 
-            expect(panel.findAll(contactBase, 'treeQueryResultSummary')[0].textContent).toBe('100 records from prod · admin@example.com, the first of 120 it matched. Showing the first 2; Export writes them all.');
+            expect(panel.findAll(contactBase, 'treeQueryResultSummary')[0].textContent).toBe('100 records from prod · admin@example.com, the first of 120 it matched. Showing the first 2 rows and 2 columns, 3 more not shown; Export writes them all.');
             const rowElements = panel.findAll(contactBase, 'treeQueryRow');
             expect(rowElements.map((rowElement: any) => rowElement.children.map((cellElement: any) => cellElement.textContent))).toEqual([['1', '<img src=x onerror=alert(1)>'], ['2', 'Jones']]);
             expect(rowElements[0].children[1].children).toEqual([]);
