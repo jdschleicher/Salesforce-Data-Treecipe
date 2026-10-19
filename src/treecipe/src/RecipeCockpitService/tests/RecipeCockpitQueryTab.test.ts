@@ -827,6 +827,10 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             // EXPORT WAITS FOR A RESULT
             expect(panel.findAll(accountBase, 'treeQueryExport').every((buttonElement: any) => buttonElement.disabled)).toBe(true);
 
+            // #363: RUN IS EACH QUERY'S ONE MAIN ACTION; EVERY OTHER BUTTON IS SECONDARY
+            expect(panel.findAll(accountBase, 'treeQueryRun')[0].className).toBe('sdtButton sdtButton-primary treeQueryRun');
+            expect(['treeQueryReset', 'treeQueryExport'].flatMap(className => panel.findAll(accountBase, className)).every((buttonElement: any) => buttonElement.classList.contains('sdtButton-secondary'))).toBe(true);
+
         });
 
         it('saves an edit when the box loses focus, and Reset puts back the generated text and removes the edit', () => {
