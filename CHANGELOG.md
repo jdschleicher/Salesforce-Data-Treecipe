@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.106.0] - Recipe Cockpit: a Query tab that runs a tree's generated SOQL and exports the results
+## [3.107.0] - Recipe Cockpit: a Query tab that runs a tree's generated SOQL and exports the results
 
 Closes [#367](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/367).
 
@@ -15,6 +15,21 @@ Generate Treecipe has always written a `soql-sosl-templates--<tree>-<ts>.md` int
 - **Buttons.** The tab's buttons are made with 3.105.0's `createButton`: **Run…** is `primary`, each query's one main action, and **Reset**, **Export JSON** and **Export CSV** are `secondary`.
 - **Help and guide.** The ? help, `docs/RECIPE-COCKPIT-GUIDE.md` and the preview warning describe the tab. The screenshots were re-taken, and their tab strip now shows Query.
 - **Tests.** `SOQLTemplateService.test.ts` checks that `listTreeQueries` holds every query the markdown holds. The Query suites also cover the value budget, the preview's column limit, an edit whose query was regenerated, an export after a new model, the `.gitignore` check and an export that fails to build. `RecipeCockpitQuery.test.ts` covers the wrapper check, the single-`SELECT` rule, paging to the cap and cancelling, the JSON, CSV and preview formats, and the export writer's refusals: folder names, a link out of the workspace, a failed write. `RecipeCockpitQueryTab.test.ts` runs the router, the host against a faked org prompt and connection (prompt every time, a dismissed pick, a refused text, an org error, truncation, a cancel, exports, one run per window, a replay) and the real panel script.
+
+## [3.106.0] - Recipe Cockpit: the Troubleshooting tab shows one sub-tab at a time
+
+Closes [#365](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/365).
+
+The Troubleshooting tab (#346) stacked four sections under one search box, so finding one action meant scrolling past the rest. It is now a row of sub-tabs, one area at a time.
+
+- **Six sub-tabs, left to right:** **TODO's**, **Fields**, **Permissions**, **Validation Rules**, **Record Types** and **Global Value Sets**. TODO's is selected until you pick another, and the one you pick is kept with the rest of your place, so it is there after a reopen or a window reload. The underline moves like a card's tabs, and not at all under reduced motion.
+- **Where each action went.** Fields holds **Deploy fields…**; Permissions holds **Assign permission sets to me…**, **Generate permission set…** and **Deploy permission set…**; Validation Rules holds **Retrieve validation rules…**; Record Types and Global Value Sets each hold their deploy, which used to share "Dependent metadata". What each button does, its confirmation, its sandbox-only check and its notification are unchanged.
+- **TODO's.** Every TODO comment of the card's recipe, one group per object with its count, each entry with its field (or "on the object"), its text and an **↗ yml** link to its line. A group's rows are built when it opens, and groups open within the cockpit's auto-expand budgets (25 objects, 2,000 rows), like a Treecipe object's rows. A field TODO the model sends without its text (the field's own value holds it, #354) now carries where its value holds it (`valueStart`, `valueLength`), so the list shows the exact text. The label counts them ("TODO's (5)"); a card with none says so. **TODOs only** stays on the Treecipe tab.
+- **A search per sub-tab.** Each sub-tab has its own box, which hides the TODOs or actions it does not match and counts the rest. It matches what is on screen (not a button's tooltip), searches TODOs whose rows are not built yet, opens the groups that match, and is re-applied when a run changes what an action draws. Its text survives switching sub-tabs and is kept in the place. The tab-wide "Search troubleshooting actions" box and the four section titles are gone, and so is the intro line above them.
+- **The place.** A card's place gains the optional `troubleshootingSubTab` (never the first) and `troubleshootingSearchQueries` (only non-empty searches), so the place version did not change. An older place, or one naming a sub-tab that does not exist, opens on TODO's, and a tab-wide Troubleshooting search saved before this is dropped.
+- **Help and guide.** "Where recipes come from" and "What does edit the YAML" in the ? help and `docs/RECIPE-COCKPIT-GUIDE.md` name the sub-tabs. No screenshot shows the Troubleshooting tab, so none changed.
+- **From review.** The first version built every TODO row when the tab opened: 126k elements and about 1 s at 30,000 TODOs, 462k and 6 s at 110,000 (the panel harness). Lazy groups bring that to 25k elements and 0.21 s, and 89k and 0.8 s. A keystroke now filters only its own sub-tab, and a row's visibility is written only when it changes. The panel's own reader of TODO text was replaced by the span the host sends, because it could pick a quoted ` # TODO` inside a value, or a deleted TODO's text, by position.
+- **Tests.** `RecipeCockpitTroubleshootingSubTabs.test.ts` covers the order, the default, switching and its motion, where each action sits, the TODO list (grouping, the value span and one that does not fit, links, search, the empty card, hostile text, the budgets and a closed group built on open, search over unbuilt rows), each sub-tab's own search (tooltips not matched, re-applied on a run), and the place (saved, restored, older, unknown, a focused reload, host normalization). The Troubleshooting and permission set suites now find their buttons in their sub-tabs.
 
 ## [3.105.0] - Recipe Cockpit: one button design system, so every button is styled by a named kind
 

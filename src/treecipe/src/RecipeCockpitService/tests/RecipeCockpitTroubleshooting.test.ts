@@ -228,7 +228,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
         });
 
-        it('is a tab a saved place can name, without a new place version', () => {
+        it('is a tab a saved place can name, without a new place version, and drops the tab-wide search #365 replaced with one per sub-tab', () => {
 
             expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['treecipe', 'datasets', 'troubleshooting', 'query']);
 
@@ -241,7 +241,8 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
                 trees: [{ treeKey: ACCOUNT_TREE_KEY, isExpanded: true, selectedTab: 'troubleshooting', searchQueries: { treecipe: '', datasets: '', troubleshooting: 'field' }, expandedObjectKeys: [], openPicklistKeys: [] }]
             });
 
-            expect(place?.trees[0]).toMatchObject({ selectedTab: 'troubleshooting', searchQueries: { treecipe: '', datasets: '', troubleshooting: 'field' } });
+            expect(place?.trees[0]).toMatchObject({ selectedTab: 'troubleshooting' });
+            expect(place?.trees[0].searchQueries).toEqual({ treecipe: '', datasets: '' });
 
             const olderPlace = RecipeCockpitService.normalizePanelPlace({
                 version: 2,
@@ -965,20 +966,20 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
         const deployButtonOf = (panel: ReturnType<typeof runPanelScript>, deployKind: string, objectApiName = 'OtherChildObject__c') =>
             panel.findAll(cardOf(panel, objectApiName), `troubleshootingDeploy-${deployKind}`)[0];
 
-        it('draws Troubleshooting after Treecipe and Previously Used Data Sets, with its own search and four sections, and asks the host for its counts when selected', () => {
+        it('draws Troubleshooting after Treecipe and Previously Used Data Sets, with six sub-tabs each searched by its own box, and asks the host for its counts when selected', () => {
 
             const panel = renderTrees();
             const accountCard = cardOf(panel, 'OtherChildObject__c');
 
             expect(panel.findAll(accountCard, 'treeTab').map((tabElement: any) => tabElement.textContent)).toEqual(['Treecipe', 'Previously Used Data Sets', 'Troubleshooting', 'Query']);
             // NOTHING IS BUILT OR ASKED FOR UNTIL THE TAB IS OPENED
-            expect(panel.findAll(accountCard, 'troubleshootingSection')).toEqual([]);
+            expect(panel.findAll(accountCard, 'troubleshootingSubPanel')).toEqual([]);
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'loadTroubleshootingSummary')).toEqual([]);
 
             panel.openTab(accountCard, 'Troubleshooting');
 
-            expect(panel.findAll(accountCard, 'troubleshootingSectionTitle').map((titleElement: any) => titleElement.textContent)).toEqual(['Permission sets', 'Validation rules', 'Field deployment', 'Dependent metadata']);
-            expect(panel.findAll(panel.tabPanelOf(accountCard, 'treeTroubleshooting'), 'tabSearchInput')).toHaveLength(1);
+            expect(panel.findAll(accountCard, 'troubleshootingSubTab').map((tabElement: any) => tabElement.textContent)).toEqual(['TODO\'s (5)', 'Fields', 'Permissions', 'Validation Rules', 'Record Types', 'Global Value Sets']);
+            expect(panel.findAll(panel.tabPanelOf(accountCard, 'treeTroubleshooting'), 'tabSearchInput')).toHaveLength(6);
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'loadTroubleshootingSummary')).toEqual([{ command: 'loadTroubleshootingSummary', treeKey: ACCOUNT_TREE_KEY, renderSequence: 1 }]);
             // THE ASSIGN, GENERATE AND RETRIEVE BUTTONS ARE HERE NOW, AND NOWHERE ELSE ON THE CARD
             ['treePermissionSets', 'treeGeneratePermissionSet', 'treeRetrieveValidationRules'].forEach(className => {
@@ -1003,11 +1004,12 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             panel.postToPanel(summary({ recordTypeCount: 0 }));
 
             const summaryTexts = panel.findAll(accountCard, 'troubleshootingSummary').map((summaryElement: any) => summaryElement.textContent);
+            // IN SUB-TAB ORDER: FIELDS, PERMISSIONS, RECORD TYPES, GLOBAL VALUE SETS
             expect(summaryTexts).toEqual([
-                '2 permission sets in this project grant access to this tree.',
                 '6 CustomField; 4 standard fields never deployed; 2 custom fields with no readable source file.',
-                '1 GlobalValueSet; 1 named value set this project does not hold.',
-                '0 RecordType.'
+                '2 permission sets in this project grant access to this tree.',
+                '0 RecordType.',
+                '1 GlobalValueSet; 1 named value set this project does not hold.'
             ]);
             expect(deployButtonOf(panel, 'fields').disabled).toBe(false);
             expect(deployButtonOf(panel, 'fields').textContent).toBe('Deploy fields…');
@@ -1062,18 +1064,20 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
         });
 
-        it('narrows the sections to the ones its search matches, and counts them', () => {
+        it('narrows a sub-tab\'s actions to the ones its own search matches, and counts them', () => {
 
             const panel = renderTrees();
             const accountCard = cardOf(panel, 'OtherChildObject__c');
             panel.openTab(accountCard, 'Troubleshooting');
             panel.postToPanel(summary());
 
-            panel.typeIntoTabSearch(accountCard, 'treeTroubleshooting', 'value set');
+            panel.typeIntoTabSearch(accountCard, 'troubleshootingSubPanel-permissions', 'generate');
 
-            const sections = panel.findAll(accountCard, 'troubleshootingSection');
-            expect(sections.map((sectionElement: any) => panel.isHidden(sectionElement))).toEqual([true, true, true, false]);
-            expect(panel.findAll(panel.tabPanelOf(accountCard, 'treeTroubleshooting'), 'tabMatchCount')[0].textContent).toBe('1 of 4 sections');
+            const permissionsPanel = panel.findAll(accountCard, 'troubleshootingSubPanel-permissions')[0];
+            expect(panel.findAll(permissionsPanel, 'troubleshootingAction').map((actionElement: any) => panel.isHidden(actionElement))).toEqual([true, false, true]);
+            expect(panel.findAll(permissionsPanel, 'tabMatchCount')[0].textContent).toBe('1 of 3 actions');
+            // A SEARCH IS ITS OWN SUB-TAB'S: THE OTHERS ARE UNTOUCHED
+            expect(panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-fields')[0], 'tabMatchCount')[0].textContent).toBe('1 action');
 
         });
 

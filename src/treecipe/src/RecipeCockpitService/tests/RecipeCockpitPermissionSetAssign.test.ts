@@ -1245,14 +1245,14 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             ['treeDeploy', 'metadataDeployStatus', 'metadataDeployViewOutput', 'metadataDeployOpenStatus'].forEach(className => {
                 expect(panel.findAll(accountCard, className)).toEqual([]);
             });
-            // IN THE TROUBLESHOOTING TAB'S PERMISSION SETS SECTION (#346): THE ASSIGN BUTTON, "Generate permission set…" (#306) AND "Deploy permission set…"
-            const controlChildren = panel.findAll(accountCard, 'troubleshootingControls')[0].children;
+            // IN THE TROUBLESHOOTING TAB'S PERMISSIONS SUB-TAB (#346, #365): THE ASSIGN BUTTON, "Generate permission set…" (#306) AND "Deploy permission set…", ONE ACTION EACH
+            const controlChildren = panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-permissions')[0], 'troubleshootingControls').map((controlsElement: any) => controlsElement.children[0]);
             expect(controlChildren).toHaveLength(3);
             expect(controlChildren[0] === permissionSetButton).toBe(true);
             expect(controlChildren[1].className).toBe('sdtButton sdtButton-secondary treeGeneratePermissionSet');
             expect(controlChildren[2].className).toBe('sdtButton sdtButton-secondary troubleshootingDeploy troubleshootingDeploy-permissionSet');
-            // "Retrieve validation rules…" (#326) HAS A SECTION OF ITS OWN
-            expect(panel.findAll(accountCard, 'troubleshootingControls')[1].children.map((childElement: any) => childElement.className)).toEqual(['sdtButton sdtButton-secondary treeRetrieveValidationRules']);
+            // "Retrieve validation rules…" (#326) HAS A SUB-TAB OF ITS OWN
+            expect(panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-validationRules')[0], 'troubleshootingControls').map((controlsElement: any) => controlsElement.children[0].className)).toEqual(['sdtButton sdtButton-secondary treeRetrieveValidationRules']);
 
             permissionSetButton.dispatch('click');
 
