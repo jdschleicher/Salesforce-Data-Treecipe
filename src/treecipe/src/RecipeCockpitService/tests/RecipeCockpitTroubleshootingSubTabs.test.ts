@@ -223,26 +223,105 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s sub-tabs (#365)', () 
 
         });
 
-        it('reads a long value of "#"s back in linear time', () => {
+        it('shows a field TODO posted without its text from the span of the value the host named, and says so when the span does not fit', () => {
 
             const recipe = loadRecipe();
-            const regions = objectOf(recipe, 'Account').fields.find(field => field.fieldApiName === 'Regions__c');
-            if (regions) { regions.recipeValue = ' #'.repeat(100000) + '#'.repeat(100000) + ' # TODO late'; }
+            const account = objectOf(recipe, 'Account');
+            const regions = account.fields.find(field => field.fieldApiName === 'Regions__c');
+            const parentId = account.fields.find(field => field.fieldApiName === 'ParentId');
+            // A QUOTED " # TODO" AHEAD OF THE REAL ONE IS NOT WHAT THE ENTRY SHOWS
+            const regionsValue = "${{ faker.helpers.arrayElement(['Fix # TODO list', 'West']) }}\n### TODO: -- RecordType Options -- Business";
+            if (regions) {
+                regions.recipeValue = regionsValue;
+                regions.todos = RecipeCockpitService.buildFieldTodoViewModels([{ lineNumber: 20, text: '### TODO: -- RecordType Options -- Business' }], regionsValue);
+            }
+            if (parentId) { parentId.todos = [{ lineNumber: 21, valueStart: 5, valueLength: 100000 }]; }
 
             const panel = drawRecipe(recipe);
             const accountCard = accountCardOf(panel);
-            const startedAt = Date.now();
             panel.openTab(accountCard, 'Troubleshooting');
 
-            expect(Date.now() - startedAt).toBeLessThan(1000);
-            // A LINE'S FIRST COMMENT DECIDES, AND " #" IS NOT A TODO
-            expect(panel.findAll(subPanelOf(panel, accountCard, 'todos'), 'troubleshootingTodoText')[0].textContent).toBe(RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL);
+            const texts = panel.findAll(subPanelOf(panel, accountCard, 'todos'), 'troubleshootingTodoText').map((textElement: any) => textElement.textContent);
+            expect(texts[0]).toBe('### TODO: -- RecordType Options -- Business');
+            expect(texts[1]).toBe(RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL);
+
+        });
+
+    });
+
+    describe('the TODO\'s sub-tab at scale', () => {
+
+        it('opens groups within the auto-expand budgets and builds a closed group\'s rows only when it is opened', () => {
+
+            const recipe = loadRecipe();
+            const manyTodos = (startLine: number) => Array.from({ length: 1500 }, (_, todoIndex) => ({ lineNumber: startLine + todoIndex, text: `### TODO ${todoIndex}` }));
+            objectOf(recipe, 'Account').todos = manyTodos(1000);
+            objectOf(recipe, 'Contact').todos = manyTodos(5000);
+
+            const panel = drawRecipe(recipe);
+            const accountCard = accountCardOf(panel);
+            panel.openTab(accountCard, 'Troubleshooting');
+
+            const groups = panel.findAll(subPanelOf(panel, accountCard, 'todos'), 'troubleshootingTodoGroup');
+            const rowCountOf = (groupElement: any) => panel.findAll(groupElement, 'troubleshootingTodo').length;
+            const toggleOf = (groupElement: any) => panel.findAll(groupElement, 'troubleshootingTodoToggle')[0];
+
+            // THE FIRST GROUP ALWAYS OPENS; THE NEXT WOULD PASS THE ROW BUDGET, SO IT AND EVERY LATER ONE STAY CLOSED AND UNBUILT
+            expect(groups.map(rowCountOf)).toEqual([1503, 0, 0]);
+            expect(groups.map((groupElement: any) => toggleOf(groupElement).attributes['aria-expanded'])).toEqual(['true', 'false', 'false']);
+            expect(panel.findAll(groups[1], 'troubleshootingTodoCount')[0].textContent).toBe('1501 TODOs');
+
+            toggleOf(groups[1]).dispatch('click');
+
+            expect(rowCountOf(groups[1])).toBe(1501);
+            expect(panel.isHidden(panel.findAll(groups[1], 'troubleshootingTodoRows')[0])).toBe(false);
+
+        });
+
+        it('searches entries it has not built, and opens the groups that match', () => {
+
+            const recipe = loadRecipe();
+            objectOf(recipe, 'Account').todos = Array.from({ length: 2500 }, (_, todoIndex) => ({ lineNumber: 1000 + todoIndex, text: `### TODO ${todoIndex}` }));
+
+            const panel = drawRecipe(recipe);
+            const accountCard = accountCardOf(panel);
+            panel.openTab(accountCard, 'Troubleshooting');
+
+            const groups = panel.findAll(subPanelOf(panel, accountCard, 'todos'), 'troubleshootingTodoGroup');
+            expect(panel.findAll(groups[1], 'troubleshootingTodo')).toHaveLength(0);
+
+            typeInto(panel, accountCard, 'todos', 'accountid');
+
+            expect(panel.findAll(subPanelOf(panel, accountCard, 'todos'), 'tabMatchCount')[0].textContent).toBe('1 of 2505 TODOs');
+            expect(groups.map((groupElement: any) => panel.isHidden(groupElement))).toEqual([true, false, true]);
+            expect(panel.findAll(groups[1], 'troubleshootingTodo').map((todoElement: any) => todoElement.children[0].textContent)).toEqual(['AccountId']);
 
         });
 
     });
 
     describe('each sub-tab\'s search', () => {
+
+        it('matches what an action draws, never its tooltip, and again when a run changes what it draws', () => {
+
+            const panel = drawRecipe();
+            const accountCard = accountCardOf(panel);
+            panel.openTab(accountCard, 'Troubleshooting');
+            panel.postToPanel({ command: 'troubleshootingSummary', renderSequence: 3, treeKey: ACCOUNT_TREE_KEY, permissionSetCount: 2, customFieldCount: 6, standardFieldCount: 0, unreadableFieldCount: 0, globalValueSetCount: 1, missingGlobalValueSetCount: 0, recordTypeCount: 2 });
+
+            const countOf = () => panel.findAll(subPanelOf(panel, accountCard, 'fields'), 'tabMatchCount')[0].textContent;
+
+            typeInto(panel, accountCard, 'fields', 'sandbox');
+            expect(countOf()).toBe('no matches');
+
+            typeInto(panel, accountCard, 'fields', 'deploying');
+            expect(countOf()).toBe('no matches');
+
+            panel.findAll(subPanelOf(panel, accountCard, 'fields'), 'troubleshootingDeploy-fields')[0].dispatch('click');
+
+            expect(countOf()).toBe('1 of 1 action');
+
+        });
 
         it('is the sub-tab\'s own: its text survives a switch and is kept in the place, the others\' untouched', () => {
 

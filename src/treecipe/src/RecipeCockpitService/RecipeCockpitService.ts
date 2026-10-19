@@ -568,6 +568,9 @@ export interface IRecipeCockpitFieldViewModel {
 export interface IRecipeCockpitTodoViewModel {
     lineNumber: number;
     text?: string;
+    // WHERE A FIELD TODO WITH NO text SITS IN THE FIELD'S POSTED recipeValue (#365), SO A LIST AWAY FROM THE VALUE SHOWS IT EXACTLY
+    valueStart?: number;
+    valueLength?: number;
 }
 
 /*
@@ -10898,13 +10901,16 @@ export class RecipeCockpitService {
 
     }
 
-    // A FIELD'S TODOS AS POSTED (#354): A TODO ITS DRAWN VALUE ALREADY HOLDS CARRIES ONLY ITS LINE
+    // A FIELD'S TODOS AS POSTED (#354): A TODO ITS DRAWN VALUE ALREADY HOLDS CARRIES ITS LINE AND WHERE IT SITS IN THAT VALUE (#365), NOT ITS TEXT
     static buildFieldTodoViewModels(todos: IRecipeCockpitTodoViewModel[], recipeValue: string): IRecipeCockpitTodoViewModel[] {
 
-        return todos.map(todo => ( todo.text !== undefined && !recipeValue.includes(todo.text)
-            ? { lineNumber: todo.lineNumber, text: todo.text }
-            : { lineNumber: todo.lineNumber }
-        ));
+        return todos.map(todo => {
+            const valueStart = todo.text ? recipeValue.indexOf(todo.text) : -1;
+            if ( valueStart === -1 ) {
+                return todo.text !== undefined ? { lineNumber: todo.lineNumber, text: todo.text } : { lineNumber: todo.lineNumber };
+            }
+            return { lineNumber: todo.lineNumber, valueStart: valueStart, valueLength: todo.text.length };
+        });
 
     }
 
@@ -11208,7 +11214,7 @@ ${this.buildPaletteCustomProperties()}
     .treeTabs.movingLeft .treeTab::after, .treeTabs.movingRight .treeTab.selected::after { transform-origin: left; }
     .treeTabs.noMotion .treeTab::after { transition: none; }
     /* THE TROUBLESHOOTING SUB-TABS (#365) LOOK AND MOVE LIKE A CARD'S TABS */
-    .troubleshootingSubTabs { display: flex; gap: 0.5rem; padding: 0.4rem 0.6rem 0 0.6rem; border-bottom: 1px solid var(--sdt-border); }
+    .troubleshootingSubTabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0.6rem; padding: 0.4rem 0 0 0; border-bottom: 1px solid var(--sdt-border); }
     .troubleshootingSubTab { color: var(--sdt-muted); border-color: transparent; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; }
     .troubleshootingSubTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; border-bottom-color: var(--sdt-border); }
     .troubleshootingSubTab.selected { color: var(--sdt-text); font-weight: 600; }
@@ -11443,11 +11449,12 @@ ${this.buildPaletteCustomProperties()}
     .cockpitSectionTitle { font-weight: 600; font-size: 1.1em; }
     #cockpitOrgSectionBody { padding: 0.5rem 0.6rem; margin-top: 0.4rem; background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 8px; }
     .treecipeActions, .treeInsertControls, .troubleshootingControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
-    .troubleshootingSubTabs { margin: 0 0.6rem; padding-left: 0; padding-right: 0; flex-wrap: wrap; }
     .troubleshootingSubPanel { margin: 0.25rem 0.6rem 0.5rem; }
     .troubleshootingAction { margin-top: 0.4rem; }
     .troubleshootingSummary { margin-top: 0.2rem; }
-    .troubleshootingTodoObject { margin-top: 0.5rem; font-weight: 600; }
+    .troubleshootingTodoHeader { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.4rem; }
+    .troubleshootingTodoObject { font-weight: 600; }
+    .troubleshootingTodoCount { font-size: 0.9em; }
     .troubleshootingTodo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; margin: 0.15rem 0 0 0.8rem; font-size: 0.9em; }
     .troubleshootingTodoField { font-family: var(--vscode-editor-font-family); }
     .troubleshootingTodoText { white-space: pre-wrap; word-break: break-word; font-family: var(--vscode-editor-font-family); }
@@ -15101,7 +15108,7 @@ ${this.buildPaletteCustomProperties()}
             treeState.searchQueries[searchKey] = '';
         }
 
-        const search = buildTabSearch(treeState, searchKey, TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS[subTab], applyTroubleshootingFilter);
+        const search = buildTabSearch(treeState, searchKey, TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS[subTab], function () { applyTroubleshootingFilter(treeState, subTab); });
         const listElement = createElement('div', 'troubleshootingList');
         subPanelElement.appendChild(search.element);
         subPanelElement.appendChild(listElement);
@@ -15147,60 +15154,80 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        Every TODO comment of the card's recipe (#365, from #354's todos), grouped by the object
-        occurrence that holds it: the field (or "on the object"), the text and a link to its line.
-        A field TODO posted without its text is one its value holds, so the text is read back from
-        that value in one pass per line; the link always opens the TODO's own line.
+        Every TODO comment of the card's recipe (#365, from #354's todos), one group per object
+        occurrence: a header with its count, and rows -- the field (or "on the object"), the text
+        and a link to the TODO's own line -- built only when the group opens, like a Treecipe
+        object's rows. A field TODO posted without its text is one its value holds, so the text is
+        read back from that value. Search matches what each entry saved at build, so it needs no
+        rows; groups open within the auto-expand budgets, so a tree of thousands of TODOs costs its
+        headers and the rows the budget allows.
     */
     function buildTroubleshootingTodos(treeState, subTabState) {
 
         subTabState.noun = ['TODO', 'TODOs'];
-        subTabState.objectGroups = [];
+        subTabState.todoGroups = [];
 
         treeState.objectStates.forEach(function (treeObjectState) {
 
             if (treeObjectState.todoCount === 0) { return; }
 
             const object = treeObjectState.object;
-            const groupElement = createElement('div', 'troubleshootingTodoGroup');
             // AN OBJECT WRITTEN MORE THAN ONCE IS TOLD APART BY THE NICKNAME OF THE OCCURRENCE
             const hasNickname = !!object.nickname && (!!object.iteration || Array.isArray(object.iterations));
-            groupElement.appendChild(createElement('div', 'troubleshootingTodoObject', object.objectApiName + (hasNickname ? ' · ' + object.nickname : '')));
-            const groupState = { element: groupElement, items: [] };
+            const objectLabel = object.objectApiName + (hasNickname ? ' · ' + object.nickname : '');
+            const groupState = {
+                object: object,
+                element: createElement('div', 'troubleshootingTodoGroup'),
+                toggleElement: buildToggleElement('troubleshootingTodoToggle'),
+                countElement: createElement('span', 'troubleshootingTodoCount muted'),
+                bodyElement: createElement('div', 'troubleshootingTodoRows hidden'),
+                entries: [],
+                matchingCount: 0,
+                isBuilt: false,
+                isExpanded: false,
+                isShown: true
+            };
 
-            const addTodo = function (fieldLabel, todo, todoText, isFieldTodo) {
-                const todoElement = createElement('div', 'troubleshootingTodo');
-                todoElement.appendChild(createElement('span', isFieldTodo ? 'troubleshootingTodoField' : 'troubleshootingTodoField muted', fieldLabel));
-                todoElement.appendChild(createElement('span', todoText ? 'troubleshootingTodoText' : 'troubleshootingTodoText muted', todoText || TODO_IN_FIELD_VALUE_LABEL));
-                if (object.recipeFilePath && todo.lineNumber) {
-                    todoElement.appendChild(buildSourceLink('treeTodoSource', '↗ yml', object.recipeFilePath, todo.lineNumber));
-                }
-                groupElement.appendChild(todoElement);
-                const item = { element: todoElement, searchText: [object.objectApiName, object.nickname || '', fieldLabel, todoText].join('\\n').toLowerCase() };
-                groupState.items.push(item);
-                subTabState.items.push(item);
+            const addEntry = function (fieldLabel, todo, todoText, isFieldTodo) {
+                groupState.entries.push({
+                    fieldLabel: fieldLabel,
+                    todo: todo,
+                    todoText: todoText,
+                    isFieldTodo: isFieldTodo,
+                    searchText: [object.objectApiName, object.nickname || '', fieldLabel, todoText].join('\\n').toLowerCase(),
+                    isMatch: true,
+                    element: null
+                });
             };
 
             treeObjectState.objectTodos.forEach(function (todo) {
-                addTodo('on the object', todo, typeof todo.text === 'string' ? todo.text : '', false);
+                addEntry('on the object', todo, typeof todo.text === 'string' ? todo.text : '', false);
             });
 
             treeObjectState.fieldStates.forEach(function (fieldState) {
-                if (fieldState.todos.length === 0) { return; }
-                const valueTodoTexts = readTodoCommentTexts(fieldState.field.recipeValue);
-                let valueTodoIndex = 0;
                 fieldState.todos.forEach(function (todo) {
-                    const todoText = typeof todo.text === 'string' ? todo.text : (valueTodoTexts[valueTodoIndex++] || '');
-                    addTodo(fieldState.field.fieldApiName, todo, todoText, true);
+                    addEntry(fieldState.field.fieldApiName, todo, readFieldTodoText(todo, fieldState.field.recipeValue), true);
                 });
             });
 
-            subTabState.listElement.appendChild(groupElement);
-            subTabState.objectGroups.push(groupState);
+            const headerElement = createElement('div', 'troubleshootingTodoHeader');
+            groupState.toggleElement.setAttribute('aria-label', 'Show or hide the TODOs of ' + objectLabel);
+            groupState.toggleElement.setAttribute('aria-expanded', 'false');
+            groupState.toggleElement.addEventListener('click', function () {
+                setTodoGroupExpanded(groupState, !groupState.isExpanded, true);
+            });
+            headerElement.appendChild(groupState.toggleElement);
+            headerElement.appendChild(createElement('span', 'troubleshootingTodoObject', objectLabel));
+            headerElement.appendChild(groupState.countElement);
+            groupState.element.appendChild(headerElement);
+            groupState.element.appendChild(groupState.bodyElement);
+
+            subTabState.listElement.appendChild(groupState.element);
+            subTabState.todoGroups.push(groupState);
 
         });
 
-        const todoCount = subTabState.items.length;
+        const todoCount = subTabState.todoGroups.reduce(function (count, groupState) { return count + groupState.entries.length; }, 0);
         subTabState.tabElement.textContent = todoCount > 0 ? TROUBLESHOOTING_SUB_TAB_LABELS.todos + ' (' + todoCount + ')' : TROUBLESHOOTING_SUB_TAB_LABELS.todos;
 
         if (todoCount === 0) {
@@ -15209,29 +15236,46 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // THE TODO COMMENTS OF A VALUE, IN ORDER: A "#" AT THE START OR AFTER A SPACE, ITS RUN OF "#", SPACES, THEN "TODO" -- ONE PASS PER LINE, NO REGEX
-    function readTodoCommentTexts(value) {
+    function setTodoGroupExpanded(groupState, isExpanded, isAnimated) {
 
-        const todoTexts = [];
-
-        String(value || '').split('\\n').forEach(function (line) {
-            let characterIndex = 0;
-            while (characterIndex < line.length) {
-                const isCommentStart = line[characterIndex] === '#' && (characterIndex === 0 || line[characterIndex - 1] === ' ' || line[characterIndex - 1] === '\\t');
-                if (!isCommentStart) { characterIndex++; continue; }
-                let textIndex = characterIndex;
-                while (line[textIndex] === '#') { textIndex++; }
-                while (line[textIndex] === ' ' || line[textIndex] === '\\t') { textIndex++; }
-                const followingCharacter = line[textIndex + 4] || '';
-                if (line.substr(textIndex, 4) === 'TODO' && !/[A-Za-z0-9_]/.test(followingCharacter)) {
-                    todoTexts.push(line.slice(characterIndex).trim());
+        if (isExpanded && !groupState.isBuilt) {
+            groupState.entries.forEach(function (entry) {
+                const object = groupState.object;
+                const todoElement = createElement('div', entry.isMatch ? 'troubleshootingTodo' : 'troubleshootingTodo hidden');
+                todoElement.appendChild(createElement('span', entry.isFieldTodo ? 'troubleshootingTodoField' : 'troubleshootingTodoField muted', entry.fieldLabel));
+                todoElement.appendChild(createElement('span', entry.todoText ? 'troubleshootingTodoText' : 'troubleshootingTodoText muted', entry.todoText || TODO_IN_FIELD_VALUE_LABEL));
+                if (object.recipeFilePath && entry.todo.lineNumber) {
+                    todoElement.appendChild(buildSourceLink('treeTodoSource', '↗ yml', object.recipeFilePath, entry.todo.lineNumber));
                 }
-                // A LINE'S COMMENT RUNS TO ITS END, SO ITS FIRST "#" DECIDES
-                break;
-            }
-        });
+                entry.element = todoElement;
+                groupState.bodyElement.appendChild(todoElement);
+            });
+            groupState.isBuilt = true;
+        }
 
-        return todoTexts;
+        groupState.isExpanded = isExpanded;
+        setShownWithMotion(groupState.bodyElement, isExpanded, isAnimated);
+        drawToggle(groupState.toggleElement, isExpanded, isAnimated);
+
+    }
+
+    // A ROW OR GROUP IS WRITTEN ONLY WHEN ITS VISIBILITY CHANGES, SO A KEYSTROKE OVER THOUSANDS OF TODOS TOUCHES ONLY WHAT IT CHANGED
+    function setShownIfChanged(state, element, isShown) {
+        if (state.isShown === isShown) { return; }
+        state.isShown = isShown;
+        if (isShown) { element.classList.remove('hidden'); } else { element.classList.add('hidden'); }
+    }
+
+    // A FIELD TODO'S TEXT: ITS OWN, OR THE SPAN OF THE FIELD'S VALUE THE HOST SAID HOLDS IT; '' WHEN NEITHER IS USABLE
+    function readFieldTodoText(todo, recipeValue) {
+
+        if (typeof todo.text === 'string') { return todo.text; }
+
+        const value = typeof recipeValue === 'string' ? recipeValue : '';
+        const isUsableSpan = Number.isInteger(todo.valueStart) && Number.isInteger(todo.valueLength)
+            && todo.valueStart >= 0 && todo.valueLength > 0 && todo.valueStart + todo.valueLength <= value.length;
+
+        return isUsableSpan ? value.substr(todo.valueStart, todo.valueLength) : '';
 
     }
 
@@ -15258,36 +15302,65 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // EVERY TEXT AN ELEMENT DRAWS, ITS DESCENDANTS' INCLUDED, AND A BUTTON'S REASON IN ITS TITLE
+    // EVERY TEXT AN ELEMENT DRAWS, ITS DESCENDANTS' INCLUDED -- WHAT IS SEARCHABLE IS WHAT IS ON SCREEN, SO NOT A TOOLTIP
     function collectElementText(element) {
 
-        const texts = [String(element.textContent || ''), String((element.getAttribute && element.getAttribute('title')) || '')];
+        const texts = [String(element.textContent || '')];
         Array.prototype.forEach.call(element.children || [], function (childElement) { texts.push.apply(texts, collectElementText(childElement)); });
         return texts;
 
     }
 
-    // EACH SUB-TAB'S OWN SEARCH (#365): IT HIDES THE ENTRIES THAT DO NOT MATCH AND COUNTS WHAT IS LEFT
-    function applyTroubleshootingFilter(treeState) {
+    /*
+        Each sub-tab's own search (#365): it hides the entries that do not match and counts what is
+        left. A keystroke filters only its own sub-tab (onlySubTab); a deploy summary refreshes only
+        the action sub-tabs ('actions'); a build or restore filters them all.
+    */
+    function applyTroubleshootingFilter(treeState, onlySubTab) {
 
         (treeState.troubleshootingSubTabStates || []).forEach(function (subTabState) {
 
+            if (onlySubTab === 'actions' ? subTabState.subTab === 'todos' : (onlySubTab && onlySubTab !== subTabState.subTab)) { return; }
+
             const searchQuery = treeState.searchQueries[troubleshootingSearchKey(subTabState.subTab)] || '';
             let matchingCount = 0;
+            let total = 0;
 
-            subTabState.items.forEach(function (item) {
-                // AN ACTION IS MATCHED BY WHAT IT DRAWS NOW: ITS BUTTON, ITS REASON AND WHAT IT WOULD DEPLOY
-                const searchText = typeof item.searchText === 'string' ? item.searchText : collectElementText(item.element).join('\\n').toLowerCase();
-                const isMatch = !searchQuery || searchText.indexOf(searchQuery) !== -1;
-                if (isMatch) { matchingCount++; item.element.classList.remove('hidden'); } else { item.element.classList.add('hidden'); }
-            });
+            if (subTabState.todoGroups) {
 
-            (subTabState.objectGroups || []).forEach(function (groupState) {
-                const isShown = groupState.items.some(function (item) { return !item.element.classList.contains('hidden'); });
-                if (isShown) { groupState.element.classList.remove('hidden'); } else { groupState.element.classList.add('hidden'); }
-            });
+                subTabState.todoGroups.forEach(function (groupState) {
+                    groupState.matchingCount = 0;
+                    groupState.entries.forEach(function (entry) {
+                        entry.isMatch = !searchQuery || entry.searchText.indexOf(searchQuery) !== -1;
+                        if (entry.isMatch) { groupState.matchingCount++; }
+                        if (entry.element) { setShownIfChanged(entry, entry.element, entry.isMatch); }
+                    });
+                    total += groupState.entries.length;
+                    matchingCount += groupState.matchingCount;
+                    setShownIfChanged(groupState, groupState.element, !searchQuery || groupState.matchingCount > 0);
+                    groupState.countElement.textContent = searchQuery
+                        ? groupState.matchingCount + ' of ' + pluralize(groupState.entries.length, 'TODO', 'TODOs')
+                        : pluralize(groupState.entries.length, 'TODO', 'TODOs');
+                });
 
-            const total = subTabState.items.length;
+                expandMatchesWithinBudget(subTabState.todoGroups,
+                    function (groupState) { return groupState.matchingCount; },
+                    function (groupState) { return groupState.entries.length; },
+                    function (groupState, isExpanded) { setTodoGroupExpanded(groupState, isExpanded, false); });
+
+            } else {
+
+                subTabState.items.forEach(function (item) {
+                    // AN ACTION IS MATCHED BY WHAT IT DRAWS NOW: ITS BUTTON, ITS REASON AND WHAT IT WOULD DEPLOY
+                    const isMatch = !searchQuery || collectElementText(item.element).join('\\n').toLowerCase().indexOf(searchQuery) !== -1;
+                    if (isMatch) { matchingCount++; }
+                    if (item.isShown === undefined) { item.isShown = true; }
+                    setShownIfChanged(item, item.element, isMatch);
+                });
+                total = subTabState.items.length;
+
+            }
+
             subTabState.search.matchCountElement.textContent = !searchQuery
                 ? pluralize(total, subTabState.noun[0], subTabState.noun[1])
                 : matchingCount > 0 ? matchingCount + ' of ' + pluralize(total, subTabState.noun[0], subTabState.noun[1]) : 'no matches';
@@ -15318,7 +15391,7 @@ ${this.buildPaletteCustomProperties()}
 
         treeState.troubleshootingSummary = summaryMessage;
         drawTreePermissionSet(treeState);
-        applyTroubleshootingFilter(treeState);
+        applyTroubleshootingFilter(treeState, 'actions');
 
     }
 
@@ -15474,6 +15547,9 @@ ${this.buildPaletteCustomProperties()}
             buttonElement.setAttribute('title', deployReason || 'Deploy these components of this tree, through a generated package.xml, to the sandbox or scratch org selected above, or one you choose, after a confirmation.');
 
         });
+
+        // A RUN CHANGES WHAT AN ACTION DRAWS ("Deploying…"), SO AN OPEN SEARCH MATCHES WHAT IS ON SCREEN NOW
+        if (treeState.troubleshootingSubTabStates) { applyTroubleshootingFilter(treeState, 'actions'); }
 
     }
 
@@ -16200,11 +16276,6 @@ ${this.buildPaletteCustomProperties()}
                 treeState.searchQueries[searchKey] = treeState.searchTexts[searchKey].trim().toLowerCase();
             });
             treeState.troubleshootingSubTab = TROUBLESHOOTING_SUB_TABS.indexOf(savedTree.troubleshootingSubTab) !== -1 ? savedTree.troubleshootingSubTab : TROUBLESHOOTING_SUB_TABS[0];
-            if (treeState.troubleshootingSubTabStates) {
-                treeState.troubleshootingSubTabStates.forEach(function (subTabState) { subTabState.search.inputElement.value = treeState.searchTexts[troubleshootingSearchKey(subTabState.subTab)]; });
-                selectTroubleshootingSubTab(treeState, treeState.troubleshootingSubTab, false);
-                applyTroubleshootingFilter(treeState);
-            }
 
             // BEFORE THE DATA SETS TAB IS BUILT, WHICH APPLIES IT; A TAB ALREADY BUILT APPLIES IT NOW
             treeState.isDatasetFavoritesOnly = savedTree.isDatasetFavoritesOnly === true;
