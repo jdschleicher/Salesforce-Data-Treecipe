@@ -31,6 +31,9 @@ export const VALIDATION_RULE_LIST_MAX_REASON_LENGTH = 1000;
 
 export const VALIDATION_RULE_LIST_TRUNCATION_MARK = '…';
 
+// THE READ GIVES THE EXTENSION HOST BACK EVERY THIS MANY FILES, AS THE TROUBLESHOOTING SUMMARY DOES
+export const VALIDATION_RULE_LIST_YIELD_EVERY_FILES = 200;
+
 /*
     applied: generation wrote a value inside the rule. notApplied: the rule is active and generation
     did not apply it (reasons say why). inactive: the file says <active>false</active>, so generation
@@ -62,6 +65,8 @@ export interface IValidationRuleListObject {
 
 export interface IValidationRuleListLocalRule {
     ruleName: string;
+    // THE NAME GENERATION RECORDED THE RULE UNDER (<fullName>, ELSE THE FILE'S), UNCUT: WHAT A RUN RECORD IS MATCHED BY
+    recordedName: string;
     isReadable: boolean;
     isActive?: boolean;
     errorMessage?: string;
@@ -71,6 +76,11 @@ export interface IValidationRuleListLocalRule {
 export interface IValidationRuleListLocalRules {
     rules: IValidationRuleListLocalRule[];
     unreadRuleCount: number;
+}
+
+// COUNTS THE FILES ONE TREE'S READ HAS READ, SO IT CAN YIELD ACROSS OBJECTS
+export interface IValidationRuleListReadProgress {
+    readFileCount: number;
 }
 
 export interface IValidationRuleListRunRecord {
@@ -133,7 +143,7 @@ export class RecipeCockpitValidationRuleList {
     }
 
     // AN OBJECT FOLDER'S RULE FILES, IN FILE-NAME ORDER AS GENERATION READS THEM; NONE WHEN IT HAS NO validationRules FOLDER
-    static async readLocalValidationRules(objectDirectoryPath: string): Promise<IValidationRuleListLocalRules> {
+    static async readLocalValidationRules(objectDirectoryPath: string, readProgress: IValidationRuleListReadProgress = { readFileCount: 0 }): Promise<IValidationRuleListLocalRules> {
 
         const rulesDirectoryPath = path.join(objectDirectoryPath, VALIDATION_RULES_DIRECTORY_NAME);
         let ruleFileNames: string[];
@@ -156,6 +166,11 @@ export class RecipeCockpitValidationRuleList {
 
         for ( const ruleFileName of readFileNames ) {
             rules.push(await this.readLocalValidationRule(path.join(rulesDirectoryPath, ruleFileName), ruleFileName));
+            // xml2js SETTLES SYNCHRONOUSLY, SO ONLY A MACROTASK GIVES THE HOST BACK
+            readProgress.readFileCount++;
+            if ( readProgress.readFileCount % VALIDATION_RULE_LIST_YIELD_EVERY_FILES === 0 ) {
+                await new Promise<void>(resolve => setImmediate(resolve));
+            }
         }
 
         return { rules: rules, unreadRuleCount: ruleFileNames.length - readFileNames.length };
@@ -164,8 +179,8 @@ export class RecipeCockpitValidationRuleList {
 
     static async readLocalValidationRule(ruleFilePath: string, ruleFileName: string): Promise<IValidationRuleListLocalRule> {
 
-        const fileRuleName = this.boundText(ruleFileName.slice(0, -VALIDATION_RULE_FILE_SUFFIX.length), VALIDATION_RULE_LIST_MAX_NAME_LENGTH);
-        const unreadable: IValidationRuleListLocalRule = { ruleName: fileRuleName, isReadable: false };
+        const fileRuleName = ruleFileName.slice(0, -VALIDATION_RULE_FILE_SUFFIX.length);
+        const unreadable: IValidationRuleListLocalRule = { ruleName: this.boundText(fileRuleName, VALIDATION_RULE_LIST_MAX_NAME_LENGTH), recordedName: fileRuleName, isReadable: false };
 
         let ruleXml: string;
         try {
@@ -183,16 +198,18 @@ export class RecipeCockpitValidationRuleList {
 
     static async readValidationRuleXml(ruleXml: string, fileRuleName: string): Promise<IValidationRuleListLocalRule> {
 
+        const unreadable: IValidationRuleListLocalRule = { ruleName: this.boundText(fileRuleName, VALIDATION_RULE_LIST_MAX_NAME_LENGTH), recordedName: fileRuleName, isReadable: false };
+
         let parsedXml: unknown;
         try {
             parsedXml = await xml2js.parseStringPromise(ruleXml);
         } catch {
-            return { ruleName: fileRuleName, isReadable: false };
+            return unreadable;
         }
 
         const validationRule = this.asRecord(this.asRecord(parsedXml)?.ValidationRule);
         if ( !validationRule ) {
-            return { ruleName: fileRuleName, isReadable: false };
+            return unreadable;
         }
 
         const readText = (elementName: string): string | undefined => {
@@ -200,14 +217,15 @@ export class RecipeCockpitValidationRuleList {
             return Array.isArray(element) && element.length === 1 && typeof element[0] === 'string' ? element[0] : undefined;
         };
 
-        // THE SAME NAME GENERATION RECORDS A RULE UNDER: <fullName>, ELSE THE FILE'S
-        const fullName = readText('fullName');
+        // ValidationRuleAnalyzerService's OWN RULE, AN EMPTY <fullName> INCLUDED, SO EVERY RUN RECORD FINDS ITS FILE
+        const recordedName = readText('fullName') ?? fileRuleName;
         const activeText = readText('active');
         const errorMessage = readText('errorMessage');
         const formula = readText('errorConditionFormula');
 
         return {
-            ruleName: fullName !== undefined && fullName !== '' ? this.boundText(fullName, VALIDATION_RULE_LIST_MAX_NAME_LENGTH) : fileRuleName,
+            ruleName: this.boundText(recordedName !== '' ? recordedName : fileRuleName, VALIDATION_RULE_LIST_MAX_NAME_LENGTH),
+            recordedName: recordedName,
             isReadable: true,
             ...( activeText === 'true' || activeText === 'false' ? { isActive: activeText === 'true' } : {} ),
             ...( errorMessage !== undefined ? { errorMessage: this.boundText(errorMessage, VALIDATION_RULE_LIST_MAX_ERROR_MESSAGE_LENGTH) } : {} ),
@@ -225,7 +243,9 @@ export class RecipeCockpitValidationRuleList {
     static readRunValidationRules(objectInfo: unknown): Map<string, IValidationRuleListRunRecord> {
 
         const runRecords = new Map<string, IValidationRuleListRunRecord>();
-        const recordOf = (ruleName: string) => {
+        // A FILE GENERATION COULD NOT READ IS RECORDED UNDER ITS FILE NAME; IT IS THE RULE THE FILE NAMES
+        const recordOf = (recordedRuleName: string) => {
+            const ruleName = recordedRuleName.endsWith(VALIDATION_RULE_FILE_SUFFIX) ? recordedRuleName.slice(0, -VALIDATION_RULE_FILE_SUFFIX.length) : recordedRuleName;
             let runRecord = runRecords.get(ruleName);
             if ( !runRecord ) {
                 runRecord = { fieldApiNames: [], isApplied: false, reasons: [] };
@@ -306,8 +326,8 @@ export class RecipeCockpitValidationRuleList {
 
         localRules.rules.forEach(localRule => {
 
-            listedRuleNames.add(localRule.ruleName);
-            const runRecord = runRecords.get(localRule.ruleName);
+            listedRuleNames.add(localRule.recordedName);
+            const runRecord = runRecords.get(localRule.recordedName);
             const fileFields = {
                 ...( localRule.isActive !== undefined ? { isActive: localRule.isActive } : {} ),
                 ...( localRule.errorMessage !== undefined ? { errorMessage: localRule.errorMessage } : {} ),
@@ -327,7 +347,7 @@ export class RecipeCockpitValidationRuleList {
 
         runRecords.forEach((runRecord, ruleName) => {
             if ( !listedRuleNames.has(ruleName) ) {
-                rules.push({ ruleName: ruleName, ...describeRun(runRecord), fieldApiNames: [...runRecord.fieldApiNames], isFileMissing: true });
+                rules.push({ ruleName: this.boundText(ruleName, VALIDATION_RULE_LIST_MAX_NAME_LENGTH), ...describeRun(runRecord), fieldApiNames: [...runRecord.fieldApiNames], isFileMissing: true });
             }
         });
 
@@ -340,21 +360,43 @@ export class RecipeCockpitValidationRuleList {
     }
 
     /*
-        The whole list for one tree: its objects once each, in its order, only api names. parsedWrapper
-        is the run's objects wrapper as JSON.parse read it.
+        Every api-name object's run records, read once from the run's objects wrapper (as JSON.parse
+        read it) and kept per model, so a model's trees share one parse. Only objects with a record
+        are kept, so what is held is the rules, not the wrapper.
     */
-    static async buildTreeValidationRules(objectsDirectoryPath: string, objectApiNames: readonly string[], parsedWrapper: unknown): Promise<IValidationRuleListObject[]> {
+    static readRunValidationRulesByObject(parsedWrapper: unknown): Map<string, Map<string, IValidationRuleListRunRecord>> {
+
+        const runRulesByObject = new Map<string, Map<string, IValidationRuleListRunRecord>>();
+        const objectToObjectInfoMap = this.asRecord(this.asRecord(parsedWrapper)?.ObjectToObjectInfoMap);
+
+        Object.keys(objectToObjectInfoMap ?? {}).forEach(objectApiName => {
+            if ( !SalesforceApiName.isApiName(objectApiName) ) {
+                return;
+            }
+            const runRecords = this.readRunValidationRules(( objectToObjectInfoMap as Record<string, unknown> )[objectApiName]);
+            if ( runRecords.size > 0 ) {
+                runRulesByObject.set(objectApiName, runRecords);
+            }
+        });
+
+        return runRulesByObject;
+
+    }
+
+    // THE WHOLE LIST FOR ONE TREE: ITS OBJECTS ONCE EACH, IN ITS ORDER, ONLY API NAMES
+    static async buildTreeValidationRules(objectsDirectoryPath: string,
+                                            objectApiNames: readonly string[],
+                                            runRulesByObject: ReadonlyMap<string, ReadonlyMap<string, IValidationRuleListRunRecord>>): Promise<IValidationRuleListObject[]> {
 
         const listedObjectApiNames = [...new Set(objectApiNames)].filter(objectApiName => SalesforceApiName.isApiName(objectApiName));
         const objectDirectoryPaths = this.findObjectDirectoryPaths(objectsDirectoryPath, listedObjectApiNames);
-        const objectToObjectInfoMap = this.asRecord(this.asRecord(parsedWrapper)?.ObjectToObjectInfoMap);
+        const readProgress: IValidationRuleListReadProgress = { readFileCount: 0 };
         const objects: IValidationRuleListObject[] = [];
 
         for ( const objectApiName of listedObjectApiNames ) {
             const objectDirectoryPath = objectDirectoryPaths.get(objectApiName);
-            const localRules = objectDirectoryPath ? await this.readLocalValidationRules(objectDirectoryPath) : { rules: [], unreadRuleCount: 0 };
-            const objectInfo = objectToObjectInfoMap && Object.prototype.hasOwnProperty.call(objectToObjectInfoMap, objectApiName) ? objectToObjectInfoMap[objectApiName] : undefined;
-            objects.push(this.buildObjectValidationRules(objectApiName, localRules, this.readRunValidationRules(objectInfo)));
+            const localRules = objectDirectoryPath ? await this.readLocalValidationRules(objectDirectoryPath, readProgress) : { rules: [], unreadRuleCount: 0 };
+            objects.push(this.buildObjectValidationRules(objectApiName, localRules, runRulesByObject.get(objectApiName) ?? new Map()));
         }
 
         return objects;
@@ -362,7 +404,7 @@ export class RecipeCockpitValidationRuleList {
     }
 
     private static isRuleName(ruleName: unknown): ruleName is string {
-        return typeof ruleName === 'string' && ruleName !== '' && ruleName.length <= VALIDATION_RULE_LIST_MAX_NAME_LENGTH;
+        return typeof ruleName === 'string';
     }
 
     static boundText(text: string, maximumLength: number): string {

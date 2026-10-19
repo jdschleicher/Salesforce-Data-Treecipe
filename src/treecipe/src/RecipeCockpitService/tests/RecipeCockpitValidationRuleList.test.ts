@@ -46,6 +46,7 @@ import {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
     RecipeCockpitService,
+    RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT,
     RECIPE_COCKPIT_NO_LOCAL_VALIDATION_RULES_NOTE,
     RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE,
     RECIPE_COCKPIT_VALIDATION_RULE_FILE_MISSING_NOTE,
@@ -57,6 +58,8 @@ import {
     RecipeCockpitValidationRuleList,
     VALIDATION_RULE_LIST_MAX_ERROR_MESSAGE_LENGTH,
     VALIDATION_RULE_LIST_MAX_FILE_BYTES,
+    VALIDATION_RULE_LIST_MAX_NAME_LENGTH,
+    VALIDATION_RULE_LIST_YIELD_EVERY_FILES,
     VALIDATION_RULE_LIST_OBJECT_SEARCH_DEPTH,
     VALIDATION_RULE_LIST_MAX_RULES_PER_OBJECT,
     VALIDATION_RULE_LIST_TRUNCATION_MARK
@@ -81,6 +84,7 @@ const GADGET_TREE_KEY = 'Gadget__c-thru-Widget__c';
 const OBJECTS_RELATIVE_PATH = 'force-app/main/default/objects';
 
 const readWrapper = (): any => JSON.parse(fs.readFileSync(WRAPPER_FILE_PATH, 'utf-8'));
+const runRules = (parsedWrapper: unknown = readWrapper()) => RecipeCockpitValidationRuleList.readRunValidationRulesByObject(parsedWrapper);
 
 const ruleXml = (fullName: string, active: string, formula: string, errorMessage: string) => [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -112,7 +116,7 @@ describe('RecipeCockpitValidationRuleList (#327)', () => {
 
     it('lists every rule file of each tree object, in file order, with what the run did with it', async () => {
 
-        const objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Gadget__c', 'Widget__c', 'Gadget__c'], readWrapper());
+        const objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Gadget__c', 'Widget__c', 'Gadget__c'], runRules());
 
         expect(objects.map(object => object.objectApiName)).toEqual(['Gadget__c', 'Widget__c']);
 
@@ -164,7 +168,7 @@ describe('RecipeCockpitValidationRuleList (#327)', () => {
         fs.writeFileSync(path.join(rulesFolderPath, 'Added_Later.validationRule-meta.xml'), ruleXml('Added_Later', 'true', 'Quantity__c &gt; 1000', 'Too many.'));
         fs.rmSync(path.join(rulesFolderPath, 'Code_Format.validationRule-meta.xml'));
 
-        const objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Gadget__c'], readWrapper());
+        const objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Gadget__c'], runRules());
 
         expect(ruleNamed(objects, 'Gadget__c', 'Added_Later')).toMatchObject({ status: 'notInRun', isActive: true, fieldApiNames: [], reasons: [] });
         expect(ruleNamed(objects, 'Gadget__c', 'Code_Format')).toEqual({ ruleName: 'Code_Format', status: 'applied', fieldApiNames: ['Code__c'], reasons: [], isFileMissing: true });
@@ -180,7 +184,7 @@ describe('RecipeCockpitValidationRuleList (#327)', () => {
         fs.writeFileSync(path.join(rulesFolderPath, 'Broken.validationRule-meta.xml'), '<ValidationRule><unclosed>');
         fs.writeFileSync(path.join(rulesFolderPath, 'Not_A_Rule.validationRule-meta.xml'), '<CustomField><fullName>x</fullName></CustomField>');
 
-        const objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Gadget__c'], readWrapper());
+        const objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Gadget__c'], runRules());
 
         expect(ruleNamed(objects, 'Gadget__c', 'Code_Format')).toMatchObject({ status: 'inactive', isActive: false, fieldApiNames: ['Code__c'] });
         expect(ruleNamed(objects, 'Gadget__c', 'Broken')).toEqual({ ruleName: 'Broken', status: 'unreadable', fieldApiNames: [], reasons: ['the file could not be read as a validation rule'] });
@@ -194,7 +198,7 @@ describe('RecipeCockpitValidationRuleList (#327)', () => {
         const longMessage = 'm'.repeat(VALIDATION_RULE_LIST_MAX_ERROR_MESSAGE_LENGTH + 10);
         fs.writeFileSync(path.join(rulesFolderPath, 'Hostile.validationRule-meta.xml'), ruleXml('Hostile', 'true', '&lt;img src=x onerror=alert(1)&gt; ${{ 1 }}', longMessage));
 
-        const objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Gadget__c'], readWrapper());
+        const objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Gadget__c'], runRules());
         const hostileRule = ruleNamed(objects, 'Gadget__c', 'Hostile');
 
         expect(hostileRule?.formula).toBe('<img src=x onerror=alert(1)> ${{ 1 }}');
@@ -219,7 +223,7 @@ describe('RecipeCockpitValidationRuleList (#327)', () => {
         fs.symlinkSync(path.join(outsidePath, 'validationRules'), path.join(objectsPath, 'Linked__c', 'validationRules'));
         fs.symlinkSync(path.join(outsidePath, 'validationRules', 'Outside.validationRule-meta.xml'), path.join(objectsPath, 'Gadget__c', 'validationRules', 'Linked.validationRule-meta.xml'));
 
-        const objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Widget__c', 'Linked__c', 'Gadget__c', 'not an api name'], readWrapper());
+        const objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Widget__c', 'Linked__c', 'Gadget__c', 'not an api name'], runRules());
 
         expect(objects.map(object => object.objectApiName)).toEqual(['Widget__c', 'Linked__c', 'Gadget__c']);
         expect(objects[0].rules).toHaveLength(VALIDATION_RULE_LIST_MAX_RULES_PER_OBJECT);
@@ -233,7 +237,7 @@ describe('RecipeCockpitValidationRuleList (#327)', () => {
     it('does not read a file past its size limit, nor an object folder deeper than the search goes, nor one it cannot list', async () => {
 
         fs.writeFileSync(path.join(objectsPath, 'Gadget__c', 'validationRules', 'Huge.validationRule-meta.xml'), ' '.repeat(VALIDATION_RULE_LIST_MAX_FILE_BYTES + 1));
-        expect(ruleNamed(await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Gadget__c'], undefined), 'Gadget__c', 'Huge')?.status).toBe('unreadable');
+        expect(ruleNamed(await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Gadget__c'], new Map()), 'Gadget__c', 'Huge')?.status).toBe('unreadable');
         expect((await RecipeCockpitValidationRuleList.readLocalValidationRule(path.join(objectsPath, 'missing.validationRule-meta.xml'), 'missing.validationRule-meta.xml')).isReadable).toBe(false);
 
         const deepFolderPath = path.join(objectsPath, ...Array.from({ length: VALIDATION_RULE_LIST_OBJECT_SEARCH_DEPTH }, (_unused, depth) => `level${depth}`), 'Deep__c', 'validationRules');
@@ -243,6 +247,52 @@ describe('RecipeCockpitValidationRuleList (#327)', () => {
         const directoryPaths = RecipeCockpitValidationRuleList.findObjectDirectoryPaths(objectsPath, ['Deep__c', 'Shallow__c']);
         expect([...directoryPaths.keys()]).toEqual(['Shallow__c']);
         expect(RecipeCockpitValidationRuleList.findObjectDirectoryPaths(path.join(objectsPath, 'nowhere'), ['Gadget__c']).size).toBe(0);
+
+    });
+
+    it('matches a run record by the name generation recorded: an empty fullName, a long one, and a file it could not read', async () => {
+
+        const rulesFolderPath = path.join(objectsPath, 'Widget__c', 'validationRules');
+        fs.mkdirSync(rulesFolderPath);
+        const longName = 'L'.repeat(300);
+        fs.writeFileSync(path.join(rulesFolderPath, 'Nameless.validationRule-meta.xml'), ruleXml('', 'true', 'Weight__c &lt; 0', 'No.'));
+        fs.writeFileSync(path.join(rulesFolderPath, 'Long.validationRule-meta.xml'), ruleXml(longName, 'true', 'Weight__c &gt; 9', 'No.'));
+        fs.writeFileSync(path.join(rulesFolderPath, 'Was_Unreadable.validationRule-meta.xml'), ruleXml('Was_Unreadable', 'true', 'AND(a, b)', 'No.'));
+
+        const objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Widget__c'], runRules({ ObjectToObjectInfoMap: { Widget__c: {
+            Fields: [{ fieldName: 'Weight__c', validationRuleConstraints: [{ ruleName: '', applied: true }, { ruleName: longName, applied: false, reason: 'too narrow' }] }],
+            ValidationRulesNotApplied: [{ ruleName: 'Was_Unreadable.validationRule-meta.xml', reason: 'the file could not be read' }]
+        } } }));
+
+        expect(objects[0].rules.map(rule => [rule.ruleName.slice(0, 20), rule.status, rule.isFileMissing === true])).toEqual([
+            ['LLLLLLLLLLLLLLLLLLLL', 'notApplied', false],
+            ['Nameless', 'applied', false],
+            ['Was_Unreadable', 'notApplied', false]
+        ]);
+        expect(objects[0].rules[0].ruleName).toHaveLength(VALIDATION_RULE_LIST_MAX_NAME_LENGTH + 1);
+        expect(objects[0].rules[2].reasons).toEqual(['the file could not be read']);
+
+    });
+
+    it('gives the extension host back every few hundred files, across objects', async () => {
+
+        const manyRulesPath = path.join(objectsPath, 'Widget__c', 'validationRules');
+        fs.mkdirSync(manyRulesPath);
+        for ( let ruleIndex = 0; ruleIndex < VALIDATION_RULE_LIST_YIELD_EVERY_FILES; ruleIndex++ ) {
+            fs.writeFileSync(path.join(manyRulesPath, `Rule_${String(ruleIndex).padStart(4, '0')}.validationRule-meta.xml`), ruleXml(`Rule_${ruleIndex}`, 'false', 'x', 'y'));
+        }
+
+        const setImmediateSpy = jest.spyOn(global, 'setImmediate');
+        await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Widget__c'], new Map());
+        expect(setImmediateSpy).toHaveBeenCalledTimes(1);
+
+        setImmediateSpy.mockClear();
+        await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Gadget__c', 'Widget__c'], new Map());
+        expect(setImmediateSpy).toHaveBeenCalledTimes(1);
+
+        setImmediateSpy.mockClear();
+        await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Gadget__c'], new Map());
+        expect(setImmediateSpy).not.toHaveBeenCalled();
 
     });
 
@@ -258,10 +308,16 @@ describe('RecipeCockpitValidationRuleList (#327)', () => {
             ValidationRulesNotApplied: [{ ruleName: 'Object_Rule', reason: 'why' }, { ruleName: 7, reason: 'why' }, { ruleName: 'Object_Rule', reason: 'why' }]
         })));
 
-        expect([...runRecords.keys()]).toEqual(['__proto__', 'Object_Rule']);
+        // AN EMPTY NAME IS KEPT: GENERATION RECORDS A RULE WITH AN EMPTY <fullName> UNDER IT
+        expect([...runRecords.keys()]).toEqual(['__proto__', '', 'Object_Rule']);
+        expect(runRecords.get('')).toEqual({ fieldApiNames: ['Amount__c'], isApplied: true, reasons: [] });
         expect(runRecords.get('__proto__')).toEqual({ fieldApiNames: ['Amount__c'], isApplied: true, reasons: [] });
         expect(runRecords.get('Object_Rule')).toEqual({ fieldApiNames: [], isApplied: false, reasons: ['why'] });
         expect(RecipeCockpitValidationRuleList.readRunValidationRules(undefined).size).toBe(0);
+
+        // AN OBJECT IS READ ONLY UNDER AN API NAME, AND ONE WITH NO RECORD IS NOT KEPT
+        const byObject = runRules({ ObjectToObjectInfoMap: { 'bad name': { ValidationRulesNotApplied: [{ ruleName: 'R', reason: 'x' }] }, Widget__c: { Fields: [] } } });
+        expect(byObject.size).toBe(0);
 
     });
 
@@ -269,11 +325,11 @@ describe('RecipeCockpitValidationRuleList (#327)', () => {
 
         fs.rmSync(path.join(objectsPath, 'Gadget__c'), { recursive: true });
 
-        const objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Gadget__c'], { ObjectToObjectInfoMap: { Gadget__c: readWrapper().ObjectToObjectInfoMap.Gadget__c } });
+        const objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Gadget__c'], runRules({ ObjectToObjectInfoMap: { Gadget__c: readWrapper().ObjectToObjectInfoMap.Gadget__c } }));
         expect(objects[0].rules.length).toBeGreaterThan(0);
         expect(objects[0].rules.every(rule => rule.isFileMissing === true)).toBe(true);
 
-        expect(await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Widget__c'], 'not a wrapper')).toEqual([{ objectApiName: 'Widget__c', rules: [] }]);
+        expect(await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsPath, ['Widget__c'], runRules('not a wrapper'))).toEqual([{ objectApiName: 'Widget__c', rules: [] }]);
 
     });
 
@@ -420,6 +476,44 @@ describe('RecipeCockpitService, the Validation Rules list (#327)', () => {
 
             fs.copyFileSync(path.join(FAKERJS_RUN_FOLDER_PATH, path.basename(WRAPPER_FILE_PATH)), panelState().objectsWrapperFilePath as string);
             expect((await loadRules()).failureMessage).toBeUndefined();
+
+        });
+
+        it('parses the run\'s wrapper once per model, however many times its lists are read', async () => {
+
+            await openCockpit();
+            const readSpy = jest.spyOn(fs, 'readFileSync');
+            const wrapperReads = () => readSpy.mock.calls.filter(([filePath]) => filePath === panelState().objectsWrapperFilePath).length;
+
+            await loadRules();
+            expect(wrapperReads()).toBe(1);
+
+            // A RETRIEVE READS THE RULE FILES AGAIN, NOT THE WRAPPER, WHICH IT DID NOT CHANGE
+            await (RecipeCockpitService as any).refreshTreeValidationRules(GADGET_TREE_KEY);
+            expect(postedNamed('treeValidationRules')).toHaveLength(2);
+            expect(wrapperReads()).toBe(1);
+
+        });
+
+        it('posts the list again after a retrieve for every tree that drew one, not only the tree that retrieved', async () => {
+
+            await openCockpit();
+            await loadRules();
+
+            await (RecipeCockpitService as any).refreshTreeValidationRules('Another-tree');
+
+            expect(postedNamed('treeValidationRules').map(rulesMessage => rulesMessage.treeKey)).toEqual([GADGET_TREE_KEY, GADGET_TREE_KEY]);
+
+        });
+
+        it('does not keep a read that threw, so the next request reads again', async () => {
+
+            await openCockpit();
+            const buildSpy = jest.spyOn(RecipeCockpitValidationRuleList, 'buildTreeValidationRules').mockRejectedValueOnce(new Error('boom'));
+
+            await expect((RecipeCockpitService as any).postTreeValidationRules((RecipeCockpitService as any).recipeCockpitPanel, GADGET_TREE_KEY, lastRenderSequence())).rejects.toThrow('boom');
+            expect((await loadRules()).objects.length).toBe(2);
+            expect(buildSpy).toHaveBeenCalledTimes(2);
 
         });
 
@@ -620,16 +714,50 @@ describe('RecipeCockpitService, the Validation Rules list (#327)', () => {
 
             typeSearch('and(a');
             expect(shownRuleNames()).toEqual([]);
+            expect(matchCount()).toBe('no matches');
+            // THE SEARCH TYPED BEFORE THE FORMULA OPENED IS APPLIED AGAIN WHEN IT OPENS, AND WHEN IT CLOSES
             panel.findAll(subPanel, 'validationRuleFormulaToggle')[1].dispatch('click');
-            typeSearch('and(a ');
-            typeSearch('and(a');
             expect(shownRuleNames()).toEqual(['Complex_Formula']);
+            expect(matchCount()).toBe('1 of 5 rules');
+            panel.findAll(subPanel, 'validationRuleFormulaToggle')[1].dispatch('click');
+            expect(shownRuleNames()).toEqual([]);
+            panel.findAll(subPanel, 'validationRuleFormulaToggle')[1].dispatch('click');
 
             typeSearch('widget');
             expect(panel.isHidden(panel.findAll(subPanel, 'validationRuleObject')[1])).toBe(false);
 
             typeSearch('');
             expect(shownRuleNames()).toHaveLength(5);
+
+        });
+
+        it('builds a group\'s rows only when it opens, opening groups within the auto-expand budgets', () => {
+
+            const panel = drawRecipe();
+            const gadgetCard = openValidationRules(panel);
+            const subPanel = subPanelOf(panel, gadgetCard);
+            const objectCount = RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT + 5;
+
+            panel.postToPanel({
+                command: 'treeValidationRules', renderSequence: 3, treeKey: GADGET_TREE_KEY,
+                objects: Array.from({ length: objectCount }, (_unused, objectIndex) => ({
+                    objectApiName: `Object_${objectIndex}__c`,
+                    rules: [{ ruleName: `Rule_${objectIndex}`, status: 'inactive', isActive: false, fieldApiNames: [], reasons: [] }]
+                }))
+            });
+
+            expect(panel.findAll(subPanel, 'validationRuleObject')).toHaveLength(objectCount);
+            expect(panel.findAll(subPanel, 'validationRule')).toHaveLength(RECIPE_COCKPIT_AUTO_EXPAND_OBJECT_LIMIT);
+
+            // A CLOSED GROUP IS STILL SEARCHED, AND OPENED WHEN IT MATCHES
+            const lastName = `Rule_${objectCount - 1}`;
+            panel.typeIntoTabSearch(gadgetCard, 'troubleshootingSubPanel-validationRules', lastName.toLowerCase());
+            expect(textsOf(panel, subPanel, 'validationRuleName').filter((ruleName: string) => ruleName === lastName)).toEqual([lastName]);
+
+            // A READER'S CLICK OPENS AND CLOSES A GROUP
+            const toggle = panel.findAll(panel.findAll(subPanel, 'validationRuleObject')[objectCount - 1], 'validationRuleToggle')[0];
+            toggle.dispatch('click');
+            expect(toggle.attributes['aria-expanded']).toBe('false');
 
         });
 

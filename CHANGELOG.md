@@ -14,6 +14,14 @@ Generate Treecipe applies the validation rules it can (#324) and writes a TODO f
 - **Bounded and link-free.** `RecipeCockpitValidationRuleList` (no vscode) finds each object's folder the way **Generate permission set…** does, in name order and without following a link. A linked `validationRules` folder or rule file is not read. It reads at most 500 rules per object (Salesforce's own limit) and counts the rest. A file over 256 KB is not read. Error messages and formulas are cut at Salesforce's own limits (255 and 3,900 characters) and marked with `…`. Rules are kept in a `Map`, so a rule named `__proto__` is a name like any other.
 - **Search.** The sub-tab's search now matches rules by object, rule name, status, error message, field and reason, plus the formula while it is open. It counts rules instead of actions and hides an object with no matching rule.
 - **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the list. No screenshot shows the Troubleshooting tab, so none changed.
+- **From review.**
+  - The read gives the extension host back every 200 rule files, as the Troubleshooting counts do. xml2js settles synchronously, so the read never gave it back before.
+  - The run's rule records are parsed from the wrapper once per model, not once per tree, as the Query tab shares its wrapper read.
+  - Each object group's rows are built when it opens, and groups open within the cockpit's auto-expand budgets (25 objects, 2,000 rows), like the TODO's sub-tab. Each rule's search text is taken once from the posted values, so a keystroke reads no DOM.
+  - Opening or closing a formula applies the search again.
+  - After a retrieve, every card that had drawn its list gets it again, not only the card that retrieved.
+  - A rule is matched to its run record by the name generation recorded it under, as `ValidationRuleAnalyzerService` reads it. An empty `<fullName>`, a name longer than 255 characters, and a file generation could not read now find their record instead of reading as not in this run or as a missing file.
+  - A list read that threw is not kept.
 - **Tests.** `RecipeCockpitValidationRuleList.test.ts` runs the reader over #324's real pipeline output and the DirectoryProcessor's Gadget__c metadata. It covers applied, not applied, inactive, a rule added since the run, a rule whose file is gone, a rule deactivated since, unreadable files, bounds, links and the 500-rule cap, malformed wrapper records, the router, the host (nothing read until asked, no org contacted, kept per model, read again after a retrieve, failures) and the real panel script: the populated, empty and no-local-rules states, a collapsed formula, hostile text, search, a restored place, and a list for another model.
 
 ## [3.108.0] - Recipe Cockpit: the version, the GitHub icon and ? on one line

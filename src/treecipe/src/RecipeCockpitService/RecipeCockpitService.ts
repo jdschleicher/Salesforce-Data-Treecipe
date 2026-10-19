@@ -17,7 +17,7 @@ import {
     RecipeCockpitPermissionSetAssign
 } from './RecipeCockpitPermissionSetAssign';
 import { RecipeCockpitPermissionSetGenerate } from './RecipeCockpitPermissionSetGenerate';
-import { IValidationRuleListObject, RecipeCockpitValidationRuleList } from './RecipeCockpitValidationRuleList';
+import { IValidationRuleListObject, IValidationRuleListRunRecord, RecipeCockpitValidationRuleList } from './RecipeCockpitValidationRuleList';
 import {
     IMetadataDeployComponent,
     IMetadataDeployObject,
@@ -6613,8 +6613,12 @@ export class RecipeCockpitService {
     */
     private static treeValidationRuleLists = new Map<string, Promise<IRecipeCockpitTreeValidationRulesMessage>>();
 
+    // THE RUN'S RULE RECORDS, PARSED ONCE PER MODEL RATHER THAN ONCE PER TREE, AS THE QUERY TAB SHARES ITS WRAPPER READ
+    private static validationRuleRunRecordsRead: { modelKey: string; runRulesByObject: Map<string, Map<string, IValidationRuleListRunRecord>> } | undefined;
+
     static clearTreeValidationRuleLists() {
         this.treeValidationRuleLists.clear();
+        this.validationRuleRunRecordsRead = undefined;
     }
 
     private static async postTreeValidationRules(cockpitPanel: vscode.WebviewPanel, treeKey: string, renderSequence: number) {
@@ -6634,6 +6638,8 @@ export class RecipeCockpitService {
                 this.treeValidationRuleLists.clear();
             }
             listRead = this.readTreeValidationRules(panelState.workspaceRoot, panelState.objectsWrapperFilePath ?? '', treeKey, renderSequence, tree.objects.map(treeObject => treeObject.objectApiName));
+            // A READ THAT THREW IS NOT KEPT EITHER: EVERY STEP CATCHES, BUT A CACHED REJECTION WOULD ANSWER NOTHING FOR THE MODEL'S LIFE
+            listRead.catch(() => this.treeValidationRuleLists.delete(listKey));
             this.treeValidationRuleLists.set(listKey, listRead);
         }
 
@@ -6661,29 +6667,53 @@ export class RecipeCockpitService {
             return rulesMessage;
         }
 
-        let parsedWrapper: unknown;
-        try {
-            parsedWrapper = JSON.parse(fs.readFileSync(objectsWrapperFilePath, 'utf-8'));
-        } catch (readError) {
-            rulesMessage.failureMessage = `The objects wrapper "${path.basename(objectsWrapperFilePath)}" could not be read again: ${this.describeThrown(readError)} Run "Generate Treecipe" again.`;
-            return rulesMessage;
+        const modelKey = JSON.stringify([workspaceRoot, renderSequence, objectsWrapperFilePath]);
+        if ( this.validationRuleRunRecordsRead?.modelKey !== modelKey ) {
+            try {
+                this.validationRuleRunRecordsRead = {
+                    modelKey: modelKey,
+                    runRulesByObject: RecipeCockpitValidationRuleList.readRunValidationRulesByObject(JSON.parse(fs.readFileSync(objectsWrapperFilePath, 'utf-8')))
+                };
+            } catch (readError) {
+                rulesMessage.failureMessage = `The objects wrapper "${path.basename(objectsWrapperFilePath)}" could not be read again: ${this.describeThrown(readError)} Run "Generate Treecipe" again.`;
+                return rulesMessage;
+            }
         }
 
-        rulesMessage.objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsDirectoryPath, objectApiNames, parsedWrapper);
+        rulesMessage.objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsDirectoryPath, objectApiNames, this.validationRuleRunRecordsRead.runRulesByObject);
         return rulesMessage;
 
     }
 
-    // A RETRIEVE WROTE RULE FILES: THE LIST IS READ AGAIN AND POSTED, ON WHATEVER IS ON SCREEN NOW
+    /*
+        A retrieve wrote rule files: the list is read again and posted, on whatever is on screen now,
+        for the retrieving tree and every other tree whose list this model already drew -- a card
+        listing the same objects would otherwise keep the old list. The run's records did not change.
+    */
     private static async refreshTreeValidationRules(treeKey: string) {
 
-        this.clearTreeValidationRuleLists();
-
+        const panelState = this.recipeCockpitPanelState;
         const cockpitPanel = this.recipeCockpitPanel;
-        const renderSequence = this.recipeCockpitPanelState.recipeDataMessage?.renderSequence;
+        const renderSequence = panelState.recipeDataMessage?.renderSequence;
+        const drawnTreeKeys = new Set<string>([treeKey]);
 
-        if ( cockpitPanel && renderSequence !== undefined && this.recipeCockpitPanelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
-            await this.postTreeValidationRules(cockpitPanel, treeKey, renderSequence);
+        [...this.treeValidationRuleLists.keys()].forEach(listKey => {
+            const [listWorkspaceRoot, listRenderSequence, listTreeKey] = JSON.parse(listKey) as [string, number, string];
+            if ( listWorkspaceRoot === panelState.workspaceRoot && listRenderSequence === renderSequence ) {
+                drawnTreeKeys.add(listTreeKey);
+            }
+        });
+
+        this.treeValidationRuleLists.clear();
+
+        if ( !cockpitPanel || renderSequence === undefined ) {
+            return;
+        }
+
+        for ( const drawnTreeKey of drawnTreeKeys ) {
+            if ( panelState.treeHistoryAllowLists.nameableTreeKeys.has(drawnTreeKey) ) {
+                await this.postTreeValidationRules(cockpitPanel, drawnTreeKey, renderSequence);
+            }
         }
 
     }
@@ -16235,22 +16265,29 @@ ${this.buildPaletteCustomProperties()}
                 });
                 total = subTabState.items.length;
 
-                // THE VALIDATION RULES SUB-TAB COUNTS ITS RULES, NOT ITS ONE ACTION (#327)
+                // THE VALIDATION RULES SUB-TAB COUNTS ITS RULES, NOT ITS ONE ACTION (#327); A ROW IS MATCHED BY ITS SAVED TEXT, BUILT OR NOT
                 if (subTabState.ruleGroups) {
                     matchingCount = 0;
                     total = 0;
                     subTabState.ruleGroups.forEach(function (groupState) {
-                        let groupMatchingCount = 0;
-                        groupState.rules.forEach(function (ruleState) {
-                            const isMatch = !searchQuery || readValidationRuleSearchText(groupState, ruleState).indexOf(searchQuery) !== -1;
-                            if (isMatch) { groupMatchingCount++; }
-                            setShownIfChanged(ruleState, ruleState.element, isMatch);
+                        groupState.matchingCount = 0;
+                        groupState.entries.forEach(function (entry) {
+                            entry.isMatch = !searchQuery || entry.searchText.indexOf(searchQuery) !== -1;
+                            if (entry.isMatch) { groupState.matchingCount++; }
+                            if (entry.element) { setShownIfChanged(entry, entry.element, entry.isMatch); }
                         });
-                        total += groupState.rules.length;
-                        matchingCount += groupMatchingCount;
+                        total += groupState.entries.length;
+                        matchingCount += groupState.matchingCount;
                         const isObjectNamed = groupState.objectApiName.toLowerCase().indexOf(searchQuery) !== -1;
-                        setShownIfChanged(groupState, groupState.element, !searchQuery || groupMatchingCount > 0 || isObjectNamed);
+                        setShownIfChanged(groupState, groupState.element, !searchQuery || groupState.matchingCount > 0 || isObjectNamed);
+                        groupState.countElement.textContent = groupState.entries.length === 0 ? ''
+                            : searchQuery ? groupState.matchingCount + ' of ' + pluralize(groupState.entries.length, 'rule', 'rules')
+                            : pluralize(groupState.entries.length, 'rule', 'rules');
                     });
+                    expandMatchesWithinBudget(subTabState.ruleGroups.filter(function (groupState) { return groupState.entries.length > 0; }),
+                        function (groupState) { return groupState.matchingCount; },
+                        function (groupState) { return groupState.entries.length; },
+                        function (groupState, isExpanded) { setValidationRuleGroupExpanded(treeState, groupState, isExpanded, false); });
                 }
 
             }
@@ -16695,15 +16732,22 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // WHAT A RULE IS FOUND BY: ITS OBJECT AND WHAT IT DRAWS, ITS FORMULA ONLY WHILE OPEN -- NEVER A TOOLTIP
-    function readValidationRuleSearchText(groupState, ruleState) {
+    // WHAT A RULE IS FOUND BY: ITS OBJECT AND WHAT ITS ROW DRAWS, ITS FORMULA ONLY WHILE OPEN -- NEVER A TOOLTIP
+    function buildValidationRuleSearchText(objectApiName, entry) {
 
-        const texts = [groupState.objectApiName].concat(collectElementText(ruleState.summaryElement));
-        if (ruleState.isFormulaExpanded && ruleState.formulaElement) { texts.push(String(ruleState.formulaElement.textContent || '')); }
+        const texts = [objectApiName, entry.ruleName, entry.statusLabel, entry.activeLabel, entry.messageText, entry.fieldsText]
+            .concat(entry.reasonTexts);
+        if (entry.isFormulaExpanded) { texts.push(entry.rule.formula); }
         return texts.join('\\n').toLowerCase();
 
     }
 
+    /*
+        One group per object, its rows built when it opens, and groups opened within the
+        auto-expand budgets, like the TODO's sub-tab: a tree with thousands of rules costs its
+        headers and the rows the budget allows. Each rule's search text is taken once from the
+        posted values, so a keystroke reads no DOM.
+    */
     function renderTreeValidationRules(rulesMessage) {
 
         if (renderedSequence === null || rulesMessage.renderSequence !== renderedSequence) { return; }
@@ -16736,17 +16780,39 @@ ${this.buildPaletteCustomProperties()}
         objects.forEach(function (object) {
 
             const rules = Array.isArray(object.rules) ? object.rules : [];
-            const groupState = { objectApiName: String(object.objectApiName), element: createElement('div', 'validationRuleObject'), rules: [], isShown: true };
+            const objectApiName = String(object.objectApiName);
+            const groupState = {
+                objectApiName: objectApiName,
+                element: createElement('div', 'validationRuleObject'),
+                toggleElement: null,
+                countElement: createElement('span', 'validationRuleCount muted'),
+                bodyElement: createElement('div', 'validationRuleRows hidden'),
+                entries: rules.map(function (rule) { return buildValidationRuleEntryState(objectApiName, rule); }),
+                matchingCount: 0,
+                isBuilt: false,
+                isExpanded: false,
+                isShown: true
+            };
+
             const headerElement = createElement('div', 'validationRuleObjectHeader');
-            headerElement.appendChild(createElement('span', 'validationRuleObjectName', groupState.objectApiName));
-            headerElement.appendChild(createElement('span', 'validationRuleCount muted', rules.length > 0 ? pluralize(rules.length, 'rule', 'rules') : ''));
+            if (groupState.entries.length > 0) {
+                groupState.toggleElement = buildToggleElement('validationRuleToggle');
+                groupState.toggleElement.setAttribute('aria-label', 'Show or hide the validation rules of ' + objectApiName);
+                groupState.toggleElement.setAttribute('aria-expanded', 'false');
+                groupState.toggleElement.addEventListener('click', function () {
+                    setValidationRuleGroupExpanded(treeState, groupState, !groupState.isExpanded, true);
+                });
+                headerElement.appendChild(groupState.toggleElement);
+            }
+            headerElement.appendChild(createElement('span', 'validationRuleObjectName', objectApiName));
+            headerElement.appendChild(groupState.countElement);
             groupState.element.appendChild(headerElement);
 
-            if (rules.length === 0 && !(object.unreadRuleCount > 0)) {
+            if (groupState.entries.length === 0 && !(object.unreadRuleCount > 0)) {
                 groupState.element.appendChild(createElement('div', 'validationRuleEmpty muted', OBJECT_NO_VALIDATION_RULES_NOTE));
             }
 
-            rules.forEach(function (rule) { groupState.rules.push(buildValidationRuleEntry(treeState, groupState, rule)); });
+            groupState.element.appendChild(groupState.bodyElement);
 
             if (object.unreadRuleCount > 0) {
                 groupState.element.appendChild(createElement('div', 'validationRuleUnread muted', pluralize(object.unreadRuleCount, 'more rule file was', 'more rule files were') + ' not read.'));
@@ -16761,63 +16827,93 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function buildValidationRuleEntry(treeState, groupState, rule) {
+    // WHAT ONE RULE'S ROW WILL DRAW, TAKEN FROM THE POSTED VALUES BEFORE ANY ROW IS BUILT
+    function buildValidationRuleEntryState(objectApiName, rule) {
 
-        const ruleElement = createElement('div', 'validationRule validationRule-' + String(rule.status));
-        const summaryElement = createElement('div', 'validationRuleSummary');
-        const headerElement = createElement('div', 'validationRuleHeader');
         const fieldApiNames = Array.isArray(rule.fieldApiNames) ? rule.fieldApiNames : [];
-        const ruleState = { element: ruleElement, summaryElement: summaryElement, formulaElement: null, isFormulaExpanded: false, isShown: true };
+        const reasonTexts = (Array.isArray(rule.reasons) ? rule.reasons : []).map(function (reason) { return 'Why not applied: ' + String(reason); });
+        if (rule.status === 'notInRun') { reasonTexts.push(VALIDATION_RULE_NOT_IN_RUN_NOTE); }
+        if (rule.isFileMissing) { reasonTexts.push(VALIDATION_RULE_FILE_MISSING_NOTE); }
 
-        headerElement.appendChild(createElement('span', 'validationRuleName', String(rule.ruleName)));
-        headerElement.appendChild(createElement('span', 'validationRuleStatus', VALIDATION_RULE_STATUS_LABELS[rule.status] || String(rule.status)));
-        if (rule.isActive === true || rule.isActive === false) {
-            headerElement.appendChild(createElement('span', 'validationRuleActive muted', rule.isActive ? 'active' : 'inactive'));
+        const entry = {
+            rule: rule,
+            ruleName: String(rule.ruleName),
+            statusLabel: VALIDATION_RULE_STATUS_LABELS[rule.status] || String(rule.status),
+            activeLabel: rule.isActive === true ? 'active' : rule.isActive === false ? 'inactive' : '',
+            messageText: typeof rule.errorMessage === 'string' && rule.errorMessage !== '' ? 'Error message: ' + rule.errorMessage : '',
+            fieldsText: fieldApiNames.length > 0 ? 'Constrains: ' + fieldApiNames.map(String).join(', ') : VALIDATION_RULE_NO_FIELDS_NOTE,
+            reasonTexts: reasonTexts,
+            hasFormula: typeof rule.formula === 'string' && rule.formula !== '',
+            isFormulaExpanded: false,
+            formulaElement: null,
+            searchText: '',
+            isMatch: true,
+            isShown: true,
+            element: null
+        };
+        entry.searchText = buildValidationRuleSearchText(objectApiName, entry);
+
+        return entry;
+
+    }
+
+    function setValidationRuleGroupExpanded(treeState, groupState, isExpanded, isAnimated) {
+
+        if (!groupState.toggleElement) { return; }
+
+        if (isExpanded && !groupState.isBuilt) {
+            groupState.entries.forEach(function (entry) {
+                entry.element = buildValidationRuleRow(treeState, groupState, entry);
+                if (!entry.isMatch) { entry.element.classList.add('hidden'); }
+                entry.isShown = entry.isMatch;
+                groupState.bodyElement.appendChild(entry.element);
+            });
+            groupState.isBuilt = true;
         }
-        summaryElement.appendChild(headerElement);
 
-        if (typeof rule.errorMessage === 'string' && rule.errorMessage !== '') {
-            summaryElement.appendChild(createElement('div', 'validationRuleMessage', 'Error message: ' + rule.errorMessage));
-        }
+        groupState.isExpanded = isExpanded;
+        setShownWithMotion(groupState.bodyElement, isExpanded, isAnimated);
+        drawToggle(groupState.toggleElement, isExpanded, isAnimated);
 
-        summaryElement.appendChild(createElement('div', 'validationRuleFields muted', fieldApiNames.length > 0
-            ? 'Constrains: ' + fieldApiNames.join(', ')
-            : VALIDATION_RULE_NO_FIELDS_NOTE));
+    }
 
-        (Array.isArray(rule.reasons) ? rule.reasons : []).forEach(function (reason) {
-            summaryElement.appendChild(createElement('div', 'validationRuleReason muted', 'Why not applied: ' + String(reason)));
-        });
+    function buildValidationRuleRow(treeState, groupState, entry) {
 
-        if (rule.status === 'notInRun') {
-            summaryElement.appendChild(createElement('div', 'validationRuleReason muted', VALIDATION_RULE_NOT_IN_RUN_NOTE));
-        }
-        if (rule.isFileMissing) {
-            summaryElement.appendChild(createElement('div', 'validationRuleReason muted', VALIDATION_RULE_FILE_MISSING_NOTE));
-        }
+        const rule = entry.rule;
+        const ruleElement = createElement('div', 'validationRule validationRule-' + String(rule.status));
+        const headerElement = createElement('div', 'validationRuleHeader');
 
-        ruleElement.appendChild(summaryElement);
+        headerElement.appendChild(createElement('span', 'validationRuleName', entry.ruleName));
+        headerElement.appendChild(createElement('span', 'validationRuleStatus', entry.statusLabel));
+        if (entry.activeLabel) { headerElement.appendChild(createElement('span', 'validationRuleActive muted', entry.activeLabel)); }
+        ruleElement.appendChild(headerElement);
 
-        if (typeof rule.formula === 'string' && rule.formula !== '') {
+        if (entry.messageText) { ruleElement.appendChild(createElement('div', 'validationRuleMessage', entry.messageText)); }
+        ruleElement.appendChild(createElement('div', 'validationRuleFields muted', entry.fieldsText));
+        entry.reasonTexts.forEach(function (reasonText) { ruleElement.appendChild(createElement('div', 'validationRuleReason muted', reasonText)); });
+
+        if (entry.hasFormula) {
 
             const toggleElement = createButton('secondary', 'validationRuleFormulaToggle', 'Show formula', 'compact');
             toggleElement.setAttribute('aria-expanded', 'false');
             toggleElement.addEventListener('click', function () {
-                if (!ruleState.formulaElement) {
-                    ruleState.formulaElement = createElement('div', 'validationRuleFormula hidden', rule.formula);
-                    ruleElement.appendChild(ruleState.formulaElement);
+                if (!entry.formulaElement) {
+                    entry.formulaElement = createElement('div', 'validationRuleFormula hidden', rule.formula);
+                    ruleElement.appendChild(entry.formulaElement);
                 }
-                ruleState.isFormulaExpanded = !ruleState.isFormulaExpanded;
-                toggleElement.textContent = ruleState.isFormulaExpanded ? 'Hide formula' : 'Show formula';
-                toggleElement.setAttribute('aria-expanded', ruleState.isFormulaExpanded ? 'true' : 'false');
-                setShownWithMotion(ruleState.formulaElement, ruleState.isFormulaExpanded, true);
+                entry.isFormulaExpanded = !entry.isFormulaExpanded;
+                entry.searchText = buildValidationRuleSearchText(groupState.objectApiName, entry);
+                toggleElement.textContent = entry.isFormulaExpanded ? 'Hide formula' : 'Show formula';
+                toggleElement.setAttribute('aria-expanded', entry.isFormulaExpanded ? 'true' : 'false');
+                setShownWithMotion(entry.formulaElement, entry.isFormulaExpanded, true);
+                // A SEARCH TYPED BEFORE THE FORMULA OPENED OR CLOSED NOW MATCHES WHAT IS ON SCREEN
+                applyTroubleshootingFilter(treeState, 'validationRules');
             });
             ruleElement.appendChild(toggleElement);
 
         }
 
-        groupState.element.appendChild(ruleElement);
-
-        return ruleState;
+        return ruleElement;
 
     }
 
