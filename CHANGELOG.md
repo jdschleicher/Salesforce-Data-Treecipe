@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.109.0] - Recipe Cockpit: the selected tab and its content share one outline, and every search box shows a search icon
+## [3.110.0] - Recipe Cockpit: the selected tab and its content share one outline, and every search box shows a search icon
 
 Closes [#373](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/373).
 
@@ -13,6 +13,30 @@ A tree card's tabs, and the Troubleshooting tab's sub-tabs, showed the selected 
 - **Colours.** The outline is `--sdt-accent` and the icon `--sdt-muted`, both on `--sdt-surface`, pairs the contrast test already holds to 3:1.
 - **Guide.** Two screenshots in `docs/RECIPE-COCKPIT-GUIDE.md` were re-taken. The help text didn't change.
 - **Tests.** A new harness suite checks that every tab panel carries the outline class (one-tab cards included), that the stylesheet outlines the selected tab and panel with no strip rule and the bar on top, that every search box on every tab and sub-tab holds exactly one hidden SVG magnifier with the input's name unchanged, and that clicking the icon focuses the input. The motion and partial-update suites cover the bar's new edge and the icon in a data sets box rebuilt in place.
+
+## [3.109.0] - Recipe Cockpit: the Validation Rules sub-tab lists each object's rules and what they did
+
+Closes [#327](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/327).
+
+Generate Treecipe applies the validation rules it can (#324) and writes a TODO for each one it cannot, but the cockpit never showed which rules a tree's objects have, which ones shaped a field, or why one was not applied. The issue asked for a **Validation rules** button on the Treecipe tab. Since 3.106.0 (#365) the Troubleshooting tab has a **Validation Rules** sub-tab, so the list is there instead, under **Retrieve validation rules…**.
+
+- **One group per tree object.** Each rule shows its name, its status (**Applied**, **Not applied**, **Inactive**, **Not in this run** or **Unreadable**), whether its file says it is active, its error message, the fields it constrains and, when it was not applied, why. An object with no rules says so.
+- **Where each value comes from.** Whether a rule was applied, the fields it constrains and why it was not applied come from #324's records in the run's objects wrapper: each field's `validationRuleConstraints` and the object's `ValidationRulesNotApplied`. The wrapper records nothing for an inactive rule and keeps no error message or formula, so those are read from the rule's file under `salesforceObjectsPath`, the folder Generate Treecipe reads. A rule that is active but the run records nothing for is **Not in this run**: it was added or activated after Generate Treecipe ran. A rule the run recorded whose file is gone is still listed, with a note. A rule deactivated since the run reads as **Inactive**.
+- **The formula is collapsed.** **Show formula** builds it the first time it is opened. Every value is written with `textContent`, and no rule text reaches the shell.
+- **No rules in the project.** When the project holds no rule file for any of the tree's objects, the sub-tab says so and points at **Retrieve validation rules…** above it (#326). A retrieve reads the list again and posts it.
+- **Loaded when opened.** Opening the sub-tab posts `loadValidationRules {treeKey, renderSequence}` and nothing else. The router matches the key against `nameableTreeKeys`, the pending/active allow-list the other Troubleshooting actions use, and the model on screen. The host reads the list then and keeps it per model and tree, and the panel asks once per model, so the posted model did not grow. A list that could not be read (an objects path outside the workspace, an unreadable wrapper) says why, and is asked for again the next time the sub-tab opens.
+- **Bounded and link-free.** `RecipeCockpitValidationRuleList` (no vscode) finds each object's folder the way **Generate permission set…** does, in name order and without following a link. A linked `validationRules` folder or rule file is not read. It reads at most 500 rules per object (Salesforce's own limit) and counts the rest. A file over 256 KB is not read. Error messages and formulas are cut at Salesforce's own limits (255 and 3,900 characters) and marked with `…`. Rules are kept in a `Map`, so a rule named `__proto__` is a name like any other.
+- **Search.** The sub-tab's search now matches rules by object, rule name, status, error message, field and reason, plus the formula while it is open. It counts rules instead of actions and hides an object with no matching rule.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the list. No screenshot shows the Troubleshooting tab, so none changed.
+- **From review.**
+  - The read gives the extension host back every 200 rule files, as the Troubleshooting counts do. xml2js settles synchronously, so the read never gave it back before.
+  - The run's rule records are parsed from the wrapper once per model, not once per tree, as the Query tab shares its wrapper read.
+  - Each object group's rows are built when it opens, and groups open within the cockpit's auto-expand budgets (25 objects, 2,000 rows), like the TODO's sub-tab. Each rule's search text is taken once from the posted values, so a keystroke reads no DOM.
+  - Opening or closing a formula applies the search again.
+  - After a retrieve, every card that had drawn its list gets it again, not only the card that retrieved.
+  - A rule is matched to its run record by the name generation recorded it under, as `ValidationRuleAnalyzerService` reads it. An empty `<fullName>`, a name longer than 255 characters, and a file generation could not read now find their record instead of reading as not in this run or as a missing file.
+  - A list read that threw is not kept.
+- **Tests.** `RecipeCockpitValidationRuleList.test.ts` runs the reader over #324's real pipeline output and the DirectoryProcessor's Gadget__c metadata. It covers applied, not applied, inactive, a rule added since the run, a rule whose file is gone, a rule deactivated since, unreadable files, bounds, links and the 500-rule cap, malformed wrapper records, the router, the host (nothing read until asked, no org contacted, kept per model, read again after a retrieve, failures) and the real panel script: the populated, empty and no-local-rules states, a collapsed formula, hostile text, search, a restored place, and a list for another model.
 
 ## [3.108.0] - Recipe Cockpit: the version, the GitHub icon and ? on one line
 

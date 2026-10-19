@@ -17,6 +17,7 @@ import {
     RecipeCockpitPermissionSetAssign
 } from './RecipeCockpitPermissionSetAssign';
 import { RecipeCockpitPermissionSetGenerate } from './RecipeCockpitPermissionSetGenerate';
+import { IValidationRuleListObject, IValidationRuleListRunRecord, RecipeCockpitValidationRuleList } from './RecipeCockpitValidationRuleList';
 import {
     IMetadataDeployComponent,
     IMetadataDeployObject,
@@ -459,7 +460,8 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.',
             'Under the run list, the Target Org Management section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll. The Treecipes section below it holds the cards.',
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all with a link to each line.',
-            'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types and Global Value Sets, each with its own search. It opens on the one you chose last.'
+            'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types and Global Value Sets, each with its own search. It opens on the one you chose last.',
+            'Validation Rules lists each object\'s validation rules from your project: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not. Show formula opens a rule\'s formula.'
         ]
     },
     {
@@ -1364,6 +1366,20 @@ export interface IRecipeCockpitTroubleshootingSummaryMessage {
 }
 
 /*
+    The Troubleshooting tab's Validation Rules list (#327): per tree object, every rule the project
+    holds and what Generate Treecipe did with it, read when the sub-tab is opened. renderSequence
+    names the model it was read for, and the panel drops it for any other. failureMessage is set,
+    and objects empty, when the objects path or the run's wrapper could not be read.
+*/
+export interface IRecipeCockpitTreeValidationRulesMessage {
+    command: 'treeValidationRules';
+    renderSequence: number;
+    treeKey: string;
+    objects: IValidationRuleListObject[];
+    failureMessage?: string;
+}
+
+/*
     The Query tab (#367): one tree's generated queries, read from the run's objects wrapper when the
     tab is opened, each with the reader's saved edit when there is one. renderSequence names the
     model they were read for, and the panel drops them for any other. failureMessage is set, and
@@ -1546,11 +1562,29 @@ export const RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS: Readonly<Recor
     todos: 'Search TODOs by object, field or text',
     fields: 'Search field actions',
     permissions: 'Search permission set actions',
-    validationRules: 'Search validation rule actions',
+    validationRules: 'Search validation rules by object, rule, field or message',
     recordTypes: 'Search record type actions',
     globalValueSets: 'Search global value set actions'
 });
 export const RECIPE_COCKPIT_NO_TREE_TODOS_NOTE = 'No TODO comments in this tree\'s recipe.';
+
+/*
+    The Validation Rules sub-tab's list (#327): what each rule's status reads as, and the notes the
+    list draws. Constants injected into the panel script, written with textContent.
+*/
+export const RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS = Object.freeze({
+    applied: 'Applied',
+    notApplied: 'Not applied',
+    inactive: 'Inactive',
+    notInRun: 'Not in this run',
+    unreadable: 'Unreadable'
+});
+export const RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE = 'Reading this project\'s validation rules…';
+export const RECIPE_COCKPIT_NO_LOCAL_VALIDATION_RULES_NOTE = 'This project holds no validation rule files for this tree\'s objects. Retrieve validation rules… brings them from an org; run Generate Treecipe afterwards so they shape the recipe.';
+export const RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE = 'No validation rules.';
+export const RECIPE_COCKPIT_VALIDATION_RULE_NOT_IN_RUN_NOTE = 'Added or activated since Generate Treecipe ran. Run Generate Treecipe to apply it.';
+export const RECIPE_COCKPIT_VALIDATION_RULE_FILE_MISSING_NOTE = 'This run recorded the rule, and its file is no longer in this project.';
+export const RECIPE_COCKPIT_VALIDATION_RULE_NO_FIELDS_NOTE = 'Constrains no field this run read.';
 // WHAT A TODO's ENTRY SAYS FOR A FIELD TODO WHOSE TEXT THE PANEL COULD NOT FIND IN THE FIELD'S VALUE
 export const RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL = 'TODO in this field\'s value';
 
@@ -1619,6 +1653,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitMetadataDeployStateMessage
                                         | IRecipeCockpitTroubleshootingSummaryMessage
                                         | IRecipeCockpitTreeQueriesMessage
+                                        | IRecipeCockpitTreeValidationRulesMessage
                                         | IRecipeCockpitTreeQueryStateMessage
                                         | IRecipeCockpitTreeQueryResultMessage
                                         | IRecipeCockpitOrgOpenStateMessage
@@ -1771,6 +1806,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'refuseMetadataDeploy'; refusalText?: string; hostMessage: IRecipeCockpitMetadataDeployStateMessage }
     | { kind: 'loadTroubleshootingSummary'; treeKey: string; renderSequence: number }
     | { kind: 'loadTreeQueries'; treeKey: string; renderSequence: number }
+    | { kind: 'loadValidationRules'; treeKey: string; renderSequence: number }
     | { kind: 'saveTreeQueryEdit'; treeKey: string; queryKey: string; queryText: string }
     | { kind: 'runTreeQuery'; treeKey: string; queryKey: string; queryText: string }
     | { kind: 'postTreeQueryState'; hostMessage: IRecipeCockpitTreeQueryStateMessage }
@@ -4996,6 +5032,11 @@ export class RecipeCockpitService {
                 this.postTreeQueries(cockpitPanel, panelAction.treeKey, panelAction.renderSequence);
                 return;
 
+            case 'loadValidationRules':
+
+                await this.postTreeValidationRules(cockpitPanel, panelAction.treeKey, panelAction.renderSequence);
+                return;
+
             case 'saveTreeQueryEdit':
 
                 await this.saveTreeQueryEdit(panelAction.treeKey, panelAction.queryKey, panelAction.queryText);
@@ -6566,6 +6607,119 @@ export class RecipeCockpitService {
 
     }
 
+    /*
+        The Validation Rules list (#327): read when the sub-tab asks, from the rule files under the
+        configured objects path and the run's objects wrapper, and kept per model and tree, so
+        switching sub-tabs reads nothing again. A retrieve writes rule files, so it clears the list
+        and posts it again; a list that could not be read is asked again next time.
+    */
+    private static treeValidationRuleLists = new Map<string, Promise<IRecipeCockpitTreeValidationRulesMessage>>();
+
+    // THE RUN'S RULE RECORDS, PARSED ONCE PER MODEL RATHER THAN ONCE PER TREE, AS THE QUERY TAB SHARES ITS WRAPPER READ
+    private static validationRuleRunRecordsRead: { modelKey: string; runRulesByObject: Map<string, Map<string, IValidationRuleListRunRecord>> } | undefined;
+
+    static clearTreeValidationRuleLists() {
+        this.treeValidationRuleLists.clear();
+        this.validationRuleRunRecordsRead = undefined;
+    }
+
+    private static async postTreeValidationRules(cockpitPanel: vscode.WebviewPanel, treeKey: string, renderSequence: number) {
+
+        const panelState = this.recipeCockpitPanelState;
+        const tree = panelState.recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+
+        if ( !tree ) {
+            return;
+        }
+
+        const listKey = JSON.stringify([panelState.workspaceRoot, renderSequence, treeKey]);
+        let listRead = this.treeValidationRuleLists.get(listKey);
+
+        if ( !listRead ) {
+            if ( this.treeValidationRuleLists.size >= RECIPE_COCKPIT_TROUBLESHOOTING_SUMMARY_CACHE_LIMIT ) {
+                this.treeValidationRuleLists.clear();
+            }
+            listRead = this.readTreeValidationRules(panelState.workspaceRoot, panelState.objectsWrapperFilePath ?? '', treeKey, renderSequence, tree.objects.map(treeObject => treeObject.objectApiName));
+            // A READ THAT THREW IS NOT KEPT EITHER: EVERY STEP CATCHES, BUT A CACHED REJECTION WOULD ANSWER NOTHING FOR THE MODEL'S LIFE
+            listRead.catch(() => this.treeValidationRuleLists.delete(listKey));
+            this.treeValidationRuleLists.set(listKey, listRead);
+        }
+
+        const rulesMessage = await listRead;
+
+        if ( rulesMessage.failureMessage && this.treeValidationRuleLists.get(listKey) === listRead ) {
+            this.treeValidationRuleLists.delete(listKey);
+        }
+
+        if ( this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState.recipeDataMessage?.renderSequence === renderSequence ) {
+            this.postToPanel(cockpitPanel, rulesMessage);
+        }
+
+    }
+
+    private static async readTreeValidationRules(workspaceRoot: string, objectsWrapperFilePath: string, treeKey: string, renderSequence: number, objectApiNames: string[]): Promise<IRecipeCockpitTreeValidationRulesMessage> {
+
+        const rulesMessage: IRecipeCockpitTreeValidationRulesMessage = { command: 'treeValidationRules', renderSequence: renderSequence, treeKey: treeKey, objects: [] };
+
+        let objectsDirectoryPath: string;
+        try {
+            objectsDirectoryPath = ConfigurationService.resolveObjectsDirectoryPath(workspaceRoot);
+        } catch (configurationError) {
+            rulesMessage.failureMessage = `The project's validation rules could not be read: ${this.describeThrown(configurationError)}`;
+            return rulesMessage;
+        }
+
+        const modelKey = JSON.stringify([workspaceRoot, renderSequence, objectsWrapperFilePath]);
+        if ( this.validationRuleRunRecordsRead?.modelKey !== modelKey ) {
+            try {
+                this.validationRuleRunRecordsRead = {
+                    modelKey: modelKey,
+                    runRulesByObject: RecipeCockpitValidationRuleList.readRunValidationRulesByObject(JSON.parse(fs.readFileSync(objectsWrapperFilePath, 'utf-8')))
+                };
+            } catch (readError) {
+                rulesMessage.failureMessage = `The objects wrapper "${path.basename(objectsWrapperFilePath)}" could not be read again: ${this.describeThrown(readError)} Run "Generate Treecipe" again.`;
+                return rulesMessage;
+            }
+        }
+
+        rulesMessage.objects = await RecipeCockpitValidationRuleList.buildTreeValidationRules(objectsDirectoryPath, objectApiNames, this.validationRuleRunRecordsRead.runRulesByObject);
+        return rulesMessage;
+
+    }
+
+    /*
+        A retrieve wrote rule files: the list is read again and posted, on whatever is on screen now,
+        for the retrieving tree and every other tree whose list this model already drew -- a card
+        listing the same objects would otherwise keep the old list. The run's records did not change.
+    */
+    private static async refreshTreeValidationRules(treeKey: string) {
+
+        const panelState = this.recipeCockpitPanelState;
+        const cockpitPanel = this.recipeCockpitPanel;
+        const renderSequence = panelState.recipeDataMessage?.renderSequence;
+        const drawnTreeKeys = new Set<string>([treeKey]);
+
+        [...this.treeValidationRuleLists.keys()].forEach(listKey => {
+            const [listWorkspaceRoot, listRenderSequence, listTreeKey] = JSON.parse(listKey) as [string, number, string];
+            if ( listWorkspaceRoot === panelState.workspaceRoot && listRenderSequence === renderSequence ) {
+                drawnTreeKeys.add(listTreeKey);
+            }
+        });
+
+        this.treeValidationRuleLists.clear();
+
+        if ( !cockpitPanel || renderSequence === undefined ) {
+            return;
+        }
+
+        for ( const drawnTreeKey of drawnTreeKeys ) {
+            if ( panelState.treeHistoryAllowLists.nameableTreeKeys.has(drawnTreeKey) ) {
+                await this.postTreeValidationRules(cockpitPanel, drawnTreeKey, renderSequence);
+            }
+        }
+
+    }
+
     static isQueryKeyShaped(queryKey: unknown): queryKey is string {
 
         return typeof queryKey === 'string' && queryKey !== '' && queryKey.length <= RECIPE_COCKPIT_QUERY_KEY_MAX_LENGTH;
@@ -7401,6 +7555,7 @@ export class RecipeCockpitService {
             this.isValidationRuleRetrieveInFlight = false;
             this.setValidationRuleRetrieveState({ command: 'validationRuleRetrieveState', isRunning: false, treeKey: treeKey });
             await this.refreshTroubleshootingSummary(treeKey);
+            await this.refreshTreeValidationRules(treeKey);
         }
 
     }
@@ -9975,6 +10130,26 @@ export class RecipeCockpitService {
 
             }
 
+            /*
+                The Validation Rules sub-tab's list (#327) posts the tree's KEY and the model it was
+                drawn on, nothing else: the objects are the host's model of the tree. It reads local
+                files and nothing else, so it is answered whatever else runs.
+            */
+            case 'loadValidationRules': {
+
+                const { treeKey, renderSequence } = panelMessage;
+
+                if ( typeof treeKey !== 'string'
+                        || !panelState.recipeDataMessage
+                        || renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+                    return undefined;
+                }
+
+                return { kind: 'loadValidationRules', treeKey: treeKey, renderSequence: renderSequence as number };
+
+            }
+
             case 'saveTreeQueryEdit': {
 
                 const { treeKey, queryKey, queryText } = panelMessage;
@@ -12190,6 +12365,18 @@ ${this.buildPaletteCustomProperties()}
     .treeQueryTableWrap { overflow: auto; max-height: 24rem; margin-top: 0.2rem; }
     .treeQueryTable { border-collapse: collapse; font-size: 0.9em; }
     .treeQueryTable th, .treeQueryTable td { border: 1px solid var(--sdt-border); padding: 0.15rem 0.4rem; text-align: left; vertical-align: top; white-space: pre-wrap; }
+    .validationRuleList { margin-top: 0.4rem; }
+    .validationRuleObject { margin-top: 0.5rem; }
+    .validationRuleObjectHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; }
+    .validationRuleObjectName { font-weight: 600; }
+    .validationRuleCount { font-size: 0.9em; }
+    .validationRule { margin: 0.3rem 0 0 0.8rem; padding: 0.3rem 0.5rem; border: 1px solid var(--sdt-border); border-radius: 6px; font-size: 0.9em; }
+    .validationRuleHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+    .validationRuleName { font-family: var(--vscode-editor-font-family); font-weight: 600; }
+    .validationRuleStatus { font-weight: 600; }
+    .validationRuleMessage, .validationRuleReason, .validationRuleFormula { white-space: pre-wrap; word-break: break-word; margin-top: 0.15rem; }
+    .validationRuleFormula { font-family: var(--vscode-editor-font-family); }
+    .validationRuleFormulaToggle { margin-top: 0.25rem; }
     .troubleshootingTodoHeader { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.4rem; }
     .troubleshootingTodoObject { font-weight: 600; }
     .troubleshootingTodoCount { font-size: 0.9em; }
@@ -12271,6 +12458,13 @@ ${this.buildPaletteCustomProperties()}
     const TROUBLESHOOTING_SUB_TAB_LABELS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS)};
     const TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS)};
     const NO_TREE_TODOS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_TREE_TODOS_NOTE)};
+    const VALIDATION_RULE_STATUS_LABELS = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS)};
+    const VALIDATION_RULES_LOADING_NOTE = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE)};
+    const NO_LOCAL_VALIDATION_RULES_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_LOCAL_VALIDATION_RULES_NOTE)};
+    const OBJECT_NO_VALIDATION_RULES_NOTE = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_NO_VALIDATION_RULES_NOTE)};
+    const VALIDATION_RULE_NOT_IN_RUN_NOTE = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_NOT_IN_RUN_NOTE)};
+    const VALIDATION_RULE_FILE_MISSING_NOTE = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_FILE_MISSING_NOTE)};
+    const VALIDATION_RULE_NO_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_NO_FIELDS_NOTE)};
     const TODO_IN_FIELD_VALUE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL)};
     const QUERY_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_QUERY_TAB_LABEL)};
     const QUERY_INTRO = ${JSON.stringify(RECIPE_COCKPIT_QUERY_INTRO)};
@@ -15840,6 +16034,7 @@ ${this.buildPaletteCustomProperties()}
                 addDeployItem(subTabState, 'permissionSet');
             } else if (subTab === 'validationRules') {
                 addActionItem(subTabState, buildRetrieveValidationRulesButton(treeState));
+                buildTroubleshootingValidationRules(treeState, subTabState);
             } else if (subTab === 'recordTypes') {
                 addDeployItem(subTabState, 'recordTypes');
             } else if (subTab === 'globalValueSets') {
@@ -15909,6 +16104,7 @@ ${this.buildPaletteCustomProperties()}
         }
 
         treeState.troubleshootingSubTab = subTab;
+        if (isAnimated && subTab === 'validationRules') { requestTreeValidationRules(treeState); }
 
         subTabStates.forEach(function (subTabState) {
             const isSelected = subTabState.subTab === subTab;
@@ -16127,6 +16323,31 @@ ${this.buildPaletteCustomProperties()}
                 });
                 total = subTabState.items.length;
 
+                // THE VALIDATION RULES SUB-TAB COUNTS ITS RULES, NOT ITS ONE ACTION (#327); A ROW IS MATCHED BY ITS SAVED TEXT, BUILT OR NOT
+                if (subTabState.ruleGroups) {
+                    matchingCount = 0;
+                    total = 0;
+                    subTabState.ruleGroups.forEach(function (groupState) {
+                        groupState.matchingCount = 0;
+                        groupState.entries.forEach(function (entry) {
+                            entry.isMatch = !searchQuery || entry.searchText.indexOf(searchQuery) !== -1;
+                            if (entry.isMatch) { groupState.matchingCount++; }
+                            if (entry.element) { setShownIfChanged(entry, entry.element, entry.isMatch); }
+                        });
+                        total += groupState.entries.length;
+                        matchingCount += groupState.matchingCount;
+                        const isObjectNamed = groupState.objectApiName.toLowerCase().indexOf(searchQuery) !== -1;
+                        setShownIfChanged(groupState, groupState.element, !searchQuery || groupState.matchingCount > 0 || isObjectNamed);
+                        groupState.countElement.textContent = groupState.entries.length === 0 ? ''
+                            : searchQuery ? groupState.matchingCount + ' of ' + pluralize(groupState.entries.length, 'rule', 'rules')
+                            : pluralize(groupState.entries.length, 'rule', 'rules');
+                    });
+                    expandMatchesWithinBudget(subTabState.ruleGroups.filter(function (groupState) { return groupState.entries.length > 0; }),
+                        function (groupState) { return groupState.matchingCount; },
+                        function (groupState) { return groupState.entries.length; },
+                        function (groupState, isExpanded) { setValidationRuleGroupExpanded(treeState, groupState, isExpanded, false); });
+                }
+
             }
 
             subTabState.search.matchCountElement.textContent = !searchQuery
@@ -16147,6 +16368,7 @@ ${this.buildPaletteCustomProperties()}
 
         treeState.isTroubleshootingSummaryWanted = false;
         vscodeApi.postMessage({ command: 'loadTroubleshootingSummary', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
+        if (treeState.troubleshootingSubTab === 'validationRules') { requestTreeValidationRules(treeState); }
 
     }
 
@@ -16537,6 +16759,219 @@ ${this.buildPaletteCustomProperties()}
         treeState.generatePermissionSetButtonElement = generateButtonElement;
 
         return generateButtonElement;
+
+    }
+
+    /*
+        The Validation Rules list (#327), under "Retrieve validation rules…": per tree object, each
+        rule the project holds -- its name, active or not, its error message, the fields it
+        constrains and what generation did with it -- read by the host when the sub-tab first opens
+        (loadValidationRules), so the posted model does not carry it. Every value is written with
+        textContent, and a formula is built only when its button opens it.
+    */
+    function buildTroubleshootingValidationRules(treeState, subTabState) {
+
+        subTabState.noun = ['rule', 'rules'];
+        subTabState.ruleGroups = [];
+        treeState.validationRuleSubTabState = subTabState;
+        treeState.validationRuleListElement = createElement('div', 'validationRuleList');
+        treeState.validationRuleListElement.appendChild(createElement('div', 'treeEmpty muted', VALIDATION_RULES_LOADING_NOTE));
+        subTabState.listElement.appendChild(treeState.validationRuleListElement);
+
+    }
+
+    // ASKED ONCE PER MODEL WHEN THE SUB-TAB IS SHOWN; ONE SHOWN BEFORE THE ACK ASKS WITH THE TAB'S COUNTS ONCE IT IS
+    function requestTreeValidationRules(treeState) {
+
+        if (renderedSequence === null || treeState.isValidationRulesRequested || !treeState.validationRuleListElement) { return; }
+
+        treeState.isValidationRulesRequested = true;
+        vscodeApi.postMessage({ command: 'loadValidationRules', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence });
+
+    }
+
+    // WHAT A RULE IS FOUND BY: ITS OBJECT AND WHAT ITS ROW DRAWS, ITS FORMULA ONLY WHILE OPEN -- NEVER A TOOLTIP
+    function buildValidationRuleSearchText(objectApiName, entry) {
+
+        const texts = [objectApiName, entry.ruleName, entry.statusLabel, entry.activeLabel, entry.messageText, entry.fieldsText]
+            .concat(entry.reasonTexts);
+        if (entry.isFormulaExpanded) { texts.push(entry.rule.formula); }
+        return texts.join('\\n').toLowerCase();
+
+    }
+
+    /*
+        One group per object, its rows built when it opens, and groups opened within the
+        auto-expand budgets, like the TODO's sub-tab: a tree with thousands of rules costs its
+        headers and the rows the budget allows. Each rule's search text is taken once from the
+        posted values, so a keystroke reads no DOM.
+    */
+    function renderTreeValidationRules(rulesMessage) {
+
+        if (renderedSequence === null || rulesMessage.renderSequence !== renderedSequence) { return; }
+
+        const treeState = findTreeState(rulesMessage.treeKey);
+        if (!treeState || !treeState.validationRuleListElement) { return; }
+
+        const listElement = treeState.validationRuleListElement;
+        const subTabState = treeState.validationRuleSubTabState;
+        listElement.textContent = '';
+        subTabState.ruleGroups = [];
+
+        if (rulesMessage.failureMessage) {
+            // ASKED AGAIN THE NEXT TIME THE SUB-TAB IS OPENED: THE READER IS LIKELY FIXING IT
+            treeState.isValidationRulesRequested = false;
+            listElement.appendChild(createElement('div', 'treeEmpty muted', String(rulesMessage.failureMessage)));
+            applyTroubleshootingFilter(treeState, 'validationRules');
+            return;
+        }
+
+        const objects = Array.isArray(rulesMessage.objects) ? rulesMessage.objects : [];
+        const hasLocalRules = objects.some(function (object) {
+            return (Array.isArray(object.rules) && object.rules.some(function (rule) { return !rule.isFileMissing; })) || object.unreadRuleCount > 0;
+        });
+
+        if (!hasLocalRules) {
+            listElement.appendChild(createElement('div', 'validationRuleNoLocalRules muted', NO_LOCAL_VALIDATION_RULES_NOTE));
+        }
+
+        objects.forEach(function (object) {
+
+            const rules = Array.isArray(object.rules) ? object.rules : [];
+            const objectApiName = String(object.objectApiName);
+            const groupState = {
+                objectApiName: objectApiName,
+                element: createElement('div', 'validationRuleObject'),
+                toggleElement: null,
+                countElement: createElement('span', 'validationRuleCount muted'),
+                bodyElement: createElement('div', 'validationRuleRows hidden'),
+                entries: rules.map(function (rule) { return buildValidationRuleEntryState(objectApiName, rule); }),
+                matchingCount: 0,
+                isBuilt: false,
+                isExpanded: false,
+                isShown: true
+            };
+
+            const headerElement = createElement('div', 'validationRuleObjectHeader');
+            if (groupState.entries.length > 0) {
+                groupState.toggleElement = buildToggleElement('validationRuleToggle');
+                groupState.toggleElement.setAttribute('aria-label', 'Show or hide the validation rules of ' + objectApiName);
+                groupState.toggleElement.setAttribute('aria-expanded', 'false');
+                groupState.toggleElement.addEventListener('click', function () {
+                    setValidationRuleGroupExpanded(treeState, groupState, !groupState.isExpanded, true);
+                });
+                headerElement.appendChild(groupState.toggleElement);
+            }
+            headerElement.appendChild(createElement('span', 'validationRuleObjectName', objectApiName));
+            headerElement.appendChild(groupState.countElement);
+            groupState.element.appendChild(headerElement);
+
+            if (groupState.entries.length === 0 && !(object.unreadRuleCount > 0)) {
+                groupState.element.appendChild(createElement('div', 'validationRuleEmpty muted', OBJECT_NO_VALIDATION_RULES_NOTE));
+            }
+
+            groupState.element.appendChild(groupState.bodyElement);
+
+            if (object.unreadRuleCount > 0) {
+                groupState.element.appendChild(createElement('div', 'validationRuleUnread muted', pluralize(object.unreadRuleCount, 'more rule file was', 'more rule files were') + ' not read.'));
+            }
+
+            listElement.appendChild(groupState.element);
+            subTabState.ruleGroups.push(groupState);
+
+        });
+
+        applyTroubleshootingFilter(treeState, 'validationRules');
+
+    }
+
+    // WHAT ONE RULE'S ROW WILL DRAW, TAKEN FROM THE POSTED VALUES BEFORE ANY ROW IS BUILT
+    function buildValidationRuleEntryState(objectApiName, rule) {
+
+        const fieldApiNames = Array.isArray(rule.fieldApiNames) ? rule.fieldApiNames : [];
+        const reasonTexts = (Array.isArray(rule.reasons) ? rule.reasons : []).map(function (reason) { return 'Why not applied: ' + String(reason); });
+        if (rule.status === 'notInRun') { reasonTexts.push(VALIDATION_RULE_NOT_IN_RUN_NOTE); }
+        if (rule.isFileMissing) { reasonTexts.push(VALIDATION_RULE_FILE_MISSING_NOTE); }
+
+        const entry = {
+            rule: rule,
+            ruleName: String(rule.ruleName),
+            statusLabel: VALIDATION_RULE_STATUS_LABELS[rule.status] || String(rule.status),
+            activeLabel: rule.isActive === true ? 'active' : rule.isActive === false ? 'inactive' : '',
+            messageText: typeof rule.errorMessage === 'string' && rule.errorMessage !== '' ? 'Error message: ' + rule.errorMessage : '',
+            fieldsText: fieldApiNames.length > 0 ? 'Constrains: ' + fieldApiNames.map(String).join(', ') : VALIDATION_RULE_NO_FIELDS_NOTE,
+            reasonTexts: reasonTexts,
+            hasFormula: typeof rule.formula === 'string' && rule.formula !== '',
+            isFormulaExpanded: false,
+            formulaElement: null,
+            searchText: '',
+            isMatch: true,
+            isShown: true,
+            element: null
+        };
+        entry.searchText = buildValidationRuleSearchText(objectApiName, entry);
+
+        return entry;
+
+    }
+
+    function setValidationRuleGroupExpanded(treeState, groupState, isExpanded, isAnimated) {
+
+        if (!groupState.toggleElement) { return; }
+
+        if (isExpanded && !groupState.isBuilt) {
+            groupState.entries.forEach(function (entry) {
+                entry.element = buildValidationRuleRow(treeState, groupState, entry);
+                if (!entry.isMatch) { entry.element.classList.add('hidden'); }
+                entry.isShown = entry.isMatch;
+                groupState.bodyElement.appendChild(entry.element);
+            });
+            groupState.isBuilt = true;
+        }
+
+        groupState.isExpanded = isExpanded;
+        setShownWithMotion(groupState.bodyElement, isExpanded, isAnimated);
+        drawToggle(groupState.toggleElement, isExpanded, isAnimated);
+
+    }
+
+    function buildValidationRuleRow(treeState, groupState, entry) {
+
+        const rule = entry.rule;
+        const ruleElement = createElement('div', 'validationRule validationRule-' + String(rule.status));
+        const headerElement = createElement('div', 'validationRuleHeader');
+
+        headerElement.appendChild(createElement('span', 'validationRuleName', entry.ruleName));
+        headerElement.appendChild(createElement('span', 'validationRuleStatus', entry.statusLabel));
+        if (entry.activeLabel) { headerElement.appendChild(createElement('span', 'validationRuleActive muted', entry.activeLabel)); }
+        ruleElement.appendChild(headerElement);
+
+        if (entry.messageText) { ruleElement.appendChild(createElement('div', 'validationRuleMessage', entry.messageText)); }
+        ruleElement.appendChild(createElement('div', 'validationRuleFields muted', entry.fieldsText));
+        entry.reasonTexts.forEach(function (reasonText) { ruleElement.appendChild(createElement('div', 'validationRuleReason muted', reasonText)); });
+
+        if (entry.hasFormula) {
+
+            const toggleElement = createButton('secondary', 'validationRuleFormulaToggle', 'Show formula', 'compact');
+            toggleElement.setAttribute('aria-expanded', 'false');
+            toggleElement.addEventListener('click', function () {
+                if (!entry.formulaElement) {
+                    entry.formulaElement = createElement('div', 'validationRuleFormula hidden', rule.formula);
+                    ruleElement.appendChild(entry.formulaElement);
+                }
+                entry.isFormulaExpanded = !entry.isFormulaExpanded;
+                entry.searchText = buildValidationRuleSearchText(groupState.objectApiName, entry);
+                toggleElement.textContent = entry.isFormulaExpanded ? 'Hide formula' : 'Show formula';
+                toggleElement.setAttribute('aria-expanded', entry.isFormulaExpanded ? 'true' : 'false');
+                setShownWithMotion(entry.formulaElement, entry.isFormulaExpanded, true);
+                // A SEARCH TYPED BEFORE THE FORMULA OPENED OR CLOSED NOW MATCHES WHAT IS ON SCREEN
+                applyTroubleshootingFilter(treeState, 'validationRules');
+            });
+            ruleElement.appendChild(toggleElement);
+
+        }
+
+        return ruleElement;
 
     }
 
@@ -17794,6 +18229,11 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'treeQueries') {
             renderTreeQueries(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'treeValidationRules') {
+            renderTreeValidationRules(hostMessage);
             return;
         }
 
