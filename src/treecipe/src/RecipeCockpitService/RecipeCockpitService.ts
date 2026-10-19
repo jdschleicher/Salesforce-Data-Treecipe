@@ -12054,17 +12054,21 @@ ${this.buildPaletteCustomProperties()}
     .treeBody { border-top: 1px solid var(--sdt-border); }
     .treeTabs { display: flex; gap: 0.5rem; padding: 0.4rem 0.6rem 0 0.6rem; }
     .treeTab { color: var(--sdt-muted); border-color: transparent; border-radius: 6px 6px 0 0; }
-    .treeTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; border-bottom-color: var(--sdt-border); }
+    .treeTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; }
     .treeTab.selected { color: var(--sdt-text); font-weight: 600; }
     .treeTab:active:not(:disabled) { background-color: var(--sdt-row-hover); }
     /*
         The selected tab and its panel are ONE outline (#373): the tab's sides and top, then the
         panel's sides and bottom. The tab sits 1px over the panel's top edge with its own bottom edge
         in the panel's colour, so no line is drawn between them. Only the selected panel is shown,
-        so every panel carries the outline and the selected class alone moves it. The strip names a
-        level more than the secondary kind's hover rule, so a hover cannot draw the bottom edge back.
+        so every panel carries the outline and the selected class alone moves it. The selector is
+        (0,4,0) against the secondary kind's (0,3,0) hover rule, so a hover cannot draw the bottom
+        edge back wherever either rule sits. A hovered tab that is not selected draws no bottom edge,
+        which would lie on the panel's accent top. The sub-tab strip wraps on a narrow panel, and a
+        selected sub-tab on any row but the last then sits above the next row rather than its panel:
+        scrolling the strip instead would clip the 1px overlap that joins every tab to its panel.
     */
-    .treeTabs .treeTab.selected, .troubleshootingSubTabs .troubleshootingSubTab.selected {
+    .treeTabs .treeTab.selected.sdtButton, .troubleshootingSubTabs .troubleshootingSubTab.selected.sdtButton {
         z-index: 1;
         margin-bottom: -1px;
         border-color: var(--sdt-accent);
@@ -12104,7 +12108,7 @@ ${this.buildPaletteCustomProperties()}
     /* THE TROUBLESHOOTING SUB-TABS (#365) LOOK AND MOVE LIKE A CARD'S TABS */
     .troubleshootingSubTabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0.6rem; padding: 0.4rem 0 0 0; }
     .troubleshootingSubTab { color: var(--sdt-muted); border-color: transparent; border-radius: 6px 6px 0 0; }
-    .troubleshootingSubTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; border-bottom-color: var(--sdt-border); }
+    .troubleshootingSubTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; }
     .troubleshootingSubTab.selected { color: var(--sdt-text); font-weight: 600; }
     .troubleshootingSubTab:active:not(:disabled) { background-color: var(--sdt-row-hover); }
     .troubleshootingSubTab { position: relative; }

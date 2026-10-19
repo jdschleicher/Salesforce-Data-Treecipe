@@ -96,9 +96,8 @@ describe('RecipeCockpitService, the selected tab\'s outline and the search icon 
 
         it('draws the selected tab and its panel in the accent, with no line between them and no rule under the strip', () => {
 
-            expect(styleSheet).toMatch(/\.treeTabs \.treeTab\.selected, \.troubleshootingSubTabs \.troubleshootingSubTab\.selected \{[^}]*margin-bottom: -1px;[^}]*border-color: var\(--sdt-accent\);[^}]*border-bottom-color: var\(--sdt-surface\);[^}]*background-color: var\(--sdt-surface\);/);
+            expect(styleSheet).toMatch(/\.treeTabs \.treeTab\.selected\.sdtButton, \.troubleshootingSubTabs \.troubleshootingSubTab\.selected\.sdtButton \{[^}]*margin-bottom: -1px;[^}]*border-color: var\(--sdt-accent\);[^}]*border-bottom-color: var\(--sdt-surface\);[^}]*background-color: var\(--sdt-surface\);/);
             expect(styleSheet).toMatch(/\.treeTabPanel, \.troubleshootingSubPanel \{[^}]*border: 1px solid var\(--sdt-accent\);[^}]*background-color: var\(--sdt-surface\);/);
-            expect(styleSheet).toMatch(/\.treeTabs \{[^}]*\}/);
             expect(styleSheet.match(/\.treeTabs \{[^}]*\}/)![0]).not.toContain('border-bottom');
             expect(styleSheet.match(/\.troubleshootingSubTabs \{[^}]*\}/)![0]).not.toContain('border-bottom');
             // THE MOVING BAR IS ON THE TOP EDGE, SO NOTHING IS DRAWN BETWEEN A TAB AND ITS PANEL
@@ -107,6 +106,20 @@ describe('RecipeCockpitService, the selected tab\'s outline and the search icon 
                 expect(afterRule).toContain('top: -1px;');
                 expect(afterRule).not.toContain('bottom:');
             });
+
+        });
+
+        // A HOVER MUST NOT DRAW THE BOTTOM EDGE BACK, WHEREVER THE BUTTON-KIND RULES SIT IN THE SHEET
+        it('outranks the secondary kind\'s hover rule by specificity, and draws no bottom edge on an unselected tab\'s hover', () => {
+
+            const classAndPseudoClassCount = (selector: string) => (selector.match(/\.[\w-]+|:(?!not\()[\w-]+/g) || []).length;
+            expect(styleSheet).toContain('.sdtButton-secondary:hover:not(:disabled) {');
+            const hoverSpecificity = classAndPseudoClassCount('.sdtButton-secondary:hover:not(:disabled)');
+            expect(hoverSpecificity).toBe(3);
+            ['.treeTabs .treeTab.selected.sdtButton', '.troubleshootingSubTabs .troubleshootingSubTab.selected.sdtButton']
+                .forEach(selector => expect(classAndPseudoClassCount(selector)).toBeGreaterThan(hoverSpecificity));
+            [/\.treeTab:hover:not\(:disabled\):not\(\.selected\) \{[^}]*\}/, /\.troubleshootingSubTab:hover:not\(:disabled\):not\(\.selected\) \{[^}]*\}/]
+                .forEach(rulePattern => expect(styleSheet.match(rulePattern)![0]).not.toContain('border-bottom'));
 
         });
 
