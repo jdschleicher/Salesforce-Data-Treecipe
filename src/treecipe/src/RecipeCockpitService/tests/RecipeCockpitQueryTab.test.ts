@@ -427,6 +427,25 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
 
         });
 
+        it('says a connection that could not be opened in one fixed warning, never quoting its error, and keeps nothing', async () => {
+
+            await openCockpit();
+            await loadQueries();
+            connectionSpy.mockRejectedValueOnce(new Error('expired access token 00Dxx!AQ0secret, see [link](command:evil)'));
+
+            await run();
+
+            expect(notifications()).toEqual([{
+                severity: 'warning',
+                text: `The Contact Base Query was not run: prod · ${PROD_USERNAME} could not be connected to. Log in to it again with sf org login web, then run the query again.`,
+                actions: []
+            }]);
+            expect(sentQueries).toEqual([]);
+            expect(postedNamed('treeQueryResult')).toEqual([]);
+            expect(postedNamed('treeQueryState').at(-1)).toMatchObject({ isRunning: false });
+
+        });
+
         it('reads every page up to the cap and says the result was truncated', async () => {
 
             const pageSize = 2000;

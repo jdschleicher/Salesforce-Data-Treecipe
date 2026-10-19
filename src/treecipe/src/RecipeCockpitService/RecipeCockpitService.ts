@@ -1516,6 +1516,8 @@ export const RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER = 'Choose the org to run the q
 
 export const RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL = 'Open file';
 
+export const RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE = 'Log in to it again with sf org login web, then run the query again.';
+
 export const RECIPE_COCKPIT_QUERY_NOT_GIT_IGNORED_NOTE = 'treecipe/QueryResults/.gitignore does not ignore everything in that folder, so this file of org data could be committed: check it before you commit.';
 
 // THE READER'S EDITS OF A TREE'S QUERIES (#367), BY TREE FOLDER, THEN QUERY KEY
@@ -6806,14 +6808,19 @@ export class RecipeCockpitService {
         // THE LAST RESULT IS LET GO BEFORE THE NEXT IS READ, SO TWO LARGE RESULTS ARE NEVER HELD AT ONCE
         this.clearHeldTreeQueryResult();
 
-        let queryResult: Awaited<ReturnType<typeof RecipeCockpitQuery.fetchQueryRecords>>;
+        let queryResult: Awaited<ReturnType<typeof RecipeCockpitQuery.fetchQueryRecords>> | undefined;
         try {
             queryResult = await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: running the ${queryLabel} in ${orgLabel}`),
                 cancellable: true
             }, async (_progress, cancellationToken) => {
-                const connection = await SalesforceOrgService.getConnection(orgUsername);
+                let connection: Connection;
+                try {
+                    connection = await SalesforceOrgService.getConnection(orgUsername);
+                } catch {
+                    return undefined;
+                }
                 return await RecipeCockpitQuery.fetchQueryRecords({
                     query: async (soql: string) => await connection.query(soql),
                     queryMore: async (nextRecordsUrl: string) => await connection.queryMore(nextRecordsUrl)
@@ -6821,6 +6828,12 @@ export class RecipeCockpitService {
             });
         } catch (queryError) {
             VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The ${queryLabel} failed in ${orgLabel}: ${this.describeThrown(queryError)}`));
+            return;
+        }
+
+        // A CONNECTION THAT COULD NOT BE OPENED IS ONE FIXED WARNING: ITS ERROR CAN CARRY AN AUTH URL OR TOKEN TEXT
+        if ( !queryResult ) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The ${queryLabel} was not run: ${orgLabel} could not be connected to. ${RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE}`));
             return;
         }
 
