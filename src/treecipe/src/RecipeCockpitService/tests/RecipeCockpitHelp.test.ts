@@ -192,6 +192,14 @@ describe('RecipeCockpitService help section (#332)', () => {
             expect(toggle.attributes['aria-controls']).toBe(sectionOf(panel).attributes.id);
             expect(panel.isHidden(sectionOf(panel))).toBeFalse();
 
+            panel.postToPanel({ command: 'recipeData', recipe: { runs: null, objects: [] }, renderSequence: 5 });
+
+            expect(toggleOf(panel)).toBe(toggle);
+            expect(sectionOf(panel)).toBeUndefined();
+            expect(toggle.disabled).toBeTrue();
+            expect(toggle.attributes).not.toHaveProperty('aria-expanded');
+            expect(toggle.attributes).not.toHaveProperty('aria-controls');
+
         });
 
         it('draws no run line or summary for a run that could not be read', () => {
