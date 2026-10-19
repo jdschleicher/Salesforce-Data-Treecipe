@@ -215,8 +215,11 @@ describe('RecipeCockpitService, the Target Org Management and Treecipes sections
             expect(pinnedRule).toContain('top: 0;');
             expect(pinnedRule).toContain('background-color: var(--sdt-page);');
             const zIndex = Number(/z-index: (\d+);/.exec(pinnedRule ?? '')?.[1]);
-            const otherZIndexes = (shellHtml.match(/z-index: \d+;/g) ?? []).map(rule => Number(/\d+/.exec(rule)?.[0])).filter(value => value !== zIndex);
+            // AN IN-PANEL CONFIRMATION (#349) IS THE ONE LAYER ABOVE IT: IT COVERS THE WHOLE COCKPIT
+            const confirmOverlayZIndex = Number(/\.confirmOverlay \{[^}]*z-index: (\d+);/.exec(shellHtml)?.[1]);
+            const otherZIndexes = (shellHtml.match(/z-index: \d+;/g) ?? []).map(rule => Number(/\d+/.exec(rule)?.[0])).filter(value => value !== zIndex && value !== confirmOverlayZIndex);
             expect(zIndex).toBeGreaterThan(Math.max(...otherZIndexes));
+            expect(confirmOverlayZIndex).toBeGreaterThan(zIndex);
             expect(shellHtml).toContain(`html:has(#cockpitOrgSection) { scroll-padding-top: ${RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING}; }`);
             expect(shellHtml).not.toMatch(/\.(toolbar|helpSection|cockpitHeader)[^{]*\{[^}]*position: sticky/);
 

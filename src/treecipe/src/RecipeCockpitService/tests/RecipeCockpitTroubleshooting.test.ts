@@ -62,6 +62,7 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { ORG_OPERATIONS_FOLDER_NAME, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES } from '../../ScratchOrgService/ScratchOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const METADATA_DEPLOY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'metadataDeployWorkspace');
@@ -86,6 +87,8 @@ const buildDeployAnswer = (componentCount: number, componentFailures: Array<{ fu
         details: { componentSuccesses: [], componentFailures: componentFailures }
     }
 });
+
+answerInPanelConfirmationsThroughWarningMock();
 
 describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
@@ -287,9 +290,9 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
         const panelState = (): IRecipeCockpitPanelState => (RecipeCockpitService as any).recipeCockpitPanelState;
         const quickPick = () => vscode.window.showQuickPick as jest.Mock;
         const warningCalls = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls;
-        const modalCalls = () => warningCalls().filter(([, options]) => options?.modal);
+        const modalCalls = () => warningCalls().filter(([, options]) => options?.inPanel);
         const notificationWarnings = () => warningCalls()
-            .filter(([, options]) => !( options && typeof options === 'object' && options.modal ))
+            .filter(([, options]) => !( options && typeof options === 'object' && options.inPanel ))
             .map(([warningText, ...actions]) => ({ text: warningText as string, actions: actions as string[] }));
         const lastWarning = () => notificationWarnings().at(-1);
         const operationsFolderPath = () => path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME);
@@ -377,7 +380,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             (vscode.window.withProgress as jest.Mock).mockReset();
             (vscode.window.withProgress as jest.Mock).mockImplementation(async (_options: unknown, progressTask: any) => await progressTask({ report: jest.fn() }, cancellationToken));
             (vscode.window.showWarningMessage as jest.Mock).mockReset();
-            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => options?.modal ? modalAnswer : undefined);
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => options?.inPanel ? modalAnswer : undefined);
             (vscode.window.showErrorMessage as jest.Mock).mockReset();
             (vscode.window.showErrorMessage as jest.Mock).mockResolvedValue(undefined);
             (vscode.window.showInformationMessage as jest.Mock).mockReset();
@@ -651,7 +654,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
             await openCockpitWithQaSelected();
             (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => {
-                if ( options?.modal ) {
+                if ( options?.inPanel ) {
                     panelState().insertStateMessage = { command: 'insertState', isRunning: true, treeKey: LEAD_TREE_KEY };
                     return RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL;
                 }

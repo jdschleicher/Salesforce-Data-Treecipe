@@ -105,7 +105,8 @@ export type RecipeCockpitPaletteToken =
     | 'rowHover' | 'chipBg' | 'chipText'
     | 'added' | 'removed' | 'changed'
     | 'disabledBg' | 'disabledText'
-    | 'excludedOverlay';
+    | 'excludedOverlay'
+    | 'dialogBackdrop';
 
 /*
     The cockpit's ONE palette, and the only source of a colour in its stylesheet. The cockpit used
@@ -132,7 +133,9 @@ export const RECIPE_COCKPIT_PALETTE: Readonly<Record<RecipeCockpitPaletteToken, 
     disabledBg: '#E5E7EB',
     disabledText: '#4B5563',
     // SLATE GRAY AT 40%, LAID OVER AN OBJECT THE STRUCTURE TAB EXCLUDES (#219); --sdt-text UNDER IT HOLDS 4.5:1, A TEST COMPOSITES IT
-    excludedOverlay: 'rgba(148, 163, 184, 0.40)'
+    excludedOverlay: 'rgba(148, 163, 184, 0.40)',
+    // --sdt-text AT 50%, BEHIND AN IN-PANEL CONFIRMATION (#349); A TEST COMPOSITES IT AND HOLDS THE DIALOG'S EDGE TO 3:1 AGAINST IT
+    dialogBackdrop: 'rgba(31, 41, 55, 0.50)'
 });
 
 /*
@@ -490,6 +493,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         closingParagraphs: [
             'Three more write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project and Retrieve validation rules (under Validation Rules) writes an org\'s validation rules into your project.',
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields, custom fields only), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
+            'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against any connected org you pick in the command palette (a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.'
         ]
     },
@@ -1051,6 +1055,9 @@ export interface IRecipeCockpitPanelMessage {
     value?: unknown;
     min?: unknown;
     max?: unknown;
+    // AN IN-PANEL CONFIRMATION'S ANSWER (#349): THE ONE-USE ID IT WAS ASKED WITH, AND THE INDEX OF THE BUTTON CHOSEN
+    confirmationId?: unknown;
+    choice?: unknown;
 }
 
 export interface IRecipeCockpitLoadPhaseMessage {
@@ -1658,7 +1665,37 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitTreeQueryResultMessage
                                         | IRecipeCockpitOrgOpenStateMessage
                                         | IRecipeCockpitDatasetAddedMessage
-                                        | IRecipeCockpitExtensionInfoMessage;
+                                        | IRecipeCockpitExtensionInfoMessage
+                                        | IRecipeCockpitConfirmRequestMessage;
+
+/*
+    A confirmation the HOST asks for inside the panel (#349), in place of VS Code's modal. The host
+    writes every string and decides what each answer means: the panel only draws the lines with
+    textContent and answers with the index of a button it was given, under the one-use id. It is
+    never stored or replayed: a reload, a new model, a failure to draw or a closed panel answers
+    Cancel, and the action asks again only if the reader starts it again.
+*/
+export interface IRecipeCockpitConfirmRequestMessage {
+    command: 'confirmRequest';
+    confirmationId: string;
+    renderSequence: number;
+    title: string;
+    lines: string[];
+    buttons: string[];
+    // role="alertdialog" FOR AN ACTION THAT WRITES TO AN ORG OR OVERWRITES FILES WITH NO UNDO
+    isDestructive: boolean;
+}
+
+export interface IRecipeCockpitConfirmOptions {
+    detail: string;
+    isDestructive?: boolean;
+}
+
+interface IRecipeCockpitPendingConfirmation {
+    confirmationId: string;
+    buttonLabels: string[];
+    resolve: (chosenLabel: string | undefined) => void;
+}
 
 /*
     One data set an action just wrote, posted IN PLACE of a reload (#226): the cards it joins, its
@@ -1817,7 +1854,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'refusePermissionSetAssign'; refusalText?: string; hostMessage: IRecipeCockpitPermissionSetAssignStateMessage }
     | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
     | { kind: 'postOrgOpenState'; hostMessage: IRecipeCockpitOrgOpenStateMessage }
-    | { kind: 'openChangelog' };
+    | { kind: 'openChangelog' }
+    | { kind: 'answerConfirmation'; confirmationId: string; choice: unknown };
 
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened --
@@ -1966,6 +2004,12 @@ export class RecipeCockpitService {
     private static recipeCockpitMessageSubscription: vscode.Disposable | undefined;
 
     private static recipeCockpitPanelState: IRecipeCockpitPanelState = RecipeCockpitService.buildInitialPanelState('');
+
+    /*
+        The one confirmation the panel is showing (#349). Held by the HOST only, outside the panel
+        state, because answering it Cancel is what replacing that state means.
+    */
+    private static pendingConfirmation: IRecipeCockpitPendingConfirmation | undefined;
 
     /*
         Which load is the current one. A run chosen while another is still loading supersedes it,
@@ -3512,10 +3556,9 @@ export class RecipeCockpitService {
         }
 
         const editLabel = fixedValue.kind === 'expression' ? 'an edited faker expression' : 'a fixed value';
-        const confirmation = await vscode.window.showWarningMessage(
+        const confirmation = await this.confirmInPanel(
             `Write ${editLabel} into ${fieldLabel}?`,
             {
-                modal: true,
                 detail: [
                     `This writes to "${recipeFileLabel}": ${fieldLabel} becomes ${RecipeYamlScalar.escapeForNotification(RecipeCockpitRecipeWriter.toFixedValueScalar(fixedValue))} on every ${RecipeYamlScalar.escapeForNotification(objectApiName)} in it, so Run Faker by Recipe generates it from the palette too. Every other line of the file is left as it is.`,
                     '',
@@ -3591,10 +3634,9 @@ export class RecipeCockpitService {
             return { isWritten: false, refusal: planned.refusal };
         }
 
-        const confirmation = await vscode.window.showWarningMessage(
+        const confirmation = await this.confirmInPanel(
             `Clear the edit of ${fieldLabel}?`,
             {
-                modal: true,
                 detail: [
                     planned.isRederived
                         ? `This writes to "${recipeFileLabel}": "${fixedValueFileLabel}" has no recorded lines for ${fieldLabel}, so it gets back the value Generate Treecipe wrote for it rather than the exact lines it had. Every other line of the file is left as it is.`
@@ -3690,13 +3732,13 @@ export class RecipeCockpitService {
 
     }
 
-    // LINES AS THE MODAL SHOWS THEM: ONE PER LINE, LEFT-ALIGNED, ESCAPED LIKE A NOTIFICATION, AND CUT SHORT PAST A SCREEN'S WORTH
+    // LINES AS THE IN-PANEL CONFIRMATION SHOWS THEM (#349): ONE PER LINE, LEFT-ALIGNED, CUT SHORT PAST A SCREEN'S WORTH
     static buildRestorePreview(previewText: string): string {
 
         const previewLines = previewText.split(/\r\n|\n/);
         const commonIndent = Math.min(...previewLines.filter(previewLine => previewLine.trim() !== '').map(previewLine => RecipeCockpitRecipeWriter.countIndent(previewLine)));
         const shownLines = previewLines.slice(0, RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LINES)
-            .map(previewLine => RecipeYamlScalar.escapeForNotification(previewLine.slice(Math.min(commonIndent, RecipeCockpitRecipeWriter.countIndent(previewLine)))));
+            .map(previewLine => previewLine.slice(Math.min(commonIndent, RecipeCockpitRecipeWriter.countIndent(previewLine))));
         const previewBody = shownLines.join('\n');
         const isCut = previewLines.length > RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LINES || previewBody.length > RECIPE_COCKPIT_RESTORE_PREVIEW_MAX_LENGTH;
 
@@ -3871,10 +3913,10 @@ export class RecipeCockpitService {
         }
 
         const tree = panelState.recipeDataMessage?.recipe.trees.find(candidateTree => candidateTree.folderName === folderName);
-        const treeLabel = RecipeYamlScalar.escapeForNotification(tree?.customName ?? tree?.title ?? folderName);
-        const confirmation = await vscode.window.showWarningMessage(
+        const treeLabel = tree?.customName ?? tree?.title ?? folderName;
+        const confirmation = await this.confirmInPanel(
             `Reset the selection of ${treeLabel}?`,
-            { modal: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every validation rule is applied again. The recipe file is not changed, so an edit written into it stays: clear it with its field\'s edit button.' },
+            { detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every validation rule is applied again. The recipe file is not changed, so an edit written into it stays: clear it with its field\'s edit button.' },
             RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL
         );
 
@@ -4354,6 +4396,7 @@ export class RecipeCockpitService {
             );
 
         this.recipeCockpitPanel = cockpitPanel;
+        this.cancelPendingConfirmation();
         this.recipeCockpitPanelState = this.buildInitialPanelState(workspaceRoot);
 
         this.adoptScratchOrgRunState(this.recipeCockpitPanelState);
@@ -4383,6 +4426,7 @@ export class RecipeCockpitService {
             cockpitPanel.onDidDispose(() => {
                 // THE LAST PLACE SAVED IS WRITTEN NOW RATHER THAN DROPPED WITH THE TIMER -- THE NEXT OPEN READS IT
                 this.flushPanelPlacePersist();
+                this.cancelPendingConfirmation();
                 this.recipeCockpitMessageSubscription?.dispose();
                 this.recipeCockpitMessageSubscription = undefined;
                 this.recipeCockpitPanel = undefined;
@@ -4502,6 +4546,69 @@ export class RecipeCockpitService {
     }
 
     /*
+        Asks the reader inside the panel (#349), answering as showWarningMessage's modal did: the
+        label of the button chosen, or undefined for Cancel. Only over a model the panel confirmed
+        drawing; with none on screen, or no panel, it is Cancel at once. A newer request answers the
+        open one Cancel first, so the reader sees what they asked for last. Every caller re-plans and
+        re-checks its guards after the answer, as it did after the modal.
+    */
+    static confirmInPanel(message: string, confirmOptions: IRecipeCockpitConfirmOptions, ...buttonLabels: string[]): Promise<string | undefined> {
+
+        this.cancelPendingConfirmation();
+
+        const cockpitPanel = this.recipeCockpitPanel;
+        const panelState = this.recipeCockpitPanelState;
+        const drawnRenderSequence = panelState.recipeDataMessage?.renderSequence;
+
+        if ( !cockpitPanel || !panelState.isPanelReady || drawnRenderSequence === undefined || panelState.acknowledgedRenderSequence !== drawnRenderSequence ) {
+            return Promise.resolve(undefined);
+        }
+
+        const confirmationId = crypto.randomBytes(16).toString('hex');
+
+        return new Promise(resolve => {
+
+            this.pendingConfirmation = { confirmationId: confirmationId, buttonLabels: [...buttonLabels], resolve: resolve };
+
+            this.postToPanel(cockpitPanel, {
+                command: 'confirmRequest',
+                confirmationId: confirmationId,
+                renderSequence: drawnRenderSequence,
+                title: message,
+                lines: confirmOptions.detail.split(/\r\n|\r|\n/),
+                buttons: [...buttonLabels],
+                isDestructive: confirmOptions.isDestructive === true
+            });
+
+        });
+
+    }
+
+    private static cancelPendingConfirmation() {
+
+        const pendingConfirmation = this.pendingConfirmation;
+        this.pendingConfirmation = undefined;
+        pendingConfirmation?.resolve(undefined);
+
+    }
+
+    // SPENT ONCE; AN INDEX THE HOST DID NOT OFFER IS CANCEL
+    private static settlePendingConfirmation(confirmationId: string, choice: unknown) {
+
+        const pendingConfirmation = this.pendingConfirmation;
+
+        if ( !pendingConfirmation || pendingConfirmation.confirmationId !== confirmationId ) {
+            return;
+        }
+
+        this.pendingConfirmation = undefined;
+
+        const isOfferedChoice = typeof choice === 'number' && Number.isInteger(choice) && choice >= 0 && choice < pendingConfirmation.buttonLabels.length;
+        pendingConfirmation.resolve(isOfferedChoice ? pendingConfirmation.buttonLabels[choice] : undefined);
+
+    }
+
+    /*
         Every host message is STORED and posted only once the panel has said it is listening. A
         webview that has not finished loading drops what is posted to it, and posting eagerly AND
         replaying on the handshake would render the whole model twice.
@@ -4542,6 +4649,8 @@ export class RecipeCockpitService {
         const isFocusOnScreen = !!focusTree && recipeViewModel.trees.some(tree => tree.treeKey === focusTree.treeKey);
 
         panelState.recipeDataMessage = recipeDataMessage;
+        // A CONFIRMATION ASKED OVER THE MODEL ON SCREEN IS NOT AN ANSWER ABOUT THIS ONE
+        this.cancelPendingConfirmation();
         /*
             A saved place whose run is gone is dropped (#230): the newest run was loaded in its
             place, and a place is only ever about the run it names.
@@ -4682,6 +4791,8 @@ export class RecipeCockpitService {
                     drawn again -- which is also why the active allow-lists empty here.
                 */
                 panelState.isPanelReady = true;
+                // A RELOADED DOCUMENT DREW NO DIALOG, AND ONE IS NEVER REPLAYED: THE ACTION IS CANCELLED
+                this.cancelPendingConfirmation();
                 panelState.openableSourceKeys = new Set();
                 panelState.selectableRunFolderNames = new Set();
                 panelState.loadablePicklistKeys = new Set();
@@ -4724,12 +4835,17 @@ export class RecipeCockpitService {
                 panelState.treeHistoryAllowLists = panelState.pendingTreeHistoryAllowLists;
                 return;
 
+            case 'answerConfirmation':
+                this.settlePendingConfirmation(panelAction.confirmationId, panelAction.choice);
+                return;
+
             case 'reportRenderFailure': {
 
                 panelState.reportedFailureDescriptions.add(panelAction.failureDescription);
 
                 // ONLY A FAILURE TO DRAW EMPTIES THE ALLOW-LISTS -- A THROW ON A KEYSTROKE LEAVES THE ROWS ON SCREEN
                 if ( panelAction.invalidatesPanel ) {
+                    this.cancelPendingConfirmation();
                     panelState.openableSourceKeys = new Set();
                     panelState.selectableRunFolderNames = new Set();
                     panelState.loadablePicklistKeys = new Set();
@@ -5269,10 +5385,9 @@ export class RecipeCockpitService {
             return false;
         }
 
-        const confirmation = await vscode.window.showWarningMessage(
+        const confirmation = await this.confirmInPanel(
             `Add ${friendObjectApiName} under ${iterationNickname}?`,
             {
-                modal: true,
                 detail: `This writes to "${recipeFileLabel}": a copy of the ${friendObjectApiName} block under the ${objectApiName} above ${iterationNickname}, nested under ${iterationNickname} with a nickname of its own, its lookups to that ${objectApiName} pointed at ${iterationNickname}. Every other line of the file is left as it is.`
             },
             RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL
@@ -5410,10 +5525,9 @@ export class RecipeCockpitService {
         }
 
         const templateFieldApiNames = Object.keys(parentTemplate);
-        const confirmation = await vscode.window.showWarningMessage(
+        const confirmation = await this.confirmInPanel(
             `Add ${parentLabel} to the recipe and wire ${fieldLabel} to it?`,
             {
-                modal: true,
                 detail: [
                     `This writes to "${recipeFileLabel}": a new top-level ${parentLabel} block, ahead of the block holding ${objectLabel}, with one record and a nickname of its own, and ${fieldLabel}'s "### TODO -- REFERENCE ID REQUIRED" line becomes that nickname. Every other line of the file is left as it is.`,
                     '',
@@ -5519,12 +5633,11 @@ export class RecipeCockpitService {
         const shownWiringLines = wiringLines.slice(0, RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_SHOWN);
         const unshownWiringCount = wiringLines.length - shownWiringLines.length;
 
-        const confirmation = await vscode.window.showWarningMessage(
+        const confirmation = await this.confirmInPanel(
             wiringRequests.length === 1
                 ? `Wire ${describeWiring(wiringRequests[0])} to ${wiringRequests[0].parentNickname}?`
                 : `Wire ${wiringRequests.length} TODO lookups?`,
             {
-                modal: true,
                 detail: [
                     `This writes to "${recipeFileLabel}": each lookup's "### TODO -- REFERENCE ID REQUIRED" line becomes the nickname below, which the insert replaces with the Id of the record holding it. Every other line of the file is left as it is.`,
                     '',
@@ -6087,9 +6200,9 @@ export class RecipeCockpitService {
 
         const devHubLabel = this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan));
 
-        const confirmation = await vscode.window.showWarningMessage(
+        const confirmation = await this.confirmInPanel(
             `Create a scratch org through the Dev Hub ${devHubLabel}? Nothing is deployed to it.`,
-            { modal: true, detail: this.buildScratchOrgConfirmationDetail(scratchOrgPlan) },
+            { detail: this.buildScratchOrgConfirmationDetail(scratchOrgPlan), isDestructive: true },
             RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL
         );
 
@@ -7344,11 +7457,11 @@ export class RecipeCockpitService {
         const packageDirectoryRelativePath = path.relative(workspaceRoot, packageDirectoryPath).split(path.sep).join('/') || '.';
         const componentText = `${components.length} ${components.length === 1 ? 'component' : 'components'}`;
 
-        const confirmation = await vscode.window.showWarningMessage(
-            RecipeYamlScalar.escapeForNotification(`Deploy ${componentText} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgLabel)}?`),
+        const confirmation = await this.confirmInPanel(
+            `Deploy ${componentText} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgLabel)}?`,
             {
-                modal: true,
-                detail: RecipeYamlScalar.escapeForNotification(RecipeCockpitMetadataDeploy.buildConfirmationDetail(deployKind, treeLabel, orgLabel, packageDirectoryRelativePath, components, summary, SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot)))
+                detail: RecipeCockpitMetadataDeploy.buildConfirmationDetail(deployKind, treeLabel, orgLabel, packageDirectoryRelativePath, components, summary, SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot)),
+                isDestructive: true
             },
             RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL
         );
@@ -7599,11 +7712,11 @@ export class RecipeCockpitService {
         const packageDirectoryRelativePath = path.relative(workspaceRoot, defaultPackageDirectoryPath).split(path.sep).join('/') || '.';
         const localRuleFileCount = RecipeCockpitValidationRuleRetrieve.countLocalValidationRuleFiles(workspaceRoot, packageDirectoryPaths, objectApiNames);
 
-        const confirmation = await vscode.window.showWarningMessage(
-            RecipeYamlScalar.escapeForNotification(`Retrieve the validation rules of ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} of ${this.toSingleLine(treeLabel)} from ${this.toSingleLine(orgLabel)}?`),
+        const confirmation = await this.confirmInPanel(
+            `Retrieve the validation rules of ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} of ${this.toSingleLine(treeLabel)} from ${this.toSingleLine(orgLabel)}?`,
             {
-                modal: true,
-                detail: RecipeYamlScalar.escapeForNotification(RecipeCockpitValidationRuleRetrieve.buildConfirmationDetail(treeLabel, orgLabel, objectApiNames, packageDirectoryRelativePath, localRuleFileCount))
+                detail: RecipeCockpitValidationRuleRetrieve.buildConfirmationDetail(treeLabel, orgLabel, objectApiNames, packageDirectoryRelativePath, localRuleFileCount),
+                isDestructive: true
             },
             RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL
         );
@@ -7811,16 +7924,16 @@ export class RecipeCockpitService {
         const objectCountText = describeCount(plan.objectApiNames.length, 'object');
         const fieldCountText = describeCount(plan.fieldPermissions.length, 'field');
 
-        const confirmation = await vscode.window.showWarningMessage(
-            RecipeYamlScalar.escapeForNotification(`${isOverwrite ? 'Overwrite' : 'Write'} the permission set ${permissionSetName} for ${this.toSingleLine(treeLabel)}?`),
+        const confirmation = await this.confirmInPanel(
+            `${isOverwrite ? 'Overwrite' : 'Write'} the permission set ${permissionSetName} for ${this.toSingleLine(treeLabel)}?`,
             {
-                modal: true,
-                detail: RecipeYamlScalar.escapeForNotification([
+                isDestructive: isOverwrite,
+                detail: [
                     `File: ${relativeFilePath}`,
                     `Grants Create and Read on ${objectCountText} and access to ${fieldCountText}, read-only where the org computes the value.`,
                     ...( isOverwrite ? ['The file already exists and will be overwritten: Treecipe owns this file.'] : [] ),
                     'It will not be deployed: deploy it with your own flow, then assign it with "Assign permission sets to me…".'
-                ].join('\n'))
+                ].join('\n')
             },
             RECIPE_COCKPIT_GENERATE_PERMISSION_SET_CONFIRM_LABEL
         );
@@ -8018,11 +8131,11 @@ export class RecipeCockpitService {
         const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
         const describePermissionSets = (count: number) => `${count} ${count === 1 ? 'permission set' : 'permission sets'}`;
 
-        const confirmation = await vscode.window.showWarningMessage(
-            RecipeYamlScalar.escapeForNotification(`Assign ${describePermissionSets(pickedPermissionSets.length)} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgDetail.username)} in ${this.toSingleLine(orgLabel)}?`),
+        const confirmation = await this.confirmInPanel(
+            `Assign ${describePermissionSets(pickedPermissionSets.length)} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgDetail.username)} in ${this.toSingleLine(orgLabel)}?`,
             {
-                modal: true,
-                detail: RecipeYamlScalar.escapeForNotification(RecipeCockpitPermissionSetAssign.buildConfirmationDetail(treeLabel, orgLabel, orgDetail.username, pickedPermissionSets, objectApiNames.length))
+                detail: RecipeCockpitPermissionSetAssign.buildConfirmationDetail(treeLabel, orgLabel, orgDetail.username, pickedPermissionSets, objectApiNames.length),
+                isDestructive: true
             },
             RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL
         );
@@ -8769,9 +8882,9 @@ export class RecipeCockpitService {
         const recordTotalsByObject = new Map([...RecipeCockpitRecipeWriter.countRecipeRecordsByObject(generationRecipeText)]
             .filter(([objectApiName]) => insertObjectApiNameSet.has(objectApiName)));
 
-        const confirmation = await vscode.window.showWarningMessage(
+        const confirmation = await this.confirmInPanel(
             `Generate ${treeLabel} and insert it into ${orgLabel}?`,
-            { modal: true, detail: this.buildInsertConfirmationDetail(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, outsidePickableLookups) },
+            { detail: this.buildInsertConfirmationDetail(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, outsidePickableLookups), isDestructive: true },
             RECIPE_COCKPIT_INSERT_CONFIRM_LABEL,
             RECIPE_COCKPIT_GENERATE_ONLY_CONFIRM_LABEL
         );
@@ -9092,9 +9205,9 @@ export class RecipeCockpitService {
             const objectViewModel = objectsByApiName.get(objectApiName);
             const perParentCount = objectCountsByObject.get(objectApiName) ?? objectViewModel?.recordCount;
             const perParentText = objectViewModel?.countParentObjectApiName && perParentCount !== undefined
-                ? ` (${perParentCount} per ${RecipeYamlScalar.escapeForNotification(objectViewModel.countParentObjectApiName)})`
+                ? ` (${perParentCount} per ${objectViewModel.countParentObjectApiName})`
                 : '';
-            return `  ${RecipeYamlScalar.escapeForNotification(objectApiName)}: ${objectTotal}${perParentText}`;
+            return `  ${objectApiName}: ${objectTotal}${perParentText}`;
         });
         const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByObject(tree);
         const fixedValues = tree.fixedValues ?? [];
@@ -9104,27 +9217,27 @@ export class RecipeCockpitService {
         return [
             `Org: ${orgLabel}`,
             `Type: ${SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail)}`,
-            `Recipe tree: ${RecipeYamlScalar.escapeForNotification(tree.customName ?? tree.title)} (${recipeFileLabel})`,
+            `Recipe tree: ${tree.customName ?? tree.title} (${recipeFileLabel})`,
             `Backend: ${fakerService}`,
             'Records, inserted parents first:',
             ...objectLines,
             ...( excludedFieldApiNamesByObject.size > 0
-                ? [`Unticked, not sent: ${[...excludedFieldApiNamesByObject].map(([objectApiName, fieldApiNames]) => fieldApiNames.map(fieldApiName => `${objectApiName}.${fieldApiName}`).join(', ')).map(fieldText => RecipeYamlScalar.escapeForNotification(fieldText)).join(', ')}`]
+                ? [`Unticked, not sent: ${[...excludedFieldApiNamesByObject].map(([objectApiName, fieldApiNames]) => fieldApiNames.map(fieldApiName => `${objectApiName}.${fieldApiName}`).join(', ')).join(', ')}`]
                 : [] ),
             ...( fixedValues.length > 0
-                ? [`Edited fields: ${fixedValues.map(fixedValue => RecipeYamlScalar.escapeForNotification(`${fixedValue.objectApiName}.${fixedValue.fieldApiName} = ${fixedValue.value}`)).join(', ')}`]
+                ? [`Edited fields: ${fixedValues.map(fixedValue => `${fixedValue.objectApiName}.${fixedValue.fieldApiName} = ${fixedValue.value}`).join(', ')}`]
                 : [] ),
             ...( validationRulesOff.length > 0
-                ? [`Validation rules switched off, so the org may reject these values: ${validationRulesOff.map(fieldText => RecipeYamlScalar.escapeForNotification(fieldText)).join(', ')}`]
+                ? [`Validation rules switched off, so the org may reject these values: ${validationRulesOff.join(', ')}`]
                 : [] ),
             ...( outsidePickableLookups.length > 0
                 ? [
                     'Lookups to objects this tree does not insert, each chosen next (Random parent, or parent records you search for; cancelling inserts nothing):',
-                    ...outsidePickableLookups.map(({ objectApiName, lookup }) => `  ${RecipeYamlScalar.escapeForNotification(objectApiName)}.${RecipeYamlScalar.escapeForNotification(lookup.fieldApiName)} → ${RecipeYamlScalar.escapeForNotification(lookup.parentObjectApiName)} (${lookup.isRequired ? 'required' : 'optional, or leave blank'})`)
+                    ...outsidePickableLookups.map(({ objectApiName, lookup }) => `  ${objectApiName}.${lookup.fieldApiName} → ${lookup.parentObjectApiName} (${lookup.isRequired ? 'required' : 'optional, or leave blank'})`)
                 ]
                 : [] ),
             ...( outsideParentObjectApiNames.length > 0
-                ? [`Required lookups to objects this tree does not insert get a random existing record of: ${outsideParentObjectApiNames.map(parentObjectApiName => RecipeYamlScalar.escapeForNotification(parentObjectApiName)).join(', ')} (none means nothing is inserted).`]
+                ? [`Required lookups to objects this tree does not insert get a random existing record of: ${outsideParentObjectApiNames.join(', ')} (none means nothing is inserted).`]
                 : [] ),
             ...( totalRecordCount > RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD
                 ? ['', `This run will take time: ${totalRecordCount} records in at least ${requestCount} Collections API requests.`]
@@ -9159,6 +9272,15 @@ export class RecipeCockpitService {
 
             case 'ready':
                 return { kind: 'replay', hostMessages: this.buildReplayMessages(panelState) };
+
+            // ONLY AN ANSWER UNDER THE ID THE HOST IS WAITING ON; A FORGED, LATE OR REPEATED ONE ROUTES TO NOTHING
+            case 'confirmResponse':
+
+                if ( !this.pendingConfirmation || panelMessage.confirmationId !== this.pendingConfirmation.confirmationId ) {
+                    return undefined;
+                }
+
+                return { kind: 'answerConfirmation', confirmationId: this.pendingConfirmation.confirmationId, choice: panelMessage.choice };
 
             /*
                 The panel's place, kept in workspaceState too (#230). Only for the model the panel
@@ -12414,6 +12536,41 @@ ${this.buildPaletteCustomProperties()}
     .githubGlyph { display: block; width: 18px; height: 18px; }
     .githubGlyph path { fill: var(--sdt-muted); }
     .cockpitChangelog:hover .githubGlyph path, .cockpitChangelog:focus-visible .githubGlyph path { fill: var(--sdt-accent); }
+    .confirmOverlay {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background-color: var(--sdt-dialog-backdrop);
+    }
+    .confirmDialog {
+        display: flex;
+        flex-direction: column;
+        width: min(42rem, 100%);
+        max-height: calc(100vh - 32px);
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 8px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.08);
+    }
+    .confirmTitle { margin: 0; padding: 0.9rem 1rem 0.5rem 1rem; font-size: 1.05rem; font-weight: 600; overflow-wrap: anywhere; }
+    .confirmBody {
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: 60vh;
+        overflow-y: auto;
+        padding: 0.25rem 1rem 0.75rem 1rem;
+        border-top: 1px solid var(--sdt-border);
+        border-bottom: 1px solid var(--sdt-border);
+    }
+    .confirmLine { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0.15rem 0; }
+    .confirmListItem { padding-left: 1rem; }
+    .confirmGap { height: 0.6rem; }
+    .confirmActions { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1rem; }
     @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after {
             transition: none !important;
@@ -12429,6 +12586,7 @@ ${this.buildPaletteCustomProperties()}
 </div>
 <div id="loadStatus" class="loadStatus">${RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT}</div>
 <div id="cockpitBody"></div>
+<div id="cockpitDialogHost"></div>
 <script nonce="${nonce}">
 (function () {
 
@@ -12436,6 +12594,9 @@ ${this.buildPaletteCustomProperties()}
     const loadStatusElement = document.getElementById('loadStatus');
     const cockpitBodyElement = document.getElementById('cockpitBody');
     const cockpitMetaElement = document.getElementById('cockpitMeta');
+    const cockpitDialogHostElement = document.getElementById('cockpitDialogHost');
+    // THE ONE IN-PANEL CONFIRMATION ON SCREEN (#349), OR null
+    let confirmDialog = null;
     const CHANGELOG_LINK_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CHANGELOG_LINK_LABEL)};
     const GITHUB_GLYPH_VIEW_BOX = ${JSON.stringify(RECIPE_COCKPIT_GITHUB_GLYPH_VIEW_BOX)};
     const GITHUB_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_GITHUB_GLYPH_PATH)};
@@ -17894,6 +18055,8 @@ ${this.buildPaletteCustomProperties()}
     function resetPanelState() {
 
         cockpitBodyElement.textContent = '';
+        // THE HOST ANSWERS AN OPEN CONFIRMATION CANCEL WHEN IT POSTS A NEW MODEL, AND A FAILURE TO DRAW ENDS IT TOO
+        closeConfirmDialog(false);
         disableHelpToggle();
         helpSectionElement = null;
         helpSummaryElement = null;
@@ -18045,6 +18208,137 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
+        A confirmation the HOST asked for (#349), drawn over the cockpit in place of VS Code's modal.
+        Every string is the host's and goes through textContent; the panel answers only with the
+        index of a button it was given (null is Cancel), under the id it was asked with. A request
+        for a model that is not the one on screen is answered Cancel without being drawn. Focus moves
+        into the dialog and stays there, Escape is Cancel, and focus goes back to what opened it.
+    */
+    function renderConfirmRequest(hostMessage) {
+
+        const confirmationId = hostMessage.confirmationId;
+        if (typeof confirmationId !== 'string' || !confirmationId) { return; }
+
+        const lines = Array.isArray(hostMessage.lines) ? hostMessage.lines.filter(function (line) { return typeof line === 'string'; }) : null;
+        const buttonLabels = Array.isArray(hostMessage.buttons) ? hostMessage.buttons.filter(function (label) { return typeof label === 'string' && !!label; }) : null;
+
+        if (hostMessage.renderSequence !== renderedSequence || typeof hostMessage.title !== 'string' || !lines || !buttonLabels || buttonLabels.length === 0) {
+            vscodeApi.postMessage({ command: 'confirmResponse', confirmationId: confirmationId, choice: null });
+            return;
+        }
+
+        // THE HOST ANSWERED AN OPEN ONE CANCEL BEFORE ASKING AGAIN; THE NEW ONE TAKES ITS PLACE
+        const openerElement = confirmDialog ? confirmDialog.openerElement : document.activeElement;
+        closeConfirmDialog(false);
+
+        const isDestructive = hostMessage.isDestructive === true;
+        const overlayElement = createElement('div', 'confirmOverlay');
+        const dialogElement = createElement('div', 'confirmDialog');
+        const titleElement = createElement('h2', 'confirmTitle', hostMessage.title);
+        const bodyElement = createElement('div', 'confirmBody');
+        const actionsElement = createElement('div', 'confirmActions');
+
+        titleElement.setAttribute('id', 'confirmTitle');
+        bodyElement.setAttribute('id', 'confirmBody');
+        // THE BODY SCROLLS, SO A KEYBOARD READER CAN REACH IT TO SCROLL IT
+        bodyElement.setAttribute('tabindex', '0');
+        dialogElement.setAttribute('role', isDestructive ? 'alertdialog' : 'dialog');
+        dialogElement.setAttribute('aria-modal', 'true');
+        dialogElement.setAttribute('aria-labelledby', 'confirmTitle');
+        dialogElement.setAttribute('aria-describedby', 'confirmBody');
+
+        lines.forEach(function (line) {
+            if (line.trim() === '') {
+                bodyElement.appendChild(createElement('div', 'confirmGap'));
+                return;
+            }
+            const isListItem = /^\\s*([-•]|\\u2026and )/.test(line);
+            bodyElement.appendChild(createElement('div', isListItem ? 'confirmLine confirmListItem' : 'confirmLine', line));
+        });
+
+        const buttonElements = buttonLabels.map(function (label, labelIndex) {
+            const buttonElement = createButton(labelIndex === 0 ? 'primary' : 'secondary', 'confirmChoice', label);
+            buttonElement.addEventListener('click', function () { answerConfirm(labelIndex); });
+            return buttonElement;
+        });
+        const cancelElement = createButton('secondary', 'confirmCancel', 'Cancel');
+        cancelElement.addEventListener('click', function () { answerConfirm(null); });
+
+        buttonElements.forEach(function (buttonElement) { actionsElement.appendChild(buttonElement); });
+        actionsElement.appendChild(cancelElement);
+
+        dialogElement.appendChild(titleElement);
+        dialogElement.appendChild(bodyElement);
+        dialogElement.appendChild(actionsElement);
+        overlayElement.appendChild(dialogElement);
+
+        const focusableElements = [bodyElement].concat(buttonElements, [cancelElement]);
+
+        dialogElement.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') {
+                if (typeof event.preventDefault === 'function') { event.preventDefault(); }
+                answerConfirm(null);
+                return;
+            }
+            if (event.key !== 'Tab') { return; }
+            const currentIndex = focusableElements.indexOf(document.activeElement);
+            const nextIndex = event.shiftKey
+                ? (currentIndex <= 0 ? focusableElements.length - 1 : currentIndex - 1)
+                : (currentIndex === -1 || currentIndex === focusableElements.length - 1 ? 0 : currentIndex + 1);
+            if (typeof event.preventDefault === 'function') { event.preventDefault(); }
+            focusElement(focusableElements[nextIndex]);
+        });
+
+        // A PRESS ON THE BACKDROP WOULD MOVE FOCUS OUT OF THE DIALOG, WHERE TAB IS NO LONGER KEPT INSIDE IT
+        overlayElement.addEventListener('mousedown', function (event) {
+            if (event.target === overlayElement && typeof event.preventDefault === 'function') { event.preventDefault(); }
+        });
+
+        // THE REST OF THE COCKPIT IS OUT OF REACH WHILE THE DIALOG IS OPEN
+        [cockpitBodyElement, cockpitMetaElement, loadStatusElement].forEach(function (backgroundElement) {
+            if (backgroundElement) { backgroundElement.setAttribute('inert', ''); }
+        });
+
+        if (!isMotionReduced()) { dialogElement.classList.add('motionReveal'); }
+        cockpitDialogHostElement.appendChild(overlayElement);
+
+        confirmDialog = { confirmationId: confirmationId, overlayElement: overlayElement, openerElement: openerElement };
+
+        // AN ACTION WITH NO UNDO STARTS ON CANCEL
+        focusElement(isDestructive ? cancelElement : buttonElements[0]);
+
+    }
+
+    function answerConfirm(choice) {
+
+        if (!confirmDialog) { return; }
+        vscodeApi.postMessage({ command: 'confirmResponse', confirmationId: confirmDialog.confirmationId, choice: choice });
+        closeConfirmDialog(true);
+
+    }
+
+    // A DIALOG CLOSED WITHOUT AN ANSWER IS ONE THE HOST ALREADY ANSWERED CANCEL: A NEW MODEL, A FAILURE TO DRAW OR A NEWER REQUEST
+    function closeConfirmDialog(isFocusReturned) {
+
+        if (!confirmDialog) { return; }
+
+        const openerElement = confirmDialog.openerElement;
+        cockpitDialogHostElement.textContent = '';
+        confirmDialog = null;
+
+        [cockpitBodyElement, cockpitMetaElement, loadStatusElement].forEach(function (backgroundElement) {
+            if (backgroundElement) { backgroundElement.removeAttribute('inert'); }
+        });
+
+        if (isFocusReturned && openerElement && !openerElement.disabled) { focusElement(openerElement); }
+
+    }
+
+    function focusElement(element) {
+        if (element && typeof element.focus === 'function') { element.focus(); }
+    }
+
+    /*
         The version, the CHANGELOG link and ? at the top right (#333, #350), drawn once beside the
         title and outside the body, so every load, empty state and failure to draw keeps them. The
         version arrives from the host and is written as text; the link posts no address -- the host
@@ -18118,6 +18412,11 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'extensionInfo') {
             renderExtensionInfo(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'confirmRequest') {
+            renderConfirmRequest(hostMessage);
             return;
         }
 

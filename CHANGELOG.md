@@ -1,5 +1,27 @@
 # Change Log
 
+## [3.111.0] - Recipe Cockpit: confirmations open inside the cockpit, in its style, with a body that scrolls
+
+Closes [#349](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/349).
+
+Every confirmation the cockpit asked for was VS Code's gray modal. It looked nothing like the cockpit, could not scroll, and cut or squeezed long content such as the insert's per-object totals, Clear's restore preview, the permission set and retrieve lists and the scratch org plan, so a reader could not see everything they were confirming.
+
+- **One dialog, inside the panel.** The 12 cockpit confirmations now open over the cockpit: a field's edit and Clear (with the restore preview), Reset selection, **+** (add a friend), Add &lt;parent&gt; to recipe, Wire to… / Wire TODO lookups, + New scratch org, the four Troubleshooting deploys, Retrieve validation rules…, Generate permission set…, Assign permission sets to me… and Generate fake data and insert (with **Generate only**). `confirmValidationRuleReplace`, which the issue lists, went with the field constraint editor in 3.103.0 (#356).
+- **How it looks.** A centred box on a dimmed backdrop: the title, a body that scrolls (at most 60% of the window, keeping every line break the host wrote, an indented or `-` line read as a list item), and the buttons below it, always visible. The host's buttons come first, the first one filled, then **Cancel**. Colours come only from the palette. The backdrop is a new token, `--sdt-dialog-backdrop` (`--sdt-text` at 50%), and a test composites it over the page and holds the dialog's edge to 3:1 against it. The dialog fades in like a card's body, and not at all under reduced motion.
+- **Accessibility.** `role="dialog"`, or `role="alertdialog"` for an action that writes to an org or overwrites files with no undo (the insert, the deploys, the assignment, the scratch org, the retrieve, and Generate permission set when it overwrites). It has `aria-modal`, `aria-labelledby` and `aria-describedby`. The rest of the cockpit is `inert` while it is open. Focus moves into it, on Cancel for an alertdialog and on the first button otherwise, Tab and Shift+Tab stay inside it, Escape is Cancel, and focus goes back to the control that opened it.
+- **The host still decides.** `RecipeCockpitService.confirmInPanel` has the shape of `showWarningMessage` and answers the same way: the label chosen, or `undefined`. It posts `confirmRequest {confirmationId, renderSequence, title, lines, buttons, isDestructive}`, every string written by the host, and the panel writes each one with `textContent`, so the shell builder still takes only a nonce. The id is a one-use random value. The panel answers `confirmResponse {confirmationId, choice}`, where `choice` is the index of a button the host offered. An answer under any other id routes to nothing, and an index the host did not offer is Cancel. Every executor plans and checks its guards again after the answer, as it did after the modal.
+- **Cancel, never a stale yes.** One confirmation is open at a time: a newer request answers the open one Cancel and takes its place. `ready` (a reveal reloads the document), a new model, a failure to draw and a closed panel all answer a pending one Cancel. A confirmation is never replayed, so the action has to be started again. With no model drawn, or no panel open, `confirmInPanel` is Cancel at once. A request for a model other than the one on screen is answered Cancel by the panel without being drawn.
+- **Wording.** What each confirmation says is unchanged. Text that goes only into the dialog is no longer run through `escapeForNotification`, since `textContent` makes it inert and the escapes would show as backslashes. Text that also reaches a notification is still escaped there.
+- **Unchanged.** The palette commands keep VS Code's modal: Run Faker by Recipe, Insert Data Set by Directory, the opt-in warning and every other `ExtensionCommandService` modal. Quick picks, input boxes and notifications are unchanged.
+- **Help and guide.** "What does edit the YAML" in the ? help and `docs/RECIPE-COCKPIT-GUIDE.md` says each of these asks first in a box you can scroll.
+- **Tests.** `RecipeCockpitConfirmDialog.test.ts` covers:
+  - the broker on a real panel: the request posted, an answer that resets, Cancel for an index not offered, an id spent once, forged answers, Cancel on `ready` with no replay, on a new model, on a failure to draw (not on a runtime throw) and on a closed panel, a newer request replacing the open one, and Cancel with nothing drawn;
+  - the dialog in the panel harness: roles, the scrolling body, button kinds, starting focus, choosing, Escape, Tab staying inside, focus going back, a request for another model, and a new model closing it;
+  - the stylesheet;
+  - a scan that no cockpit confirmation passes `modal: true`, and that `ExtensionCommandService` still does.
+
+  The 13 suites that drive an executor end to end answer through `RecipeCockpitConfirmationAnswers.ts`, which hands `confirmInPanel` to the `showWarningMessage` mock each suite already scripts, with `inPanel: true` in place of `modal: true`. Their assertions on escaped dialog text now assert the text as written. The harness gained `document.activeElement` and a dialog host.
+
 ## [3.110.0] - Recipe Cockpit: the selected tab and its content share one outline, and every search box shows a search icon
 
 Closes [#373](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/373).

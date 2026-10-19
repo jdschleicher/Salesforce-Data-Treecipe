@@ -23,6 +23,7 @@ import {
 import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 /*
     The Recipe Cockpit's "+" on a self-lookup iteration (#197), end to end on the host: the model
@@ -70,6 +71,8 @@ const readRecipeFixtureWithoutLead = () => {
     const fixtureText = fs.readFileSync(RECIPE_FIXTURE_PATH, 'utf-8');
     return fixtureText.slice(0, fixtureText.indexOf('\n# Lead')) + '\n';
 };
+
+answerInPanelConfirmationsThroughWarningMock();
 
 describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration (#197)', () => {
 
@@ -275,7 +278,7 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
             expect('recipeText' in insertResult && fs.readFileSync(recipeFilePath, 'utf-8')).toBe('recipeText' in insertResult && insertResult.recipeText);
             expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0]).toEqual([
                 `Add Contact under ${ITERATION_NICKNAME}?`,
-                { modal: true, detail: expect.stringContaining(path.basename(recipeFilePath)) },
+                { inPanel: true, detail: expect.stringContaining(path.basename(recipeFilePath)) },
                 RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL
             ]);
             expect(showInformationMessageSpy).toHaveBeenCalledWith(expect.stringContaining('Added Contact as Contact_child_NickName under Account_child_NickName'));

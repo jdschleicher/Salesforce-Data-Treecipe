@@ -61,6 +61,7 @@ import { ORG_OPERATIONS_FOLDER_NAME } from '../../ScratchOrgService/ScratchOrgSe
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
+import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const PERMISSION_SET_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'permissionSetWorkspace');
@@ -87,6 +88,8 @@ const buildAssignAnswer = (successNames: string[], failures: Array<{ name?: stri
         failures: failures
     }
 });
+
+answerInPanelConfirmationsThroughWarningMock();
 
 describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecipe tab (#274, #302)', () => {
 
@@ -470,10 +473,10 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
         const panelState = (): IRecipeCockpitPanelState => (RecipeCockpitService as any).recipeCockpitPanelState;
         const quickPick = () => vscode.window.showQuickPick as jest.Mock;
         const warningCalls = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls;
-        const modalCalls = () => warningCalls().filter(([, options]) => options?.modal);
+        const modalCalls = () => warningCalls().filter(([, options]) => options?.inPanel);
         // EVERY NON-MODAL WARNING: ITS TEXT, AND THE BUTTONS IT OFFERS
         const notificationWarnings = () => warningCalls()
-            .filter(([, options]) => !( options && typeof options === 'object' && options.modal ))
+            .filter(([, options]) => !( options && typeof options === 'object' && options.inPanel ))
             .map(([warningText, ...actions]) => ({ text: warningText as string, actions: actions as string[] }));
         const lastWarning = () => notificationWarnings().at(-1);
 
@@ -549,7 +552,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             (vscode.window.withProgress as jest.Mock).mockReset();
             (vscode.window.withProgress as jest.Mock).mockImplementation(async (_options: unknown, progressTask: any) => await progressTask({ report: jest.fn() }, cancellationToken));
             (vscode.window.showWarningMessage as jest.Mock).mockReset();
-            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => options?.modal ? RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL : undefined);
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => options?.inPanel ? RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL : undefined);
             (vscode.window.showErrorMessage as jest.Mock).mockReset();
             (vscode.window.showErrorMessage as jest.Mock).mockResolvedValue(undefined);
             (vscode.window.showInformationMessage as jest.Mock).mockReset();
@@ -745,7 +748,8 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
 
         });
 
-        it('escapes every repository text in the modal, the progress title and the notifications', async () => {
+        // THE IN-PANEL DIALOG WRITES ITS TEXT WITH textContent (#349), SO ONLY WHAT REACHES A NOTIFICATION IS ESCAPED
+        it('shows repository text as written in the confirmation, and escapes it in the progress title and the notifications', async () => {
 
             orgPermissionSetNames = ['Account_Tree_Access'];
             await openCockpitWithQaSelected();
@@ -754,9 +758,8 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             await assignPermissionSets();
 
             const [modalMessage, modalOptions] = modalCalls()[0];
-            expect(modalMessage).not.toMatch(/[[\]()]/);
-            expect(modalOptions.detail).not.toMatch(/[[\]()]/);
-            expect(modalOptions.detail).toContain('Tree: Run \\u005bme\\u005d\\u0028command:evil\\u0029');
+            expect(modalMessage).toContain('for Run [me](command:evil) to');
+            expect(modalOptions.detail).toContain('Tree: Run [me](command:evil)');
             const progressTitles = (vscode.window.withProgress as jest.Mock).mock.calls.map(([progressOptions]) => progressOptions.title);
             expect(progressTitles).toHaveLength(1);
             progressTitles.forEach(progressTitle => expect(progressTitle).not.toMatch(/[[\]()]/));
@@ -924,7 +927,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             });
             await openCockpitWithQaSelected();
             (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any, ...actions: string[]) => (
-                options?.modal ? RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL : [options, ...actions].includes(RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL) ? RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL : undefined
+                options?.inPanel ? RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL : [options, ...actions].includes(RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL) ? RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL : undefined
             ));
 
             await assignPermissionSets();
@@ -1122,7 +1125,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             await openCockpitWithQaSelected();
             let chooseViewOutput: (choice: string) => void = () => undefined;
             (vscode.window.showWarningMessage as jest.Mock).mockImplementation((_message: string, options: any) => (
-                options?.modal ? Promise.resolve(RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL) : new Promise(resolve => { chooseViewOutput = resolve; })
+                options?.inPanel ? Promise.resolve(RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL) : new Promise(resolve => { chooseViewOutput = resolve; })
             ));
 
             await assignPermissionSets();

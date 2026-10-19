@@ -33,6 +33,7 @@ import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipe
 import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 /*
     #255: a count box right of each object's name sets how many records the generate button and the whole-tree
@@ -150,6 +151,8 @@ const applyCounts = (recipe: IRecipeCockpitRecipeViewModel, countsByFolderName: 
     undefined,
     new Map(Object.entries(countsByFolderName).map(([folderName, countsByObject]) => [folderName, new Map(Object.entries(countsByObject))]))
 );
+
+answerInPanelConfirmationsThroughWarningMock();
 
 describe('RecipeCockpitRecipeWriter -- record counts (#255)', () => {
 
@@ -848,7 +851,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             await receivedMessageHandler({ command: 'resetTreeSelection', treeKey: ACCOUNT_TREE_KEY });
 
             expect(showWarningMessage).toHaveBeenCalledTimes(1);
-            expect(showWarningMessage.mock.calls[0][1]).toMatchObject({ modal: true });
+            expect(showWarningMessage.mock.calls[0][1]).toMatchObject({ inPanel: true });
             expect(showWarningMessage.mock.calls[0][1].detail).toBe('Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every validation rule is applied again. The recipe file is not changed, so an edit written into it stays: clear it with its field\'s edit button.');
             expect(storedOf(workspaceState)).toEqual(storedSelections({ [LEAD_TREE_KEY]: { Lead: 3 } }));
             expect(lastPosted('objectSelection').treeKey).toBe(ACCOUNT_TREE_KEY);
