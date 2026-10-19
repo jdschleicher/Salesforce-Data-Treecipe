@@ -45,6 +45,13 @@ export interface INotificationCommandAction {
     run: () => Thenable<unknown> | Promise<unknown>;
 }
 
+// A BUTTON THAT OPENS A FILE A RUN WROTE; WITH NO PATH IT IS NOT OFFERED
+export interface INotificationFileAction {
+    label: string;
+    filePath: string | undefined;
+    missingFileText: string;
+}
+
 export const ORG_CONNECTION_CHECK_PLACEHOLDER = 'Checking org connections…';
 
 export const PARENT_PICKER_RANDOM_LABEL = 'Random parent';
@@ -817,17 +824,37 @@ export class VSCodeWorkspaceService {
                                                 workspaceRoot: string,
                                                 missingFileText: string) {
 
-        const actions = filePath ? [actionLabel] : [];
+        this.showNotificationWithWorkspaceFiles(severity, notificationText, [{ label: actionLabel, filePath: filePath, missingFileText: missingFileText }], workspaceRoot);
+
+    }
+
+    /*
+        The same with several buttons (#375): each file button is offered only when it has a path and
+        opens it with the same check on the click; each other action runs only when chosen. Buttons
+        keep the order given, files first.
+    */
+    static showNotificationWithWorkspaceFiles(severity: 'information' | 'warning' | 'error',
+                                                notificationText: string,
+                                                fileActions: readonly INotificationFileAction[],
+                                                workspaceRoot: string,
+                                                otherActions: readonly INotificationCommandAction[] = []) {
+
+        const offeredFileActions = fileActions.filter(fileAction => !!fileAction.filePath);
+        const actionLabels = [...offeredFileActions.map(fileAction => fileAction.label), ...otherActions.map(otherAction => otherAction.label)];
         const shownNotification = severity === 'information'
-            ? vscode.window.showInformationMessage(notificationText, ...actions)
+            ? vscode.window.showInformationMessage(notificationText, ...actionLabels)
             : severity === 'warning'
-                ? vscode.window.showWarningMessage(notificationText, ...actions)
-                : vscode.window.showErrorMessage(notificationText, ...actions);
+                ? vscode.window.showWarningMessage(notificationText, ...actionLabels)
+                : vscode.window.showErrorMessage(notificationText, ...actionLabels);
 
         Promise.resolve(shownNotification)
-            .then(chosenAction => chosenAction === actionLabel && filePath
-                ? this.openWorkspaceResultFile(filePath, workspaceRoot, missingFileText)
-                : undefined)
+            .then(chosenAction => {
+                const chosenFileAction = offeredFileActions.find(fileAction => fileAction.label === chosenAction);
+                if ( chosenFileAction ) {
+                    return this.openWorkspaceResultFile(chosenFileAction.filePath as string, workspaceRoot, chosenFileAction.missingFileText);
+                }
+                return otherActions.find(otherAction => otherAction.label === chosenAction)?.run();
+            })
             .catch(() => undefined);
 
     }

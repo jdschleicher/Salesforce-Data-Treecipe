@@ -17,6 +17,9 @@ Generate Treecipe reads your object metadata and writes a run: a folder under `t
 The cockpit opens the newest run, or the one you pick in the run list at the top.
 Under the run list, the **Target Org Management** section picks the org a card can insert into, opens it in your browser (**Open in browser**) or makes a new scratch org (**+ New scratch org**), which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll.
 The **Treecipes** section below it holds the cards.
+Each card's **Generate fake data and insert** button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why.
+If an insert fails, its message offers **View failed file** (the generated file that failed), **View errors** and **Open Troubleshooting**, which opens the card's Troubleshooting area that may fix it.
+To generate without inserting, use **Run Faker by Recipe** from the command palette.
 
 Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply.
 Tick **TODOs only** on a card's Treecipe tab to see just the fields and objects with one, or open its **Troubleshooting** tab, whose **TODO's** list shows them all with a link to each line.

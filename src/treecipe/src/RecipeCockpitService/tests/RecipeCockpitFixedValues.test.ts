@@ -730,6 +730,14 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
     describe('openRecipeCockpitPanel', () => {
 
         let receivedMessageHandler: (panelMessage: any) => Promise<void>;
+
+        // THE Run Faker by Recipe CALL THE CARD'S INSERT MAKES (#375): THE RECIPE, AND ITS FILTERED COPY ONLY WHEN THE CARD LEAVES SOMETHING OUT
+        const resolveRunFakerCall = (treeKey: string): any[] => {
+            const panelState = (RecipeCockpitService as any).recipeCockpitPanelState;
+            const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey);
+            const filteredRecipe = RecipeCockpitService.resolveRunFakerFilteredRecipe(panelState, treeKey, recipeFilePath, 'Nothing was generated or inserted for');
+            return [RECIPE_COCKPIT_RUN_FAKER_COMMAND, recipeFilePath, ...( filteredRecipe ? [filteredRecipe] : [] )];
+        };
         let disposeHandler: (() => void) | undefined;
         let postedPanelMessages: any[];
 
@@ -1293,9 +1301,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             const restoreRecipe = pinFieldInRecipeFile(ACCOUNT_RECIPE_FILE_PATH, 'Contact', 'LastName', { value: 'Smith', kind: 'text' });
             try {
                 await openAndDraw(buildWorkspaceState());
-                await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
-
-                const runFakerCall = executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND);
+                const runFakerCall = resolveRunFakerCall(ACCOUNT_TREE_KEY);
                 expect(runFakerCall).toHaveLength(3);
                 expect(runFakerCall?.[1]).toBe(ACCOUNT_RECIPE_FILE_PATH);
                 expect(runFakerCall?.[2]).toMatchObject({ excludedObjectApiNames: [], fixedValuesByObject: { Contact: { LastName: 'Smith' } } });
@@ -1311,9 +1317,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
             await openAndDraw(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [ACCOUNT_TREE_KEY]: { Contact: { LastName: 'Smith' } } }) }));
 
-            await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
-
-            expect(executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toEqual([RECIPE_COCKPIT_RUN_FAKER_COMMAND, ACCOUNT_RECIPE_FILE_PATH]);
+            expect(resolveRunFakerCall(ACCOUNT_TREE_KEY)).toEqual([RECIPE_COCKPIT_RUN_FAKER_COMMAND, ACCOUNT_RECIPE_FILE_PATH]);
 
         });
 
