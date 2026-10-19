@@ -262,6 +262,14 @@ describe('RecipeCockpitService, the version and the CHANGELOG link at the top ri
 
         });
 
+        it('keeps the version, the GitHub mark and "?" one right-aligned group that wraps as a whole (#350)', () => {
+
+            expect(styleSheet()).toContain('.cockpitMeta { display: flex; flex-wrap: nowrap; align-items: center; gap: 0.4rem; margin-left: auto;');
+            expect(styleSheet()).toContain('.cockpitMeta .helpToggle {');
+            expect(styleSheet()).not.toContain('.toolbar .helpToggle');
+
+        });
+
         it('never carries the CHANGELOG address: the host holds it', () => {
 
             expect(shellHtml()).not.toContain(RECIPE_COCKPIT_CHANGELOG_URL);
@@ -290,7 +298,7 @@ describe('RecipeCockpitService, the version and the CHANGELOG link at the top ri
             const changelogElement = changelogElementOf(panel);
             const glyphElement = changelogElement.children[0];
 
-            expect(panel.cockpitMetaElement.children).toEqual([versionElementOf(panel), changelogElement]);
+            expect(panel.cockpitMetaElement.children).toEqual([versionElementOf(panel), changelogElement, panel.findAll(panel.cockpitMetaElement, 'helpToggle')[0]]);
             expect(versionElementOf(panel).textContent).toBe('');
             expect(changelogElement.tagName).toBe('button');
             expect(changelogElement.attributes).toMatchObject({ 'type': 'button', 'aria-label': RECIPE_COCKPIT_CHANGELOG_LINK_LABEL, 'title': RECIPE_COCKPIT_CHANGELOG_LINK_LABEL });
@@ -316,15 +324,19 @@ describe('RecipeCockpitService, the version and the CHANGELOG link at the top ri
             ['the no-run empty state', () => ({ command: 'recipeData', recipe: NO_RUN_RECIPE, renderSequence: 1 })],
             ['a drawn run', () => ({ command: 'recipeData', recipe: loadTreeRecipe(), renderSequence: 1 })],
             ['a failure to draw', () => ({ command: 'recipeData', recipe: { runs: null }, renderSequence: 1 })]
-        ])('keeps the version and the link on %s', (_description, buildRecipeMessage) => {
+        ])('keeps the version, the link and "?" on %s, in one container in that order (#350)', (_description, buildRecipeMessage) => {
 
             const panel = runPanelScript();
             panel.postToPanel({ command: 'extensionInfo', version: '3.90.0' });
             panel.postToPanel(buildRecipeMessage());
 
+            const helpToggleElement = panel.findAll(panel.cockpitMetaElement, 'helpToggle')[0];
             expect(versionElementOf(panel).textContent).toBe('v3.90.0');
-            expect(changelogElementOf(panel)).toBeDefined();
+            expect(panel.cockpitMetaElement.children).toEqual([versionElementOf(panel), changelogElementOf(panel), helpToggleElement]);
             expect(panel.findAll(panel.cockpitBodyElement, 'cockpitChangelog')).toBeEmpty();
+            expect(panel.findAll(panel.cockpitBodyElement, 'helpToggle')).toBeEmpty();
+            // ? TOGGLES A SECTION THE BODY HOLDS, SO IT IS DISABLED ONLY WHEN THE BODY HOLDS NONE
+            expect(helpToggleElement.disabled).toBe(panel.findAll(panel.cockpitBodyElement, 'helpSection').length === 0);
 
         });
 

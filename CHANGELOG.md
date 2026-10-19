@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.108.0] - Recipe Cockpit: the version, the GitHub icon and ? on one line
+
+Closes [#350](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/350).
+
+3.95.0 (#333) put the version and the GitHub icon on the title row, while **?** sat at the right end of the toolbar on the next line, so the cockpit's controls about itself were split across two lines.
+
+- **One line, top right.** The version, the GitHub icon and **?** now sit together at the right of the title row, in that order. The toolbar keeps the run list and **Favorites only**.
+- **Wraps as one group.** On a narrow panel the three move under the title together, still right-aligned. They never split from each other, and nothing scrolls sideways.
+- **? is outside the body.** Like the version and the icon, **?** is drawn once and is never removed by a load, the empty state or a failure to draw. It toggles the help section each render draws, and works in the empty state as before. Before the first model is drawn, and after a failure to draw, there is no help section, so **?** is disabled. Whether help is open is still kept in your place.
+- **Nothing else changed.** The version still arrives in `extensionInfo` and is written as text, the GitHub icon still posts only `openChangelog`, and no URL is in the shell. **?** is still a `primary` button, and the help section and **Open the full guide** are unchanged.
+- **Guide.** `docs/RECIPE-COCKPIT-GUIDE.md` says where **?** is, and its first screenshot was re-taken.
+- **Tests.** The #332 and #333 suites look for **?** in the top-right container. A harness test checks that it holds the version, the GitHub icon and **?** in that order on the empty state, a drawn run and a failure to draw, with **?** disabled only when there is no help section. Another checks that **?** is the same button across models, keeps its open state, and is disabled before the first model.
+
 ## [3.107.0] - Recipe Cockpit: a Query tab that runs a tree's generated SOQL and exports the results
 
 Closes [#367](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/367).

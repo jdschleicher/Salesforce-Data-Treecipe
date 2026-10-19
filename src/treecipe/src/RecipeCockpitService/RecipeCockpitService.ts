@@ -11741,7 +11741,7 @@ ${this.buildPaletteCustomProperties()}
         padding: 0.6rem 0.8rem;
         margin-top: 0.75rem;
     }
-    .toolbar .helpToggle { margin-left: auto; border-radius: 999px; padding: 0.4rem 0.75rem; }
+    .cockpitMeta .helpToggle { border-radius: 999px; padding: 0.4rem 0.75rem; }
     .helpSection {
         color: var(--sdt-text);
         background-color: var(--sdt-surface);
@@ -12186,7 +12186,7 @@ ${this.buildPaletteCustomProperties()}
         color: var(--sdt-muted);
     }
     .cockpitHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
-    .cockpitMeta { display: flex; align-items: center; gap: 0.4rem; color: var(--sdt-muted); }
+    .cockpitMeta { display: flex; flex-wrap: nowrap; align-items: center; gap: 0.4rem; margin-left: auto; color: var(--sdt-muted); }
     .cockpitChangelog { padding: 0.25rem; }
     .cockpitChangelog:hover:not(:disabled) { background-color: var(--sdt-surface); }
     .githubGlyph { display: block; width: 18px; height: 18px; }
@@ -12507,7 +12507,7 @@ ${this.buildPaletteCustomProperties()}
             renderFavoritesToggle(toolbarElement);
         }
 
-        renderHelp(toolbarElement, recipe, hasObjects);
+        renderHelp(recipe, hasObjects);
 
     }
 
@@ -12518,19 +12518,9 @@ ${this.buildPaletteCustomProperties()}
         model, written through textContent; the guide's url is the host's, and the button posts
         nothing but the command.
     */
-    function renderHelp(toolbarElement, recipe, hasObjects) {
+    function renderHelp(recipe, hasObjects) {
 
         helpTrees = hasObjects ? (recipe.trees || []) : [];
-
-        helpToggleElement = createButton('primary', 'helpToggle', HELP_TOGGLE_LABEL);
-        helpToggleElement.setAttribute('aria-label', HELP_TOGGLE_ARIA_LABEL);
-        helpToggleElement.setAttribute('title', HELP_TOGGLE_ARIA_LABEL);
-        helpToggleElement.setAttribute('aria-controls', 'cockpitHelp');
-        helpToggleElement.addEventListener('click', function () {
-            setHelpExpanded(!isHelpExpanded, true);
-            savePanelPlace();
-        });
-        toolbarElement.appendChild(helpToggleElement);
 
         helpSectionElement = createElement('section', 'helpSection hidden');
         helpSectionElement.setAttribute('id', 'cockpitHelp');
@@ -12576,6 +12566,10 @@ ${this.buildPaletteCustomProperties()}
 
         cockpitBodyElement.appendChild(helpSectionElement);
 
+        if (helpToggleElement) {
+            helpToggleElement.disabled = false;
+            helpToggleElement.setAttribute('aria-controls', 'cockpitHelp');
+        }
         setHelpExpanded(isHelpExpanded, false);
 
     }
@@ -17403,7 +17397,7 @@ ${this.buildPaletteCustomProperties()}
     function resetPanelState() {
 
         cockpitBodyElement.textContent = '';
-        helpToggleElement = null;
+        disableHelpToggle();
         helpSectionElement = null;
         helpSummaryElement = null;
         helpTrees = [];
@@ -17554,9 +17548,11 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        The version and the CHANGELOG link at the top right (#333), drawn once beside the title and
-        outside the body, so every load, empty state and failure to draw keeps them. The version
-        arrives from the host and is written as text; the link posts no address -- the host owns it.
+        The version, the CHANGELOG link and ? at the top right (#333, #350), drawn once beside the
+        title and outside the body, so every load, empty state and failure to draw keeps them. The
+        version arrives from the host and is written as text; the link posts no address -- the host
+        owns it. ? toggles the help section a render draws in the body, and is disabled while there
+        is none: before the first model, and after a failure to draw.
     */
     function renderCockpitMeta() {
 
@@ -17583,8 +17579,29 @@ ${this.buildPaletteCustomProperties()}
             vscodeApi.postMessage({ command: 'openChangelog' });
         });
 
+        // STILL A PRIMARY BUTTON, AS IT WAS IN THE TOOLBAR (#363)
+        helpToggleElement = createButton('primary', 'helpToggle', HELP_TOGGLE_LABEL);
+        helpToggleElement.setAttribute('aria-label', HELP_TOGGLE_ARIA_LABEL);
+        helpToggleElement.setAttribute('title', HELP_TOGGLE_ARIA_LABEL);
+        helpToggleElement.addEventListener('click', function () {
+            if (!helpSectionElement) { return; }
+            setHelpExpanded(!isHelpExpanded, true);
+            savePanelPlace();
+        });
+        disableHelpToggle();
+
         cockpitMetaElement.appendChild(cockpitVersionElement);
         cockpitMetaElement.appendChild(changelogElement);
+        cockpitMetaElement.appendChild(helpToggleElement);
+
+    }
+
+    function disableHelpToggle() {
+
+        if (!helpToggleElement) { return; }
+        helpToggleElement.disabled = true;
+        helpToggleElement.removeAttribute('aria-expanded');
+        helpToggleElement.removeAttribute('aria-controls');
 
     }
 
