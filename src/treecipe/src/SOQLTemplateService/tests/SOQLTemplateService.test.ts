@@ -465,3 +465,71 @@ describe('SOQLTemplateService leaves out a name that is not a Salesforce api nam
 
 });
 
+
+describe('SOQLTemplateService.listTreeQueries (#367)', () => {
+
+    const buildTreeWrapper = () => buildMockWrapper({
+        Account: {
+            fields: [{ name: 'Name', label: 'Name', type: 'Text' }],
+            childRefs: { Contact: ['AccountId'], Opportunity: ['AccountId'] },
+            recordTypes: {
+                Customer: { DeveloperName: 'Customer', PicklistFieldSectionsToPicklistDetail: {} },
+                Partner: { DeveloperName: 'Partner', PicklistFieldSectionsToPicklistDetail: {} },
+            },
+        },
+        Contact: {
+            fields: [
+                { name: 'LastName', label: 'Last Name', type: 'Text' },
+                { name: 'AccountId', label: 'Account', type: 'Lookup', referenceTo: 'Account' },
+            ],
+        },
+        Opportunity: { fields: [{ name: 'StageName', label: 'Stage', type: 'Text' }] },
+    });
+
+    it('lists every query the tree markdown holds, by object in name order and kind in markdown order', () => {
+        const wrapper = buildTreeWrapper();
+        const treeQueries = SOQLTemplateService.listTreeQueries(wrapper, ['Contact', 'Account']);
+
+        expect(treeQueries.map(treeQuery => treeQuery.queryKey)).toEqual([
+            'Account:base:0',
+            'Account:parentToChild:0',
+            'Account:recordType:0',
+            'Account:recordType:1',
+            'Contact:base:0',
+            'Contact:childToParent:0',
+        ]);
+    });
+
+    it('holds the same query text the markdown writes, with each "--" line moved into its notes', () => {
+        const wrapper = buildTreeWrapper();
+        const treeObjectNames = ['Account', 'Contact'];
+        const markdown = SOQLTemplateService.generateSOQLTemplateMarkdownForTree(wrapper, treeObjectNames, '2024-01-01T00-00-00');
+        const treeQueries = SOQLTemplateService.listTreeQueries(wrapper, treeObjectNames);
+
+        treeQueries.forEach(treeQuery => {
+            const markdownBlock = [...treeQuery.notes.map(note => `-- ${note}`), treeQuery.text].join('\n');
+            expect(markdown).toContain('```sql\n' + markdownBlock + '\n```');
+            expect(treeQuery.text).not.toContain('--');
+            expect(treeQuery.text).toStartWith('SELECT ');
+        });
+
+        const recordTypeQuery = treeQueries.find(treeQuery => treeQuery.queryKey === 'Account:recordType:1');
+        expect(recordTypeQuery?.notes).toEqual(['Record Type: Partner']);
+        expect(recordTypeQuery?.text).toContain("WHERE RecordType.DeveloperName = 'Partner'");
+    });
+
+    it('leaves out a child outside the tree and an object the wrapper does not hold', () => {
+        const wrapper = buildTreeWrapper();
+        const treeQueries = SOQLTemplateService.listTreeQueries(wrapper, ['Account', 'Missing__c', 'Account']);
+
+        expect(treeQueries.every(treeQuery => treeQuery.objectApiName === 'Account')).toBeTrue();
+        expect(treeQueries.filter(treeQuery => treeQuery.kind === 'parentToChild')).toHaveLength(0);
+        expect(treeQueries.filter(treeQuery => treeQuery.kind === 'base')).toHaveLength(1);
+    });
+
+    it('never lists an object named after a prototype member', () => {
+        const wrapper = buildTreeWrapper();
+        expect(SOQLTemplateService.listTreeQueries(wrapper, ['constructor', 'toString'])).toEqual([]);
+    });
+
+});
