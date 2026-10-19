@@ -384,8 +384,8 @@ export const RECIPE_COCKPIT_RECORD_TYPES_INTRO = 'Choose the record types Genera
 
 export type RecipeCockpitTreeTab = typeof RECIPE_COCKPIT_TREE_TABS[number];
 
-// TABS ADDED SINCE THE PLACE VERSION: A PLACE CARRIES THEIR SEARCH ONLY WHEN THERE IS ONE, SO THE VERSION DID NOT CHANGE
-export const RECIPE_COCKPIT_OPTIONAL_SEARCH_TABS: readonly RecipeCockpitTreeTab[] = Object.freeze(['troubleshooting'] as RecipeCockpitTreeTab[]);
+// TABS WHOSE SEARCH IS NOT THE TAB'S OWN: TROUBLESHOOTING SEARCHES PER SUB-TAB (#365), SO A PLACE'S TAB-WIDE ONE IS DROPPED
+export const RECIPE_COCKPIT_TABS_WITHOUT_SEARCH: readonly RecipeCockpitTreeTab[] = Object.freeze(['troubleshooting'] as RecipeCockpitTreeTab[]);
 
 export const RECIPE_COCKPIT_TREE_DATA_MISSING_NOTICE = 'This run\'s objects wrapper has no relationship tree data, so each recipe file is shown as its own card, with its objects in file order and no lookups. Run "Generate Treecipe" again to see the run\'s relationship trees.';
 
@@ -442,7 +442,8 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.',
             'Under the run list, the Target Org Management section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll. The Treecipes section below it holds the cards.',
-            'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, each TODO with a link to its line in the recipe.'
+            'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all with a link to each line.',
+            'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types and Global Value Sets, each with its own search. It opens on the one you chose last.'
         ]
     },
     {
@@ -469,8 +470,8 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.'
         ],
         closingParagraphs: [
-            'Three more write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set writes a permission set into your project and Retrieve validation rules writes an org\'s validation rules into your project.',
-            'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set, Deploy fields (custom fields only), Deploy global value sets and Deploy record types each send just those parts of your project, after a confirmation that lists them.'
+            'Three more write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project and Retrieve validation rules (under Validation Rules) writes an org\'s validation rules into your project.',
+            'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields, custom fields only), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.'
         ]
     },
     {
@@ -567,6 +568,9 @@ export interface IRecipeCockpitFieldViewModel {
 export interface IRecipeCockpitTodoViewModel {
     lineNumber: number;
     text?: string;
+    // WHERE A FIELD TODO WITH NO text SITS IN THE FIELD'S POSTED recipeValue (#365), SO A LIST AWAY FROM THE VALUE SHOWS IT EXACTLY
+    valueStart?: number;
+    valueLength?: number;
 }
 
 /*
@@ -1070,6 +1074,9 @@ export interface IRecipeCockpitPanelTreePlace {
     isRecordTypeFieldsOnly?: true;
     // THE TREECIPE TAB'S "TODOs only" CHECK (#354); A PLACE SAVED BEFORE IT HAS NONE AND READS AS OFF
     isTodosOnly?: true;
+    // THE TROUBLESHOOTING SUB-TAB (#365), ONLY WHEN IT IS NOT THE FIRST, AND EACH SUB-TAB'S SEARCH, ONLY WHEN THERE IS ONE
+    troubleshootingSubTab?: RecipeCockpitTroubleshootingSubTab;
+    troubleshootingSearchQueries?: Partial<Record<RecipeCockpitTroubleshootingSubTab, string>>;
 }
 
 export interface IRecipeCockpitPanelPlace {
@@ -1435,7 +1442,32 @@ export const RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL = 'Troubleshooting';
 // HOW MANY TREE SUMMARIES THE HOST KEEPS BEFORE IT STARTS AGAIN
 export const RECIPE_COCKPIT_TROUBLESHOOTING_SUMMARY_CACHE_LIMIT = 50;
 
-export const RECIPE_COCKPIT_TROUBLESHOOTING_INTRO = 'Fixes for an insert that failed. Deploys reach only a sandbox or scratch org: the one selected in the Org section, or one you choose.';
+/*
+    The Troubleshooting tab's sub-tabs (#365), left to right; the first is selected until the reader
+    picks another, which the place keeps. Each has its own search box. Only the selected one is
+    shown, so the tab draws one area at a time.
+*/
+export const RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS = ['todos', 'fields', 'permissions', 'validationRules', 'recordTypes', 'globalValueSets'] as const;
+export type RecipeCockpitTroubleshootingSubTab = typeof RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS[number];
+export const RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS: Readonly<Record<RecipeCockpitTroubleshootingSubTab, string>> = Object.freeze({
+    todos: 'TODO\'s',
+    fields: 'Fields',
+    permissions: 'Permissions',
+    validationRules: 'Validation Rules',
+    recordTypes: 'Record Types',
+    globalValueSets: 'Global Value Sets'
+});
+export const RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS: Readonly<Record<RecipeCockpitTroubleshootingSubTab, string>> = Object.freeze({
+    todos: 'Search TODOs by object, field or text',
+    fields: 'Search field actions',
+    permissions: 'Search permission set actions',
+    validationRules: 'Search validation rule actions',
+    recordTypes: 'Search record type actions',
+    globalValueSets: 'Search global value set actions'
+});
+export const RECIPE_COCKPIT_NO_TREE_TODOS_NOTE = 'No TODO comments in this tree\'s recipe.';
+// WHAT A TODO's ENTRY SAYS FOR A FIELD TODO WHOSE TEXT THE PANEL COULD NOT FIND IN THE FIELD'S VALUE
+export const RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL = 'TODO in this field\'s value';
 
 export const RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL = 'Create scratch org';
 
@@ -1845,8 +1877,8 @@ export class RecipeCockpitService {
 
             RECIPE_COCKPIT_TREE_TABS.forEach(tabName => {
                 const candidateQuery = Object.prototype.hasOwnProperty.call(candidateQueries, tabName) ? candidateQueries[tabName] : undefined;
-                // A TAB ADDED SINCE THE PLACE VERSION (#346) KEEPS ITS SEARCH ONLY WHEN THERE IS ONE, SO AN OLDER PLACE READS AS IT WAS
-                if ( RECIPE_COCKPIT_OPTIONAL_SEARCH_TABS.includes(tabName) && !( this.isBoundedText(candidateQuery) && candidateQuery !== '' ) ) {
+                // A TAB ADDED SINCE THE PLACE VERSION (#346) HAS NO SEARCH OF ITS OWN SINCE #365, SO A PLACE READS AS IT DID BEFORE THE TAB
+                if ( RECIPE_COCKPIT_TABS_WITHOUT_SEARCH.includes(tabName) ) {
                     return;
                 }
                 searchQueries[tabName] = this.isBoundedText(candidateQuery) ? candidateQuery : '';
@@ -1854,6 +1886,17 @@ export class RecipeCockpitService {
 
             const candidateSelectedTab = readTabName(candidateTree.selectedTab);
             const selectedTab = RECIPE_COCKPIT_TREE_TABS.find(tabName => tabName === candidateSelectedTab) ?? 'treecipe';
+
+            // THE FIRST SUB-TAB IS THE DEFAULT, SO IT IS NEVER WRITTEN; AN UNKNOWN ONE READS AS IT
+            const troubleshootingSubTab = RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS.slice(1).find(subTab => subTab === candidateTree.troubleshootingSubTab);
+            const storedSubTabQueries = this.isPlainRecord(candidateTree.troubleshootingSearchQueries) ? candidateTree.troubleshootingSearchQueries : {};
+            const troubleshootingSearchQueries: Partial<Record<RecipeCockpitTroubleshootingSubTab, string>> = {};
+            RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS.forEach(subTab => {
+                const candidateQuery = Object.prototype.hasOwnProperty.call(storedSubTabQueries, subTab) ? storedSubTabQueries[subTab] : undefined;
+                if ( this.isBoundedText(candidateQuery) && candidateQuery !== '' ) {
+                    troubleshootingSearchQueries[subTab] = candidateQuery;
+                }
+            });
 
             return [{
                 treeKey: candidateTree.treeKey,
@@ -1866,7 +1909,9 @@ export class RecipeCockpitService {
                 // A CARD SAVED ON THE RECORD TYPES TAB, BEFORE IT BECAME A SECTION (#321), OPENS WITH THE SECTION EXPANDED
                 ...( candidateTree.isRecordTypesExpanded === true || candidateTree.selectedTab === 'recordTypes' ? { isRecordTypesExpanded: true as const } : {} ),
                 ...( candidateTree.isRecordTypeFieldsOnly === true ? { isRecordTypeFieldsOnly: true as const } : {} ),
-                ...( candidateTree.isTodosOnly === true ? { isTodosOnly: true as const } : {} )
+                ...( candidateTree.isTodosOnly === true ? { isTodosOnly: true as const } : {} ),
+                ...( troubleshootingSubTab !== undefined ? { troubleshootingSubTab: troubleshootingSubTab } : {} ),
+                ...( Object.keys(troubleshootingSearchQueries).length > 0 ? { troubleshootingSearchQueries: troubleshootingSearchQueries } : {} )
             }];
 
         });
@@ -10856,13 +10901,16 @@ export class RecipeCockpitService {
 
     }
 
-    // A FIELD'S TODOS AS POSTED (#354): A TODO ITS DRAWN VALUE ALREADY HOLDS CARRIES ONLY ITS LINE
+    // A FIELD'S TODOS AS POSTED (#354): A TODO ITS DRAWN VALUE ALREADY HOLDS CARRIES ITS LINE AND WHERE IT SITS IN THAT VALUE (#365), NOT ITS TEXT
     static buildFieldTodoViewModels(todos: IRecipeCockpitTodoViewModel[], recipeValue: string): IRecipeCockpitTodoViewModel[] {
 
-        return todos.map(todo => ( todo.text !== undefined && !recipeValue.includes(todo.text)
-            ? { lineNumber: todo.lineNumber, text: todo.text }
-            : { lineNumber: todo.lineNumber }
-        ));
+        return todos.map(todo => {
+            const valueStart = todo.text ? recipeValue.indexOf(todo.text) : -1;
+            if ( valueStart === -1 ) {
+                return todo.text !== undefined ? { lineNumber: todo.lineNumber, text: todo.text } : { lineNumber: todo.lineNumber };
+            }
+            return { lineNumber: todo.lineNumber, valueStart: valueStart, valueLength: todo.text.length };
+        });
 
     }
 
@@ -11165,6 +11213,29 @@ ${this.buildPaletteCustomProperties()}
     .treeTabs.movingRight .treeTab::after, .treeTabs.movingLeft .treeTab.selected::after { transform-origin: right; }
     .treeTabs.movingLeft .treeTab::after, .treeTabs.movingRight .treeTab.selected::after { transform-origin: left; }
     .treeTabs.noMotion .treeTab::after { transition: none; }
+    /* THE TROUBLESHOOTING SUB-TABS (#365) LOOK AND MOVE LIKE A CARD'S TABS */
+    .troubleshootingSubTabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0.6rem; padding: 0.4rem 0 0 0; border-bottom: 1px solid var(--sdt-border); }
+    .troubleshootingSubTab { color: var(--sdt-muted); border-color: transparent; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; }
+    .troubleshootingSubTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; border-bottom-color: var(--sdt-border); }
+    .troubleshootingSubTab.selected { color: var(--sdt-text); font-weight: 600; }
+    .troubleshootingSubTab:active:not(:disabled) { background-color: var(--sdt-row-hover); }
+    .troubleshootingSubTab { position: relative; }
+    .troubleshootingSubTab::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -2px;
+        height: 2px;
+        background-color: var(--sdt-accent);
+        transform: scaleX(0);
+        transition: transform ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease;
+        pointer-events: none;
+    }
+    .troubleshootingSubTab.selected::after { transform: scaleX(1); }
+    .troubleshootingSubTabs.movingRight .troubleshootingSubTab::after, .troubleshootingSubTabs.movingLeft .troubleshootingSubTab.selected::after { transform-origin: right; }
+    .troubleshootingSubTabs.movingLeft .troubleshootingSubTab::after, .troubleshootingSubTabs.movingRight .troubleshootingSubTab.selected::after { transform-origin: left; }
+    .troubleshootingSubTabs.noMotion .troubleshootingSubTab::after { transition: none; }
     .treeObjectHeader { padding: 0.35rem 0.6rem; align-items: center; }
     .treeObject { position: relative; }
     .treeObject.excluded::after {
@@ -11378,10 +11449,15 @@ ${this.buildPaletteCustomProperties()}
     .cockpitSectionTitle { font-weight: 600; font-size: 1.1em; }
     #cockpitOrgSectionBody { padding: 0.5rem 0.6rem; margin-top: 0.4rem; background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 8px; }
     .treecipeActions, .treeInsertControls, .troubleshootingControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
-    .troubleshootingIntro { margin: 0.25rem 0.6rem 0.5rem; }
-    .troubleshootingSection { margin: 0.25rem 0.6rem 0.5rem; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
-    .troubleshootingSectionTitle { font-weight: 600; }
+    .troubleshootingSubPanel { margin: 0.25rem 0.6rem 0.5rem; }
+    .troubleshootingAction { margin-top: 0.4rem; }
     .troubleshootingSummary { margin-top: 0.2rem; }
+    .troubleshootingTodoHeader { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.4rem; }
+    .troubleshootingTodoObject { font-weight: 600; }
+    .troubleshootingTodoCount { font-size: 0.9em; }
+    .troubleshootingTodo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; margin: 0.15rem 0 0 0.8rem; font-size: 0.9em; }
+    .troubleshootingTodoField { font-family: var(--vscode-editor-font-family); }
+    .troubleshootingTodoText { white-space: pre-wrap; word-break: break-word; font-family: var(--vscode-editor-font-family); }
     .treeRecordCount { display: inline-flex; align-items: baseline; gap: 0.3rem; }
     .treeRecordCountInput {
         width: 5.5rem;
@@ -11453,7 +11529,11 @@ ${this.buildPaletteCustomProperties()}
     const BUTTON_KINDS = ${JSON.stringify(RECIPE_COCKPIT_BUTTON_KINDS)};
     const DEPLOY_COMMANDS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND)};
     const TROUBLESHOOTING_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL)};
-    const TROUBLESHOOTING_INTRO = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_INTRO)};
+    const TROUBLESHOOTING_SUB_TABS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS)};
+    const TROUBLESHOOTING_SUB_TAB_LABELS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS)};
+    const TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS)};
+    const NO_TREE_TODOS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_TREE_TODOS_NOTE)};
+    const TODO_IN_FIELD_VALUE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL)};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
     const DATA_ORG_CONNECTION_CHECK_INSERT_REASON = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON)};
     const DATA_ORG_LOADING_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER)};
@@ -11461,7 +11541,7 @@ ${this.buildPaletteCustomProperties()}
     const PANEL_PLACE_VERSION = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION};
     const PANEL_PLACE_SCROLL_SAVE_DELAY = ${RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY};
     const PANEL_PLACE_TABS = ${JSON.stringify(RECIPE_COCKPIT_TREE_TABS)};
-    const OPTIONAL_SEARCH_TABS = ${JSON.stringify(RECIPE_COCKPIT_OPTIONAL_SEARCH_TABS)};
+    const TABS_WITHOUT_SEARCH = ${JSON.stringify(RECIPE_COCKPIT_TABS_WITHOUT_SEARCH)};
     const PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB = ${RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB};
     const TREE_TAB_RENAMES = ${JSON.stringify(RECIPE_COCKPIT_TREE_TAB_RENAMES)};
     const REMOVED_TREE_TABS = ${JSON.stringify(RECIPE_COCKPIT_REMOVED_TREE_TABS)};
@@ -14938,62 +15018,268 @@ ${this.buildPaletteCustomProperties()}
 
     /*
         The Troubleshooting tab (#346), on every card with a folder: what to do when an insert
-        failed, in four sections. Built on first select, like the data sets tab, and searched by its
-        own box, which hides the sections that do not match. What each deploy section would deploy
-        is read by the host from the project each time the tab is selected; only COUNTS come back,
-        and a section with nothing to deploy draws its button disabled with the reason.
+        failed. Since #365 it is a row of sub-tabs, one area at a time: TODO's, Fields,
+        Permissions, Validation Rules, Record Types, Global Value Sets. Every sub-tab is built with
+        the tab, so every button and its run lock is where it always was, and only the selected one
+        is shown. Each has its own search box, which hides the entries that do not match. What each
+        deploy would deploy is read by the host from the project each time the tab is selected;
+        only COUNTS come back, and a deploy with nothing to deploy draws its button disabled with the
+        reason.
     */
     function buildTroubleshootingTab(treeState, panelElement) {
 
         const tree = treeState.tree;
+        const stripElement = createElement('div', 'troubleshootingSubTabs');
+        stripElement.setAttribute('role', 'tablist');
+        stripElement.setAttribute('aria-label', TROUBLESHOOTING_TAB_LABEL);
+        panelElement.appendChild(stripElement);
 
-        treeState.troubleshootingSearch = buildTabSearch(treeState, 'troubleshooting', 'Search troubleshooting actions', applyTroubleshootingFilter);
-        panelElement.appendChild(treeState.troubleshootingSearch.element);
-        panelElement.appendChild(createElement('div', 'troubleshootingIntro muted', TROUBLESHOOTING_INTRO));
-
-        treeState.troubleshootingSections = [];
+        treeState.troubleshootingStripElement = stripElement;
+        treeState.troubleshootingSubTabStates = [];
         treeState.deployButtons = Object.create(null);
         treeState.deploySummaryElements = Object.create(null);
 
-        const addSection = function (title, buildContent) {
-            const sectionElement = createElement('div', 'troubleshootingSection');
-            sectionElement.setAttribute('role', 'group');
-            sectionElement.setAttribute('aria-label', title);
-            sectionElement.appendChild(createElement('div', 'troubleshootingSectionTitle', title));
+        if (TROUBLESHOOTING_SUB_TABS.indexOf(treeState.troubleshootingSubTab) === -1) {
+            treeState.troubleshootingSubTab = TROUBLESHOOTING_SUB_TABS[0];
+        }
+
+        const addActionItem = function (subTabState, buttonElement, summaryElement) {
+            const actionElement = createElement('div', 'troubleshootingAction');
             const controlsElement = createElement('div', 'troubleshootingControls');
-            buildContent(sectionElement, controlsElement);
-            sectionElement.appendChild(controlsElement);
-            panelElement.appendChild(sectionElement);
-            const sectionState = { title: title, element: sectionElement, controlsElement: controlsElement };
-            treeState.troubleshootingSections.push(sectionState);
-            return sectionState;
+            controlsElement.appendChild(buttonElement);
+            actionElement.appendChild(controlsElement);
+            if (summaryElement) { actionElement.appendChild(summaryElement); }
+            subTabState.listElement.appendChild(actionElement);
+            subTabState.items.push({ element: actionElement });
         };
 
-        addSection('Permission sets', function (sectionElement, controlsElement) {
-            if (tree.objects.length > 0) { controlsElement.appendChild(buildAssignPermissionSetButton(treeState)); }
-            controlsElement.appendChild(buildGeneratePermissionSetButton(treeState));
-            addDeploySection(treeState, sectionElement, controlsElement, 'permissionSet');
+        const addDeployItem = function (subTabState, deployKind) {
+            const deployAction = buildDeployAction(treeState, deployKind);
+            addActionItem(subTabState, deployAction.buttonElement, deployAction.summaryElement);
+        };
+
+        TROUBLESHOOTING_SUB_TABS.forEach(function (subTab) {
+
+            const subTabState = addTroubleshootingSubTab(treeState, subTab, panelElement);
+
+            if (subTab === 'todos') {
+                buildTroubleshootingTodos(treeState, subTabState);
+            } else if (subTab === 'fields') {
+                addDeployItem(subTabState, 'fields');
+            } else if (subTab === 'permissions') {
+                if (tree.objects.length > 0) { addActionItem(subTabState, buildAssignPermissionSetButton(treeState)); }
+                addActionItem(subTabState, buildGeneratePermissionSetButton(treeState));
+                addDeployItem(subTabState, 'permissionSet');
+            } else if (subTab === 'validationRules') {
+                addActionItem(subTabState, buildRetrieveValidationRulesButton(treeState));
+            } else if (subTab === 'recordTypes') {
+                addDeployItem(subTabState, 'recordTypes');
+            } else if (subTab === 'globalValueSets') {
+                addDeployItem(subTabState, 'globalValueSets');
+            }
+
         });
 
-        addSection('Validation rules', function (sectionElement, controlsElement) {
-            controlsElement.appendChild(buildRetrieveValidationRulesButton(treeState));
-        });
-
-        addSection('Field deployment', function (sectionElement, controlsElement) {
-            addDeploySection(treeState, sectionElement, controlsElement, 'fields');
-        });
-
-        addSection('Dependent metadata', function (sectionElement, controlsElement) {
-            addDeploySection(treeState, sectionElement, controlsElement, 'globalValueSets');
-            addDeploySection(treeState, sectionElement, controlsElement, 'recordTypes');
-        });
-
+        selectTroubleshootingSubTab(treeState, treeState.troubleshootingSubTab, false);
         drawTreePermissionSet(treeState);
         applyTroubleshootingFilter(treeState);
 
     }
 
-    function addDeploySection(treeState, sectionElement, controlsElement, deployKind) {
+    function troubleshootingSearchKey(subTab) {
+        return 'troubleshooting.' + subTab;
+    }
+
+    function addTroubleshootingSubTab(treeState, subTab, panelElement) {
+
+        const label = TROUBLESHOOTING_SUB_TAB_LABELS[subTab];
+        const tabElement = createButton('secondary', 'troubleshootingSubTab troubleshootingSubTab-' + subTab, label);
+        const subPanelElement = createElement('div', 'troubleshootingSubPanel troubleshootingSubPanel-' + subTab + ' hidden');
+        const searchKey = troubleshootingSearchKey(subTab);
+
+        tabElement.setAttribute('role', 'tab');
+        tabElement.setAttribute('aria-selected', 'false');
+        subPanelElement.setAttribute('role', 'tabpanel');
+        subPanelElement.setAttribute('aria-label', label);
+        tabElement.addEventListener('click', function () { selectTroubleshootingSubTab(treeState, subTab, true); });
+
+        if (typeof treeState.searchTexts[searchKey] !== 'string') {
+            treeState.searchTexts[searchKey] = '';
+            treeState.searchQueries[searchKey] = '';
+        }
+
+        const search = buildTabSearch(treeState, searchKey, TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS[subTab], function () { applyTroubleshootingFilter(treeState, subTab); });
+        const listElement = createElement('div', 'troubleshootingList');
+        subPanelElement.appendChild(search.element);
+        subPanelElement.appendChild(listElement);
+
+        treeState.troubleshootingStripElement.appendChild(tabElement);
+        panelElement.appendChild(subPanelElement);
+
+        const subTabState = { subTab: subTab, tabElement: tabElement, panelElement: subPanelElement, search: search, listElement: listElement, items: [], noun: ['action', 'actions'] };
+        treeState.troubleshootingSubTabStates.push(subTabState);
+
+        return subTabState;
+
+    }
+
+    function selectTroubleshootingSubTab(treeState, subTab, isAnimated) {
+
+        const subTabStates = treeState.troubleshootingSubTabStates || [];
+        if (!subTabStates.some(function (subTabState) { return subTabState.subTab === subTab; })) { return; }
+
+        const subTabNames = subTabStates.map(function (subTabState) { return subTabState.subTab; });
+        const fromIndex = subTabNames.indexOf(treeState.troubleshootingSubTab);
+        const toIndex = subTabNames.indexOf(subTab);
+        const stripElement = treeState.troubleshootingStripElement;
+
+        ['movingLeft', 'movingRight', 'noMotion'].forEach(function (className) { stripElement.classList.remove(className); });
+        if (!isAnimated) {
+            stripElement.classList.add('noMotion');
+        } else if (fromIndex !== toIndex) {
+            stripElement.classList.add(toIndex > fromIndex ? 'movingRight' : 'movingLeft');
+        }
+
+        treeState.troubleshootingSubTab = subTab;
+
+        subTabStates.forEach(function (subTabState) {
+            const isSelected = subTabState.subTab === subTab;
+            if (isSelected) { subTabState.tabElement.classList.add('selected'); } else { subTabState.tabElement.classList.remove('selected'); }
+            subTabState.tabElement.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+            setShownWithMotion(subTabState.panelElement, isSelected, isSelected && isAnimated);
+        });
+
+        savePanelPlace();
+
+    }
+
+    /*
+        Every TODO comment of the card's recipe (#365, from #354's todos), one group per object
+        occurrence: a header with its count, and rows -- the field (or "on the object"), the text
+        and a link to the TODO's own line -- built only when the group opens, like a Treecipe
+        object's rows. A field TODO posted without its text is one its value holds, so the text is
+        read back from that value. Search matches what each entry saved at build, so it needs no
+        rows; groups open within the auto-expand budgets, so a tree of thousands of TODOs costs its
+        headers and the rows the budget allows.
+    */
+    function buildTroubleshootingTodos(treeState, subTabState) {
+
+        subTabState.noun = ['TODO', 'TODOs'];
+        subTabState.todoGroups = [];
+
+        treeState.objectStates.forEach(function (treeObjectState) {
+
+            if (treeObjectState.todoCount === 0) { return; }
+
+            const object = treeObjectState.object;
+            // AN OBJECT WRITTEN MORE THAN ONCE IS TOLD APART BY THE NICKNAME OF THE OCCURRENCE
+            const hasNickname = !!object.nickname && (!!object.iteration || Array.isArray(object.iterations));
+            const objectLabel = object.objectApiName + (hasNickname ? ' · ' + object.nickname : '');
+            const groupState = {
+                object: object,
+                element: createElement('div', 'troubleshootingTodoGroup'),
+                toggleElement: buildToggleElement('troubleshootingTodoToggle'),
+                countElement: createElement('span', 'troubleshootingTodoCount muted'),
+                bodyElement: createElement('div', 'troubleshootingTodoRows hidden'),
+                entries: [],
+                matchingCount: 0,
+                isBuilt: false,
+                isExpanded: false,
+                isShown: true
+            };
+
+            const addEntry = function (fieldLabel, todo, todoText, isFieldTodo) {
+                groupState.entries.push({
+                    fieldLabel: fieldLabel,
+                    todo: todo,
+                    todoText: todoText,
+                    isFieldTodo: isFieldTodo,
+                    searchText: [object.objectApiName, object.nickname || '', fieldLabel, todoText].join('\\n').toLowerCase(),
+                    isMatch: true,
+                    element: null
+                });
+            };
+
+            treeObjectState.objectTodos.forEach(function (todo) {
+                addEntry('on the object', todo, typeof todo.text === 'string' ? todo.text : '', false);
+            });
+
+            treeObjectState.fieldStates.forEach(function (fieldState) {
+                fieldState.todos.forEach(function (todo) {
+                    addEntry(fieldState.field.fieldApiName, todo, readFieldTodoText(todo, fieldState.field.recipeValue), true);
+                });
+            });
+
+            const headerElement = createElement('div', 'troubleshootingTodoHeader');
+            groupState.toggleElement.setAttribute('aria-label', 'Show or hide the TODOs of ' + objectLabel);
+            groupState.toggleElement.setAttribute('aria-expanded', 'false');
+            groupState.toggleElement.addEventListener('click', function () {
+                setTodoGroupExpanded(groupState, !groupState.isExpanded, true);
+            });
+            headerElement.appendChild(groupState.toggleElement);
+            headerElement.appendChild(createElement('span', 'troubleshootingTodoObject', objectLabel));
+            headerElement.appendChild(groupState.countElement);
+            groupState.element.appendChild(headerElement);
+            groupState.element.appendChild(groupState.bodyElement);
+
+            subTabState.listElement.appendChild(groupState.element);
+            subTabState.todoGroups.push(groupState);
+
+        });
+
+        const todoCount = subTabState.todoGroups.reduce(function (count, groupState) { return count + groupState.entries.length; }, 0);
+        subTabState.tabElement.textContent = todoCount > 0 ? TROUBLESHOOTING_SUB_TAB_LABELS.todos + ' (' + todoCount + ')' : TROUBLESHOOTING_SUB_TAB_LABELS.todos;
+
+        if (todoCount === 0) {
+            subTabState.listElement.appendChild(createElement('div', 'treeEmpty muted', NO_TREE_TODOS_NOTE));
+        }
+
+    }
+
+    function setTodoGroupExpanded(groupState, isExpanded, isAnimated) {
+
+        if (isExpanded && !groupState.isBuilt) {
+            groupState.entries.forEach(function (entry) {
+                const object = groupState.object;
+                const todoElement = createElement('div', entry.isMatch ? 'troubleshootingTodo' : 'troubleshootingTodo hidden');
+                todoElement.appendChild(createElement('span', entry.isFieldTodo ? 'troubleshootingTodoField' : 'troubleshootingTodoField muted', entry.fieldLabel));
+                todoElement.appendChild(createElement('span', entry.todoText ? 'troubleshootingTodoText' : 'troubleshootingTodoText muted', entry.todoText || TODO_IN_FIELD_VALUE_LABEL));
+                if (object.recipeFilePath && entry.todo.lineNumber) {
+                    todoElement.appendChild(buildSourceLink('treeTodoSource', '↗ yml', object.recipeFilePath, entry.todo.lineNumber));
+                }
+                entry.element = todoElement;
+                groupState.bodyElement.appendChild(todoElement);
+            });
+            groupState.isBuilt = true;
+        }
+
+        groupState.isExpanded = isExpanded;
+        setShownWithMotion(groupState.bodyElement, isExpanded, isAnimated);
+        drawToggle(groupState.toggleElement, isExpanded, isAnimated);
+
+    }
+
+    // A ROW OR GROUP IS WRITTEN ONLY WHEN ITS VISIBILITY CHANGES, SO A KEYSTROKE OVER THOUSANDS OF TODOS TOUCHES ONLY WHAT IT CHANGED
+    function setShownIfChanged(state, element, isShown) {
+        if (state.isShown === isShown) { return; }
+        state.isShown = isShown;
+        if (isShown) { element.classList.remove('hidden'); } else { element.classList.add('hidden'); }
+    }
+
+    // A FIELD TODO'S TEXT: ITS OWN, OR THE SPAN OF THE FIELD'S VALUE THE HOST SAID HOLDS IT; '' WHEN NEITHER IS USABLE
+    function readFieldTodoText(todo, recipeValue) {
+
+        if (typeof todo.text === 'string') { return todo.text; }
+
+        const value = typeof recipeValue === 'string' ? recipeValue : '';
+        const isUsableSpan = Number.isInteger(todo.valueStart) && Number.isInteger(todo.valueLength)
+            && todo.valueStart >= 0 && todo.valueLength > 0 && todo.valueStart + todo.valueLength <= value.length;
+
+        return isUsableSpan ? value.substr(todo.valueStart, todo.valueLength) : '';
+
+    }
+
+    function buildDeployAction(treeState, deployKind) {
 
         const summaryElement = createElement('div', 'troubleshootingSummary muted', 'Reading this project…');
         const buttonElement = createButton('secondary', 'troubleshootingDeploy troubleshootingDeploy-' + deployKind, DEPLOY_ACTION_LABELS[deployKind]);
@@ -15009,35 +15295,77 @@ ${this.buildPaletteCustomProperties()}
             vscodeApi.postMessage(deployMessage);
         });
 
-        sectionElement.appendChild(summaryElement);
-        controlsElement.appendChild(buttonElement);
         treeState.deployButtons[deployKind] = buttonElement;
         treeState.deploySummaryElements[deployKind] = summaryElement;
 
+        return { buttonElement: buttonElement, summaryElement: summaryElement };
+
     }
 
-    function applyTroubleshootingFilter(treeState) {
+    // EVERY TEXT AN ELEMENT DRAWS, ITS DESCENDANTS' INCLUDED -- WHAT IS SEARCHABLE IS WHAT IS ON SCREEN, SO NOT A TOOLTIP
+    function collectElementText(element) {
 
-        const searchQuery = treeState.searchQueries.troubleshooting;
-        const sections = treeState.troubleshootingSections || [];
-        let matchingCount = 0;
+        const texts = [String(element.textContent || '')];
+        Array.prototype.forEach.call(element.children || [], function (childElement) { texts.push.apply(texts, collectElementText(childElement)); });
+        return texts;
 
-        sections.forEach(function (sectionState) {
-            // WHAT THE SECTION DRAWS: ITS TITLE, WHAT IT WOULD DEPLOY AND ITS BUTTONS
-            const searchText = [sectionState.title]
-                .concat(Array.prototype.map.call(sectionState.element.children, function (childElement) { return String(childElement.textContent || ''); }))
-                .concat(Array.prototype.map.call(sectionState.controlsElement.children, function (childElement) { return String(childElement.textContent || ''); }))
-                .join('\\n')
-                .toLowerCase();
-            const isMatch = !searchQuery || searchText.indexOf(searchQuery) !== -1;
-            if (isMatch) { matchingCount++; sectionState.element.classList.remove('hidden'); } else { sectionState.element.classList.add('hidden'); }
+    }
+
+    /*
+        Each sub-tab's own search (#365): it hides the entries that do not match and counts what is
+        left. A keystroke filters only its own sub-tab (onlySubTab); a deploy summary refreshes only
+        the action sub-tabs ('actions'); a build or restore filters them all.
+    */
+    function applyTroubleshootingFilter(treeState, onlySubTab) {
+
+        (treeState.troubleshootingSubTabStates || []).forEach(function (subTabState) {
+
+            if (onlySubTab === 'actions' ? subTabState.subTab === 'todos' : (onlySubTab && onlySubTab !== subTabState.subTab)) { return; }
+
+            const searchQuery = treeState.searchQueries[troubleshootingSearchKey(subTabState.subTab)] || '';
+            let matchingCount = 0;
+            let total = 0;
+
+            if (subTabState.todoGroups) {
+
+                subTabState.todoGroups.forEach(function (groupState) {
+                    groupState.matchingCount = 0;
+                    groupState.entries.forEach(function (entry) {
+                        entry.isMatch = !searchQuery || entry.searchText.indexOf(searchQuery) !== -1;
+                        if (entry.isMatch) { groupState.matchingCount++; }
+                        if (entry.element) { setShownIfChanged(entry, entry.element, entry.isMatch); }
+                    });
+                    total += groupState.entries.length;
+                    matchingCount += groupState.matchingCount;
+                    setShownIfChanged(groupState, groupState.element, !searchQuery || groupState.matchingCount > 0);
+                    groupState.countElement.textContent = searchQuery
+                        ? groupState.matchingCount + ' of ' + pluralize(groupState.entries.length, 'TODO', 'TODOs')
+                        : pluralize(groupState.entries.length, 'TODO', 'TODOs');
+                });
+
+                expandMatchesWithinBudget(subTabState.todoGroups,
+                    function (groupState) { return groupState.matchingCount; },
+                    function (groupState) { return groupState.entries.length; },
+                    function (groupState, isExpanded) { setTodoGroupExpanded(groupState, isExpanded, false); });
+
+            } else {
+
+                subTabState.items.forEach(function (item) {
+                    // AN ACTION IS MATCHED BY WHAT IT DRAWS NOW: ITS BUTTON, ITS REASON AND WHAT IT WOULD DEPLOY
+                    const isMatch = !searchQuery || collectElementText(item.element).join('\\n').toLowerCase().indexOf(searchQuery) !== -1;
+                    if (isMatch) { matchingCount++; }
+                    if (item.isShown === undefined) { item.isShown = true; }
+                    setShownIfChanged(item, item.element, isMatch);
+                });
+                total = subTabState.items.length;
+
+            }
+
+            subTabState.search.matchCountElement.textContent = !searchQuery
+                ? pluralize(total, subTabState.noun[0], subTabState.noun[1])
+                : matchingCount > 0 ? matchingCount + ' of ' + pluralize(total, subTabState.noun[0], subTabState.noun[1]) : 'no matches';
+
         });
-
-        if (treeState.troubleshootingSearch) {
-            treeState.troubleshootingSearch.matchCountElement.textContent = !searchQuery
-                ? pluralize(sections.length, 'section', 'sections')
-                : matchingCount > 0 ? matchingCount + ' of ' + pluralize(sections.length, 'section', 'sections') : 'no matches';
-        }
 
     }
 
@@ -15063,7 +15391,7 @@ ${this.buildPaletteCustomProperties()}
 
         treeState.troubleshootingSummary = summaryMessage;
         drawTreePermissionSet(treeState);
-        applyTroubleshootingFilter(treeState);
+        applyTroubleshootingFilter(treeState, 'actions');
 
     }
 
@@ -15219,6 +15547,9 @@ ${this.buildPaletteCustomProperties()}
             buttonElement.setAttribute('title', deployReason || 'Deploy these components of this tree, through a generated package.xml, to the sandbox or scratch org selected above, or one you choose, after a confirmation.');
 
         });
+
+        // A RUN CHANGES WHAT AN ACTION DRAWS ("Deploying…"), SO AN OPEN SEARCH MATCHES WHAT IS ON SCREEN NOW
+        if (treeState.troubleshootingSubTabStates) { applyTroubleshootingFilter(treeState, 'actions'); }
 
     }
 
@@ -15700,11 +16031,23 @@ ${this.buildPaletteCustomProperties()}
         });
 
         PANEL_PLACE_TABS.forEach(function (tabName) {
+            if (TABS_WITHOUT_SEARCH.indexOf(tabName) !== -1) { return; }
             const searchText = treeState.searchTexts[tabName] || '';
-            if (OPTIONAL_SEARCH_TABS.indexOf(tabName) !== -1 && !searchText) { return; }
             searchQueries[tabName] = searchText;
             if (treeState.searchQueries[tabName]) { hasSearch = true; }
         });
+
+        // THE TROUBLESHOOTING SUB-TAB AND ITS SEARCHES (#365): EACH ONLY WHEN IT IS NOT THE DEFAULT
+        const troubleshootingSearchQueries = {};
+        let hasTroubleshootingSearch = false;
+        TROUBLESHOOTING_SUB_TABS.forEach(function (subTab) {
+            const searchText = treeState.searchTexts[troubleshootingSearchKey(subTab)] || '';
+            if (!searchText) { return; }
+            troubleshootingSearchQueries[subTab] = searchText;
+            hasTroubleshootingSearch = true;
+        });
+        const troubleshootingSubTab = TROUBLESHOOTING_SUB_TABS.indexOf(treeState.troubleshootingSubTab) > 0 ? treeState.troubleshootingSubTab : null;
+        if (hasTroubleshootingSearch || troubleshootingSubTab) { hasSearch = true; }
 
         const selectedTab = treeState.selectedTab || 'treecipe';
 
@@ -15726,6 +16069,8 @@ ${this.buildPaletteCustomProperties()}
         if (treeState.isRecordTypesExpanded) { treePlace.isRecordTypesExpanded = true; }
         if (isRecordTypeFieldsOnlyIn(treeState)) { treePlace.isRecordTypeFieldsOnly = true; }
         if (isTodosOnlyIn(treeState)) { treePlace.isTodosOnly = true; }
+        if (troubleshootingSubTab) { treePlace.troubleshootingSubTab = troubleshootingSubTab; }
+        if (hasTroubleshootingSearch) { treePlace.troubleshootingSearchQueries = troubleshootingSearchQueries; }
 
         return treePlace;
 
@@ -15914,12 +16259,23 @@ ${this.buildPaletteCustomProperties()}
 
             // BEFORE ANY TAB IS BUILT: A TAB READS ITS SEARCH, AND APPLIES IT, WHEN IT IS BUILT
             PANEL_PLACE_TABS.forEach(function (tabName) {
+                if (TABS_WITHOUT_SEARCH.indexOf(tabName) !== -1) { return; }
                 const savedQuery = Object.prototype.hasOwnProperty.call(savedSearchQueries, tabName) ? savedSearchQueries[tabName] : '';
                 if (typeof savedQuery === 'string') {
                     treeState.searchTexts[tabName] = savedQuery;
                     treeState.searchQueries[tabName] = savedQuery.trim().toLowerCase();
                 }
             });
+
+            // THE TROUBLESHOOTING SUB-TAB AND ITS SEARCHES (#365), READ BEFORE THE TAB IS BUILT; AN UNKNOWN SUB-TAB READS AS THE FIRST
+            const savedSubTabQueries = savedTree.troubleshootingSearchQueries && typeof savedTree.troubleshootingSearchQueries === 'object' ? savedTree.troubleshootingSearchQueries : {};
+            TROUBLESHOOTING_SUB_TABS.forEach(function (subTab) {
+                const savedQuery = Object.prototype.hasOwnProperty.call(savedSubTabQueries, subTab) ? savedSubTabQueries[subTab] : '';
+                const searchKey = troubleshootingSearchKey(subTab);
+                treeState.searchTexts[searchKey] = typeof savedQuery === 'string' ? savedQuery : '';
+                treeState.searchQueries[searchKey] = treeState.searchTexts[searchKey].trim().toLowerCase();
+            });
+            treeState.troubleshootingSubTab = TROUBLESHOOTING_SUB_TABS.indexOf(savedTree.troubleshootingSubTab) !== -1 ? savedTree.troubleshootingSubTab : TROUBLESHOOTING_SUB_TABS[0];
 
             // BEFORE THE DATA SETS TAB IS BUILT, WHICH APPLIES IT; A TAB ALREADY BUILT APPLIES IT NOW
             treeState.isDatasetFavoritesOnly = savedTree.isDatasetFavoritesOnly === true;

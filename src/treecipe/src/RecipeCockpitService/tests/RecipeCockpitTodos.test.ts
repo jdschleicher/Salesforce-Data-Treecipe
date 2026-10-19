@@ -252,9 +252,9 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
             const recipe = loadTreeRecipe();
             const account = objectOf(recipe, 'Account');
 
-            // THE ROW DRAWS EACH VALUE, WHICH HOLDS ITS TODO, SO ONLY THE LINE IS POSTED
-            expect(fieldOf(account, 'Regions__c')?.todos).toEqual([{ lineNumber: 20 }]);
-            expect(fieldOf(account, 'ParentId')?.todos).toEqual([{ lineNumber: 21 }]);
+            // THE ROW DRAWS EACH VALUE, WHICH HOLDS ITS TODO, SO ONLY THE LINE AND WHERE IT SITS IN THE VALUE ARE POSTED (#365)
+            expect(fieldOf(account, 'Regions__c')?.todos).toEqual([{ lineNumber: 20, valueStart: 0, valueLength: '### TODO -- NO PICKLIST VALUES'.length }]);
+            expect(fieldOf(account, 'ParentId')?.todos).toEqual([{ lineNumber: 21, valueStart: 0, valueLength: '### TODO -- REFERENCE ID REQUIRED'.length }]);
             expect(fieldOf(account, 'Name')).not.toHaveProperty('todos');
             expect(account).not.toHaveProperty('todos');
             expect(objectOf(recipe, 'Lead').fields.some(field => 'todos' in field)).toBe(false);
@@ -269,13 +269,29 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
             const snowfakeryGadgetTodos = todoTextsOf(objectOf(snowfakeryRecipe, 'Gadget__c').todos);
             expect(snowfakeryGadgetTodos).toHaveLength(6);
             snowfakeryGadgetTodos.forEach(todoText => expect(todoText).toMatch(/^### TODO -- VALIDATION RULE NOT APPLIED -- "/));
-            expect(fieldOf(objectOf(snowfakeryRecipe, 'Widget__c'), 'Gadget__c')?.todos).toEqual([{ lineNumber: expect.any(Number) }]);
+            expect(fieldOf(objectOf(snowfakeryRecipe, 'Widget__c'), 'Gadget__c')?.todos).toEqual([{ lineNumber: expect.any(Number), valueStart: 0, valueLength: '### TODO -- REFERENCE ID REQUIRED'.length }]);
 
             // THE NESTED faker-js FRIEND IS WIRED TO ITS PARENT, SO ITS LOOKUP IS NO TODO
             const fakerJsGadgetTodos = todoTextsOf(objectOf(fakerJsRecipe, 'Gadget__c').todos);
             expect(fakerJsGadgetTodos).toHaveLength(4);
             fakerJsGadgetTodos.forEach(todoText => expect(todoText).toMatch(/^### TODO -- VALIDATION RULE NOT APPLIED -- "/));
             expect(fieldOf(objectOf(fakerJsRecipe, 'Widget__c'), 'Gadget__c')).not.toHaveProperty('todos');
+
+        });
+
+        it('posts a field TODO\'s text only when its value does not hold it, and otherwise where the value holds it', () => {
+
+            const value = "${{ x('Fix # TODO list') }}\n### TODO -- RecordType A";
+
+            expect(RecipeCockpitService.buildFieldTodoViewModels([
+                { lineNumber: 4, text: '### TODO -- RecordType A' },
+                { lineNumber: 5, text: '# TODO hand-written, not in the wrapper value' },
+                { lineNumber: 6 }
+            ], value)).toEqual([
+                { lineNumber: 4, valueStart: value.indexOf('### TODO -- RecordType A'), valueLength: '### TODO -- RecordType A'.length },
+                { lineNumber: 5, text: '# TODO hand-written, not in the wrapper value' },
+                { lineNumber: 6 }
+            ]);
 
         });
 
