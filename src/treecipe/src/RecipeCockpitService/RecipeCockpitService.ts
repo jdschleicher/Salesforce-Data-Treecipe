@@ -325,6 +325,8 @@ export const RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL = 'rule not applie
     whose box is centred on (12, 12) in the same 24x24 view box, stroked from the palette by CSS.
 */
 export const RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH = 'M8.5 5 L15.5 12 L8.5 19';
+// The magnifier inside every search box (#373): a lens and a handle in the same 24x24 view box, stroked from the palette.
+export const RECIPE_COCKPIT_SEARCH_GLYPH_PATH = 'M10.5 4 A6.5 6.5 0 1 1 10.5 17 A6.5 6.5 0 1 1 10.5 4 Z M15.2 15.2 L20 20';
 /*
     Motion (#227). The ▸ is ONE path that CSS turns a quarter on aria-expanded, so it rotates rather
     than swapping. A body the reader opens fades in once it is built; one the reader closes carries
@@ -11720,11 +11722,17 @@ ${this.buildPaletteCustomProperties()}
     }
     .toolbar select { padding: 0.3rem; }
     .tabSearch { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; padding: 0.4rem 0.6rem; }
+    /* THE MAGNIFIER INSIDE EVERY SEARCH BOX (#373), DRAWN LIKE THE CHAIN LINK; THE TEXT STARTS PAST IT */
+    .tabSearchField { position: relative; display: flex; align-items: center; flex: 1 1 16rem; min-width: 0; }
     .tabSearchInput {
-        flex: 1 1 16rem;
+        flex: 1 1 auto;
+        width: 100%;
         min-width: 0;
-        padding: 0.3rem 0.5rem;
+        box-sizing: border-box;
+        padding: 0.3rem 0.5rem 0.3rem 2rem;
     }
+    .tabSearchIcon { position: absolute; left: 0.5rem; width: 1.1rem; height: 1.1rem; cursor: text; }
+    .tabSearchIcon path { fill: none; stroke: var(--sdt-muted); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
     .tabSearchInput::placeholder { color: var(--sdt-muted); opacity: 1; }
     .emptyStateActions { margin-top: 0.5rem; }
     .notice {
@@ -11869,14 +11877,35 @@ ${this.buildPaletteCustomProperties()}
     .sdtButton-link:hover { text-decoration: underline; }
     .treeAddFriends { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding-left: 1.5rem; }
     .treeBody { border-top: 1px solid var(--sdt-border); }
-    .treeTabs { display: flex; gap: 0.5rem; padding: 0.4rem 0.6rem 0 0.6rem; border-bottom: 1px solid var(--sdt-border); }
-    .treeTab { color: var(--sdt-muted); border-color: transparent; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; }
+    .treeTabs { display: flex; gap: 0.5rem; padding: 0.4rem 0.6rem 0 0.6rem; }
+    .treeTab { color: var(--sdt-muted); border-color: transparent; border-radius: 6px 6px 0 0; }
     .treeTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; border-bottom-color: var(--sdt-border); }
     .treeTab.selected { color: var(--sdt-text); font-weight: 600; }
     .treeTab:active:not(:disabled) { background-color: var(--sdt-row-hover); }
     /*
-        The underline moves to the selected tab (#227): the outgoing tab's shrinks TOWARD the incoming
-        one while the incoming tab's grows FROM the outgoing side. The panel names the direction;
+        The selected tab and its panel are ONE outline (#373): the tab's sides and top, then the
+        panel's sides and bottom. The tab sits 1px over the panel's top edge with its own bottom edge
+        in the panel's colour, so no line is drawn between them. Only the selected panel is shown,
+        so every panel carries the outline and the selected class alone moves it. The strip names a
+        level more than the secondary kind's hover rule, so a hover cannot draw the bottom edge back.
+    */
+    .treeTabs .treeTab.selected, .troubleshootingSubTabs .troubleshootingSubTab.selected {
+        z-index: 1;
+        margin-bottom: -1px;
+        border-color: var(--sdt-accent);
+        border-bottom-color: var(--sdt-surface);
+        background-color: var(--sdt-surface);
+    }
+    .treeTabPanel, .troubleshootingSubPanel {
+        border: 1px solid var(--sdt-accent);
+        border-radius: 0 6px 6px 6px;
+        background-color: var(--sdt-surface);
+    }
+    .treeTabPanel { margin: 0 0.6rem 0.6rem; }
+    /*
+        The bar moves to the selected tab (#227), along its TOP edge since #373 so nothing is drawn
+        between the tab and its panel: the outgoing tab's shrinks TOWARD the incoming one while the
+        incoming tab's grows FROM the outgoing side. The panel names the direction;
         a tab chosen by anything but a click carries noMotion, so it is not animated.
     */
     .treeTab { position: relative; }
@@ -11885,8 +11914,9 @@ ${this.buildPaletteCustomProperties()}
         position: absolute;
         left: 0;
         right: 0;
-        bottom: -2px;
+        top: -1px;
         height: 2px;
+        border-radius: 6px 6px 0 0;
         background-color: var(--sdt-accent);
         transform: scaleX(0);
         transition: transform ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease;
@@ -11897,8 +11927,8 @@ ${this.buildPaletteCustomProperties()}
     .treeTabs.movingLeft .treeTab::after, .treeTabs.movingRight .treeTab.selected::after { transform-origin: left; }
     .treeTabs.noMotion .treeTab::after { transition: none; }
     /* THE TROUBLESHOOTING SUB-TABS (#365) LOOK AND MOVE LIKE A CARD'S TABS */
-    .troubleshootingSubTabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0.6rem; padding: 0.4rem 0 0 0; border-bottom: 1px solid var(--sdt-border); }
-    .troubleshootingSubTab { color: var(--sdt-muted); border-color: transparent; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; }
+    .troubleshootingSubTabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0.6rem; padding: 0.4rem 0 0 0; }
+    .troubleshootingSubTab { color: var(--sdt-muted); border-color: transparent; border-radius: 6px 6px 0 0; }
     .troubleshootingSubTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; border-bottom-color: var(--sdt-border); }
     .troubleshootingSubTab.selected { color: var(--sdt-text); font-weight: 600; }
     .troubleshootingSubTab:active:not(:disabled) { background-color: var(--sdt-row-hover); }
@@ -11908,8 +11938,9 @@ ${this.buildPaletteCustomProperties()}
         position: absolute;
         left: 0;
         right: 0;
-        bottom: -2px;
+        top: -1px;
         height: 2px;
+        border-radius: 6px 6px 0 0;
         background-color: var(--sdt-accent);
         transform: scaleX(0);
         transition: transform ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease;
@@ -12132,7 +12163,7 @@ ${this.buildPaletteCustomProperties()}
     .cockpitSectionTitle { font-weight: 600; font-size: 1.1em; }
     #cockpitOrgSectionBody { padding: 0.5rem 0.6rem; margin-top: 0.4rem; background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 8px; }
     .treecipeActions, .treeInsertControls, .troubleshootingControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
-    .troubleshootingSubPanel { margin: 0.25rem 0.6rem 0.5rem; }
+    .troubleshootingSubPanel { margin: 0 0.6rem 0.6rem; }
     .troubleshootingAction { margin-top: 0.4rem; }
     .troubleshootingSummary { margin-top: 0.2rem; }
     .treeQueryIntro { margin: 0.25rem 0.6rem 0.5rem; }
@@ -12294,6 +12325,7 @@ ${this.buildPaletteCustomProperties()}
     const FIELD_PARENT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON)};
     const FIXED_VALUE_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH)};
     const TOGGLE_COLLAPSED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH)};
+    const SEARCH_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_SEARCH_GLYPH_PATH)};
     const MOTION_REVEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS};
     const MOTION_CONCEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS};
     const motionTimers = new WeakMap();
@@ -12931,8 +12963,14 @@ ${this.buildPaletteCustomProperties()}
     function buildTabSearch(treeState, tabName, placeholderText, applySearch) {
 
         const searchElement = createElement('div', 'tabSearch');
+        const fieldElement = createElement('div', 'tabSearchField');
         const inputElement = createElement('input', 'tabSearchInput');
         const matchCountElement = createElement('span', 'tabMatchCount muted');
+        const iconElement = buildSearchIconElement();
+
+        iconElement.addEventListener('click', function () {
+            if (typeof inputElement.focus === 'function') { inputElement.focus(); }
+        });
 
         inputElement.setAttribute('type', 'search');
         inputElement.setAttribute('placeholder', placeholderText);
@@ -12945,10 +12983,29 @@ ${this.buildPaletteCustomProperties()}
             savePanelPlace();
         });
 
-        searchElement.appendChild(inputElement);
+        fieldElement.appendChild(iconElement);
+        fieldElement.appendChild(inputElement);
+        searchElement.appendChild(fieldElement);
         searchElement.appendChild(matchCountElement);
 
         return { element: searchElement, inputElement: inputElement, matchCountElement: matchCountElement };
+
+    }
+
+    // DECORATIVE: THE INPUT'S OWN aria-label NAMES THE BOX, SO THE ICON IS HIDDEN FROM A SCREEN READER
+    function buildSearchIconElement() {
+
+        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
+        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
+
+        glyphElement.setAttribute('class', 'tabSearchIcon');
+        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
+        glyphElement.setAttribute('aria-hidden', 'true');
+        glyphElement.setAttribute('focusable', 'false');
+        pathElement.setAttribute('d', SEARCH_GLYPH_PATH);
+        glyphElement.appendChild(pathElement);
+
+        return glyphElement;
 
     }
 
@@ -14478,6 +14535,7 @@ ${this.buildPaletteCustomProperties()}
 
         tabElement.setAttribute('role', 'tab');
         tabElement.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+        panelElement.classList.add('treeTabPanel');
         panelElement.setAttribute('role', 'tabpanel');
         panelElement.setAttribute('aria-label', tabLabel);
         tabElement.addEventListener('click', function () { selectTreeTab(treeState, tabName, true); });

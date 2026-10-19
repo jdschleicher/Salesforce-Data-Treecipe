@@ -113,7 +113,9 @@ describe('RecipeCockpitService, motion (#227)', () => {
             expect(motionStyleSheet).toContain('.treeTabs.movingRight .treeTab::after, .treeTabs.movingLeft .treeTab.selected::after { transform-origin: right; }');
             expect(motionStyleSheet).toContain('.treeTabs.movingLeft .treeTab::after, .treeTabs.movingRight .treeTab.selected::after { transform-origin: left; }');
             expect(motionStyleSheet).toContain('.treeTabs.noMotion .treeTab::after { transition: none; }');
-            // THE BAR IS THE UNDERLINE NOW; A BORDER UNDER IT WOULD STAY PUT WHILE THE BAR MOVED
+            // THE BAR RUNS ALONG THE TOP EDGE SINCE #373, SO NOTHING IS DRAWN BETWEEN THE TAB AND ITS PANEL
+            expect(motionStyleSheet).toMatch(/\.treeTab::after \{[^}]*top: -1px;/);
+            // THE OUTLINE IS IN ITS OWN RULE, SO THE TEXT RULE STAYS AS IT WAS
             expect(motionStyleSheet).toContain('.treeTab.selected { color: var(--sdt-text); font-weight: 600; }');
 
         });
