@@ -552,6 +552,7 @@ describe('RecipeCockpitService', () => {
             });
 
             const ICON_ON_BACKGROUND_PAIRS: [RecipeCockpitPaletteToken, RecipeCockpitPaletteToken][] = [
+                // accent ON surface IS ALSO THE SELECTED TAB'S OUTLINE, AND muted ON surface THE SEARCH BOX'S MAGNIFIER (#373)
                 ['accent', 'surface'], ['accent', 'rowHover'], ['muted', 'surface'], ['muted', 'rowHover'],
                 // THE GITHUB MARK AT THE TOP RIGHT (#333) SITS ON THE PAGE, AND ON --sdt-surface WHILE HOVERED
                 ['muted', 'page'], ['accent', 'page']

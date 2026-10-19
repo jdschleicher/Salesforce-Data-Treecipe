@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.110.0] - Recipe Cockpit: the selected tab and its content share one outline, and every search box shows a search icon
+
+Closes [#373](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/373).
+
+A tree card's tabs, and the Troubleshooting tab's sub-tabs, showed the selected tab only as an underline and bold text. The content under them had no edge, so it ran into the card, the parent tabs and the next card. The search boxes were plain text boxes.
+
+- **One outline per selected tab.** The selected tab and its content are drawn as one accent outline, like a folder tab: the tab's top and sides, then the content's sides and bottom, with no line between them. The grey rule under each tab strip is gone. Tabs that aren't selected look as before.
+- **Sub-tabs too.** The Troubleshooting sub-tabs get the same outline, inset inside the Troubleshooting tab's own outline so the two read as separate levels. On a panel too narrow for the six sub-tabs, the strip wraps onto two rows, and only a selected sub-tab on the last row joins its content; one on an earlier row sits above the next row. Scrolling the strip instead would clip the overlap that joins every tab to its content.
+- **Hover.** Hovering a tab that isn't selected no longer draws a grey bottom edge, which would now sit on the content's accent outline. The selected tab's outline outranks the button hover rule by specificity, so a hover never draws its bottom edge back.
+- **The moving bar is on top.** The accent bar that slides to the selected tab now runs along the tab's top edge, so nothing is drawn between a tab and its content. It moves as it did, and reduced motion still turns it off.
+- **A magnifier in every search box.** Every card-tab and sub-tab search box shows a magnifier inside its left edge, and the text starts past it. It's drawn like the chain link: inline SVG built node by node and stroked from the palette, so the CSP and the shell builder are unchanged. A screen reader skips it, the box keeps its name, and clicking the icon puts the cursor in the box.
+- **Colours.** The outline is `--sdt-accent` and the icon `--sdt-muted`, both on `--sdt-surface`, pairs the contrast test already holds to 3:1.
+- **Guide.** Two screenshots in `docs/RECIPE-COCKPIT-GUIDE.md` were re-taken. The help text didn't change.
+- **Tests.** A new harness suite checks that every tab panel carries the outline class (one-tab cards included), that the stylesheet outlines the selected tab and panel with no strip rule and the bar on top, that every search box on every tab and sub-tab holds exactly one hidden SVG magnifier with the input's name unchanged, and that clicking the icon focuses the input. The motion and partial-update suites cover the bar's new edge and the icon in a data sets box rebuilt in place.
+
 ## [3.109.0] - Recipe Cockpit: the Validation Rules sub-tab lists each object's rules and what they did
 
 Closes [#327](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/327).
