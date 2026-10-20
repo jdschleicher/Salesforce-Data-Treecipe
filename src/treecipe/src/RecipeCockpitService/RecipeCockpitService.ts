@@ -403,6 +403,7 @@ export const RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH = 'No treecipe, object, fi
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX = ' (no match)';
 // HOW MANY RESULT ROWS THE SECTION SEARCH DRAWS; THE REST IS ONE "N more" LINE
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT = 50;
+export const RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX = ' more — type more of the name to narrow the search';
 // THE PINNED ORG SECTION (#364) COVERS THE TOP OF THE PANEL, SO A ROW SCROLLED INTO VIEW STOPS BELOW IT
 export const RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING = '10rem';
 // WHAT A CARD WITH NOTHING TO CHOOSE SAYS IN ITS DISABLED RECORD TYPES HEADER (#338); ONE RECORD TYPE IS NO CHOICE, SO IT READS THE SAME AS NONE
@@ -12796,6 +12797,7 @@ ${this.buildPaletteCustomProperties()}
     const TREECIPES_SEARCH_NO_MATCH = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH)};
     const TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX)};
     const TREECIPES_SEARCH_RESULT_LIMIT = ${RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT};
+    const TREECIPES_SEARCH_MORE_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX)};
     const REGENERATE_WITH_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL)};
     const USE_DEFAULT_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_USE_DEFAULT_RECORD_TYPES_LABEL)};
     const REMEMBER_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL)};
@@ -13290,16 +13292,18 @@ ${this.buildPaletteCustomProperties()}
         treePickerElement.value = shownTreeState ? String(treePickerTreeStates.indexOf(shownTreeState)) : '';
         treePickerElement.disabled = listedTreeStates.length === 0;
 
-        // ONLY THE INCOMING CARD FADES, AND ONLY ON THE READER'S PICK; THE OUTGOING ONE IS GONE AT ONCE
+        // ONLY THE INCOMING CARD FADES, AND ONLY ON THE READER'S PICK; THE OUTGOING ONE IS GONE AT ONCE. A CARD ALREADY
+        // IN ITS STATE IS LEFT ALONE, SO A KEYSTROKE NEVER CUTS A FADE SHORT
         treeStates.forEach(function (treeState) {
+            const isHidden = treeState.element.classList.contains('hidden');
             if (treeState === shownTreeState) {
-                if (treeState.element.classList.contains('hidden')) { setShownWithMotion(treeState.element, true, isAnimated); }
-            } else {
+                if (isHidden) { setShownWithMotion(treeState.element, true, isAnimated); }
+            } else if (!isHidden) {
                 setShownWithMotion(treeState.element, false, false);
             }
         });
 
-        if (shownTreeState) { setTreeExpanded(shownTreeState, true); }
+        if (shownTreeState && !shownTreeState.isExpanded) { setTreeExpanded(shownTreeState, true); }
 
     }
 
@@ -13367,7 +13371,9 @@ ${this.buildPaletteCustomProperties()}
                         objectApiName: object.objectApiName,
                         fieldApiName: field.fieldApiName,
                         text: object.objectApiName + '.' + field.fieldApiName + (fieldLabel ? ' · ' + fieldLabel : ''),
-                        haystack: (field.fieldApiName + '\\n' + fieldLabel).toLowerCase()
+                        haystack: (field.fieldApiName + '\\n' + fieldLabel).toLowerCase(),
+                        // "Account.Name", AS THE RESULT ROW WRITES IT; MATCHED ONLY BY A QUERY WITH A DOT, SO AN OBJECT'S NAME DOES NOT LIST EVERY FIELD
+                        qualifiedHaystack: (object.objectApiName + '.' + field.fieldApiName).toLowerCase()
                     });
                 });
 
@@ -13443,6 +13449,7 @@ ${this.buildPaletteCustomProperties()}
         }
 
         const searchQuery = treecipesSearchText.trim().toLowerCase();
+        const isQualifiedQuery = searchQuery.indexOf('.') !== -1;
         const resultsElement = treecipesSearch.resultsElement;
 
         resultsElement.textContent = '';
@@ -13470,7 +13477,7 @@ ${this.buildPaletteCustomProperties()}
             let treeHitCount = 0;
 
             indexedTree.entries.forEach(function (entry) {
-                if (entry.haystack.indexOf(searchQuery) === -1) { return; }
+                if (entry.haystack.indexOf(searchQuery) === -1 && !(isQualifiedQuery && entry.qualifiedHaystack && entry.qualifiedHaystack.indexOf(searchQuery) !== -1)) { return; }
                 (hitsByKind[entry.kind] = hitsByKind[entry.kind] || []).push(entry);
                 treeHitCount++;
             });
@@ -13505,7 +13512,7 @@ ${this.buildPaletteCustomProperties()}
         });
 
         if (hiddenResultCount > 0) {
-            resultsElement.appendChild(createElement('div', 'treecipesResultMore muted', hiddenResultCount + ' more — type more of the name to narrow the search'));
+            resultsElement.appendChild(createElement('div', 'treecipesResultMore muted', hiddenResultCount + TREECIPES_SEARCH_MORE_SUFFIX));
         }
 
         if (matchedTreeCount === 0) {
@@ -16308,7 +16315,8 @@ ${this.buildPaletteCustomProperties()}
 
         if (!treeState) { return; }
 
-        // WHAT THE READER JUST ACTED ON IS CHOSEN IN THE DROPDOWN (#374), AND SHOWN EVEN WHEN IT IS NOT A FAVORITE
+        // WHAT THE READER JUST ACTED ON IS CHOSEN IN THE DROPDOWN (#374), AND SHOWN EVEN WHEN IT IS NOT A FAVORITE;
+        // TURNING THE FILTER OFF RUNS THE SECTION SEARCH AGAIN, SINCE IT SEARCHED THE FAVORITES ONLY
         if (isHiddenByFavorites(treeState)) {
             isFavoritesOnly = false;
             applyTreecipesSearch();

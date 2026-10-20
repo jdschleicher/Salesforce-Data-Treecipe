@@ -12,6 +12,7 @@ jest.mock('vscode', () => ({
 }), { virtual: true });
 
 import {
+    RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX,
     RecipeCockpitService,
     IRecipeCockpitRecipeViewModel,
     IRecipeCockpitTreeViewModel,
@@ -147,6 +148,23 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
             choose(panel, 'Relationship Tree 2');
 
             expect(commandsPosted(panel).filter(command => command === 'loadDataOrgs')).toHaveLength(1);
+
+        });
+
+        it('lets a keystroke in the section search finish the fade of a card the reader just picked', () => {
+
+            jest.useFakeTimers();
+            try {
+                const { panel } = drawRecipe();
+                choose(panel, 'Relationship Tree 2');
+                expect(cardOf(panel, LEAD_TREE_KEY).classList.contains('motionReveal')).toBe(true);
+
+                panel.typeIntoTreecipesSearch('Lead');
+
+                expect(cardOf(panel, LEAD_TREE_KEY).classList.contains('motionReveal')).toBe(true);
+            } finally {
+                jest.useRealTimers();
+            }
 
         });
 
@@ -431,6 +449,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
             ['an object api name', 'othercHILD', [['treecipe', 'Relationship Tree 1 · Account-thru-OtherChildObject__c'], ['object', 'OtherChildObject__c']]],
             ['a field api name', 'SUB_RATING', [['field', 'Account.Sub_Rating__c · Sub Rating']]],
             ['a field label', 'annual budget', [['field', 'Account.Annual_Budget__c · Annual Budget']]],
+            ['an object and field as the result row writes them', 'account.legacy_code', [['field', 'Account.Legacy_Code__c · Legacy Code']]],
             ['a record type developer name', 'partner', [['record type', 'Account · Partner']]]
         ])('matches %s, case-insensitively', (_description, searchText, expectedRows) => {
 
@@ -553,7 +572,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
             panel.typeIntoTreecipesSearch('many_');
 
             expect(resultRows(panel)).toHaveLength(RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT);
-            expect(panel.findAll(resultsOf(panel), 'treecipesResultMore')[0].textContent).toBe(`${80 - RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT} more — type more of the name to narrow the search`);
+            expect(panel.findAll(resultsOf(panel), 'treecipesResultMore')[0].textContent).toBe(`${80 - RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT}${RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX}`);
 
         });
 
@@ -626,6 +645,21 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
             expect(panel.isHidden(fieldRow)).toBe(false);
             expect(fieldRow.scrolledIntoViewCount).toBe(1);
             expect(panel.findAll(panel.tabPanelOf(cardOf(panel, ACCOUNT_TREE_KEY), 'treeStructure'), 'tabSearchInput')[0].value).toBe('');
+
+        });
+
+        it('on a field the TODOs only check hid, unticks the check and redraws it', () => {
+
+            const { panel } = drawRecipe();
+            const todosToggle = panel.findAll(cardOf(panel, ACCOUNT_TREE_KEY), 'treeTodosToggle')[0];
+            todosToggle.dispatch('click');
+            expect(todosToggle.attributes['aria-checked']).toBe('true');
+
+            panel.typeIntoTreecipesSearch('Annual');
+            resultNamed(panel, 'field', 'Account.Annual_Budget__c · Annual Budget').dispatch('click');
+
+            expect(todosToggle.attributes['aria-checked']).toBe('false');
+            expect(panel.isHidden(panel.fieldRowNamed(objectNamed(panel, ACCOUNT_TREE_KEY, 'Account'), 'Annual_Budget__c'))).toBe(false);
 
         });
 
