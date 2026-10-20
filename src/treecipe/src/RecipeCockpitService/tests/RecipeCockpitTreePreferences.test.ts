@@ -488,7 +488,14 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
         const titleOf = (panel: ReturnType<typeof runPanelScript>, treeKey: string) => panel.findAll(cardOf(panel, treeKey), 'treeTitle')[0].textContent;
         const starOf = (panel: ReturnType<typeof runPanelScript>, treeKey: string) => panel.findAll(cardOf(panel, treeKey), 'treeFavorite')[0];
         const favoritesToggleOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(panel.cockpitBodyElement, 'favoritesToggle')[0];
-        const shownTreeKeys = (panel: ReturnType<typeof runPanelScript>) => treeKeys.filter(treeKey => !panel.isHidden(cardOf(panel, treeKey)));
+        // FAVORITES ONLY NARROWS THE TREECIPES DROPDOWN (#374): THE CARDS IT LISTS, BY THE TITLE EACH OPTION DRAWS
+        const shownTreeKeys = (panel: ReturnType<typeof runPanelScript>) => {
+            const optionLabels = panel.treePickerLabels();
+            return panel.findAll(panel.cockpitBodyElement, 'treePickerSelect')[0].disabled && panel.shownTreeCards().length === 0
+                ? []
+                : treeKeys.filter(treeKey => optionLabels.includes(titleOf(panel, treeKey)) || optionLabels.includes('★ ' + titleOf(panel, treeKey)));
+        };
+        const drawnTreeKeys = (panel: ReturnType<typeof runPanelScript>) => treeKeys.filter(treeKey => !panel.isHidden(cardOf(panel, treeKey)));
         const noFavoritesOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(panel.cockpitBodyElement, 'emptyState')
             .find((element: any) => element.textContent === RECIPE_COCKPIT_NO_FAVORITES_MESSAGE);
 
@@ -504,7 +511,9 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             expect(starOf(panel, ACCOUNT_TREE_KEY).textContent).toBe('★');
             expect(starOf(panel, ACCOUNT_TREE_KEY).attributes['aria-pressed']).toBe('true');
             expect(starOf(panel, LEAD_TREE_KEY).textContent).toBe('☆');
-            expect(panel.findAll(cardOf(panel, LEAD_TREE_KEY), 'treeToggle')[0].attributes['aria-label']).toBe('Show or hide Leads');
+            expect(cardOf(panel, LEAD_TREE_KEY).attributes['aria-label']).toBe('Leads');
+            // THE DROPDOWN NAMES EACH CARD BY ITS OWN NAME, A FAVORITE STARRED (#374)
+            expect(panel.treePickerLabels()).toEqual(['★ Relationship Tree 1', 'Leads', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE]);
 
         });
 
@@ -529,14 +538,15 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
                 { command: 'toggleFavoriteTree', treeKey: LEAD_TREE_KEY },
                 { command: 'renameTree', treeKey: LEAD_TREE_KEY }
             ]);
-            expect(panel.isHidden(panel.findAll(leadCard, 'treeBody')[0])).toBe(true);
+            // THE CARD ON SCREEN IS STILL THE FIRST
+            expect(drawnTreeKeys(panel)).toEqual([ACCOUNT_TREE_KEY]);
 
         });
 
         it('redraws the cards the host names, and only for the model on screen', () => {
 
             const panel = drawRecipe();
-            panel.findAll(cardOf(panel, LEAD_TREE_KEY), 'treeToggle')[0].dispatch('click');
+            panel.chooseTreeCard(cardOf(panel, LEAD_TREE_KEY));
 
             panel.postToPanel({ command: 'treePreferences', renderSequence: 2, trees: [{ treeKey: LEAD_TREE_KEY, customName: 'Stale', isFavorite: true }] });
             expect(titleOf(panel, LEAD_TREE_KEY)).toBe('Relationship Tree 2');
@@ -545,7 +555,8 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             expect(titleOf(panel, LEAD_TREE_KEY)).toBe('Leads');
             expect(starOf(panel, LEAD_TREE_KEY).textContent).toBe('★');
             // REDRAWN IN PLACE: THE CARD THE READER OPENED IS STILL OPEN
-            expect(panel.isHidden(panel.findAll(cardOf(panel, LEAD_TREE_KEY), 'treeBody')[0])).toBe(false);
+            expect(drawnTreeKeys(panel)).toEqual([LEAD_TREE_KEY]);
+            expect(panel.treePickerLabels()[1]).toBe('★ Leads');
 
             panel.postToPanel({ command: 'treePreferences', renderSequence: 3, trees: [{ treeKey: LEAD_TREE_KEY, isFavorite: false }] });
             expect(titleOf(panel, LEAD_TREE_KEY)).toBe('Relationship Tree 2');
@@ -651,7 +662,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
             expect(shownTreeKeys(panel)).toEqual(treeKeys);
             expect(favoritesToggleOf(panel).attributes['aria-pressed']).toBe('false');
-            expect(panel.isHidden(panel.findAll(cardOf(panel, LEAD_TREE_KEY), 'treeBody')[0])).toBe(false);
+            expect(drawnTreeKeys(panel)).toEqual([LEAD_TREE_KEY]);
             expect(panel.savedState().isFavoritesOnly).toBe(false);
 
         });

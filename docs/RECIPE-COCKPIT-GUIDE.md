@@ -16,7 +16,9 @@ A few words used below:
 Generate Treecipe reads your object metadata and writes a run: a folder under `treecipe/GeneratedRecipes` holding the recipe files and a list of the objects it read.
 The cockpit opens the newest run, or the one you pick in the run list at the top.
 Under the run list, the **Target Org Management** section picks the org a card can insert into, opens it in your browser (**Open in browser**) or makes a new scratch org (**+ New scratch org**), which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll.
-The **Treecipes** section below it holds the cards.
+The **Treecipes** section below it shows one card at a time: pick it in the **Treecipe** dropdown, which starts on the one you picked last.
+The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row.
+**Favorites only** narrows the dropdown to your starred cards.
 Each card's **Generate fake data and insert** button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why.
 If an insert fails, its message offers **View failed file** (the generated file that failed), **View errors** and **Open Troubleshooting**, which opens the card's Troubleshooting area that may fix it.
 To generate without inserting, use **Run Faker by Recipe** from the command palette.
@@ -29,7 +31,7 @@ It opens on the one you chose last.
 **Validation Rules** lists each object's validation rules from your project: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not.
 **Show formula** opens a rule's formula.
 
-![The cockpit's title row with the GitHub icon and the ? button at its right, the toolbar with the run list and Favorites only under it, above the Target Org Management section and the Treecipes section's tree cards](images/recipe-cockpit/where-recipes-come-from.png)
+![The cockpit's title row with the GitHub icon and the ? button at its right, the toolbar with the run list and Favorites only under it, above the Target Org Management section and the Treecipes section's search box, its Treecipe dropdown and the one card it shows](images/recipe-cockpit/where-recipes-come-from.png)
 
 ## What the cockpit changes without editing the YAML
 

@@ -396,6 +396,13 @@ export const RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE = 'Record types';
 // THE PANEL'S TWO SECTIONS (#348): THE ONE ORG PICKER, ALWAYS OPEN (#355), THEN EVERY TREE CARD
 export const RECIPE_COCKPIT_ORG_SECTION_TITLE = 'Target Org Management';
 export const RECIPE_COCKPIT_TREECIPES_SECTION_TITLE = 'Treecipes';
+// THE TREECIPES SECTION DRAWS ONE CARD, CHOSEN IN A DROPDOWN, UNDER ONE SEARCH ACROSS EVERY CARD (#374)
+export const RECIPE_COCKPIT_TREECIPE_PICKER_LABEL = 'Treecipe';
+export const RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER = 'Search treecipes, objects, fields and record types';
+export const RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH = 'No treecipe, object, field or record type matches this search.';
+export const RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX = ' (no match)';
+// HOW MANY RESULT ROWS THE SECTION SEARCH DRAWS; THE REST IS ONE "N more" LINE
+export const RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT = 50;
 // THE PINNED ORG SECTION (#364) COVERS THE TOP OF THE PANEL, SO A ROW SCROLLED INTO VIEW STOPS BELOW IT
 export const RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING = '10rem';
 // WHAT A CARD WITH NOTHING TO CHOOSE SAYS IN ITS DISABLED RECORD TYPES HEADER (#338); ONE RECORD TYPE IS NO CHOICE, SO IT READS THE SAME AS NONE
@@ -465,7 +472,8 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.',
-            'Under the run list, the Target Org Management section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll. The Treecipes section below it holds the cards.',
+            'Under the run list, the Target Org Management section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll. The Treecipes section below it shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last.',
+            'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all with a link to each line.',
             'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types and Global Value Sets, each with its own search. It opens on the one you chose last.',
@@ -1097,6 +1105,7 @@ export interface IRecipeCockpitRecipeDataMessage {
 */
 export interface IRecipeCockpitPanelTreePlace {
     treeKey: string;
+    // WHETHER THE CARD WAS THE ONE ON SCREEN; A CARD NO LONGER FOLDS (#374), SO IT IS WRITTEN FOR AN OLDER READER AND IGNORED ON RESTORE
     isExpanded: boolean;
     selectedTab: RecipeCockpitTreeTab;
     searchQueries: Partial<Record<RecipeCockpitTreeTab, string>>;
@@ -1123,6 +1132,9 @@ export interface IRecipeCockpitPanelPlace {
     isFavoritesOnly: boolean;
     // THE HELP SECTION (#332); A PLACE SAVED BEFORE IT HAS NONE AND READS AS COLLAPSED
     isHelpExpanded?: true;
+    // THE TREECIPE THE SECTION'S DROPDOWN SHOWS AND THE SECTION SEARCH AS TYPED (#374); A PLACE SAVED BEFORE IT HAS NEITHER AND OPENS ON THE FIRST
+    selectedTreeKey?: string;
+    treecipesSearchText?: string;
     // NEITHER SECTION FOLDS (#355, #364), SO A 3.98.0+ PLACE'S isOrgSectionCollapsed AND isTreecipesSectionCollapsed ARE IGNORED AND DROPPED
     scrollY: number;
     trees: IRecipeCockpitPanelTreePlace[];
@@ -2154,6 +2166,8 @@ export class RecipeCockpitService {
             isOrgPickerInUse: candidatePlace.isOrgPickerInUse === true,
             isFavoritesOnly: candidatePlace.isFavoritesOnly === true,
             ...( candidatePlace.isHelpExpanded === true ? { isHelpExpanded: true as const } : {} ),
+            ...( this.isBoundedText(candidatePlace.selectedTreeKey) && candidatePlace.selectedTreeKey !== '' ? { selectedTreeKey: candidatePlace.selectedTreeKey } : {} ),
+            ...( this.isBoundedText(candidatePlace.treecipesSearchText) && candidatePlace.treecipesSearchText !== '' ? { treecipesSearchText: candidatePlace.treecipesSearchText } : {} ),
             scrollY: typeof scrollY === 'number' && Number.isFinite(scrollY) && scrollY > 0 ? scrollY : 0,
             trees: trees
         };
@@ -12122,14 +12136,14 @@ ${this.buildPaletteCustomProperties()}
     }
     .loadStatus.failed { border-left-color: var(--sdt-removed); color: var(--sdt-removed); }
     .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.75rem 0 0.25rem 0; }
-    .toolbar select, .tabSearchInput {
+    .toolbar select, .tabSearchInput, .treecipesSearchInput {
         color: var(--sdt-text);
         background-color: var(--sdt-surface);
         border: 1px solid var(--sdt-border);
         border-radius: 4px;
     }
     .toolbar select { padding: 0.3rem; }
-    .tabSearch { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; padding: 0.4rem 0.6rem; }
+    .tabSearch, .treecipesSearch { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; padding: 0.4rem 0.6rem; }
     /* THE MAGNIFIER INSIDE EVERY SEARCH BOX (#373), DRAWN LIKE THE CHAIN LINK; THE TEXT STARTS PAST IT */
     .tabSearchField { position: relative; display: flex; align-items: center; flex: 1 1 16rem; min-width: 0; }
     .tabSearchInput {
@@ -12141,8 +12155,27 @@ ${this.buildPaletteCustomProperties()}
     }
     .tabSearchIcon { position: absolute; left: 0.5rem; width: 1.1rem; height: 1.1rem; cursor: text; }
     .tabSearchIcon path { fill: none; stroke: var(--sdt-muted); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-    .tabSearchInput::placeholder { color: var(--sdt-muted); opacity: 1; }
+    .tabSearchInput::placeholder, .treecipesSearchInput::placeholder { color: var(--sdt-muted); opacity: 1; }
     .emptyStateActions { margin-top: 0.5rem; }
+    /* THE TREECIPES SECTION'S SEARCH, ITS RESULTS AND THE DROPDOWN (#374) */
+    .treecipesSearch { padding-left: 0; padding-right: 0; }
+    .treecipesSearchInput { flex: 1 1 auto; width: 100%; min-width: 0; box-sizing: border-box; padding: 0.3rem 0.5rem 0.3rem 2rem; }
+    .treecipesSearchResults { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.2rem 0 0.4rem 0; }
+    .treecipesResultGroup { display: flex; flex-direction: column; gap: 0.15rem; }
+    .treecipesResultTree { font-weight: 600; }
+    .treecipesResult { display: flex; gap: 0.5rem; align-items: baseline; padding-left: 0.75rem; }
+    .treecipesResultKind { flex: none; min-width: 6rem; }
+    .treePicker { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.2rem 0; }
+    .treePickerLabel { font-weight: 600; }
+    .treePickerSelect {
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+        padding: 0.3rem;
+        max-width: 100%;
+    }
+    .treePickerSelect:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); cursor: not-allowed; }
     .notice {
         border-left: 3px solid var(--sdt-changed);
         padding: 0.3rem 0.6rem;
@@ -12191,11 +12224,8 @@ ${this.buildPaletteCustomProperties()}
         box-sizing: border-box;
         padding: 0.8rem 1rem;
         background-color: var(--sdt-header);
-        cursor: pointer;
     }
-    .treeHeader:hover { box-shadow: inset 4px 0 0 var(--sdt-accent); }
-    .treeHeader:active { background-color: var(--sdt-row-hover); }
-    .treeHeader, .treeObjectHeader, .treeField, .treeDataset { transition: background-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, box-shadow ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease; }
+    .treeObjectHeader, .treeField, .treeDataset { transition: background-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, box-shadow ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease; }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
     /*
@@ -12221,7 +12251,7 @@ ${this.buildPaletteCustomProperties()}
     }
     .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
     .dataOrgRefreshIcon { font-size: 1.5em; line-height: 1; }
-    .treeToggle, .treeObjectToggle {
+    .treeObjectToggle {
         box-sizing: border-box;
         flex: none;
         width: 2.6rem;
@@ -12761,6 +12791,11 @@ ${this.buildPaletteCustomProperties()}
     const RECORD_TYPES_SECTION_TITLE = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE)};
     const ORG_SECTION_TITLE = ${JSON.stringify(RECIPE_COCKPIT_ORG_SECTION_TITLE)};
     const TREECIPES_SECTION_TITLE = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SECTION_TITLE)};
+    const TREECIPE_PICKER_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TREECIPE_PICKER_LABEL)};
+    const TREECIPES_SEARCH_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER)};
+    const TREECIPES_SEARCH_NO_MATCH = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH)};
+    const TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX)};
+    const TREECIPES_SEARCH_RESULT_LIMIT = ${RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT};
     const REGENERATE_WITH_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL)};
     const USE_DEFAULT_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_USE_DEFAULT_RECORD_TYPES_LABEL)};
     const REMEMBER_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL)};
@@ -12900,6 +12935,21 @@ ${this.buildPaletteCustomProperties()}
     // WHETHER ONLY FAVORITE CARDS ARE SHOWN (#235); IT OUTLIVES A MODEL, SO A RELOAD AFTER RUN FAKER KEEPS THE READER'S VIEW
     let isFavoritesOnly = false;
     let favoritesToggleElement = null;
+    /*
+        The Treecipes section draws ONE card, chosen in its dropdown (#374). Every card stays in the
+        document, hidden, so switching back finds its tab, searches and opened objects as they were,
+        and an in-place update reaches a card whether or not it is on screen. The section search
+        matches what the model carries; its index is lowercased once per model, on the first query.
+    */
+    let selectedTreeKey = null;
+    let treecipesControlsElement = null;
+    let treePickerElement = null;
+    let treePickerTreeStates = [];
+    let treecipesSearch = null;
+    let treecipesSearchText = '';
+    let treecipesSearchIndex = null;
+    // TREE KEY -> true FOR A CARD THE SECTION SEARCH MATCHED, OR null WHILE THERE IS NO SEARCH; KEYED BY FOLDER NAMES, SO NO PROTOTYPE
+    let treecipesMatchedTreeKeys = null;
     // THE HELP SECTION (#332) OUTLIVES A MODEL IN THIS DOCUMENT; ITS SUMMARY IS DRAWN FROM THE TREES OF THE MODEL ON SCREEN
     let isHelpExpanded = false;
     let helpToggleElement = null;
@@ -13155,7 +13205,7 @@ ${this.buildPaletteCustomProperties()}
         favoritesToggleElement.setAttribute('title', 'Show only the trees marked as favorites');
         favoritesToggleElement.addEventListener('click', function () {
             isFavoritesOnly = !isFavoritesOnly;
-            applyFavoritesFilter();
+            applyTreecipesSearch();
             savePanelPlace();
         });
 
@@ -13176,18 +13226,16 @@ ${this.buildPaletteCustomProperties()}
         return isFavoritesOnly && favoritesToggleElement !== null && treeState.tree.isFavorite !== true;
     }
 
-    function applyFavoritesFilter() {
+    /*
+        Favorites only narrows the DROPDOWN (#374): the card on screen moves to the first favorite
+        when it is not one, and the choice moves with it; with no favorite nothing is drawn but the
+        notice, and turning the filter off draws the card chosen before.
+    */
+    function applyFavoritesFilter(isAnimated) {
 
-        let shownCount = 0;
+        const shownCount = treeStates.filter(function (treeState) { return !isHiddenByFavorites(treeState); }).length;
 
-        treeStates.forEach(function (treeState) {
-            if (isHiddenByFavorites(treeState)) {
-                treeState.element.classList.add('hidden');
-            } else {
-                treeState.element.classList.remove('hidden');
-                shownCount++;
-            }
-        });
+        applyTreePicker(isAnimated);
 
         if (favoritesToggleElement) {
             favoritesToggleElement.textContent = (isFavoritesOnly ? FAVORITE_TREE_LABEL : NOT_FAVORITE_TREE_LABEL) + ' ' + FAVORITES_ONLY_LABEL;
@@ -13202,6 +13250,345 @@ ${this.buildPaletteCustomProperties()}
         if (noFavoritesElement) {
             if (isFavoritesOnly && favoritesToggleElement !== null && shownCount === 0) { noFavoritesElement.classList.remove('hidden'); } else { noFavoritesElement.classList.add('hidden'); }
         }
+
+    }
+
+    function treePickerLabelOf(treeState) {
+        return (treeState.tree.isFavorite === true ? FAVORITE_TREE_LABEL + ' ' : '') + displayTitleOf(treeState.tree);
+    }
+
+    /*
+        What the dropdown lists and which card is drawn (#374): the cards Favorites only leaves, in
+        RecipeFiles order, narrowed to the ones the section search matched. The card on screen stays
+        on screen while a search does not match it -- listed first, marked -- and a search matching
+        nothing disables the dropdown rather than taking the card away.
+    */
+    function applyTreePicker(isAnimated) {
+
+        if (!treePickerElement) { return; }
+
+        const pickableTreeStates = treeStates.filter(function (treeState) { return !isHiddenByFavorites(treeState); });
+        const chosenTreeState = findTreeState(selectedTreeKey);
+        const shownTreeState = chosenTreeState && !isHiddenByFavorites(chosenTreeState) ? chosenTreeState : (pickableTreeStates[0] || null);
+
+        if (shownTreeState) { selectedTreeKey = shownTreeState.tree.treeKey; }
+
+        const listedTreeStates = treecipesMatchedTreeKeys === null
+            ? pickableTreeStates
+            : pickableTreeStates.filter(function (treeState) { return hasString(treecipesMatchedTreeKeys, treeState.tree.treeKey); });
+        const isShownUnlisted = !!shownTreeState && listedTreeStates.indexOf(shownTreeState) === -1;
+
+        treePickerTreeStates = isShownUnlisted ? [shownTreeState].concat(listedTreeStates) : listedTreeStates;
+        treePickerElement.textContent = '';
+        treePickerTreeStates.forEach(function (treeState, optionIndex) {
+            const label = treePickerLabelOf(treeState) + (isShownUnlisted && optionIndex === 0 ? TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX : '');
+            const optionElement = createElement('option', '', label);
+            optionElement.value = String(optionIndex);
+            optionElement.selected = treeState === shownTreeState;
+            treePickerElement.appendChild(optionElement);
+        });
+        treePickerElement.value = shownTreeState ? String(treePickerTreeStates.indexOf(shownTreeState)) : '';
+        treePickerElement.disabled = listedTreeStates.length === 0;
+
+        // ONLY THE INCOMING CARD FADES, AND ONLY ON THE READER'S PICK; THE OUTGOING ONE IS GONE AT ONCE
+        treeStates.forEach(function (treeState) {
+            if (treeState === shownTreeState) {
+                if (treeState.element.classList.contains('hidden')) { setShownWithMotion(treeState.element, true, isAnimated); }
+            } else {
+                setShownWithMotion(treeState.element, false, false);
+            }
+        });
+
+        if (shownTreeState) { setTreeExpanded(shownTreeState, true); }
+
+    }
+
+    // THE READER'S PICK, OR A RESULT THEY CLICKED: OPENING A CARD ON ITS TREECIPE TAB LISTS THE ORGS ITS INSERT OFFERS, AS IT ALWAYS HAS
+    function chooseTree(treeState, isByReader) {
+
+        if (isHiddenByFavorites(treeState)) { isFavoritesOnly = false; }
+        selectedTreeKey = treeState.tree.treeKey;
+        applyFavoritesFilter(isByReader);
+
+        if (isByReader && treeState.selectedTab === 'treecipe' && renderedSequence !== null && !isRestoringPlace) { requestDataOrgs(); }
+
+    }
+
+    function buildTreePicker() {
+
+        const pickerElement = createElement('div', 'treePicker');
+        const labelElement = createElement('label', 'treePickerLabel', TREECIPE_PICKER_LABEL);
+
+        treePickerElement = createElement('select', 'treePickerSelect');
+        treePickerElement.setAttribute('id', 'treePickerSelect');
+        treePickerElement.setAttribute('aria-label', TREECIPE_PICKER_LABEL);
+        labelElement.setAttribute('for', 'treePickerSelect');
+        treePickerElement.addEventListener('change', function () {
+            const optionIndex = /^[0-9]+$/.test(String(treePickerElement.value)) ? Number(treePickerElement.value) : -1;
+            const treeState = treePickerTreeStates[optionIndex];
+            if (!treeState) { return; }
+            chooseTree(treeState, true);
+            savePanelPlace();
+        });
+
+        pickerElement.appendChild(labelElement);
+        pickerElement.appendChild(treePickerElement);
+
+        return pickerElement;
+
+    }
+
+    /*
+        One entry per thing the section search can find, lowercased ONCE per model: a card's title
+        and folder, and per object it lists (once, iterations being the same object) its api name,
+        its fields' api names and labels and its record types' developer names -- all of it already
+        in the model, so the host is asked nothing.
+    */
+    function buildTreecipesSearchIndex() {
+
+        return treeStates.map(function (treeState) {
+
+            const tree = treeState.tree;
+            const entries = [{ kind: 'treecipe', text: displayTitleOf(tree) + (tree.folderName ? ' · ' + tree.folderName : ''), haystack: (displayTitleOf(tree) + '\\n' + (tree.folderName || '')).toLowerCase() }];
+            const indexedObjectApiNames = Object.create(null);
+
+            treeState.objectStates.forEach(function (treeObjectState) {
+
+                const object = treeObjectState.object;
+                if (treeObjectState.isIteration || indexedObjectApiNames[object.objectApiName] === true) { return; }
+                indexedObjectApiNames[object.objectApiName] = true;
+
+                entries.push({ kind: 'object', objectApiName: object.objectApiName, text: object.objectApiName, haystack: object.objectApiName.toLowerCase() });
+
+                object.fields.forEach(function (field) {
+                    const fieldLabel = typeof field.fieldLabel === 'string' ? field.fieldLabel : '';
+                    entries.push({
+                        kind: 'field',
+                        objectApiName: object.objectApiName,
+                        fieldApiName: field.fieldApiName,
+                        text: object.objectApiName + '.' + field.fieldApiName + (fieldLabel ? ' · ' + fieldLabel : ''),
+                        haystack: (field.fieldApiName + '\\n' + fieldLabel).toLowerCase()
+                    });
+                });
+
+                (Array.isArray(object.recordTypes) ? object.recordTypes : []).forEach(function (recordType) {
+                    if (!recordType || typeof recordType.developerName !== 'string') { return; }
+                    entries.push({ kind: 'recordType', objectApiName: object.objectApiName, text: object.objectApiName + ' · ' + recordType.developerName, haystack: recordType.developerName.toLowerCase() });
+                });
+
+            });
+
+            return { treeState: treeState, entries: entries };
+
+        });
+
+    }
+
+    function buildTreecipesSearch() {
+
+        // ITS OWN CLASSES, STYLED LIKE A TAB'S SEARCH, SO NOTHING THAT LOOKS FOR A TAB'S BOX FINDS THIS ONE
+        const searchElement = createElement('div', 'treecipesSearch');
+        const fieldElement = createElement('div', 'tabSearchField');
+        const inputElement = createElement('input', 'treecipesSearchInput');
+        const iconElement = buildSearchIconElement();
+
+        iconElement.addEventListener('click', function () {
+            if (typeof inputElement.focus === 'function') { inputElement.focus(); }
+        });
+
+        inputElement.setAttribute('type', 'search');
+        inputElement.setAttribute('placeholder', TREECIPES_SEARCH_PLACEHOLDER);
+        inputElement.setAttribute('aria-label', TREECIPES_SEARCH_PLACEHOLDER);
+        inputElement.value = treecipesSearchText;
+        inputElement.addEventListener('input', function () {
+            treecipesSearchText = String(inputElement.value || '');
+            applyTreecipesSearch();
+            savePanelPlace();
+        });
+
+        fieldElement.appendChild(iconElement);
+        fieldElement.appendChild(inputElement);
+        searchElement.appendChild(fieldElement);
+
+        treecipesSearch = {
+            element: searchElement,
+            inputElement: inputElement,
+            matchCountElement: createElement('span', 'treecipesSearchCount muted'),
+            resultsElement: createElement('div', 'treecipesSearchResults hidden')
+        };
+        treecipesSearch.resultsElement.setAttribute('role', 'list');
+        treecipesSearch.resultsElement.setAttribute('aria-label', 'Search results');
+        searchElement.appendChild(treecipesSearch.matchCountElement);
+
+        return treecipesSearch;
+
+    }
+
+    const TREECIPES_SEARCH_KINDS = [
+        { kind: 'treecipe', label: 'treecipe' },
+        { kind: 'object', label: 'object' },
+        { kind: 'field', label: 'field' },
+        { kind: 'recordType', label: 'record type' }
+    ];
+
+    /*
+        Each keystroke scans the index built once per model; what it draws is bounded by
+        TREECIPES_SEARCH_RESULT_LIMIT rows, grouped by treecipe and kind, and one "N more" line.
+    */
+    function applyTreecipesSearch() {
+
+        if (!treecipesSearch) {
+            applyFavoritesFilter();
+            return;
+        }
+
+        const searchQuery = treecipesSearchText.trim().toLowerCase();
+        const resultsElement = treecipesSearch.resultsElement;
+
+        resultsElement.textContent = '';
+
+        if (!searchQuery) {
+            treecipesMatchedTreeKeys = null;
+            treecipesSearch.matchCountElement.textContent = '';
+            resultsElement.classList.add('hidden');
+            applyFavoritesFilter();
+            return;
+        }
+
+        if (treecipesSearchIndex === null) { treecipesSearchIndex = buildTreecipesSearchIndex(); }
+
+        treecipesMatchedTreeKeys = Object.create(null);
+        let matchedTreeCount = 0;
+        let drawnResultCount = 0;
+        let hiddenResultCount = 0;
+
+        treecipesSearchIndex.forEach(function (indexedTree) {
+
+            if (isHiddenByFavorites(indexedTree.treeState)) { return; }
+
+            const hitsByKind = Object.create(null);
+            let treeHitCount = 0;
+
+            indexedTree.entries.forEach(function (entry) {
+                if (entry.haystack.indexOf(searchQuery) === -1) { return; }
+                (hitsByKind[entry.kind] = hitsByKind[entry.kind] || []).push(entry);
+                treeHitCount++;
+            });
+
+            if (treeHitCount === 0) { return; }
+
+            treecipesMatchedTreeKeys[indexedTree.treeState.tree.treeKey] = true;
+            matchedTreeCount++;
+
+            if (drawnResultCount >= TREECIPES_SEARCH_RESULT_LIMIT) {
+                hiddenResultCount += treeHitCount;
+                return;
+            }
+
+            const groupElement = createElement('div', 'treecipesResultGroup');
+            groupElement.setAttribute('role', 'listitem');
+            groupElement.appendChild(createElement('div', 'treecipesResultTree', displayTitleOf(indexedTree.treeState.tree)));
+
+            TREECIPES_SEARCH_KINDS.forEach(function (searchKind) {
+                (hitsByKind[searchKind.kind] || []).forEach(function (entry) {
+                    if (drawnResultCount >= TREECIPES_SEARCH_RESULT_LIMIT) {
+                        hiddenResultCount++;
+                        return;
+                    }
+                    groupElement.appendChild(buildTreecipesResult(indexedTree.treeState, entry, searchKind.label));
+                    drawnResultCount++;
+                });
+            });
+
+            resultsElement.appendChild(groupElement);
+
+        });
+
+        if (hiddenResultCount > 0) {
+            resultsElement.appendChild(createElement('div', 'treecipesResultMore muted', hiddenResultCount + ' more — type more of the name to narrow the search'));
+        }
+
+        if (matchedTreeCount === 0) {
+            resultsElement.appendChild(createElement('div', 'treecipesResultNone muted', TREECIPES_SEARCH_NO_MATCH));
+        }
+
+        const pickableCount = treeStates.filter(function (treeState) { return !isHiddenByFavorites(treeState); }).length;
+        treecipesSearch.matchCountElement.textContent = matchedTreeCount > 0 ? matchedTreeCount + ' of ' + pluralize(pickableCount, 'treecipe', 'treecipes') : 'no matches';
+        resultsElement.classList.remove('hidden');
+
+        applyFavoritesFilter();
+
+    }
+
+    function buildTreecipesResult(treeState, entry, kindLabel) {
+
+        const resultElement = createButton('link', 'treecipesResult');
+        resultElement.appendChild(createElement('span', 'treecipesResultKind muted', kindLabel));
+        resultElement.appendChild(createElement('span', 'treecipesResultText', entry.text));
+        resultElement.setAttribute('aria-label', kindLabel + ' ' + entry.text + ' in ' + displayTitleOf(treeState.tree));
+        resultElement.addEventListener('click', function () { openTreecipesResult(treeState, entry); });
+
+        return resultElement;
+
+    }
+
+    /*
+        A result opens its treecipe on the Treecipe tab and shows what it named: the card, the
+        object opened, the field's row (a tab search hiding it is cleared), or the Record types
+        section scrolled to the object. One object is opened, inside the AUTO_EXPAND limits.
+    */
+    function openTreecipesResult(treeState, entry) {
+
+        chooseTree(treeState, true);
+        selectTreeTab(treeState, 'treecipe', false);
+
+        if (entry.kind === 'recordType') {
+            applyTreeFocus({ treeKey: treeState.tree.treeKey, tab: 'treecipe', recordTypes: { objectApiName: entry.objectApiName } });
+            savePanelPlace();
+            return;
+        }
+
+        let scrollTarget = treeState.element;
+
+        if (entry.kind === 'object' || entry.kind === 'field') {
+
+            const treeObjectState = treeState.objectStates.find(function (candidateState) { return !candidateState.isIteration && candidateState.object.objectApiName === entry.objectApiName; });
+
+            if (treeObjectState) {
+
+                treeObjectState.isExpandedByReader = true;
+                setTreeObjectExpanded(treeObjectState, true, false);
+                scrollTarget = treeObjectState.element;
+
+                const fieldState = entry.kind === 'field'
+                    ? treeObjectState.fieldStates.find(function (candidateState) { return candidateState.field.fieldApiName === entry.fieldApiName; })
+                    : null;
+
+                if (fieldState && fieldState.rowElement && fieldState.rowElement.classList.contains('hidden')) {
+                    clearStructureFilters(treeState);
+                    setTreeObjectExpanded(treeObjectState, true, false);
+                }
+
+                if (fieldState && fieldState.rowElement) { scrollTarget = fieldState.rowElement; }
+
+            }
+
+        }
+
+        savePanelPlace();
+        if (scrollTarget && typeof scrollTarget.scrollIntoView === 'function') { scrollTarget.scrollIntoView({ block: 'nearest' }); }
+
+    }
+
+    // THE TREECIPE TAB'S OWN SEARCH AND ITS TWO CHECKS, CLEARED SO A ROW THE READER ASKED TO SEE IS NOT HIDDEN BY THEM
+    function clearStructureFilters(treeState) {
+
+        treeState.searchTexts.treecipe = '';
+        treeState.searchQueries.treecipe = '';
+        treeState.isRecordTypeFieldsOnly = false;
+        treeState.isTodosOnly = false;
+        if (treeState.structureSearch) { treeState.structureSearch.inputElement.value = ''; }
+        applyStructureFilter(treeState);
 
     }
 
@@ -15921,14 +16308,12 @@ ${this.buildPaletteCustomProperties()}
 
         if (!treeState) { return; }
 
-        // WHAT THE READER JUST ACTED ON IS SHOWN, EVEN WHEN IT IS NOT A FAVORITE
+        // WHAT THE READER JUST ACTED ON IS CHOSEN IN THE DROPDOWN (#374), AND SHOWN EVEN WHEN IT IS NOT A FAVORITE
         if (isHiddenByFavorites(treeState)) {
             isFavoritesOnly = false;
-            applyFavoritesFilter();
+            applyTreecipesSearch();
         }
-
-        treeState.isExpandedByReader = true;
-        setTreeExpanded(treeState, true);
+        chooseTree(treeState, false);
 
         selectTreeTab(treeState, focusTree.tab);
 
@@ -15981,7 +16366,6 @@ ${this.buildPaletteCustomProperties()}
         setShownWithMotion(treeState.bodyElement, isExpanded, isAnimated);
 
         treeState.isExpanded = isExpanded;
-        drawToggle(treeState.toggleElement, isExpanded, isAnimated);
 
     }
 
@@ -16048,9 +16432,9 @@ ${this.buildPaletteCustomProperties()}
 
     function renderTree(tree, objectsByApiName) {
 
-        const treeElement = createElement('div', 'treeCard');
+        // HIDDEN UNTIL THE DROPDOWN CHOOSES IT (#374); ITS HEADER NO LONGER FOLDS IT
+        const treeElement = createElement('div', 'treeCard hidden');
         const treeHeaderElement = createElement('div', 'treeHeader');
-        const toggleElement = buildToggleElement('treeToggle');
 
         const treeState = {
             tree: tree,
@@ -16060,9 +16444,7 @@ ${this.buildPaletteCustomProperties()}
                 .map(function (resolved) { return buildTreeObjectState(resolved.treeObject, resolved.object, tree); }),
             isBodyBuilt: false,
             isExpanded: false,
-            isExpandedByReader: false,
             element: treeElement,
-            toggleElement: toggleElement,
             bodyElement: createElement('div', 'treeBody hidden'),
             searchQueries: { treecipe: '', datasets: '', troubleshooting: '', query: '' },
             // WHAT THE READER TYPED IN EACH BOX, AS TYPED -- searchQueries IS ITS TRIMMED, LOWERCASED FORM
@@ -16082,23 +16464,6 @@ ${this.buildPaletteCustomProperties()}
         const objectStatesCounted = treeState.objectStates.filter(function (treeObjectState) { return !treeObjectState.isIteration; });
         const treeFieldCount = objectStatesCounted.reduce(function (fieldCount, treeObjectState) { return fieldCount + treeObjectState.fieldStates.length; }, 0);
 
-        toggleElement.setAttribute('aria-expanded', 'false');
-        toggleElement.setAttribute('aria-label', 'Show or hide ' + displayTitleOf(tree));
-
-        /*
-            The whole header row is the toggle (#209). The ▸ button carries no listener of its own:
-            its click -- a mouse's, or Enter/Space while it has focus -- bubbles here like a click
-            anywhere else on the row, so the card cannot be toggled twice by one click.
-        */
-        treeHeaderElement.addEventListener('click', function () {
-            treeState.isExpandedByReader = !treeState.isExpanded;
-            setTreeExpanded(treeState, treeState.isExpandedByReader, true);
-            // OPENING A CARD ON ITS TREECIPE TAB IS OPENING THAT TAB, WHICH LISTS THE ORGS ITS PICKER OFFERS
-            if (treeState.isExpanded && treeState.selectedTab === 'treecipe') { requestDataOrgs(); }
-            savePanelPlace();
-        });
-
-        treeHeaderElement.appendChild(toggleElement);
         treeState.titleElement = createElement('span', 'treeTitle', displayTitleOf(tree));
         treeHeaderElement.appendChild(treeState.titleElement);
 
@@ -16113,10 +16478,9 @@ ${this.buildPaletteCustomProperties()}
         drawObjectSelection(treeState);
 
         /*
-            The actions sit at the END of the row and never toggle it. The click is stopped on the
-            GROUP rather than on each button, because a browser may hand a click on a DISABLED
-            button -- a rename while a write runs -- to its ancestors without running the
-            button's own listener.
+            The actions sit at the END of the row. The click is stopped on the GROUP rather than on
+            each button, because a browser may hand a click on a DISABLED button -- a rename while a
+            write runs -- to its ancestors without running the button's own listener.
         */
         const actionsElement = createElement('span', 'treeHeaderActions');
         actionsElement.addEventListener('click', function (event) { event.stopPropagation(); });
@@ -16157,7 +16521,7 @@ ${this.buildPaletteCustomProperties()}
         const displayTitle = displayTitleOf(tree);
 
         treeState.titleElement.textContent = displayTitle;
-        treeState.toggleElement.setAttribute('aria-label', 'Show or hide ' + displayTitle);
+        treeState.element.setAttribute('aria-label', displayTitle);
 
         if (treeState.favoriteElement) {
             treeState.favoriteElement.textContent = tree.isFavorite ? FAVORITE_TREE_LABEL : NOT_FAVORITE_TREE_LABEL;
@@ -16194,7 +16558,9 @@ ${this.buildPaletteCustomProperties()}
         });
 
         drawHelpSummary();
-        applyFavoritesFilter();
+        // A NEW NAME OR STAR IS WHAT THE SECTION SEARCH AND THE DROPDOWN MATCH AND LIST, SO THE INDEX IS BUILT AGAIN
+        treecipesSearchIndex = null;
+        applyTreecipesSearch();
 
     }
 
@@ -17363,9 +17729,17 @@ ${this.buildPaletteCustomProperties()}
 
         trees.forEach(function (tree) { renderTree(tree, objectsByApiName); });
 
+        // THE SECTION SEARCH, ITS RESULTS AND THE DROPDOWN, ABOVE THE ONE CARD DRAWN (#374)
+        if (treecipesControlsElement) {
+            const search = buildTreecipesSearch();
+            treecipesControlsElement.appendChild(search.element);
+            treecipesControlsElement.appendChild(search.resultsElement);
+            treecipesControlsElement.appendChild(buildTreePicker());
+        }
+
         noFavoritesElement = createElement('div', 'emptyState hidden', NO_FAVORITES_MESSAGE);
         treesViewElement.appendChild(noFavoritesElement);
-        applyFavoritesFilter();
+        applyTreecipesSearch();
 
     }
 
@@ -17828,14 +18202,14 @@ ${this.buildPaletteCustomProperties()}
 
         const selectedTab = treeState.selectedTab || 'treecipe';
 
-        if (!treeState.isExpandedByReader && selectedTab === 'treecipe' && !hasSearch && !treeState.isDatasetFavoritesOnly && !treeState.isRecordTypesExpanded
+        if (selectedTab === 'treecipe' && !hasSearch && !treeState.isDatasetFavoritesOnly && !treeState.isRecordTypesExpanded
                 && !isRecordTypeFieldsOnlyIn(treeState) && !isTodosOnlyIn(treeState) && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0) {
             return null;
         }
 
         const treePlace = {
             treeKey: treeState.tree.treeKey,
-            isExpanded: !!treeState.isExpandedByReader,
+            isExpanded: treeState.tree.treeKey === selectedTreeKey,
             selectedTab: selectedTab,
             searchQueries: searchQueries,
             expandedObjectKeys: expandedObjectKeys,
@@ -17883,6 +18257,9 @@ ${this.buildPaletteCustomProperties()}
             trees: treeStates.map(buildTreePlace).filter(Boolean)
         };
         if (isHelpExpanded) { panelPlace.isHelpExpanded = true; }
+        // THE FIRST CARD IS WHERE A PLACE WITHOUT ONE OPENS, SO ONLY ANOTHER CARD IS WRITTEN
+        if (typeof selectedTreeKey === 'string' && treeStates.length > 0 && treeStates[0].tree.treeKey !== selectedTreeKey) { panelPlace.selectedTreeKey = selectedTreeKey; }
+        if (treecipesSearchText) { panelPlace.treecipesSearchText = treecipesSearchText; }
 
         return panelPlace;
 
@@ -17977,6 +18354,9 @@ ${this.buildPaletteCustomProperties()}
         if (savedPlace && savedPlace.isOrgPickerInUse === true) { isDataOrgPickerInUse = true; }
         if (savedPlace) { isFavoritesOnly = savedPlace.isFavoritesOnly === true; }
         if (savedPlace) { isHelpExpanded = savedPlace.isHelpExpanded === true; }
+        // THE CARD AND THE SECTION SEARCH (#374) ARE THE PLACE'S: ANOTHER RUN, OR NO PLACE, OPENS ON THE FIRST CARD WITH NO SEARCH
+        selectedTreeKey = savedPlace && typeof savedPlace.selectedTreeKey === 'string' ? savedPlace.selectedTreeKey : null;
+        treecipesSearchText = savedPlace && typeof savedPlace.treecipesSearchText === 'string' ? savedPlace.treecipesSearchText : '';
 
     }
 
@@ -18082,10 +18462,9 @@ ${this.buildPaletteCustomProperties()}
                 setRecordTypesExpanded(treeState, true, false);
             }
 
-            if (savedTree.isExpanded === true) {
-                treeState.isExpandedByReader = true;
-                setTreeExpanded(treeState, true);
-            }
+            // A CARD NO LONGER FOLDS (#374): THE ONE ON SCREEN IS THE DROPDOWN'S, SO A SAVED isExpanded IS IGNORED
+            // THE CARD ON SCREEN WAS BUILT WITH AN EMPTY BOX, SO IT SHOWS THE RESTORED SEARCH NOW
+            if (treeState.structureSearch) { treeState.structureSearch.inputElement.value = treeState.searchTexts.treecipe; }
 
             // A STRUCTURE TAB BUILT BEFORE ITS OBJECTS WERE MARKED OPEN APPLIES THEM NOW; ONE NOT YET BUILT APPLIES THEM WHEN IT IS
             applyStructureFilter(treeState);
@@ -18142,6 +18521,8 @@ ${this.buildPaletteCustomProperties()}
         }
 
         const treecipesSection = buildStaticCockpitSection('cockpitTreecipesSection', TREECIPES_SECTION_TITLE);
+        treecipesControlsElement = createElement('div', 'treecipesControls');
+        treecipesSection.bodyElement.appendChild(treecipesControlsElement);
         treecipesSection.bodyElement.appendChild(treesViewElement);
         cockpitBodyElement.appendChild(treecipesSection.element);
 
@@ -18214,6 +18595,12 @@ ${this.buildPaletteCustomProperties()}
         addFriendButtonElements = [];
         wireLookupButtonElements = [];
         runSelectElement = null;
+        treecipesControlsElement = null;
+        treePickerElement = null;
+        treePickerTreeStates = [];
+        treecipesSearch = null;
+        treecipesSearchIndex = null;
+        treecipesMatchedTreeKeys = null;
         favoritesToggleElement = null;
         favoritesCountElement = null;
         noFavoritesElement = null;

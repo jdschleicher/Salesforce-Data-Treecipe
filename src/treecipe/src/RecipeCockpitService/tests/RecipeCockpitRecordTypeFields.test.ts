@@ -438,7 +438,8 @@ describe('RecipeCockpitService, "Record type fields only" and the record type ch
             expect(savedTreeOf(panel).isRecordTypeFieldsOnly).toBe(true);
 
             checkOf(panel, accountCardOf(panel)).dispatch('click');
-            expect(savedTreeOf(panel)).not.toHaveProperty('isRecordTypeFieldsOnly');
+            // A CARD BACK AT ITS DEFAULT IS NOT WRITTEN AT ALL (#374)
+            expect(savedTreeOf(panel) ?? {}).not.toHaveProperty('isRecordTypeFieldsOnly');
 
         });
 
@@ -461,7 +462,7 @@ describe('RecipeCockpitService, "Record type fields only" and the record type ch
 
             const panel = runPanelScript({ savedState: savedPlaceWith({ isExpanded: false, isRecordTypeFieldsOnly: true }) });
             panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 3 });
-            panel.findAll(accountCardOf(panel), 'treeToggle')[0].dispatch('click');
+            panel.chooseTreeCard(accountCardOf(panel));
 
             expect(checkOf(panel, accountCardOf(panel)).attributes['aria-checked']).toBe('true');
             expect(panel.visibleFieldNamesOf(objectNamed(panel, accountCardOf(panel), 'Account'))).toEqual(['Rating__c']);

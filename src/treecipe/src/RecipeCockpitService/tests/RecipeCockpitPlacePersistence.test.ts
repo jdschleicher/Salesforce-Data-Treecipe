@@ -409,11 +409,11 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             const panel = runPanelScript();
             panel.postToPanel(recipeDataMessage);
             const accountCard = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeFolder')[0]?.textContent === accountTreeKey);
-            panel.findAll(accountCard, 'treeToggle')[0].dispatch('click');
+            panel.chooseTreeCard(accountCard);
             const accountObject = panel.findAll(accountCard, 'treeObject').find((objectElement: any) => panel.objectNameOf(objectElement) === 'Account');
             panel.expandObject(accountObject);
             const leadCard = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeFolder')[0]?.textContent === LEAD_TREE_KEY);
-            panel.findAll(leadCard, 'treeToggle')[0].dispatch('click');
+            panel.chooseTreeCard(leadCard);
             panel.openTab(leadCard, 'Previously Used Data Sets');
             panel.typeIntoTabSearch(leadCard, 'treeDatasets', '09-21');
             return panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'savePlace').pop().place;
@@ -421,7 +421,8 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
         const isCardOpenIn = (panel: ReturnType<typeof runPanelScript>, treeKey: string) => {
             const treeCard = panel.treeCards().find((candidateCard: any) => panel.findAll(candidateCard, 'treeFolder')[0]?.textContent === treeKey);
-            return !panel.isHidden(panel.findAll(treeCard, 'treeBody')[0]);
+            // THE CARD THE TREECIPES DROPDOWN DRAWS (#374)
+            return !panel.isHidden(treeCard);
         };
 
         beforeEach(() => {
@@ -478,8 +479,13 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             const reopenedPanel = runPanelScript();
             reopenedPanel.postToPanel(reopenedRecipeData);
 
-            expect(isCardOpenIn(reopenedPanel, OLDER_ACCOUNT_TREE_KEY)).toBe(true);
+            // THE CARD CHOSEN LAST IS DRAWN; THE OTHER KEEPS ITS OPENED OBJECT FOR WHEN IT IS CHOSEN AGAIN (#374)
+            expect(reopenedRecipeData.restorePlace.selectedTreeKey).toBe(LEAD_TREE_KEY);
+            expect(isCardOpenIn(reopenedPanel, OLDER_ACCOUNT_TREE_KEY)).toBe(false);
             expect(isCardOpenIn(reopenedPanel, LEAD_TREE_KEY)).toBe(true);
+            const olderAccountCard = reopenedPanel.treeCards().find((treeCard: any) => reopenedPanel.findAll(treeCard, 'treeFolder')[0]?.textContent === OLDER_ACCOUNT_TREE_KEY);
+            const olderAccountObject = reopenedPanel.findAll(olderAccountCard, 'treeObject').find((objectElement: any) => reopenedPanel.objectNameOf(objectElement) === 'Account');
+            expect(reopenedPanel.isHidden(reopenedPanel.objectBodyOf(olderAccountObject))).toBe(false);
             const leadCard = reopenedPanel.treeCards().find((treeCard: any) => reopenedPanel.findAll(treeCard, 'treeFolder')[0]?.textContent === LEAD_TREE_KEY);
             expect(reopenedPanel.findAll(reopenedPanel.tabPanelOf(leadCard, 'treeDatasets'), 'tabSearchInput')[0].value).toBe('09-21');
 
@@ -746,7 +752,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
         it('given a document with its own getState, prefers it over the place the host kept', () => {
 
             const recipe = RecipeCockpitService.loadRecipeRunByRuns(RecipeCockpitService.findGeneratedRecipeRuns(HISTORY_GENERATED_RECIPES_PATH), HISTORY_WORKSPACE_ROOT).recipeViewModel;
-            const ownPlace = buildPlace({ runFolderName: CURRENT_RUN_FOLDER_NAME, trees: [{ ...buildPlace().trees[0], treeKey: LEAD_TREE_KEY, expandedObjectKeys: [] }] });
+            const ownPlace = buildPlace({ runFolderName: CURRENT_RUN_FOLDER_NAME, selectedTreeKey: LEAD_TREE_KEY, trees: [{ ...buildPlace().trees[0], treeKey: LEAD_TREE_KEY, expandedObjectKeys: [] }] });
             const hostPlace = buildPlace({ runFolderName: CURRENT_RUN_FOLDER_NAME });
 
             const panel = runPanelScript({ savedState: ownPlace });
@@ -754,7 +760,7 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
 
             const isOpen = (treeKey: string) => {
                 const treeCard = panel.treeCards().find((candidateCard: any) => panel.findAll(candidateCard, 'treeFolder')[0]?.textContent === treeKey);
-                return !panel.isHidden(panel.findAll(treeCard, 'treeBody')[0]);
+                return !panel.isHidden(treeCard);
             };
             expect(isOpen(LEAD_TREE_KEY)).toBe(true);
             expect(isOpen(ACCOUNT_TREE_KEY)).toBe(false);
@@ -768,7 +774,9 @@ describe('RecipeCockpitService, the reader\'s place kept in workspaceState', () 
             const panel = runPanelScript();
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1, restorePlace: { ...buildPlace({ runFolderName: CURRENT_RUN_FOLDER_NAME }), version: 99 } });
 
-            expect(panel.treeCards().every((treeCard: any) => panel.isHidden(panel.findAll(treeCard, 'treeBody')[0]))).toBe(true);
+            // THE DEFAULT VIEW DRAWS THE FIRST CARD, WITH NOTHING OPENED IN IT (#374)
+            expect(panel.shownTreeCards()).toEqual([panel.treeCards()[0]]);
+            expect(panel.findAll(panel.treeCards()[0], 'treeObjectBody').every((bodyElement: any) => panel.isHidden(bodyElement))).toBe(true);
 
         });
 

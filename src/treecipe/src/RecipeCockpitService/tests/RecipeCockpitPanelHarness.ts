@@ -192,8 +192,42 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
         fieldRowNamed: (objectElement: any, fieldApiName: string) => findAll(objectBodyOf(objectElement), 'treeField')
             .find(fieldElement => findAll(fieldElement, 'treeFieldName')[0].textContent === fieldApiName),
         expandObject: (objectElement: any) => findAll(objectHeaderOf(objectElement), 'treeObjectToggle')[0].dispatch('click'),
-        // EVERY CARD OPENED BY ITS TOGGLE, AS A READER WOULD, SO ITS STRUCTURE TAB IS ATTACHED
-        expandAllTrees: () => treeCards().forEach(treeCard => findAll(treeCard, 'treeToggle')[0].dispatch('click')),
+        // EVERY CARD CHOSEN IN THE TREECIPES DROPDOWN (#374), AS A READER WOULD, SO ITS STRUCTURE TAB IS ATTACHED; THE FIRST IS CHOSEN LAST
+        expandAllTrees: () => {
+            const pickerElement = findAll(cockpitBodyElement, 'treePickerSelect')[0];
+            if ( !pickerElement ) { return; }
+            const optionCount = pickerElement.children.length;
+            [...Array.from({ length: optionCount }, (_, optionIndex) => optionIndex).slice(1), 0].forEach(optionIndex => {
+                pickerElement.value = String(optionIndex);
+                pickerElement.dispatch('change');
+            });
+        },
+        // THE TREECIPES DROPDOWN (#374), ITS OPTIONS' LABELS, AND A CARD CHOSEN BY THE LABEL ITS OPTION DRAWS
+        treePicker: () => findAll(cockpitBodyElement, 'treePickerSelect')[0],
+        treePickerLabels: () => (findAll(cockpitBodyElement, 'treePickerSelect')[0]?.children ?? []).map((optionElement: any) => optionElement.textContent),
+        chooseTreeByLabel: (optionLabel: string) => {
+            const pickerElement = findAll(cockpitBodyElement, 'treePickerSelect')[0];
+            const optionIndex = pickerElement.children.findIndex((optionElement: any) => optionElement.textContent === optionLabel);
+            if ( optionIndex === -1 ) { throw new Error('No treecipe option labelled ' + optionLabel); }
+            pickerElement.value = String(optionIndex);
+            pickerElement.dispatch('change');
+        },
+        // A CARD CHOSEN IN THE DROPDOWN BY THE TITLE ITS HEADER DRAWS -- WHAT OPENING IT WAS BEFORE A CARD STOPPED FOLDING (#374)
+        chooseTreeCard: (treeCard: any) => {
+            const pickerElement = findAll(cockpitBodyElement, 'treePickerSelect')[0];
+            const title = findAll(treeCard, 'treeTitle')[0].textContent;
+            const optionIndex = pickerElement.children.findIndex((optionElement: any) => optionElement.textContent === title || optionElement.textContent === '★ ' + title);
+            if ( optionIndex === -1 ) { throw new Error('No treecipe option for ' + title); }
+            pickerElement.value = String(optionIndex);
+            pickerElement.dispatch('change');
+        },
+        // THE CARD THE DROPDOWN DRAWS: THE ONE NOT HIDDEN
+        shownTreeCards: () => treeCards().filter(treeCard => !isHidden(treeCard)),
+        typeIntoTreecipesSearch: (searchText: string) => {
+            const searchInputElement = findAll(cockpitBodyElement, 'treecipesSearchInput')[0];
+            searchInputElement.value = searchText;
+            searchInputElement.dispatch('input');
+        },
         // THE TROUBLESHOOTING TAB OF EVERY CARD THAT DRAWS ONE (#346), BUILT AND SELECTED; THE CARDS MUST BE OPEN
         openTroubleshootingTabs: () => treeCards().forEach(treeCard => findAll(treeCard, 'treeTab')
             .filter((candidateElement: any) => candidateElement.textContent === 'Troubleshooting')
