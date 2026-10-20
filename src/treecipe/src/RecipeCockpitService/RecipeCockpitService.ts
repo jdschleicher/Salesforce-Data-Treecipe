@@ -12578,13 +12578,7 @@ ${this.buildPaletteCustomProperties()}
         position: relative;
         z-index: 2;
     }
-    .treeNicknameBackLink.sdtButton-link {
-        font-size: 0.85em;
-        padding: 0 0.4rem;
-        color: var(--sdt-chip-text);
-        background-color: var(--sdt-chip-bg);
-        border-radius: 0.6rem;
-    }
+    .treeNicknameBackLink { font-size: 0.85em; }
     .treeObjectBody { padding-bottom: 0.25rem; }
     .treeField { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
     .treeFieldHeader .fieldType {
@@ -13656,12 +13650,15 @@ ${this.buildPaletteCustomProperties()}
     // A VALUE THAT IS ONE NICKNAME AND NOTHING ELSE, BUT FOR COMMENT LINES UNDER IT (#194'S RECORD TYPE BLOCKS NOTE); ELSE null
     function readReferencedNickname(recipeValue) {
 
-        const valueLines = String(recipeValue || '').split('\\n');
-        const firstLine = valueLines[0].trim();
+        // THE FIRST LINE ALONE DECIDES MOST FIELDS, SO A LONG EXPRESSION IS NEVER SPLIT WHOLE
+        const valueText = String(recipeValue || '');
+        const firstLineEnd = valueText.indexOf('\\n');
+        const firstLine = (firstLineEnd === -1 ? valueText : valueText.slice(0, firstLineEnd)).trim();
 
         if (!isReferenceableNickname(firstLine)) { return null; }
+        if (firstLineEnd === -1) { return firstLine; }
 
-        return valueLines.slice(1).every(function (valueLine) { return valueLine.trim().charAt(0) === '#'; }) ? firstLine : null;
+        return valueText.slice(firstLineEnd + 1).split('\\n').every(function (valueLine) { return valueLine.trim().charAt(0) === '#'; }) ? firstLine : null;
 
     }
 
@@ -13937,7 +13934,7 @@ ${this.buildPaletteCustomProperties()}
     function buildNicknameBackLink(treeState, ownerState) {
 
         const nickname = nicknameOfObject(ownerState.object);
-        const backLinkElement = createButton('link', 'treeNicknameBackLink', '↖ ' + nickname);
+        const backLinkElement = createButton('secondary', 'treeNicknameBackLink', '↖ ' + nickname, 'compact');
 
         backLinkElement.setAttribute('title', 'Go to ' + ownerState.object.objectApiName + ', which holds ' + nickname);
         backLinkElement.setAttribute('aria-label', 'Go to ' + nickname + ', the ' + ownerState.object.objectApiName + ' this field points to');
@@ -15680,15 +15677,6 @@ ${this.buildPaletteCustomProperties()}
 
         objectHeaderElement.appendChild(buildSourceLink('treeObjectName', object.objectApiName, object.recipeFilePath, object.lineNumber));
 
-        // A COUNT BOX ONLY WHERE THE HOST CAN STORE ONE: A CARD WITH A FOLDER, AN OBJECT TOLD APART, WITH A READABLE "count:" (#255)
-        if (tree.folderName && !object.iteration && !object.hasIndistinctOccurrences && typeof object.recordCount === 'number') {
-            objectHeaderElement.appendChild(buildRecordCountElement(treeObjectState));
-        }
-
-        if (formatParentLookups(treeObject)) {
-            objectHeaderElement.appendChild(treeObjectState.lookupsElement);
-        }
-
         // FILLED WHEN THE CARD'S TREECIPE TAB IS BUILT, SINCE WHETHER IT OPENS A LIST DEPENDS ON THE WHOLE CARD (#380)
         if (nicknameOfObject(object)) {
             treeObjectState.nicknameSlotElement = createElement('span', 'treeNicknameSlot');
@@ -15698,6 +15686,15 @@ ${this.buildPaletteCustomProperties()}
         if (object.iteration) {
             const parentName = object.iteration.parentNickname || object.iteration.parentObjectApiName;
             if (parentName) { objectHeaderElement.appendChild(createElement('span', 'treeIteration muted', 'nested under ' + parentName)); }
+        }
+
+        // A COUNT BOX ONLY WHERE THE HOST CAN STORE ONE: A CARD WITH A FOLDER, AN OBJECT TOLD APART, WITH A READABLE "count:" (#255)
+        if (tree.folderName && !object.iteration && !object.hasIndistinctOccurrences && typeof object.recordCount === 'number') {
+            objectHeaderElement.appendChild(buildRecordCountElement(treeObjectState));
+        }
+
+        if (formatParentLookups(treeObject)) {
+            objectHeaderElement.appendChild(treeObjectState.lookupsElement);
         }
 
         objectHeaderElement.appendChild(treeObjectState.exclusionElement);
@@ -19500,7 +19497,6 @@ ${this.buildPaletteCustomProperties()}
         postRenderFailure('runtime', rejectionEvent && rejectionEvent.reason);
     });
 
-    // A SCROLL FIRES PER FRAME, AND A SAVE WALKS EVERY CARD, SO A RUN OF THEM IS SAVED ONCE
     // A CLICK ANYWHERE BUT THE OPEN NICKNAME LIST OR ITS BUTTON CLOSES IT; CAPTURED, SO A LISTENER THAT STOPS THE CLICK CANNOT KEEP IT OPEN
     document.addEventListener('click', function (clickEvent) {
         if (!openNicknameMenu) { return; }
@@ -19508,6 +19504,7 @@ ${this.buildPaletteCustomProperties()}
         closeNicknameMenu(false);
     }, true);
 
+    // A SCROLL FIRES PER FRAME, AND A SAVE WALKS EVERY CARD, SO A RUN OF THEM IS SAVED ONCE
     window.addEventListener('scroll', function () {
 
         if (scrollSaveTimer !== null) { return; }

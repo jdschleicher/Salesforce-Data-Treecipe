@@ -129,6 +129,22 @@ describe('RecipeCockpitService, nicknames and the fields that point to them (#38
 
         });
 
+        it('draws the nickname right after the object name, before the count box and lookups', () => {
+
+            const panel = renderModel(loadModel());
+            const headerChildren = objectElementNamed(panel, 'Contact_NickName').children[0].children;
+            const nameIndex = headerChildren.findIndex((element: any) => element.classList.contains('treeObjectName'));
+
+            expect(headerChildren[nameIndex + 1].classList.contains('treeNicknameSlot')).toBe(true);
+            expect(headerChildren[nameIndex + 1].children[0].textContent).toBe('Contact_NickName');
+
+            const iterationHeaderChildren = objectElementNamed(panel, 'Account_child_NickName').children[0].children;
+            const iterationNameIndex = iterationHeaderChildren.findIndex((element: any) => element.classList.contains('treeObjectName'));
+            expect(iterationHeaderChildren[iterationNameIndex + 1].classList.contains('treeNicknameSlot')).toBe(true);
+            expect(iterationHeaderChildren[iterationNameIndex + 2].textContent).toBe('nested under Account_NickName');
+
+        });
+
         it('makes a nickname a list button only where a field points to it, and plain text where none does', () => {
 
             const panel = renderModel(loadModel());
