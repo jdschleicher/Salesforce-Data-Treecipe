@@ -424,7 +424,8 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
             const friendList = panel.findAll(iterationElement, 'treeAddFriends')[0];
 
             expect(addFriendButtons).toHaveLength(1);
-            expect(panel.findAll(iterationElement, 'treeIteration')[0].textContent).toBe(`${ITERATION_NICKNAME} · nested under Account_NickName`);
+            expect(panel.findAll(iterationElement, 'treeNickname')[0].textContent).toBe(ITERATION_NICKNAME);
+            expect(panel.findAll(iterationElement, 'treeIteration')[0].textContent).toBe('nested under Account_NickName');
             expect(panel.findAll(friendList, 'treeAddFriendChoice').map((choice: any) => choice.textContent)).toEqual(['+ Contact', '+ Opportunity']);
             expect(panel.isHidden(friendList)).toBe(true);
 

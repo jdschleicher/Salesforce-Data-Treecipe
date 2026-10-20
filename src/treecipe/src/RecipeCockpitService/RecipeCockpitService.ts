@@ -49,7 +49,7 @@ import {
     ORG_PARENT_SEARCH_RESULT_LIMIT,
     SalesforceOrgService
 } from '../SalesforceOrgService/SalesforceOrgService';
-import { ILookupWiringContext, ILookupWiringRequest, IPinnedFieldRestoreRequest, IRecipeFilterLookup, IRecipeFixedValue, IRecipeUnconstrainedValue, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind } from './RecipeCockpitRecipeWriter';
+import { ILookupWiringContext, ILookupWiringRequest, IPinnedFieldRestoreRequest, IRecipeFilterLookup, IRecipeFixedValue, IRecipeUnconstrainedValue, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind, YAML_NON_STRING_PLAIN_SCALAR_PATTERN } from './RecipeCockpitRecipeWriter';
 import { IFixedValueEntry, IFixedValueFileRead, RecipeCockpitFixedValueStore } from './RecipeCockpitFixedValueStore';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelectionDisabledLookup } from './RecipeCockpitObjectSelection';
@@ -476,6 +476,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Under the run list, the Target Org Management section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll. The Treecipes section below it shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last.',
             'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
+            'Each object shows its nickname, the name its lookups use in the recipe file. Click it to list the fields that point to it and jump to one; a field holding a nickname shows it highlighted, and clicking it jumps back to that object.',
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all with a link to each line.',
             'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types and Global Value Sets, each with its own search. It opens on the one you chose last.',
             'Validation Rules lists each object\'s validation rules from your project: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not. Show formula opens a rule\'s formula.'
@@ -663,6 +664,12 @@ export interface IRecipeCockpitObjectViewModel {
     fields: IRecipeCockpitFieldViewModel[];
     // SET ONLY ON AN OBJECT WITH iterations, WHERE THE NICKNAME IS WHAT TELLS ITS OCCURRENCES APART
     nickname?: string;
+    /*
+        The first occurrence's one nickname on an object WITHOUT iterations (#380), which the row
+        draws and the card's nickname index reads. Never "nickname": the panel posts that back, and
+        the host matches it against nickname-keyed allow-lists an object without iterations is not in.
+    */
+    recipeNickname?: string;
     iterations?: IRecipeCockpitObjectIterationViewModel[];
     // WRITTEN MORE THAN ONCE WITH NO NICKNAME TO TELL THE OCCURRENCES APART, SO ITS TREE ICON IS REFUSED (#219)
     hasIndistinctOccurrences?: true;
@@ -11986,6 +11993,7 @@ export class RecipeCockpitService {
                 ...( objectEntry.recordCount !== undefined ? { recordCount: objectEntry.recordCount } : {} ),
                 ...( objectEntry.countParentObjectApiName !== undefined ? { countParentObjectApiName: objectEntry.countParentObjectApiName } : {} ),
                 ...( objectEntry.todos ? { todos: objectEntry.todos.slice() } : {} ),
+                ...( !objectEntry.iterations && objectEntry.nickname !== undefined ? { recipeNickname: objectEntry.nickname } : {} ),
                 ...( objectEntry.iterations ? {
                     nickname: objectEntry.nickname,
                     iterations: objectEntry.iterations.map(iteration => ({
@@ -12554,6 +12562,29 @@ ${this.buildPaletteCustomProperties()}
     .treeObjectHeader:hover, .treeField:hover { background-color: var(--sdt-row-hover); }
     .treeObjectHeader:focus-within, .treeField:focus-within { background-color: var(--sdt-row-hover); }
     .treeObjectName { font-weight: 600; }
+    .treeNicknameSlot { display: inline-flex; align-items: center; }
+    .treeNickname { font-size: 0.85em; }
+    .treeNicknameMenu {
+        flex-basis: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.2rem;
+        margin-left: 1.5rem;
+        padding: 0.3rem 0.6rem;
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-accent);
+        border-radius: 4px;
+        position: relative;
+        z-index: 2;
+    }
+    .treeNicknameBackLink.sdtButton-link {
+        font-size: 0.85em;
+        padding: 0 0.4rem;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border-radius: 0.6rem;
+    }
     .treeObjectBody { padding-bottom: 0.25rem; }
     .treeField { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
     .treeFieldHeader .fieldType {
@@ -12760,6 +12791,8 @@ ${this.buildPaletteCustomProperties()}
     const VALIDATION_RULE_RETRIEVE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL)};
     const DEPLOY_ACTION_LABELS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_LABELS)};
     const BUTTON_KINDS = ${JSON.stringify(RECIPE_COCKPIT_BUTTON_KINDS)};
+    // A NICKNAME YAML LOADS AS A BOOLEAN OR NULL NAMES NO RECORD: THE INSERT'S WHOLE-STRING SWAP NEVER MATCHES IT (#151, #380)
+    const YAML_NON_STRING_NICKNAME_PATTERN = new RegExp(${JSON.stringify(YAML_NON_STRING_PLAIN_SCALAR_PATTERN.source)});
     const DEPLOY_COMMANDS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND)};
     const TROUBLESHOOTING_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_TAB_LABEL)};
     const TROUBLESHOOTING_SUB_TABS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS)};
@@ -12857,6 +12890,8 @@ ${this.buildPaletteCustomProperties()}
     const GEOLOCATION_COMPONENT_RANGES = ${JSON.stringify(RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES)};
 
     let treeStates = [];
+    // THE ONE NICKNAME LIST OPEN (#380): { treeObjectState, menuElement, itemElements, usages }
+    let openNicknameMenu = null;
     let treesViewElement = null;
     let runSelectElement = null;
     let renderedRunFolderName = '';
@@ -13563,20 +13598,11 @@ ${this.buildPaletteCustomProperties()}
 
             if (treeObjectState) {
 
-                treeObjectState.isExpandedByReader = true;
-                setTreeObjectExpanded(treeObjectState, true, false);
-                scrollTarget = treeObjectState.element;
-
                 const fieldState = entry.kind === 'field'
                     ? treeObjectState.fieldStates.find(function (candidateState) { return candidateState.field.fieldApiName === entry.fieldApiName; })
                     : null;
 
-                if (fieldState && fieldState.rowElement && fieldState.rowElement.classList.contains('hidden')) {
-                    clearStructureFilters(treeState);
-                    setTreeObjectExpanded(treeObjectState, true, false);
-                }
-
-                if (fieldState && fieldState.rowElement) { scrollTarget = fieldState.rowElement; }
+                scrollTarget = openTreeObjectRow(treeState, treeObjectState, fieldState);
 
             }
 
@@ -13584,6 +13610,343 @@ ${this.buildPaletteCustomProperties()}
 
         savePanelPlace();
         if (scrollTarget && typeof scrollTarget.scrollIntoView === 'function') { scrollTarget.scrollIntoView({ block: 'nearest' }); }
+
+    }
+
+    // OPENS ONE OBJECT OR OCCURRENCE, AND CLEARS THE TREECIPE TAB'S SEARCH AND CHECKS WHEN THEY HIDE THE FIELD ASKED FOR; ANSWERS THE ROW TO SCROLL TO
+    function openTreeObjectRow(treeState, treeObjectState, fieldState) {
+
+        treeObjectState.isExpandedByReader = true;
+        setTreeObjectExpanded(treeObjectState, true, false);
+
+        if (fieldState && fieldState.rowElement && fieldState.rowElement.classList.contains('hidden')) {
+            clearStructureFilters(treeState);
+            setTreeObjectExpanded(treeObjectState, true, false);
+        }
+
+        return fieldState && fieldState.rowElement ? fieldState.rowElement : treeObjectState.element;
+
+    }
+
+    /*
+        The rows #380 moves between: a parent's nickname list opens a child's field, and a child's
+        back-link opens its parent. Both stay on the card's Treecipe tab, scroll the row into view and
+        put focus on what the reader can use next there.
+    */
+    function revealTreeObjectRow(treeState, treeObjectState, fieldState, focusElement) {
+
+        selectTreeTab(treeState, 'treecipe', false);
+        const scrollTarget = openTreeObjectRow(treeState, treeObjectState, fieldState);
+
+        savePanelPlace();
+        if (scrollTarget && typeof scrollTarget.scrollIntoView === 'function') { scrollTarget.scrollIntoView({ block: 'nearest' }); }
+        if (focusElement && typeof focusElement.focus === 'function') { focusElement.focus(); }
+
+    }
+
+    // AN OBJECT ROW'S OWN NICKNAME (#380): AN OCCURRENCE'S, OR THE ONE THE FIRST OCCURRENCE CARRIES
+    function nicknameOfObject(object) {
+        return object.nickname || object.recipeNickname || '';
+    }
+
+    function isReferenceableNickname(nickname) {
+        return /^[A-Za-z][A-Za-z0-9_]*$/.test(nickname) && !YAML_NON_STRING_NICKNAME_PATTERN.test(nickname);
+    }
+
+    // A VALUE THAT IS ONE NICKNAME AND NOTHING ELSE, BUT FOR COMMENT LINES UNDER IT (#194'S RECORD TYPE BLOCKS NOTE); ELSE null
+    function readReferencedNickname(recipeValue) {
+
+        const valueLines = String(recipeValue || '').split('\\n');
+        const firstLine = valueLines[0].trim();
+
+        if (!isReferenceableNickname(firstLine)) { return null; }
+
+        return valueLines.slice(1).every(function (valueLine) { return valueLine.trim().charAt(0) === '#'; }) ? firstLine : null;
+
+    }
+
+    function nicknameKeyOf(recipeFilePath, nickname) {
+        return String(recipeFilePath || '') + '\\n' + nickname;
+    }
+
+    /*
+        One card's nicknames (#380): the ONE row each is held by -- in the same recipe file, never an
+        object written again with no nickname to tell it apart -- and every field, in recipe order,
+        whose value is that whole nickname, which is what the insert swaps for the record's Id. A
+        nickname two rows hold names no single row, so nothing points to it. Built once per card,
+        with no prototype, since a hand-edited recipe can name anything.
+    */
+    function ensureNicknameIndex(treeState) {
+
+        if (treeState.nicknameIndex) { return treeState.nicknameIndex; }
+
+        const ownerStatesByKey = Object.create(null);
+
+        treeState.objectStates.forEach(function (treeObjectState) {
+            const nickname = nicknameOfObject(treeObjectState.object);
+            if (!nickname) { return; }
+            const nicknameKey = nicknameKeyOf(treeObjectState.object.recipeFilePath, nickname);
+            if (!hasOwnKey(ownerStatesByKey, nicknameKey)) { ownerStatesByKey[nicknameKey] = { nickname: nickname, states: [] }; }
+            ownerStatesByKey[nicknameKey].states.push(treeObjectState);
+        });
+
+        const nicknameIndex = { ownerStateByKey: Object.create(null), usagesByKey: Object.create(null) };
+
+        Object.keys(ownerStatesByKey).forEach(function (nicknameKey) {
+            const owners = ownerStatesByKey[nicknameKey];
+            if (owners.states.length !== 1 || owners.states[0].object.hasIndistinctOccurrences || !isReferenceableNickname(owners.nickname)) { return; }
+            nicknameIndex.ownerStateByKey[nicknameKey] = owners.states[0];
+            nicknameIndex.usagesByKey[nicknameKey] = [];
+        });
+
+        treeState.objectStates.forEach(function (treeObjectState) {
+            treeObjectState.fieldStates.forEach(function (fieldState) {
+
+                if (!fieldState.field.lineNumber) { return; }
+
+                const nickname = readReferencedNickname(fieldState.field.recipeValue);
+                if (nickname === null) { return; }
+
+                const nicknameKey = nicknameKeyOf(treeObjectState.object.recipeFilePath, nickname);
+                if (!hasOwnKey(nicknameIndex.ownerStateByKey, nicknameKey) || nicknameIndex.ownerStateByKey[nicknameKey] === treeObjectState) { return; }
+
+                nicknameIndex.usagesByKey[nicknameKey].push({ objectState: treeObjectState, fieldState: fieldState });
+
+            });
+        });
+
+        Object.keys(nicknameIndex.usagesByKey).forEach(function (nicknameKey) {
+            nicknameIndex.usagesByKey[nicknameKey].sort(function (firstUsage, secondUsage) { return firstUsage.fieldState.field.lineNumber - secondUsage.fieldState.field.lineNumber; });
+        });
+
+        treeState.nicknameIndex = nicknameIndex;
+        return nicknameIndex;
+
+    }
+
+    function findReferencedOwnerState(treeObjectState, fieldState) {
+
+        if (!treeObjectState.treeState || !fieldState.field.lineNumber) { return null; }
+
+        const nickname = readReferencedNickname(fieldState.field.recipeValue);
+        if (nickname === null) { return null; }
+
+        const nicknameIndex = ensureNicknameIndex(treeObjectState.treeState);
+        const nicknameKey = nicknameKeyOf(treeObjectState.object.recipeFilePath, nickname);
+        const ownerState = hasOwnKey(nicknameIndex.ownerStateByKey, nicknameKey) ? nicknameIndex.ownerStateByKey[nicknameKey] : null;
+
+        return ownerState === treeObjectState ? null : ownerState;
+
+    }
+
+    function listNicknameUsages(treeObjectState) {
+
+        const nicknameIndex = ensureNicknameIndex(treeObjectState.treeState);
+        const nicknameKey = nicknameKeyOf(treeObjectState.object.recipeFilePath, nicknameOfObject(treeObjectState.object));
+
+        return hasOwnKey(nicknameIndex.ownerStateByKey, nicknameKey) && nicknameIndex.ownerStateByKey[nicknameKey] === treeObjectState
+            ? nicknameIndex.usagesByKey[nicknameKey]
+            : null;
+
+    }
+
+    // THE NICKNAME BESIDE AN OBJECT'S NAME (#380): A BUTTON LISTING THE FIELDS THAT POINT TO IT, OR TEXT WHEN NONE CAN
+    function drawObjectNickname(treeObjectState) {
+
+        const slotElement = treeObjectState.nicknameSlotElement;
+        if (!slotElement || !treeObjectState.treeState) { return; }
+
+        const nickname = nicknameOfObject(treeObjectState.object);
+        const usages = listNicknameUsages(treeObjectState);
+
+        slotElement.textContent = '';
+        treeObjectState.nicknameChipElement = null;
+
+        if (!usages || usages.length === 0) {
+            const nicknameTextElement = createElement('span', 'treeNickname muted', nickname);
+            nicknameTextElement.setAttribute('title', usages
+                ? 'No field of this treecipe points to ' + nickname
+                : nickname + ' does not name exactly one object of this recipe, so no field can point to it');
+            slotElement.appendChild(nicknameTextElement);
+            return;
+        }
+
+        const chipElement = createButton('secondary', 'treeNickname', nickname, 'compact');
+        chipElement.setAttribute('aria-haspopup', 'menu');
+        chipElement.setAttribute('aria-expanded', 'false');
+        chipElement.setAttribute('aria-label', nickname + ': ' + pluralize(usages.length, 'field points', 'fields point') + ' to it');
+        chipElement.setAttribute('title', 'Show the fields that point to ' + nickname);
+        chipElement.addEventListener('click', function () {
+            if (openNicknameMenu && openNicknameMenu.treeObjectState === treeObjectState) {
+                closeNicknameMenu(true);
+                return;
+            }
+            openNicknameMenuOf(treeObjectState);
+        });
+
+        treeObjectState.nicknameChipElement = chipElement;
+        slotElement.appendChild(chipElement);
+
+    }
+
+    function describeNicknameUsage(usage) {
+
+        const usageObject = usage.objectState.object;
+        // AN OBJECT WRITTEN MORE THAN ONCE IS TOLD APART BY ITS NICKNAME, AS ITS ROW IS
+        const objectLabel = usageObject.objectApiName + (usageObject.nickname ? ' · ' + usageObject.nickname : '');
+
+        return objectLabel + '.' + usage.fieldState.field.fieldApiName
+            + (usage.objectState.element.classList.contains('excluded') ? ' — excluded' : '');
+
+    }
+
+    // ONE LIST OPEN AT A TIME, ON A LINE OF ITS OWN UNDER THE HEADER; BUILT ON EVERY OPEN, SO AN EXCLUSION SINCE IS SHOWN
+    function openNicknameMenuOf(treeObjectState) {
+
+        closeNicknameMenu(false);
+
+        const usages = listNicknameUsages(treeObjectState) || [];
+        const nickname = nicknameOfObject(treeObjectState.object);
+
+        if (!treeObjectState.nicknameMenuElement) {
+            treeObjectState.nicknameMenuElement = createElement('div', 'treeNicknameMenu hidden');
+            treeObjectState.nicknameMenuElement.setAttribute('role', 'menu');
+            treeObjectState.headerElement.appendChild(treeObjectState.nicknameMenuElement);
+        }
+
+        const menuElement = treeObjectState.nicknameMenuElement;
+        menuElement.textContent = '';
+        menuElement.setAttribute('aria-label', 'Fields that point to ' + nickname);
+
+        const itemElements = usages.map(function (usage, usageIndex) {
+
+            const itemElement = createButton('link', 'treeNicknameMenuItem', describeNicknameUsage(usage));
+            itemElement.setAttribute('role', 'menuitem');
+            itemElement.setAttribute('tabindex', usageIndex === 0 ? '0' : '-1');
+            itemElement.addEventListener('click', function () { chooseNicknameUsage(usage); });
+            itemElement.addEventListener('keydown', function (event) { handleNicknameMenuKey(event, usageIndex); });
+            menuElement.appendChild(itemElement);
+
+            return itemElement;
+
+        });
+
+        menuElement.classList.remove('hidden');
+        treeObjectState.nicknameChipElement.setAttribute('aria-expanded', 'true');
+
+        openNicknameMenu = { treeObjectState: treeObjectState, menuElement: menuElement, itemElements: itemElements, usages: usages };
+
+        if (itemElements.length > 0) { itemElements[0].focus(); }
+
+    }
+
+    function closeNicknameMenu(isFocusReturned) {
+
+        if (!openNicknameMenu) { return; }
+
+        const closingMenu = openNicknameMenu;
+        openNicknameMenu = null;
+
+        closingMenu.menuElement.textContent = '';
+        closingMenu.menuElement.classList.add('hidden');
+
+        const chipElement = closingMenu.treeObjectState.nicknameChipElement;
+        if (chipElement) {
+            chipElement.setAttribute('aria-expanded', 'false');
+            if (isFocusReturned) { chipElement.focus(); }
+        }
+
+    }
+
+    function chooseNicknameUsage(usage) {
+
+        const treeState = usage.objectState.treeState;
+        closeNicknameMenu(false);
+
+        // THE FIELD'S ROW IS BUILT BY THE OPEN, SO ITS BACK-LINK IS FOUND AFTER IT
+        revealTreeObjectRow(treeState, usage.objectState, usage.fieldState, null);
+        if (usage.fieldState.rowElement) {
+            const backLinkElement = findDescendantWithClass(usage.fieldState.rowElement, 'treeNicknameBackLink');
+            if (backLinkElement) { backLinkElement.focus(); }
+        }
+
+    }
+
+    function handleNicknameMenuKey(event, usageIndex) {
+
+        if (!openNicknameMenu) { return; }
+
+        const itemElements = openNicknameMenu.itemElements;
+        let nextIndex = null;
+
+        if (event.key === 'ArrowDown') { nextIndex = (usageIndex + 1) % itemElements.length; }
+        if (event.key === 'ArrowUp') { nextIndex = (usageIndex - 1 + itemElements.length) % itemElements.length; }
+        if (event.key === 'Home') { nextIndex = 0; }
+        if (event.key === 'End') { nextIndex = itemElements.length - 1; }
+
+        if (nextIndex !== null) {
+            if (typeof event.preventDefault === 'function') { event.preventDefault(); }
+            itemElements.forEach(function (itemElement, itemIndex) { itemElement.setAttribute('tabindex', itemIndex === nextIndex ? '0' : '-1'); });
+            itemElements[nextIndex].focus();
+            return;
+        }
+
+        if (event.key === 'Enter' || event.key === ' ') {
+            // THE BROWSER WOULD CLICK THE BUTTON TOO; ONE CHOICE, NOT TWO
+            if (typeof event.preventDefault === 'function') { event.preventDefault(); }
+            chooseNicknameUsage(openNicknameMenu.usages[usageIndex]);
+            return;
+        }
+
+        if (event.key === 'Escape') {
+            if (typeof event.preventDefault === 'function') { event.preventDefault(); }
+            if (typeof event.stopPropagation === 'function') { event.stopPropagation(); }
+            closeNicknameMenu(true);
+            return;
+        }
+
+        if (event.key === 'Tab') { closeNicknameMenu(false); }
+
+    }
+
+    function isElementWithin(element, containerElement) {
+
+        for (let currentElement = element; currentElement; currentElement = currentElement.parentNode) {
+            if (currentElement === containerElement) { return true; }
+        }
+
+        return false;
+
+    }
+
+    function findDescendantWithClass(rootElement, className) {
+
+        if (rootElement.classList && rootElement.classList.contains(className)) { return rootElement; }
+
+        const childElements = rootElement.children || [];
+        for (let childIndex = 0; childIndex < childElements.length; childIndex++) {
+            const foundElement = findDescendantWithClass(childElements[childIndex], className);
+            if (foundElement) { return foundElement; }
+        }
+
+        return null;
+
+    }
+
+    // A CHILD FIELD'S WAY BACK (#380): THE NICKNAME IT HOLDS, HIGHLIGHTED, OPENING THE ROW THAT HOLDS IT
+    function buildNicknameBackLink(treeState, ownerState) {
+
+        const nickname = nicknameOfObject(ownerState.object);
+        const backLinkElement = createButton('link', 'treeNicknameBackLink', '↖ ' + nickname);
+
+        backLinkElement.setAttribute('title', 'Go to ' + ownerState.object.objectApiName + ', which holds ' + nickname);
+        backLinkElement.setAttribute('aria-label', 'Go to ' + nickname + ', the ' + ownerState.object.objectApiName + ' this field points to');
+        backLinkElement.addEventListener('click', function () {
+            closeNicknameMenu(false);
+            revealTreeObjectRow(treeState, ownerState, null, ownerState.nicknameChipElement);
+        });
+
+        return backLinkElement;
 
     }
 
@@ -14879,6 +15242,11 @@ ${this.buildPaletteCustomProperties()}
 
         fieldHeaderElement.appendChild(createElement('span', 'treeFieldName', field.fieldApiName));
 
+        const referencedOwnerState = findReferencedOwnerState(treeObjectState, fieldState);
+        if (referencedOwnerState) {
+            fieldHeaderElement.appendChild(buildNicknameBackLink(treeObjectState.treeState, referencedOwnerState));
+        }
+
         if (field.fieldTypeWithSize || field.fieldType) {
             fieldHeaderElement.appendChild(createElement('span', 'fieldType', field.fieldTypeWithSize || field.fieldType));
         }
@@ -15268,7 +15636,13 @@ ${this.buildPaletteCustomProperties()}
             recordTypeFieldCount: 0,
             // THE TODO COMMENTS OF THE BLOCK THAT SIT ON NO FIELD, AND EVERY TODO OF THE OCCURRENCE (#354)
             objectTodos: Array.isArray(object.todos) ? object.todos : [],
-            todoCount: 0
+            todoCount: 0,
+            // SET BY renderTree ONCE THE CARD'S STATE EXISTS; THE NICKNAME INDEX IS THE CARD'S (#380)
+            treeState: null,
+            headerElement: objectHeaderElement,
+            nicknameSlotElement: null,
+            nicknameChipElement: null,
+            nicknameMenuElement: null
         };
 
         treeObjectState.todoCount = treeObjectState.fieldStates.reduce(function (todoCount, fieldState) { return todoCount + fieldState.todos.length; }, treeObjectState.objectTodos.length);
@@ -15315,11 +15689,15 @@ ${this.buildPaletteCustomProperties()}
             objectHeaderElement.appendChild(treeObjectState.lookupsElement);
         }
 
+        // FILLED WHEN THE CARD'S TREECIPE TAB IS BUILT, SINCE WHETHER IT OPENS A LIST DEPENDS ON THE WHOLE CARD (#380)
+        if (nicknameOfObject(object)) {
+            treeObjectState.nicknameSlotElement = createElement('span', 'treeNicknameSlot');
+            objectHeaderElement.appendChild(treeObjectState.nicknameSlotElement);
+        }
+
         if (object.iteration) {
             const parentName = object.iteration.parentNickname || object.iteration.parentObjectApiName;
-            objectHeaderElement.appendChild(createElement('span', 'treeIteration muted', object.nickname + (parentName ? ' · nested under ' + parentName : '')));
-        } else if (object.nickname) {
-            objectHeaderElement.appendChild(createElement('span', 'treeIteration muted', object.nickname));
+            if (parentName) { objectHeaderElement.appendChild(createElement('span', 'treeIteration muted', 'nested under ' + parentName)); }
         }
 
         objectHeaderElement.appendChild(treeObjectState.exclusionElement);
@@ -15362,6 +15740,7 @@ ${this.buildPaletteCustomProperties()}
             : buildUnavailableRecordTypesSection(treeState));
 
         treeState.objectStates.forEach(function (treeObjectState) {
+            drawObjectNickname(treeObjectState);
             structureElement.appendChild(treeObjectState.element);
         });
 
@@ -16465,8 +16844,12 @@ ${this.buildPaletteCustomProperties()}
             todosToggleElement: null,
             // THE TOP OF THE TREECIPE TAB (#255), MADE WITH THE TAB
             resetSelectionElement: null,
-            insert: null
+            insert: null,
+            // WHICH ROW OWNS EACH NICKNAME AND WHICH FIELDS POINT TO IT (#380), BUILT WITH THE TREECIPE TAB
+            nicknameIndex: null
         };
+
+        treeState.objectStates.forEach(function (treeObjectState) { treeObjectState.treeState = treeState; });
 
         // AN OBJECT AND ITS FIELDS ARE COUNTED ONCE, HOWEVER MANY OCCURRENCES OF IT THE CARD DRAWS
         const objectStatesCounted = treeState.objectStates.filter(function (treeObjectState) { return !treeObjectState.isIteration; });
@@ -18560,6 +18943,7 @@ ${this.buildPaletteCustomProperties()}
     function resetPanelState() {
 
         cockpitBodyElement.textContent = '';
+        openNicknameMenu = null;
         // THE HOST ANSWERS AN OPEN CONFIRMATION CANCEL WHEN IT POSTS A NEW MODEL, AND A FAILURE TO DRAW ENDS IT TOO
         closeConfirmDialog(false);
         disableHelpToggle();
@@ -19117,6 +19501,13 @@ ${this.buildPaletteCustomProperties()}
     });
 
     // A SCROLL FIRES PER FRAME, AND A SAVE WALKS EVERY CARD, SO A RUN OF THEM IS SAVED ONCE
+    // A CLICK ANYWHERE BUT THE OPEN NICKNAME LIST OR ITS BUTTON CLOSES IT; CAPTURED, SO A LISTENER THAT STOPS THE CLICK CANNOT KEEP IT OPEN
+    document.addEventListener('click', function (clickEvent) {
+        if (!openNicknameMenu) { return; }
+        if (isElementWithin(clickEvent.target, openNicknameMenu.menuElement) || isElementWithin(clickEvent.target, openNicknameMenu.treeObjectState.nicknameChipElement)) { return; }
+        closeNicknameMenu(false);
+    }, true);
+
     window.addEventListener('scroll', function () {
 
         if (scrollSaveTimer !== null) { return; }
