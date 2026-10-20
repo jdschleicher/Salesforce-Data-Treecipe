@@ -1033,7 +1033,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             expect(deployButtonOf(panel, 'fields').disabled).toBe(false);
             expect(cardTitleOf(deployButtonOf(panel, 'fields'))).toBe('Deploy fields…');
             expect(deployButtonOf(panel, 'recordTypes').disabled).toBe(true);
-            expect(deployButtonOf(panel, 'recordTypes').attributes.title).toBe('No object of this tree has a record type in this project.');
+            expect(deployButtonOf(panel, 'recordTypes').attributes.title).toBe('No object of this tree has a record type in this project.\n0 RecordType.');
 
             // AN ANSWER FOR ANOTHER MODEL IS DROPPED
             panel.postToPanel(summary({ renderSequence: 2, customFieldCount: 0 }));
@@ -1174,9 +1174,13 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
                 expect(partOf(recordTypesCard, 'actionCardReason').textContent).toBe('No object of this tree has a record type in this project.');
                 expect(panel.isHidden(partOf(recordTypesCard, 'actionCardReason'))).toBe(false);
 
+                // THE CARD MAY CLAMP ITS DETAIL, SO THE TOOLTIP CARRIES IT WHOLE, AFTER THE REASON
+                expect(recordTypesCard.attributes.title).toBe('No object of this tree has a record type in this project.\n0 RecordType.');
+
                 const fieldsCard = deployButtonOf(panel, 'fields');
                 expect(fieldsCard.disabled).toBe(false);
                 expect(panel.isHidden(partOf(fieldsCard, 'actionCardReason'))).toBe(true);
+                expect(fieldsCard.attributes.title.split('\n')[1]).toBe(partOf(fieldsCard, 'actionCardDetail').textContent);
 
             });
 
@@ -1236,11 +1240,11 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             it('styles the card by its kind alone: one fixed size, a wrapping grid that is one column in a narrow panel, and clamped text', () => {
 
                 const styleSheet = RecipeCockpitService.buildWebviewShellHtml('testNonce');
-                expect(styleSheet).toMatch(/\.sdtButton-card \{[^}]*height: 9.5rem;[^}]*overflow: hidden;/);
+                expect(styleSheet).toMatch(/\.sdtButton-card \{[^}]*height: 10.5rem;[^}]*overflow: hidden;/);
                 expect(styleSheet).toMatch(/\.troubleshootingCards \{[^}]*display: grid;[^}]*grid-template-columns: repeat\(auto-fill, minmax\(min\(100%, 18rem\), 1fr\)\);/);
                 expect(styleSheet).toMatch(/\.actionCardTitle \{ -webkit-line-clamp: 2; font-size: inherit; \}/);
-                expect(styleSheet).toMatch(/\.actionCardWhy \{ -webkit-line-clamp: 2; \}/);
-                expect(styleSheet).toMatch(/\.actionCardDetail, \.actionCardReason \{ -webkit-line-clamp: 1; \}/);
+                expect(styleSheet).toMatch(/\.actionCardWhy, \.actionCardDetail \{ -webkit-line-clamp: 2; \}/);
+                expect(styleSheet).toMatch(/\.actionCardReason \{ -webkit-line-clamp: 1; \}/);
                 expect(styleSheet).toMatch(/\.sdtButton-card:hover:not\(:disabled\) \{[^}]*border-color: var\(--sdt-accent\);/);
 
             });

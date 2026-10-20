@@ -1569,7 +1569,7 @@ export const RECIPE_COCKPIT_DEPLOY_ACTION_LABELS: Readonly<Record<MetadataDeploy
 */
 export type RecipeCockpitActionVerb = 'deploy' | 'retrieve' | 'assign' | 'generate';
 export const RECIPE_COCKPIT_ACTION_CARD_WIDTH = '18rem';
-export const RECIPE_COCKPIT_ACTION_CARD_HEIGHT = '9.5rem';
+export const RECIPE_COCKPIT_ACTION_CARD_HEIGHT = '10.5rem';
 
 export const RECIPE_COCKPIT_ACTION_VERB_EMOJI: Readonly<Record<RecipeCockpitActionVerb, string>> = Object.freeze({
     deploy: '🚀',
@@ -12669,7 +12669,7 @@ ${this.buildPaletteCustomProperties()}
     /*
         The Troubleshooting actions' cards (#381) share one fixed size and wrap in a grid; in a
         panel narrower than two cards they take the full width. Text that does not fit is clamped,
-        never allowed to grow the card; the tooltip keeps the whole reason.
+        never allowed to grow the card; the tooltip keeps the whole detail and reason.
     */
     .troubleshootingCards {
         display: grid;
@@ -12689,8 +12689,8 @@ ${this.buildPaletteCustomProperties()}
         font-size: 0.95em;
     }
     .actionCardTitle { -webkit-line-clamp: 2; font-size: inherit; }
-    .actionCardWhy { -webkit-line-clamp: 2; }
-    .actionCardDetail, .actionCardReason { -webkit-line-clamp: 1; }
+    .actionCardWhy, .actionCardDetail { -webkit-line-clamp: 2; }
+    .actionCardReason { -webkit-line-clamp: 1; }
     .actionCardReason { font-style: italic; }
     .treeQueryIntro { margin: 0.25rem 0.6rem 0.5rem; }
     .treeQuery { margin: 0.25rem 0.6rem 0.5rem; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
@@ -13119,11 +13119,13 @@ ${this.buildPaletteCustomProperties()}
         if (text) { element.classList.remove('hidden'); } else { element.classList.add('hidden'); }
     }
 
-    // A DISABLED CARD SAYS WHY ON THE CARD, NOT ONLY IN ITS TOOLTIP; A REASON THE DETAIL ALREADY SAYS IS NOT SAID TWICE
+    // A DISABLED CARD SAYS WHY ON THE CARD, NOT ONLY IN ITS TOOLTIP; A REASON THE DETAIL ALREADY SAYS IS NOT SAID TWICE.
+    // THE TOOLTIP ALSO CARRIES THE WHOLE DETAIL, WHICH THE CARD MAY CLAMP
     function drawActionCardState(actionCard, reason, title) {
+        const detail = actionCard.detailElement.textContent;
         actionCard.buttonElement.disabled = reason !== '';
-        actionCard.buttonElement.setAttribute('title', reason || title);
-        setTextShown(actionCard.reasonElement, reason === actionCard.detailElement.textContent ? '' : reason);
+        actionCard.buttonElement.setAttribute('title', (reason || title) + (detail && detail !== reason ? '\\n' + detail : ''));
+        setTextShown(actionCard.reasonElement, reason === detail ? '' : reason);
     }
 
     function setLoadStatus(statusMessage, isFailure) {
@@ -16802,7 +16804,6 @@ ${this.buildPaletteCustomProperties()}
 
         treeState.troubleshootingStripElement = stripElement;
         treeState.troubleshootingSubTabStates = [];
-        treeState.deployButtons = Object.create(null);
         treeState.deployCards = Object.create(null);
 
         if (TROUBLESHOOTING_SUB_TABS.indexOf(treeState.troubleshootingSubTab) === -1) {
@@ -17066,7 +17067,6 @@ ${this.buildPaletteCustomProperties()}
             vscodeApi.postMessage(deployMessage);
         });
 
-        treeState.deployButtons[deployKind] = buttonElement;
         treeState.deployCards[deployKind] = actionCard;
 
         return actionCard;
