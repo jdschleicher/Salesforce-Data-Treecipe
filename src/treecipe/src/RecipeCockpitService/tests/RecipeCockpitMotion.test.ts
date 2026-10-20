@@ -124,9 +124,11 @@ describe('RecipeCockpitService, motion (#227)', () => {
 
             expect(motionStyleSheet).toMatch(/\n\s*button, select, input \{\s*transition: color \d+ms ease, background-color \d+ms ease, border-color \d+ms ease, box-shadow \d+ms ease, filter \d+ms ease, transform 80ms ease;/);
             expect(motionStyleSheet).toContain('button:active:not(:disabled) { transform: translateY(1px); }');
-            expect(motionStyleSheet).toMatch(/\.treeHeader, \.treeObjectHeader, \.treeField, \.treeDataset \{ transition: background-color \d+ms ease, box-shadow \d+ms ease; \}/);
+            expect(motionStyleSheet).toMatch(/\.treeObjectHeader, \.treeField, \.treeDataset \{ transition: background-color \d+ms ease, box-shadow \d+ms ease; \}/);
             expect(motionStyleSheet).toContain('.treeObjectHeader:focus-within, .treeField:focus-within { background-color: var(--sdt-row-hover); }');
-            expect(motionStyleSheet).toContain('.treeHeader:active { background-color: var(--sdt-row-hover); }');
+            // A CARD'S HEADER NO LONGER FOLDS IT (#374), SO IT HAS NO PRESSED OR HOVER STATE OF ITS OWN
+            expect(motionStyleSheet).not.toContain('.treeHeader:active');
+            expect(motionStyleSheet).not.toContain('.treeHeader:hover');
             expect(motionStyleSheet).toMatch(/\.sdtButton-primary:hover:not\(:disabled\) \{ filter: brightness\(0\.92\); \}/);
             expect(motionStyleSheet).toMatch(/\.sdtButton-primary:active:not\(:disabled\) \{ filter: brightness\(0\.84\); \}/);
 
@@ -173,7 +175,7 @@ describe('RecipeCockpitService, motion (#227)', () => {
         const treeCardOf = (panel: Panel, treeKey: string) => panel.treeCards()
             .find((treeCard: any) => panel.findAll(treeCard, 'treeFolder')[0]?.textContent === treeKey);
         const treeBodyOf = (panel: Panel, treeKey: string) => panel.findAll(treeCardOf(panel, treeKey), 'treeBody')[0];
-        const clickCard = (panel: Panel, treeKey: string) => panel.findAll(treeCardOf(panel, treeKey), 'treeToggle')[0].dispatch('click');
+        const clickCard = (panel: Panel, treeKey: string) => panel.chooseTreeCard(treeCardOf(panel, treeKey));
         const objectNamed = (panel: Panel, treeKey: string, objectApiName: string) => panel.findAll(treeCardOf(panel, treeKey), 'treeObject')
             .find((objectElement: any) => panel.objectNameOf(objectElement) === objectApiName);
         const tabListOf = (panel: Panel, treeKey: string) => panel.findAll(treeCardOf(panel, treeKey), 'treeTabs')[0];
@@ -193,43 +195,50 @@ describe('RecipeCockpitService, motion (#227)', () => {
             jest.useRealTimers();
         });
 
-        it('shows a card\'s body at once and fades it in, then drops the animation class once it has run', () => {
+        it('shows the card the reader picks in the dropdown at once and fades it in, and drops the card it leaves at once (#374)', () => {
 
             const panel = renderPanel();
-            const treeBody = treeBodyOf(panel, ACCOUNT_TREE_KEY);
+            const leadCard = treeCardOf(panel, LEAD_TREE_KEY);
+            const accountCard = treeCardOf(panel, ACCOUNT_TREE_KEY);
 
-            clickCard(panel, ACCOUNT_TREE_KEY);
+            // THE FIRST CARD IS DRAWN WITH THE MODEL, WITH NO MOTION
+            expect(panel.isHidden(accountCard)).toBe(false);
+            expect(isMoving(accountCard)).toBe(false);
 
-            expect(panel.isHidden(treeBody)).toBe(false);
-            expect(treeBody.classList.contains('motionReveal')).toBe(true);
-            expect(panel.findAll(treeCardOf(panel, ACCOUNT_TREE_KEY), 'treeToggle')[0].attributes['aria-expanded']).toBe('true');
+            clickCard(panel, LEAD_TREE_KEY);
+
+            expect(panel.isHidden(leadCard)).toBe(false);
+            expect(leadCard.classList.contains('motionReveal')).toBe(true);
+            expect(panel.isHidden(accountCard)).toBe(true);
+            expect(isMoving(accountCard)).toBe(false);
 
             jest.advanceTimersByTime(RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS);
-            expect(isMoving(treeBody)).toBe(false);
-            expect(panel.isHidden(treeBody)).toBe(false);
+            expect(isMoving(leadCard)).toBe(false);
+            expect(panel.isHidden(leadCard)).toBe(false);
 
         });
 
         it('hides a closing body from assistive technology for the whole fade, and leaves it hidden after', () => {
 
             const panel = renderPanel();
-            clickCard(panel, ACCOUNT_TREE_KEY);
+            const accountElement = objectNamed(panel, ACCOUNT_TREE_KEY, 'Account');
+            panel.expandObject(accountElement);
             jest.advanceTimersByTime(RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS);
-            const treeBody = treeBodyOf(panel, ACCOUNT_TREE_KEY);
+            const objectBody = panel.objectBodyOf(accountElement);
 
-            clickCard(panel, ACCOUNT_TREE_KEY);
+            panel.expandObject(accountElement);
 
-            expect(panel.isHidden(treeBody)).toBe(true);
-            expect(treeBody.classList.contains('motionConceal')).toBe(true);
-            expect(treeBody.attributes['aria-hidden']).toBe('true');
-            expect(treeBody.attributes).toHaveProperty('inert');
-            expect(panel.findAll(treeCardOf(panel, ACCOUNT_TREE_KEY), 'treeToggle')[0].attributes['aria-expanded']).toBe('false');
+            expect(panel.isHidden(objectBody)).toBe(true);
+            expect(objectBody.classList.contains('motionConceal')).toBe(true);
+            expect(objectBody.attributes['aria-hidden']).toBe('true');
+            expect(objectBody.attributes).toHaveProperty('inert');
+            expect(panel.findAll(accountElement, 'treeObjectToggle')[0].attributes['aria-expanded']).toBe('false');
 
             jest.advanceTimersByTime(RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS);
-            expect(panel.isHidden(treeBody)).toBe(true);
-            expect(isMoving(treeBody)).toBe(false);
-            expect(treeBody.attributes).not.toHaveProperty('aria-hidden');
-            expect(treeBody.attributes).not.toHaveProperty('inert');
+            expect(panel.isHidden(objectBody)).toBe(true);
+            expect(isMoving(objectBody)).toBe(false);
+            expect(objectBody.attributes).not.toHaveProperty('aria-hidden');
+            expect(objectBody.attributes).not.toHaveProperty('inert');
 
         });
 
@@ -350,6 +359,8 @@ describe('RecipeCockpitService, motion (#227)', () => {
 
             expect(panel.isHidden(treeBodyOf(panel, LEAD_TREE_KEY))).toBe(false);
             expect(isMoving(treeBodyOf(panel, LEAD_TREE_KEY))).toBe(false);
+            expect(panel.isHidden(leadCard)).toBe(false);
+            expect(isMoving(leadCard)).toBe(false);
             expect(isMoving(panel.tabPanelOf(leadCard, 'treeDatasets'))).toBe(false);
             expect(tabListOf(panel, LEAD_TREE_KEY).classList.contains('noMotion')).toBe(true);
 
@@ -357,15 +368,12 @@ describe('RecipeCockpitService, motion (#227)', () => {
 
         it('turns the ▸ with motion only on the reader\'s click', () => {
 
-            const panel = renderPanel({}, { treeKey: LEAD_TREE_KEY, tab: 'treecipe' });
-            const leadToggle = panel.findAll(treeCardOf(panel, LEAD_TREE_KEY), 'treeToggle')[0];
-            const accountToggle = panel.findAll(treeCardOf(panel, ACCOUNT_TREE_KEY), 'treeToggle')[0];
+            const panel = renderPanel();
+            const contactToggle = panel.findAll(objectNamed(panel, ACCOUNT_TREE_KEY, 'Contact'), 'treeObjectToggle')[0];
 
-            expect(leadToggle.attributes['aria-expanded']).toBe('true');
-            expect(leadToggle.classList.contains('noMotion')).toBe(true);
-
-            clickCard(panel, ACCOUNT_TREE_KEY);
-            expect(accountToggle.classList.contains('noMotion')).toBe(false);
+            panel.expandObject(objectNamed(panel, ACCOUNT_TREE_KEY, 'Contact'));
+            expect(contactToggle.attributes['aria-expanded']).toBe('true');
+            expect(contactToggle.classList.contains('noMotion')).toBe(false);
 
             panel.typeIntoFilter('Rating__c', treeCardOf(panel, ACCOUNT_TREE_KEY));
             const objectToggle = panel.findAll(objectNamed(panel, ACCOUNT_TREE_KEY, 'Account'), 'treeObjectToggle')[0];
@@ -391,19 +399,23 @@ describe('RecipeCockpitService, motion (#227)', () => {
         it('given the reader prefers reduced motion, shows and hides everything at once with no animation class', () => {
 
             const panel = renderPanel({ prefersReducedMotion: true });
-            const treeBody = treeBodyOf(panel, LEAD_TREE_KEY);
+            const leadCard = treeCardOf(panel, LEAD_TREE_KEY);
 
             clickCard(panel, LEAD_TREE_KEY);
-            expect(panel.isHidden(treeBody)).toBe(false);
-            expect(isMoving(treeBody)).toBe(false);
+            expect(panel.isHidden(leadCard)).toBe(false);
+            expect(isMoving(leadCard)).toBe(false);
 
-            panel.openTab(treeCardOf(panel, LEAD_TREE_KEY), 'Previously Used Data Sets');
-            expect(isMoving(panel.tabPanelOf(treeCardOf(panel, LEAD_TREE_KEY), 'treeDatasets'))).toBe(false);
+            panel.openTab(leadCard, 'Previously Used Data Sets');
+            expect(isMoving(panel.tabPanelOf(leadCard, 'treeDatasets'))).toBe(false);
 
-            clickCard(panel, LEAD_TREE_KEY);
-            expect(panel.isHidden(treeBody)).toBe(true);
-            expect(isMoving(treeBody)).toBe(false);
-            expect(treeBody.attributes).not.toHaveProperty('aria-hidden');
+            clickCard(panel, ACCOUNT_TREE_KEY);
+            const accountElement = objectNamed(panel, ACCOUNT_TREE_KEY, 'Account');
+            const objectBody = panel.objectBodyOf(accountElement);
+            panel.expandObject(accountElement);
+            panel.expandObject(accountElement);
+            expect(panel.isHidden(objectBody)).toBe(true);
+            expect(isMoving(objectBody)).toBe(false);
+            expect(objectBody.attributes).not.toHaveProperty('aria-hidden');
 
         });
 
@@ -412,7 +424,7 @@ describe('RecipeCockpitService, motion (#227)', () => {
             const panel = renderPanel({ prefersReducedMotion: false });
             clickCard(panel, LEAD_TREE_KEY);
 
-            expect(treeBodyOf(panel, LEAD_TREE_KEY).classList.contains('motionReveal')).toBe(true);
+            expect(treeCardOf(panel, LEAD_TREE_KEY).classList.contains('motionReveal')).toBe(true);
 
         });
 

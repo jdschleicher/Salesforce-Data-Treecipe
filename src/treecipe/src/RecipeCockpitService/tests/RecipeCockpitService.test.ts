@@ -427,13 +427,14 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('draws a tree header as a tall clickable row tile with its actions at the end', () => {
+        // #374: THE HEADER NO LONGER FOLDS ITS CARD, SO IT IS NOT DRAWN AS SOMETHING TO CLICK
+        it('draws a tree header as a tall row tile with its actions at the end', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
             const treeHeaderRule = ruleFor(styleSheet, '\\.treeHeader');
 
             expect(treeHeaderRule).toContain('min-height: 4rem;');
-            expect(treeHeaderRule).toContain('cursor: pointer;');
+            expect(treeHeaderRule).not.toContain('cursor: pointer;');
             expect(treeHeaderRule).toContain('align-items: center;');
             expect(ruleFor(styleSheet, '\\.treeHeaderActions')).toContain('margin-left: auto;');
 
@@ -441,11 +442,13 @@ describe('RecipeCockpitService', () => {
 
         // #244 MADE THE ▸/▾ BIG ENOUGH TO READ AT A GLANCE; #277 GAVE THE PICKLIST'S THE SAME SIZE AND CENTRED ALL THREE
         // #343: THE PICKLIST'S IS A TEXT BUTTON NOW, OF ONE FIXED WIDTH ITS SPACER SHARES
-        it('draws the tree card and Treecipe object toggles as one centred 2.6rem box, the picklist button and its spacer one width, and the field rows centred on them', () => {
+        // #374: A CARD HAS NO ▸ OF ITS OWN ANY MORE
+        it('draws the Treecipe object toggle as one centred 2.6rem box, the picklist button and its spacer one width, and the field rows centred on them', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
-            const toggleBoxRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle');
-            const toggleCentringRule = ruleFor(styleSheet, '\\.treeToggle, \\.treeObjectToggle');
+            const toggleBoxRule = ruleFor(styleSheet, '\\.treeObjectToggle');
+            const toggleCentringRule = ruleFor(styleSheet, '\\.treeObjectToggle');
+            expect(styleSheet).not.toContain('.treeToggle');
             const picklistWidthRule = ruleFor(styleSheet, '\\.picklistToggle, \\.picklistToggleSpacer');
 
             expect(picklistWidthRule).toContain('width: 7.5rem;');
@@ -1940,7 +1943,7 @@ describe('RecipeCockpitService', () => {
             .find((objectElement: any) => panel.findAll(objectElement, 'treeObjectName')[0].textContent === objectApiName);
         const treeFieldNamed = (panel: any, objectElement: any, fieldApiName: string) => panel.findAll(objectElement, 'treeField')
             .find((fieldElement: any) => panel.findAll(fieldElement, 'treeFieldName')[0].textContent === fieldApiName);
-        const expandTree = (panel: any, treeCard: any) => panel.findAll(treeCard, 'treeToggle')[0].dispatch('click');
+        const expandTree = (panel: any, treeCard: any) => panel.chooseTreeCard(treeCard);
         const expandTreeObject = (panel: any, objectElement: any) => panel.findAll(objectElement, 'treeObjectToggle')[0].dispatch('click');
 
         it('draws a toolbar with no view switch, and no global find box, match count or 🔍 scope (#217)', () => {
@@ -1975,12 +1978,14 @@ describe('RecipeCockpitService', () => {
             panel.expandAllTrees();
 
             expect(panel.findAll(panel.cockpitBodyElement, 'tabSearchInput').map((inputElement: any) => inputElement.value)).toEqual(['', '']);
+            expect(panel.findAll(panel.cockpitBodyElement, 'treecipesSearchInput').map((inputElement: any) => inputElement.value)).toEqual(['']);
             expect(panel.visibleFieldNamesOf(treeObjectNamed(panel, treeCardsOf(panel)[0], 'Account'))).toEqual([]);
             expect(textOf(panel, treeCardsOf(panel)[0], 'treeObjectCount')).toEqual(['8 fields', '2 fields', '3 fields']);
 
         });
 
-        it('draws one collapsed card per tree, titled by position, subtitled by folder, with its object and field counts', () => {
+        // #374: ONE CARD IS DRAWN, THE FIRST, CHOSEN IN THE TREECIPES DROPDOWN; ONLY IT IS BUILT
+        it('draws one card per tree, titled by position, subtitled by folder, with its object and field counts, and shows only the first', () => {
 
             const { panel } = renderTreeRecipe();
             const treeCards = treeCardsOf(panel);
@@ -1989,9 +1994,11 @@ describe('RecipeCockpitService', () => {
             expect(textOf(panel, panel.cockpitBodyElement, 'treeTitle')).toEqual(['Relationship Tree 1', 'Relationship Tree 2']);
             expect(textOf(panel, panel.cockpitBodyElement, 'treeFolder')).toEqual(['Account-thru-OtherChildObject__c', 'Lead-ONLY']);
             expect(textOf(panel, panel.cockpitBodyElement, 'treeCount')).toEqual(['3 objects · 13 fields', '1 object · 2 fields']);
-            expect(treeCards.every((treeCard: any) => panel.isHidden(treeBodyOf(treeCard)))).toBe(true);
-            // THE BODY IS BUILT ON FIRST EXPAND, SO A COLLAPSED CARD HAS NO TAB STRIP AND NO ROWS YET
-            expect(panel.findAll(panel.cockpitBodyElement, 'treeTab')).toEqual([]);
+            expect(panel.shownTreeCards()).toEqual([treeCards[0]]);
+            expect(panel.isHidden(treeBodyOf(treeCards[0]))).toBe(false);
+            expect(panel.treePickerLabels()).toEqual(['Relationship Tree 1', 'Relationship Tree 2']);
+            // THE BODY IS BUILT WHEN THE CARD IS FIRST CHOSEN, SO THE OTHER CARD HAS NO TAB STRIP YET, AND NO OBJECT HAS ROWS YET
+            expect(panel.findAll(treeCards[1], 'treeTab')).toEqual([]);
             expect(panel.findAll(panel.cockpitBodyElement, 'treeField')).toEqual([]);
 
         });
@@ -2203,24 +2210,21 @@ describe('RecipeCockpitService', () => {
 
         });
 
+        // #374: A CARD HAS NO ▸ OF ITS OWN; AN OBJECT'S IS THE TREECIPE TAB'S ONE TOGGLE
         it('draws every Treecipe toggle as one svg chevron that keeps its path and says its state in aria-expanded', () => {
 
             const { panel } = renderTreeRecipe();
             const [firstTreeCard] = treeCardsOf(panel);
-            const treeToggle = panel.findAll(firstTreeCard, 'treeToggle')[0];
 
-            expect(treeToggle.textContent).toBe('');
-            expect(treeToggle.children[0].namespaceURI).toBe('http://www.w3.org/2000/svg');
-            expect(treeToggle.children[0].attributes['aria-hidden']).toBe('true');
-            expect(treeToggle.children[0].attributes.class).toBe('toggleGlyph');
-            expect(toggleGlyphPathOf(treeToggle)).toBe(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
-
-            expandTree(panel, firstTreeCard);
-            expect(toggleGlyphPathOf(treeToggle)).toBe(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
-            expect(treeToggle.attributes['aria-expanded']).toBe('true');
+            expect(panel.findAll(panel.cockpitBodyElement, 'treeToggle')).toEqual([]);
 
             const accountElement = treeObjectNamed(panel, firstTreeCard, 'Account');
             const objectToggle = panel.findAll(accountElement, 'treeObjectToggle')[0];
+            expect(objectToggle.textContent).toBe('');
+            expect(objectToggle.children[0].namespaceURI).toBe('http://www.w3.org/2000/svg');
+            expect(objectToggle.children[0].attributes['aria-hidden']).toBe('true');
+            expect(objectToggle.children[0].attributes.class).toBe('toggleGlyph');
+            expect(toggleGlyphPathOf(objectToggle)).toBe(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH);
             expect(objectToggle.attributes['aria-expanded']).toBe('false');
             expandTreeObject(panel, accountElement);
             expect(objectToggle.attributes['aria-expanded']).toBe('true');
@@ -2534,7 +2538,8 @@ describe('RecipeCockpitService', () => {
 
             const [firstTreeCard, leadTreeCard] = treeCardsOf(panel);
 
-            expect(panel.isHidden(treeBodyOf(firstTreeCard))).toBe(true);
+            expect(panel.isHidden(firstTreeCard)).toBe(true);
+            expect(panel.isHidden(leadTreeCard)).toBe(false);
             expect(panel.isHidden(treeBodyOf(leadTreeCard))).toBe(false);
             expect(panel.findAll(leadTreeCard, 'selected').map((element: any) => element.textContent)).toEqual(['Treecipe']);
             const postedCommands = panel.postedHostMessages.map((hostMessage: any) => hostMessage.command);
@@ -2601,7 +2606,7 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('given the recipe, draws the toolbar first, one collapsed card per tree, and acknowledges the draw', () => {
+        it('given the recipe, draws the toolbar first, the one card the dropdown chose, and acknowledges the draw', () => {
 
             const panel = renderFixtureRecipe();
 
@@ -2609,11 +2614,8 @@ describe('RecipeCockpitService', () => {
             expect(panel.findAll(panel.cockpitBodyElement, 'filterInput')).toEqual([]);
 
             expect(panel.treeCards()).toHaveLength(1);
-            // A CARD'S OBJECTS, AND ITS STRUCTURE TAB'S SEARCH BOX, ARE ATTACHED ON ITS FIRST EXPAND, AND THEIR ROWS ON THEIR OWN
-            expect(panel.objectElements()).toEqual([]);
-            expect(panel.findAll(panel.cockpitBodyElement, 'tabSearchInput')).toEqual([]);
-
-            panel.expandAllTrees();
+            // THE CARD THE DROPDOWN CHOSE IS BUILT WITH THE MODEL (#374); ITS OBJECTS' ROWS WAIT FOR THEIR OWN EXPAND
+            expect(panel.shownTreeCards()).toEqual(panel.treeCards());
 
             const structureElement = panel.tabPanelOf(panel.treeCards()[0], 'treeStructure');
             // THE TREECIPE TAB OPENS WITH ITS HEADER -- THE ORG PICKER AND THE TREE'S ACTIONS (#255) -- THEN ITS SEARCH BOX
@@ -3409,7 +3411,7 @@ describe('RecipeCockpitService', () => {
                 panel.findAll(rootElement, className).find((element: any) => element.textContent === labelText).dispatch('click');
             const openTab = (panel: any, folderName: string, tabLabel: string) => {
                 const treeCard = treeCardFolded(panel, folderName);
-                panel.findAll(treeCard, 'treeToggle')[0].dispatch('click');
+                panel.chooseTreeCard(treeCard);
                 clickNamed(panel, treeCard, 'treeTab', tabLabel);
                 return treeCard;
             };
@@ -3417,7 +3419,7 @@ describe('RecipeCockpitService', () => {
             // ▶ RUN FAKER AND RESET SELECTION SIT AT THE TOP OF THE TREECIPE TAB (#255), BUILT ON THE CARD'S FIRST EXPAND
             const expandCard = (panel: any, folderName: string) => {
                 const treeCard = treeCardFolded(panel, folderName);
-                panel.findAll(treeCard, 'treeToggle')[0].dispatch('click');
+                panel.chooseTreeCard(treeCard);
                 return treeCard;
             };
 
@@ -3501,7 +3503,7 @@ describe('RecipeCockpitService', () => {
                 panel.postToPanel({ command: 'recipeData', recipe: withoutHistory, renderSequence: 2 });
 
                 const bareCard = treeCardFolded(panel, 'Lead-ONLY');
-                panel.findAll(bareCard, 'treeToggle')[0].dispatch('click');
+                panel.chooseTreeCard(bareCard);
                 expect(textOf(panel, bareCard, 'treeTab')).toEqual(['Treecipe', 'Troubleshooting', 'Query']);
 
             });
@@ -3620,25 +3622,22 @@ describe('RecipeCockpitService', () => {
                 const headerOf = (treeCard: any) => treeCard.children[0];
                 const isOpen = (panel: any, treeCard: any) => !panel.isHidden(treeCard.children[1]);
 
-                it('opens and closes the card from a click anywhere on the row, and from its ▸ toggle', () => {
+                // #374: THE DROPDOWN CHOOSES THE CARD, SO THE HEADER NEITHER FOLDS IT NOR DRAWS A ▸
+                it('neither opens nor closes the card from a click on the row, and draws no ▸', () => {
 
                     const { panel } = renderHistoryRecipe();
                     const leadCard = treeCardFolded(panel, 'Lead-ONLY');
-                    const toggleElement = panel.findAll(leadCard, 'treeToggle')[0];
+                    panel.chooseTreeCard(leadCard);
+
+                    expect(panel.findAll(leadCard, 'treeToggle')).toEqual([]);
+                    expect(isOpen(panel, leadCard)).toBe(true);
 
                     headerOf(leadCard).dispatch('click');
-                    expect(isOpen(panel, leadCard)).toBe(true);
-                    expect(toggleElement.attributes['aria-expanded']).toBe('true');
-
                     panel.findAll(leadCard, 'treeTitle')[0].dispatch('click');
-                    expect(isOpen(panel, leadCard)).toBe(false);
-
                     panel.findAll(leadCard, 'treeFolder')[0].dispatch('click');
-                    expect(isOpen(panel, leadCard)).toBe(true);
 
-                    toggleElement.dispatch('click');
-                    expect(isOpen(panel, leadCard)).toBe(false);
-                    expect(toggleElement.attributes['aria-expanded']).toBe('false');
+                    expect(isOpen(panel, leadCard)).toBe(true);
+                    expect(panel.isHidden(leadCard)).toBe(false);
 
                 });
 

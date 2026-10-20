@@ -835,12 +835,12 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             expect(postedNamed(panel, 'loadDataOrgs')).toEqual([]);
 
-            panel.findAll(firstCard, 'treeHeader')[0].dispatch('click');
+            panel.chooseTreeCard(firstCard);
 
             expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
 
             panel.openTab(firstCard, 'Treecipe');
-            panel.findAll(secondCard, 'treeHeader')[0].dispatch('click');
+            panel.chooseTreeCard(secondCard);
 
             expect(postedNamed(panel, 'loadDataOrgs')).toEqual([{ command: 'loadDataOrgs' }]);
             panel.findAll(panel.cockpitBodyElement, 'dataOrgLoad').forEach((loadElement: any) => expect(panel.isHidden(loadElement)).toBe(true));
@@ -872,13 +872,13 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             const { panel } = renderDataOrgPanel();
             const [firstCard, secondCard] = panel.treeCards();
-            panel.findAll(firstCard, 'treeHeader')[0].dispatch('click');
+            panel.chooseTreeCard(firstCard);
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             postSelectionAndReadiness(panel, 1, 'first reason');
 
             expect(panel.findAll(firstCard, 'treeInsertReason').map((element: any) => element.textContent)).toEqual(["Can't insert: first reason"]);
 
-            panel.findAll(secondCard, 'treeHeader')[0].dispatch('click');
+            panel.chooseTreeCard(secondCard);
 
             expect(panel.findAll(secondCard, 'treeInsertReason').map((element: any) => element.textContent)).toEqual(["Can't insert: first reason"]);
             expect(viewOf(panel, 'dataOrgSelect').value).toBe('0');
@@ -1205,7 +1205,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 2 });
             expect(postedNamed(panel, 'loadDataOrgs')).toEqual([]);
 
-            panel.findAll(panel.treeCards()[0], 'treeHeader')[0].dispatch('click');
+            panel.chooseTreeCard(panel.treeCards()[0]);
             expect(postedNamed(panel, 'loadDataOrgs')).toHaveLength(1);
 
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 3 });

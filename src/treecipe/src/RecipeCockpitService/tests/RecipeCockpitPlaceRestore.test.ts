@@ -52,8 +52,9 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
         const treeCardOf = (panel: Panel, treeKey: string) => panel.treeCards()
             .find((treeCard: any) => panel.findAll(treeCard, 'treeFolder')[0]?.textContent === treeKey);
-        const isCardOpen = (panel: Panel, treeKey: string) => !panel.isHidden(panel.findAll(treeCardOf(panel, treeKey), 'treeBody')[0]);
-        const openCard = (panel: Panel, treeKey: string) => panel.findAll(treeCardOf(panel, treeKey), 'treeToggle')[0].dispatch('click');
+        // THE CARD THE TREECIPES DROPDOWN DRAWS (#374): ONE AT A TIME
+        const isCardOpen = (panel: Panel, treeKey: string) => !panel.isHidden(treeCardOf(panel, treeKey));
+        const openCard = (panel: Panel, treeKey: string) => panel.chooseTreeCard(treeCardOf(panel, treeKey));
         const clickTab = (panel: Panel, treeKey: string, tabLabel: string) => panel.openTab(treeCardOf(panel, treeKey), tabLabel);
         const selectedTabOf = (panel: Panel, treeKey: string) => panel.findAll(treeCardOf(panel, treeKey), 'treeTab')
             .find((tabElement: any) => tabElement.classList.contains('selected'))?.textContent;
@@ -109,7 +110,8 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
             render(panel, recipe);
 
-            expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
+            // ONE CARD IS DRAWN AT A TIME (#374): THE ONE CHOSEN LAST; THE OTHER KEEPS ITS TAB, OBJECTS AND PICKLISTS FOR WHEN IT IS CHOSEN
+            expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
             expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Treecipe');
             expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Account')).toBe(true);
             expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Contact')).toBe(false);
@@ -199,22 +201,18 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
         });
 
-        it('given the reader had used the org picker, asks for the orgs again after the draw with no card open', () => {
+        it('given the reader had used the org picker, asks for the orgs again after the draw with no card chosen', () => {
 
             const recipe = loadHistoryRecipe().recipeViewModel;
             const hiddenPanel = runPanelScript();
             render(hiddenPanel, recipe);
-            openCard(hiddenPanel, LEAD_TREE_KEY);
             hiddenPanel.findAll(hiddenPanel.cockpitBodyElement, 'dataOrgLoad')[0].dispatch('click');
-            openCard(hiddenPanel, LEAD_TREE_KEY);
-
-            expect(isCardOpen(hiddenPanel, LEAD_TREE_KEY)).toBe(false);
 
             const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
             render(panel, recipe);
 
+            expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
             expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
-            expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
             expect(indexOfCommand(panel, 'loadDataOrgs')).toBeGreaterThan(indexOfCommand(panel, 'rendered'));
 
         });
@@ -223,7 +221,8 @@ describe('RecipeCockpitService, the reader\'s place', () => {
         it('given a place whose org picker was never used, lists no orgs even with a card restored on its Treecipe tab: listing them runs the CLI\'s connection check', () => {
 
             const { panel: hiddenPanel, recipe } = buildReaderSession();
-            const savedPlace = { ...hiddenPanel.savedState(), isOrgPickerInUse: false };
+            // THE FIRST CARD, RESTORED ON ITS TREECIPE TAB, IS THE ONE THE DROPDOWN DRAWS
+            const savedPlace = { ...hiddenPanel.savedState(), isOrgPickerInUse: false, selectedTreeKey: undefined };
             expect(savedPlace.trees.find((savedTree: any) => savedTree.treeKey === ACCOUNT_TREE_KEY).selectedTab).toBe('treecipe');
 
             const panel = runPanelScript({ savedState: savedPlace });
@@ -280,7 +279,8 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 render(hiddenPanel, recipe);
                 openCard(hiddenPanel, LEAD_TREE_KEY);
                 const savedPlace = hiddenPanel.savedState();
-                const leadTreePlace = savedPlace.trees.find((savedTree: any) => savedTree.treeKey === LEAD_TREE_KEY);
+                const leadTreePlace = savedPlace.trees.find((savedTree: any) => savedTree.treeKey === LEAD_TREE_KEY)
+                    ?? { treeKey: LEAD_TREE_KEY, isExpanded: true, selectedTab: 'treecipe', searchQueries: { treecipe: '', datasets: '' }, expandedObjectKeys: [], openPicklistKeys: [] };
                 return {
                     recipe,
                     place: {
@@ -304,7 +304,8 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 expect(panel.findAll(treeCardOf(panel, LEAD_TREE_KEY), 'treeVersions')).toEqual([]);
                 expect(commandsPosted(panel)).not.toContain('loadVersionSummaries');
                 const savedLeadTree = panel.savedState().trees.find((savedTree: any) => savedTree.treeKey === LEAD_TREE_KEY);
-                expect(savedLeadTree.selectedTab).toBe('treecipe');
+                // A CARD BACK AT ITS DEFAULT IS NOT WRITTEN AT ALL
+                expect(savedLeadTree?.selectedTab ?? 'treecipe').toBe('treecipe');
                 expect(JSON.stringify(panel.savedState())).not.toMatch(/FakerJS|versions|expandedVersionRunFolderNames/);
             };
 
@@ -344,7 +345,8 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 render(hiddenPanel, recipe);
                 openCard(hiddenPanel, LEAD_TREE_KEY);
                 const savedPlace = hiddenPanel.savedState();
-                const leadTreePlace = savedPlace.trees.find((savedTree: any) => savedTree.treeKey === LEAD_TREE_KEY);
+                const leadTreePlace = savedPlace.trees.find((savedTree: any) => savedTree.treeKey === LEAD_TREE_KEY)
+                    ?? { treeKey: LEAD_TREE_KEY, isExpanded: true, selectedTab: 'treecipe', searchQueries: { treecipe: '', datasets: '' }, expandedObjectKeys: [], openPicklistKeys: [] };
                 return {
                     recipe,
                     place: {
@@ -369,7 +371,8 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 expect(searchInputOf(panel, LEAD_TREE_KEY, 'treeStructure').value).toBe('');
                 expect(panel.findAll(treeCardOf(panel, LEAD_TREE_KEY), 'statusFilter')).toEqual([]);
                 const savedLeadTree = panel.savedState().trees.find((savedTree: any) => savedTree.treeKey === LEAD_TREE_KEY);
-                expect(savedLeadTree.selectedTab).toBe('treecipe');
+                // A CARD BACK AT ITS DEFAULT IS NOT WRITTEN AT ALL
+                expect(savedLeadTree?.selectedTab ?? 'treecipe').toBe('treecipe');
                 expect(JSON.stringify(panel.savedState())).not.toMatch(/Brand|statusFilter|new-in-org|expandedDataObjectApiNames|compare|dataByOrg/);
             };
 
@@ -421,7 +424,8 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
             render(panel, recipe);
 
-            expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
+            expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
+            expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
             expect(panel.scrollToCalls).toEqual([]);
 
         });
@@ -436,7 +440,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             render(panel, otherRecipe);
 
             expect(panel.treeCards()).toHaveLength(2);
-            expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
+            expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
             expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
             expect(panel.scrollToCalls).toEqual([]);
             expect(panel.savedState().runFolderName).toBe(FAKER_JS_RUN_FOLDER_NAME);
@@ -453,13 +457,14 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 return panel.scrollToCalls.slice(scrollCallsBefore);
             };
 
-            const expectReaderSessionRestored = (panel: Panel) => {
-                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
+            // THE CARD ON SCREEN IS THE ONE CHOSEN LAST, OR THE ONE A FOCUS NAMES (#374); THE OTHER KEEPS ITS PLACE, HIDDEN
+            const expectReaderSessionRestored = (panel: Panel, shownTreeKey = LEAD_TREE_KEY) => {
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(shownTreeKey === ACCOUNT_TREE_KEY);
                 expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Account')).toBe(true);
                 expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Contact')).toBe(false);
                 expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').attributes['aria-expanded']).toBe('true');
                 expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Regions__c').attributes['aria-expanded']).toBe('false');
-                expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(true);
+                expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(shownTreeKey === LEAD_TREE_KEY);
                 expect(searchInputOf(panel, LEAD_TREE_KEY, 'treeDatasets').value).toBe('09-21');
             };
 
@@ -491,13 +496,13 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 reload(panel, recipe, focusTree);
 
                 expect(selectedTabOf(panel, focusedTreeKey)).toBe(focusedTabLabel);
-                expectReaderSessionRestored(panel);
+                expectReaderSessionRestored(panel, focusedTreeKey);
                 const otherTreeKey = focusedTreeKey === ACCOUNT_TREE_KEY ? LEAD_TREE_KEY : ACCOUNT_TREE_KEY;
                 expect(selectedTabOf(panel, otherTreeKey)).toBe(otherTreeKey === LEAD_TREE_KEY ? 'Previously Used Data Sets' : 'Treecipe');
 
             });
 
-            it('given a focus on a card the reader had closed, opens it and leaves the open cards open', () => {
+            it('given a focus on another card than the one chosen, chooses it and keeps the other card\'s place', () => {
 
                 jest.useFakeTimers();
                 const recipe = loadHistoryRecipe().recipeViewModel;
@@ -507,8 +512,9 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
                 reload(panel, recipe, { treeKey: LEAD_TREE_KEY, tab: 'datasets' });
 
-                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
                 expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(true);
+                expect(panel.treePicker().value).toBe('1');
                 expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previously Used Data Sets');
 
             });
@@ -519,7 +525,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
                 const scrollCalls = reload(panel, { ...recipe, selectedRunFolderName: FAKER_JS_RUN_FOLDER_NAME });
 
-                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
                 expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
                 expect(scrollCalls).toEqual([]);
                 expect(panel.savedState().runFolderName).toBe(FAKER_JS_RUN_FOLDER_NAME);
@@ -534,7 +540,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
                 panel.postToPanel({ command: 'recipeData', recipe: { ...recipe, selectedRunFolderName: FAKER_JS_RUN_FOLDER_NAME }, renderSequence: 2, carryPlaceAcrossRuns: true });
 
-                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
                 expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
 
             });
@@ -546,7 +552,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 render(panel, { ...recipe, selectedRunFolderName: FAKER_JS_RUN_FOLDER_NAME }, 2);
                 render(panel, recipe, 3);
 
-                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
                 expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
 
             });
@@ -560,7 +566,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 expect(commandsPosted(panel)).toContain('renderFailed');
                 render(panel, recipe, 3);
 
-                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
                 expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
 
             });
@@ -587,7 +593,9 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Account')).toBe(false);
                 expect(commandsPosted(panel).slice(postedBeforeReload)).not.toContain('loadPicklistValues');
                 expect(isCardOpen(panel, 'Lead-thru-Task')).toBe(false);
-                expect(panel.savedState().trees.map((savedTree: any) => savedTree.treeKey)).toEqual([ACCOUNT_TREE_KEY]);
+                // THE CHOSEN CARD IS GONE, SO THE FIRST IS DRAWN, AND IT HAS NOTHING OF ITS OWN TO KEEP
+                expect(panel.savedState().selectedTreeKey).toBeUndefined();
+                expect(panel.savedState().trees.map((savedTree: any) => savedTree.treeKey)).toEqual([]);
 
             });
 
@@ -624,7 +632,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
                 const panel = runPanelScript({ savedState: hiddenPanel.savedState() });
                 render(panel, recipe, 1);
-                openCard(panel, LEAD_TREE_KEY);
+                openCard(panel, ACCOUNT_TREE_KEY);
                 render(panel, recipe, 2);
 
                 expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
@@ -658,8 +666,8 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             const thirdPanel = runPanelScript({ savedState: secondPanel.savedState() });
             render(thirdPanel, recipe);
 
-            expect(isCardOpen(thirdPanel, ACCOUNT_TREE_KEY)).toBe(false);
-            expect(isCardOpen(thirdPanel, LEAD_TREE_KEY)).toBe(true);
+            expect(isCardOpen(thirdPanel, ACCOUNT_TREE_KEY)).toBe(true);
+            expect(isCardOpen(thirdPanel, LEAD_TREE_KEY)).toBe(false);
 
         });
 
@@ -720,7 +728,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             expect(savedText).not.toContain('Hot');
             expect(savedText).not.toContain(ORG_USERNAME);
             expect(savedText).not.toContain('devhub');
-            expect(Object.keys(panel.savedState()).sort()).toEqual(['isFavoritesOnly', 'isOrgPickerInUse', 'runFolderName', 'scrollY', 'trees', 'version']);
+            expect(Object.keys(panel.savedState()).sort()).toEqual(['isFavoritesOnly', 'isOrgPickerInUse', 'runFolderName', 'scrollY', 'selectedTreeKey', 'trees', 'version']);
             panel.savedState().trees.forEach((savedTree: any) => {
                 expect(Object.keys(savedTree).sort()).toEqual(['expandedObjectKeys',
                     'isExpanded', 'openPicklistKeys', 'searchQueries', 'selectedTab', 'treeKey']);
@@ -786,7 +794,8 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
                 const panel = renderFrom(savedState);
 
-                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(false);
+                expect(isCardOpen(panel, ACCOUNT_TREE_KEY)).toBe(true);
+                expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(false);
                 expect(commandsPosted(panel)).not.toContain('renderFailed');
 
             });
@@ -804,7 +813,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
                 const throwingState = { get version(): number { throw new Error('state is gone'); } };
                 const panelWithThrowingState = renderFrom(throwingState);
 
-                expect(isCardOpen(panelWithThrowingState, ACCOUNT_TREE_KEY)).toBe(false);
+                expect(isCardOpen(panelWithThrowingState, ACCOUNT_TREE_KEY)).toBe(true);
                 expect(commandsPosted(panelWithThrowingState)).not.toContain('renderFailed');
 
             });

@@ -66,7 +66,9 @@ const expectSectionAlwaysOpen = (panel: Panel, sectionElement: any) => {
 const expectOrgSectionAlwaysOpen = (panel: Panel) => expectSectionAlwaysOpen(panel, orgSectionOf(panel));
 const expectTreecipesSectionAlwaysOpen = (panel: Panel) => {
     expectSectionAlwaysOpen(panel, treecipesSectionOf(panel));
-    panel.treeCards().forEach((treeCard: any) => expect(panel.isHidden(treeCard)).toBeFalse());
+    // ONE CARD IS DRAWN, THE ONE THE SECTION'S DROPDOWN CHOSE (#374)
+    expect(panel.treePicker()).toBeDefined();
+    expect(panel.shownTreeCards()).toHaveLength(1);
 };
 const commandsPosted = (panel: Panel) => panel.postedHostMessages.map((hostMessage: any) => hostMessage.command);
 

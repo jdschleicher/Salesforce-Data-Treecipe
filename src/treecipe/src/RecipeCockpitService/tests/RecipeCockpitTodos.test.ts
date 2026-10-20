@@ -570,7 +570,8 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
             expect(savedTreeOf(panel).isTodosOnly).toBe(true);
 
             checkOf(panel, panel.treeCards()[0]).dispatch('click');
-            expect(savedTreeOf(panel)).not.toHaveProperty('isTodosOnly');
+            // A CARD BACK AT ITS DEFAULT IS NOT WRITTEN AT ALL (#374)
+            expect(savedTreeOf(panel) ?? {}).not.toHaveProperty('isTodosOnly');
 
         });
 

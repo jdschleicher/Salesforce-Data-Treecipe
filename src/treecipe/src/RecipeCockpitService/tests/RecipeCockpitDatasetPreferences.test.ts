@@ -432,7 +432,7 @@ describe('RecipeCockpitService, data set names and favorites', () => {
         const leadCardOf = (panel: ReturnType<typeof runPanelScript>) => panel.treeCards()[1];
         const openLeadDatasets = (panel: ReturnType<typeof runPanelScript>) => {
             const leadCard = leadCardOf(panel);
-            panel.findAll(leadCard, 'treeToggle')[0].dispatch('click');
+            panel.chooseTreeCard(leadCard);
             panel.openTab(leadCard, DATASETS_TAB_LABEL);
             return panel.tabPanelOf(leadCard, 'treeDatasets');
         };

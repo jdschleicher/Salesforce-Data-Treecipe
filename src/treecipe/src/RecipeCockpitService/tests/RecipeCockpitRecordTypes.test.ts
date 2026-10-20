@@ -1039,7 +1039,8 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             expect(savedTree().searchQueries).not.toHaveProperty('recordTypes');
 
             sectionHeaderOf(panel).dispatch('click');
-            expect(savedTree()).not.toHaveProperty('isRecordTypesExpanded');
+            // A CARD BACK AT ITS DEFAULT IS NOT WRITTEN AT ALL (#374)
+            expect(savedTree() ?? {}).not.toHaveProperty('isRecordTypesExpanded');
 
         });
 

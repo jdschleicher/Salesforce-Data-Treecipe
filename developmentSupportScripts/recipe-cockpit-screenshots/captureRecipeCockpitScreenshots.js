@@ -144,9 +144,9 @@ class RecipeCockpitScreenshots {
         await page.locator(selector).nth(index).click();
     }
 
-    // OPENING A CARD ASKS THE HOST FOR ITS ORGS; ONE MADE-UP SANDBOX, NOT SELECTED, IS THE PICKER AT REST
+    // THE FIRST CARD IS DRAWN WITH THE MODEL (#374); CLICKING ITS TREECIPE TAB ASKS THE HOST FOR ITS ORGS; ONE MADE-UP SANDBOX, NOT SELECTED, IS THE PICKER AT REST
     static async openFirstCard(page) {
-        await this.clickNth(page, '.treeCard .treeToggle', 0);
+        await this.clickNth(page, '.treeCard:not(.hidden) .treeTab', 0);
         await page.evaluate((hostMessage) => window.postMessage(hostMessage, '*'), {
             command: 'dataOrgList', orgLabels: ['example-sandbox'], selectedOrgIndex: null,
             noOrgsMessage: '', hiddenOrgNote: '', forgottenOrgNotice: '', renderSequence: 1
