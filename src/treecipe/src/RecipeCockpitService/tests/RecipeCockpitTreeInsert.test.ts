@@ -72,7 +72,7 @@ import {
 import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
-import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
+import { OrgConnectionStatusUnavailableError, SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
@@ -357,6 +357,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             buildWorkspace(buildFakerJsAccountRecipe(2, 3));
 
             (vscode.window.createWebviewPanel as jest.Mock).mockImplementation(() => ({
+                visible: true,
                 reveal: jest.fn(),
                 onDidDispose: jest.fn(),
                 webview: {
@@ -545,6 +546,78 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 expect(runFakerCalls()).toEqual([]);
                 expect(postedNamed('insertState').at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
                 panelState().scratchOrgStateMessage = undefined;
+
+            });
+
+            it('given a CLI that cannot list the orgs, says why and gives the button back (#378 review)', async () => {
+
+                const listingError = new OrgConnectionStatusUnavailableError('sf org list timed out [x](command:y).');
+                (SalesforceOrgService.listDataOrgDetails as jest.Mock).mockRejectedValue(listingError);
+
+                await openUnselectedCockpit(FAKER_JS_RUN);
+                postedPanelMessages.length = 0;
+                await insertAccountTree();
+
+                expect(showWarningMessageSpy).toHaveBeenCalledWith(`Nothing was generated or inserted: ${RecipeYamlScalar.escapeForNotification(listingError.message)}`);
+                expect(showWarningMessageSpy.mock.calls[0][0]).not.toContain('[x](command:y)');
+                expect(getConnectionSpy).not.toHaveBeenCalled();
+                expect(panelState().insertStateMessage).toBeUndefined();
+                expect(postedNamed('insertState').at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+
+            });
+
+            it('given any other listing failure, gives the button back and reports it as an error', async () => {
+
+                expectsCapturedError = true;
+                promptSpy.mockRejectedValue(new Error('picker exploded'));
+
+                await openUnselectedCockpit(FAKER_JS_RUN);
+                postedPanelMessages.length = 0;
+                await insertAccountTree();
+
+                expect(handleCapturedErrorSpy).toHaveBeenCalledWith(expect.objectContaining({ message: 'picker exploded' }), expect.any(String));
+                expect(panelState().insertStateMessage).toBeUndefined();
+                expect(postedNamed('insertState').at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+
+            });
+
+            it('gives the button back, and reports the error, when checking the picked org throws', async () => {
+
+                expectsCapturedError = true;
+                useConnection(buildFakeConnection());
+                await openUnselectedCockpit(FAKER_JS_RUN);
+                jest.spyOn(RecipeCockpitService as any, 'selectDataOrg').mockRejectedValue(new Error('describe exploded'));
+                postedPanelMessages.length = 0;
+
+                await insertAccountTree();
+
+                expect(handleCapturedErrorSpy).toHaveBeenCalledWith(expect.objectContaining({ message: 'describe exploded' }), expect.any(String));
+                expect(runFakerCalls()).toEqual([]);
+                expect(panelState().insertStateMessage).toBeUndefined();
+                expect(postedNamed('insertState').at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+
+            });
+
+            it('holds the window while the picked org is checked, so a reveal replays the insert and the router refuses a run that would change the selection (#378 review)', async () => {
+
+                const connection = buildFakeConnection();
+                useConnection(connection);
+                await openUnselectedCockpit(FAKER_JS_RUN);
+                const realSelectDataOrg = ( RecipeCockpitService as any ).selectDataOrg.bind(RecipeCockpitService);
+                let heldDuringCheck: unknown;
+                let routedDuringCheck: unknown;
+                jest.spyOn(RecipeCockpitService as any, 'selectDataOrg').mockImplementation(async (...selectArguments: any[]) => {
+                    heldDuringCheck = panelState().insertStateMessage;
+                    routedDuringCheck = RecipeCockpitService.routePanelMessage({ command: 'createScratchOrg' }, panelState());
+                    return realSelectDataOrg(...selectArguments);
+                });
+
+                await insertAccountTree();
+
+                expect(heldDuringCheck).toEqual({ command: 'insertState', isRunning: true, treeKey: ACCOUNT_TREE_KEY });
+                expect(routedDuringCheck).toMatchObject({ kind: 'postScratchOrgState' });
+                expect(insertedOf(connection, 'Account')).toHaveLength(2);
+                expect(panelState().insertStateMessage).toBeUndefined();
 
             });
 
@@ -1051,6 +1124,28 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             expect(postedNamed('recipeData')).toHaveLength(recipeDataPostsBefore);
             expect(panelState().dataOrgSelection).toBe(selectionBefore);
             expect(executeCommand).not.toHaveBeenCalledWith(RECIPE_COCKPIT_OPEN_COMMAND, expect.anything());
+
+        });
+
+        it('focuses a HIDDEN cockpit through the model\'s replay, since its reveal reloads the document (#378 review)', async () => {
+
+            await openSelectedCockpit(FAKER_JS_RUN);
+            const cockpitPanel = (RecipeCockpitService as any).recipeCockpitPanel;
+            cockpitPanel.visible = false;
+            postedPanelMessages.length = 0;
+            const focusTree = { treeKey: ACCOUNT_TREE_KEY, tab: 'troubleshooting', troubleshootingSubTab: 'fields' };
+
+            await RecipeCockpitService.openTroubleshootingAfterInsert(temporaryWorkspaceRoot, { runFolderName: FAKER_JS_RUN, treeFolderName: ACCOUNT_TREE_KEY, troubleshootingSubTab: 'fields' });
+
+            expect(cockpitPanel.reveal).toHaveBeenCalled();
+            expect(postedNamed('focusTree')).toEqual([]);
+            expect(executeCommand).not.toHaveBeenCalledWith(RECIPE_COCKPIT_OPEN_COMMAND, expect.anything());
+
+            // THE RELOADED DOCUMENT SAYS "ready", AND THE REPLAYED MODEL CARRIES THE FOCUS UNTIL IT IS DRAWN
+            await receivedMessageHandler({ command: 'ready' });
+            expect(postedNamed('recipeData').at(-1).focusTree).toEqual(focusTree);
+            await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+            expect(panelState().openFocusTree).toBeUndefined();
 
         });
 

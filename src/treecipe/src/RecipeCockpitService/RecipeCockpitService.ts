@@ -8649,48 +8649,67 @@ export class RecipeCockpitService {
         let dataOrgListing: IDataOrgListing | undefined;
         let chosenOrgDetail: IDataOrgDetail | undefined;
 
+        // THE INSERT'S STATE HOLDS THE WINDOW UNTIL THE PICK HAS BEEN CHECKED, SO NO RUN THAT CHANGES THE SELECTION STARTS MEANWHILE AND A REVEAL REPLAYS IT
         try {
-            chosenOrgDetail = await VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(
-                SalesforceOrgService.listDataOrgDetails(panelState.workspaceRoot).then(listing => {
-                    dataOrgListing = listing;
-                    return { orgDetails: listing.orgDetails, emptyListMessage: this.buildDataOrgNoOrgsMessage(listing.hiddenOrgReasonCounts) };
-                }),
-                RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER
-            );
+
+            try {
+                chosenOrgDetail = await VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(
+                    SalesforceOrgService.listDataOrgDetails(panelState.workspaceRoot).then(listing => {
+                        dataOrgListing = listing;
+                        return { orgDetails: listing.orgDetails, emptyListMessage: this.buildDataOrgNoOrgsMessage(listing.hiddenOrgReasonCounts) };
+                    }),
+                    RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER
+                );
+            } catch (listingError) {
+                // THE PANEL DISABLED THE BUTTON ON THE CLICK, SO A LISTING THAT FAILED STILL GIVES IT BACK
+                giveButtonBack();
+                if ( listingError instanceof OrgConnectionStatusUnavailableError ) {
+                    VSCodeWorkspaceService.showWarningMessage(`Nothing was generated or inserted: ${RecipeYamlScalar.escapeForNotification(listingError.message)}`);
+                    return;
+                }
+                throw listingError;
+            }
+
+            // A DISMISSED PICK, A NEW MODEL, OR AN ORG CHOSEN IN THE DROPDOWN MEANWHILE: NOTHING MORE IS DONE
+            const orgIndex = chosenOrgDetail && dataOrgListing ? dataOrgListing.orgDetails.findIndex(orgDetail => orgDetail.username === chosenOrgDetail.username) : -1;
+            if ( orgIndex < 0 || !isClickStillCurrent() || panelState.dataOrgSelection ) {
+                giveButtonBack();
+                return;
+            }
+
+            panelState.dataOrgDetails = dataOrgListing.orgDetails;
+            this.postToPanel(cockpitPanel, {
+                command: 'dataOrgList',
+                orgLabels: dataOrgListing.orgDetails.map(orgDetail => this.buildDataOrgListLabel(orgDetail)),
+                selectedOrgIndex: orgIndex,
+                noOrgsMessage: '',
+                hiddenOrgNote: this.buildDataOrgHiddenNote(dataOrgListing.hiddenOrgReasonCounts),
+                forgottenOrgNotice: '',
+                renderSequence: clickedRecipeDataMessage.renderSequence
+            });
+
+            try {
+                await this.selectDataOrg(cockpitPanel, panelState, orgIndex);
+            } catch (selectionError) {
+                giveButtonBack();
+                throw selectionError;
+            }
+
+            const dataOrgSelection = panelState.dataOrgSelection;
+            if ( !isClickStillCurrent() || dataOrgSelection?.orgDetail.username !== chosenOrgDetail.username ) {
+                giveButtonBack();
+                return;
+            }
+
+            if ( dataOrgSelection.orgTypeDetail?.isSandbox !== true ) {
+                VSCodeWorkspaceService.showWarningMessage(`Nothing was generated or inserted: ${RecipeYamlScalar.escapeForNotification(this.buildDataOrgLabel(chosenOrgDetail))} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'could not be checked'}, and the Treecipe tab inserts only into a sandbox or scratch org.`);
+                giveButtonBack();
+                return;
+            }
+
         } finally {
+            // RELEASED ONLY HERE: THE ROUTER BELOW ANSWERS ANY INSERT STILL IN FLIGHT WITH ITS STATE INSTEAD OF ROUTING IT
             panelState.insertStateMessage = undefined;
-        }
-
-        // A DISMISSED PICK, A NEW MODEL, OR AN ORG CHOSEN IN THE DROPDOWN MEANWHILE: NOTHING MORE IS DONE
-        const orgIndex = chosenOrgDetail && dataOrgListing ? dataOrgListing.orgDetails.findIndex(orgDetail => orgDetail.username === chosenOrgDetail.username) : -1;
-        if ( orgIndex < 0 || !isClickStillCurrent() || panelState.dataOrgSelection ) {
-            giveButtonBack();
-            return;
-        }
-
-        panelState.dataOrgDetails = dataOrgListing.orgDetails;
-        this.postToPanel(cockpitPanel, {
-            command: 'dataOrgList',
-            orgLabels: dataOrgListing.orgDetails.map(orgDetail => this.buildDataOrgListLabel(orgDetail)),
-            selectedOrgIndex: orgIndex,
-            noOrgsMessage: '',
-            hiddenOrgNote: this.buildDataOrgHiddenNote(dataOrgListing.hiddenOrgReasonCounts),
-            forgottenOrgNotice: '',
-            renderSequence: clickedRecipeDataMessage.renderSequence
-        });
-
-        await this.selectDataOrg(cockpitPanel, panelState, orgIndex);
-
-        const dataOrgSelection = panelState.dataOrgSelection;
-        if ( !isClickStillCurrent() || dataOrgSelection?.orgDetail.username !== chosenOrgDetail.username ) {
-            giveButtonBack();
-            return;
-        }
-
-        if ( dataOrgSelection.orgTypeDetail?.isSandbox !== true ) {
-            VSCodeWorkspaceService.showWarningMessage(`Nothing was generated or inserted: ${RecipeYamlScalar.escapeForNotification(this.buildDataOrgLabel(chosenOrgDetail))} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'could not be checked'}, and the Treecipe tab inserts only into a sandbox or scratch org.`);
-            giveButtonBack();
-            return;
         }
 
         const routedInsert = this.routePanelMessage({ command: 'insertTree', treeKey: treeKey }, panelState);
@@ -8927,17 +8946,14 @@ export class RecipeCockpitService {
     }
 
     /*
-        How the tree insert ended, with the results file a button opens (#301): "View errors" when a
-        record failed or the insert stopped, "View results" otherwise. A stopped insert is an ERROR
-        (#310), the one notification for it, since the shared insert was told not to show its own.
-        The insert writes that file once it has sent a file, so a cancel before that offers no
-        button. The panel draws no line for it. NOT AWAITED, so the insert ends without waiting for
-        the reader. treeLabel and orgLabel arrive escaped.
-    */
-    /*
-        How the insert ended, as ONE notification (#301). One that failed (#375) names the first
-        generated file that failed, opens it with "View failed file", and offers "Open
-        Troubleshooting" on the sub-tab the first failure's error points at, beside "View errors".
+        How the tree insert ended, as ONE notification (#301), with the results file a button opens:
+        "View errors" when a record failed or the insert stopped, "View results" otherwise. A stopped
+        insert is an ERROR (#310), the one notification for it, since the shared insert was told not
+        to show its own. The insert writes that file once it has sent a file, so a cancel before that
+        offers no button. One that failed (#375) also names the first generated file that failed,
+        opens it with "View failed file", and offers "Open Troubleshooting" on the sub-tab the first
+        failure's error points at. The panel draws no line for it. NOT AWAITED, so the insert ends
+        without waiting for the reader. treeLabel and orgLabel arrive escaped.
     */
     static showTreeInsertNotification(insertResult: IDataSetInsertResult, treeLabel: string, orgLabel: string, workspaceRoot: string, insertedTree?: { runFolderName: string; treeFolderName: string }) {
 
@@ -9009,6 +9025,15 @@ export class RecipeCockpitService {
             : undefined;
 
         if ( cockpitPanel && panelState.workspaceRoot === workspaceRoot && recipeDataMessage && focusTree ) {
+            /*
+                A HIDDEN panel's document is gone (retainContextWhenHidden is off) and the reveal
+                reloads it, so the focus rides on the model's replay until it is drawn, as an open's does.
+            */
+            if ( !cockpitPanel.visible ) {
+                panelState.openFocusTree = focusTree;
+                cockpitPanel.reveal(vscode.ViewColumn.One);
+                return;
+            }
             cockpitPanel.reveal(vscode.ViewColumn.One);
             this.postToPanel(cockpitPanel, { command: 'focusTree', focusTree: focusTree, renderSequence: recipeDataMessage.renderSequence });
             return;
