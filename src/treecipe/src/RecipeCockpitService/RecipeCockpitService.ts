@@ -38,6 +38,7 @@ import {
 import {
     DevHubConfigSource,
     IDataOrgDetail,
+    IDataOrgListing,
     IOrgDescribeSource,
     IOrgQuerySource,
     IOrgTypeDetail,
@@ -62,6 +63,7 @@ import {
     RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD
 } from './RecipeCockpitRecordCreation';
 import { CollectionsApiService, DataSetRecordPreparer, IDataSetInsertResult } from '../CollectionsApiService/CollectionsApiService';
+import { RecipeCockpitInsertFailureTriage } from './RecipeCockpitInsertFailureTriage';
 import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { DATASET_COLLECTIONS_API_FOLDER_NAME, DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
@@ -155,6 +157,8 @@ export const RECIPE_COCKPIT_LOAD_PHASES = {
 
 
 export const RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND = 'treecipe.generateTreecipe';
+// A FAILED INSERT'S "Open Troubleshooting" (#375) OPENS A CLOSED COCKPIT THROUGH ITS OWN COMMAND, SO THE FEATURE FLAG STILL DECIDES
+export const RECIPE_COCKPIT_OPEN_COMMAND = 'treecipe.openRecipeCockpit';
 // THE COCKPIT RELOADS THE RUN GENERATION WROTE, SO ITS COMPLETION TOAST WOULD ONLY PULL THE READER OUT OF THE PANEL (#206)
 export const RECIPE_COCKPIT_GENERATE_TREECIPE_OPTIONS = { isCompletionNotificationSuppressed: true };
 
@@ -462,6 +466,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.',
             'Under the run list, the Target Org Management section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll. The Treecipes section below it holds the cards.',
+            'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all with a link to each line.',
             'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types and Global Value Sets, each with its own search. It opens on the one you chose last.',
             'Validation Rules lists each object\'s validation rules from your project: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not. Show formula opens a rule\'s formula.'
@@ -1128,6 +1133,22 @@ export interface IRecipeCockpitTreeFocus {
     tab: RecipeCockpitTreeTab;
     // OPENS THE TREECIPE TAB'S RECORD TYPES SECTION (#321), SCROLLED TO THE OBJECT "Change record types" (#196) IS ABOUT
     recordTypes?: { objectApiName?: string };
+    // WITH tab 'troubleshooting': THE SUB-TAB A FAILED INSERT'S "Open Troubleshooting" (#375) SELECTS
+    troubleshootingSubTab?: RecipeCockpitTroubleshootingSubTab;
+}
+
+// WHAT AN OPEN OF THE COCKPIT CAN BE ASKED TO FOCUS ONCE ITS RUN IS LOADED
+export type RecipeCockpitOpenFocusRequest = IRecipeCockpitRecordTypesFocusRequest | IRecipeCockpitTroubleshootingFocusRequest;
+
+/*
+    "Open Troubleshooting" (#375) on a cockpit that was closed or shows another run: the run and the
+    tree are NAMES, matched against the run once it is loaded, as "Change record types" (#196) names
+    an object. A tree no card has gets no focus.
+*/
+export interface IRecipeCockpitTroubleshootingFocusRequest {
+    runFolderName: string;
+    treeFolderName: string;
+    troubleshootingSubTab: RecipeCockpitTroubleshootingSubTab;
 }
 
 /*
@@ -1161,14 +1182,14 @@ export interface IRecipeCockpitDatasetRecordCountsMessage {
 }
 
 /*
-    Whether a generate-only run (#293) started from this panel is still running on one tree. Only
-    that tree's button is disabled while it is -- every other card can still generate -- and the
-    message is replayed on a reveal so a reloaded document does not offer a second run of that tree.
+    A failed tree insert's "Open Troubleshooting" (#375) on the model already on screen: the card is
+    opened on that tab and sub-tab in place, so the org selection and readiness stay. renderSequence
+    names the model, and the panel drops it for any other.
 */
-export interface IRecipeCockpitGenerateStateMessage {
-    command: 'generateState';
-    isRunning: boolean;
-    treeKey: string;
+export interface IRecipeCockpitFocusTreeMessage {
+    command: 'focusTree';
+    focusTree: IRecipeCockpitTreeFocus;
+    renderSequence: number;
 }
 
 /*
@@ -1200,7 +1221,7 @@ export const RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE = 'No sandbox or scratch org
 // WHAT DATA-BY-ORG SHOWS BESIDE THE DROPDOWN, AND ITS SPINNER, WHILE THE CLI IS ASKED WHICH ORGS ARE CONNECTED
 export const RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT = 'Checking org connections…';
 
-// WHAT EVERY TREE'S "Generates only:" SAYS WHILE THAT CHECK RUNS: THE ORG IN THE DROPDOWN IS NOT CONFIRMED YET (#305)
+// WHAT EVERY TREE'S "Can't insert:" SAYS WHILE THAT CHECK RUNS: THE ORG IN THE DROPDOWN IS NOT CONFIRMED YET (#305)
 export const RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON = 'checking the org connection…';
 
 // THE DROPDOWN'S ONE OPTION WHILE THE CHECK RUNS AND NO ORG IS REMEMBERED OR SET AS THE CLI'S DEFAULT
@@ -1278,7 +1299,7 @@ export interface IRecipeCockpitDataOrgReadinessMessage {
     renderSequence: number;
 }
 
-// AN INSERT IN FLIGHT DISABLES ITS OWN TREE'S BUTTON AND TURNS EVERY OTHER INTO GENERATE ONLY (#293); REPLAYED ON A RELOAD SO A RELOADED DOCUMENT DOES NOT OFFER A SECOND
+// AN INSERT IN FLIGHT DISABLES ITS OWN TREE'S BUTTON AND DISABLES EVERY OTHER (#375); REPLAYED ON A RELOAD SO A RELOADED DOCUMENT DOES NOT OFFER A SECOND
 export interface IRecipeCockpitInsertStateMessage {
     command: 'insertState';
     isRunning: boolean;
@@ -1641,7 +1662,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitLoadFailedMessage
                                         | IRecipeCockpitPicklistValuesMessage
                                         | IRecipeCockpitDatasetRecordCountsMessage
-                                        | IRecipeCockpitGenerateStateMessage
+                                        | IRecipeCockpitFocusTreeMessage
                                         | IRecipeCockpitDataOrgListMessage
                                         | IRecipeCockpitDataOrgProvisionalMessage
                                         | IRecipeCockpitDataOrgSelectionMessage
@@ -1717,15 +1738,17 @@ export interface IRecipeCockpitDatasetAddedMessage {
 
 export const RECIPE_COCKPIT_INSERT_CONFIRM_LABEL = 'Generate and insert';
 
-// THE INSERT DIALOG'S SECOND CHOICE (#293): THE SAME GENERATION, WITH NO CONNECTION AND NO INSERT
-export const RECIPE_COCKPIT_GENERATE_ONLY_CONFIRM_LABEL = 'Generate only';
-
-// WHAT THE ONE BUTTON READS WHEN THE INSERT IS NOT AVAILABLE: IT GENERATES, AS Run Faker by Recipe DOES (#293)
-export const RECIPE_COCKPIT_GENERATE_ACTION_LABEL = 'Generate fake data';
-
-export const RECIPE_COCKPIT_GENERATE_RUNNING_LABEL = 'Generating…';
-
+// THE ONE BUTTON ALWAYS GENERATES AND INSERTS (#375); WHAT STOPS AN INSERT DISABLES IT, AND GENERATING ONLY IS Run Faker by Recipe'S
 export const RECIPE_COCKPIT_INSERT_ACTION_LABEL = 'Generate fake data and insert';
+
+// THE ONE REASON THAT LEAVES THE BUTTON ENABLED (#375): A CLICK ASKS FOR THE ORG IN THE COMMAND PALETTE
+export const RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON = 'No org is chosen yet.';
+
+export const RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE = 'You will be asked which org to insert into.';
+
+export const RECIPE_COCKPIT_CANNOT_INSERT_PREFIX = 'Can\'t insert: ';
+
+export const RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER = 'Select the sandbox or scratch org to generate this tree into';
 
 export const RECIPE_COCKPIT_INSERT_RUNNING_LABEL = 'Inserting…';
 
@@ -1733,6 +1756,11 @@ export const RECIPE_COCKPIT_INSERT_RUNNING_LABEL = 'Inserting…';
 export const RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL = 'View errors';
 
 export const RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL = 'View results';
+
+// A FAILED INSERT'S OTHER TWO BUTTONS (#375): THE FIRST GENERATED FILE THAT FAILED, AND THE CARD'S TROUBLESHOOTING TAB
+export const RECIPE_COCKPIT_INSERT_VIEW_FAILED_FILE_LABEL = 'View failed file';
+
+export const RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL = 'Open Troubleshooting';
 
 // THE SLICE OF vscode.Memento THE COCKPIT USES, SO A TEST CAN HAND IN A MAP
 export interface IRecipeCockpitWorkspaceState {
@@ -1779,7 +1807,6 @@ export interface IRecipeCockpitTreeHistoryAllowLists {
     openableDatasetFolderNames: Set<string>;
     insertableDatasetFolderNames: Set<string>;
     countableDatasetFolderNames: Set<string>;
-    generatableTreeKeys: Set<string>;
     // THE CARDS ✎ AND ☆ ARE DRAWN ON: EVERY CARD WITH A FOLDER, WHICH LEAVES OUT ONLY THE UNGROUPED ONE
     nameableTreeKeys: Set<string>;
     // THE DATA SET ROWS ✎ AND ☆ ARE DRAWN ON: EVERY ROW THE RENDERED HISTORIES LIST
@@ -1812,8 +1839,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'loadDatasetRecordCounts'; datasetFolderName: string; datasetFolderPath: string; renderSequence: number }
     | { kind: 'openDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
     | { kind: 'insertDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
-    | { kind: 'generateTree'; treeKey: string; recipeFilePath: string }
-    | { kind: 'postGenerateState'; hostMessage: IRecipeCockpitGenerateStateMessage }
+    | { kind: 'promptInsertOrg'; treeKey: string; recipeFilePath: string }
     | { kind: 'loadDataOrgs' }
     | { kind: 'selectDataOrg'; orgIndex: number }
     | { kind: 'refreshDataOrgs' }
@@ -1896,10 +1922,6 @@ export interface IRecipeCockpitPanelState {
     isGenerateTreecipeInFlight: boolean;
     pendingIsGenerateTreecipeOffered: boolean;
     isGenerateTreecipeOffered: boolean;
-    // ONE ENTRY PER TREE GENERATING ONLY (#293): A TREE'S RUN HOLDS ITS OWN BUTTON, NEVER ANOTHER CARD'S
-    generateStateMessages: Map<string, IRecipeCockpitGenerateStateMessage>;
-    // A GENERATE-ONLY RUN'S RELOAD, HELD WHILE ANOTHER TREE'S INSERT RUNS: A RELOAD DROPS THE ORG SELECTION THAT INSERT CONFIRMED
-    deferredReloadFocus?: IRecipeCockpitTreeFocus;
     reportedFailureDescriptions: Set<string>;
     pendingDataOrgObjectApiNames: Set<string>;
     dataOrgObjectApiNames: Set<string>;
@@ -4128,7 +4150,6 @@ export class RecipeCockpitService {
             openableDatasetFolderNames: new Set(),
             insertableDatasetFolderNames: new Set(),
             countableDatasetFolderNames: new Set(),
-            generatableTreeKeys: new Set(),
             nameableTreeKeys: new Set(),
             nameableDatasetFolderNames: new Set(),
             selectableObjectKeys: new Set(),
@@ -4139,9 +4160,15 @@ export class RecipeCockpitService {
 
     }
 
-    static isTreeFocus(focusRequest: IRecipeCockpitTreeFocus | IRecipeCockpitRecordTypesFocusRequest): focusRequest is IRecipeCockpitTreeFocus {
+    static isTreeFocus(focusRequest: IRecipeCockpitTreeFocus | RecipeCockpitOpenFocusRequest): focusRequest is IRecipeCockpitTreeFocus {
 
         return typeof (focusRequest as IRecipeCockpitTreeFocus).treeKey === 'string';
+
+    }
+
+    static isTroubleshootingFocusRequest(focusRequest: IRecipeCockpitTreeFocus | RecipeCockpitOpenFocusRequest): focusRequest is IRecipeCockpitTroubleshootingFocusRequest {
+
+        return typeof (focusRequest as IRecipeCockpitTroubleshootingFocusRequest).treeFolderName === 'string';
 
     }
 
@@ -4191,10 +4218,6 @@ export class RecipeCockpitService {
         const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
 
         recipeViewModel.trees.forEach(tree => {
-
-            if ( tree.runFakerRecipeFileName ) {
-                treeHistoryAllowLists.generatableTreeKeys.add(tree.treeKey);
-            }
 
             tree.objects
                 .map(treeObject => objectsByApiName.get(treeObject.objectApiName))
@@ -4285,7 +4308,6 @@ export class RecipeCockpitService {
             dataOrgObjectApiNames: new Set(),
             dataOrgDetails: [],
             dataOrgRequestSequence: 0,
-            generateStateMessages: new Map(),
             pendingInsertableTreeKeys: new Set(),
             insertableTreeKeys: new Set(),
             pendingInsertableFriendTargets: new Map(),
@@ -4353,7 +4375,7 @@ export class RecipeCockpitService {
     */
     static async openRecipeCockpitPanel(workspaceRoot: string,
                                         workspaceState?: IRecipeCockpitWorkspaceState,
-                                        recordTypesFocusRequest?: IRecipeCockpitRecordTypesFocusRequest): Promise<vscode.WebviewPanel> {
+                                        openFocusRequest?: RecipeCockpitOpenFocusRequest): Promise<vscode.WebviewPanel> {
 
         const existingCockpitPanel = this.recipeCockpitPanel;
         // A PLACE STILL WAITING TO BE WRITTEN BELONGS TO THE WORKSPACE STATE IT WAS SAVED UNDER
@@ -4378,9 +4400,10 @@ export class RecipeCockpitService {
             "Change record types" (#196) is about the run Generate Treecipe just wrote, which is the
             newest: neither the run on screen nor a remembered place is carried to it.
         */
-        const persistedPanelPlace = previousPanelState?.recipeDataMessage || recordTypesFocusRequest ? undefined : this.readPersistedPanelPlace(workspaceState);
-        const carriedRunFolderName = recordTypesFocusRequest
-            ? undefined
+        const persistedPanelPlace = previousPanelState?.recipeDataMessage || openFocusRequest ? undefined : this.readPersistedPanelPlace(workspaceState);
+        // "Open Troubleshooting" (#375) IS ABOUT THE RUN THE INSERT WAS GENERATED FROM, WHICH IT NAMES
+        const carriedRunFolderName = openFocusRequest
+            ? ( this.isTroubleshootingFocusRequest(openFocusRequest) ? openFocusRequest.runFolderName : undefined )
             : previousPanelState?.recipeDataMessage?.recipe.selectedRunFolderName || persistedPanelPlace?.runFolderName || undefined;
 
         const cockpitPanel = existingCockpitPanel
@@ -4458,7 +4481,7 @@ export class RecipeCockpitService {
             cockpitPanel,
             workspaceRoot,
             carriedRunFolderName,
-            recordTypesFocusRequest,
+            openFocusRequest,
             persistedPanelPlace
         );
 
@@ -4475,7 +4498,7 @@ export class RecipeCockpitService {
     private static async loadRecipeIntoPanel(cockpitPanel: vscode.WebviewPanel,
                                                 workspaceRoot: string,
                                                 requestedRunFolderName?: string,
-                                                focusTree?: IRecipeCockpitTreeFocus | IRecipeCockpitRecordTypesFocusRequest,
+                                                focusTree?: IRecipeCockpitTreeFocus | RecipeCockpitOpenFocusRequest,
                                                 persistedPanelPlace?: IRecipeCockpitPanelPlace): Promise<void> {
 
         const loadSequence = ++this.recipeCockpitLoadSequence;
@@ -4606,33 +4629,6 @@ export class RecipeCockpitService {
         const pendingConfirmation = this.pendingConfirmation;
         this.pendingConfirmation = undefined;
         pendingConfirmation?.resolve(undefined);
-        if ( pendingConfirmation ) { this.scheduleReloadHeldForConfirmation(); }
-
-    }
-
-    /*
-        A generate-only run that ended while a confirmation was open held its reload (#349): a new
-        model would have answered the reader's dialog Cancel. It runs once the dialog is answered,
-        after the asking action has taken its answer -- unless an insert holds the selection, which
-        runs held reloads itself when it ends.
-    */
-    private static scheduleReloadHeldForConfirmation() {
-
-        setImmediate(() => {
-
-            const cockpitPanel = this.recipeCockpitPanel;
-            const panelState = this.recipeCockpitPanelState;
-            const heldReloadFocus = panelState.deferredReloadFocus;
-
-            if ( !cockpitPanel || !heldReloadFocus || panelState.insertStateMessage || this.pendingConfirmation || !panelState.recipeDataMessage ) {
-                return;
-            }
-
-            panelState.deferredReloadFocus = undefined;
-            this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, heldReloadFocus)
-                .catch(reloadError => ErrorHandlingService.handleCapturedError(reloadError, 'openRecipeCockpit'));
-
-        });
 
     }
 
@@ -4646,7 +4642,6 @@ export class RecipeCockpitService {
         }
 
         this.pendingConfirmation = undefined;
-        this.scheduleReloadHeldForConfirmation();
 
         const isOfferedChoice = typeof choice === 'number' && Number.isInteger(choice) && choice >= 0 && choice < pendingConfirmation.buttonLabels.length;
         pendingConfirmation.resolve(isOfferedChoice ? pendingConfirmation.buttonLabels[choice] : undefined);
@@ -4674,14 +4669,18 @@ export class RecipeCockpitService {
 
     private static renderRecipeModel(cockpitPanel: vscode.WebviewPanel,
                                         loadedRecipe: IRecipeCockpitLoadedRecipe,
-                                        focusRequest?: IRecipeCockpitTreeFocus | IRecipeCockpitRecordTypesFocusRequest,
+                                        focusRequest?: IRecipeCockpitTreeFocus | RecipeCockpitOpenFocusRequest,
                                         persistedPanelPlace?: IRecipeCockpitPanelPlace) {
 
         const panelState = this.recipeCockpitPanelState;
         const recipeViewModel = loadedRecipe.recipeViewModel;
         let focusTree: IRecipeCockpitTreeFocus | undefined;
         if ( focusRequest !== undefined ) {
-            focusTree = this.isTreeFocus(focusRequest) ? focusRequest : this.resolveRecordTypesFocus(recipeViewModel, focusRequest);
+            focusTree = this.isTreeFocus(focusRequest)
+                ? focusRequest
+                : this.isTroubleshootingFocusRequest(focusRequest)
+                    ? this.resolveTroubleshootingFocus(recipeViewModel, focusRequest)
+                    : this.resolveRecordTypesFocus(recipeViewModel, focusRequest);
         }
         this.applyTreePreferences(recipeViewModel.trees, this.readTreePreferences(this.recipeCockpitWorkspaceState));
         this.applyDatasetPreferences(recipeViewModel.trees, this.readDatasetPreferences(this.recipeCockpitWorkspaceState));
@@ -4997,16 +4996,6 @@ export class RecipeCockpitService {
 
             }
 
-            case 'generateTree':
-
-                await this.generateTreeDataset(cockpitPanel, panelState, panelAction.treeKey, panelAction.recipeFilePath);
-                return;
-
-            case 'postGenerateState':
-
-                this.postToPanel(cockpitPanel, panelAction.hostMessage);
-                return;
-
             case 'loadDataOrgs':
 
                 await this.loadDataOrgs(cockpitPanel, panelState);
@@ -5025,6 +5014,11 @@ export class RecipeCockpitService {
             case 'insertTree':
 
                 await this.insertTreeIntoOrg(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'promptInsertOrg':
+
+                await this.insertTreeIntoPromptedOrg(cockpitPanel, panelState, panelAction);
                 return;
 
             case 'postInsertState':
@@ -5730,7 +5724,7 @@ export class RecipeCockpitService {
         refusal naming the tree. A recipe that cannot be read, scanned or cut refuses rather than generating the whole
         tree the reader narrowed (#219).
     */
-    private static resolveRunFakerFilteredRecipe(panelState: IRecipeCockpitPanelState,
+    static resolveRunFakerFilteredRecipe(panelState: IRecipeCockpitPanelState,
                                                     treeKey: string,
                                                     recipeFilePath: string,
                                                     refusalPrefix: string): IRecipeCockpitRunFakerFilteredRecipe | { refusalMessage: string } | undefined {
@@ -5760,83 +5754,6 @@ export class RecipeCockpitService {
         const filteredRecipe = this.buildRunFakerFilteredRecipe(recipeText, tree, panelState.objectLevelsByApiName, recipeViewModel);
 
         return 'refusalMessage' in filteredRecipe ? refuse(filteredRecipe.refusalMessage) : filteredRecipe;
-
-    }
-
-    /*
-        The card's button when the insert is not available (#293): runs one tree's recipe through Run
-        Faker by Recipe, with that command's own confirmation, then adds the data set it wrote to the
-        card's Previously Used Data Sets in place (#226). A run that wrote none -- failed, refused or
-        cancelled at its modal -- or switched runs meanwhile, or wrote one the host cannot place,
-        reloads the run on that tab. Either way the state message is posted last, because the panel
-        disabled that card's button on the click, and a run that left it disabled would leave a card
-        that can never generate again. Other cards are never held: each tree's run is its own.
-
-        A recipe file gone since the model was drawn is said so here and nothing runs; the command
-        checks again on its own, since it is callable by id.
-    */
-    private static async generateTreeDataset(cockpitPanel: vscode.WebviewPanel,
-                                            panelState: IRecipeCockpitPanelState,
-                                            treeKey: string,
-                                            recipeFilePath: string) {
-
-        const isPanelStillCurrent = () => this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState;
-
-        const generateStateMessage: IRecipeCockpitGenerateStateMessage = { command: 'generateState', isRunning: true, treeKey: treeKey };
-        panelState.generateStateMessages.set(treeKey, generateStateMessage);
-        this.postToPanel(cockpitPanel, generateStateMessage);
-
-        const clickedRecipeDataMessage = panelState.recipeDataMessage;
-        let writtenDatasetFolderPath: unknown;
-        let hasRunFailed = false;
-        let runError: unknown;
-
-        try {
-
-            const filteredRecipe = this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot)
-                ? this.resolveRunFakerFilteredRecipe(panelState, treeKey, recipeFilePath, 'Nothing was generated for')
-                : undefined;
-
-            if ( filteredRecipe && 'refusalMessage' in filteredRecipe ) {
-                VSCodeWorkspaceService.showWarningMessage(filteredRecipe.refusalMessage);
-            } else if ( this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot) ) {
-                try {
-                    // A CARD WITH NOTHING EXCLUDED RUNS ITS RECIPE EXACTLY AS IT ALWAYS DID
-                    writtenDatasetFolderPath = await vscode.commands.executeCommand(RECIPE_COCKPIT_RUN_FAKER_COMMAND, recipeFilePath, ...( filteredRecipe ? [filteredRecipe] : [] ));
-                } catch (commandError) {
-                    hasRunFailed = true;
-                    runError = commandError;
-                }
-            } else {
-                VSCodeWorkspaceService.showWarningMessage(`The recipe file "${RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath))}" no longer exists in this workspace, so nothing was generated. The Recipe Cockpit has reloaded the run.`);
-            }
-
-            // A RELOAD IS OF THE RUN ON SCREEN NOW, NOT AT THE CLICK -- THE READER CAN SWITCH RUNS WHILE GENERATION RUNS
-            if ( isPanelStillCurrent() ) {
-                const isAddedInPlace = typeof writtenDatasetFolderPath === 'string'
-                                        && panelState.recipeDataMessage === clickedRecipeDataMessage
-                                        && this.postAddedDataset(cockpitPanel, panelState, clickedRecipeDataMessage, writtenDatasetFolderPath);
-                // HELD WHILE AN INSERT RUNS (A RELOAD CLEARS THE SELECTION IT RE-CHECKS) OR A CONFIRMATION IS OPEN (A NEW MODEL CANCELS IT, #349)
-                if ( !isAddedInPlace && ( panelState.insertStateMessage || this.pendingConfirmation ) ) {
-                    panelState.deferredReloadFocus = { treeKey: treeKey, tab: 'datasets' };
-                } else if ( !isAddedInPlace ) {
-                    await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'datasets' });
-                }
-            }
-
-        } finally {
-
-            panelState.generateStateMessages.delete(treeKey);
-
-            if ( isPanelStillCurrent() ) {
-                this.postToPanel(cockpitPanel, { command: 'generateState', isRunning: false, treeKey: treeKey });
-            }
-
-        }
-
-        if ( hasRunFailed ) {
-            throw runError;
-        }
 
     }
 
@@ -8779,8 +8696,7 @@ export class RecipeCockpitService {
         only its card's result and the new data set (#226), so the org selection and every other card
         stay on screen. One that threw, or whose run changed meanwhile, or whose data
         set the host cannot place, reloads the run onto the card's Treecipe tab, as before. The state
-        message is posted last, because the panel disabled the card's button on the click. A generate-only
-        run on another tree that had to reload meanwhile reloads here instead (#293).
+        message is posted last, because the panel disabled the card's button on the click.
     */
     private static async insertTreeIntoOrg(cockpitPanel: vscode.WebviewPanel,
                                             panelState: IRecipeCockpitPanelState,
@@ -8794,7 +8710,6 @@ export class RecipeCockpitService {
 
         const clickedRecipeDataMessage = panelState.recipeDataMessage;
         let isDatasetWritten = false;
-        let isGenerateOnly = false;
         let insertedDatasetFolderPath = '';
         let isInsertFinished = false;
         let hasInsertFailed = false;
@@ -8805,7 +8720,7 @@ export class RecipeCockpitService {
             isDatasetWritten = await this.performTreeInsert(cockpitPanel, panelState, insertAction, datasetFolderPath => {
                 isDatasetWritten = true;
                 insertedDatasetFolderPath = datasetFolderPath;
-            }, () => { isInsertFinished = true; }, () => { isGenerateOnly = true; });
+            }, () => { isInsertFinished = true; });
 
         } catch (thrownError) {
 
@@ -8818,23 +8733,15 @@ export class RecipeCockpitService {
 
             if ( isDatasetWritten && isPanelStillCurrent() && panelState.recipeDataMessage ) {
 
-                // ONLY AN INSERT THAT REACHED THE END, OR "Generate only", ADDS ITS DATA SET IN PLACE; ONE THAT THREW RELOADS
-                const isAddedInPlace = ( isInsertFinished || isGenerateOnly )
+                // ONLY AN INSERT THAT REACHED THE END ADDS ITS DATA SET IN PLACE; ONE THAT THREW RELOADS
+                const isAddedInPlace = isInsertFinished
                                         && panelState.recipeDataMessage === clickedRecipeDataMessage
                                         && this.postAddedDataset(cockpitPanel, panelState, clickedRecipeDataMessage, insertedDatasetFolderPath);
 
                 if ( !isAddedInPlace ) {
-                    panelState.deferredReloadFocus = undefined;
                     await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'treecipe' });
                 }
 
-            }
-
-            // A GENERATE-ONLY RUN THAT ENDED DURING THIS INSERT RELOADS NOW, ONTO ITS OWN CARD
-            const deferredReloadFocus = panelState.deferredReloadFocus;
-            panelState.deferredReloadFocus = undefined;
-            if ( deferredReloadFocus && isPanelStillCurrent() && panelState.recipeDataMessage ) {
-                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, deferredReloadFocus);
             }
 
             if ( isPanelStillCurrent() ) {
@@ -8849,13 +8756,112 @@ export class RecipeCockpitService {
 
     }
 
+    /*
+        "Generate fake data and insert" with no org chosen yet (#375). The org is asked for in the
+        command palette over the same listing the Target Org Management dropdown draws (sandbox,
+        scratch and the CLI's default only), then put in the dropdown and checked exactly as a pick
+        there is -- connection, Organization row, describes -- and remembered. Only an org that
+        answered it is a sandbox goes on to the insert, through the router like a click, so every
+        guard of a click holds; the insert re-checks readiness and the Organization row as always.
+        The insert's state holds the window while the reader chooses, and is given back on every
+        way out, because the panel disabled the button on the click.
+    */
+    private static async insertTreeIntoPromptedOrg(cockpitPanel: vscode.WebviewPanel,
+                                                    panelState: IRecipeCockpitPanelState,
+                                                    promptAction: Extract<RecipeCockpitPanelAction, { kind: 'promptInsertOrg' }>) {
+
+        const { treeKey } = promptAction;
+        const clickedRecipeDataMessage = panelState.recipeDataMessage;
+        const isClickStillCurrent = () => this.recipeCockpitPanel === cockpitPanel
+                                            && this.recipeCockpitPanelState === panelState
+                                            && panelState.recipeDataMessage === clickedRecipeDataMessage;
+        const giveButtonBack = () => isClickStillCurrent() && this.postToPanel(cockpitPanel, { command: 'insertState', isRunning: false, treeKey: treeKey });
+
+        panelState.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: treeKey };
+        this.postToPanel(cockpitPanel, panelState.insertStateMessage);
+
+        let dataOrgListing: IDataOrgListing | undefined;
+        let chosenOrgDetail: IDataOrgDetail | undefined;
+
+        // THE INSERT'S STATE HOLDS THE WINDOW UNTIL THE PICK HAS BEEN CHECKED, SO NO RUN THAT CHANGES THE SELECTION STARTS MEANWHILE AND A REVEAL REPLAYS IT
+        try {
+
+            try {
+                chosenOrgDetail = await VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(
+                    SalesforceOrgService.listDataOrgDetails(panelState.workspaceRoot).then(listing => {
+                        dataOrgListing = listing;
+                        return { orgDetails: listing.orgDetails, emptyListMessage: this.buildDataOrgNoOrgsMessage(listing.hiddenOrgReasonCounts) };
+                    }),
+                    RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER
+                );
+            } catch (listingError) {
+                // THE PANEL DISABLED THE BUTTON ON THE CLICK, SO A LISTING THAT FAILED STILL GIVES IT BACK
+                giveButtonBack();
+                if ( listingError instanceof OrgConnectionStatusUnavailableError ) {
+                    VSCodeWorkspaceService.showWarningMessage(`Nothing was generated or inserted: ${RecipeYamlScalar.escapeForNotification(listingError.message)}`);
+                    return;
+                }
+                throw listingError;
+            }
+
+            // A DISMISSED PICK, A NEW MODEL, OR AN ORG CHOSEN IN THE DROPDOWN MEANWHILE: NOTHING MORE IS DONE
+            const orgIndex = chosenOrgDetail && dataOrgListing ? dataOrgListing.orgDetails.findIndex(orgDetail => orgDetail.username === chosenOrgDetail.username) : -1;
+            if ( orgIndex < 0 || !isClickStillCurrent() || panelState.dataOrgSelection ) {
+                giveButtonBack();
+                return;
+            }
+
+            panelState.dataOrgDetails = dataOrgListing.orgDetails;
+            this.postToPanel(cockpitPanel, {
+                command: 'dataOrgList',
+                orgLabels: dataOrgListing.orgDetails.map(orgDetail => this.buildDataOrgListLabel(orgDetail)),
+                selectedOrgIndex: orgIndex,
+                noOrgsMessage: '',
+                hiddenOrgNote: this.buildDataOrgHiddenNote(dataOrgListing.hiddenOrgReasonCounts),
+                forgottenOrgNotice: '',
+                renderSequence: clickedRecipeDataMessage.renderSequence
+            });
+
+            try {
+                await this.selectDataOrg(cockpitPanel, panelState, orgIndex);
+            } catch (selectionError) {
+                giveButtonBack();
+                throw selectionError;
+            }
+
+            const dataOrgSelection = panelState.dataOrgSelection;
+            if ( !isClickStillCurrent() || dataOrgSelection?.orgDetail.username !== chosenOrgDetail.username ) {
+                giveButtonBack();
+                return;
+            }
+
+            if ( dataOrgSelection.orgTypeDetail?.isSandbox !== true ) {
+                VSCodeWorkspaceService.showWarningMessage(`Nothing was generated or inserted: ${RecipeYamlScalar.escapeForNotification(this.buildDataOrgLabel(chosenOrgDetail))} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'could not be checked'}, and the Treecipe tab inserts only into a sandbox or scratch org.`);
+                giveButtonBack();
+                return;
+            }
+
+        } finally {
+            // RELEASED ONLY HERE: THE ROUTER BELOW ANSWERS ANY INSERT STILL IN FLIGHT WITH ITS STATE INSTEAD OF ROUTING IT
+            panelState.insertStateMessage = undefined;
+        }
+
+        const routedInsert = this.routePanelMessage({ command: 'insertTree', treeKey: treeKey }, panelState);
+        if ( routedInsert?.kind !== 'insertTree' ) {
+            giveButtonBack();
+            return;
+        }
+
+        await this.insertTreeIntoOrg(cockpitPanel, panelState, routedInsert);
+
+    }
+
     // TRUE WHEN A DATA SET FOLDER WAS MADE; onDatasetFolderMade SAYS SO EVEN WHEN A LATER STEP THROWS
     private static async performTreeInsert(cockpitPanel: vscode.WebviewPanel,
                                             panelState: IRecipeCockpitPanelState,
                                             insertAction: Extract<RecipeCockpitPanelAction, { kind: 'insertTree' }>,
                                             onDatasetFolderMade: (datasetFolderPath: string) => void,
-                                            onInsertFinished: () => void,
-                                            onGenerateOnly: () => void): Promise<boolean> {
+                                            onInsertFinished: () => void): Promise<boolean> {
 
         const { treeKey, recipeFilePath } = insertAction;
         const dataOrgSelection = panelState.dataOrgSelection;
@@ -8935,20 +8941,8 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             `Generate ${treeLabel} and insert it into ${orgLabel}?`,
             { detail: this.buildInsertConfirmationDetail(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, outsidePickableLookups), isDestructive: true },
-            RECIPE_COCKPIT_INSERT_CONFIRM_LABEL,
-            RECIPE_COCKPIT_GENERATE_ONLY_CONFIRM_LABEL
+            RECIPE_COCKPIT_INSERT_CONFIRM_LABEL
         );
-
-        // THE SAME GENERATION, ITS MODAL ANSWERED BY THIS ONE, AND NOTHING SENT TO THE ORG (#293)
-        if ( confirmation === RECIPE_COCKPIT_GENERATE_ONLY_CONFIRM_LABEL ) {
-            onGenerateOnly();
-            const datasetFolderPath = await this.generateConfirmedDataset(recipeFilePath, filteredRecipe);
-            if ( !datasetFolderPath || !this.isUsableWorkspacePath(datasetFolderPath, panelState.workspaceRoot) ) {
-                return refuse(`${treeLabel} was not generated.`);
-            }
-            onDatasetFolderMade(datasetFolderPath);
-            return true;
-        }
 
         if ( confirmation !== RECIPE_COCKPIT_INSERT_CONFIRM_LABEL ) {
             return false;
@@ -9040,7 +9034,10 @@ export class RecipeCockpitService {
         });
 
         onInsertFinished();
-        this.showTreeInsertNotification(insertResult, treeLabel, orgLabel, panelState.workspaceRoot);
+        this.showTreeInsertNotification(insertResult, treeLabel, orgLabel, panelState.workspaceRoot, {
+            runFolderName: recipeDataMessage.recipe.selectedRunFolderName,
+            treeFolderName: tree.folderName
+        });
 
         return true;
 
@@ -9083,14 +9080,16 @@ export class RecipeCockpitService {
     }
 
     /*
-        How the tree insert ended, with the results file a button opens (#301): "View errors" when a
-        record failed or the insert stopped, "View results" otherwise. A stopped insert is an ERROR
-        (#310), the one notification for it, since the shared insert was told not to show its own.
-        The insert writes that file once it has sent a file, so a cancel before that offers no
-        button. The panel draws no line for it. NOT AWAITED, so the insert ends without waiting for
-        the reader. treeLabel and orgLabel arrive escaped.
+        How the tree insert ended, as ONE notification (#301), with the results file a button opens:
+        "View errors" when a record failed or the insert stopped, "View results" otherwise. A stopped
+        insert is an ERROR (#310), the one notification for it, since the shared insert was told not
+        to show its own. The insert writes that file once it has sent a file, so a cancel before that
+        offers no button. One that failed (#375) also names the first generated file that failed,
+        opens it with "View failed file", and offers "Open Troubleshooting" on the sub-tab the first
+        failure's error points at. The panel draws no line for it. NOT AWAITED, so the insert ends
+        without waiting for the reader. treeLabel and orgLabel arrive escaped.
     */
-    private static showTreeInsertNotification(insertResult: IDataSetInsertResult, treeLabel: string, orgLabel: string, workspaceRoot: string) {
+    static showTreeInsertNotification(insertResult: IDataSetInsertResult, treeLabel: string, orgLabel: string, workspaceRoot: string, insertedTree?: { runFolderName: string; treeFolderName: string }) {
 
         const recordsText = (recordCount: number) => `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
         const hasErrors = insertResult.failedRecordCount > 0 || insertResult.outcome === 'stopped';
@@ -9115,9 +9114,103 @@ export class RecipeCockpitService {
             notificationText += ` The request for ${RecipeYamlScalar.escapeForNotification(insertResult.requestFailureDetail)}`;
         }
 
-        VSCodeWorkspaceService.showNotificationWithWorkspaceFile(severity, notificationText, hasErrors ? RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL : RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
-            insertResult.resultsFilePath && fs.existsSync(insertResult.resultsFilePath) ? insertResult.resultsFilePath : undefined,
-            workspaceRoot, 'The insert results file no longer exists in this workspace.');
+        const resultsFilePath = insertResult.resultsFilePath && fs.existsSync(insertResult.resultsFilePath) ? insertResult.resultsFilePath : undefined;
+        const resultsFileAction = {
+            label: hasErrors ? RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL : RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
+            filePath: resultsFilePath,
+            missingFileText: 'The insert results file no longer exists in this workspace.'
+        };
+
+        const failedFilePath = insertResult.failedFilePath;
+        const hasFailedFile = typeof failedFilePath === 'string' && insertResult.outcome !== 'cancelled';
+
+        if ( !hasFailedFile ) {
+            VSCodeWorkspaceService.showNotificationWithWorkspaceFiles(severity, notificationText, [resultsFileAction], workspaceRoot);
+            return;
+        }
+
+        const troubleshootingSubTab = RecipeCockpitInsertFailureTriage.resolveSubTab(insertResult.firstFailure);
+        notificationText += ` The first file that failed is ${RecipeYamlScalar.escapeForNotification(path.basename(failedFilePath))}; its ${RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS[troubleshootingSubTab]} in the Troubleshooting tab may fix it.`;
+
+        VSCodeWorkspaceService.showNotificationWithWorkspaceFiles(severity, notificationText, [
+            { label: RECIPE_COCKPIT_INSERT_VIEW_FAILED_FILE_LABEL, filePath: fs.existsSync(failedFilePath) ? failedFilePath : undefined, missingFileText: 'The generated file that failed no longer exists in this workspace.' },
+            resultsFileAction
+        ], workspaceRoot, insertedTree && insertedTree.treeFolderName !== '' ? [{
+            label: RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL,
+            run: () => this.openTroubleshootingAfterInsert(workspaceRoot, { ...insertedTree, troubleshootingSubTab: troubleshootingSubTab })
+        }] : []);
+
+    }
+
+    /*
+        "Open Troubleshooting" (#375). On the cockpit open now, on the same run, with a card for the
+        tree, the card is focused IN PLACE -- no reload, so the org selection and readiness stay.
+        Otherwise the cockpit is opened through its command (the feature flag still applies) on that
+        run, focused there once it is drawn. A run or tree folder gone from disk is a warning, and
+        nothing is opened.
+    */
+    static async openTroubleshootingAfterInsert(workspaceRoot: string, focusRequest: IRecipeCockpitTroubleshootingFocusRequest) {
+
+        const cockpitPanel = this.recipeCockpitPanel;
+        const panelState = this.recipeCockpitPanelState;
+        const recipeDataMessage = panelState.recipeDataMessage;
+        const focusTree = recipeDataMessage && recipeDataMessage.recipe.selectedRunFolderName === focusRequest.runFolderName
+            ? this.resolveTroubleshootingFocus(recipeDataMessage.recipe, focusRequest)
+            : undefined;
+
+        if ( cockpitPanel && panelState.workspaceRoot === workspaceRoot && recipeDataMessage && focusTree ) {
+            /*
+                A HIDDEN panel's document is gone (retainContextWhenHidden is off) and the reveal
+                reloads it, so the focus rides on the model's replay until it is drawn, as an open's does.
+            */
+            if ( !cockpitPanel.visible ) {
+                panelState.openFocusTree = focusTree;
+                cockpitPanel.reveal(vscode.ViewColumn.One);
+                return;
+            }
+            cockpitPanel.reveal(vscode.ViewColumn.One);
+            this.postToPanel(cockpitPanel, { command: 'focusTree', focusTree: focusTree, renderSequence: recipeDataMessage.renderSequence });
+            return;
+        }
+
+        const treeFolderPath = path.join(workspaceRoot, ConfigurationService.getGeneratedRecipesFolderPath(), focusRequest.runFolderName, focusRequest.treeFolderName);
+        if ( !SfdxProjectService.isExistingDirectory(treeFolderPath) || !this.isUsableWorkspacePath(treeFolderPath, workspaceRoot) ) {
+            VSCodeWorkspaceService.showWarningMessage(`The run ${RecipeYamlScalar.escapeForNotification(focusRequest.runFolderName)} or its tree ${RecipeYamlScalar.escapeForNotification(focusRequest.treeFolderName)} no longer exists, so the Troubleshooting tab was not opened.`);
+            return;
+        }
+
+        await vscode.commands.executeCommand(RECIPE_COCKPIT_OPEN_COMMAND, { focusTroubleshooting: true, ...focusRequest });
+
+    }
+
+    // THE CARD OF THE NAMED TREE, ON THE TROUBLESHOOTING TAB AND SUB-TAB; undefined WHEN NO CARD HAS THAT FOLDER
+    static resolveTroubleshootingFocus(recipeViewModel: IRecipeCockpitRecipeViewModel, focusRequest: IRecipeCockpitTroubleshootingFocusRequest): IRecipeCockpitTreeFocus | undefined {
+
+        const tree = recipeViewModel.trees.find(candidateTree => candidateTree.folderName !== '' && candidateTree.folderName === focusRequest.treeFolderName);
+
+        return tree ? { treeKey: tree.treeKey, tab: 'troubleshooting', troubleshootingSubTab: focusRequest.troubleshootingSubTab } : undefined;
+
+    }
+
+    /*
+        The options "treecipe.openRecipeCockpit" was run with, for "Open Troubleshooting" (#375). The
+        command is callable by id, so the run and tree are kept only as plain folder NAMES and the
+        sub-tab only when it is one the tab draws; they are matched against the loaded run, never opened.
+    */
+    static readTroubleshootingFocusRequest(openOptions: unknown): IRecipeCockpitTroubleshootingFocusRequest | undefined {
+
+        if ( !this.isPlainRecord(openOptions) || openOptions.focusTroubleshooting !== true ) {
+            return undefined;
+        }
+
+        const { runFolderName, treeFolderName, troubleshootingSubTab } = openOptions;
+        const isFolderName = (candidate: unknown): candidate is string => this.isBoundedText(candidate) && candidate !== '' && DatasetSourceService.isSafeFolderOrFileName(candidate);
+
+        if ( !isFolderName(runFolderName) || !isFolderName(treeFolderName) || !( RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS as readonly unknown[] ).includes(troubleshootingSubTab) ) {
+            return undefined;
+        }
+
+        return { runFolderName: runFolderName, treeFolderName: treeFolderName, troubleshootingSubTab: troubleshootingSubTab as RecipeCockpitTroubleshootingSubTab };
 
     }
 
@@ -9293,8 +9386,7 @@ export class RecipeCockpitService {
                 ? ['', `This run will take time: ${totalRecordCount} records in at least ${requestCount} Collections API requests.`]
                 : [] ),
             '',
-            'The data set is written to FakeDataSets as Run Faker by Recipe writes it, then inserted the way Insert Data Set by Directory inserts: you choose all-or-none next, and Cancel on the progress notification deletes every record this insert saved.',
-            `${RECIPE_COCKPIT_GENERATE_ONLY_CONFIRM_LABEL} writes the same data set and inserts nothing.`
+            'The data set is written to FakeDataSets as Run Faker by Recipe writes it, then inserted the way Insert Data Set by Directory inserts: you choose all-or-none next, and Cancel on the progress notification deletes every record this insert saved.'
         ].join('\n');
 
     }
@@ -9572,42 +9664,10 @@ export class RecipeCockpitService {
 
             }
 
-            /*
-                The card's button when it cannot insert (#293): the tree's KEY -- its folder name --
-                never a path, the recipe file looked up in the host-only targets of the
-                confirmed-drawn model. A tree already generating or inserting is held, and only that
-                tree: every other card generates whatever else runs.
-            */
-            case 'generateTree': {
+            // THE CARD NEVER GENERATES ONLY (#375): A POSTED generateTree IS ANSWERED BY NOTHING, AND Run Faker by Recipe IS HOW A TREE IS GENERATED WITHOUT AN INSERT
+            case 'generateTree':
 
-                const { treeKey } = panelMessage;
-
-                // THAT TREE'S RUN ALREADY HOLDS ITS BUTTON DISABLED, AND ITS OWN END RE-ENABLES IT
-                if ( typeof treeKey === 'string' && ( panelState.generateStateMessages.has(treeKey) || panelState.insertStateMessage?.treeKey === treeKey ) ) {
-                    return undefined;
-                }
-
-                const recipeFilePath = typeof treeKey === 'string'
-                                        && !!panelState.recipeDataMessage
-                                        && panelState.treeHistoryAllowLists.generatableTreeKeys.has(treeKey)
-                    ? panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey)
-                    : undefined;
-
-                if ( recipeFilePath ) {
-                    return { kind: 'generateTree', treeKey: treeKey as string, recipeFilePath: recipeFilePath };
-                }
-
-                /*
-                    The panel disabled the card's button on the click, before asking. A click on cards
-                    a new model has replaced but not yet confirmed drawing is refused here, and only
-                    a generateState gives the button back -- so a refusal still says nothing runs.
-                */
-                return {
-                    kind: 'postGenerateState',
-                    hostMessage: { command: 'generateState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '' }
-                };
-
-            }
+                return undefined;
 
             /*
                 Data-by-Org reads org names from the CLI, and the panel only ever names one by its
@@ -9691,7 +9751,7 @@ export class RecipeCockpitService {
 
                 const { treeKey } = panelMessage;
 
-                // AN INSERT IN FLIGHT HOLDS ITS OWN TREE'S BUTTON; A CLICK ON ANOTHER IS ANSWERED WITH IT, SO THAT CARD GIVES ITS BUTTON BACK AS GENERATE ONLY
+                // AN INSERT IN FLIGHT HOLDS ITS OWN TREE'S BUTTON; A CLICK ON ANOTHER IS ANSWERED WITH IT, SO THAT CARD GIVES ITS BUTTON BACK
                 if ( panelState.insertStateMessage ) {
                     return panelState.insertStateMessage.treeKey === treeKey
                         ? undefined
@@ -9700,19 +9760,22 @@ export class RecipeCockpitService {
 
                 const recipeFilePath = typeof treeKey === 'string' ? panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey) : undefined;
                 // A SCRATCH ORG RUN IS ABOUT TO CHANGE THE SELECTION, SO NOTHING IS INSERTED WHILE IT IS IN FLIGHT
-                const isRoutable = !panelState.scratchOrgStateMessage?.isRunning
-                                    && !panelState.permissionSetAssignStateMessage?.isRunning
-                                    && !panelState.metadataDeployStateMessage?.isRunning
-                                    && typeof treeKey === 'string'
-                                    && !panelState.generateStateMessages.has(treeKey)
-                                    && !!panelState.recipeDataMessage
-                                    && !!panelState.dataOrgSelection
-                                    && panelState.dataOrgSelection.orgTypeDetail?.isSandbox === true
-                                    && panelState.insertableTreeKeys.has(treeKey)
-                                    && !!recipeFilePath;
+                const isTreeRoutable = !panelState.scratchOrgStateMessage?.isRunning
+                                        && !panelState.permissionSetAssignStateMessage?.isRunning
+                                        && !panelState.metadataDeployStateMessage?.isRunning
+                                        && typeof treeKey === 'string'
+                                        && !!panelState.recipeDataMessage
+                                        && panelState.insertableTreeKeys.has(treeKey)
+                                        && !!recipeFilePath;
 
-                if ( isRoutable ) {
+                if ( isTreeRoutable && panelState.dataOrgSelection?.orgTypeDetail?.isSandbox === true ) {
                     return { kind: 'insertTree', treeKey: treeKey as string, recipeFilePath: recipeFilePath };
+                }
+
+                // NO ORG CHOSEN YET (#375): THE ORG IS ASKED FOR IN THE COMMAND PALETTE, CHECKED AS A PICK IN THE DROPDOWN IS, AND ONLY THEN INSERTED INTO
+                // THE OBJECTS A SELECTION CHECKS ARE THE CONFIRMED-DRAWN MODEL'S, AS FOR A PICK IN THE DROPDOWN
+                if ( isTreeRoutable && !panelState.dataOrgSelection && panelState.dataOrgObjectApiNames.size > 0 ) {
+                    return { kind: 'promptInsertOrg', treeKey: treeKey as string, recipeFilePath: recipeFilePath };
                 }
 
                 // THE PANEL DISABLED THE CARD'S BUTTON ON THE CLICK, SO EVEN A REFUSAL ANSWERS THAT NOTHING RUNS
@@ -10492,8 +10555,6 @@ export class RecipeCockpitService {
         if ( panelState.recipeDataMessage ) {
             replayMessages.push(this.withRestorePlace(panelState.recipeDataMessage, panelState));
         }
-
-        replayMessages.push(...panelState.generateStateMessages.values());
 
         if ( panelState.insertStateMessage ) {
             replayMessages.push(panelState.insertStateMessage);
@@ -12655,8 +12716,9 @@ ${this.buildPaletteCustomProperties()}
     const AUTO_EXPAND_ROW_BUDGET = ${RECIPE_COCKPIT_AUTO_EXPAND_ROW_BUDGET};
     const GENERATE_TREECIPE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL)};
     const GENERATE_TREECIPE_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL)};
-    const GENERATE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_ACTION_LABEL)};
-    const GENERATE_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_RUNNING_LABEL)};
+    const NO_DATA_ORG_INSERT_REASON = ${JSON.stringify(RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON)};
+    const CHOOSE_INSERT_ORG_NOTE = ${JSON.stringify(RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE)};
+    const CANNOT_INSERT_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_CANNOT_INSERT_PREFIX)};
     const ADD_FRIEND_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL)};
     const WIRE_LOOKUP_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL)};
     const WIRE_ALL_LOOKUPS_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL)};
@@ -12762,8 +12824,6 @@ ${this.buildPaletteCustomProperties()}
     let runSelectElement = null;
     let renderedRunFolderName = '';
     let renderedSequence = null;
-    // EVERY TREE GENERATING ONLY (#293), BY KEY; EACH HOLDS ITS OWN BUTTON AND NO OTHER, AND OUTLIVES A MODEL, BECAUSE THE HOST RELOADS THE RUN BEFORE IT SAYS THE RUN ENDED
-    const generatingTreeKeys = Object.create(null);
     // WHETHER A FRIEND IS BEING ADDED; IT OUTLIVES A MODEL FOR THE SAME REASON
     let isAddFriendRunning = false;
     // EVERY "+" AND FRIEND CHOICE DRAWN FOR THIS MODEL, SO ONE CLICK CAN DISABLE THEM ALL
@@ -15872,6 +15932,11 @@ ${this.buildPaletteCustomProperties()}
 
         selectTreeTab(treeState, focusTree.tab);
 
+        // A FAILED INSERT'S "Open Troubleshooting" (#375) OPENS THE SUB-TAB ITS ERROR POINTS AT
+        if (focusTree.tab === 'troubleshooting' && typeof focusTree.troubleshootingSubTab === 'string') {
+            selectTroubleshootingSubTab(treeState, focusTree.troubleshootingSubTab, false);
+        }
+
         // A REGENERATE, AND "Change record types" (#196), RE-OPEN THE RECORD TYPES SECTION, SCROLLED TO THE OBJECT IT IS ABOUT
         if (!focusTree.recordTypes || typeof focusTree.recordTypes !== 'object') { return false; }
 
@@ -15893,6 +15958,20 @@ ${this.buildPaletteCustomProperties()}
 
         objectState.element.scrollIntoView({ block: 'nearest' });
         return true;
+
+    }
+
+    // THE SAME FOCUS ON THE MODEL ALREADY DRAWN, SCROLLED TO THE CARD, SO NOTHING RELOADS
+    function focusTreeInPlace(focusTree) {
+
+        if (!focusTree || typeof focusTree !== 'object' || typeof focusTree.treeKey !== 'string') { return; }
+
+        const treeState = treeStates.find(function (candidateTreeState) { return candidateTreeState.tree.treeKey === focusTree.treeKey; });
+        if (!treeState) { return; }
+
+        applyTreeFocus(focusTree);
+        savePanelPlace();
+        if (typeof treeState.element.scrollIntoView === 'function') { treeState.element.scrollIntoView({ block: 'start' }); }
 
     }
 
@@ -16167,20 +16246,16 @@ ${this.buildPaletteCustomProperties()}
         };
 
         /*
-            The ONE generate button (#293): it inserts when the tree can be inserted into the chosen
-            org, and otherwise generates only -- it is never disabled for any other reason. Only its
-            own tree's run holds it.
+            The ONE button always generates AND inserts (#375): with no org chosen the host asks for
+            one first; any other reason the insert cannot run disables it. It never generates only.
         */
         insert.buttonElement.addEventListener('click', function () {
             const treeKey = treeState.tree.treeKey;
             if (isTreeRunning(treeKey) || renderedSequence === null) { return; }
-            if (findTreeInsertReason(treeState) === '') {
-                setInsertRunning(treeKey);
-                vscodeApi.postMessage({ command: 'insertTree', treeKey: treeKey });
-            } else {
-                setGenerateRunning(treeKey, true);
-                vscodeApi.postMessage({ command: 'generateTree', treeKey: treeKey });
-            }
+            const insertReason = findTreeInsertReason(treeState);
+            if (insertReason !== '' && insertReason !== NO_DATA_ORG_INSERT_REASON) { return; }
+            setInsertRunning(treeKey);
+            vscodeApi.postMessage({ command: 'insertTree', treeKey: treeKey });
         });
 
         controlsElement.appendChild(insert.buttonElement);
@@ -17264,19 +17339,7 @@ ${this.buildPaletteCustomProperties()}
     }
 
     function isTreeRunning(treeKey) {
-        return insertRunningTreeKey === treeKey || hasOwnKey(generatingTreeKeys, treeKey);
-    }
-
-    function setGenerateRunning(treeKey, isRunning) {
-
-        if (isRunning) {
-            generatingTreeKeys[treeKey] = true;
-        } else {
-            delete generatingTreeKeys[treeKey];
-        }
-
-        drawTreeInserts();
-
+        return insertRunningTreeKey === treeKey;
     }
 
     function renderTrees(recipe) {
@@ -17445,8 +17508,6 @@ ${this.buildPaletteCustomProperties()}
     function findTreeInsertReason(treeState) {
 
         if (isDataOrgChecking) { return DATA_ORG_CONNECTION_CHECK_INSERT_REASON; }
-        if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) { return 'Choose an org above to also insert it.'; }
-        if (dataOrgSelectionFailureMessage) { return dataOrgSelectionFailureMessage; }
         if (insertRunningTreeKey !== null && insertRunningTreeKey !== treeState.tree.treeKey) { return 'Another tree is being inserted.'; }
         if (isScratchOrgRunning) { return 'A scratch org is being set up.'; }
         if (isPermissionSetAssignRunning) { return 'Permission sets are being assigned.'; }
@@ -17454,6 +17515,10 @@ ${this.buildPaletteCustomProperties()}
 
         const insertObjectApiNames = listTreeInsertObjectApiNames(treeState);
         if (insertObjectApiNames.length === 0) { return 'Every object of this tree is excluded.'; }
+
+        // THE ONE REASON THAT LEAVES THE BUTTON ENABLED (#375): THE CLICK ASKS FOR THE ORG
+        if (dataOrgRequestSequence === null || dataOrgSelectedIndex === null) { return NO_DATA_ORG_INSERT_REASON; }
+        if (dataOrgSelectionFailureMessage) { return dataOrgSelectionFailureMessage; }
 
         for (let objectIndex = 0; objectIndex < insertObjectApiNames.length; objectIndex++) {
             const objectApiName = insertObjectApiNames[objectIndex];
@@ -17476,19 +17541,18 @@ ${this.buildPaletteCustomProperties()}
 
         const tree = treeState.tree;
         const insertReason = findTreeInsertReason(treeState);
+        const isOrgToChoose = insertReason === NO_DATA_ORG_INSERT_REASON;
         const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : '';
-        const actionLabel = insertReason === '' ? INSERT_ACTION_LABEL + (orgLabel ? ' into ' + orgLabel : '') : GENERATE_ACTION_LABEL;
+        const actionLabel = INSERT_ACTION_LABEL + (insertReason === '' && orgLabel ? ' into ' + orgLabel : '');
 
-        insert.buttonElement.disabled = isTreeRunning(tree.treeKey);
+        insert.buttonElement.disabled = isTreeRunning(tree.treeKey) || (insertReason !== '' && !isOrgToChoose);
 
-        insert.buttonElement.textContent = insertRunningTreeKey === tree.treeKey ? INSERT_RUNNING_LABEL
-            : hasOwnKey(generatingTreeKeys, tree.treeKey) ? GENERATE_RUNNING_LABEL
-            : actionLabel;
+        insert.buttonElement.textContent = insertRunningTreeKey === tree.treeKey ? INSERT_RUNNING_LABEL : actionLabel;
         insert.buttonElement.setAttribute('aria-label', actionLabel + ' for ' + displayTitleOf(tree) + ' (' + tree.runFakerRecipeFileName + ')');
-        insert.buttonElement.setAttribute('title', insertReason === ''
-            ? 'Generate this tree with its selection and counts from ' + tree.runFakerRecipeFileName + ', then insert it into the chosen org, parents first'
-            : 'Generate this tree with its selection and counts from ' + tree.runFakerRecipeFileName + ' into a new data set, without inserting it');
-        insert.reasonElement.textContent = insertReason === '' ? '' : 'Generates only: ' + insertReason;
+        insert.buttonElement.setAttribute('title', isOrgToChoose
+            ? 'Choose the org to insert into, then generate this tree with its selection and counts from ' + tree.runFakerRecipeFileName + ' and insert it, parents first'
+            : 'Generate this tree with its selection and counts from ' + tree.runFakerRecipeFileName + ', then insert it into the chosen org, parents first');
+        insert.reasonElement.textContent = insertReason === '' ? '' : isOrgToChoose ? CHOOSE_INSERT_ORG_NOTE : CANNOT_INSERT_PREFIX + insertReason;
 
     }
 
@@ -17497,7 +17561,7 @@ ${this.buildPaletteCustomProperties()}
         treeStates.forEach(drawTreePermissionSet);
     }
 
-    // THE CLICKED TREE'S BUTTON IS DISABLED ON THE CLICK AND EVERY OTHER TURNS GENERATE ONLY; ITS insertState GIVES THEM BACK
+    // THE CLICKED TREE'S BUTTON IS DISABLED ON THE CLICK AND EVERY OTHER IS DISABLED; ITS insertState GIVES THEM BACK
     function setInsertRunning(runningTreeKey) {
 
         insertRunningTreeKey = runningTreeKey;
@@ -17574,6 +17638,8 @@ ${this.buildPaletteCustomProperties()}
 
         isDataOrgLoadShown = false;
         isDataOrgChecking = false;
+        // A LIST THE HOST POSTED AFTER ASKING FOR THE ORG (#375) MAKES THE PICKER IN USE, SO A LATER MODEL LISTS AGAIN
+        isDataOrgPickerInUse = true;
         clearDataOrgSelection();
         // ⟳ IS HOW A READER WHO JUST RE-AUTHORIZED AN ORG SEES IT LISTED, SO IT STAYS EVEN WITH NOTHING LISTED
         isDataOrgRefreshShown = true;
@@ -18619,8 +18685,9 @@ ${this.buildPaletteCustomProperties()}
             return;
         }
 
-        if (hostMessage.command === 'generateState') {
-            if (typeof hostMessage.treeKey === 'string') { setGenerateRunning(hostMessage.treeKey, !!hostMessage.isRunning); }
+        if (hostMessage.command === 'focusTree') {
+            // A FAILED INSERT'S "Open Troubleshooting" (#375), ON THE MODEL ON SCREEN ONLY
+            if (renderedSequence !== null && hostMessage.renderSequence === renderedSequence) { focusTreeInPlace(hostMessage.focusTree); }
             return;
         }
 

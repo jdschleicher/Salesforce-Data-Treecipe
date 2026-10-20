@@ -4982,8 +4982,11 @@ describe('ExtensionCommandService', () => {
             ['Change record types with no object', { focusRecordTypes: true }, {}],
             ['an object name that is not an api name', { focusRecordTypes: true, objectApiName: 'Account\n[x](command:y)' }, {}],
             ['a truthy non-boolean', { focusRecordTypes: 'true', objectApiName: 'Account' }, undefined],
-            ['a vscode Uri', { fsPath: '/workspace' }, undefined]
-        ])('given %s as the command argument, opens the panel with the matching Record types focus (#196)', async (unusedDescription, openOptions, expectedFocusRequest) => {
+            ['a vscode Uri', { fsPath: '/workspace' }, undefined],
+            // #375: A FAILED INSERT'S "Open Troubleshooting"
+            ['Open Troubleshooting', { focusTroubleshooting: true, runFolderName: 'recipe-2026-09-20T10-00-00', treeFolderName: 'Lead-ONLY', troubleshootingSubTab: 'fields' }, { runFolderName: 'recipe-2026-09-20T10-00-00', treeFolderName: 'Lead-ONLY', troubleshootingSubTab: 'fields' }],
+            ['Open Troubleshooting naming a path', { focusTroubleshooting: true, runFolderName: '../outside', treeFolderName: 'Lead-ONLY', troubleshootingSubTab: 'fields' }, undefined]
+        ])('given %s as the command argument, opens the panel with the matching focus (#196, #375)', async (unusedDescription, openOptions, expectedFocusRequest) => {
 
             enableRecipeCockpitFlag(true);
             const openRecipeCockpitPanelSpy = jest.spyOn(RecipeCockpitService, 'openRecipeCockpitPanel').mockResolvedValue({} as any);

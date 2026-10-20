@@ -6,6 +6,7 @@ import { VSCodeWorkspaceService } from "../VSCodeWorkspace/VSCodeWorkspaceServic
 import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
 import { IAuthenticatedOrgDetail } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
+import { IInsertFailureError, RecipeCockpitInsertFailureTriage } from "../RecipeCockpitService/RecipeCockpitInsertFailureTriage";
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
@@ -30,6 +31,9 @@ export interface IDataSetInsertResult {
     failedRecordCount: number;
     // THE FILE AND ERROR OF A REQUEST THAT THREW, FOR A CALLER THAT REPORTS THE OUTCOME ITSELF; UNESCAPED
     requestFailureDetail?: string;
+    // THE FIRST GENERATED FILE A RECORD OR A REQUEST FAILED IN, IN INSERT ORDER, AND WHY (#375); UNSET WHEN NOTHING FAILED
+    failedFilePath?: string;
+    firstFailure?: IInsertFailureError;
 }
 
 /*
@@ -220,6 +224,22 @@ export class CollectionsApiService {
         let outcome: DataSetInsertOutcome = 'completed';
         let isRolledBack = false;
         let requestFailureDetail: string | undefined;
+        let failedFilePath: string | undefined;
+        let firstFailure: IInsertFailureError | undefined;
+        const readObjectFailures = (collectionsApiFilePath: string): any[] => {
+            const objectApiName = this.getObjectNameFromCollectionsApiFilePath(collectionsApiFilePath);
+            const failureResults = allCollectionApiFilesSobjectResults.FailureResults;
+            return Object.prototype.hasOwnProperty.call(failureResults, objectApiName) && Array.isArray(failureResults[objectApiName]) ? failureResults[objectApiName] : [];
+        };
+        // THE FIRST FILE WHOSE OWN FAILURES GREW, WHETHER IT STOPPED THE INSERT OR NOT: WITHOUT ALL-OR-NONE A REJECTED RECORD DOES NOT STOP IT
+        const noteFailedFile = (collectionsApiFilePath: string, priorFailureCount: number) => {
+            const objectFailures = readObjectFailures(collectionsApiFilePath);
+            if ( failedFilePath !== undefined || objectFailures.length <= priorFailureCount ) {
+                return;
+            }
+            failedFilePath = collectionsApiFilePath;
+            firstFailure = RecipeCockpitInsertFailureTriage.readFirstFailure(objectFailures.slice(priorFailureCount));
+        };
 
         await vscode.window.withProgress(
             {
@@ -263,6 +283,7 @@ export class CollectionsApiService {
           
                 // Optional: just the filename (not full path)
                 const fileName = path.basename(collectionsApiFilePath);
+                const priorFailureCount = readObjectFailures(collectionsApiFilePath).length;
           
                 progress.report({
                     message: `Processing file ${i + 1} of ${totalFiles}: ${fileName}`,
@@ -281,6 +302,8 @@ export class CollectionsApiService {
                                                             token,
                                                             progress,
                                                             insertOptions.prepareRecords);
+
+                    noteFailedFile(collectionsApiFilePath, priorFailureCount);
 
                     if ( !successResult && token.isCancellationRequested && !hasAllOrNoneFailure() ) {
                         await rollBackCancelledInsert();
@@ -306,6 +329,9 @@ export class CollectionsApiService {
                     const errorMessage = String((error as { message?: unknown })?.message ?? error);
                     requestFailureDetail = `${fileName} failed: ${errorMessage}`;
                     this.recordRequestFailure(allCollectionApiFilesSobjectResults, this.getObjectNameFromCollectionsApiFilePath(collectionsApiFilePath), fileName, errorMessage, fullPathToResultsFile);
+                    noteFailedFile(collectionsApiFilePath, priorFailureCount);
+                    // A FAILURE THE RESULTS MAP COULD NOT HOLD STILL NAMES ITS FILE
+                    failedFilePath ??= collectionsApiFilePath;
                     if ( allOrNoneSelection ) {
                         isRolledBack = true;
                         if ( fs.existsSync(fullPathToResultsFile) ) {
@@ -334,7 +360,9 @@ export class CollectionsApiService {
             resultsFilePath: fullPathToResultsFile,
             savedRecordCount: isRolledBack ? 0 : countResults(allCollectionApiFilesSobjectResults.SuccessResults),
             failedRecordCount: countResults(allCollectionApiFilesSobjectResults.FailureResults),
-            ...(requestFailureDetail === undefined ? {} : { requestFailureDetail })
+            ...(requestFailureDetail === undefined ? {} : { requestFailureDetail }),
+            ...(failedFilePath === undefined ? {} : { failedFilePath }),
+            ...(firstFailure === undefined ? {} : { firstFailure })
         };
 
     }

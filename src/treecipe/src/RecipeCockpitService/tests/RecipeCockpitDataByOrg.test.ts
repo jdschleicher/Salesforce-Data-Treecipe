@@ -18,7 +18,7 @@ import {
     IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_DATA_ORG_STATE_KEY,
     RECIPE_COCKPIT_INSERT_ACTION_LABEL,
-    RECIPE_COCKPIT_GENERATE_ACTION_LABEL,
+    RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE,
     RECIPE_COCKPIT_NO_CONNECTED_SANDBOX_ORGS_MESSAGE,
     RECIPE_COCKPIT_NO_SANDBOX_ORGS_MESSAGE,
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT,
@@ -876,11 +876,11 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa'], selectedOrgIndex: 0, noOrgsMessage: '', renderSequence: 1 });
             postSelectionAndReadiness(panel, 1, 'first reason');
 
-            expect(panel.findAll(firstCard, 'treeInsertReason').map((element: any) => element.textContent)).toEqual(['Generates only: first reason']);
+            expect(panel.findAll(firstCard, 'treeInsertReason').map((element: any) => element.textContent)).toEqual(["Can't insert: first reason"]);
 
             panel.findAll(secondCard, 'treeHeader')[0].dispatch('click');
 
-            expect(panel.findAll(secondCard, 'treeInsertReason').map((element: any) => element.textContent)).toEqual(['Generates only: first reason']);
+            expect(panel.findAll(secondCard, 'treeInsertReason').map((element: any) => element.textContent)).toEqual(["Can't insert: first reason"]);
             expect(viewOf(panel, 'dataOrgSelect').value).toBe('0');
             expect(viewOf(panel, 'dataOrgType').textContent).toBe('Sandbox');
             expect(panel.findAll(panel.cockpitBodyElement, 'dataObjectCount')).toEqual([]);
@@ -954,14 +954,14 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
-        it('holds every insert while the check runs, generating only with the reason that it is checking', () => {
+        it('holds every insert disabled while the check runs, with the reason that it is checking', () => {
 
             const { panel } = renderDataOrgPanel();
             openTreecipeViews(panel);
 
-            const checkingReason = `Generates only: ${RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON}`;
+            const checkingReason = `Can't insert: ${RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON}`;
             expect(insertReasonsOf(panel)).toEqual([checkingReason, checkingReason]);
-            expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([[RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false], [RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false]]);
+            expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([[RECIPE_COCKPIT_INSERT_ACTION_LABEL, true], [RECIPE_COCKPIT_INSERT_ACTION_LABEL, true]]);
 
         });
 
@@ -976,7 +976,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
                 selectElement.dispatch('change');
             });
             expect(postedNamed(panel, 'selectDataOrg')).toEqual([]);
-            expect(insertReasonsOf(panel)[0]).toBe(`Generates only: ${RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON}`);
+            expect(insertReasonsOf(panel)[0]).toBe(`Can't insert: ${RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON}`);
 
         });
 
@@ -1007,7 +1007,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             expect(panel.findAll(panel.cockpitBodyElement, 'dataOrgSpinner').every((element: any) => panel.isHidden(element))).toBe(true);
             expect(panel.isHidden(viewOf(panel, 'dataOrgSelect'))).toBe(false);
             expect(viewOf(panel, 'dataOrgStatus').textContent).toContain('could not report');
-            expect(insertReasonsOf(panel)[0]).toBe('Generates only: Choose an org above to also insert it.');
+            expect(insertReasonsOf(panel)[0]).toBe(RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE);
 
         });
 
@@ -1048,7 +1048,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             expect(panel.isHidden(viewOf(panel, 'dataOrgSelect'))).toBe(false);
             expect(optionsOf(viewOf(panel, 'dataOrgSelect'))).toEqual([['', RECIPE_COCKPIT_ORG_NONE_LISTED_PLACEHOLDER]]);
             expect(viewOf(panel, 'dataOrgStatus').textContent).toBe(NO_AUTHORIZED_ORGS_MESSAGE);
-            expect(insertReasonsOf(panel)).toEqual(['Generates only: Choose an org above to also insert it.', 'Generates only: Choose an org above to also insert it.']);
+            expect(insertReasonsOf(panel)).toEqual([RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE, RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE]);
 
         });
 
@@ -1061,9 +1061,9 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             expect(viewOf(panel, 'dataOrgType').textContent).toBe('Sandbox');
             expect(viewOf(panel, 'dataOrgStatus').textContent).toBe('Checking qa…');
-            expect(insertReasonsOf(panel)).toEqual(['Generates only: checking whether this tree can be inserted…', 'Generates only: checking whether this tree can be inserted…']);
-            // #293: NEVER DISABLED BY THE ORG -- IT GENERATES ONLY
-            expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([[RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false], [RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false]]);
+            expect(insertReasonsOf(panel)).toEqual(["Can't insert: checking whether this tree can be inserted…", "Can't insert: checking whether this tree can be inserted…"]);
+            // #375: DISABLED UNTIL THE TREE CAN BE INSERTED -- IT NEVER GENERATES ONLY
+            expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([[RECIPE_COCKPIT_INSERT_ACTION_LABEL, true], [RECIPE_COCKPIT_INSERT_ACTION_LABEL, true]]);
 
             postSelectionAndReadiness(panel, 1);
 
@@ -1086,7 +1086,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             postSelectionAndReadiness(panel, 1, 'older selection');
             postSelectionAndReadiness(panel, 3, 'older model', 0);
 
-            expect(insertReasonsOf(panel)).toEqual(['Generates only: current', 'Generates only: current']);
+            expect(insertReasonsOf(panel)).toEqual(["Can't insert: current", "Can't insert: current"]);
 
         });
 
@@ -1099,9 +1099,9 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             expect(textOf(panel, 'dataOrgStatus')).toEqual(['Could not connect to qa: expired.']);
             expect(viewOf(panel, 'dataOrgStatus').classList.contains('failed')).toBe(true);
-            expect(insertReasonsOf(panel)).toEqual(['Generates only: Could not connect to qa: expired.', 'Generates only: Could not connect to qa: expired.']);
-            // #293: NEVER DISABLED BY THE ORG -- IT GENERATES ONLY
-            expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([[RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false], [RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false]]);
+            expect(insertReasonsOf(panel)).toEqual(["Can't insert: Could not connect to qa: expired.", "Can't insert: Could not connect to qa: expired."]);
+            // #375: DISABLED UNTIL THE TREE CAN BE INSERTED -- IT NEVER GENERATES ONLY
+            expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([[RECIPE_COCKPIT_INSERT_ACTION_LABEL, true], [RECIPE_COCKPIT_INSERT_ACTION_LABEL, true]]);
 
         });
 
@@ -1115,7 +1115,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             expect(viewOf(panel, 'dataOrgStatus').textContent).toBe('Checking uat…');
             expect(viewOf(panel, 'dataOrgStatus').classList.contains('failed')).toBe(false);
-            expect(insertReasonsOf(panel)).toEqual(['Generates only: checking whether this tree can be inserted…', 'Generates only: checking whether this tree can be inserted…']);
+            expect(insertReasonsOf(panel)).toEqual(["Can't insert: checking whether this tree can be inserted…", "Can't insert: checking whether this tree can be inserted…"]);
 
         });
 
@@ -1132,9 +1132,9 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             });
 
             expect(viewOf(panel, 'dataOrgStatus').textContent).toBe('qa answered that it is Production.');
-            expect(insertReasonsOf(panel)).toEqual(['Generates only: qa answered that it is Production.', 'Generates only: qa answered that it is Production.']);
-            // #293: NEVER DISABLED BY THE ORG -- IT GENERATES ONLY
-            expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([[RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false], [RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false]]);
+            expect(insertReasonsOf(panel)).toEqual(["Can't insert: qa answered that it is Production.", "Can't insert: qa answered that it is Production."]);
+            // #375: DISABLED UNTIL THE TREE CAN BE INSERTED -- IT NEVER GENERATES ONLY
+            expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([[RECIPE_COCKPIT_INSERT_ACTION_LABEL, true], [RECIPE_COCKPIT_INSERT_ACTION_LABEL, true]]);
 
         });
 
@@ -1153,10 +1153,10 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
                 expect(optionsOf(selectElement)).toEqual([['', RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER]]);
             });
             expect(textOf(panel, 'dataOrgStatus')).toEqual([RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT]);
-            const checkingReason = `Generates only: ${RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON}`;
+            const checkingReason = `Can't insert: ${RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON}`;
             expect(insertReasonsOf(panel)).toEqual([checkingReason, checkingReason]);
-            // #293: NEVER DISABLED BY THE ORG -- IT GENERATES ONLY
-            expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([[RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false], [RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false]]);
+            // #375: DISABLED UNTIL THE TREE CAN BE INSERTED -- IT NEVER GENERATES ONLY
+            expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([[RECIPE_COCKPIT_INSERT_ACTION_LABEL, true], [RECIPE_COCKPIT_INSERT_ACTION_LABEL, true]]);
 
         });
 
@@ -1177,7 +1177,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
         });
 
-        it('after a ⟳ that forgets the org, turns every insert into generate only, asks for an org again, and draws nothing more of the old selection', () => {
+        it('after a ⟳ that forgets the org, leaves every insert asking for an org again, and draws nothing more of the old selection', () => {
 
             const { panel } = renderDataOrgPanel();
             openTreecipeViews(panel);
@@ -1187,10 +1187,11 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             viewOf(panel, 'dataOrgRefresh').dispatch('click');
             panel.postToPanel({ command: 'dataOrgList', orgLabels: [], selectedOrgIndex: null, noOrgsMessage: NO_AUTHORIZED_ORGS_MESSAGE, forgottenOrgNotice: 'The last org used, qa, is no longer connected.', hiddenOrgNote: '', renderSequence: 1 });
 
-            const insertOffered = () => insertButtonsOf(panel).some((buttonElement: any) => buttonElement.textContent !== RECIPE_COCKPIT_GENERATE_ACTION_LABEL);
+            const insertOffered = () => insertButtonsOf(panel).some((buttonElement: any) => buttonElement.textContent !== RECIPE_COCKPIT_INSERT_ACTION_LABEL);
             expect(insertOffered()).toBe(false);
-            expect(insertReasonsOf(panel)).toEqual(['Generates only: Choose an org above to also insert it.', 'Generates only: Choose an org above to also insert it.']);
-            expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([[RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false], [RECIPE_COCKPIT_GENERATE_ACTION_LABEL, false]]);
+            expect(insertReasonsOf(panel)).toEqual([RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE, RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE]);
+            // #375: WITH NO ORG CHOSEN THE BUTTON STAYS ENABLED, AND A CLICK ASKS FOR THE ORG
+            expect(insertButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([[RECIPE_COCKPIT_INSERT_ACTION_LABEL, false], [RECIPE_COCKPIT_INSERT_ACTION_LABEL, false]]);
 
             // AN ANSWER STILL ON ITS WAY FOR THE CLEARED SELECTION IS DROPPED
             postSelectionAndReadiness(panel, 1);

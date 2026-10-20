@@ -722,6 +722,14 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
     describe('openRecipeCockpitPanel', () => {
 
         let receivedMessageHandler: (panelMessage: any) => Promise<void>;
+
+        // THE Run Faker by Recipe CALL THE CARD'S INSERT MAKES (#375): THE RECIPE, AND ITS FILTERED COPY ONLY WHEN THE CARD LEAVES SOMETHING OUT
+        const resolveRunFakerCall = (treeKey: string): any[] => {
+            const panelState = (RecipeCockpitService as any).recipeCockpitPanelState;
+            const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey);
+            const filteredRecipe = RecipeCockpitService.resolveRunFakerFilteredRecipe(panelState, treeKey, recipeFilePath, 'Nothing was generated or inserted for');
+            return [RECIPE_COCKPIT_RUN_FAKER_COMMAND, recipeFilePath, ...( filteredRecipe ? [filteredRecipe] : [] )];
+        };
         let disposeHandler: (() => void) | undefined;
         let postedPanelMessages: any[];
 
@@ -819,9 +827,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             await openAndDraw(workspaceState);
             await receivedMessageHandler({ command: 'setObjectCount', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 4 });
 
-            await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
-
-            const runFakerCall = executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND);
+            const runFakerCall = resolveRunFakerCall(ACCOUNT_TREE_KEY);
             expect(runFakerCall).toHaveLength(3);
             expect(runFakerCall?.[1]).toBe(ACCOUNT_RECIPE_FILE_PATH);
             expect(runFakerCall?.[2]).toMatchObject({ excludedObjectApiNames: [], objectCountsByObject: { Contact: 4 } });
@@ -836,9 +842,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
 
             recipeDataMessage.recipe.trees.forEach((tree: IRecipeCockpitTreeViewModel) => expect(tree).not.toHaveProperty('objectCounts'));
 
-            await receivedMessageHandler({ command: 'generateTree', treeKey: ACCOUNT_TREE_KEY });
-
-            expect(executeCommand.mock.calls.find(call => call[0] === RECIPE_COCKPIT_RUN_FAKER_COMMAND)).toEqual([RECIPE_COCKPIT_RUN_FAKER_COMMAND, ACCOUNT_RECIPE_FILE_PATH]);
+            expect(resolveRunFakerCall(ACCOUNT_TREE_KEY)).toEqual([RECIPE_COCKPIT_RUN_FAKER_COMMAND, ACCOUNT_RECIPE_FILE_PATH]);
 
         });
 

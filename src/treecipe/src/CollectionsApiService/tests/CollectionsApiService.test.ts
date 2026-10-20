@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { CollectionsApiService, INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER, INSERT_RESULTS_FILE_MISSING_TEXT, INSERT_VIEW_ERRORS_LABEL } from '../CollectionsApiService';
+import { CollectionsApiService, INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER, INSERT_REQUEST_FAILED_STATUS_CODE, INSERT_RESULTS_FILE_MISSING_TEXT, INSERT_VIEW_ERRORS_LABEL } from '../CollectionsApiService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { MockDirectoryService } from '../../DirectoryProcessingService/tests/mocks/MockSalesforceMetadataDirectory/MockDirectoryService';
 import { MockCollectionsApiService } from './mocks/MockCollectionsApiService';
@@ -1577,6 +1577,80 @@ describe('the one data set insert, shared by Insert Data Set by Directory and th
             ]]);
             expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
             expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+
+        });
+
+        // #375: THE CARD'S FAILURE NOTIFICATION NAMES THE FIRST FILE THAT FAILED, AND ROUTES "Open Troubleshooting" BY ITS FIRST ERROR
+        describe('the first file that failed (#375)', () => {
+
+            const contactFilePath = () => path.join(datasetFolderPath, 'DatasetFilesForCollectionsApi', 'collectionsApi-Contact.json');
+            const accountFilePath = () => path.join(datasetFolderPath, 'DatasetFilesForCollectionsApi', 'collectionsApi-Account.json');
+
+            test('names the file an all-or-none failure stopped at, and its first error that is not a rollback answer', async () => {
+
+                writeDataSetFolder({
+                    Account: [record('Account', 1, 'Account_NickName')],
+                    Contact: [record('Contact', 1, 'Contact_NickName'), record('Contact', 2, 'Contact_NickName_2')]
+                }, { Account: 0, Contact: 1 });
+                const connection = buildConnection((objectApiName, records) => objectApiName === 'Contact'
+                    ? [
+                        { success: false, errors: [{ statusCode: 'ALL_OR_NONE_OPERATION_ROLLED_BACK', message: 'rolled back', fields: [] }] },
+                        { success: false, errors: [{ statusCode: 'INVALID_FIELD_FOR_INSERT_UPDATE', message: 'no access', fields: ['Secret__c'] }] }
+                    ]
+                    : records.map((_record, recordIndex) => ({ id: `${objectApiName}-${recordIndex}`, success: true, errors: [] })));
+                jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockResolvedValue(undefined);
+
+                const insertResult = await insertFolder(connection, true);
+
+                expect(insertResult).toMatchObject({ outcome: 'stopped', failedFilePath: contactFilePath(), firstFailure: { statusCode: 'INVALID_FIELD_FOR_INSERT_UPDATE', fields: ['Secret__c'] } });
+
+            });
+
+            test('without all-or-none, names the FIRST file a record failed in, though the insert goes on and a later file fails too', async () => {
+
+                writeDataSetFolder({
+                    Account: [record('Account', 1, 'Account_NickName'), record('Account', 2, 'Account_NickName_2')],
+                    Contact: [record('Contact', 1, 'Contact_NickName')]
+                }, { Account: 0, Contact: 1 });
+                const connection = buildConnection((objectApiName, records) => records.map((_record, recordIndex) => objectApiName === 'Contact' || recordIndex === 1
+                    ? { success: false, errors: [{ statusCode: objectApiName === 'Contact' ? 'REQUIRED_FIELD_MISSING' : 'FIELD_CUSTOM_VALIDATION_EXCEPTION', message: 'rejected', fields: [] }] }
+                    : { id: `${objectApiName}-${recordIndex}`, success: true, errors: [] }));
+
+                const insertResult = await insertFolder(connection, false);
+
+                expect(insertResult).toMatchObject({ outcome: 'completed', failedRecordCount: 2, failedFilePath: accountFilePath(), firstFailure: { statusCode: 'FIELD_CUSTOM_VALIDATION_EXCEPTION', fields: [] } });
+
+            });
+
+            test('names the file whose request threw, with the request failure as its error', async () => {
+
+                writeDataSetFolder({
+                    Account: [record('Account', 1, 'Account_NickName')],
+                    Contact: [record('Contact', 1, 'Contact_NickName')]
+                }, { Account: 0, Contact: 1 });
+                const connection = buildConnection((objectApiName, records) => {
+                    if ( objectApiName === 'Contact' ) {
+                        throw new Error('socket closed');
+                    }
+                    return records.map((_record, recordIndex) => ({ id: `${objectApiName}-${recordIndex}`, success: true, errors: [] }));
+                });
+
+                const insertResult = await insertFolder(connection, false);
+
+                expect(insertResult).toMatchObject({ outcome: 'stopped', failedFilePath: contactFilePath(), firstFailure: { statusCode: INSERT_REQUEST_FAILED_STATUS_CODE, fields: [] } });
+
+            });
+
+            test('names nothing when every record was saved', async () => {
+
+                writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')] }, { Account: 0 });
+
+                const insertResult = await insertFolder(buildConnection(), false);
+
+                expect(insertResult).not.toHaveProperty('failedFilePath');
+                expect(insertResult).not.toHaveProperty('firstFailure');
+
+            });
 
         });
 

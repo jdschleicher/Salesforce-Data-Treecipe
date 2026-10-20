@@ -1042,7 +1042,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             expect(deployButtonOf(panel, 'fields', 'Lead').disabled).toBe(true);
             expect(panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'treePermissionSets')[0].disabled).toBe(true);
             expect(panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'treeRetrieveValidationRules')[0].disabled).toBe(true);
-            expect(panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'treeInsertReason')[0].textContent).toBe('Generates only: Metadata is being deployed.');
+            expect(panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'treeInsertReason')[0].textContent).toBe("Can't insert: Metadata is being deployed.");
 
             deployButtonOf(panel, 'fields').dispatch('click');
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'deployTreeFields')).toHaveLength(1);

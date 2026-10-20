@@ -1918,7 +1918,7 @@ export class ExtensionCommandService {
         the report this raises, which is the one a user cannot diagnose a broken webview without.
         Runs chosen later from the panel's own selector report through the panel's handler.
     */
-    // openOptions COMES FROM "Change record types" (#196), AND FROM ANY CALLER OF THE COMMAND ID, SO IT IS READ BY A CHECK THAT KEEPS ONLY AN API NAME
+    // openOptions COMES FROM "Change record types" (#196), A FAILED INSERT'S "Open Troubleshooting" (#375), AND FROM ANY CALLER OF THE COMMAND ID, SO IT IS READ BY CHECKS THAT KEEP ONLY AN API NAME OR PLAIN FOLDER NAMES
     async openRecipeCockpit(workspaceState?: IRecipeCockpitWorkspaceState, openOptions?: unknown) {
 
         try {
@@ -1929,7 +1929,8 @@ export class ExtensionCommandService {
                 return;
             }
 
-            await RecipeCockpitService.openRecipeCockpitPanel(VSCodeWorkspaceService.getWorkspaceRoot(), workspaceState, RecipeCockpitService.readRecordTypesFocusRequest(openOptions));
+            await RecipeCockpitService.openRecipeCockpitPanel(VSCodeWorkspaceService.getWorkspaceRoot(), workspaceState,
+                RecipeCockpitService.readTroubleshootingFocusRequest(openOptions) ?? RecipeCockpitService.readRecordTypesFocusRequest(openOptions));
 
         } catch(error) {
 

@@ -152,4 +152,84 @@ describe('VSCodeWorkspaceService notification with a workspace file', () => {
 
     });
 
+    // #375: A FAILED TREE INSERT OFFERS THE FAILED FILE, THE RESULTS FILE AND "Open Troubleshooting" ON ONE NOTIFICATION
+    describe('with several buttons', () => {
+
+        let failedFilePath: string;
+
+        beforeEach(() => {
+            failedFilePath = path.join(workspaceRoot, 'collectionsApi-Contact.json');
+            fs.writeFileSync(failedFilePath, '{}');
+        });
+
+        it('offers each file button that has a path, then each other action, in that order', () => {
+
+            VSCodeWorkspaceService.showNotificationWithWorkspaceFiles('error', 'It failed.', [
+                { label: 'View failed file', filePath: failedFilePath, missingFileText: MISSING_TEXT },
+                { label: 'View nothing', filePath: undefined, missingFileText: MISSING_TEXT },
+                { label: 'View errors', filePath: resultsFilePath, missingFileText: MISSING_TEXT }
+            ], workspaceRoot, [{ label: 'Open Troubleshooting', run: jest.fn() }]);
+
+            expect((vscode.window.showErrorMessage as jest.Mock).mock.calls).toEqual([['It failed.', 'View failed file', 'View errors', 'Open Troubleshooting']]);
+
+        });
+
+        it('opens the file of the button clicked, runs only the action clicked, and nothing on a dismissal', async () => {
+
+            const openSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+            const openTroubleshooting = jest.fn().mockResolvedValue(undefined);
+            const show = () => VSCodeWorkspaceService.showNotificationWithWorkspaceFiles('warning', 'It failed.', [
+                { label: 'View failed file', filePath: failedFilePath, missingFileText: MISSING_TEXT },
+                { label: 'View errors', filePath: resultsFilePath, missingFileText: MISSING_TEXT }
+            ], workspaceRoot, [{ label: 'Open Troubleshooting', run: openTroubleshooting }]);
+
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValueOnce('View failed file');
+            show();
+            await flushClick();
+            expect(openSpy.mock.calls).toEqual([[failedFilePath]]);
+            expect(openTroubleshooting).not.toHaveBeenCalled();
+
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValueOnce('Open Troubleshooting');
+            show();
+            await flushClick();
+            expect(openSpy).toHaveBeenCalledTimes(1);
+            expect(openTroubleshooting).toHaveBeenCalledTimes(1);
+
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValueOnce(undefined);
+            show();
+            await flushClick();
+            expect(openSpy).toHaveBeenCalledTimes(1);
+            expect(openTroubleshooting).toHaveBeenCalledTimes(1);
+
+        });
+
+        it('checks the clicked file again, and says so when it is gone', async () => {
+
+            const openSpy = jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
+            const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+            (vscode.window.showErrorMessage as jest.Mock).mockResolvedValueOnce('View failed file');
+
+            VSCodeWorkspaceService.showNotificationWithWorkspaceFiles('error', 'It failed.', [
+                { label: 'View failed file', filePath: failedFilePath, missingFileText: 'The failed file is gone.' }
+            ], workspaceRoot);
+            fs.rmSync(failedFilePath);
+            await flushClick();
+
+            expect(openSpy).not.toHaveBeenCalled();
+            expect(warningSpy).toHaveBeenCalledWith('The failed file is gone.');
+
+        });
+
+        it('throws nothing when an action rejects', async () => {
+
+            (vscode.window.showErrorMessage as jest.Mock).mockResolvedValueOnce('Open Troubleshooting');
+
+            expect(() => VSCodeWorkspaceService.showNotificationWithWorkspaceFiles('error', 'It failed.', [], workspaceRoot,
+                [{ label: 'Open Troubleshooting', run: () => Promise.reject(new Error('no panel')) }])).not.toThrow();
+            await flushClick();
+
+        });
+
+    });
+
 });

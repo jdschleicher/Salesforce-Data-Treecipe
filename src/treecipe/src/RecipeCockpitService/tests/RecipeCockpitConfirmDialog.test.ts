@@ -309,56 +309,6 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
         });
 
-        // A GENERATE-ONLY RUN THAT ENDS WHILE A DIALOG IS OPEN HOLDS ITS RELOAD, WHICH WOULD OTHERWISE ANSWER THE DIALOG CANCEL
-        it('runs a reload held for an open confirmation once it is answered, unless an insert holds the selection', async () => {
-
-            const recipeDataMessage = await openAndDraw();
-            panelState().deferredReloadFocus = { treeKey: LEAD_TREE_KEY, tab: 'datasets' };
-
-            const answer = RecipeCockpitService.confirmInPanel('Deploy?', { detail: 'x' }, 'Deploy');
-            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0 });
-            await expect(answer).resolves.toBe('Deploy');
-            expect(lastPosted('recipeData')).toBe(recipeDataMessage);
-
-            for ( let flushCount = 0; flushCount < 20 && lastPosted('recipeData') === recipeDataMessage; flushCount++ ) { await flushMicrotasks(); }
-
-            expect(lastPosted('recipeData')).not.toBe(recipeDataMessage);
-            expect(lastPosted('recipeData').focusTree).toEqual({ treeKey: LEAD_TREE_KEY, tab: 'datasets' });
-            expect(panelState().deferredReloadFocus).toBeUndefined();
-
-            const reloaded = lastPosted('recipeData');
-            await receivedMessageHandler({ command: 'rendered', renderSequence: reloaded.renderSequence });
-            panelState().deferredReloadFocus = { treeKey: LEAD_TREE_KEY, tab: 'datasets' };
-            panelState().insertStateMessage = { command: 'insertState', isRunning: true, treeKey: LEAD_TREE_KEY } as any;
-
-            const insertAnswer = RecipeCockpitService.confirmInPanel('Insert?', { detail: 'x' }, 'Insert');
-            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: null });
-            await insertAnswer;
-            for ( let flushCount = 0; flushCount < 5; flushCount++ ) { await flushMicrotasks(); }
-
-            expect(lastPosted('recipeData')).toBe(reloaded);
-            expect(panelState().deferredReloadFocus).toEqual({ treeKey: LEAD_TREE_KEY, tab: 'datasets' });
-            panelState().insertStateMessage = undefined;
-
-        });
-
-        it('reports a held reload that fails through the shared error handler', async () => {
-
-            await openAndDraw();
-            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
-            const reloadError = new Error('the run could not be read');
-            jest.spyOn(RecipeCockpitService as any, 'loadRecipeIntoPanel').mockRejectedValue(reloadError);
-            panelState().deferredReloadFocus = { treeKey: LEAD_TREE_KEY, tab: 'datasets' };
-
-            const answer = RecipeCockpitService.confirmInPanel('Deploy?', { detail: 'x' }, 'Deploy');
-            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: null });
-            await answer;
-            for ( let flushCount = 0; flushCount < 5 && handleCapturedErrorSpy.mock.calls.length === 0; flushCount++ ) { await flushMicrotasks(); }
-
-            expect(handleCapturedErrorSpy).toHaveBeenCalledWith(reloadError, 'openRecipeCockpit');
-
-        });
-
         // THE ROUTER FILTERS A STALE ID FIRST; THE SETTLE CHECKS AGAIN, SO AN ACTION BUILT ANY OTHER WAY CANNOT ANSWER IT
         it('settles only under the pending id, even past the router', async () => {
 
