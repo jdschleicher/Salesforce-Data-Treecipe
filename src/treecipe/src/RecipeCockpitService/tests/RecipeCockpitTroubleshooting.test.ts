@@ -47,6 +47,8 @@ import { execFile } from 'child_process';
 import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
+    RECIPE_COCKPIT_ACTION_VERB_EMOJI,
+    RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND,
     RECIPE_COCKPIT_DEPLOY_ACTION_LABELS,
     RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL,
     RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL,
@@ -55,6 +57,7 @@ import {
     RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
     RECIPE_COCKPIT_TREE_TABS,
+    RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL
 } from '../RecipeCockpitService';
 import { RecipeCockpitMetadataDeploy } from '../RecipeCockpitMetadataDeploy';
@@ -63,6 +66,19 @@ import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgSe
 import { ORG_OPERATIONS_FOLDER_NAME, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES } from '../../ScratchOrgService/ScratchOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
+
+const findDescendantsByClass = (rootElement: any, className: string): any[] => {
+    const found: any[] = [];
+    const visit = (element: any) => {
+        if ( element.classList.contains(className) ) { found.push(element); }
+        element.children.forEach(visit);
+    };
+    rootElement.children.forEach(visit);
+    return found;
+};
+
+// A CARD'S TITLE IS ITS OWN SPAN (#381): A RUNNING LABEL REPLACES IT AND NOTHING ELSE ON THE CARD
+const cardTitleOf = (buttonElement: any): string => findDescendantsByClass(buttonElement, 'actionCardTitle')[0].textContent;
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const METADATA_DEPLOY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'metadataDeployWorkspace');
@@ -1015,7 +1031,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
                 '1 GlobalValueSet; 1 named value set this project does not hold.'
             ]);
             expect(deployButtonOf(panel, 'fields').disabled).toBe(false);
-            expect(deployButtonOf(panel, 'fields').textContent).toBe('Deploy fields…');
+            expect(cardTitleOf(deployButtonOf(panel, 'fields'))).toBe('Deploy fields…');
             expect(deployButtonOf(panel, 'recordTypes').disabled).toBe(true);
             expect(deployButtonOf(panel, 'recordTypes').attributes.title).toBe('No object of this tree has a record type in this project.');
 
@@ -1037,7 +1053,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             deployButtonOf(panel, 'fields').dispatch('click');
 
             expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'deployTreeFields', treeKey: ACCOUNT_TREE_KEY, orgIndex: 0 });
-            expect(deployButtonOf(panel, 'fields').textContent).toBe('Deploying…');
+            expect(cardTitleOf(deployButtonOf(panel, 'fields'))).toBe('Deploying…');
             expect(deployButtonOf(panel, 'recordTypes').disabled).toBe(true);
             expect(deployButtonOf(panel, 'fields', 'Lead').disabled).toBe(true);
             expect(panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'treePermissionSets')[0].disabled).toBe(true);
@@ -1050,7 +1066,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             panel.postToPanel({ command: 'metadataDeployState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, deployKind: 'fields' });
 
             expect(deployButtonOf(panel, 'fields').disabled).toBe(false);
-            expect(deployButtonOf(panel, 'fields').textContent).toBe('Deploy fields…');
+            expect(cardTitleOf(deployButtonOf(panel, 'fields'))).toBe('Deploy fields…');
             expect(panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'treePermissionSets')[0].disabled).toBe(false);
 
         });
@@ -1064,6 +1080,170 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             deployButtonOf(panel, 'permissionSet').dispatch('click');
 
             expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'deployTreePermissionSet', treeKey: ACCOUNT_TREE_KEY });
+
+        });
+
+        describe('the action cards (#381)', () => {
+
+            const CARD_CLASS_BY_ACTION: Record<string, string> = {
+                assignPermissionSets: 'treePermissionSets',
+                generatePermissionSet: 'treeGeneratePermissionSet',
+                retrieveValidationRules: 'treeRetrieveValidationRules',
+                ...Object.fromEntries(Object.entries(RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND).map(([deployKind, action]) => [action, `troubleshootingDeploy-${deployKind}`]))
+            };
+
+            const partOf = (buttonElement: any, className: string) => findDescendantsByClass(buttonElement, className)[0];
+
+            const openAccountTroubleshooting = () => {
+                const panel = renderTrees();
+                const accountCard = cardOf(panel, 'OtherChildObject__c');
+                panel.openTab(accountCard, 'Troubleshooting');
+                return { panel, accountCard };
+            };
+
+            it('draws every action as ONE card button: the verb\'s hidden emoji and the title, the why line, a detail line and a reason line, named by its title and described by the rest', () => {
+
+                const { panel, accountCard } = openAccountTroubleshooting();
+
+                expect(Object.keys(CARD_CLASS_BY_ACTION)).toHaveLength(7);
+                Object.entries(CARD_CLASS_BY_ACTION).forEach(([action, className]) => {
+
+                    const buttonElements = panel.findAll(accountCard, className);
+                    expect(buttonElements).toHaveLength(1);
+                    const buttonElement = buttonElements[0];
+                    const card = RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS[action as keyof typeof RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS];
+
+                    expect(buttonElement.tagName).toBe('button');
+                    expect(buttonElement.className.split(' ').filter((buttonClassName: string) => buttonClassName.startsWith('sdtButton-'))).toEqual(['sdtButton-card']);
+                    expect(buttonElement.parentNode.classList.contains('troubleshootingAction')).toBe(true);
+                    expect(buttonElement.parentNode.parentNode.classList.contains('troubleshootingCards')).toBe(true);
+                    // NO CONTROL INSIDE THE CARD: THE CARD IS THE ONE BUTTON
+                    expect(findDescendantsByClass(buttonElement, 'sdtButton')).toEqual([]);
+
+                    const emojiElement = partOf(buttonElement, 'actionCardEmoji');
+                    expect(emojiElement.textContent).toBe(RECIPE_COCKPIT_ACTION_VERB_EMOJI[card.verb]);
+                    expect(emojiElement.attributes['aria-hidden']).toBe('true');
+                    expect(partOf(buttonElement, 'actionCardWhy').textContent).toBe(card.why);
+
+                    const titleElement = partOf(buttonElement, 'actionCardTitle');
+                    expect(buttonElement.attributes['aria-labelledby']).toBe(titleElement.attributes.id);
+                    expect(buttonElement.attributes['aria-describedby'].split(' ')).toEqual(
+                        ['actionCardWhy', 'actionCardDetail', 'actionCardReason'].map(partClassName => partOf(buttonElement, partClassName).attributes.id));
+
+                });
+                expect(cardTitleOf(panel.findAll(accountCard, 'treePermissionSets')[0])).toBe(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL);
+                Object.entries(RECIPE_COCKPIT_DEPLOY_ACTION_LABELS).forEach(([deployKind, label]) => expect(cardTitleOf(deployButtonOf(panel, deployKind))).toBe(label));
+
+            });
+
+            it('takes every emoji from the one verb map, so actions that share a verb share an emoji', () => {
+
+                const verbs = Object.keys(RECIPE_COCKPIT_ACTION_VERB_EMOJI);
+                Object.values(RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS).forEach(card => expect(verbs).toContain(card.verb));
+                // ONE EMOJI PER VERB, SO NO TWO VERBS CAN BE TOLD APART ONLY BY THEIR TITLES
+                expect(new Set(Object.values(RECIPE_COCKPIT_ACTION_VERB_EMOJI)).size).toBe(verbs.length);
+                Object.values(RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND).forEach(action => expect(RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS[action].verb).toBe('deploy'));
+
+                const { panel, accountCard } = openAccountTroubleshooting();
+                const emojiByVerb = new Map<string, Set<string>>();
+                Object.entries(CARD_CLASS_BY_ACTION).forEach(([action, className]) => {
+                    const verb = RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS[action as keyof typeof RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS].verb;
+                    const emojis = emojiByVerb.get(verb) ?? new Set<string>();
+                    emojis.add(partOf(panel.findAll(accountCard, className)[0], 'actionCardEmoji').textContent);
+                    emojiByVerb.set(verb, emojis);
+                });
+                emojiByVerb.forEach(emojis => expect(emojis.size).toBe(1));
+                expect(emojiByVerb.get('deploy')).toEqual(new Set(['🚀']));
+
+            });
+
+            it('says on the card why it is disabled, never the same text twice, and keeps the summary as its detail', () => {
+
+                const { panel } = openAccountTroubleshooting();
+                const recordTypesCard = deployButtonOf(panel, 'recordTypes');
+
+                // NO SUMMARY YET: THE DETAIL SAYS IT, SO THE REASON LINE STAYS HIDDEN
+                expect(recordTypesCard.disabled).toBe(true);
+                expect(partOf(recordTypesCard, 'actionCardDetail').textContent).toBe('Reading this project…');
+                expect(panel.isHidden(partOf(recordTypesCard, 'actionCardReason'))).toBe(true);
+
+                panel.postToPanel(summary({ recordTypeCount: 0 }));
+
+                expect(recordTypesCard.disabled).toBe(true);
+                expect(partOf(recordTypesCard, 'actionCardDetail').textContent).toBe('0 RecordType.');
+                expect(partOf(recordTypesCard, 'actionCardReason').textContent).toBe('No object of this tree has a record type in this project.');
+                expect(panel.isHidden(partOf(recordTypesCard, 'actionCardReason'))).toBe(false);
+
+                const fieldsCard = deployButtonOf(panel, 'fields');
+                expect(fieldsCard.disabled).toBe(false);
+                expect(panel.isHidden(partOf(fieldsCard, 'actionCardReason'))).toBe(true);
+
+            });
+
+            it('replaces only the running card\'s title while a deploy runs, and shows the busy reason on every card it holds', () => {
+
+                const { panel, accountCard } = openAccountTroubleshooting();
+                panel.postToPanel(summary());
+                const fieldsCard = deployButtonOf(panel, 'fields');
+
+                fieldsCard.dispatch('click');
+
+                expect(cardTitleOf(fieldsCard)).toBe('Deploying…');
+                expect(partOf(fieldsCard, 'actionCardEmoji').textContent).toBe('🚀');
+                expect(partOf(fieldsCard, 'actionCardWhy').textContent).toBe(RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS.deployFields.why);
+                expect(cardTitleOf(deployButtonOf(panel, 'recordTypes'))).toBe(RECIPE_COCKPIT_DEPLOY_ACTION_LABELS.recordTypes);
+                ['treePermissionSets', 'treeGeneratePermissionSet', 'treeRetrieveValidationRules'].forEach(className => {
+                    const buttonElement = panel.findAll(accountCard, className)[0];
+                    expect(buttonElement.disabled).toBe(true);
+                    expect(partOf(buttonElement, 'actionCardReason').textContent).toBe('Metadata is being deployed.');
+                });
+
+                panel.postToPanel({ command: 'metadataDeployState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, deployKind: 'fields' });
+
+                expect(panel.isHidden(partOf(panel.findAll(accountCard, 'treePermissionSets')[0], 'actionCardReason'))).toBe(true);
+
+            });
+
+            it('posts from a click anywhere on an enabled card, and nothing from a disabled one', () => {
+
+                const { panel } = openAccountTroubleshooting();
+                panel.postToPanel(summary({ recordTypeCount: 0 }));
+
+                partOf(deployButtonOf(panel, 'recordTypes'), 'actionCardWhy').dispatch('click');
+                expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'deployTreeRecordTypes')).toEqual([]);
+
+                partOf(deployButtonOf(panel, 'fields'), 'actionCardWhy').dispatch('click');
+                expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'deployTreeFields')).toEqual([{ command: 'deployTreeFields', treeKey: ACCOUNT_TREE_KEY }]);
+
+            });
+
+            it('matches a sub-tab\'s search against the why line, which is on screen', () => {
+
+                const { panel, accountCard } = openAccountTroubleshooting();
+                panel.postToPanel(summary());
+
+                panel.typeIntoTabSearch(accountCard, 'troubleshootingSubPanel-fields', 'invalid_field');
+                expect(panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-fields')[0], 'tabMatchCount')[0].textContent).toBe('1 of 1 action');
+
+                panel.typeIntoTabSearch(accountCard, 'troubleshootingSubPanel-globalValueSets', 'restricted picklist');
+                expect(panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-globalValueSets')[0], 'tabMatchCount')[0].textContent).toBe('1 of 1 action');
+
+                panel.typeIntoTabSearch(accountCard, 'troubleshootingSubPanel-globalValueSets', 'nothing says this');
+                expect(panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-globalValueSets')[0], 'tabMatchCount')[0].textContent).toBe('no matches');
+
+            });
+
+            it('styles the card by its kind alone: one fixed size, a wrapping grid that is one column in a narrow panel, and clamped text', () => {
+
+                const styleSheet = RecipeCockpitService.buildWebviewShellHtml('testNonce');
+                expect(styleSheet).toMatch(/\.sdtButton-card \{[^}]*height: 9.5rem;[^}]*overflow: hidden;/);
+                expect(styleSheet).toMatch(/\.troubleshootingCards \{[^}]*display: grid;[^}]*grid-template-columns: repeat\(auto-fill, minmax\(min\(100%, 18rem\), 1fr\)\);/);
+                expect(styleSheet).toMatch(/\.actionCardTitle \{ -webkit-line-clamp: 2; font-size: inherit; \}/);
+                expect(styleSheet).toMatch(/\.actionCardWhy \{ -webkit-line-clamp: 2; \}/);
+                expect(styleSheet).toMatch(/\.actionCardDetail, \.actionCardReason \{ -webkit-line-clamp: 1; \}/);
+                expect(styleSheet).toMatch(/\.sdtButton-card:hover:not\(:disabled\) \{[^}]*border-color: var\(--sdt-accent\);/);
+
+            });
 
         });
 

@@ -785,15 +785,15 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
             const generateButton = generateButtonOf(panel);
 
             expect(RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL).toBe('Generate permission set…');
-            expect(generateButton.textContent).toBe('Generate permission set…');
+            expect(panel.findAll(generateButton, 'actionCardTitle')[0].textContent).toBe('Generate permission set…');
             expect(generateButton.disabled).toBe(false);
             expect(generateButtonOf(panel, 'Lead')).toBeDefined();
-            const controlChildren = panel.findAll(panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'troubleshootingSubPanel-permissions')[0], 'troubleshootingControls').map((controlsElement: any) => controlsElement.children[0]);
+            const controlChildren = panel.findAll(panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'troubleshootingSubPanel-permissions')[0], 'troubleshootingAction').map((actionElement: any) => actionElement.children[0]);
             // THE TROUBLESHOOTING TAB'S PERMISSIONS SUB-TAB (#346, #365): THE ASSIGN BUTTON, THIS ONE, THEN "Deploy permission set…"
             expect(controlChildren).toHaveLength(3);
             expect(controlChildren[0] === panel.findAll(cardOf(panel, 'OtherChildObject__c'), 'treePermissionSets')[0]).toBe(true);
             expect(controlChildren[1] === generateButton).toBe(true);
-            expect(controlChildren[2].className).toBe('sdtButton sdtButton-secondary troubleshootingDeploy troubleshootingDeploy-permissionSet');
+            expect(controlChildren[2].className).toBe('sdtButton sdtButton-card actionCard troubleshootingDeploy troubleshootingDeploy-permissionSet');
 
             generateButton.dispatch('click');
 

@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.114.0] - Recipe Cockpit: the Troubleshooting sub-tabs' actions are cards that say when you need them
+
+Closes [#381](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/381).
+
+Each Troubleshooting sub-tab drew its actions as plain buttons: only the deploys had a line under them, and why you would run an action was in a tooltip. When an insert failed and **Open Troubleshooting** landed the reader on a sub-tab, nothing on screen said which action fixed which failure.
+
+- **Every action is one card.** The seven actions (Deploy fields, Assign permission sets to me, Generate permission set, Deploy permission set, Retrieve validation rules, Deploy record types, Deploy global value sets) are each ONE button drawn as a card: the verb's emoji and the title it had, a line or two on when it is needed (for example *Insert failed with INVALID_FIELD? The org is missing custom fields this tree writes.*), the counts a deploy already showed, and, while it cannot run, the reason on the card itself as well as in its tooltip. The whole card is the button, so it is one focus stop and a click anywhere on it runs it.
+- **One emoji per verb.** 🚀 deploy, 📥 retrieve, 👤 assign, 🛠️ generate, from one map, so every deploy shares 🚀 and a later retrieve gets 📥. The emoji is hidden from a screen reader: the card is named by its title and described by its other lines.
+- **Fixed size.** Cards share one size (18rem × 9.5rem, a little over the issue's 16rem × 7rem so a title is never cut short) and wrap in a grid; in a narrow panel each takes the full width. Text that does not fit is cut off, and the tooltip keeps the whole reason.
+- **Search.** A sub-tab's search also matches the why line, since it is on screen: `INVALID_FIELD` in Fields finds Deploy fields.
+- **Unchanged.** What every click posts, every run lock and guard, the running labels (`Deploying…` now replaces only the title), the place, and the TODO's and Validation Rules lists.
+- **Design guide.** `CLAUDE.md` records the `card` button kind and the verb → emoji map beside #363's kinds; the ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the cards.
+- **Tests.** `RecipeCockpitTroubleshooting.test.ts` holds each of the seven to one card button with its emoji, title, why line, ids and description, the verb map, the reason on a disabled card (never said twice), a running title that changes nothing else, a click on a disabled card posting nothing, the search matching the why line and the card's stylesheet; `RecipeCockpitButtonKinds`, `RecipeCockpitTroubleshootingSubTabs` and the assign, generate and retrieve suites read the card's title and kind.
+
 ## [3.113.0] - Recipe Cockpit: the Treecipes section shows one treecipe at a time from a dropdown, with one search across every treecipe
 
 Closes [#374](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/374).

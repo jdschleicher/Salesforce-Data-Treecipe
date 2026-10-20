@@ -1241,7 +1241,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             const permissionSetButton = permissionSetButtonOf(panel);
             const accountCard = cardOf(panel, 'OtherChildObject__c');
 
-            expect(permissionSetButton.textContent).toBe('Assign permission sets to me…');
+            expect(panel.findAll(permissionSetButton, 'actionCardTitle')[0].textContent).toBe('Assign permission sets to me…');
             expect(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL).toBe('Assign permission sets to me…');
             expect(panel.isHidden(permissionSetButton)).toBe(false);
             expect(panel.isHidden(permissionSetButtonOf(panel, 'Lead'))).toBe(false);
@@ -1249,13 +1249,13 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
                 expect(panel.findAll(accountCard, className)).toEqual([]);
             });
             // IN THE TROUBLESHOOTING TAB'S PERMISSIONS SUB-TAB (#346, #365): THE ASSIGN BUTTON, "Generate permission set…" (#306) AND "Deploy permission set…", ONE ACTION EACH
-            const controlChildren = panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-permissions')[0], 'troubleshootingControls').map((controlsElement: any) => controlsElement.children[0]);
+            const controlChildren = panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-permissions')[0], 'troubleshootingAction').map((actionElement: any) => actionElement.children[0]);
             expect(controlChildren).toHaveLength(3);
             expect(controlChildren[0] === permissionSetButton).toBe(true);
-            expect(controlChildren[1].className).toBe('sdtButton sdtButton-secondary treeGeneratePermissionSet');
-            expect(controlChildren[2].className).toBe('sdtButton sdtButton-secondary troubleshootingDeploy troubleshootingDeploy-permissionSet');
+            expect(controlChildren[1].className).toBe('sdtButton sdtButton-card actionCard treeGeneratePermissionSet');
+            expect(controlChildren[2].className).toBe('sdtButton sdtButton-card actionCard troubleshootingDeploy troubleshootingDeploy-permissionSet');
             // "Retrieve validation rules…" (#326) HAS A SUB-TAB OF ITS OWN
-            expect(panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-validationRules')[0], 'troubleshootingControls').map((controlsElement: any) => controlsElement.children[0].className)).toEqual(['sdtButton sdtButton-secondary treeRetrieveValidationRules']);
+            expect(panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-validationRules')[0], 'troubleshootingAction').map((actionElement: any) => actionElement.children[0].className)).toEqual(['sdtButton sdtButton-card actionCard treeRetrieveValidationRules']);
 
             permissionSetButton.dispatch('click');
 

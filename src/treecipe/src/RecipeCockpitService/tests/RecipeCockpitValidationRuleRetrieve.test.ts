@@ -849,7 +849,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             const retrieveButton = retrieveButtonOf(panel);
 
             expect(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL).toBe('Retrieve validation rules…');
-            expect(retrieveButton.textContent).toBe('Retrieve validation rules…');
+            expect(panel.findAll(retrieveButton, 'actionCardTitle')[0].textContent).toBe('Retrieve validation rules…');
             expect(retrieveButton.disabled).toBe(false);
             expect(retrieveButtonOf(panel, 'Lead')).toBeDefined();
 
