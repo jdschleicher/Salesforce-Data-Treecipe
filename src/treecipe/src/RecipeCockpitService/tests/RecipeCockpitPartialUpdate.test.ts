@@ -292,6 +292,8 @@ describe('Recipe Cockpit partial updates (#226)', () => {
 
             expect(datasetFolderNamesIn(panel, panel.tabPanelOf(leadCard, 'treeDatasets'))).toEqual([ADDED_DATASET.datasetFolderName]);
             expect(panel.findAll(panel.tabPanelOf(leadCard, 'treeDatasets'), 'tabSearchInput')).toHaveLength(1);
+            // THE REBUILT BOX CARRIES ITS MAGNIFIER (#373)
+            expect(panel.findAll(panel.tabPanelOf(leadCard, 'treeDatasets'), 'tabSearchField')[0].children[0].attributes.class).toBe('tabSearchIcon');
             expect(panel.findAll(panel.tabPanelOf(leadCard, 'treeDatasets'), 'treeEmpty')).toEqual([]);
 
         });
