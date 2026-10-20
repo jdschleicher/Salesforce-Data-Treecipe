@@ -27,6 +27,7 @@ export interface IPanelScriptOptions {
 export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
 
     const postedHostMessages: any[] = [];
+    const documentCaptureListenersByType: Record<string, Function[]> = {};
     const windowListenersByType: Record<string, Function> = {};
 
     const buildFakeElement = (tagName: string, initialClassName = ''): any => {
@@ -90,6 +91,8 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
             dispatch(eventType: string, eventInit: Record<string, unknown> = {}) {
                 let isPropagationStopped = false;
                 const event = { ...eventInit, type: eventType, target: this, stopPropagation: () => { isPropagationStopped = true; } };
+                // A CAPTURING DOCUMENT LISTENER HEARS EVERY EVENT FIRST, WHATEVER THE ELEMENTS UNDER IT DO WITH IT (#380)
+                (documentCaptureListenersByType[eventType] || []).forEach((listener: Function) => listener(event));
                 for (let currentElement: any = this; currentElement && !isPropagationStopped; currentElement = currentElement.parentNode) {
                     if ( currentElement.disabled ) { continue; }
                     (currentElement.listenersByEventType[eventType] || []).forEach((listener: Function) => listener(event));
@@ -109,6 +112,10 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
 
     const fakeDocument: any = {
         activeElement: null,
+        // RUN AS CAPTURING LISTENERS, BEFORE THE TARGET'S OWN: THE PANEL'S ONE DOCUMENT LISTENER CAPTURES (#380)
+        addEventListener: (eventType: string, listener: Function) => {
+            (documentCaptureListenersByType[eventType] = documentCaptureListenersByType[eventType] || []).push(listener);
+        },
         getElementById: (elementId: string) => ({ loadStatus: loadStatusElement, cockpitBody: cockpitBodyElement, cockpitMeta: cockpitMetaElement, cockpitDialogHost: cockpitDialogHostElement } as any)[elementId],
         createElement: (tagName: string) => buildFakeElement(tagName),
         // THE TREE GLYPH IS INLINE SVG (#219); ITS NAMESPACE IS KEPT SO A TEST CAN SAY IT WAS NOT AN HTML ELEMENT

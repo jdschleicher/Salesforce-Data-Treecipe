@@ -410,7 +410,7 @@ const CONSTRAINED_EXPRESSION_INNER_DELIMITERS = ['${', '{{', '}}', '{%', '%}', '
 const CONSTRAINED_EXPRESSION_MAX_LENGTH = 1000;
 // RelationshipService.referenceIdRequiredTodo, ALONE OR WITH THE " -- <Parent>, <Parent>" A NESTED TREE APPENDS (#46) -- A TEST HOLDS THE TWO TOGETHER
 // AN API NAME THAT YAML 1.1 (PyYAML, snowfakery's reader) OR 1.2 (js-yaml) LOADS AS A BOOLEAN OR NULL RATHER THAN A STRING
-const YAML_NON_STRING_PLAIN_SCALAR_PATTERN = /^(?:y|Y|yes|Yes|YES|n|N|no|No|NO|true|True|TRUE|false|False|FALSE|on|On|ON|off|Off|OFF|null|Null|NULL)$/;
+export const YAML_NON_STRING_PLAIN_SCALAR_PATTERN = /^(?:y|Y|yes|Yes|YES|n|N|no|No|NO|true|True|TRUE|false|False|FALSE|on|On|ON|off|Off|OFF|null|Null|NULL)$/;
 const REFERENCE_ID_REQUIRED_TODO_TEXT = '### TODO -- REFERENCE ID REQUIRED';
 const REFERENCE_ID_REQUIRED_TODO_PATTERN = /^### TODO -- REFERENCE ID REQUIRED(?: -- [^\r\n\u0085\u2028\u2029]*)?[ \t]*$/;
 
