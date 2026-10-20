@@ -401,6 +401,12 @@ export const RECIPE_COCKPIT_TREECIPE_PICKER_LABEL = 'Treecipe';
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER = 'Search treecipes, objects, fields and record types';
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH = 'No treecipe, object, field or record type matches this search.';
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX = ' (no match)';
+// THE LINE UNDER THE DROPDOWN NAMING THE SHOWN CARD'S OBJECTS IN INSERT ORDER (#385)
+export const RECIPE_COCKPIT_TREE_PICKER_OBJECTS_LABEL = 'Insert order:';
+export const RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SEPARATOR = ' → ';
+export const RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS = 'No objects';
+export const RECIPE_COCKPIT_TREE_PICKER_EXCLUDED_SUFFIX = ' (excluded)';
+export const RECIPE_COCKPIT_TREE_PICKER_AUTO_EXCLUDED_SUFFIX = ' (auto-excluded)';
 // HOW MANY RESULT ROWS THE SECTION SEARCH DRAWS; THE REST IS ONE "N more" LINE
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT = 50;
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX = ' more — type more of the name to narrow the search';
@@ -474,6 +480,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.',
             'Under the run list, the Target Org Management section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll. The Treecipes section below it shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last.',
+            'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks any you excluded.',
             'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all with a link to each line.',
@@ -12176,6 +12183,11 @@ ${this.buildPaletteCustomProperties()}
         padding: 0.3rem;
         max-width: 100%;
     }
+    .treePickerObjects { display: flex; flex-wrap: wrap; align-items: baseline; padding: 0 0 0.4rem 0; overflow-wrap: anywhere; }
+    .treePickerObjectsLabel { font-weight: 600; margin-right: 0.4rem; }
+    /* A FLEX ITEM DROPS ITS EDGE SPACES, SO THE SEPARATOR AND THE COUNT KEEP THEIRS */
+    .treePickerObjectSeparator, .treePickerObjectsCount { white-space: pre; }
+    .treePickerObject.excluded { color: var(--sdt-muted); text-decoration: line-through; }
     .treePickerSelect:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); cursor: not-allowed; }
     .notice {
         border-left: 3px solid var(--sdt-changed);
@@ -12796,6 +12808,11 @@ ${this.buildPaletteCustomProperties()}
     const TREECIPES_SEARCH_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_PLACEHOLDER)};
     const TREECIPES_SEARCH_NO_MATCH = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH)};
     const TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX)};
+    const TREE_PICKER_OBJECTS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_OBJECTS_LABEL)};
+    const TREE_PICKER_OBJECTS_SEPARATOR = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SEPARATOR)};
+    const TREE_PICKER_NO_OBJECTS = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS)};
+    const TREE_PICKER_EXCLUDED_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_EXCLUDED_SUFFIX)};
+    const TREE_PICKER_AUTO_EXCLUDED_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_AUTO_EXCLUDED_SUFFIX)};
     const TREECIPES_SEARCH_RESULT_LIMIT = ${RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT};
     const TREECIPES_SEARCH_MORE_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX)};
     const REGENERATE_WITH_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL)};
@@ -12947,6 +12964,8 @@ ${this.buildPaletteCustomProperties()}
     let treecipesControlsElement = null;
     let treePickerElement = null;
     let treePickerTreeStates = [];
+    let treePickerObjectsElement = null;
+    let treePickerShownTreeState = null;
     let treecipesSearch = null;
     let treecipesSearchText = '';
     let treecipesSearchIndex = null;
@@ -13304,6 +13323,56 @@ ${this.buildPaletteCustomProperties()}
         });
 
         if (shownTreeState && !shownTreeState.isExpanded) { setTreeExpanded(shownTreeState, true); }
+
+        // A KEYSTROKE IN THE SECTION SEARCH COMES THROUGH HERE TOO, SO THE LINE IS REDRAWN ONLY FOR ANOTHER CARD
+        if (shownTreeState !== treePickerShownTreeState) {
+            treePickerShownTreeState = shownTreeState;
+            drawTreePickerObjects();
+        }
+
+    }
+
+    /*
+        The shown card's objects in insert order (#385), the card's own order, each object once:
+        an iteration or a later record type block is the same object. An excluded object stays
+        listed and says so in text, not only in its style. Nothing is drawn while no card is.
+    */
+    function drawTreePickerObjects() {
+
+        if (!treePickerObjectsElement) { return; }
+
+        treePickerObjectsElement.textContent = '';
+        const shownTreeState = treePickerShownTreeState;
+        if (!shownTreeState) {
+            treePickerObjectsElement.classList.add('hidden');
+            return;
+        }
+        treePickerObjectsElement.classList.remove('hidden');
+
+        const listedObjectApiNames = Object.create(null);
+        const objectApiNames = [];
+        shownTreeState.tree.objects.forEach(function (treeObject) {
+            if (treeObject.iterationNickname || listedObjectApiNames[treeObject.objectApiName] === true) { return; }
+            listedObjectApiNames[treeObject.objectApiName] = true;
+            objectApiNames.push(treeObject.objectApiName);
+        });
+
+        treePickerObjectsElement.appendChild(createElement('span', 'treePickerObjectsLabel', TREE_PICKER_OBJECTS_LABEL));
+
+        if (objectApiNames.length === 0) {
+            treePickerObjectsElement.appendChild(createElement('span', 'treePickerObjectsCount muted', TREE_PICKER_NO_OBJECTS));
+            return;
+        }
+
+        const exclusionsByObjectApiName = indexObjectExclusions(shownTreeState.tree);
+        objectApiNames.forEach(function (objectApiName, objectIndex) {
+            if (objectIndex > 0) { treePickerObjectsElement.appendChild(createElement('span', 'treePickerObjectSeparator muted', TREE_PICKER_OBJECTS_SEPARATOR)); }
+            const exclusion = Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
+            const suffix = !exclusion ? '' : exclusion.kind === 'autoExcluded' ? TREE_PICKER_AUTO_EXCLUDED_SUFFIX : TREE_PICKER_EXCLUDED_SUFFIX;
+            treePickerObjectsElement.appendChild(createElement('span', exclusion ? 'treePickerObject excluded' : 'treePickerObject', objectApiName + suffix));
+        });
+
+        treePickerObjectsElement.appendChild(createElement('span', 'treePickerObjectsCount muted', ' · ' + pluralize(objectApiNames.length, 'object', 'objects')));
 
     }
 
@@ -14531,6 +14600,7 @@ ${this.buildPaletteCustomProperties()}
         drawTreeInsert(treeState);
         drawTreePermissionSet(treeState);
         drawHelpSummary();
+        if (treeState === treePickerShownTreeState) { drawTreePickerObjects(); }
 
         // WHAT THE TROUBLESHOOTING TAB COUNTS LEAVES OUT EXCLUDED OBJECTS AND UNTICKED FIELDS (#346)
         if (treeState.selectedTab === 'troubleshooting') { requestTroubleshootingSummary(treeState); }
@@ -17743,6 +17813,8 @@ ${this.buildPaletteCustomProperties()}
             treecipesControlsElement.appendChild(search.element);
             treecipesControlsElement.appendChild(search.resultsElement);
             treecipesControlsElement.appendChild(buildTreePicker());
+            treePickerObjectsElement = createElement('div', 'treePickerObjects hidden');
+            treecipesControlsElement.appendChild(treePickerObjectsElement);
         }
 
         noFavoritesElement = createElement('div', 'emptyState hidden', NO_FAVORITES_MESSAGE);
@@ -18606,6 +18678,8 @@ ${this.buildPaletteCustomProperties()}
         treecipesControlsElement = null;
         treePickerElement = null;
         treePickerTreeStates = [];
+        treePickerObjectsElement = null;
+        treePickerShownTreeState = null;
         treecipesSearch = null;
         treecipesSearchIndex = null;
         treecipesMatchedTreeKeys = null;
