@@ -296,7 +296,8 @@ describe('RecipeCockpitService', () => {
                 rowHover: '#F1F5FF', chipBg: '#EEF2FF', chipText: '#3730A3',
                 added: '#15803D', removed: '#B91C1C', changed: '#B45309',
                 disabledBg: '#E5E7EB', disabledText: '#4B5563',
-                excludedOverlay: 'rgba(148, 163, 184, 0.40)'
+                excludedOverlay: 'rgba(148, 163, 184, 0.40)',
+                dialogBackdrop: 'rgba(31, 41, 55, 0.50)'
             });
             expect(rootBlock).toContain('--sdt-page: #F4F6F9;');
             expect(rootBlock).toContain('--sdt-on-accent: #FFFFFF;');
@@ -550,6 +551,20 @@ describe('RecipeCockpitService', () => {
                 expect(compositeOver(RECIPE_COCKPIT_PALETTE.excludedOverlay, RECIPE_COCKPIT_PALETTE.surface)).toBe('#d4dae3');
                 expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.text, compositeOver(RECIPE_COCKPIT_PALETTE.excludedOverlay, RECIPE_COCKPIT_PALETTE.surface)).toFixed(2)).toBe('10.44');
                 expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.text, compositeOver(RECIPE_COCKPIT_PALETTE.excludedOverlay, RECIPE_COCKPIT_PALETTE.rowHover)).toFixed(2)).toBe('9.85');
+
+            });
+
+            /*
+                #349: an in-panel confirmation dims the cockpit behind it with --sdt-dialog-backdrop. No
+                text is drawn on the backdrop, so what has to hold is the dialog's own edge: its surface
+                against the dimmed page, held to the 3:1 a boundary needs (WCAG 1.4.11).
+            */
+            it('composites the dialog backdrop over the page, and keeps the dialog surface at 3:1 or more against it (#349)', () => {
+
+                expect(parseRgba(RECIPE_COCKPIT_PALETTE.dialogBackdrop)).toEqual([31, 41, 55, 0.5]);
+                const dimmedPage = compositeOver(RECIPE_COCKPIT_PALETTE.dialogBackdrop, RECIPE_COCKPIT_PALETTE.page);
+                expect(dimmedPage).toBe('#8a9098');
+                expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.surface, dimmedPage)).toBeGreaterThanOrEqual(3);
 
             });
 

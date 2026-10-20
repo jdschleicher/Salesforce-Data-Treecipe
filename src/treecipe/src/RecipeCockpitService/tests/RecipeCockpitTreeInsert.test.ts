@@ -79,6 +79,7 @@ import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/R
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
 import { ExtensionCommandService } from '../../ExtensionCommandService/ExtensionCommandService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
+import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const SNOWFAKERY_RUN = 'recipe-2026-09-20T10-00-00';
@@ -277,6 +278,8 @@ beforeEach(() => {
     jest.spyOn(SalesforceOrgService, 'readLocalDataOrgDetail').mockResolvedValue(undefined);
 });
 
+answerInPanelConfirmationsThroughWarningMock();
+
 describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255)', () => {
 
     beforeEach(() => {
@@ -338,12 +341,12 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         const insertAccountTree = () => receivedMessageHandler({ command: 'insertTree', treeKey: ACCOUNT_TREE_KEY });
         // THE TREE INSERT'S RESULT NOTIFICATIONS (#301): NOT A MODAL, AND WITH A BUTTON -- THE SHARED INSERT'S OWN PROGRESS NOTES HAVE NONE
-        const resultNotificationCalls = (notify: unknown) => ( notify as jest.Mock ).mock.calls.filter(notificationCall => notificationCall.length > 1 && !notificationCall[1]?.modal);
+        const resultNotificationCalls = (notify: unknown) => ( notify as jest.Mock ).mock.calls.filter(notificationCall => notificationCall.length > 1 && !notificationCall[1]?.inPanel);
         const insertResultsFilePath = () => path.join(fakeDataSetsFolderPath(), datasetFolderNames()[0], 'InsertAttempts', `insertAttempt-${TIMESTAMP}`, `insertAttemptResults-${TIMESTAMP}.json`);
         // THE MODAL IS CONFIRMED; A RESULT NOTIFICATION IS LEFT OPEN UNTIL THE TEST CLICKS ITS BUTTON
         const holdResultNotifications = () => {
             const clickButton: { answer?: (label: string | undefined) => void } = {};
-            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options?: { modal?: boolean }) => options?.modal
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options?: { inPanel?: boolean }) => options?.inPanel
                 ? RECIPE_COCKPIT_INSERT_CONFIRM_LABEL
                 : new Promise(resolve => { clickButton.answer = resolve; }));
             return clickButton;
@@ -621,6 +624,23 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
             });
 
+            it('inserts nothing when the router no longer routes the insert after the check', async () => {
+
+                useConnection(buildFakeConnection());
+                await openUnselectedCockpit(FAKER_JS_RUN);
+                const realRoutePanelMessage = RecipeCockpitService.routePanelMessage.bind(RecipeCockpitService);
+                jest.spyOn(RecipeCockpitService, 'routePanelMessage').mockImplementation((panelMessage: any, routedPanelState: any) => (
+                    panelMessage?.command === 'insertTree' && routedPanelState.dataOrgSelection ? undefined : realRoutePanelMessage(panelMessage, routedPanelState)
+                ));
+                postedPanelMessages.length = 0;
+
+                await insertAccountTree();
+
+                expect(runFakerCalls()).toEqual([]);
+                expect(postedNamed('insertState').at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+
+            });
+
             it('given a pick while another org was chosen in the dropdown meanwhile, leaves that choice alone', async () => {
 
                 useConnection(buildFakeConnection());
@@ -655,7 +675,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             // THE HOST-SIDE MODAL: EACH OBJECT'S TOTAL, A NESTED FRIEND'S PER-PARENT COUNT, AND NO LARGE-RUN WARNING
             const [modalMessage, modalOptions, modalAction] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
             expect(modalMessage).toBe('Generate Relationship Tree 1 and insert it into qa (qa@example.com.qa)?');
-            expect(modalOptions.modal).toBe(true);
+            expect(modalOptions.inPanel).toBe(true);
             expect(modalAction).toBe(RECIPE_COCKPIT_INSERT_CONFIRM_LABEL);
             expect(modalOptions.detail.split('\n')).toIncludeAllMembers([
                 'Org: qa (qa@example.com.qa)',
@@ -1149,6 +1169,20 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         });
 
+        it('reopens the cockpit on the inserted run when the open cockpit shows another run (#375)', async () => {
+
+            await openSelectedCockpit(SNOWFAKERY_RUN);
+            postedPanelMessages.length = 0;
+            executeCommand.mockClear();
+            const focusRequest = { runFolderName: FAKER_JS_RUN, treeFolderName: ACCOUNT_TREE_KEY, troubleshootingSubTab: 'todos' as const };
+
+            await RecipeCockpitService.openTroubleshootingAfterInsert(temporaryWorkspaceRoot, focusRequest);
+
+            expect(postedNamed('focusTree')).toEqual([]);
+            expect(executeCommand).toHaveBeenCalledWith(RECIPE_COCKPIT_OPEN_COMMAND, { focusTroubleshooting: true, ...focusRequest });
+
+        });
+
         it('reopens the cockpit through its command on the inserted run when the panel was closed, and warns instead when the run is gone (#375)', async () => {
 
             const focusRequest = { runFolderName: FAKER_JS_RUN, treeFolderName: ACCOUNT_TREE_KEY, troubleshootingSubTab: 'permissions' as const };
@@ -1322,7 +1356,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
                 await insertAccountTree();
 
-                expect(( vscode.window.showWarningMessage as jest.Mock ).mock.calls.filter(notificationCall => notificationCall[1]?.modal)).toHaveLength(1);
+                expect(( vscode.window.showWarningMessage as jest.Mock ).mock.calls.filter(notificationCall => notificationCall[1]?.inPanel)).toHaveLength(1);
                 expect(runFakerCalls()).toHaveLength(1);
                 expect(connection.deleteCalls).toEqual([]);
                 expect(insertedOf(connection, 'Account')).toHaveLength(2);
@@ -2035,10 +2069,11 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         });
 
-        it('names a required parent outside the tree, and escapes what it names', () => {
+        // THE IN-PANEL DIALOG WRITES IT WITH textContent (#349), SO A NAME IS SHOWN AS WRITTEN
+        it('names a required parent outside the tree, as written', () => {
 
             expect(detailOf([['Contact', 1]], ['Region__c'])).toContain('Required lookups to objects this tree does not insert get a random existing record of: Region__c (none means nothing is inserted).');
-            expect(detailOf([['Contact', 1]], ['[x](command:evil)'])).not.toContain('[x](command:evil)');
+            expect(detailOf([['Contact', 1]], ['[x](command:evil)'])).toContain('a random existing record of: [x](command:evil) (none');
 
         });
 

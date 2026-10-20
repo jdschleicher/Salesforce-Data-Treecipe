@@ -39,6 +39,7 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { FakerJSRecipeProcessor } from '../../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
 import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
 import * as os from 'os';
+import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 /*
     #325: a checkbox at the end of a rule-constrained field's row says the field's validation rules
@@ -102,6 +103,8 @@ function readFieldLines(recipeText: string, objectApiName: string, fieldApiName:
 }
 
 const emptyFilter = { excludedObjectApiNames: [], parentLookupsByObjectApiName: new Map() };
+
+answerInPanelConfirmationsThroughWarningMock();
 
 describe.each(BACKEND_RUNS)('RecipeCockpitRecipeWriter.buildFilteredRecipe with unconstrainedValuesByObject, $backend (#325)', (backendRun) => {
 

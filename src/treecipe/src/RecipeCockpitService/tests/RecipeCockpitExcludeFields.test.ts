@@ -34,6 +34,7 @@ import { RecipeCockpitRecordCreation, ICreateObjectDescribe } from '../RecipeCoc
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
+import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 /*
     #220: a checkbox on each Treecipe-tab field row leaves that field out of generation. The HOST keeps
@@ -101,6 +102,8 @@ const buildObject = (fields: Array<{ fieldApiName: string; controllingField?: st
     })),
     ...( hasRecordTypeSections ? { hasRecordTypeSections: true as const } : {} )
 });
+
+answerInPanelConfirmationsThroughWarningMock();
 
 describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', () => {
 
@@ -821,8 +824,8 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
             await receivedMessageHandler({ command: 'resetTreeSelection', treeKey: LEAD_TREE_KEY });
 
-            expect(showWarningMessage.mock.calls[0][0]).toStartWith('Reset the selection of Leads ');
-            expect(showWarningMessage.mock.calls[0][0]).not.toContain('[x](command:y)');
+            // THE IN-PANEL DIALOG WRITES IT WITH textContent (#349), SO IT IS SHOWN AS TYPED, NOT ESCAPED
+            expect(showWarningMessage.mock.calls[0][0]).toBe('Reset the selection of Leads [x](command:y)?');
 
         });
 
@@ -841,7 +844,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             await receivedMessageHandler({ command: 'resetTreeSelection', treeKey: ACCOUNT_TREE_KEY });
             expect(showWarningMessage).toHaveBeenCalledWith(
                 'Reset the selection of Relationship Tree 1?',
-                { modal: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every validation rule is applied again. The recipe file is not changed, so an edit written into it stays: clear it with its field\'s edit button.' },
+                { inPanel: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every validation rule is applied again. The recipe file is not changed, so an edit written into it stays: clear it with its field\'s edit button.' },
                 RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL
             );
             expect(( storedOf(workspaceState) as any ).excludedObjectApiNamesByFolderName[ACCOUNT_TREE_KEY]).toEqual(['Contact']);

@@ -55,6 +55,7 @@ import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
+import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 /*
     #262: a pin beside each field's checkbox gives the field a fixed value that the generate button and the
@@ -172,6 +173,8 @@ const applyFixedValues = (recipe: IRecipeCockpitRecipeViewModel,
     new Map(),
     new Map(Object.entries(fixedValuesByFolderName).map(([folderName, byObject]) => [folderName, new Map(Object.entries(byObject).map(([objectApiName, byField]) => [objectApiName, new Map(Object.entries(byField))]))]))
 );
+
+answerInPanelConfirmationsThroughWarningMock();
 
 describe('RecipeCockpitRecipeWriter -- fixed values (#262)', () => {
 
@@ -536,10 +539,11 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
     describe('buildRestorePreview (#342 review)', () => {
 
-        it('shows the lines left-aligned and escaped like a notification, and cuts a long one short', () => {
+        // THE IN-PANEL DIALOG WRITES THE LINES WITH textContent (#349), SO THEY ARE SHOWN AS THE RECIPE HOLDS THEM
+        it('shows the lines left-aligned and as written, and cuts a long one short', () => {
 
             expect(RecipeCockpitService.buildRestorePreview('        Picklist__c: ${{faker.helpers.arrayElement([\'a\'])}}\n                    ### TODO: -- RecordType Options -- One'))
-                .toBe(`${RecipeYamlScalar.escapeForNotification('Picklist__c: ${{faker.helpers.arrayElement([\'a\'])}}')}\n            ### TODO: -- RecordType Options -- One`);
+                .toBe('Picklist__c: ${{faker.helpers.arrayElement([\'a\'])}}\n            ### TODO: -- RecordType Options -- One');
 
             const manyLines = ['    Field__c: |', ...Array.from({ length: 20 }, (_unused, lineIndex) => `        line ${lineIndex}`)].join('\n');
             const preview = RecipeCockpitService.buildRestorePreview(manyLines);
@@ -802,7 +806,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             await save('Legacy_Code__c', 'X-1');
 
             expect(showWarningMessage).toHaveBeenCalledTimes(1);
-            expect(showWarningMessage.mock.calls[0][1]).toMatchObject({ modal: true });
+            expect(showWarningMessage.mock.calls[0][1]).toMatchObject({ inPanel: true });
             expect(showWarningMessage.mock.calls[0][1].detail).toContain(path.basename(ACCOUNT_FIXED_VALUE_FILE_PATH));
             expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore.replace('    Legacy_Code__c: ${{fake.Word}}', '    Legacy_Code__c: "X-1"'));
             expect(fixedValueEntries()).toEqual([{
@@ -838,6 +842,21 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
         });
 
+        // THE IN-PANEL DIALOG WRITES ITS TEXT WITH textContent (#349): THE VALUE IT NAMES IS THE ONE WRITTEN, NOT ITS NOTIFICATION ESCAPE
+        it('shows the value it will write as written in the confirmation, brackets and all (#349)', async () => {
+
+            await openAndDraw(buildWorkspaceState());
+
+            showWarningMessage.mockResolvedValueOnce(undefined);
+            await save('Legacy_Code__c', 'Acme [EU] (main)');
+
+            const [title, options] = showWarningMessage.mock.calls[0];
+            expect(title).toBe('Write a fixed value into Account.Legacy_Code__c?');
+            expect(options.detail).toContain('Account.Legacy_Code__c becomes "Acme [EU] (main)" on every Account in it');
+            expect(options.detail).not.toContain('\\u005b');
+
+        });
+
         it('Save writes an edited faker expression, double-quoted, names it so in the modal, reloads it as an expression edit, and Clear puts the recipe back (#356)', async () => {
 
             const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
@@ -848,8 +867,8 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             await save('Legacy_Code__c', edited);
 
             expect(showWarningMessage.mock.calls[0][0]).toBe('Write an edited faker expression into Account.Legacy_Code__c?');
-            // THE MODAL SHOWS THE LINE IT WRITES, ESCAPED AS A NOTIFICATION IS
-            expect(showWarningMessage.mock.calls[0][1].detail).toContain('becomes "${{ fake.pystr\\u0028min_chars=3, max_chars=\\"8\\"\\u0029 }}"');
+            // THE IN-PANEL DIALOG SHOWS THE LINE IT WRITES AS WRITTEN (#349)
+            expect(showWarningMessage.mock.calls[0][1].detail).toContain('becomes "${{ fake.pystr(min_chars=3, max_chars=\\"8\\") }}"');
             const writtenLine = '    Legacy_Code__c: "${{ fake.pystr(min_chars=3, max_chars=\\"8\\") }}"';
             expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore.replace('    Legacy_Code__c: ${{fake.Word}}', writtenLine));
             expect(fixedValueEntries()).toEqual([{
@@ -1341,14 +1360,15 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
     describe('buildInsertConfirmationDetail', () => {
 
-        it('names each fixed value with its field, through escapeForNotification', () => {
+        // THE IN-PANEL DIALOG WRITES IT WITH textContent (#349), SO IT IS SHOWN AS WRITTEN, NOT ESCAPED
+        it('names each fixed value with its field, as written', () => {
 
             const recipe = loadRecipe();
             applyFixedValues(recipe, { [ACCOUNT_TREE_KEY]: { Account: { Legacy_Code__c: '[x](command:y)' } } });
 
             const detail = RecipeCockpitService.buildInsertConfirmationDetail('my-sandbox', undefined, treeOf(recipe, ACCOUNT_TREE_KEY), recipe, new Map([['Account', 1]]), [], 'snowfakery', 'recipe.yml');
 
-            expect(detail).toContain('Edited fields: Account.Legacy_Code__c = \\u005bx\\u005d\\u0028command:y\\u0029');
+            expect(detail).toContain('Edited fields: Account.Legacy_Code__c = [x](command:y)');
 
         });
 
