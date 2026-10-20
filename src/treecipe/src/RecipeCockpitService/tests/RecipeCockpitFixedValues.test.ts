@@ -834,6 +834,21 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
         });
 
+        // THE IN-PANEL DIALOG WRITES ITS TEXT WITH textContent (#349): THE VALUE IT NAMES IS THE ONE WRITTEN, NOT ITS NOTIFICATION ESCAPE
+        it('shows the value it will write as written in the confirmation, brackets and all (#349)', async () => {
+
+            await openAndDraw(buildWorkspaceState());
+
+            showWarningMessage.mockResolvedValueOnce(undefined);
+            await save('Legacy_Code__c', 'Acme [EU] (main)');
+
+            const [title, options] = showWarningMessage.mock.calls[0];
+            expect(title).toBe('Write a fixed value into Account.Legacy_Code__c?');
+            expect(options.detail).toContain('Account.Legacy_Code__c becomes "Acme [EU] (main)" on every Account in it');
+            expect(options.detail).not.toContain('\\u005b');
+
+        });
+
         it('Save writes an edited faker expression, double-quoted, names it so in the modal, reloads it as an expression edit, and Clear puts the recipe back (#356)', async () => {
 
             const recipeBefore = fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8');
@@ -844,8 +859,8 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             await save('Legacy_Code__c', edited);
 
             expect(showWarningMessage.mock.calls[0][0]).toBe('Write an edited faker expression into Account.Legacy_Code__c?');
-            // THE MODAL SHOWS THE LINE IT WRITES, ESCAPED AS A NOTIFICATION IS
-            expect(showWarningMessage.mock.calls[0][1].detail).toContain('becomes "${{ fake.pystr\\u0028min_chars=3, max_chars=\\"8\\"\\u0029 }}"');
+            // THE IN-PANEL DIALOG SHOWS THE LINE IT WRITES AS WRITTEN (#349)
+            expect(showWarningMessage.mock.calls[0][1].detail).toContain('becomes "${{ fake.pystr(min_chars=3, max_chars=\\"8\\") }}"');
             const writtenLine = '    Legacy_Code__c: "${{ fake.pystr(min_chars=3, max_chars=\\"8\\") }}"';
             expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore.replace('    Legacy_Code__c: ${{fake.Word}}', writtenLine));
             expect(fixedValueEntries()).toEqual([{

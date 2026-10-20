@@ -1686,6 +1686,9 @@ export interface IRecipeCockpitConfirmRequestMessage {
     isDestructive: boolean;
 }
 
+// A CONFIRMATION ASKED WHILE THE COCKPIT IS HIDDEN (#349): ITS DOCUMENT IS GONE, SO NOTHING COULD SHOW IT
+export const RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL = 'The Recipe Cockpit was in the background, so it could not ask you to confirm, and nothing was done. It is shown now: start the action again.';
+
 export interface IRecipeCockpitConfirmOptions {
     detail: string;
     isDestructive?: boolean;
@@ -3557,12 +3560,12 @@ export class RecipeCockpitService {
 
         const editLabel = fixedValue.kind === 'expression' ? 'an edited faker expression' : 'a fixed value';
         const confirmation = await this.confirmInPanel(
-            `Write ${editLabel} into ${fieldLabel}?`,
+            `Write ${editLabel} into ${objectApiName}.${fieldApiName}?`,
             {
                 detail: [
-                    `This writes to "${recipeFileLabel}": ${fieldLabel} becomes ${RecipeYamlScalar.escapeForNotification(RecipeCockpitRecipeWriter.toFixedValueScalar(fixedValue))} on every ${RecipeYamlScalar.escapeForNotification(objectApiName)} in it, so Run Faker by Recipe generates it from the palette too. Every other line of the file is left as it is.`,
+                    `This writes to "${path.basename(recipeFilePath)}": ${objectApiName}.${fieldApiName} becomes ${RecipeCockpitRecipeWriter.toFixedValueScalar(fixedValue)} on every ${objectApiName} in it, so Run Faker by Recipe generates it from the palette too. Every other line of the file is left as it is.`,
                     '',
-                    `The lines it replaces are kept in "${fixedValueFileLabel}" beside the recipe, so Clear can put them back exactly.`
+                    `The lines it replaces are kept in "${path.basename(fixedValueFilePath)}" beside the recipe, so Clear can put them back exactly.`
                 ].join('\n')
             },
             RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL
@@ -3634,13 +3637,15 @@ export class RecipeCockpitService {
             return { isWritten: false, refusal: planned.refusal };
         }
 
+        // THE DIALOG WRITES ITS TEXT WITH textContent (#349): NOT ESCAPED THERE, AS THE NOTIFICATIONS STILL ARE
+        const dialogFieldLabel = `${objectViewModel.objectApiName}.${fieldViewModel.fieldApiName}`;
         const confirmation = await this.confirmInPanel(
-            `Clear the edit of ${fieldLabel}?`,
+            `Clear the edit of ${dialogFieldLabel}?`,
             {
                 detail: [
                     planned.isRederived
-                        ? `This writes to "${recipeFileLabel}": "${fixedValueFileLabel}" has no recorded lines for ${fieldLabel}, so it gets back the value Generate Treecipe wrote for it rather than the exact lines it had. Every other line of the file is left as it is.`
-                        : `This writes to "${recipeFileLabel}": ${fieldLabel} gets back the lines it had before it was pinned, recorded in "${fixedValueFileLabel}". Every other line of the file is left as it is.`,
+                        ? `This writes to "${path.basename(recipeFilePath)}": "${path.basename(fixedValueFilePath)}" has no recorded lines for ${dialogFieldLabel}, so it gets back the value Generate Treecipe wrote for it rather than the exact lines it had. Every other line of the file is left as it is.`
+                        : `This writes to "${path.basename(recipeFilePath)}": ${dialogFieldLabel} gets back the lines it had before it was pinned, recorded in "${path.basename(fixedValueFilePath)}". Every other line of the file is left as it is.`,
                     '',
                     'It puts back:',
                     this.buildRestorePreview(planned.previewText)
@@ -4423,6 +4428,11 @@ export class RecipeCockpitService {
 
         if ( !existingCockpitPanel ) {
 
+            // HIDDEN, THE DOCUMENT IS THROWN AWAY (retainContextWhenHidden IS OFF), SO AN OPEN CONFIRMATION IS CANCEL AT ONCE, NOT ON THE NEXT REVEAL (#349)
+            cockpitPanel.onDidChangeViewState?.(viewStateEvent => {
+                if ( !viewStateEvent.webviewPanel.visible ) { this.cancelPendingConfirmation(); }
+            });
+
             cockpitPanel.onDidDispose(() => {
                 // THE LAST PLACE SAVED IS WRITTEN NOW RATHER THAN DROPPED WITH THE TIMER -- THE NEXT OPEN READS IT
                 this.flushPanelPlacePersist();
@@ -4564,6 +4574,13 @@ export class RecipeCockpitService {
             return Promise.resolve(undefined);
         }
 
+        // A HIDDEN WEBVIEW HAS NO DOCUMENT (retainContextWhenHidden IS OFF), SO A POST TO IT IS DROPPED AND THE ACTION WOULD WAIT ON NOTHING
+        if ( cockpitPanel.visible === false ) {
+            cockpitPanel.reveal();
+            VSCodeWorkspaceService.showWarningMessage(RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL);
+            return Promise.resolve(undefined);
+        }
+
         const confirmationId = crypto.randomBytes(16).toString('hex');
 
         return new Promise(resolve => {
@@ -4589,6 +4606,33 @@ export class RecipeCockpitService {
         const pendingConfirmation = this.pendingConfirmation;
         this.pendingConfirmation = undefined;
         pendingConfirmation?.resolve(undefined);
+        if ( pendingConfirmation ) { this.scheduleReloadHeldForConfirmation(); }
+
+    }
+
+    /*
+        A generate-only run that ended while a confirmation was open held its reload (#349): a new
+        model would have answered the reader's dialog Cancel. It runs once the dialog is answered,
+        after the asking action has taken its answer -- unless an insert holds the selection, which
+        runs held reloads itself when it ends.
+    */
+    private static scheduleReloadHeldForConfirmation() {
+
+        setImmediate(() => {
+
+            const cockpitPanel = this.recipeCockpitPanel;
+            const panelState = this.recipeCockpitPanelState;
+            const heldReloadFocus = panelState.deferredReloadFocus;
+
+            if ( !cockpitPanel || !heldReloadFocus || panelState.insertStateMessage || this.pendingConfirmation || !panelState.recipeDataMessage ) {
+                return;
+            }
+
+            panelState.deferredReloadFocus = undefined;
+            this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, heldReloadFocus)
+                .catch(reloadError => ErrorHandlingService.handleCapturedError(reloadError, 'openRecipeCockpit'));
+
+        });
 
     }
 
@@ -4602,6 +4646,7 @@ export class RecipeCockpitService {
         }
 
         this.pendingConfirmation = undefined;
+        this.scheduleReloadHeldForConfirmation();
 
         const isOfferedChoice = typeof choice === 'number' && Number.isInteger(choice) && choice >= 0 && choice < pendingConfirmation.buttonLabels.length;
         pendingConfirmation.resolve(isOfferedChoice ? pendingConfirmation.buttonLabels[choice] : undefined);
@@ -5388,7 +5433,7 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             `Add ${friendObjectApiName} under ${iterationNickname}?`,
             {
-                detail: `This writes to "${recipeFileLabel}": a copy of the ${friendObjectApiName} block under the ${objectApiName} above ${iterationNickname}, nested under ${iterationNickname} with a nickname of its own, its lookups to that ${objectApiName} pointed at ${iterationNickname}. Every other line of the file is left as it is.`
+                detail: `This writes to "${path.basename(recipeFilePath)}": a copy of the ${friendObjectApiName} block under the ${objectApiName} above ${iterationNickname}, nested under ${iterationNickname} with a nickname of its own, its lookups to that ${objectApiName} pointed at ${iterationNickname}. Every other line of the file is left as it is.`
             },
             RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL
         );
@@ -5525,17 +5570,19 @@ export class RecipeCockpitService {
         }
 
         const templateFieldApiNames = Object.keys(parentTemplate);
+        // THE DIALOG WRITES ITS TEXT WITH textContent (#349): NOT ESCAPED THERE, AS THE NOTIFICATIONS STILL ARE
+        const dialogFieldLabel = `${addition.objectApiName}${addition.objectNickname !== undefined ? ` (${addition.objectNickname})` : ''}.${addition.fieldApiName}`;
         const confirmation = await this.confirmInPanel(
-            `Add ${parentLabel} to the recipe and wire ${fieldLabel} to it?`,
+            `Add ${addition.parentObjectApiName} to the recipe and wire ${dialogFieldLabel} to it?`,
             {
                 detail: [
-                    `This writes to "${recipeFileLabel}": a new top-level ${parentLabel} block, ahead of the block holding ${objectLabel}, with one record and a nickname of its own, and ${fieldLabel}'s "### TODO -- REFERENCE ID REQUIRED" line becomes that nickname. Every other line of the file is left as it is.`,
+                    `This writes to "${path.basename(recipeFilePath)}": a new top-level ${addition.parentObjectApiName} block, ahead of the block holding ${addition.objectApiName}, with one record and a nickname of its own, and ${dialogFieldLabel}'s "### TODO -- REFERENCE ID REQUIRED" line becomes that nickname. Every other line of the file is left as it is.`,
                     '',
                     templateFieldApiNames.length > 0
                         ? `Fields, from the ${fakerService} minimum required fields template: ${templateFieldApiNames.join(', ')}.`
-                        : `The ${fakerService} template has no required field for ${parentLabel}, so its block has a count only.`,
+                        : `The ${fakerService} template has no required field for ${addition.parentObjectApiName}, so its block has a count only.`,
                     '',
-                    `Generate fake data and insert then inserts ${parentLabel} before ${objectLabel} and points the lookup at its Id. A required field your org adds to ${parentLabel} is not in the template: add it to the block if the insert reports it.`
+                    `Generate fake data and insert then inserts ${addition.parentObjectApiName} before ${addition.objectApiName} and points the lookup at its Id. A required field your org adds to ${addition.parentObjectApiName} is not in the template: add it to the block if the insert reports it.`
                 ].join('\n')
             },
             RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL
@@ -5633,13 +5680,15 @@ export class RecipeCockpitService {
         const shownWiringLines = wiringLines.slice(0, RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_SHOWN);
         const unshownWiringCount = wiringLines.length - shownWiringLines.length;
 
+        // THE DIALOG WRITES ITS TEXT WITH textContent (#349): NOT ESCAPED THERE, AS THE NOTIFICATIONS STILL ARE
+        const dialogRecipeFileLabel = path.basename(recipeFilePath);
         const confirmation = await this.confirmInPanel(
             wiringRequests.length === 1
                 ? `Wire ${describeWiring(wiringRequests[0])} to ${wiringRequests[0].parentNickname}?`
                 : `Wire ${wiringRequests.length} TODO lookups?`,
             {
                 detail: [
-                    `This writes to "${recipeFileLabel}": each lookup's "### TODO -- REFERENCE ID REQUIRED" line becomes the nickname below, which the insert replaces with the Id of the record holding it. Every other line of the file is left as it is.`,
+                    `This writes to "${dialogRecipeFileLabel}": each lookup's "### TODO -- REFERENCE ID REQUIRED" line becomes the nickname below, which the insert replaces with the Id of the record holding it. Every other line of the file is left as it is.`,
                     '',
                     ...shownWiringLines,
                     ...( unshownWiringCount > 0 ? [`…and ${unshownWiringCount} more`] : [] ),
@@ -5767,7 +5816,8 @@ export class RecipeCockpitService {
                 const isAddedInPlace = typeof writtenDatasetFolderPath === 'string'
                                         && panelState.recipeDataMessage === clickedRecipeDataMessage
                                         && this.postAddedDataset(cockpitPanel, panelState, clickedRecipeDataMessage, writtenDatasetFolderPath);
-                if ( !isAddedInPlace && panelState.insertStateMessage ) {
+                // HELD WHILE AN INSERT RUNS (A RELOAD CLEARS THE SELECTION IT RE-CHECKS) OR A CONFIRMATION IS OPEN (A NEW MODEL CANCELS IT, #349)
+                if ( !isAddedInPlace && ( panelState.insertStateMessage || this.pendingConfirmation ) ) {
                     panelState.deferredReloadFocus = { treeKey: treeKey, tab: 'datasets' };
                 } else if ( !isAddedInPlace ) {
                     await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelState.recipeDataMessage.recipe.selectedRunFolderName, { treeKey: treeKey, tab: 'datasets' });

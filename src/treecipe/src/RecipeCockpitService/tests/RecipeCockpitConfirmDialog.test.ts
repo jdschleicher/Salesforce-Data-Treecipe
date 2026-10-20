@@ -16,6 +16,7 @@ import {
     RecipeCockpitService,
     IRecipeCockpitPanelState,
     RECIPE_COCKPIT_BUTTON_KINDS,
+    RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL,
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL
 } from '../RecipeCockpitService';
@@ -56,15 +57,19 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
         let receivedMessageHandler: (panelMessage: any) => Promise<void>;
         let disposeHandler: (() => void) | undefined;
+        let viewStateHandler: ((viewStateEvent: any) => void) | undefined;
+        let createdPanel: any;
         let postedPanelMessages: any[];
 
         const lastPosted = (command: string) => [...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === command);
         const postedOf = (command: string) => postedPanelMessages.filter(hostMessage => hostMessage.command === command);
         const panelState = () => ( RecipeCockpitService as any ).recipeCockpitPanelState as IRecipeCockpitPanelState;
 
-        const buildWebviewPanel = () => ({
+        const buildWebviewPanel = () => ( createdPanel = {
+            visible: true,
             reveal: jest.fn(),
             dispose: jest.fn(),
+            onDidChangeViewState: jest.fn().mockImplementation((handler: (viewStateEvent: any) => void) => { viewStateHandler = handler; return { dispose: jest.fn() }; }),
             onDidDispose: jest.fn().mockImplementation((handler: () => void) => { disposeHandler = handler; return { dispose: jest.fn() }; }),
             webview: {
                 html: '',
@@ -74,7 +79,7 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
                     return { dispose: jest.fn() };
                 })
             }
-        });
+        } );
 
         const openAndDraw = async (workspaceState = buildWorkspaceState()) => {
             await RecipeCockpitService.openRecipeCockpitPanel(HISTORY_WORKSPACE_ROOT, workspaceState);
@@ -270,6 +275,102 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
             await receivedMessageHandler({ command: 'confirmResponse', confirmationId: secondRequest.confirmationId, choice: 1 });
 
             await expect(secondAnswer).resolves.toBe('Other');
+
+        });
+
+        it('asks nothing in a hidden cockpit, whose document is gone: shows it, says so, and is Cancel at once', async () => {
+
+            await openAndDraw();
+            const warningSpy = jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+            createdPanel.visible = false;
+            createdPanel.reveal.mockClear();
+
+            await expect(RecipeCockpitService.confirmInPanel('Hidden?', { detail: 'x' }, 'Go')).resolves.toBeUndefined();
+
+            expect(postedOf('confirmRequest')).toEqual([]);
+            expect(createdPanel.reveal).toHaveBeenCalledTimes(1);
+            expect(warningSpy).toHaveBeenCalledWith(RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL);
+
+        });
+
+        it('is Cancel the moment the cockpit is hidden with a confirmation open, not on the next reveal', async () => {
+
+            await openAndDraw();
+            const answer = RecipeCockpitService.confirmInPanel('Open?', { detail: 'x' }, 'Go');
+            const confirmationId = lastPosted('confirmRequest').confirmationId;
+
+            viewStateHandler?.({ webviewPanel: { visible: true } });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'confirmResponse', confirmationId: confirmationId, choice: 0 }, panelState())).toBeDefined();
+
+            viewStateHandler?.({ webviewPanel: { visible: false } });
+
+            await expect(answer).resolves.toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'confirmResponse', confirmationId: confirmationId, choice: 0 }, panelState())).toBeUndefined();
+
+        });
+
+        // A GENERATE-ONLY RUN THAT ENDS WHILE A DIALOG IS OPEN HOLDS ITS RELOAD, WHICH WOULD OTHERWISE ANSWER THE DIALOG CANCEL
+        it('runs a reload held for an open confirmation once it is answered, unless an insert holds the selection', async () => {
+
+            const recipeDataMessage = await openAndDraw();
+            panelState().deferredReloadFocus = { treeKey: LEAD_TREE_KEY, tab: 'datasets' };
+
+            const answer = RecipeCockpitService.confirmInPanel('Deploy?', { detail: 'x' }, 'Deploy');
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0 });
+            await expect(answer).resolves.toBe('Deploy');
+            expect(lastPosted('recipeData')).toBe(recipeDataMessage);
+
+            for ( let flushCount = 0; flushCount < 20 && lastPosted('recipeData') === recipeDataMessage; flushCount++ ) { await flushMicrotasks(); }
+
+            expect(lastPosted('recipeData')).not.toBe(recipeDataMessage);
+            expect(lastPosted('recipeData').focusTree).toEqual({ treeKey: LEAD_TREE_KEY, tab: 'datasets' });
+            expect(panelState().deferredReloadFocus).toBeUndefined();
+
+            const reloaded = lastPosted('recipeData');
+            await receivedMessageHandler({ command: 'rendered', renderSequence: reloaded.renderSequence });
+            panelState().deferredReloadFocus = { treeKey: LEAD_TREE_KEY, tab: 'datasets' };
+            panelState().insertStateMessage = { command: 'insertState', isRunning: true, treeKey: LEAD_TREE_KEY } as any;
+
+            const insertAnswer = RecipeCockpitService.confirmInPanel('Insert?', { detail: 'x' }, 'Insert');
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: null });
+            await insertAnswer;
+            for ( let flushCount = 0; flushCount < 5; flushCount++ ) { await flushMicrotasks(); }
+
+            expect(lastPosted('recipeData')).toBe(reloaded);
+            expect(panelState().deferredReloadFocus).toEqual({ treeKey: LEAD_TREE_KEY, tab: 'datasets' });
+            panelState().insertStateMessage = undefined;
+
+        });
+
+        it('reports a held reload that fails through the shared error handler', async () => {
+
+            await openAndDraw();
+            const handleCapturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
+            const reloadError = new Error('the run could not be read');
+            jest.spyOn(RecipeCockpitService as any, 'loadRecipeIntoPanel').mockRejectedValue(reloadError);
+            panelState().deferredReloadFocus = { treeKey: LEAD_TREE_KEY, tab: 'datasets' };
+
+            const answer = RecipeCockpitService.confirmInPanel('Deploy?', { detail: 'x' }, 'Deploy');
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: null });
+            await answer;
+            for ( let flushCount = 0; flushCount < 5 && handleCapturedErrorSpy.mock.calls.length === 0; flushCount++ ) { await flushMicrotasks(); }
+
+            expect(handleCapturedErrorSpy).toHaveBeenCalledWith(reloadError, 'openRecipeCockpit');
+
+        });
+
+        // THE ROUTER FILTERS A STALE ID FIRST; THE SETTLE CHECKS AGAIN, SO AN ACTION BUILT ANY OTHER WAY CANNOT ANSWER IT
+        it('settles only under the pending id, even past the router', async () => {
+
+            await openAndDraw();
+            const answer = RecipeCockpitService.confirmInPanel('Open?', { detail: 'x' }, 'Go');
+            const confirmationId = lastPosted('confirmRequest').confirmationId;
+
+            ( RecipeCockpitService as any ).settlePendingConfirmation('0'.repeat(32), 0);
+            expect(RecipeCockpitService.routePanelMessage({ command: 'confirmResponse', confirmationId: confirmationId, choice: 0 }, panelState())).toBeDefined();
+
+            ( RecipeCockpitService as any ).settlePendingConfirmation(confirmationId, 0);
+            await expect(answer).resolves.toBe('Go');
 
         });
 
