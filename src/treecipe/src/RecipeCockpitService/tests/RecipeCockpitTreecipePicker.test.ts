@@ -436,6 +436,17 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
 
         });
 
+        it('lists the ungrouped card\'s objects in the order the host gave them', () => {
+
+            const { panel } = drawRecipe(recipe => {
+                recipe.trees[2].objects.push({ objectApiName: 'Zeta__c', parentLookups: [] }, { objectApiName: 'Alpha__c', parentLookups: [] });
+            });
+            choose(panel, RECIPE_COCKPIT_UNGROUPED_TREE_TITLE);
+
+            expect(objectsLineText(panel)).toBe('Insert order:Zeta__c → Alpha__c · 2 objects');
+
+        });
+
         it('given a card with no objects, says so', () => {
 
             const { panel } = drawRecipe();

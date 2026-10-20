@@ -480,7 +480,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.',
             'Under the run list, the Target Org Management section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll. The Treecipes section below it shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last.',
-            'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks any you excluded.',
+            'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
             'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Each object shows its nickname, the name its lookups use in the recipe file. Click it to list the fields that point to it and jump to one; a field holding a nickname shows it highlighted, and clicking it jumps back to that object.',
@@ -13389,7 +13389,7 @@ ${this.buildPaletteCustomProperties()}
         treePickerObjectsElement.appendChild(createElement('span', 'treePickerObjectsLabel', TREE_PICKER_OBJECTS_LABEL));
 
         if (objectApiNames.length === 0) {
-            treePickerObjectsElement.appendChild(createElement('span', 'treePickerObjectsCount muted', TREE_PICKER_NO_OBJECTS));
+            treePickerObjectsElement.appendChild(createElement('span', 'treePickerNoObjects muted', TREE_PICKER_NO_OBJECTS));
             return;
         }
 
