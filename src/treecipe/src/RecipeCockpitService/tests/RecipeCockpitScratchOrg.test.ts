@@ -64,6 +64,7 @@ import { ORG_OPERATIONS_FOLDER_NAME, ScratchOrgService } from '../../ScratchOrgS
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
+import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const PROJECT_WORKSPACE_ROOT = path.join(__dirname, '..', '..', 'ScratchOrgService', 'tests', 'mocks', 'projectWorkspace');
@@ -114,6 +115,8 @@ type CliHandler = (argumentList: string[]) => { stdout: string; error?: unknown 
 beforeEach(() => {
     jest.spyOn(SalesforceOrgService, 'readLocalDataOrgDetail').mockResolvedValue(undefined);
 });
+
+answerInPanelConfirmationsThroughWarningMock();
 
 describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #255)', () => {
 
@@ -239,7 +242,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
         const lastScratchOrgState = () => postedNamed('scratchOrgState').at(-1);
         const flushAsyncWork = () => new Promise(resolve => setImmediate(resolve));
         // HOW A RUN ENDED (#301): EVERY NOTIFICATION THAT IS NOT A MODAL, AS [text, ...buttons]
-        const runNotifications = (notify: unknown) => ( notify as jest.Mock ).mock.calls.filter(notificationCall => !notificationCall[1]?.modal);
+        const runNotifications = (notify: unknown) => ( notify as jest.Mock ).mock.calls.filter(notificationCall => !notificationCall[1]?.inPanel);
         const runNotificationTexts = () => [vscode.window.showInformationMessage, vscode.window.showWarningMessage, vscode.window.showErrorMessage]
             .flatMap(notify => runNotifications(notify).map(notificationCall => notificationCall[0]));
         const aliasOf = (createArguments: string[]) => createArguments[createArguments.indexOf('--alias') + 1];
@@ -385,7 +388,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             const [modalMessage, modalOptions, modalAction] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
             expect(modalMessage).toBe('Create a scratch org through the Dev Hub devhub (hub@example.com)? Nothing is deployed to it.');
-            expect(modalOptions.modal).toBe(true);
+            expect(modalOptions.inPanel).toBe(true);
             expect(modalOptions.detail).toContain('Dev Hub: devhub (hub@example.com) — the Salesforce CLI\'s default, set by this project\'s .sf or .sfdx config');
             expect(modalOptions.detail).toContain('  Edition: Developer');
             expect(modalOptions.detail).toContain('The definition file, authored in this repository, decides who administers the new org.');
@@ -982,7 +985,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
 
             expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0][0]).toBe('Create a scratch org through the Dev Hub hub@example.com? Nothing is deployed to it.');
             // NOT LISTED, SO A WARNING; AND NO RESULT FILE, SO NO "View output"
-            const readyNotifications = ( vscode.window.showWarningMessage as jest.Mock ).mock.calls.filter(notificationCall => !notificationCall[1]?.modal);
+            const readyNotifications = ( vscode.window.showWarningMessage as jest.Mock ).mock.calls.filter(notificationCall => !notificationCall[1]?.inPanel);
             expect(readyNotifications).toEqual([[expect.stringMatching(/^Scratch org qa-accounts · test-one@example\.com is ready\. Nothing was deployed to it\. /), RECIPE_COCKPIT_SCRATCH_ORG_COPY_DEPLOY_LABEL]]);
             expect(lastScratchOrgState()).toEqual({ command: 'scratchOrgState', isRunning: false });
 
@@ -1011,7 +1014,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             jest.spyOn(ScratchOrgService, 'runScratchOrgSetup').mockResolvedValue({ kind: 'created', username: 'test-one@example.com', outputFilePath: goneFilePath });
             jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [], hiddenOrgs: [], hiddenOrgReasonCounts: { production: 0, expired: 0, deleted: 0, notConnected: 0 }, hiddenOrgCount: 0 });
             (vscode.window.withProgress as jest.Mock).mockImplementation(async (_options: unknown, progressTask: any) => await progressTask({ report: jest.fn() }, { isCancellationRequested: false, onCancellationRequested: jest.fn() }));
-            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options?: { modal?: boolean }) => options?.modal
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options?: { inPanel?: boolean }) => options?.inPanel
                 ? RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL
                 : RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL);
             await openCockpit();

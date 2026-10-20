@@ -62,6 +62,7 @@ import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgSe
 import { ORG_OPERATIONS_FOLDER_NAME } from '../../ScratchOrgService/ScratchOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
+import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const PERMISSION_SET_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'permissionSetWorkspace');
@@ -92,6 +93,8 @@ const buildRetrieveAnswer = (files: unknown[], overrides: Record<string, unknown
     warnings: [],
     ...overrides
 });
+
+answerInPanelConfirmationsThroughWarningMock();
 
 describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#326)', () => {
 
@@ -357,11 +360,11 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
         const flushAsyncWork = () => new Promise(resolve => setImmediate(resolve));
         const panelState = (): IRecipeCockpitPanelState => (RecipeCockpitService as any).recipeCockpitPanelState;
         const warningCalls = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls;
-        const modalCalls = () => warningCalls().filter(([, options]) => options?.modal);
+        const modalCalls = () => warningCalls().filter(([, options]) => options?.inPanel);
         const notifications = () => [
             ...(vscode.window.showInformationMessage as jest.Mock).mock.calls.map(([text, ...actions]) => ({ severity: 'information', text: text, actions: actions })),
             ...warningCalls()
-                .filter(([, options]) => !( options && typeof options === 'object' && options.modal ))
+                .filter(([, options]) => !( options && typeof options === 'object' && options.inPanel ))
                 .map(([text, ...actions]) => ({ severity: 'warning', text: text, actions: actions }))
         ];
 
@@ -424,7 +427,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             (vscode.window.withProgress as jest.Mock).mockReset();
             (vscode.window.withProgress as jest.Mock).mockImplementation(async (_options: unknown, progressTask: any) => await progressTask({ report: jest.fn() }, cancellationToken));
             (vscode.window.showWarningMessage as jest.Mock).mockReset();
-            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => options?.modal ? modalAnswer : notificationAnswer);
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => options?.inPanel ? modalAnswer : notificationAnswer);
             (vscode.window.showInformationMessage as jest.Mock).mockReset();
             (vscode.window.showInformationMessage as jest.Mock).mockImplementation(async () => notificationAnswer);
             (vscode.commands.executeCommand as jest.Mock).mockReset();

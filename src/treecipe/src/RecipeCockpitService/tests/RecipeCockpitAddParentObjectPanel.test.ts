@@ -28,6 +28,7 @@ import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 /*
     "Add <Parent> to recipe" (#294), end to end on the host and in the panel: the model offers each
@@ -96,6 +97,8 @@ const BACKENDS: ReadonlyArray<[string, string, Record<string, Record<string, str
 const ADD_ACCOUNT_MESSAGE = { command: 'addParentObject', treeKey: TREE_KEY, objectApiName: 'Contact', fieldApiName: 'AccountId' };
 const NOTHING_RUNS = { kind: 'postWireLookupState', hostMessage: { command: 'wireLookupState', isRunning: false } };
 const ACCOUNT_ADDITION = { objectApiName: 'Contact', fieldApiName: 'AccountId', parentObjectApiName: 'Account' };
+
+answerInPanelConfirmationsThroughWarningMock();
 
 describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s recipe (#294)', (backendName, runFolderName, template) => {
 
@@ -297,7 +300,7 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
 
             const [title, options, confirmLabel] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
             expect(title).toBe('Add Account to the recipe and wire Contact.AccountId to it?');
-            expect(options.modal).toBe(true);
+            expect(options.inPanel).toBe(true);
             expect(options.detail).toContain(path.basename(recipeFilePath));
             expect(options.detail).toContain(`Fields, from the ${backendName} minimum required fields template: Name.`);
             expect(confirmLabel).toBe(RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL);

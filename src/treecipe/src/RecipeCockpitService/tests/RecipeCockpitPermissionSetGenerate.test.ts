@@ -59,6 +59,7 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const GENERATE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'permissionSetGenerateWorkspace');
@@ -91,6 +92,8 @@ const ACCOUNT_TREE_PLAN: IPermissionSetGeneratePlan = {
     notGrantableFieldCount: 2,
     requiredUnknownFieldCount: 1
 };
+
+answerInPanelConfirmationsThroughWarningMock();
 
 describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab (#306)', () => {
 
@@ -380,8 +383,8 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
         const lastRenderSequence = () => [...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === 'recipeData')?.renderSequence;
         const flushAsyncWork = () => new Promise(resolve => setImmediate(resolve));
         const generatedFilePath = () => path.join(workspaceRoot, ...ACCOUNT_TREE_FILE_PATH.split('/'));
-        const modalCalls = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([, options]) => options?.modal);
-        const warningTexts = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([, options]) => !options?.modal).map(([warningText]) => warningText as string);
+        const modalCalls = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([, options]) => options?.inPanel);
+        const warningTexts = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([, options]) => !options?.inPanel).map(([warningText]) => warningText as string);
         const informationCalls = () => (vscode.window.showInformationMessage as jest.Mock).mock.calls;
 
         const openCockpit = async () => {
@@ -415,7 +418,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
 
             (execFile as unknown as jest.Mock).mockReset();
             (vscode.window.showWarningMessage as jest.Mock).mockReset();
-            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => options?.modal ? modalAnswer : undefined);
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => options?.inPanel ? modalAnswer : undefined);
             (vscode.window.showInformationMessage as jest.Mock).mockReset();
             (vscode.window.showInformationMessage as jest.Mock).mockImplementation(async () => informationAnswer);
             (vscode.env.clipboard.writeText as jest.Mock).mockReset();
@@ -670,7 +673,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
 
             await openCockpit();
             (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => {
-                if ( options?.modal ) {
+                if ( options?.inPanel ) {
                     (RecipeCockpitService as any).recipeCockpitPanelState.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
                     return modalAnswer;
                 }
@@ -733,7 +736,7 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
                 (RecipeCockpitService as any).recipeCockpitPanel = undefined;
                 await openCockpit();
                 (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => {
-                    if ( options?.modal ) {
+                    if ( options?.inPanel ) {
                         Object.assign((RecipeCockpitService as any).recipeCockpitPanelState, startedState);
                         return modalAnswer;
                     }

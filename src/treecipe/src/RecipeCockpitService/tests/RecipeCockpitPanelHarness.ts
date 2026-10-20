@@ -64,6 +64,8 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
                 remove(className: string) { carriedClassNames.delete(className); },
                 contains(className: string) { return carriedClassNames.has(className); }
             },
+            // THE FOCUSED ELEMENT IS document.activeElement, AS IN A BROWSER (#349)
+            focus() { fakeDocument.activeElement = this; },
             setAttribute(attributeName: string, attributeValue: string) { this.attributes[attributeName] = String(attributeValue); },
             removeAttribute(attributeName: string) { delete this.attributes[attributeName]; },
             appendChild(childElement: any) { this.children.push(childElement); childElement.parentNode = this; return childElement; },
@@ -102,9 +104,12 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
     const cockpitBodyElement = buildFakeElement('div');
     // THE TOP RIGHT OF THE TITLE ROW (#333): THE VERSION AND THE CHANGELOG LINK, OUTSIDE THE BODY
     const cockpitMetaElement = buildFakeElement('div', 'cockpitMeta');
+    // WHERE AN IN-PANEL CONFIRMATION IS DRAWN (#349), OUTSIDE THE BODY
+    const cockpitDialogHostElement = buildFakeElement('div');
 
-    const fakeDocument = {
-        getElementById: (elementId: string) => ({ loadStatus: loadStatusElement, cockpitBody: cockpitBodyElement, cockpitMeta: cockpitMetaElement } as any)[elementId],
+    const fakeDocument: any = {
+        activeElement: null,
+        getElementById: (elementId: string) => ({ loadStatus: loadStatusElement, cockpitBody: cockpitBodyElement, cockpitMeta: cockpitMetaElement, cockpitDialogHost: cockpitDialogHostElement } as any)[elementId],
         createElement: (tagName: string) => buildFakeElement(tagName),
         // THE TREE GLYPH IS INLINE SVG (#219); ITS NAMESPACE IS KEPT SO A TEST CAN SAY IT WAS NOT AN HTML ELEMENT
         createElementNS: (namespaceUri: string, tagName: string) => Object.assign(buildFakeElement(tagName), { namespaceURI: namespaceUri })
@@ -172,6 +177,8 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
         loadStatusElement,
         cockpitBodyElement,
         cockpitMetaElement,
+        cockpitDialogHostElement,
+        activeElement: () => fakeDocument.activeElement,
         findAll,
         isHidden,
         treeCards,

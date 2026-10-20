@@ -24,6 +24,7 @@ import {
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { RelationshipService } from '../../RelationshipService/RelationshipService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 
 /*
     "Wire to…" and "Wire TODO lookups" (#151), end to end on the host and in the panel: the model
@@ -105,6 +106,8 @@ const SINGLE_CANDIDATE_WIRINGS = [
     { objectApiName: 'Opportunity', fieldApiName: 'AccountId', candidateNicknames: ['Account_NickName'] },
     { objectApiName: 'Case', fieldApiName: 'ContactId', candidateNicknames: ['Contact_NickName'] }
 ];
+
+answerInPanelConfirmationsThroughWarningMock();
 
 describe('RecipeCockpitService, wiring TODO lookups to nicknames (#151)', () => {
 
@@ -340,7 +343,7 @@ describe('RecipeCockpitService, wiring TODO lookups to nicknames (#151)', () => 
             expect(vscode.window.showQuickPick).not.toHaveBeenCalled();
             expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0]).toEqual([
                 'Wire Contact.AccountId to Account_NickName?',
-                { modal: true, detail: expect.stringContaining(path.basename(recipeFilePath)) },
+                { inPanel: true, detail: expect.stringContaining(path.basename(recipeFilePath)) },
                 RECIPE_COCKPIT_WIRE_LOOKUP_CONFIRM_LABEL
             ]);
             expect(showInformationMessageSpy).toHaveBeenCalledWith(expect.stringContaining('Wired Contact.AccountId to Account_NickName'));
