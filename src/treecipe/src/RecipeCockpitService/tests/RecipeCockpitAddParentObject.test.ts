@@ -772,6 +772,8 @@ describe('RecipeCockpitRecipeWriter add parent object (#294)', () => {
         test('refuses what #294 refuses, and a result that does not read back', () => {
 
             expectRefused(nest(CONTACT_RECIPE, 'WhatId__c', CONTACT_CONTEXT), 'polymorphic-lookup');
+            const indistinctRecipe = `${CONTACT_RECIPE}\n${CONTACT_RECIPE.split('\n').slice(3).join('\n')}`;
+            expectRefused(nest(indistinctRecipe, 'AccountId', CONTACT_CONTEXT, 'Contact', 'Contact_NickName'), 'duplicate-object');
             expectRefused(nest(CONTACT_RECIPE.replace(`AccountId: ${TODO}`, 'AccountId: x'), 'AccountId', CONTACT_CONTEXT), 'lookup-not-wireable');
 
             // THE REQUESTED LOOKUP MUST BE AMONG THE MOVED BLOCK'S WIRINGS
