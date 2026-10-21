@@ -656,6 +656,19 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
         });
 
+        it('refuses a fields deploy with no custom field file, though the project holds a custom object\'s definition (#402)', async () => {
+
+            ['Account', 'OtherChildObject__c'].forEach(objectApiName => fs.rmSync(path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', objectApiName, 'fields'), { recursive: true }));
+            await openCockpitWithQaSelected();
+
+            await deploy('deployTreeFields');
+
+            expect(lastWarning()).toEqual({ text: 'Account-thru-OtherChildObject__c has no custom field whose source file this project holds, so nothing was deployed.', actions: [] });
+            expect(modalCalls()).toEqual([]);
+            expect(deployCalls()).toEqual([]);
+
+        });
+
         it('offers this tree\'s generated permission set first and preselected, deploys the picks, and offers "Assign permission sets to me…" routed like a click', async () => {
 
             await openCockpitWithQaSelected();

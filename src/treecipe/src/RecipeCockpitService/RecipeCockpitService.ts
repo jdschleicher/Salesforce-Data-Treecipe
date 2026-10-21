@@ -7963,7 +7963,8 @@ export class RecipeCockpitService {
             summary = await RecipeCockpitMetadataDeploy.summarizeTreeMetadata(workspaceRoot, packageDirectoryPaths, deployObjects);
             components = RecipeCockpitMetadataDeploy.listSummaryComponents(summary, deployKind);
 
-            if ( components.length === 0 ) {
+            // A FIELDS DEPLOY NEEDS A FIELD: ITS CUSTOM OBJECTS (#402) GO WITH FIELDS, AND THE PANEL DISABLES THE CARD WITH NONE
+            if ( components.length === 0 || ( deployKind === 'fields' && summary.customFields.length === 0 ) ) {
                 const missingText = deployKind === 'fields' ? 'custom field whose source file this project holds'
                     : deployKind === 'globalValueSets' ? 'global value set its fields name that this project holds'
                     : 'record type in this project';
