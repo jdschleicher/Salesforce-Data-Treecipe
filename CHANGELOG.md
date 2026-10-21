@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.116.0] - Recipe Cockpit: retrieve a tree's fields, record types and global value sets from an org in the Troubleshooting tab
+## [3.117.0] - Recipe Cockpit: retrieve a tree's fields, record types and global value sets from an org in the Troubleshooting tab
 
 Closes [#382](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/382).
 
@@ -16,6 +16,18 @@ The Troubleshooting tab could deploy fields, record types and global value sets,
 - **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` list the four retrieves under *What does edit the YAML*; the opt-in warning names them as reading from any org and deploying nothing; `CLAUDE.md` records the shared retrieve. The *What the cockpit changes without editing the YAML* screenshot was re-taken: it had been taken before #381's styles reached `main`.
 - **Tests.** `RecipeCockpitMetadataRetrieve.test.ts` covers each kind's argv (wildcard and manifest, no deploy argv), what a field or value set retrieve names, the local field count with a planted link, parsing per kind, each confirmation, routing (tree key only, refusals, one per window, a deploy held while a retrieve runs), the host against a faked org prompt and CLI (manifests written and read back, prompts, confirmations, notifications, result files, nothing to retrieve, dismissals, a failed or unknown outcome, a deploy started meanwhile) and the panel cards. The #326, #381 and sub-tab suites moved to the shared names.
 
+## [3.116.0] - Recipe Cockpit: the Treecipes dropdown names the chosen treecipe's objects in insert order
+
+Closes [#385](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/385).
+
+The Treecipes dropdown (#374) labels each card only by its name, which by default is `Relationship Tree N`. To see what a treecipe held, or the order it inserts in, the reader had to read down the card's Treecipe tab.
+
+- **A line under the dropdown** names the shown card's objects in insert order (the card's own order, parents before children) and counts them: `Insert order: Account → Contact → OtherChildObject__c · 3 objects`. An object written more than once (a self-lookup iteration, a later record type block) is listed once. A card with no objects says `No objects`.
+- **Excluded objects stay listed**, marked in text as well as style: `Contact (excluded)`, `OtherChildObject__c (auto-excluded)`, muted and struck through. Ticking the chain link redraws the line in place.
+- **It follows the dropdown**: a pick, Favorites only moving the choice, a `focusTree`, a section search result click and a restored place all show the line for the card on screen. While the section search does not match that card the line still describes it, and with no card drawn (Favorites only with no favorite) it is hidden. A run with no trees draws no line.
+- **Panel-only.** The line is drawn from the model the panel already holds, every name through `textContent`; the host posts nothing new and the shell builder still takes only a nonce. A keystroke in the section search does not redraw it unless the card on screen changes. Its colours are the existing `--sdt-muted`/`--sdt-text` pairs.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say, under *Where recipes come from*, what the line shows; its screenshot was re-taken.
+- **Tests.** `RecipeCockpitTreecipePicker.test.ts` covers the order and count, an object and an iteration listed once, following a pick, Favorites only, a focus, a result click and a restore, a search that does not match the shown card, no card drawn, a run with no trees, the ungrouped card's order, a card with no objects, excluded and auto-excluded objects redrawn in place (and an update to a card not on screen), `textContent` and `__proto__`.
 ## [3.115.0] - Recipe Cockpit: the Troubleshooting sub-tabs' actions are cards that say when you need them
 
 Closes [#381](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/381).
