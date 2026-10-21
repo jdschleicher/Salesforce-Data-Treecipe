@@ -526,7 +526,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         ],
         closingParagraphs: [
             'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of an org you pick into your project, and change nothing in the org.',
-            'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields, custom fields only), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
+            'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against any connected org you pick in the command palette (a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.'
         ]
@@ -563,7 +563,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", "Retrieve fields…", "Retrieve record types…" and "Retrieve global value sets…", on every tree, ask every time in the command palette for any connected org, production included, and retrieve that tree's validation rules, custom fields, record types or the global value sets its fields name from it into this project after a confirmation: they only read from that org and deploy nothing. The Query tab, on every tree, runs a query you can edit against any connected org you pick in the command palette every time, production included: a query only reads, and what it returns is written only when you export it, under treecipe/QueryResults. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields…" (only the tree's custom fields, never a standard field, an object definition or a layout), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under treecipe/OrgOperations, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
+It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", "Retrieve fields…", "Retrieve record types…" and "Retrieve global value sets…", on every tree, ask every time in the command palette for any connected org, production included, and retrieve that tree's validation rules, custom fields, record types or the global value sets its fields name from it into this project after a confirmation: they only read from that org and deploy nothing. The Query tab, on every tree, runs a query you can edit against any connected org you pick in the command palette every time, production included: a query only reads, and what it returns is written only when you export it, under treecipe/QueryResults. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields…" (the tree's custom fields and the custom objects that hold them, plus, only if you tick its confirmation's box, every tree object's validation rules, record types and global value sets; never a standard field, a standard object or a layout), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under treecipe/OrgOperations, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -1121,6 +1121,8 @@ export interface IRecipeCockpitPanelMessage {
     // AN IN-PANEL CONFIRMATION'S ANSWER (#349): THE ONE-USE ID IT WAS ASKED WITH, AND THE INDEX OF THE BUTTON CHOSEN
     confirmationId?: unknown;
     choice?: unknown;
+    // WHETHER ITS CHECKBOX WAS TICKED (#402); ANYTHING BUT A BOOLEAN IS READ AS CANCEL
+    isChecked?: unknown;
 }
 
 export interface IRecipeCockpitLoadPhaseMessage {
@@ -1462,6 +1464,11 @@ export interface IRecipeCockpitTroubleshootingSummaryMessage {
     globalValueSetCount: number;
     missingGlobalValueSetCount: number;
     recordTypeCount: number;
+    // #402: THE CUSTOM OBJECTS A FIELDS DEPLOY ADDS, THE ONES IT CANNOT, AND THE VALIDATION RULES ITS BOX ADDS
+    customObjectCount: number;
+    missingCustomObjectCount: number;
+    unreadableCustomObjectCount: number;
+    validationRuleCount: number;
     failureMessage?: string;
 }
 
@@ -1671,7 +1678,7 @@ export const RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS: Readonly<Record<Recipe
     assignPermissionSets: { verb: 'assign', why: 'Insert refused for access? Assign permission sets the org already holds for these objects.' },
     generatePermissionSet: { verb: 'generate', why: 'No permission set grants these objects? Write a create/read one into the project. Deploys nothing.' },
     deployPermissionSet: { verb: 'deploy', why: 'Push the tree\'s permission sets to the sandbox or scratch org before assigning them.' },
-    deployFields: { verb: 'deploy', why: 'Insert failed with INVALID_FIELD? The org is missing custom fields this tree writes.' },
+    deployFields: { verb: 'deploy', why: 'Insert failed with INVALID_FIELD? The org is missing custom fields or objects this tree writes.' },
     retrieveFields: { verb: 'retrieve', why: 'Project behind the org? Pull this tree\'s custom fields so Generate Treecipe writes what the org holds.' },
     retrieveValidationRules: { verb: 'retrieve', why: 'Pull the org\'s validation rules so Generate Treecipe can respect them.' },
     retrieveRecordTypes: { verb: 'retrieve', why: 'Pull the org\'s record types for these objects so Generate Treecipe can choose among them.' },
@@ -1701,6 +1708,9 @@ export const RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND: Readonly<Record<MetadataDepl
 });
 
 export const RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL = 'Deploy';
+
+// THE BOX A FIELDS DEPLOY'S CONFIRMATION DRAWS (#402): UNTICKED EVERY TIME, AND ONLY WHEN THE PROJECT HOLDS SOMETHING IT WOULD ADD
+export const RECIPE_COCKPIT_DEPLOY_FULL_SET_CHECKBOX_LABEL = 'Also deploy every tree object\'s validation rules, record types and global value sets';
 
 export const RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL = 'View output';
 
@@ -1870,6 +1880,8 @@ export interface IRecipeCockpitConfirmRequestMessage {
     buttons: string[];
     // role="alertdialog" FOR AN ACTION THAT WRITES TO AN ORG OR OVERWRITES FILES WITH NO UNDO
     isDestructive: boolean;
+    // ONE UNTICKED CHECKBOX UNDER THE LINES (#402), SET ONLY WHEN THE HOST ASKS FOR ONE; THE PANEL ANSWERS isChecked WITH ITS CHOICE
+    checkboxLabel?: string;
 }
 
 // A CONFIRMATION ASKED WHILE THE COCKPIT IS HIDDEN (#349): ITS DOCUMENT IS GONE, SO NOTHING COULD SHOW IT
@@ -1880,10 +1892,21 @@ export interface IRecipeCockpitConfirmOptions {
     isDestructive?: boolean;
 }
 
+export interface IRecipeCockpitConfirmWithCheckboxOptions extends IRecipeCockpitConfirmOptions {
+    checkboxLabel: string;
+}
+
+// THE LABEL CHOSEN, OR undefined FOR CANCEL; isChecked IS true ONLY FOR A BOX TICKED UNDER A CHOSEN BUTTON
+export interface IRecipeCockpitConfirmAnswer {
+    chosenLabel: string | undefined;
+    isChecked: boolean;
+}
+
 interface IRecipeCockpitPendingConfirmation {
     confirmationId: string;
     buttonLabels: string[];
-    resolve: (chosenLabel: string | undefined) => void;
+    hasCheckbox: boolean;
+    resolve: (answer: IRecipeCockpitConfirmAnswer) => void;
 }
 
 /*
@@ -2057,7 +2080,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
     | { kind: 'postOrgOpenState'; hostMessage: IRecipeCockpitOrgOpenStateMessage }
     | { kind: 'openChangelog' }
-    | { kind: 'answerConfirmation'; confirmationId: string; choice: unknown };
+    | { kind: 'answerConfirmation'; confirmationId: string; choice: unknown; isChecked: unknown };
 
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened --
@@ -5083,6 +5106,26 @@ export class RecipeCockpitService {
     */
     static confirmInPanel(message: string, confirmOptions: IRecipeCockpitConfirmOptions, ...buttonLabels: string[]): Promise<string | undefined> {
 
+        return this.askInPanel(message, { detail: confirmOptions.detail, isDestructive: confirmOptions.isDestructive }, undefined, buttonLabels)
+            .then(answer => answer.chosenLabel);
+
+    }
+
+    /*
+        The same confirmation with ONE checkbox under its lines (#402), unticked every time it is
+        drawn and never remembered. The box says only what the reader asked for: the caller still
+        decides, from its own read, what a ticked box adds, and re-checks its guards after the answer.
+    */
+    static confirmInPanelWithCheckbox(message: string, confirmOptions: IRecipeCockpitConfirmWithCheckboxOptions, ...buttonLabels: string[]): Promise<IRecipeCockpitConfirmAnswer> {
+
+        return this.askInPanel(message, { detail: confirmOptions.detail, isDestructive: confirmOptions.isDestructive }, confirmOptions.checkboxLabel, buttonLabels);
+
+    }
+
+    private static askInPanel(message: string, confirmOptions: IRecipeCockpitConfirmOptions, checkboxLabel: string | undefined, buttonLabels: string[]): Promise<IRecipeCockpitConfirmAnswer> {
+
+        const cancelled: IRecipeCockpitConfirmAnswer = { chosenLabel: undefined, isChecked: false };
+
         this.cancelPendingConfirmation();
 
         const cockpitPanel = this.recipeCockpitPanel;
@@ -5090,21 +5133,21 @@ export class RecipeCockpitService {
         const drawnRenderSequence = panelState.recipeDataMessage?.renderSequence;
 
         if ( !cockpitPanel || !panelState.isPanelReady || drawnRenderSequence === undefined || panelState.acknowledgedRenderSequence !== drawnRenderSequence ) {
-            return Promise.resolve(undefined);
+            return Promise.resolve(cancelled);
         }
 
         // A HIDDEN WEBVIEW HAS NO DOCUMENT (retainContextWhenHidden IS OFF), SO A POST TO IT IS DROPPED AND THE ACTION WOULD WAIT ON NOTHING
         if ( cockpitPanel.visible === false ) {
             cockpitPanel.reveal();
             VSCodeWorkspaceService.showWarningMessage(RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL);
-            return Promise.resolve(undefined);
+            return Promise.resolve(cancelled);
         }
 
         const confirmationId = crypto.randomBytes(16).toString('hex');
 
         return new Promise(resolve => {
 
-            this.pendingConfirmation = { confirmationId: confirmationId, buttonLabels: [...buttonLabels], resolve: resolve };
+            this.pendingConfirmation = { confirmationId: confirmationId, buttonLabels: [...buttonLabels], hasCheckbox: checkboxLabel !== undefined, resolve: resolve };
 
             this.postToPanel(cockpitPanel, {
                 command: 'confirmRequest',
@@ -5113,7 +5156,8 @@ export class RecipeCockpitService {
                 title: message,
                 lines: confirmOptions.detail.split(/\r\n|\r|\n/),
                 buttons: [...buttonLabels],
-                isDestructive: confirmOptions.isDestructive === true
+                isDestructive: confirmOptions.isDestructive === true,
+                ...( checkboxLabel !== undefined ? { checkboxLabel: checkboxLabel } : {} )
             });
 
         });
@@ -5124,12 +5168,12 @@ export class RecipeCockpitService {
 
         const pendingConfirmation = this.pendingConfirmation;
         this.pendingConfirmation = undefined;
-        pendingConfirmation?.resolve(undefined);
+        pendingConfirmation?.resolve({ chosenLabel: undefined, isChecked: false });
 
     }
 
-    // SPENT ONCE; AN INDEX THE HOST DID NOT OFFER IS CANCEL
-    private static settlePendingConfirmation(confirmationId: string, choice: unknown) {
+    // SPENT ONCE; AN INDEX THE HOST DID NOT OFFER IS CANCEL, AND SO IS AN isChecked THAT IS NEITHER ABSENT NOR A BOOLEAN
+    private static settlePendingConfirmation(confirmationId: string, choice: unknown, isChecked?: unknown) {
 
         const pendingConfirmation = this.pendingConfirmation;
 
@@ -5140,7 +5184,11 @@ export class RecipeCockpitService {
         this.pendingConfirmation = undefined;
 
         const isOfferedChoice = typeof choice === 'number' && Number.isInteger(choice) && choice >= 0 && choice < pendingConfirmation.buttonLabels.length;
-        pendingConfirmation.resolve(isOfferedChoice ? pendingConfirmation.buttonLabels[choice] : undefined);
+        const isReadableCheck = isChecked === undefined || typeof isChecked === 'boolean';
+
+        pendingConfirmation.resolve(isOfferedChoice && isReadableCheck
+            ? { chosenLabel: pendingConfirmation.buttonLabels[choice], isChecked: pendingConfirmation.hasCheckbox && isChecked === true }
+            : { chosenLabel: undefined, isChecked: false });
 
     }
 
@@ -5377,7 +5425,7 @@ export class RecipeCockpitService {
                 return;
 
             case 'answerConfirmation':
-                this.settlePendingConfirmation(panelAction.confirmationId, panelAction.choice);
+                this.settlePendingConfirmation(panelAction.confirmationId, panelAction.choice, panelAction.isChecked);
                 return;
 
             case 'reportRenderFailure': {
@@ -7242,7 +7290,11 @@ export class RecipeCockpitService {
             unreadableFieldCount: 0,
             globalValueSetCount: 0,
             missingGlobalValueSetCount: 0,
-            recordTypeCount: 0
+            recordTypeCount: 0,
+            customObjectCount: 0,
+            missingCustomObjectCount: 0,
+            unreadableCustomObjectCount: 0,
+            validationRuleCount: 0
         };
 
         try {
@@ -7258,6 +7310,10 @@ export class RecipeCockpitService {
             summaryMessage.globalValueSetCount = summary.globalValueSets.length;
             summaryMessage.missingGlobalValueSetCount = summary.missingGlobalValueSets.length;
             summaryMessage.recordTypeCount = summary.recordTypes.length;
+            summaryMessage.customObjectCount = summary.customObjects.length;
+            summaryMessage.missingCustomObjectCount = summary.missingCustomObjects.length;
+            summaryMessage.unreadableCustomObjectCount = summary.unreadableCustomObjects.length;
+            summaryMessage.validationRuleCount = summary.validationRules.length;
 
         } catch (projectError) {
 
@@ -7968,6 +8024,7 @@ export class RecipeCockpitService {
         const deployObjects = this.listTreeDeployObjects(recipeViewModel, tree);
         const treeObjectApiNames = deployObjects.map(deployObject => deployObject.objectApiName);
         let components: IMetadataDeployComponent[];
+        let fullSetComponents: IMetadataDeployComponent[] = [];
         let summary: IMetadataDeploySummary | undefined;
         let touchedObjectApiNames: string[];
 
@@ -7991,12 +8048,16 @@ export class RecipeCockpitService {
             summary = await RecipeCockpitMetadataDeploy.summarizeTreeMetadata(workspaceRoot, packageDirectoryPaths, deployObjects);
             components = RecipeCockpitMetadataDeploy.listSummaryComponents(summary, deployKind);
 
-            if ( components.length === 0 ) {
+            // A FIELDS DEPLOY NEEDS A FIELD: ITS CUSTOM OBJECTS (#402) GO WITH FIELDS, AND THE PANEL DISABLES THE CARD WITH NONE
+            if ( components.length === 0 || ( deployKind === 'fields' && summary.customFields.length === 0 ) ) {
                 const missingText = deployKind === 'fields' ? 'custom field whose source file this project holds'
                     : deployKind === 'globalValueSets' ? 'global value set its fields name that this project holds'
                     : 'record type in this project';
                 return refuse(`${treeLabel} has no ${missingText}, so nothing was deployed.`);
             }
+
+            // WHAT THE CONFIRMATION'S BOX ADDS TO A FIELDS DEPLOY (#402), FROM THE SAME READ THE CONFIRMATION SHOWS
+            fullSetComponents = deployKind === 'fields' ? RecipeCockpitMetadataDeploy.listFullSetComponents(summary) : [];
 
             touchedObjectApiNames = deployKind === 'globalValueSets'
                 ? treeObjectApiNames
@@ -8018,20 +8079,31 @@ export class RecipeCockpitService {
         // NO PARENTHESES: A NOTIFICATION ESCAPES THEM, AND THIS LABEL IS IN EVERY ONE THIS RUN SHOWS
         const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
         const packageDirectoryRelativePath = path.relative(workspaceRoot, packageDirectoryPath).split(path.sep).join('/') || '.';
-        const componentText = `${components.length} ${components.length === 1 ? 'component' : 'components'}`;
+        const describeComponentCount = (componentCount: number) => `${componentCount} ${componentCount === 1 ? 'component' : 'components'}`;
+        const confirmTitle = `Deploy ${describeComponentCount(components.length)} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgLabel)}?`;
+        const confirmOptions = {
+            detail: RecipeCockpitMetadataDeploy.buildConfirmationDetail(deployKind, treeLabel, orgLabel, packageDirectoryRelativePath, components, summary, SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot), fullSetComponents),
+            isDestructive: true
+        };
 
-        const confirmation = await this.confirmInPanel(
-            `Deploy ${componentText} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgLabel)}?`,
-            {
-                detail: RecipeCockpitMetadataDeploy.buildConfirmationDetail(deployKind, treeLabel, orgLabel, packageDirectoryRelativePath, components, summary, SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot)),
-                isDestructive: true
-            },
-            RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL
-        );
+        const confirmation = fullSetComponents.length > 0
+            ? await this.confirmInPanelWithCheckbox(confirmTitle, { ...confirmOptions, checkboxLabel: RECIPE_COCKPIT_DEPLOY_FULL_SET_CHECKBOX_LABEL }, RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL)
+            : { chosenLabel: await this.confirmInPanel(confirmTitle, confirmOptions, RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL), isChecked: false };
 
-        if ( confirmation !== RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL ) {
+        if ( confirmation.chosenLabel !== RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL ) {
             return {};
         }
+
+        if ( confirmation.isChecked ) {
+            components = [...components, ...fullSetComponents];
+            touchedObjectApiNames = [...new Set([
+                ...touchedObjectApiNames,
+                ...fullSetComponents.filter(component => component.type !== 'GlobalValueSet').map(component => component.member.split('.')[0]),
+                ...( fullSetComponents.some(component => component.type === 'GlobalValueSet') ? treeObjectApiNames : [] )
+            ])];
+        }
+
+        const componentText = describeComponentCount(components.length);
 
         // THE ROUTER CHECKED THESE AT THE CLICK; ONE CAN HAVE STARTED WHILE THE PROMPT OR THE MODAL WAS OPEN
         const currentPanelState = this.recipeCockpitPanelState;
@@ -10145,7 +10217,7 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                return { kind: 'answerConfirmation', confirmationId: this.pendingConfirmation.confirmationId, choice: panelMessage.choice };
+                return { kind: 'answerConfirmation', confirmationId: this.pendingConfirmation.confirmationId, choice: panelMessage.choice, isChecked: panelMessage.isChecked };
 
             /*
                 The panel's place, kept in workspaceState too (#230). Only for the model the panel
@@ -13593,6 +13665,8 @@ ${this.buildPaletteCustomProperties()}
     .confirmLine { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0.15rem 0; }
     .confirmListItem { padding-left: 1rem; }
     .confirmGap { height: 0.6rem; }
+    .confirmCheckRow { flex: none; display: flex; align-items: center; gap: 0.4rem; padding: 0.75rem 1rem 0 1rem; }
+    .confirmCheckLabel { cursor: pointer; overflow-wrap: anywhere; }
     .confirmActions { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1rem; }
     @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after {
@@ -18970,8 +19044,11 @@ ${this.buildPaletteCustomProperties()}
             const notes = [];
             if (summary.standardFieldCount > 0) { notes.push(pluralize(summary.standardFieldCount, 'standard field', 'standard fields') + ' never deployed'); }
             if (summary.unreadableFieldCount > 0) { notes.push(pluralize(summary.unreadableFieldCount, 'custom field', 'custom fields') + ' with no readable source file'); }
+            // #402: THE CUSTOM OBJECTS THE FIELDS GO ON ARE DEPLOYED WITH THEM; ONE THE PROJECT LACKS OR CANNOT READ MUST ALREADY BE IN THE ORG
+            const missingObjectCount = (summary.missingCustomObjectCount || 0) + (summary.unreadableCustomObjectCount || 0);
+            if (missingObjectCount > 0) { notes.push(pluralize(missingObjectCount, 'custom object', 'custom objects') + ' with no readable .object-meta.xml'); }
             return {
-                text: pluralize(summary.customFieldCount, 'CustomField', 'CustomField') + (notes.length > 0 ? '; ' + notes.join('; ') : '') + '.',
+                text: pluralize(summary.customFieldCount, 'CustomField', 'CustomField') + (summary.customObjectCount > 0 ? ' and ' + pluralize(summary.customObjectCount, 'CustomObject', 'CustomObject') : '') + (notes.length > 0 ? '; ' + notes.join('; ') : '') + '.',
                 emptyReason: summary.customFieldCount === 0 ? 'This tree has no custom field whose source file this project holds.' : ''
             };
         }
@@ -20458,15 +20535,39 @@ ${this.buildPaletteCustomProperties()}
         const cancelElement = createButton('secondary', 'confirmCancel', 'Cancel');
         cancelElement.addEventListener('click', function () { answerConfirm(null); });
 
+        // ONE UNTICKED BOX WHEN THE HOST ASKS FOR IT (#402); ITS STATE GOES BACK WITH THE ANSWER, AND WHAT IT ADDS IS THE HOST'S
+        const checkboxLabel = typeof hostMessage.checkboxLabel === 'string' && hostMessage.checkboxLabel ? hostMessage.checkboxLabel : null;
+        let checkElement = null;
+        let checkRowElement = null;
+        const checkState = { isChecked: false };
+        if (checkboxLabel) {
+            checkRowElement = createElement('div', 'confirmCheckRow');
+            checkElement = createButton('check', 'confirmCheck');
+            const checkLabelElement = createElement('span', 'confirmCheckLabel', checkboxLabel);
+            const toggleCheck = function () {
+                checkState.isChecked = !checkState.isChecked;
+                checkElement.setAttribute('aria-checked', checkState.isChecked ? 'true' : 'false');
+                checkElement.textContent = checkState.isChecked ? '✓' : '';
+            };
+            checkElement.setAttribute('role', 'checkbox');
+            checkElement.setAttribute('aria-checked', 'false');
+            checkElement.setAttribute('aria-label', checkboxLabel);
+            checkElement.addEventListener('click', toggleCheck);
+            checkLabelElement.addEventListener('click', toggleCheck);
+            checkRowElement.appendChild(checkElement);
+            checkRowElement.appendChild(checkLabelElement);
+        }
+
         buttonElements.forEach(function (buttonElement) { actionsElement.appendChild(buttonElement); });
         actionsElement.appendChild(cancelElement);
 
         dialogElement.appendChild(titleElement);
         dialogElement.appendChild(bodyElement);
+        if (checkRowElement) { dialogElement.appendChild(checkRowElement); }
         dialogElement.appendChild(actionsElement);
         overlayElement.appendChild(dialogElement);
 
-        const focusableElements = [bodyElement].concat(buttonElements, [cancelElement]);
+        const focusableElements = [bodyElement].concat(checkElement ? [checkElement] : [], buttonElements, [cancelElement]);
 
         dialogElement.addEventListener('keydown', function (event) {
             if (event.key === 'Escape') {
@@ -20496,7 +20597,7 @@ ${this.buildPaletteCustomProperties()}
         if (!isMotionReduced()) { dialogElement.classList.add('motionReveal'); }
         cockpitDialogHostElement.appendChild(overlayElement);
 
-        confirmDialog = { confirmationId: confirmationId, overlayElement: overlayElement, openerElement: openerElement };
+        confirmDialog = { confirmationId: confirmationId, overlayElement: overlayElement, openerElement: openerElement, checkState: checkElement ? checkState : null };
 
         // AN ACTION WITH NO UNDO STARTS ON CANCEL
         focusElement(isDestructive ? cancelElement : buttonElements[0]);
@@ -20506,7 +20607,9 @@ ${this.buildPaletteCustomProperties()}
     function answerConfirm(choice) {
 
         if (!confirmDialog) { return; }
-        vscodeApi.postMessage({ command: 'confirmResponse', confirmationId: confirmDialog.confirmationId, choice: choice });
+        const response = { command: 'confirmResponse', confirmationId: confirmDialog.confirmationId, choice: choice };
+        if (confirmDialog.checkState) { response.isChecked = choice !== null && confirmDialog.checkState.isChecked; }
+        vscodeApi.postMessage(response);
         closeConfirmDialog(true);
 
     }

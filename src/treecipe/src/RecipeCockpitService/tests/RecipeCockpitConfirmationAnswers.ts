@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { IRecipeCockpitConfirmOptions, RecipeCockpitService } from '../RecipeCockpitService';
+import { IRecipeCockpitConfirmAnswer, IRecipeCockpitConfirmOptions, IRecipeCockpitConfirmWithCheckboxOptions, RecipeCockpitService } from '../RecipeCockpitService';
 
 /*
     The cockpit asks its confirmations inside the panel (#349), through RecipeCockpitService.confirmInPanel,
@@ -13,6 +13,9 @@ import { IRecipeCockpitConfirmOptions, RecipeCockpitService } from '../RecipeCoc
     The broker itself (the request posted, the one-use id, Cancel on ready, a new model, a failure to
     draw or a closed panel) and the dialog the panel draws are tested in RecipeCockpitConfirmDialog.test.ts.
 
+    A confirmation with a checkbox (#402) goes to the same mock with its checkboxLabel among the
+    options: a label answers with the box unticked, and { chosenLabel, isChecked } ticks it.
+
     Call it at the top level of a suite: the spy is made in a beforeEach, since restoreMocks removes it after every test.
 */
 export function answerInPanelConfirmationsThroughWarningMock(): void {
@@ -20,6 +23,11 @@ export function answerInPanelConfirmationsThroughWarningMock(): void {
     beforeEach(() => {
         jest.spyOn(RecipeCockpitService, 'confirmInPanel').mockImplementation((message: string, confirmOptions: IRecipeCockpitConfirmOptions, ...buttonLabels: string[]) =>
             Promise.resolve((vscode.window.showWarningMessage as unknown as jest.Mock)(message, { ...confirmOptions, inPanel: true }, ...buttonLabels)));
+        jest.spyOn(RecipeCockpitService, 'confirmInPanelWithCheckbox').mockImplementation((message: string, confirmOptions: IRecipeCockpitConfirmWithCheckboxOptions, ...buttonLabels: string[]) =>
+            Promise.resolve((vscode.window.showWarningMessage as unknown as jest.Mock)(message, { ...confirmOptions, inPanel: true }, ...buttonLabels))
+                .then((answer: unknown): IRecipeCockpitConfirmAnswer => answer !== null && typeof answer === 'object'
+                    ? answer as IRecipeCockpitConfirmAnswer
+                    : { chosenLabel: typeof answer === 'string' ? answer : undefined, isChecked: false }));
     });
 
 }

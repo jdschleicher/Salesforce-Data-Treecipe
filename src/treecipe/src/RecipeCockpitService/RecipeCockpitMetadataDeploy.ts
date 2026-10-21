@@ -9,24 +9,26 @@ import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 
 /*
     The Troubleshooting tab's deploys (#346): what one relationship tree would deploy -- its custom
-    fields, the global value sets those fields name, its objects' record types, or permission sets --
-    found in the project's STRICT package directories, the package.xml that names exactly those
-    members, the argv that deploys it, and the CLI's answer read back. It imports no vscode: the
-    cockpit owns the org, the confirmation, the progress and the notification.
+    fields and the custom objects that hold them, the global value sets those fields name, its
+    objects' record types and validation rules, or permission sets -- found in the project's STRICT
+    package directories, the package.xml that names exactly those members, the argv that deploys it,
+    and the CLI's answer read back. It imports no vscode: the cockpit owns the org, the confirmation,
+    the progress and the notification.
 
-    Only the four types below are ever written into a package.xml, and only custom fields (__c):
-    never a CustomObject, a layout, a list view or anything else in an object folder, so an unrelated
-    broken file cannot fail the deploy. Every member is an api name before it is written.
+    Only the six types below are ever written into a package.xml, only custom fields (__c), and only
+    custom objects (__c, #402: a field cannot land on an object the org lacks): never a standard
+    object, a layout, a list view or anything else in an object folder, so an unrelated broken file
+    cannot fail the deploy. Every member is an api name before it is written.
 */
 
 export type MetadataDeployKind = 'permissionSet' | 'fields' | 'globalValueSets' | 'recordTypes';
 
-export type MetadataDeployType = 'PermissionSet' | 'CustomField' | 'GlobalValueSet' | 'RecordType';
+export type MetadataDeployType = 'PermissionSet' | 'CustomField' | 'CustomObject' | 'GlobalValueSet' | 'RecordType' | 'ValidationRule';
 
-export const METADATA_DEPLOY_TYPES: readonly MetadataDeployType[] = Object.freeze(['CustomField', 'GlobalValueSet', 'PermissionSet', 'RecordType'] as MetadataDeployType[]);
+export const METADATA_DEPLOY_TYPES: readonly MetadataDeployType[] = Object.freeze(['CustomField', 'CustomObject', 'GlobalValueSet', 'PermissionSet', 'RecordType', 'ValidationRule'] as MetadataDeployType[]);
 
-// A RETRIEVE'S PACKAGE.XML ALSO NAMES VALIDATION RULES (#401); NO DEPLOY BUTTON OFFERS ONE, SO buildPackageXml ADMITS THEM ONLY WHEN A RETRIEVE PASSES THESE
-export type MetadataPackageXmlType = MetadataDeployType | 'ValidationRule';
+// A RETRIEVE'S PACKAGE.XML (#401) NAMES ONLY THESE; A DEPLOY'S ALSO NAMES VALIDATION RULES SINCE #402, WHEN THE FIELDS CONFIRMATION'S BOX IS TICKED
+export type MetadataPackageXmlType = MetadataDeployType;
 
 export const METADATA_RETRIEVE_PACKAGE_XML_TYPES: readonly MetadataPackageXmlType[] = Object.freeze(['CustomField', 'GlobalValueSet', 'RecordType', 'ValidationRule'] as MetadataPackageXmlType[]);
 
@@ -68,9 +70,14 @@ export const METADATA_DEPLOY_PACKAGE_XML_SUFFIX = '-package.xml';
 const FIELD_FILE_SUFFIX = '.field-meta.xml';
 const RECORD_TYPE_FILE_SUFFIX = '.recordType-meta.xml';
 const GLOBAL_VALUE_SET_FILE_SUFFIX = '.globalValueSet-meta.xml';
+const VALIDATION_RULE_FILE_SUFFIX = '.validationRule-meta.xml';
+const OBJECT_FILE_SUFFIX = '.object-meta.xml';
 
 // ONLY A CUSTOM FIELD OF THE OBJECT ITSELF IS DEPLOYED; __pc, __Latitude__s AND STANDARD FIELDS ARE NOT
 const CUSTOM_FIELD_NAME_PATTERN = /__c$/;
+
+// ONLY A CUSTOM OBJECT IS DEPLOYED (#402); A STANDARD OBJECT IS THE ORG'S, AND __mdt, __e, __x AND __b ARE NOT A TREE'S
+const CUSTOM_OBJECT_NAME_PATTERN = /__c$/;
 
 const API_VERSION_PATTERN = /^[1-9][0-9]{1,2}\.0$/;
 
@@ -100,6 +107,14 @@ export interface IMetadataDeploySummary {
     // GLOBAL VALUE SETS A FIELD NAMES THAT THE PROJECT DOES NOT HOLD
     missingGlobalValueSets: string[];
     recordTypes: string[];
+    // CUSTOM (__c) TREE OBJECTS WHOSE <Object>.object-meta.xml WAS FOUND AND READ AS A <CustomObject> (#402)
+    customObjects: string[];
+    // CUSTOM TREE OBJECTS NO PACKAGE DIRECTORY HOLDS AN .object-meta.xml FOR: LEFT OUT, SO THEIR FIELDS NEED THE ORG TO HAVE THEM
+    missingCustomObjects: string[];
+    // CUSTOM TREE OBJECTS WHOSE .object-meta.xml COULD NOT BE READ AS A <CustomObject>: LEFT OUT, NEVER GUESSED AT
+    unreadableCustomObjects: string[];
+    // EVERY *.validationRule-meta.xml IN EACH TREE OBJECT'S validationRules FOLDER, "<Object>.<Rule>"
+    validationRules: string[];
     // OBJECT, FIELD, VALUE SET OR RECORD TYPE NAMES THAT ARE NOT API NAMES, SO NOTHING WAS OFFERED FOR THEM
     skippedNameCount: number;
 }
@@ -127,6 +142,10 @@ export class RecipeCockpitMetadataDeploy {
             return SalesforceApiName.isApiName(member);
         }
 
+        if ( type === 'CustomObject' ) {
+            return this.isCustomObjectName(member);
+        }
+
         const parts = member.split('.');
         if ( parts.length !== 2 || !SalesforceApiName.isApiName(parts[0]) ) {
             return false;
@@ -134,6 +153,10 @@ export class RecipeCockpitMetadataDeploy {
 
         return type === 'CustomField' ? this.isCustomFieldName(parts[1]) : SalesforceApiName.isApiName(parts[1]);
 
+    }
+
+    static isCustomObjectName(objectApiName: unknown): objectApiName is string {
+        return SalesforceApiName.isApiName(objectApiName) && CUSTOM_OBJECT_NAME_PATTERN.test(objectApiName);
     }
 
     // EVERY FOLDER NAMED folderName UNDER THE PACKAGE DIRECTORIES, NO LINK FOLLOWED, EACH INSIDE THE WORKSPACE
@@ -252,6 +275,38 @@ export class RecipeCockpitMetadataDeploy {
 
     }
 
+    // WHETHER AN .object-meta.xml READS AS A <CustomObject>; AN EMPTY <CustomObject/> IS ONE
+    static async isCustomObjectXml(objectXml: string): Promise<boolean> {
+
+        let parsedXml: unknown;
+        try {
+            parsedXml = await xml2js.parseStringPromise(objectXml);
+        } catch {
+            return false;
+        }
+
+        const customObject = ( parsedXml as Record<string, unknown> | null )?.CustomObject;
+
+        return typeof customObject === 'string' || ( customObject !== null && typeof customObject === 'object' && !Array.isArray(customObject) );
+
+    }
+
+    // THE FIRST OF THE OBJECT'S FOLDERS HOLDING <Object>.object-meta.xml AS A FILE, NOT A LINK, MATCHED CASE-INSENSITIVELY
+    static findObjectFilePath(objectFolderPaths: readonly string[], objectApiName: string): string | undefined {
+
+        const objectFileName = `${objectApiName}${OBJECT_FILE_SUFFIX}`.toLowerCase();
+
+        for ( const objectFolderPath of objectFolderPaths ) {
+            const objectFileEntry = this.listEntries(objectFolderPath).find(entry => entry.isFile() && entry.name.toLowerCase() === objectFileName);
+            if ( objectFileEntry ) {
+                return path.join(objectFolderPath, objectFileEntry.name);
+            }
+        }
+
+        return undefined;
+
+    }
+
     /*
         What the tree holds per section. Fields are the tree's recipe fields (the caller leaves out
         excluded objects and unticked fields); a custom field counts only when its source XML is
@@ -261,7 +316,10 @@ export class RecipeCockpitMetadataDeploy {
     */
     static async summarizeTreeMetadata(workspaceRoot: string, packageDirectoryPaths: readonly string[], deployObjects: readonly IMetadataDeployObject[]): Promise<IMetadataDeploySummary> {
 
-        const summary: IMetadataDeploySummary = { customFields: [], standardFields: [], unreadableFields: [], globalValueSets: [], missingGlobalValueSets: [], recordTypes: [], skippedNameCount: 0 };
+        const summary: IMetadataDeploySummary = {
+            customFields: [], standardFields: [], unreadableFields: [], globalValueSets: [], missingGlobalValueSets: [], recordTypes: [],
+            customObjects: [], missingCustomObjects: [], unreadableCustomObjects: [], validationRules: [], skippedNameCount: 0
+        };
         const fieldApiNamesByObject = new Map<string, Set<string>>();
 
         deployObjects.forEach(deployObject => {
@@ -287,11 +345,30 @@ export class RecipeCockpitMetadataDeploy {
         const objectFolderPathsByObject = this.findObjectFolderPaths(workspaceRoot, packageDirectoryPaths, objectApiNames);
         const namedValueSetNames = new Set<string>();
         const recordTypes = new Set<string>();
+        const validationRules = new Set<string>();
         let readFileCount = 0;
 
         for ( const objectApiName of objectApiNames ) {
 
             const objectFolderPaths = objectFolderPathsByObject.get(objectApiName) ?? [];
+
+            if ( this.isCustomObjectName(objectApiName) ) {
+                const objectFilePath = this.findObjectFilePath(objectFolderPaths, objectApiName);
+                let isReadable = false;
+                if ( objectFilePath ) {
+                    readFileCount++;
+                    if ( readFileCount % METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES === 0 ) {
+                        await new Promise<void>(resolve => setImmediate(resolve));
+                    }
+                    try {
+                        isReadable = await this.isCustomObjectXml(fs.readFileSync(objectFilePath, 'utf-8'));
+                    } catch {
+                        isReadable = false;
+                    }
+                }
+                ( !objectFilePath ? summary.missingCustomObjects : isReadable ? summary.customObjects : summary.unreadableCustomObjects ).push(objectApiName);
+            }
+
             // THE FIRST FOLDER HOLDING A FIELD'S FILE WINS
             const fieldFilePathsByLowerName = new Map<string, string>();
             objectFolderPaths.forEach(objectFolderPath => {
@@ -349,6 +426,16 @@ export class RecipeCockpitMetadataDeploy {
                             summary.skippedNameCount++;
                         }
                     });
+                this.listSubfolderEntries(objectFolderPath, 'validationRules')
+                    .filter(entry => entry.isFile() && entry.name.endsWith(VALIDATION_RULE_FILE_SUFFIX))
+                    .map(entry => entry.name.slice(0, -VALIDATION_RULE_FILE_SUFFIX.length))
+                    .forEach(ruleName => {
+                        if ( SalesforceApiName.isApiName(ruleName) ) {
+                            validationRules.add(`${objectApiName}.${ruleName}`);
+                        } else {
+                            summary.skippedNameCount++;
+                        }
+                    });
             }
 
         }
@@ -368,18 +455,51 @@ export class RecipeCockpitMetadataDeploy {
         summary.globalValueSets = [...heldValueSetNames].sort();
         summary.missingGlobalValueSets = [...missingValueSetNames].sort();
         summary.recordTypes = [...recordTypes].sort();
+        summary.validationRules = [...validationRules].sort();
 
         return summary;
 
     }
 
+    // A FIELDS DEPLOY ALSO NAMES THE CUSTOM OBJECTS IT READ (#402): A FIELD CANNOT LAND ON AN OBJECT THE ORG LACKS
     static listSummaryComponents(summary: IMetadataDeploySummary, deployKind: Exclude<MetadataDeployKind, 'permissionSet'>): IMetadataDeployComponent[] {
 
         const members = deployKind === 'fields' ? summary.customFields
             : deployKind === 'globalValueSets' ? summary.globalValueSets
             : summary.recordTypes;
 
-        return members.map(member => ({ type: METADATA_DEPLOY_TYPE_BY_KIND[deployKind], member: member }));
+        return [
+            ...members.map(member => ({ type: METADATA_DEPLOY_TYPE_BY_KIND[deployKind], member: member })),
+            ...( deployKind === 'fields' ? summary.customObjects.map(member => ({ type: 'CustomObject' as const, member: member })) : [] )
+        ];
+
+    }
+
+    // WHAT A FIELDS DEPLOY ADDS WHEN ITS CONFIRMATION'S BOX IS TICKED (#402): THE TREE OBJECTS' VALIDATION RULES AND RECORD TYPES, AND THE VALUE SETS THE PROJECT HOLDS
+    static listFullSetComponents(summary: IMetadataDeploySummary): IMetadataDeployComponent[] {
+
+        return [
+            ...summary.validationRules.map(member => ({ type: 'ValidationRule' as const, member: member })),
+            ...summary.recordTypes.map(member => ({ type: 'RecordType' as const, member: member })),
+            ...summary.globalValueSets.map(member => ({ type: 'GlobalValueSet' as const, member: member }))
+        ];
+
+    }
+
+    // "<n> <Type>: <members>" PER TYPE, TYPES SORTED WITH "<"
+    static describeComponentsByType(components: readonly IMetadataDeployComponent[]): string[] {
+
+        const membersByType = new Map<MetadataDeployType, Set<string>>();
+        components.forEach(component => {
+            const members = membersByType.get(component.type) ?? new Set<string>();
+            membersByType.set(component.type, members);
+            members.add(component.member);
+        });
+
+        return [...membersByType.keys()].sort().map(type => {
+            const members = [...( membersByType.get(type) as Set<string> )].sort();
+            return `${members.length} ${type}: ${this.describeCappedList(members)}`;
+        });
 
     }
 
@@ -626,14 +746,25 @@ export class RecipeCockpitMetadataDeploy {
                                     packageDirectoryRelativePath: string,
                                     components: readonly IMetadataDeployComponent[],
                                     summary?: IMetadataDeploySummary,
-                                    hasFileOrEnvironmentReplacements = false): string {
+                                    hasFileOrEnvironmentReplacements = false,
+                                    fullSetComponents: readonly IMetadataDeployComponent[] = []): string {
 
         const toSingleLine = (text: string) => String(text).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');
-        const type = METADATA_DEPLOY_TYPE_BY_KIND[deployKind];
-        const members = [...new Set(components.map(component => component.member))].sort();
         const notes: string[] = [];
 
         if ( summary && deployKind === 'fields' ) {
+            if ( summary.customObjects.length > 0 ) {
+                notes.push('Deploying a custom object overwrites the org\'s settings for it — its label, sharing model, name field and the rest — with this project\'s version.');
+            }
+            if ( summary.missingCustomObjects.length > 0 ) {
+                notes.push(`Not deployed: ${summary.missingCustomObjects.length} custom ${summary.missingCustomObjects.length === 1 ? 'object' : 'objects'} not in this project — the org must already have ${summary.missingCustomObjects.length === 1 ? 'it' : 'them'}, or ${summary.missingCustomObjects.length === 1 ? 'its' : 'their'} fields fail: ${this.describeCappedList(summary.missingCustomObjects)}`);
+            }
+            if ( summary.unreadableCustomObjects.length > 0 ) {
+                notes.push(`Not deployed: ${summary.unreadableCustomObjects.length} custom ${summary.unreadableCustomObjects.length === 1 ? 'object' : 'objects'} whose .object-meta.xml could not be read: ${this.describeCappedList(summary.unreadableCustomObjects)}`);
+            }
+            if ( summary.customObjects.length + summary.missingCustomObjects.length + summary.unreadableCustomObjects.length === 0 ) {
+                notes.push('Every object of this tree is a standard object, so no CustomObject is deployed.');
+            }
             if ( summary.standardFields.length > 0 ) {
                 notes.push(`Not deployed: standard fields — the org enables these through a feature or setting: ${this.describeCappedList(summary.standardFields)}`);
             }
@@ -654,8 +785,11 @@ export class RecipeCockpitMetadataDeploy {
             `Tree: ${toSingleLine(treeLabel)}`,
             `Org: ${toSingleLine(orgLabel)}`,
             `From: ${toSingleLine(packageDirectoryRelativePath)}`,
-            `${members.length} ${type}: ${this.describeCappedList(members)}`,
+            ...this.describeComponentsByType(components),
             ...notes,
+            ...( fullSetComponents.length > 0
+                ? ['', 'Ticking the box below also deploys, in the same package.xml:', ...this.describeComponentsByType(fullSetComponents)]
+                : [] ),
             '',
             'Only these components are deployed, through a generated package.xml. Nothing else in the object folders is.',
             ...( hasFileOrEnvironmentReplacements

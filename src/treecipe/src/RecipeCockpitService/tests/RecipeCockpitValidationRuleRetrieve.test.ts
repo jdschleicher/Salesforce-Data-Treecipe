@@ -139,7 +139,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
         });
 
-        it('names the listed rules in a package.xml, and a deploy\'s package.xml still refuses a validation rule', () => {
+        it('names the listed rules in a package.xml, which never admits a custom object, though a deploy\'s now does both (#402)', () => {
 
             const packageXml = RecipeCockpitMetadataRetrieve.buildRetrievePackageXml([
                 { type: 'ValidationRule', member: 'Account.Phone_Format' },
@@ -149,7 +149,8 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             expect(packageXml).toContain('<members>Account.Name_Required</members>\n        <members>Account.Phone_Format</members>\n        <name>ValidationRule</name>');
             expect(() => RecipeCockpitMetadataRetrieve.buildRetrievePackageXml([{ type: 'ValidationRule', member: 'Account.*' }])).toThrow('is not a ValidationRule api name, so nothing was retrieved.');
             expect(() => RecipeCockpitMetadataRetrieve.buildRetrievePackageXml([{ type: 'PermissionSet', member: 'Any' }])).toThrow('is not a type the Troubleshooting tab retrieves');
-            expect(() => RecipeCockpitMetadataDeploy.buildPackageXml([{ type: 'ValidationRule', member: 'Account.Phone_Format' }])).toThrow('is not a type the Troubleshooting tab deploys, so nothing was deployed.');
+            expect(() => RecipeCockpitMetadataRetrieve.buildRetrievePackageXml([{ type: 'CustomObject', member: 'Gadget__c' }])).toThrow('is not a type the Troubleshooting tab retrieves');
+            expect(RecipeCockpitMetadataDeploy.buildPackageXml([{ type: 'ValidationRule', member: 'Account.Phone_Format' }])).toContain('<name>ValidationRule</name>');
 
         });
 

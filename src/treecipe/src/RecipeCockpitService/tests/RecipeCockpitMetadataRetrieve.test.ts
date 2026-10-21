@@ -106,7 +106,7 @@ const buildRetrieveAnswer = (files: unknown[], overrides: Record<string, unknown
 });
 
 const emptySummary = (overrides: Partial<IMetadataDeploySummary> = {}): IMetadataDeploySummary => ({
-    customFields: [], standardFields: [], unreadableFields: [], globalValueSets: [], missingGlobalValueSets: [], recordTypes: [], skippedNameCount: 0, ...overrides
+    customFields: [], standardFields: [], unreadableFields: [], globalValueSets: [], missingGlobalValueSets: [], recordTypes: [], customObjects: [], missingCustomObjects: [], unreadableCustomObjects: [], validationRules: [], skippedNameCount: 0, ...overrides
 });
 
 answerInPanelConfirmationsThroughWarningMock();

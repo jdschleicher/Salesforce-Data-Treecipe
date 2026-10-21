@@ -52,6 +52,7 @@ import {
     RECIPE_COCKPIT_DEPLOY_ACTION_LABELS,
     RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL,
     RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL,
+    RECIPE_COCKPIT_DEPLOY_FULL_SET_CHECKBOX_LABEL,
     RECIPE_COCKPIT_DEPLOY_ORG_PLACEHOLDER,
     RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL,
     RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
@@ -455,8 +456,13 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             await deploy('deployTreeFields');
 
             const [modalMessage, modalOptions, modalAction] = modalCalls()[0];
-            expect(modalMessage).toBe(`Deploy 6 components for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME}?`);
+            expect(modalMessage).toBe(`Deploy 7 components for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME}?`);
             expect(modalAction).toBe(RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL);
+            expect(modalOptions.isDestructive).toBe(true);
+            expect(modalOptions.checkboxLabel).toBe(RECIPE_COCKPIT_DEPLOY_FULL_SET_CHECKBOX_LABEL);
+            expect(modalOptions.detail).toContain('1 CustomObject: OtherChildObject__c');
+            expect(modalOptions.detail).toContain('Deploying a custom object overwrites the org\'s settings for it');
+            expect(modalOptions.detail).toContain('Ticking the box below also deploys, in the same package.xml:');
             expect(modalOptions.detail).toContain(`Org: qa · ${QA_USERNAME}`);
             expect(modalOptions.detail).toContain('From: force-app');
             expect(modalOptions.detail).toContain(`6 CustomField: ${ACCOUNT_CUSTOM_FIELDS.join(', ')}`);
@@ -474,8 +480,9 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
             const typeNames = [...deployedManifests[0].matchAll(/<name>([^<]*)<\/name>/g)].map(match => match[1]);
             const members = [...deployedManifests[0].matchAll(/<members>([^<]*)<\/members>/g)].map(match => match[1]);
-            expect(typeNames).toEqual(['CustomField']);
-            expect(members).toEqual(ACCOUNT_CUSTOM_FIELDS);
+            // THE BOX WAS LEFT UNTICKED: THE FIELDS AND THE CUSTOM OBJECT THEY GO ON, NEVER Account OR Contact
+            expect(typeNames).toEqual(['CustomField', 'CustomObject']);
+            expect(members).toEqual([...ACCOUNT_CUSTOM_FIELDS, 'OtherChildObject__c']);
             expect(deployedManifests[0]).toContain('<version>64.0</version>');
 
             // PROJECT MODE, THE SCRATCH ORG DEPLOY'S BUFFER
@@ -483,7 +490,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             expect(deployExecCall[2].cwd).toBe(path.resolve(workspaceRoot));
             expect(deployExecCall[2].maxBuffer).toBe(SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES);
 
-            expect(informationCalls()).toContainEqual([`Deployed 6 components for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME}.`, RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL]);
+            expect(informationCalls()).toContainEqual([`Deployed 7 components for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME}.`, RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL]);
             expect(notificationWarnings()).toEqual([]);
             expect(postedNamed('metadataDeployState')).toEqual([
                 { command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, deployKind: 'fields' },
@@ -495,6 +502,57 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             // A DEPLOY THAT LANDED DROPS THE DEPLOYED OBJECTS' DESCRIBES AND RE-CHECKS THE CARDS LISTING THEM
             ['Account', 'OtherChildObject__c'].forEach(objectApiName => expect(clearSpy).toHaveBeenCalledWith(QA_USERNAME, objectApiName));
             expect(describeCalls.slice(describesBefore)).toEqual(expect.arrayContaining(['Account', 'OtherChildObject__c']));
+
+        });
+
+        it('adds every tree object\'s validation rules, record types and held value sets when the confirmation\'s box is ticked (#402)', async () => {
+
+            await openCockpitWithQaSelected();
+            modalAnswer = { chosenLabel: RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL, isChecked: true } as any;
+            const clearSpy = jest.spyOn(SalesforceOrgService, 'clearDescribeCache');
+
+            await deploy('deployTreeFields');
+
+            // A GLOBAL VALUE SET CAN CHANGE ANY TREE OBJECT'S PICKLISTS, SO EVERY TREE OBJECT'S DESCRIBE IS DROPPED
+            ['Account', 'Contact', 'OtherChildObject__c'].forEach(objectApiName => expect(clearSpy).toHaveBeenCalledWith(QA_USERNAME, objectApiName));
+
+            const typeNames = [...deployedManifests[0].matchAll(/<name>([^<]*)<\/name>/g)].map(match => match[1]);
+            const members = [...deployedManifests[0].matchAll(/<members>([^<]*)<\/members>/g)].map(match => match[1]);
+            expect(typeNames).toEqual(['CustomField', 'CustomObject', 'GlobalValueSet', 'RecordType', 'ValidationRule']);
+            expect(members).toEqual(expect.arrayContaining(['OtherChildObject__c', 'Account_Ratings', 'Account.Business', 'Account.Partner', 'Account.Budget_Not_Negative', 'OtherChildObject__c.Score_In_Range']));
+            expect(deployedManifests[0]).not.toContain('PermissionSet');
+            expect(deployedManifests[0]).not.toContain('Layout');
+            expect(deployCalls()).toHaveLength(1);
+            expect(informationCalls()).toContainEqual([`Deployed 12 components for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME}.`, RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL]);
+
+        });
+
+        it('drops only the describes of the objects a ticked box\'s rules and record types name when it adds no value set', async () => {
+
+            await openCockpitWithQaSelected();
+            fs.rmSync(path.join(workspaceRoot, 'unpackaged', 'globalValueSets'), { recursive: true, force: true });
+            modalAnswer = { chosenLabel: RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL, isChecked: true } as any;
+            const clearSpy = jest.spyOn(SalesforceOrgService, 'clearDescribeCache');
+
+            await deploy('deployTreeFields');
+
+            expect([...deployedManifests[0].matchAll(/<name>([^<]*)<\/name>/g)].map(match => match[1])).toEqual(['CustomField', 'CustomObject', 'RecordType', 'ValidationRule']);
+            ['Account', 'OtherChildObject__c'].forEach(objectApiName => expect(clearSpy).toHaveBeenCalledWith(QA_USERNAME, objectApiName));
+            expect(clearSpy).not.toHaveBeenCalledWith(QA_USERNAME, 'Contact');
+
+        });
+
+        it('asks without a box when the project holds nothing for it to add, and never offers one for another section\'s deploy', async () => {
+
+            await openCockpitWithQaSelected();
+            ['validationRules', 'recordTypes'].forEach(folderName => fs.rmSync(path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'Account', folderName), { recursive: true, force: true }));
+            fs.rmSync(path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'OtherChildObject__c', 'validationRules'), { recursive: true, force: true });
+            fs.rmSync(path.join(workspaceRoot, 'unpackaged', 'globalValueSets'), { recursive: true, force: true });
+
+            await deploy('deployTreeFields');
+
+            expect(modalCalls()[0][1]).not.toHaveProperty('checkboxLabel');
+            expect(modalCalls()[0][1].detail).not.toContain('Ticking the box');
 
         });
 
@@ -598,6 +656,19 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
         });
 
+        it('refuses a fields deploy with no custom field file, though the project holds a custom object\'s definition (#402)', async () => {
+
+            ['Account', 'OtherChildObject__c'].forEach(objectApiName => fs.rmSync(path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', objectApiName, 'fields'), { recursive: true }));
+            await openCockpitWithQaSelected();
+
+            await deploy('deployTreeFields');
+
+            expect(lastWarning()).toEqual({ text: 'Account-thru-OtherChildObject__c has no custom field whose source file this project holds, so nothing was deployed.', actions: [] });
+            expect(modalCalls()).toEqual([]);
+            expect(deployCalls()).toEqual([]);
+
+        });
+
         it('offers this tree\'s generated permission set first and preselected, deploys the picks, and offers "Assign permission sets to me…" routed like a click', async () => {
 
             await openCockpitWithQaSelected();
@@ -661,7 +732,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             await flushAsyncWork();
 
             expect(childKill).toHaveBeenCalled();
-            expect(lastWarning()?.text).toBe(`The deploy of 6 components for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME} was cancelled, so whether it landed is unknown.`);
+            expect(lastWarning()?.text).toBe(`The deploy of 7 components for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME} was cancelled, so whether it landed is unknown.`);
             expect(lastDeployState()).toMatchObject({ isRunning: false });
 
         });
@@ -702,7 +773,11 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
                 unreadableFieldCount: 2,
                 globalValueSetCount: 1,
                 missingGlobalValueSetCount: 1,
-                recordTypeCount: 2
+                recordTypeCount: 2,
+                customObjectCount: 1,
+                missingCustomObjectCount: 0,
+                unreadableCustomObjectCount: 0,
+                validationRuleCount: 2
             }]);
             expect(cliCalls.filter(argumentList => argumentList[1] !== 'list')).toEqual([]);
 
@@ -979,6 +1054,10 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             globalValueSetCount: 1,
             missingGlobalValueSetCount: 1,
             recordTypeCount: 2,
+            customObjectCount: 1,
+            missingCustomObjectCount: 0,
+            unreadableCustomObjectCount: 0,
+            validationRuleCount: 2,
             ...overrides
         });
 
@@ -1026,7 +1105,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             const summaryTexts = panel.findAll(accountCard, 'troubleshootingSummary').map((summaryElement: any) => summaryElement.textContent);
             // IN SUB-TAB ORDER: FIELDS, PERMISSIONS, RECORD TYPES, GLOBAL VALUE SETS
             expect(summaryTexts).toEqual([
-                '6 CustomField; 4 standard fields never deployed; 2 custom fields with no readable source file.',
+                '6 CustomField and 1 CustomObject; 4 standard fields never deployed; 2 custom fields with no readable source file.',
                 '2 permission sets in this project grant access to this tree.',
                 '0 RecordType.',
                 '1 GlobalValueSet; 1 named value set this project does not hold.'
@@ -1035,6 +1114,11 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             expect(cardTitleOf(deployButtonOf(panel, 'fields'))).toBe('Deploy fields…');
             expect(deployButtonOf(panel, 'recordTypes').disabled).toBe(true);
             expect(deployButtonOf(panel, 'recordTypes').attributes.title).toBe('No object of this tree has a record type in this project.\n0 RecordType.');
+
+            // #402: A CUSTOM OBJECT THE PROJECT LACKS OR CANNOT READ IS COUNTED; A TREE OF STANDARD OBJECTS NAMES NONE
+            panel.postToPanel(summary({ customObjectCount: 0, missingCustomObjectCount: 1, unreadableCustomObjectCount: 1, recordTypeCount: 0 }));
+            expect(panel.findAll(accountCard, 'troubleshootingSummary')[0].textContent)
+                .toBe('6 CustomField; 4 standard fields never deployed; 2 custom fields with no readable source file; 2 custom objects with no readable .object-meta.xml.');
 
             // AN ANSWER FOR ANOTHER MODEL IS DROPPED
             panel.postToPanel(summary({ renderSequence: 2, customFieldCount: 0 }));
