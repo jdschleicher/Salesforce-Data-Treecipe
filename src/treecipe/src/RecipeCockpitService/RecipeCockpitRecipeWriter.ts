@@ -274,16 +274,39 @@ export interface IParentObjectAddition {
     parentObjectApiName: string;
 }
 
-// WHAT addParentObject IS ASKED TO WRITE: THE LOOKUP, AND THE TEMPLATE'S FIELD VALUES FOR EVERY PARENT IT KNOWS
+/*
+    WHAT addParentObject IS ASKED TO WRITE: THE LOOKUP, AND THE TEMPLATE'S FIELD VALUES FOR EVERY PARENT IT KNOWS.
+    nestTreeUnderParent (#405) moves the top-level block holding the lookup under the parent's friends:
+*/
 export interface IParentObjectAdditionRequest {
     objectApiName: string;
     objectNickname?: string;
     fieldApiName: string;
     parentTemplatesByObjectApiName: Readonly<Record<string, Readonly<Record<string, string>>>>;
+    nestTreeUnderParent?: boolean;
 }
 
+// ONE TODO LOOKUP A NESTED ADDITION WIRED TO THE NEW PARENT (#405); objectNickname ONLY WHEN THE OBJECT IS WRITTEN MORE THAN ONCE
+export interface IParentObjectAdditionWiring {
+    objectApiName: string;
+    objectNickname?: string;
+    fieldApiName: string;
+}
+
+/*
+    nestedObjectApiNames and wiredLookups are set only for a nested addition (#405): every object of
+    the moved block once, in file order, and every lookup wired, the requested one included.
+*/
 export type RecipeParentObjectAdditionResult =
-    | { isApplied: true; recipeText: string; parentObjectApiName: string; parentNickname: string; edits: IRecipeWriterEdit[] }
+    | {
+        isApplied: true;
+        recipeText: string;
+        parentObjectApiName: string;
+        parentNickname: string;
+        edits: IRecipeWriterEdit[];
+        nestedObjectApiNames?: string[];
+        wiredLookups?: IParentObjectAdditionWiring[];
+    }
     | { isApplied: false; refusal: IRecipeWriterRefusal };
 
 /*
@@ -1549,6 +1572,16 @@ export class RecipeCockpitRecipeWriter {
             && ( recipeLines.lines[headingIndex] === `# ${rootObjectApiName}` || recipeLines.lines[headingIndex].startsWith(`# ${rootObjectApiName} `) );
         const insertIndex = isRootHeading ? headingIndex : located.rootHeaderIndex;
 
+        if ( additionRequest.nestTreeUnderParent ) {
+            return this.nestTreeUnderAddedParent(recipeLines, scannedObjects, additionIndex, located, additionRequest, wiringContext, {
+                parentObjectApiName: parentObjectApiName,
+                parentNickname: parentNickname,
+                parentFieldApiNames: Object.keys(parentTemplate),
+                templateFieldLines: templateFieldLines,
+                moveStartIndex: insertIndex
+            });
+        }
+
         const { lines, lineEndings } = recipeLines;
         const defaultLineEnding = lineEndings.find(lineEnding => lineEnding) ?? '\n';
         const blockLineEnding = ( insertIndex > 0 ? lineEndings[insertIndex - 1] : lineEndings[insertIndex] ) || defaultLineEnding;
@@ -1609,6 +1642,198 @@ export class RecipeCockpitRecipeWriter {
                 }
             ]
         };
+
+    }
+
+    /*
+        The nested addition (#405): the parent's block takes the place of the top-level block holding
+        the lookup, and that block -- with the "# <Object>" comment that heads it, its own friends:
+        and everything under them -- moves under the parent's new friends: line, every line four
+        spaces deeper, so each object and field keeps its column relative to its block and a block
+        scalar keeps its content. The parent is then an ANCESTOR of every moved object, which is the
+        wiring Generate Treecipe writes for a nested tree (#46): the requested lookup and every other
+        moved TODO lookup that points at this parent alone, from an object at a higher level, take
+        its nickname. Nothing outside the moved block changes, and the result is read back as the
+        same objects -- the moved ones one level deeper -- plus the parent.
+    */
+    private static nestTreeUnderAddedParent(recipeLines: IRecipeLines,
+                                            scannedObjects: IScannedObject[],
+                                            additionIndex: ReturnType<typeof RecipeCockpitRecipeWriter.buildParentObjectAdditionIndex>,
+                                            located: { addition: IParentObjectAddition; scannedObject: IScannedObject; lineIndex: number; fieldIndent: string; rootHeaderIndex: number },
+                                            additionRequest: IParentObjectAdditionRequest,
+                                            wiringContext: ILookupWiringContext,
+                                            parentBlock: { parentObjectApiName: string; parentNickname: string; parentFieldApiNames: string[]; templateFieldLines: string[]; moveStartIndex: number }):
+        RecipeParentObjectAdditionResult {
+
+        const { objectApiName, objectNickname, fieldApiName } = additionRequest;
+        const { parentObjectApiName, parentNickname, parentFieldApiNames, templateFieldLines, moveStartIndex } = parentBlock;
+        const { lines, lineEndings } = recipeLines;
+        const refuse = (reason: RecipeWriterRefusalReason, message: string) => this.refuse(reason, message, objectApiName, fieldApiName, objectNickname);
+
+        const rootObject = additionIndex.friendIndex.objectsByHeaderIndex.get(located.rootHeaderIndex);
+        const moveEndIndex = this.findLastLineIndexOfObject(lines, rootObject) + 1;
+        const movedObjects = scannedObjects.filter(scannedObject => scannedObject.headerIndex >= located.rootHeaderIndex && scannedObject.headerIndex < moveEndIndex);
+        const movedLines = lines.slice(moveStartIndex, moveEndIndex);
+
+        /*
+            The move ends at the block's last line before a column-0 line, but a reader's column-0
+            comment does not end the block for YAML: an indented line after it is still the block's,
+            and would keep its old column. Up to the next top-level object, only column-0 lines and
+            blank ones may follow.
+        */
+        const nextTopLevelHeaderIndex = scannedObjects.find(scannedObject => scannedObject.objectIndent === 0 && scannedObject.headerIndex > located.rootHeaderIndex)?.headerIndex ?? lines.length;
+        if ( lines.slice(moveEndIndex, nextTopLevelHeaderIndex).some(trailingLine => trailingLine.trim() && /^\s/.test(trailingLine)) ) {
+            return refuse('unsupported-friend-layout', `The ${rootObject.objectApiName} block continues after a line at column 0, such as a comment, so it could not be moved under ${parentObjectApiName} as a whole.`);
+        }
+
+        // AS FOR insertFriend: TEXT AFTER A BREAK THE JS SPLIT DOES NOT SEE WOULD KEEP ITS OLD COLUMN
+        if ( movedLines.some(movedLine => /[\r\u0085\u2028\u2029]/.test(movedLine)) ) {
+            return refuse('unsupported-friend-layout', `The ${rootObject.objectApiName} block has a line break inside a line (a lone carriage return, or U+0085, U+2028 or U+2029), so it could not be moved under ${parentObjectApiName} exactly.`);
+        }
+
+        const wirings = this.listNestedParentWirings(lines, movedObjects, additionIndex, parentObjectApiName, wiringContext);
+        if ( !wirings.some(wiring => wiring.lineIndex === located.lineIndex) ) {
+            return refuse('lookup-not-wireable', `${this.describeObject(objectApiName, objectNickname)}.${fieldApiName} could not be wired to ${parentObjectApiName} in the moved block, so nothing was added.`);
+        }
+        const wiredLinesByIndex = new Map(wirings.map(wiring => [wiring.lineIndex, `${wiring.fieldIndent}${' '.repeat(FRIENDS_INDENT_STEP)}${wiring.lookup.fieldApiName}: ${parentNickname}`]));
+
+        const topLayout = this.getObjectLayout(0);
+        const indentation = ' '.repeat(FRIENDS_INDENT_STEP);
+        const parentLines = [
+            `# ${parentObjectApiName} (Added by the Recipe Cockpit as the parent of ${rootObject.objectApiName}, nested under it as friends)`,
+            `- object: ${parentObjectApiName}`,
+            `${topLayout.propertyIndent}nickname: ${parentNickname}`,
+            `${topLayout.propertyIndent}count: 1`,
+            ...( templateFieldLines.length > 0 ? [`${topLayout.propertyIndent}fields:`, ...templateFieldLines] : [] ),
+            `${topLayout.propertyIndent}friends:`
+        ];
+        const nestedLines = movedLines.map((movedLine, offset) => wiredLinesByIndex.get(moveStartIndex + offset) ?? ( movedLine ? `${indentation}${movedLine}` : movedLine ));
+
+        const defaultLineEnding = lineEndings.find(lineEnding => lineEnding) ?? '\n';
+        const blockLineEnding = ( moveStartIndex > 0 ? lineEndings[moveStartIndex - 1] : lineEndings[moveStartIndex] ) || defaultLineEnding;
+        const nextLines = [...lines.slice(0, moveStartIndex), ...parentLines, ...nestedLines, ...lines.slice(moveEndIndex)];
+        const nextLineEndings = [...lineEndings.slice(0, moveStartIndex), ...parentLines.map(() => blockLineEnding), ...lineEndings.slice(moveStartIndex)];
+
+        // READ BACK: EVERY OBJECT AT ITS SHIFTED LINE, THE MOVED ONES ONE LEVEL DEEPER UNDER THE PARENT, AND EVERY WIRED LINE STILL ITS FIELD
+        const shift = parentLines.length;
+        const parentHeaderIndex = moveStartIndex + 1;
+        const nextScannedObjects = this.scanRecipeObjects(nextLines);
+        const nextObjectsByHeaderIndex = new Map(nextScannedObjects.map(scannedObject => [scannedObject.headerIndex, scannedObject]));
+        const addedParent = nextObjectsByHeaderIndex.get(parentHeaderIndex);
+        const shiftLineIndex = (lineIndex: number) => ( lineIndex >= moveStartIndex ? lineIndex + shift : lineIndex );
+        const isFieldList = (left: IScannedObject, right: IScannedObject) => left.fields.map(scannedField => scannedField.fieldApiName).join('\n') === right.fields.map(scannedField => scannedField.fieldApiName).join('\n');
+
+        const isReadBack = nextScannedObjects.length === scannedObjects.length + 1
+            && !!addedParent
+            && addedParent.objectApiName === parentObjectApiName
+            && addedParent.objectIndent === 0
+            && addedParent.nicknames.length === 1
+            && addedParent.nicknames[0] === parentNickname
+            && addedParent.propertyLineIndexes.count.length === 1
+            && addedParent.friendsLineIndexes.length === 1
+            && addedParent.fields.map(scannedField => scannedField.fieldApiName).join('\n') === parentFieldApiNames.join('\n')
+            && scannedObjects.every(scannedObject => {
+                const isMoved = scannedObject.headerIndex >= located.rootHeaderIndex && scannedObject.headerIndex < moveEndIndex;
+                const nextObject = nextObjectsByHeaderIndex.get(shiftLineIndex(scannedObject.headerIndex));
+                const expectedParentHeaderIndex = scannedObject.headerIndex === located.rootHeaderIndex
+                    ? parentHeaderIndex
+                    : ( scannedObject.parentHeaderIndex === undefined ? undefined : shiftLineIndex(scannedObject.parentHeaderIndex) );
+                return !!nextObject
+                    && nextObject.parentHeaderIndex === expectedParentHeaderIndex
+                    && nextObject.objectApiName === scannedObject.objectApiName
+                    && nextObject.objectIndent === scannedObject.objectIndent + ( isMoved ? FRIENDS_INDENT_STEP : 0 )
+                    && nextObject.nicknames.join('\n') === scannedObject.nicknames.join('\n')
+                    && isFieldList(nextObject, scannedObject);
+            })
+            && wirings.every(wiring => nextObjectsByHeaderIndex.get(wiring.scannedObject.headerIndex + shift)?.fields
+                .some(scannedField => scannedField.startIndex === wiring.lineIndex + shift && scannedField.fieldApiName === wiring.lookup.fieldApiName));
+
+        if ( !isReadBack ) {
+            return refuse('unsupported-friend-layout', `The recipe with ${rootObject.objectApiName} moved under ${parentObjectApiName} did not read back as the same objects one level deeper plus ${parentObjectApiName}, so nothing was added.`);
+        }
+
+        return {
+            isApplied: true,
+            recipeText: this.joinRecipeLines({ lines: nextLines, lineEndings: nextLineEndings }),
+            parentObjectApiName: parentObjectApiName,
+            parentNickname: parentNickname,
+            nestedObjectApiNames: [...new Set(movedObjects.map(scannedObject => scannedObject.objectApiName))],
+            wiredLookups: wirings.map(wiring => wiring.lookup),
+            edits: [
+                {
+                    operation: 'add-parent-object',
+                    objectApiName: objectApiName,
+                    ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
+                    fieldApiName: fieldApiName,
+                    parentObjectApiName: parentObjectApiName,
+                    parentNickname: parentNickname,
+                    startLineNumber: moveStartIndex + 1,
+                    removedLines: movedLines,
+                    insertedLines: [...parentLines, ...nestedLines]
+                }
+            ]
+        };
+
+    }
+
+    /*
+        The moved block's TODO lookups a nested addition wires to the parent (#405): a field of ONE
+        line that is exactly the REFERENCE ID REQUIRED TODO, in an occurrence with one fields: block
+        and the field once, which the card's lookups point at this parent ALONE, from an object at a
+        strictly higher level -- so the insert still sends the parent first. An object written more
+        than once is wired only when every occurrence has a nickname of its own, as #151's wiring.
+    */
+    private static listNestedParentWirings(lines: string[],
+                                            movedObjects: IScannedObject[],
+                                            additionIndex: ReturnType<typeof RecipeCockpitRecipeWriter.buildParentObjectAdditionIndex>,
+                                            parentObjectApiName: string,
+                                            wiringContext: ILookupWiringContext):
+        { lookup: IParentObjectAdditionWiring; scannedObject: IScannedObject; lineIndex: number; fieldIndent: string }[] {
+
+        const parentLevel = wiringContext.levelsByObjectApiName?.get(parentObjectApiName);
+
+        return movedObjects.flatMap(scannedObject => {
+
+            const objectLevel = wiringContext.levelsByObjectApiName?.get(scannedObject.objectApiName);
+            const occurrences = additionIndex.occurrencesByObjectApiName.get(scannedObject.objectApiName) ?? [];
+
+            if ( parentLevel === undefined || objectLevel === undefined || parentLevel >= objectLevel
+                    || scannedObject.fieldsLineIndexes.length !== 1
+                    || ( occurrences.length > 1 && !additionIndex.hasDistinctNicknamesByObjectApiName.get(scannedObject.objectApiName) ) ) {
+                return [];
+            }
+
+            const parentObjectApiNamesByField = new Map<string, Set<string>>();
+            ( wiringContext.parentLookupsByObjectApiName.get(scannedObject.objectApiName) ?? [] ).forEach(parentLookup => {
+                const parentObjectApiNames = parentObjectApiNamesByField.get(parentLookup.fieldApiName) ?? new Set<string>();
+                parentObjectApiNames.add(parentLookup.parentObjectApiName);
+                parentObjectApiNamesByField.set(parentLookup.fieldApiName, parentObjectApiNames);
+            });
+
+            const { fieldIndent } = this.getObjectLayout(scannedObject.objectIndent);
+            const fieldCounts = new Map<string, number>();
+            scannedObject.fields.forEach(scannedField => fieldCounts.set(scannedField.fieldApiName, (fieldCounts.get(scannedField.fieldApiName) ?? 0) + 1));
+
+            return scannedObject.fields.filter(scannedField => {
+                const parentObjectApiNames = parentObjectApiNamesByField.get(scannedField.fieldApiName);
+                const valueText = lines[scannedField.startIndex].slice(fieldIndent.length + scannedField.fieldApiName.length + 1).replace(/^[ \t]+/, '');
+                return fieldCounts.get(scannedField.fieldApiName) === 1
+                    && parentObjectApiNames?.size === 1
+                    && parentObjectApiNames.has(parentObjectApiName)
+                    && REFERENCE_ID_REQUIRED_TODO_PATTERN.test(valueText)
+                    && !lines.slice(scannedField.startIndex + 1, scannedField.endIndex).some(continuationLine => continuationLine.trim());
+            }).map(scannedField => ({
+                lookup: {
+                    objectApiName: scannedObject.objectApiName,
+                    ...( occurrences.length > 1 ? { objectNickname: scannedObject.nicknames[0] } : {} ),
+                    fieldApiName: scannedField.fieldApiName
+                },
+                scannedObject: scannedObject,
+                lineIndex: scannedField.startIndex,
+                fieldIndent: fieldIndent
+            }));
+
+        });
 
     }
 
