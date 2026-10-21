@@ -51,12 +51,12 @@ import {
     RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL,
-    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL,
+    RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER
 } from '../RecipeCockpitService';
-import { RecipeCockpitValidationRuleRetrieve, VALIDATION_RULE_RETRIEVE_MAX_OBJECTS } from '../RecipeCockpitValidationRuleRetrieve';
+import { RecipeCockpitMetadataRetrieve, METADATA_RETRIEVE_MAX_OBJECTS } from '../RecipeCockpitMetadataRetrieve';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { ORG_OPERATIONS_FOLDER_NAME } from '../../ScratchOrgService/ScratchOrgService';
@@ -96,20 +96,24 @@ const buildRetrieveAnswer = (files: unknown[], overrides: Record<string, unknown
 
 answerInPanelConfirmationsThroughWarningMock();
 
+// THE HOST'S RETRIEVE OF A TREE'S VALIDATION RULES (#326), DRIVEN DIRECTLY: A TREE NAMED BY ITS LABEL AND OBJECTS
+const performTreeRetrieve = (workspaceRoot: string, treeLabel: string, objectApiNames: string[]) =>
+    (RecipeCockpitService as any).performMetadataRetrieve(workspaceRoot, { objects: [], trees: [] }, { title: treeLabel, objects: objectApiNames.map(objectApiName => ({ objectApiName: objectApiName })) }, 'validationRules');
+
 describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#326)', () => {
 
-    describe('RecipeCockpitValidationRuleRetrieve', () => {
+    describe('RecipeCockpitMetadataRetrieve', () => {
 
         it('keeps each object once in the tree\'s order, and sets aside a name that is not an api name', () => {
 
-            expect(RecipeCockpitValidationRuleRetrieve.partitionObjectApiNames(['Account', 'Bad Name', 'Contact', 'Account', 'x\ny']))
+            expect(RecipeCockpitMetadataRetrieve.partitionObjectApiNames(['Account', 'Bad Name', 'Contact', 'Account', 'x\ny']))
                 .toEqual({ retrievable: ['Account', 'Contact'], refused: ['Bad Name', 'x\ny'] });
 
         });
 
         it('builds one retrieve argv with one --metadata per object and the username as --target-org, and never a deploy argv', () => {
 
-            const retrieveArguments = RecipeCockpitValidationRuleRetrieve.buildValidationRuleRetrieveArguments(ACCOUNT_TREE_OBJECTS, PROD_USERNAME);
+            const retrieveArguments = RecipeCockpitMetadataRetrieve.buildWildcardRetrieveArguments('validationRules', ACCOUNT_TREE_OBJECTS, PROD_USERNAME);
 
             expect(retrieveArguments).toEqual([
                 'project', 'retrieve', 'start', '--json', '--target-org', PROD_USERNAME,
@@ -118,20 +122,20 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
                 '--metadata', 'ValidationRule:OtherChildObject__c.*'
             ]);
             expect(retrieveArguments).not.toContain('deploy');
-            expect(Object.getOwnPropertyNames(RecipeCockpitValidationRuleRetrieve).filter(propertyName => /deploy/i.test(propertyName))).toEqual([]);
+            expect(Object.getOwnPropertyNames(RecipeCockpitMetadataRetrieve).filter(propertyName => /deploy/i.test(propertyName))).toEqual([]);
             // NOTHING IN THE MODULE EVEN SPELLS A DEPLOY SUBCOMMAND
-            expect(fs.readFileSync(path.join(__dirname, '..', 'RecipeCockpitValidationRuleRetrieve.ts'), 'utf-8')).not.toMatch(/['"]deploy['"]/);
+            expect(fs.readFileSync(path.join(__dirname, '..', 'RecipeCockpitMetadataRetrieve.ts'), 'utf-8')).not.toMatch(/['"]deploy['"]/);
 
         });
 
         it('refuses a name that is not an api name, no object, too many objects and an org identifier that could be read as a flag, before any argv', () => {
 
-            expect(() => RecipeCockpitValidationRuleRetrieve.buildValidationRuleRetrieveArguments(['Account', 'X.* --target-org evil'], PROD_USERNAME)).toThrow('is not a Salesforce api name, so no validation rule was retrieved.');
-            expect(() => RecipeCockpitValidationRuleRetrieve.buildValidationRuleRetrieveArguments(['Account\nContact'], PROD_USERNAME)).toThrow('"Account Contact" is not a Salesforce api name');
-            expect(() => RecipeCockpitValidationRuleRetrieve.buildValidationRuleRetrieveArguments([], PROD_USERNAME)).toThrow('No object was named');
-            expect(() => RecipeCockpitValidationRuleRetrieve.buildValidationRuleRetrieveArguments(Array.from({ length: VALIDATION_RULE_RETRIEVE_MAX_OBJECTS + 1 }, (_value, index) => `Object${index}__c`), PROD_USERNAME))
-                .toThrow(`at most ${VALIDATION_RULE_RETRIEVE_MAX_OBJECTS} can be retrieved at once`);
-            expect(() => RecipeCockpitValidationRuleRetrieve.buildValidationRuleRetrieveArguments(['Account'], '--target-org')).toThrow();
+            expect(() => RecipeCockpitMetadataRetrieve.buildWildcardRetrieveArguments('validationRules', ['Account', 'X.* --target-org evil'], PROD_USERNAME)).toThrow('is not a Salesforce api name, so no validation rule was retrieved.');
+            expect(() => RecipeCockpitMetadataRetrieve.buildWildcardRetrieveArguments('validationRules', ['Account\nContact'], PROD_USERNAME)).toThrow('"Account Contact" is not a Salesforce api name');
+            expect(() => RecipeCockpitMetadataRetrieve.buildWildcardRetrieveArguments('validationRules', [], PROD_USERNAME)).toThrow('No object was named');
+            expect(() => RecipeCockpitMetadataRetrieve.buildWildcardRetrieveArguments('validationRules', Array.from({ length: METADATA_RETRIEVE_MAX_OBJECTS + 1 }, (_value, index) => `Object${index}__c`), PROD_USERNAME))
+                .toThrow(`at most ${METADATA_RETRIEVE_MAX_OBJECTS} can be retrieved at once`);
+            expect(() => RecipeCockpitMetadataRetrieve.buildWildcardRetrieveArguments('validationRules', ['Account'], '--target-org')).toThrow();
 
         });
 
@@ -163,9 +167,9 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
                 writeRule('unpackaged/objects/contact/validationRules', 'Three.validationRule-meta.xml');
                 writeRule('force-app/main/default/objects/Lead/validationRules', 'NotThisTree.validationRule-meta.xml');
 
-                expect(RecipeCockpitValidationRuleRetrieve.countLocalValidationRuleFiles(workspaceRoot, ['force-app', 'unpackaged', 'force-app'], ACCOUNT_TREE_OBJECTS)).toBe(3);
-                expect(RecipeCockpitValidationRuleRetrieve.countLocalValidationRuleFiles(workspaceRoot, ['force-app'], ['Lead'])).toBe(1);
-                expect(RecipeCockpitValidationRuleRetrieve.countLocalValidationRuleFiles(workspaceRoot, ['missing'], ACCOUNT_TREE_OBJECTS)).toBe(0);
+                expect(RecipeCockpitMetadataRetrieve.countLocalValidationRuleFiles(workspaceRoot, ['force-app', 'unpackaged', 'force-app'], ACCOUNT_TREE_OBJECTS)).toBe(3);
+                expect(RecipeCockpitMetadataRetrieve.countLocalValidationRuleFiles(workspaceRoot, ['force-app'], ['Lead'])).toBe(1);
+                expect(RecipeCockpitMetadataRetrieve.countLocalValidationRuleFiles(workspaceRoot, ['missing'], ACCOUNT_TREE_OBJECTS)).toBe(0);
 
             });
 
@@ -177,8 +181,8 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
                 fs.mkdirSync(path.join(workspaceRoot, 'force-app'));
                 fs.symlinkSync(path.join(temporaryRoot, 'outside', 'objects'), path.join(workspaceRoot, 'force-app', 'objects'));
 
-                expect(RecipeCockpitValidationRuleRetrieve.countLocalValidationRuleFiles(workspaceRoot, ['force-app'], ['Account'])).toBe(0);
-                expect(RecipeCockpitValidationRuleRetrieve.countLocalValidationRuleFiles(workspaceRoot, ['../outside'], ['Account'])).toBe(0);
+                expect(RecipeCockpitMetadataRetrieve.countLocalValidationRuleFiles(workspaceRoot, ['force-app'], ['Account'])).toBe(0);
+                expect(RecipeCockpitMetadataRetrieve.countLocalValidationRuleFiles(workspaceRoot, ['../outside'], ['Account'])).toBe(0);
 
             });
 
@@ -187,7 +191,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
         describe('parseValidationRuleRetrieveOutput', () => {
 
             const parse = (stdout: string, extra: Record<string, unknown> = {}) =>
-                RecipeCockpitValidationRuleRetrieve.parseValidationRuleRetrieveOutput(invocation(stdout, extra), ACCOUNT_TREE_OBJECTS);
+                RecipeCockpitMetadataRetrieve.parseRetrieveOutput('validationRules', invocation(stdout, extra), ACCOUNT_TREE_OBJECTS);
 
             it('counts each rule under the tree object its full name names, case-insensitively, in the tree\'s order', () => {
 
@@ -198,14 +202,14 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
                     ruleFile('Account.Phone_Format'),
                     ruleFile('Lead.Not_This_Tree'),
                     { fullName: 'Account', type: 'CustomObject', state: 'Created' }
-                ]))).toEqual({ kind: 'retrieved', ruleCount: 3, objectApiNamesWithRules: ['Account', 'OtherChildObject__c'], failureMessages: [] });
+                ]))).toEqual({ kind: 'retrieved', componentCount: 3, namesWithComponents: ['Account', 'OtherChildObject__c'], failureMessages: [] });
 
             });
 
             it('reads an org that holds no rule as a retrieve of nothing', () => {
 
-                expect(parse(buildRetrieveAnswer([]))).toEqual({ kind: 'retrieved', ruleCount: 0, objectApiNamesWithRules: [], failureMessages: [] });
-                expect(parse(JSON.stringify({ status: 0, result: { success: true } }))).toEqual({ kind: 'retrieved', ruleCount: 0, objectApiNamesWithRules: [], failureMessages: [] });
+                expect(parse(buildRetrieveAnswer([]))).toEqual({ kind: 'retrieved', componentCount: 0, namesWithComponents: [], failureMessages: [] });
+                expect(parse(JSON.stringify({ status: 0, result: { success: true } }))).toEqual({ kind: 'retrieved', componentCount: 0, namesWithComponents: [], failureMessages: [] });
 
             });
 
@@ -217,8 +221,8 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
                     ruleFile('Contact.Silent', { problemType: 'Error' })
                 ]))).toEqual({
                     kind: 'retrieved',
-                    ruleCount: 1,
-                    objectApiNamesWithRules: ['Account'],
+                    componentCount: 1,
+                    namesWithComponents: ['Account'],
                     failureMessages: ['Contact.Broken: Entity cannot be found', 'Contact.Silent: it could not be retrieved']
                 });
 
@@ -234,8 +238,8 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
                 expect(parse(JSON.stringify({ status: 0, result: [] })).kind).toBe('failed');
                 expect(parse('not json').kind).toBe('failed');
                 expect(parse(JSON.stringify({ status: 0, result: { success: true, files: 'x' } })))
-                    .toEqual({ kind: 'retrieved', ruleCount: 0, objectApiNamesWithRules: [], failureMessages: [] });
-                expect(parse(JSON.stringify({ status: 0, result: { success: true, files: [null, 'Account.X', { type: 'ValidationRule', fullName: 7 }] } }))).toMatchObject({ kind: 'retrieved', ruleCount: 0 });
+                    .toEqual({ kind: 'retrieved', componentCount: 0, namesWithComponents: [], failureMessages: [] });
+                expect(parse(JSON.stringify({ status: 0, result: { success: true, files: [null, 'Account.X', { type: 'ValidationRule', fullName: 7 }] } }))).toMatchObject({ kind: 'retrieved', componentCount: 0 });
 
             });
 
@@ -253,14 +257,14 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
         it('is named in the opt-in warning as reading from any org, production included, and deploying nothing', () => {
 
-            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('"Retrieve validation rules…", on every tree, asks every time in the command palette for any connected org, production included');
-            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('it only reads from that org and deploys nothing.');
+            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('"Retrieve validation rules…", "Retrieve fields…", "Retrieve record types…" and "Retrieve global value sets…", on every tree, ask every time in the command palette for any connected org, production included');
+            expect(RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL).toContain('they only read from that org and deploy nothing.');
 
         });
 
         it('names the tree, the org, every object, where new files go and how many local files are overwritten in the confirmation, each on one line', () => {
 
-            const detail = RecipeCockpitValidationRuleRetrieve.buildConfirmationDetail('Tree\nTwo', `prod · ${PROD_USERNAME}`, ACCOUNT_TREE_OBJECTS, 'force-app', 2);
+            const detail = RecipeCockpitMetadataRetrieve.buildConfirmationDetail('validationRules', 'Tree\nTwo', `prod · ${PROD_USERNAME}`, ACCOUNT_TREE_OBJECTS, 'force-app', 2);
 
             expect(detail).toContain('Tree: Tree Two');
             expect(detail).toContain(`Org: prod · ${PROD_USERNAME}`);
@@ -270,9 +274,9 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             expect(detail).toContain('Nothing is deployed.');
             expect(detail).not.toMatch(/[()]/);
 
-            expect(RecipeCockpitValidationRuleRetrieve.buildConfirmationDetail('T', 'o', ['Account'], 'force-app', 0)).toContain('1 object: Account\n');
-            expect(RecipeCockpitValidationRuleRetrieve.buildConfirmationDetail('T', 'o', ['Account'], 'force-app', 0)).toContain('This project holds no validation rule file for these objects yet.');
-            expect(RecipeCockpitValidationRuleRetrieve.buildConfirmationDetail('T', 'o', ['Account'], 'force-app', 1)).toContain('1 existing local validation rule file for');
+            expect(RecipeCockpitMetadataRetrieve.buildConfirmationDetail('validationRules', 'T', 'o', ['Account'], 'force-app', 0)).toContain('1 object: Account\n');
+            expect(RecipeCockpitMetadataRetrieve.buildConfirmationDetail('validationRules', 'T', 'o', ['Account'], 'force-app', 0)).toContain('This project holds no validation rule file for these objects yet.');
+            expect(RecipeCockpitMetadataRetrieve.buildConfirmationDetail('validationRules', 'T', 'o', ['Account'], 'force-app', 1)).toContain('1 existing local validation rule file for');
 
         });
 
@@ -288,12 +292,12 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
         };
 
         const retrieveMessage = { command: 'retrieveTreeValidationRules', treeKey: ACCOUNT_TREE_KEY };
-        const notRunning = (treeKey: string = ACCOUNT_TREE_KEY) => ({ command: 'validationRuleRetrieveState', isRunning: false, treeKey: treeKey });
+        const notRunning = (treeKey: string = ACCOUNT_TREE_KEY) => ({ command: 'metadataRetrieveState', isRunning: false, treeKey: treeKey, retrieveKind: 'validationRules' });
 
         it('routes the tree KEY and nothing else, never an org the message names', () => {
 
             expect(RecipeCockpitService.routePanelMessage({ ...retrieveMessage, orgIndex: 0, username: PROD_USERNAME, objectApiNames: ['Evil'] } as any, buildPanelState()))
-                .toEqual({ kind: 'retrieveTreeValidationRules', treeKey: ACCOUNT_TREE_KEY });
+                .toEqual({ kind: 'retrieveTreeMetadata', retrieveKind: 'validationRules', treeKey: ACCOUNT_TREE_KEY });
 
         });
 
@@ -301,17 +305,17 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
             const panelState = buildPanelState();
 
-            expect(RecipeCockpitService.routePanelMessage({ ...retrieveMessage, treeKey: 'Lead-ONLY' }, panelState)).toEqual({ kind: 'refuseValidationRuleRetrieve', hostMessage: notRunning('Lead-ONLY') });
-            expect(RecipeCockpitService.routePanelMessage({ ...retrieveMessage, treeKey: 7 }, panelState)).toEqual({ kind: 'refuseValidationRuleRetrieve', hostMessage: notRunning('') });
+            expect(RecipeCockpitService.routePanelMessage({ ...retrieveMessage, treeKey: 'Lead-ONLY' }, panelState)).toEqual({ kind: 'refuseMetadataRetrieve', hostMessage: notRunning('Lead-ONLY') });
+            expect(RecipeCockpitService.routePanelMessage({ ...retrieveMessage, treeKey: 7 }, panelState)).toEqual({ kind: 'refuseMetadataRetrieve', hostMessage: notRunning('') });
 
             panelState.recipeDataMessage = undefined;
-            expect(RecipeCockpitService.routePanelMessage(retrieveMessage, panelState)).toEqual({ kind: 'refuseValidationRuleRetrieve', hostMessage: notRunning() });
+            expect(RecipeCockpitService.routePanelMessage(retrieveMessage, panelState)).toEqual({ kind: 'refuseMetadataRetrieve', hostMessage: notRunning() });
 
         });
 
         it('is refused, with a reason, while an insert or a permission set assignment is running, and not for a scratch org run, which deploys nothing (#358)', () => {
 
-            const busyRefusal = { kind: 'refuseValidationRuleRetrieve', refusalText: RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL, hostMessage: notRunning() };
+            const busyRefusal = { kind: 'refuseMetadataRetrieve', refusalText: RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL, hostMessage: notRunning() };
             const panelState = buildPanelState();
 
             panelState.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
@@ -319,7 +323,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
             panelState.insertStateMessage = undefined;
             panelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true };
-            expect(RecipeCockpitService.routePanelMessage(retrieveMessage, panelState)).toEqual({ kind: 'retrieveTreeValidationRules', treeKey: ACCOUNT_TREE_KEY });
+            expect(RecipeCockpitService.routePanelMessage(retrieveMessage, panelState)).toEqual({ kind: 'retrieveTreeMetadata', retrieveKind: 'validationRules', treeKey: ACCOUNT_TREE_KEY });
 
             panelState.scratchOrgStateMessage = undefined;
             panelState.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
@@ -330,10 +334,10 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
         it('answers a second click while one runs with the running state, so a reloaded document holds its buttons', () => {
 
             const panelState = buildPanelState();
-            const runningState = { command: 'validationRuleRetrieveState' as const, isRunning: true, treeKey: 'Lead-ONLY' };
-            panelState.validationRuleRetrieveStateMessage = runningState;
+            const runningState = { command: 'metadataRetrieveState' as const, isRunning: true, treeKey: 'Lead-ONLY', retrieveKind: 'validationRules' as const };
+            panelState.metadataRetrieveStateMessage = runningState;
 
-            expect(RecipeCockpitService.routePanelMessage(retrieveMessage, panelState)).toEqual({ kind: 'refuseValidationRuleRetrieve', hostMessage: runningState });
+            expect(RecipeCockpitService.routePanelMessage(retrieveMessage, panelState)).toEqual({ kind: 'refuseMetadataRetrieve', hostMessage: runningState });
 
         });
 
@@ -397,8 +401,8 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             process.env.PATH = path.join(temporaryRoot, 'installed', 'bin');
 
             SalesforceOrgService.clearConnectedOrgStatusCache();
-            (RecipeCockpitService as any).isValidationRuleRetrieveInFlight = false;
-            (RecipeCockpitService as any).validationRuleRetrieveRunStateMessage = undefined;
+            (RecipeCockpitService as any).isMetadataRetrieveInFlight = false;
+            (RecipeCockpitService as any).metadataRetrieveRunStateMessage = undefined;
             (RecipeCockpitService as any).isPermissionSetAssignInFlight = false;
             (RecipeCockpitService as any).permissionSetAssignRunStateMessage = undefined;
             (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
@@ -498,9 +502,9 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
                 text: `Retrieved 3 validation rules for 2 of 3 objects of Relationship Tree 1 from prod · ${PROD_USERNAME}: Account, OtherChildObject__c. Generate Treecipe applies them to the recipe.`,
                 actions: [RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL]
             }]);
-            expect(postedNamed('validationRuleRetrieveState')).toEqual([
-                { command: 'validationRuleRetrieveState', isRunning: true, treeKey: ACCOUNT_TREE_KEY },
-                { command: 'validationRuleRetrieveState', isRunning: false, treeKey: ACCOUNT_TREE_KEY }
+            expect(postedNamed('metadataRetrieveState')).toEqual([
+                { command: 'metadataRetrieveState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, retrieveKind: 'validationRules' },
+                { command: 'metadataRetrieveState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, retrieveKind: 'validationRules' }
             ]);
 
             const resultFiles = fs.readdirSync(path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, PROD_USERNAME));
@@ -536,7 +540,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             expect(modalCalls()).toHaveLength(1);
             expect(retrieveCalls()).toEqual([]);
             expect(notifications()).toEqual([]);
-            expect(postedNamed('validationRuleRetrieveState').at(-1)).toEqual({ command: 'validationRuleRetrieveState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+            expect(postedNamed('metadataRetrieveState').at(-1)).toEqual({ command: 'metadataRetrieveState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, retrieveKind: 'validationRules' });
 
         });
 
@@ -606,7 +610,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
             expect(notifications()).toEqual([{
                 severity: 'warning',
-                text: expect.stringContaining('was cancelled, so which rule files were written is unknown.'),
+                text: expect.stringContaining('was cancelled, so which files were written is unknown.'),
                 actions: [RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL]
             }]);
 
@@ -654,12 +658,12 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
                 panelState().insertStateMessage = undefined;
                 panelState().permissionSetAssignStateMessage = undefined;
                 promptSpy.mockImplementationOnce(async () => { start(); return PROD_ORG; });
-                await (RecipeCockpitService as any).performValidationRuleRetrieve(workspaceRoot, 'Tree', ACCOUNT_TREE_OBJECTS);
+                await performTreeRetrieve(workspaceRoot, 'Tree', ACCOUNT_TREE_OBJECTS);
             }
             (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
 
             expect(retrieveCalls()).toEqual([]);
-            expect(notifications().map(notification => notification.text)).toEqual(Array(2).fill(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL));
+            expect(notifications().map(notification => notification.text)).toEqual(Array(2).fill(RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL));
 
         });
 
@@ -667,7 +671,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
             await openCockpit();
             panelState().dataOrgObjectApiNames = new Set(ACCOUNT_TREE_OBJECTS);
-            panelState().validationRuleRetrieveStateMessage = { command: 'validationRuleRetrieveState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
+            panelState().metadataRetrieveStateMessage = { command: 'metadataRetrieveState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, retrieveKind: 'validationRules' };
 
             expect(RecipeCockpitService.routePanelMessage({ command: 'createScratchOrg' }, panelState())).toEqual({ kind: 'createScratchOrg' });
 
@@ -675,22 +679,22 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
         it('refuses, before any prompt, a tree with no api name or more objects than one command line holds', async () => {
 
-            const perform = (objectApiNames: string[]) => (RecipeCockpitService as any).performValidationRuleRetrieve(workspaceRoot, 'Big Tree', objectApiNames);
+            const perform = (objectApiNames: string[]) => performTreeRetrieve(workspaceRoot, 'Big Tree', objectApiNames);
 
             await perform(['Bad Name']);
-            await perform(Array.from({ length: VALIDATION_RULE_RETRIEVE_MAX_OBJECTS + 1 }, (_value, index) => `Object${index}__c`));
+            await perform(Array.from({ length: METADATA_RETRIEVE_MAX_OBJECTS + 1 }, (_value, index) => `Object${index}__c`));
 
             expect(promptSpy).not.toHaveBeenCalled();
             expect(notifications().map(notification => notification.text)).toEqual([
                 'No validation rules were retrieved: no object of Big Tree has an api name.',
-                `No validation rules were retrieved: Big Tree has ${VALIDATION_RULE_RETRIEVE_MAX_OBJECTS + 1} objects, and at most ${VALIDATION_RULE_RETRIEVE_MAX_OBJECTS} can be retrieved at once.`
+                `No validation rules were retrieved: Big Tree has ${METADATA_RETRIEVE_MAX_OBJECTS + 1} objects, and at most ${METADATA_RETRIEVE_MAX_OBJECTS} can be retrieved at once.`
             ]);
 
         });
 
         it('names a skipped object name in the outcome, and offers View output beside Generate Treecipe', async () => {
 
-            await (RecipeCockpitService as any).performValidationRuleRetrieve(workspaceRoot, 'Tree', ['Account', 'Bad Name']);
+            await performTreeRetrieve(workspaceRoot, 'Tree', ['Account', 'Bad Name']);
 
             expect(notifications()).toEqual([{
                 severity: 'warning',
@@ -754,19 +758,19 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             await flushAsyncWork();
 
             expect(handlerSpy).toHaveBeenCalledWith(expect.objectContaining({ message: 'editor gone' }), 'openRecipeCockpit');
-            expect(postedNamed('validationRuleRetrieveState').at(-1)).toEqual({ command: 'validationRuleRetrieveState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+            expect(postedNamed('metadataRetrieveState').at(-1)).toEqual({ command: 'metadataRetrieveState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, retrieveKind: 'validationRules' });
 
         });
 
         it('runs Generate Treecipe as the command when no cockpit is open, and not twice through an open one', async () => {
 
-            await (RecipeCockpitService as any).generateTreecipeAfterValidationRuleRetrieve();
+            await (RecipeCockpitService as any).generateTreecipeAfterMetadataRetrieve();
             expect(vscode.commands.executeCommand).toHaveBeenCalledWith(RECIPE_COCKPIT_GENERATE_TREECIPE_COMMAND);
 
             (vscode.commands.executeCommand as jest.Mock).mockClear();
             await openCockpit();
             panelState().isGenerateTreecipeInFlight = true;
-            await (RecipeCockpitService as any).generateTreecipeAfterValidationRuleRetrieve();
+            await (RecipeCockpitService as any).generateTreecipeAfterMetadataRetrieve();
 
             expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
             expect(notifications().at(-1)?.text).toContain('Generate Treecipe was not started');
@@ -778,16 +782,16 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             await openCockpit();
             postedPanelMessages = [];
 
-            await (RecipeCockpitService as any).retrieveTreeValidationRulesFromPanel((RecipeCockpitService as any).recipeCockpitPanel, 'Gone-Tree');
-            expect(postedNamed('validationRuleRetrieveState')).toEqual([{ command: 'validationRuleRetrieveState', isRunning: false, treeKey: 'Gone-Tree' }]);
+            await (RecipeCockpitService as any).retrieveTreeMetadataFromPanel((RecipeCockpitService as any).recipeCockpitPanel, 'Gone-Tree', 'validationRules');
+            expect(postedNamed('metadataRetrieveState')).toEqual([{ command: 'metadataRetrieveState', isRunning: false, treeKey: 'Gone-Tree', retrieveKind: 'validationRules' }]);
 
-            const runningState = { command: 'validationRuleRetrieveState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
-            (RecipeCockpitService as any).isValidationRuleRetrieveInFlight = true;
-            (RecipeCockpitService as any).validationRuleRetrieveRunStateMessage = runningState;
+            const runningState = { command: 'metadataRetrieveState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, retrieveKind: 'validationRules' };
+            (RecipeCockpitService as any).isMetadataRetrieveInFlight = true;
+            (RecipeCockpitService as any).metadataRetrieveRunStateMessage = runningState;
             const builtState = RecipeCockpitService.buildInitialPanelState(workspaceRoot);
-            (RecipeCockpitService as any).adoptValidationRuleRetrieveRunState(builtState);
+            (RecipeCockpitService as any).adoptMetadataRetrieveRunState(builtState);
 
-            expect(builtState.validationRuleRetrieveStateMessage).toEqual(runningState);
+            expect(builtState.metadataRetrieveStateMessage).toEqual(runningState);
 
         });
 
@@ -802,19 +806,19 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             await retrieve({ treeKey: 'Lead-ONLY' });
 
             expect(promptSpy).toHaveBeenCalledTimes(1);
-            expect(postedNamed('validationRuleRetrieveState').at(-1)).toEqual({ command: 'validationRuleRetrieveState', isRunning: true, treeKey: ACCOUNT_TREE_KEY });
+            expect(postedNamed('metadataRetrieveState').at(-1)).toEqual({ command: 'metadataRetrieveState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, retrieveKind: 'validationRules' });
 
             // A RELOADED DOCUMENT IS TOLD THE RETRIEVE IS RUNNING
             postedPanelMessages = [];
             await receivedMessageHandler({ command: 'ready' });
-            expect(postedNamed('validationRuleRetrieveState')).toEqual([{ command: 'validationRuleRetrieveState', isRunning: true, treeKey: ACCOUNT_TREE_KEY }]);
+            expect(postedNamed('metadataRetrieveState')).toEqual([{ command: 'metadataRetrieveState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, retrieveKind: 'validationRules' }]);
 
             releasePrompt(PROD_ORG);
             await firstRetrieve;
             await flushAsyncWork();
 
             expect(retrieveCalls()).toHaveLength(1);
-            expect(postedNamed('validationRuleRetrieveState').at(-1)).toEqual({ command: 'validationRuleRetrieveState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+            expect(postedNamed('metadataRetrieveState').at(-1)).toEqual({ command: 'metadataRetrieveState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, retrieveKind: 'validationRules' });
 
         });
 
@@ -863,7 +867,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             retrieveButton.dispatch('click');
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'retrieveTreeValidationRules')).toHaveLength(1);
 
-            panel.postToPanel({ command: 'validationRuleRetrieveState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+            panel.postToPanel({ command: 'metadataRetrieveState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, retrieveKind: 'validationRules' });
             expect(retrieveButton.disabled).toBe(false);
             expect(retrieveButtonOf(panel, 'Lead').disabled).toBe(false);
 
@@ -873,13 +877,13 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
             const panel = renderTrees();
 
-            panel.postToPanel({ command: 'validationRuleRetrieveState', isRunning: true, treeKey: 'Lead-ONLY' });
+            panel.postToPanel({ command: 'metadataRetrieveState', isRunning: true, treeKey: 'Lead-ONLY', retrieveKind: 'validationRules' });
             expect(retrieveButtonOf(panel).disabled).toBe(true);
             const newScratchButtons = panel.findAll(panel.cockpitBodyElement, 'dataOrgNewScratch');
             expect(newScratchButtons.length).toBeGreaterThan(0);
             newScratchButtons.forEach((newScratchButton: any) => expect(newScratchButton.disabled).toBe(false));
-            expect(retrieveButtonOf(panel).attributes.title).toBe('Validation rules are being retrieved.');
-            panel.postToPanel({ command: 'validationRuleRetrieveState', isRunning: false, treeKey: 'Lead-ONLY' });
+            expect(retrieveButtonOf(panel).attributes.title).toBe('Metadata is being retrieved.');
+            panel.postToPanel({ command: 'metadataRetrieveState', isRunning: false, treeKey: 'Lead-ONLY', retrieveKind: 'validationRules' });
 
             panel.postToPanel({ command: 'scratchOrgState', isRunning: true });
             expect(retrieveButtonOf(panel).disabled).toBe(false);
