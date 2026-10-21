@@ -333,7 +333,9 @@ export const RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL = 'rule not applie
 /*
     The ▸/▾ of a tree card, a Treecipe object and a picklist field (#277), drawn like the chain link: a
     font's triangle sits on the text baseline, so no button rule could centre it. An open chevron (#307)
-    whose box is centred on (12, 12) in the same 24x24 view box, stroked from the palette by CSS.
+    whose box is centred on (12, 12) in the same 24x24 view box, stroked from the palette by CSS. Every
+    toggle carries chevronToggle, one 1.6rem box holding a 1.2rem glyph (#392), which lifts the
+    secondary kind's 2.25rem minimum; the stroke is in view box units, so it thins with the glyph.
 */
 export const RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH = 'M8.5 5 L15.5 12 L8.5 19';
 // The magnifier inside every search box (#373): a lens and a handle in the same 24x24 view box, stroked from the palette.
@@ -12910,11 +12912,13 @@ ${this.buildPaletteCustomProperties()}
     }
     .dataOrgRefresh { display: inline-flex; align-items: center; gap: 0.35rem; line-height: 1; }
     .dataOrgRefreshIcon { font-size: 1.5em; line-height: 1; }
-    .treeObjectToggle {
+    .chevronToggle {
         box-sizing: border-box;
         flex: none;
-        width: 2.6rem;
-        height: 2.6rem;
+        width: 1.6rem;
+        height: 1.6rem;
+        min-width: 0;
+        min-height: 0;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -12924,7 +12928,7 @@ ${this.buildPaletteCustomProperties()}
     .picklistToggle, .picklistToggleSpacer { box-sizing: border-box; flex: none; width: 7.5rem; }
     .picklistToggle { display: inline-flex; align-items: center; justify-content: center; padding: 0.4rem 0.6rem; line-height: 1; white-space: nowrap; }
     .picklistToggleSpacer { display: inline-block; height: 1px; }
-    .toggleGlyph { display: block; width: 2.1rem; height: 2.1rem; transition: transform ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease; }
+    .toggleGlyph { display: block; width: 1.2rem; height: 1.2rem; transition: transform ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease; }
     [aria-expanded="true"] > .toggleGlyph { transform: rotate(90deg); }
     .noMotion > .toggleGlyph { transition: none; }
     .toggleGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
@@ -15153,7 +15157,7 @@ ${this.buildPaletteCustomProperties()}
     */
     function buildToggleElement(className) {
 
-        const toggleElement = createButton('secondary', className);
+        const toggleElement = createButton('secondary', 'chevronToggle ' + className);
         const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
         const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
 

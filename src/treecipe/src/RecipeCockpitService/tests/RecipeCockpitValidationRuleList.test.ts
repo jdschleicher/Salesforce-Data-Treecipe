@@ -756,6 +756,7 @@ describe('RecipeCockpitService, the Validation Rules list (#327)', () => {
 
             // A READER'S CLICK OPENS AND CLOSES A GROUP
             const toggle = panel.findAll(panel.findAll(subPanel, 'validationRuleObject')[objectCount - 1], 'validationRuleToggle')[0];
+            expect(toggle.classList.contains('chevronToggle')).toBe(true);
             toggle.dispatch('click');
             expect(toggle.attributes['aria-expanded']).toBe('false');
 

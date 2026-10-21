@@ -666,6 +666,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             expect(panel.findAll(panel.treeCards()[0], 'recordTypesSection')[0].classList.contains('disabled')).toBe(false);
             expect(panel.findAll(panel.treeCards()[1], 'recordTypesSection')).toHaveLength(1);
             expect(panel.findAll(panel.treeCards()[1], 'recordTypesSection')[0].classList.contains('disabled')).toBe(true);
+            expect(sectionToggleOf(panel).classList.contains('chevronToggle')).toBe(true);
 
         });
 

@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.119.0] - Recipe Cockpit: the chevron expand/collapse toggles are smaller, and every one is the same size
+
+Closes [#392](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/392).
+
+#244 made the chevrons about three times larger, and #307's outlined chevron kept that size, so they crowded the rows. The Troubleshooting sub-tabs' chevrons were also a different size from the Treecipe tab's, because they had no size rule of their own and took the `secondary` button's padding and 2.25rem minimum.
+
+- **One smaller size.** Every chevron (Treecipe object rows, the Record types section header, the TODO's object groups, the Validation Rules object groups) is a 1.6rem box holding a 1.2rem chevron, down from 2.6rem and 2.1rem. `buildToggleElement` adds one shared `chevronToggle` class, which carries the box and lifts the secondary kind's minimum.
+- **Stroke.** The stroke width stays 2.5 in the chevron's 24×24 view box, so it thins with the glyph to 2px on screen, the weight of the chain link beside it.
+- **Still a usable target.** 1.6rem is about 25.6px, over the 24px minimum target size.
+- **Unchanged.** The rotate on `aria-expanded` (#227), `prefers-reduced-motion`, the colours, the button kind, and the chain-link include button and its spacer (#257), which stay one width so every row still lines up.
+- **Guide.** The screenshots in `docs/RECIPE-COCKPIT-GUIDE.md` were re-taken.
+- **Tests.** `RecipeCockpitService.test.ts` holds `.chevronToggle` to 1.6rem with no minimum, after the kind's rule, and the glyph to 1.2rem; the object row, Record types, TODO's and Validation Rules suites check each toggle carries `chevronToggle`.
+
 ## [3.118.0] - Recipe Cockpit: TODO's rows put the field first with its line link, and Remove TODO / Restore move a TODO between Open and Removed
 
 Closes [#391](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/391).
