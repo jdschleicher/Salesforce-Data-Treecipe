@@ -2311,6 +2311,29 @@ describe('RecipeCockpitService', () => {
 
         });
 
+        it('still draws Show values, under the header, for a picklist with no faker value line (#398)', () => {
+
+            const panel = runPanelScript();
+            const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
+            const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns, TREE_WORKSPACE_ROOT, TREE_RUN_FOLDER_NAME).recipeViewModel;
+            const ratingField = recipe.objects.find(objectViewModel => objectViewModel.objectApiName === 'Account')?.fields.find(field => field.fieldApiName === 'Rating__c');
+            expect(ratingField?.isPicklist).toBe(true);
+            delete ratingField?.recipeValue;
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1 });
+
+            const [firstTreeCard] = treeCardsOf(panel);
+            expandTree(panel, firstTreeCard);
+            const accountElement = treeObjectNamed(panel, firstTreeCard, 'Account');
+            expandTreeObject(panel, accountElement);
+            const ratingRow = treeFieldNamed(panel, accountElement, 'Rating__c');
+
+            expect(panel.findAll(ratingRow, 'expressionRow')).toEqual([]);
+            expect(ratingRow.children[0].classList.contains('treeFieldHeader')).toBe(true);
+            expect(panel.findAll(ratingRow, 'picklistToggle')).toHaveLength(1);
+            expect(ratingRow.children[ratingRow.children.length - 1].classList.contains('picklistSection')).toBe(true);
+
+        });
+
         // #277: THE VALUES OPEN UNDER THE ROW THAT WAS CLICKED, NEVER ABOVE IT
         it('opens a picklist\'s values at the bottom of its own row, after its header, expression and Show values', () => {
 
