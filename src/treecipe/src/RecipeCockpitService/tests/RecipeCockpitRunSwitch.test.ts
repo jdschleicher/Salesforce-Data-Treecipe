@@ -117,6 +117,8 @@ describe('RecipeCockpitService run switch (#399)', () => {
         await receivedMessageHandler({ command: 'selectRun', runFolderName: OLDER_RUN_FOLDER_NAME });
 
         expect(showWarningMessage).not.toHaveBeenCalled();
+        // NO QUESTION, SO NOTHING EXTRA IS POSTED: THE SAME PHASES AND MODEL AS BEFORE #399
+        expect(postedPanelMessages.map(hostMessage => hostMessage.command)).toEqual(['loadPhase', 'loadPhase', 'recipeData']);
         expect(lastPosted('recipeData').recipe.selectedRunFolderName).toBe(OLDER_RUN_FOLDER_NAME);
         expect(workspaceState.update).not.toHaveBeenCalled();
 

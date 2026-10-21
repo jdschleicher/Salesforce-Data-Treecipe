@@ -4426,6 +4426,12 @@ export class RecipeCockpitService {
             ? [RECIPE_COCKPIT_RUN_SWITCH_RESET_LABEL, RECIPE_COCKPIT_RUN_SWITCH_APPLY_LABEL]
             : [RECIPE_COCKPIT_RUN_SWITCH_RESET_LABEL];
 
+        // THE STATUS LINE WOULD OTHERWISE SAY "READING" FOR AS LONG AS THE QUESTION IS OPEN
+        panelState.loadPhaseMessage = '';
+        if ( this.recipeCockpitPanel ) {
+            this.postToPanel(this.recipeCockpitPanel, { command: 'loadPhase', message: '' });
+        }
+
         const confirmation = await this.confirmInPanel(
             `Switch to ${nextRunLabel}?`,
             { detail: `${storedTreeText} excluded objects, unticked fields, record counts or validation rules switched off: ${storedFolderNames.join(', ')}.\n\n${matchingText}\n\nReset selections clears them for every tree on screen. Fixed values and edited expressions are written in each recipe file, so neither choice changes them.` },
@@ -5134,10 +5140,6 @@ export class RecipeCockpitService {
             }
 
             if ( confirmBeforeRender ) {
-
-                // THE STATUS LINE WOULD OTHERWISE SAY "READING" FOR AS LONG AS THE QUESTION IS OPEN
-                this.recipeCockpitPanelState.loadPhaseMessage = '';
-                this.postToPanel(cockpitPanel, { command: 'loadPhase', message: '' });
 
                 const isConfirmed = await confirmBeforeRender(loadedRecipe);
 
