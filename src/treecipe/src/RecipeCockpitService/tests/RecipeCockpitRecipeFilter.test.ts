@@ -898,7 +898,7 @@ describe('RecipeCockpitRecipeWriter -- the Create cut honours unticked fields (#
 
     test('extractObjectBlock leaves an unticked field and its continuation lines out of the cut', () => {
 
-        const extraction = RecipeCockpitRecipeWriter.extractObjectBlock(readFixture(NESTED_FIXTURE), 'Contact', 3, undefined, ['Phone', 'Email']);
+        const extraction = RecipeCockpitRecipeWriter.extractObjectBlock(readFixture(NESTED_FIXTURE), 'Contact', 3, 'Contact_NickName', ['Phone', 'Email']);
         if ( 'refusal' in extraction ) {
             throw new Error(extraction.refusal.message);
         }
@@ -930,8 +930,8 @@ describe('RecipeCockpitRecipeWriter -- the Create cut honours unticked fields (#
 
         const recipeText = readFixture(NESTED_FIXTURE);
 
-        const single = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames(recipeText, 'Contact', undefined, ['Phone']);
-        const [batched] = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(recipeText, [{ objectApiName: 'Contact', excludedFieldApiNames: ['Phone'] }]);
+        const single = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNames(recipeText, 'Contact', 'Contact_NickName', ['Phone']);
+        const [batched] = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(recipeText, [{ objectApiName: 'Contact', objectNickname: 'Contact_NickName', excludedFieldApiNames: ['Phone'] }]);
 
         expect(single).toEqual(batched);
         expect(single.isListed && single.fieldApiNames).not.toContain('Phone');

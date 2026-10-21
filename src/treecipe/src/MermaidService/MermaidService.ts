@@ -3,7 +3,7 @@ import { ObjectInfo } from '../ObjectInfoWrapper/ObjectInfo';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 
-const LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hiearchy'];
+const LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hierarchy'];
 
 export class MermaidService {
 
@@ -79,7 +79,7 @@ export class MermaidService {
                 if (!LOOKUP_FIELD_TYPES.includes(field.type)) { continue; }
 
                 const parentName = field.referenceTo;
-                if (!parentName || !(parentName in objectInfoWrapper.ObjectToObjectInfoMap)) { continue; }
+                if (!parentName || !Object.prototype.hasOwnProperty.call(objectInfoWrapper.ObjectToObjectInfoMap, parentName)) { continue; }
 
                 const parentSanitized = this.sanitizeForMermaid(parentName);
                 const childSanitized = this.sanitizeForMermaid(objectName);
