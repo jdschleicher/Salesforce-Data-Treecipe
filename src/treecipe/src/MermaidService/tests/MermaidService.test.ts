@@ -84,6 +84,17 @@ describe('MermaidService', () => {
             expect(accountEntityBlock).not.toContain('ParentId');
         });
 
+        it('draws no relationship to a referenceTo named like an Object.prototype member', () => {
+            const wrapper = buildMockWrapper({
+                Account: { fields: [
+                    { name: 'ParentId', label: 'Parent', type: 'Hierarchy', referenceTo: 'constructor' },
+                    { name: 'Other__c', label: 'Other', type: 'Lookup', referenceTo: '__proto__' },
+                ]},
+            });
+            const result = MermaidService.buildMermaidERD(wrapper);
+            expect(result).not.toContain('|o--o{');
+        });
+
         it('excludes lookup fields from entity attribute blocks', () => {
             const wrapper = buildMockWrapper({
                 Contact: { fields: [

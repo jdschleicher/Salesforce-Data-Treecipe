@@ -81,6 +81,32 @@ describe.each([
 
     });
 
+    test('a Hierarchy field a custom relationship mapping names takes the mapping as its parent, so it is written as a lookup the walk can wire', async () => {
+
+        jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({ 'User.ManagerId': 'User', 'Account.ParentId': 'Parent_Org__c' });
+        directoryProcessor = new DirectoryProcessor();
+
+        const managerFieldInfo = await buildFieldInfo('User', 'ManagerId', 'Hierarchy');
+        const parentFieldInfo = await buildFieldInfo('Account', 'ParentId', 'Hierarchy');
+
+        expect(managerFieldInfo.referenceTo).toBe('User');
+        expect(managerFieldInfo.recipeValue).toBe(RelationshipService.referenceIdRequiredTodo);
+        expect(parentFieldInfo.referenceTo).toBe('Parent_Org__c');
+
+    });
+
+    test('a custom relationship mapping that is not an api name gives a Hierarchy field no parent, as before', async () => {
+
+        jest.spyOn(ConfigurationService, 'getCustomRelationshipMappings').mockReturnValue({ 'User.ManagerId': 'Not An\nApi Name' });
+        directoryProcessor = new DirectoryProcessor();
+
+        const fieldInfo = await buildFieldInfo('User', 'ManagerId', 'Hierarchy');
+
+        expect(fieldInfo.referenceTo).toBeFalsy();
+        expect(fieldInfo.recipeValue).toBe(UNHANDLED_HIERARCHY_RECIPE_VALUE);
+
+    });
+
     test('a Hierarchy field the map does not name (User.ManagerId) is written exactly as before, with no parent', async () => {
 
         const fieldInfo = await buildFieldInfo('User', 'ManagerId', 'Hierarchy');

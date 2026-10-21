@@ -527,6 +527,11 @@ export class DirectoryProcessor {
     format, so its parent comes from StandardFieldParentReferenceMap (#400). An explicit <referenceTo>
     always wins, and so does a custom relationship mapping, which the relationship step reads for a
     field left without one. A Hierarchy field the map does not name keeps no parent, as before.
+
+    A mapped HIERARCHY field is the exception: its recipe value is decided by referenceTo alone (a
+    Lookup is always the REFERENCE ID TODO, a Hierarchy only with a parent), so the mapping's parent
+    is set here, as the relationship step would resolve it. Otherwise it would get a relationship and
+    a self-lookup iteration while still written as "FieldType Not Handled", which nothing wires.
   */
   applyStandardFieldParentReference(fieldXMLDetail: XMLFieldDetail, associatedObjectName: string): void {
 
@@ -542,6 +547,12 @@ export class DirectoryProcessor {
       ? customRelationshipMappings[objectFieldKey]
       : undefined;
     if ( typeof customParentObjectApiName === 'string' && customParentObjectApiName ) {
+      if ( fieldXMLDetail.fieldType === 'Hierarchy' ) {
+        const mappedParentObjectApiName = this.relationshipService.resolveParentReferenceForField(associatedObjectName, fieldXMLDetail.apiName, customRelationshipMappings);
+        if ( SalesforceApiName.isApiName(mappedParentObjectApiName) ) {
+          fieldXMLDetail.referenceTo = mappedParentObjectApiName;
+        }
+      }
       return;
     }
 
