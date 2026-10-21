@@ -12988,9 +12988,8 @@ ${this.buildPaletteCustomProperties()}
         padding: 0;
         line-height: 1;
     }
-    .picklistToggle, .picklistToggleSpacer { box-sizing: border-box; flex: none; width: 7.5rem; }
-    .picklistToggle { display: inline-flex; align-items: center; justify-content: center; padding: 0.4rem 0.6rem; line-height: 1; white-space: nowrap; }
-    .picklistToggleSpacer { display: inline-block; height: 1px; }
+    .picklistSection { margin: 0.2rem 0 0 0; }
+    .picklistToggle { box-sizing: border-box; flex: none; width: 7.5rem; display: inline-flex; align-items: center; justify-content: center; padding: 0.4rem 0.6rem; line-height: 1; white-space: nowrap; }
     .toggleGlyph { display: block; width: 1.2rem; height: 1.2rem; transition: transform ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease; }
     [aria-expanded="true"] > .toggleGlyph { transform: rotate(90deg); }
     .noMotion > .toggleGlyph { transition: none; }
@@ -13370,7 +13369,12 @@ ${this.buildPaletteCustomProperties()}
     .cockpitSectionTitle { font-weight: 600; font-size: 1.1em; }
     #cockpitOrgSectionBody { padding: 0.5rem 0.6rem; margin-top: 0.4rem; background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 8px; }
     .treecipeActions, .treeInsertControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
-    .troubleshootingSubPanel { margin: 0 0.6rem 0.6rem; }
+    /*
+        The sub-panel pads its contents off its accent border (#393), and its search box drops its own
+        side padding so the search, the TODO's views, the cards and the lists all start one inset in.
+    */
+    .troubleshootingSubPanel { margin: 0 0.6rem 0.6rem; padding: 0 0.6rem 0.6rem; }
+    .troubleshootingSubPanel .tabSearch { padding-left: 0; padding-right: 0; }
     /*
         The Troubleshooting actions' cards (#381) share one fixed size and wrap in a grid; in a
         panel narrower than two cards they take the full width. Text that does not fit is clamped,
@@ -15872,7 +15876,8 @@ ${this.buildPaletteCustomProperties()}
         if (!fieldState.editorElement) {
             fieldState.editorElement = createElement('div', 'fieldEditor hidden');
             fieldState.editorElement.setAttribute('role', 'group');
-            fieldState.rowElement.appendChild(fieldState.editorElement);
+            // THE EDITOR EDITS THE FAKER VALUE, SO IT OPENS UNDER IT, ABOVE A PICKLIST'S SHOW VALUES (#398)
+            fieldState.rowElement.insertBefore(fieldState.editorElement, fieldState.picklistSectionElement);
         }
 
         const editorElement = fieldState.editorElement;
@@ -15988,6 +15993,7 @@ ${this.buildPaletteCustomProperties()}
             fixedValueBadgeElement: null,
             fixedValueElement: null,
             expressionElement: null,
+            picklistSectionElement: null,
             validationRuleElement: null,
             isValidationRuleApplied: true,
             recordTypeDeveloperNames: null,
@@ -16097,45 +16103,6 @@ ${this.buildPaletteCustomProperties()}
             fieldHeaderElement.appendChild(buildFieldFixedValueElement(treeObjectState, fieldState));
         }
 
-        let setPicklistExpanded = null;
-
-        if (field.isPicklist) {
-
-            const picklistToggleElement = createButton('secondary', 'picklistToggle', PICKLIST_SHOW_VALUES_LABEL);
-            let picklistValuesElement = null;
-
-            setPicklistExpanded = function (isExpanding, isAnimated) {
-                if (isExpanding && !picklistValuesElement) {
-                    picklistValuesElement = createElement('div', 'picklistValues hidden');
-                    fieldRowElement.appendChild(picklistValuesElement);
-                    requestPicklistValues(treeObjectState.object.objectApiName, field.fieldApiName, picklistValuesElement);
-                }
-                if (picklistValuesElement) {
-                    setShownWithMotion(picklistValuesElement, isExpanding, isAnimated);
-                }
-                fieldState.isPicklistExpanded = isExpanding;
-                picklistToggleElement.textContent = isExpanding ? PICKLIST_HIDE_VALUES_LABEL : PICKLIST_SHOW_VALUES_LABEL;
-                picklistToggleElement.setAttribute('aria-expanded', isExpanding ? 'true' : 'false');
-                picklistToggleElement.setAttribute('aria-label', (isExpanding ? PICKLIST_HIDE_VALUES_LABEL : PICKLIST_SHOW_VALUES_LABEL) + ' of ' + field.fieldApiName);
-            };
-
-            // THE NAME STARTS WITH THE TEXT ON THE BUTTON, SO A VOICE COMMAND OF WHAT IS ON SCREEN REACHES IT
-            picklistToggleElement.setAttribute('aria-label', PICKLIST_SHOW_VALUES_LABEL + ' of ' + field.fieldApiName);
-            picklistToggleElement.setAttribute('aria-expanded', 'false');
-            picklistToggleElement.addEventListener('click', function () {
-                setPicklistExpanded(!fieldState.isPicklistExpanded, true);
-                savePanelPlace();
-            });
-
-            fieldHeaderElement.appendChild(picklistToggleElement);
-
-        } else {
-            // A ROW WITHOUT THE BUTTON KEEPS ITS SLOT, SO EVERY FIELD NAME OF AN OBJECT LINES UP
-            const toggleSpacerElement = createElement('span', 'picklistToggleSpacer');
-            toggleSpacerElement.setAttribute('aria-hidden', 'true');
-            fieldHeaderElement.appendChild(toggleSpacerElement);
-        }
-
         fieldHeaderElement.appendChild(createElement('span', 'treeFieldName', field.fieldApiName));
 
         const referencedOwnerState = findReferencedOwnerState(treeObjectState, fieldState);
@@ -16208,6 +16175,44 @@ ${this.buildPaletteCustomProperties()}
 
         fieldState.fixedValueElement = createElement('pre', 'fixedValue hidden');
         fieldRowElement.appendChild(fieldState.fixedValueElement);
+
+        // A PICKLIST'S SHOW VALUES SITS UNDER ITS FAKER VALUE, NOT IN THE HEADER, SO NO ROW KEEPS A SLOT FOR IT (#398)
+        let setPicklistExpanded = null;
+
+        if (field.isPicklist) {
+
+            const picklistSectionElement = createElement('div', 'picklistSection');
+            const picklistToggleElement = createButton('secondary', 'picklistToggle', PICKLIST_SHOW_VALUES_LABEL);
+            let picklistValuesElement = null;
+
+            setPicklistExpanded = function (isExpanding, isAnimated) {
+                if (isExpanding && !picklistValuesElement) {
+                    picklistValuesElement = createElement('div', 'picklistValues hidden');
+                    picklistSectionElement.appendChild(picklistValuesElement);
+                    requestPicklistValues(treeObjectState.object.objectApiName, field.fieldApiName, picklistValuesElement);
+                }
+                if (picklistValuesElement) {
+                    setShownWithMotion(picklistValuesElement, isExpanding, isAnimated);
+                }
+                fieldState.isPicklistExpanded = isExpanding;
+                picklistToggleElement.textContent = isExpanding ? PICKLIST_HIDE_VALUES_LABEL : PICKLIST_SHOW_VALUES_LABEL;
+                picklistToggleElement.setAttribute('aria-expanded', isExpanding ? 'true' : 'false');
+                picklistToggleElement.setAttribute('aria-label', (isExpanding ? PICKLIST_HIDE_VALUES_LABEL : PICKLIST_SHOW_VALUES_LABEL) + ' of ' + field.fieldApiName);
+            };
+
+            // THE NAME STARTS WITH THE TEXT ON THE BUTTON, SO A VOICE COMMAND OF WHAT IS ON SCREEN REACHES IT
+            picklistToggleElement.setAttribute('aria-label', PICKLIST_SHOW_VALUES_LABEL + ' of ' + field.fieldApiName);
+            picklistToggleElement.setAttribute('aria-expanded', 'false');
+            picklistToggleElement.addEventListener('click', function () {
+                setPicklistExpanded(!fieldState.isPicklistExpanded, true);
+                savePanelPlace();
+            });
+
+            picklistSectionElement.appendChild(picklistToggleElement);
+            fieldRowElement.appendChild(picklistSectionElement);
+            fieldState.picklistSectionElement = picklistSectionElement;
+
+        }
 
         // A ROW BUILT FROM A RESTORED PLACE OPENS ONLY ONCE IT IS WHOLE: OPENED EARLIER, ITS VALUES WERE
         // APPENDED BEFORE ITS HEADER AND DREW ABOVE THE FIELD NAME (#277). IT STILL ASKS THE HOST AGAIN

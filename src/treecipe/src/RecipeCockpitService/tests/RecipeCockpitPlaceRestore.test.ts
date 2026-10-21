@@ -139,7 +139,11 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
             const ratingRow = panel.fieldRowNamed(objectNamed(panel, ACCOUNT_TREE_KEY, 'Account'), 'Rating__c');
             expect(ratingRow.children[0].classList.contains('treeFieldHeader')).toBe(true);
-            expect(ratingRow.children[ratingRow.children.length - 1].classList.contains('picklistValues')).toBe(true);
+            // #398: THE VALUES SIT UNDER THE SHOW VALUES BUTTON, WHICH IS UNDER THE FAKER VALUE AT THE END OF THE ROW
+            const picklistSection = ratingRow.children[ratingRow.children.length - 1];
+            expect(picklistSection.classList.contains('picklistSection')).toBe(true);
+            expect(picklistSection.children[0].classList.contains('picklistToggle')).toBe(true);
+            expect(picklistSection.children[picklistSection.children.length - 1].classList.contains('picklistValues')).toBe(true);
             expect(panel.findAll(ratingRow, 'picklistValues')).toHaveLength(1);
 
         });

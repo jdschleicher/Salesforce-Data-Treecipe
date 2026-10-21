@@ -132,7 +132,24 @@ describe('RecipeCockpitService, the selected tab\'s outline and the search icon 
             const troubleshootingPanel = panel.tabPanelOf(accountCard, 'treeTroubleshooting');
             expect(troubleshootingPanel.classList.contains('treeTabPanel')).toBe(true);
             expect(panel.findAll(troubleshootingPanel, 'troubleshootingSubPanel')).toHaveLength(RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS.length);
-            expect(styleSheet).toContain('.troubleshootingSubPanel { margin: 0 0.6rem 0.6rem; }');
+            expect(styleSheet).toContain('.troubleshootingSubPanel { margin: 0 0.6rem 0.6rem; padding: 0 0.6rem 0.6rem; }');
+
+        });
+
+        it('pads the Troubleshooting sub-panel so nothing inside it touches its border (#393)', () => {
+
+            const subPanelRule = styleSheet.match(/\n\s*\.troubleshootingSubPanel \{[^}]*\}/)![0];
+            expect(subPanelRule).toContain('padding: 0 0.6rem 0.6rem;');
+            expect(styleSheet).toContain('.troubleshootingSubPanel .tabSearch { padding-left: 0; padding-right: 0; }');
+            expect(styleSheet.indexOf('.troubleshootingSubPanel .tabSearch {')).toBeGreaterThan(styleSheet.indexOf('.tabSearch, .treecipesSearch {'));
+
+            const panel = drawRecipe(loadRecipe());
+            const [accountCard] = panel.treeCards();
+            panel.openTab(accountCard, 'Troubleshooting');
+            const troubleshootingPanel = panel.tabPanelOf(accountCard, 'treeTroubleshooting');
+            panel.findAll(troubleshootingPanel, 'troubleshootingSubPanel').forEach((subPanelElement: any) => {
+                expect(panel.findAll(subPanelElement, 'tabSearch')).not.toHaveLength(0);
+            });
 
         });
 
