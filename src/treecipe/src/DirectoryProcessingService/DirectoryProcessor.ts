@@ -17,7 +17,11 @@ import { RelationshipService } from '../RelationshipService/RelationshipService'
 import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import { SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
 import { MermaidService } from '../MermaidService/MermaidService';
+import { StandardFieldParentReferenceMap } from '../RelationshipService/StandardFieldParentReferenceMap';
+import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { IValidationRuleAnalysis, IValidationRuleFieldConstraint, IValidationRuleNotApplied, ValidationRuleAnalyzerService, VALIDATION_RULES_DIRECTORY_NAME } from '../ValidationRuleAnalyzerService/ValidationRuleAnalyzerService';
+
+const STANDARD_PARENT_REFERENCE_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hierarchy'];
 
 export interface IGeneratedRecipeRun {
   runFolderPath: string;
@@ -315,7 +319,7 @@ export class DirectoryProcessor {
 
               if (fieldDetail.type === 'Lookup'
                     || fieldDetail.type === 'MasterDetail'
-                    || fieldDetail.type === 'Hiearchy') {
+                    || fieldDetail.type === 'Hierarchy') {
 
                   let parentReferenceApiName = null;
                   if (fieldDetail.referenceTo) {
@@ -486,6 +490,7 @@ export class DirectoryProcessor {
                                   ):Promise<FieldInfo> {
 
     let fieldXMLDetail: XMLFieldDetail = await XmlFileProcessor.processXmlFieldContent(xmlContent, xmlFieldFileName);
+    this.applyStandardFieldParentReference(fieldXMLDetail, associatedObjectName);
     const unconstrainedRecipeValue = this.getRecipeValueByFieldXMLDetail(fieldXMLDetail, recordTypeApiToRecordTypeWrapperMap, selectedRecordTypeApiName);
     const fieldRuleConstraints = typeof fieldXMLDetail.apiName === 'string'
       ? ruleConstraintsByField?.get(fieldXMLDetail.apiName.toLowerCase())
@@ -514,6 +519,36 @@ export class DirectoryProcessor {
     }
   
     return fieldInfo;
+
+  }
+
+  /*
+    A well-known standard lookup or hierarchy field (Account.ParentId) has no <referenceTo> in source
+    format, so its parent comes from StandardFieldParentReferenceMap (#400). An explicit <referenceTo>
+    always wins, and so does a custom relationship mapping, which the relationship step reads for a
+    field left without one. A Hierarchy field the map does not name keeps no parent, as before.
+  */
+  applyStandardFieldParentReference(fieldXMLDetail: XMLFieldDetail, associatedObjectName: string): void {
+
+    if ( fieldXMLDetail.referenceTo
+          || !STANDARD_PARENT_REFERENCE_FIELD_TYPES.includes(fieldXMLDetail.fieldType)
+          || typeof fieldXMLDetail.apiName !== 'string' ) {
+      return;
+    }
+
+    const objectFieldKey = `${associatedObjectName}.${fieldXMLDetail.apiName}`;
+    const customRelationshipMappings = this.getCustomRelationshipMappings();
+    const customParentObjectApiName = Object.prototype.hasOwnProperty.call(customRelationshipMappings, objectFieldKey)
+      ? customRelationshipMappings[objectFieldKey]
+      : undefined;
+    if ( typeof customParentObjectApiName === 'string' && customParentObjectApiName ) {
+      return;
+    }
+
+    const parentObjectApiName = StandardFieldParentReferenceMap.resolveParentObjectApiName(associatedObjectName, fieldXMLDetail.apiName);
+    if ( SalesforceApiName.isApiName(parentObjectApiName) ) {
+      fieldXMLDetail.referenceTo = parentObjectApiName;
+    }
 
   }
 

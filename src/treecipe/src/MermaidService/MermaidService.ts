@@ -3,7 +3,7 @@ import { ObjectInfo } from '../ObjectInfoWrapper/ObjectInfo';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 
-const LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hiearchy'];
+const LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hierarchy'];
 
 export class MermaidService {
 

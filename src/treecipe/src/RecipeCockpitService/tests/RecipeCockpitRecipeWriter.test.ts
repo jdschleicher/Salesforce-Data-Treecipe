@@ -814,7 +814,7 @@ describe('RecipeCockpitRecipeWriter', () => {
 
         test('insertField on a parent writes into its fields block, above its friends: line', () => {
 
-            const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.insertField(nestedRecipeText, 'Account', 'Cockpit_Inserted__c', SINGLE_LINE_VALUE));
+            const { recipeText: patchedRecipeText, edit } = expectApplied(RecipeCockpitRecipeWriter.insertField(nestedRecipeText, 'Account', 'Cockpit_Inserted__c', SINGLE_LINE_VALUE, 'Account_NickName'));
             const patchedLines = patchedRecipeText.split('\n');
 
             expect(edit.insertedLines).toEqual([`    Cockpit_Inserted__c: ${SINGLE_LINE_VALUE}`]);
@@ -837,7 +837,7 @@ describe('RecipeCockpitRecipeWriter', () => {
 
         test('a value that would not keep the layout at the top level is refused for a friend too', () => {
 
-            expectRefused(RecipeCockpitRecipeWriter.insertField(nestedRecipeText, 'Contact', 'Cockpit_Inserted__c', 'first\n  second'), 'invalid-value');
+            expectRefused(RecipeCockpitRecipeWriter.insertField(nestedRecipeText, 'Contact', 'Cockpit_Inserted__c', 'first\n  second', 'Contact_NickName'), 'invalid-value');
 
         });
 
@@ -1148,7 +1148,7 @@ describe('RecipeCockpitRecipeWriter', () => {
 
             const recipeText = fs.readFileSync(path.join(RECIPE_WRITER_MOCKS_PATH, NESTED_RECIPE_FIXTURE[1]), 'utf-8');
 
-            const extraction = RecipeCockpitRecipeWriter.extractObjectBlock(recipeText, 'Account', 3);
+            const extraction = RecipeCockpitRecipeWriter.extractObjectBlock(recipeText, 'Account', 3, 'Account_NickName');
 
             expect(extraction.isExtracted).toBe(true);
             const extractedText = extraction.isExtracted ? extraction.recipeText : '';

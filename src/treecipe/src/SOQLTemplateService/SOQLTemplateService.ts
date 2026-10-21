@@ -2,7 +2,7 @@ import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 import { ObjectInfo } from '../ObjectInfoWrapper/ObjectInfo';
 import { FieldInfo } from '../ObjectInfoWrapper/FieldInfo';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
-const LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hiearchy'];
+const LOOKUP_FIELD_TYPES = ['Lookup', 'MasterDetail', 'Hierarchy'];
 
 const TEXT_FIELD_TYPES = ['Text', 'TextArea', 'LongTextArea', 'Html', 'Email', 'Phone', 'Url'];
 

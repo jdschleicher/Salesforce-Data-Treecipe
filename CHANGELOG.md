@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.125.0] - Generate Treecipe: a static map of standard-field parents, so Account.ParentId is a wired self-lookup
+
+Closes [#400](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/400).
+
+Standard lookups such as `Account.ParentId` (`<type>Hierarchy</type>`), `Contact.ReportsToId` and `Case.ContactId` carry no `<referenceTo>` in source format, so no relationship was recorded for them. `Account.ParentId` was written as `"### TODO -- FieldType Not Handled -- hierarchy does not exist…"`, and the Recipe Cockpit offered nothing for it.
+
+- **One static map.** `RelationshipService/StandardFieldParentReferenceMap.ts` (imports nothing, no prototype) names the parent of each well-known standard field by `Object.Field`: `Account.ParentId → Account`, `Campaign.ParentId → Campaign`, `Case.AccountId → Account`, `Case.ContactId → Contact`, `Case.ParentId → Case`, `Contact.AccountId → Account`, `Contact.ReportsToId → Contact`, `Opportunity.AccountId → Account`. Polymorphic fields (`WhoId`, `WhatId`, `OwnerId`) stay out.
+- **Used only when nothing else names the parent.** `DirectoryProcessor` reads it for a Lookup, MasterDetail or Hierarchy field with no `<referenceTo>` and no custom relationship mapping in `treecipe.config.json`, so an explicit `<referenceTo>` and a configured mapping still win. The parent is held to `SalesforceApiName` and reaches the object map through `ObjectInfoWrapper.addKeyToObjectInfoMap`, like any `<referenceTo>`, and is recorded on the field's `referenceTo` in the objects wrapper.
+- **Hierarchy fields reach the relationship step.** The check that sends a lookup there read `'Hiearchy'`, so no Hierarchy field ever did; the same typo in the SOQL templates and the Mermaid diagram is fixed too, so `ParentId` is drawn and queried as a lookup and never traversed as a scalar.
+- **Both backends.** A Hierarchy field with a known parent is written as that backend writes a lookup (`### TODO -- REFERENCE ID REQUIRED`). `Account.ParentId` is then a self-lookup: a faker-js tree gets the #188 `Account_child_NickName` iteration with `ParentId: Account_NickName`, and a snowfakery recipe keeps the TODO, as for every other self-lookup. `Contact.ReportsToId` and `Case.ParentId` work the same way.
+- **The Recipe Cockpit.** The card now lists these fields under the object's lookups, so Wire lookup (#151) and Add parent (#294) treat them exactly as a `Lookup` field: `Case.ContactId` offers **Add Contact to recipe**, a snowfakery `Case.AccountId` offers the Account nickname, and a self-lookup's top record is never offered. The edit button stays locked for them, as for every lookup.
+- **Unchanged.** A Hierarchy field the map does not name (`User.ManagerId`) is written exactly as before, with no relationship.
+- **Tests.** `StandardFieldParentReferenceMap.test.ts` pins the set, the api names and prototype-named keys. `DirectoryProcessor.standardFieldParentReference.test.ts` holds the precedence and the unmapped case with both backends. `DirectoryProcessor.generatedRecipeYaml.test.ts` loads `Account.ParentId` and `Contact.ReportsToId` wired with both backends, and the nested writer fixture is regenerated (it gains the Account and Contact iterations). `RecipeCockpitStandardFieldParents.test.ts` runs the pipeline over a new `StandardFieldParentSalesforceMetadataDirectory` fixture and asks the cockpit's own readers what Wire lookup and Add parent offer.
+
 ## [3.124.0] - Recipe Cockpit: Deploy fields… also deploys the tree's custom objects, and its confirmation can add the validation rules, record types and global value sets
 
 Closes [#402](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/402).
