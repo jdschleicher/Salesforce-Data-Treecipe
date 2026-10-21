@@ -226,6 +226,38 @@ describe('RecipeCockpitService run switch (#399)', () => {
 
     });
 
+    it('a switch overtaken while its question is open leaves the panel to the newer one', async () => {
+
+        const initialSelections = storedSelections({ [LEAD_TREE_KEY]: { Lead: 3 } });
+        const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: initialSelections });
+        await openAndDraw(workspaceState);
+
+        // IN THE PANEL A NEWER QUESTION ANSWERS THE OPEN ONE CANCEL; HERE THE FIRST IS HELD UNTIL THE SECOND HAS DRAWN
+        let answerFirstQuestion: (answer: string | undefined) => void = () => undefined;
+        showWarningMessage
+            .mockImplementationOnce(() => new Promise<string | undefined>(resolve => { answerFirstQuestion = resolve; }))
+            .mockResolvedValueOnce(RECIPE_COCKPIT_RUN_SWITCH_APPLY_LABEL);
+
+        const firstSwitch = receivedMessageHandler({ command: 'selectRun', runFolderName: OLDER_RUN_FOLDER_NAME });
+        // THE LOAD YIELDS BETWEEN ITS PHASES, SO THE QUESTION IS ASKED A FEW TURNS LATER
+        for ( let turn = 0; turn < 50 && showWarningMessage.mock.calls.length === 0; turn++ ) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+        expect(showWarningMessage).toHaveBeenCalledTimes(1);
+
+        await receivedMessageHandler({ command: 'selectRun', runFolderName: OLDER_RUN_FOLDER_NAME });
+        const secondModel = lastPosted('recipeData');
+        expect(secondModel.recipe.selectedRunFolderName).toBe(OLDER_RUN_FOLDER_NAME);
+
+        answerFirstQuestion(undefined);
+        await firstSwitch;
+
+        expect(lastPosted('recipeData')).toBe(secondModel);
+        expect(lastPosted('runSwitchCancelled')).toBeUndefined();
+        expect(storedOf(workspaceState)).toEqual(initialSelections);
+
+    });
+
     it('offers only Reset when no tree of the chosen run has a matching folder', async () => {
 
         const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [ACCOUNT_TREE_KEY]: { Contact: 4 } }) });
