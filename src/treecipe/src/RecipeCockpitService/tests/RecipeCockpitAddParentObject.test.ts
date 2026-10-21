@@ -747,6 +747,28 @@ describe('RecipeCockpitRecipeWriter add parent object (#294)', () => {
 
         });
 
+        test('refuses a block that continues after a column-0 comment, and keeps a column-0 comment that heads the next block', () => {
+
+            const contactBlock = ['- object: Contact', '  nickname: Contact_NickName', '  count: 1', '  fields:', `    AccountId: ${TODO}`];
+            const context = buildContext({ Contact: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }] }, { Account: 0, Contact: 1, Case: 2 });
+
+            // YAML READS EACH AS ONE CONTACT BLOCK, SO MOVING ONLY THE LINES ABOVE THE COMMENT WOULD LEAVE A RECIPE THAT DOES NOT LOAD
+            [
+                [...contactBlock, '# a note', '  friends:', '    - object: Case', '      nickname: Case_NickName', '      count: 1', ''],
+                [...contactBlock, '# a note', '    LastName: x', '', '- object: Lead', '  nickname: Lead_NickName', '  count: 1', '']
+            ].forEach(recipeLines => {
+                const recipeText = recipeLines.join('\n');
+                expect(() => yaml.load(recipeText)).not.toThrow();
+                expect(expectRefused(nest(recipeText, 'AccountId', context), 'unsupported-friend-layout').message).toContain('continues after a line at column 0');
+            });
+
+            const headedNextBlock = [...contactBlock, '', '# Lead (a reader\'s note)', '# Level 2', '- object: Lead', '  nickname: Lead_NickName', '  count: 1', ''].join('\n');
+            const result = expectApplied(nest(headedNextBlock, 'AccountId', context));
+            expect(result.recipeText.endsWith('\n\n# Lead (a reader\'s note)\n# Level 2\n- object: Lead\n  nickname: Lead_NickName\n  count: 1\n')).toBeTrue();
+            expect((yaml.load(result.recipeText) as { object: string }[]).map(loadedObject => loadedObject.object)).toEqual(['Account', 'Lead']);
+
+        });
+
         test('refuses what #294 refuses, and a result that does not read back', () => {
 
             expectRefused(nest(CONTACT_RECIPE, 'WhatId__c', CONTACT_CONTEXT), 'polymorphic-lookup');

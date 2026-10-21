@@ -566,6 +566,25 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
 
                 });
 
+                it('writes nothing when a moved field is pinned while the confirmation was open', async () => {
+
+                    (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => {
+                        jest.spyOn(RecipeCockpitService, 'readFixedValueFile').mockReturnValue({
+                            entries: [{ objectApiName: 'Contact', fieldApiName: 'LastName', value: 'Smith', occurrences: [{ occurrenceIndex: 0, writtenLine: '    LastName: "Smith"' }] }],
+                            isUnreadable: false
+                        });
+                        return RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL;
+                    });
+
+                    await openRenderedCockpit();
+                    await receivedMessageHandler(ADD_ACCOUNT_MESSAGE);
+
+                    expect(fs.readFileSync(recipeFilePath, 'utf-8')).toBe(RECIPE_TEXT);
+                    expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringContaining('Contact.LastName has a value set in the Recipe Cockpit'));
+                    expect(postedCommands()).not.toContain('recipeData');
+
+                });
+
                 it('says why when the lookup was filled in while the confirmation was open', async () => {
 
                     const filledText = RECIPE_TEXT.replace(`AccountId: ${TODO}`, 'AccountId: 001000000000001');

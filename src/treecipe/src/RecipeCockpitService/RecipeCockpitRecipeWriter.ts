@@ -1675,6 +1675,17 @@ export class RecipeCockpitRecipeWriter {
         const movedObjects = scannedObjects.filter(scannedObject => scannedObject.headerIndex >= located.rootHeaderIndex && scannedObject.headerIndex < moveEndIndex);
         const movedLines = lines.slice(moveStartIndex, moveEndIndex);
 
+        /*
+            The move ends at the block's last line before a column-0 line, but a reader's column-0
+            comment does not end the block for YAML: an indented line after it is still the block's,
+            and would keep its old column. Up to the next top-level object, only column-0 lines and
+            blank ones may follow.
+        */
+        const nextTopLevelHeaderIndex = scannedObjects.find(scannedObject => scannedObject.objectIndent === 0 && scannedObject.headerIndex > located.rootHeaderIndex)?.headerIndex ?? lines.length;
+        if ( lines.slice(moveEndIndex, nextTopLevelHeaderIndex).some(trailingLine => trailingLine.trim() && /^\s/.test(trailingLine)) ) {
+            return refuse('unsupported-friend-layout', `The ${rootObject.objectApiName} block continues after a line at column 0, such as a comment, so it could not be moved under ${parentObjectApiName} as a whole.`);
+        }
+
         // AS FOR insertFriend: TEXT AFTER A BREAK THE JS SPLIT DOES NOT SEE WOULD KEEP ITS OLD COLUMN
         if ( movedLines.some(movedLine => /[\r\u0085\u2028\u2029]/.test(movedLine)) ) {
             return refuse('unsupported-friend-layout', `The ${rootObject.objectApiName} block has a line break inside a line (a lone carriage return, or U+0085, U+2028 or U+2029), so it could not be moved under ${parentObjectApiName} exactly.`);
@@ -1709,6 +1720,7 @@ export class RecipeCockpitRecipeWriter {
         const nextScannedObjects = this.scanRecipeObjects(nextLines);
         const nextObjectsByHeaderIndex = new Map(nextScannedObjects.map(scannedObject => [scannedObject.headerIndex, scannedObject]));
         const addedParent = nextObjectsByHeaderIndex.get(parentHeaderIndex);
+        const shiftLineIndex = (lineIndex: number) => ( lineIndex >= moveStartIndex ? lineIndex + shift : lineIndex );
         const isFieldList = (left: IScannedObject, right: IScannedObject) => left.fields.map(scannedField => scannedField.fieldApiName).join('\n') === right.fields.map(scannedField => scannedField.fieldApiName).join('\n');
 
         const isReadBack = nextScannedObjects.length === scannedObjects.length + 1
@@ -1722,13 +1734,16 @@ export class RecipeCockpitRecipeWriter {
             && addedParent.fields.map(scannedField => scannedField.fieldApiName).join('\n') === parentFieldApiNames.join('\n')
             && scannedObjects.every(scannedObject => {
                 const isMoved = scannedObject.headerIndex >= located.rootHeaderIndex && scannedObject.headerIndex < moveEndIndex;
-                const nextObject = nextObjectsByHeaderIndex.get(scannedObject.headerIndex + ( scannedObject.headerIndex >= moveStartIndex ? shift : 0 ));
+                const nextObject = nextObjectsByHeaderIndex.get(shiftLineIndex(scannedObject.headerIndex));
+                const expectedParentHeaderIndex = scannedObject.headerIndex === located.rootHeaderIndex
+                    ? parentHeaderIndex
+                    : ( scannedObject.parentHeaderIndex === undefined ? undefined : shiftLineIndex(scannedObject.parentHeaderIndex) );
                 return !!nextObject
+                    && nextObject.parentHeaderIndex === expectedParentHeaderIndex
                     && nextObject.objectApiName === scannedObject.objectApiName
                     && nextObject.objectIndent === scannedObject.objectIndent + ( isMoved ? FRIENDS_INDENT_STEP : 0 )
                     && nextObject.nicknames.join('\n') === scannedObject.nicknames.join('\n')
-                    && isFieldList(nextObject, scannedObject)
-                    && ( scannedObject.headerIndex !== located.rootHeaderIndex || nextObject.parentHeaderIndex === parentHeaderIndex );
+                    && isFieldList(nextObject, scannedObject);
             })
             && wirings.every(wiring => nextObjectsByHeaderIndex.get(wiring.scannedObject.headerIndex + shift)?.fields
                 .some(scannedField => scannedField.startIndex === wiring.lineIndex + shift && scannedField.fieldApiName === wiring.lookup.fieldApiName));
