@@ -13307,7 +13307,12 @@ ${this.buildPaletteCustomProperties()}
     .cockpitSectionTitle { font-weight: 600; font-size: 1.1em; }
     #cockpitOrgSectionBody { padding: 0.5rem 0.6rem; margin-top: 0.4rem; background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 8px; }
     .treecipeActions, .treeInsertControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
-    .troubleshootingSubPanel { margin: 0 0.6rem 0.6rem; }
+    /*
+        The sub-panel pads its contents off its accent border (#393), and its search box drops its own
+        side padding so the search, the TODO's views, the cards and the lists all start one inset in.
+    */
+    .troubleshootingSubPanel { margin: 0 0.6rem 0.6rem; padding: 0 0.6rem 0.6rem; }
+    .troubleshootingSubPanel .tabSearch { padding-left: 0; padding-right: 0; }
     /*
         The Troubleshooting actions' cards (#381) share one fixed size and wrap in a grid; in a
         panel narrower than two cards they take the full width. Text that does not fit is clamped,
