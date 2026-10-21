@@ -998,7 +998,8 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             panel.openTab(accountCard, 'Troubleshooting');
 
             expect(panel.findAll(accountCard, 'troubleshootingSubTab').map((tabElement: any) => tabElement.textContent)).toEqual(['TODO\'s (5)', 'Fields', 'Permissions', 'Validation Rules', 'Record Types', 'Global Value Sets']);
-            expect(panel.findAll(panel.tabPanelOf(accountCard, 'treeTroubleshooting'), 'tabSearchInput')).toHaveLength(6);
+            // ONE PER SUB-TAB, AND THE TODO'S REMOVED LIST'S OWN (#391)
+            expect(panel.findAll(panel.tabPanelOf(accountCard, 'treeTroubleshooting'), 'tabSearchInput')).toHaveLength(7);
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'loadTroubleshootingSummary')).toEqual([{ command: 'loadTroubleshootingSummary', treeKey: ACCOUNT_TREE_KEY, renderSequence: 1 }]);
             // THE ASSIGN, GENERATE AND RETRIEVE BUTTONS ARE HERE NOW, AND NOWHERE ELSE ON THE CARD
             ['treePermissionSets', 'treeGeneratePermissionSet', 'treeRetrieveValidationRules'].forEach(className => {
