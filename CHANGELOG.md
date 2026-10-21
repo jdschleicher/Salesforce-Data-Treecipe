@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.121.0] - Recipe Cockpit: a picklist's Show values sits under its faker value, so every field name is next to its edit button
+
+Closes [#398](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/398).
+
+#343 put the picklist's **Show values** button in the field header, before the field name, at a fixed 7.5rem. Every field without a picklist kept an empty spacer of the same width so the names lined up, which left a wide gap between every field name and its checkbox and edit button.
+
+- **Header.** A field row's header is the checkbox, the edit button and the field name, in that order, for every field. The `picklistToggleSpacer` and its CSS are gone.
+- **Show values.** A picklist's button sits in its own `picklistSection` after the faker value (and after a fixed value, when one is shown). The values open inside that section, under the button.
+- **Inline editor.** The field editor (#337) opens under the faker value and above a picklist's Show values, rather than at the end of the row.
+- **Unchanged.** The labels, `aria-expanded`, the `aria-label` (`Show values of <field>`), loading values on first expand, the saved `isPicklistExpanded` place and the `secondary` button kind.
+- **Guide.** The screenshots in `docs/RECIPE-COCKPIT-GUIDE.md` were re-taken.
+- **Tests.** `RecipeCockpitService.test.ts` checks every header is checkbox, edit button, name with no spacer, and that a picklist's section follows its expression with the values under the button; `RecipeCockpitPlaceRestore.test.ts` checks a restored open picklist draws the same way; `RecipeCockpitFixedValues.test.ts` checks the editor opens above Show values.
+
 ## [3.120.1] - Recipe Cockpit: the Troubleshooting sub-tab panel pads its cards and lists off its border
 
 Closes [#393](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/393).

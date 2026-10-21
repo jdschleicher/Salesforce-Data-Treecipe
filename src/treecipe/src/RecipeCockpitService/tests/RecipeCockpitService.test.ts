@@ -441,21 +441,23 @@ describe('RecipeCockpitService', () => {
         });
 
         // #244 MADE THE ▸/▾ BIG ENOUGH TO READ AT A GLANCE; #277 GAVE THE PICKLIST'S THE SAME SIZE AND CENTRED ALL THREE
-        // #343: THE PICKLIST'S IS A TEXT BUTTON NOW, OF ONE FIXED WIDTH ITS SPACER SHARES
+        // #343: THE PICKLIST'S IS A TEXT BUTTON NOW, OF ONE FIXED WIDTH
+        // #398: IT MOVED UNDER THE FAKER VALUE, AND THE SPACER THAT KEPT ITS SLOT IN EVERY HEADER IS GONE
         // #374: A CARD HAS NO ▸ OF ITS OWN ANY MORE
         // #392: EVERY CHEVRON SHRANK TO ONE 1.6rem BOX, AND THE SECONDARY KIND'S 2.25rem MINIMUM NO LONGER HOLDS IT OPEN
-        it('draws every chevron toggle as one centred 1.6rem box holding a 1.2rem glyph, the picklist button and its spacer one width, and the field rows centred on them', () => {
+        it('draws every chevron toggle as one centred 1.6rem box holding a 1.2rem glyph, the picklist button of one fixed width, and no spacer for it', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
             const toggleBoxRule = ruleFor(styleSheet, '\\.chevronToggle');
             const toggleCentringRule = ruleFor(styleSheet, '\\.chevronToggle');
             expect(ruleFor(styleSheet, '\\.treeObjectToggle')).toBe('');
             expect(styleSheet).not.toContain('.treeToggle');
-            const picklistWidthRule = ruleFor(styleSheet, '\\.picklistToggle, \\.picklistToggleSpacer');
+            const picklistWidthRule = ruleFor(styleSheet, '\\.picklistToggle');
+            expect(styleSheet).not.toContain('picklistToggleSpacer');
 
             expect(picklistWidthRule).toContain('width: 7.5rem;');
             expect(picklistWidthRule).toContain('flex: none;');
-            expect(ruleFor(styleSheet, '\\.picklistToggle')).toContain('white-space: nowrap;');
+            expect(picklistWidthRule).toContain('white-space: nowrap;');
             expect(styleSheet).not.toMatch(/\.picklistToggle[^{]*\{[^}]*height: 2\.6rem/);
 
             expect(toggleBoxRule).toContain('width: 1.6rem;');
@@ -2273,7 +2275,8 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('gives a field with no picklist a hidden slot where the values button goes, so every field name lines up', () => {
+        // #398: THE HEADER IS CHECKBOX, EDIT BUTTON, NAME FOR EVERY FIELD; A PICKLIST'S BUTTON IS UNDER ITS FAKER VALUE
+        it('puts every field name right after its checkbox and edit button, and a picklist\'s Show values after its faker value', () => {
 
             const { panel } = renderTreeRecipe();
             const [firstTreeCard] = treeCardsOf(panel);
@@ -2281,22 +2284,35 @@ describe('RecipeCockpitService', () => {
             const accountElement = treeObjectNamed(panel, firstTreeCard, 'Account');
             expandTreeObject(panel, accountElement);
 
-            const leadingClassOf = (fieldApiName: string) => {
+            const leadingClassesOf = (fieldApiName: string) => {
                 const headerChildren = treeFieldNamed(panel, accountElement, fieldApiName).children[0].children;
                 const nameIndex = headerChildren.findIndex((child: any) => child.classList.contains('treeFieldName'));
-                return headerChildren[nameIndex - 1].classList;
+                return headerChildren.slice(0, nameIndex).map((child: any) => child.classList);
             };
 
-            expect(leadingClassOf('Rating__c').contains('picklistToggle')).toBe(true);
-            expect(leadingClassOf('Legacy_Code__c').contains('picklistToggleSpacer')).toBe(true);
-            const spacer = panel.findAll(treeFieldNamed(panel, accountElement, 'Legacy_Code__c'), 'picklistToggleSpacer')[0];
-            expect(spacer.attributes['aria-hidden']).toBe('true');
-            expect(panel.findAll(treeFieldNamed(panel, accountElement, 'Rating__c'), 'picklistToggleSpacer')).toEqual([]);
+            ['Rating__c', 'Legacy_Code__c'].forEach(fieldApiName => {
+                const leadingClasses = leadingClassesOf(fieldApiName);
+                expect(leadingClasses.length).toBe(2);
+                expect(leadingClasses[0].contains('treeFieldInclude')).toBe(true);
+                expect(leadingClasses[1].contains('treeFieldFixedValue')).toBe(true);
+            });
+            expect(panel.findAll(panel.cockpitBodyElement, 'picklistToggleSpacer')).toEqual([]);
+
+            const ratingRow = treeFieldNamed(panel, accountElement, 'Rating__c');
+            const rowClassIndex = (className: string) => ratingRow.children.findIndex((child: any) => child.classList.contains(className));
+            expect(panel.findAll(ratingRow.children[0], 'picklistToggle')).toEqual([]);
+            expect(rowClassIndex('expressionRow')).toBeGreaterThan(0);
+            expect(rowClassIndex('picklistSection')).toBeGreaterThan(rowClassIndex('expressionRow'));
+            expect(ratingRow.children[rowClassIndex('picklistSection')].children[0].classList.contains('picklistToggle')).toBe(true);
+
+            const legacyRow = treeFieldNamed(panel, accountElement, 'Legacy_Code__c');
+            expect(panel.findAll(legacyRow, 'picklistSection')).toEqual([]);
+            expect(panel.findAll(legacyRow, 'picklistToggle')).toEqual([]);
 
         });
 
         // #277: THE VALUES OPEN UNDER THE ROW THAT WAS CLICKED, NEVER ABOVE IT
-        it('opens a picklist\'s values at the bottom of its own row, after its header and expression', () => {
+        it('opens a picklist\'s values at the bottom of its own row, after its header, expression and Show values', () => {
 
             const { panel } = renderTreeRecipe();
             const [firstTreeCard] = treeCardsOf(panel);
@@ -2308,7 +2324,10 @@ describe('RecipeCockpitService', () => {
             panel.findAll(ratingRow, 'picklistToggle')[0].dispatch('click');
 
             expect(ratingRow.children[0].classList.contains('treeFieldHeader')).toBe(true);
-            expect(ratingRow.children[ratingRow.children.length - 1].classList.contains('picklistValues')).toBe(true);
+            const picklistSection = ratingRow.children[ratingRow.children.length - 1];
+            expect(picklistSection.classList.contains('picklistSection')).toBe(true);
+            expect(picklistSection.children.map((child: any) => child.classList.contains('picklistToggle') ? 'toggle' : child.classList.contains('picklistValues') ? 'values' : 'other'))
+                .toEqual(['toggle', 'values']);
 
         });
 
