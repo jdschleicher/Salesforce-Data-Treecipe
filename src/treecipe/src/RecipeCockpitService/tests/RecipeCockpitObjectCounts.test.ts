@@ -897,7 +897,9 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             const countBox = countBoxOf(panel, contact);
 
             expect(nameIndex).toBeGreaterThanOrEqual(0);
-            expect(headerChildren[nameIndex + 1].classList.contains('treeRecordCount')).toBeTrue();
+            // THE OBJECT'S NICKNAME SITS BETWEEN ITS NAME AND THE COUNT BOX (#380)
+            const countIndex = headerChildren[nameIndex + 1].classList.contains('treeNicknameSlot') ? nameIndex + 2 : nameIndex + 1;
+            expect(headerChildren[countIndex].classList.contains('treeRecordCount')).toBeTrue();
             expect(countBox.tagName).toBe('input');
             expect(countBox.attributes.type).toBe('text');
             expect(countBox.attributes.inputmode).toBe('numeric');

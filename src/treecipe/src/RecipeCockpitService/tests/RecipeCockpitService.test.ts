@@ -2081,7 +2081,8 @@ describe('RecipeCockpitService', () => {
 
             expandTree(panel, treeCard);
             expect(textOf(panel, treeCard, 'treeObjectName')).toEqual(['Account', 'Account', 'Contact']);
-            expect(textOf(panel, treeCard, 'treeIteration')).toEqual(['Account_NickName', 'Account_child_NickName · nested under Account_NickName']);
+            expect(textOf(panel, treeCard, 'treeNickname')).toEqual(['Account_NickName', 'Account_child_NickName', 'Contact_NickName']);
+            expect(textOf(panel, treeCard, 'treeIteration')).toEqual(['nested under Account_NickName']);
 
             const [, iterationElement] = panel.findAll(treeCard, 'treeObject');
             panel.findAll(iterationElement, 'treeObjectName')[0].dispatch('click');
@@ -2127,7 +2128,8 @@ describe('RecipeCockpitService', () => {
             const [treeCard] = treeCardsOf(panel);
             expandTree(panel, treeCard);
             expect(textOf(panel, treeCard, 'treeObjectName')).toEqual(['Account', 'Account', 'Account']);
-            expect(textOf(panel, treeCard, 'treeIteration')).toEqual(['Account_NickName', 'Account_child_NickName · nested under Account_NickName', 'Account_Second_NickName']);
+            expect(textOf(panel, treeCard, 'treeNickname')).toEqual(['Account_NickName', 'Account_child_NickName', 'Account_Second_NickName']);
+            expect(textOf(panel, treeCard, 'treeIteration')).toEqual(['nested under Account_NickName']);
 
             const [, iterationElement] = panel.findAll(treeCard, 'treeObject');
             expandTreeObject(panel, iterationElement);
