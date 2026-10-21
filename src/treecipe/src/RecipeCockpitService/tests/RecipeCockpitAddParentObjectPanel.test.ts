@@ -20,6 +20,8 @@ import {
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL,
+    RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL,
+    RECIPE_COCKPIT_ADD_PARENT_OBJECT_TOP_LEVEL_LABEL,
     RECIPE_COCKPIT_WIRE_LOOKUP_CONFIRM_LABEL
 } from '../RecipeCockpitService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -101,6 +103,9 @@ const ACCOUNT_ADDITION = { objectApiName: 'Contact', fieldApiName: 'AccountId', 
 answerInPanelConfirmationsThroughWarningMock();
 
 describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s recipe (#294)', (backendName, runFolderName, template) => {
+
+    // A faker-js RECIPE'S CONFIRMATION ALSO OFFERS TO NEST THE TREE (#405); ITS FIRST BUTTON IS #294'S TOP-LEVEL BLOCK
+    const topLevelLabel = backendName === 'faker-js' ? RECIPE_COCKPIT_ADD_PARENT_OBJECT_TOP_LEVEL_LABEL : RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL;
 
     let workspaceRoot: string;
     let recipeFilePath: string;
@@ -275,7 +280,7 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
 
         it(`on confirmation adds Account from the ${backendName} template, wires the lookup, and reloads with Account in the card`, async () => {
 
-            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL);
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(topLevelLabel);
 
             await openRenderedCockpit();
             await receivedMessageHandler(ADD_ACCOUNT_MESSAGE);
@@ -303,7 +308,7 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
             expect(options.inPanel).toBe(true);
             expect(options.detail).toContain(path.basename(recipeFilePath));
             expect(options.detail).toContain(`Fields, from the ${backendName} minimum required fields template: Name.`);
-            expect(confirmLabel).toBe(RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL);
+            expect(confirmLabel).toBe(topLevelLabel);
             expect(showInformationMessageSpy).toHaveBeenCalledWith(expect.stringContaining('Added Account as Account_NickName'));
 
             expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'wireLookupState').map(hostMessage => hostMessage.isRunning)).toEqual([true, false]);
@@ -340,7 +345,7 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
             ['the object written twice with no nicknames to tell apart', `${RECIPE_TEXT}\n${RECIPE_TEXT.split('\n').slice(3).join('\n').replace('  nickname: Contact_NickName\n', '')}`, 'cannot be told apart']
         ])('given %s since the draw, says why and writes nothing', async (_description, editedText, reason) => {
 
-            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL);
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(topLevelLabel);
 
             await openRenderedCockpit();
             fs.writeFileSync(recipeFilePath, editedText);
@@ -357,7 +362,7 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
 
             (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => {
                 fs.rmSync(recipeFilePath);
-                return RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL;
+                return topLevelLabel;
             });
 
             await openRenderedCockpit();
@@ -419,7 +424,7 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
 
         it('a template with no required field writes a block with its count only, and says so', async () => {
 
-            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL);
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(topLevelLabel);
 
             await openRenderedCockpit();
             jest.spyOn(RecipeCockpitService, 'getParentObjectTemplates').mockReturnValue({ Account: {} });
@@ -432,10 +437,14 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
 
         it('writes nothing when the file now names another parent than the one confirmed', async () => {
 
-            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL);
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(topLevelLabel);
 
             await openRenderedCockpit();
-            jest.spyOn(RecipeCockpitRecipeWriter, 'addParentObject').mockReturnValue({ isApplied: true, recipeText: 'changed', parentObjectApiName: 'Lead', parentNickname: 'Lead_NickName', edits: [] });
+            // ONLY THE TOP-LEVEL WRITE IS FAKED: A faker-js CONFIRMATION FIRST PLANS THE NESTED ONE (#405)
+            const addParentObject = RecipeCockpitRecipeWriter.addParentObject.bind(RecipeCockpitRecipeWriter);
+            jest.spyOn(RecipeCockpitRecipeWriter, 'addParentObject').mockImplementation((recipeText, additionRequest, wiringContext) => ( additionRequest.nestTreeUnderParent
+                ? addParentObject(recipeText, additionRequest, wiringContext)
+                : { isApplied: true, recipeText: 'changed', parentObjectApiName: 'Lead', parentNickname: 'Lead_NickName', edits: [] } ));
             await receivedMessageHandler(ADD_ACCOUNT_MESSAGE);
 
             expect(fs.readFileSync(recipeFilePath, 'utf-8')).toBe(RECIPE_TEXT);
@@ -447,7 +456,7 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
 
             const twiceText = `${RECIPE_TEXT}\n${RECIPE_TEXT.split('\n').slice(3).join('\n').replace('Contact_NickName', 'Contact_Other_NickName')}`;
             fs.writeFileSync(recipeFilePath, twiceText);
-            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL);
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(topLevelLabel);
 
             await openRenderedCockpit();
             await receivedMessageHandler({ ...ADD_ACCOUNT_MESSAGE, objectNickname: 'Contact_Other_NickName' });
@@ -458,6 +467,124 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
             expect(loadedObjects[2].fields.AccountId).toBe('Account_NickName');
 
         });
+
+        it(`offers ${backendName === 'faker-js' ? 'the top-level block and nesting the tree' : 'only the top-level block'} (#405)`, async () => {
+
+            (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(undefined);
+
+            await openRenderedCockpit();
+            await receivedMessageHandler(ADD_ACCOUNT_MESSAGE);
+
+            const [, options, ...buttonLabels] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
+            if ( backendName === 'faker-js' ) {
+                expect(buttonLabels).toEqual([RECIPE_COCKPIT_ADD_PARENT_OBJECT_TOP_LEVEL_LABEL, RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL]);
+                expect(options.detail).toContain(`${RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL} instead writes Account in place of the top-level block holding Contact and moves that block (Contact) under Account's friends:, four spaces deeper. It wires Contact.AccountId to Account.`);
+                expect(options.detail).toContain('Under friends:, count is records PER Account record: with Account at count 1 the totals do not change, and raising its count multiplies every nested object\'s records.');
+            } else {
+                expect(buttonLabels).toEqual([RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL]);
+                expect(options.detail).not.toContain('friends:');
+            }
+            expect(fs.readFileSync(recipeFilePath, 'utf-8')).toBe(RECIPE_TEXT);
+
+        });
+
+        if ( backendName === 'faker-js' ) {
+
+            describe('nesting the tree under the added parent (#405)', () => {
+
+                it('writes the parent with the tree under its friends:, wires the lookup and reloads onto the card', async () => {
+
+                    (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL);
+
+                    await openRenderedCockpit();
+                    await receivedMessageHandler(ADD_ACCOUNT_MESSAGE);
+
+                    expect(fs.readFileSync(recipeFilePath, 'utf-8')).toBe([
+                        '# Relationship Tree: RelationshipTree_1',
+                        '',
+                        '# Account (Added by the Recipe Cockpit as the parent of Contact, nested under it as friends)',
+                        '- object: Account',
+                        '  nickname: Account_NickName',
+                        '  count: 1',
+                        '  fields:',
+                        `    Name: ${template.Account.Name}`,
+                        '  friends:',
+                        ...RECIPE_TEXT.split('\n').slice(2).map(recipeLine => ( recipeLine ? `    ${recipeLine}` : recipeLine ))
+                    ].join('\n').replace(`        AccountId: ${TODO}`, '        AccountId: Account_NickName'));
+                    expect(showInformationMessageSpy).toHaveBeenCalledWith(expect.stringContaining('nested Contact under it and wired 1 lookup to it.'));
+                    expect(postedPanelMessages.find(hostMessage => hostMessage.command === 'recipeData').focusTree).toEqual({ treeKey: TREE_KEY, tab: 'treecipe' });
+
+                    const reloadedTree = lastModel().trees.find(candidateTree => candidateTree.treeKey === TREE_KEY);
+                    expect(reloadedTree).not.toHaveProperty('addableParents');
+                    expect(lastModel().objects.find(objectViewModel => objectViewModel.objectApiName === 'Contact').fields.find(field => field.fieldApiName === 'AccountId').recipeValue).toBe('Account_NickName');
+
+                });
+
+                it.each([
+                    ['a field set in the Recipe Cockpit', () => jest.spyOn(RecipeCockpitService, 'readFixedValueFile').mockReturnValue({
+                        entries: [{ objectApiName: 'Contact', fieldApiName: 'LastName', value: 'Smith', occurrences: [{ occurrenceIndex: 0, writtenLine: '    LastName: "Smith"' }] }],
+                        isUnreadable: false
+                    }), 'Contact.LastName has a value set in the Recipe Cockpit'],
+                    ['a TODO removed in the Recipe Cockpit', () => {
+                        const removedTodo = { objectApiName: 'Contact', lineNumber: 5, todoText: '### TODO -- mine', originalLine: '  ### TODO -- mine', kind: 'line' as const };
+                        jest.spyOn(RecipeCockpitService, 'readRemovedTodoFile').mockReturnValue({ entries: [removedTodo], isUnreadable: false });
+                        jest.spyOn(RecipeCockpitService, 'listRemovedTodosStillOut').mockReturnValue([removedTodo]);
+                    }, 'TODO comments of Contact were removed in the Recipe Cockpit'],
+                    ['a fixed-values file that cannot be read', () => fs.writeFileSync(recipeFilePath.replace(/\.yml$/, '.fixedValues.json'), 'not json'), 'cannot be read']
+                ])('given %s in the moved block, offers only the top-level block and says why', async (_description, arrange, reason) => {
+
+                    (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue(RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL);
+
+                    await openRenderedCockpit();
+                    arrange();
+                    await receivedMessageHandler(ADD_ACCOUNT_MESSAGE);
+
+                    const [, options, ...buttonLabels] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
+                    expect(buttonLabels).toEqual([RECIPE_COCKPIT_ADD_PARENT_OBJECT_TOP_LEVEL_LABEL]);
+                    expect(options.detail).toContain('Nesting the tree under Account is not offered:');
+                    expect(options.detail).toContain(reason);
+                    // AN ANSWER THAT WAS NOT OFFERED IS A CANCEL
+                    expect(fs.readFileSync(recipeFilePath, 'utf-8')).toBe(RECIPE_TEXT);
+                    expect(postedCommands()).not.toContain('recipeData');
+
+                });
+
+                it('writes nothing when the block changed while the confirmation was open', async () => {
+
+                    const grownText = RECIPE_TEXT.replace(/\n$/, '\n  friends:\n    - object: Opportunity\n      nickname: Opportunity_NickName\n      count: 1\n');
+                    (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => {
+                        fs.writeFileSync(recipeFilePath, grownText);
+                        return RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL;
+                    });
+
+                    await openRenderedCockpit();
+                    await receivedMessageHandler(ADD_ACCOUNT_MESSAGE);
+
+                    expect(fs.readFileSync(recipeFilePath, 'utf-8')).toBe(grownText);
+                    expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringContaining('the recipe changed while the confirmation was open'));
+                    expect(postedCommands()).not.toContain('recipeData');
+
+                });
+
+                it('says why when the lookup was filled in while the confirmation was open', async () => {
+
+                    const filledText = RECIPE_TEXT.replace(`AccountId: ${TODO}`, 'AccountId: 001000000000001');
+                    (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => {
+                        fs.writeFileSync(recipeFilePath, filledText);
+                        return RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL;
+                    });
+
+                    await openRenderedCockpit();
+                    await receivedMessageHandler(ADD_ACCOUNT_MESSAGE);
+
+                    expect(fs.readFileSync(recipeFilePath, 'utf-8')).toBe(filledText);
+                    expect(showWarningMessageSpy).toHaveBeenCalledWith(expect.stringContaining('is no longer'));
+
+                });
+
+            });
+
+        }
 
         it('a "Wire to…" confirmation label does not add anything', async () => {
 

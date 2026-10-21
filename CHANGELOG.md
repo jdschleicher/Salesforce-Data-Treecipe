@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.121.0] - Recipe Cockpit: adding a lookup's standard parent can nest the tree under it as friends
+
+Closes [#405](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/405). Follow-up to [#294](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/294).
+
+"Add <Parent> to recipe" (#294) always wrote the parent as a new top-level block beside the tree. Making the tree hang off it meant cutting the block, re-indenting every line, adding `friends:` and wiring the lookups by hand.
+
+- **Two choices for a faker-js recipe.** The in-panel confirmation offers **Add as a top-level block** (#294's write, byte for byte) and **Add as the parent, nest the tree under it**. A snowfakery recipe keeps its one **Add to recipe** button, since snowfakery trees stay flat (#46).
+- **What nesting writes.** The parent takes the place of the top-level block holding the lookup, with the same template fields, `count: 1` and a nickname of its own, then a `friends:` line. That block, with its `# <Object>` heading, its own friends and any self-lookup iteration, moves under it four spaces deeper; every moved line keeps its line ending, and a block scalar keeps its content. Every other top-level block is untouched.
+- **What it wires.** The clicked lookup and every other TODO lookup in the moved block that points at that parent alone, from an object at a higher level, become the parent's nickname, as Generate Treecipe wires an ancestor in a nested tree. A polymorphic lookup and one from an object not above the parent stay TODOs. The confirmation lists what moves and what is wired, and says that `count` under `friends:` is records per parent record.
+- **When nesting is not offered.** A moved line with a lone carriage return or U+0085, U+2028 or U+2029; a moved object with a value set in the cockpit (`.fixedValues.json`, #342) or a TODO removed in it (`.removedTodos.json`, #391), both of which find an occurrence by its place; or either file unreadable. The confirmation then offers only the top-level block and says why. If the recipe changes while the confirmation is open so that what would move or be wired differs, nothing is written and a warning says so.
+- **Read back.** The writer scans its result again: every object at its shifted line, the moved ones one level deeper with the same nicknames and fields, the block's top under the parent, and every wired line still its field; anything else is refused.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` name the new choice.
+- **Tests.** `RecipeCockpitAddParentObject.test.ts` holds the nested output byte for byte, a block with friends and a block scalar, a self-lookup iteration, the generated nested recipe under every line ending, the line-break refusals, the read-back refusal, and a nested recipe generated with faker-js whose lookups the insert swaps for the parent's Id. `RecipeCockpitAddParentObjectPanel.test.ts` holds the buttons per backend, the nested write and reload, the refusals for the files beside the recipe, and a recipe changed while the confirmation was open.
+
 ## [3.120.1] - Recipe Cockpit: the Troubleshooting sub-tab panel pads its cards and lists off its border
 
 Closes [#393](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/393).

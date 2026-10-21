@@ -51,7 +51,7 @@ import {
     ORG_PARENT_SEARCH_RESULT_LIMIT,
     SalesforceOrgService
 } from '../SalesforceOrgService/SalesforceOrgService';
-import { ILookupWiringContext, ILookupWiringRequest, IPinnedFieldRestoreRequest, IRecipeFilterLookup, IRecipeFixedValue, IRecipeUnconstrainedValue, IRemovedTodoComment, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind, RecipeTodoRemoveLock, YAML_NON_STRING_PLAIN_SCALAR_PATTERN } from './RecipeCockpitRecipeWriter';
+import { ILookupWiringContext, ILookupWiringRequest, IParentObjectAdditionRequest, IParentObjectAdditionWiring, IPinnedFieldRestoreRequest, IRecipeFilterLookup, IRecipeFixedValue, IRecipeUnconstrainedValue, IRemovedTodoComment, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind, RecipeParentObjectAdditionResult, RecipeTodoRemoveLock, YAML_NON_STRING_PLAIN_SCALAR_PATTERN } from './RecipeCockpitRecipeWriter';
 import { IFixedValueEntry, IFixedValueFileRead, RecipeCockpitFixedValueStore } from './RecipeCockpitFixedValueStore';
 import { IRemovedTodoFileRead, RecipeCockpitRemovedTodoStore } from './RecipeCockpitRemovedTodoStore';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
@@ -379,6 +379,9 @@ export const RECIPE_COCKPIT_WIRE_LOOKUP_CONFIRM_LABEL = 'Wire';
 export const RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_SHOWN = 12;
 // A TODO LOOKUP WHOSE STANDARD PARENT THE RECIPE DOES NOT WRITE ADDS THAT PARENT FROM A TEMPLATE (#294)
 export const RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL = 'Add to recipe';
+// A faker-js RECIPE CHOOSES BETWEEN THE TOP-LEVEL BLOCK AND NESTING THE TREE UNDER THE PARENT (#405); A snowfakery TREE STAYS FLAT
+export const RECIPE_COCKPIT_ADD_PARENT_OBJECT_TOP_LEVEL_LABEL = 'Add as a top-level block';
+export const RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL = 'Add as the parent, nest the tree under it';
 
 /*
     Every tab a card can draw. Treecipe is selected by default; the data sets tab is drawn only for
@@ -515,7 +518,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         ],
         items: [
             'Wire to… and Wire TODO lookups: fill a lookup\'s TODO with its parent\'s nickname.',
-            'Add <parent> to recipe: adds a standard parent object, such as Account, above the child that needs it.',
+            'Add <parent> to recipe: adds a standard parent object, such as Account, above the child that needs it. In a faker-js recipe it can instead become the parent of the child\'s whole block, which moves under it.',
             '+ beside an object that looks up to itself: adds a child record under it.',
             'Remove TODO (in the Troubleshooting tab\'s TODO\'s list): takes a TODO comment out of the recipe and lists it under Removed, where Restore puts it back exactly. The line is kept in a .removedTodos.json file beside the recipe. A TODO that is a field\'s whole value, such as a lookup\'s, stays.',
             'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.'
@@ -6075,13 +6078,39 @@ export class RecipeCockpitService {
         }
 
         const templateFieldApiNames = Object.keys(parentTemplate);
+        const wiringContext = this.buildLookupWiringContext(tree, objectLevelsByApiName);
+        const additionRequest = {
+            objectApiName: addition.objectApiName,
+            ...( addition.objectNickname !== undefined ? { objectNickname: addition.objectNickname } : {} ),
+            fieldApiName: addition.fieldApiName,
+            parentTemplatesByObjectApiName: { [addition.parentObjectApiName]: parentTemplate }
+        };
+        // ONLY A faker-js TREE NESTS (#46), SO ONLY ITS CONFIRMATION OFFERS TO NEST THE TREE UNDER THE PARENT (#405)
+        const nestPlan = fakerService === 'faker-js'
+            ? this.planNestedParentObjectAddition(recipeFilePath, workspaceRoot, fs.readFileSync(recipeFilePath, 'utf-8'), additionRequest, wiringContext)
+            : undefined;
+        const describeWiredLookup = (wiredLookup: IParentObjectAdditionWiring) => `${wiredLookup.objectApiName}${wiredLookup.objectNickname !== undefined ? ` (${wiredLookup.objectNickname})` : ''}.${wiredLookup.fieldApiName}`;
+
         // THE DIALOG WRITES ITS TEXT WITH textContent (#349): NOT ESCAPED THERE, AS THE NOTIFICATIONS STILL ARE
         const dialogFieldLabel = `${addition.objectApiName}${addition.objectNickname !== undefined ? ` (${addition.objectNickname})` : ''}.${addition.fieldApiName}`;
+        const nestDetail = !nestPlan
+            ? []
+            : 'refusal' in nestPlan
+                ? ['', `Nesting the tree under ${addition.parentObjectApiName} is not offered: ${nestPlan.refusal}`]
+                : [
+                    '',
+                    `${RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL} instead writes ${addition.parentObjectApiName} in place of the top-level block holding ${addition.objectApiName} and moves that block (${nestPlan.nestedObjectApiNames.join(', ')}) under ${addition.parentObjectApiName}'s friends:, four spaces deeper. It wires ${nestPlan.wiredLookups.map(describeWiredLookup).join(', ')} to ${addition.parentObjectApiName}.`,
+                    `Under friends:, count is records PER ${addition.parentObjectApiName} record: with ${addition.parentObjectApiName} at count 1 the totals do not change, and raising its count multiplies every nested object's records.`
+                ];
+        const buttonLabels = !nestPlan
+            ? [RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL]
+            : [RECIPE_COCKPIT_ADD_PARENT_OBJECT_TOP_LEVEL_LABEL, ...( 'refusal' in nestPlan ? [] : [RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL] )];
         const confirmation = await this.confirmInPanel(
             `Add ${addition.parentObjectApiName} to the recipe and wire ${dialogFieldLabel} to it?`,
             {
                 detail: [
-                    `This writes to "${path.basename(recipeFilePath)}": a new top-level ${addition.parentObjectApiName} block, ahead of the block holding ${addition.objectApiName}, with one record and a nickname of its own, and ${dialogFieldLabel}'s "### TODO -- REFERENCE ID REQUIRED" line becomes that nickname. Every other line of the file is left as it is.`,
+                    `${nestPlan ? `${RECIPE_COCKPIT_ADD_PARENT_OBJECT_TOP_LEVEL_LABEL} writes` : 'This writes'} to "${path.basename(recipeFilePath)}": a new top-level ${addition.parentObjectApiName} block, ahead of the block holding ${addition.objectApiName}, with one record and a nickname of its own, and ${dialogFieldLabel}'s "### TODO -- REFERENCE ID REQUIRED" line becomes that nickname. Every other line of the file is left as it is.`,
+                    ...nestDetail,
                     '',
                     templateFieldApiNames.length > 0
                         ? `Fields, from the ${fakerService} minimum required fields template: ${templateFieldApiNames.join(', ')}.`
@@ -6090,12 +6119,13 @@ export class RecipeCockpitService {
                     `Generate fake data and insert then inserts ${addition.parentObjectApiName} before ${addition.objectApiName} and points the lookup at its Id. A required field your org adds to ${addition.parentObjectApiName} is not in the template: add it to the block if the insert reports it.`
                 ].join('\n')
             },
-            RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL
+            ...buttonLabels
         );
 
-        if ( confirmation !== RECIPE_COCKPIT_ADD_PARENT_OBJECT_CONFIRM_LABEL ) {
+        if ( confirmation === undefined || !buttonLabels.includes(confirmation) ) {
             return false;
         }
+        const isNested = confirmation === RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL;
 
         // CHECKED AGAIN AFTER THE MODAL: THE FILE CAN HAVE BEEN REPLACED WHILE IT WAS OPEN
         if ( !this.isUsableWorkspacePath(recipeFilePath, workspaceRoot) ) {
@@ -6103,15 +6133,14 @@ export class RecipeCockpitService {
             return false;
         }
 
-        const additionResult = RecipeCockpitRecipeWriter.addParentObject(fs.readFileSync(recipeFilePath, 'utf-8'), {
-            objectApiName: addition.objectApiName,
-            ...( addition.objectNickname !== undefined ? { objectNickname: addition.objectNickname } : {} ),
-            fieldApiName: addition.fieldApiName,
-            parentTemplatesByObjectApiName: { [addition.parentObjectApiName]: parentTemplate }
-        }, this.buildLookupWiringContext(tree, objectLevelsByApiName));
+        const recipeText = fs.readFileSync(recipeFilePath, 'utf-8');
+        const additionResult = isNested
+            ? this.planNestedParentObjectAddition(recipeFilePath, workspaceRoot, recipeText, additionRequest, wiringContext)
+            : RecipeCockpitRecipeWriter.addParentObject(recipeText, additionRequest, wiringContext);
 
         if ( 'refusal' in additionResult ) {
-            VSCodeWorkspaceService.showWarningMessage(`${refusalPrefix} ${RecipeYamlScalar.escapeForNotification(additionResult.refusal.message)}`);
+            const refusalMessage = typeof additionResult.refusal === 'string' ? additionResult.refusal : additionResult.refusal.message;
+            VSCodeWorkspaceService.showWarningMessage(`${refusalPrefix} ${RecipeYamlScalar.escapeForNotification(refusalMessage)}`);
             return false;
         }
 
@@ -6121,11 +6150,66 @@ export class RecipeCockpitService {
             return false;
         }
 
+        // A NESTED WRITE MUST WIRE AND MOVE WHAT THE CONFIRMATION LISTED, NOT WHAT THE FILE SAYS SINCE
+        if ( isNested && nestPlan && !( 'refusal' in nestPlan ) && 'wiredLookups' in additionResult
+                && ( JSON.stringify(additionResult.wiredLookups) !== JSON.stringify(nestPlan.wiredLookups)
+                    || JSON.stringify(additionResult.nestedObjectApiNames) !== JSON.stringify(nestPlan.nestedObjectApiNames) ) ) {
+            VSCodeWorkspaceService.showWarningMessage(`${refusalPrefix} the recipe changed while the confirmation was open, so what it listed to move and wire is no longer what would be written.`);
+            return false;
+        }
+
         fs.writeFileSync(recipeFilePath, additionResult.recipeText);
 
-        VSCodeWorkspaceService.showInformationMessage(`Added ${parentLabel} as ${RecipeYamlScalar.escapeForNotification(additionResult.parentNickname)} to "${recipeFileLabel}" and wired ${fieldLabel} to it.`);
+        VSCodeWorkspaceService.showInformationMessage(isNested
+            ? `Added ${parentLabel} as ${RecipeYamlScalar.escapeForNotification(additionResult.parentNickname)} to "${recipeFileLabel}", nested ${RecipeYamlScalar.escapeForNotification(( additionResult.nestedObjectApiNames ?? [] ).join(', '))} under it and wired ${( additionResult.wiredLookups ?? [] ).length} ${( additionResult.wiredLookups ?? [] ).length === 1 ? 'lookup' : 'lookups'} to it.`
+            : `Added ${parentLabel} as ${RecipeYamlScalar.escapeForNotification(additionResult.parentNickname)} to "${recipeFileLabel}" and wired ${fieldLabel} to it.`);
 
         return true;
+
+    }
+
+    /*
+        The nested addition (#405) as it would be written now, or why it is not offered. Beyond the
+        writer's own refusals, a moved object that the fixed-values file (#342) pins or the
+        removed-TODOs file (#391) lists is refused: both record an occurrence by its place and depth,
+        which the move changes, so Clear and Restore would no longer find what they wrote. A file
+        beside the recipe that cannot be read is refused too, since what it holds cannot be told.
+    */
+    static planNestedParentObjectAddition(recipeFilePath: string,
+                                            workspaceRoot: string,
+                                            recipeText: string,
+                                            additionRequest: IParentObjectAdditionRequest,
+                                            wiringContext: ILookupWiringContext):
+        Extract<RecipeParentObjectAdditionResult, { isApplied: true }> | { refusal: string } {
+
+        const nestResult = RecipeCockpitRecipeWriter.addParentObject(recipeText, { ...additionRequest, nestTreeUnderParent: true }, wiringContext);
+        if ( 'refusal' in nestResult ) {
+            return { refusal: nestResult.refusal.message };
+        }
+
+        const nestedObjectApiNames = new Set(nestResult.nestedObjectApiNames);
+        const fixedValueFilePath = RecipeCockpitFixedValueStore.buildFilePath(recipeFilePath);
+        const fixedValueRead = this.readFixedValueFile(fixedValueFilePath, workspaceRoot);
+        const removedTodoFilePath = RecipeCockpitRemovedTodoStore.buildFilePath(recipeFilePath);
+        const removedTodoRead = this.readRemovedTodoFile(removedTodoFilePath, workspaceRoot);
+
+        if ( fixedValueRead.isUnreadable || removedTodoRead.isUnreadable ) {
+            return { refusal: `"${path.basename(fixedValueRead.isUnreadable ? fixedValueFilePath : removedTodoFilePath)}" beside the recipe cannot be read, so whether the moved block holds what it records cannot be told.` };
+        }
+
+        const pinnedFieldLabels = fixedValueRead.entries.filter(entry => nestedObjectApiNames.has(entry.objectApiName)).map(entry => `${entry.objectApiName}.${entry.fieldApiName}`);
+        if ( pinnedFieldLabels.length > 0 ) {
+            return { refusal: `${pinnedFieldLabels.join(', ')} ${pinnedFieldLabels.length === 1 ? 'has a value' : 'have values'} set in the Recipe Cockpit, which Clear finds by its place in the recipe. Clear ${pinnedFieldLabels.length === 1 ? 'it' : 'them'} first to nest the tree.` };
+        }
+
+        const removedTodoLabels = this.listRemovedTodosStillOut(recipeText, removedTodoRead.entries)
+            .filter(entry => nestedObjectApiNames.has(entry.objectApiName))
+            .map(entry => `${entry.objectApiName}${entry.fieldApiName !== undefined ? `.${entry.fieldApiName}` : ''}`);
+        if ( removedTodoLabels.length > 0 ) {
+            return { refusal: `TODO comments of ${[...new Set(removedTodoLabels)].join(', ')} were removed in the Recipe Cockpit, which Restore puts back by their place in the recipe. Restore them first to nest the tree.` };
+        }
+
+        return nestResult;
 
     }
 

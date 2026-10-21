@@ -56,7 +56,7 @@ These settings change what is generated, but the recipe file stays exactly as Ge
 These buttons rewrite the recipe file itself, because the change belongs in the recipe:
 
 - **Wire to…** and **Wire TODO lookups**: fill a lookup's TODO with its parent's nickname.
-- **Add &lt;parent&gt; to recipe**: adds a standard parent object, such as Account, above the child that needs it.
+- **Add &lt;parent&gt; to recipe**: adds a standard parent object, such as Account, above the child that needs it. In a faker-js recipe the confirmation also offers **Add as the parent, nest the tree under it**: the child's whole top-level block moves under the new parent's `friends:`, and every TODO lookup in it to that parent is wired. A friend's count is records per parent record.
 - **+** beside an object that looks up to itself: adds a child record under it.
 - **Remove TODO** (in the **Troubleshooting** tab's **TODO's** list): takes a TODO comment out of the recipe and lists it under **Removed**, where **Restore** puts it back exactly. The line is kept in a `.removedTodos.json` file beside the recipe. A TODO that is a field's whole value, such as a lookup's, stays.
 - **Edit** (the pencil on a field): opens the field's faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a `.fixedValues.json` file beside the recipe, and **Clear** puts them back exactly.
