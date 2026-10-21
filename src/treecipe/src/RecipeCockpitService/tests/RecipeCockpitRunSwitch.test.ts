@@ -66,6 +66,7 @@ describe('RecipeCockpitService run switch (#399)', () => {
     let receivedMessageHandler: (panelMessage: any) => Promise<void>;
     let disposeHandler: (() => void) | undefined;
     let postedPanelMessages: any[];
+    let createdStatusBarItems: { text: string; dispose: jest.Mock }[];
 
     const lastPosted = (command: string) => [...postedPanelMessages].reverse().find(hostMessage => hostMessage.command === command);
     const showWarningMessage = vscode.window.showWarningMessage as jest.Mock;
@@ -99,9 +100,14 @@ describe('RecipeCockpitService run switch (#399)', () => {
 
     beforeEach(() => {
         postedPanelMessages = [];
+        createdStatusBarItems = [];
         showWarningMessage.mockReset();
         (vscode.window.createWebviewPanel as jest.Mock).mockImplementation(() => buildWebviewPanel());
-        jest.spyOn(VSCodeWorkspaceService, 'createStatusBarPhaseItem').mockImplementation((initialMessage: string) => ({ text: initialMessage, dispose: jest.fn() }) as any);
+        jest.spyOn(VSCodeWorkspaceService, 'createStatusBarPhaseItem').mockImplementation((initialMessage: string) => {
+            const statusBarItem = { text: initialMessage, dispose: jest.fn() };
+            createdStatusBarItems.push(statusBarItem);
+            return statusBarItem as any;
+        });
     });
 
     afterEach(() => {
@@ -198,9 +204,15 @@ describe('RecipeCockpitService run switch (#399)', () => {
         const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: initialSelections });
         const recipeDataMessage = await openAndDraw(workspaceState);
 
-        showWarningMessage.mockResolvedValueOnce(undefined);
+        // THE STATUS BAR STOPS SAYING "READING" ONCE THE QUESTION IS UP, NOT ONLY ONCE IT IS ANSWERED
+        let isSpinnerUpWhileAsked: boolean | undefined;
+        showWarningMessage.mockImplementationOnce(() => {
+            isSpinnerUpWhileAsked = createdStatusBarItems.some(statusBarItem => statusBarItem.dispose.mock.calls.length === 0);
+            return Promise.resolve(undefined);
+        });
         await receivedMessageHandler({ command: 'selectRun', runFolderName: OLDER_RUN_FOLDER_NAME });
 
+        expect(isSpinnerUpWhileAsked).toBe(false);
         expect(lastPosted('recipeData')).toBeUndefined();
         expect(lastPosted('runSwitchCancelled')).toEqual({ command: 'runSwitchCancelled' });
         expect(lastPosted('loadPhase')).toEqual({ command: 'loadPhase', message: '' });

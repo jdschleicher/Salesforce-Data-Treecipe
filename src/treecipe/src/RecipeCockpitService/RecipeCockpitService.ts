@@ -4416,7 +4416,8 @@ export class RecipeCockpitService {
             return true;
         }
 
-        const matchingTreeCount = nextRecipe.trees.filter(tree => !!tree.folderName && storedFolderNames.includes(tree.folderName)).length;
+        const storedFolderNameSet = new Set(storedFolderNames);
+        const matchingTreeCount = nextRecipe.trees.filter(tree => !!tree.folderName && storedFolderNameSet.has(tree.folderName)).length;
         const nextRunLabel = nextRecipe.runs.find(run => run.runFolderName === nextRecipe.selectedRunFolderName)?.label ?? nextRecipe.selectedRunFolderName;
         const storedTreeText = storedFolderNames.length === 1 ? '1 tree on screen has' : `${storedFolderNames.length} trees on screen have`;
         const matchingText = matchingTreeCount === 0
@@ -5140,6 +5141,9 @@ export class RecipeCockpitService {
             }
 
             if ( confirmBeforeRender ) {
+
+                // THE RUN IS READ: A SPINNER LEFT UP WOULD SAY "READING" FOR AS LONG AS A QUESTION STAYS OPEN
+                loadStatusItem.dispose();
 
                 const isConfirmed = await confirmBeforeRender(loadedRecipe);
 
