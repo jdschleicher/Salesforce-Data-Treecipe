@@ -508,7 +508,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
 
             await openAndDraw(buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [ACCOUNT_TREE_KEY]: ['Account'] }) }));
 
-            expect(resolveRunFakerCall(ACCOUNT_TREE_KEY)[2].refusalMessage).toStartWith('Nothing was generated or inserted for Relationship Tree 1: Every object in the recipe is excluded');
+            expect(resolveRunFakerCall(ACCOUNT_TREE_KEY)[2].refusalMessage).toStartWith('Nothing was generated or inserted for Account-thru-OtherChildObject__c: Every object in the recipe is excluded');
 
         });
 
@@ -522,7 +522,7 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             }) as typeof fs.readFileSync);
 
             const refusalMessage = resolveRunFakerCall(ACCOUNT_TREE_KEY)[2].refusalMessage;
-            expect(refusalMessage).toContain('Relationship Tree 1: its recipe could not be read');
+            expect(refusalMessage).toContain('Account-thru-OtherChildObject__c: its recipe could not be read');
             expect(refusalMessage).toContain('EACCES');
 
         });

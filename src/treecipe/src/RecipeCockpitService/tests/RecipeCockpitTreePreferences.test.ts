@@ -174,7 +174,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             ['only whitespace', '   '],
             ['a name no card has', 'Sales hierarchy'],
             ['the card\'s own current name', 'leads'],
-            ['the card\'s own default title', 'Relationship Tree 2'],
+            ['the card\'s own default title', 'Lead-ONLY'],
             ['a name the full length allows', 'n'.repeat(RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH)]
         ])('accepts %s', (_caseName, candidateName) => {
 
@@ -192,7 +192,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             ['a name past the length bound', 'n'.repeat(RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH + 1), `${RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH} characters`],
             ['another folder\'s stored name, in another case and padded', '  OPPORTUNITIES ', 'already has that name'],
             ['another card\'s custom name on screen', 'accounts', 'already has that name'],
-            ['another card\'s default title', 'relationship tree 1', 'already has that name'],
+            ['another card\'s default title', 'account-thru-otherchildobject__c', 'already has that name'],
             ['the ungrouped card\'s title', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE, 'already has that name']
         ])('refuses %s', (_caseName, candidateName, expectedProblem) => {
 
@@ -218,7 +218,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
                 ['', undefined, undefined]
             ]);
             // THE DEFAULT IS KEPT: IT IS WHAT A CLEARED NAME GOES BACK TO
-            expect(recipeTrees[1].title).toBe('Relationship Tree 2');
+            expect(recipeTrees[1].title).toBe('Lead-ONLY');
 
             RecipeCockpitService.applyTreePreferences(recipeTrees, buildPreferences());
 
@@ -339,7 +339,7 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY]: storedPreferences({ [LEAD_TREE_KEY]: 'Leads' }, [ACCOUNT_TREE_KEY]) });
             const recipeDataMessage = await openAndDraw(workspaceState);
 
-            expect(treeOf(recipeDataMessage, LEAD_TREE_KEY)).toMatchObject({ title: 'Relationship Tree 2', customName: 'Leads' });
+            expect(treeOf(recipeDataMessage, LEAD_TREE_KEY)).toMatchObject({ title: 'Lead-ONLY', customName: 'Leads' });
             expect(treeOf(recipeDataMessage, LEAD_TREE_KEY).isFavorite).toBeUndefined();
             expect(treeOf(recipeDataMessage, ACCOUNT_TREE_KEY).isFavorite).toBe(true);
 
@@ -355,8 +355,8 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
             const inputBoxOptions = showInputBox.mock.calls[0][0];
             expect(inputBoxOptions.value).toBe('');
-            expect(inputBoxOptions.placeHolder).toBe('Relationship Tree 2');
-            expect(inputBoxOptions.validateInput('Relationship Tree 1')).toContain('already has that name');
+            expect(inputBoxOptions.placeHolder).toBe('Lead-ONLY');
+            expect(inputBoxOptions.validateInput('Account-thru-OtherChildObject__c')).toContain('already has that name');
             expect(inputBoxOptions.validateInput('Anything else')).toBeUndefined();
 
             expect(storedOf(workspaceState)).toEqual(storedPreferences({ [LEAD_TREE_KEY]: 'Sales leads' }));
@@ -400,6 +400,21 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             expect(showInputBox.mock.calls[0][0].value).toBe('Leads');
             expect(storedOf(workspaceState)).toEqual(storedPreferences({}, [LEAD_TREE_KEY]));
             expect(lastPosted('treePreferences').trees).toEqual([{ treeKey: LEAD_TREE_KEY, isFavorite: true }]);
+
+        });
+
+        // #389: THE DEFAULT TITLE IS THE FOLDER, SO THE PROMPT DOES NOT NAME IT TWICE, AND A NAME EQUAL TO IT IS NO NAME
+        it('says an emptied box goes back to the folder name, and clears a name equal to the card\'s own folder', async () => {
+
+            const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY]: storedPreferences({ [LEAD_TREE_KEY]: 'Leads' }) });
+            await openAndDraw(workspaceState);
+            showInputBox.mockResolvedValue(` ${LEAD_TREE_KEY} `);
+
+            await receivedMessageHandler({ command: 'renameTree', treeKey: LEAD_TREE_KEY });
+
+            expect(showInputBox.mock.calls[0][0].prompt).toBe(`A name for the tree in "${LEAD_TREE_KEY}", unique in this workspace. Leave it empty to go back to its folder name.`);
+            expect(storedOf(workspaceState)).toEqual(storedPreferences({}));
+            expect(lastPosted('treePreferences').trees).toEqual([{ treeKey: LEAD_TREE_KEY, isFavorite: false }]);
 
         });
 
@@ -506,14 +521,17 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
                 recipe.trees[0].isFavorite = true;
             });
 
-            expect(treeKeys.map(treeKey => titleOf(panel, treeKey))).toEqual(['Relationship Tree 1', 'Leads', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE]);
+            expect(treeKeys.map(treeKey => titleOf(panel, treeKey))).toEqual(['Account-thru-OtherChildObject__c', 'Leads', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE]);
             expect(panel.findAll(cardOf(panel, LEAD_TREE_KEY), 'treeFolder')[0].textContent).toBe(LEAD_TREE_KEY);
+            expect(panel.isHidden(panel.findAll(cardOf(panel, LEAD_TREE_KEY), 'treeFolder')[0])).toBe(false);
+            // #389: A CARD WITH NO NAME OF ITS OWN IS TITLED BY ITS FOLDER, SO THE FOLDER IS NOT SAID TWICE
+            expect(panel.isHidden(panel.findAll(cardOf(panel, ACCOUNT_TREE_KEY), 'treeFolder')[0])).toBe(true);
             expect(starOf(panel, ACCOUNT_TREE_KEY).textContent).toBe('★');
             expect(starOf(panel, ACCOUNT_TREE_KEY).attributes['aria-pressed']).toBe('true');
             expect(starOf(panel, LEAD_TREE_KEY).textContent).toBe('☆');
             expect(cardOf(panel, LEAD_TREE_KEY).attributes['aria-label']).toBe('Leads');
             // THE DROPDOWN NAMES EACH CARD BY ITS OWN NAME, A FAVORITE STARRED (#374)
-            expect(panel.treePickerLabels()).toEqual(['★ Relationship Tree 1', 'Leads', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE]);
+            expect(panel.treePickerLabels()).toEqual(['★ Account-thru-OtherChildObject__c', 'Leads', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE]);
 
         });
 
@@ -549,17 +567,21 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
             panel.chooseTreeCard(cardOf(panel, LEAD_TREE_KEY));
 
             panel.postToPanel({ command: 'treePreferences', renderSequence: 2, trees: [{ treeKey: LEAD_TREE_KEY, customName: 'Stale', isFavorite: true }] });
-            expect(titleOf(panel, LEAD_TREE_KEY)).toBe('Relationship Tree 2');
+            expect(titleOf(panel, LEAD_TREE_KEY)).toBe('Lead-ONLY');
 
             panel.postToPanel({ command: 'treePreferences', renderSequence: 3, trees: [{ treeKey: LEAD_TREE_KEY, customName: 'Leads', isFavorite: true }] });
             expect(titleOf(panel, LEAD_TREE_KEY)).toBe('Leads');
+            expect(panel.isHidden(panel.findAll(cardOf(panel, LEAD_TREE_KEY), 'treeFolder')[0])).toBe(false);
             expect(starOf(panel, LEAD_TREE_KEY).textContent).toBe('★');
             // REDRAWN IN PLACE: THE CARD THE READER OPENED IS STILL OPEN
             expect(drawnTreeKeys(panel)).toEqual([LEAD_TREE_KEY]);
             expect(panel.treePickerLabels()[1]).toBe('★ Leads');
 
             panel.postToPanel({ command: 'treePreferences', renderSequence: 3, trees: [{ treeKey: LEAD_TREE_KEY, isFavorite: false }] });
-            expect(titleOf(panel, LEAD_TREE_KEY)).toBe('Relationship Tree 2');
+            expect(titleOf(panel, LEAD_TREE_KEY)).toBe('Lead-ONLY');
+            // A CLEARED NAME FALLS BACK TO THE FOLDER (#389), AND THE SUBTITLE HIDES AGAIN
+            expect(panel.isHidden(panel.findAll(cardOf(panel, LEAD_TREE_KEY), 'treeFolder')[0])).toBe(true);
+            expect(panel.treePickerLabels()[1]).toBe('Lead-ONLY');
             expect(starOf(panel, LEAD_TREE_KEY).textContent).toBe('☆');
 
         });

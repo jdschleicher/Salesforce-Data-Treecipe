@@ -477,7 +477,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             expect(promptSpy).toHaveBeenCalledWith(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER);
 
             const [modalMessage, modalOptions, modalAction] = modalCalls()[0];
-            expect(modalMessage).toBe(`Retrieve the validation rules of 3 objects of Relationship Tree 1 from prod · ${PROD_USERNAME}?`);
+            expect(modalMessage).toBe(`Retrieve the validation rules of 3 objects of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}?`);
             expect(modalOptions.detail).toContain('3 objects: Account, Contact, OtherChildObject__c');
             expect(modalOptions.detail).toContain(`Org: prod · ${PROD_USERNAME}`);
             expect(modalOptions.detail).toContain('New rule files are written under: force-app');
@@ -499,7 +499,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
             expect(notifications()).toEqual([{
                 severity: 'information',
-                text: `Retrieved 3 validation rules for 2 of 3 objects of Relationship Tree 1 from prod · ${PROD_USERNAME}: Account, OtherChildObject__c. Generate Treecipe applies them to the recipe.`,
+                text: `Retrieved 3 validation rules for 2 of 3 objects of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}: Account, OtherChildObject__c. Generate Treecipe applies them to the recipe.`,
                 actions: [RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL]
             }]);
             expect(postedNamed('metadataRetrieveState')).toEqual([
@@ -565,7 +565,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
             expect(notifications()).toEqual([{
                 severity: 'information',
-                text: `prod · ${PROD_USERNAME} holds no validation rule for the 3 objects of Relationship Tree 1, so nothing was written.`,
+                text: `prod · ${PROD_USERNAME} holds no validation rule for the 3 objects of Account-thru-OtherChildObject__c, so nothing was written.`,
                 actions: []
             }]);
 

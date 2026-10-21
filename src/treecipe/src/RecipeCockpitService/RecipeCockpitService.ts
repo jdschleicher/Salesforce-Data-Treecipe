@@ -224,8 +224,6 @@ export const RECIPE_COCKPIT_PANEL_PLACE_MAX_SERIALIZED_LENGTH = 4000000;
 // THE FIELD TYPES WHOSE ROWS EXPAND TO THEIR VALUES IN THE STRUCTURE TAB
 export const RECIPE_COCKPIT_PICKLIST_FIELD_TYPES: readonly string[] = ['Picklist', 'MultiselectPicklist'];
 
-export const RECIPE_COCKPIT_TREE_TITLE_PREFIX = 'Relationship Tree';
-
 export const RECIPE_COCKPIT_UNGROUPED_TREE_TITLE = 'Not in a relationship tree';
 
 /*
@@ -488,7 +486,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.',
-            'Under the run list, the Target Org Management section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll. The Treecipes section below it shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last.',
+            'Under the run list, the Target Org Management section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll. The Treecipes section below it shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with ✎.',
             'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
             'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
@@ -5764,7 +5762,9 @@ export class RecipeCockpitService {
 
         const enteredName = await vscode.window.showInputBox({
             title: 'Rename relationship tree',
-            prompt: `A name for the tree in "${folderLabel}", unique in this workspace. Leave it empty to go back to "${defaultTitleLabel}".`,
+            prompt: shownTree === undefined || shownTree.title === folderName
+                ? `A name for the tree in "${folderLabel}", unique in this workspace. Leave it empty to go back to its folder name.`
+                : `A name for the tree in "${folderLabel}", unique in this workspace. Leave it empty to go back to "${defaultTitleLabel}".`,
             placeHolder: shownTree?.title ?? '',
             value: treePreferences.customNamesByFolderName.get(folderName) ?? '',
             validateInput: candidateName => this.validateTreeName(candidateName, folderName, treePreferences, shownTrees)
@@ -5784,7 +5784,8 @@ export class RecipeCockpitService {
 
         const trimmedName = enteredName.trim();
 
-        if ( trimmedName === '' ) {
+        // THE FOLDER NAME IS ALREADY THE DEFAULT TITLE (#389), SO NAMING A TREE AFTER ITS OWN FOLDER CLEARS ITS NAME
+        if ( trimmedName === '' || trimmedName === folderName ) {
             latestTreePreferences.customNamesByFolderName.delete(folderName);
         } else {
             latestTreePreferences.customNamesByFolderName.set(folderName, trimmedName);
@@ -12110,6 +12111,7 @@ export class RecipeCockpitService {
         const objectsByApiName = new Map(objects.map(objectViewModel => [objectViewModel.objectApiName, objectViewModel]));
         const claimedObjectApiNames = new Set<string>();
         const usedTreeKeys = new Set<string>();
+        const titleCountsByFolderName = new Map<string, number>();
         const trees: IRecipeCockpitTreeViewModel[] = [];
         const notices: string[] = [];
 
@@ -12162,7 +12164,7 @@ export class RecipeCockpitService {
 
             trees.push(this.buildTreeViewModel(
                 this.claimTreeKey(treeSource.folderName, treeIndex, usedTreeKeys),
-                `${RECIPE_COCKPIT_TREE_TITLE_PREFIX} ${treeIndex + 1}`,
+                this.claimTreeTitle(treeSource.folderName, titleCountsByFolderName),
                 treeSource.folderName,
                 treeObjects,
                 objectsByApiName
@@ -12192,6 +12194,19 @@ export class RecipeCockpitService {
         const treeKey = usedTreeKeys.has(folderName) ? `${folderName}#${treeIndex + 1}` : folderName;
         usedTreeKeys.add(treeKey);
         return treeKey;
+
+    }
+
+    /*
+        A card is named by the folder Generate Treecipe wrote it to (#389), so the dropdown says
+        what a tree holds -- "<first>-thru-<last>" or "<only>-ONLY" -- rather than where it sits.
+        A hand-edited wrapper can repeat a folder; the second takes " (2)" so the two options differ.
+    */
+    private static claimTreeTitle(folderName: string, titleCountsByFolderName: Map<string, number>): string {
+
+        const titleCount = ( titleCountsByFolderName.get(folderName) ?? 0 ) + 1;
+        titleCountsByFolderName.set(folderName, titleCount);
+        return titleCount === 1 ? folderName : `${folderName} (${titleCount})`;
 
     }
 
@@ -14217,7 +14232,7 @@ ${this.buildPaletteCustomProperties()}
         return treeStates.map(function (treeState) {
 
             const tree = treeState.tree;
-            const entries = [{ kind: 'treecipe', text: displayTitleOf(tree) + (tree.folderName ? ' · ' + tree.folderName : ''), haystack: (displayTitleOf(tree) + '\\n' + (tree.folderName || '')).toLowerCase() }];
+            const entries = [{ kind: 'treecipe', text: displayTitleOf(tree) + (tree.folderName && tree.customName ? ' · ' + tree.folderName : ''), haystack: (displayTitleOf(tree) + '\\n' + (tree.folderName || '')).toLowerCase() }];
             const indexedObjectApiNames = Object.create(null);
 
             treeState.objectStates.forEach(function (treeObjectState) {
@@ -17696,8 +17711,11 @@ ${this.buildPaletteCustomProperties()}
         treeState.titleElement = createElement('span', 'treeTitle', displayTitleOf(tree));
         treeHeaderElement.appendChild(treeState.titleElement);
 
+        // THE DEFAULT TITLE IS THE FOLDER (#389), SO THE FOLDER IS REPEATED ONLY UNDER A NAME THE READER GAVE IT
+        treeState.folderElement = null;
         if (tree.folderName) {
-            treeHeaderElement.appendChild(createElement('span', 'treeFolder muted', tree.folderName));
+            treeState.folderElement = createElement('span', 'treeFolder muted' + (tree.customName ? '' : ' hidden'), tree.folderName);
+            treeHeaderElement.appendChild(treeState.folderElement);
         }
 
         treeState.countedObjectCount = objectStatesCounted.length;
@@ -17751,6 +17769,10 @@ ${this.buildPaletteCustomProperties()}
 
         treeState.titleElement.textContent = displayTitle;
         treeState.element.setAttribute('aria-label', displayTitle);
+
+        if (treeState.folderElement) {
+            if (tree.customName) { treeState.folderElement.classList.remove('hidden'); } else { treeState.folderElement.classList.add('hidden'); }
+        }
 
         if (treeState.favoriteElement) {
             treeState.favoriteElement.textContent = tree.isFavorite ? FAVORITE_TREE_LABEL : NOT_FAVORITE_TREE_LABEL;

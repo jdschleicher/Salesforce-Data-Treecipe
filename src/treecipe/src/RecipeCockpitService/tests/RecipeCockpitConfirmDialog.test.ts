@@ -127,7 +127,7 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
                 command: 'confirmRequest',
                 confirmationId: expect.stringMatching(/^[0-9a-f]{32}$/),
                 renderSequence: recipeDataMessage.renderSequence,
-                title: 'Reset the selection of Relationship Tree 2?',
+                title: 'Reset the selection of Lead-ONLY?',
                 lines: [expect.stringContaining('Every object is included')],
                 buttons: [RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL],
                 isDestructive: false

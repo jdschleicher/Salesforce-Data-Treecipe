@@ -107,9 +107,27 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
                 recipe.trees[1].isFavorite = true;
             });
 
-            expect(panel.treePickerLabels()).toEqual(['Relationship Tree 1', '★ Leads', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE]);
+            expect(panel.treePickerLabels()).toEqual(['Account-thru-OtherChildObject__c', '★ Leads', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE]);
             expect(panel.treePicker().disabled).toBe(false);
             expect(panel.treePicker().attributes['aria-label']).toBe('Treecipe');
+
+        });
+
+        // #389: EACH OPTION IS THE FOLDER THE TREE WAS WRITTEN TO, AND A FOLDER A HAND-EDITED WRAPPER REPEATS IS NUMBERED
+        it('names each option by its folder, numbering a repeated folder so the options differ', () => {
+
+            const panel = runPanelScript();
+            const recipe = loadRecipe();
+            recipe.trees = RecipeCockpitService.buildRecipeTreeViewModels({
+                recipeTrees: [{ objectApiNames: ['Account', 'Contact', 'OtherChildObject__c'] }, { objectApiNames: ['Lead'] }, { objectApiNames: ['Lead'] }],
+                parentLookupsByObjectApiName: new Map()
+            }, recipe.objects, [], 'run').trees;
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1 });
+
+            expect(panel.treePickerLabels()).toEqual(['Account-thru-OtherChildObject__c', 'Lead-ONLY', 'Lead-ONLY (2)']);
+
+            choose(panel, 'Lead-ONLY (2)');
+            expect(chosenLabel(panel)).toBe('Lead-ONLY (2)');
 
         });
 
@@ -139,10 +157,10 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
             panel.findAll(cardOf(panel, ACCOUNT_TREE_KEY), 'treeHeader')[0].dispatch('click');
             expect(drawnTreeKeys(panel)).toEqual([ACCOUNT_TREE_KEY]);
 
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
 
             expect(drawnTreeKeys(panel)).toEqual([LEAD_TREE_KEY]);
-            expect(chosenLabel(panel)).toBe('Relationship Tree 2');
+            expect(chosenLabel(panel)).toBe('Lead-ONLY');
             expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Treecipe');
 
         });
@@ -152,7 +170,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
             const { panel } = drawRecipe();
             expect(commandsPosted(panel)).not.toContain('loadDataOrgs');
 
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
 
             expect(commandsPosted(panel).filter(command => command === 'loadDataOrgs')).toHaveLength(1);
 
@@ -163,7 +181,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
             jest.useFakeTimers();
             try {
                 const { panel } = drawRecipe();
-                choose(panel, 'Relationship Tree 2');
+                choose(panel, 'Lead-ONLY');
                 expect(cardOf(panel, LEAD_TREE_KEY).classList.contains('motionReveal')).toBe(true);
 
                 panel.typeIntoTreecipesSearch('Lead');
@@ -182,15 +200,15 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
             panel.typeIntoFilter('Name', cardOf(panel, ACCOUNT_TREE_KEY));
             const accountSearchInput = panel.findAll(panel.tabPanelOf(cardOf(panel, ACCOUNT_TREE_KEY), 'treeStructure'), 'tabSearchInput')[0];
 
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
             panel.openTab(cardOf(panel, LEAD_TREE_KEY), 'Previously Used Data Sets');
-            choose(panel, 'Relationship Tree 1');
+            choose(panel, 'Account-thru-OtherChildObject__c');
 
             expect(drawnTreeKeys(panel)).toEqual([ACCOUNT_TREE_KEY]);
             expect(accountSearchInput.value).toBe('Name');
             expect(panel.findAll(panel.tabPanelOf(cardOf(panel, ACCOUNT_TREE_KEY), 'treeStructure'), 'tabSearchInput')[0]).toBe(accountSearchInput);
 
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
             expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previously Used Data Sets');
 
         });
@@ -199,7 +217,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
 
             const { panel } = drawRecipe(recipe => { recipe.trees = [recipe.trees[1]]; });
 
-            expect(panel.treePickerLabels()).toEqual(['Relationship Tree 2']);
+            expect(panel.treePickerLabels()).toEqual(['Lead-ONLY']);
             expect(panel.treePicker().disabled).toBe(false);
             expect(panel.shownTreeCards()).toHaveLength(1);
 
@@ -218,11 +236,11 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
         it('relabels its option in place when the host renames or stars the card, keeping the card on screen', () => {
 
             const { panel } = drawRecipe();
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
 
             panel.postToPanel({ command: 'treePreferences', renderSequence: 1, trees: [{ treeKey: LEAD_TREE_KEY, customName: 'Leads', isFavorite: true }] });
 
-            expect(panel.treePickerLabels()).toEqual(['Relationship Tree 1', '★ Leads', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE]);
+            expect(panel.treePickerLabels()).toEqual(['Account-thru-OtherChildObject__c', '★ Leads', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE]);
             expect(chosenLabel(panel)).toBe('★ Leads');
             expect(drawnTreeKeys(panel)).toEqual([LEAD_TREE_KEY]);
 
@@ -237,7 +255,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
             const { panel, recipe } = drawRecipe();
             expect(panel.savedState()).not.toHaveProperty('selectedTreeKey');
 
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
             expect(panel.savedState().selectedTreeKey).toBe(LEAD_TREE_KEY);
             expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'savePlace').pop().place.selectedTreeKey).toBe(LEAD_TREE_KEY);
 
@@ -245,7 +263,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
             reopenedPanel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1 });
 
             expect(drawnTreeKeys(reopenedPanel)).toEqual([LEAD_TREE_KEY]);
-            expect(chosenLabel(reopenedPanel)).toBe('Relationship Tree 2');
+            expect(chosenLabel(reopenedPanel)).toBe('Lead-ONLY');
             // CHOOSING A CARD ON ITS TREECIPE TAB USED THE ORG PICKER, AS OPENING ONE DID, SO THE REBUILT DOCUMENT ASKS AGAIN AFTER THE DRAW
             expect(panel.savedState().isOrgPickerInUse).toBe(true);
             expect(commandsPosted(reopenedPanel).indexOf('loadDataOrgs')).toBeGreaterThan(commandsPosted(reopenedPanel).indexOf('rendered'));
@@ -296,7 +314,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
             expect(drawnTreeKeys(panel)).toEqual([ACCOUNT_TREE_KEY]);
             expect(panel.isHidden(panel.objectBodyOf(objectNamed(panel, ACCOUNT_TREE_KEY, 'Account')))).toBe(false);
 
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
             expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previously Used Data Sets');
 
         });
@@ -308,7 +326,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
             const { panel } = drawRecipe(() => undefined, { savedState: olderPlace }, { focusTree: { treeKey: LEAD_TREE_KEY, tab: 'datasets' } });
 
             expect(drawnTreeKeys(panel)).toEqual([LEAD_TREE_KEY]);
-            expect(chosenLabel(panel)).toBe('Relationship Tree 2');
+            expect(chosenLabel(panel)).toBe('Lead-ONLY');
             expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previously Used Data Sets');
 
         });
@@ -316,7 +334,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
         it('keeps the choice across a reload of the same run in the same document, and starts on the first card for another run', () => {
 
             const { panel, recipe } = drawRecipe();
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
 
             panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 2 });
             expect(drawnTreeKeys(panel)).toEqual([LEAD_TREE_KEY]);
@@ -369,7 +387,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
 
             const { panel, recipe } = drawRecipe(recipe => { recipe.trees[0].isFavorite = true; });
 
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
             expect(objectsLineText(panel)).toBe('Insert order:Lead · 1 object');
 
             favoritesToggleOf(panel).dispatch('click');
@@ -391,7 +409,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
         it('describes the card a rebuilt document restores', () => {
 
             const { panel, recipe } = drawRecipe();
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
 
             const reopenedPanel = runPanelScript({ savedState: panel.savedState() });
             reopenedPanel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1 });
@@ -481,7 +499,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
             // AN UPDATE TO A CARD NOT ON SCREEN LEAVES THE LINE ALONE
             panel.postToPanel({ command: 'objectSelection', treeKey: LEAD_TREE_KEY, renderSequence: 1, objectSelection: { ...objectSelection, exclusions: [{ objectApiName: 'Lead', kind: 'excluded' }] } });
             expect(objectsLineText(panel)).toBe(ACCOUNT_TREE_LINE);
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
             expect(objectsLineText(panel)).toBe('Insert order:Lead (excluded) · 1 object');
 
         });
@@ -492,7 +510,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
                 recipe.trees[1].objects.push({ objectApiName: '__proto__', parentLookups: [] } as any);
                 recipe.trees[1].objects.push({ objectApiName: '<img src=x>', parentLookups: [] } as any);
             });
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
 
             expect(objectsLineText(panel)).toBe('Insert order:Lead → __proto__ → <img src=x> · 3 objects');
             expect(panel.findAll(objectsLineOf(panel), 'treePickerObject').every((element: any) => element.children.length === 0)).toBe(true);
@@ -510,13 +528,13 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
 
             favoritesToggleOf(panel).dispatch('click');
 
-            expect(panel.treePickerLabels()).toEqual(['★ Relationship Tree 2']);
+            expect(panel.treePickerLabels()).toEqual(['★ Lead-ONLY']);
             expect(drawnTreeKeys(panel)).toEqual([LEAD_TREE_KEY]);
             expect(panel.findAll(panel.cockpitBodyElement, 'favoritesCount')[0].textContent).toBe('1 of 3 trees');
 
             favoritesToggleOf(panel).dispatch('click');
 
-            expect(panel.treePickerLabels()).toEqual(['Relationship Tree 1', '★ Relationship Tree 2', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE]);
+            expect(panel.treePickerLabels()).toEqual(['Account-thru-OtherChildObject__c', '★ Lead-ONLY', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE]);
             // THE CHOICE MOVED WITH THE FILTER
             expect(drawnTreeKeys(panel)).toEqual([LEAD_TREE_KEY]);
 
@@ -525,11 +543,11 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
         it('keeps a chosen favorite on screen when the filter is turned on', () => {
 
             const { panel } = drawRecipe(recipe => { recipe.trees[0].isFavorite = true; recipe.trees[1].isFavorite = true; });
-            choose(panel, '★ Relationship Tree 2');
+            choose(panel, '★ Lead-ONLY');
 
             favoritesToggleOf(panel).dispatch('click');
 
-            expect(panel.treePickerLabels()).toEqual(['★ Relationship Tree 1', '★ Relationship Tree 2']);
+            expect(panel.treePickerLabels()).toEqual(['★ Account-thru-OtherChildObject__c', '★ Lead-ONLY']);
             expect(drawnTreeKeys(panel)).toEqual([LEAD_TREE_KEY]);
 
         });
@@ -537,7 +555,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
         it('given no favorite, shows the notice and draws no card, and turning it off draws the card chosen before', () => {
 
             const { panel } = drawRecipe();
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
 
             favoritesToggleOf(panel).dispatch('click');
 
@@ -562,7 +580,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
 
             expect(favoritesToggleOf(panel).attributes['aria-pressed']).toBe('false');
             expect(drawnTreeKeys(panel)).toEqual([LEAD_TREE_KEY]);
-            expect(chosenLabel(panel)).toBe('Relationship Tree 2');
+            expect(chosenLabel(panel)).toBe('Lead-ONLY');
 
         });
 
@@ -574,13 +592,13 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
 
             const { panel, recipe } = drawRecipe(() => undefined, {}, { focusTree: { treeKey: LEAD_TREE_KEY, tab: 'datasets' } });
 
-            expect(chosenLabel(panel)).toBe('Relationship Tree 2');
+            expect(chosenLabel(panel)).toBe('Lead-ONLY');
             expect(drawnTreeKeys(panel)).toEqual([LEAD_TREE_KEY]);
             expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previously Used Data Sets');
 
             panel.postToPanel({ command: 'focusTree', renderSequence: 1, focusTree: { treeKey: ACCOUNT_TREE_KEY, tab: 'troubleshooting', troubleshootingSubTab: 'fields' } });
 
-            expect(chosenLabel(panel)).toBe('Relationship Tree 1');
+            expect(chosenLabel(panel)).toBe('Account-thru-OtherChildObject__c');
             expect(drawnTreeKeys(panel)).toEqual([ACCOUNT_TREE_KEY]);
             expect(selectedTabOf(panel, ACCOUNT_TREE_KEY)).toBe('Troubleshooting');
 
@@ -609,10 +627,10 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
         });
 
         it.each([
-            ['a title', 'tree 2', [['treecipe', 'Relationship Tree 2 · Lead-ONLY']]],
-            ['a folder name', 'lead-only', [['treecipe', 'Relationship Tree 2 · Lead-ONLY']]],
+            ['a title', 'THRU', [['treecipe', 'Account-thru-OtherChildObject__c']]],
+            ['a folder name', 'lead-only', [['treecipe', 'Lead-ONLY']]],
             // THE FIRST CARD'S FOLDER NAMES THE OBJECT TOO
-            ['an object api name', 'othercHILD', [['treecipe', 'Relationship Tree 1 · Account-thru-OtherChildObject__c'], ['object', 'OtherChildObject__c']]],
+            ['an object api name', 'othercHILD', [['treecipe', 'Account-thru-OtherChildObject__c'], ['object', 'OtherChildObject__c']]],
             ['a field api name', 'SUB_RATING', [['field', 'Account.Sub_Rating__c · Sub Rating']]],
             ['a field label', 'annual budget', [['field', 'Account.Annual_Budget__c · Annual Budget']]],
             ['an object and field as the result row writes them', 'account.legacy_code', [['field', 'Account.Legacy_Code__c · Legacy Code']]],
@@ -628,13 +646,27 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
 
         });
 
+        // #389: THE DEFAULT TITLE IS THE FOLDER, SO A RESULT NAMES THE FOLDER BESIDE A TITLE ONLY WHEN THE READER RENAMED THE CARD
+        it.each([
+            ['its own name', 'my leads'],
+            ['its folder', 'LEAD-only']
+        ])('finds a renamed card by %s, naming the folder beside the name', (_description, searchText) => {
+
+            const { panel } = drawRecipe(recipe => { recipe.trees[1].customName = 'My Leads'; });
+
+            panel.typeIntoTreecipesSearch(searchText);
+
+            expect(resultRows(panel)).toEqual([['treecipe', 'My Leads · Lead-ONLY']]);
+
+        });
+
         it('groups the hits by treecipe, then by kind (treecipe · object · field · record type), narrows the dropdown and counts the treecipes', () => {
 
             const { panel } = drawRecipe();
 
             panel.typeIntoTreecipesSearch('e');
 
-            expect(resultGroups(panel)).toEqual(['Relationship Tree 1', 'Relationship Tree 2', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE]);
+            expect(resultGroups(panel)).toEqual(['Account-thru-OtherChildObject__c', 'Lead-ONLY', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE]);
             const kindsOfFirstGroup = panel.findAll(panel.findAll(resultsOf(panel), 'treecipesResultGroup')[0], 'treecipesResultKind').map((element: any) => element.textContent);
             const kindOrder = ['treecipe', 'object', 'field', 'record type'];
             expect(kindsOfFirstGroup.map((kind: string) => kindOrder.indexOf(kind))).toEqual([...kindsOfFirstGroup.map((kind: string) => kindOrder.indexOf(kind))].sort((left, right) => left - right));
@@ -642,9 +674,9 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
 
             panel.typeIntoTreecipesSearch('rating');
 
-            expect(resultGroups(panel)).toEqual(['Relationship Tree 1']);
+            expect(resultGroups(panel)).toEqual(['Account-thru-OtherChildObject__c']);
             expect(searchCountOf(panel)).toBe('1 of 3 treecipes');
-            expect(panel.treePickerLabels()).toEqual(['Relationship Tree 1']);
+            expect(panel.treePickerLabels()).toEqual(['Account-thru-OtherChildObject__c']);
 
         });
 
@@ -654,14 +686,14 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
 
             panel.typeIntoTreecipesSearch('Company');
 
-            expect(panel.treePickerLabels()).toEqual(['Relationship Tree 1' + RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX, 'Relationship Tree 2']);
+            expect(panel.treePickerLabels()).toEqual(['Account-thru-OtherChildObject__c' + RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX, 'Lead-ONLY']);
             expect(drawnTreeKeys(panel)).toEqual([ACCOUNT_TREE_KEY]);
             expect(searchCountOf(panel)).toBe('1 of 3 treecipes');
 
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
 
             expect(drawnTreeKeys(panel)).toEqual([LEAD_TREE_KEY]);
-            expect(panel.treePickerLabels()).toEqual(['Relationship Tree 2']);
+            expect(panel.treePickerLabels()).toEqual(['Lead-ONLY']);
 
         });
 
@@ -681,13 +713,13 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
         it('given the search cleared, gives back the full dropdown and the card chosen', () => {
 
             const { panel } = drawRecipe();
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
 
             panel.typeIntoTreecipesSearch('Rating');
             panel.typeIntoTreecipesSearch('');
 
-            expect(panel.treePickerLabels()).toEqual(['Relationship Tree 1', 'Relationship Tree 2', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE]);
-            expect(chosenLabel(panel)).toBe('Relationship Tree 2');
+            expect(panel.treePickerLabels()).toEqual(['Account-thru-OtherChildObject__c', 'Lead-ONLY', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE]);
+            expect(chosenLabel(panel)).toBe('Lead-ONLY');
             expect(panel.treePicker().disabled).toBe(false);
             expect(panel.isHidden(resultsOf(panel))).toBe(true);
             expect(searchCountOf(panel)).toBe('');
@@ -780,7 +812,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
         it('on an object, chooses its treecipe on the Treecipe tab and opens and scrolls to the object', () => {
 
             const { panel } = drawRecipe();
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
             panel.openTab(cardOf(panel, LEAD_TREE_KEY), 'Previously Used Data Sets');
             panel.openTab(cardOf(panel, ACCOUNT_TREE_KEY), 'Previously Used Data Sets');
 
@@ -832,7 +864,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
         it('on a record type, opens the Record types section scrolled to its object', () => {
 
             const { panel } = drawRecipe();
-            choose(panel, 'Relationship Tree 2');
+            choose(panel, 'Lead-ONLY');
 
             panel.typeIntoTreecipesSearch('business');
             resultNamed(panel, 'record type', 'Account · Business').dispatch('click');
@@ -851,7 +883,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
             const { panel } = drawRecipe();
 
             panel.typeIntoTreecipesSearch('Lead-ONLY');
-            resultNamed(panel, 'treecipe', 'Relationship Tree 2 · Lead-ONLY').dispatch('click');
+            resultNamed(panel, 'treecipe', 'Lead-ONLY').dispatch('click');
 
             expect(drawnTreeKeys(panel)).toEqual([LEAD_TREE_KEY]);
             expect(cardOf(panel, LEAD_TREE_KEY).scrolledIntoViewCount).toBe(1);
@@ -869,7 +901,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
 
             favoritesToggleOf(panel).dispatch('click');
 
-            expect(resultGroups(panel)).toEqual(['Relationship Tree 2']);
+            expect(resultGroups(panel)).toEqual(['Lead-ONLY']);
             expect(resultRows(panel)).toEqual([['field', 'Lead.Status · Status']]);
 
         });

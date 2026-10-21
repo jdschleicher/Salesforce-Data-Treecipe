@@ -498,7 +498,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
             expect(promptSpy).toHaveBeenCalledWith(RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS.fields);
 
             const [modalMessage, modalOptions] = modalCalls()[0];
-            expect(modalMessage).toBe(`Retrieve 8 custom fields of Relationship Tree 1 from prod · ${PROD_USERNAME}?`);
+            expect(modalMessage).toBe(`Retrieve 8 custom fields of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}?`);
             expect(modalOptions.detail).toContain(`8 custom fields: ${ACCOUNT_RETRIEVE_FIELDS.join(', ')}`);
             expect(modalOptions.detail).toContain('7 existing local field files for these fields will be overwritten');
 
@@ -515,7 +515,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
             expect(notifications()).toEqual([{
                 severity: 'information',
-                text: `Retrieved 2 of the 8 custom fields of Relationship Tree 1 from prod · ${PROD_USERNAME}. Generate Treecipe writes them into the recipe.`,
+                text: `Retrieved 2 of the 8 custom fields of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}. Generate Treecipe writes them into the recipe.`,
                 actions: [RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL]
             }]);
             expect(postedNamed('metadataRetrieveState')).toEqual([
@@ -538,13 +538,13 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
             await retrieve('globalValueSets');
 
             expect(promptSpy).toHaveBeenCalledWith(RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS.globalValueSets);
-            expect(modalCalls()[0][0]).toBe(`Retrieve 2 global value sets of Relationship Tree 1 from prod · ${PROD_USERNAME}?`);
+            expect(modalCalls()[0][0]).toBe(`Retrieve 2 global value sets of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}?`);
             expect(modalCalls()[0][1].detail).toContain('1 existing local global value set file for these value sets will be overwritten');
             expect(manifestMembers(retrievedManifests[0])).toEqual(['Account_Ratings', 'Missing_Set']);
             expect(retrieveCalls()[0][7]).toMatch(/-global-value-set-retrieve-package\.xml$/);
             expect(notifications()).toEqual([{
                 severity: 'information',
-                text: `Retrieved 1 of the 2 global value sets of Relationship Tree 1 from prod · ${PROD_USERNAME}: Account_Ratings. Generate Treecipe writes them into the recipe.`,
+                text: `Retrieved 1 of the 2 global value sets of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}: Account_Ratings. Generate Treecipe writes them into the recipe.`,
                 actions: [RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL]
             }]);
 
@@ -558,7 +558,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
             await retrieve('recordTypes');
 
             expect(promptSpy).toHaveBeenCalledWith(RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS.recordTypes);
-            expect(modalCalls()[0][0]).toBe(`Retrieve the record types of 3 objects of Relationship Tree 1 from prod · ${PROD_USERNAME}?`);
+            expect(modalCalls()[0][0]).toBe(`Retrieve the record types of 3 objects of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}?`);
             expect(modalCalls()[0][1].detail).toContain('2 existing local record type files for these objects will be overwritten');
             expect(retrieveCalls()).toEqual([[
                 'project', 'retrieve', 'start', '--json', '--target-org', PROD_USERNAME,
@@ -567,7 +567,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
                 '--metadata', 'RecordType:OtherChildObject__c.*'
             ]]);
             expect(retrievedManifests).toEqual([]);
-            expect(notifications()[0].text).toBe(`Retrieved 2 record types for 1 of 3 objects of Relationship Tree 1 from prod · ${PROD_USERNAME}: Account. Generate Treecipe can then use them in the recipe.`);
+            expect(notifications()[0].text).toBe(`Retrieved 2 record types for 1 of 3 objects of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}: Account. Generate Treecipe can then use them in the recipe.`);
 
         });
 
@@ -584,8 +584,8 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
             expect(promptSpy).not.toHaveBeenCalled();
             expect(retrieveCalls()).toEqual([]);
             expect(notifications().map(notification => notification.text)).toEqual([
-                'Relationship Tree 1 has no custom field to retrieve, so nothing was retrieved.',
-                'No field of Relationship Tree 1 names a global value set, so nothing was retrieved.'
+                'Account-thru-OtherChildObject__c has no custom field to retrieve, so nothing was retrieved.',
+                'No field of Account-thru-OtherChildObject__c names a global value set, so nothing was retrieved.'
             ]);
 
         });
