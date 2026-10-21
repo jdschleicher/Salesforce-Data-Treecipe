@@ -127,7 +127,7 @@ describe('RecipeCockpitService, button kinds (#363)', () => {
 
     });
 
-    it('draws the four Troubleshooting deploys as secondary buttons beside Assign and Retrieve, in the shared disabled style while they cannot run', () => {
+    it('draws the four Troubleshooting deploys as cards beside Assign, Generate and Retrieve, in the card\'s disabled style while they cannot run (#381)', () => {
 
         const panel = renderEverything();
         const deployButtons = panel.findAll(panel.cockpitBodyElement, 'troubleshootingDeploy');
@@ -135,13 +135,13 @@ describe('RecipeCockpitService, button kinds (#363)', () => {
         expect(deployButtons.length).toBeGreaterThanOrEqual(4);
         deployButtons.forEach((buttonElement: any) => {
             expect(buttonElement.classList.contains('sdtButton')).toBe(true);
-            expect(buttonElement.classList.contains('sdtButton-secondary')).toBe(true);
+            expect(buttonElement.classList.contains('sdtButton-card')).toBe(true);
         });
-        ['treePermissionSets', 'treeRetrieveValidationRules'].forEach(className =>
-            expect(panel.findAll(panel.cockpitBodyElement, className)[0].classList.contains('sdtButton-secondary')).toBe(true));
+        ['treePermissionSets', 'treeGeneratePermissionSet', 'treeRetrieveValidationRules'].forEach(className =>
+            expect(panel.findAll(panel.cockpitBodyElement, className)[0].className.split(' ').filter((buttonClassName: string) => KIND_CLASSES.includes(buttonClassName))).toEqual(['sdtButton-card']));
         // NO COUNTS HAVE COME BACK, SO EVERY DEPLOY IS DISABLED, AND THE KIND'S :disabled RULE IS WHAT DRAWS IT
         expect(deployButtons.every((buttonElement: any) => buttonElement.disabled)).toBe(true);
-        expect(styleSheetOf(shellHtml())).toMatch(/\.sdtButton-secondary:disabled[^{]*\{[^}]*color: var\(--sdt-disabled-text\);[^}]*background-color: var\(--sdt-disabled-bg\);[^}]*cursor: not-allowed;/);
+        expect(styleSheetOf(shellHtml())).toMatch(/\.sdtButton-card:disabled \{[^}]*color: var\(--sdt-disabled-text\);[^}]*background-color: var\(--sdt-disabled-bg\);[^}]*cursor: not-allowed;/);
 
     });
 
