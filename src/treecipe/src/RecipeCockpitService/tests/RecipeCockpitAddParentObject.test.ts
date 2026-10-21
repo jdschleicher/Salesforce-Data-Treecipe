@@ -521,4 +521,307 @@ describe('RecipeCockpitRecipeWriter add parent object (#294)', () => {
 
     });
 
+    describe('nest the tree under the added parent (#405)', () => {
+
+        const accountTemplate = { Account: { Name: '${{ faker.company.name() }}' } };
+        const nest = (recipeText: string, fieldApiName: string, context: ILookupWiringContext, objectApiName = 'Contact', objectNickname?: string, templates: Record<string, Record<string, string>> = accountTemplate) => (
+            RecipeCockpitRecipeWriter.addParentObject(recipeText, { ...request(fieldApiName, templates, objectApiName, objectNickname), nestTreeUnderParent: true }, context)
+        );
+
+        test('moves the block, its heading included, one level deeper under the parent\'s friends: and wires the lookup', () => {
+
+            const result = expectApplied(nest(CONTACT_RECIPE, 'AccountId', CONTACT_CONTEXT));
+
+            expect(result.recipeText).toBe([
+                '# Relationship Tree: RelationshipTree_1',
+                '',
+                '# Account (Added by the Recipe Cockpit as the parent of Contact, nested under it as friends)',
+                '- object: Account',
+                '  nickname: Account_NickName',
+                '  count: 1',
+                '  fields:',
+                '    Name: ${{ faker.company.name() }}',
+                '  friends:',
+                '    # Contact (Parents: Account)',
+                '    - object: Contact',
+                '      nickname: Contact_NickName',
+                '      count: 2',
+                '      fields:',
+                '        LastName: ${{ faker.person.lastName() }}',
+                '        AccountId: Account_NickName',
+                `        Opportunity__c: ${TODO}`,
+                `        Lead__c: ${TODO}`,
+                `        Case__c: ${TODO}`,
+                `        Owner__c: ${TODO}`,
+                `        WhatId__c: ${TODO}`,
+                `        Custom__c: ${TODO}`,
+                ''
+            ].join('\n'));
+            expect(result.nestedObjectApiNames).toEqual(['Contact']);
+            expect(result.wiredLookups).toEqual([{ objectApiName: 'Contact', fieldApiName: 'AccountId' }]);
+            expect(result.edits).toHaveLength(1);
+            expect(result.edits[0].operation).toBe('add-parent-object');
+
+            const [loadedAccount] = yaml.load(result.recipeText) as { object: string; friends: { object: string; count: number; fields: Record<string, unknown> }[] }[];
+            expect(loadedAccount.object).toBe('Account');
+            expect(loadedAccount.friends.map(friend => friend.object)).toEqual(['Contact']);
+            expect(loadedAccount.friends[0].count).toBe(2);
+            expect(loadedAccount.friends[0].fields.AccountId).toBe('Account_NickName');
+
+        });
+
+        test('without the flag the addition is #294\'s top-level block, byte for byte', () => {
+
+            const flat = expectApplied(RecipeCockpitRecipeWriter.addParentObject(CONTACT_RECIPE, request('AccountId', accountTemplate), CONTACT_CONTEXT));
+            const flagOff = expectApplied(RecipeCockpitRecipeWriter.addParentObject(CONTACT_RECIPE, { ...request('AccountId', accountTemplate), nestTreeUnderParent: false }, CONTACT_CONTEXT));
+
+            expect(flagOff).toEqual(flat);
+            expect(flat.nestedObjectApiNames).toBeUndefined();
+            expect(flat.wiredLookups).toBeUndefined();
+
+        });
+
+        const FRIENDS_RECIPE = [
+            '# Contact (Parents: Account)',
+            '- object: Contact',
+            '  nickname: Contact_NickName',
+            '  count: 1',
+            '  fields:',
+            `    AccountId: ${TODO}`,
+            '    Bio__c: |',
+            '        line one',
+            '',
+            '          indented line',
+            '  friends:',
+            '    # Case (Parents: Account, Contact)',
+            '    - object: Case',
+            '      nickname: Case_NickName',
+            '      count: 3',
+            '      fields:',
+            `        AccountId: ${TODO} -- Account`,
+            '        ContactId: Contact_NickName',
+            `        WhatId__c: ${TODO} -- Account, Opportunity`,
+            '    - object: Peer__c',
+            '      nickname: Peer_NickName',
+            '      count: 1',
+            '      fields:',
+            `        Account__c: ${TODO}`,
+            '',
+            '# Lead (Parents: Account)',
+            '- object: Lead',
+            '  nickname: Lead_NickName',
+            '  count: 1',
+            '  fields:',
+            `    Account__c: ${TODO}`,
+            ''
+        ].join('\n');
+
+        const FRIENDS_CONTEXT = buildContext({
+            Contact: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }],
+            Case: [
+                { fieldApiName: 'AccountId', parentObjectApiName: 'Account' },
+                { fieldApiName: 'ContactId', parentObjectApiName: 'Contact' },
+                { fieldApiName: 'WhatId__c', parentObjectApiName: 'Account' },
+                { fieldApiName: 'WhatId__c', parentObjectApiName: 'Opportunity' }
+            ],
+            Peer__c: [{ fieldApiName: 'Account__c', parentObjectApiName: 'Account' }],
+            Lead: [{ fieldApiName: 'Account__c', parentObjectApiName: 'Account' }]
+        }, { Account: 0, Peer__c: 0, Contact: 1, Lead: 1, Case: 2 });
+
+        test('moves a block with friends, wires every TODO lookup to the parent alone from a higher level, and leaves every other block as it was', () => {
+
+            const result = expectApplied(nest(FRIENDS_RECIPE, 'AccountId', FRIENDS_CONTEXT));
+            const resultLines = result.recipeText.split('\n');
+
+            expect(result.wiredLookups).toEqual([
+                { objectApiName: 'Contact', fieldApiName: 'AccountId' },
+                { objectApiName: 'Case', fieldApiName: 'AccountId' }
+            ]);
+            expect(result.nestedObjectApiNames).toEqual(['Contact', 'Case', 'Peer__c']);
+            expect(resultLines).toContain('        AccountId: Account_NickName');
+            expect(resultLines).toContain('            AccountId: Account_NickName');
+            // POLYMORPHIC, AND A FRIEND NOT AT A HIGHER LEVEL THAN THE PARENT, STAY TODOs
+            expect(resultLines).toContain(`            WhatId__c: ${TODO} -- Account, Opportunity`);
+            expect(resultLines).toContain(`            Account__c: ${TODO}`);
+            // THE BLOCK SCALAR KEEPS ITS CONTENT AND ITS BLANK LINE
+            expect(resultLines.slice(resultLines.indexOf('        Bio__c: |'), resultLines.indexOf('        Bio__c: |') + 4)).toEqual(['        Bio__c: |', '            line one', '', '              indented line']);
+            // THE LEAD BLOCK AFTER IT IS UNTOUCHED
+            expect(result.recipeText.endsWith(FRIENDS_RECIPE.slice(FRIENDS_RECIPE.indexOf('\n# Lead')))).toBeTrue();
+
+            const [loadedAccount, loadedLead] = yaml.load(result.recipeText) as { object: string; fields: Record<string, unknown>; friends?: { object: string; fields: Record<string, unknown>; friends?: { object: string; count: number; fields: Record<string, unknown> }[] }[] }[];
+            expect(loadedAccount.object).toBe('Account');
+            const [loadedContact] = loadedAccount.friends;
+            expect(loadedContact.fields.Bio__c).toBe('line one\n\n  indented line\n');
+            expect(loadedContact.friends.map(friend => friend.object)).toEqual(['Case', 'Peer__c']);
+            expect(loadedContact.friends[0].count).toBe(3);
+            expect(loadedContact.friends[0].fields.AccountId).toBe('Account_NickName');
+            expect(loadedLead.object).toBe('Lead');
+            expect(loadedLead.fields.Account__c).toBeNull();
+
+        });
+
+        test('a self-lookup iteration moves with its block and both occurrences are wired', () => {
+
+            const selfLookupRecipe = [
+                '- object: Contact',
+                '  nickname: Contact_NickName',
+                '  count: 1',
+                '  fields:',
+                `    AccountId: ${TODO}`,
+                `    ReportsToId: ${TODO} -- Contact`,
+                '  friends:',
+                '    # Contact (Child iteration of the Contact above, through ReportsToId)',
+                '    - object: Contact',
+                '      nickname: Contact_child_NickName',
+                '      count: 1',
+                '      fields:',
+                `        AccountId: ${TODO} -- Account`,
+                '        ReportsToId: Contact_NickName',
+                ''
+            ].join('\n');
+            const selfLookupContext = buildContext({
+                Contact: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }, { fieldApiName: 'ReportsToId', parentObjectApiName: 'Contact' }]
+            }, { Account: 0, Contact: 1 });
+
+            const result = expectApplied(nest(selfLookupRecipe, 'AccountId', selfLookupContext, 'Contact', 'Contact_child_NickName'));
+
+            expect(result.wiredLookups).toEqual([
+                { objectApiName: 'Contact', objectNickname: 'Contact_NickName', fieldApiName: 'AccountId' },
+                { objectApiName: 'Contact', objectNickname: 'Contact_child_NickName', fieldApiName: 'AccountId' }
+            ]);
+            const scanned = RecipeCockpitRecipeWriter.scanRecipeObjects(result.recipeText.split('\n'));
+            expect(scanned.map(scannedObject => [scannedObject.objectApiName, scannedObject.objectIndent, scannedObject.nicknames[0]])).toEqual([
+                ['Account', 0, 'Account_NickName'],
+                ['Contact', 4, 'Contact_NickName'],
+                ['Contact', 8, 'Contact_child_NickName']
+            ]);
+            expect(result.recipeText).toContain(`        ReportsToId: ${TODO} -- Contact\n`);
+            expect(result.recipeText).toContain('            ReportsToId: Contact_NickName\n');
+
+        });
+
+        describe.each(LINE_ENDING_VARIANTS)('against the generated nested faker-js recipe (%s)', (_variantName, lineEnding, hasFinalNewline) => {
+
+            const generatedRecipe = toVariant(fs.readFileSync(path.join(RECIPE_WRITER_MOCKS_PATH, 'recipe-fakerjs-nested--RelationshipTree_1.yml'), 'utf-8'), lineEnding, hasFinalNewline);
+            const generatedContext = buildContext({
+                Opportunity: [{ fieldApiName: 'CampaignId', parentObjectApiName: 'Campaign' }]
+            }, { Campaign: 0, Opportunity: 1 });
+
+            test('adds Campaign above Account, every moved line four spaces deeper with its line ending, every other line as it was', () => {
+
+                const result = expectApplied(nest(generatedRecipe, 'CampaignId', generatedContext, 'Opportunity', undefined, { Campaign: { Name: '${{ fake.bs }}' } }));
+                const [edit] = result.edits;
+                const parentLineCount = edit.insertedLines.length - edit.removedLines.length;
+                const patchedLines = result.recipeText.split(/(?<=\n)/);
+                const startIndex = edit.startLineNumber - 1;
+
+                patchedLines.slice(startIndex, startIndex + parentLineCount).forEach(patchedLine => expect(patchedLine.endsWith(lineEnding)).toBeTrue());
+
+                // TAKING THE PARENT'S LINES OUT, MOVING THE BLOCK BACK AND PUTTING THE TODO BACK GIVES THE ORIGINAL BYTES
+                const restoredLines = [...patchedLines.slice(0, startIndex), ...patchedLines.slice(startIndex + parentLineCount)].map((restoredLine, lineIndex) => {
+                    if ( lineIndex < startIndex || lineIndex >= startIndex + edit.removedLines.length ) {
+                        return restoredLine;
+                    }
+                    const unindented = /^\s*$/.test(restoredLine) ? restoredLine : restoredLine.slice(4);
+                    return unindented.replace(/^( +CampaignId: )Campaign_NickName/, `$1${TODO}`);
+                });
+                expect(restoredLines.join('')).toBe(generatedRecipe);
+
+                const loadedObjects = yaml.load(result.recipeText) as { object: string; friends?: { object: string }[] }[];
+                expect(loadedObjects[0].object).toBe('Campaign');
+                expect(loadedObjects[0].friends.map(friend => friend.object)).toEqual(['Account']);
+                expect(loadedObjects.slice(1).map(loadedObject => loadedObject.object)).toEqual(['Product_Family__c', 'MegaMapMadness__c']);
+                expect(result.wiredLookups).toEqual([{ objectApiName: 'Opportunity', fieldApiName: 'CampaignId' }]);
+                expect(RecipeCockpitRecipeWriter.listAddableParentObjects(result.recipeText, generatedContext, new Set(['Campaign']))).toEqual([]);
+
+            });
+
+        });
+
+        test('refuses a moved block with a line break inside a line', () => {
+
+            ['\r', '\u0085', '\u2028', '\u2029'].forEach(lineBreak => {
+                const brokenRecipe = CONTACT_RECIPE.replace(`    Custom__c: ${TODO}\n`, `    Custom__c: ${TODO}\n    Note__c: a${lineBreak}b\n`);
+                expectRefused(nest(brokenRecipe, 'AccountId', CONTACT_CONTEXT), 'unsupported-friend-layout');
+            });
+
+        });
+
+        test('refuses a block that continues after a column-0 comment, and keeps a column-0 comment that heads the next block', () => {
+
+            const contactBlock = ['- object: Contact', '  nickname: Contact_NickName', '  count: 1', '  fields:', `    AccountId: ${TODO}`];
+            const context = buildContext({ Contact: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }] }, { Account: 0, Contact: 1, Case: 2 });
+
+            // YAML READS EACH AS ONE CONTACT BLOCK, SO MOVING ONLY THE LINES ABOVE THE COMMENT WOULD LEAVE A RECIPE THAT DOES NOT LOAD
+            [
+                [...contactBlock, '# a note', '  friends:', '    - object: Case', '      nickname: Case_NickName', '      count: 1', ''],
+                [...contactBlock, '# a note', '    LastName: x', '', '- object: Lead', '  nickname: Lead_NickName', '  count: 1', '']
+            ].forEach(recipeLines => {
+                const recipeText = recipeLines.join('\n');
+                expect(() => yaml.load(recipeText)).not.toThrow();
+                expect(expectRefused(nest(recipeText, 'AccountId', context), 'unsupported-friend-layout').message).toContain('continues after a line at column 0');
+            });
+
+            const headedNextBlock = [...contactBlock, '', '# Lead (a reader\'s note)', '# Level 2', '- object: Lead', '  nickname: Lead_NickName', '  count: 1', ''].join('\n');
+            const result = expectApplied(nest(headedNextBlock, 'AccountId', context));
+            expect(result.recipeText.endsWith('\n\n# Lead (a reader\'s note)\n# Level 2\n- object: Lead\n  nickname: Lead_NickName\n  count: 1\n')).toBeTrue();
+            expect((yaml.load(result.recipeText) as { object: string }[]).map(loadedObject => loadedObject.object)).toEqual(['Account', 'Lead']);
+
+        });
+
+        test('refuses what #294 refuses, and a result that does not read back', () => {
+
+            expectRefused(nest(CONTACT_RECIPE, 'WhatId__c', CONTACT_CONTEXT), 'polymorphic-lookup');
+            const indistinctRecipe = `${CONTACT_RECIPE}\n${CONTACT_RECIPE.split('\n').slice(3).join('\n')}`;
+            expectRefused(nest(indistinctRecipe, 'AccountId', CONTACT_CONTEXT, 'Contact', 'Contact_NickName'), 'duplicate-object');
+            expectRefused(nest(CONTACT_RECIPE.replace(`AccountId: ${TODO}`, 'AccountId: x'), 'AccountId', CONTACT_CONTEXT), 'lookup-not-wireable');
+
+            // THE REQUESTED LOOKUP MUST BE AMONG THE MOVED BLOCK'S WIRINGS
+            const listNestedParentWirings = jest.spyOn(RecipeCockpitRecipeWriter as any, 'listNestedParentWirings').mockReturnValueOnce([]);
+            expectRefused(nest(CONTACT_RECIPE, 'AccountId', CONTACT_CONTEXT), 'lookup-not-wireable');
+            listNestedParentWirings.mockRestore();
+
+            const scanRecipeObjects = RecipeCockpitRecipeWriter.scanRecipeObjects.bind(RecipeCockpitRecipeWriter);
+            jest.spyOn(RecipeCockpitRecipeWriter, 'scanRecipeObjects')
+                .mockImplementationOnce(scanRecipeObjects)
+                .mockImplementationOnce(() => []);
+
+            expectRefused(nest(CONTACT_RECIPE, 'AccountId', CONTACT_CONTEXT), 'unsupported-friend-layout');
+
+        });
+
+        test('the nested recipe generates one Account, and every lookup the insert swaps names its Id', async () => {
+
+            const result = expectApplied(nest(FRIENDS_RECIPE.slice(0, FRIENDS_RECIPE.indexOf('\n# Lead') + 1), 'AccountId', FRIENDS_CONTEXT, 'Contact', undefined, new FakerJSRecipeFakerService().getMinimumRequiredFieldsTemplate()));
+
+            const temporaryFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'nest-parent-object-'));
+            try {
+
+                const recipeFilePath = path.join(temporaryFolderPath, 'recipe.yml');
+                fs.writeFileSync(recipeFilePath, result.recipeText);
+
+                const fakerJSRecipeProcessor = new FakerJSRecipeProcessor();
+                const generatedJson = await fakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile(recipeFilePath);
+                const collectionsApiFilesByObject = fakerJSRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(generatedJson);
+
+                const accountRecords = collectionsApiFilesByObject.get('Account').records as { attributes: { referenceId: string } }[];
+                expect(accountRecords).toHaveLength(1);
+                const idsByReference = { [accountRecords[0].attributes.referenceId]: '001000000000001AAA' };
+
+                const swap = (objectApiName: string) => JSON.parse(CollectionsApiService.updateLookupReferencesInCollectionApiJson(JSON.stringify(collectionsApiFilesByObject.get(objectApiName)), idsByReference)).records as Record<string, unknown>[];
+                const contacts = swap('Contact');
+                const cases = swap('Case');
+
+                expect(contacts).toHaveLength(1);
+                expect(cases).toHaveLength(3);
+                [...contacts, ...cases].forEach(record => expect(record.AccountId).toBe('001000000000001AAA'));
+
+            } finally {
+                fs.rmSync(temporaryFolderPath, { recursive: true, force: true });
+            }
+
+        });
+
+    });
+
 });
