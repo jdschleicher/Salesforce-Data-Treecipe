@@ -30,7 +30,8 @@ import {
     RecipeCockpitMetadataDeploy
 } from './RecipeCockpitMetadataDeploy';
 import {
-    METADATA_RETRIEVE_MAX_OBJECTS,
+    METADATA_LIST_TIMEOUT_MILLISECONDS,
+    METADATA_RETRIEVE_MAX_COMPONENTS,
     METADATA_RETRIEVE_OPERATION_BY_KIND,
     METADATA_RETRIEVE_TIMEOUT_MILLISECONDS,
     MetadataRetrieveKind,
@@ -8206,7 +8207,9 @@ export class RecipeCockpitService {
         is ALWAYS asked for in the command palette, over every connected org (a retrieve only reads),
         even when the Treecipe tab has one selected; then a confirmation names what is retrieved, the
         org, where new files go and how many local files the org's version overwrites; then one
-        "sf project retrieve start" runs in project mode, cancellable. Nothing is deployed, and the
+        "sf project retrieve start --manifest" runs in project mode, cancellable. Validation rules and
+        record types are first LISTED in the org ("sf org list metadata", #401), after the prompt
+        and before the confirmation, so the confirmation and the package.xml name each one. Nothing is deployed, and the
         recipe is not regenerated: the notification offers Generate Treecipe. One retrieve per window,
         whatever its kind.
     */
@@ -8249,18 +8252,14 @@ export class RecipeCockpitService {
 
         const treeLabel = tree.customName || tree.title;
         const manyNoun = RecipeCockpitMetadataRetrieve.componentNoun(retrieveKind, 2);
-        const isWildcard = RecipeCockpitMetadataRetrieve.isWildcardKind(retrieveKind);
+        const isListed = RecipeCockpitMetadataRetrieve.isListedKind(retrieveKind);
         const refuse = (refusalText: string): false => { this.showMetadataRetrieveNotification('warning', refusalText, undefined, workspaceRoot, false); return false; };
 
-        // A WILDCARD RETRIEVE ASKS PER OBJECT: EVERY OBJECT THE CARD LISTS, ONCE, AS AN API NAME
+        // A LISTED KIND KEEPS WHAT THE ORG HOLDS FOR EVERY OBJECT THE CARD LISTS, ONCE, AS AN API NAME
         const { retrievable: objectApiNames, refused: refusedObjectApiNames } = RecipeCockpitMetadataRetrieve.partitionObjectApiNames(tree.objects.map(treeObject => treeObject.objectApiName));
 
-        if ( isWildcard && objectApiNames.length === 0 ) {
+        if ( isListed && objectApiNames.length === 0 ) {
             return refuse(`No ${manyNoun} were retrieved: no object of ${treeLabel} has an api name.`);
-        }
-
-        if ( isWildcard && objectApiNames.length > METADATA_RETRIEVE_MAX_OBJECTS ) {
-            return refuse(`No ${manyNoun} were retrieved: ${treeLabel} has ${objectApiNames.length} objects, and at most ${METADATA_RETRIEVE_MAX_OBJECTS} can be retrieved at once.`);
         }
 
         let packageDirectoryPaths: string[];
@@ -8272,13 +8271,11 @@ export class RecipeCockpitService {
             return refuse(`No ${manyNoun} were retrieved: ${this.describeThrown(projectError)}`);
         }
 
-        // WHAT A FIELD OR VALUE SET RETRIEVE NAMES, AND WHAT EVERY KIND BUT VALIDATION RULES COUNTS AS ALREADY HERE, IS READ FROM THE PROJECT NOW
+        // WHAT A FIELD OR VALUE SET RETRIEVE NAMES, AND WHAT A VALUE SET RETRIEVE COUNTS AS ALREADY HERE, IS READ FROM THE PROJECT NOW
         let manifestComponents: IMetadataDeployComponent[] = [];
         let summary: IMetadataDeploySummary | undefined;
 
-        if ( retrieveKind === 'recordTypes' ) {
-            summary = await RecipeCockpitMetadataDeploy.summarizeTreeMetadata(workspaceRoot, packageDirectoryPaths, objectApiNames.map(objectApiName => ({ objectApiName: objectApiName, fieldApiNames: [] })));
-        } else if ( retrieveKind === 'fields' ) {
+        if ( retrieveKind === 'fields' ) {
             manifestComponents = RecipeCockpitMetadataRetrieve.listCustomFieldComponents(this.listTreeDeployObjects(recipeViewModel, tree));
         } else if ( retrieveKind === 'globalValueSets' ) {
             summary = await RecipeCockpitMetadataDeploy.summarizeTreeMetadata(workspaceRoot, packageDirectoryPaths, this.listTreeDeployObjects(recipeViewModel, tree));
@@ -8293,8 +8290,6 @@ export class RecipeCockpitService {
             }
         }
 
-        const askedNames = isWildcard ? objectApiNames : manifestComponents.map(component => component.member);
-
         let orgDetail: IAuthenticatedOrgDetail | undefined;
         try {
             orgDetail = await SalesforceOrgService.promptForAuthorizedOrg(RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS[retrieveKind]);
@@ -8308,13 +8303,70 @@ export class RecipeCockpitService {
 
         // NO PARENTHESES: A NOTIFICATION ESCAPES THEM, AND THIS LABEL IS IN EVERY ONE THIS RUN SHOWS
         const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
+        const objectsText = `${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'}`;
+        let skippedListedCount = 0;
+        const describeSkipped = () => {
+            const skippedNameCount = isListed ? refusedObjectApiNames.length + skippedListedCount : 0;
+            return skippedNameCount > 0
+                ? ` Skipped ${skippedNameCount} ${skippedNameCount === 1 ? 'name that is' : 'names that are'} not an api name.`
+                : '';
+        };
+
+        if ( isListed ) {
+
+            let listArguments: string[];
+            try {
+                listArguments = RecipeCockpitMetadataRetrieve.buildListMetadataArguments(retrieveKind, orgDetail.username);
+            } catch (argumentError) {
+                return refuse(`No ${manyNoun} were retrieved: ${this.describeThrown(argumentError)}`);
+            }
+
+            const listRun = await this.runCancellableCli(
+                RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: listing ${manyNoun} in ${orgDetail.username}`),
+                listArguments,
+                METADATA_LIST_TIMEOUT_MILLISECONDS,
+                workspaceRoot,
+                SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES
+            );
+
+            // A LISTING WRITES NOTHING, SO A CANCEL OR A FAILURE HERE OFFERS NO GENERATE TREECIPE
+            if ( listRun.isCancelled ) {
+                return refuse(`The listing of ${manyNoun} in ${orgLabel} was cancelled, so nothing was retrieved.`);
+            }
+
+            const listOutcome = RecipeCockpitMetadataRetrieve.parseListMetadataOutput(retrieveKind, listRun.invocation, objectApiNames);
+
+            if ( listOutcome.kind === 'cliNotInstalled' ) {
+                return refuse(listOutcome.failureMessage);
+            }
+
+            if ( listOutcome.kind !== 'listed' ) {
+                return refuse(`No ${manyNoun} were retrieved: the ${manyNoun} ${orgLabel} holds could not be listed. ${listOutcome.failureMessage}`);
+            }
+
+            skippedListedCount = listOutcome.skippedCount;
+
+            if ( listOutcome.components.length === 0 ) {
+                const skippedText = describeSkipped();
+                this.showMetadataRetrieveNotification(skippedText ? 'warning' : 'information', `${orgLabel} holds no ${RecipeCockpitMetadataRetrieve.componentNoun(retrieveKind, 1)} for the ${objectsText} of ${treeLabel}, so nothing was retrieved.${skippedText}`, undefined, workspaceRoot, false);
+                return false;
+            }
+
+            if ( listOutcome.components.length > METADATA_RETRIEVE_MAX_COMPONENTS ) {
+                return refuse(`No ${manyNoun} were retrieved: ${orgLabel} holds ${listOutcome.components.length} for the ${objectsText} of ${treeLabel}, and one retrieve can bring at most ${METADATA_RETRIEVE_MAX_COMPONENTS}.`);
+            }
+
+            manifestComponents = listOutcome.components;
+
+        }
+
+        const askedNames = manifestComponents.map(component => component.member);
         const packageDirectoryRelativePath = path.relative(workspaceRoot, defaultPackageDirectoryPath).split(path.sep).join('/') || '.';
-        const localFileCount = retrieveKind === 'validationRules' ? RecipeCockpitMetadataRetrieve.countLocalValidationRuleFiles(workspaceRoot, packageDirectoryPaths, objectApiNames)
+        const localFileCount = RecipeCockpitMetadataRetrieve.isListedKind(retrieveKind) ? RecipeCockpitMetadataRetrieve.countLocalListedFiles(workspaceRoot, packageDirectoryPaths, retrieveKind, askedNames)
             : retrieveKind === 'fields' ? RecipeCockpitMetadataRetrieve.countLocalFieldFiles(workspaceRoot, packageDirectoryPaths, askedNames)
-            : retrieveKind === 'recordTypes' ? summary?.recordTypes.length ?? 0
             : summary?.globalValueSets.length ?? 0;
-        const confirmationTitle = isWildcard
-            ? `Retrieve the ${manyNoun} of ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} of ${this.toSingleLine(treeLabel)} from ${this.toSingleLine(orgLabel)}?`
+        const confirmationTitle = isListed
+            ? `Retrieve ${RecipeCockpitMetadataRetrieve.describeComponents(retrieveKind, askedNames.length)} of ${objectsText} of ${this.toSingleLine(treeLabel)} from ${this.toSingleLine(orgLabel)}?`
             : `Retrieve ${RecipeCockpitMetadataRetrieve.describeComponents(retrieveKind, askedNames.length)} of ${this.toSingleLine(treeLabel)} from ${this.toSingleLine(orgLabel)}?`;
 
         const confirmation = await this.confirmInPanel(
@@ -8338,17 +8390,13 @@ export class RecipeCockpitService {
 
         let retrieveArguments: string[];
         try {
-            if ( isWildcard ) {
-                retrieveArguments = RecipeCockpitMetadataRetrieve.buildWildcardRetrieveArguments(retrieveKind, objectApiNames, orgDetail.username);
-            } else {
-                const packageXml = RecipeCockpitMetadataDeploy.buildPackageXml(manifestComponents, this.readSourceApiVersion(workspaceRoot), 'nothing was retrieved');
-                const packageXmlFilePath = RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(workspaceRoot, orgDetail.username, METADATA_RETRIEVE_OPERATION_BY_KIND[retrieveKind], new Date());
-                const writtenFilePath = packageXmlFilePath ? RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, packageXmlFilePath, packageXml) : undefined;
-                if ( !writtenFilePath ) {
-                    return refuse(`No ${manyNoun} were retrieved: the package.xml could not be written under treecipe/${ORG_OPERATIONS_FOLDER_NAME} in this workspace.`);
-                }
-                retrieveArguments = RecipeCockpitMetadataRetrieve.buildManifestRetrieveArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, writtenFilePath), orgDetail.username);
+            const packageXml = RecipeCockpitMetadataRetrieve.buildRetrievePackageXml(manifestComponents, this.readSourceApiVersion(workspaceRoot));
+            const packageXmlFilePath = RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(workspaceRoot, orgDetail.username, METADATA_RETRIEVE_OPERATION_BY_KIND[retrieveKind], new Date());
+            const writtenFilePath = packageXmlFilePath ? RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, packageXmlFilePath, packageXml) : undefined;
+            if ( !writtenFilePath ) {
+                return refuse(`No ${manyNoun} were retrieved: the package.xml could not be written under treecipe/${ORG_OPERATIONS_FOLDER_NAME} in this workspace.`);
             }
+            retrieveArguments = RecipeCockpitMetadataRetrieve.buildManifestRetrieveArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, writtenFilePath), orgDetail.username);
         } catch (argumentError) {
             return refuse(`No ${manyNoun} were retrieved: ${this.describeThrown(argumentError)}`);
         }
@@ -8372,15 +8420,13 @@ export class RecipeCockpitService {
         const retrieveOutputFilePath = retrieveRun.invocation.spawnError || retrieveRun.invocation.isOutputTooLarge
             ? undefined
             : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, METADATA_RETRIEVE_OPERATION_BY_KIND[retrieveKind], retrieveRun.invocation, new Date(), retrievePayload);
-        const refusedText = isWildcard && refusedObjectApiNames.length > 0
-            ? ` Skipped ${refusedObjectApiNames.length} ${refusedObjectApiNames.length === 1 ? 'name that is' : 'names that are'} not an api name.`
-            : '';
+        const refusedText = describeSkipped();
 
         switch ( retrieveOutcome.kind ) {
 
             case 'retrieved': {
                 const { componentCount, namesWithComponents, failureMessages } = retrieveOutcome;
-                const retrievedText = this.describeRetrieved(retrieveKind, componentCount, namesWithComponents, askedNames, treeLabel, orgLabel);
+                const retrievedText = this.describeRetrieved(retrieveKind, componentCount, namesWithComponents, askedNames, objectApiNames, treeLabel, orgLabel);
                 if ( failureMessages.length > 0 ) {
                     this.showMetadataRetrieveNotification('warning', `${retrievedText} ${failureMessages.length} could not be retrieved: ${RecipeCockpitMetadataDeploy.describeCappedList(failureMessages)}.${refusedText}`, retrieveOutputFilePath, workspaceRoot, componentCount > 0);
                     return true;
@@ -8409,16 +8455,18 @@ export class RecipeCockpitService {
                                         componentCount: number,
                                         namesWithComponents: string[],
                                         askedNames: string[],
+                                        objectApiNames: string[],
                                         treeLabel: string,
                                         orgLabel: string): string {
 
-        const objectsText = `${askedNames.length} ${askedNames.length === 1 ? 'object' : 'objects'}`;
-
-        if ( RecipeCockpitMetadataRetrieve.isWildcardKind(retrieveKind) ) {
-            const oneNoun = RecipeCockpitMetadataRetrieve.componentNoun(retrieveKind, 1);
+        // A LISTED KIND IS REPORTED PER OBJECT: THE TREE'S OBJECTS, IN ITS ORDER, THAT A RETRIEVED "<Object>.<Name>" NAMES
+        if ( RecipeCockpitMetadataRetrieve.isListedKind(retrieveKind) ) {
+            const objectsText = `${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'}`;
+            const lowerObjectNamesWithComponents = new Set(namesWithComponents.map(member => member.split('.')[0].toLowerCase()));
+            const objectsWithComponents = objectApiNames.filter(objectApiName => lowerObjectNamesWithComponents.has(objectApiName.toLowerCase()));
             return componentCount === 0
-                ? `${orgLabel} holds no ${oneNoun} for the ${objectsText} of ${treeLabel}, so nothing was written.`
-                : `Retrieved ${RecipeCockpitMetadataRetrieve.describeComponents(retrieveKind, componentCount)} for ${namesWithComponents.length} of ${objectsText} of ${treeLabel} from ${orgLabel}: ${namesWithComponents.join(', ')}. ${retrieveKind === 'validationRules' ? 'Generate Treecipe applies them to the recipe.' : 'Generate Treecipe can then use them in the recipe.'}`;
+                ? `${orgLabel} returned none of the ${RecipeCockpitMetadataRetrieve.describeComponents(retrieveKind, askedNames.length)} it listed for the ${objectsText} of ${treeLabel}, so nothing was written.`
+                : `Retrieved ${RecipeCockpitMetadataRetrieve.describeComponents(retrieveKind, componentCount)} for ${objectsWithComponents.length} of ${objectsText} of ${treeLabel} from ${orgLabel}: ${objectsWithComponents.join(', ')}. ${retrieveKind === 'validationRules' ? 'Generate Treecipe applies them to the recipe.' : 'Generate Treecipe can then use them in the recipe.'}`;
         }
 
         return componentCount === 0
@@ -13024,9 +13072,8 @@ ${this.buildPaletteCustomProperties()}
         padding: 0;
         line-height: 1;
     }
-    .picklistToggle, .picklistToggleSpacer { box-sizing: border-box; flex: none; width: 7.5rem; }
-    .picklistToggle { display: inline-flex; align-items: center; justify-content: center; padding: 0.4rem 0.6rem; line-height: 1; white-space: nowrap; }
-    .picklistToggleSpacer { display: inline-block; height: 1px; }
+    .picklistSection { margin: 0.2rem 0 0 0; }
+    .picklistToggle { box-sizing: border-box; flex: none; width: 7.5rem; display: inline-flex; align-items: center; justify-content: center; padding: 0.4rem 0.6rem; line-height: 1; white-space: nowrap; }
     .toggleGlyph { display: block; width: 1.2rem; height: 1.2rem; transition: transform ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease; }
     [aria-expanded="true"] > .toggleGlyph { transform: rotate(90deg); }
     .noMotion > .toggleGlyph { transition: none; }
@@ -15913,7 +15960,8 @@ ${this.buildPaletteCustomProperties()}
         if (!fieldState.editorElement) {
             fieldState.editorElement = createElement('div', 'fieldEditor hidden');
             fieldState.editorElement.setAttribute('role', 'group');
-            fieldState.rowElement.appendChild(fieldState.editorElement);
+            // THE EDITOR EDITS THE FAKER VALUE, SO IT OPENS UNDER IT, ABOVE A PICKLIST'S SHOW VALUES (#398)
+            fieldState.rowElement.insertBefore(fieldState.editorElement, fieldState.picklistSectionElement);
         }
 
         const editorElement = fieldState.editorElement;
@@ -16029,6 +16077,7 @@ ${this.buildPaletteCustomProperties()}
             fixedValueBadgeElement: null,
             fixedValueElement: null,
             expressionElement: null,
+            picklistSectionElement: null,
             validationRuleElement: null,
             isValidationRuleApplied: true,
             recordTypeDeveloperNames: null,
@@ -16138,45 +16187,6 @@ ${this.buildPaletteCustomProperties()}
             fieldHeaderElement.appendChild(buildFieldFixedValueElement(treeObjectState, fieldState));
         }
 
-        let setPicklistExpanded = null;
-
-        if (field.isPicklist) {
-
-            const picklistToggleElement = createButton('secondary', 'picklistToggle', PICKLIST_SHOW_VALUES_LABEL);
-            let picklistValuesElement = null;
-
-            setPicklistExpanded = function (isExpanding, isAnimated) {
-                if (isExpanding && !picklistValuesElement) {
-                    picklistValuesElement = createElement('div', 'picklistValues hidden');
-                    fieldRowElement.appendChild(picklistValuesElement);
-                    requestPicklistValues(treeObjectState.object.objectApiName, field.fieldApiName, picklistValuesElement);
-                }
-                if (picklistValuesElement) {
-                    setShownWithMotion(picklistValuesElement, isExpanding, isAnimated);
-                }
-                fieldState.isPicklistExpanded = isExpanding;
-                picklistToggleElement.textContent = isExpanding ? PICKLIST_HIDE_VALUES_LABEL : PICKLIST_SHOW_VALUES_LABEL;
-                picklistToggleElement.setAttribute('aria-expanded', isExpanding ? 'true' : 'false');
-                picklistToggleElement.setAttribute('aria-label', (isExpanding ? PICKLIST_HIDE_VALUES_LABEL : PICKLIST_SHOW_VALUES_LABEL) + ' of ' + field.fieldApiName);
-            };
-
-            // THE NAME STARTS WITH THE TEXT ON THE BUTTON, SO A VOICE COMMAND OF WHAT IS ON SCREEN REACHES IT
-            picklistToggleElement.setAttribute('aria-label', PICKLIST_SHOW_VALUES_LABEL + ' of ' + field.fieldApiName);
-            picklistToggleElement.setAttribute('aria-expanded', 'false');
-            picklistToggleElement.addEventListener('click', function () {
-                setPicklistExpanded(!fieldState.isPicklistExpanded, true);
-                savePanelPlace();
-            });
-
-            fieldHeaderElement.appendChild(picklistToggleElement);
-
-        } else {
-            // A ROW WITHOUT THE BUTTON KEEPS ITS SLOT, SO EVERY FIELD NAME OF AN OBJECT LINES UP
-            const toggleSpacerElement = createElement('span', 'picklistToggleSpacer');
-            toggleSpacerElement.setAttribute('aria-hidden', 'true');
-            fieldHeaderElement.appendChild(toggleSpacerElement);
-        }
-
         fieldHeaderElement.appendChild(createElement('span', 'treeFieldName', field.fieldApiName));
 
         const referencedOwnerState = findReferencedOwnerState(treeObjectState, fieldState);
@@ -16249,6 +16259,44 @@ ${this.buildPaletteCustomProperties()}
 
         fieldState.fixedValueElement = createElement('pre', 'fixedValue hidden');
         fieldRowElement.appendChild(fieldState.fixedValueElement);
+
+        // A PICKLIST'S SHOW VALUES SITS UNDER ITS FAKER VALUE, NOT IN THE HEADER, SO NO ROW KEEPS A SLOT FOR IT (#398)
+        let setPicklistExpanded = null;
+
+        if (field.isPicklist) {
+
+            const picklistSectionElement = createElement('div', 'picklistSection');
+            const picklistToggleElement = createButton('secondary', 'picklistToggle', PICKLIST_SHOW_VALUES_LABEL);
+            let picklistValuesElement = null;
+
+            setPicklistExpanded = function (isExpanding, isAnimated) {
+                if (isExpanding && !picklistValuesElement) {
+                    picklistValuesElement = createElement('div', 'picklistValues hidden');
+                    picklistSectionElement.appendChild(picklistValuesElement);
+                    requestPicklistValues(treeObjectState.object.objectApiName, field.fieldApiName, picklistValuesElement);
+                }
+                if (picklistValuesElement) {
+                    setShownWithMotion(picklistValuesElement, isExpanding, isAnimated);
+                }
+                fieldState.isPicklistExpanded = isExpanding;
+                picklistToggleElement.textContent = isExpanding ? PICKLIST_HIDE_VALUES_LABEL : PICKLIST_SHOW_VALUES_LABEL;
+                picklistToggleElement.setAttribute('aria-expanded', isExpanding ? 'true' : 'false');
+                picklistToggleElement.setAttribute('aria-label', (isExpanding ? PICKLIST_HIDE_VALUES_LABEL : PICKLIST_SHOW_VALUES_LABEL) + ' of ' + field.fieldApiName);
+            };
+
+            // THE NAME STARTS WITH THE TEXT ON THE BUTTON, SO A VOICE COMMAND OF WHAT IS ON SCREEN REACHES IT
+            picklistToggleElement.setAttribute('aria-label', PICKLIST_SHOW_VALUES_LABEL + ' of ' + field.fieldApiName);
+            picklistToggleElement.setAttribute('aria-expanded', 'false');
+            picklistToggleElement.addEventListener('click', function () {
+                setPicklistExpanded(!fieldState.isPicklistExpanded, true);
+                savePanelPlace();
+            });
+
+            picklistSectionElement.appendChild(picklistToggleElement);
+            fieldRowElement.appendChild(picklistSectionElement);
+            fieldState.picklistSectionElement = picklistSectionElement;
+
+        }
 
         // A ROW BUILT FROM A RESTORED PLACE OPENS ONLY ONCE IT IS WHOLE: OPENED EARLIER, ITS VALUES WERE
         // APPENDED BEFORE ITS HEADER AND DREW ABOVE THE FIELD NAME (#277). IT STILL ASKS THE HOST AGAIN

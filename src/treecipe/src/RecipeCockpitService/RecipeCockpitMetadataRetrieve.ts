@@ -1,11 +1,8 @@
-import * as fs from 'fs';
-import * as path from 'path';
 
 import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
-import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
-import { IMetadataDeployComponent, IMetadataDeployObject, IMetadataDeploySummary, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
+import { IMetadataDeployComponent, IMetadataDeployObject, IMetadataDeploySummary, METADATA_RETRIEVE_PACKAGE_XML_TYPES, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
 
 /*
     The Troubleshooting tab's retrieves (#326, #382): the argv that brings one relationship tree's
@@ -14,16 +11,19 @@ import { IMetadataDeployComponent, IMetadataDeployObject, IMetadataDeploySummary
     back. It RETRIEVES and nothing else: no argv here deploys. It imports no vscode: the cockpit owns
     the org prompt, the confirmation, the progress and the notification.
 
-    Validation rules and record types are fetched per OBJECT with a wildcard, since the point is to
-    bring what the project does not hold yet and so cannot name. Fields and value sets are named one
-    by one in a package.xml (--manifest): a tree can hold hundreds, and one --metadata each would pass
-    the 8,191 characters cmd.exe allows on Windows. Every name comes from the HOST's model of the tree
-    or the project, never from a panel message, and reaches an argv or a manifest only as an api name.
+    Every kind is named one by one in a package.xml (--manifest): a tree can hold hundreds, and one
+    --metadata each would pass the 8,191 characters cmd.exe allows on Windows. Validation rules and
+    record types are LISTED in the org first ("sf org list metadata", #401), since the point is to
+    bring what the project does not hold yet and so cannot name: a "<Type>:<Object>.*" wildcard is no
+    answer, because the Metadata API expands "*" only as a whole member name and these are child
+    types of CustomObject. Every name comes from the HOST's model of the tree, the project or the
+    org's listing, never from a panel message, and reaches an argv or a manifest only as an api name.
 */
 
 export type MetadataRetrieveKind = 'validationRules' | 'fields' | 'recordTypes' | 'globalValueSets';
 
-export type MetadataRetrieveWildcardKind = Extract<MetadataRetrieveKind, 'validationRules' | 'recordTypes'>;
+// THE KINDS WHOSE COMPONENTS ARE LISTED IN THE ORG BEFORE THEY ARE RETRIEVED (#401)
+export type MetadataRetrieveListedKind = Extract<MetadataRetrieveKind, 'validationRules' | 'recordTypes'>;
 
 export type MetadataRetrieveManifestKind = Extract<MetadataRetrieveKind, 'fields' | 'globalValueSets'>;
 
@@ -53,18 +53,21 @@ export const VALIDATION_RULE_FOLDER_NAME = 'validationRules';
 
 const FIELD_FOLDER_NAME = 'fields';
 const FIELD_FILE_SUFFIX = '.field-meta.xml';
+const RECORD_TYPE_FOLDER_NAME = 'recordTypes';
+const RECORD_TYPE_FILE_SUFFIX = '.recordType-meta.xml';
 
-// HOW DEEP UNDER A PACKAGE DIRECTORY AN objects FOLDER IS LOOKED FOR: force-app/main/default/objects IS THREE
-export const VALIDATION_RULE_OBJECTS_SEARCH_DEPTH = 6;
-
-/*
-    One --metadata per object for a wildcard retrieve, so the command line grows with the tree; on
-    Windows the CLI runs through cmd.exe, which refuses a line past 8,191 characters. Eighty entries of
-    at most "--metadata ValidationRule:<80 characters>.*" stay under it.
-*/
-export const METADATA_RETRIEVE_MAX_OBJECTS = 80;
+// WHERE A LISTED KIND'S FILES LIVE UNDER AN OBJECT FOLDER, FOR COUNTING WHAT A RETRIEVE OVERWRITES
+const LISTED_KIND_FILES: Readonly<Record<MetadataRetrieveListedKind, { folderName: string; fileSuffix: string }>> = Object.freeze({
+    validationRules: { folderName: VALIDATION_RULE_FOLDER_NAME, fileSuffix: VALIDATION_RULE_FILE_SUFFIX },
+    recordTypes: { folderName: RECORD_TYPE_FOLDER_NAME, fileSuffix: RECORD_TYPE_FILE_SUFFIX }
+});
 
 export const METADATA_RETRIEVE_TIMEOUT_MILLISECONDS = 10 * 60 * 1000;
+
+export const METADATA_LIST_TIMEOUT_MILLISECONDS = 5 * 60 * 1000;
+
+// THE METADATA API REFUSES A RETRIEVE OF MORE FILES THAN THIS, SO A LONGER LISTING IS REFUSED BEFORE THE CONFIRMATION
+export const METADATA_RETRIEVE_MAX_COMPONENTS = 10000;
 
 // WHAT EACH KIND IS CALLED IN WHAT THE READER SEES: ONE, MANY, ITS FILES, WHAT "THE SAME" ONE IS, AND WHAT GENERATE TREECIPE DOES WITH THEM
 const RETRIEVE_WORDS: Readonly<Record<MetadataRetrieveKind, { one: string; many: string; fileNoun: string; newFileNoun: string; scope: string; sameNoun: string; afterwards: string }>> = Object.freeze({
@@ -87,6 +90,18 @@ export type MetadataRetrieveOutcome =
     | { kind: 'unconfirmed'; failureMessage: string }
     | { kind: 'failed'; failureMessage: string };
 
+export type MetadataListOutcome =
+    | {
+        kind: 'listed';
+        // THE ORG'S COMPONENTS OF THE TREE'S OBJECTS, ONCE EACH, SORTED WITH "<", SPELLED AS THE ORG SPELLS THEM
+        components: IMetadataDeployComponent[];
+        // ENTRIES OF THE KIND'S TYPE LEFT OUT: A FULL NAME THAT IS NOT A STRING, OR ONE OF A TREE OBJECT THAT IS NOT AN API NAME IN THE TYPE'S SHAPE
+        skippedCount: number;
+    }
+    | { kind: 'cliNotInstalled'; failureMessage: string }
+    | { kind: 'unconfirmed'; failureMessage: string }
+    | { kind: 'failed'; failureMessage: string };
+
 export class RecipeCockpitMetadataRetrieve {
 
     static componentNoun(retrieveKind: MetadataRetrieveKind, count: number): string {
@@ -97,7 +112,7 @@ export class RecipeCockpitMetadataRetrieve {
         return `${count} ${this.componentNoun(retrieveKind, count)}`;
     }
 
-    static isWildcardKind(retrieveKind: MetadataRetrieveKind): retrieveKind is MetadataRetrieveWildcardKind {
+    static isListedKind(retrieveKind: MetadataRetrieveKind): retrieveKind is MetadataRetrieveListedKind {
         return retrieveKind === 'validationRules' || retrieveKind === 'recordTypes';
     }
 
@@ -114,32 +129,85 @@ export class RecipeCockpitMetadataRetrieve {
 
     }
 
-    static buildWildcardRetrieveArguments(retrieveKind: MetadataRetrieveWildcardKind, objectApiNames: readonly string[], orgUsername: string): string[] {
+    // THE ORG'S COMPONENTS OF ONE TYPE, EVERY OBJECT'S: THE LISTING HAS NO PER-OBJECT FILTER, SO parseListMetadataOutput KEEPS THE TREE'S
+    static buildListMetadataArguments(retrieveKind: MetadataRetrieveListedKind, orgUsername: string): string[] {
 
-        const nothingRetrieved = `so no ${RETRIEVE_WORDS[retrieveKind].one} was retrieved`;
-
-        if ( objectApiNames.length === 0 ) {
-            throw new Error(`No object was named, ${nothingRetrieved}.`);
-        }
-
-        if ( objectApiNames.length > METADATA_RETRIEVE_MAX_OBJECTS ) {
-            throw new Error(`${objectApiNames.length} objects were named, and at most ${METADATA_RETRIEVE_MAX_OBJECTS} can be retrieved at once.`);
-        }
-
-        objectApiNames.forEach(objectApiName => {
-            if ( !SalesforceApiName.isApiName(objectApiName) ) {
-                throw new Error(`"${String(objectApiName).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ')}" is not a Salesforce api name, ${nothingRetrieved}.`);
-            }
-        });
         PicklistDependencyCheckService.assertValidTargetOrgIdentifier(orgUsername);
 
         return [
-            'project', 'retrieve', 'start',
+            'org', 'list', 'metadata',
             '--json',
             '--target-org', orgUsername,
-            ...objectApiNames.flatMap(objectApiName => ['--metadata', `${METADATA_RETRIEVE_TYPE_BY_KIND[retrieveKind]}:${objectApiName}.*`])
+            '--metadata-type', METADATA_RETRIEVE_TYPE_BY_KIND[retrieveKind]
         ];
 
+    }
+
+    /*
+        The listing's answer, type-checked: listed only on status 0 with a result array (one entry
+        not wrapped in an array is read as one entry, as the Metadata API answers a single
+        component). An entry of the kind's type is kept when its full name is "<Object>.<Name>", both
+        api names, and its object is one of the tree's, case-insensitively. An entry of a tree object
+        that is not in that shape, or whose full name is not a string, is left out and counted; another
+        object's is ignored, so the count is about this tree. The listing is never read as "none"
+        unless the org said so.
+    */
+    static parseListMetadataOutput(retrieveKind: MetadataRetrieveListedKind,
+                                    invocationResult: ISalesforceCliInvocationResult,
+                                    objectApiNames: readonly string[],
+                                    payload: Record<string, unknown> | undefined = ScratchOrgService.readCliJsonPayload(invocationResult)): MetadataListOutcome {
+
+        const invocationFailure = this.readInvocationFailure(retrieveKind, invocationResult, `which ${RETRIEVE_WORDS[retrieveKind].many} the org holds is unknown`);
+        if ( invocationFailure ) {
+            return invocationFailure;
+        }
+
+        const rawResult = payload?.result;
+        const entries = Array.isArray(rawResult) ? rawResult
+            : rawResult !== null && typeof rawResult === 'object' ? [rawResult]
+            : undefined;
+
+        if ( !entries || payload?.status !== 0 ) {
+            return { kind: 'failed', failureMessage: ScratchOrgService.buildCliFailureDetail(payload, invocationResult) };
+        }
+
+        const metadataType = METADATA_RETRIEVE_TYPE_BY_KIND[retrieveKind];
+        const lowerObjectApiNames = new Set(objectApiNames.map(objectApiName => objectApiName.toLowerCase()));
+        const membersByLowerName = new Map<string, string>();
+        let skippedCount = 0;
+
+        entries
+            .filter((entry): entry is Record<string, unknown> => entry !== null && typeof entry === 'object' && !Array.isArray(entry))
+            .filter(entry => entry.type === undefined || entry.type === metadataType)
+            .forEach(entry => {
+
+                if ( typeof entry.fullName === 'string' && !lowerObjectApiNames.has(entry.fullName.split('.')[0].toLowerCase()) ) {
+                    return;
+                }
+
+                if ( !RecipeCockpitMetadataDeploy.isDeployableMember(metadataType, entry.fullName) ) {
+                    skippedCount++;
+                    return;
+                }
+
+                const member = entry.fullName;
+                if ( !membersByLowerName.has(member.toLowerCase()) ) {
+                    membersByLowerName.set(member.toLowerCase(), member);
+                }
+
+            });
+
+        return {
+            kind: 'listed',
+            components: [...membersByLowerName.values()].sort().map(member => ({ type: metadataType, member: member })),
+            skippedCount: skippedCount
+        };
+
+    }
+
+    // THE PACKAGE.XML A RETRIEVE NAMES ITS COMPONENTS IN: THE DEPLOY'S BUILDER, ADMITTING THE TYPES THE RETRIEVES ASK FOR
+    static buildRetrievePackageXml(components: readonly IMetadataDeployComponent[], apiVersion?: string): string {
+        return RecipeCockpitMetadataDeploy.buildPackageXml(components, apiVersion, 'nothing was retrieved', METADATA_RETRIEVE_PACKAGE_XML_TYPES);
     }
 
     static buildManifestRetrieveArguments(manifestRelativePath: string, orgUsername: string): string[] {
@@ -199,70 +267,14 @@ export class RecipeCockpitMetadataRetrieve {
     }
 
     /*
-        How many validation rule files the project already holds for these objects: every
-        <Object>/validationRules/*.validationRule-meta.xml under an objects folder of a package
-        directory, the object matched case-insensitively. A retrieve writes the org's version over
-        each one the org also holds. Links are not followed and nothing outside the workspace is read.
+        How many of these listed "<Object>.<Name>" members already have a file in the project: the
+        org's version is written over each one. A validation rule's file is
+        <Object>/validationRules/<Name>.validationRule-meta.xml, a record type's
+        <Object>/recordTypes/<Name>.recordType-meta.xml, under any package directory's objects folder.
     */
-    static countLocalValidationRuleFiles(workspaceRoot: string, packageDirectoryPaths: readonly string[], objectApiNames: readonly string[]): number {
-
-        const lowerObjectNames = new Set(objectApiNames.map(objectApiName => objectApiName.toLowerCase()));
-        const countedFolderPaths = new Set<string>();
-        let fileCount = 0;
-
-        const listDirectories = (folderPath: string): string[] => {
-            try {
-                return fs.readdirSync(folderPath, { withFileTypes: true })
-                    .filter(entry => entry.isDirectory())
-                    .map(entry => entry.name);
-            } catch {
-                return [];
-            }
-        };
-
-        const countRuleFiles = (ruleFolderPath: string) => {
-            if ( countedFolderPaths.has(ruleFolderPath) ) {
-                return;
-            }
-            countedFolderPaths.add(ruleFolderPath);
-            try {
-                fileCount += fs.readdirSync(ruleFolderPath, { withFileTypes: true })
-                    .filter(entry => entry.isFile() && entry.name.endsWith(VALIDATION_RULE_FILE_SUFFIX))
-                    .length;
-            } catch {
-                // A FOLDER THAT CANNOT BE LISTED HOLDS NOTHING THE RETRIEVE WOULD BE SAID TO OVERWRITE
-            }
-        };
-
-        const walk = (folderPath: string, depth: number) => {
-
-            listDirectories(folderPath).forEach(folderName => {
-
-                const childPath = path.join(folderPath, folderName);
-
-                if ( folderName === 'objects' ) {
-                    listDirectories(childPath)
-                        .filter(objectFolderName => lowerObjectNames.has(objectFolderName.toLowerCase()))
-                        .forEach(objectFolderName => countRuleFiles(path.join(childPath, objectFolderName, VALIDATION_RULE_FOLDER_NAME)));
-                    return;
-                }
-
-                if ( depth < VALIDATION_RULE_OBJECTS_SEARCH_DEPTH ) {
-                    walk(childPath, depth + 1);
-                }
-
-            });
-
-        };
-
-        new Set(packageDirectoryPaths.map(packageDirectoryPath => path.resolve(workspaceRoot, packageDirectoryPath))).forEach(packageDirectoryPath => {
-            if ( SfdxProjectService.isPathContainedInWorkspace(packageDirectoryPath, workspaceRoot) ) {
-                walk(packageDirectoryPath, 1);
-            }
-        });
-
-        return fileCount;
-
+    static countLocalListedFiles(workspaceRoot: string, packageDirectoryPaths: readonly string[], retrieveKind: MetadataRetrieveListedKind, members: readonly string[]): number {
+        const { folderName, fileSuffix } = LISTED_KIND_FILES[retrieveKind];
+        return this.countLocalObjectChildFiles(workspaceRoot, packageDirectoryPaths, members, folderName, fileSuffix);
     }
 
     /*
@@ -273,28 +285,38 @@ export class RecipeCockpitMetadataRetrieve {
         not a file, so this counts what the summary counts.
     */
     static countLocalFieldFiles(workspaceRoot: string, packageDirectoryPaths: readonly string[], fieldMembers: readonly string[]): number {
+        return this.countLocalObjectChildFiles(workspaceRoot, packageDirectoryPaths, fieldMembers, FIELD_FOLDER_NAME, FIELD_FILE_SUFFIX);
+    }
 
-        const lowerFieldApiNamesByObject = new Map<string, Set<string>>();
-        fieldMembers.forEach(member => {
-            const [objectApiName, fieldApiName] = member.split('.');
-            if ( objectApiName && fieldApiName ) {
-                lowerFieldApiNamesByObject.set(objectApiName, ( lowerFieldApiNamesByObject.get(objectApiName) ?? new Set<string>() ).add(fieldApiName.toLowerCase()));
+    private static countLocalObjectChildFiles(workspaceRoot: string,
+                                                packageDirectoryPaths: readonly string[],
+                                                members: readonly string[],
+                                                folderName: string,
+                                                fileSuffix: string): number {
+
+        // KEYED BY THE LOWER-CASED OBJECT NAME, SO "Account.X" AND "account.Y" READ ONE OBJECT FOLDER
+        const lowerChildNamesByObject = new Map<string, Set<string>>();
+        members.forEach(member => {
+            const [objectApiName, childName] = member.split('.');
+            if ( objectApiName && childName ) {
+                const lowerObjectApiName = objectApiName.toLowerCase();
+                lowerChildNamesByObject.set(lowerObjectApiName, ( lowerChildNamesByObject.get(lowerObjectApiName) ?? new Set<string>() ).add(childName.toLowerCase()));
             }
         });
 
-        const objectFolderPathsByObject = RecipeCockpitMetadataDeploy.findObjectFolderPaths(workspaceRoot, packageDirectoryPaths, [...lowerFieldApiNamesByObject.keys()]);
-        const lowerFileSuffix = FIELD_FILE_SUFFIX.toLowerCase();
+        const objectFolderPathsByObject = RecipeCockpitMetadataDeploy.findObjectFolderPaths(workspaceRoot, packageDirectoryPaths, [...lowerChildNamesByObject.keys()]);
+        const lowerFileSuffix = fileSuffix.toLowerCase();
         let fileCount = 0;
 
-        lowerFieldApiNamesByObject.forEach((lowerFieldApiNames, objectApiName) => {
-            const heldLowerFieldApiNames = new Set<string>();
+        lowerChildNamesByObject.forEach((lowerChildNames, objectApiName) => {
+            const heldLowerChildNames = new Set<string>();
             ( objectFolderPathsByObject.get(objectApiName) ?? [] ).forEach(objectFolderPath => {
-                RecipeCockpitMetadataDeploy.listSubfolderEntries(objectFolderPath, FIELD_FOLDER_NAME)
+                RecipeCockpitMetadataDeploy.listSubfolderEntries(objectFolderPath, folderName)
                     .filter(entry => entry.isFile() && entry.name.toLowerCase().endsWith(lowerFileSuffix))
-                    .forEach(entry => heldLowerFieldApiNames.add(entry.name.toLowerCase().slice(0, -lowerFileSuffix.length)));
+                    .forEach(entry => heldLowerChildNames.add(entry.name.toLowerCase().slice(0, -lowerFileSuffix.length)));
             });
-            lowerFieldApiNames.forEach(lowerFieldApiName => {
-                if ( heldLowerFieldApiNames.has(lowerFieldApiName) ) {
+            lowerChildNames.forEach(lowerChildName => {
+                if ( heldLowerChildNames.has(lowerChildName) ) {
                     fileCount++;
                 }
             });
@@ -306,9 +328,8 @@ export class RecipeCockpitMetadataRetrieve {
 
     /*
         The retrieve's answer, type-checked: it came back only on status 0 with result.success exactly
-        true. Each file of the kind's type is counted under the name it was asked for,
-        case-insensitively: for a wildcard retrieve the object its "<Object>.<Name>" full name names,
-        for a manifest retrieve the field or value set it is. A file whose
+        true. Each file of the kind's type is counted under the member it was asked for,
+        case-insensitively. A file whose
         state is Failed or whose problemType is Error is a failure, named by what the CLI said. A file
         for a name that was not asked for is not counted.
     */
@@ -317,20 +338,9 @@ export class RecipeCockpitMetadataRetrieve {
                                 askedNames: readonly string[],
                                 payload: Record<string, unknown> | undefined = ScratchOrgService.readCliJsonPayload(invocationResult)): MetadataRetrieveOutcome {
 
-        const words = RETRIEVE_WORDS[retrieveKind];
-
-        if ( invocationResult.spawnError ) {
-            return invocationResult.spawnError.code === 'ENOENT'
-                ? { kind: 'cliNotInstalled', failureMessage: this.buildCliRequiredMessage(retrieveKind) }
-                : { kind: 'failed', failureMessage: `The Salesforce CLI could not be started: ${invocationResult.spawnError.message}` };
-        }
-
-        if ( invocationResult.isOutputTooLarge ) {
-            return { kind: 'unconfirmed', failureMessage: `The Salesforce CLI's answer was too large to read, so which ${words.many} were retrieved is unknown.` };
-        }
-
-        if ( invocationResult.timedOut ) {
-            return { kind: 'unconfirmed', failureMessage: `The retrieve did not finish in time and was stopped, so which ${words.many} were retrieved is unknown.` };
+        const invocationFailure = this.readInvocationFailure(retrieveKind, invocationResult, `which ${RETRIEVE_WORDS[retrieveKind].many} were retrieved is unknown`, 'The retrieve');
+        if ( invocationFailure ) {
+            return invocationFailure;
         }
 
         const result = payload?.result !== null && typeof payload?.result === 'object' && !Array.isArray(payload?.result)
@@ -362,7 +372,7 @@ export class RecipeCockpitMetadataRetrieve {
                 return;
             }
 
-            const askedName = askedNameByLowerName.get(( this.isWildcardKind(retrieveKind) ? fullName.split('.')[0] : fullName ).toLowerCase());
+            const askedName = askedNameByLowerName.get(fullName.toLowerCase());
             if ( !askedName ) {
                 return;
             }
@@ -381,6 +391,30 @@ export class RecipeCockpitMetadataRetrieve {
 
     }
 
+    // A CLI THAT DID NOT START, OUTGREW ITS BUFFER OR TIMED OUT: undefined WHEN IT RAN AND ANSWERED
+    private static readInvocationFailure(retrieveKind: MetadataRetrieveKind,
+                                            invocationResult: ISalesforceCliInvocationResult,
+                                            unknownClause: string,
+                                            runNoun: string = 'The listing'): Exclude<MetadataListOutcome, { kind: 'listed' }> | undefined {
+
+        if ( invocationResult.spawnError ) {
+            return invocationResult.spawnError.code === 'ENOENT'
+                ? { kind: 'cliNotInstalled', failureMessage: this.buildCliRequiredMessage(retrieveKind) }
+                : { kind: 'failed', failureMessage: `The Salesforce CLI could not be started: ${invocationResult.spawnError.message}` };
+        }
+
+        if ( invocationResult.isOutputTooLarge ) {
+            return { kind: 'unconfirmed', failureMessage: `The Salesforce CLI's answer was too large to read, so ${unknownClause}.` };
+        }
+
+        if ( invocationResult.timedOut ) {
+            return { kind: 'unconfirmed', failureMessage: `${runNoun} did not finish in time and was stopped, so ${unknownClause}.` };
+        }
+
+        return undefined;
+
+    }
+
     // THE CONFIRMATION'S DETAIL, EACH VALUE ON ONE LINE AND WITH NO PARENTHESES OF ITS OWN, SINCE THE CALLER ESCAPES IT FOR A NOTIFICATION
     static buildConfirmationDetail(retrieveKind: MetadataRetrieveKind,
                                     treeLabel: string,
@@ -391,9 +425,7 @@ export class RecipeCockpitMetadataRetrieve {
 
         const words = RETRIEVE_WORDS[retrieveKind];
         const toSingleLine = (text: string) => String(text).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');
-        const askedLine = this.isWildcardKind(retrieveKind)
-            ? `${askedNames.length} ${askedNames.length === 1 ? 'object' : 'objects'}: ${askedNames.join(', ')}`
-            : `${this.describeComponents(retrieveKind, askedNames.length)}: ${RecipeCockpitMetadataDeploy.describeCappedList(askedNames)}`;
+        const askedLine = `${this.describeComponents(retrieveKind, askedNames.length)}: ${RecipeCockpitMetadataDeploy.describeCappedList(askedNames)}`;
 
         return [
             `Tree: ${toSingleLine(treeLabel)}`,
