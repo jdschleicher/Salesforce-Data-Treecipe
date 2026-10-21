@@ -145,8 +145,8 @@ export const RECIPE_COCKPIT_PALETTE: Readonly<Record<RecipeCockpitPaletteToken, 
     so a new button cannot come out as a browser default by missing a selector list. A button's own
     class keeps only its size and layout. compact is a size, not a kind: it can go with any kind.
 */
-export type RecipeCockpitButtonKind = 'primary' | 'secondary' | 'icon' | 'check' | 'link';
-export const RECIPE_COCKPIT_BUTTON_KINDS: readonly RecipeCockpitButtonKind[] = Object.freeze(['primary', 'secondary', 'icon', 'check', 'link'] as RecipeCockpitButtonKind[]);
+export type RecipeCockpitButtonKind = 'primary' | 'secondary' | 'icon' | 'check' | 'link' | 'card';
+export const RECIPE_COCKPIT_BUTTON_KINDS: readonly RecipeCockpitButtonKind[] = Object.freeze(['primary', 'secondary', 'icon', 'check', 'link', 'card'] as RecipeCockpitButtonKind[]);
 
 export const RECIPE_COCKPIT_LOAD_PHASES = {
     findingRuns: 'Finding generated recipe runs…',
@@ -485,7 +485,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Each object shows its nickname, the name its lookups use in the recipe file. Click it to list the fields that point to it and jump to one; a field holding a nickname shows it highlighted, and clicking it jumps back to that object.',
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all with a link to each line.',
-            'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types and Global Value Sets, each with its own search. It opens on the one you chose last.',
+            'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types and Global Value Sets, each with its own search. It opens on the one you chose last. Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.',
             'Validation Rules lists each object\'s validation rules from your project: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not. Show formula opens a rule\'s formula.'
         ]
     },
@@ -1574,6 +1574,43 @@ export const RECIPE_COCKPIT_DEPLOY_ACTION_LABELS: Readonly<Record<MetadataDeploy
     fields: 'Deploy fields…',
     globalValueSets: 'Deploy global value sets…',
     recordTypes: 'Deploy record types…'
+});
+
+/*
+    Every Troubleshooting action is a card (#381): the verb's emoji and the action's title, a line on
+    when it is needed, and a live detail line. The emoji is the VERB's, from one map, so every
+    deploy shares 🚀 and a later retrieve gets 📥 without choosing.
+*/
+export type RecipeCockpitActionVerb = 'deploy' | 'retrieve' | 'assign' | 'generate';
+export const RECIPE_COCKPIT_ACTION_CARD_WIDTH = '18rem';
+export const RECIPE_COCKPIT_ACTION_CARD_HEIGHT = '10.5rem';
+
+export const RECIPE_COCKPIT_ACTION_VERB_EMOJI: Readonly<Record<RecipeCockpitActionVerb, string>> = Object.freeze({
+    deploy: '🚀',
+    retrieve: '📥',
+    assign: '👤',
+    generate: '🛠️'
+});
+
+export type RecipeCockpitTroubleshootingAction = 'assignPermissionSets' | 'generatePermissionSet' | 'deployPermissionSet' | 'deployFields' | 'retrieveValidationRules' | 'deployRecordTypes' | 'deployGlobalValueSets';
+export interface IRecipeCockpitActionCard {
+    verb: RecipeCockpitActionVerb;
+    why: string;
+}
+export const RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS: Readonly<Record<RecipeCockpitTroubleshootingAction, IRecipeCockpitActionCard>> = Object.freeze({
+    assignPermissionSets: { verb: 'assign', why: 'Insert refused for access? Assign permission sets the org already holds for these objects.' },
+    generatePermissionSet: { verb: 'generate', why: 'No permission set grants these objects? Write a create/read one into the project. Deploys nothing.' },
+    deployPermissionSet: { verb: 'deploy', why: 'Push the tree\'s permission sets to the sandbox or scratch org before assigning them.' },
+    deployFields: { verb: 'deploy', why: 'Insert failed with INVALID_FIELD? The org is missing custom fields this tree writes.' },
+    retrieveValidationRules: { verb: 'retrieve', why: 'Pull the org\'s validation rules so Generate Treecipe can respect them.' },
+    deployRecordTypes: { verb: 'deploy', why: 'Insert failed on RecordTypeId? The org is missing record types this recipe sets.' },
+    deployGlobalValueSets: { verb: 'deploy', why: 'Restricted picklist rejected a value? The org is missing value sets these fields use.' }
+});
+export const RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND: Readonly<Record<MetadataDeployKind, RecipeCockpitTroubleshootingAction>> = Object.freeze({
+    permissionSet: 'deployPermissionSet',
+    fields: 'deployFields',
+    globalValueSets: 'deployGlobalValueSets',
+    recordTypes: 'deployRecordTypes'
 });
 
 export const RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND: Readonly<Record<MetadataDeployKind, string>> = Object.freeze({
@@ -12333,6 +12370,28 @@ ${this.buildPaletteCustomProperties()}
         cursor: pointer;
     }
     .sdtButton-link:focus-visible { outline-offset: -1px; }
+    .sdtButton-card {
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: 0.3rem;
+        width: 100%;
+        height: ${RECIPE_COCKPIT_ACTION_CARD_HEIGHT};
+        overflow: hidden;
+        padding: 0.6rem 0.75rem;
+        font: inherit;
+        text-align: left;
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 8px;
+        cursor: pointer;
+    }
+    .sdtButton-card:hover:not(:disabled) { border-color: var(--sdt-accent); background-color: var(--sdt-row-hover); }
+    .sdtButton-card:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); border-color: var(--sdt-border); cursor: not-allowed; }
+    .sdtButton-card:disabled .actionCardTitle, .sdtButton-card:disabled .actionCardDetail { color: var(--sdt-disabled-text); }
     .sdtButton-link:hover { text-decoration: underline; }
     .treeAddFriends { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding-left: 1.5rem; }
     .treeBody { border-top: 1px solid var(--sdt-border); }
@@ -12642,10 +12701,34 @@ ${this.buildPaletteCustomProperties()}
     html:has(#cockpitOrgSection) { scroll-padding-top: ${RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING}; }
     .cockpitSectionTitle { font-weight: 600; font-size: 1.1em; }
     #cockpitOrgSectionBody { padding: 0.5rem 0.6rem; margin-top: 0.4rem; background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 8px; }
-    .treecipeActions, .treeInsertControls, .troubleshootingControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
+    .treecipeActions, .treeInsertControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
     .troubleshootingSubPanel { margin: 0 0.6rem 0.6rem; }
-    .troubleshootingAction { margin-top: 0.4rem; }
-    .troubleshootingSummary { margin-top: 0.2rem; }
+    /*
+        The Troubleshooting actions' cards (#381) share one fixed size and wrap in a grid; in a
+        panel narrower than two cards they take the full width. Text that does not fit is clamped,
+        never allowed to grow the card; the tooltip keeps the whole detail and reason.
+    */
+    .troubleshootingCards {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, ${RECIPE_COCKPIT_ACTION_CARD_WIDTH}), 1fr));
+        gap: 0.6rem;
+        margin-top: 0.5rem;
+    }
+    .troubleshootingAction { min-width: 0; }
+    .actionCardHeading { display: flex; align-items: flex-start; gap: 0.5rem; min-width: 0; font-weight: 600; font-size: 1.05em; }
+    .actionCardEmoji { flex: none; font-size: 1.25em; line-height: 1; }
+    .actionCardTitle { min-width: 0; color: var(--sdt-accent); }
+    .actionCardTitle, .actionCardWhy, .actionCardDetail, .actionCardReason {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+        font-size: 0.95em;
+    }
+    .actionCardTitle { -webkit-line-clamp: 2; font-size: inherit; }
+    .actionCardWhy, .actionCardDetail { -webkit-line-clamp: 2; }
+    .actionCardReason { -webkit-line-clamp: 1; }
+    .actionCardReason { font-style: italic; }
     .treeQueryIntro { margin: 0.25rem 0.6rem 0.5rem; }
     .treeQuery { margin: 0.25rem 0.6rem 0.5rem; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
     .treeQueryTitle { font-weight: 600; }
@@ -12793,10 +12876,14 @@ ${this.buildPaletteCustomProperties()}
     const INSERT_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_ACTION_LABEL)};
     const INSERT_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_RUNNING_LABEL)};
     const PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL)};
+    const ASSIGN_PERMISSION_SETS_TITLE = "Choose the permission sets in this workspace's source that grant access to this tree's objects and assign the ones the org selected above, or a sandbox you choose, already holds to the user that org is authorized as, after a confirmation. Nothing is deployed.";
     const GENERATE_PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL)};
     const VALIDATION_RULE_RETRIEVE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL)};
     const DEPLOY_ACTION_LABELS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_LABELS)};
     const BUTTON_KINDS = ${JSON.stringify(RECIPE_COCKPIT_BUTTON_KINDS)};
+    const ACTION_VERB_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_ACTION_VERB_EMOJI)};
+    const TROUBLESHOOTING_ACTION_CARDS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS)};
+    const DEPLOY_ACTION_BY_KIND = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND)};
     // A NICKNAME YAML LOADS AS A BOOLEAN OR NULL NAMES NO RECORD: THE INSERT'S WHOLE-STRING SWAP NEVER MATCHES IT (#151, #380)
     const YAML_NON_STRING_NICKNAME_PATTERN = new RegExp(${JSON.stringify(YAML_NON_STRING_PLAIN_SCALAR_PATTERN.source)});
     const DEPLOY_COMMANDS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND)};
@@ -13032,6 +13119,61 @@ ${this.buildPaletteCustomProperties()}
         const buttonClassName = 'sdtButton sdtButton-' + kind + (size === 'compact' ? ' sdtButton-compact' : '') + (className ? ' ' + className : '');
         return createElement('button', buttonClassName, textContent);
 
+    }
+
+    let actionCardCount = 0;
+
+    /*
+        A Troubleshooting action as ONE card (#381). The whole card is the button, so its parts are
+        spans and never controls: the verb's emoji (hidden from a screen reader) and the title, the
+        line on when it is needed, the live detail and the reason it is disabled. The title names
+        the button; the rest describes it.
+    */
+    function buildActionCard(action, className, title) {
+
+        const card = TROUBLESHOOTING_ACTION_CARDS[action];
+        if (!card || typeof ACTION_VERB_EMOJI[card.verb] !== 'string') { throw new Error('Unknown troubleshooting action: ' + action); }
+
+        actionCardCount++;
+        const buttonElement = createButton('card', 'actionCard ' + className);
+        const headingElement = createElement('span', 'actionCardHeading');
+        const emojiElement = createElement('span', 'actionCardEmoji', ACTION_VERB_EMOJI[card.verb]);
+        const titleElement = createElement('span', 'actionCardTitle', title);
+        const whyElement = createElement('span', 'actionCardWhy', card.why);
+        const detailElement = createElement('span', 'actionCardDetail muted hidden');
+        const reasonElement = createElement('span', 'actionCardReason hidden');
+
+        emojiElement.setAttribute('aria-hidden', 'true');
+        titleElement.setAttribute('id', 'actionCardTitle' + actionCardCount);
+        whyElement.setAttribute('id', 'actionCardWhy' + actionCardCount);
+        detailElement.setAttribute('id', 'actionCardDetail' + actionCardCount);
+        reasonElement.setAttribute('id', 'actionCardReason' + actionCardCount);
+        buttonElement.setAttribute('aria-labelledby', 'actionCardTitle' + actionCardCount);
+        buttonElement.setAttribute('aria-describedby', ['actionCardWhy', 'actionCardDetail', 'actionCardReason'].map(function (idPrefix) { return idPrefix + actionCardCount; }).join(' '));
+
+        headingElement.appendChild(emojiElement);
+        headingElement.appendChild(titleElement);
+        buttonElement.appendChild(headingElement);
+        buttonElement.appendChild(whyElement);
+        buttonElement.appendChild(detailElement);
+        buttonElement.appendChild(reasonElement);
+
+        return { action: action, buttonElement: buttonElement, titleElement: titleElement, detailElement: detailElement, reasonElement: reasonElement };
+
+    }
+
+    function setTextShown(element, text) {
+        if (element.textContent !== text) { element.textContent = text; }
+        if (text) { element.classList.remove('hidden'); } else { element.classList.add('hidden'); }
+    }
+
+    // A DISABLED CARD SAYS WHY ON THE CARD, NOT ONLY IN ITS TOOLTIP; A REASON THE DETAIL ALREADY SAYS IS NOT SAID TWICE.
+    // THE TOOLTIP ALSO CARRIES THE WHOLE DETAIL, WHICH THE CARD MAY CLAMP
+    function drawActionCardState(actionCard, reason, title) {
+        const detail = actionCard.detailElement.textContent;
+        actionCard.buttonElement.disabled = reason !== '';
+        actionCard.buttonElement.setAttribute('title', (reason || title) + (detail && detail !== reason ? '\\n' + detail : ''));
+        setTextShown(actionCard.reasonElement, reason === detail ? '' : reason);
     }
 
     function setLoadStatus(statusMessage, isFailure) {
@@ -17112,26 +17254,26 @@ ${this.buildPaletteCustomProperties()}
 
         treeState.troubleshootingStripElement = stripElement;
         treeState.troubleshootingSubTabStates = [];
-        treeState.deployButtons = Object.create(null);
-        treeState.deploySummaryElements = Object.create(null);
+        treeState.deployCards = Object.create(null);
 
         if (TROUBLESHOOTING_SUB_TABS.indexOf(treeState.troubleshootingSubTab) === -1) {
             treeState.troubleshootingSubTab = TROUBLESHOOTING_SUB_TABS[0];
         }
 
-        const addActionItem = function (subTabState, buttonElement, summaryElement) {
+        // A SUB-TAB'S CARDS SIT IN ONE GRID, ABOVE ANY LIST THE SUB-TAB ALSO DRAWS
+        const addActionItem = function (subTabState, actionCard) {
+            if (!subTabState.cardGridElement) {
+                subTabState.cardGridElement = createElement('div', 'troubleshootingCards');
+                subTabState.listElement.appendChild(subTabState.cardGridElement);
+            }
             const actionElement = createElement('div', 'troubleshootingAction');
-            const controlsElement = createElement('div', 'troubleshootingControls');
-            controlsElement.appendChild(buttonElement);
-            actionElement.appendChild(controlsElement);
-            if (summaryElement) { actionElement.appendChild(summaryElement); }
-            subTabState.listElement.appendChild(actionElement);
+            actionElement.appendChild(actionCard.buttonElement);
+            subTabState.cardGridElement.appendChild(actionElement);
             subTabState.items.push({ element: actionElement });
         };
 
         const addDeployItem = function (subTabState, deployKind) {
-            const deployAction = buildDeployAction(treeState, deployKind);
-            addActionItem(subTabState, deployAction.buttonElement, deployAction.summaryElement);
+            addActionItem(subTabState, buildDeployAction(treeState, deployKind));
         };
 
         TROUBLESHOOTING_SUB_TABS.forEach(function (subTab) {
@@ -17143,11 +17285,11 @@ ${this.buildPaletteCustomProperties()}
             } else if (subTab === 'fields') {
                 addDeployItem(subTabState, 'fields');
             } else if (subTab === 'permissions') {
-                if (tree.objects.length > 0) { addActionItem(subTabState, buildAssignPermissionSetButton(treeState)); }
-                addActionItem(subTabState, buildGeneratePermissionSetButton(treeState));
+                if (tree.objects.length > 0) { addActionItem(subTabState, buildAssignPermissionSetCard(treeState)); }
+                addActionItem(subTabState, buildGeneratePermissionSetCard(treeState));
                 addDeployItem(subTabState, 'permissionSet');
             } else if (subTab === 'validationRules') {
-                addActionItem(subTabState, buildRetrieveValidationRulesButton(treeState));
+                addActionItem(subTabState, buildRetrieveValidationRulesCard(treeState));
                 buildTroubleshootingValidationRules(treeState, subTabState);
             } else if (subTab === 'recordTypes') {
                 addDeployItem(subTabState, 'recordTypes');
@@ -17359,8 +17501,10 @@ ${this.buildPaletteCustomProperties()}
 
     function buildDeployAction(treeState, deployKind) {
 
-        const summaryElement = createElement('div', 'troubleshootingSummary muted', 'Reading this project…');
-        const buttonElement = createButton('secondary', 'troubleshootingDeploy troubleshootingDeploy-' + deployKind, DEPLOY_ACTION_LABELS[deployKind]);
+        const actionCard = buildActionCard(DEPLOY_ACTION_BY_KIND[deployKind], 'troubleshootingDeploy troubleshootingDeploy-' + deployKind, DEPLOY_ACTION_LABELS[deployKind]);
+        const buttonElement = actionCard.buttonElement;
+        actionCard.detailElement.classList.add('troubleshootingSummary');
+        setTextShown(actionCard.detailElement, 'Reading this project…');
 
         buttonElement.addEventListener('click', function () {
             if (buttonElement.disabled || renderedSequence === null) { return; }
@@ -17373,10 +17517,9 @@ ${this.buildPaletteCustomProperties()}
             vscodeApi.postMessage(deployMessage);
         });
 
-        treeState.deployButtons[deployKind] = buttonElement;
-        treeState.deploySummaryElements[deployKind] = summaryElement;
+        treeState.deployCards[deployKind] = actionCard;
 
-        return { buttonElement: buttonElement, summaryElement: summaryElement };
+        return actionCard;
 
     }
 
@@ -17837,11 +17980,12 @@ ${this.buildPaletteCustomProperties()}
         permissionSetAssignState gives them back. How it went is a VS Code notification, never a
         line here.
     */
-    function buildAssignPermissionSetButton(treeState) {
+    function buildAssignPermissionSetCard(treeState) {
 
-        const buttonElement = createButton('secondary', 'treePermissionSets', PERMISSION_SET_ACTION_LABEL);
+        const actionCard = buildActionCard('assignPermissionSets', 'treePermissionSets', PERMISSION_SET_ACTION_LABEL);
+        const buttonElement = actionCard.buttonElement;
 
-        buttonElement.setAttribute('title', 'Choose the permission sets in this workspace\\'s source that grant access to this tree\\'s objects and assign the ones the org selected above, or a sandbox you choose, already holds to the user that org is authorized as, after a confirmation. Nothing is deployed.');
+        buttonElement.setAttribute('title', ASSIGN_PERMISSION_SETS_TITLE);
         buttonElement.addEventListener('click', function () {
             if (isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || isScratchOrgRunning || renderedSequence === null) { return; }
             isPermissionSetAssignRunning = true;
@@ -17852,9 +17996,9 @@ ${this.buildPaletteCustomProperties()}
             vscodeApi.postMessage(permissionSetMessage);
         });
 
-        treeState.permissionSetButtonElement = buttonElement;
+        treeState.permissionSetCard = actionCard;
 
-        return buttonElement;
+        return actionCard;
 
     }
 
@@ -17863,16 +18007,17 @@ ${this.buildPaletteCustomProperties()}
         the confirmation are the host's. It deploys nothing, so it needs no org and holds no
         other button.
     */
-    function buildGeneratePermissionSetButton(treeState) {
+    function buildGeneratePermissionSetCard(treeState) {
 
-        const generateButtonElement = createButton('secondary', 'treeGeneratePermissionSet', GENERATE_PERMISSION_SET_ACTION_LABEL);
+        const actionCard = buildActionCard('generatePermissionSet', 'treeGeneratePermissionSet', GENERATE_PERMISSION_SET_ACTION_LABEL);
+        const generateButtonElement = actionCard.buttonElement;
         generateButtonElement.addEventListener('click', function () {
             if (generateButtonElement.disabled || renderedSequence === null) { return; }
             vscodeApi.postMessage({ command: 'generateTreePermissionSet', treeKey: treeState.tree.treeKey });
         });
-        treeState.generatePermissionSetButtonElement = generateButtonElement;
+        treeState.generatePermissionSetCard = actionCard;
 
-        return generateButtonElement;
+        return actionCard;
 
     }
 
@@ -18094,9 +18239,10 @@ ${this.buildPaletteCustomProperties()}
         asks for the org in the command palette every time. One retrieve per window, so every
         card's button is disabled on the click until the host's validationRuleRetrieveState.
     */
-    function buildRetrieveValidationRulesButton(treeState) {
+    function buildRetrieveValidationRulesCard(treeState) {
 
-        const retrieveButtonElement = createButton('secondary', 'treeRetrieveValidationRules', VALIDATION_RULE_RETRIEVE_ACTION_LABEL);
+        const actionCard = buildActionCard('retrieveValidationRules', 'treeRetrieveValidationRules', VALIDATION_RULE_RETRIEVE_ACTION_LABEL);
+        const retrieveButtonElement = actionCard.buttonElement;
         retrieveButtonElement.addEventListener('click', function () {
             if (retrieveButtonElement.disabled || renderedSequence === null) { return; }
             isValidationRuleRetrieveRunning = true;
@@ -18104,43 +18250,47 @@ ${this.buildPaletteCustomProperties()}
             drawDataOrgViews();
             vscodeApi.postMessage({ command: 'retrieveTreeValidationRules', treeKey: treeState.tree.treeKey });
         });
-        treeState.retrieveValidationRulesButtonElement = retrieveButtonElement;
+        treeState.retrieveValidationRulesCard = actionCard;
 
-        return retrieveButtonElement;
+        return actionCard;
 
     }
 
     function drawTreePermissionSet(treeState) {
 
-        if (treeState.permissionSetButtonElement) {
-            treeState.permissionSetButtonElement.disabled = isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null || isScratchOrgRunning;
+        const permissionSetCard = treeState.permissionSetCard;
+        if (permissionSetCard) {
+            const assignReason = isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
+                : isMetadataDeployRunning ? 'Metadata is being deployed.'
+                : insertRunningTreeKey !== null ? 'A tree is being inserted.'
+                : isScratchOrgRunning ? 'A scratch org is being set up.'
+                : '';
+            drawActionCardState(permissionSetCard, assignReason, ASSIGN_PERMISSION_SETS_TITLE);
         }
 
-        const generateButtonElement = treeState.generatePermissionSetButtonElement;
-        if (generateButtonElement) {
+        const generateCard = treeState.generatePermissionSetCard;
+        if (generateCard) {
             const generateReason = listTreeInsertObjectApiNames(treeState).length === 0 ? 'Every object of this tree is excluded, so there is nothing to grant.'
                 : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
                 : isMetadataDeployRunning ? 'Metadata is being deployed.'
                 : '';
-            generateButtonElement.disabled = generateReason !== '';
-            generateButtonElement.setAttribute('title', generateReason || 'Write a permission set granting Create and Read on this tree\\'s objects and access to its fields into this project\\'s permissionsets/SDT_Treecipe folder, after a confirmation. Nothing is deployed.');
+            drawActionCardState(generateCard, generateReason, 'Write a permission set granting Create and Read on this tree\\'s objects and access to its fields into this project\\'s permissionsets/SDT_Treecipe folder, after a confirmation. Nothing is deployed.');
         }
 
-        const retrieveButtonElement = treeState.retrieveValidationRulesButtonElement;
-        if (retrieveButtonElement) {
+        const retrieveCard = treeState.retrieveValidationRulesCard;
+        if (retrieveCard) {
             const retrieveReason = isValidationRuleRetrieveRunning ? 'Validation rules are being retrieved.'
                 : insertRunningTreeKey !== null ? 'A tree is being inserted.'
                 : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
                 : isMetadataDeployRunning ? 'Metadata is being deployed.'
                 : '';
-            retrieveButtonElement.disabled = retrieveReason !== '';
-            retrieveButtonElement.setAttribute('title', retrieveReason || 'Retrieve the validation rules of this tree\\'s objects from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; Generate Treecipe then applies them.');
+            drawActionCardState(retrieveCard, retrieveReason, 'Retrieve the validation rules of this tree\\'s objects from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; Generate Treecipe then applies them.');
         }
 
-        const deployButtons = treeState.deployButtons || {};
-        Object.keys(deployButtons).forEach(function (deployKind) {
+        const deployCards = treeState.deployCards || {};
+        Object.keys(deployCards).forEach(function (deployKind) {
 
-            const buttonElement = deployButtons[deployKind];
+            const deployCard = deployCards[deployKind];
             const described = describeDeploySummary(treeState.troubleshootingSummary, deployKind);
             const busyReason = isMetadataDeployRunning ? 'Metadata is being deployed.'
                 : insertRunningTreeKey !== null ? 'A tree is being inserted.'
@@ -18149,11 +18299,11 @@ ${this.buildPaletteCustomProperties()}
                 : isValidationRuleRetrieveRunning ? 'Validation rules are being retrieved.'
                 : '';
             const deployReason = described.emptyReason || busyReason;
+            const title = metadataDeployRunningKey === treeState.tree.treeKey + '\\n' + deployKind ? 'Deploying…' : DEPLOY_ACTION_LABELS[deployKind];
 
-            treeState.deploySummaryElements[deployKind].textContent = described.text;
-            buttonElement.disabled = deployReason !== '';
-            buttonElement.textContent = metadataDeployRunningKey === treeState.tree.treeKey + '\\n' + deployKind ? 'Deploying…' : DEPLOY_ACTION_LABELS[deployKind];
-            buttonElement.setAttribute('title', deployReason || 'Deploy these components of this tree, through a generated package.xml, to the sandbox or scratch org selected above, or one you choose, after a confirmation.');
+            setTextShown(deployCard.detailElement, described.text);
+            if (deployCard.titleElement.textContent !== title) { deployCard.titleElement.textContent = title; }
+            drawActionCardState(deployCard, deployReason, 'Deploy these components of this tree, through a generated package.xml, to the sandbox or scratch org selected above, or one you choose, after a confirmation.');
 
         });
 

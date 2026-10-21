@@ -32,6 +32,7 @@ Tick **TODOs only** on a card's Treecipe tab to see just the fields and objects 
 
 The **Troubleshooting** tab shows one area at a time: **TODO's**, **Fields**, **Permissions**, **Validation Rules**, **Record Types** and **Global Value Sets**, each with its own search.
 It opens on the one you chose last.
+Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.
 **Validation Rules** lists each object's validation rules from your project: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not.
 **Show formula** opens a rule's formula.
 

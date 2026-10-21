@@ -115,8 +115,8 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s sub-tabs (#365)', () 
             const accountCard = accountCardOf(panel);
             panel.openTab(accountCard, 'Troubleshooting');
 
-            const classNamesIn = (subTab: string) => panel.findAll(subPanelOf(panel, accountCard, subTab), 'troubleshootingControls')
-                .map((controlsElement: any) => controlsElement.children[0].className.split(' ').filter((className: string) => !className.startsWith('sdtButton')).join(' '));
+            const classNamesIn = (subTab: string) => panel.findAll(subPanelOf(panel, accountCard, subTab), 'troubleshootingAction')
+                .map((actionElement: any) => actionElement.children[0].className.split(' ').filter((className: string) => !className.startsWith('sdtButton') && className !== 'actionCard').join(' '));
 
             expect(classNamesIn('todos')).toEqual([]);
             expect(classNamesIn('fields')).toEqual(['troubleshootingDeploy troubleshootingDeploy-fields']);
@@ -335,7 +335,8 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s sub-tabs (#365)', () 
 
             expect(searchInputOf(panel, accountCard, 'permissions').value).toBe('assign');
             expect(searchInputOf(panel, accountCard, 'fields').value).toBe('');
-            expect(panel.findAll(subPanelOf(panel, accountCard, 'permissions'), 'tabMatchCount')[0].textContent).toBe('1 of 3 actions');
+            // "assign" NAMES THE ASSIGN CARD AND THE DEPLOY CARD'S WHY LINE ("before assigning them"), WHICH IS ON SCREEN (#381)
+            expect(panel.findAll(subPanelOf(panel, accountCard, 'permissions'), 'tabMatchCount')[0].textContent).toBe('2 of 3 actions');
             expect(savedTreeOf(panel).troubleshootingSearchQueries).toEqual({ permissions: 'assign' });
             expect(savedTreeOf(panel).searchQueries).not.toHaveProperty('troubleshooting');
 
