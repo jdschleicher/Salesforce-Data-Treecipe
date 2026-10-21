@@ -351,6 +351,10 @@ export class RecipeCockpitMetadataDeploy {
                 const objectFilePath = this.findObjectFilePath(objectFolderPaths, objectApiName);
                 let isReadable = false;
                 if ( objectFilePath ) {
+                    readFileCount++;
+                    if ( readFileCount % METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES === 0 ) {
+                        await new Promise<void>(resolve => setImmediate(resolve));
+                    }
                     try {
                         isReadable = await this.isCustomObjectXml(fs.readFileSync(objectFilePath, 'utf-8'));
                     } catch {

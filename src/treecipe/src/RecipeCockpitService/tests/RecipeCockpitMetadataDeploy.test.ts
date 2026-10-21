@@ -11,6 +11,7 @@ jest.mock('vscode', () => ({}), { virtual: true });
 import {
     IMetadataDeployComponent,
     METADATA_DEPLOY_CONFIRMATION_SHOWN,
+    METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES,
     METADATA_DEPLOY_TYPES,
     RecipeCockpitMetadataDeploy
 } from '../RecipeCockpitMetadataDeploy';
@@ -122,6 +123,23 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
                 expect(detail).toContain('Not deployed: 2 custom objects whose .object-meta.xml could not be read: Gadget__c, OtherChildObject__c');
                 expect(detail).not.toContain('overwrites');
                 expect(detail).not.toContain('standard object, so');
+
+            });
+
+            it('counts each .object-meta.xml it reads toward the summary\'s yield, so many custom objects hand the event loop back', async () => {
+
+                const objectsFolderPath = path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects');
+                const objectApiNames = Array.from({ length: METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES }, (_unused, objectIndex) => `Bulk${String(objectIndex).padStart(3, '0')}__c`);
+                objectApiNames.forEach(objectApiName => {
+                    fs.mkdirSync(path.join(objectsFolderPath, objectApiName));
+                    fs.writeFileSync(path.join(objectsFolderPath, objectApiName, `${objectApiName}.object-meta.xml`), '<?xml version="1.0"?><CustomObject/>');
+                });
+                const setImmediateSpy = jest.spyOn(global, 'setImmediate');
+
+                const summary = await summarize(objectApiNames.map(objectApiName => ({ objectApiName: objectApiName, fieldApiNames: [] })));
+
+                expect(summary.customObjects).toEqual(objectApiNames);
+                expect(setImmediateSpy).toHaveBeenCalled();
 
             });
 
