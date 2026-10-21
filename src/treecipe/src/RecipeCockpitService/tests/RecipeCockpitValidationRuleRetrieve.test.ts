@@ -56,7 +56,7 @@ import {
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER
 } from '../RecipeCockpitService';
-import { RecipeCockpitMetadataRetrieve } from '../RecipeCockpitMetadataRetrieve';
+import { METADATA_RETRIEVE_MAX_COMPONENTS, RecipeCockpitMetadataRetrieve } from '../RecipeCockpitMetadataRetrieve';
 import { RecipeCockpitMetadataDeploy } from '../RecipeCockpitMetadataDeploy';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
@@ -186,7 +186,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
             });
 
-            it('leaves out and counts an entry that is not a string or not an api name, and still keeps the rest', () => {
+            it('leaves out and counts a tree object\'s entry that is not an api name, or one that is not a string, ignores another object\'s, and still keeps the rest', () => {
 
                 expect(parseList(buildListAnswer([
                     listedRule('Account.Good'),
@@ -195,9 +195,10 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
                     listedRule('Account.Bad Name'),
                     listedRule('Account.X\n--target-org evil'),
                     listedRule('NoDot'),
+                    listedRule('Lead.Bad Name'),
                     null,
                     'Account.Text'
-                ]))).toEqual({ kind: 'listed', components: [{ type: 'ValidationRule', member: 'Account.Good' }], skippedCount: 5 });
+                ]))).toEqual({ kind: 'listed', components: [{ type: 'ValidationRule', member: 'Account.Good' }], skippedCount: 4 });
 
             });
 
@@ -725,6 +726,40 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             expect(notifications()).toEqual([{
                 severity: 'warning',
                 text: `The listing of validation rules in prod · ${PROD_USERNAME} was cancelled, so nothing was retrieved.`,
+                actions: []
+            }]);
+
+        });
+
+        it('warns with the skipped count when every rule the org listed for the tree was not an api name', async () => {
+
+            listHandler = () => ({ stdout: buildListAnswer([listedRule('Account.Bad Name')]) });
+            await openCockpit();
+
+            await retrieve();
+
+            expect(retrieveCalls()).toEqual([]);
+            expect(notifications()).toEqual([{
+                severity: 'warning',
+                text: `prod · ${PROD_USERNAME} holds no validation rule for the 3 objects of Account-thru-OtherChildObject__c, so nothing was retrieved. Skipped 1 name that is not an api name.`,
+                actions: []
+            }]);
+
+        });
+
+        it('refuses, before the confirmation, more rules than one retrieve can bring', async () => {
+
+            listHandler = () => ({ stdout: buildListAnswer(Array.from({ length: METADATA_RETRIEVE_MAX_COMPONENTS + 1 }, (_value, index) => listedRule(`Account.Rule_${index}`))) });
+            await openCockpit();
+
+            await retrieve();
+
+            expect(modalCalls()).toEqual([]);
+            expect(retrieveCalls()).toEqual([]);
+            expect(packageXmlFiles()).toEqual([]);
+            expect(notifications()).toEqual([{
+                severity: 'warning',
+                text: `No validation rules were retrieved: prod · ${PROD_USERNAME} holds ${METADATA_RETRIEVE_MAX_COMPONENTS + 1} for the 3 objects of Account-thru-OtherChildObject__c, and one retrieve can bring at most ${METADATA_RETRIEVE_MAX_COMPONENTS}.`,
                 actions: []
             }]);
 

@@ -66,6 +66,9 @@ export const METADATA_RETRIEVE_TIMEOUT_MILLISECONDS = 10 * 60 * 1000;
 
 export const METADATA_LIST_TIMEOUT_MILLISECONDS = 5 * 60 * 1000;
 
+// THE METADATA API REFUSES A RETRIEVE OF MORE FILES THAN THIS, SO A LONGER LISTING IS REFUSED BEFORE THE CONFIRMATION
+export const METADATA_RETRIEVE_MAX_COMPONENTS = 10000;
+
 // WHAT EACH KIND IS CALLED IN WHAT THE READER SEES: ONE, MANY, ITS FILES, WHAT "THE SAME" ONE IS, AND WHAT GENERATE TREECIPE DOES WITH THEM
 const RETRIEVE_WORDS: Readonly<Record<MetadataRetrieveKind, { one: string; many: string; fileNoun: string; newFileNoun: string; scope: string; sameNoun: string; afterwards: string }>> = Object.freeze({
     validationRules: { one: 'validation rule', many: 'validation rules', fileNoun: 'validation rule', newFileNoun: 'rule', scope: 'objects', sameNoun: 'rule', afterwards: 'to apply the rules to the recipe' },
@@ -92,7 +95,7 @@ export type MetadataListOutcome =
         kind: 'listed';
         // THE ORG'S COMPONENTS OF THE TREE'S OBJECTS, ONCE EACH, SORTED WITH "<", SPELLED AS THE ORG SPELLS THEM
         components: IMetadataDeployComponent[];
-        // ENTRIES OF THE KIND'S TYPE THAT WERE LEFT OUT: NOT A STRING, OR NOT AN API NAME IN THE TYPE'S SHAPE
+        // ENTRIES OF THE KIND'S TYPE LEFT OUT: A FULL NAME THAT IS NOT A STRING, OR ONE OF A TREE OBJECT THAT IS NOT AN API NAME IN THE TYPE'S SHAPE
         skippedCount: number;
     }
     | { kind: 'cliNotInstalled'; failureMessage: string }
@@ -144,9 +147,10 @@ export class RecipeCockpitMetadataRetrieve {
         The listing's answer, type-checked: listed only on status 0 with a result array (one entry
         not wrapped in an array is read as one entry, as the Metadata API answers a single
         component). An entry of the kind's type is kept when its full name is "<Object>.<Name>", both
-        api names, and its object is one of the tree's, case-insensitively; an entry of the type that
-        is not a string or not in that shape is left out and counted. The listing is never read as
-        "none" unless the org said so.
+        api names, and its object is one of the tree's, case-insensitively. An entry of a tree object
+        that is not in that shape, or whose full name is not a string, is left out and counted; another
+        object's is ignored, so the count is about this tree. The listing is never read as "none"
+        unless the org said so.
     */
     static parseListMetadataOutput(retrieveKind: MetadataRetrieveListedKind,
                                     invocationResult: ISalesforceCliInvocationResult,
@@ -177,13 +181,17 @@ export class RecipeCockpitMetadataRetrieve {
             .filter(entry => entry.type === undefined || entry.type === metadataType)
             .forEach(entry => {
 
+                if ( typeof entry.fullName === 'string' && !lowerObjectApiNames.has(entry.fullName.split('.')[0].toLowerCase()) ) {
+                    return;
+                }
+
                 if ( !RecipeCockpitMetadataDeploy.isDeployableMember(metadataType, entry.fullName) ) {
                     skippedCount++;
                     return;
                 }
 
                 const member = entry.fullName;
-                if ( lowerObjectApiNames.has(member.split('.')[0].toLowerCase()) && !membersByLowerName.has(member.toLowerCase()) ) {
+                if ( !membersByLowerName.has(member.toLowerCase()) ) {
                     membersByLowerName.set(member.toLowerCase(), member);
                 }
 

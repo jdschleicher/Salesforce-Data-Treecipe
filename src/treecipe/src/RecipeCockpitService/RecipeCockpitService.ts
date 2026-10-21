@@ -31,6 +31,7 @@ import {
 } from './RecipeCockpitMetadataDeploy';
 import {
     METADATA_LIST_TIMEOUT_MILLISECONDS,
+    METADATA_RETRIEVE_MAX_COMPONENTS,
     METADATA_RETRIEVE_OPERATION_BY_KIND,
     METADATA_RETRIEVE_TIMEOUT_MILLISECONDS,
     MetadataRetrieveKind,
@@ -8220,6 +8221,12 @@ export class RecipeCockpitService {
         const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
         const objectsText = `${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'}`;
         let skippedListedCount = 0;
+        const describeSkipped = () => {
+            const skippedNameCount = isListed ? refusedObjectApiNames.length + skippedListedCount : 0;
+            return skippedNameCount > 0
+                ? ` Skipped ${skippedNameCount} ${skippedNameCount === 1 ? 'name that is' : 'names that are'} not an api name.`
+                : '';
+        };
 
         if ( isListed ) {
 
@@ -8253,13 +8260,19 @@ export class RecipeCockpitService {
                 return refuse(`No ${manyNoun} were retrieved: the ${manyNoun} ${orgLabel} holds could not be listed. ${listOutcome.failureMessage}`);
             }
 
+            skippedListedCount = listOutcome.skippedCount;
+
             if ( listOutcome.components.length === 0 ) {
-                this.showMetadataRetrieveNotification('information', `${orgLabel} holds no ${RecipeCockpitMetadataRetrieve.componentNoun(retrieveKind, 1)} for the ${objectsText} of ${treeLabel}, so nothing was retrieved.`, undefined, workspaceRoot, false);
+                const skippedText = describeSkipped();
+                this.showMetadataRetrieveNotification(skippedText ? 'warning' : 'information', `${orgLabel} holds no ${RecipeCockpitMetadataRetrieve.componentNoun(retrieveKind, 1)} for the ${objectsText} of ${treeLabel}, so nothing was retrieved.${skippedText}`, undefined, workspaceRoot, false);
                 return false;
             }
 
+            if ( listOutcome.components.length > METADATA_RETRIEVE_MAX_COMPONENTS ) {
+                return refuse(`No ${manyNoun} were retrieved: ${orgLabel} holds ${listOutcome.components.length} for the ${objectsText} of ${treeLabel}, and one retrieve can bring at most ${METADATA_RETRIEVE_MAX_COMPONENTS}.`);
+            }
+
             manifestComponents = listOutcome.components;
-            skippedListedCount = listOutcome.skippedCount;
 
         }
 
@@ -8323,10 +8336,7 @@ export class RecipeCockpitService {
         const retrieveOutputFilePath = retrieveRun.invocation.spawnError || retrieveRun.invocation.isOutputTooLarge
             ? undefined
             : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, METADATA_RETRIEVE_OPERATION_BY_KIND[retrieveKind], retrieveRun.invocation, new Date(), retrievePayload);
-        const skippedNameCount = isListed ? refusedObjectApiNames.length + skippedListedCount : 0;
-        const refusedText = skippedNameCount > 0
-            ? ` Skipped ${skippedNameCount} ${skippedNameCount === 1 ? 'name that is' : 'names that are'} not an api name.`
-            : '';
+        const refusedText = describeSkipped();
 
         switch ( retrieveOutcome.kind ) {
 
