@@ -294,6 +294,9 @@ export const RECIPE_COCKPIT_GEOLOCATION_COMPONENT_RANGES: Readonly<Record<string
     Longitude: { suffix: '__Longitude__s', limit: 180 }
 };
 export const RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL = 'Reset';
+// WHAT A RUN SWITCH ASKS WHEN A TREE ON SCREEN HAS A STORED SELECTION (#399)
+export const RECIPE_COCKPIT_RUN_SWITCH_RESET_LABEL = 'Reset selections';
+export const RECIPE_COCKPIT_RUN_SWITCH_APPLY_LABEL = 'Apply same selections';
 export const RECIPE_COCKPIT_TREE_PREFERENCES_VERSION = 1;
 export const RECIPE_COCKPIT_TREE_NAME_MAX_LENGTH = 80;
 export const RECIPE_COCKPIT_DATASET_PREFERENCES_VERSION = 1;
@@ -534,7 +537,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
     {
         heading: 'Where your changes are stored',
         paragraphs: [
-            'The settings that leave the YAML alone are kept by VS Code for this workspace on this machine, per tree. They carry over when you regenerate the same objects, but they are not in your repository, so a teammate or a fresh clone starts without them.',
+            'The settings that leave the YAML alone are kept by VS Code for this workspace on this machine, per tree. They carry over when you regenerate the same objects, but they are not in your repository, so a teammate or a fresh clone starts without them. Switching to another run while a tree on screen has settings asks first: Reset selections clears them, Apply same selections keeps them for the trees of that run with the same folder, and Cancel stays on the run.',
             'When you generate, the cockpit applies them to a copy of the recipe. The data set keeps that copy as filteredRecipe-… beside originalRecipe-… in its BaseArtifactFiles folder, and datasetSource.json lists what was changed.',
             'Reset selection on a card clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field\'s pencil.',
             'Edits on the Query tab are kept the same way, per tree; Reset beside a query puts back the generated text.'
@@ -1236,6 +1239,11 @@ export interface IRecipeCockpitLoadFailedMessage {
     message: string;
 }
 
+// A RUN SWITCH THE READER CANCELLED (#399): THE RUN ON SCREEN STAYS, AND THE DROPDOWN NAMES IT AGAIN
+export interface IRecipeCockpitRunSwitchCancelledMessage {
+    command: 'runSwitchCancelled';
+}
+
 // ONE PICKLIST ROW'S VALUES, ANSWERING THE PANEL'S loadPicklistValues FOR THE MODEL renderSequence NAMES
 export interface IRecipeCockpitPicklistValuesMessage extends IRecipeCockpitPicklistDisplayValues {
     command: 'picklistValues';
@@ -1835,6 +1843,7 @@ export const RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT: Record<ScratchOrgSetupPhase 
 export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitRecipeDataMessage
                                         | IRecipeCockpitLoadFailedMessage
+                                        | IRecipeCockpitRunSwitchCancelledMessage
                                         | IRecipeCockpitPicklistValuesMessage
                                         | IRecipeCockpitDatasetRecordCountsMessage
                                         | IRecipeCockpitFocusTreeMessage
@@ -4371,6 +4380,80 @@ export class RecipeCockpitService {
 
     }
 
+    // THE FOLDERS OF THE TREES ON SCREEN THAT HOLD AN EXCLUDED OBJECT, AN UNTICKED FIELD, A COUNT OR A RULE SWITCHED OFF
+    static listFolderNamesWithStoredSelections(recipeViewModel: IRecipeCockpitRecipeViewModel, treeSelections: IRecipeCockpitTreeSelections): string[] {
+
+        const folderNames = new Set(recipeViewModel.trees.map(tree => tree.folderName).filter(folderName => !!folderName));
+
+        return [...folderNames].filter(folderName => (
+            treeSelections.excludedObjectApiNamesByFolderName.has(folderName)
+                || treeSelections.excludedFieldApiNamesByFolderName.has(folderName)
+                || treeSelections.objectCountsByFolderName.has(folderName)
+                || treeSelections.validationRulesOffByFolderName.has(folderName)
+        ));
+
+    }
+
+    /*
+        A run switch (#399): selections are kept by tree FOLDER, so a tree of the next run with the same
+        folder would take them over unseen. When a tree on screen holds one, the reader chooses: Reset
+        clears every such folder of the run on screen, Apply (offered only when a tree of the next run
+        has one of those folders) keeps them, and Cancel keeps the run on screen. Pins and edited
+        expressions are in the recipe files (#342), so neither choice touches them.
+    */
+    static async confirmRunSwitchSelections(panelState: IRecipeCockpitPanelState, loadedRecipe: IRecipeCockpitLoadedRecipe): Promise<boolean> {
+
+        const currentRecipe = panelState.recipeDataMessage?.recipe;
+        const nextRecipe = loadedRecipe.recipeViewModel;
+
+        if ( !currentRecipe || currentRecipe.selectedRunFolderName === nextRecipe.selectedRunFolderName ) {
+            return true;
+        }
+
+        const storedFolderNames = this.listFolderNamesWithStoredSelections(currentRecipe, this.readTreeSelections(this.recipeCockpitWorkspaceState));
+
+        if ( storedFolderNames.length === 0 ) {
+            return true;
+        }
+
+        const matchingTreeCount = nextRecipe.trees.filter(tree => !!tree.folderName && storedFolderNames.includes(tree.folderName)).length;
+        const nextRunLabel = nextRecipe.runs.find(run => run.runFolderName === nextRecipe.selectedRunFolderName)?.label ?? nextRecipe.selectedRunFolderName;
+        const storedTreeText = storedFolderNames.length === 1 ? '1 tree on screen has' : `${storedFolderNames.length} trees on screen have`;
+        const matchingText = matchingTreeCount === 0
+            ? 'No tree of that run has the same folder name, so the selections cannot be applied to it.'
+            : `${matchingTreeCount === 1 ? '1 tree' : `${matchingTreeCount} trees`} of that run ${matchingTreeCount === 1 ? 'has' : 'have'} the same folder name. Apply same selections keeps them for ${matchingTreeCount === 1 ? 'it' : 'those trees'}; a selection naming an object or field that run does not have is ignored.`;
+        const buttonLabels = matchingTreeCount > 0
+            ? [RECIPE_COCKPIT_RUN_SWITCH_RESET_LABEL, RECIPE_COCKPIT_RUN_SWITCH_APPLY_LABEL]
+            : [RECIPE_COCKPIT_RUN_SWITCH_RESET_LABEL];
+
+        const confirmation = await this.confirmInPanel(
+            `Switch to ${nextRunLabel}?`,
+            { detail: `${storedTreeText} excluded objects, unticked fields, record counts or validation rules switched off: ${storedFolderNames.join(', ')}.\n\n${matchingText}\n\nReset selections clears them for every tree on screen. Fixed values and edited expressions are written in each recipe file, so neither choice changes them.` },
+            ...buttonLabels
+        );
+
+        if ( confirmation === RECIPE_COCKPIT_RUN_SWITCH_APPLY_LABEL && matchingTreeCount > 0 ) {
+            return true;
+        }
+
+        if ( confirmation !== RECIPE_COCKPIT_RUN_SWITCH_RESET_LABEL ) {
+            return false;
+        }
+
+        // READ AGAIN AFTER THE DIALOG: A CHOICE MADE ELSEWHERE WHILE IT WAS OPEN IS NOT WRITTEN BACK
+        const currentSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
+        storedFolderNames.forEach(folderName => {
+            currentSelections.excludedObjectApiNamesByFolderName.delete(folderName);
+            currentSelections.excludedFieldApiNamesByFolderName.delete(folderName);
+            currentSelections.objectCountsByFolderName.delete(folderName);
+            currentSelections.validationRulesOffByFolderName.delete(folderName);
+        });
+
+        // A RESET THAT COULD NOT BE SAVED WOULD LET THE NEXT RUN TAKE THE SELECTIONS OVER, SO THE RUN ON SCREEN STAYS
+        return this.writeTreeSelections(this.recipeCockpitWorkspaceState, currentSelections);
+
+    }
+
     // A CARD'S Reset selection: EVERY OBJECT INCLUDED, EVERY FIELD TICKED AND EVERY COUNT THE RECIPE'S AGAIN, AFTER THE READER CONFIRMS IN THE HOST'S OWN DIALOG
     private static async resetTreeSelection(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState, folderName: string) {
 
@@ -5018,7 +5101,8 @@ export class RecipeCockpitService {
                                                 workspaceRoot: string,
                                                 requestedRunFolderName?: string,
                                                 focusTree?: IRecipeCockpitTreeFocus | RecipeCockpitOpenFocusRequest,
-                                                persistedPanelPlace?: IRecipeCockpitPanelPlace): Promise<void> {
+                                                persistedPanelPlace?: IRecipeCockpitPanelPlace,
+                                                confirmBeforeRender?: (loadedRecipe: IRecipeCockpitLoadedRecipe) => Promise<boolean>): Promise<void> {
 
         const loadSequence = ++this.recipeCockpitLoadSequence;
 
@@ -5047,6 +5131,26 @@ export class RecipeCockpitService {
 
             if ( !isCurrentLoad() ) {
                 return;
+            }
+
+            if ( confirmBeforeRender ) {
+
+                // THE STATUS LINE WOULD OTHERWISE SAY "READING" FOR AS LONG AS THE QUESTION IS OPEN
+                this.recipeCockpitPanelState.loadPhaseMessage = '';
+                this.postToPanel(cockpitPanel, { command: 'loadPhase', message: '' });
+
+                const isConfirmed = await confirmBeforeRender(loadedRecipe);
+
+                // A NEWER LOAD ANSWERED THIS ONE'S QUESTION CANCEL, AND OWNS THE PANEL NOW
+                if ( !isCurrentLoad() ) {
+                    return;
+                }
+
+                if ( !isConfirmed ) {
+                    this.postToPanel(cockpitPanel, { command: 'runSwitchCancelled' });
+                    return;
+                }
+
             }
 
             this.renderRecipeModel(cockpitPanel, loadedRecipe, focusTree, persistedPanelPlace);
@@ -5483,7 +5587,8 @@ export class RecipeCockpitService {
 
             case 'selectRun':
 
-                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelAction.runFolderName);
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, panelAction.runFolderName, undefined, undefined,
+                    loadedRecipe => this.confirmRunSwitchSelections(panelState, loadedRecipe));
                 return;
 
             case 'generateTreecipe':
@@ -20870,6 +20975,13 @@ ${this.buildPaletteCustomProperties()}
         if (hostMessage.command === 'focusTree') {
             // A FAILED INSERT'S "Open Troubleshooting" (#375), ON THE MODEL ON SCREEN ONLY
             if (renderedSequence !== null && hostMessage.renderSequence === renderedSequence) { focusTreeInPlace(hostMessage.focusTree); }
+            return;
+        }
+
+        if (hostMessage.command === 'runSwitchCancelled') {
+            if (runSelectElement) {
+                runSelectElement.value = renderedRunFolderName;
+            }
             return;
         }
 
