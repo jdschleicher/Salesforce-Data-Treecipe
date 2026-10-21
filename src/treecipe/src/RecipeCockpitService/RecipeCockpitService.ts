@@ -30,11 +30,13 @@ import {
     RecipeCockpitMetadataDeploy
 } from './RecipeCockpitMetadataDeploy';
 import {
-    RecipeCockpitValidationRuleRetrieve,
-    VALIDATION_RULE_RETRIEVE_MAX_OBJECTS,
-    VALIDATION_RULE_RETRIEVE_TIMEOUT_MILLISECONDS,
-    ValidationRuleRetrieveOutcome
-} from './RecipeCockpitValidationRuleRetrieve';
+    METADATA_RETRIEVE_MAX_OBJECTS,
+    METADATA_RETRIEVE_OPERATION_BY_KIND,
+    METADATA_RETRIEVE_TIMEOUT_MILLISECONDS,
+    MetadataRetrieveKind,
+    MetadataRetrieveOutcome,
+    RecipeCockpitMetadataRetrieve
+} from './RecipeCockpitMetadataRetrieve';
 import {
     DevHubConfigSource,
     IDataOrgDetail,
@@ -49,8 +51,9 @@ import {
     ORG_PARENT_SEARCH_RESULT_LIMIT,
     SalesforceOrgService
 } from '../SalesforceOrgService/SalesforceOrgService';
-import { ILookupWiringContext, ILookupWiringRequest, IPinnedFieldRestoreRequest, IRecipeFilterLookup, IRecipeFixedValue, IRecipeUnconstrainedValue, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind, YAML_NON_STRING_PLAIN_SCALAR_PATTERN } from './RecipeCockpitRecipeWriter';
+import { ILookupWiringContext, ILookupWiringRequest, IPinnedFieldRestoreRequest, IRecipeFilterLookup, IRecipeFixedValue, IRecipeUnconstrainedValue, IRemovedTodoComment, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind, RecipeTodoRemoveLock, YAML_NON_STRING_PLAIN_SCALAR_PATTERN } from './RecipeCockpitRecipeWriter';
 import { IFixedValueEntry, IFixedValueFileRead, RecipeCockpitFixedValueStore } from './RecipeCockpitFixedValueStore';
+import { IRemovedTodoFileRead, RecipeCockpitRemovedTodoStore } from './RecipeCockpitRemovedTodoStore';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { RecipeCockpitObjectSelection, IObjectSelectionExclusion, IObjectSelectionDisabledLookup } from './RecipeCockpitObjectSelection';
 import {
@@ -389,6 +392,10 @@ export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'datasets', 'troubleshootin
 
 // THE TODO RecipeService WRITES UNDER A DEFAULT RecordTypeId (AND EVERY RECORD-TYPE VARIANT) WHEN AN OBJECT HAS SEVERAL RECORD TYPES
 export const RECIPE_COCKPIT_RECORD_TYPE_OPTIONS_MARKER = '### TODO: -- RecordType Options -- ';
+export const RECIPE_COCKPIT_TODO_REMOVE_CONFIRM_LABEL = 'Remove TODO';
+export const RECIPE_COCKPIT_TODO_RESTORE_CONFIRM_LABEL = 'Restore TODO';
+export const RECIPE_COCKPIT_TODO_REMOVE_REFUSAL_PREFIX = 'The TODO was not removed';
+export const RECIPE_COCKPIT_TODO_RESTORE_REFUSAL_PREFIX = 'The TODO was not put back';
 export const RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL = 'Regenerate with these record types';
 export const RECIPE_COCKPIT_USE_DEFAULT_RECORD_TYPES_LABEL = 'Use defaults';
 export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL = 'Remember this selection';
@@ -486,7 +493,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Each object shows its nickname, the name its lookups use in the recipe file. Click it to list the fields that point to it and jump to one; a field holding a nickname shows it highlighted, and clicking it jumps back to that object.',
-            'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all with a link to each line.',
+            'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all, each under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out.',
             'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types and Global Value Sets, each with its own search. It opens on the one you chose last. Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.',
             'Validation Rules lists each object\'s validation rules from your project: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not. Show formula opens a rule\'s formula.'
         ]
@@ -512,10 +519,11 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Wire to… and Wire TODO lookups: fill a lookup\'s TODO with its parent\'s nickname.',
             'Add <parent> to recipe: adds a standard parent object, such as Account, above the child that needs it.',
             '+ beside an object that looks up to itself: adds a child record under it.',
+            'Remove TODO (in the Troubleshooting tab\'s TODO\'s list): takes a TODO comment out of the recipe and lists it under Removed, where Restore puts it back exactly. The line is kept in a .removedTodos.json file beside the recipe. A TODO that is a field\'s whole value, such as a lookup\'s, stays.',
             'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.'
         ],
         closingParagraphs: [
-            'Three more write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project and Retrieve validation rules (under Validation Rules) writes an org\'s validation rules into your project.',
+            'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of an org you pick into your project, and change nothing in the org.',
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields, custom fields only), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against any connected org you pick in the command palette (a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.'
@@ -553,7 +561,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", on every tree, asks every time in the command palette for any connected org, production included, and retrieves that tree's validation rules from it into this project after a confirmation: it only reads from that org and deploys nothing. The Query tab, on every tree, runs a query you can edit against any connected org you pick in the command palette every time, production included: a query only reads, and what it returns is written only when you export it, under treecipe/QueryResults. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields…" (only the tree's custom fields, never a standard field, an object definition or a layout), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under treecipe/OrgOperations, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
+It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", "Retrieve fields…", "Retrieve record types…" and "Retrieve global value sets…", on every tree, ask every time in the command palette for any connected org, production included, and retrieve that tree's validation rules, custom fields, record types or the global value sets its fields name from it into this project after a confirmation: they only read from that org and deploy nothing. The Query tab, on every tree, runs a query you can edit against any connected org you pick in the command palette every time, production included: a query only reads, and what it returns is written only when you export it, under treecipe/QueryResults. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields…" (only the tree's custom fields, never a standard field, an object definition or a layout), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under treecipe/OrgOperations, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -616,9 +624,28 @@ export interface IRecipeCockpitFieldViewModel {
 export interface IRecipeCockpitTodoViewModel {
     lineNumber: number;
     text?: string;
+    // SET ONLY ON A TODO THE PANEL'S "Remove TODO" CANNOT TAKE OUT (#391), AND WHY
+    removeLock?: RecipeCockpitTodoRemoveLock;
     // WHERE A FIELD TODO WITH NO text SITS IN THE FIELD'S POSTED recipeValue (#365), SO A LIST AWAY FROM THE VALUE SHOWS IT EXACTLY
     valueStart?: number;
     valueLength?: number;
+}
+
+// WHY A TODO CANNOT BE REMOVED (#391): THE WRITER'S LOCKS, AND AN OCCURRENCE NO NICKNAME TELLS APART, WHICH A RESTORE COULD NOT FIND AGAIN
+export type RecipeCockpitTodoRemoveLock = RecipeTodoRemoveLock | 'indistinct-occurrence';
+
+/*
+    One TODO the reader removed from a card's recipe (#391), as the Removed sub-tab lists it.
+    removalKey names it in the host's list for this model only; its owner and text come from the
+    removed-TODOs file beside the recipe and are only ever written as text.
+*/
+export interface IRecipeCockpitRemovedTodoViewModel {
+    removalKey: string;
+    objectApiName: string;
+    objectNickname?: string;
+    fieldApiName?: string;
+    lineNumber: number;
+    text: string;
 }
 
 /*
@@ -842,6 +869,8 @@ export interface IRecipeCockpitTreeViewModel {
     lookupWirings?: IRecipeCockpitLookupWiringViewModel[];
     // SET ONLY ON A CARD THAT CAN GENERATE WHOSE RECIPE HAS A TODO LOOKUP TO A STANDARD PARENT IT DOES NOT WRITE (#294)
     addableParents?: IRecipeCockpitAddableParentViewModel[];
+    // SET ONLY WHEN THE CARD'S REMOVED-TODOS FILE LISTS A TODO STILL OUT OF ITS RECIPE (#391)
+    removedTodos?: IRecipeCockpitRemovedTodoViewModel[];
 }
 
 // THE VALUE THE READER TYPED FOR A FIELD (#262), OR THE "${{ ... }}" THEY EDITED (#356); kind IS THE HOST'S AND DECIDES HOW IT IS WRITTEN
@@ -1055,6 +1084,8 @@ export interface IRecipeCockpitPanelMessage {
     queryKey?: unknown;
     queryText?: unknown;
     exportFormat?: unknown;
+    // A ROW OF THE TODO'S SUB-TAB'S REMOVED LIST (#391)
+    removalKey?: unknown;
     filePath?: unknown;
     lineNumber?: unknown;
     runFolderName?: unknown;
@@ -1139,6 +1170,9 @@ export interface IRecipeCockpitPanelTreePlace {
     // THE TROUBLESHOOTING SUB-TAB (#365), ONLY WHEN IT IS NOT THE FIRST, AND EACH SUB-TAB'S SEARCH, ONLY WHEN THERE IS ONE
     troubleshootingSubTab?: RecipeCockpitTroubleshootingSubTab;
     troubleshootingSearchQueries?: Partial<Record<RecipeCockpitTroubleshootingSubTab, string>>;
+    // THE TODO'S SUB-TAB'S REMOVED LIST (#391), ONLY WHEN IT IS THE ONE OPEN, AND ITS SEARCH, ONLY WHEN THERE IS ONE
+    todosView?: 'removed';
+    removedTodosSearchText?: string;
 }
 
 export interface IRecipeCockpitPanelPlace {
@@ -1164,7 +1198,12 @@ export interface IRecipeCockpitTreeFocus {
     recordTypes?: { objectApiName?: string };
     // WITH tab 'troubleshooting': THE SUB-TAB A FAILED INSERT'S "Open Troubleshooting" (#375) SELECTS
     troubleshootingSubTab?: RecipeCockpitTroubleshootingSubTab;
+    // WITH troubleshootingSubTab 'todos': WHICH OF ITS LISTS A REMOVE OR A RESTORE (#391) RELOADS ONTO
+    todosView?: RecipeCockpitTodosView;
 }
+
+// THE TODO'S SUB-TAB'S TWO LISTS (#391): THE TODOS IN THE RECIPE, AND THE ONES THE READER REMOVED
+export type RecipeCockpitTodosView = 'open' | 'removed';
 
 // WHAT AN OPEN OF THE COCKPIT CAN BE ASKED TO FOCUS ONCE ITS RUN IS LOADED
 export type RecipeCockpitOpenFocusRequest = IRecipeCockpitRecordTypesFocusRequest | IRecipeCockpitTroubleshootingFocusRequest;
@@ -1380,14 +1419,16 @@ export interface IRecipeCockpitPermissionSetAssignStateMessage {
 }
 
 /*
-    "Retrieve validation rules…" (#326): while isRunning, every card's retrieve button is disabled.
-    treeKey names the card whose button was clicked. It carries no text: how the retrieve went is a
-    VS Code notification. Stored and replayed.
+    The Troubleshooting tab's retrieves (#326, #382): ONE per window, whatever its kind, so while
+    isRunning every card's retrieve and deploy is disabled. treeKey and retrieveKind name the card
+    whose button was clicked, which reads "Retrieving…". It carries no text: how the retrieve went is
+    a VS Code notification. Stored and replayed.
 */
-export interface IRecipeCockpitValidationRuleRetrieveStateMessage {
-    command: 'validationRuleRetrieveState';
+export interface IRecipeCockpitMetadataRetrieveStateMessage {
+    command: 'metadataRetrieveState';
     isRunning: boolean;
     treeKey: string;
+    retrieveKind: MetadataRetrieveKind;
 }
 
 /*
@@ -1564,7 +1605,32 @@ export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER = 'Choose t
 
 export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL = 'Generate Treecipe';
 
-export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL = 'No validation rules were retrieved: an insert, a permission set assignment or a metadata deploy is running. Try again once it has finished.';
+export const RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL = 'Nothing was retrieved: an insert, a permission set assignment or a metadata deploy is running. Try again once it has finished.';
+
+/*
+    The Troubleshooting tab's other retrieves (#382): each section's own 📥 card, posting its tree's
+    KEY and nothing else. Every one asks for the org in the command palette, as #326's does.
+*/
+export const RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS: Readonly<Record<MetadataRetrieveKind, string>> = Object.freeze({
+    validationRules: RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL,
+    fields: 'Retrieve fields…',
+    recordTypes: 'Retrieve record types…',
+    globalValueSets: 'Retrieve global value sets…'
+});
+
+export const RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND: Readonly<Record<MetadataRetrieveKind, string>> = Object.freeze({
+    validationRules: 'retrieveTreeValidationRules',
+    fields: 'retrieveTreeFields',
+    recordTypes: 'retrieveTreeRecordTypes',
+    globalValueSets: 'retrieveTreeGlobalValueSets'
+});
+
+export const RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS: Readonly<Record<MetadataRetrieveKind, string>> = Object.freeze({
+    validationRules: RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER,
+    fields: 'Choose the org to retrieve this tree\'s custom fields from',
+    recordTypes: 'Choose the org to retrieve this tree\'s record types from',
+    globalValueSets: 'Choose the org to retrieve the global value sets this tree\'s fields name from'
+});
 
 /*
     The Troubleshooting tab's deploys (#346): each section's own button, its confirmation, and what a
@@ -1594,7 +1660,7 @@ export const RECIPE_COCKPIT_ACTION_VERB_EMOJI: Readonly<Record<RecipeCockpitActi
     generate: '🛠️'
 });
 
-export type RecipeCockpitTroubleshootingAction = 'assignPermissionSets' | 'generatePermissionSet' | 'deployPermissionSet' | 'deployFields' | 'retrieveValidationRules' | 'deployRecordTypes' | 'deployGlobalValueSets';
+export type RecipeCockpitTroubleshootingAction = 'assignPermissionSets' | 'generatePermissionSet' | 'deployPermissionSet' | 'deployFields' | 'retrieveFields' | 'retrieveValidationRules' | 'deployRecordTypes' | 'retrieveRecordTypes' | 'deployGlobalValueSets' | 'retrieveGlobalValueSets';
 export interface IRecipeCockpitActionCard {
     verb: RecipeCockpitActionVerb;
     why: string;
@@ -1604,10 +1670,20 @@ export const RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS: Readonly<Record<Recipe
     generatePermissionSet: { verb: 'generate', why: 'No permission set grants these objects? Write a create/read one into the project. Deploys nothing.' },
     deployPermissionSet: { verb: 'deploy', why: 'Push the tree\'s permission sets to the sandbox or scratch org before assigning them.' },
     deployFields: { verb: 'deploy', why: 'Insert failed with INVALID_FIELD? The org is missing custom fields this tree writes.' },
+    retrieveFields: { verb: 'retrieve', why: 'Project behind the org? Pull this tree\'s custom fields so Generate Treecipe writes what the org holds.' },
     retrieveValidationRules: { verb: 'retrieve', why: 'Pull the org\'s validation rules so Generate Treecipe can respect them.' },
+    retrieveRecordTypes: { verb: 'retrieve', why: 'Pull the org\'s record types for these objects so Generate Treecipe can choose among them.' },
+    retrieveGlobalValueSets: { verb: 'retrieve', why: 'Pull the value sets these fields name so picklists generate the org\'s values.' },
     deployRecordTypes: { verb: 'deploy', why: 'Insert failed on RecordTypeId? The org is missing record types this recipe sets.' },
     deployGlobalValueSets: { verb: 'deploy', why: 'Restricted picklist rejected a value? The org is missing value sets these fields use.' }
 });
+export const RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND: Readonly<Record<MetadataRetrieveKind, RecipeCockpitTroubleshootingAction>> = Object.freeze({
+    validationRules: 'retrieveValidationRules',
+    fields: 'retrieveFields',
+    recordTypes: 'retrieveRecordTypes',
+    globalValueSets: 'retrieveGlobalValueSets'
+});
+
 export const RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND: Readonly<Record<MetadataDeployKind, RecipeCockpitTroubleshootingAction>> = Object.freeze({
     permissionSet: 'deployPermissionSet',
     fields: 'deployFields',
@@ -1661,6 +1737,27 @@ export const RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS: Readonly<Recor
     globalValueSets: 'Search global value set actions'
 });
 export const RECIPE_COCKPIT_NO_TREE_TODOS_NOTE = 'No TODO comments in this tree\'s recipe.';
+
+/*
+    The TODO's sub-tab's Open and Removed lists (#391), and why a TODO's Remove TODO is disabled.
+    Constants injected into the panel script, written with textContent.
+*/
+export const RECIPE_COCKPIT_TODOS_VIEWS: readonly RecipeCockpitTodosView[] = Object.freeze(['open', 'removed'] as RecipeCockpitTodosView[]);
+export const RECIPE_COCKPIT_TODOS_VIEW_LABELS: Readonly<Record<RecipeCockpitTodosView, string>> = Object.freeze({ open: 'Open', removed: 'Removed' });
+export const RECIPE_COCKPIT_REMOVED_TODOS_PLACEHOLDER = 'Search removed TODOs by object, field or text';
+export const RECIPE_COCKPIT_NO_REMOVED_TODOS_NOTE = 'No TODO has been removed from this tree\'s recipe. Remove TODO on an open TODO moves it here, and Restore puts it back.';
+export const RECIPE_COCKPIT_TODO_REMOVE_LABEL = 'Remove TODO';
+export const RECIPE_COCKPIT_TODO_RESTORE_LABEL = 'Restore';
+export const RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS: Readonly<Record<RecipeCockpitTodoRemoveLock, string>> = Object.freeze({
+    'field-value': 'This TODO is the field\'s whole value: removing it would leave the field empty. Edit or untick the field in the Treecipe tab instead.',
+    'record-type-options': 'The Recipe Cockpit and Run Faker read this line to find the field\'s record type sections, so it stays.',
+    'commented-out-marker': 'This line is the Recipe Cockpit\'s marker for a commented-out field, which restoring the field needs.',
+    'scalar-content': 'This line is inside the field\'s multi-line value, where YAML reads it as part of the value rather than a comment, so it stays.',
+    'indistinct-occurrence': 'This object is written more than once without a nickname that tells this one apart, so the TODO could not be put back in the same place.'
+});
+export const RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON = 'This TODO is the lookup\'s whole value: removing it would leave the lookup empty. Wire the lookup to a parent in the Treecipe tab instead.';
+export const RECIPE_COCKPIT_TODO_OTHER_RECIPE_REASON = 'This TODO is in another recipe file than this tree\'s, so it can be removed only from that tree\'s card.';
+export const RECIPE_COCKPIT_TODO_NO_RECIPE_REASON = 'This tree has no single recipe file to write, so its TODOs cannot be removed here.';
 
 /*
     The Validation Rules sub-tab's list (#327): what each rule's status reads as, and the notes the
@@ -1743,7 +1840,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitFieldEditResultMessage
                                         | IRecipeCockpitScratchOrgStateMessage
                                         | IRecipeCockpitPermissionSetAssignStateMessage
-                                        | IRecipeCockpitValidationRuleRetrieveStateMessage
+                                        | IRecipeCockpitMetadataRetrieveStateMessage
                                         | IRecipeCockpitMetadataDeployStateMessage
                                         | IRecipeCockpitTroubleshootingSummaryMessage
                                         | IRecipeCockpitTreeQueriesMessage
@@ -1863,6 +1960,8 @@ export interface IRecipeCockpitLoadedRecipe {
     pinnedFixedValuesByFolderName?: Map<string, Map<string, Map<string, string>>>;
     // THE WRAPPER THE MODEL WAS READ FROM, WHICH THE QUERY TAB READS AGAIN (#367); UNSET WHEN IT COULD NOT BE READ
     objectsWrapperFilePath?: string;
+    // EVERY CARD'S REMOVED TODOS (#391), BY TREE KEY, IN THE ORDER tree.removedTodos NUMBERS THEM -- WHAT A RESTORE PUTS BACK
+    removedTodosByTreeKey?: Map<string, IRemovedTodoComment[]>;
 }
 
 /*
@@ -1884,6 +1983,10 @@ export interface IRecipeCockpitTreeHistoryAllowLists {
     // "<object>\n<developerName>" FOR EVERY RECORD TYPE A CARD'S RECORD TYPES TAB OFFERS (#195), AND THE CARDS THAT DRAW THAT TAB
     selectableRecordTypeKeys: Set<string>;
     recordTypeTreeKeys: Set<string>;
+    // "<treeKey>\n<lineNumber>" FOR EVERY TODO THE OPEN SUB-TAB DRAWS A REMOVE BUTTON FOR (#391): ONE OF THE CARD'S OWN RECIPE FILE, NO LOCK HOLDING IT
+    removableTodoKeys: Set<string>;
+    // "<treeKey>\n<removalKey>" FOR EVERY ROW OF THE REMOVED SUB-TAB (#391)
+    restorableTodoKeys: Set<string>;
 }
 
 /*
@@ -1916,6 +2019,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'wireLookups'; treeKey: string; recipeFilePath: string; wirings: IRecipeCockpitLookupWiringViewModel[]; isWireAll: boolean }
     | { kind: 'postWireLookupState'; hostMessage: IRecipeCockpitWireLookupStateMessage }
     | { kind: 'addParentObject'; treeKey: string; recipeFilePath: string; addition: IRecipeCockpitAddableParentViewModel }
+    | { kind: 'removeTodo'; treeKey: string; recipeFilePath: string; lineNumber: number; todoText: string }
+    | { kind: 'restoreTodo'; treeKey: string; recipeFilePath: string; removed: IRemovedTodoComment }
     | { kind: 'renameTree'; folderName: string }
     | { kind: 'toggleFavoriteTree'; folderName: string }
     | { kind: 'renameDataset'; datasetFolderName: string }
@@ -1932,7 +2037,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'postScratchOrgState'; hostMessage: IRecipeCockpitScratchOrgStateMessage }
     | { kind: 'assignTreePermissionSets'; treeKey: string; isSelectedOrg: boolean }
     | { kind: 'generateTreePermissionSet'; treeKey: string }
-    | { kind: 'retrieveTreeValidationRules'; treeKey: string }
+    | { kind: 'retrieveTreeMetadata'; treeKey: string; retrieveKind: MetadataRetrieveKind }
     | { kind: 'deployTreeMetadataComponents'; treeKey: string; deployKind: MetadataDeployKind; isSelectedOrg: boolean }
     // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refuseMetadataDeploy'; refusalText?: string; hostMessage: IRecipeCockpitMetadataDeployStateMessage }
@@ -1944,7 +2049,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'postTreeQueryState'; hostMessage: IRecipeCockpitTreeQueryStateMessage }
     | { kind: 'exportTreeQueryResult'; treeKey: string; queryKey: string; exportFormat: RecipeCockpitQueryExportFormat }
     // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
-    | { kind: 'refuseValidationRuleRetrieve'; refusalText?: string; hostMessage: IRecipeCockpitValidationRuleRetrieveStateMessage }
+    | { kind: 'refuseMetadataRetrieve'; refusalText?: string; hostMessage: IRecipeCockpitMetadataRetrieveStateMessage }
     // A REFUSAL IS A WARNING NOTIFICATION, AND THE STATE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refusePermissionSetAssign'; refusalText?: string; hostMessage: IRecipeCockpitPermissionSetAssignStateMessage }
     | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
@@ -2018,8 +2123,8 @@ export interface IRecipeCockpitPanelState {
     pendingAssignableTreeKeys: Set<string>;
     assignableTreeKeys: Set<string>;
     permissionSetAssignStateMessage?: IRecipeCockpitPermissionSetAssignStateMessage;
-    // "Retrieve validation rules…" (#326): ONE PER WINDOW, STORED AND REPLAYED LIKE THE ASSIGNMENT'S
-    validationRuleRetrieveStateMessage?: IRecipeCockpitValidationRuleRetrieveStateMessage;
+    // THE TROUBLESHOOTING TAB'S RETRIEVES (#326, #382): ONE PER WINDOW, STORED AND REPLAYED LIKE THE ASSIGNMENT'S
+    metadataRetrieveStateMessage?: IRecipeCockpitMetadataRetrieveStateMessage;
     // THE TROUBLESHOOTING TAB'S DEPLOYS (#346): ONE PER WINDOW, STORED AND REPLAYED LIKE THE ASSIGNMENT'S
     metadataDeployStateMessage?: IRecipeCockpitMetadataDeployStateMessage;
     // THE QUERY TAB'S RUN (#367): ONE PER WINDOW, STORED AND REPLAYED LIKE THE RETRIEVE'S
@@ -2040,6 +2145,8 @@ export interface IRecipeCockpitPanelState {
     objectLevelsByApiName?: Map<string, number>;
     // HOST-ONLY, REPLACED WITH THE MODEL: WHAT THE CARDS' FIXED-VALUES FILES PIN (#342), WHICH workspaceState NO LONGER HOLDS
     pinnedFixedValuesByFolderName?: Map<string, Map<string, Map<string, string>>>;
+    // HOST-ONLY, REPLACED WITH THE MODEL: EVERY CARD'S REMOVED TODOS (#391), WHICH tree.removedTodos NAMES BY removalKey
+    removedTodosByTreeKey?: Map<string, IRemovedTodoComment[]>;
     // THE LAST datasetAdded POSTED (#226): ONLY ITS "partialRendered" PROMOTES THE PENDING HISTORY ALLOW-LISTS
     datasetUpdateSequence: number;
     /*
@@ -2209,7 +2316,9 @@ export class RecipeCockpitService {
                 ...( candidateTree.isRecordTypeFieldsOnly === true ? { isRecordTypeFieldsOnly: true as const } : {} ),
                 ...( candidateTree.isTodosOnly === true ? { isTodosOnly: true as const } : {} ),
                 ...( troubleshootingSubTab !== undefined ? { troubleshootingSubTab: troubleshootingSubTab } : {} ),
-                ...( Object.keys(troubleshootingSearchQueries).length > 0 ? { troubleshootingSearchQueries: troubleshootingSearchQueries } : {} )
+                ...( Object.keys(troubleshootingSearchQueries).length > 0 ? { troubleshootingSearchQueries: troubleshootingSearchQueries } : {} ),
+                ...( candidateTree.todosView === 'removed' ? { todosView: 'removed' as const } : {} ),
+                ...( this.isBoundedText(candidateTree.removedTodosSearchText) && candidateTree.removedTodosSearchText !== '' ? { removedTodosSearchText: candidateTree.removedTodosSearchText } : {} )
             }];
 
         });
@@ -2948,6 +3057,61 @@ export class RecipeCockpitService {
                 ? [`${changedFieldLabels.join(', ')} ${changedFieldLabels.length === 1 ? 'was' : 'were'} changed in the recipe since ${changedFieldLabels.length === 1 ? 'it was' : 'they were'} pinned, so ${changedFieldLabels.length === 1 ? 'it is' : 'they are'} not shown as pinned. "${fixedValueFileLabel}" still holds the earlier ${changedFieldLabels.length === 1 ? 'value' : 'values'}.`]
                 : []
         };
+
+    }
+
+    /*
+        The TODOs a card's removed-TODOs file (#391) lists that are still out of its recipe, read
+        beside it: only a file inside the workspace. A TODO back in the recipe -- put back by hand,
+        or never really gone -- is left out, so it is listed once, under Open; the next write of the
+        file drops it. A file that is there and cannot be read lists nothing, with a notice.
+    */
+    static readRemovedTodos(recipeFilePath: string, workspaceRoot: string, recipeText: string | undefined): { entries: IRemovedTodoComment[]; notices: string[] } {
+
+        const removedTodoFilePath = RecipeCockpitRemovedTodoStore.buildFilePath(recipeFilePath);
+        const removedTodoRead = this.readRemovedTodoFile(removedTodoFilePath, workspaceRoot);
+
+        if ( removedTodoRead.isUnreadable ) {
+            return { entries: [], notices: [`"${path.basename(removedTodoFilePath)}" is not a removed-TODOs file the Recipe Cockpit can read, so its recipe lists no removed TODO.`] };
+        }
+        if ( removedTodoRead.entries.length === 0 || recipeText === undefined ) {
+            return { entries: [], notices: [] };
+        }
+
+        return { entries: this.listRemovedTodosStillOut(recipeText, removedTodoRead.entries), notices: [] };
+
+    }
+
+    // ONE SPLIT AND SCAN FOR EVERY REMOVED TODO OF THE FILE
+    static listRemovedTodosStillOut(recipeText: string, entries: IRemovedTodoComment[]): IRemovedTodoComment[] {
+        const { lines } = RecipeCockpitRecipeWriter.splitRecipeLines(recipeText);
+        const scannedObjects = RecipeCockpitRecipeWriter.scanRecipeObjects(lines);
+        return entries.filter(entry => !RecipeCockpitRecipeWriter.isRemovedTodoBack(lines, scannedObjects, entry, entries));
+    }
+
+    static buildRemovedTodoViewModels(entries: IRemovedTodoComment[]): IRecipeCockpitRemovedTodoViewModel[] {
+        return entries.map((entry, entryIndex) => ({
+            removalKey: String(entryIndex),
+            objectApiName: entry.objectApiName,
+            ...( entry.objectNickname !== undefined ? { objectNickname: entry.objectNickname } : {} ),
+            ...( entry.fieldApiName !== undefined ? { fieldApiName: entry.fieldApiName } : {} ),
+            lineNumber: entry.lineNumber,
+            text: entry.todoText
+        }));
+    }
+
+    // NO FILE IS NO ENTRIES; ONE OUTSIDE THE WORKSPACE IS NEVER READ
+    static readRemovedTodoFile(removedTodoFilePath: string, workspaceRoot: string): IRemovedTodoFileRead {
+
+        if ( !this.isUsableWorkspacePath(removedTodoFilePath, workspaceRoot) ) {
+            return { entries: [], isUnreadable: false };
+        }
+
+        try {
+            return RecipeCockpitRemovedTodoStore.parse(fs.readFileSync(removedTodoFilePath, 'utf-8'));
+        } catch {
+            return { entries: [], isUnreadable: true };
+        }
 
     }
 
@@ -3897,17 +4061,24 @@ export class RecipeCockpitService {
     }
 
     private static writeRecipeWithFixedValueFile(recipeFilePath: string, recipeText: string, fixedValueFilePath: string, entries: IFixedValueEntry[]): string | undefined {
+        return this.writeRecipeWithSidecarFile(recipeFilePath, recipeText, fixedValueFilePath, entries.length > 0 ? RecipeCockpitFixedValueStore.serialize(entries) : undefined, 'Not saved');
+    }
 
-        const previousFixedValueText = fs.existsSync(fixedValueFilePath) ? fs.readFileSync(fixedValueFilePath, 'utf-8') : undefined;
+    // THE SIDECAR FIRST, THEN THE RECIPE; sidecarText UNDEFINED REMOVES THE SIDECAR RATHER THAN KEEPING IT EMPTY
+    private static writeRecipeWithSidecarFile(recipeFilePath: string, recipeText: string, sidecarFilePath: string, sidecarText: string | undefined, refusalPrefix: string): string | undefined {
+
+        const fixedValueFilePath = sidecarFilePath;
+        let previousFixedValueText: string | undefined;
 
         try {
-            if ( entries.length > 0 ) {
-                this.writeFileReplacing(fixedValueFilePath, RecipeCockpitFixedValueStore.serialize(entries));
+            previousFixedValueText = fs.existsSync(fixedValueFilePath) ? fs.readFileSync(fixedValueFilePath, 'utf-8') : undefined;
+            if ( sidecarText !== undefined ) {
+                this.writeFileReplacing(fixedValueFilePath, sidecarText);
             } else if ( previousFixedValueText !== undefined ) {
                 fs.unlinkSync(fixedValueFilePath);
             }
         } catch (writeError) {
-            return `Not saved: "${path.basename(fixedValueFilePath)}" could not be written (${String(writeError?.message ?? writeError)}).`;
+            return `${refusalPrefix}: "${RecipeYamlScalar.escapeForNotification(path.basename(fixedValueFilePath))}" could not be written (${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}).`;
         }
 
         try {
@@ -3921,9 +4092,189 @@ export class RecipeCockpitService {
                     fs.unlinkSync(fixedValueFilePath);
                 }
             } catch {
-                // THE RECIPE IS UNCHANGED, SO A FIXED-VALUES FILE LEFT AHEAD OF IT SHOWS ITS FIELDS AS CHANGED SINCE THEY WERE PINNED, NOT AS PINNED
+                // THE RECIPE IS UNCHANGED, SO A SIDECAR LEFT AHEAD OF IT SAYS WHAT THE RECIPE NO LONGER HOLDS: A PIN READS AS CHANGED, A REMOVED TODO AS BACK
             }
-            return `Not saved: "${path.basename(recipeFilePath)}" could not be written (${String(writeError?.message ?? writeError)}).`;
+            return `${refusalPrefix}: "${RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath))}" could not be written (${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}).`;
+        }
+
+    }
+
+    /*
+        "Remove TODO" (#391): the TODO's comment comes out of the card's recipe file and what puts it
+        back goes into the removed-TODOs file beside it, written FIRST and put back as it was when the
+        recipe cannot be. Asked in the panel first and planned again after, against the file as it is
+        then; a TODO no longer what the panel drew writes nothing. Every refusal is a warning.
+    */
+    private static async writeTodoRemoval(removeAction: Extract<RecipeCockpitPanelAction, { kind: 'removeTodo' }>, workspaceRoot: string): Promise<boolean> {
+
+        const { recipeFilePath } = removeAction;
+        const removedTodoFilePath = RecipeCockpitRemovedTodoStore.buildFilePath(recipeFilePath);
+
+        const planned = this.planTodoRemoval(removeAction, workspaceRoot);
+        if ( 'refusal' in planned ) {
+            VSCodeWorkspaceService.showWarningMessage(planned.refusal);
+            return false;
+        }
+
+        const confirmation = await this.confirmInPanel(
+            'Remove this TODO from the recipe?',
+            {
+                detail: [
+                    `This writes to "${path.basename(recipeFilePath)}": ${planned.removed.kind === 'line' ? `line ${removeAction.lineNumber} is deleted` : `the comment is cut off the end of line ${removeAction.lineNumber}, and its value is kept`}. Every other line of the file is left as it is.`,
+                    '',
+                    planned.removed.todoText,
+                    '',
+                    `The line is kept in "${path.basename(removedTodoFilePath)}" beside the recipe, so Restore in the Removed list can put it back exactly.`
+                ].join('\n')
+            },
+            RECIPE_COCKPIT_TODO_REMOVE_CONFIRM_LABEL
+        );
+
+        if ( confirmation !== RECIPE_COCKPIT_TODO_REMOVE_CONFIRM_LABEL ) {
+            return false;
+        }
+
+        // PLANNED AGAIN AFTER THE DIALOG: EITHER FILE CAN HAVE CHANGED WHILE IT WAS OPEN
+        const confirmed = this.planTodoRemoval(removeAction, workspaceRoot);
+        if ( 'refusal' in confirmed ) {
+            VSCodeWorkspaceService.showWarningMessage(confirmed.refusal);
+            return false;
+        }
+
+        const writeRefusal = this.writeRecipeWithSidecarFile(recipeFilePath, confirmed.recipeText, removedTodoFilePath, this.serializeRemovedTodos(confirmed.entries), RECIPE_COCKPIT_TODO_REMOVE_REFUSAL_PREFIX);
+        if ( writeRefusal !== undefined ) {
+            VSCodeWorkspaceService.showWarningMessage(writeRefusal);
+            return false;
+        }
+
+        VSCodeWorkspaceService.showInformationMessage(`Removed a TODO from "${RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath))}". It is listed under Removed in the Troubleshooting tab's TODO's.`);
+        return true;
+
+    }
+
+    private static planTodoRemoval(removeAction: Extract<RecipeCockpitPanelAction, { kind: 'removeTodo' }>, workspaceRoot: string):
+        { recipeText: string; removed: IRemovedTodoComment; entries: IRemovedTodoComment[] } | { refusal: string } {
+
+        const located = this.readRemovedTodoTarget(removeAction.recipeFilePath, workspaceRoot, RECIPE_COCKPIT_TODO_REMOVE_REFUSAL_PREFIX);
+        if ( 'refusal' in located ) {
+            return located;
+        }
+
+        const removeResult = RecipeCockpitRecipeWriter.removeTodoComment(located.recipeText, { lineNumber: removeAction.lineNumber, todoText: removeAction.todoText });
+        if ( 'refusal' in removeResult ) {
+            return { refusal: `${RECIPE_COCKPIT_TODO_REMOVE_REFUSAL_PREFIX}: ${RecipeYamlScalar.escapeForNotification(removeResult.refusal.message)}` };
+        }
+
+        return {
+            recipeText: removeResult.recipeText,
+            removed: removeResult.removed,
+            entries: this.listRemovedTodosStillOut(removeResult.recipeText, RecipeCockpitRemovedTodoStore.addEntry(located.entries, removeResult.removed))
+        };
+
+    }
+
+    /*
+        "Restore" (#391): the removed TODO goes back where it was taken from, and leaves the
+        removed-TODOs file. The entry must still be in that file as the panel drew it; the writer
+        finds its place in the recipe as it is NOW, and refuses when that place is gone.
+    */
+    private static async writeTodoRestore(restoreAction: Extract<RecipeCockpitPanelAction, { kind: 'restoreTodo' }>, workspaceRoot: string): Promise<boolean> {
+
+        const { recipeFilePath, removed } = restoreAction;
+        const removedTodoFilePath = RecipeCockpitRemovedTodoStore.buildFilePath(recipeFilePath);
+
+        const planned = this.planTodoRestore(restoreAction, workspaceRoot);
+        if ( 'refusal' in planned ) {
+            VSCodeWorkspaceService.showWarningMessage(planned.refusal);
+            return false;
+        }
+
+        const confirmation = await this.confirmInPanel(
+            'Put this TODO back in the recipe?',
+            {
+                detail: [
+                    `This writes to "${path.basename(recipeFilePath)}": ${removed.kind === 'line' ? `the line goes back as line ${planned.lineNumber}` : `the comment goes back on the end of line ${planned.lineNumber}`}, and "${path.basename(removedTodoFilePath)}" no longer lists it. Every other line of the file is left as it is.`,
+                    '',
+                    removed.todoText
+                ].join('\n')
+            },
+            RECIPE_COCKPIT_TODO_RESTORE_CONFIRM_LABEL
+        );
+
+        if ( confirmation !== RECIPE_COCKPIT_TODO_RESTORE_CONFIRM_LABEL ) {
+            return false;
+        }
+
+        const confirmed = this.planTodoRestore(restoreAction, workspaceRoot);
+        if ( 'refusal' in confirmed ) {
+            VSCodeWorkspaceService.showWarningMessage(confirmed.refusal);
+            return false;
+        }
+
+        const writeRefusal = this.writeRecipeWithSidecarFile(recipeFilePath, confirmed.recipeText, removedTodoFilePath, this.serializeRemovedTodos(confirmed.entries), RECIPE_COCKPIT_TODO_RESTORE_REFUSAL_PREFIX);
+        if ( writeRefusal !== undefined ) {
+            VSCodeWorkspaceService.showWarningMessage(writeRefusal);
+            return false;
+        }
+
+        VSCodeWorkspaceService.showInformationMessage(`Put a TODO back in "${RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath))}".`);
+        return true;
+
+    }
+
+    private static planTodoRestore(restoreAction: Extract<RecipeCockpitPanelAction, { kind: 'restoreTodo' }>, workspaceRoot: string):
+        { recipeText: string; lineNumber: number; entries: IRemovedTodoComment[] } | { refusal: string } {
+
+        const located = this.readRemovedTodoTarget(restoreAction.recipeFilePath, workspaceRoot, RECIPE_COCKPIT_TODO_RESTORE_REFUSAL_PREFIX);
+        if ( 'refusal' in located ) {
+            return located;
+        }
+
+        const entry = located.entries.find(candidate => RecipeCockpitRemovedTodoStore.isSameEntry(candidate, restoreAction.removed));
+        if ( !entry ) {
+            return { refusal: `${RECIPE_COCKPIT_TODO_RESTORE_REFUSAL_PREFIX}: "${RecipeYamlScalar.escapeForNotification(path.basename(RecipeCockpitRemovedTodoStore.buildFilePath(restoreAction.recipeFilePath)))}" no longer lists this TODO. Re-open the Recipe Cockpit to load it as it is now.` };
+        }
+
+        const restoreResult = RecipeCockpitRecipeWriter.restoreTodoComment(located.recipeText, entry, located.entries);
+        if ( 'refusal' in restoreResult ) {
+            return { refusal: `${RECIPE_COCKPIT_TODO_RESTORE_REFUSAL_PREFIX}: ${RecipeYamlScalar.escapeForNotification(restoreResult.refusal.message)}` };
+        }
+
+        return {
+            recipeText: restoreResult.recipeText,
+            lineNumber: restoreResult.lineNumber,
+            entries: this.listRemovedTodosStillOut(restoreResult.recipeText, RecipeCockpitRemovedTodoStore.removeEntry(located.entries, entry))
+        };
+
+    }
+
+    private static serializeRemovedTodos(entries: IRemovedTodoComment[]): string | undefined {
+        return entries.length > 0 ? RecipeCockpitRemovedTodoStore.serialize(entries) : undefined;
+    }
+
+    // THE RECIPE'S TEXT AND THE REMOVED-TODOS FILE'S ENTRIES, OR WHY NEITHER IS TO BE WRITTEN
+    private static readRemovedTodoTarget(recipeFilePath: string, workspaceRoot: string, refusalPrefix: string): { recipeText: string; entries: IRemovedTodoComment[] } | { refusal: string } {
+
+        const removedTodoFilePath = RecipeCockpitRemovedTodoStore.buildFilePath(recipeFilePath);
+        const recipeFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath));
+        const removedTodoFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(removedTodoFilePath));
+
+        if ( !this.isUsableWorkspacePath(recipeFilePath, workspaceRoot) ) {
+            return { refusal: `${refusalPrefix}: "${recipeFileLabel}" no longer exists in this workspace. Re-open the Recipe Cockpit to load the runs currently on disk.` };
+        }
+        if ( this.isLinkPath(removedTodoFilePath) || ( fs.existsSync(removedTodoFilePath) && !this.isUsableWorkspacePath(removedTodoFilePath, workspaceRoot) ) ) {
+            return { refusal: `${refusalPrefix}: "${removedTodoFileLabel}" is a link or is outside this workspace, so it is not written.` };
+        }
+
+        const removedTodoRead = this.readRemovedTodoFile(removedTodoFilePath, workspaceRoot);
+        if ( removedTodoRead.isUnreadable ) {
+            return { refusal: `${refusalPrefix}: "${removedTodoFileLabel}" is not a removed-TODOs file the Recipe Cockpit can read. Fix it, or delete it to start again.` };
+        }
+
+        try {
+            return { recipeText: fs.readFileSync(recipeFilePath, 'utf-8'), entries: removedTodoRead.entries };
+        } catch {
+            return { refusal: `${refusalPrefix}: "${recipeFileLabel}" could not be read.` };
         }
 
     }
@@ -4223,7 +4574,9 @@ export class RecipeCockpitService {
             selectableObjectKeys: new Set(),
             selectableFieldKeys: new Set(),
             selectableRecordTypeKeys: new Set(),
-            recordTypeTreeKeys: new Set()
+            recordTypeTreeKeys: new Set(),
+            removableTodoKeys: new Set(),
+            restorableTodoKeys: new Set()
         };
 
     }
@@ -4280,7 +4633,7 @@ export class RecipeCockpitService {
     }
 
     // EVERY HISTORY ACTION THE RENDERED MODEL OFFERS, BY NAME, AND NOTHING ELSE
-    static collectTreeHistoryAllowLists(recipeViewModel: IRecipeCockpitRecipeViewModel): IRecipeCockpitTreeHistoryAllowLists {
+    static collectTreeHistoryAllowLists(recipeViewModel: IRecipeCockpitRecipeViewModel, runFakerRecipeFilePathsByTreeKey: ReadonlyMap<string, string> = new Map()): IRecipeCockpitTreeHistoryAllowLists {
 
         const treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
         const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
@@ -4294,6 +4647,10 @@ export class RecipeCockpitService {
                     treeHistoryAllowLists.recordTypeTreeKeys.add(tree.treeKey);
                     objectViewModel.recordTypes.forEach(recordType => treeHistoryAllowLists.selectableRecordTypeKeys.add(this.buildSelectableRecordTypeKey(objectViewModel.objectApiName, recordType.developerName)));
                 });
+
+            this.collectRemovableTodoLineNumbers(objectsByApiName, tree, runFakerRecipeFilePathsByTreeKey.get(tree.treeKey))
+                .forEach(lineNumber => treeHistoryAllowLists.removableTodoKeys.add(this.buildTodoActionKey(tree.treeKey, lineNumber)));
+            ( tree.removedTodos ?? [] ).forEach(removedTodo => treeHistoryAllowLists.restorableTodoKeys.add(this.buildTodoActionKey(tree.treeKey, removedTodo.removalKey)));
 
             if ( tree.folderName !== '' ) {
                 treeHistoryAllowLists.nameableTreeKeys.add(tree.treeKey);
@@ -4313,6 +4670,75 @@ export class RecipeCockpitService {
         });
 
         return treeHistoryAllowLists;
+
+    }
+
+    static buildTodoActionKey(treeKey: string, todoName: string | number): string {
+
+        return `${treeKey}\n${todoName}`;
+
+    }
+
+    /*
+        Every TODO of the card's own recipe file a reader may remove (#391): on an object the card
+        draws whose recipe is that file, an iteration's and a field's included, and held by no lock.
+        A card with no single recipe file offers none, since there is no one file to write.
+    */
+    static collectRemovableTodoLineNumbers(objectsByApiName: Map<string, IRecipeCockpitObjectViewModel>, tree: IRecipeCockpitTreeViewModel, recipeFilePath: string | undefined): number[] {
+
+        if ( !recipeFilePath ) {
+            return [];
+        }
+
+        return this.listTreeTodos(objectsByApiName, tree, recipeFilePath)
+            .filter(treeTodo => treeTodo.todo.removeLock === undefined)
+            .map(treeTodo => treeTodo.todo.lineNumber);
+
+    }
+
+    // EVERY TODO OF THE CARD'S OBJECTS WHOSE RECIPE IS recipeFilePath, WITH THE TEXT THE PANEL DRAWS FOR IT
+    static listTreeTodos(objectsByApiName: Map<string, IRecipeCockpitObjectViewModel>, tree: IRecipeCockpitTreeViewModel, recipeFilePath: string): { todo: IRecipeCockpitTodoViewModel; text: string; objectApiName: string; fieldApiName?: string }[] {
+
+        const treeTodos: { todo: IRecipeCockpitTodoViewModel; text: string; objectApiName: string; fieldApiName?: string }[] = [];
+        const seenObjectApiNames = new Set<string>();
+
+        tree.objects.forEach(treeObject => {
+
+            const objectViewModel = objectsByApiName.get(treeObject.objectApiName);
+            if ( !objectViewModel || objectViewModel.recipeFilePath !== recipeFilePath || seenObjectApiNames.has(objectViewModel.objectApiName) ) {
+                return;
+            }
+            seenObjectApiNames.add(objectViewModel.objectApiName);
+
+            const addTodos = (todos: IRecipeCockpitTodoViewModel[] | undefined, recipeValue: string | undefined, fieldApiName?: string) => ( todos ?? [] ).forEach(todo => {
+                treeTodos.push({ todo: todo, text: this.readTodoText(todo, recipeValue), objectApiName: objectViewModel.objectApiName, ...( fieldApiName !== undefined ? { fieldApiName: fieldApiName } : {} ) });
+            });
+
+            addTodos(objectViewModel.todos, undefined);
+            objectViewModel.fields.forEach(fieldViewModel => addTodos(fieldViewModel.todos, fieldViewModel.recipeValue, fieldViewModel.fieldApiName));
+            ( objectViewModel.iterations ?? [] ).forEach(iteration => {
+                addTodos(iteration.todos, undefined);
+                iteration.fields.forEach(iterationField => addTodos(iterationField.todos, iterationField.recipeValue, iterationField.fieldApiName));
+            });
+
+        });
+
+        return treeTodos;
+
+    }
+
+    // A TODO'S TEXT AS THE PANEL'S readFieldTodoText DRAWS IT: ITS OWN, OR THE SPAN OF THE FIELD'S VALUE THAT HOLDS IT
+    static readTodoText(todo: IRecipeCockpitTodoViewModel, recipeValue: string | undefined): string {
+
+        if ( typeof todo.text === 'string' ) {
+            return todo.text;
+        }
+
+        const value = typeof recipeValue === 'string' ? recipeValue : '';
+        const isUsableSpan = Number.isInteger(todo.valueStart) && Number.isInteger(todo.valueLength)
+            && todo.valueStart >= 0 && todo.valueLength > 0 && todo.valueStart + todo.valueLength <= value.length;
+
+        return isUsableSpan ? value.substr(todo.valueStart, todo.valueLength) : '';
 
     }
 
@@ -4497,7 +4923,7 @@ export class RecipeCockpitService {
 
         this.adoptScratchOrgRunState(this.recipeCockpitPanelState);
         this.adoptPermissionSetAssignRunState(this.recipeCockpitPanelState);
-        this.adoptValidationRuleRetrieveRunState(this.recipeCockpitPanelState);
+        this.adoptMetadataRetrieveRunState(this.recipeCockpitPanelState);
         this.adoptMetadataDeployRunState(this.recipeCockpitPanelState);
         this.adoptTreeQueryRunState(this.recipeCockpitPanelState);
         this.recipeCockpitPanelState.isOrgOpenInFlight = this.isOrgOpenInFlightForWindow;
@@ -4509,8 +4935,8 @@ export class RecipeCockpitService {
             this.recipeCockpitPanelState.scratchOrgStateMessage = previousPanelState.scratchOrgStateMessage;
             // SO DOES A PERMISSION SET ASSIGNMENT'S (#274)
             this.recipeCockpitPanelState.permissionSetAssignStateMessage = previousPanelState.permissionSetAssignStateMessage;
-            // AND A VALIDATION RULE RETRIEVE'S (#326)
-            this.recipeCockpitPanelState.validationRuleRetrieveStateMessage = previousPanelState.validationRuleRetrieveStateMessage;
+            // AND A RETRIEVE'S (#326, #382)
+            this.recipeCockpitPanelState.metadataRetrieveStateMessage = previousPanelState.metadataRetrieveStateMessage;
             // AND A METADATA DEPLOY'S (#346)
             this.recipeCockpitPanelState.metadataDeployStateMessage = previousPanelState.metadataDeployStateMessage;
             // AND A QUERY RUN'S (#367)
@@ -4778,6 +5204,7 @@ export class RecipeCockpitService {
         panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
         panelState.objectLevelsByApiName = loadedRecipe.objectLevelsByApiName;
         panelState.pinnedFixedValuesByFolderName = loadedRecipe.pinnedFixedValuesByFolderName;
+        panelState.removedTodosByTreeKey = loadedRecipe.removedTodosByTreeKey;
         panelState.objectsWrapperFilePath = loadedRecipe.objectsWrapperFilePath;
         panelState.treeQueryResultMessage = undefined;
         // A RESULT IS EXPORTED ONLY FROM THE MODEL IT WAS RUN ON, SO A NEW ONE LETS IT GO
@@ -4788,7 +5215,7 @@ export class RecipeCockpitService {
         panelState.pendingOpenableSourceKeys = new Set(this.collectOpenableSourceKeys(recipeViewModel));
         panelState.pendingSelectableRunFolderNames = new Set(recipeViewModel.runs.map(run => run.runFolderName));
         panelState.pendingLoadablePicklistKeys = new Set(this.collectLoadablePicklistKeys(recipeViewModel));
-        panelState.pendingTreeHistoryAllowLists = this.collectTreeHistoryAllowLists(recipeViewModel);
+        panelState.pendingTreeHistoryAllowLists = this.collectTreeHistoryAllowLists(recipeViewModel, loadedRecipe.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey);
         panelState.treeHistoryAllowLists = this.buildEmptyTreeHistoryAllowLists();
         // THE PANEL DRAWS THE BUTTON ONLY FOR A MODEL WITH NO RUN, AND ONLY ITS "rendered" SAYS THAT MODEL IS THE ONE ON SCREEN
         panelState.pendingIsGenerateTreecipeOffered = recipeViewModel.runs.length === 0;
@@ -5119,6 +5546,20 @@ export class RecipeCockpitService {
                 await this.addParentObjectFromPanel(cockpitPanel, panelState, panelAction);
                 return;
 
+            case 'removeTodo':
+
+                await this.runRecipeLookupWrite(cockpitPanel, panelState, panelAction.treeKey,
+                    () => this.writeTodoRemoval(panelAction, panelState.workspaceRoot),
+                    { tab: 'troubleshooting', troubleshootingSubTab: 'todos', todosView: 'open' });
+                return;
+
+            case 'restoreTodo':
+
+                await this.runRecipeLookupWrite(cockpitPanel, panelState, panelAction.treeKey,
+                    () => this.writeTodoRestore(panelAction, panelState.workspaceRoot),
+                    { tab: 'troubleshooting', troubleshootingSubTab: 'todos', todosView: 'removed' });
+                return;
+
             case 'persistPlace':
 
                 this.schedulePanelPlacePersist(panelAction.place);
@@ -5219,12 +5660,12 @@ export class RecipeCockpitService {
                 await this.generateTreePermissionSetFromPanel(cockpitPanel, panelAction.treeKey);
                 return;
 
-            case 'retrieveTreeValidationRules':
+            case 'retrieveTreeMetadata':
 
-                await this.retrieveTreeValidationRulesFromPanel(cockpitPanel, panelAction.treeKey);
+                await this.retrieveTreeMetadataFromPanel(cockpitPanel, panelAction.treeKey, panelAction.retrieveKind);
                 return;
 
-            case 'refuseValidationRuleRetrieve':
+            case 'refuseMetadataRetrieve':
 
                 if ( panelAction.refusalText ) {
                     VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(panelAction.refusalText));
@@ -5565,7 +6006,8 @@ export class RecipeCockpitService {
     private static async runRecipeLookupWrite(cockpitPanel: vscode.WebviewPanel,
                                                 panelState: IRecipeCockpitPanelState,
                                                 treeKey: string,
-                                                write: (tree: IRecipeCockpitTreeViewModel, objectLevelsByApiName: Map<string, number> | undefined) => Promise<boolean>) {
+                                                write: (tree: IRecipeCockpitTreeViewModel, objectLevelsByApiName: Map<string, number> | undefined) => Promise<boolean>,
+                                                reloadFocus: Omit<IRecipeCockpitTreeFocus, 'treeKey'> = { tab: 'treecipe' }) {
 
         const isPanelStillCurrent = () => this.recipeCockpitPanel === cockpitPanel && this.recipeCockpitPanelState === panelState;
         const writtenRunFolderName = panelState.recipeDataMessage.recipe.selectedRunFolderName;
@@ -5581,7 +6023,7 @@ export class RecipeCockpitService {
             const isWritten = !!tree && await write(tree, objectLevelsByApiName);
 
             if ( isWritten && isPanelStillCurrent() ) {
-                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, writtenRunFolderName, { treeKey: treeKey, tab: 'treecipe' });
+                await this.loadRecipeIntoPanel(cockpitPanel, panelState.workspaceRoot, writtenRunFolderName, { ...reloadFocus, treeKey: treeKey });
             }
 
         } finally {
@@ -7510,7 +7952,7 @@ export class RecipeCockpitService {
         if ( this.isScratchOrgSetupInFlight
                 || currentPanelState.insertStateMessage
                 || currentPanelState.permissionSetAssignStateMessage?.isRunning
-                || this.isValidationRuleRetrieveInFlight ) {
+                || this.isMetadataRetrieveInFlight ) {
             return refuse(RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL);
         }
 
@@ -7650,15 +8092,15 @@ export class RecipeCockpitService {
 
     }
 
-    private static isValidationRuleRetrieveInFlight = false;
+    private static isMetadataRetrieveInFlight = false;
 
-    private static validationRuleRetrieveRunStateMessage: IRecipeCockpitValidationRuleRetrieveStateMessage | undefined;
+    private static metadataRetrieveRunStateMessage: IRecipeCockpitMetadataRetrieveStateMessage | undefined;
 
     // KEPT FOR THE WINDOW WHILE RUNNING, STORED ON WHICHEVER PANEL STATE IS CURRENT, AND POSTED TO WHICHEVER PANEL IS OPEN
-    private static setValidationRuleRetrieveState(retrieveStateMessage: IRecipeCockpitValidationRuleRetrieveStateMessage) {
+    private static setMetadataRetrieveState(retrieveStateMessage: IRecipeCockpitMetadataRetrieveStateMessage) {
 
-        this.validationRuleRetrieveRunStateMessage = retrieveStateMessage.isRunning ? retrieveStateMessage : undefined;
-        this.recipeCockpitPanelState.validationRuleRetrieveStateMessage = retrieveStateMessage;
+        this.metadataRetrieveRunStateMessage = retrieveStateMessage.isRunning ? retrieveStateMessage : undefined;
+        this.recipeCockpitPanelState.metadataRetrieveStateMessage = retrieveStateMessage;
 
         if ( this.recipeCockpitPanel ) {
             this.postToPanel(this.recipeCockpitPanel, retrieveStateMessage);
@@ -7666,60 +8108,74 @@ export class RecipeCockpitService {
 
     }
 
-    private static adoptValidationRuleRetrieveRunState(panelState: IRecipeCockpitPanelState) {
+    private static adoptMetadataRetrieveRunState(panelState: IRecipeCockpitPanelState) {
 
-        if ( this.isValidationRuleRetrieveInFlight && this.validationRuleRetrieveRunStateMessage ) {
-            panelState.validationRuleRetrieveStateMessage = this.validationRuleRetrieveRunStateMessage;
+        if ( this.isMetadataRetrieveInFlight && this.metadataRetrieveRunStateMessage ) {
+            panelState.metadataRetrieveStateMessage = this.metadataRetrieveRunStateMessage;
         }
 
     }
 
     /*
-        "Retrieve validation rules…" (#326), for one tree of the model on screen: the org is ALWAYS
-        asked for in the command palette, over every connected org (a retrieve only reads), even when
-        the Treecipe tab has one selected; then a modal names the objects, the org, where new files go
-        and how many local rule files the org's version overwrites; then one
+        The Troubleshooting tab's retrieves (#326, #382), for one tree of the model on screen: the org
+        is ALWAYS asked for in the command palette, over every connected org (a retrieve only reads),
+        even when the Treecipe tab has one selected; then a confirmation names what is retrieved, the
+        org, where new files go and how many local files the org's version overwrites; then one
         "sf project retrieve start" runs in project mode, cancellable. Nothing is deployed, and the
-        recipe is not regenerated: the notification offers Generate Treecipe, which applies the rules
-        (#324). One retrieve per window.
+        recipe is not regenerated: the notification offers Generate Treecipe. One retrieve per window,
+        whatever its kind.
     */
-    private static async retrieveTreeValidationRulesFromPanel(cockpitPanel: vscode.WebviewPanel, treeKey: string) {
+    private static async retrieveTreeMetadataFromPanel(cockpitPanel: vscode.WebviewPanel, treeKey: string, retrieveKind: MetadataRetrieveKind) {
 
         const panelState = this.recipeCockpitPanelState;
-        const tree = panelState.recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+        const recipeViewModel = panelState.recipeDataMessage?.recipe;
+        const tree = recipeViewModel?.trees.find(recipeTree => recipeTree.treeKey === treeKey);
 
-        if ( this.isValidationRuleRetrieveInFlight || !tree ) {
-            this.postToPanel(cockpitPanel, this.validationRuleRetrieveRunStateMessage
-                ?? { command: 'validationRuleRetrieveState', isRunning: false, treeKey: treeKey });
+        if ( this.isMetadataRetrieveInFlight || !recipeViewModel || !tree ) {
+            this.postToPanel(cockpitPanel, this.metadataRetrieveRunStateMessage
+                ?? { command: 'metadataRetrieveState', isRunning: false, treeKey: treeKey, retrieveKind: retrieveKind });
             return;
         }
 
-        this.isValidationRuleRetrieveInFlight = true;
-        this.setValidationRuleRetrieveState({ command: 'validationRuleRetrieveState', isRunning: true, treeKey: treeKey });
+        this.isMetadataRetrieveInFlight = true;
+        this.setMetadataRetrieveState({ command: 'metadataRetrieveState', isRunning: true, treeKey: treeKey, retrieveKind: retrieveKind });
 
+        // ONLY A CLI THAT RAN CAN HAVE WRITTEN FILES, AND ONLY A VALIDATION RULE RETRIEVE WRITES WHAT THE RULE LISTS READ
+        let isCliStarted = false;
         try {
-            await this.performValidationRuleRetrieve(panelState.workspaceRoot, tree.customName || tree.title, tree.objects.map(treeObject => treeObject.objectApiName));
+            isCliStarted = await this.performMetadataRetrieve(panelState.workspaceRoot, recipeViewModel, tree, retrieveKind);
         } finally {
-            this.isValidationRuleRetrieveInFlight = false;
-            this.setValidationRuleRetrieveState({ command: 'validationRuleRetrieveState', isRunning: false, treeKey: treeKey });
-            await this.refreshTroubleshootingSummary(treeKey);
-            await this.refreshTreeValidationRules(treeKey);
+            this.isMetadataRetrieveInFlight = false;
+            this.setMetadataRetrieveState({ command: 'metadataRetrieveState', isRunning: false, treeKey: treeKey, retrieveKind: retrieveKind });
+            if ( isCliStarted ) {
+                await this.refreshTroubleshootingSummary(treeKey);
+                if ( retrieveKind === 'validationRules' ) {
+                    await this.refreshTreeValidationRules(treeKey);
+                }
+            }
         }
 
     }
 
-    private static async performValidationRuleRetrieve(workspaceRoot: string, treeLabel: string, treeObjectApiNames: string[]) {
+    private static async performMetadataRetrieve(workspaceRoot: string,
+                                                    recipeViewModel: IRecipeCockpitRecipeViewModel,
+                                                    tree: IRecipeCockpitTreeViewModel,
+                                                    retrieveKind: MetadataRetrieveKind): Promise<boolean> {
 
-        const refuse = (refusalText: string) => this.showValidationRuleRetrieveNotification('warning', refusalText, undefined, workspaceRoot, false);
+        const treeLabel = tree.customName || tree.title;
+        const manyNoun = RecipeCockpitMetadataRetrieve.componentNoun(retrieveKind, 2);
+        const isWildcard = RecipeCockpitMetadataRetrieve.isWildcardKind(retrieveKind);
+        const refuse = (refusalText: string): false => { this.showMetadataRetrieveNotification('warning', refusalText, undefined, workspaceRoot, false); return false; };
 
-        const { retrievable: objectApiNames, refused: refusedObjectApiNames } = RecipeCockpitValidationRuleRetrieve.partitionObjectApiNames(treeObjectApiNames);
+        // A WILDCARD RETRIEVE ASKS PER OBJECT: EVERY OBJECT THE CARD LISTS, ONCE, AS AN API NAME
+        const { retrievable: objectApiNames, refused: refusedObjectApiNames } = RecipeCockpitMetadataRetrieve.partitionObjectApiNames(tree.objects.map(treeObject => treeObject.objectApiName));
 
-        if ( objectApiNames.length === 0 ) {
-            return refuse(`No validation rules were retrieved: no object of ${treeLabel} has an api name.`);
+        if ( isWildcard && objectApiNames.length === 0 ) {
+            return refuse(`No ${manyNoun} were retrieved: no object of ${treeLabel} has an api name.`);
         }
 
-        if ( objectApiNames.length > VALIDATION_RULE_RETRIEVE_MAX_OBJECTS ) {
-            return refuse(`No validation rules were retrieved: ${treeLabel} has ${objectApiNames.length} objects, and at most ${VALIDATION_RULE_RETRIEVE_MAX_OBJECTS} can be retrieved at once.`);
+        if ( isWildcard && objectApiNames.length > METADATA_RETRIEVE_MAX_OBJECTS ) {
+            return refuse(`No ${manyNoun} were retrieved: ${treeLabel} has ${objectApiNames.length} objects, and at most ${METADATA_RETRIEVE_MAX_OBJECTS} can be retrieved at once.`);
         }
 
         let packageDirectoryPaths: string[];
@@ -7728,105 +8184,171 @@ export class RecipeCockpitService {
             packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
             defaultPackageDirectoryPath = RecipeCockpitPermissionSetGenerate.resolveDefaultPackageDirectoryPath(workspaceRoot);
         } catch (projectError) {
-            return refuse(`No validation rules were retrieved: ${this.describeThrown(projectError)}`);
+            return refuse(`No ${manyNoun} were retrieved: ${this.describeThrown(projectError)}`);
         }
+
+        // WHAT A FIELD OR VALUE SET RETRIEVE NAMES, AND WHAT EVERY KIND BUT VALIDATION RULES COUNTS AS ALREADY HERE, IS READ FROM THE PROJECT NOW
+        let manifestComponents: IMetadataDeployComponent[] = [];
+        let summary: IMetadataDeploySummary | undefined;
+
+        if ( retrieveKind === 'recordTypes' ) {
+            summary = await RecipeCockpitMetadataDeploy.summarizeTreeMetadata(workspaceRoot, packageDirectoryPaths, objectApiNames.map(objectApiName => ({ objectApiName: objectApiName, fieldApiNames: [] })));
+        } else if ( retrieveKind === 'fields' ) {
+            manifestComponents = RecipeCockpitMetadataRetrieve.listCustomFieldComponents(this.listTreeDeployObjects(recipeViewModel, tree));
+        } else if ( retrieveKind === 'globalValueSets' ) {
+            summary = await RecipeCockpitMetadataDeploy.summarizeTreeMetadata(workspaceRoot, packageDirectoryPaths, this.listTreeDeployObjects(recipeViewModel, tree));
+            manifestComponents = RecipeCockpitMetadataRetrieve.listManifestComponents(retrieveKind, summary);
+        }
+
+        if ( retrieveKind === 'fields' || retrieveKind === 'globalValueSets' ) {
+            if ( manifestComponents.length === 0 ) {
+                return refuse(retrieveKind === 'fields'
+                    ? `${treeLabel} has no custom field to retrieve, so nothing was retrieved.`
+                    : `No field of ${treeLabel} names a global value set, so nothing was retrieved.`);
+            }
+        }
+
+        const askedNames = isWildcard ? objectApiNames : manifestComponents.map(component => component.member);
 
         let orgDetail: IAuthenticatedOrgDetail | undefined;
         try {
-            orgDetail = await SalesforceOrgService.promptForAuthorizedOrg(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER);
+            orgDetail = await SalesforceOrgService.promptForAuthorizedOrg(RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS[retrieveKind]);
         } catch (listError) {
-            return refuse(`No validation rules were retrieved: ${this.describeThrown(listError)}`);
+            return refuse(`No ${manyNoun} were retrieved: ${this.describeThrown(listError)}`);
         }
 
         if ( !orgDetail ) {
-            return;
+            return false;
         }
 
         // NO PARENTHESES: A NOTIFICATION ESCAPES THEM, AND THIS LABEL IS IN EVERY ONE THIS RUN SHOWS
         const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
         const packageDirectoryRelativePath = path.relative(workspaceRoot, defaultPackageDirectoryPath).split(path.sep).join('/') || '.';
-        const localRuleFileCount = RecipeCockpitValidationRuleRetrieve.countLocalValidationRuleFiles(workspaceRoot, packageDirectoryPaths, objectApiNames);
+        const localFileCount = retrieveKind === 'validationRules' ? RecipeCockpitMetadataRetrieve.countLocalValidationRuleFiles(workspaceRoot, packageDirectoryPaths, objectApiNames)
+            : retrieveKind === 'fields' ? RecipeCockpitMetadataRetrieve.countLocalFieldFiles(workspaceRoot, packageDirectoryPaths, askedNames)
+            : retrieveKind === 'recordTypes' ? summary?.recordTypes.length ?? 0
+            : summary?.globalValueSets.length ?? 0;
+        const confirmationTitle = isWildcard
+            ? `Retrieve the ${manyNoun} of ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} of ${this.toSingleLine(treeLabel)} from ${this.toSingleLine(orgLabel)}?`
+            : `Retrieve ${RecipeCockpitMetadataRetrieve.describeComponents(retrieveKind, askedNames.length)} of ${this.toSingleLine(treeLabel)} from ${this.toSingleLine(orgLabel)}?`;
 
         const confirmation = await this.confirmInPanel(
-            `Retrieve the validation rules of ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} of ${this.toSingleLine(treeLabel)} from ${this.toSingleLine(orgLabel)}?`,
+            confirmationTitle,
             {
-                detail: RecipeCockpitValidationRuleRetrieve.buildConfirmationDetail(treeLabel, orgLabel, objectApiNames, packageDirectoryRelativePath, localRuleFileCount),
+                detail: RecipeCockpitMetadataRetrieve.buildConfirmationDetail(retrieveKind, treeLabel, orgLabel, askedNames, packageDirectoryRelativePath, localFileCount),
                 isDestructive: true
             },
             RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL
         );
 
         if ( confirmation !== RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL ) {
-            return;
+            return false;
         }
 
         // THE ROUTER CHECKED THESE AT THE CLICK; ONE CAN HAVE STARTED WHILE THE PROMPT OR THE MODAL WAS OPEN
         const currentPanelState = this.recipeCockpitPanelState;
         if ( currentPanelState.insertStateMessage || currentPanelState.permissionSetAssignStateMessage?.isRunning || this.isMetadataDeployInFlight ) {
-            return refuse(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL);
+            return refuse(RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL);
         }
 
         let retrieveArguments: string[];
         try {
-            retrieveArguments = RecipeCockpitValidationRuleRetrieve.buildValidationRuleRetrieveArguments(objectApiNames, orgDetail.username);
+            if ( isWildcard ) {
+                retrieveArguments = RecipeCockpitMetadataRetrieve.buildWildcardRetrieveArguments(retrieveKind, objectApiNames, orgDetail.username);
+            } else {
+                const packageXml = RecipeCockpitMetadataDeploy.buildPackageXml(manifestComponents, this.readSourceApiVersion(workspaceRoot), 'nothing was retrieved');
+                const packageXmlFilePath = RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(workspaceRoot, orgDetail.username, METADATA_RETRIEVE_OPERATION_BY_KIND[retrieveKind], new Date());
+                const writtenFilePath = packageXmlFilePath ? RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, packageXmlFilePath, packageXml) : undefined;
+                if ( !writtenFilePath ) {
+                    return refuse(`No ${manyNoun} were retrieved: the package.xml could not be written under treecipe/${ORG_OPERATIONS_FOLDER_NAME} in this workspace.`);
+                }
+                retrieveArguments = RecipeCockpitMetadataRetrieve.buildManifestRetrieveArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, writtenFilePath), orgDetail.username);
+            }
         } catch (argumentError) {
-            return refuse(`No validation rules were retrieved: ${this.describeThrown(argumentError)}`);
+            return refuse(`No ${manyNoun} were retrieved: ${this.describeThrown(argumentError)}`);
         }
 
         const retrieveRun = await this.runCancellableCli(
-            RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: retrieving validation rules from ${orgDetail.username}`),
+            RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: retrieving ${manyNoun} from ${orgDetail.username}`),
             retrieveArguments,
-            VALIDATION_RULE_RETRIEVE_TIMEOUT_MILLISECONDS,
-            workspaceRoot
+            METADATA_RETRIEVE_TIMEOUT_MILLISECONDS,
+            workspaceRoot,
+            SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES
         );
 
         // A CANCEL CAN COME AFTER THE CLI WROTE FILES, SO GENERATE TREECIPE IS OFFERED AS AFTER A TIMEOUT
         if ( retrieveRun.isCancelled ) {
-            return this.showValidationRuleRetrieveNotification('warning', `The retrieve of validation rules from ${orgLabel} was cancelled, so which rule files were written is unknown.`, undefined, workspaceRoot, true);
+            this.showMetadataRetrieveNotification('warning', `The retrieve of ${manyNoun} from ${orgLabel} was cancelled, so which files were written is unknown.`, undefined, workspaceRoot, true);
+            return true;
         }
 
         const retrievePayload = ScratchOrgService.readCliJsonPayload(retrieveRun.invocation);
-        const retrieveOutcome: ValidationRuleRetrieveOutcome = RecipeCockpitValidationRuleRetrieve.parseValidationRuleRetrieveOutput(retrieveRun.invocation, objectApiNames, retrievePayload);
+        const retrieveOutcome: MetadataRetrieveOutcome = RecipeCockpitMetadataRetrieve.parseRetrieveOutput(retrieveKind, retrieveRun.invocation, askedNames, retrievePayload);
         const retrieveOutputFilePath = retrieveRun.invocation.spawnError || retrieveRun.invocation.isOutputTooLarge
             ? undefined
-            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, 'validation-rule-retrieve', retrieveRun.invocation, new Date(), retrievePayload);
-        const refusedText = refusedObjectApiNames.length > 0
+            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, METADATA_RETRIEVE_OPERATION_BY_KIND[retrieveKind], retrieveRun.invocation, new Date(), retrievePayload);
+        const refusedText = isWildcard && refusedObjectApiNames.length > 0
             ? ` Skipped ${refusedObjectApiNames.length} ${refusedObjectApiNames.length === 1 ? 'name that is' : 'names that are'} not an api name.`
             : '';
 
         switch ( retrieveOutcome.kind ) {
 
             case 'retrieved': {
-                const { ruleCount, objectApiNamesWithRules, failureMessages } = retrieveOutcome;
-                const retrievedText = ruleCount === 0
-                    ? `${orgLabel} holds no validation rule for the ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} of ${treeLabel}, so nothing was written.`
-                    : `Retrieved ${ruleCount} validation ${ruleCount === 1 ? 'rule' : 'rules'} for ${objectApiNamesWithRules.length} of ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} of ${treeLabel} from ${orgLabel}: ${objectApiNamesWithRules.join(', ')}. Generate Treecipe applies them to the recipe.`;
+                const { componentCount, namesWithComponents, failureMessages } = retrieveOutcome;
+                const retrievedText = this.describeRetrieved(retrieveKind, componentCount, namesWithComponents, askedNames, treeLabel, orgLabel);
                 if ( failureMessages.length > 0 ) {
-                    return this.showValidationRuleRetrieveNotification('warning', `${retrievedText} ${failureMessages.length} could not be retrieved: ${failureMessages.join('; ')}.${refusedText}`, retrieveOutputFilePath, workspaceRoot, ruleCount > 0);
+                    this.showMetadataRetrieveNotification('warning', `${retrievedText} ${failureMessages.length} could not be retrieved: ${RecipeCockpitMetadataDeploy.describeCappedList(failureMessages)}.${refusedText}`, retrieveOutputFilePath, workspaceRoot, componentCount > 0);
+                    return true;
                 }
-                return this.showValidationRuleRetrieveNotification(refusedText ? 'warning' : 'information', `${retrievedText}${refusedText}`, refusedText ? retrieveOutputFilePath : undefined, workspaceRoot, ruleCount > 0);
+                this.showMetadataRetrieveNotification(refusedText ? 'warning' : 'information', `${retrievedText}${refusedText}`, refusedText ? retrieveOutputFilePath : undefined, workspaceRoot, componentCount > 0);
+                return true;
             }
 
             case 'cliNotInstalled':
                 return refuse(retrieveOutcome.failureMessage);
 
             case 'unconfirmed':
-                return this.showValidationRuleRetrieveNotification('warning', retrieveOutcome.failureMessage, retrieveOutputFilePath, workspaceRoot, true);
+                this.showMetadataRetrieveNotification('warning', retrieveOutcome.failureMessage, retrieveOutputFilePath, workspaceRoot, true);
+                return true;
 
             case 'failed':
-                return this.showValidationRuleRetrieveNotification('warning', `No validation rules were retrieved from ${orgLabel}: ${retrieveOutcome.failureMessage}`, retrieveOutputFilePath, workspaceRoot, false);
+                this.showMetadataRetrieveNotification('warning', `No ${manyNoun} were retrieved from ${orgLabel}: ${retrieveOutcome.failureMessage}`, retrieveOutputFilePath, workspaceRoot, false);
+                return true;
 
         }
 
     }
 
+    // WHAT A RETRIEVE THAT CAME BACK SAYS: WHAT THE ORG HELD OF WHAT WAS ASKED FOR, AND WHAT GENERATE TREECIPE DOES WITH IT
+    private static describeRetrieved(retrieveKind: MetadataRetrieveKind,
+                                        componentCount: number,
+                                        namesWithComponents: string[],
+                                        askedNames: string[],
+                                        treeLabel: string,
+                                        orgLabel: string): string {
+
+        const objectsText = `${askedNames.length} ${askedNames.length === 1 ? 'object' : 'objects'}`;
+
+        if ( RecipeCockpitMetadataRetrieve.isWildcardKind(retrieveKind) ) {
+            const oneNoun = RecipeCockpitMetadataRetrieve.componentNoun(retrieveKind, 1);
+            return componentCount === 0
+                ? `${orgLabel} holds no ${oneNoun} for the ${objectsText} of ${treeLabel}, so nothing was written.`
+                : `Retrieved ${RecipeCockpitMetadataRetrieve.describeComponents(retrieveKind, componentCount)} for ${namesWithComponents.length} of ${objectsText} of ${treeLabel} from ${orgLabel}: ${namesWithComponents.join(', ')}. ${retrieveKind === 'validationRules' ? 'Generate Treecipe applies them to the recipe.' : 'Generate Treecipe can then use them in the recipe.'}`;
+        }
+
+        return componentCount === 0
+            ? `${orgLabel} holds none of the ${RecipeCockpitMetadataRetrieve.describeComponents(retrieveKind, askedNames.length)} of ${treeLabel}, so nothing was written.`
+            : `Retrieved ${componentCount} of the ${RecipeCockpitMetadataRetrieve.describeComponents(retrieveKind, askedNames.length)} of ${treeLabel} from ${orgLabel}${retrieveKind === 'globalValueSets' ? `: ${namesWithComponents.join(', ')}` : ''}. Generate Treecipe writes them into the recipe.`;
+
+    }
+
     /*
         A retrieve's ONE notification: information on a success, a warning otherwise. "Generate
-        Treecipe" is offered whenever rule files may have been written, since #324 applies the rules
-        at generation; "View output" whenever a warning has a result file. NOT AWAITED: the run ends,
+        Treecipe" is offered whenever files may have been written, since generation reads them (#324
+        applies validation rules); "View output" whenever a warning has a result file. NOT AWAITED: the run ends,
         and gives the panel its button back, without waiting for the reader.
     */
-    private static showValidationRuleRetrieveNotification(severity: 'information' | 'warning',
+    private static showMetadataRetrieveNotification(severity: 'information' | 'warning',
                                                             notificationText: string,
                                                             outputFilePath: string | undefined,
                                                             workspaceRoot: string,
@@ -7844,9 +8366,9 @@ export class RecipeCockpitService {
         Promise.resolve(shown)
             .then(async chosenAction => {
                 if ( chosenAction === RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL ) {
-                    await this.generateTreecipeAfterValidationRuleRetrieve();
+                    await this.generateTreecipeAfterMetadataRetrieve();
                 } else if ( chosenAction === RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL && outputFilePath ) {
-                    await VSCodeWorkspaceService.openWorkspaceResultFile(outputFilePath, workspaceRoot, 'The validation rule retrieve result file no longer exists in this workspace.');
+                    await VSCodeWorkspaceService.openWorkspaceResultFile(outputFilePath, workspaceRoot, 'The retrieve result file no longer exists in this workspace.');
                 }
             })
             .catch(retrieveFollowUpError => ErrorHandlingService.handleCapturedError(retrieveFollowUpError, 'openRecipeCockpit'));
@@ -7858,7 +8380,7 @@ export class RecipeCockpitService {
         panel reloads the run it writes, and refused while an insert holds the selection or a
         generation is already running. With no cockpit open it runs the command itself.
     */
-    private static async generateTreecipeAfterValidationRuleRetrieve() {
+    private static async generateTreecipeAfterMetadataRetrieve() {
 
         const cockpitPanel = this.recipeCockpitPanel;
         const panelState = this.recipeCockpitPanelState;
@@ -9899,6 +10421,54 @@ export class RecipeCockpitService {
             }
 
             /*
+                "Remove TODO" (#391) posts the card and the TODO's line: matched against the TODOs the
+                confirmed-drawn model offered, its text and the recipe file the host's. "Restore" posts
+                the card and the row's removalKey, which names an entry of the host's own list. Neither
+                is read as a path or as recipe text. They share the one recipe write with a wiring.
+            */
+            case 'removeTodo':
+            case 'restoreTodo': {
+
+                const closeWireLookupState: RecipeCockpitPanelAction = { kind: 'postWireLookupState', hostMessage: { command: 'wireLookupState', isRunning: false } };
+
+                if ( panelState.wireLookupStateMessage ) {
+                    return undefined;
+                }
+
+                const treeKey = typeof panelMessage.treeKey === 'string' ? panelMessage.treeKey : '';
+                const recipeDataMessage = panelState.recipeDataMessage;
+                const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey);
+                const tree = recipeDataMessage?.recipe.trees.find(candidateTree => candidateTree.treeKey === treeKey);
+
+                if ( panelState.addFriendStateMessage || !recipeFilePath || !tree ) {
+                    return closeWireLookupState;
+                }
+
+                if ( panelMessage.command === 'removeTodo' ) {
+                    const lineNumber = panelMessage.lineNumber as number;
+                    if ( !Number.isSafeInteger(lineNumber) || !panelState.treeHistoryAllowLists.removableTodoKeys.has(this.buildTodoActionKey(treeKey, lineNumber)) ) {
+                        return closeWireLookupState;
+                    }
+                    const treeTodo = this.listTreeTodos(this.buildObjectsByApiName(recipeDataMessage.recipe), tree, recipeFilePath)
+                        .find(candidateTodo => candidateTodo.todo.lineNumber === lineNumber && candidateTodo.todo.removeLock === undefined);
+                    return treeTodo && treeTodo.text !== ''
+                        ? { kind: 'removeTodo', treeKey: treeKey, recipeFilePath: recipeFilePath, lineNumber: lineNumber, todoText: treeTodo.text }
+                        : closeWireLookupState;
+                }
+
+                const { removalKey } = panelMessage;
+                const removed = typeof removalKey === 'string' && /^(0|[1-9][0-9]*)$/.test(removalKey)
+                                && panelState.treeHistoryAllowLists.restorableTodoKeys.has(this.buildTodoActionKey(treeKey, removalKey))
+                    ? panelState.removedTodosByTreeKey?.get(treeKey)?.[Number(removalKey)]
+                    : undefined;
+
+                return removed
+                    ? { kind: 'restoreTodo', treeKey: treeKey, recipeFilePath: recipeFilePath, removed: removed }
+                    : closeWireLookupState;
+
+            }
+
+            /*
                 "Wire to…" posts four NAMES -- the card, the object, the occurrence's nickname when the
                 row draws one, and the field -- matched against the lookups the confirmed-drawn model
                 offered (#151). "Wire TODO lookups" posts the card alone, and wires every lookup of it
@@ -10295,36 +10865,42 @@ export class RecipeCockpitService {
             }
 
             /*
-                "Retrieve validation rules…" (#326) posts the tree's KEY and nothing else: the objects
-                are the host's, and the org is ALWAYS asked for in the command palette, so an org
-                index the message carries is never read. One retrieve per window; it waits for an
-                insert and a permission set assignment to end, and a scratch org run, which deploys
-                nothing (#358), does not hold it. Every refusal gives the clicked button back, and a busy one says why.
+                The Troubleshooting tab's retrieves (#326, #382) post the tree's KEY and nothing else:
+                what is retrieved is the host's, and the org is ALWAYS asked for in the command
+                palette, so an org index the message carries is never read. One retrieve per window,
+                whatever its kind; it waits for an insert, a permission set assignment and a metadata
+                deploy to end, and a scratch org run, which deploys nothing (#358), does not hold it.
+                Every refusal gives the clicked button back, and a busy one says why.
             */
-            case 'retrieveTreeValidationRules': {
+            case 'retrieveTreeValidationRules':
+            case 'retrieveTreeFields':
+            case 'retrieveTreeRecordTypes':
+            case 'retrieveTreeGlobalValueSets': {
 
                 const { treeKey } = panelMessage;
+                const retrieveKind = ( Object.keys(RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND) as MetadataRetrieveKind[] )
+                    .find(kind => RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND[kind] === panelMessage.command) as MetadataRetrieveKind;
 
                 // A RELOADED DOCUMENT MAY NOT KNOW A RETRIEVE IS RUNNING: IT IS TOLD, AND THE RETRIEVE'S OWN END GIVES THE BUTTONS BACK
-                if ( panelState.validationRuleRetrieveStateMessage?.isRunning ) {
-                    return { kind: 'refuseValidationRuleRetrieve', hostMessage: panelState.validationRuleRetrieveStateMessage };
+                if ( panelState.metadataRetrieveStateMessage?.isRunning ) {
+                    return { kind: 'refuseMetadataRetrieve', hostMessage: panelState.metadataRetrieveStateMessage };
                 }
 
-                const notRunning: IRecipeCockpitValidationRuleRetrieveStateMessage = { command: 'validationRuleRetrieveState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '' };
+                const notRunning: IRecipeCockpitMetadataRetrieveStateMessage = { command: 'metadataRetrieveState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '', retrieveKind: retrieveKind };
 
                 if ( typeof treeKey !== 'string'
                         || !panelState.recipeDataMessage
                         || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
-                    return { kind: 'refuseValidationRuleRetrieve', hostMessage: notRunning };
+                    return { kind: 'refuseMetadataRetrieve', hostMessage: notRunning };
                 }
 
                 if ( panelState.insertStateMessage
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning ) {
-                    return { kind: 'refuseValidationRuleRetrieve', refusalText: RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL, hostMessage: notRunning };
+                    return { kind: 'refuseMetadataRetrieve', refusalText: RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL, hostMessage: notRunning };
                 }
 
-                return { kind: 'retrieveTreeValidationRules', treeKey: treeKey };
+                return { kind: 'retrieveTreeMetadata', treeKey: treeKey, retrieveKind: retrieveKind };
 
             }
 
@@ -10369,7 +10945,7 @@ export class RecipeCockpitService {
                 if ( panelState.insertStateMessage
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
-                        || panelState.validationRuleRetrieveStateMessage?.isRunning ) {
+                        || panelState.metadataRetrieveStateMessage?.isRunning ) {
                     return refuse(RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL);
                 }
 
@@ -10644,8 +11220,8 @@ export class RecipeCockpitService {
             replayMessages.push(panelState.scratchOrgStateMessage);
         }
 
-        if ( panelState.validationRuleRetrieveStateMessage ) {
-            replayMessages.push(panelState.validationRuleRetrieveStateMessage);
+        if ( panelState.metadataRetrieveStateMessage ) {
+            replayMessages.push(panelState.metadataRetrieveStateMessage);
         }
 
         if ( panelState.metadataDeployStateMessage ) {
@@ -11078,6 +11654,7 @@ export class RecipeCockpitService {
         );
 
         const pinnedFixedValuesByFolderName = new Map<string, Map<string, Map<string, string>>>();
+        const removedTodosByTreeKey = new Map<string, IRemovedTodoComment[]>();
         const fixedValueNotices: string[] = [];
 
         recipeViewModel.trees.forEach(tree => {
@@ -11100,6 +11677,12 @@ export class RecipeCockpitService {
                 fixedValueNotices.push(...pinnedFixedValues.notices);
                 if ( tree.folderName && pinnedFixedValues.valuesByObject.size > 0 ) {
                     pinnedFixedValuesByFolderName.set(tree.folderName, pinnedFixedValues.valuesByObject);
+                }
+                const removedTodos = this.readRemovedTodos(runFakerRecipeFilePath, workspaceRoot, recipeSourceRead.recipeTextsByFilePath.get(runFakerRecipeFilePath));
+                fixedValueNotices.push(...removedTodos.notices);
+                if ( removedTodos.entries.length > 0 ) {
+                    removedTodosByTreeKey.set(tree.treeKey, removedTodos.entries);
+                    tree.removedTodos = this.buildRemovedTodoViewModels(removedTodos.entries);
                 }
             }
         });
@@ -11126,6 +11709,7 @@ export class RecipeCockpitService {
             treeHistoryTargets: treeHistoryBuild.targets,
             ...( normalizedObjectsWrapper.objectLevelsByApiName ? { objectLevelsByApiName: normalizedObjectsWrapper.objectLevelsByApiName } : {} ),
             ...( pinnedFixedValuesByFolderName.size > 0 ? { pinnedFixedValuesByFolderName: pinnedFixedValuesByFolderName } : {} ),
+            ...( removedTodosByTreeKey.size > 0 ? { removedTodosByTreeKey: removedTodosByTreeKey } : {} ),
             objectsWrapperFilePath: selectedRun.objectsWrapperFilePath
         };
 
@@ -11846,6 +12430,12 @@ export class RecipeCockpitService {
                 ? scannedObject.nicknames[0]
                 : undefined
         );
+        const occurrenceCountsByObject = new Map<string, number>();
+        scannedObjects.forEach(scannedObject => occurrenceCountsByObject.set(scannedObject.objectApiName, (occurrenceCountsByObject.get(scannedObject.objectApiName) ?? 0) + 1));
+        // AN OCCURRENCE NO NICKNAME TELLS APART FROM ANOTHER OF ITS OBJECT: ITS TODOS CANNOT BE REMOVED, SINCE A RESTORE COULD NOT FIND THEIR PLACE (#391)
+        const isIndistinctOccurrence = (scannedObject: IScannedObject): boolean => (
+            occurrenceCountsByObject.get(scannedObject.objectApiName) > 1 && readDistinctNickname(scannedObject) === undefined
+        );
 
         scannedObjects.forEach(scannedObject => {
 
@@ -11863,7 +12453,7 @@ export class RecipeCockpitService {
                     fieldEntries: this.readRecipeSourceFieldEntries(scannedObject, lines),
                     ...( RecipeCockpitRecipeWriter.hasRecordTypeSections(lines, scannedObject) ? { hasRecordTypeSections: true } : {} )
                 });
-                this.attachRecipeSourceTodos(objectEntries.get(scannedObject.objectApiName), scannedObject, lines);
+                this.attachRecipeSourceTodos(objectEntries.get(scannedObject.objectApiName), scannedObject, lines, isIndistinctOccurrence(scannedObject));
                 return;
             }
 
@@ -11873,7 +12463,7 @@ export class RecipeCockpitService {
             if ( nickname === undefined || readDistinctNickname(firstScannedObject) === undefined ) {
                 firstObjectEntry.hasIndistinctOccurrences = true;
                 // THE FIRST OCCURRENCE IS THE ONE ROW DRAWN FOR THEM ALL, SO IT LISTS THEIR TODOS TOO (#354)
-                this.attachRecipeSourceTodos(firstObjectEntry, scannedObject, lines);
+                this.attachRecipeSourceTodos(firstObjectEntry, scannedObject, lines, true);
                 return;
             }
 
@@ -11887,7 +12477,7 @@ export class RecipeCockpitService {
                 fieldEntries: this.readRecipeSourceFieldEntries(scannedObject, lines),
                 ...( insertableFriendObjectApiNames.length > 0 ? { insertableFriendObjectApiNames: insertableFriendObjectApiNames } : {} )
             }];
-            this.attachRecipeSourceTodos(firstObjectEntry.iterations[firstObjectEntry.iterations.length - 1], scannedObject, lines);
+            this.attachRecipeSourceTodos(firstObjectEntry.iterations[firstObjectEntry.iterations.length - 1], scannedObject, lines, false);
 
         });
 
@@ -11904,23 +12494,33 @@ export class RecipeCockpitService {
     private static attachRecipeSourceTodos(
         sourceEntry: { fieldEntries: Map<string, IRecipeSourceFieldEntry>; todos?: IRecipeCockpitTodoViewModel[] },
         scannedObject: IScannedObject,
-        lines: string[]
+        lines: string[],
+        isIndistinctOccurrence: boolean
     ): void {
 
         let fieldIndex = 0;
+        const markerStartIndexes = new Set(scannedObject.commentedOutFieldMarkers.map(marker => marker.startIndex));
 
         scannedObject.todoLineIndexes.forEach(todoLineIndex => {
-
-            const todo: IRecipeCockpitTodoViewModel = {
-                lineNumber: todoLineIndex + 1,
-                text: RecipeCockpitRecipeWriter.readTodoCommentText(lines[todoLineIndex]) ?? ''
-            };
 
             while ( fieldIndex < scannedObject.fields.length && scannedObject.fields[fieldIndex].endIndex <= todoLineIndex ) {
                 fieldIndex++;
             }
 
             const scannedField = scannedObject.fields[fieldIndex];
+            const removeLock: RecipeCockpitTodoRemoveLock | undefined = isIndistinctOccurrence
+                ? 'indistinct-occurrence'
+                : RecipeCockpitRecipeWriter.findTodoRemoveLock(lines, scannedObject, todoLineIndex, {
+                    fieldStartingAtLine: scannedField && scannedField.startIndex === todoLineIndex ? scannedField : null,
+                    owningField: scannedField && scannedField.startIndex < todoLineIndex && todoLineIndex < scannedField.endIndex ? scannedField : null,
+                    markerStartIndexes: markerStartIndexes
+                });
+            const todo: IRecipeCockpitTodoViewModel = {
+                lineNumber: todoLineIndex + 1,
+                text: RecipeCockpitRecipeWriter.readTodoCommentText(lines[todoLineIndex]) ?? '',
+                ...( removeLock !== undefined ? { removeLock: removeLock } : {} )
+            };
+
             const fieldEntry = scannedField && scannedField.startIndex <= todoLineIndex
                 ? sourceEntry.fieldEntries.get(scannedField.fieldApiName)
                 : undefined;
@@ -12068,10 +12668,11 @@ export class RecipeCockpitService {
 
         return todos.map(todo => {
             const valueStart = todo.text ? recipeValue.indexOf(todo.text) : -1;
+            const removeLock = todo.removeLock !== undefined ? { removeLock: todo.removeLock } : {};
             if ( valueStart === -1 ) {
-                return todo.text !== undefined ? { lineNumber: todo.lineNumber, text: todo.text } : { lineNumber: todo.lineNumber };
+                return todo.text !== undefined ? { lineNumber: todo.lineNumber, text: todo.text, ...removeLock } : { lineNumber: todo.lineNumber, ...removeLock };
             }
-            return { lineNumber: todo.lineNumber, valueStart: valueStart, valueLength: todo.text.length };
+            return { lineNumber: todo.lineNumber, valueStart: valueStart, valueLength: todo.text.length, ...removeLock };
         });
 
     }
@@ -12772,9 +13373,14 @@ ${this.buildPaletteCustomProperties()}
     .troubleshootingTodoHeader { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.4rem; }
     .troubleshootingTodoObject { font-weight: 600; }
     .troubleshootingTodoCount { font-size: 0.9em; }
-    .troubleshootingTodo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; margin: 0.15rem 0 0 0.8rem; font-size: 0.9em; }
-    .troubleshootingTodoField { font-family: var(--vscode-editor-font-family); }
-    .troubleshootingTodoText { white-space: pre-wrap; word-break: break-word; font-family: var(--vscode-editor-font-family); }
+    .troubleshootingTodo { margin: 0.3rem 0 0 0.8rem; font-size: 0.9em; }
+    .troubleshootingTodoHead { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+    .troubleshootingTodoField { font-family: var(--vscode-editor-font-family); font-weight: 600; color: var(--sdt-accent); }
+    .troubleshootingTodoField.muted { font-weight: normal; color: var(--sdt-muted); }
+    .troubleshootingTodoAction { margin-left: auto; }
+    .troubleshootingTodoText { display: block; margin: 0.1rem 0 0 0; white-space: pre-wrap; word-break: break-word; font-family: var(--vscode-editor-font-family); color: var(--sdt-muted); }
+    .todosViews { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0 0.2rem 0; }
+    .todosViews .todosView.selected.sdtButton { color: var(--sdt-text); background-color: var(--sdt-row-hover); font-weight: 600; }
     .treeRecordCount { display: inline-flex; align-items: baseline; gap: 0.3rem; }
     .treeRecordCountInput {
         width: 5.5rem;
@@ -12882,12 +13488,14 @@ ${this.buildPaletteCustomProperties()}
     const PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL)};
     const ASSIGN_PERMISSION_SETS_TITLE = "Choose the permission sets in this workspace's source that grant access to this tree's objects and assign the ones the org selected above, or a sandbox you choose, already holds to the user that org is authorized as, after a confirmation. Nothing is deployed.";
     const GENERATE_PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL)};
-    const VALIDATION_RULE_RETRIEVE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL)};
     const DEPLOY_ACTION_LABELS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_LABELS)};
     const BUTTON_KINDS = ${JSON.stringify(RECIPE_COCKPIT_BUTTON_KINDS)};
     const ACTION_VERB_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_ACTION_VERB_EMOJI)};
     const TROUBLESHOOTING_ACTION_CARDS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS)};
     const DEPLOY_ACTION_BY_KIND = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND)};
+    const RETRIEVE_ACTION_BY_KIND = ${JSON.stringify(RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND)};
+    const RETRIEVE_ACTION_LABELS = ${JSON.stringify(RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS)};
+    const RETRIEVE_COMMANDS = ${JSON.stringify(RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND)};
     // A NICKNAME YAML LOADS AS A BOOLEAN OR NULL NAMES NO RECORD: THE INSERT'S WHOLE-STRING SWAP NEVER MATCHES IT (#151, #380)
     const YAML_NON_STRING_NICKNAME_PATTERN = new RegExp(${JSON.stringify(YAML_NON_STRING_PLAIN_SCALAR_PATTERN.source)});
     const DEPLOY_COMMANDS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND)};
@@ -12896,6 +13504,17 @@ ${this.buildPaletteCustomProperties()}
     const TROUBLESHOOTING_SUB_TAB_LABELS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_LABELS)};
     const TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS)};
     const NO_TREE_TODOS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_TREE_TODOS_NOTE)};
+    const TODOS_VIEWS = ${JSON.stringify(RECIPE_COCKPIT_TODOS_VIEWS)};
+    const TODOS_VIEW_LABELS = ${JSON.stringify(RECIPE_COCKPIT_TODOS_VIEW_LABELS)};
+    const REMOVED_TODOS_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_REMOVED_TODOS_PLACEHOLDER)};
+    const NO_REMOVED_TODOS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_REMOVED_TODOS_NOTE)};
+    const TODO_REMOVE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODO_REMOVE_LABEL)};
+    const TODO_RESTORE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODO_RESTORE_LABEL)};
+    const TODO_REMOVE_LOCK_REASONS = ${JSON.stringify(RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS)};
+    const TODO_REFERENCE_LOOKUP_REASON = ${JSON.stringify(RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON)};
+    const TODO_OTHER_RECIPE_REASON = ${JSON.stringify(RECIPE_COCKPIT_TODO_OTHER_RECIPE_REASON)};
+    const TODO_NO_RECIPE_REASON = ${JSON.stringify(RECIPE_COCKPIT_TODO_NO_RECIPE_REASON)};
+    const REFERENCE_ID_REQUIRED_TODO_TEXT = ${JSON.stringify(RelationshipService.referenceIdRequiredTodo)};
     const VALIDATION_RULE_STATUS_LABELS = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_STATUS_LABELS)};
     const VALIDATION_RULES_LOADING_NOTE = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULES_LOADING_NOTE)};
     const NO_LOCAL_VALIDATION_RULES_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_LOCAL_VALIDATION_RULES_NOTE)};
@@ -13036,8 +13655,9 @@ ${this.buildPaletteCustomProperties()}
     let isScratchOrgRunning = false;
     // "Assign permission sets to me…" (#274, #302): WHETHER AN ASSIGNMENT HOLDS THE PICKER, EVERY INSERT AND EVERY ASSIGN BUTTON DISABLED
     let isPermissionSetAssignRunning = false;
-    // "Retrieve validation rules…" (#326): SET ON THE CLICK, CLEARED BY THE HOST'S validationRuleRetrieveState
-    let isValidationRuleRetrieveRunning = false;
+    // THE TROUBLESHOOTING TAB'S RETRIEVES (#326, #382): SET ON THE CLICK, CLEARED BY THE HOST'S metadataRetrieveState; THE KEY NAMES THE CARD CLICKED
+    let isMetadataRetrieveRunning = false;
+    let metadataRetrieveRunningKey = null;
     // THE QUERY TAB'S RUN (#367): SET ON THE CLICK, CLEARED BY THE HOST'S treeQueryState; ONE PER WINDOW
     let isTreeQueryRunning = false;
     // THE TROUBLESHOOTING TAB'S DEPLOYS (#346): SET ON THE CLICK, CLEARED BY THE HOST'S metadataDeployState; THE KEY NAMES THE BUTTON CLICKED
@@ -16920,6 +17540,11 @@ ${this.buildPaletteCustomProperties()}
         // A FAILED INSERT'S "Open Troubleshooting" (#375) OPENS THE SUB-TAB ITS ERROR POINTS AT
         if (focusTree.tab === 'troubleshooting' && typeof focusTree.troubleshootingSubTab === 'string') {
             selectTroubleshootingSubTab(treeState, focusTree.troubleshootingSubTab, false);
+            // A REMOVE OR A RESTORE (#391) RELOADS ONTO THE LIST IT WAS CLICKED IN
+            if (focusTree.troubleshootingSubTab === 'todos' && TODOS_VIEWS.indexOf(focusTree.todosView) !== -1) {
+                treeState.todosView = focusTree.todosView;
+                selectTodosView(treeState, focusTree.todosView, false);
+            }
         }
 
         // A REGENERATE, AND "Change record types" (#196), RE-OPEN THE RECORD TYPES SECTION, SCROLLED TO THE OBJECT IT IS ABOUT
@@ -17259,6 +17884,7 @@ ${this.buildPaletteCustomProperties()}
         treeState.troubleshootingStripElement = stripElement;
         treeState.troubleshootingSubTabStates = [];
         treeState.deployCards = Object.create(null);
+        treeState.retrieveCards = Object.create(null);
 
         if (TROUBLESHOOTING_SUB_TABS.indexOf(treeState.troubleshootingSubTab) === -1) {
             treeState.troubleshootingSubTab = TROUBLESHOOTING_SUB_TABS[0];
@@ -17288,17 +17914,20 @@ ${this.buildPaletteCustomProperties()}
                 buildTroubleshootingTodos(treeState, subTabState);
             } else if (subTab === 'fields') {
                 addDeployItem(subTabState, 'fields');
+                addActionItem(subTabState, buildRetrieveAction(treeState, 'fields'));
             } else if (subTab === 'permissions') {
                 if (tree.objects.length > 0) { addActionItem(subTabState, buildAssignPermissionSetCard(treeState)); }
                 addActionItem(subTabState, buildGeneratePermissionSetCard(treeState));
                 addDeployItem(subTabState, 'permissionSet');
             } else if (subTab === 'validationRules') {
-                addActionItem(subTabState, buildRetrieveValidationRulesCard(treeState));
+                addActionItem(subTabState, buildRetrieveAction(treeState, 'validationRules'));
                 buildTroubleshootingValidationRules(treeState, subTabState);
             } else if (subTab === 'recordTypes') {
                 addDeployItem(subTabState, 'recordTypes');
+                addActionItem(subTabState, buildRetrieveAction(treeState, 'recordTypes'));
             } else if (subTab === 'globalValueSets') {
                 addDeployItem(subTabState, 'globalValueSets');
+                addActionItem(subTabState, buildRetrieveAction(treeState, 'globalValueSets'));
             }
 
         });
@@ -17333,13 +17962,16 @@ ${this.buildPaletteCustomProperties()}
 
         const search = buildTabSearch(treeState, searchKey, TROUBLESHOOTING_SUB_TAB_PLACEHOLDERS[subTab], function () { applyTroubleshootingFilter(treeState, subTab); });
         const listElement = createElement('div', 'troubleshootingList');
-        subPanelElement.appendChild(search.element);
-        subPanelElement.appendChild(listElement);
+        // THE TODO'S SUB-TAB HOLDS TWO LISTS (#391): ITS SEARCH AND ITS LIST ARE THE OPEN ONE'S
+        const todosFrame = subTab === 'todos' ? buildTodosViewFrame(treeState, subPanelElement) : null;
+        const contentElement = todosFrame ? todosFrame.viewStates.open.panelElement : subPanelElement;
+        contentElement.appendChild(search.element);
+        contentElement.appendChild(listElement);
 
         treeState.troubleshootingStripElement.appendChild(tabElement);
         panelElement.appendChild(subPanelElement);
 
-        const subTabState = { subTab: subTab, tabElement: tabElement, panelElement: subPanelElement, search: search, listElement: listElement, items: [], noun: ['action', 'actions'] };
+        const subTabState = { subTab: subTab, tabElement: tabElement, panelElement: subPanelElement, search: search, listElement: listElement, items: [], noun: ['action', 'actions'], todosFrame: todosFrame };
         treeState.troubleshootingSubTabStates.push(subTabState);
 
         return subTabState;
@@ -17401,6 +18033,7 @@ ${this.buildPaletteCustomProperties()}
             const objectLabel = object.objectApiName + (hasNickname ? ' · ' + object.nickname : '');
             const groupState = {
                 object: object,
+                treeState: treeState,
                 element: createElement('div', 'troubleshootingTodoGroup'),
                 toggleElement: buildToggleElement('troubleshootingTodoToggle'),
                 countElement: createElement('span', 'troubleshootingTodoCount muted'),
@@ -17418,6 +18051,7 @@ ${this.buildPaletteCustomProperties()}
                     todo: todo,
                     todoText: todoText,
                     isFieldTodo: isFieldTodo,
+                    removeReason: findTodoRemoveReason(treeState.tree, object, todo, todoText),
                     searchText: [object.objectApiName, object.nickname || '', fieldLabel, todoText].join('\\n').toLowerCase(),
                     isMatch: true,
                     element: null
@@ -17458,6 +18092,199 @@ ${this.buildPaletteCustomProperties()}
             subTabState.listElement.appendChild(createElement('div', 'treeEmpty muted', NO_TREE_TODOS_NOTE));
         }
 
+        buildRemovedTodos(treeState, subTabState);
+        drawTodosViewLabels(subTabState, todoCount);
+        selectTodosView(treeState, treeState.todosView, false);
+
+    }
+
+    /*
+        The TODO's sub-tab's Open and Removed lists (#391): a strip of two buttons, each list in its
+        own panel with its own search. Which is open is the card's todosView, kept in the place.
+    */
+    function buildTodosViewFrame(treeState, subPanelElement) {
+
+        const stripElement = createElement('div', 'todosViews');
+        stripElement.setAttribute('role', 'tablist');
+        stripElement.setAttribute('aria-label', TROUBLESHOOTING_SUB_TAB_LABELS.todos);
+        subPanelElement.appendChild(stripElement);
+
+        const viewStates = Object.create(null);
+        TODOS_VIEWS.forEach(function (todosView) {
+            const tabElement = createButton('secondary', 'todosView todosView-' + todosView, TODOS_VIEW_LABELS[todosView]);
+            const panelElement = createElement('div', 'todosViewPanel todosViewPanel-' + todosView + (todosView === 'open' ? '' : ' hidden'));
+            tabElement.setAttribute('role', 'tab');
+            tabElement.setAttribute('aria-selected', todosView === 'open' ? 'true' : 'false');
+            panelElement.setAttribute('role', 'tabpanel');
+            panelElement.setAttribute('aria-label', TODOS_VIEW_LABELS[todosView]);
+            tabElement.addEventListener('click', function () { selectTodosView(treeState, todosView, true); });
+            stripElement.appendChild(tabElement);
+            subPanelElement.appendChild(panelElement);
+            viewStates[todosView] = { tabElement: tabElement, panelElement: panelElement };
+        });
+
+        if (TODOS_VIEWS.indexOf(treeState.todosView) === -1) { treeState.todosView = TODOS_VIEWS[0]; }
+
+        return { stripElement: stripElement, viewStates: viewStates };
+
+    }
+
+    function selectTodosView(treeState, todosView, isAnimated) {
+
+        const subTabState = (treeState.troubleshootingSubTabStates || []).find(function (candidate) { return candidate.subTab === 'todos'; });
+        if (!subTabState || !subTabState.todosFrame || TODOS_VIEWS.indexOf(todosView) === -1) { return; }
+
+        treeState.todosView = todosView;
+        TODOS_VIEWS.forEach(function (candidateView) {
+            const viewState = subTabState.todosFrame.viewStates[candidateView];
+            const isSelected = candidateView === todosView;
+            if (isSelected) { viewState.tabElement.classList.add('selected'); } else { viewState.tabElement.classList.remove('selected'); }
+            viewState.tabElement.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+            setShownWithMotion(viewState.panelElement, isSelected, isSelected && isAnimated);
+        });
+
+        savePanelPlace();
+
+    }
+
+    function drawTodosViewLabels(subTabState, openCount) {
+        const viewStates = subTabState.todosFrame.viewStates;
+        const removedCount = subTabState.removedEntries.length;
+        viewStates.open.tabElement.textContent = TODOS_VIEW_LABELS.open + ' (' + openCount + ')';
+        viewStates.removed.tabElement.textContent = TODOS_VIEW_LABELS.removed + ' (' + removedCount + ')';
+    }
+
+    /*
+        Why a TODO's Remove TODO is disabled, or '' when it is not: the host's lock (#391), a TODO of
+        another card's recipe file, or a card with no single recipe file. A lookup's TODO says to wire
+        the lookup. The host decides again on the click.
+    */
+    function findTodoRemoveReason(tree, object, todo, todoText) {
+
+        if (!tree.runFakerRecipeFileName) { return TODO_NO_RECIPE_REASON; }
+        if (fileNameOf(object.recipeFilePath) !== tree.runFakerRecipeFileName) { return TODO_OTHER_RECIPE_REASON; }
+        if (typeof todo.removeLock !== 'string') { return ''; }
+        if (todo.removeLock === 'field-value' && todoText.indexOf(REFERENCE_ID_REQUIRED_TODO_TEXT) === 0) { return TODO_REFERENCE_LOOKUP_REASON; }
+        return hasOwnKey(TODO_REMOVE_LOCK_REASONS, todo.removeLock) ? TODO_REMOVE_LOCK_REASONS[todo.removeLock] : TODO_REMOVE_LOCK_REASONS['field-value'];
+
+    }
+
+    function fileNameOf(filePath) {
+        const pathParts = String(filePath || '').split(/[\\\\/]/);
+        return pathParts[pathParts.length - 1];
+    }
+
+    // THE OWNER, ITS "↗ yml" LINK AND ITS BUTTON ON ONE LINE, THE TODO'S TEXT UNDER THEM (#391)
+    function buildTodoRowElement(isMatch, ownerLabel, isFieldOwner, sourceLinkElement, actionElement, todoText) {
+
+        const todoElement = createElement('div', isMatch ? 'troubleshootingTodo' : 'troubleshootingTodo hidden');
+        const headElement = createElement('div', 'troubleshootingTodoHead');
+        headElement.appendChild(createElement('span', isFieldOwner ? 'troubleshootingTodoField' : 'troubleshootingTodoField muted', ownerLabel));
+        if (sourceLinkElement) { headElement.appendChild(sourceLinkElement); }
+        headElement.appendChild(actionElement);
+        todoElement.appendChild(headElement);
+        todoElement.appendChild(createElement('span', todoText ? 'troubleshootingTodoText' : 'troubleshootingTodoText muted', todoText || TODO_IN_FIELD_VALUE_LABEL));
+        return todoElement;
+
+    }
+
+    function buildRemoveTodoButton(treeState, entry) {
+
+        const removeElement = createButton('secondary', 'troubleshootingTodoAction troubleshootingTodoRemove', TODO_REMOVE_LABEL, 'compact');
+        removeElement.setAttribute('aria-label', TODO_REMOVE_LABEL + ': ' + entry.fieldLabel + ', line ' + entry.todo.lineNumber);
+
+        if (entry.removeReason) {
+            removeElement.disabled = true;
+            removeElement.setAttribute('title', entry.removeReason);
+            return removeElement;
+        }
+
+        removeElement.setAttribute('title', 'Remove this TODO comment from the recipe file, after a confirmation. It is kept under Removed, where Restore puts it back.');
+        removeElement.addEventListener('click', function () {
+            if (isWireLookupRunning) { return; }
+            setWireLookupRunning(true);
+            vscodeApi.postMessage({ command: 'removeTodo', treeKey: treeState.tree.treeKey, lineNumber: entry.todo.lineNumber });
+        });
+        removeElement.disabled = isWireLookupRunning;
+        wireLookupButtonElements.push(removeElement);
+        return removeElement;
+
+    }
+
+    /*
+        The TODOs the reader removed from the card's recipe (#391), grouped by object occurrence like
+        the open list and built at once: the host lists only what is still out of the recipe, a short
+        list next to the open one. Each row's Restore posts the row's removalKey, and the host puts
+        back the line its removed-TODOs file holds.
+    */
+    function buildRemovedTodos(treeState, subTabState) {
+
+        const removedPanelElement = subTabState.todosFrame.viewStates.removed.panelElement;
+        const searchKey = troubleshootingSearchKey('todosRemoved');
+        if (typeof treeState.searchTexts[searchKey] !== 'string') {
+            treeState.searchTexts[searchKey] = '';
+            treeState.searchQueries[searchKey] = '';
+        }
+
+        subTabState.removedSearch = buildTabSearch(treeState, searchKey, REMOVED_TODOS_PLACEHOLDER, function () { applyTroubleshootingFilter(treeState, 'todos'); });
+        subTabState.removedListElement = createElement('div', 'troubleshootingList');
+        subTabState.removedGroups = [];
+        subTabState.removedEntries = [];
+        removedPanelElement.appendChild(subTabState.removedSearch.element);
+        removedPanelElement.appendChild(subTabState.removedListElement);
+
+        const removedTodos = Array.isArray(treeState.tree.removedTodos) ? treeState.tree.removedTodos : [];
+        const groupsByLabel = Object.create(null);
+
+        removedTodos.forEach(function (removedTodo) {
+
+            const objectLabel = removedTodo.objectApiName + (removedTodo.objectNickname ? ' · ' + removedTodo.objectNickname : '');
+            let groupState = groupsByLabel[objectLabel];
+            if (!groupState) {
+                groupState = {
+                    element: createElement('div', 'troubleshootingTodoGroup'),
+                    countElement: createElement('span', 'troubleshootingTodoCount muted'),
+                    entries: [],
+                    matchingCount: 0,
+                    isShown: true
+                };
+                const headerElement = createElement('div', 'troubleshootingTodoHeader');
+                headerElement.appendChild(createElement('span', 'troubleshootingTodoObject', objectLabel));
+                headerElement.appendChild(groupState.countElement);
+                groupState.element.appendChild(headerElement);
+                subTabState.removedListElement.appendChild(groupState.element);
+                groupsByLabel[objectLabel] = groupState;
+                subTabState.removedGroups.push(groupState);
+            }
+
+            const fieldLabel = removedTodo.fieldApiName || 'on the object';
+            const restoreElement = createButton('secondary', 'troubleshootingTodoAction troubleshootingTodoRestore', TODO_RESTORE_LABEL, 'compact');
+            restoreElement.setAttribute('aria-label', TODO_RESTORE_LABEL + ': ' + fieldLabel + ', ' + removedTodo.text);
+            restoreElement.setAttribute('title', 'Put this TODO comment back in the recipe file where it was, after a confirmation');
+            restoreElement.addEventListener('click', function () {
+                if (isWireLookupRunning) { return; }
+                setWireLookupRunning(true);
+                vscodeApi.postMessage({ command: 'restoreTodo', treeKey: treeState.tree.treeKey, removalKey: removedTodo.removalKey });
+            });
+            restoreElement.disabled = isWireLookupRunning;
+            wireLookupButtonElements.push(restoreElement);
+
+            const entry = {
+                searchText: [removedTodo.objectApiName, removedTodo.objectNickname || '', fieldLabel, removedTodo.text].join('\\n').toLowerCase(),
+                isMatch: true,
+                isShown: true,
+                element: buildTodoRowElement(true, fieldLabel, !!removedTodo.fieldApiName, null, restoreElement, removedTodo.text)
+            };
+            groupState.entries.push(entry);
+            groupState.element.appendChild(entry.element);
+            subTabState.removedEntries.push(entry);
+
+        });
+
+        if (removedTodos.length === 0) {
+            subTabState.removedListElement.appendChild(createElement('div', 'treeEmpty muted', NO_REMOVED_TODOS_NOTE));
+        }
+
     }
 
     function setTodoGroupExpanded(groupState, isExpanded, isAnimated) {
@@ -17465,12 +18292,10 @@ ${this.buildPaletteCustomProperties()}
         if (isExpanded && !groupState.isBuilt) {
             groupState.entries.forEach(function (entry) {
                 const object = groupState.object;
-                const todoElement = createElement('div', entry.isMatch ? 'troubleshootingTodo' : 'troubleshootingTodo hidden');
-                todoElement.appendChild(createElement('span', entry.isFieldTodo ? 'troubleshootingTodoField' : 'troubleshootingTodoField muted', entry.fieldLabel));
-                todoElement.appendChild(createElement('span', entry.todoText ? 'troubleshootingTodoText' : 'troubleshootingTodoText muted', entry.todoText || TODO_IN_FIELD_VALUE_LABEL));
-                if (object.recipeFilePath && entry.todo.lineNumber) {
-                    todoElement.appendChild(buildSourceLink('treeTodoSource', '↗ yml', object.recipeFilePath, entry.todo.lineNumber));
-                }
+                const sourceLinkElement = object.recipeFilePath && entry.todo.lineNumber
+                    ? buildSourceLink('treeTodoSource', '↗ yml', object.recipeFilePath, entry.todo.lineNumber)
+                    : null;
+                const todoElement = buildTodoRowElement(entry.isMatch, entry.fieldLabel, entry.isFieldTodo, sourceLinkElement, buildRemoveTodoButton(groupState.treeState, entry), entry.todoText);
                 entry.element = todoElement;
                 groupState.bodyElement.appendChild(todoElement);
             });
@@ -17573,6 +18398,8 @@ ${this.buildPaletteCustomProperties()}
                     function (groupState) { return groupState.entries.length; },
                     function (groupState, isExpanded) { setTodoGroupExpanded(groupState, isExpanded, false); });
 
+                applyRemovedTodosFilter(treeState, subTabState);
+
             } else {
 
                 subTabState.items.forEach(function (item) {
@@ -17616,6 +18443,35 @@ ${this.buildPaletteCustomProperties()}
                 : matchingCount > 0 ? matchingCount + ' of ' + pluralize(total, subTabState.noun[0], subTabState.noun[1]) : 'no matches';
 
         });
+
+    }
+
+    // THE REMOVED LIST'S OWN SEARCH (#391): A ROW IS MATCHED BY ITS SAVED TEXT, A GROUP SHOWN WHILE ONE OF ITS ROWS MATCHES
+    function applyRemovedTodosFilter(treeState, subTabState) {
+
+        if (!subTabState.removedGroups) { return; }
+
+        const searchQuery = treeState.searchQueries[troubleshootingSearchKey('todosRemoved')] || '';
+        let matchingCount = 0;
+
+        subTabState.removedGroups.forEach(function (groupState) {
+            groupState.matchingCount = 0;
+            groupState.entries.forEach(function (entry) {
+                entry.isMatch = !searchQuery || entry.searchText.indexOf(searchQuery) !== -1;
+                if (entry.isMatch) { groupState.matchingCount++; }
+                setShownIfChanged(entry, entry.element, entry.isMatch);
+            });
+            matchingCount += groupState.matchingCount;
+            setShownIfChanged(groupState, groupState.element, !searchQuery || groupState.matchingCount > 0);
+            groupState.countElement.textContent = searchQuery
+                ? groupState.matchingCount + ' of ' + pluralize(groupState.entries.length, 'TODO', 'TODOs')
+                : pluralize(groupState.entries.length, 'TODO', 'TODOs');
+        });
+
+        const total = subTabState.removedEntries.length;
+        subTabState.removedSearch.matchCountElement.textContent = !searchQuery
+            ? pluralize(total, 'removed TODO', 'removed TODOs')
+            : matchingCount > 0 ? matchingCount + ' of ' + pluralize(total, 'removed TODO', 'removed TODOs') : 'no matches';
 
     }
 
@@ -18239,24 +19095,63 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        "Retrieve validation rules…" (#326) posts the tree's KEY alone, never an org: the host
-        asks for the org in the command palette every time. One retrieve per window, so every
-        card's button is disabled on the click until the host's validationRuleRetrieveState.
+        The Troubleshooting tab's retrieves (#326, #382) post the tree's KEY alone, never an org: the
+        host asks for the org in the command palette every time, and decides what is retrieved. One
+        retrieve per window, so every card's retrieve and deploy is disabled on the click until the
+        host's metadataRetrieveState.
     */
-    function buildRetrieveValidationRulesCard(treeState) {
+    function buildRetrieveAction(treeState, retrieveKind) {
 
-        const actionCard = buildActionCard('retrieveValidationRules', 'treeRetrieveValidationRules', VALIDATION_RULE_RETRIEVE_ACTION_LABEL);
+        const className = retrieveKind === 'validationRules' ? 'treeRetrieveValidationRules' : 'troubleshootingRetrieve troubleshootingRetrieve-' + retrieveKind;
+        const actionCard = buildActionCard(RETRIEVE_ACTION_BY_KIND[retrieveKind], className, RETRIEVE_ACTION_LABELS[retrieveKind]);
         const retrieveButtonElement = actionCard.buttonElement;
         retrieveButtonElement.addEventListener('click', function () {
             if (retrieveButtonElement.disabled || renderedSequence === null) { return; }
-            isValidationRuleRetrieveRunning = true;
+            isMetadataRetrieveRunning = true;
+            metadataRetrieveRunningKey = treeState.tree.treeKey + '\\n' + retrieveKind;
             drawTreeInserts();
             drawDataOrgViews();
-            vscodeApi.postMessage({ command: 'retrieveTreeValidationRules', treeKey: treeState.tree.treeKey });
+            vscodeApi.postMessage({ command: RETRIEVE_COMMANDS[retrieveKind], treeKey: treeState.tree.treeKey });
         });
-        treeState.retrieveValidationRulesCard = actionCard;
+        treeState.retrieveCards[retrieveKind] = actionCard;
 
         return actionCard;
+
+    }
+
+    // WHAT A RETRIEVE CARD SAYS BELOW ITS WHY LINE, AND WHY IT CANNOT RUN WHEN THERE IS NOTHING TO ASK FOR (#382)
+    function describeRetrieveSummary(treeState, retrieveKind) {
+
+        const summary = treeState.troubleshootingSummary;
+
+        if (retrieveKind === 'validationRules') { return { text: '', emptyReason: '' }; }
+
+        if (retrieveKind === 'recordTypes') {
+            return {
+                text: pluralize(treeState.tree.objects.length, 'object', 'objects') + ', each asked for every record type the org holds.',
+                emptyReason: treeState.tree.objects.length === 0 ? 'This tree has no object.' : ''
+            };
+        }
+
+        if (!summary) { return { text: 'Reading this project…', emptyReason: 'Reading this project…' }; }
+        if (summary.failureMessage) {
+            const retrieveFailureMessage = summary.failureMessage.replace(/^Nothing can be deployed: /, 'Nothing can be retrieved: ');
+            return { text: retrieveFailureMessage, emptyReason: retrieveFailureMessage };
+        }
+
+        if (retrieveKind === 'fields') {
+            const fieldCount = summary.customFieldCount + summary.unreadableFieldCount;
+            return {
+                text: pluralize(fieldCount, 'custom field', 'custom fields') + '; ' + summary.customFieldCount + ' with a source file here.',
+                emptyReason: fieldCount === 0 ? 'This tree has no custom field to retrieve.' : ''
+            };
+        }
+
+        const valueSetCount = summary.globalValueSetCount + summary.missingGlobalValueSetCount;
+        return {
+            text: pluralize(valueSetCount, 'named value set', 'named value sets') + '; ' + summary.globalValueSetCount + ' held here.',
+            emptyReason: valueSetCount === 0 ? 'No field of this tree names a global value set.' : ''
+        };
 
     }
 
@@ -18281,15 +19176,25 @@ ${this.buildPaletteCustomProperties()}
             drawActionCardState(generateCard, generateReason, 'Write a permission set granting Create and Read on this tree\\'s objects and access to its fields into this project\\'s permissionsets/SDT_Treecipe folder, after a confirmation. Nothing is deployed.');
         }
 
-        const retrieveCard = treeState.retrieveValidationRulesCard;
-        if (retrieveCard) {
-            const retrieveReason = isValidationRuleRetrieveRunning ? 'Validation rules are being retrieved.'
+        const retrieveCards = treeState.retrieveCards || {};
+        Object.keys(retrieveCards).forEach(function (retrieveKind) {
+
+            const retrieveCard = retrieveCards[retrieveKind];
+            const described = describeRetrieveSummary(treeState, retrieveKind);
+            const busyReason = isMetadataRetrieveRunning ? 'Metadata is being retrieved.'
                 : insertRunningTreeKey !== null ? 'A tree is being inserted.'
                 : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
                 : isMetadataDeployRunning ? 'Metadata is being deployed.'
                 : '';
-            drawActionCardState(retrieveCard, retrieveReason, 'Retrieve the validation rules of this tree\\'s objects from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; Generate Treecipe then applies them.');
-        }
+            const title = metadataRetrieveRunningKey === treeState.tree.treeKey + '\\n' + retrieveKind ? 'Retrieving…' : RETRIEVE_ACTION_LABELS[retrieveKind];
+
+            setTextShown(retrieveCard.detailElement, described.text);
+            if (retrieveCard.titleElement.textContent !== title) { retrieveCard.titleElement.textContent = title; }
+            drawActionCardState(retrieveCard, described.emptyReason || busyReason, retrieveKind === 'validationRules'
+                ? 'Retrieve the validation rules of this tree\\'s objects from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; Generate Treecipe then applies them.'
+                : 'Retrieve these components of this tree from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; run Generate Treecipe afterwards.');
+
+        });
 
         const deployCards = treeState.deployCards || {};
         Object.keys(deployCards).forEach(function (deployKind) {
@@ -18300,7 +19205,7 @@ ${this.buildPaletteCustomProperties()}
                 : insertRunningTreeKey !== null ? 'A tree is being inserted.'
                 : isScratchOrgRunning ? 'A scratch org is being set up.'
                 : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
-                : isValidationRuleRetrieveRunning ? 'Validation rules are being retrieved.'
+                : isMetadataRetrieveRunning ? 'Metadata is being retrieved.'
                 : '';
             const deployReason = described.emptyReason || busyReason;
             const title = metadataDeployRunningKey === treeState.tree.treeKey + '\\n' + deployKind ? 'Deploying…' : DEPLOY_ACTION_LABELS[deployKind];
@@ -18813,6 +19718,10 @@ ${this.buildPaletteCustomProperties()}
         });
         const troubleshootingSubTab = TROUBLESHOOTING_SUB_TABS.indexOf(treeState.troubleshootingSubTab) > 0 ? treeState.troubleshootingSubTab : null;
         if (hasTroubleshootingSearch || troubleshootingSubTab) { hasSearch = true; }
+        // THE TODO'S SUB-TAB'S REMOVED LIST AND ITS SEARCH (#391), EACH ONLY WHEN THERE IS ONE
+        const isRemovedTodosView = treeState.todosView === 'removed';
+        const removedTodosSearchText = treeState.searchTexts[troubleshootingSearchKey('todosRemoved')] || '';
+        if (isRemovedTodosView || removedTodosSearchText) { hasSearch = true; }
 
         const selectedTab = treeState.selectedTab || 'treecipe';
 
@@ -18836,6 +19745,8 @@ ${this.buildPaletteCustomProperties()}
         if (isTodosOnlyIn(treeState)) { treePlace.isTodosOnly = true; }
         if (troubleshootingSubTab) { treePlace.troubleshootingSubTab = troubleshootingSubTab; }
         if (hasTroubleshootingSearch) { treePlace.troubleshootingSearchQueries = troubleshootingSearchQueries; }
+        if (isRemovedTodosView) { treePlace.todosView = 'removed'; }
+        if (removedTodosSearchText) { treePlace.removedTodosSearchText = removedTodosSearchText; }
 
         return treePlace;
 
@@ -19047,6 +19958,10 @@ ${this.buildPaletteCustomProperties()}
                 treeState.searchQueries[searchKey] = treeState.searchTexts[searchKey].trim().toLowerCase();
             });
             treeState.troubleshootingSubTab = TROUBLESHOOTING_SUB_TABS.indexOf(savedTree.troubleshootingSubTab) !== -1 ? savedTree.troubleshootingSubTab : TROUBLESHOOTING_SUB_TABS[0];
+            treeState.todosView = savedTree.todosView === 'removed' ? 'removed' : 'open';
+            const removedTodosSearchKey = troubleshootingSearchKey('todosRemoved');
+            treeState.searchTexts[removedTodosSearchKey] = typeof savedTree.removedTodosSearchText === 'string' ? savedTree.removedTodosSearchText : '';
+            treeState.searchQueries[removedTodosSearchKey] = treeState.searchTexts[removedTodosSearchKey].trim().toLowerCase();
 
             // BEFORE THE DATA SETS TAB IS BUILT, WHICH APPLIES IT; A TAB ALREADY BUILT APPLIES IT NOW
             treeState.isDatasetFavoritesOnly = savedTree.isDatasetFavoritesOnly === true;
@@ -19671,8 +20586,9 @@ ${this.buildPaletteCustomProperties()}
             return;
         }
 
-        if (hostMessage.command === 'validationRuleRetrieveState') {
-            isValidationRuleRetrieveRunning = !!hostMessage.isRunning;
+        if (hostMessage.command === 'metadataRetrieveState') {
+            isMetadataRetrieveRunning = !!hostMessage.isRunning;
+            metadataRetrieveRunningKey = isMetadataRetrieveRunning ? hostMessage.treeKey + '\\n' + hostMessage.retrieveKind : null;
             drawTreeInserts();
             drawDataOrgViews();
             return;

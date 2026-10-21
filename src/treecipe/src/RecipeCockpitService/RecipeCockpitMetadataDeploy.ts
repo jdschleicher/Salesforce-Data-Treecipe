@@ -41,6 +41,9 @@ export const METADATA_DEPLOY_OPERATION_BY_KIND = Object.freeze({
 
 export type MetadataDeployOperationName = typeof METADATA_DEPLOY_OPERATION_BY_KIND[MetadataDeployKind];
 
+// THE RETRIEVES THAT NAME THEIR COMPONENTS IN A PACKAGE.XML (#382); SPELLED HERE SO THIS MODULE IMPORTS NOTHING OF THE RETRIEVE'S
+export type MetadataPackageXmlRetrieveOperationName = 'field-retrieve' | 'global-value-set-retrieve';
+
 // HOW DEEP UNDER A PACKAGE DIRECTORY AN objects OR globalValueSets FOLDER IS LOOKED FOR: force-app/main/default/objects IS THREE
 export const METADATA_DEPLOY_SEARCH_DEPTH = 6;
 
@@ -396,10 +399,10 @@ export class RecipeCockpitMetadataDeploy {
         and members sorted with "<", duplicates once. Throws, writing nothing, for a type outside the
         four this tab deploys, a member that is not an api name in its type's shape, or no component.
     */
-    static buildPackageXml(components: readonly IMetadataDeployComponent[], apiVersion?: string): string {
+    static buildPackageXml(components: readonly IMetadataDeployComponent[], apiVersion?: string, failureClause: string = 'nothing was deployed'): string {
 
         if ( components.length === 0 ) {
-            throw new Error('No component was named, so nothing was deployed.');
+            throw new Error(`No component was named, so ${failureClause}.`);
         }
 
         const membersByType = new Map<MetadataDeployType, Set<string>>();
@@ -407,11 +410,11 @@ export class RecipeCockpitMetadataDeploy {
         components.forEach(component => {
 
             if ( !METADATA_DEPLOY_TYPES.includes(component.type) ) {
-                throw new Error(`"${String(component.type).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ')}" is not a type the Troubleshooting tab deploys, so nothing was deployed.`);
+                throw new Error(`"${String(component.type).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ')}" is not a type the Troubleshooting tab deploys, so ${failureClause}.`);
             }
 
             if ( !this.isDeployableMember(component.type, component.member) ) {
-                throw new Error(`"${String(component.member).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ')}" is not a ${component.type} api name, so nothing was deployed.`);
+                throw new Error(`"${String(component.member).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ')}" is not a ${component.type} api name, so ${failureClause}.`);
             }
 
             const members = membersByType.get(component.type) ?? new Set<string>();
@@ -443,7 +446,7 @@ export class RecipeCockpitMetadataDeploy {
         results the cockpit saves. Built here, never from a panel message; undefined when the folder
         name could name another folder or the path would land outside the workspace.
     */
-    static buildPackageXmlFilePath(workspaceRoot: string, orgUsername: string, operationName: MetadataDeployOperationName, date: Date): string | undefined {
+    static buildPackageXmlFilePath(workspaceRoot: string, orgUsername: string, operationName: MetadataDeployOperationName | MetadataPackageXmlRetrieveOperationName, date: Date): string | undefined {
 
         if ( !ScratchOrgService.isUsableOrgOperationFolderName(orgUsername) ) {
             return undefined;
@@ -504,8 +507,8 @@ export class RecipeCockpitMetadataDeploy {
         return path.relative(path.resolve(workspaceRoot), packageXmlFilePath).split(path.sep).join('/');
     }
 
-    // ERRORS ARE NEVER IGNORED: A DEPLOY THAT CANNOT LAND WHOLE LANDS NOTHING
-    static buildMetadataDeployArguments(manifestRelativePath: string, orgUsername: string): string[] {
+    // A --manifest VALUE IS A PLAIN, RELATIVE, "/"-SEPARATED PATH TO A PACKAGE.XML THIS CLASS NAMED; SHARED BY THE RETRIEVES (#382)
+    static assertPlainManifestPath(manifestRelativePath: string, failureClause: string = 'nothing was deployed'): void {
 
         const manifestSegments = String(manifestRelativePath).split('/');
 
@@ -516,9 +519,15 @@ export class RecipeCockpitMetadataDeploy {
                 || manifestRelativePath.startsWith('-')
                 || manifestSegments.some(segment => segment === '' || segment === '.' || segment === '..')
                 || !manifestRelativePath.endsWith(METADATA_DEPLOY_PACKAGE_XML_SUFFIX) ) {
-            throw new Error('The package.xml path is not a plain path inside the workspace, so nothing was deployed.');
+            throw new Error(`The package.xml path is not a plain path inside the workspace, so ${failureClause}.`);
         }
 
+    }
+
+    // ERRORS ARE NEVER IGNORED: A DEPLOY THAT CANNOT LAND WHOLE LANDS NOTHING
+    static buildMetadataDeployArguments(manifestRelativePath: string, orgUsername: string): string[] {
+
+        this.assertPlainManifestPath(manifestRelativePath);
         PicklistDependencyCheckService.assertValidTargetOrgIdentifier(orgUsername);
 
         return [
@@ -648,7 +657,7 @@ export class RecipeCockpitMetadataDeploy {
     }
 
     // A fields OR recordTypes FOLDER THAT IS A LINK IS NEVER LISTED: ITS FILES COULD BE ANYWHERE
-    private static listSubfolderEntries(objectFolderPath: string, subfolderName: string): fs.Dirent[] {
+    static listSubfolderEntries(objectFolderPath: string, subfolderName: string): fs.Dirent[] {
 
         const subfolderPath = path.join(objectFolderPath, subfolderName);
 

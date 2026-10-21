@@ -28,7 +28,8 @@ Each object shows its nickname, the name its lookups use in the recipe file.
 Click it to list the fields that point to it and jump to one; a field holding a nickname shows it highlighted (**↖ Account_NickName**), and clicking it jumps back to that object.
 
 Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply.
-Tick **TODOs only** on a card's Treecipe tab to see just the fields and objects with one, or open its **Troubleshooting** tab, whose **TODO's** list shows them all with a link to each line.
+Tick **TODOs only** on a card's Treecipe tab to see just the fields and objects with one, or open its **Troubleshooting** tab, whose **TODO's** list shows them all, each under its field with a link to its line (**↗ yml**).
+Its **Open** list holds the TODOs still in the recipe, and **Removed** the ones you took out.
 
 The **Troubleshooting** tab shows one area at a time: **TODO's**, **Fields**, **Permissions**, **Validation Rules**, **Record Types** and **Global Value Sets**, each with its own search.
 It opens on the one you chose last.
@@ -56,9 +57,10 @@ These buttons rewrite the recipe file itself, because the change belongs in the 
 - **Wire to…** and **Wire TODO lookups**: fill a lookup's TODO with its parent's nickname.
 - **Add &lt;parent&gt; to recipe**: adds a standard parent object, such as Account, above the child that needs it.
 - **+** beside an object that looks up to itself: adds a child record under it.
+- **Remove TODO** (in the **Troubleshooting** tab's **TODO's** list): takes a TODO comment out of the recipe and lists it under **Removed**, where **Restore** puts it back exactly. The line is kept in a `.removedTodos.json` file beside the recipe. A TODO that is a field's whole value, such as a lookup's, stays.
 - **Edit** (the pencil on a field): opens the field's faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a `.fixedValues.json` file beside the recipe, and **Clear** puts them back exactly.
 
-Three more write other files: **Remember this selection** saves record types to `treecipe.config.json`, and on a card's **Troubleshooting** tab, **Generate permission set** (under **Permissions**) writes a permission set into your project and **Retrieve validation rules** (under **Validation Rules**) writes an org's validation rules into your project.
+Others write other files: **Remember this selection** saves record types to `treecipe.config.json`, and on a card's **Troubleshooting** tab, **Generate permission set** (under **Permissions**) writes a permission set into your project. **Retrieve validation rules**, **Retrieve fields**, **Retrieve record types** and **Retrieve global value sets**, each under its own area, copy that part of an org you pick into your project, and change nothing in the org.
 
 The **Troubleshooting** tab also deploys to a sandbox or scratch org, never production: **Deploy permission set** (**Permissions**), **Deploy fields** (**Fields**, custom fields only), **Deploy record types** (**Record Types**) and **Deploy global value sets** (**Global Value Sets**) each send just those parts of your project, after a confirmation that lists them.
 

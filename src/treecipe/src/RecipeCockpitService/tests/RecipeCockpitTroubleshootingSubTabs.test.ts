@@ -62,6 +62,12 @@ const savedPlaceWith = (treePlace: Record<string, unknown>) => ({
     trees: [{ treeKey: ACCOUNT_TREE_KEY, isExpanded: true, selectedTab: 'troubleshooting', searchQueries: { treecipe: '', datasets: '' }, expandedObjectKeys: [], openPicklistKeys: [], ...treePlace }]
 });
 
+
+// A TODO ROW AS IT READS (#391): THE FIELD (OR "on the object") ON ITS FIRST LINE, THE TODO'S TEXT UNDER IT
+function todoRowTextsOf(panel: any, todoElement: any): string[] {
+    return [panel.findAll(todoElement, 'troubleshootingTodoField')[0].textContent, panel.findAll(todoElement, 'troubleshootingTodoText')[0].textContent];
+}
+
 describe('RecipeCockpitService, the Troubleshooting tab\'s sub-tabs (#365)', () => {
 
     describe('the strip', () => {
@@ -119,11 +125,11 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s sub-tabs (#365)', () 
                 .map((actionElement: any) => actionElement.children[0].className.split(' ').filter((className: string) => !className.startsWith('sdtButton') && className !== 'actionCard').join(' '));
 
             expect(classNamesIn('todos')).toEqual([]);
-            expect(classNamesIn('fields')).toEqual(['troubleshootingDeploy troubleshootingDeploy-fields']);
+            expect(classNamesIn('fields')).toEqual(['troubleshootingDeploy troubleshootingDeploy-fields', 'troubleshootingRetrieve troubleshootingRetrieve-fields']);
             expect(classNamesIn('permissions')).toEqual(['treePermissionSets', 'treeGeneratePermissionSet', 'troubleshootingDeploy troubleshootingDeploy-permissionSet']);
             expect(classNamesIn('validationRules')).toEqual(['treeRetrieveValidationRules']);
-            expect(classNamesIn('recordTypes')).toEqual(['troubleshootingDeploy troubleshootingDeploy-recordTypes']);
-            expect(classNamesIn('globalValueSets')).toEqual(['troubleshootingDeploy troubleshootingDeploy-globalValueSets']);
+            expect(classNamesIn('recordTypes')).toEqual(['troubleshootingDeploy troubleshootingDeploy-recordTypes', 'troubleshootingRetrieve troubleshootingRetrieve-recordTypes']);
+            expect(classNamesIn('globalValueSets')).toEqual(['troubleshootingDeploy troubleshootingDeploy-globalValueSets', 'troubleshootingRetrieve troubleshootingRetrieve-globalValueSets']);
             // THE TREECIPE TAB KEEPS WHAT DECIDES WHAT IS GENERATED
             expect(panel.findAll(panel.tabPanelOf(accountCard, 'treeStructure'), 'treeTodosToggle')).toHaveLength(1);
             expect(panel.findAll(panel.tabPanelOf(accountCard, 'treeStructure'), 'treeRecordTypeFieldsToggle')).toHaveLength(1);
@@ -143,7 +149,7 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s sub-tabs (#365)', () 
 
             const todosPanel = subPanelOf(panel, accountCard, 'todos');
             expect(panel.findAll(todosPanel, 'troubleshootingTodoObject').map((headingElement: any) => headingElement.textContent)).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
-            expect(panel.findAll(todosPanel, 'troubleshootingTodo').map((todoElement: any) => todoElement.children.slice(0, 2).map((childElement: any) => childElement.textContent))).toEqual([
+            expect(panel.findAll(todosPanel, 'troubleshootingTodo').map((todoElement: any) => todoRowTextsOf(panel, todoElement))).toEqual([
                 ['Regions__c', '### TODO -- NO PICKLIST VALUES'],
                 ['ParentId', '### TODO -- REFERENCE ID REQUIRED'],
                 ['OwnerId', '### TODO -- REFERENCE ID REQUIRED'],
@@ -169,7 +175,7 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s sub-tabs (#365)', () 
             const accountCard = accountCardOf(panel);
             panel.openTab(accountCard, 'Troubleshooting');
 
-            const todoTexts = panel.findAll(subPanelOf(panel, accountCard, 'todos'), 'troubleshootingTodo').map((todoElement: any) => todoElement.children.slice(0, 2).map((childElement: any) => childElement.textContent));
+            const todoTexts = panel.findAll(subPanelOf(panel, accountCard, 'todos'), 'troubleshootingTodo').map((todoElement: any) => todoRowTextsOf(panel, todoElement));
             expect(todoTexts).toContainEqual(['on the object', '### TODO -- VALIDATION RULE NOT APPLIED -- "Rule" -- why']);
             expect(todoTexts).toContainEqual(['Name', RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL]);
             expect(subTabNamed(panel, accountCard, 'TODO').textContent).toBe('TODO\'s (7)');
@@ -295,7 +301,7 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s sub-tabs (#365)', () 
 
             expect(panel.findAll(subPanelOf(panel, accountCard, 'todos'), 'tabMatchCount')[0].textContent).toBe('1 of 2505 TODOs');
             expect(groups.map((groupElement: any) => panel.isHidden(groupElement))).toEqual([true, false, true]);
-            expect(panel.findAll(groups[1], 'troubleshootingTodo').map((todoElement: any) => todoElement.children[0].textContent)).toEqual(['AccountId']);
+            expect(panel.findAll(groups[1], 'troubleshootingTodo').map((todoElement: any) => todoRowTextsOf(panel, todoElement)[0])).toEqual(['AccountId']);
 
         });
 
@@ -320,7 +326,7 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s sub-tabs (#365)', () 
 
             panel.findAll(subPanelOf(panel, accountCard, 'fields'), 'troubleshootingDeploy-fields')[0].dispatch('click');
 
-            expect(countOf()).toBe('1 of 1 action');
+            expect(countOf()).toBe('1 of 2 actions');
 
         });
 
