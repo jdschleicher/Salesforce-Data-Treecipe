@@ -443,11 +443,13 @@ describe('RecipeCockpitService', () => {
         // #244 MADE THE ▸/▾ BIG ENOUGH TO READ AT A GLANCE; #277 GAVE THE PICKLIST'S THE SAME SIZE AND CENTRED ALL THREE
         // #343: THE PICKLIST'S IS A TEXT BUTTON NOW, OF ONE FIXED WIDTH ITS SPACER SHARES
         // #374: A CARD HAS NO ▸ OF ITS OWN ANY MORE
-        it('draws the Treecipe object toggle as one centred 2.6rem box, the picklist button and its spacer one width, and the field rows centred on them', () => {
+        // #392: EVERY CHEVRON SHRANK TO ONE 1.6rem BOX, AND THE SECONDARY KIND'S 2.25rem MINIMUM NO LONGER HOLDS IT OPEN
+        it('draws every chevron toggle as one centred 1.6rem box holding a 1.2rem glyph, the picklist button and its spacer one width, and the field rows centred on them', () => {
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
-            const toggleBoxRule = ruleFor(styleSheet, '\\.treeObjectToggle');
-            const toggleCentringRule = ruleFor(styleSheet, '\\.treeObjectToggle');
+            const toggleBoxRule = ruleFor(styleSheet, '\\.chevronToggle');
+            const toggleCentringRule = ruleFor(styleSheet, '\\.chevronToggle');
+            expect(ruleFor(styleSheet, '\\.treeObjectToggle')).toBe('');
             expect(styleSheet).not.toContain('.treeToggle');
             const picklistWidthRule = ruleFor(styleSheet, '\\.picklistToggle, \\.picklistToggleSpacer');
 
@@ -456,8 +458,15 @@ describe('RecipeCockpitService', () => {
             expect(ruleFor(styleSheet, '\\.picklistToggle')).toContain('white-space: nowrap;');
             expect(styleSheet).not.toMatch(/\.picklistToggle[^{]*\{[^}]*height: 2\.6rem/);
 
-            expect(toggleBoxRule).toContain('width: 2.6rem;');
-            expect(toggleBoxRule).toContain('height: 2.6rem;');
+            expect(toggleBoxRule).toContain('width: 1.6rem;');
+            expect(toggleBoxRule).toContain('height: 1.6rem;');
+            expect(toggleBoxRule).toContain('min-width: 0;');
+            expect(toggleBoxRule).toContain('min-height: 0;');
+            expect(styleSheet.indexOf(toggleBoxRule)).toBeGreaterThan(styleSheet.indexOf(ruleFor(styleSheet, '\\.sdtButton-primary, \\.sdtButton-secondary')));
+            const toggleGlyphRule = ruleFor(styleSheet, '\\.toggleGlyph');
+            expect(toggleGlyphRule).toContain('width: 1.2rem;');
+            expect(toggleGlyphRule).toContain('height: 1.2rem;');
+            expect(styleSheet).not.toMatch(/2\.6rem[^}]*\}[^{]*\.toggleGlyph|\.toggleGlyph \{[^}]*2\.1rem/);
             expect(toggleCentringRule).toContain('display: inline-flex;');
             expect(toggleCentringRule).toContain('align-items: center;');
             expect(toggleCentringRule).toContain('justify-content: center;');
@@ -2224,6 +2233,7 @@ describe('RecipeCockpitService', () => {
 
             const accountElement = treeObjectNamed(panel, firstTreeCard, 'Account');
             const objectToggle = panel.findAll(accountElement, 'treeObjectToggle')[0];
+            expect(objectToggle.classList.contains('chevronToggle')).toBe(true);
             expect(objectToggle.textContent).toBe('');
             expect(objectToggle.children[0].namespaceURI).toBe('http://www.w3.org/2000/svg');
             expect(objectToggle.children[0].attributes['aria-hidden']).toBe('true');
