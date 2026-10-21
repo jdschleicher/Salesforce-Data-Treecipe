@@ -64,7 +64,15 @@ export type RecipeWriterRefusalReason =
     | 'no-parent-template'
     | 'parent-object-already-exists'
     | 'parent-not-inserted-first'
-    | 'pinned-field-changed';
+    | 'pinned-field-changed'
+    | 'todo-not-found'
+    | 'todo-changed'
+    | 'todo-not-removable'
+    | 'indistinct-todo-occurrence'
+    | 'todo-owner-not-found'
+    | 'todo-place-not-found'
+    | 'todo-already-back'
+    | 'todo-structure-changed';
 
 export interface IRecipeWriterRefusal {
     reason: RecipeWriterRefusalReason;
@@ -324,6 +332,55 @@ export type RecipeWriterResult =
     | { isApplied: true; recipeText: string; edit: IRecipeWriterEdit }
     | { isApplied: false; refusal: IRecipeWriterRefusal };
 
+/*
+    Why a TODO comment cannot be removed (#391). field-value: the comment IS the field's value (a
+    lookup's "### TODO -- REFERENCE ID REQUIRED", a formula's placeholder), so removing it would leave
+    the field null. record-type-options: the cockpit and Run Faker read a "### TODO: -- RecordType
+    Options --" line to find record type sections. commented-out-marker: the cockpit's own marker,
+    without which a commented-out field cannot be restored. scalar-content: the line is inside a
+    field's block (| or >) or unclosed quoted value, where YAML reads "#" as part of the value.
+*/
+export type RecipeTodoRemoveLock = 'field-value' | 'record-type-options' | 'commented-out-marker' | 'scalar-content';
+
+/*
+    One TODO comment removeTodoComment took out of a recipe, and what restoreTodoComment needs to put
+    it back exactly (#391). The owner is the occurrence (by nickname, when its object is written more
+    than once) and field the comment sat in, or the occurrence alone for one on no field. A 'line'
+    TODO was a whole line: it goes back under previousLine, the nearest line above it that is not a
+    TODO line, past the TODO lines that were above it (previousTodoLines) and before those that were
+    right below it (nextTodoLines), with the line ending it had. Of two TODOs removed side by side,
+    the one removed first saw the other, so its record orders the pair whichever is restored first. A 'trailing' TODO followed a value on its line: cutLine is that line as it
+    was left, and originalLine replaces it.
+*/
+export interface IRemovedTodoComment {
+    objectApiName: string;
+    objectNickname?: string;
+    fieldApiName?: string;
+    lineNumber: number;
+    todoText: string;
+    originalLine: string;
+    kind: 'line' | 'trailing';
+    lineEnding?: string;
+    previousLine?: string;
+    previousTodoLines?: string[];
+    nextTodoLines?: string[];
+    cutLine?: string;
+}
+
+// WHAT A CALLER ASKS removeTodoComment TO TAKE OUT: THE LINE AND THE TODO TEXT THE PANEL DREW FOR IT
+export interface ITodoRemoveRequest {
+    lineNumber: number;
+    todoText: string;
+}
+
+export type RecipeTodoRemoveResult =
+    | { isRemoved: true; recipeText: string; removed: IRemovedTodoComment }
+    | { isRemoved: false; refusal: IRecipeWriterRefusal };
+
+export type RecipeTodoRestoreResult =
+    | { isRestored: true; recipeText: string; lineNumber: number }
+    | { isRestored: false; refusal: IRecipeWriterRefusal };
+
 export interface IRecipeLines {
     lines: string[];
     // THE TERMINATOR AFTER EACH LINE, EXACTLY AS FOUND -- '' AFTER THE LAST ONE
@@ -402,6 +459,9 @@ const FRIENDS_INDENT_STEP = 4;
 const API_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
 const RECORD_TYPE_ID_FIELD_API_NAME = 'RecordTypeId';
 const RECORD_TYPE_SECTION_MARKER = '### TODO: -- RecordType Options -- ';
+// WHAT ExtensionCommandService AND hasRecordTypeSections BOTH START A RECORD TYPE SECTION'S TODO WITH (#391)
+const RECORD_TYPE_OPTIONS_TODO_START = '### TODO: -- RecordType Options --';
+const LINE_BREAK_PATTERN = /[\r\n\u0085\u2028\u2029]/;
 const FIXED_VALUE_TEMPLATE_OPENERS = ['${', '{{', '{%', '<<', '<%'];
 const FIXED_NUMBER_PATTERN = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
 const FIXED_NUMBER_MAX_EXACT_DIGITS = 15;
@@ -2907,6 +2967,467 @@ export class RecipeCockpitRecipeWriter {
         }
 
         return -1;
+
+    }
+
+    /*
+        Why the TODO comment on this line of the occurrence cannot be removed (#391), or undefined
+        when it can. The line must be one of the occurrence's todoLineIndexes.
+    */
+    /*
+        A caller walking an occurrence's TODOs hands in what it already holds -- the field starting at
+        the line, or null for none, and the marker lines -- so a load over thousands of TODOs is one
+        pass rather than a search of the fields per TODO.
+    */
+    static findTodoRemoveLock(lines: string[],
+                                scannedObject: IScannedObject,
+                                lineIndex: number,
+                                known?: { fieldStartingAtLine: IScannedField | null; owningField?: IScannedField | null; markerStartIndexes: ReadonlySet<number> }): RecipeTodoRemoveLock | undefined {
+
+        const isMarkerLine = known
+            ? known.markerStartIndexes.has(lineIndex)
+            : scannedObject.commentedOutFieldMarkers.some(marker => marker.startIndex === lineIndex);
+        if ( isMarkerLine ) {
+            return 'commented-out-marker';
+        }
+
+        const recipeLine = lines[lineIndex];
+        const commentStartIndex = this.findCommentStartIndex(recipeLine);
+        if ( recipeLine.slice(commentStartIndex).startsWith(RECORD_TYPE_OPTIONS_TODO_START) ) {
+            return 'record-type-options';
+        }
+
+        const scannedField = known ? known.fieldStartingAtLine : scannedObject.fields.find(candidateField => candidateField.startIndex === lineIndex);
+        if ( scannedField ) {
+            const { fieldIndent } = this.getObjectLayout(scannedObject.objectIndent);
+            const valueBeforeComment = recipeLine.slice(fieldIndent.length + scannedField.fieldApiName.length + 1, commentStartIndex);
+            if ( valueBeforeComment.trim() === '' ) {
+                return 'field-value';
+            }
+            return undefined;
+        }
+
+        // A CONTINUATION LINE: ONLY ITS FIELD'S FIRST LINE SAYS WHETHER A "#" HERE IS A COMMENT OR PART OF THE VALUE
+        const owningField = known && !known.owningField ? undefined : ( known?.owningField ?? scannedObject.fields.find(candidateField => candidateField.startIndex < lineIndex && lineIndex < candidateField.endIndex) );
+        return owningField && !this.isFieldValueClosedOnFirstLine(lines, scannedObject, owningField) ? 'scalar-content' : undefined;
+
+    }
+
+    /*
+        Takes one TODO comment out of a recipe (#391): a whole comment line is deleted, a comment after
+        a value is cut off and the value kept. Every other line keeps its bytes and its ending, and the
+        result is scanned again: anything but the one TODO fewer, in the same occurrence and field, is
+        refused. The line must still carry the TODO the panel drew, so a recipe edited since writes
+        nothing.
+    */
+    static removeTodoComment(recipeText: string, removeRequest: ITodoRemoveRequest): RecipeTodoRemoveResult {
+
+        const recipeLines = this.splitRecipeLines(recipeText);
+        const { lines, lineEndings } = recipeLines;
+        const lineIndex = removeRequest.lineNumber - 1;
+        const refuseRemove = (reason: RecipeWriterRefusalReason, message: string, objectApiName = '', fieldApiName?: string, objectNickname?: string): RecipeTodoRemoveResult => (
+            { isRemoved: false, refusal: this.refuse(reason, message, objectApiName, fieldApiName, objectNickname).refusal }
+        );
+
+        if ( !Number.isInteger(lineIndex) || lineIndex < 0 || lineIndex >= lines.length ) {
+            return refuseRemove('todo-not-found', `The recipe has no line ${removeRequest.lineNumber}.`);
+        }
+
+        const todoText = this.readTodoCommentText(lines[lineIndex]);
+        if ( todoText === undefined ) {
+            return refuseRemove('todo-not-found', `Line ${removeRequest.lineNumber} of the recipe carries no TODO comment.`);
+        }
+        if ( todoText !== removeRequest.todoText ) {
+            return refuseRemove('todo-changed', `Line ${removeRequest.lineNumber} of the recipe no longer carries this TODO; it was changed since the Recipe Cockpit read it.`);
+        }
+
+        const scannedObjects = this.scanRecipeObjects(lines);
+        const ownerIndex = scannedObjects.findIndex(scannedObject => scannedObject.todoLineIndexes.includes(lineIndex));
+        if ( ownerIndex === -1 ) {
+            return refuseRemove('todo-not-found', `Line ${removeRequest.lineNumber} of the recipe is not a TODO of any object in it.`);
+        }
+
+        const owner = scannedObjects[ownerIndex];
+        const ownerField = owner.fields.find(scannedField => scannedField.startIndex <= lineIndex && lineIndex < scannedField.endIndex);
+        const fieldApiName = ownerField?.fieldApiName;
+        const occurrences = scannedObjects.filter(scannedObject => scannedObject.objectApiName === owner.objectApiName);
+        const objectNickname = this.readDistinctOccurrenceNickname(occurrences, owner);
+        if ( occurrences.length > 1 && objectNickname === undefined ) {
+            return refuseRemove('indistinct-todo-occurrence', `${owner.objectApiName} is written more than once without a nickname that tells this one apart, so the TODO could not be put back in the same place.`, owner.objectApiName, fieldApiName);
+        }
+
+        const removeLock = this.findTodoRemoveLock(lines, owner, lineIndex);
+        if ( removeLock !== undefined || LINE_BREAK_PATTERN.test(lines[lineIndex]) ) {
+            return refuseRemove('todo-not-removable', this.describeTodoRemoveLock(removeLock), owner.objectApiName, fieldApiName, objectNickname);
+        }
+
+        const originalLine = lines[lineIndex];
+        const commentStartIndex = this.findCommentStartIndex(originalLine);
+        const valueBeforeComment = originalLine.slice(0, commentStartIndex);
+        const isWholeLine = valueBeforeComment.trim() === '';
+        const patchedLines = lines.slice();
+        const patchedLineEndings = lineEndings.slice();
+        let lineEnding: string | undefined;
+
+        if ( isWholeLine ) {
+            // THE LAST LINE HAS NO ENDING OF ITS OWN, SO THE ONE BEFORE IT GIVES UP ITS ENDING AND A FILE WITH NO FINAL NEWLINE STAYS SO
+            const isLastLine = lineIndex === lines.length - 1;
+            lineEnding = isLastLine ? patchedLineEndings[lineIndex - 1] : patchedLineEndings[lineIndex];
+            if ( isLastLine ) {
+                patchedLineEndings[lineIndex - 1] = '';
+            }
+            patchedLines.splice(lineIndex, 1);
+            patchedLineEndings.splice(lineIndex, 1);
+        } else {
+            patchedLines[lineIndex] = valueBeforeComment.trimEnd();
+        }
+
+        const anchorIndex = this.findTodoAnchorIndex(lines, lineIndex - 1);
+        const nextTodoLines: string[] = [];
+        for ( let nextIndex = lineIndex + 1; isWholeLine && nextIndex < lines.length && this.isWholeTodoCommentLine(lines[nextIndex]); nextIndex++ ) {
+            nextTodoLines.push(lines[nextIndex]);
+        }
+
+        const fieldIndex = ownerField ? owner.fields.indexOf(ownerField) : -1;
+        const expectedStructure = this.describeTodoStructure(scannedObjects, ownerIndex, isWholeLine ? fieldIndex : -1, -1);
+        if ( this.describeTodoStructure(this.scanRecipeObjects(patchedLines), -1, -1, 0) !== expectedStructure ) {
+            return refuseRemove('todo-structure-changed', `Removing this TODO would change how the recipe around it reads, so nothing was written.`, owner.objectApiName, fieldApiName, objectNickname);
+        }
+
+        return {
+            isRemoved: true,
+            recipeText: this.joinRecipeLines({ lines: patchedLines, lineEndings: patchedLineEndings }),
+            removed: {
+                objectApiName: owner.objectApiName,
+                ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
+                ...( fieldApiName !== undefined ? { fieldApiName: fieldApiName } : {} ),
+                lineNumber: removeRequest.lineNumber,
+                todoText: todoText,
+                originalLine: originalLine,
+                kind: isWholeLine ? 'line' : 'trailing',
+                ...( isWholeLine ? {
+                    lineEnding: lineEnding,
+                    previousLine: lines[anchorIndex],
+                    ...( anchorIndex < lineIndex - 1 ? { previousTodoLines: lines.slice(anchorIndex + 1, lineIndex) } : {} ),
+                    ...( nextTodoLines.length > 0 ? { nextTodoLines: nextTodoLines } : {} )
+                } : { cutLine: patchedLines[lineIndex] } )
+            }
+        };
+
+    }
+
+    /*
+        Puts a removed TODO comment back where removeTodoComment took it from (#391). The place is
+        found in the same occurrence and field: under the nearest line above it that is not a TODO line
+        -- the one at its old place when that still matches, else the only match there -- and past the
+        TODO lines under it, up to one that was below it. A trailing TODO goes back on the line it was cut
+        from. Refused when the place is gone or ambiguous, when the TODO is already back, and when the
+        result reads as anything but one TODO more.
+    */
+    static restoreTodoComment(recipeText: string, removed: IRemovedTodoComment, otherRemovedTodos: readonly IRemovedTodoComment[] = []): RecipeTodoRestoreResult {
+
+        const refuseRestore = (reason: RecipeWriterRefusalReason, message: string): RecipeTodoRestoreResult => (
+            { isRestored: false, refusal: this.refuse(reason, message, removed.objectApiName, removed.fieldApiName, removed.objectNickname).refusal }
+        );
+
+        if ( !this.isUsableRemovedTodo(removed) ) {
+            return refuseRestore('invalid-value', 'The removed TODO is not one the Recipe Cockpit can put back.');
+        }
+
+        const recipeLines = this.splitRecipeLines(recipeText);
+        const { lines, lineEndings } = recipeLines;
+        const scannedObjects = this.scanRecipeObjects(lines);
+        const located = this.locateRemovedTodoPlace(lines, scannedObjects, removed, otherRemovedTodos);
+        if ( 'refusal' in located ) {
+            return refuseRestore(located.refusal, located.message);
+        }
+
+        const ownerObject = scannedObjects[located.ownerIndex];
+        const targetField = located.fieldIndex >= 0 ? ownerObject.fields[located.fieldIndex] : undefined;
+        const isIntoFieldContinuation = !!targetField && ( removed.kind === 'line' || located.lineIndex > targetField.startIndex );
+        if ( isIntoFieldContinuation && !this.isFieldValueClosedOnFirstLine(lines, ownerObject, targetField) ) {
+            return refuseRestore('todo-not-removable', this.describeTodoRemoveLock('scalar-content'));
+        }
+
+        const patchedLines = lines.slice();
+        const patchedLineEndings = lineEndings.slice();
+
+        if ( removed.kind === 'line' ) {
+            if ( located.lineIndex === patchedLines.length ) {
+                patchedLineEndings[located.lineIndex - 1] = removed.lineEnding;
+                patchedLines.push(removed.originalLine);
+                patchedLineEndings.push('');
+            } else {
+                patchedLines.splice(located.lineIndex, 0, removed.originalLine);
+                patchedLineEndings.splice(located.lineIndex, 0, removed.lineEnding);
+            }
+        } else {
+            patchedLines[located.lineIndex] = removed.originalLine;
+        }
+
+        const patchedObjects = this.scanRecipeObjects(patchedLines);
+        const owner = patchedObjects[located.ownerIndex];
+        const ownerField = located.fieldIndex >= 0 ? owner?.fields[located.fieldIndex] : undefined;
+        const isBackInOwner = !!owner && owner.todoLineIndexes.includes(located.lineIndex)
+                                && ( located.fieldIndex < 0 || ( !!ownerField && ownerField.startIndex <= located.lineIndex && located.lineIndex < ownerField.endIndex ) );
+        const expectedStructure = this.describeTodoStructure(scannedObjects, located.ownerIndex, removed.kind === 'line' ? located.fieldIndex : -1, 1);
+
+        if ( !isBackInOwner || this.describeTodoStructure(patchedObjects, -1, -1, 0) !== expectedStructure ) {
+            return refuseRestore('todo-structure-changed', 'Putting this TODO back would change how the recipe around it reads, so nothing was written.');
+        }
+
+        return { isRestored: true, recipeText: this.joinRecipeLines({ lines: patchedLines, lineEndings: patchedLineEndings }), lineNumber: located.lineIndex + 1 };
+
+    }
+
+    /*
+        Whether a removed TODO is in the recipe again (#391): put back by hand, or never really gone.
+        A 'line' TODO is back when its line already stands where a restore would put it; a 'trailing'
+        one when its cut line is gone and its original line is there instead. A place that cannot be
+        found is not back -- Restore then says why.
+    */
+    static isRemovedTodoBack(lines: string[], scannedObjects: IScannedObject[], removed: IRemovedTodoComment, otherRemovedTodos: readonly IRemovedTodoComment[] = []): boolean {
+        const located = this.locateRemovedTodoPlace(lines, scannedObjects, removed, otherRemovedTodos);
+        return 'refusal' in located && located.refusal === 'todo-already-back';
+    }
+
+    static describeTodoRemoveLock(removeLock: RecipeTodoRemoveLock | undefined): string {
+        switch ( removeLock ) {
+            case 'field-value':
+                return 'This TODO is the field\'s whole value: removing it would leave the field empty.';
+            case 'record-type-options':
+                return 'The Recipe Cockpit and Run Faker read this line to find the field\'s record type sections.';
+            case 'commented-out-marker':
+                return 'This line is the Recipe Cockpit\'s marker for a commented-out field, which restoring the field needs.';
+            case 'scalar-content':
+                return 'This line is inside the field\'s multi-line value, where YAML reads it as part of the value rather than a comment.';
+            default:
+                return 'This TODO carries a line break that would not be put back as it was.';
+        }
+    }
+
+    static isUsableRemovedTodo(removed: IRemovedTodoComment): boolean {
+
+        const { originalLine } = removed;
+        if ( LINE_BREAK_PATTERN.test(originalLine) || this.readTodoCommentText(originalLine) !== removed.todoText ) {
+            return false;
+        }
+
+        const valueBeforeComment = originalLine.slice(0, this.findCommentStartIndex(originalLine));
+
+        if ( removed.kind === 'line' ) {
+            return valueBeforeComment.trim() === ''
+                    && ( removed.lineEnding === '\n' || removed.lineEnding === '\r\n' )
+                    && typeof removed.previousLine === 'string' && !LINE_BREAK_PATTERN.test(removed.previousLine) && !this.isWholeTodoCommentLine(removed.previousLine)
+                    && this.isUsableTodoLineList(removed.previousTodoLines)
+                    && this.isUsableTodoLineList(removed.nextTodoLines);
+        }
+
+        return valueBeforeComment.trim() !== '' && removed.cutLine === valueBeforeComment.trimEnd();
+
+    }
+
+    private static isUsableTodoLineList(todoLines: unknown): boolean {
+        return todoLines === undefined || ( Array.isArray(todoLines) && todoLines.length > 0
+                && todoLines.every(todoLine => typeof todoLine === 'string' && !LINE_BREAK_PATTERN.test(todoLine) && this.isWholeTodoCommentLine(todoLine)) );
+    }
+
+    private static readDistinctOccurrenceNickname(occurrences: IScannedObject[], occurrence: IScannedObject): string | undefined {
+
+        if ( occurrence.nicknames.length !== 1 ) {
+            return undefined;
+        }
+
+        const nickname = occurrence.nicknames[0];
+        return occurrences.filter(candidate => candidate.nicknames.includes(nickname)).length === 1 ? nickname : undefined;
+
+    }
+
+    private static locateRemovedTodoPlace(lines: string[], scannedObjects: IScannedObject[], removed: IRemovedTodoComment, otherRemovedTodos: readonly IRemovedTodoComment[]):
+        { ownerIndex: number; fieldIndex: number; lineIndex: number } | { refusal: RecipeWriterRefusalReason; message: string } {
+
+        const ownerLabel = this.describeObject(removed.objectApiName, removed.objectNickname);
+        const ownerIndexes = scannedObjects
+            .map((scannedObject, scannedIndex) => ({ scannedObject, scannedIndex }))
+            .filter(({ scannedObject }) => scannedObject.objectApiName === removed.objectApiName);
+        const matchingOwners = removed.objectNickname !== undefined
+            ? ownerIndexes.filter(({ scannedObject }) => scannedObject.nicknames.length === 1 && scannedObject.nicknames[0] === removed.objectNickname)
+            : ownerIndexes;
+
+        if ( matchingOwners.length !== 1 ) {
+            return { refusal: 'todo-owner-not-found', message: `The recipe no longer writes ${ownerLabel} once, so there is no one place to put the TODO back.` };
+        }
+
+        const { scannedObject: owner, scannedIndex: ownerIndex } = matchingOwners[0];
+        let fieldIndex = -1;
+        let span: ILineSpan = { startIndex: owner.headerIndex, endIndex: this.findLastLineIndexOfObject(lines, owner) + 1 };
+
+        if ( removed.fieldApiName !== undefined ) {
+            const fieldIndexes = owner.fields
+                .map((scannedField, candidateIndex) => ({ scannedField, candidateIndex }))
+                .filter(({ scannedField }) => scannedField.fieldApiName === removed.fieldApiName);
+            if ( fieldIndexes.length !== 1 ) {
+                return { refusal: 'todo-owner-not-found', message: `${ownerLabel} no longer writes ${removed.fieldApiName} once, so there is no one place to put the TODO back.` };
+            }
+            fieldIndex = fieldIndexes[0].candidateIndex;
+            span = fieldIndexes[0].scannedField;
+        }
+
+        const oldLineIndex = removed.lineNumber - 1;
+        const findInSpan = (wantedLine: string, preferredIndex: number): number | undefined => {
+            if ( preferredIndex >= span.startIndex && preferredIndex < span.endIndex && lines[preferredIndex] === wantedLine ) {
+                return preferredIndex;
+            }
+            const matches: number[] = [];
+            for ( let lineIndex = span.startIndex; lineIndex < span.endIndex && matches.length < 2; lineIndex++ ) {
+                if ( lines[lineIndex] === wantedLine ) {
+                    matches.push(lineIndex);
+                }
+            }
+            return matches.length === 1 ? matches[0] : undefined;
+        };
+
+        if ( removed.kind === 'trailing' ) {
+            const cutLineIndex = findInSpan(removed.cutLine, oldLineIndex);
+            if ( cutLineIndex !== undefined ) {
+                return { ownerIndex: ownerIndex, fieldIndex: fieldIndex, lineIndex: cutLineIndex };
+            }
+            return findInSpan(removed.originalLine, oldLineIndex) !== undefined
+                ? { refusal: 'todo-already-back', message: 'The TODO is already back in the recipe.' }
+                : { refusal: 'todo-place-not-found', message: `The line the TODO was cut from is no longer in ${ownerLabel}${removed.fieldApiName !== undefined ? `.${removed.fieldApiName}` : ''}.` };
+        }
+
+        const previousLineIndex = findInSpan(removed.previousLine, this.findTodoAnchorIndex(lines, Math.min(oldLineIndex, lines.length) - 1));
+        if ( previousLineIndex === undefined ) {
+            return { refusal: 'todo-place-not-found', message: `The line the TODO stood under is no longer in ${ownerLabel}${removed.fieldApiName !== undefined ? `.${removed.fieldApiName}` : ''}, or is there more than once.` };
+        }
+
+        // TODO LINES UNDER THE SAME LINE ARE PASSED UP TO ONE THAT WAS BELOW IT, SO SEVERAL COME BACK IN THEIR ORDER WHATEVER ORDER THEY ARE RESTORED IN
+        /*
+            Back only when the TODO lines under the anchor hold MORE copies of the line than stood
+            beside it when it was removed: two identical TODOs side by side are both real, and the
+            copy left behind is not the removed one come back.
+        */
+        const countCopies = (candidateLines: readonly string[]) => candidateLines.filter(candidateLine => candidateLine === removed.originalLine).length;
+        const runLines: string[] = [];
+        for ( let runIndex = previousLineIndex + 1; runIndex < span.endIndex && this.isWholeTodoCommentLine(lines[runIndex]); runIndex++ ) {
+            runLines.push(lines[runIndex]);
+        }
+        if ( countCopies(runLines) > countCopies(removed.previousTodoLines ?? []) + countCopies(removed.nextTodoLines ?? []) ) {
+            return { refusal: 'todo-already-back', message: 'The TODO is already back in the recipe.' };
+        }
+
+        const isAfterRemovedTodo = this.buildRemovedTodoOrder(removed, otherRemovedTodos);
+        let lineIndex = previousLineIndex + 1;
+        while ( lineIndex < span.endIndex && this.isWholeTodoCommentLine(lines[lineIndex]) && !isAfterRemovedTodo(lines[lineIndex]) ) {
+            lineIndex++;
+        }
+
+        return { ownerIndex: ownerIndex, fieldIndex: fieldIndex, lineIndex: lineIndex };
+
+    }
+
+    /*
+        Whether a TODO line standing under the same line was BELOW the removed one: it was in the
+        removed one's nextTodoLines, or it is another removed TODO of the same place that had the
+        removed one in its previousTodoLines. Anything else -- one that was above it, or a TODO the
+        two records do not know -- is passed.
+    */
+    private static buildRemovedTodoOrder(removed: IRemovedTodoComment, otherRemovedTodos: readonly IRemovedTodoComment[]): (todoLine: string) => boolean {
+
+        const linesBelow = new Set(removed.nextTodoLines ?? []);
+        const linesAbove = new Set(removed.previousTodoLines ?? []);
+
+        otherRemovedTodos
+            .filter(otherRemoved => otherRemoved !== removed && otherRemoved.kind === 'line'
+                    && otherRemoved.objectApiName === removed.objectApiName && otherRemoved.objectNickname === removed.objectNickname
+                    && otherRemoved.fieldApiName === removed.fieldApiName && otherRemoved.previousLine === removed.previousLine)
+            .forEach(otherRemoved => {
+                if ( ( otherRemoved.previousTodoLines ?? [] ).includes(removed.originalLine) ) {
+                    linesBelow.add(otherRemoved.originalLine);
+                }
+                if ( ( otherRemoved.nextTodoLines ?? [] ).includes(removed.originalLine) ) {
+                    linesAbove.add(otherRemoved.originalLine);
+                }
+            });
+
+        return todoLine => linesBelow.has(todoLine) && !linesAbove.has(todoLine);
+
+    }
+
+    // THE NEAREST LINE AT OR ABOVE lineIndex THAT IS NOT A WHOLE TODO LINE -- A FIELD'S OWN LINE, OR THE OBJECT'S HEADER, AT THE LATEST
+    private static findTodoAnchorIndex(lines: string[], lineIndex: number): number {
+        let anchorIndex = lineIndex;
+        while ( anchorIndex > 0 && this.isWholeTodoCommentLine(lines[anchorIndex]) ) {
+            anchorIndex--;
+        }
+        return anchorIndex;
+    }
+
+    /*
+        Whether a field's value ends on its own line, so the lines under it are comments or a plain
+        scalar's continuation rather than the inside of a block (| or >) or quoted value -- where YAML
+        reads "#" as text and a "TODO" line is part of the value (#391).
+    */
+    static isFieldValueClosedOnFirstLine(lines: string[], scannedObject: IScannedObject, scannedField: IScannedField): boolean {
+
+        const { fieldIndent } = this.getObjectLayout(scannedObject.objectIndent);
+        const firstLineValue = lines[scannedField.startIndex].slice(fieldIndent.length + scannedField.fieldApiName.length + 1).trimStart();
+
+        if ( /^[|>]/.test(firstLineValue) ) {
+            return false;
+        }
+
+        const quoteCharacter = firstLineValue[0];
+        if ( quoteCharacter !== '"' && quoteCharacter !== "'" ) {
+            return true;
+        }
+
+        for ( let characterIndex = 1; characterIndex < firstLineValue.length; characterIndex++ ) {
+            const character = firstLineValue[characterIndex];
+            if ( quoteCharacter === '"' && character === '\\' ) {
+                characterIndex++;
+            } else if ( character === quoteCharacter && quoteCharacter === "'" && firstLineValue[characterIndex + 1] === "'" ) {
+                characterIndex++;
+            } else if ( character === quoteCharacter ) {
+                return true;
+            }
+        }
+
+        return false;
+
+    }
+
+    private static isWholeTodoCommentLine(recipeLine: string): boolean {
+        return this.readTodoCommentText(recipeLine) !== undefined && recipeLine.slice(0, this.findCommentStartIndex(recipeLine)).trim() === '';
+    }
+
+    /*
+        The shape of every occurrence as the reader reads it -- its object, depth, nicknames, blocks,
+        properties, markers, TODO count and each field's name and line count -- with one TODO more or
+        fewer (todoDelta) on the owner at ownerIndex and, when fieldIndex is set, one line more or fewer
+        on that field. Two texts with equal descriptions differ only in the TODO line.
+    */
+    private static describeTodoStructure(scannedObjects: IScannedObject[], ownerIndex: number, fieldIndex: number, todoDelta: number): string {
+
+        return scannedObjects.map((scannedObject, scannedIndex) => {
+            const isOwner = scannedIndex === ownerIndex;
+            return JSON.stringify([
+                scannedObject.objectApiName,
+                scannedObject.objectIndent,
+                scannedObject.nicknames,
+                scannedObject.fieldsLineIndexes.length,
+                scannedObject.friendsLineIndexes.length,
+                scannedObject.propertyLineIndexes.nickname.length,
+                scannedObject.propertyLineIndexes.count.length,
+                scannedObject.commentedOutFieldMarkers.map(marker => [marker.fieldApiName, marker.endIndex - marker.startIndex]),
+                scannedObject.todoLineIndexes.length + ( isOwner ? todoDelta : 0 ),
+                scannedObject.fields.map((scannedField, candidateIndex) => [
+                    scannedField.fieldApiName,
+                    scannedField.endIndex - scannedField.startIndex + ( isOwner && candidateIndex === fieldIndex ? todoDelta : 0 )
+                ])
+            ]);
+        }).join('\n');
 
     }
 

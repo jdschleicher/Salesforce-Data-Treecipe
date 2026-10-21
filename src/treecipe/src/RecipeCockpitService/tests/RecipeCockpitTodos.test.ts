@@ -198,8 +198,8 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
             ]).get('Account');
 
             expect(account.fieldEntries.get('Name').todos).toBeUndefined();
-            expect(account.fieldEntries.get('Rating__c').todos).toEqual([{ lineNumber: 6, text: '### TODO: -- RecordType Options -- Business' }]);
-            expect(account.fieldEntries.get('ParentId').todos).toEqual([{ lineNumber: 8, text: '### TODO -- REFERENCE ID REQUIRED' }]);
+            expect(account.fieldEntries.get('Rating__c').todos).toEqual([{ lineNumber: 6, text: '### TODO: -- RecordType Options -- Business', removeLock: 'record-type-options' }]);
+            expect(account.fieldEntries.get('ParentId').todos).toEqual([{ lineNumber: 8, text: '### TODO -- REFERENCE ID REQUIRED', removeLock: 'field-value' }]);
             expect(account.todos).toEqual([{ lineNumber: 9, text: '### TODO -- VALIDATION RULE NOT APPLIED -- "Rule" -- why' }]);
 
         });
@@ -224,7 +224,7 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
             expect(account.todos).toBeUndefined();
             expect(account.iterations).toHaveLength(1);
             expect(account.iterations[0].fieldEntries.get('ParentId').todos).toBeUndefined();
-            expect(account.iterations[0].fieldEntries.get('Phone').todos).toEqual([{ lineNumber: 10, text: '### TODO fill in' }]);
+            expect(account.iterations[0].fieldEntries.get('Phone').todos).toEqual([{ lineNumber: 10, text: '### TODO fill in', removeLock: 'field-value' }]);
             expect(account.iterations[0].todos).toEqual([{ lineNumber: 11, text: '### TODO on the iteration' }]);
 
         });
@@ -242,8 +242,8 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
             ]).get('Account');
 
             expect(account.hasIndistinctOccurrences).toBe(true);
-            expect(account.fieldEntries.get('ParentId').todos).toEqual([{ lineNumber: 3, text: '### TODO first' }, { lineNumber: 6, text: '### TODO second' }]);
-            expect(account.todos).toEqual([{ lineNumber: 7, text: '### TODO only the second has this field' }]);
+            expect(account.fieldEntries.get('ParentId').todos).toEqual([{ lineNumber: 3, text: '### TODO first', removeLock: 'indistinct-occurrence' }, { lineNumber: 6, text: '### TODO second', removeLock: 'indistinct-occurrence' }]);
+            expect(account.todos).toEqual([{ lineNumber: 7, text: '### TODO only the second has this field', removeLock: 'indistinct-occurrence' }]);
 
         });
 
@@ -253,8 +253,8 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
             const account = objectOf(recipe, 'Account');
 
             // THE ROW DRAWS EACH VALUE, WHICH HOLDS ITS TODO, SO ONLY THE LINE AND WHERE IT SITS IN THE VALUE ARE POSTED (#365)
-            expect(fieldOf(account, 'Regions__c')?.todos).toEqual([{ lineNumber: 20, valueStart: 0, valueLength: '### TODO -- NO PICKLIST VALUES'.length }]);
-            expect(fieldOf(account, 'ParentId')?.todos).toEqual([{ lineNumber: 21, valueStart: 0, valueLength: '### TODO -- REFERENCE ID REQUIRED'.length }]);
+            expect(fieldOf(account, 'Regions__c')?.todos).toEqual([{ lineNumber: 20, valueStart: 0, valueLength: '### TODO -- NO PICKLIST VALUES'.length, removeLock: 'field-value' }]);
+            expect(fieldOf(account, 'ParentId')?.todos).toEqual([{ lineNumber: 21, valueStart: 0, valueLength: '### TODO -- REFERENCE ID REQUIRED'.length, removeLock: 'field-value' }]);
             expect(fieldOf(account, 'Name')).not.toHaveProperty('todos');
             expect(account).not.toHaveProperty('todos');
             expect(objectOf(recipe, 'Lead').fields.some(field => 'todos' in field)).toBe(false);
@@ -269,7 +269,7 @@ describe('RecipeCockpitService, the "TODOs only" filter (#354)', () => {
             const snowfakeryGadgetTodos = todoTextsOf(objectOf(snowfakeryRecipe, 'Gadget__c').todos);
             expect(snowfakeryGadgetTodos).toHaveLength(6);
             snowfakeryGadgetTodos.forEach(todoText => expect(todoText).toMatch(/^### TODO -- VALIDATION RULE NOT APPLIED -- "/));
-            expect(fieldOf(objectOf(snowfakeryRecipe, 'Widget__c'), 'Gadget__c')?.todos).toEqual([{ lineNumber: expect.any(Number), valueStart: 0, valueLength: '### TODO -- REFERENCE ID REQUIRED'.length }]);
+            expect(fieldOf(objectOf(snowfakeryRecipe, 'Widget__c'), 'Gadget__c')?.todos).toEqual([{ lineNumber: expect.any(Number), valueStart: 0, valueLength: '### TODO -- REFERENCE ID REQUIRED'.length, removeLock: 'field-value' }]);
 
             // THE NESTED faker-js FRIEND IS WIRED TO ITS PARENT, SO ITS LOOKUP IS NO TODO
             const fakerJsGadgetTodos = todoTextsOf(objectOf(fakerJsRecipe, 'Gadget__c').todos);
