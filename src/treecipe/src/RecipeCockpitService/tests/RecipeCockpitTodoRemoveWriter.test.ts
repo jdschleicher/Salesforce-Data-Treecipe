@@ -402,6 +402,38 @@ describe('RecipeCockpitRecipeWriter removeTodoComment and restoreTodoComment (#3
 
         });
 
+        test.each([
+            ['a | block', '    Description: |\n        some text\n        # TODO inside the block\n'],
+            ['a > block', '    Description: >-\n        some text\n        # TODO inside the block\n'],
+            ['an unclosed double-quoted value', '    Description: "some text\n        # TODO inside the quotes"\n'],
+            ['an unclosed single-quoted value', "    Description: 'it''s\n        # TODO inside the quotes'\n"]
+        ])('refuses a "TODO" line inside %s, which YAML reads as part of the value', (_label, fieldText) => {
+
+            const blockText = `- object: Account\n  fields:\n${fieldText}    Phone: \${{ faker.phone.number() }}\n`;
+            const lines = RecipeCockpitRecipeWriter.splitRecipeLines(blockText).lines;
+            const todoIndex = lines.findIndex(line => line.includes('# TODO inside'));
+            const scannedObject = RecipeCockpitRecipeWriter.scanRecipeObjects(lines)[0];
+
+            expect(RecipeCockpitRecipeWriter.findTodoRemoveLock(lines, scannedObject, todoIndex)).toBe('scalar-content');
+            const todoText = RecipeCockpitRecipeWriter.readTodoCommentText(lines[todoIndex]);
+            if ( todoText !== undefined ) {
+                expect(refusalReason(RecipeCockpitRecipeWriter.removeTodoComment(blockText, { lineNumber: todoIndex + 1, todoText: todoText }))).toBe('todo-not-removable');
+            }
+
+        });
+
+        test('takes a TODO under a closed quoted value, and the lock agrees with what a caller hands in', () => {
+
+            const quotedText = '- object: Account\n  fields:\n    Name: "Acme # not a comment"\n        # TODO under a closed quote\n';
+            const lines = RecipeCockpitRecipeWriter.splitRecipeLines(quotedText).lines;
+            const scannedObject = RecipeCockpitRecipeWriter.scanRecipeObjects(lines)[0];
+
+            expect(RecipeCockpitRecipeWriter.findTodoRemoveLock(lines, scannedObject, 3)).toBeUndefined();
+            expect(RecipeCockpitRecipeWriter.findTodoRemoveLock(lines, scannedObject, 3, { fieldStartingAtLine: null, owningField: scannedObject.fields[0], markerStartIndexes: new Set() })).toBeUndefined();
+            expect(refusalReason(RecipeCockpitRecipeWriter.removeTodoComment(quotedText, { lineNumber: 4, todoText: '# TODO under a closed quote' }))).toBeUndefined();
+
+        });
+
         test('refuses a removal that changes how the lines around it read', () => {
 
             const fieldsLineText = '- object: Account\n  fields: # TODO list them\n    Name: ${{ faker.company.name() }}\n';
@@ -464,9 +496,21 @@ describe('RecipeCockpitRecipeWriter removeTodoComment and restoreTodoComment (#3
 
         });
 
+        test.each([
+            ['a line', { kind: 'line' as const, lineNumber: 5, todoText: '# TODO evil ${{ 1 }}', originalLine: '        # TODO evil ${{ 1 }}', lineEnding: '\n', previousLine: '        hello there' }],
+            ['a trailing comment', { kind: 'trailing' as const, lineNumber: 4, todoText: '# TODO evil ${{ 1 }}', originalLine: '        hello there # TODO evil ${{ 1 }}', cutLine: '        hello there' }]
+        ])('refuses to put %s back inside a block value, where it would be value text', (_label, override) => {
+
+            const blockText = '- object: Account\n  fields:\n    Description: |\n        hello there\n    Phone: x\n';
+            const result = RecipeCockpitRecipeWriter.restoreTodoComment(blockText, { objectApiName: 'Account', fieldApiName: 'Description', ...override });
+
+            expect(refusalReason(result)).toBe('todo-not-removable');
+
+        });
+
         test('refuses a TODO line that would end the field it is put back in', () => {
 
-            const blockText = '- object: Account\n  fields:\n    Description: |\n        some text\n    Phone: ${{ faker.phone.number() }}\n';
+            const blockText = '- object: Account\n  fields:\n    Description: some\n        more text\n    Phone: ${{ faker.phone.number() }}\n';
             const result = RecipeCockpitRecipeWriter.restoreTodoComment(blockText, {
                 objectApiName: 'Account',
                 fieldApiName: 'Description',
@@ -475,7 +519,7 @@ describe('RecipeCockpitRecipeWriter removeTodoComment and restoreTodoComment (#3
                 originalLine: '    # TODO at field depth',
                 kind: 'line',
                 lineEnding: '\n',
-                previousLine: '    Description: |'
+                previousLine: '    Description: some'
             });
 
             expect(refusalReason(result)).toBe('todo-structure-changed');

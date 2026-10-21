@@ -1711,6 +1711,7 @@ export const RECIPE_COCKPIT_TODO_REMOVE_LOCK_REASONS: Readonly<Record<RecipeCock
     'field-value': 'This TODO is the field\'s whole value: removing it would leave the field empty. Edit or untick the field in the Treecipe tab instead.',
     'record-type-options': 'The Recipe Cockpit and Run Faker read this line to find the field\'s record type sections, so it stays.',
     'commented-out-marker': 'This line is the Recipe Cockpit\'s marker for a commented-out field, which restoring the field needs.',
+    'scalar-content': 'This line is inside the field\'s multi-line value, where YAML reads it as part of the value rather than a comment, so it stays.',
     'indistinct-occurrence': 'This object is written more than once without a nickname that tells this one apart, so the TODO could not be put back in the same place.'
 });
 export const RECIPE_COCKPIT_TODO_REFERENCE_LOOKUP_REASON = 'This TODO is the lookup\'s whole value: removing it would leave the lookup empty. Wire the lookup to a parent in the Treecipe tab instead.';
@@ -4035,7 +4036,7 @@ export class RecipeCockpitService {
                 fs.unlinkSync(fixedValueFilePath);
             }
         } catch (writeError) {
-            return `${refusalPrefix}: "${path.basename(fixedValueFilePath)}" could not be written (${String(writeError?.message ?? writeError)}).`;
+            return `${refusalPrefix}: "${RecipeYamlScalar.escapeForNotification(path.basename(fixedValueFilePath))}" could not be written (${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}).`;
         }
 
         try {
@@ -4051,7 +4052,7 @@ export class RecipeCockpitService {
             } catch {
                 // THE RECIPE IS UNCHANGED, SO A SIDECAR LEFT AHEAD OF IT SAYS WHAT THE RECIPE NO LONGER HOLDS: A PIN READS AS CHANGED, A REMOVED TODO AS BACK
             }
-            return `${refusalPrefix}: "${path.basename(recipeFilePath)}" could not be written (${String(writeError?.message ?? writeError)}).`;
+            return `${refusalPrefix}: "${RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath))}" could not be written (${RecipeYamlScalar.escapeForNotification(String(writeError?.message ?? writeError))}).`;
         }
 
     }
@@ -12370,23 +12371,28 @@ export class RecipeCockpitService {
     ): void {
 
         let fieldIndex = 0;
+        const markerStartIndexes = new Set(scannedObject.commentedOutFieldMarkers.map(marker => marker.startIndex));
 
         scannedObject.todoLineIndexes.forEach(todoLineIndex => {
-
-            const removeLock: RecipeCockpitTodoRemoveLock | undefined = isIndistinctOccurrence
-                ? 'indistinct-occurrence'
-                : RecipeCockpitRecipeWriter.findTodoRemoveLock(lines, scannedObject, todoLineIndex);
-            const todo: IRecipeCockpitTodoViewModel = {
-                lineNumber: todoLineIndex + 1,
-                text: RecipeCockpitRecipeWriter.readTodoCommentText(lines[todoLineIndex]) ?? '',
-                ...( removeLock !== undefined ? { removeLock: removeLock } : {} )
-            };
 
             while ( fieldIndex < scannedObject.fields.length && scannedObject.fields[fieldIndex].endIndex <= todoLineIndex ) {
                 fieldIndex++;
             }
 
             const scannedField = scannedObject.fields[fieldIndex];
+            const removeLock: RecipeCockpitTodoRemoveLock | undefined = isIndistinctOccurrence
+                ? 'indistinct-occurrence'
+                : RecipeCockpitRecipeWriter.findTodoRemoveLock(lines, scannedObject, todoLineIndex, {
+                    fieldStartingAtLine: scannedField && scannedField.startIndex === todoLineIndex ? scannedField : null,
+                    owningField: scannedField && scannedField.startIndex < todoLineIndex && todoLineIndex < scannedField.endIndex ? scannedField : null,
+                    markerStartIndexes: markerStartIndexes
+                });
+            const todo: IRecipeCockpitTodoViewModel = {
+                lineNumber: todoLineIndex + 1,
+                text: RecipeCockpitRecipeWriter.readTodoCommentText(lines[todoLineIndex]) ?? '',
+                ...( removeLock !== undefined ? { removeLock: removeLock } : {} )
+            };
+
             const fieldEntry = scannedField && scannedField.startIndex <= todoLineIndex
                 ? sourceEntry.fieldEntries.get(scannedField.fieldApiName)
                 : undefined;

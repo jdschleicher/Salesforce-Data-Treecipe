@@ -337,9 +337,10 @@ export type RecipeWriterResult =
     lookup's "### TODO -- REFERENCE ID REQUIRED", a formula's placeholder), so removing it would leave
     the field null. record-type-options: the cockpit and Run Faker read a "### TODO: -- RecordType
     Options --" line to find record type sections. commented-out-marker: the cockpit's own marker,
-    without which a commented-out field cannot be restored.
+    without which a commented-out field cannot be restored. scalar-content: the line is inside a
+    field's block (| or >) or unclosed quoted value, where YAML reads "#" as part of the value.
 */
-export type RecipeTodoRemoveLock = 'field-value' | 'record-type-options' | 'commented-out-marker';
+export type RecipeTodoRemoveLock = 'field-value' | 'record-type-options' | 'commented-out-marker' | 'scalar-content';
 
 /*
     One TODO comment removeTodoComment took out of a recipe, and what restoreTodoComment needs to put
@@ -2973,9 +2974,20 @@ export class RecipeCockpitRecipeWriter {
         Why the TODO comment on this line of the occurrence cannot be removed (#391), or undefined
         when it can. The line must be one of the occurrence's todoLineIndexes.
     */
-    static findTodoRemoveLock(lines: string[], scannedObject: IScannedObject, lineIndex: number): RecipeTodoRemoveLock | undefined {
+    /*
+        A caller walking an occurrence's TODOs hands in what it already holds -- the field starting at
+        the line, or null for none, and the marker lines -- so a load over thousands of TODOs is one
+        pass rather than a search of the fields per TODO.
+    */
+    static findTodoRemoveLock(lines: string[],
+                                scannedObject: IScannedObject,
+                                lineIndex: number,
+                                known?: { fieldStartingAtLine: IScannedField | null; owningField?: IScannedField | null; markerStartIndexes: ReadonlySet<number> }): RecipeTodoRemoveLock | undefined {
 
-        if ( scannedObject.commentedOutFieldMarkers.some(marker => marker.startIndex === lineIndex) ) {
+        const isMarkerLine = known
+            ? known.markerStartIndexes.has(lineIndex)
+            : scannedObject.commentedOutFieldMarkers.some(marker => marker.startIndex === lineIndex);
+        if ( isMarkerLine ) {
             return 'commented-out-marker';
         }
 
@@ -2985,16 +2997,19 @@ export class RecipeCockpitRecipeWriter {
             return 'record-type-options';
         }
 
-        const scannedField = scannedObject.fields.find(candidateField => candidateField.startIndex === lineIndex);
+        const scannedField = known ? known.fieldStartingAtLine : scannedObject.fields.find(candidateField => candidateField.startIndex === lineIndex);
         if ( scannedField ) {
             const { fieldIndent } = this.getObjectLayout(scannedObject.objectIndent);
             const valueBeforeComment = recipeLine.slice(fieldIndent.length + scannedField.fieldApiName.length + 1, commentStartIndex);
             if ( valueBeforeComment.trim() === '' ) {
                 return 'field-value';
             }
+            return undefined;
         }
 
-        return undefined;
+        // A CONTINUATION LINE: ONLY ITS FIELD'S FIRST LINE SAYS WHETHER A "#" HERE IS A COMMENT OR PART OF THE VALUE
+        const owningField = known && !known.owningField ? undefined : ( known?.owningField ?? scannedObject.fields.find(candidateField => candidateField.startIndex < lineIndex && lineIndex < candidateField.endIndex) );
+        return owningField && !this.isFieldValueClosedOnFirstLine(lines, scannedObject, owningField) ? 'scalar-content' : undefined;
 
     }
 
@@ -3127,6 +3142,13 @@ export class RecipeCockpitRecipeWriter {
             return refuseRestore(located.refusal, located.message);
         }
 
+        const ownerObject = scannedObjects[located.ownerIndex];
+        const targetField = located.fieldIndex >= 0 ? ownerObject.fields[located.fieldIndex] : undefined;
+        const isIntoFieldContinuation = !!targetField && ( removed.kind === 'line' || located.lineIndex > targetField.startIndex );
+        if ( isIntoFieldContinuation && !this.isFieldValueClosedOnFirstLine(lines, ownerObject, targetField) ) {
+            return refuseRestore('todo-not-removable', this.describeTodoRemoveLock('scalar-content'));
+        }
+
         const patchedLines = lines.slice();
         const patchedLineEndings = lineEndings.slice();
 
@@ -3177,6 +3199,8 @@ export class RecipeCockpitRecipeWriter {
                 return 'The Recipe Cockpit and Run Faker read this line to find the field\'s record type sections.';
             case 'commented-out-marker':
                 return 'This line is the Recipe Cockpit\'s marker for a commented-out field, which restoring the field needs.';
+            case 'scalar-content':
+                return 'This line is inside the field\'s multi-line value, where YAML reads it as part of the value rather than a comment.';
             default:
                 return 'This TODO carries a line break that would not be put back as it was.';
         }
@@ -3327,6 +3351,40 @@ export class RecipeCockpitRecipeWriter {
             anchorIndex--;
         }
         return anchorIndex;
+    }
+
+    /*
+        Whether a field's value ends on its own line, so the lines under it are comments or a plain
+        scalar's continuation rather than the inside of a block (| or >) or quoted value -- where YAML
+        reads "#" as text and a "TODO" line is part of the value (#391).
+    */
+    static isFieldValueClosedOnFirstLine(lines: string[], scannedObject: IScannedObject, scannedField: IScannedField): boolean {
+
+        const { fieldIndent } = this.getObjectLayout(scannedObject.objectIndent);
+        const firstLineValue = lines[scannedField.startIndex].slice(fieldIndent.length + scannedField.fieldApiName.length + 1).trimStart();
+
+        if ( /^[|>]/.test(firstLineValue) ) {
+            return false;
+        }
+
+        const quoteCharacter = firstLineValue[0];
+        if ( quoteCharacter !== '"' && quoteCharacter !== "'" ) {
+            return true;
+        }
+
+        for ( let characterIndex = 1; characterIndex < firstLineValue.length; characterIndex++ ) {
+            const character = firstLineValue[characterIndex];
+            if ( quoteCharacter === '"' && character === '\\' ) {
+                characterIndex++;
+            } else if ( character === quoteCharacter && quoteCharacter === "'" && firstLineValue[characterIndex + 1] === "'" ) {
+                characterIndex++;
+            } else if ( character === quoteCharacter ) {
+                return true;
+            }
+        }
+
+        return false;
+
     }
 
     private static isWholeTodoCommentLine(recipeLine: string): boolean {
