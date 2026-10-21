@@ -5,7 +5,7 @@ import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
-import { IMetadataDeployComponent, IMetadataDeploySummary, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
+import { IMetadataDeployComponent, IMetadataDeployObject, IMetadataDeploySummary, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
 
 /*
     The Troubleshooting tab's retrieves (#326, #382): the argv that brings one relationship tree's
@@ -176,6 +176,22 @@ export class RecipeCockpitMetadataRetrieve {
 
     }
 
+    // THE SAME FIELDS listManifestComponents NAMES FROM A SUMMARY, WITHOUT READING A FILE: A FIELD RETRIEVE NEEDS NO <valueSetName>
+    static listCustomFieldComponents(deployObjects: readonly IMetadataDeployObject[]): IMetadataDeployComponent[] {
+
+        const members = deployObjects
+            .filter(deployObject => SalesforceApiName.isApiName(deployObject.objectApiName))
+            .flatMap(deployObject => deployObject.fieldApiNames
+                .filter(fieldApiName => SalesforceApiName.isApiName(fieldApiName) && RecipeCockpitMetadataDeploy.isCustomFieldName(fieldApiName))
+                .map(fieldApiName => `${deployObject.objectApiName}.${fieldApiName}`));
+
+        return [...new Set(members)]
+            .filter(member => RecipeCockpitMetadataDeploy.isDeployableMember('CustomField', member))
+            .sort()
+            .map(member => ({ type: 'CustomField', member: member }));
+
+    }
+
     static buildCliRequiredMessage(retrieveKind: MetadataRetrieveKind = 'validationRules'): string {
 
         return `The Salesforce CLI is required to retrieve ${RETRIEVE_WORDS[retrieveKind].many}, and "${PicklistDependencyCheckService.getSalesforceCliExecutable()}" is not installed or not on PATH. Install it and try again.`;
@@ -252,32 +268,33 @@ export class RecipeCockpitMetadataRetrieve {
     /*
         How many of these "<Object>.<Field>" members already have a file in the project: the org's
         version is written over each one it also holds. A field is counted once, wherever its object's
-        folders are; a link is not followed (lstat), so a planted link is not counted as a file.
+        folders are, and its file name is matched case-insensitively, as the Troubleshooting summary
+        matches it. No link is followed: a linked fields/ folder is not listed and a linked file is
+        not a file, so this counts what the summary counts.
     */
     static countLocalFieldFiles(workspaceRoot: string, packageDirectoryPaths: readonly string[], fieldMembers: readonly string[]): number {
 
-        const fieldApiNamesByObject = new Map<string, Set<string>>();
+        const lowerFieldApiNamesByObject = new Map<string, Set<string>>();
         fieldMembers.forEach(member => {
             const [objectApiName, fieldApiName] = member.split('.');
             if ( objectApiName && fieldApiName ) {
-                fieldApiNamesByObject.set(objectApiName, ( fieldApiNamesByObject.get(objectApiName) ?? new Set<string>() ).add(fieldApiName));
+                lowerFieldApiNamesByObject.set(objectApiName, ( lowerFieldApiNamesByObject.get(objectApiName) ?? new Set<string>() ).add(fieldApiName.toLowerCase()));
             }
         });
 
-        const objectFolderPathsByObject = RecipeCockpitMetadataDeploy.findObjectFolderPaths(workspaceRoot, packageDirectoryPaths, [...fieldApiNamesByObject.keys()]);
+        const objectFolderPathsByObject = RecipeCockpitMetadataDeploy.findObjectFolderPaths(workspaceRoot, packageDirectoryPaths, [...lowerFieldApiNamesByObject.keys()]);
+        const lowerFileSuffix = FIELD_FILE_SUFFIX.toLowerCase();
         let fileCount = 0;
 
-        fieldApiNamesByObject.forEach((fieldApiNames, objectApiName) => {
-            const objectFolderPaths = objectFolderPathsByObject.get(objectApiName) ?? [];
-            fieldApiNames.forEach(fieldApiName => {
-                const isHeld = objectFolderPaths.some(objectFolderPath => {
-                    try {
-                        return fs.lstatSync(path.join(objectFolderPath, FIELD_FOLDER_NAME, `${fieldApiName}${FIELD_FILE_SUFFIX}`)).isFile();
-                    } catch {
-                        return false;
-                    }
-                });
-                if ( isHeld ) {
+        lowerFieldApiNamesByObject.forEach((lowerFieldApiNames, objectApiName) => {
+            const heldLowerFieldApiNames = new Set<string>();
+            ( objectFolderPathsByObject.get(objectApiName) ?? [] ).forEach(objectFolderPath => {
+                RecipeCockpitMetadataDeploy.listSubfolderEntries(objectFolderPath, FIELD_FOLDER_NAME)
+                    .filter(entry => entry.isFile() && entry.name.toLowerCase().endsWith(lowerFileSuffix))
+                    .forEach(entry => heldLowerFieldApiNames.add(entry.name.toLowerCase().slice(0, -lowerFileSuffix.length)));
+            });
+            lowerFieldApiNames.forEach(lowerFieldApiName => {
+                if ( heldLowerFieldApiNames.has(lowerFieldApiName) ) {
                     fileCount++;
                 }
             });

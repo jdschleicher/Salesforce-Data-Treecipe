@@ -657,7 +657,7 @@ export class RecipeCockpitMetadataDeploy {
     }
 
     // A fields OR recordTypes FOLDER THAT IS A LINK IS NEVER LISTED: ITS FILES COULD BE ANYWHERE
-    private static listSubfolderEntries(objectFolderPath: string, subfolderName: string): fs.Dirent[] {
+    static listSubfolderEntries(objectFolderPath: string, subfolderName: string): fs.Dirent[] {
 
         const subfolderPath = path.join(objectFolderPath, subfolderName);
 

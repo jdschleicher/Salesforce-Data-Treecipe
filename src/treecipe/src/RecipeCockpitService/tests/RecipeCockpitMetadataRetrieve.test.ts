@@ -196,6 +196,38 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
             });
 
+            it('matches a field file whatever its case, as the summary does, and lists no linked fields folder', () => {
+
+                const fieldsFolder = path.join(temporaryRoot, 'force-app', 'main', 'default', 'objects', 'Account', 'fields');
+                fs.renameSync(path.join(fieldsFolder, 'Rating__c.field-meta.xml'), path.join(fieldsFolder, 'rating__C.field-meta.xml'));
+                expect(RecipeCockpitMetadataRetrieve.countLocalFieldFiles(temporaryRoot, ['force-app'], ['Account.Rating__c'])).toBe(1);
+
+                const linkedObjectFolder = path.join(temporaryRoot, 'force-app', 'main', 'default', 'objects', 'Gizmo__c');
+                fs.mkdirSync(linkedObjectFolder);
+                fs.symlinkSync(fieldsFolder, path.join(linkedObjectFolder, 'fields'));
+                expect(RecipeCockpitMetadataRetrieve.countLocalFieldFiles(temporaryRoot, ['force-app'], ['Gizmo__c.Rating__c'])).toBe(0);
+
+            });
+
+        });
+
+        describe('listCustomFieldComponents', () => {
+
+            it('names the same custom fields a summary does, without reading a file', () => {
+
+                const readSpy = jest.spyOn(fs, 'readFileSync');
+                expect(RecipeCockpitMetadataRetrieve.listCustomFieldComponents([
+                    { objectApiName: 'Account', fieldApiNames: ['Rating__c', 'Name', 'Rating__c', 'bad name__c'] },
+                    { objectApiName: 'Account', fieldApiNames: ['Active__c'] },
+                    { objectApiName: 'not an object', fieldApiNames: ['Other__c'] }
+                ])).toEqual([
+                    { type: 'CustomField', member: 'Account.Active__c' },
+                    { type: 'CustomField', member: 'Account.Rating__c' }
+                ]);
+                expect(readSpy).not.toHaveBeenCalled();
+
+            });
+
         });
 
         describe('parseRetrieveOutput', () => {
@@ -543,6 +575,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
             await openCockpit();
             const summarizeSpy = jest.spyOn(require('../RecipeCockpitMetadataDeploy').RecipeCockpitMetadataDeploy, 'summarizeTreeMetadata').mockResolvedValue(emptySummary());
+            jest.spyOn(RecipeCockpitMetadataRetrieve, 'listCustomFieldComponents').mockReturnValue([]);
 
             await retrieve('fields');
             await retrieve('globalValueSets');
@@ -560,12 +593,20 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
         it('is a quiet cancel when the org pick or the confirmation is dismissed, and writes no package.xml', async () => {
 
             await openCockpit();
+            const summarizeSpy = jest.spyOn(require('../RecipeCockpitMetadataDeploy').RecipeCockpitMetadataDeploy, 'summarizeTreeMetadata');
+            const summaryRefreshSpy = jest.spyOn(RecipeCockpitService as any, 'refreshTroubleshootingSummary');
+            const ruleListRefreshSpy = jest.spyOn(RecipeCockpitService as any, 'refreshTreeValidationRules');
 
             promptSpy.mockResolvedValueOnce(undefined);
             await retrieve('fields');
+            expect(summarizeSpy).not.toHaveBeenCalled();
             modalAnswer = undefined;
             await retrieve('globalValueSets');
 
+            // NOTHING RAN, SO NOTHING IS READ AGAIN: THE VALUE SET READ BEFORE THE PROMPT IS THE ONLY ONE
+            expect(summarizeSpy).toHaveBeenCalledTimes(1);
+            expect(summaryRefreshSpy).not.toHaveBeenCalled();
+            expect(ruleListRefreshSpy).not.toHaveBeenCalled();
             expect(retrieveCalls()).toEqual([]);
             expect(notifications()).toEqual([]);
             expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME, PROD_USERNAME))).toBe(false);
@@ -676,6 +717,11 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
             retrieveCardOf(panel, 'fields').dispatch('click');
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'retrieveTreeFields')).toEqual([]);
+
+            // A PROJECT THE DEPLOY SUMMARY CANNOT READ IS NAMED AS A RETRIEVE ON A RETRIEVE CARD
+            panel.postToPanel(summary({ failureMessage: 'Nothing can be deployed: sfdx-project.json could not be parsed.' }));
+            expect(partOf(panel, retrieveCardOf(panel, 'globalValueSets'), 'actionCardDetail').textContent).toBe('Nothing can be retrieved: sfdx-project.json could not be parsed.');
+            expect(retrieveCardOf(panel, 'globalValueSets').disabled).toBe(true);
 
         });
 

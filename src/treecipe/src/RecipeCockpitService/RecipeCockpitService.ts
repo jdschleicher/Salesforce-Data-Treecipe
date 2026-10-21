@@ -7728,13 +7728,19 @@ export class RecipeCockpitService {
         this.isMetadataRetrieveInFlight = true;
         this.setMetadataRetrieveState({ command: 'metadataRetrieveState', isRunning: true, treeKey: treeKey, retrieveKind: retrieveKind });
 
+        // ONLY A CLI THAT RAN CAN HAVE WRITTEN FILES, AND ONLY A VALIDATION RULE RETRIEVE WRITES WHAT THE RULE LISTS READ
+        let isCliStarted = false;
         try {
-            await this.performMetadataRetrieve(panelState.workspaceRoot, recipeViewModel, tree, retrieveKind);
+            isCliStarted = await this.performMetadataRetrieve(panelState.workspaceRoot, recipeViewModel, tree, retrieveKind);
         } finally {
             this.isMetadataRetrieveInFlight = false;
             this.setMetadataRetrieveState({ command: 'metadataRetrieveState', isRunning: false, treeKey: treeKey, retrieveKind: retrieveKind });
-            await this.refreshTroubleshootingSummary(treeKey);
-            await this.refreshTreeValidationRules(treeKey);
+            if ( isCliStarted ) {
+                await this.refreshTroubleshootingSummary(treeKey);
+                if ( retrieveKind === 'validationRules' ) {
+                    await this.refreshTreeValidationRules(treeKey);
+                }
+            }
         }
 
     }
@@ -7742,12 +7748,12 @@ export class RecipeCockpitService {
     private static async performMetadataRetrieve(workspaceRoot: string,
                                                     recipeViewModel: IRecipeCockpitRecipeViewModel,
                                                     tree: IRecipeCockpitTreeViewModel,
-                                                    retrieveKind: MetadataRetrieveKind) {
+                                                    retrieveKind: MetadataRetrieveKind): Promise<boolean> {
 
         const treeLabel = tree.customName || tree.title;
         const manyNoun = RecipeCockpitMetadataRetrieve.componentNoun(retrieveKind, 2);
         const isWildcard = RecipeCockpitMetadataRetrieve.isWildcardKind(retrieveKind);
-        const refuse = (refusalText: string) => this.showMetadataRetrieveNotification('warning', refusalText, undefined, workspaceRoot, false);
+        const refuse = (refusalText: string): false => { this.showMetadataRetrieveNotification('warning', refusalText, undefined, workspaceRoot, false); return false; };
 
         // A WILDCARD RETRIEVE ASKS PER OBJECT: EVERY OBJECT THE CARD LISTS, ONCE, AS AN API NAME
         const { retrievable: objectApiNames, refused: refusedObjectApiNames } = RecipeCockpitMetadataRetrieve.partitionObjectApiNames(tree.objects.map(treeObject => treeObject.objectApiName));
@@ -7775,9 +7781,14 @@ export class RecipeCockpitService {
 
         if ( retrieveKind === 'recordTypes' ) {
             summary = await RecipeCockpitMetadataDeploy.summarizeTreeMetadata(workspaceRoot, packageDirectoryPaths, objectApiNames.map(objectApiName => ({ objectApiName: objectApiName, fieldApiNames: [] })));
-        } else if ( retrieveKind === 'fields' || retrieveKind === 'globalValueSets' ) {
+        } else if ( retrieveKind === 'fields' ) {
+            manifestComponents = RecipeCockpitMetadataRetrieve.listCustomFieldComponents(this.listTreeDeployObjects(recipeViewModel, tree));
+        } else if ( retrieveKind === 'globalValueSets' ) {
             summary = await RecipeCockpitMetadataDeploy.summarizeTreeMetadata(workspaceRoot, packageDirectoryPaths, this.listTreeDeployObjects(recipeViewModel, tree));
             manifestComponents = RecipeCockpitMetadataRetrieve.listManifestComponents(retrieveKind, summary);
+        }
+
+        if ( retrieveKind === 'fields' || retrieveKind === 'globalValueSets' ) {
             if ( manifestComponents.length === 0 ) {
                 return refuse(retrieveKind === 'fields'
                     ? `${treeLabel} has no custom field to retrieve, so nothing was retrieved.`
@@ -7795,7 +7806,7 @@ export class RecipeCockpitService {
         }
 
         if ( !orgDetail ) {
-            return;
+            return false;
         }
 
         // NO PARENTHESES: A NOTIFICATION ESCAPES THEM, AND THIS LABEL IS IN EVERY ONE THIS RUN SHOWS
@@ -7819,7 +7830,7 @@ export class RecipeCockpitService {
         );
 
         if ( confirmation !== RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL ) {
-            return;
+            return false;
         }
 
         // THE ROUTER CHECKED THESE AT THE CLICK; ONE CAN HAVE STARTED WHILE THE PROMPT OR THE MODAL WAS OPEN
@@ -7855,7 +7866,8 @@ export class RecipeCockpitService {
 
         // A CANCEL CAN COME AFTER THE CLI WROTE FILES, SO GENERATE TREECIPE IS OFFERED AS AFTER A TIMEOUT
         if ( retrieveRun.isCancelled ) {
-            return this.showMetadataRetrieveNotification('warning', `The retrieve of ${manyNoun} from ${orgLabel} was cancelled, so which files were written is unknown.`, undefined, workspaceRoot, true);
+            this.showMetadataRetrieveNotification('warning', `The retrieve of ${manyNoun} from ${orgLabel} was cancelled, so which files were written is unknown.`, undefined, workspaceRoot, true);
+            return true;
         }
 
         const retrievePayload = ScratchOrgService.readCliJsonPayload(retrieveRun.invocation);
@@ -7873,19 +7885,23 @@ export class RecipeCockpitService {
                 const { componentCount, namesWithComponents, failureMessages } = retrieveOutcome;
                 const retrievedText = this.describeRetrieved(retrieveKind, componentCount, namesWithComponents, askedNames, treeLabel, orgLabel);
                 if ( failureMessages.length > 0 ) {
-                    return this.showMetadataRetrieveNotification('warning', `${retrievedText} ${failureMessages.length} could not be retrieved: ${failureMessages.join('; ')}.${refusedText}`, retrieveOutputFilePath, workspaceRoot, componentCount > 0);
+                    this.showMetadataRetrieveNotification('warning', `${retrievedText} ${failureMessages.length} could not be retrieved: ${RecipeCockpitMetadataDeploy.describeCappedList(failureMessages)}.${refusedText}`, retrieveOutputFilePath, workspaceRoot, componentCount > 0);
+                    return true;
                 }
-                return this.showMetadataRetrieveNotification(refusedText ? 'warning' : 'information', `${retrievedText}${refusedText}`, refusedText ? retrieveOutputFilePath : undefined, workspaceRoot, componentCount > 0);
+                this.showMetadataRetrieveNotification(refusedText ? 'warning' : 'information', `${retrievedText}${refusedText}`, refusedText ? retrieveOutputFilePath : undefined, workspaceRoot, componentCount > 0);
+                return true;
             }
 
             case 'cliNotInstalled':
                 return refuse(retrieveOutcome.failureMessage);
 
             case 'unconfirmed':
-                return this.showMetadataRetrieveNotification('warning', retrieveOutcome.failureMessage, retrieveOutputFilePath, workspaceRoot, true);
+                this.showMetadataRetrieveNotification('warning', retrieveOutcome.failureMessage, retrieveOutputFilePath, workspaceRoot, true);
+                return true;
 
             case 'failed':
-                return this.showMetadataRetrieveNotification('warning', `No ${manyNoun} were retrieved from ${orgLabel}: ${retrieveOutcome.failureMessage}`, retrieveOutputFilePath, workspaceRoot, false);
+                this.showMetadataRetrieveNotification('warning', `No ${manyNoun} were retrieved from ${orgLabel}: ${retrieveOutcome.failureMessage}`, retrieveOutputFilePath, workspaceRoot, false);
+                return true;
 
         }
 
@@ -18320,7 +18336,10 @@ ${this.buildPaletteCustomProperties()}
         }
 
         if (!summary) { return { text: 'Reading this project…', emptyReason: 'Reading this project…' }; }
-        if (summary.failureMessage) { return { text: summary.failureMessage, emptyReason: summary.failureMessage }; }
+        if (summary.failureMessage) {
+            const retrieveFailureMessage = summary.failureMessage.replace(/^Nothing can be deployed: /, 'Nothing can be retrieved: ');
+            return { text: retrieveFailureMessage, emptyReason: retrieveFailureMessage };
+        }
 
         if (retrieveKind === 'fields') {
             const fieldCount = summary.customFieldCount + summary.unreadableFieldCount;
