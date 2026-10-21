@@ -455,7 +455,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             await deploy('deployTreeFields');
 
             const [modalMessage, modalOptions, modalAction] = modalCalls()[0];
-            expect(modalMessage).toBe(`Deploy 6 components for Relationship Tree 1 to qa · ${QA_USERNAME}?`);
+            expect(modalMessage).toBe(`Deploy 6 components for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME}?`);
             expect(modalAction).toBe(RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL);
             expect(modalOptions.detail).toContain(`Org: qa · ${QA_USERNAME}`);
             expect(modalOptions.detail).toContain('From: force-app');
@@ -483,7 +483,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             expect(deployExecCall[2].cwd).toBe(path.resolve(workspaceRoot));
             expect(deployExecCall[2].maxBuffer).toBe(SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES);
 
-            expect(informationCalls()).toContainEqual([`Deployed 6 components for Relationship Tree 1 to qa · ${QA_USERNAME}.`, RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL]);
+            expect(informationCalls()).toContainEqual([`Deployed 6 components for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME}.`, RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL]);
             expect(notificationWarnings()).toEqual([]);
             expect(postedNamed('metadataDeployState')).toEqual([
                 { command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, deployKind: 'fields' },
@@ -592,7 +592,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
             await deploy('deployTreeRecordTypes');
 
-            expect(lastWarning()).toEqual({ text: 'Relationship Tree 1 has no record type in this project, so nothing was deployed.', actions: [] });
+            expect(lastWarning()).toEqual({ text: 'Account-thru-OtherChildObject__c has no record type in this project, so nothing was deployed.', actions: [] });
             expect(modalCalls()).toEqual([]);
             expect(deployCalls()).toEqual([]);
 
@@ -623,7 +623,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             ]);
             expect([...deployedManifests[0].matchAll(/<members>([^<]*)<\/members>/g)].map(match => match[1])).toEqual(['SDT_Account_thru_OtherChildObject_c']);
             expect(deployedManifests[0]).toContain('<name>PermissionSet</name>');
-            expect(informationCalls()[0]).toEqual([`Deployed 1 component for Relationship Tree 1 to qa · ${QA_USERNAME}.`, RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL, RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL]);
+            expect(informationCalls()[0]).toEqual([`Deployed 1 component for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME}.`, RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL, RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL]);
             expect(routeSpy).toHaveBeenCalledWith({ command: 'assignTreePermissionSets', treeKey: ACCOUNT_TREE_KEY, orgIndex: 0 }, expect.anything());
 
         });
@@ -661,7 +661,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             await flushAsyncWork();
 
             expect(childKill).toHaveBeenCalled();
-            expect(lastWarning()?.text).toBe(`The deploy of 6 components for Relationship Tree 1 to qa · ${QA_USERNAME} was cancelled, so whether it landed is unknown.`);
+            expect(lastWarning()?.text).toBe(`The deploy of 6 components for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME} was cancelled, so whether it landed is unknown.`);
             expect(lastDeployState()).toMatchObject({ isRunning: false });
 
         });
@@ -751,7 +751,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
             fs.rmSync(path.join(workspaceRoot, 'force-app', 'main', 'default', 'permissionsets'), { recursive: true });
             await deploy('deployTreePermissionSet', ACCOUNT_TREE_KEY, null);
-            expect(lastWarning()?.text).toBe('No permission set in this workspace\'s source grants access to any object of Relationship Tree 1, so nothing was deployed. Generate permission set… writes one.');
+            expect(lastWarning()?.text).toBe('No permission set in this workspace\'s source grants access to any object of Account-thru-OtherChildObject__c, so nothing was deployed. Generate permission set… writes one.');
             expect(deployCalls()).toEqual([]);
 
         });

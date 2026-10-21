@@ -17,6 +17,7 @@ Generate Treecipe reads your object metadata and writes a run: a folder under `t
 The cockpit opens the newest run, or the one you pick in the run list at the top.
 Under the run list, the **Target Org Management** section picks the org a card can insert into, opens it in your browser (**Open in browser**) or makes a new scratch org (**+ New scratch org**), which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll.
 The **Treecipes** section below it shows one card at a time: pick it in the **Treecipe** dropdown, which starts on the one you picked last.
+Each card is named after the folder its tree was written to: its first object thru its last, such as `Account-thru-Contact`, or `Lead-ONLY` for a single object, until you rename it with ✎.
 Under the dropdown, a line lists the card's objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.
 The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row.
 **Favorites only** narrows the dropdown to your starred cards.

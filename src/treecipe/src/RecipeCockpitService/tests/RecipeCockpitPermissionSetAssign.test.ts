@@ -626,7 +626,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             ]);
 
             const [modalMessage, modalOptions, modalAction] = modalCalls()[0];
-            expect(modalMessage).toBe(`Assign 2 permission sets for Relationship Tree 1 to ${QA_USERNAME} in qa · ${QA_USERNAME}?`);
+            expect(modalMessage).toBe(`Assign 2 permission sets for Account-thru-OtherChildObject__c to ${QA_USERNAME} in qa · ${QA_USERNAME}?`);
             expect(modalOptions.detail).toContain(`Org: qa · ${QA_USERNAME}`);
             expect(modalOptions.detail).toContain('  Account_Tree_Access — partial, 2 of 3: Account, OtherChildObject__c');
             expect(modalOptions.detail).toContain('Nothing is deployed.');
@@ -646,7 +646,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
                 expect(path.isAbsolute(String(command).replace(/^"|"$/g, ''))).toBe(true);
             });
 
-            expect(notificationInformationSpy).toHaveBeenCalledWith(`Assigned 2 permission sets for Relationship Tree 1 to ${QA_USERNAME} in qa · ${QA_USERNAME}.`);
+            expect(notificationInformationSpy).toHaveBeenCalledWith(`Assigned 2 permission sets for Account-thru-OtherChildObject__c to ${QA_USERNAME} in qa · ${QA_USERNAME}.`);
             expect(notificationWarnings()).toEqual([]);
             // THE PANEL IS TOLD ONLY THAT IT RAN AND THAT IT ENDED: NO TEXT, NO LINE, NO OUTPUT LINK
             expect(postedNamed('permissionSetAssignState')).toEqual([
@@ -679,7 +679,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
                 text: `Not in qa · ${QA_USERNAME}: Contact_Reader. Deploy this permission set to the org, then assign it.`,
                 actions: []
             });
-            expect(notificationInformationSpy).toHaveBeenCalledWith(`Assigned 1 permission set for Relationship Tree 1 to ${QA_USERNAME} in qa · ${QA_USERNAME}.`);
+            expect(notificationInformationSpy).toHaveBeenCalledWith(`Assigned 1 permission set for Account-thru-OtherChildObject__c to ${QA_USERNAME} in qa · ${QA_USERNAME}.`);
             // ONLY WHAT AN ASSIGNED PICK GRANTS ON IS DROPPED
             expect(clearSpy).toHaveBeenCalledWith(QA_USERNAME, 'Account');
             expect(clearSpy).not.toHaveBeenCalledWith(QA_USERNAME, 'Contact');
@@ -742,7 +742,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
 
             await assignPermissionSets();
 
-            expect(modalCalls()[0][0]).toBe(`Assign 1 permission set for Relationship Tree 1 to ${QA_USERNAME} in qa · ${QA_USERNAME}?`);
+            expect(modalCalls()[0][0]).toBe(`Assign 1 permission set for Account-thru-OtherChildObject__c to ${QA_USERNAME} in qa · ${QA_USERNAME}?`);
             expect(soqlQueries.at(-1)).toBe('SELECT Name FROM PermissionSet WHERE Name IN (\'Contact_Reader\')');
             expect(assignCalls()[0].slice(-2)).toEqual(['--name', 'Contact_Reader']);
 
@@ -796,7 +796,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
 
             await assignPermissionSets(ACCOUNT_TREE_KEY, null);
 
-            expect(lastWarning()).toEqual({ text: 'No permission set in this workspace\'s source grants access to any object of Relationship Tree 1, so nothing was assigned.', actions: [] });
+            expect(lastWarning()).toEqual({ text: 'No permission set in this workspace\'s source grants access to any object of Account-thru-OtherChildObject__c, so nothing was assigned.', actions: [] });
             expect(quickPick()).not.toHaveBeenCalled();
             expect(promptSpy).not.toHaveBeenCalled();
             expect(cliCalls.filter(argumentList => argumentList[1] !== 'list')).toEqual([]);
@@ -1064,7 +1064,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             await assignPermissionSets(ACCOUNT_TREE_KEY, null);
 
             expect(notificationWarnings().map(warning => warning.text)).toContainEqual(expect.stringMatching(/^Skipped 11 permission set files .* and 1 more\.$/));
-            expect(modalCalls()[0][0]).toBe(`Assign 2 permission sets for Relationship Tree 1 to ${QA_USERNAME} in ${QA_USERNAME}?`);
+            expect(modalCalls()[0][0]).toBe(`Assign 2 permission sets for Account-thru-OtherChildObject__c to ${QA_USERNAME} in ${QA_USERNAME}?`);
             expect(lastWarning().text).toContain(`${QA_USERNAME} could not say whether it is a sandbox`);
             expect(assignCalls()).toEqual([]);
 
