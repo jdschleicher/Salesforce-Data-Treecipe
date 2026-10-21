@@ -403,6 +403,21 @@ describe('RecipeCockpitService, tree names and favorites (#235)', () => {
 
         });
 
+        // #389: THE DEFAULT TITLE IS THE FOLDER, SO THE PROMPT DOES NOT NAME IT TWICE, AND A NAME EQUAL TO IT IS NO NAME
+        it('says an emptied box goes back to the folder name, and clears a name equal to the card\'s own folder', async () => {
+
+            const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_TREE_PREFERENCES_STATE_KEY]: storedPreferences({ [LEAD_TREE_KEY]: 'Leads' }) });
+            await openAndDraw(workspaceState);
+            showInputBox.mockResolvedValue(` ${LEAD_TREE_KEY} `);
+
+            await receivedMessageHandler({ command: 'renameTree', treeKey: LEAD_TREE_KEY });
+
+            expect(showInputBox.mock.calls[0][0].prompt).toBe(`A name for the tree in "${LEAD_TREE_KEY}", unique in this workspace. Leave it empty to go back to its folder name.`);
+            expect(storedOf(workspaceState)).toEqual(storedPreferences({}));
+            expect(lastPosted('treePreferences').trees).toEqual([{ treeKey: LEAD_TREE_KEY, isFavorite: false }]);
+
+        });
+
         it('given the box is cancelled, changes nothing', async () => {
 
             const workspaceState = buildWorkspaceState();

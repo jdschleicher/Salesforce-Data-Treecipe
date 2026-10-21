@@ -2118,7 +2118,7 @@ describe('RecipeCockpitService', () => {
 
             const { panel, recipe: treeRecipe } = renderTreeRecipe();
             panel.postToPanel({ command: 'recipeData', renderSequence: 2, recipe: { ...treeRecipe, objects: [accountObject], trees: [{
-                treeKey: 'tree', title: 'Account-thru-OtherChildObject__c', folderName: 'tree', fieldCount: 0,
+                treeKey: 'tree', title: 'tree', folderName: 'tree', fieldCount: 0,
                 objects: [
                     { objectApiName: 'Account', parentLookups: [] },
                     { objectApiName: 'Account', parentLookups: [], iterationNickname: 'Account_child_NickName' },
@@ -2454,7 +2454,7 @@ describe('RecipeCockpitService', () => {
             const panel = runPanelScript();
             panel.postToPanel({ command: 'recipeData', renderSequence: 1, recipe: buildRecipeViewModel({
                 objects: wideObjects,
-                trees: [{ treeKey: 'Widest__c-thru-Narrow__c', title: 'Account-thru-OtherChildObject__c', folderName: 'Widest__c-thru-Narrow__c', fieldCount: wideObjects[0].fields.length + 1,
+                trees: [{ treeKey: 'Widest__c-thru-Narrow__c', title: 'Widest__c-thru-Narrow__c', folderName: 'Widest__c-thru-Narrow__c', fieldCount: wideObjects[0].fields.length + 1,
                           objects: wideObjects.map(objectViewModel => ({ objectApiName: objectViewModel.objectApiName, parentLookups: [] })) }]
             }) });
 
@@ -2487,7 +2487,7 @@ describe('RecipeCockpitService', () => {
             const panel = runPanelScript();
             panel.postToPanel({ command: 'recipeData', renderSequence: 1, recipe: buildRecipeViewModel({
                 objects: [prototypeNamedObject],
-                trees: [{ treeKey: '__proto__-ONLY', title: 'Account-thru-OtherChildObject__c', folderName: '__proto__-ONLY', fieldCount: 0, objects: [{ objectApiName: '__proto__', parentLookups: [] }] }]
+                trees: [{ treeKey: '__proto__-ONLY', title: '__proto__-ONLY', folderName: '__proto__-ONLY', fieldCount: 0, objects: [{ objectApiName: '__proto__', parentLookups: [] }] }]
             }) });
 
             const [treeCard] = treeCardsOf(panel);
@@ -2732,7 +2732,7 @@ describe('RecipeCockpitService', () => {
 
         const buildOneTreeRecipe = (objects: any[]) => buildRecipeViewModel({
             objects: objects,
-            trees: [{ treeKey: 'Wide-thru-Narrow', title: 'Account-thru-OtherChildObject__c', folderName: 'Wide-thru-Narrow', fieldCount: 0,
+            trees: [{ treeKey: 'Wide-thru-Narrow', title: 'Wide-thru-Narrow', folderName: 'Wide-thru-Narrow', fieldCount: 0,
                 objects: objects.map(objectViewModel => ({ objectApiName: objectViewModel.objectApiName, parentLookups: [] })) }]
         });
 
@@ -2898,7 +2898,7 @@ describe('RecipeCockpitService', () => {
 
             panel.postToPanel({ command: 'recipeData', recipe: buildRecipeViewModel({
                 objects: [{ objectApiName: 'Account' } as any],
-                trees: [{ treeKey: 'Account-ONLY', title: 'Account-thru-OtherChildObject__c', folderName: 'Account-ONLY', fieldCount: 0, objects: [{ objectApiName: 'Account', parentLookups: [] }] }]
+                trees: [{ treeKey: 'Account-ONLY', title: 'Account-ONLY', folderName: 'Account-ONLY', fieldCount: 0, objects: [{ objectApiName: 'Account', parentLookups: [] }] }]
             }) });
 
             expect(panel.findAll(panel.cockpitBodyElement, 'treeCard')).toEqual([]);

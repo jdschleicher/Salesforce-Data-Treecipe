@@ -5319,7 +5319,9 @@ export class RecipeCockpitService {
 
         const enteredName = await vscode.window.showInputBox({
             title: 'Rename relationship tree',
-            prompt: `A name for the tree in "${folderLabel}", unique in this workspace. Leave it empty to go back to "${defaultTitleLabel}".`,
+            prompt: shownTree === undefined || shownTree.title === folderName
+                ? `A name for the tree in "${folderLabel}", unique in this workspace. Leave it empty to go back to its folder name.`
+                : `A name for the tree in "${folderLabel}", unique in this workspace. Leave it empty to go back to "${defaultTitleLabel}".`,
             placeHolder: shownTree?.title ?? '',
             value: treePreferences.customNamesByFolderName.get(folderName) ?? '',
             validateInput: candidateName => this.validateTreeName(candidateName, folderName, treePreferences, shownTrees)
@@ -5339,7 +5341,8 @@ export class RecipeCockpitService {
 
         const trimmedName = enteredName.trim();
 
-        if ( trimmedName === '' ) {
+        // THE FOLDER NAME IS ALREADY THE DEFAULT TITLE (#389), SO NAMING A TREE AFTER ITS OWN FOLDER CLEARS ITS NAME
+        if ( trimmedName === '' || trimmedName === folderName ) {
             latestTreePreferences.customNamesByFolderName.delete(folderName);
         } else {
             latestTreePreferences.customNamesByFolderName.set(folderName, trimmedName);
