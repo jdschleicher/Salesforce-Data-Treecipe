@@ -57,7 +57,7 @@ import {
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL
 } from '../RecipeCockpitService';
 import { IMetadataDeploySummary } from '../RecipeCockpitMetadataDeploy';
-import { METADATA_RETRIEVE_MAX_OBJECTS, MetadataRetrieveKind, RecipeCockpitMetadataRetrieve } from '../RecipeCockpitMetadataRetrieve';
+import { MetadataRetrieveKind, RecipeCockpitMetadataRetrieve } from '../RecipeCockpitMetadataRetrieve';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { ORG_OPERATIONS_FOLDER_NAME } from '../../ScratchOrgService/ScratchOrgService';
@@ -67,8 +67,8 @@ import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitCon
 /*
     #382: the Troubleshooting tab retrieves a tree's custom fields, record types and the global value
     sets its fields name, beside #326's validation rules, through ONE retrieve: fields and value sets
-    named in a package.xml, record types per object with a wildcard, the org asked for in the palette
-    every time, nothing deployed, one retrieve per window whatever its kind.
+    named in a package.xml, record types listed in the org first and then named in one too (#401), the
+    org asked for in the palette every time, nothing deployed, one retrieve per window whatever its kind.
 */
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
@@ -94,6 +94,10 @@ const invocation = (stdout: string, extra: Record<string, unknown> = {}) => ({ s
 
 const retrievedFile = (type: string, fullName: string, extra: Record<string, unknown> = {}) => ({ fullName: fullName, type: type, state: 'Created', filePath: `/workspace/${fullName}`, ...extra });
 
+const listedRecordType = (fullName: unknown) => ({ fullName: fullName, type: 'RecordType', id: '012000000000001' });
+
+const buildListAnswer = (entries: unknown) => JSON.stringify({ status: 0, result: entries, warnings: [] });
+
 const buildRetrieveAnswer = (files: unknown[], overrides: Record<string, unknown> = {}) => JSON.stringify({
     status: 0,
     result: { done: true, status: 'Succeeded', success: true, files: files },
@@ -111,19 +115,36 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
     describe('RecipeCockpitMetadataRetrieve', () => {
 
-        it('retrieves record types per object with a wildcard, as validation rules are, and refuses what #326 refuses', () => {
+        it('lists record types with "org list metadata", as validation rules are (#401), and keeps only the tree\'s', () => {
 
-            expect(RecipeCockpitMetadataRetrieve.buildWildcardRetrieveArguments('recordTypes', ACCOUNT_TREE_OBJECTS, PROD_USERNAME)).toEqual([
-                'project', 'retrieve', 'start', '--json', '--target-org', PROD_USERNAME,
-                '--metadata', 'RecordType:Account.*',
-                '--metadata', 'RecordType:Contact.*',
-                '--metadata', 'RecordType:OtherChildObject__c.*'
-            ]);
-            expect(() => RecipeCockpitMetadataRetrieve.buildWildcardRetrieveArguments('recordTypes', ['X.* --target-org evil'], PROD_USERNAME)).toThrow('is not a Salesforce api name, so no record type was retrieved.');
-            expect(() => RecipeCockpitMetadataRetrieve.buildWildcardRetrieveArguments('recordTypes', [], PROD_USERNAME)).toThrow('No object was named, so no record type was retrieved.');
-            expect(() => RecipeCockpitMetadataRetrieve.buildWildcardRetrieveArguments('recordTypes', Array.from({ length: METADATA_RETRIEVE_MAX_OBJECTS + 1 }, (_value, index) => `Object${index}__c`), PROD_USERNAME))
-                .toThrow(`at most ${METADATA_RETRIEVE_MAX_OBJECTS} can be retrieved at once`);
-            expect(() => RecipeCockpitMetadataRetrieve.buildWildcardRetrieveArguments('recordTypes', ['Account'], '--target-org')).toThrow();
+            expect(RecipeCockpitMetadataRetrieve.buildListMetadataArguments('recordTypes', PROD_USERNAME))
+                .toEqual(['org', 'list', 'metadata', '--json', '--target-org', PROD_USERNAME, '--metadata-type', 'RecordType']);
+            expect(() => RecipeCockpitMetadataRetrieve.buildListMetadataArguments('recordTypes', '--target-org')).toThrow();
+
+            expect(RecipeCockpitMetadataRetrieve.parseListMetadataOutput('recordTypes', invocation(buildListAnswer([
+                listedRecordType('Account.Wholesale'),
+                listedRecordType('Account.Business'),
+                listedRecordType('Lead.Not_This_Tree'),
+                listedRecordType('Account.Bad Name'),
+                { fullName: 'Contact.Rule', type: 'ValidationRule' }
+            ])), ACCOUNT_TREE_OBJECTS)).toEqual({
+                kind: 'listed',
+                components: [{ type: 'RecordType', member: 'Account.Business' }, { type: 'RecordType', member: 'Account.Wholesale' }],
+                skippedCount: 1
+            });
+            expect(RecipeCockpitMetadataRetrieve.parseListMetadataOutput('recordTypes', invocation('', { timedOut: true }), ACCOUNT_TREE_OBJECTS))
+                .toEqual({ kind: 'unconfirmed', failureMessage: 'The listing did not finish in time and was stopped, so which record types the org holds is unknown.' });
+
+            expect(RecipeCockpitMetadataRetrieve.buildRetrievePackageXml([{ type: 'RecordType', member: 'Account.Business' }])).toContain('<members>Account.Business</members>\n        <name>RecordType</name>');
+
+        });
+
+        it('counts the local file of each listed record type, and not one the org did not list', () => {
+
+            const workspaceRoot = METADATA_DEPLOY_WORKSPACE_ROOT;
+
+            expect(RecipeCockpitMetadataRetrieve.countLocalListedFiles(workspaceRoot, ['force-app'], 'recordTypes', ['Account.Business', 'account.partner', 'Account.Wholesale'])).toBe(2);
+            expect(RecipeCockpitMetadataRetrieve.countLocalListedFiles(workspaceRoot, ['force-app'], 'recordTypes', ['Account.Wholesale'])).toBe(0);
 
         });
 
@@ -232,7 +253,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
         describe('parseRetrieveOutput', () => {
 
-            it('counts a field or value set by its full name, and a record type under its object, only for what was asked', () => {
+            it('counts a field, value set or record type by its full name, only for what was asked', () => {
 
                 expect(RecipeCockpitMetadataRetrieve.parseRetrieveOutput('fields', invocation(buildRetrieveAnswer([
                     retrievedFile('CustomField', 'Account.Rating__c'),
@@ -256,7 +277,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
                     retrievedFile('RecordType', 'Account.Partner'),
                     retrievedFile('RecordType', 'Lead.Not_This_Tree'),
                     retrievedFile('ValidationRule', 'Contact.Rule')
-                ])), ACCOUNT_TREE_OBJECTS)).toEqual({ kind: 'retrieved', componentCount: 2, namesWithComponents: ['Account'], failureMessages: [] });
+                ])), ['Account.Business', 'Account.Partner', 'Contact.Other'])).toEqual({ kind: 'retrieved', componentCount: 2, namesWithComponents: ['Account.Business', 'Account.Partner'], failureMessages: [] });
 
             });
 
@@ -291,8 +312,8 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
             expect(valueSetDetail).toContain('1 global value set: Account_Ratings\n');
             expect(valueSetDetail).toContain('This project holds no global value set file for these value sets yet.');
 
-            const recordTypeDetail = RecipeCockpitMetadataRetrieve.buildConfirmationDetail('recordTypes', 'T', 'o', ACCOUNT_TREE_OBJECTS, 'force-app', 1);
-            expect(recordTypeDetail).toContain('3 objects: Account, Contact, OtherChildObject__c');
+            const recordTypeDetail = RecipeCockpitMetadataRetrieve.buildConfirmationDetail('recordTypes', 'T', 'o', ['Account.Business', 'Account.Wholesale'], 'force-app', 1);
+            expect(recordTypeDetail).toContain('2 record types: Account.Business, Account.Wholesale');
             expect(recordTypeDetail).toContain('1 existing local record type file for these objects will be overwritten');
 
             const longList = Array.from({ length: 25 }, (_value, index) => `Account.Field${index}__c`);
@@ -374,6 +395,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
         let postedPanelMessages: any[];
         let cliCalls: string[][];
         let retrievedManifests: string[];
+        let listHandler: (argumentList: string[]) => { stdout: string; error?: unknown };
         let retrieveHandler: (argumentList: string[]) => { stdout: string; error?: unknown };
         let cancellationToken: { isCancellationRequested: boolean; onCancellationRequested: (listener: () => void) => void };
         let promptSpy: jest.SpyInstance;
@@ -431,6 +453,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
             modalAnswer = RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL;
             workspaceState = { get: jest.fn(), update: jest.fn().mockResolvedValue(undefined) };
             retrieveHandler = () => ({ stdout: buildRetrieveAnswer([]) });
+            listHandler = () => ({ stdout: buildListAnswer([listedRecordType('Account.Business'), listedRecordType('Account.Partner'), listedRecordType('Account.Wholesale'), listedRecordType('Lead.Not_This_Tree')]) });
 
             (execFile as unknown as jest.Mock).mockReset();
             (execFile as unknown as jest.Mock).mockImplementation((_command: string, argumentList: string[], execOptions: any, callback: any) => {
@@ -439,8 +462,8 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
                 if ( manifestIndex !== -1 ) {
                     retrievedManifests.push(fs.readFileSync(path.join(execOptions.cwd, argumentList[manifestIndex + 1]), 'utf-8'));
                 }
-                const cliAnswer = argumentList[0] === 'org' && argumentList[1] === 'list'
-                    ? { stdout: JSON.stringify(SF_ORG_LIST) }
+                const cliAnswer = argumentList[0] === 'org' && argumentList[1] === 'list' && argumentList[2] === 'metadata' ? listHandler(argumentList)
+                    : argumentList[0] === 'org' && argumentList[1] === 'list' ? { stdout: JSON.stringify(SF_ORG_LIST) }
                     : retrieveHandler(argumentList);
                 setImmediate(() => callback(cliAnswer.error ?? null, cliAnswer.stdout, ''));
                 return { kill: jest.fn() };
@@ -550,7 +573,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
         });
 
-        it('retrieves every record type of each tree object with a wildcard, and counts the record type files it overwrites', async () => {
+        it('lists every record type of each tree object in the org, retrieves them by name through a package.xml, and counts the files it overwrites (#401)', async () => {
 
             retrieveHandler = () => ({ stdout: buildRetrieveAnswer([retrievedFile('RecordType', 'Account.Business'), retrievedFile('RecordType', 'Account.Wholesale')]) });
             await openCockpit();
@@ -558,15 +581,20 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
             await retrieve('recordTypes');
 
             expect(promptSpy).toHaveBeenCalledWith(RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS.recordTypes);
-            expect(modalCalls()[0][0]).toBe(`Retrieve the record types of 3 objects of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}?`);
+            expect(modalCalls()[0][0]).toBe(`Retrieve 3 record types of 3 objects of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}?`);
+            expect(modalCalls()[0][1].detail).toContain('3 record types: Account.Business, Account.Partner, Account.Wholesale');
             expect(modalCalls()[0][1].detail).toContain('2 existing local record type files for these objects will be overwritten');
-            expect(retrieveCalls()).toEqual([[
-                'project', 'retrieve', 'start', '--json', '--target-org', PROD_USERNAME,
-                '--metadata', 'RecordType:Account.*',
-                '--metadata', 'RecordType:Contact.*',
-                '--metadata', 'RecordType:OtherChildObject__c.*'
-            ]]);
-            expect(retrievedManifests).toEqual([]);
+            expect(cliCalls.filter(argumentList => argumentList[2] === 'metadata')).toEqual([['org', 'list', 'metadata', '--json', '--target-org', PROD_USERNAME, '--metadata-type', 'RecordType']]);
+            expect(retrieveCalls()).toHaveLength(1);
+            expect(retrieveCalls()[0]).not.toContain('--metadata');
+            expect(retrieveCalls()[0][retrieveCalls()[0].indexOf('--manifest') + 1]).toMatch(/-record-type-retrieve-package\.xml$/);
+            expect(retrievedManifests).toHaveLength(1);
+            expect(retrievedManifests[0]).toContain([
+                '        <members>Account.Business</members>',
+                '        <members>Account.Partner</members>',
+                '        <members>Account.Wholesale</members>',
+                '        <name>RecordType</name>'
+            ].join('\n'));
             expect(notifications()[0].text).toBe(`Retrieved 2 record types for 1 of 3 objects of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}: Account. Generate Treecipe can then use them in the recipe.`);
 
         });

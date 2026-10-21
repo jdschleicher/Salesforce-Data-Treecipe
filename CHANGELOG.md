@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.121.0] - Recipe Cockpit: Deploy fields… also deploys the tree's custom objects, and its confirmation can add the validation rules, record types and global value sets
+## [3.123.0] - Recipe Cockpit: Deploy fields… also deploys the tree's custom objects, and its confirmation can add the validation rules, record types and global value sets
 
 Closes [#402](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/402).
 
@@ -10,7 +10,36 @@ The Troubleshooting tab's **Deploy fields…** (#346) put only `CustomField` mem
 - **The confirmation says what that means.** It lists the custom objects, warns that deploying one overwrites the org's settings for it (label, sharing model, name field and the rest) with the project's version, and says so when every object of the tree is standard. The Fields card counts the custom objects too.
 - **An optional box deploys the rest of the tree's metadata.** The in-panel confirmation (#349) can now draw one checkbox, **Also deploy every tree object's validation rules, record types and global value sets**, unticked every time it opens and never remembered. Ticked, the same package.xml also names every `ValidationRule` in each tree object's `validationRules/`, every `RecordType` in its `recordTypes/`, and every global value set the deployed fields name that the project holds. The confirmation lists each of them before you decide. The box is drawn only when the project holds something it would add.
 - **The host still decides.** The panel posts back only `isChecked` beside its choice. Anything but a boolean is read as Cancel, and a ticked box under Cancel is nothing. What the box adds comes from the same read the confirmation showed, not from anything the panel posts. Every other confirmation posts and answers exactly as before (`confirmInPanel` is unchanged; `confirmInPanelWithCheckbox` is the new call).
+- **A deploy's package.xml now admits a `ValidationRule`** (3.122.0 said it did not): only when the box is ticked, and still never a type outside the six. A retrieve's package.xml keeps its own list (`METADATA_RETRIEVE_PACKAGE_XML_TYPES`), which has no `CustomObject`.
 - **Unchanged.** The deploy reaches only a sandbox or scratch org (checked again on the connection), goes through a generated package.xml with `--manifest` (never `--metadata`, never `--ignore-errors`), runs one per window, and holds the same run locks. Layouts, list views and the rest of an object folder are still never deployed, nor are permission sets by this button. The other three deploy buttons are untouched.
+## [3.122.0] - Recipe Cockpit: Retrieve validation rules and Retrieve record types list what the org holds, then retrieve it by name
+
+Closes [#401](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/401).
+
+**Retrieve validation rules…** (#326) and **Retrieve record types…** (#382) asked the CLI for `--metadata ValidationRule:<Object>.*` / `RecordType:<Object>.*`. Both are child types of `CustomObject`, and the Metadata API expands `*` only as a whole member name, so `Account.*` can reach the org as a literal name: nothing comes back, and the notification still reported a retrieve.
+
+- **List, then retrieve.** After the org is picked, the cockpit runs `sf org list metadata --metadata-type ValidationRule` (or `RecordType`) `--json --target-org <username>`, cancellable, and keeps the full names `<Object>.<Name>` whose object is one of the tree's, case-insensitively, each held to `SalesforceApiName`. Those are written into a package.xml under `treecipe/OrgOperations/<username>/<ts>-validation-rule-retrieve-package.xml` (or `-record-type-retrieve-`) and retrieved with `--manifest`, the way fields and global value sets already are. No `<Type>:<Object>.*` argv is built anywhere, and a test scans for one.
+- **The confirmation names them.** It lists what will be retrieved (capped, like the field retrieve's) and counts only the local files of those rules or record types, which are the ones the org's version overwrites.
+- **Nothing in the org.** When the org lists none for the tree's objects, one information notification says so; no package.xml is written and no retrieve runs.
+- **A listing that fails** (a CLI error, a timeout, a cancel, or an answer with no usable `result`) is one warning and retrieves nothing; it is never read as "none". A listed name of a tree object that is not an api name is left out and counted in the outcome's "Skipped" note (another object's is ignored, and the note shows even when nothing was left to retrieve), and the rest are still retrieved.
+- **No object cap; a component cap instead.** The 80-object limit existed because each object was one `--metadata` on a command line `cmd.exe` stops at 8,191 characters; a manifest has no such limit. A listing of more than 10,000 components (`METADATA_RETRIEVE_MAX_COMPONENTS`, the Metadata API's limit on one retrieve) is refused with a warning before the confirmation.
+- **Unchanged.** The org is asked for in the palette every time (production included), one retrieve per window and its busy refusals, the **Generate Treecipe** and **View output** buttons, nothing deployed, the recipe not regenerated by itself. A deploy's package.xml still refuses a `ValidationRule`: only a retrieve's admits one (`METADATA_RETRIEVE_PACKAGE_XML_TYPES`).
+- **Not verified against an org.** The CLI's `--json` answers in the tests follow the documented shape; what the old wildcard returned from a real org was not captured.
+- **Tests.** `RecipeCockpitValidationRuleRetrieve.test.ts` holds the listing argv and parse (filtering, one unwrapped entry, bad entries, failures never read as none), the package.xml, the list-then-manifest run, an org with no rule, a failed and a cancelled listing, a listing with only skipped names, a listing past 10,000, a 200-object tree and the wildcard scan; `RecipeCockpitMetadataRetrieve.test.ts` the same for record types and the record type file count.
+
+## [3.121.0] - Recipe Cockpit: a picklist's Show values sits under its faker value, so every field name is next to its edit button
+
+Closes [#398](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/398).
+
+#343 put the picklist's **Show values** button in the field header, before the field name, at a fixed 7.5rem. Every field without a picklist kept an empty spacer of the same width so the names lined up, which left a wide gap between every field name and its checkbox and edit button.
+
+- **Header.** A field row's header is the checkbox, the edit button and the field name, in that order, for every field. The `picklistToggleSpacer` and its CSS are gone.
+- **Show values.** A picklist's button sits in its own `picklistSection` after the faker value (and after a fixed value, when one is shown). The values open inside that section, under the button.
+- **Inline editor.** The field editor (#337) opens under the faker value and above a picklist's Show values, rather than at the end of the row.
+- **Tab order.** On a picklist row, Show values is now reached after the field's other controls rather than before its name, following its new place on screen.
+- **Unchanged.** The labels, `aria-expanded`, the `aria-label` (`Show values of <field>`), loading values on first expand, the saved `isPicklistExpanded` place and the `secondary` button kind.
+- **Guide.** The screenshots in `docs/RECIPE-COCKPIT-GUIDE.md` were re-taken.
+- **Tests.** `RecipeCockpitService.test.ts` checks every header is checkbox, edit button, name with no spacer, and that a picklist's section follows its expression with the values under the button; `RecipeCockpitPlaceRestore.test.ts` checks a restored open picklist draws the same way; `RecipeCockpitFixedValues.test.ts` checks the editor opens above Show values.
 
 ## [3.120.1] - Recipe Cockpit: the Troubleshooting sub-tab panel pads its cards and lists off its border
 
