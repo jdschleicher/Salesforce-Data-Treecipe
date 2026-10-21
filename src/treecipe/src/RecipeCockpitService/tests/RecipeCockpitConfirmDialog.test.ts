@@ -324,6 +324,56 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
         });
 
+        it('asks with a checkbox only when told to, and answers whether it was ticked under the button chosen (#402)', async () => {
+
+            await openAndDraw();
+
+            const plainAnswer = RecipeCockpitService.confirmInPanel('Plain?', { detail: 'x' }, 'Go');
+            expect(lastPosted('confirmRequest')).not.toHaveProperty('checkboxLabel');
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, isChecked: true });
+            await expect(plainAnswer).resolves.toBe('Go');
+
+            const tickedAnswer = RecipeCockpitService.confirmInPanelWithCheckbox('Boxed?', { detail: 'x', isDestructive: true, checkboxLabel: 'Also this' }, 'Go');
+            expect(lastPosted('confirmRequest')).toMatchObject({ title: 'Boxed?', buttons: ['Go'], isDestructive: true, checkboxLabel: 'Also this' });
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, isChecked: true });
+            await expect(tickedAnswer).resolves.toEqual({ chosenLabel: 'Go', isChecked: true });
+
+            const untickedAnswer = RecipeCockpitService.confirmInPanelWithCheckbox('Boxed?', { detail: 'x', checkboxLabel: 'Also this' }, 'Go');
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0 });
+            await expect(untickedAnswer).resolves.toEqual({ chosenLabel: 'Go', isChecked: false });
+
+            // A TICKED BOX UNDER CANCEL IS NOTHING
+            const cancelledAnswer = RecipeCockpitService.confirmInPanelWithCheckbox('Boxed?', { detail: 'x', checkboxLabel: 'Also this' }, 'Go');
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: null, isChecked: true });
+            await expect(cancelledAnswer).resolves.toEqual({ chosenLabel: undefined, isChecked: false });
+
+        });
+
+        it.each([
+            ['a string', 'true'],
+            ['a number', 1],
+            ['null', null],
+            ['an object', { isChecked: true }]
+        ])('reads an isChecked that is %s as Cancel, with or without a checkbox', async (_description, isChecked) => {
+
+            await openAndDraw();
+
+            const boxedAnswer = RecipeCockpitService.confirmInPanelWithCheckbox('Boxed?', { detail: 'x', checkboxLabel: 'Also this' }, 'Go');
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, isChecked: isChecked });
+            await expect(boxedAnswer).resolves.toEqual({ chosenLabel: undefined, isChecked: false });
+
+            const plainAnswer = RecipeCockpitService.confirmInPanel('Plain?', { detail: 'x' }, 'Go');
+            await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, isChecked: isChecked });
+            await expect(plainAnswer).resolves.toBeUndefined();
+
+        });
+
+        it('is Cancel, unticked, for a checkbox confirmation when nothing is drawn', async () => {
+
+            await expect(RecipeCockpitService.confirmInPanelWithCheckbox('Nothing open?', { detail: '', checkboxLabel: 'x' }, 'Go')).resolves.toEqual({ chosenLabel: undefined, isChecked: false });
+
+        });
+
         it('is Cancel at once, posting nothing, when no model is drawn or no panel is open', async () => {
 
             await expect(RecipeCockpitService.confirmInPanel('Nothing open?', { detail: '' }, 'Go')).resolves.toBeUndefined();
@@ -346,6 +396,7 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
             expect(serviceSource).not.toMatch(/modal:\s*true/);
             expect(serviceSource.match(/this\.confirmInPanel\(/g) ?? []).toHaveLength(14);
+            expect(serviceSource.match(/this\.confirmInPanelWithCheckbox\(/g) ?? []).toHaveLength(1);
 
         });
 
@@ -498,6 +549,54 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
             expect(dialogOf(panel)).toBeUndefined();
             expect(responses(panel)).toEqual([]);
             expect(panel.cockpitBodyElement.attributes).not.toHaveProperty('inert');
+
+        });
+
+        it('draws one unticked check box under the body when asked for one, ticks it from the box or its label, and answers its state (#402)', () => {
+
+            const panel = drawnPanel();
+            panel.postToPanel(confirmRequest({ checkboxLabel: 'Also deploy <the rest>' }));
+
+            const dialogElement = dialogOf(panel);
+            const [checkElement] = panel.findAll(dialogElement, 'confirmCheck');
+            const [labelElement] = panel.findAll(dialogElement, 'confirmCheckLabel');
+            expect(checkElement.classList.contains('sdtButton-check')).toBeTrue();
+            expect(checkElement.attributes).toMatchObject({ 'role': 'checkbox', 'aria-checked': 'false', 'aria-label': 'Also deploy <the rest>' });
+            expect(labelElement.textContent).toBe('Also deploy <the rest>');
+            expect(dialogElement.children.map((childElement: any) => childElement.className.split(' ')[0])).toEqual(['confirmTitle', 'confirmBody', 'confirmCheckRow', 'confirmActions']);
+
+            checkElement.dispatch('click');
+            expect(checkElement.attributes['aria-checked']).toBe('true');
+            labelElement.dispatch('click');
+            expect(checkElement.attributes['aria-checked']).toBe('false');
+            labelElement.dispatch('click');
+
+            panel.findAll(dialogElement, 'confirmChoice')[0].dispatch('click');
+            expect(responses(panel)).toEqual([{ command: 'confirmResponse', confirmationId: 'c'.repeat(32), choice: 0, isChecked: true }]);
+
+        });
+
+        it('answers a ticked box under Cancel as unticked, starts every request unticked, and keeps the box in the Tab cycle', () => {
+
+            const panel = drawnPanel();
+            panel.postToPanel(confirmRequest({ checkboxLabel: 'Also this', isDestructive: false }));
+            panel.findAll(dialogOf(panel), 'confirmCheck')[0].dispatch('click');
+            dialogOf(panel).dispatch('keydown', { key: 'Escape' });
+            expect(responses(panel)).toEqual([{ command: 'confirmResponse', confirmationId: 'c'.repeat(32), choice: null, isChecked: false }]);
+
+            panel.postToPanel(confirmRequest({ confirmationId: 'f'.repeat(32), checkboxLabel: 'Also this', isDestructive: false }));
+            const dialogElement = dialogOf(panel);
+            const [checkElement] = panel.findAll(dialogElement, 'confirmCheck');
+            expect(checkElement.attributes['aria-checked']).toBe('false');
+
+            const [bodyElement] = panel.findAll(dialogElement, 'confirmBody');
+            bodyElement.focus();
+            dialogElement.dispatch('keydown', { key: 'Tab' });
+            expect(panel.activeElement()).toBe(checkElement);
+
+            // A REQUEST WITHOUT ONE DRAWS NO BOX AND ANSWERS NO isChecked
+            panel.postToPanel(confirmRequest({ confirmationId: 'a'.repeat(32), checkboxLabel: '' }));
+            expect(panel.findAll(dialogOf(panel), 'confirmCheck')).toEqual([]);
 
         });
 

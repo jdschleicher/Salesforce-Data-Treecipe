@@ -1,5 +1,17 @@
 # Change Log
 
+## [3.121.0] - Recipe Cockpit: Deploy fields… also deploys the tree's custom objects, and its confirmation can add the validation rules, record types and global value sets
+
+Closes [#402](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/402).
+
+The Troubleshooting tab's **Deploy fields…** (#346) put only `CustomField` members in its package.xml. A field cannot land on an object the org does not have, so a tree whose custom object was not in the org yet failed every one of its fields, and the confirmation did not say why.
+
+- **Custom objects are deployed with their fields.** Each custom (`__c`) tree object whose `<Object>.object-meta.xml` the project's strict package directories hold, read as a `<CustomObject>` (no link followed, every package directory merged, matched case-insensitively), joins the package.xml as a `CustomObject` member. A standard object (Account, Contact, …) is never one. A custom object with no `.object-meta.xml`, or one that does not read as a `<CustomObject>`, is left out and named in the confirmation, which says the org must already have it.
+- **The confirmation says what that means.** It lists the custom objects, warns that deploying one overwrites the org's settings for it (label, sharing model, name field and the rest) with the project's version, and says so when every object of the tree is standard. The Fields card counts the custom objects too.
+- **An optional box deploys the rest of the tree's metadata.** The in-panel confirmation (#349) can now draw one checkbox, **Also deploy every tree object's validation rules, record types and global value sets**, unticked every time it opens and never remembered. Ticked, the same package.xml also names every `ValidationRule` in each tree object's `validationRules/`, every `RecordType` in its `recordTypes/`, and every global value set the deployed fields name that the project holds. The confirmation lists each of them before you decide. The box is drawn only when the project holds something it would add.
+- **The host still decides.** The panel posts back only `isChecked` beside its choice. Anything but a boolean is read as Cancel, and a ticked box under Cancel is nothing. What the box adds comes from the same read the confirmation showed, not from anything the panel posts. Every other confirmation posts and answers exactly as before (`confirmInPanel` is unchanged; `confirmInPanelWithCheckbox` is the new call).
+- **Unchanged.** The deploy reaches only a sandbox or scratch org (checked again on the connection), goes through a generated package.xml with `--manifest` (never `--metadata`, never `--ignore-errors`), runs one per window, and holds the same run locks. Layouts, list views and the rest of an object folder are still never deployed, nor are permission sets by this button. The other three deploy buttons are untouched.
+
 ## [3.120.1] - Recipe Cockpit: the Troubleshooting sub-tab panel pads its cards and lists off its border
 
 Closes [#393](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/393).

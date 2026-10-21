@@ -56,7 +56,120 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
                 globalValueSets: ['Account_Ratings'],
                 missingGlobalValueSets: ['Missing_Set'],
                 recordTypes: ['Account.Business', 'Account.Partner'],
+                customObjects: ['OtherChildObject__c'],
+                missingCustomObjects: [],
+                unreadableCustomObjects: [],
+                validationRules: ['Account.Budget_Not_Negative', 'OtherChildObject__c.Score_In_Range'],
                 skippedNameCount: 0
+            });
+
+        });
+
+        describe('custom objects and validation rules (#402)', () => {
+
+            it('finds a custom object\'s .object-meta.xml, never a standard object\'s, and lists one it cannot read or the project lacks', async () => {
+
+                const summary = await summarize([
+                    ...ACCOUNT_TREE_DEPLOY_OBJECTS,
+                    { objectApiName: 'Gadget__c', fieldApiNames: [] },
+                    { objectApiName: 'Widget__c', fieldApiNames: [] }
+                ]);
+
+                // Account HAS AN Account.object-meta.xml, AND IS STILL NEVER A CustomObject MEMBER
+                expect(summary.customObjects).toEqual(['OtherChildObject__c']);
+                expect(summary.unreadableCustomObjects).toEqual(['Gadget__c']);
+                expect(summary.missingCustomObjects).toEqual(['Widget__c']);
+
+            });
+
+            it('reads an .object-meta.xml whose name differs in case, and an empty <CustomObject/>, and never one that is not a <CustomObject>', async () => {
+
+                const objectFolderPath = path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'OtherChildObject__c');
+                fs.renameSync(path.join(objectFolderPath, 'OtherChildObject__c.object-meta.xml'), path.join(objectFolderPath, 'otherchildobject__c.object-meta.xml'));
+                fs.writeFileSync(path.join(objectFolderPath, 'otherchildobject__c.object-meta.xml'), '<?xml version="1.0"?><CustomObject xmlns="http://soap.sforce.com/2006/04/metadata"/>');
+
+                expect((await summarize()).customObjects).toEqual(['OtherChildObject__c']);
+
+                fs.writeFileSync(path.join(objectFolderPath, 'otherchildobject__c.object-meta.xml'), '<?xml version="1.0"?><CustomField><fullName>X</fullName></CustomField>');
+
+                expect((await summarize()).unreadableCustomObjects).toEqual(['OtherChildObject__c']);
+
+            });
+
+            it('lists an .object-meta.xml it cannot read as unreadable, and names several missing or unreadable objects in the plural', async () => {
+
+                const realReadFileSync = fs.readFileSync;
+                jest.spyOn(fs, 'readFileSync').mockImplementation(((filePath: fs.PathOrFileDescriptor, options?: any) => {
+                    if ( String(filePath).endsWith('OtherChildObject__c.object-meta.xml') ) {
+                        throw new Error('EACCES');
+                    }
+                    return realReadFileSync(filePath, options);
+                }) as typeof fs.readFileSync);
+
+                const summary = await summarize([
+                    ...ACCOUNT_TREE_DEPLOY_OBJECTS,
+                    { objectApiName: 'Gadget__c', fieldApiNames: [] },
+                    { objectApiName: 'Widget__c', fieldApiNames: [] },
+                    { objectApiName: 'Sprocket__c', fieldApiNames: [] }
+                ]);
+
+                expect(summary.customObjects).toEqual([]);
+                expect(summary.unreadableCustomObjects).toEqual(['Gadget__c', 'OtherChildObject__c']);
+                expect(summary.missingCustomObjects).toEqual(['Sprocket__c', 'Widget__c']);
+
+                const detail = RecipeCockpitMetadataDeploy.buildConfirmationDetail('fields', 'T', 'qa', 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields'), summary);
+                expect(detail).toContain('Not deployed: 2 custom objects not in this project — the org must already have them, or their fields fail: Sprocket__c, Widget__c');
+                expect(detail).toContain('Not deployed: 2 custom objects whose .object-meta.xml could not be read: Gadget__c, OtherChildObject__c');
+                expect(detail).not.toContain('overwrites');
+                expect(detail).not.toContain('standard object, so');
+
+            });
+
+            it('never reads an .object-meta.xml that is a link, so a file outside the workspace is not deployed', async () => {
+
+                const objectFolderPath = path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'OtherChildObject__c');
+                const outsideFilePath = path.join(temporaryRoot, 'Outside.object-meta.xml');
+                fs.copyFileSync(path.join(objectFolderPath, 'OtherChildObject__c.object-meta.xml'), outsideFilePath);
+                fs.rmSync(path.join(objectFolderPath, 'OtherChildObject__c.object-meta.xml'));
+                fs.symlinkSync(outsideFilePath, path.join(objectFolderPath, 'OtherChildObject__c.object-meta.xml'));
+
+                const summary = await summarize();
+
+                expect(summary.customObjects).toEqual([]);
+                expect(summary.missingCustomObjects).toEqual(['OtherChildObject__c']);
+
+            });
+
+            it('lists validation rules from every package directory once, and counts a rule file whose name is not an api name as skipped', async () => {
+
+                const secondRuleFolderPath = path.join(workspaceRoot, 'unpackaged', 'objects', 'Account', 'validationRules');
+                fs.mkdirSync(secondRuleFolderPath, { recursive: true });
+                fs.writeFileSync(path.join(secondRuleFolderPath, 'Budget_Not_Negative.validationRule-meta.xml'), '<ValidationRule/>');
+                fs.writeFileSync(path.join(secondRuleFolderPath, 'Extra_Rule.validationRule-meta.xml'), '<ValidationRule/>');
+                fs.writeFileSync(path.join(secondRuleFolderPath, 'Bad Rule.validationRule-meta.xml'), '<ValidationRule/>');
+
+                const summary = await summarize();
+
+                expect(summary.validationRules).toEqual(['Account.Budget_Not_Negative', 'Account.Extra_Rule', 'OtherChildObject__c.Score_In_Range']);
+                expect(summary.skippedNameCount).toBe(1);
+
+            });
+
+            it('adds the custom objects to a fields deploy, and the full set is validation rules, record types and the value sets the project holds', async () => {
+
+                const summary = await summarize();
+
+                expect(RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields').filter(component => component.type === 'CustomObject'))
+                    .toEqual([{ type: 'CustomObject', member: 'OtherChildObject__c' }]);
+                expect(RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'recordTypes').map(component => component.type)).toEqual(['RecordType', 'RecordType']);
+                expect(RecipeCockpitMetadataDeploy.listFullSetComponents(summary)).toEqual([
+                    { type: 'ValidationRule', member: 'Account.Budget_Not_Negative' },
+                    { type: 'ValidationRule', member: 'OtherChildObject__c.Score_In_Range' },
+                    { type: 'RecordType', member: 'Account.Business' },
+                    { type: 'RecordType', member: 'Account.Partner' },
+                    { type: 'GlobalValueSet', member: 'Account_Ratings' }
+                ]);
+
             });
 
         });
@@ -247,19 +360,36 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
 
         });
 
-        it('names only CustomField members that are custom fields of an object when it deploys fields, so a broken layout or object definition cannot fail the deploy', async () => {
+        it('names only custom fields and the custom objects that hold them when it deploys fields, so a broken layout or a standard object cannot fail the deploy', async () => {
 
             const summary = await summarize();
             const packageXml = RecipeCockpitMetadataDeploy.buildPackageXml(RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields'));
             const typeNames = [...packageXml.matchAll(/<name>([^<]*)<\/name>/g)].map(match => match[1]);
             const members = [...packageXml.matchAll(/<members>([^<]*)<\/members>/g)].map(match => match[1]);
 
-            expect(typeNames).toEqual(['CustomField']);
+            expect(typeNames).toEqual(['CustomField', 'CustomObject']);
             expect(members.length).toBeGreaterThan(0);
-            members.forEach(member => expect(member).toMatch(/^[A-Za-z][A-Za-z0-9_]*\.[A-Za-z][A-Za-z0-9_]*__c$/));
-            ['Layout', 'CustomObject', 'ListView', 'CompactLayout', 'ValidationRule', 'Account-Account_Layout', 'ParentId', 'LastName'].forEach(forbiddenText => {
+            members.forEach(member => expect(member).toMatch(/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)?__c$/));
+            expect(members).toContain('OtherChildObject__c');
+            expect(members).not.toContain('Account');
+            expect(members).not.toContain('Contact');
+            ['Layout', 'ListView', 'CompactLayout', 'ValidationRule', 'RecordType', 'Account-Account_Layout', 'ParentId', 'LastName'].forEach(forbiddenText => {
                 expect(packageXml).not.toContain(forbiddenText);
             });
+
+        });
+
+        it('writes the full set\'s validation rules, record types and value sets beside the fields and objects when they are added', async () => {
+
+            const summary = await summarize();
+            const packageXml = RecipeCockpitMetadataDeploy.buildPackageXml([
+                ...RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields'),
+                ...RecipeCockpitMetadataDeploy.listFullSetComponents(summary)
+            ]);
+
+            expect([...packageXml.matchAll(/<name>([^<]*)<\/name>/g)].map(match => match[1])).toEqual(['CustomField', 'CustomObject', 'GlobalValueSet', 'RecordType', 'ValidationRule']);
+            expect(packageXml).toContain('<members>Account.Budget_Not_Negative</members>');
+            ['Layout', 'ListView', 'PermissionSet', 'Account-Account_Layout'].forEach(forbiddenText => expect(packageXml).not.toContain(forbiddenText));
 
         });
 
@@ -267,7 +397,13 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
 
             const refused: IMetadataDeployComponent[][] = [
                 [{ type: 'Layout' as any, member: 'Account-Account Layout' }],
-                [{ type: 'CustomObject' as any, member: 'Account' }],
+                [{ type: 'Layout' as any, member: 'Account-Account_Layout' }],
+                [{ type: 'CustomObject', member: 'Account' }],
+                [{ type: 'CustomObject', member: 'Gadget__mdt' }],
+                [{ type: 'CustomObject', member: 'Account.Rating__c' }],
+                [{ type: 'ValidationRule', member: 'Account' }],
+                [{ type: 'ValidationRule', member: 'Account.Bad Rule' }],
+                [{ type: 'ValidationRule', member: 'Account.Rule.Extra' }],
                 [{ type: 'CustomField', member: 'Account.ParentId' }],
                 [{ type: 'CustomField', member: 'Account.Rating__pc' }],
                 [{ type: 'CustomField', member: 'Account' }],
@@ -280,7 +416,9 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
             ];
 
             refused.forEach(components => expect(() => RecipeCockpitMetadataDeploy.buildPackageXml(components)).toThrow());
-            expect(METADATA_DEPLOY_TYPES).toEqual(['CustomField', 'GlobalValueSet', 'PermissionSet', 'RecordType']);
+            expect(METADATA_DEPLOY_TYPES).toEqual(['CustomField', 'CustomObject', 'GlobalValueSet', 'PermissionSet', 'RecordType', 'ValidationRule']);
+            expect(RecipeCockpitMetadataDeploy.buildPackageXml([{ type: 'CustomObject', member: 'Gadget__c' }, { type: 'ValidationRule', member: 'Account.Rule_1' }]))
+                .toContain('<members>Gadget__c</members>');
 
         });
 
@@ -478,6 +616,49 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
             expect(valueSetDetail).toContain('1 GlobalValueSet: Account_Ratings');
             expect(valueSetDetail).toContain('Not deployed: 1 global value set a field names that this project does not hold: Missing_Set');
             expect(valueSetDetail).not.toContain('standard fields');
+
+        });
+
+        it('names the custom objects, says deploying one overwrites the org\'s settings for it, and lists what the project lacks or cannot read (#402)', async () => {
+
+            const summary = await summarize([
+                ...ACCOUNT_TREE_DEPLOY_OBJECTS,
+                { objectApiName: 'Gadget__c', fieldApiNames: [] },
+                { objectApiName: 'Widget__c', fieldApiNames: [] }
+            ]);
+            const detail = RecipeCockpitMetadataDeploy.buildConfirmationDetail('fields', 'T', 'qa', 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields'), summary);
+
+            expect(detail).toContain('6 CustomField: Account.Annual_Budget__c');
+            expect(detail).toContain('1 CustomObject: OtherChildObject__c');
+            expect(detail).toContain('Deploying a custom object overwrites the org\'s settings for it — its label, sharing model, name field and the rest — with this project\'s version.');
+            expect(detail).toContain('Not deployed: 1 custom object not in this project — the org must already have it, or its fields fail: Widget__c');
+            expect(detail).toContain('Not deployed: 1 custom object whose .object-meta.xml could not be read: Gadget__c');
+            expect(detail).not.toMatch(/[()]/);
+            expect(detail).not.toContain('Ticking the box');
+
+        });
+
+        it('says so when every object is standard, and describes the full set the box adds below the deploy\'s own components', async () => {
+
+            const standardSummary = await summarize([{ objectApiName: 'Account', fieldApiNames: ['Annual_Budget__c'] }]);
+            const standardDetail = RecipeCockpitMetadataDeploy.buildConfirmationDetail('fields', 'T', 'qa', 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(standardSummary, 'fields'), standardSummary);
+
+            expect(standardDetail).toContain('Every object of this tree is a standard object, so no CustomObject is deployed.');
+            expect(standardDetail).not.toContain('overwrites');
+
+            const summary = await summarize();
+            const detail = RecipeCockpitMetadataDeploy.buildConfirmationDetail('fields', 'T', 'qa', 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields'), summary, false, RecipeCockpitMetadataDeploy.listFullSetComponents(summary));
+            const lines = detail.split('\n');
+            const boxLineIndex = lines.indexOf('Ticking the box below also deploys, in the same package.xml:');
+
+            expect(boxLineIndex).toBeGreaterThan(lines.findIndex(line => line.startsWith('1 CustomObject:')));
+            expect(lines.slice(boxLineIndex + 1, boxLineIndex + 4)).toEqual([
+                '1 GlobalValueSet: Account_Ratings',
+                '2 RecordType: Account.Business, Account.Partner',
+                '2 ValidationRule: Account.Budget_Not_Negative, OtherChildObject__c.Score_In_Range'
+            ]);
+            expect(RecipeCockpitMetadataDeploy.buildConfirmationDetail('recordTypes', 'T', 'qa', 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'recordTypes'), summary))
+                .not.toContain('CustomObject');
 
         });
 

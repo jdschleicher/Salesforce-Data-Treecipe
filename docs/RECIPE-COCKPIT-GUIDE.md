@@ -63,7 +63,7 @@ These buttons rewrite the recipe file itself, because the change belongs in the 
 
 Others write other files: **Remember this selection** saves record types to `treecipe.config.json`, and on a card's **Troubleshooting** tab, **Generate permission set** (under **Permissions**) writes a permission set into your project. **Retrieve validation rules**, **Retrieve fields**, **Retrieve record types** and **Retrieve global value sets**, each under its own area, copy that part of an org you pick into your project, and change nothing in the org.
 
-The **Troubleshooting** tab also deploys to a sandbox or scratch org, never production: **Deploy permission set** (**Permissions**), **Deploy fields** (**Fields**, custom fields only), **Deploy record types** (**Record Types**) and **Deploy global value sets** (**Global Value Sets**) each send just those parts of your project, after a confirmation that lists them.
+The **Troubleshooting** tab also deploys to a sandbox or scratch org, never production: **Deploy permission set** (**Permissions**), **Deploy fields** (**Fields**: custom fields and the custom objects that hold them, with an optional box for every tree object's validation rules, record types and global value sets), **Deploy record types** (**Record Types**) and **Deploy global value sets** (**Global Value Sets**) each send just those parts of your project, after a confirmation that lists them.
 
 Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; **Cancel** or Escape does nothing.
 
