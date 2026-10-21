@@ -1,5 +1,14 @@
 # Change Log
 
+## [3.120.1] - Recipe Cockpit: the Troubleshooting sub-tab panel pads its cards and lists off its border
+
+Closes [#393](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/393).
+
+The Troubleshooting sub-panel has drawn a 1px accent border since #373, and its actions became fixed-size cards in #381, but the panel had no padding, so the cards, the TODO's and Validation Rules lists sat flush against the border's left edge.
+
+- **Padding.** `.troubleshootingSubPanel` is padded `0 0.6rem 0.6rem`, the cockpit's usual inset, and its search box drops its own side padding inside it, so the search, the TODO's Open/Removed switch, the action cards and the lists all start 0.6rem in from the border on every sub-tab.
+- **Unchanged.** The selected sub-tab still joins its panel with the 1px overlap (#373), the cards keep their 18rem × 10.5rem size and their two-columns-or-one grid, no colour or palette changed, and the other card tabs (Treecipe, Previously Used Data Sets, Query) are not touched.
+
 ## [3.120.0] - Recipe Cockpit: each treecipe is named by its folder, first object thru last, instead of "Relationship Tree N"
 
 Closes [#389](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/389).
