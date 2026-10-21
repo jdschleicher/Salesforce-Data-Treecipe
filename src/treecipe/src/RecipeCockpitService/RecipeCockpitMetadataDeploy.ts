@@ -25,6 +25,11 @@ export type MetadataDeployType = 'PermissionSet' | 'CustomField' | 'GlobalValueS
 
 export const METADATA_DEPLOY_TYPES: readonly MetadataDeployType[] = Object.freeze(['CustomField', 'GlobalValueSet', 'PermissionSet', 'RecordType'] as MetadataDeployType[]);
 
+// A RETRIEVE'S PACKAGE.XML ALSO NAMES VALIDATION RULES (#401); NO DEPLOY BUTTON OFFERS ONE, SO buildPackageXml ADMITS THEM ONLY WHEN A RETRIEVE PASSES THESE
+export type MetadataPackageXmlType = MetadataDeployType | 'ValidationRule';
+
+export const METADATA_RETRIEVE_PACKAGE_XML_TYPES: readonly MetadataPackageXmlType[] = Object.freeze(['CustomField', 'GlobalValueSet', 'RecordType', 'ValidationRule'] as MetadataPackageXmlType[]);
+
 export const METADATA_DEPLOY_TYPE_BY_KIND: Readonly<Record<MetadataDeployKind, MetadataDeployType>> = Object.freeze({
     permissionSet: 'PermissionSet',
     fields: 'CustomField',
@@ -42,7 +47,7 @@ export const METADATA_DEPLOY_OPERATION_BY_KIND = Object.freeze({
 export type MetadataDeployOperationName = typeof METADATA_DEPLOY_OPERATION_BY_KIND[MetadataDeployKind];
 
 // THE RETRIEVES THAT NAME THEIR COMPONENTS IN A PACKAGE.XML (#382); SPELLED HERE SO THIS MODULE IMPORTS NOTHING OF THE RETRIEVE'S
-export type MetadataPackageXmlRetrieveOperationName = 'field-retrieve' | 'global-value-set-retrieve';
+export type MetadataPackageXmlRetrieveOperationName = 'validation-rule-retrieve' | 'field-retrieve' | 'record-type-retrieve' | 'global-value-set-retrieve';
 
 // HOW DEEP UNDER A PACKAGE DIRECTORY AN objects OR globalValueSets FOLDER IS LOOKED FOR: force-app/main/default/objects IS THREE
 export const METADATA_DEPLOY_SEARCH_DEPTH = 6;
@@ -70,7 +75,7 @@ const CUSTOM_FIELD_NAME_PATTERN = /__c$/;
 const API_VERSION_PATTERN = /^[1-9][0-9]{1,2}\.0$/;
 
 export interface IMetadataDeployComponent {
-    type: MetadataDeployType;
+    type: MetadataPackageXmlType;
     member: string;
 }
 
@@ -112,7 +117,7 @@ export class RecipeCockpitMetadataDeploy {
     }
 
     // A MEMBER IS WRITTEN ONLY IF EVERY PART OF IT IS AN API NAME, IN THE SHAPE ITS TYPE NAMES ONE
-    static isDeployableMember(type: MetadataDeployType, member: unknown): member is string {
+    static isDeployableMember(type: MetadataPackageXmlType, member: unknown): member is string {
 
         if ( typeof member !== 'string' ) {
             return false;
@@ -397,20 +402,24 @@ export class RecipeCockpitMetadataDeploy {
     /*
         The package.xml naming exactly these components, built the same way on every machine: types
         and members sorted with "<", duplicates once. Throws, writing nothing, for a type outside the
-        four this tab deploys, a member that is not an api name in its type's shape, or no component.
+        four this tab deploys (or, for a retrieve, the types it passes), a member that is not an api
+        name in its type's shape, or no component.
     */
-    static buildPackageXml(components: readonly IMetadataDeployComponent[], apiVersion?: string, failureClause: string = 'nothing was deployed'): string {
+    static buildPackageXml(components: readonly IMetadataDeployComponent[],
+                            apiVersion?: string,
+                            failureClause: string = 'nothing was deployed',
+                            allowedTypes: readonly MetadataPackageXmlType[] = METADATA_DEPLOY_TYPES): string {
 
         if ( components.length === 0 ) {
             throw new Error(`No component was named, so ${failureClause}.`);
         }
 
-        const membersByType = new Map<MetadataDeployType, Set<string>>();
+        const membersByType = new Map<MetadataPackageXmlType, Set<string>>();
 
         components.forEach(component => {
 
-            if ( !METADATA_DEPLOY_TYPES.includes(component.type) ) {
-                throw new Error(`"${String(component.type).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ')}" is not a type the Troubleshooting tab deploys, so ${failureClause}.`);
+            if ( !allowedTypes.includes(component.type) ) {
+                throw new Error(`"${String(component.type).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ')}" is not a type the Troubleshooting tab ${allowedTypes === METADATA_DEPLOY_TYPES ? 'deploys' : 'retrieves'}, so ${failureClause}.`);
             }
 
             if ( !this.isDeployableMember(component.type, component.member) ) {
