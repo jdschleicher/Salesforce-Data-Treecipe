@@ -21,7 +21,8 @@ import {
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE,
     RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH,
     RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX,
-    RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT
+    RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT,
+    RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
@@ -87,6 +88,12 @@ const objectNamed = (panel: Panel, treeKey: string, objectApiName: string) => pa
     .find((objectElement: any) => panel.objectNameOf(objectElement) === objectApiName);
 const selectedTabOf = (panel: Panel, treeKey: string) => panel.findAll(cardOf(panel, treeKey), 'treeTab')
     .find((tabElement: any) => tabElement.classList.contains('selected'))?.textContent;
+const objectsLineOf = (panel: Panel) => panel.findAll(panel.cockpitBodyElement, 'treePickerObjects')[0];
+const objectsLineText = (panel: Panel) => objectsLineOf(panel).children.map((element: any) => element.textContent).join('');
+const excludedObjectsOf = (panel: Panel) => panel.findAll(objectsLineOf(panel), 'treePickerObject')
+    .filter((element: any) => element.classList.contains('excluded'))
+    .map((element: any) => element.textContent);
+const ACCOUNT_TREE_LINE = 'Insert order:Account → Contact → OtherChildObject__c · 3 objects';
 const commandsPosted = (panel: Panel) => panel.postedHostMessages.map((hostMessage: any) => hostMessage.command);
 
 describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)', () => {
@@ -112,7 +119,7 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
             const controls = treecipesSectionBodyOf(panel).children[0];
 
             expect(controls.classList.contains('treecipesControls')).toBe(true);
-            expect(controls.children.map((element: any) => element.className.split(' ')[0])).toEqual(['treecipesSearch', 'treecipesSearchResults', 'treePicker']);
+            expect(controls.children.map((element: any) => element.className.split(' ')[0])).toEqual(['treecipesSearch', 'treecipesSearchResults', 'treePicker', 'treePickerObjects']);
             expect(treecipesSectionBodyOf(panel).children[1].classList.contains('treesView')).toBe(true);
 
         });
@@ -330,6 +337,165 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
             expect(RecipeCockpitService.normalizePanelPlace({ ...basePlace, selectedTreeKey: 'x'.repeat(100000) })).toEqual(basePlace);
             // A PLACE SAVED BEFORE #374 HAS NEITHER
             expect(RecipeCockpitService.normalizePanelPlace(basePlace)).toEqual(basePlace);
+
+        });
+
+    });
+
+    describe('the objects line under the dropdown (#385)', () => {
+
+        it('names the shown card\'s objects in insert order, with a count, right under the dropdown', () => {
+
+            const { panel } = drawRecipe();
+
+            expect(panel.isHidden(objectsLineOf(panel))).toBe(false);
+            expect(objectsLineText(panel)).toBe(ACCOUNT_TREE_LINE);
+            expect(excludedObjectsOf(panel)).toEqual([]);
+
+        });
+
+        it('lists an object written more than once, and each iteration, once', () => {
+
+            const { panel } = drawRecipe(recipe => {
+                recipe.trees[0].objects.push({ objectApiName: 'Account', parentLookups: [], iterationNickname: 'Account_child_NickName' });
+                recipe.trees[0].objects.push({ objectApiName: 'Contact', parentLookups: [] });
+            });
+
+            expect(objectsLineText(panel)).toBe(ACCOUNT_TREE_LINE);
+
+        });
+
+        it('follows the dropdown: a pick, Favorites only, a focus and a result click', () => {
+
+            const { panel, recipe } = drawRecipe(recipe => { recipe.trees[0].isFavorite = true; });
+
+            choose(panel, 'Relationship Tree 2');
+            expect(objectsLineText(panel)).toBe('Insert order:Lead · 1 object');
+
+            favoritesToggleOf(panel).dispatch('click');
+            expect(objectsLineText(panel)).toBe(ACCOUNT_TREE_LINE);
+            favoritesToggleOf(panel).dispatch('click');
+
+            panel.postToPanel({ command: 'focusTree', renderSequence: 1, focusTree: { treeKey: LEAD_TREE_KEY, tab: 'datasets' } });
+            expect(objectsLineText(panel)).toBe('Insert order:Lead · 1 object');
+
+            panel.typeIntoTreecipesSearch('contact');
+            resultNamed(panel, 'object', 'Contact').dispatch('click');
+            expect(objectsLineText(panel)).toBe(ACCOUNT_TREE_LINE);
+
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 2, focusTree: { treeKey: LEAD_TREE_KEY, tab: 'treecipe' } });
+            expect(objectsLineText(panel)).toBe('Insert order:Lead · 1 object');
+
+        });
+
+        it('describes the card a rebuilt document restores', () => {
+
+            const { panel, recipe } = drawRecipe();
+            choose(panel, 'Relationship Tree 2');
+
+            const reopenedPanel = runPanelScript({ savedState: panel.savedState() });
+            reopenedPanel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1 });
+
+            expect(objectsLineText(reopenedPanel)).toBe('Insert order:Lead · 1 object');
+
+        });
+
+        it('keeps describing the card on screen while the section search does not match it', () => {
+
+            const { panel } = drawRecipe();
+
+            panel.typeIntoTreecipesSearch('Company');
+            expect(objectsLineText(panel)).toBe(ACCOUNT_TREE_LINE);
+
+            panel.typeIntoTreecipesSearch('zzz-nothing');
+            expect(objectsLineText(panel)).toBe(ACCOUNT_TREE_LINE);
+
+        });
+
+        it('is hidden while no card is drawn, and comes back with the card', () => {
+
+            const { panel } = drawRecipe();
+
+            favoritesToggleOf(panel).dispatch('click');
+            expect(panel.isHidden(objectsLineOf(panel))).toBe(true);
+            expect(objectsLineOf(panel).children).toEqual([]);
+
+            favoritesToggleOf(panel).dispatch('click');
+            expect(objectsLineText(panel)).toBe(ACCOUNT_TREE_LINE);
+
+        });
+
+        it('given a run with no trees, draws no line', () => {
+
+            const panel = runPanelScript();
+            const recipe = loadRecipe();
+            recipe.trees = [];
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1 });
+
+            expect(objectsLineOf(panel)).toBeUndefined();
+
+        });
+
+        it('lists the ungrouped card\'s objects in the order the host gave them', () => {
+
+            const { panel } = drawRecipe(recipe => {
+                recipe.trees[2].objects.push({ objectApiName: 'Zeta__c', parentLookups: [] }, { objectApiName: 'Alpha__c', parentLookups: [] });
+            });
+            choose(panel, RECIPE_COCKPIT_UNGROUPED_TREE_TITLE);
+
+            expect(objectsLineText(panel)).toBe('Insert order:Zeta__c → Alpha__c · 2 objects');
+
+        });
+
+        it('given a card with no objects, says so', () => {
+
+            const { panel } = drawRecipe();
+            choose(panel, RECIPE_COCKPIT_UNGROUPED_TREE_TITLE);
+
+            expect(objectsLineText(panel)).toBe('Insert order:' + RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS);
+
+        });
+
+        it('marks an excluded and an auto-excluded object in text, and redraws in place when the selection changes', () => {
+
+            const objectSelection = {
+                exclusions: [
+                    { objectApiName: 'Contact', kind: 'excluded' },
+                    { objectApiName: 'OtherChildObject__c', kind: 'autoExcluded', excludedParentObjectApiName: 'Contact' }
+                ],
+                disabledLookups: [] as any[],
+                includedObjectCount: 1,
+                objectCount: 3
+            };
+            const { panel } = drawRecipe(recipe => { recipe.trees[0].objectSelection = objectSelection as any; });
+            const lineElement = objectsLineOf(panel);
+
+            expect(objectsLineText(panel)).toBe('Insert order:Account → Contact (excluded) → OtherChildObject__c (auto-excluded) · 3 objects');
+            expect(excludedObjectsOf(panel)).toEqual(['Contact (excluded)', 'OtherChildObject__c (auto-excluded)']);
+
+            panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 1 });
+
+            expect(objectsLineOf(panel)).toBe(lineElement);
+            expect(objectsLineText(panel)).toBe(ACCOUNT_TREE_LINE);
+
+            // AN UPDATE TO A CARD NOT ON SCREEN LEAVES THE LINE ALONE
+            panel.postToPanel({ command: 'objectSelection', treeKey: LEAD_TREE_KEY, renderSequence: 1, objectSelection: { ...objectSelection, exclusions: [{ objectApiName: 'Lead', kind: 'excluded' }] } });
+            expect(objectsLineText(panel)).toBe(ACCOUNT_TREE_LINE);
+            choose(panel, 'Relationship Tree 2');
+            expect(objectsLineText(panel)).toBe('Insert order:Lead (excluded) · 1 object');
+
+        });
+
+        it('writes every name with textContent, and lists an object named __proto__', () => {
+
+            const { panel } = drawRecipe(recipe => {
+                recipe.trees[1].objects.push({ objectApiName: '__proto__', parentLookups: [] } as any);
+                recipe.trees[1].objects.push({ objectApiName: '<img src=x>', parentLookups: [] } as any);
+            });
+            choose(panel, 'Relationship Tree 2');
+
+            expect(objectsLineText(panel)).toBe('Insert order:Lead → __proto__ → <img src=x> · 3 objects');
+            expect(panel.findAll(objectsLineOf(panel), 'treePickerObject').every((element: any) => element.children.length === 0)).toBe(true);
 
         });
 
