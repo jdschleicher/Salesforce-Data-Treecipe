@@ -1460,6 +1460,20 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
         });
 
+        it('opens the editor of a field with no picklist at the end of its row (#398)', () => {
+
+            const panel = drawRecipe();
+            panel.postToPanel({ command: 'rendered' });
+            const account = expanded(panel, 'Account');
+            const row = rowOf(panel, account, 'Legacy_Code__c');
+
+            pinOf(panel, account, 'Legacy_Code__c').dispatch('click');
+
+            expect(panel.findAll(row, 'picklistSection')).toEqual([]);
+            expect(row.children[row.children.length - 1].classList.contains('fieldEditor')).toBe(true);
+
+        });
+
         it('opens an inline editor under the row on a click, posts nothing until Save, and closes it on a second click or Cancel (#337)', () => {
 
             const panel = drawRecipe();

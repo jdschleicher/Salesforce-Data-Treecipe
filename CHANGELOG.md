@@ -9,6 +9,7 @@ Closes [#398](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/39
 - **Header.** A field row's header is the checkbox, the edit button and the field name, in that order, for every field. The `picklistToggleSpacer` and its CSS are gone.
 - **Show values.** A picklist's button sits in its own `picklistSection` after the faker value (and after a fixed value, when one is shown). The values open inside that section, under the button.
 - **Inline editor.** The field editor (#337) opens under the faker value and above a picklist's Show values, rather than at the end of the row.
+- **Tab order.** On a picklist row, Show values is now reached after the field's other controls rather than before its name, following its new place on screen.
 - **Unchanged.** The labels, `aria-expanded`, the `aria-label` (`Show values of <field>`), loading values on first expand, the saved `isPicklistExpanded` place and the `secondary` button kind.
 - **Guide.** The screenshots in `docs/RECIPE-COCKPIT-GUIDE.md` were re-taken.
 - **Tests.** `RecipeCockpitService.test.ts` checks every header is checkbox, edit button, name with no spacer, and that a picklist's section follows its expression with the values under the button; `RecipeCockpitPlaceRestore.test.ts` checks a restored open picklist draws the same way; `RecipeCockpitFixedValues.test.ts` checks the editor opens above Show values.
