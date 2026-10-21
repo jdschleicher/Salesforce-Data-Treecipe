@@ -58,7 +58,7 @@ import {
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL,
     RECIPE_COCKPIT_TREE_TABS,
     RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS,
-    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL
+    RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL
 } from '../RecipeCockpitService';
 import { RecipeCockpitMetadataDeploy } from '../RecipeCockpitMetadataDeploy';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -176,7 +176,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
                 panelState => { panelState.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: ACCOUNT_TREE_KEY }; },
                 panelState => { panelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true }; },
                 panelState => { panelState.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY }; },
-                panelState => { panelState.validationRuleRetrieveStateMessage = { command: 'validationRuleRetrieveState', isRunning: true, treeKey: ACCOUNT_TREE_KEY }; }
+                panelState => { panelState.metadataRetrieveStateMessage = { command: 'metadataRetrieveState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, retrieveKind: 'validationRules' }; }
             ];
 
             busyStates.forEach(makeBusy => {
@@ -200,7 +200,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
                 .toEqual({ kind: 'refuseMetadataDeploy', hostMessage: panelState.metadataDeployStateMessage });
             expect(RecipeCockpitService.routePanelMessage({ command: 'insertTree', treeKey: ACCOUNT_TREE_KEY }, panelState)?.kind).not.toBe('insertTree');
             expect(RecipeCockpitService.routePanelMessage({ command: 'assignTreePermissionSets', treeKey: ACCOUNT_TREE_KEY }, panelState)).toMatchObject({ kind: 'refusePermissionSetAssign', refusalText: expect.stringContaining('metadata deploy') });
-            expect(RecipeCockpitService.routePanelMessage({ command: 'retrieveTreeValidationRules', treeKey: ACCOUNT_TREE_KEY }, panelState)).toMatchObject({ kind: 'refuseValidationRuleRetrieve', refusalText: RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL });
+            expect(RecipeCockpitService.routePanelMessage({ command: 'retrieveTreeValidationRules', treeKey: ACCOUNT_TREE_KEY }, panelState)).toMatchObject({ kind: 'refuseMetadataRetrieve', refusalText: RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL });
             expect(RecipeCockpitService.routePanelMessage({ command: 'createScratchOrg' }, panelState)?.kind).toBe('postScratchOrgState');
             expect(RecipeCockpitService.routePanelMessage({ command: 'generateTreePermissionSet', treeKey: ACCOUNT_TREE_KEY }, panelState)).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, panelState)).toBeUndefined();
@@ -352,8 +352,8 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             (RecipeCockpitService as any).metadataDeployRunStateMessage = undefined;
             (RecipeCockpitService as any).isPermissionSetAssignInFlight = false;
             (RecipeCockpitService as any).permissionSetAssignRunStateMessage = undefined;
-            (RecipeCockpitService as any).isValidationRuleRetrieveInFlight = false;
-            (RecipeCockpitService as any).validationRuleRetrieveRunStateMessage = undefined;
+            (RecipeCockpitService as any).isMetadataRetrieveInFlight = false;
+            (RecipeCockpitService as any).metadataRetrieveRunStateMessage = undefined;
             (RecipeCockpitService as any).isScratchOrgSetupInFlight = false;
             (RecipeCockpitService as any).scratchOrgRunStateMessage = undefined;
 
@@ -1089,7 +1089,11 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
                 assignPermissionSets: 'treePermissionSets',
                 generatePermissionSet: 'treeGeneratePermissionSet',
                 retrieveValidationRules: 'treeRetrieveValidationRules',
-                ...Object.fromEntries(Object.entries(RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND).map(([deployKind, action]) => [action, `troubleshootingDeploy-${deployKind}`]))
+                ...Object.fromEntries(Object.entries(RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND).map(([deployKind, action]) => [action, `troubleshootingDeploy-${deployKind}`])),
+                // THE OTHER RETRIEVES (#382)
+                retrieveFields: 'troubleshootingRetrieve-fields',
+                retrieveRecordTypes: 'troubleshootingRetrieve-recordTypes',
+                retrieveGlobalValueSets: 'troubleshootingRetrieve-globalValueSets'
             };
 
             const partOf = (buttonElement: any, className: string) => findDescendantsByClass(buttonElement, className)[0];
@@ -1105,7 +1109,8 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
                 const { panel, accountCard } = openAccountTroubleshooting();
 
-                expect(Object.keys(CARD_CLASS_BY_ACTION)).toHaveLength(7);
+                expect(Object.keys(CARD_CLASS_BY_ACTION).sort()).toEqual(Object.keys(RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS).sort());
+                expect(Object.keys(CARD_CLASS_BY_ACTION)).toHaveLength(10);
                 Object.entries(CARD_CLASS_BY_ACTION).forEach(([action, className]) => {
 
                     const buttonElements = panel.findAll(accountCard, className);
@@ -1154,6 +1159,8 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
                 });
                 emojiByVerb.forEach(emojis => expect(emojis.size).toBe(1));
                 expect(emojiByVerb.get('deploy')).toEqual(new Set(['🚀']));
+                // EVERY RETRIEVE, #326'S AND #382'S, SHARES 📥
+                expect(emojiByVerb.get('retrieve')).toEqual(new Set(['📥']));
 
             });
 
@@ -1227,10 +1234,10 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
                 panel.postToPanel(summary());
 
                 panel.typeIntoTabSearch(accountCard, 'troubleshootingSubPanel-fields', 'invalid_field');
-                expect(panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-fields')[0], 'tabMatchCount')[0].textContent).toBe('1 of 1 action');
+                expect(panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-fields')[0], 'tabMatchCount')[0].textContent).toBe('1 of 2 actions');
 
                 panel.typeIntoTabSearch(accountCard, 'troubleshootingSubPanel-globalValueSets', 'restricted picklist');
-                expect(panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-globalValueSets')[0], 'tabMatchCount')[0].textContent).toBe('1 of 1 action');
+                expect(panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-globalValueSets')[0], 'tabMatchCount')[0].textContent).toBe('1 of 2 actions');
 
                 panel.typeIntoTabSearch(accountCard, 'troubleshootingSubPanel-globalValueSets', 'nothing says this');
                 expect(panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-globalValueSets')[0], 'tabMatchCount')[0].textContent).toBe('no matches');
@@ -1264,7 +1271,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             expect(panel.findAll(permissionsPanel, 'troubleshootingAction').map((actionElement: any) => panel.isHidden(actionElement))).toEqual([true, false, true]);
             expect(panel.findAll(permissionsPanel, 'tabMatchCount')[0].textContent).toBe('1 of 3 actions');
             // A SEARCH IS ITS OWN SUB-TAB'S: THE OTHERS ARE UNTOUCHED
-            expect(panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-fields')[0], 'tabMatchCount')[0].textContent).toBe('1 action');
+            expect(panel.findAll(panel.findAll(accountCard, 'troubleshootingSubPanel-fields')[0], 'tabMatchCount')[0].textContent).toBe('2 actions');
 
         });
 

@@ -30,11 +30,13 @@ import {
     RecipeCockpitMetadataDeploy
 } from './RecipeCockpitMetadataDeploy';
 import {
-    RecipeCockpitValidationRuleRetrieve,
-    VALIDATION_RULE_RETRIEVE_MAX_OBJECTS,
-    VALIDATION_RULE_RETRIEVE_TIMEOUT_MILLISECONDS,
-    ValidationRuleRetrieveOutcome
-} from './RecipeCockpitValidationRuleRetrieve';
+    METADATA_RETRIEVE_MAX_OBJECTS,
+    METADATA_RETRIEVE_OPERATION_BY_KIND,
+    METADATA_RETRIEVE_TIMEOUT_MILLISECONDS,
+    MetadataRetrieveKind,
+    MetadataRetrieveOutcome,
+    RecipeCockpitMetadataRetrieve
+} from './RecipeCockpitMetadataRetrieve';
 import {
     DevHubConfigSource,
     IDataOrgDetail,
@@ -511,7 +513,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.'
         ],
         closingParagraphs: [
-            'Three more write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project and Retrieve validation rules (under Validation Rules) writes an org\'s validation rules into your project.',
+            'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of an org you pick into your project, and change nothing in the org.',
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields, custom fields only), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against any connected org you pick in the command palette (a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.'
@@ -549,7 +551,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", on every tree, asks every time in the command palette for any connected org, production included, and retrieves that tree's validation rules from it into this project after a confirmation: it only reads from that org and deploys nothing. The Query tab, on every tree, runs a query you can edit against any connected org you pick in the command palette every time, production included: a query only reads, and what it returns is written only when you export it, under treecipe/QueryResults. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields…" (only the tree's custom fields, never a standard field, an object definition or a layout), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under treecipe/OrgOperations, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
+It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", "Retrieve fields…", "Retrieve record types…" and "Retrieve global value sets…", on every tree, ask every time in the command palette for any connected org, production included, and retrieve that tree's validation rules, custom fields, record types or the global value sets its fields name from it into this project after a confirmation: they only read from that org and deploy nothing. The Query tab, on every tree, runs a query you can edit against any connected org you pick in the command palette every time, production included: a query only reads, and what it returns is written only when you export it, under treecipe/QueryResults. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields…" (only the tree's custom fields, never a standard field, an object definition or a layout), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under treecipe/OrgOperations, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -1376,14 +1378,16 @@ export interface IRecipeCockpitPermissionSetAssignStateMessage {
 }
 
 /*
-    "Retrieve validation rules…" (#326): while isRunning, every card's retrieve button is disabled.
-    treeKey names the card whose button was clicked. It carries no text: how the retrieve went is a
-    VS Code notification. Stored and replayed.
+    The Troubleshooting tab's retrieves (#326, #382): ONE per window, whatever its kind, so while
+    isRunning every card's retrieve and deploy is disabled. treeKey and retrieveKind name the card
+    whose button was clicked, which reads "Retrieving…". It carries no text: how the retrieve went is
+    a VS Code notification. Stored and replayed.
 */
-export interface IRecipeCockpitValidationRuleRetrieveStateMessage {
-    command: 'validationRuleRetrieveState';
+export interface IRecipeCockpitMetadataRetrieveStateMessage {
+    command: 'metadataRetrieveState';
     isRunning: boolean;
     treeKey: string;
+    retrieveKind: MetadataRetrieveKind;
 }
 
 /*
@@ -1560,7 +1564,32 @@ export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER = 'Choose t
 
 export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL = 'Generate Treecipe';
 
-export const RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL = 'No validation rules were retrieved: an insert, a permission set assignment or a metadata deploy is running. Try again once it has finished.';
+export const RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL = 'Nothing was retrieved: an insert, a permission set assignment or a metadata deploy is running. Try again once it has finished.';
+
+/*
+    The Troubleshooting tab's other retrieves (#382): each section's own 📥 card, posting its tree's
+    KEY and nothing else. Every one asks for the org in the command palette, as #326's does.
+*/
+export const RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS: Readonly<Record<MetadataRetrieveKind, string>> = Object.freeze({
+    validationRules: RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL,
+    fields: 'Retrieve fields…',
+    recordTypes: 'Retrieve record types…',
+    globalValueSets: 'Retrieve global value sets…'
+});
+
+export const RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND: Readonly<Record<MetadataRetrieveKind, string>> = Object.freeze({
+    validationRules: 'retrieveTreeValidationRules',
+    fields: 'retrieveTreeFields',
+    recordTypes: 'retrieveTreeRecordTypes',
+    globalValueSets: 'retrieveTreeGlobalValueSets'
+});
+
+export const RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS: Readonly<Record<MetadataRetrieveKind, string>> = Object.freeze({
+    validationRules: RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER,
+    fields: 'Choose the org to retrieve this tree\'s custom fields from',
+    recordTypes: 'Choose the org to retrieve this tree\'s record types from',
+    globalValueSets: 'Choose the org to retrieve the global value sets this tree\'s fields name from'
+});
 
 /*
     The Troubleshooting tab's deploys (#346): each section's own button, its confirmation, and what a
@@ -1590,7 +1619,7 @@ export const RECIPE_COCKPIT_ACTION_VERB_EMOJI: Readonly<Record<RecipeCockpitActi
     generate: '🛠️'
 });
 
-export type RecipeCockpitTroubleshootingAction = 'assignPermissionSets' | 'generatePermissionSet' | 'deployPermissionSet' | 'deployFields' | 'retrieveValidationRules' | 'deployRecordTypes' | 'deployGlobalValueSets';
+export type RecipeCockpitTroubleshootingAction = 'assignPermissionSets' | 'generatePermissionSet' | 'deployPermissionSet' | 'deployFields' | 'retrieveFields' | 'retrieveValidationRules' | 'deployRecordTypes' | 'retrieveRecordTypes' | 'deployGlobalValueSets' | 'retrieveGlobalValueSets';
 export interface IRecipeCockpitActionCard {
     verb: RecipeCockpitActionVerb;
     why: string;
@@ -1600,10 +1629,20 @@ export const RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS: Readonly<Record<Recipe
     generatePermissionSet: { verb: 'generate', why: 'No permission set grants these objects? Write a create/read one into the project. Deploys nothing.' },
     deployPermissionSet: { verb: 'deploy', why: 'Push the tree\'s permission sets to the sandbox or scratch org before assigning them.' },
     deployFields: { verb: 'deploy', why: 'Insert failed with INVALID_FIELD? The org is missing custom fields this tree writes.' },
+    retrieveFields: { verb: 'retrieve', why: 'Project behind the org? Pull this tree\'s custom fields so Generate Treecipe writes what the org holds.' },
     retrieveValidationRules: { verb: 'retrieve', why: 'Pull the org\'s validation rules so Generate Treecipe can respect them.' },
+    retrieveRecordTypes: { verb: 'retrieve', why: 'Pull the org\'s record types for these objects so Generate Treecipe can choose among them.' },
+    retrieveGlobalValueSets: { verb: 'retrieve', why: 'Pull the value sets these fields name so picklists generate the org\'s values.' },
     deployRecordTypes: { verb: 'deploy', why: 'Insert failed on RecordTypeId? The org is missing record types this recipe sets.' },
     deployGlobalValueSets: { verb: 'deploy', why: 'Restricted picklist rejected a value? The org is missing value sets these fields use.' }
 });
+export const RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND: Readonly<Record<MetadataRetrieveKind, RecipeCockpitTroubleshootingAction>> = Object.freeze({
+    validationRules: 'retrieveValidationRules',
+    fields: 'retrieveFields',
+    recordTypes: 'retrieveRecordTypes',
+    globalValueSets: 'retrieveGlobalValueSets'
+});
+
 export const RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND: Readonly<Record<MetadataDeployKind, RecipeCockpitTroubleshootingAction>> = Object.freeze({
     permissionSet: 'deployPermissionSet',
     fields: 'deployFields',
@@ -1739,7 +1778,7 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitFieldEditResultMessage
                                         | IRecipeCockpitScratchOrgStateMessage
                                         | IRecipeCockpitPermissionSetAssignStateMessage
-                                        | IRecipeCockpitValidationRuleRetrieveStateMessage
+                                        | IRecipeCockpitMetadataRetrieveStateMessage
                                         | IRecipeCockpitMetadataDeployStateMessage
                                         | IRecipeCockpitTroubleshootingSummaryMessage
                                         | IRecipeCockpitTreeQueriesMessage
@@ -1928,7 +1967,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'postScratchOrgState'; hostMessage: IRecipeCockpitScratchOrgStateMessage }
     | { kind: 'assignTreePermissionSets'; treeKey: string; isSelectedOrg: boolean }
     | { kind: 'generateTreePermissionSet'; treeKey: string }
-    | { kind: 'retrieveTreeValidationRules'; treeKey: string }
+    | { kind: 'retrieveTreeMetadata'; treeKey: string; retrieveKind: MetadataRetrieveKind }
     | { kind: 'deployTreeMetadataComponents'; treeKey: string; deployKind: MetadataDeployKind; isSelectedOrg: boolean }
     // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refuseMetadataDeploy'; refusalText?: string; hostMessage: IRecipeCockpitMetadataDeployStateMessage }
@@ -1940,7 +1979,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'postTreeQueryState'; hostMessage: IRecipeCockpitTreeQueryStateMessage }
     | { kind: 'exportTreeQueryResult'; treeKey: string; queryKey: string; exportFormat: RecipeCockpitQueryExportFormat }
     // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
-    | { kind: 'refuseValidationRuleRetrieve'; refusalText?: string; hostMessage: IRecipeCockpitValidationRuleRetrieveStateMessage }
+    | { kind: 'refuseMetadataRetrieve'; refusalText?: string; hostMessage: IRecipeCockpitMetadataRetrieveStateMessage }
     // A REFUSAL IS A WARNING NOTIFICATION, AND THE STATE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refusePermissionSetAssign'; refusalText?: string; hostMessage: IRecipeCockpitPermissionSetAssignStateMessage }
     | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
@@ -2014,8 +2053,8 @@ export interface IRecipeCockpitPanelState {
     pendingAssignableTreeKeys: Set<string>;
     assignableTreeKeys: Set<string>;
     permissionSetAssignStateMessage?: IRecipeCockpitPermissionSetAssignStateMessage;
-    // "Retrieve validation rules…" (#326): ONE PER WINDOW, STORED AND REPLAYED LIKE THE ASSIGNMENT'S
-    validationRuleRetrieveStateMessage?: IRecipeCockpitValidationRuleRetrieveStateMessage;
+    // THE TROUBLESHOOTING TAB'S RETRIEVES (#326, #382): ONE PER WINDOW, STORED AND REPLAYED LIKE THE ASSIGNMENT'S
+    metadataRetrieveStateMessage?: IRecipeCockpitMetadataRetrieveStateMessage;
     // THE TROUBLESHOOTING TAB'S DEPLOYS (#346): ONE PER WINDOW, STORED AND REPLAYED LIKE THE ASSIGNMENT'S
     metadataDeployStateMessage?: IRecipeCockpitMetadataDeployStateMessage;
     // THE QUERY TAB'S RUN (#367): ONE PER WINDOW, STORED AND REPLAYED LIKE THE RETRIEVE'S
@@ -4493,7 +4532,7 @@ export class RecipeCockpitService {
 
         this.adoptScratchOrgRunState(this.recipeCockpitPanelState);
         this.adoptPermissionSetAssignRunState(this.recipeCockpitPanelState);
-        this.adoptValidationRuleRetrieveRunState(this.recipeCockpitPanelState);
+        this.adoptMetadataRetrieveRunState(this.recipeCockpitPanelState);
         this.adoptMetadataDeployRunState(this.recipeCockpitPanelState);
         this.adoptTreeQueryRunState(this.recipeCockpitPanelState);
         this.recipeCockpitPanelState.isOrgOpenInFlight = this.isOrgOpenInFlightForWindow;
@@ -4505,8 +4544,8 @@ export class RecipeCockpitService {
             this.recipeCockpitPanelState.scratchOrgStateMessage = previousPanelState.scratchOrgStateMessage;
             // SO DOES A PERMISSION SET ASSIGNMENT'S (#274)
             this.recipeCockpitPanelState.permissionSetAssignStateMessage = previousPanelState.permissionSetAssignStateMessage;
-            // AND A VALIDATION RULE RETRIEVE'S (#326)
-            this.recipeCockpitPanelState.validationRuleRetrieveStateMessage = previousPanelState.validationRuleRetrieveStateMessage;
+            // AND A RETRIEVE'S (#326, #382)
+            this.recipeCockpitPanelState.metadataRetrieveStateMessage = previousPanelState.metadataRetrieveStateMessage;
             // AND A METADATA DEPLOY'S (#346)
             this.recipeCockpitPanelState.metadataDeployStateMessage = previousPanelState.metadataDeployStateMessage;
             // AND A QUERY RUN'S (#367)
@@ -5215,12 +5254,12 @@ export class RecipeCockpitService {
                 await this.generateTreePermissionSetFromPanel(cockpitPanel, panelAction.treeKey);
                 return;
 
-            case 'retrieveTreeValidationRules':
+            case 'retrieveTreeMetadata':
 
-                await this.retrieveTreeValidationRulesFromPanel(cockpitPanel, panelAction.treeKey);
+                await this.retrieveTreeMetadataFromPanel(cockpitPanel, panelAction.treeKey, panelAction.retrieveKind);
                 return;
 
-            case 'refuseValidationRuleRetrieve':
+            case 'refuseMetadataRetrieve':
 
                 if ( panelAction.refusalText ) {
                     VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(panelAction.refusalText));
@@ -7509,7 +7548,7 @@ export class RecipeCockpitService {
         if ( this.isScratchOrgSetupInFlight
                 || currentPanelState.insertStateMessage
                 || currentPanelState.permissionSetAssignStateMessage?.isRunning
-                || this.isValidationRuleRetrieveInFlight ) {
+                || this.isMetadataRetrieveInFlight ) {
             return refuse(RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL);
         }
 
@@ -7649,15 +7688,15 @@ export class RecipeCockpitService {
 
     }
 
-    private static isValidationRuleRetrieveInFlight = false;
+    private static isMetadataRetrieveInFlight = false;
 
-    private static validationRuleRetrieveRunStateMessage: IRecipeCockpitValidationRuleRetrieveStateMessage | undefined;
+    private static metadataRetrieveRunStateMessage: IRecipeCockpitMetadataRetrieveStateMessage | undefined;
 
     // KEPT FOR THE WINDOW WHILE RUNNING, STORED ON WHICHEVER PANEL STATE IS CURRENT, AND POSTED TO WHICHEVER PANEL IS OPEN
-    private static setValidationRuleRetrieveState(retrieveStateMessage: IRecipeCockpitValidationRuleRetrieveStateMessage) {
+    private static setMetadataRetrieveState(retrieveStateMessage: IRecipeCockpitMetadataRetrieveStateMessage) {
 
-        this.validationRuleRetrieveRunStateMessage = retrieveStateMessage.isRunning ? retrieveStateMessage : undefined;
-        this.recipeCockpitPanelState.validationRuleRetrieveStateMessage = retrieveStateMessage;
+        this.metadataRetrieveRunStateMessage = retrieveStateMessage.isRunning ? retrieveStateMessage : undefined;
+        this.recipeCockpitPanelState.metadataRetrieveStateMessage = retrieveStateMessage;
 
         if ( this.recipeCockpitPanel ) {
             this.postToPanel(this.recipeCockpitPanel, retrieveStateMessage);
@@ -7665,60 +7704,74 @@ export class RecipeCockpitService {
 
     }
 
-    private static adoptValidationRuleRetrieveRunState(panelState: IRecipeCockpitPanelState) {
+    private static adoptMetadataRetrieveRunState(panelState: IRecipeCockpitPanelState) {
 
-        if ( this.isValidationRuleRetrieveInFlight && this.validationRuleRetrieveRunStateMessage ) {
-            panelState.validationRuleRetrieveStateMessage = this.validationRuleRetrieveRunStateMessage;
+        if ( this.isMetadataRetrieveInFlight && this.metadataRetrieveRunStateMessage ) {
+            panelState.metadataRetrieveStateMessage = this.metadataRetrieveRunStateMessage;
         }
 
     }
 
     /*
-        "Retrieve validation rules…" (#326), for one tree of the model on screen: the org is ALWAYS
-        asked for in the command palette, over every connected org (a retrieve only reads), even when
-        the Treecipe tab has one selected; then a modal names the objects, the org, where new files go
-        and how many local rule files the org's version overwrites; then one
+        The Troubleshooting tab's retrieves (#326, #382), for one tree of the model on screen: the org
+        is ALWAYS asked for in the command palette, over every connected org (a retrieve only reads),
+        even when the Treecipe tab has one selected; then a confirmation names what is retrieved, the
+        org, where new files go and how many local files the org's version overwrites; then one
         "sf project retrieve start" runs in project mode, cancellable. Nothing is deployed, and the
-        recipe is not regenerated: the notification offers Generate Treecipe, which applies the rules
-        (#324). One retrieve per window.
+        recipe is not regenerated: the notification offers Generate Treecipe. One retrieve per window,
+        whatever its kind.
     */
-    private static async retrieveTreeValidationRulesFromPanel(cockpitPanel: vscode.WebviewPanel, treeKey: string) {
+    private static async retrieveTreeMetadataFromPanel(cockpitPanel: vscode.WebviewPanel, treeKey: string, retrieveKind: MetadataRetrieveKind) {
 
         const panelState = this.recipeCockpitPanelState;
-        const tree = panelState.recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+        const recipeViewModel = panelState.recipeDataMessage?.recipe;
+        const tree = recipeViewModel?.trees.find(recipeTree => recipeTree.treeKey === treeKey);
 
-        if ( this.isValidationRuleRetrieveInFlight || !tree ) {
-            this.postToPanel(cockpitPanel, this.validationRuleRetrieveRunStateMessage
-                ?? { command: 'validationRuleRetrieveState', isRunning: false, treeKey: treeKey });
+        if ( this.isMetadataRetrieveInFlight || !recipeViewModel || !tree ) {
+            this.postToPanel(cockpitPanel, this.metadataRetrieveRunStateMessage
+                ?? { command: 'metadataRetrieveState', isRunning: false, treeKey: treeKey, retrieveKind: retrieveKind });
             return;
         }
 
-        this.isValidationRuleRetrieveInFlight = true;
-        this.setValidationRuleRetrieveState({ command: 'validationRuleRetrieveState', isRunning: true, treeKey: treeKey });
+        this.isMetadataRetrieveInFlight = true;
+        this.setMetadataRetrieveState({ command: 'metadataRetrieveState', isRunning: true, treeKey: treeKey, retrieveKind: retrieveKind });
 
+        // ONLY A CLI THAT RAN CAN HAVE WRITTEN FILES, AND ONLY A VALIDATION RULE RETRIEVE WRITES WHAT THE RULE LISTS READ
+        let isCliStarted = false;
         try {
-            await this.performValidationRuleRetrieve(panelState.workspaceRoot, tree.customName || tree.title, tree.objects.map(treeObject => treeObject.objectApiName));
+            isCliStarted = await this.performMetadataRetrieve(panelState.workspaceRoot, recipeViewModel, tree, retrieveKind);
         } finally {
-            this.isValidationRuleRetrieveInFlight = false;
-            this.setValidationRuleRetrieveState({ command: 'validationRuleRetrieveState', isRunning: false, treeKey: treeKey });
-            await this.refreshTroubleshootingSummary(treeKey);
-            await this.refreshTreeValidationRules(treeKey);
+            this.isMetadataRetrieveInFlight = false;
+            this.setMetadataRetrieveState({ command: 'metadataRetrieveState', isRunning: false, treeKey: treeKey, retrieveKind: retrieveKind });
+            if ( isCliStarted ) {
+                await this.refreshTroubleshootingSummary(treeKey);
+                if ( retrieveKind === 'validationRules' ) {
+                    await this.refreshTreeValidationRules(treeKey);
+                }
+            }
         }
 
     }
 
-    private static async performValidationRuleRetrieve(workspaceRoot: string, treeLabel: string, treeObjectApiNames: string[]) {
+    private static async performMetadataRetrieve(workspaceRoot: string,
+                                                    recipeViewModel: IRecipeCockpitRecipeViewModel,
+                                                    tree: IRecipeCockpitTreeViewModel,
+                                                    retrieveKind: MetadataRetrieveKind): Promise<boolean> {
 
-        const refuse = (refusalText: string) => this.showValidationRuleRetrieveNotification('warning', refusalText, undefined, workspaceRoot, false);
+        const treeLabel = tree.customName || tree.title;
+        const manyNoun = RecipeCockpitMetadataRetrieve.componentNoun(retrieveKind, 2);
+        const isWildcard = RecipeCockpitMetadataRetrieve.isWildcardKind(retrieveKind);
+        const refuse = (refusalText: string): false => { this.showMetadataRetrieveNotification('warning', refusalText, undefined, workspaceRoot, false); return false; };
 
-        const { retrievable: objectApiNames, refused: refusedObjectApiNames } = RecipeCockpitValidationRuleRetrieve.partitionObjectApiNames(treeObjectApiNames);
+        // A WILDCARD RETRIEVE ASKS PER OBJECT: EVERY OBJECT THE CARD LISTS, ONCE, AS AN API NAME
+        const { retrievable: objectApiNames, refused: refusedObjectApiNames } = RecipeCockpitMetadataRetrieve.partitionObjectApiNames(tree.objects.map(treeObject => treeObject.objectApiName));
 
-        if ( objectApiNames.length === 0 ) {
-            return refuse(`No validation rules were retrieved: no object of ${treeLabel} has an api name.`);
+        if ( isWildcard && objectApiNames.length === 0 ) {
+            return refuse(`No ${manyNoun} were retrieved: no object of ${treeLabel} has an api name.`);
         }
 
-        if ( objectApiNames.length > VALIDATION_RULE_RETRIEVE_MAX_OBJECTS ) {
-            return refuse(`No validation rules were retrieved: ${treeLabel} has ${objectApiNames.length} objects, and at most ${VALIDATION_RULE_RETRIEVE_MAX_OBJECTS} can be retrieved at once.`);
+        if ( isWildcard && objectApiNames.length > METADATA_RETRIEVE_MAX_OBJECTS ) {
+            return refuse(`No ${manyNoun} were retrieved: ${treeLabel} has ${objectApiNames.length} objects, and at most ${METADATA_RETRIEVE_MAX_OBJECTS} can be retrieved at once.`);
         }
 
         let packageDirectoryPaths: string[];
@@ -7727,105 +7780,171 @@ export class RecipeCockpitService {
             packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
             defaultPackageDirectoryPath = RecipeCockpitPermissionSetGenerate.resolveDefaultPackageDirectoryPath(workspaceRoot);
         } catch (projectError) {
-            return refuse(`No validation rules were retrieved: ${this.describeThrown(projectError)}`);
+            return refuse(`No ${manyNoun} were retrieved: ${this.describeThrown(projectError)}`);
         }
+
+        // WHAT A FIELD OR VALUE SET RETRIEVE NAMES, AND WHAT EVERY KIND BUT VALIDATION RULES COUNTS AS ALREADY HERE, IS READ FROM THE PROJECT NOW
+        let manifestComponents: IMetadataDeployComponent[] = [];
+        let summary: IMetadataDeploySummary | undefined;
+
+        if ( retrieveKind === 'recordTypes' ) {
+            summary = await RecipeCockpitMetadataDeploy.summarizeTreeMetadata(workspaceRoot, packageDirectoryPaths, objectApiNames.map(objectApiName => ({ objectApiName: objectApiName, fieldApiNames: [] })));
+        } else if ( retrieveKind === 'fields' ) {
+            manifestComponents = RecipeCockpitMetadataRetrieve.listCustomFieldComponents(this.listTreeDeployObjects(recipeViewModel, tree));
+        } else if ( retrieveKind === 'globalValueSets' ) {
+            summary = await RecipeCockpitMetadataDeploy.summarizeTreeMetadata(workspaceRoot, packageDirectoryPaths, this.listTreeDeployObjects(recipeViewModel, tree));
+            manifestComponents = RecipeCockpitMetadataRetrieve.listManifestComponents(retrieveKind, summary);
+        }
+
+        if ( retrieveKind === 'fields' || retrieveKind === 'globalValueSets' ) {
+            if ( manifestComponents.length === 0 ) {
+                return refuse(retrieveKind === 'fields'
+                    ? `${treeLabel} has no custom field to retrieve, so nothing was retrieved.`
+                    : `No field of ${treeLabel} names a global value set, so nothing was retrieved.`);
+            }
+        }
+
+        const askedNames = isWildcard ? objectApiNames : manifestComponents.map(component => component.member);
 
         let orgDetail: IAuthenticatedOrgDetail | undefined;
         try {
-            orgDetail = await SalesforceOrgService.promptForAuthorizedOrg(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER);
+            orgDetail = await SalesforceOrgService.promptForAuthorizedOrg(RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS[retrieveKind]);
         } catch (listError) {
-            return refuse(`No validation rules were retrieved: ${this.describeThrown(listError)}`);
+            return refuse(`No ${manyNoun} were retrieved: ${this.describeThrown(listError)}`);
         }
 
         if ( !orgDetail ) {
-            return;
+            return false;
         }
 
         // NO PARENTHESES: A NOTIFICATION ESCAPES THEM, AND THIS LABEL IS IN EVERY ONE THIS RUN SHOWS
         const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
         const packageDirectoryRelativePath = path.relative(workspaceRoot, defaultPackageDirectoryPath).split(path.sep).join('/') || '.';
-        const localRuleFileCount = RecipeCockpitValidationRuleRetrieve.countLocalValidationRuleFiles(workspaceRoot, packageDirectoryPaths, objectApiNames);
+        const localFileCount = retrieveKind === 'validationRules' ? RecipeCockpitMetadataRetrieve.countLocalValidationRuleFiles(workspaceRoot, packageDirectoryPaths, objectApiNames)
+            : retrieveKind === 'fields' ? RecipeCockpitMetadataRetrieve.countLocalFieldFiles(workspaceRoot, packageDirectoryPaths, askedNames)
+            : retrieveKind === 'recordTypes' ? summary?.recordTypes.length ?? 0
+            : summary?.globalValueSets.length ?? 0;
+        const confirmationTitle = isWildcard
+            ? `Retrieve the ${manyNoun} of ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} of ${this.toSingleLine(treeLabel)} from ${this.toSingleLine(orgLabel)}?`
+            : `Retrieve ${RecipeCockpitMetadataRetrieve.describeComponents(retrieveKind, askedNames.length)} of ${this.toSingleLine(treeLabel)} from ${this.toSingleLine(orgLabel)}?`;
 
         const confirmation = await this.confirmInPanel(
-            `Retrieve the validation rules of ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} of ${this.toSingleLine(treeLabel)} from ${this.toSingleLine(orgLabel)}?`,
+            confirmationTitle,
             {
-                detail: RecipeCockpitValidationRuleRetrieve.buildConfirmationDetail(treeLabel, orgLabel, objectApiNames, packageDirectoryRelativePath, localRuleFileCount),
+                detail: RecipeCockpitMetadataRetrieve.buildConfirmationDetail(retrieveKind, treeLabel, orgLabel, askedNames, packageDirectoryRelativePath, localFileCount),
                 isDestructive: true
             },
             RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL
         );
 
         if ( confirmation !== RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL ) {
-            return;
+            return false;
         }
 
         // THE ROUTER CHECKED THESE AT THE CLICK; ONE CAN HAVE STARTED WHILE THE PROMPT OR THE MODAL WAS OPEN
         const currentPanelState = this.recipeCockpitPanelState;
         if ( currentPanelState.insertStateMessage || currentPanelState.permissionSetAssignStateMessage?.isRunning || this.isMetadataDeployInFlight ) {
-            return refuse(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL);
+            return refuse(RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL);
         }
 
         let retrieveArguments: string[];
         try {
-            retrieveArguments = RecipeCockpitValidationRuleRetrieve.buildValidationRuleRetrieveArguments(objectApiNames, orgDetail.username);
+            if ( isWildcard ) {
+                retrieveArguments = RecipeCockpitMetadataRetrieve.buildWildcardRetrieveArguments(retrieveKind, objectApiNames, orgDetail.username);
+            } else {
+                const packageXml = RecipeCockpitMetadataDeploy.buildPackageXml(manifestComponents, this.readSourceApiVersion(workspaceRoot), 'nothing was retrieved');
+                const packageXmlFilePath = RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(workspaceRoot, orgDetail.username, METADATA_RETRIEVE_OPERATION_BY_KIND[retrieveKind], new Date());
+                const writtenFilePath = packageXmlFilePath ? RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, packageXmlFilePath, packageXml) : undefined;
+                if ( !writtenFilePath ) {
+                    return refuse(`No ${manyNoun} were retrieved: the package.xml could not be written under treecipe/${ORG_OPERATIONS_FOLDER_NAME} in this workspace.`);
+                }
+                retrieveArguments = RecipeCockpitMetadataRetrieve.buildManifestRetrieveArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, writtenFilePath), orgDetail.username);
+            }
         } catch (argumentError) {
-            return refuse(`No validation rules were retrieved: ${this.describeThrown(argumentError)}`);
+            return refuse(`No ${manyNoun} were retrieved: ${this.describeThrown(argumentError)}`);
         }
 
         const retrieveRun = await this.runCancellableCli(
-            RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: retrieving validation rules from ${orgDetail.username}`),
+            RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: retrieving ${manyNoun} from ${orgDetail.username}`),
             retrieveArguments,
-            VALIDATION_RULE_RETRIEVE_TIMEOUT_MILLISECONDS,
-            workspaceRoot
+            METADATA_RETRIEVE_TIMEOUT_MILLISECONDS,
+            workspaceRoot,
+            SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES
         );
 
         // A CANCEL CAN COME AFTER THE CLI WROTE FILES, SO GENERATE TREECIPE IS OFFERED AS AFTER A TIMEOUT
         if ( retrieveRun.isCancelled ) {
-            return this.showValidationRuleRetrieveNotification('warning', `The retrieve of validation rules from ${orgLabel} was cancelled, so which rule files were written is unknown.`, undefined, workspaceRoot, true);
+            this.showMetadataRetrieveNotification('warning', `The retrieve of ${manyNoun} from ${orgLabel} was cancelled, so which files were written is unknown.`, undefined, workspaceRoot, true);
+            return true;
         }
 
         const retrievePayload = ScratchOrgService.readCliJsonPayload(retrieveRun.invocation);
-        const retrieveOutcome: ValidationRuleRetrieveOutcome = RecipeCockpitValidationRuleRetrieve.parseValidationRuleRetrieveOutput(retrieveRun.invocation, objectApiNames, retrievePayload);
+        const retrieveOutcome: MetadataRetrieveOutcome = RecipeCockpitMetadataRetrieve.parseRetrieveOutput(retrieveKind, retrieveRun.invocation, askedNames, retrievePayload);
         const retrieveOutputFilePath = retrieveRun.invocation.spawnError || retrieveRun.invocation.isOutputTooLarge
             ? undefined
-            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, 'validation-rule-retrieve', retrieveRun.invocation, new Date(), retrievePayload);
-        const refusedText = refusedObjectApiNames.length > 0
+            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, METADATA_RETRIEVE_OPERATION_BY_KIND[retrieveKind], retrieveRun.invocation, new Date(), retrievePayload);
+        const refusedText = isWildcard && refusedObjectApiNames.length > 0
             ? ` Skipped ${refusedObjectApiNames.length} ${refusedObjectApiNames.length === 1 ? 'name that is' : 'names that are'} not an api name.`
             : '';
 
         switch ( retrieveOutcome.kind ) {
 
             case 'retrieved': {
-                const { ruleCount, objectApiNamesWithRules, failureMessages } = retrieveOutcome;
-                const retrievedText = ruleCount === 0
-                    ? `${orgLabel} holds no validation rule for the ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} of ${treeLabel}, so nothing was written.`
-                    : `Retrieved ${ruleCount} validation ${ruleCount === 1 ? 'rule' : 'rules'} for ${objectApiNamesWithRules.length} of ${objectApiNames.length} ${objectApiNames.length === 1 ? 'object' : 'objects'} of ${treeLabel} from ${orgLabel}: ${objectApiNamesWithRules.join(', ')}. Generate Treecipe applies them to the recipe.`;
+                const { componentCount, namesWithComponents, failureMessages } = retrieveOutcome;
+                const retrievedText = this.describeRetrieved(retrieveKind, componentCount, namesWithComponents, askedNames, treeLabel, orgLabel);
                 if ( failureMessages.length > 0 ) {
-                    return this.showValidationRuleRetrieveNotification('warning', `${retrievedText} ${failureMessages.length} could not be retrieved: ${failureMessages.join('; ')}.${refusedText}`, retrieveOutputFilePath, workspaceRoot, ruleCount > 0);
+                    this.showMetadataRetrieveNotification('warning', `${retrievedText} ${failureMessages.length} could not be retrieved: ${RecipeCockpitMetadataDeploy.describeCappedList(failureMessages)}.${refusedText}`, retrieveOutputFilePath, workspaceRoot, componentCount > 0);
+                    return true;
                 }
-                return this.showValidationRuleRetrieveNotification(refusedText ? 'warning' : 'information', `${retrievedText}${refusedText}`, refusedText ? retrieveOutputFilePath : undefined, workspaceRoot, ruleCount > 0);
+                this.showMetadataRetrieveNotification(refusedText ? 'warning' : 'information', `${retrievedText}${refusedText}`, refusedText ? retrieveOutputFilePath : undefined, workspaceRoot, componentCount > 0);
+                return true;
             }
 
             case 'cliNotInstalled':
                 return refuse(retrieveOutcome.failureMessage);
 
             case 'unconfirmed':
-                return this.showValidationRuleRetrieveNotification('warning', retrieveOutcome.failureMessage, retrieveOutputFilePath, workspaceRoot, true);
+                this.showMetadataRetrieveNotification('warning', retrieveOutcome.failureMessage, retrieveOutputFilePath, workspaceRoot, true);
+                return true;
 
             case 'failed':
-                return this.showValidationRuleRetrieveNotification('warning', `No validation rules were retrieved from ${orgLabel}: ${retrieveOutcome.failureMessage}`, retrieveOutputFilePath, workspaceRoot, false);
+                this.showMetadataRetrieveNotification('warning', `No ${manyNoun} were retrieved from ${orgLabel}: ${retrieveOutcome.failureMessage}`, retrieveOutputFilePath, workspaceRoot, false);
+                return true;
 
         }
 
     }
 
+    // WHAT A RETRIEVE THAT CAME BACK SAYS: WHAT THE ORG HELD OF WHAT WAS ASKED FOR, AND WHAT GENERATE TREECIPE DOES WITH IT
+    private static describeRetrieved(retrieveKind: MetadataRetrieveKind,
+                                        componentCount: number,
+                                        namesWithComponents: string[],
+                                        askedNames: string[],
+                                        treeLabel: string,
+                                        orgLabel: string): string {
+
+        const objectsText = `${askedNames.length} ${askedNames.length === 1 ? 'object' : 'objects'}`;
+
+        if ( RecipeCockpitMetadataRetrieve.isWildcardKind(retrieveKind) ) {
+            const oneNoun = RecipeCockpitMetadataRetrieve.componentNoun(retrieveKind, 1);
+            return componentCount === 0
+                ? `${orgLabel} holds no ${oneNoun} for the ${objectsText} of ${treeLabel}, so nothing was written.`
+                : `Retrieved ${RecipeCockpitMetadataRetrieve.describeComponents(retrieveKind, componentCount)} for ${namesWithComponents.length} of ${objectsText} of ${treeLabel} from ${orgLabel}: ${namesWithComponents.join(', ')}. ${retrieveKind === 'validationRules' ? 'Generate Treecipe applies them to the recipe.' : 'Generate Treecipe can then use them in the recipe.'}`;
+        }
+
+        return componentCount === 0
+            ? `${orgLabel} holds none of the ${RecipeCockpitMetadataRetrieve.describeComponents(retrieveKind, askedNames.length)} of ${treeLabel}, so nothing was written.`
+            : `Retrieved ${componentCount} of the ${RecipeCockpitMetadataRetrieve.describeComponents(retrieveKind, askedNames.length)} of ${treeLabel} from ${orgLabel}${retrieveKind === 'globalValueSets' ? `: ${namesWithComponents.join(', ')}` : ''}. Generate Treecipe writes them into the recipe.`;
+
+    }
+
     /*
         A retrieve's ONE notification: information on a success, a warning otherwise. "Generate
-        Treecipe" is offered whenever rule files may have been written, since #324 applies the rules
-        at generation; "View output" whenever a warning has a result file. NOT AWAITED: the run ends,
+        Treecipe" is offered whenever files may have been written, since generation reads them (#324
+        applies validation rules); "View output" whenever a warning has a result file. NOT AWAITED: the run ends,
         and gives the panel its button back, without waiting for the reader.
     */
-    private static showValidationRuleRetrieveNotification(severity: 'information' | 'warning',
+    private static showMetadataRetrieveNotification(severity: 'information' | 'warning',
                                                             notificationText: string,
                                                             outputFilePath: string | undefined,
                                                             workspaceRoot: string,
@@ -7843,9 +7962,9 @@ export class RecipeCockpitService {
         Promise.resolve(shown)
             .then(async chosenAction => {
                 if ( chosenAction === RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL ) {
-                    await this.generateTreecipeAfterValidationRuleRetrieve();
+                    await this.generateTreecipeAfterMetadataRetrieve();
                 } else if ( chosenAction === RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL && outputFilePath ) {
-                    await VSCodeWorkspaceService.openWorkspaceResultFile(outputFilePath, workspaceRoot, 'The validation rule retrieve result file no longer exists in this workspace.');
+                    await VSCodeWorkspaceService.openWorkspaceResultFile(outputFilePath, workspaceRoot, 'The retrieve result file no longer exists in this workspace.');
                 }
             })
             .catch(retrieveFollowUpError => ErrorHandlingService.handleCapturedError(retrieveFollowUpError, 'openRecipeCockpit'));
@@ -7857,7 +7976,7 @@ export class RecipeCockpitService {
         panel reloads the run it writes, and refused while an insert holds the selection or a
         generation is already running. With no cockpit open it runs the command itself.
     */
-    private static async generateTreecipeAfterValidationRuleRetrieve() {
+    private static async generateTreecipeAfterMetadataRetrieve() {
 
         const cockpitPanel = this.recipeCockpitPanel;
         const panelState = this.recipeCockpitPanelState;
@@ -10294,36 +10413,42 @@ export class RecipeCockpitService {
             }
 
             /*
-                "Retrieve validation rules…" (#326) posts the tree's KEY and nothing else: the objects
-                are the host's, and the org is ALWAYS asked for in the command palette, so an org
-                index the message carries is never read. One retrieve per window; it waits for an
-                insert and a permission set assignment to end, and a scratch org run, which deploys
-                nothing (#358), does not hold it. Every refusal gives the clicked button back, and a busy one says why.
+                The Troubleshooting tab's retrieves (#326, #382) post the tree's KEY and nothing else:
+                what is retrieved is the host's, and the org is ALWAYS asked for in the command
+                palette, so an org index the message carries is never read. One retrieve per window,
+                whatever its kind; it waits for an insert, a permission set assignment and a metadata
+                deploy to end, and a scratch org run, which deploys nothing (#358), does not hold it.
+                Every refusal gives the clicked button back, and a busy one says why.
             */
-            case 'retrieveTreeValidationRules': {
+            case 'retrieveTreeValidationRules':
+            case 'retrieveTreeFields':
+            case 'retrieveTreeRecordTypes':
+            case 'retrieveTreeGlobalValueSets': {
 
                 const { treeKey } = panelMessage;
+                const retrieveKind = ( Object.keys(RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND) as MetadataRetrieveKind[] )
+                    .find(kind => RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND[kind] === panelMessage.command) as MetadataRetrieveKind;
 
                 // A RELOADED DOCUMENT MAY NOT KNOW A RETRIEVE IS RUNNING: IT IS TOLD, AND THE RETRIEVE'S OWN END GIVES THE BUTTONS BACK
-                if ( panelState.validationRuleRetrieveStateMessage?.isRunning ) {
-                    return { kind: 'refuseValidationRuleRetrieve', hostMessage: panelState.validationRuleRetrieveStateMessage };
+                if ( panelState.metadataRetrieveStateMessage?.isRunning ) {
+                    return { kind: 'refuseMetadataRetrieve', hostMessage: panelState.metadataRetrieveStateMessage };
                 }
 
-                const notRunning: IRecipeCockpitValidationRuleRetrieveStateMessage = { command: 'validationRuleRetrieveState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '' };
+                const notRunning: IRecipeCockpitMetadataRetrieveStateMessage = { command: 'metadataRetrieveState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '', retrieveKind: retrieveKind };
 
                 if ( typeof treeKey !== 'string'
                         || !panelState.recipeDataMessage
                         || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
-                    return { kind: 'refuseValidationRuleRetrieve', hostMessage: notRunning };
+                    return { kind: 'refuseMetadataRetrieve', hostMessage: notRunning };
                 }
 
                 if ( panelState.insertStateMessage
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning ) {
-                    return { kind: 'refuseValidationRuleRetrieve', refusalText: RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_BUSY_REFUSAL, hostMessage: notRunning };
+                    return { kind: 'refuseMetadataRetrieve', refusalText: RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL, hostMessage: notRunning };
                 }
 
-                return { kind: 'retrieveTreeValidationRules', treeKey: treeKey };
+                return { kind: 'retrieveTreeMetadata', treeKey: treeKey, retrieveKind: retrieveKind };
 
             }
 
@@ -10368,7 +10493,7 @@ export class RecipeCockpitService {
                 if ( panelState.insertStateMessage
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
-                        || panelState.validationRuleRetrieveStateMessage?.isRunning ) {
+                        || panelState.metadataRetrieveStateMessage?.isRunning ) {
                     return refuse(RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL);
                 }
 
@@ -10643,8 +10768,8 @@ export class RecipeCockpitService {
             replayMessages.push(panelState.scratchOrgStateMessage);
         }
 
-        if ( panelState.validationRuleRetrieveStateMessage ) {
-            replayMessages.push(panelState.validationRuleRetrieveStateMessage);
+        if ( panelState.metadataRetrieveStateMessage ) {
+            replayMessages.push(panelState.metadataRetrieveStateMessage);
         }
 
         if ( panelState.metadataDeployStateMessage ) {
@@ -12893,12 +13018,14 @@ ${this.buildPaletteCustomProperties()}
     const PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL)};
     const ASSIGN_PERMISSION_SETS_TITLE = "Choose the permission sets in this workspace's source that grant access to this tree's objects and assign the ones the org selected above, or a sandbox you choose, already holds to the user that org is authorized as, after a confirmation. Nothing is deployed.";
     const GENERATE_PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_GENERATE_PERMISSION_SET_ACTION_LABEL)};
-    const VALIDATION_RULE_RETRIEVE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ACTION_LABEL)};
     const DEPLOY_ACTION_LABELS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_LABELS)};
     const BUTTON_KINDS = ${JSON.stringify(RECIPE_COCKPIT_BUTTON_KINDS)};
     const ACTION_VERB_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_ACTION_VERB_EMOJI)};
     const TROUBLESHOOTING_ACTION_CARDS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS)};
     const DEPLOY_ACTION_BY_KIND = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND)};
+    const RETRIEVE_ACTION_BY_KIND = ${JSON.stringify(RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND)};
+    const RETRIEVE_ACTION_LABELS = ${JSON.stringify(RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS)};
+    const RETRIEVE_COMMANDS = ${JSON.stringify(RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND)};
     // A NICKNAME YAML LOADS AS A BOOLEAN OR NULL NAMES NO RECORD: THE INSERT'S WHOLE-STRING SWAP NEVER MATCHES IT (#151, #380)
     const YAML_NON_STRING_NICKNAME_PATTERN = new RegExp(${JSON.stringify(YAML_NON_STRING_PLAIN_SCALAR_PATTERN.source)});
     const DEPLOY_COMMANDS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND)};
@@ -13047,8 +13174,9 @@ ${this.buildPaletteCustomProperties()}
     let isScratchOrgRunning = false;
     // "Assign permission sets to me…" (#274, #302): WHETHER AN ASSIGNMENT HOLDS THE PICKER, EVERY INSERT AND EVERY ASSIGN BUTTON DISABLED
     let isPermissionSetAssignRunning = false;
-    // "Retrieve validation rules…" (#326): SET ON THE CLICK, CLEARED BY THE HOST'S validationRuleRetrieveState
-    let isValidationRuleRetrieveRunning = false;
+    // THE TROUBLESHOOTING TAB'S RETRIEVES (#326, #382): SET ON THE CLICK, CLEARED BY THE HOST'S metadataRetrieveState; THE KEY NAMES THE CARD CLICKED
+    let isMetadataRetrieveRunning = false;
+    let metadataRetrieveRunningKey = null;
     // THE QUERY TAB'S RUN (#367): SET ON THE CLICK, CLEARED BY THE HOST'S treeQueryState; ONE PER WINDOW
     let isTreeQueryRunning = false;
     // THE TROUBLESHOOTING TAB'S DEPLOYS (#346): SET ON THE CLICK, CLEARED BY THE HOST'S metadataDeployState; THE KEY NAMES THE BUTTON CLICKED
@@ -17277,6 +17405,7 @@ ${this.buildPaletteCustomProperties()}
         treeState.troubleshootingStripElement = stripElement;
         treeState.troubleshootingSubTabStates = [];
         treeState.deployCards = Object.create(null);
+        treeState.retrieveCards = Object.create(null);
 
         if (TROUBLESHOOTING_SUB_TABS.indexOf(treeState.troubleshootingSubTab) === -1) {
             treeState.troubleshootingSubTab = TROUBLESHOOTING_SUB_TABS[0];
@@ -17306,17 +17435,20 @@ ${this.buildPaletteCustomProperties()}
                 buildTroubleshootingTodos(treeState, subTabState);
             } else if (subTab === 'fields') {
                 addDeployItem(subTabState, 'fields');
+                addActionItem(subTabState, buildRetrieveAction(treeState, 'fields'));
             } else if (subTab === 'permissions') {
                 if (tree.objects.length > 0) { addActionItem(subTabState, buildAssignPermissionSetCard(treeState)); }
                 addActionItem(subTabState, buildGeneratePermissionSetCard(treeState));
                 addDeployItem(subTabState, 'permissionSet');
             } else if (subTab === 'validationRules') {
-                addActionItem(subTabState, buildRetrieveValidationRulesCard(treeState));
+                addActionItem(subTabState, buildRetrieveAction(treeState, 'validationRules'));
                 buildTroubleshootingValidationRules(treeState, subTabState);
             } else if (subTab === 'recordTypes') {
                 addDeployItem(subTabState, 'recordTypes');
+                addActionItem(subTabState, buildRetrieveAction(treeState, 'recordTypes'));
             } else if (subTab === 'globalValueSets') {
                 addDeployItem(subTabState, 'globalValueSets');
+                addActionItem(subTabState, buildRetrieveAction(treeState, 'globalValueSets'));
             }
 
         });
@@ -18257,24 +18389,63 @@ ${this.buildPaletteCustomProperties()}
     }
 
     /*
-        "Retrieve validation rules…" (#326) posts the tree's KEY alone, never an org: the host
-        asks for the org in the command palette every time. One retrieve per window, so every
-        card's button is disabled on the click until the host's validationRuleRetrieveState.
+        The Troubleshooting tab's retrieves (#326, #382) post the tree's KEY alone, never an org: the
+        host asks for the org in the command palette every time, and decides what is retrieved. One
+        retrieve per window, so every card's retrieve and deploy is disabled on the click until the
+        host's metadataRetrieveState.
     */
-    function buildRetrieveValidationRulesCard(treeState) {
+    function buildRetrieveAction(treeState, retrieveKind) {
 
-        const actionCard = buildActionCard('retrieveValidationRules', 'treeRetrieveValidationRules', VALIDATION_RULE_RETRIEVE_ACTION_LABEL);
+        const className = retrieveKind === 'validationRules' ? 'treeRetrieveValidationRules' : 'troubleshootingRetrieve troubleshootingRetrieve-' + retrieveKind;
+        const actionCard = buildActionCard(RETRIEVE_ACTION_BY_KIND[retrieveKind], className, RETRIEVE_ACTION_LABELS[retrieveKind]);
         const retrieveButtonElement = actionCard.buttonElement;
         retrieveButtonElement.addEventListener('click', function () {
             if (retrieveButtonElement.disabled || renderedSequence === null) { return; }
-            isValidationRuleRetrieveRunning = true;
+            isMetadataRetrieveRunning = true;
+            metadataRetrieveRunningKey = treeState.tree.treeKey + '\\n' + retrieveKind;
             drawTreeInserts();
             drawDataOrgViews();
-            vscodeApi.postMessage({ command: 'retrieveTreeValidationRules', treeKey: treeState.tree.treeKey });
+            vscodeApi.postMessage({ command: RETRIEVE_COMMANDS[retrieveKind], treeKey: treeState.tree.treeKey });
         });
-        treeState.retrieveValidationRulesCard = actionCard;
+        treeState.retrieveCards[retrieveKind] = actionCard;
 
         return actionCard;
+
+    }
+
+    // WHAT A RETRIEVE CARD SAYS BELOW ITS WHY LINE, AND WHY IT CANNOT RUN WHEN THERE IS NOTHING TO ASK FOR (#382)
+    function describeRetrieveSummary(treeState, retrieveKind) {
+
+        const summary = treeState.troubleshootingSummary;
+
+        if (retrieveKind === 'validationRules') { return { text: '', emptyReason: '' }; }
+
+        if (retrieveKind === 'recordTypes') {
+            return {
+                text: pluralize(treeState.tree.objects.length, 'object', 'objects') + ', each asked for every record type the org holds.',
+                emptyReason: treeState.tree.objects.length === 0 ? 'This tree has no object.' : ''
+            };
+        }
+
+        if (!summary) { return { text: 'Reading this project…', emptyReason: 'Reading this project…' }; }
+        if (summary.failureMessage) {
+            const retrieveFailureMessage = summary.failureMessage.replace(/^Nothing can be deployed: /, 'Nothing can be retrieved: ');
+            return { text: retrieveFailureMessage, emptyReason: retrieveFailureMessage };
+        }
+
+        if (retrieveKind === 'fields') {
+            const fieldCount = summary.customFieldCount + summary.unreadableFieldCount;
+            return {
+                text: pluralize(fieldCount, 'custom field', 'custom fields') + '; ' + summary.customFieldCount + ' with a source file here.',
+                emptyReason: fieldCount === 0 ? 'This tree has no custom field to retrieve.' : ''
+            };
+        }
+
+        const valueSetCount = summary.globalValueSetCount + summary.missingGlobalValueSetCount;
+        return {
+            text: pluralize(valueSetCount, 'named value set', 'named value sets') + '; ' + summary.globalValueSetCount + ' held here.',
+            emptyReason: valueSetCount === 0 ? 'No field of this tree names a global value set.' : ''
+        };
 
     }
 
@@ -18299,15 +18470,25 @@ ${this.buildPaletteCustomProperties()}
             drawActionCardState(generateCard, generateReason, 'Write a permission set granting Create and Read on this tree\\'s objects and access to its fields into this project\\'s permissionsets/SDT_Treecipe folder, after a confirmation. Nothing is deployed.');
         }
 
-        const retrieveCard = treeState.retrieveValidationRulesCard;
-        if (retrieveCard) {
-            const retrieveReason = isValidationRuleRetrieveRunning ? 'Validation rules are being retrieved.'
+        const retrieveCards = treeState.retrieveCards || {};
+        Object.keys(retrieveCards).forEach(function (retrieveKind) {
+
+            const retrieveCard = retrieveCards[retrieveKind];
+            const described = describeRetrieveSummary(treeState, retrieveKind);
+            const busyReason = isMetadataRetrieveRunning ? 'Metadata is being retrieved.'
                 : insertRunningTreeKey !== null ? 'A tree is being inserted.'
                 : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
                 : isMetadataDeployRunning ? 'Metadata is being deployed.'
                 : '';
-            drawActionCardState(retrieveCard, retrieveReason, 'Retrieve the validation rules of this tree\\'s objects from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; Generate Treecipe then applies them.');
-        }
+            const title = metadataRetrieveRunningKey === treeState.tree.treeKey + '\\n' + retrieveKind ? 'Retrieving…' : RETRIEVE_ACTION_LABELS[retrieveKind];
+
+            setTextShown(retrieveCard.detailElement, described.text);
+            if (retrieveCard.titleElement.textContent !== title) { retrieveCard.titleElement.textContent = title; }
+            drawActionCardState(retrieveCard, described.emptyReason || busyReason, retrieveKind === 'validationRules'
+                ? 'Retrieve the validation rules of this tree\\'s objects from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; Generate Treecipe then applies them.'
+                : 'Retrieve these components of this tree from an org you choose in the command palette into this project, after a confirmation. Nothing is deployed; run Generate Treecipe afterwards.');
+
+        });
 
         const deployCards = treeState.deployCards || {};
         Object.keys(deployCards).forEach(function (deployKind) {
@@ -18318,7 +18499,7 @@ ${this.buildPaletteCustomProperties()}
                 : insertRunningTreeKey !== null ? 'A tree is being inserted.'
                 : isScratchOrgRunning ? 'A scratch org is being set up.'
                 : isPermissionSetAssignRunning ? 'Permission sets are being assigned.'
-                : isValidationRuleRetrieveRunning ? 'Validation rules are being retrieved.'
+                : isMetadataRetrieveRunning ? 'Metadata is being retrieved.'
                 : '';
             const deployReason = described.emptyReason || busyReason;
             const title = metadataDeployRunningKey === treeState.tree.treeKey + '\\n' + deployKind ? 'Deploying…' : DEPLOY_ACTION_LABELS[deployKind];
@@ -19689,8 +19870,9 @@ ${this.buildPaletteCustomProperties()}
             return;
         }
 
-        if (hostMessage.command === 'validationRuleRetrieveState') {
-            isValidationRuleRetrieveRunning = !!hostMessage.isRunning;
+        if (hostMessage.command === 'metadataRetrieveState') {
+            isMetadataRetrieveRunning = !!hostMessage.isRunning;
+            metadataRetrieveRunningKey = isMetadataRetrieveRunning ? hostMessage.treeKey + '\\n' + hostMessage.retrieveKind : null;
             drawTreeInserts();
             drawDataOrgViews();
             return;
