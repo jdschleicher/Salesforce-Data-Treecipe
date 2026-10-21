@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.117.0] - Recipe Cockpit: TODO's rows put the field first with its line link, and Remove TODO / Restore move a TODO between Open and Removed
+## [3.118.0] - Recipe Cockpit: TODO's rows put the field first with its line link, and Remove TODO / Restore move a TODO between Open and Removed
 
 Closes [#391](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/391).
 
@@ -17,6 +17,22 @@ The Troubleshooting tab's TODO's list (#365) drew each row as the field name, th
 - **Notifications.** A write that fails names the file and the error through `escapeForNotification`, the fixed-value writer's message included.
 - **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the Open and Removed lists and Remove TODO.
 - **Tests.** `RecipeCockpitTodoRemoveWriter.test.ts` (the writer), `RecipeCockpitRemovedTodoStore.test.ts` (the file) and `RecipeCockpitTodoRemoval.test.ts` (model, router, executor, panel); the #354/#365 suites follow the new row layout and `removeLock`.
+
+## [3.117.0] - Recipe Cockpit: retrieve a tree's fields, record types and global value sets from an org in the Troubleshooting tab
+
+Closes [#382](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/382).
+
+The Troubleshooting tab could deploy fields, record types and global value sets, but the only thing it could bring back from an org was validation rules. When the org was ahead of the project, the reader had to run `sf project retrieve start` by hand before Generate Treecipe saw what the org holds.
+
+- **Three new 📥 cards.** **Retrieve fields…** (Fields), **Retrieve record types…** (Record Types) and **Retrieve global value sets…** (Global Value Sets) sit beside their section's deploy, with the same emoji as **Retrieve validation rules…** from the one verb map (#381). Each posts its tree's key and nothing else.
+- **What is asked for.** Fields: every custom `__c` field the tree's recipe writes, whether or not its source file is in the project, since the org may hold the one the project lacks. Global value sets: every set those fields name, held here or not. Record types: every record type of each tree object, with `--metadata RecordType:<Object>.*` (at most 80 objects), as validation rules already are, because a record type the project does not hold cannot be named.
+- **Fields and value sets go through a package.xml.** They are named one by one in a package.xml written beside the CLI results in `treecipe/OrgOperations/<username>/` (git-ignored) and passed with `--manifest`, because one `--metadata` per field would pass the 8,191 characters `cmd.exe` allows on Windows; a tree can write hundreds of fields.
+- **The same rules as Retrieve validation rules.** The org is asked for in the command palette every time (any connected org, production included: a retrieve only reads); an unreadable `sfdx-project.json` opens no prompt; the confirmation inside the cockpit names the tree, the org, what is asked for (a capped list), where new files go and how many local files the org's version overwrites (a link is not counted); the CLI's answer is read as untrusted; one notification, with **Generate Treecipe** when files may have been written and **View output** on a warning. A tree with nothing of that kind is refused before any prompt, and its card is disabled with the reason.
+- **One retrieve per window, whatever its kind.** The four retrieves share one lock: while one runs, every retrieve and deploy card is held ("Metadata is being retrieved."), the clicked card reads **Retrieving…**, and a retrieve is refused while an insert, a permission set assignment or a deploy runs, at the click and again after the confirmation. The run state the panel is told is now `metadataRetrieveState {isRunning, treeKey, retrieveKind}`, replacing `validationRuleRetrieveState`. After a retrieve, the Troubleshooting counts and the Validation Rules list are read again.
+- **Nothing read twice for nothing.** A field retrieve names its fields from the recipe without reading a field file; only a value set retrieve reads them, for their `<valueSetName>`. The Troubleshooting counts are read again only when the CLI ran, and the Validation Rules list only after a validation rule retrieve, so a dismissed org pick or confirmation reads nothing. The overwrite count matches a field file whatever its case and lists no linked `fields/` folder, as the counts do, and a list of failed components is capped.
+- **One module.** `RecipeCockpitValidationRuleRetrieve.ts` is now `RecipeCockpitMetadataRetrieve.ts`, holding all four kinds; the validation rule retrieve says and does what it did. The deploy module's manifest path check is shared (`assertPlainManifestPath`), and its package.xml builder names a retrieve in its errors.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` list the four retrieves under *What does edit the YAML*; the opt-in warning names them as reading from any org and deploying nothing; `CLAUDE.md` records the shared retrieve. The *What the cockpit changes without editing the YAML* screenshot was re-taken: it had been taken before #381's styles reached `main`.
+- **Tests.** `RecipeCockpitMetadataRetrieve.test.ts` covers each kind's argv (wildcard and manifest, no deploy argv), what a field or value set retrieve names, the local field count with a planted link, parsing per kind, each confirmation, routing (tree key only, refusals, one per window, a deploy held while a retrieve runs), the host against a faked org prompt and CLI (manifests written and read back, prompts, confirmations, notifications, result files, nothing to retrieve, dismissals, a failed or unknown outcome, a deploy started meanwhile) and the panel cards. The #326, #381 and sub-tab suites moved to the shared names.
 
 ## [3.116.0] - Recipe Cockpit: the Treecipes dropdown names the chosen treecipe's objects in insert order
 

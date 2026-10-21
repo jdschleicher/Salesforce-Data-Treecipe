@@ -125,11 +125,11 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s sub-tabs (#365)', () 
                 .map((actionElement: any) => actionElement.children[0].className.split(' ').filter((className: string) => !className.startsWith('sdtButton') && className !== 'actionCard').join(' '));
 
             expect(classNamesIn('todos')).toEqual([]);
-            expect(classNamesIn('fields')).toEqual(['troubleshootingDeploy troubleshootingDeploy-fields']);
+            expect(classNamesIn('fields')).toEqual(['troubleshootingDeploy troubleshootingDeploy-fields', 'troubleshootingRetrieve troubleshootingRetrieve-fields']);
             expect(classNamesIn('permissions')).toEqual(['treePermissionSets', 'treeGeneratePermissionSet', 'troubleshootingDeploy troubleshootingDeploy-permissionSet']);
             expect(classNamesIn('validationRules')).toEqual(['treeRetrieveValidationRules']);
-            expect(classNamesIn('recordTypes')).toEqual(['troubleshootingDeploy troubleshootingDeploy-recordTypes']);
-            expect(classNamesIn('globalValueSets')).toEqual(['troubleshootingDeploy troubleshootingDeploy-globalValueSets']);
+            expect(classNamesIn('recordTypes')).toEqual(['troubleshootingDeploy troubleshootingDeploy-recordTypes', 'troubleshootingRetrieve troubleshootingRetrieve-recordTypes']);
+            expect(classNamesIn('globalValueSets')).toEqual(['troubleshootingDeploy troubleshootingDeploy-globalValueSets', 'troubleshootingRetrieve troubleshootingRetrieve-globalValueSets']);
             // THE TREECIPE TAB KEEPS WHAT DECIDES WHAT IS GENERATED
             expect(panel.findAll(panel.tabPanelOf(accountCard, 'treeStructure'), 'treeTodosToggle')).toHaveLength(1);
             expect(panel.findAll(panel.tabPanelOf(accountCard, 'treeStructure'), 'treeRecordTypeFieldsToggle')).toHaveLength(1);
@@ -325,7 +325,7 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s sub-tabs (#365)', () 
 
             panel.findAll(subPanelOf(panel, accountCard, 'fields'), 'troubleshootingDeploy-fields')[0].dispatch('click');
 
-            expect(countOf()).toBe('1 of 1 action');
+            expect(countOf()).toBe('1 of 2 actions');
 
         });
 
