@@ -220,6 +220,11 @@ export class RecipeService {
 
                     return fakeRecipeValue;
 
+                case 'hierarchy':
+
+                    // A HIERARCHY FIELD WHOSE PARENT IS KNOWN (Account.ParentId, #400) IS WRITTEN AS EITHER BACKEND WRITES A LOOKUP; ONE WITH NONE STAYS "NOT HANDLED"
+                    return this.getFakeValueIfExpectedSalesforceFieldType(xmlFieldDetail.referenceTo ? 'lookup' : fieldType);
+
                 case 'text':
                 case 'textarea':
                 case 'longtextarea':

@@ -146,6 +146,20 @@ describe('SOQLTemplateService', () => {
             expect(result[0]).not.toContain('Account.Name');
         });
 
+        it('treats a Hierarchy field with a parent (Account.ParentId, #400) as a lookup, and never traverses through one', () => {
+            const wrapper = buildMockWrapper({
+                Account: { fields: [
+                    { name: 'Name', label: 'Name', type: 'Text' },
+                    { name: 'ParentId', label: 'Parent Account', type: 'Hierarchy', referenceTo: 'Account' },
+                ]},
+            });
+            const result = SOQLTemplateService.buildChildToParentQueries('Account', wrapper.ObjectToObjectInfoMap['Account'], wrapper);
+            expect(result).toHaveLength(1);
+            expect(result[0]).toContain('-- Hierarchy to Account via ParentId');
+            expect(result[0]).toContain('Parent.Name');
+            expect(result[0]).not.toContain('Parent.ParentId');
+        });
+
         it('skips lookup fields with no referenceTo', () => {
             const wrapper = buildMockWrapper({
                 Contact: { fields: [

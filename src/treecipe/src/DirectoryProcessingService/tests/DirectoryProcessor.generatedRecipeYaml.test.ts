@@ -303,6 +303,25 @@ describe.each([
 
     });
 
+    // Account/fields/ParentId IS "<type>Hierarchy</type>" AND Contact/fields/ReportsToId A BARE Lookup, NEITHER WITH A <referenceTo> (#400)
+    test.each([
+        ['Account', 'ParentId'],
+        ['Contact', 'ReportsToId']
+    ])('a standard %s.%s with no <referenceTo> is a self-lookup from the standard parent map, wired like any other (#400)', (objectApiName, fieldApiName) => {
+
+        const objectRecipes = flattenObjectRecipes(recipeFiles.flatMap(recipeFile => yaml.load(recipeFile.content) as LoadedObjectRecipe[]))
+            .filter(objectRecipe => objectRecipe.object === objectApiName) as Array<LoadedObjectRecipe & { nickname: string }>;
+
+        expect(objectRecipes.map(objectRecipe => [objectRecipe.nickname, objectRecipe.fields[fieldApiName]])).toEqual(isNestingBackend
+            ? [[`${objectApiName}_NickName`, null], [`${objectApiName}_child_NickName`, `${objectApiName}_NickName`]]
+            : [[`${objectApiName}_NickName`, null]]);
+
+        const recipeText = recipeFiles.map(recipeFile => recipeFile.content).join('\n');
+        expect(recipeText).toMatch(new RegExp(`^ +${fieldApiName}: ${RelationshipService.referenceIdRequiredTodo}( -- ${objectApiName})?$`, 'm'));
+        expect(recipeText).not.toContain('hierarchy does not exist');
+
+    });
+
     // THE RECIPE COCKPIT'S NESTED WRITER FIXTURE IS THIS PIPELINE'S OUTPUT, SO A CHANGE TO THE LAYOUT THAT DOES NOT REGENERATE IT FAILS HERE
     test('the first tree is byte-identical to the Recipe Cockpit\'s writer fixture for this backend', () => {
 
