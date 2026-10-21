@@ -273,6 +273,29 @@ describe('RecipeCockpitRecipeWriter removeTodoComment and restoreTodoComment (#3
 
     });
 
+    test.each([[4], [5]])('keeps a removed TODO whose identical twin stands beside it (line %d), and puts it back', (lineNumber) => {
+
+        const recipeText = [
+            '- object: Account',
+            '  fields:',
+            '    Name: ${{ faker.company.name() }}',
+            '        ### TODO -- check this',
+            '        ### TODO -- check this',
+            '    Phone: ${{ faker.phone.number() }}',
+            ''
+        ].join('\n');
+
+        const { recipeText: removedText, removed } = expectRemoved(RecipeCockpitRecipeWriter.removeTodoComment(recipeText, { lineNumber: lineNumber, todoText: '### TODO -- check this' }));
+        const removedLines = RecipeCockpitRecipeWriter.splitRecipeLines(removedText).lines;
+
+        expect(RecipeCockpitRecipeWriter.isRemovedTodoBack(removedLines, RecipeCockpitRecipeWriter.scanRecipeObjects(removedLines), removed)).toBe(false);
+        const restoredText = expectRestored(RecipeCockpitRecipeWriter.restoreTodoComment(removedText, removed));
+        expect(restoredText).toBe(recipeText);
+        const restoredLines = RecipeCockpitRecipeWriter.splitRecipeLines(restoredText).lines;
+        expect(RecipeCockpitRecipeWriter.isRemovedTodoBack(restoredLines, RecipeCockpitRecipeWriter.scanRecipeObjects(restoredLines), removed)).toBe(true);
+
+    });
+
     test('removes the last line of a file with no final newline and puts it back the same', () => {
 
         const recipeText = '- object: Account\r\n  fields:\r\n    Name: ${{ faker.company.name() }}\r\n    # TODO last';

@@ -4027,9 +4027,10 @@ export class RecipeCockpitService {
     private static writeRecipeWithSidecarFile(recipeFilePath: string, recipeText: string, sidecarFilePath: string, sidecarText: string | undefined, refusalPrefix: string): string | undefined {
 
         const fixedValueFilePath = sidecarFilePath;
-        const previousFixedValueText = fs.existsSync(fixedValueFilePath) ? fs.readFileSync(fixedValueFilePath, 'utf-8') : undefined;
+        let previousFixedValueText: string | undefined;
 
         try {
+            previousFixedValueText = fs.existsSync(fixedValueFilePath) ? fs.readFileSync(fixedValueFilePath, 'utf-8') : undefined;
             if ( sidecarText !== undefined ) {
                 this.writeFileReplacing(fixedValueFilePath, sidecarText);
             } else if ( previousFixedValueText !== undefined ) {

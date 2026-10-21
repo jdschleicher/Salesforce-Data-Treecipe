@@ -3303,12 +3303,23 @@ export class RecipeCockpitRecipeWriter {
         }
 
         // TODO LINES UNDER THE SAME LINE ARE PASSED UP TO ONE THAT WAS BELOW IT, SO SEVERAL COME BACK IN THEIR ORDER WHATEVER ORDER THEY ARE RESTORED IN
+        /*
+            Back only when the TODO lines under the anchor hold MORE copies of the line than stood
+            beside it when it was removed: two identical TODOs side by side are both real, and the
+            copy left behind is not the removed one come back.
+        */
+        const countCopies = (candidateLines: readonly string[]) => candidateLines.filter(candidateLine => candidateLine === removed.originalLine).length;
+        const runLines: string[] = [];
+        for ( let runIndex = previousLineIndex + 1; runIndex < span.endIndex && this.isWholeTodoCommentLine(lines[runIndex]); runIndex++ ) {
+            runLines.push(lines[runIndex]);
+        }
+        if ( countCopies(runLines) > countCopies(removed.previousTodoLines ?? []) + countCopies(removed.nextTodoLines ?? []) ) {
+            return { refusal: 'todo-already-back', message: 'The TODO is already back in the recipe.' };
+        }
+
         const isAfterRemovedTodo = this.buildRemovedTodoOrder(removed, otherRemovedTodos);
         let lineIndex = previousLineIndex + 1;
         while ( lineIndex < span.endIndex && this.isWholeTodoCommentLine(lines[lineIndex]) && !isAfterRemovedTodo(lines[lineIndex]) ) {
-            if ( lines[lineIndex] === removed.originalLine ) {
-                return { refusal: 'todo-already-back', message: 'The TODO is already back in the recipe.' };
-            }
             lineIndex++;
         }
 
