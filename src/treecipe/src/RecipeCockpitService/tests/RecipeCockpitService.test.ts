@@ -1519,8 +1519,8 @@ describe('RecipeCockpitService', () => {
             const treeRecipe = loadTreeRun();
 
             expect(treeRecipe.trees.map(tree => [tree.treeKey, tree.title, tree.folderName])).toEqual([
-                ['Account-thru-OtherChildObject__c', 'Relationship Tree 1', 'Account-thru-OtherChildObject__c'],
-                ['Lead-ONLY', 'Relationship Tree 2', 'Lead-ONLY']
+                ['Account-thru-OtherChildObject__c', 'Account-thru-OtherChildObject__c', 'Account-thru-OtherChildObject__c'],
+                ['Lead-ONLY', 'Lead-ONLY', 'Lead-ONLY']
             ]);
             expect(treeRecipe.notices).toEqual([]);
 
@@ -1688,8 +1688,8 @@ describe('RecipeCockpitService', () => {
             const legacyRecipe = loadTreeRun(LEGACY_TREE_RUN_FOLDER_NAME);
 
             expect(legacyRecipe.trees.map(tree => [tree.treeKey, tree.title, tree.folderName])).toEqual([
-                ['Account-thru-Contact', 'Relationship Tree 1', 'Account-thru-Contact'],
-                ['Lead-ONLY', 'Relationship Tree 2', 'Lead-ONLY']
+                ['Account-thru-Contact', 'Account-thru-Contact', 'Account-thru-Contact'],
+                ['Lead-ONLY', 'Lead-ONLY', 'Lead-ONLY']
             ]);
             expect(legacyRecipe.trees[0].objects).toEqual([
                 { objectApiName: 'Account', parentLookups: [] },
@@ -1782,7 +1782,7 @@ describe('RecipeCockpitService', () => {
                 }, [buildObject('Contact', 2), buildObject('Stray__c', 3)], [], 'run');
 
                 expect(treeBuild.trees.map(tree => [tree.treeKey, tree.title, tree.objects.map(treeObject => treeObject.objectApiName), tree.fieldCount])).toEqual([
-                    ['Contact-ONLY', 'Relationship Tree 1', ['Contact'], 2],
+                    ['Contact-ONLY', 'Contact-ONLY', ['Contact'], 2],
                     ['', RECIPE_COCKPIT_UNGROUPED_TREE_TITLE, ['Stray__c'], 3]
                 ]);
                 expect(treeBuild.trees[0].objects[0].parentLookups).toEqual([]);
@@ -1797,6 +1797,8 @@ describe('RecipeCockpitService', () => {
                 }, [buildObject('Lead')], [], 'run');
 
                 expect(treeBuild.trees.map(tree => tree.treeKey)).toEqual(['Lead-ONLY', 'Lead-ONLY#2']);
+                // #389: THE TITLE IS THE FOLDER, SO THE REPEAT IS NUMBERED OR THE DROPDOWN WOULD LIST TWO IDENTICAL OPTIONS
+                expect(treeBuild.trees.map(tree => tree.title)).toEqual(['Lead-ONLY', 'Lead-ONLY (2)']);
                 expect(treeBuild.trees.map(tree => tree.objects.length)).toEqual([1, 0]);
 
             });
@@ -1994,18 +1996,18 @@ describe('RecipeCockpitService', () => {
         });
 
         // #374: ONE CARD IS DRAWN, THE FIRST, CHOSEN IN THE TREECIPES DROPDOWN; ONLY IT IS BUILT
-        it('draws one card per tree, titled by position, subtitled by folder, with its object and field counts, and shows only the first', () => {
+        it('draws one card per tree, titled by its folder (#389) with no repeated subtitle, with its object and field counts, and shows only the first', () => {
 
             const { panel } = renderTreeRecipe();
             const treeCards = treeCardsOf(panel);
 
             expect(treeCards).toHaveLength(2);
-            expect(textOf(panel, panel.cockpitBodyElement, 'treeTitle')).toEqual(['Relationship Tree 1', 'Relationship Tree 2']);
-            expect(textOf(panel, panel.cockpitBodyElement, 'treeFolder')).toEqual(['Account-thru-OtherChildObject__c', 'Lead-ONLY']);
+            expect(textOf(panel, panel.cockpitBodyElement, 'treeTitle')).toEqual(['Account-thru-OtherChildObject__c', 'Lead-ONLY']);
+            expect(panel.findAll(panel.cockpitBodyElement, 'treeFolder').map((folderElement: any) => panel.isHidden(folderElement))).toEqual([true, true]);
             expect(textOf(panel, panel.cockpitBodyElement, 'treeCount')).toEqual(['3 objects · 13 fields', '1 object · 2 fields']);
             expect(panel.shownTreeCards()).toEqual([treeCards[0]]);
             expect(panel.isHidden(treeBodyOf(treeCards[0]))).toBe(false);
-            expect(panel.treePickerLabels()).toEqual(['Relationship Tree 1', 'Relationship Tree 2']);
+            expect(panel.treePickerLabels()).toEqual(['Account-thru-OtherChildObject__c', 'Lead-ONLY']);
             // THE BODY IS BUILT WHEN THE CARD IS FIRST CHOSEN, SO THE OTHER CARD HAS NO TAB STRIP YET, AND NO OBJECT HAS ROWS YET
             expect(panel.findAll(treeCards[1], 'treeTab')).toEqual([]);
             expect(panel.findAll(panel.cockpitBodyElement, 'treeField')).toEqual([]);
@@ -2125,7 +2127,7 @@ describe('RecipeCockpitService', () => {
 
             const { panel, recipe: treeRecipe } = renderTreeRecipe();
             panel.postToPanel({ command: 'recipeData', renderSequence: 2, recipe: { ...treeRecipe, objects: [accountObject], trees: [{
-                treeKey: 'tree', title: 'Relationship Tree 1', folderName: 'tree', fieldCount: 0,
+                treeKey: 'tree', title: 'tree', folderName: 'tree', fieldCount: 0,
                 objects: [
                     { objectApiName: 'Account', parentLookups: [] },
                     { objectApiName: 'Account', parentLookups: [], iterationNickname: 'Account_child_NickName' },
@@ -2462,7 +2464,7 @@ describe('RecipeCockpitService', () => {
             const panel = runPanelScript();
             panel.postToPanel({ command: 'recipeData', renderSequence: 1, recipe: buildRecipeViewModel({
                 objects: wideObjects,
-                trees: [{ treeKey: 'Widest__c-thru-Narrow__c', title: 'Relationship Tree 1', folderName: 'Widest__c-thru-Narrow__c', fieldCount: wideObjects[0].fields.length + 1,
+                trees: [{ treeKey: 'Widest__c-thru-Narrow__c', title: 'Widest__c-thru-Narrow__c', folderName: 'Widest__c-thru-Narrow__c', fieldCount: wideObjects[0].fields.length + 1,
                           objects: wideObjects.map(objectViewModel => ({ objectApiName: objectViewModel.objectApiName, parentLookups: [] })) }]
             }) });
 
@@ -2495,7 +2497,7 @@ describe('RecipeCockpitService', () => {
             const panel = runPanelScript();
             panel.postToPanel({ command: 'recipeData', renderSequence: 1, recipe: buildRecipeViewModel({
                 objects: [prototypeNamedObject],
-                trees: [{ treeKey: '__proto__-ONLY', title: 'Relationship Tree 1', folderName: '__proto__-ONLY', fieldCount: 0, objects: [{ objectApiName: '__proto__', parentLookups: [] }] }]
+                trees: [{ treeKey: '__proto__-ONLY', title: '__proto__-ONLY', folderName: '__proto__-ONLY', fieldCount: 0, objects: [{ objectApiName: '__proto__', parentLookups: [] }] }]
             }) });
 
             const [treeCard] = treeCardsOf(panel);
@@ -2740,7 +2742,7 @@ describe('RecipeCockpitService', () => {
 
         const buildOneTreeRecipe = (objects: any[]) => buildRecipeViewModel({
             objects: objects,
-            trees: [{ treeKey: 'Wide-thru-Narrow', title: 'Relationship Tree 1', folderName: 'Wide-thru-Narrow', fieldCount: 0,
+            trees: [{ treeKey: 'Wide-thru-Narrow', title: 'Wide-thru-Narrow', folderName: 'Wide-thru-Narrow', fieldCount: 0,
                 objects: objects.map(objectViewModel => ({ objectApiName: objectViewModel.objectApiName, parentLookups: [] })) }]
         });
 
@@ -2906,7 +2908,7 @@ describe('RecipeCockpitService', () => {
 
             panel.postToPanel({ command: 'recipeData', recipe: buildRecipeViewModel({
                 objects: [{ objectApiName: 'Account' } as any],
-                trees: [{ treeKey: 'Account-ONLY', title: 'Relationship Tree 1', folderName: 'Account-ONLY', fieldCount: 0, objects: [{ objectApiName: 'Account', parentLookups: [] }] }]
+                trees: [{ treeKey: 'Account-ONLY', title: 'Account-ONLY', folderName: 'Account-ONLY', fieldCount: 0, objects: [{ objectApiName: 'Account', parentLookups: [] }] }]
             }) });
 
             expect(panel.findAll(panel.cockpitBodyElement, 'treeCard')).toEqual([]);

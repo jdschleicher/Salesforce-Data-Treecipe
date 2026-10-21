@@ -843,7 +843,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             showWarningMessage.mockResolvedValueOnce(undefined);
             await receivedMessageHandler({ command: 'resetTreeSelection', treeKey: ACCOUNT_TREE_KEY });
             expect(showWarningMessage).toHaveBeenCalledWith(
-                'Reset the selection of Relationship Tree 1?',
+                'Reset the selection of Account-thru-OtherChildObject__c?',
                 { inPanel: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every validation rule is applied again. The recipe file is not changed, so an edit written into it stays: clear it with its field\'s edit button.' },
                 RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL
             );

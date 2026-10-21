@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.119.1] - Recipe Cockpit: the Troubleshooting sub-tab panel pads its cards and lists off its border
+## [3.120.1] - Recipe Cockpit: the Troubleshooting sub-tab panel pads its cards and lists off its border
 
 Closes [#393](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/393).
 
@@ -9,6 +9,20 @@ The Troubleshooting sub-panel has drawn a 1px accent border since #373, and its 
 - **Padding.** `.troubleshootingSubPanel` is padded `0 0.6rem 0.6rem`, the cockpit's usual inset, and its search box drops its own side padding inside it, so the search, the TODO's Open/Removed switch, the action cards and the lists all start 0.6rem in from the border on every sub-tab.
 - **Unchanged.** The selected sub-tab still joins its panel with the 1px overlap (#373), the cards keep their 18rem × 10.5rem size and their two-columns-or-one grid, no colour or palette changed, and the other card tabs (Treecipe, Previously Used Data Sets, Query) are not touched.
 
+## [3.120.0] - Recipe Cockpit: each treecipe is named by its folder, first object thru last, instead of "Relationship Tree N"
+
+Closes [#389](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/389).
+
+The Treecipes dropdown (#374) listed every treecipe as `Relationship Tree 1`, `Relationship Tree 2`, …: its position in the run, which says nothing about what it holds. Generate Treecipe already names each tree's folder after its top parent and last child.
+
+- **A card's default title is its folder name**, the one `RelationshipService.buildRecipeTreeFolderName` writes: `<first>-thru-<last>` in insert order, or `<only>-ONLY` (`Account-thru-OtherChildObject__c`, `Lead-ONLY`). A run with no `RecipeFiles` is titled by the recipe file or folder each card already falls back to. The ungrouped card is still `Not in a relationship tree`.
+- **Everywhere the title is shown**: the dropdown, the card header, the in-panel confirmations, the notifications and the rename prompt's default, because each reads the tree's title. A name given with ✎ (#235) still replaces it, and clearing the name brings back the folder name.
+- **The folder is said once.** The header's muted folder subtitle shows only under a name the reader gave the card, and a section search result names the folder beside the title only then; the search still finds a renamed card by its folder.
+- **Renaming.** The ✎ prompt says an emptied box goes back to the folder name, and a name equal to the card's own folder clears its name rather than saving a copy of the default.
+- **A repeated folder is numbered.** A hand-edited wrapper that writes two trees to one folder (keyed `<folder>#<n>`) titles the second `<folder> (2)`, so the dropdown's options differ.
+- **Nothing stored changed.** Tree keys, stored names, favorites, selections and the saved place were already keyed by folder, so the place version did not change and an existing workspace keeps everything.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say, under *Where recipes come from*, how a card is named; the screenshots that show a card were re-taken.
+- **Tests.** `RecipeCockpitService.test.ts` holds the titles of a run, a run with no `RecipeFiles` and a repeated folder; `RecipeCockpitTreecipePicker.test.ts` the dropdown's labels with a repeated folder and a renamed card found by its name and its folder; `RecipeCockpitTreePreferences.test.ts` the subtitle shown under a name and hidden again when it is cleared. Every suite that expected `Relationship Tree N` now expects the folder name.
 ## [3.119.0] - Recipe Cockpit: the chevron expand/collapse toggles are smaller, and every one is the same size
 
 Closes [#392](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/392).

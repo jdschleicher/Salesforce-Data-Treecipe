@@ -674,7 +674,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
             // THE HOST-SIDE MODAL: EACH OBJECT'S TOTAL, A NESTED FRIEND'S PER-PARENT COUNT, AND NO LARGE-RUN WARNING
             const [modalMessage, modalOptions, modalAction] = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0];
-            expect(modalMessage).toBe('Generate Relationship Tree 1 and insert it into qa (qa@example.com.qa)?');
+            expect(modalMessage).toBe('Generate Account-thru-OtherChildObject__c and insert it into qa (qa@example.com.qa)?');
             expect(modalOptions.inPanel).toBe(true);
             expect(modalAction).toBe(RECIPE_COCKPIT_INSERT_CONFIRM_LABEL);
             expect(modalOptions.detail.split('\n')).toIncludeAllMembers([
@@ -741,7 +741,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             }]);
             // HOW IT WENT IS A NOTIFICATION'S, WITH THE RESULTS FILE ONE CLICK AWAY (#301)
             expect(resultNotificationCalls(vscode.window.showInformationMessage)).toEqual([
-                ['14 records were inserted into qa (qa@example.com.qa) from Relationship Tree 1.', RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL]
+                ['14 records were inserted into qa (qa@example.com.qa) from Account-thru-OtherChildObject__c.', RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL]
             ]);
             expect(resultNotificationCalls(vscode.window.showWarningMessage)).toEqual([]);
             expect(postedNamed('insertState').map(insertState => insertState.isRunning)).toEqual([true, false]);
@@ -1039,7 +1039,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             await openSelectedCockpit(FAKER_JS_RUN);
             await insertAccountTree();
 
-            expect(showWarningMessageSpy).toHaveBeenCalledWith('Relationship Tree 1 needs an existing Region__c record for a required lookup, and qa (qa@example.com.qa) returned none, so nothing was generated or inserted.');
+            expect(showWarningMessageSpy).toHaveBeenCalledWith('Account-thru-OtherChildObject__c needs an existing Region__c record for a required lookup, and qa (qa@example.com.qa) returned none, so nothing was generated or inserted.');
             expect(runFakerCalls()).toEqual([]);
             expect(connection.insertCalls).toEqual([]);
             expect(datasetFolderNames()).toEqual([]);
@@ -1062,7 +1062,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             expect(insertedOf(connection, 'Contact').length).toBeGreaterThan(0);
             // #375: THE FIRST FILE THAT FAILED IS NAMED AND ONE CLICK AWAY, AND THE ERROR POINTS AT A TROUBLESHOOTING SUB-TAB
             expect(resultNotificationCalls(vscode.window.showWarningMessage)).toEqual([[
-                expect.stringMatching(/^\d+ records were inserted into qa \(qa@example\.com\.qa\) from Relationship Tree 1 and \d+ failed\. Nothing was rolled back\. The first file that failed is collectionsApi-Contact\.json; its Validation Rules in the Troubleshooting tab may fix it\.$/),
+                expect.stringMatching(/^\d+ records were inserted into qa \(qa@example\.com\.qa\) from Account-thru-OtherChildObject__c and \d+ failed\. Nothing was rolled back\. The first file that failed is collectionsApi-Contact\.json; its Validation Rules in the Troubleshooting tab may fix it\.$/),
                 RECIPE_COCKPIT_INSERT_VIEW_FAILED_FILE_LABEL,
                 RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
                 RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL
@@ -1263,7 +1263,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             const recipeDataPostsBefore = postedNamed('recipeData').length;
             await insertAccountTree();
 
-            expect(showWarningMessageSpy).toHaveBeenCalledWith('Relationship Tree 1 was not generated, so nothing was inserted into qa (qa@example.com.qa).');
+            expect(showWarningMessageSpy).toHaveBeenCalledWith('Account-thru-OtherChildObject__c was not generated, so nothing was inserted into qa (qa@example.com.qa).');
             expect(connection.insertCalls).toEqual([]);
             expect(postedNamed('recipeData')).toHaveLength(recipeDataPostsBefore);
             expect(postedPanelMessages.at(-1)).toEqual({ command: 'insertState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
@@ -1308,7 +1308,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             await insertAccountTree();
 
             expect(showWarningMessageSpy).toHaveBeenCalledTimes(1);
-            expect(showWarningMessageSpy.mock.calls[0][0]).toStartWith('Nothing was generated or inserted for Relationship Tree 1: The filtered copy did not read back');
+            expect(showWarningMessageSpy.mock.calls[0][0]).toStartWith('Nothing was generated or inserted for Account-thru-OtherChildObject__c: The filtered copy did not read back');
             expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
             expect(runFakerCalls()).toEqual([]);
             expect(connection.insertCalls).toEqual([]);
@@ -1366,7 +1366,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                     .reduce((count, insertCall) => count + insertCall.records.length, 0);
                 expect(rejectedCount).toBeGreaterThan(0);
                 expect(resultNotificationCalls(vscode.window.showWarningMessage)).toEqual([[
-                    `${connection.insertedRecordsById.size} records were inserted into qa (qa@example.com.qa) from Relationship Tree 1 and ${rejectedCount} failed. Nothing was rolled back. The first file that failed is collectionsApi-OtherChildObject__c.json; its Validation Rules in the Troubleshooting tab may fix it.`,
+                    `${connection.insertedRecordsById.size} records were inserted into qa (qa@example.com.qa) from Account-thru-OtherChildObject__c and ${rejectedCount} failed. Nothing was rolled back. The first file that failed is collectionsApi-OtherChildObject__c.json; its Validation Rules in the Troubleshooting tab may fix it.`,
                     RECIPE_COCKPIT_INSERT_VIEW_FAILED_FILE_LABEL,
                     RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
                     RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL
@@ -1395,7 +1395,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 expect(connection.deleteCalls.flat().sort()).toEqual(savedRecordIds.sort());
                 // ONE RED NOTIFICATION, THE CARD'S, AND NO "Failed to process" FROM THE SHARED INSERT BESIDE IT (#310)
                 expect(resultNotificationCalls(vscode.window.showErrorMessage)).toEqual([[
-                    expect.stringMatching(/^The insert of Relationship Tree 1 into qa \(qa@example\.com\.qa\) stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen\. \d+ records? failed\. The first file that failed is collectionsApi-OtherChildObject__c\.json; its Validation Rules in the Troubleshooting tab may fix it\.$/),
+                    expect.stringMatching(/^The insert of Account-thru-OtherChildObject__c into qa \(qa@example\.com\.qa\) stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen\. \d+ records? failed\. The first file that failed is collectionsApi-OtherChildObject__c\.json; its Validation Rules in the Troubleshooting tab may fix it\.$/),
                     RECIPE_COCKPIT_INSERT_VIEW_FAILED_FILE_LABEL,
                     RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
                     RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL
@@ -1807,7 +1807,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
         const RESULTS_FILE_PATH = path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', 'treecipeObjectsWrapper-2026-09-20T10-00-00.json');
         const showInsertNotification = (insertResult: Record<string, unknown>) => ( RecipeCockpitService as any ).showTreeInsertNotification(
             { resultsFilePath: RESULTS_FILE_PATH, isRolledBack: false, savedRecordCount: 0, failedRecordCount: 0, ...insertResult },
-            'Relationship Tree 1',
+            'Account-thru-OtherChildObject__c',
             'qa',
             TREE_WORKSPACE_ROOT
         );
@@ -1819,11 +1819,11 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
         });
 
         it.each([
-            ['a full success', { outcome: 'completed', savedRecordCount: 1 }, 'showInformationMessage', '1 record was inserted into qa from Relationship Tree 1.', RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL],
-            ['records that failed', { outcome: 'completed', savedRecordCount: 3, failedRecordCount: 1 }, 'showWarningMessage', '3 records were inserted into qa from Relationship Tree 1 and 1 failed. Nothing was rolled back.', RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL],
-            ['a stop that kept what it saved', { outcome: 'stopped', savedRecordCount: 1, failedRecordCount: 2 }, 'showErrorMessage', 'The insert of Relationship Tree 1 into qa stopped at a file that could not be inserted. 1 record was kept, because all-or-none was not chosen, and 2 failed.', RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL],
-            ['a stop that rolled back', { outcome: 'stopped', isRolledBack: true, failedRecordCount: 1 }, 'showErrorMessage', 'The insert of Relationship Tree 1 into qa stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen. 1 record failed.', RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL],
-            ['a cancel', { outcome: 'cancelled', isRolledBack: true }, 'showWarningMessage', 'The insert of Relationship Tree 1 into qa was cancelled and every record it had inserted was deleted.', RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL]
+            ['a full success', { outcome: 'completed', savedRecordCount: 1 }, 'showInformationMessage', '1 record was inserted into qa from Account-thru-OtherChildObject__c.', RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL],
+            ['records that failed', { outcome: 'completed', savedRecordCount: 3, failedRecordCount: 1 }, 'showWarningMessage', '3 records were inserted into qa from Account-thru-OtherChildObject__c and 1 failed. Nothing was rolled back.', RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL],
+            ['a stop that kept what it saved', { outcome: 'stopped', savedRecordCount: 1, failedRecordCount: 2 }, 'showErrorMessage', 'The insert of Account-thru-OtherChildObject__c into qa stopped at a file that could not be inserted. 1 record was kept, because all-or-none was not chosen, and 2 failed.', RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL],
+            ['a stop that rolled back', { outcome: 'stopped', isRolledBack: true, failedRecordCount: 1 }, 'showErrorMessage', 'The insert of Account-thru-OtherChildObject__c into qa stopped at a file that could not be inserted, and every record it had inserted was deleted, because all-or-none was chosen. 1 record failed.', RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL],
+            ['a cancel', { outcome: 'cancelled', isRolledBack: true }, 'showWarningMessage', 'The insert of Account-thru-OtherChildObject__c into qa was cancelled and every record it had inserted was deleted.', RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL]
         ])('reports %s in one notification with the button that opens the results file', (_label, insertResult, notifyName, expectedText, expectedButton) => {
 
             showInsertNotification(insertResult);
@@ -1837,7 +1837,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             showInsertNotification({ outcome: 'stopped', requestFailureDetail: 'collectionsApi-Contact.json failed: Error importing records: [x](command:y)' });
 
             expect((vscode.window.showErrorMessage as jest.Mock).mock.calls).toEqual([[
-                `The insert of Relationship Tree 1 into qa stopped at a file that could not be inserted. 0 records were kept, because all-or-none was not chosen, and 0 failed. The request for ${RecipeYamlScalar.escapeForNotification('collectionsApi-Contact.json failed: Error importing records: [x](command:y)')}`,
+                `The insert of Account-thru-OtherChildObject__c into qa stopped at a file that could not be inserted. 0 records were kept, because all-or-none was not chosen, and 0 failed. The request for ${RecipeYamlScalar.escapeForNotification('collectionsApi-Contact.json failed: Error importing records: [x](command:y)')}`,
                 RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL
             ]]);
 
@@ -1873,8 +1873,8 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             showInsertNotification({ outcome: 'completed', savedRecordCount: 2, resultsFilePath: '' });
             showInsertNotification({ outcome: 'cancelled', resultsFilePath: path.join(TREE_WORKSPACE_ROOT, 'InsertAttempts', 'never-written.json') });
 
-            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls).toEqual([['2 records were inserted into qa from Relationship Tree 1.']]);
-            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls).toEqual([['The insert of Relationship Tree 1 into qa was cancelled.']]);
+            expect((vscode.window.showInformationMessage as jest.Mock).mock.calls).toEqual([['2 records were inserted into qa from Account-thru-OtherChildObject__c.']]);
+            expect((vscode.window.showWarningMessage as jest.Mock).mock.calls).toEqual([['The insert of Account-thru-OtherChildObject__c into qa was cancelled.']]);
 
         });
 
@@ -1885,7 +1885,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             const INSERTED_TREE = { runFolderName: SNOWFAKERY_RUN, treeFolderName: ACCOUNT_TREE_KEY };
             const showFailure = (insertResult: Record<string, unknown>, insertedTree: unknown = INSERTED_TREE) => ( RecipeCockpitService as any ).showTreeInsertNotification(
                 { resultsFilePath: RESULTS_FILE_PATH, isRolledBack: false, savedRecordCount: 1, failedRecordCount: 1, outcome: 'completed', failedFilePath: FAILED_FILE_PATH, ...insertResult },
-                'Relationship Tree 1',
+                'Account-thru-OtherChildObject__c',
                 'qa',
                 TREE_WORKSPACE_ROOT,
                 insertedTree
@@ -1905,7 +1905,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 await new Promise(resolve => setImmediate(resolve));
 
                 expect((vscode.window.showWarningMessage as jest.Mock).mock.calls).toEqual([[
-                    `1 record was inserted into qa from Relationship Tree 1 and 1 failed. Nothing was rolled back. The first file that failed is ${path.basename(FAILED_FILE_PATH)}; its ${subTabLabel} in the Troubleshooting tab may fix it.`,
+                    `1 record was inserted into qa from Account-thru-OtherChildObject__c and 1 failed. Nothing was rolled back. The first file that failed is ${path.basename(FAILED_FILE_PATH)}; its ${subTabLabel} in the Troubleshooting tab may fix it.`,
                     RECIPE_COCKPIT_INSERT_VIEW_FAILED_FILE_LABEL,
                     RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
                     RECIPE_COCKPIT_INSERT_OPEN_TROUBLESHOOTING_LABEL
@@ -2051,7 +2051,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             expect(detailLines.slice(0, 7)).toEqual([
                 'Org: qa (qa@example.com.qa)',
                 'Type: Sandbox',
-                'Recipe tree: Relationship Tree 1 (recipe.yml)',
+                'Recipe tree: Account-thru-OtherChildObject__c (recipe.yml)',
                 'Backend: snowfakery',
                 'Records, inserted parents first:',
                 '  Account: 1',
@@ -2206,7 +2206,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
         });
 
         const accountCard = (panel: any) => panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeInsertControls').length > 0
-            && panel.findAll(treeCard, 'treeTitle').concat(panel.findAll(treeCard, 'treeName')).some((titleElement: any) => /Relationship Tree 1/.test(titleElement.textContent)))
+            && panel.findAll(treeCard, 'treeTitle').concat(panel.findAll(treeCard, 'treeName')).some((titleElement: any) => /Account-thru-OtherChildObject__c/.test(titleElement.textContent)))
             ?? panel.treeCards()[0];
         const partOf = (panel: any, rootElement: any, className: string) => panel.findAll(rootElement, className)[0];
         const postedNamed = (panel: any, command: string) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === command);
