@@ -16,7 +16,8 @@ import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
     the progress and the notification.
 
     Only the six types below are ever written into a package.xml, only custom fields (__c), and only
-    custom objects (__c, #402: a field cannot land on an object the org lacks): never a standard
+    custom objects (__c and platform events __e, #402: a field cannot land on an object the org
+    lacks): never a standard
     object, a layout, a list view or anything else in an object folder, so an unrelated broken file
     cannot fail the deploy. Every member is an api name before it is written.
 */
@@ -76,8 +77,8 @@ const OBJECT_FILE_SUFFIX = '.object-meta.xml';
 // ONLY A CUSTOM FIELD OF THE OBJECT ITSELF IS DEPLOYED; __pc, __Latitude__s AND STANDARD FIELDS ARE NOT
 const CUSTOM_FIELD_NAME_PATTERN = /__c$/;
 
-// ONLY A CUSTOM OBJECT IS DEPLOYED (#402); A STANDARD OBJECT IS THE ORG'S, AND __mdt, __e, __x AND __b ARE NOT A TREE'S
-const CUSTOM_OBJECT_NAME_PATTERN = /__c$/;
+// ONLY A CUSTOM OBJECT OR PLATFORM EVENT IS DEPLOYED (#402), BOTH A <CustomObject>; A STANDARD OBJECT IS THE ORG'S, AND __mdt, __x AND __b ARE NOT A TREE'S
+const CUSTOM_OBJECT_NAME_PATTERN = /__[ce]$/;
 
 const API_VERSION_PATTERN = /^[1-9][0-9]{1,2}\.0$/;
 
@@ -107,7 +108,7 @@ export interface IMetadataDeploySummary {
     // GLOBAL VALUE SETS A FIELD NAMES THAT THE PROJECT DOES NOT HOLD
     missingGlobalValueSets: string[];
     recordTypes: string[];
-    // CUSTOM (__c) TREE OBJECTS WHOSE <Object>.object-meta.xml WAS FOUND AND READ AS A <CustomObject> (#402)
+    // CUSTOM (__c) AND PLATFORM EVENT (__e) TREE OBJECTS WHOSE <Object>.object-meta.xml WAS FOUND AND READ AS A <CustomObject> (#402)
     customObjects: string[];
     // CUSTOM TREE OBJECTS NO PACKAGE DIRECTORY HOLDS AN .object-meta.xml FOR: LEFT OUT, SO THEIR FIELDS NEED THE ORG TO HAVE THEM
     missingCustomObjects: string[];

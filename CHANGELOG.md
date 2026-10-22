@@ -1,5 +1,12 @@
 # Change Log
 
+## [3.131.1] - Recipe Cockpit: Deploy fields… also deploys a tree's platform events (`__e`) as custom objects
+
+[#402](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/402)'s **Deploy fields…** added a `CustomObject` member only for a `__c` object, so a tree holding a platform event that was not in the org yet still failed every one of the event's fields.
+
+- **Platform events count as custom objects.** A `__e` tree object whose `<Object>.object-meta.xml` is in the project is deployed as a `CustomObject` beside its fields, and one the project lacks is named in the confirmation as not deployed, exactly as a `__c` object. Custom metadata types (`__mdt`), external objects (`__x`) and big objects (`__b`) are still never deployed.
+- **Tests.** `RecipeCockpitMetadataDeploy.test.ts` deploys a platform event with its field, leaves the other suffixes out, and refuses `__x`, `__b` and a dotted member as a `CustomObject`.
+
 ## [3.131.0] - Recipe Cockpit: each empty lookup offers "Create <Parent> in recipe" and "Use existing <Parent> from org…", and the insert no longer asks about lookups
 
 Closes [#421](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/421). It also removes the symptom of [#420](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/420): with no insert-time picker, the insert can no longer ask about a lookup to an excluded object.
