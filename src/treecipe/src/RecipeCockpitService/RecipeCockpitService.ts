@@ -15172,6 +15172,12 @@ ${this.buildPaletteCustomProperties()}
 
         if (treeState.friendIndex) { return treeState.friendIndex; }
 
+        // A FLAT CARD (EVERY SNOWFAKERY ONE) HAS NO FRIEND ROW, SO ITS FIELDS ARE NEVER READ FOR NICKNAMES HERE
+        if (!treeState.objectStates.some(function (treeObjectState) { return readNestingParent(treeObjectState.object) !== null; })) {
+            treeState.friendIndex = { chipsByObjectState: new Map() };
+            return treeState.friendIndex;
+        }
+
         const nicknameIndex = ensureNicknameIndex(treeState);
         const parentsByObjectState = new Map();
         const friendStatesByParentKey = Object.create(null);
@@ -15212,15 +15218,21 @@ ${this.buildPaletteCustomProperties()}
 
         });
 
+        // ONE POSITION MAP PER PARENT, SO A ROOT WITH THOUSANDS OF FRIENDS IS NUMBERED IN ONE PASS
         const lineNumberOf = function (treeObjectState) { return typeof treeObjectState.object.lineNumber === 'number' ? treeObjectState.object.lineNumber : Number.MAX_SAFE_INTEGER; };
+        const friendNumbersByParentKey = Object.create(null);
         Object.keys(friendStatesByParentKey).forEach(function (parentKey) {
-            friendStatesByParentKey[parentKey].sort(function (firstState, secondState) { return lineNumberOf(firstState) - lineNumberOf(secondState); });
+            const friendNumbers = new Map();
+            friendStatesByParentKey[parentKey]
+                .sort(function (firstState, secondState) { return lineNumberOf(firstState) - lineNumberOf(secondState); })
+                .forEach(function (friendState, friendIndex) { friendNumbers.set(friendState, friendIndex + 1); });
+            friendNumbersByParentKey[parentKey] = friendNumbers;
         });
 
         const chipsByObjectState = new Map();
         parentsByObjectState.forEach(function (parents, treeObjectState) {
             chipsByObjectState.set(treeObjectState, parents.map(function (parent) {
-                const friendNumber = friendStatesByParentKey[parent.parentKey].indexOf(treeObjectState) + 1;
+                const friendNumber = friendNumbersByParentKey[parent.parentKey].get(treeObjectState);
                 return { label: parent.label + '-' + friendNumber, parentLabel: parent.label, friendNumber: friendNumber, ownerState: parent.ownerState };
             }));
         });
@@ -15235,12 +15247,17 @@ ${this.buildPaletteCustomProperties()}
         return ensureFriendIndex(treeObjectState.treeState).chipsByObjectState.get(treeObjectState) || [];
     }
 
-    // EVERY CHIP'S TEXT BY OBJECT, ITS OCCURRENCES TOGETHER, FOR THE TWO PLACES THAT NAME AN OBJECT ONCE (#374, #385)
+    /*
+        Every chip's text by object, for the two places that name an object once (#374, #385). An
+        iteration is left out: beside the object's one name, its chip would read as the TOP
+        occurrence being a friend of its own nickname.
+    */
     function listFriendLabelsByObjectApiName(treeState) {
 
         const friendLabelsByObjectApiName = Object.create(null);
 
         treeState.objectStates.forEach(function (treeObjectState) {
+            if (treeObjectState.isIteration) { return; }
             listFriendChips(treeObjectState).forEach(function (chip) {
                 const objectApiName = treeObjectState.object.objectApiName;
                 if (!hasOwnKey(friendLabelsByObjectApiName, objectApiName)) { friendLabelsByObjectApiName[objectApiName] = []; }
@@ -15290,7 +15307,8 @@ ${this.buildPaletteCustomProperties()}
 
             if (chip.ownerState) {
                 const ownerState = chip.ownerState;
-                chipElement.setAttribute('aria-label', description + ': go to ' + ownerState.object.objectApiName);
+                // THE NAME STARTS WITH THE TEXT ON THE CHIP, SO A VOICE COMMAND SAYING WHAT IS SHOWN REACHES IT
+                chipElement.setAttribute('aria-label', chip.label + ', friend ' + chip.friendNumber + ' of ' + chip.parentLabel + ': go to ' + ownerState.object.objectApiName);
                 chipElement.setAttribute('title', description + '. Go to ' + ownerState.object.objectApiName + ', which holds ' + chip.parentLabel);
                 chipElement.addEventListener('click', function () {
                     closeNicknameMenu(false);
@@ -18217,7 +18235,7 @@ ${this.buildPaletteCustomProperties()}
             // THE TOP OF THE TREECIPE TAB (#255), MADE WITH THE TAB
             resetSelectionElement: null,
             insert: null,
-            // WHICH ROW OWNS EACH NICKNAME AND WHICH FIELDS POINT TO IT (#380), BUILT WITH THE TREECIPE TAB
+            // WHICH ROW OWNS EACH NICKNAME AND WHICH FIELDS POINT TO IT (#380), BUILT WITH THE TREECIPE TAB OR FIRST ASKED FOR BY A FRIEND CHIP (#411)
             nicknameIndex: null,
             // WHICH PARENTS EACH FRIEND ROW NAMES AND ITS NUMBER AMONG THEIR FRIENDS (#411)
             friendIndex: null

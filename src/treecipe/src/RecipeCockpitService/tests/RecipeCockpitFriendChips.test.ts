@@ -154,8 +154,8 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
             expect(glyphElement.attributes['aria-hidden']).toBe('true');
             expect(glyphElement.children[0].attributes.d).toBe(RECIPE_COCKPIT_FRIEND_GLYPH_PATH);
             expect(caseChips.map((chipElement: any) => chipElement.attributes['aria-label'])).toEqual([
-                'Friend 1 of Contact_NickName: go to Contact',
-                'Friend 2 of Account_NickName: go to Account'
+                'Contact_NickName-1, friend 1 of Contact_NickName: go to Contact',
+                'Account_NickName-2, friend 2 of Account_NickName: go to Account'
             ]);
             expect(caseChips.every((chipElement: any) => chipElement.classList.contains('sdtButton-secondary'))).toBe(true);
 
@@ -208,7 +208,8 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
             const listedObjects = panel.findAll(panel.cockpitBodyElement, 'treePickerObject').map((element: any) => element.textContent);
 
             expect(listedObjects).toEqual([
-                'Account (Account_NickName-4)',
+                // THE SELF-LOOKUP ITERATION'S CHIP IS ON ITS OWN ROW, NEVER BESIDE THE OBJECT'S ONE NAME
+                'Account',
                 'Contact (Account_NickName-1)',
                 'Case (Contact_NickName-1, Account_NickName-2)',
                 'Opportunity (Account_NickName-3)',
