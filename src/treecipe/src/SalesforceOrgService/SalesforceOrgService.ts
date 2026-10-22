@@ -69,6 +69,8 @@ export interface INormalizedOrgObjectDescribe {
     objectLabel: string;
     isCreateable: boolean;
     fields: INormalizedOrgField[];
+    // THE THREE CHARACTERS EVERY RECORD Id OF THE OBJECT STARTS WITH; ABSENT WHEN THE DESCRIBE NAMES NONE
+    keyPrefix?: string;
 }
 
 /*
@@ -345,6 +347,48 @@ export class SalesforceOrgService {
                 .map(queryRecord => this.asRecord(queryRecord)?.Id)
                 .filter((recordId): recordId is string => typeof recordId === 'string' && SALESFORCE_RECORD_ID_PATTERN.test(recordId))
             : [];
+
+    }
+
+    /*
+        Which of the named Ids the org holds as records of the object (#421), as the org spells them
+        (18 characters). Every Id is held to the Salesforce Id pattern before it is quoted, so none can
+        close the quote, and the object name to the api-name rule. A query that fails, or an answer
+        with no records list, THROWS: a caller never reads it as "none of them exist".
+    */
+    static async queryExistingRecordIds(querySource: IOrgQuerySource, objectApiName: string, recordIds: readonly string[]): Promise<string[]> {
+
+        if ( !this.isUsableObjectApiName(objectApiName) ) {
+            throw new Error(`"${objectApiName}" is ${ORG_DESCRIBE_UNUSABLE_NAME_MESSAGE}.`);
+        }
+        if ( recordIds.length === 0 ) {
+            return [];
+        }
+        recordIds.forEach(recordId => {
+            if ( typeof recordId !== 'string' || !SALESFORCE_RECORD_ID_PATTERN.test(recordId) ) {
+                throw new Error(`"${recordId}" is not a Salesforce Id, so it was not sent to the org.`);
+            }
+        });
+
+        const quotedIds = [...new Set(recordIds)].map(recordId => `'${recordId}'`).join(', ');
+        const queryRecords = this.asRecord(await querySource.query(`SELECT Id FROM ${objectApiName} WHERE Id IN (${quotedIds})`))?.records;
+
+        if ( !Array.isArray(queryRecords) ) {
+            throw new Error(`The org's answer about its ${objectApiName} records could not be read.`);
+        }
+
+        return queryRecords
+            .map(queryRecord => this.asRecord(queryRecord)?.Id)
+            .filter((recordId): recordId is string => typeof recordId === 'string' && SALESFORCE_RECORD_ID_PATTERN.test(recordId));
+
+    }
+
+    // A 15-CHARACTER Id IS THE CASE-SENSITIVE HEAD OF ITS 18-CHARACTER FORM, SO EITHER NAMES THE SAME RECORD
+    static isSameRecordId(leftRecordId: string, rightRecordId: string): boolean {
+
+        return leftRecordId.length >= 15 && rightRecordId.length >= 15
+                && leftRecordId.slice(0, 15) === rightRecordId.slice(0, 15)
+                && ( leftRecordId.length === 15 || rightRecordId.length === 15 || leftRecordId === rightRecordId );
 
     }
 
@@ -1510,7 +1554,8 @@ export class SalesforceOrgService {
             objectApiName: typeof describedObjectApiName === 'string' && describedObjectApiName ? describedObjectApiName : requestedObjectApiName,
             objectLabel: this.asString(describeRecord.label),
             isCreateable: describeRecord.createable === true,
-            fields: fields
+            fields: fields,
+            ...( typeof describeRecord.keyPrefix === 'string' && /^[A-Za-z0-9]{3}$/.test(describeRecord.keyPrefix) ? { keyPrefix: describeRecord.keyPrefix } : {} )
         };
 
     }

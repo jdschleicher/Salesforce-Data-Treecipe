@@ -21,7 +21,7 @@ Each card is named after the folder its tree was written to: its first object th
 Under the dropdown, a line lists the card's objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.
 The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row.
 **Favorites only** narrows the dropdown to your starred cards.
-Each card's **Generate fake data and insert** button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why.
+Each card's **Generate fake data and insert** button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record.
 If an insert fails, its message offers **View failed file** (the generated file that failed), **View errors** and **Open Troubleshooting**, which opens the card's Troubleshooting area that may fix it.
 To generate without inserting, use **Run Faker by Recipe** from the command palette.
 
@@ -58,7 +58,8 @@ These settings change what is generated, but the recipe file stays exactly as Ge
 These buttons rewrite the recipe file itself, because the change belongs in the recipe:
 
 - **Wire to…** and **Wire TODO lookups**: fill a lookup's TODO with its parent's nickname.
-- **Add &lt;parent&gt; to recipe**: adds a standard parent object, such as Account, above the child that needs it. In a faker-js recipe the confirmation also offers **Add as the parent, nest the tree under it**: the child's whole top-level block moves under the new parent's `friends:`, and every TODO lookup in it to that parent is wired. A friend's count is records per parent record.
+- **Create &lt;parent&gt; in recipe**, on a lookup that is still a TODO: adds a standard parent object, such as Account, above the child that needs it. In a faker-js recipe the confirmation also offers **Add as the parent, nest the tree under it**: the child's whole top-level block moves under the new parent's `friends:`, and every TODO lookup in it to that parent is wired. A friend's count is records per parent record. A parent with no template, such as a custom object, draws it disabled and says why.
+- **Use existing &lt;parent&gt; from org…**, beside it: pick any connected org, then **Search &lt;parent&gt;** or **Enter a record Id**, which is checked in that org. The Id is written as the lookup's value and the row shows `org record · <org>`; the insert checks the Id exists in the org it inserts into. **Clear**, under the pencil, puts the TODO back.
 - **+** beside an object that looks up to itself: adds a child record under it.
 - **Remove TODO** (in the **Troubleshooting** tab's **TODO's** list): takes a TODO comment out of the recipe and lists it under **Removed**, where **Restore** puts it back exactly. The line is kept in a `.removedTodos.json` file beside the recipe. A TODO that is a field's whole value, such as a lookup's, stays.
 - **Edit** (the pencil on a field): opens the field's faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a `.fixedValues.json` file beside the recipe, and **Clear** puts them back exactly.
