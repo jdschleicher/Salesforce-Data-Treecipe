@@ -76,7 +76,7 @@ describe('RecipeCockpitService, the selected tab\'s outline and the search icon 
             });
             const [firstCard] = panel.treeCards();
             expect(tabPanelsOf(panel, firstCard).map((panelElement: any) => panelElement.className.split(' ')[0]))
-                .toEqual(['treeStructure', 'treeDatasets', 'treeTroubleshooting', 'treeQueries']);
+                .toEqual(['treeStructure', 'treeDatasets', 'treeTroubleshooting', 'treeQueries', 'treeUpdater']);
 
         });
 

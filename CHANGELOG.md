@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.126.1] - Recipe Cockpit: the tree insert no longer asks about a lookup to an excluded object
+## [3.129.1] - Recipe Cockpit: the tree insert no longer asks about a lookup to an excluded object
 
 Closes [#420](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/420).
 
@@ -9,6 +9,49 @@ When an object was excluded from a tree card, **Generate fake data and insert** 
 - **The insert's field list now matches what is generated.** `collectCreateTargets` leaves out each lookup the object cascade disabled (`objectSelection.disabledLookups`, drawn as `parent excluded`), as well as the fields you unticked. So the parent picker, the confirmation and the readiness check no longer see them.
 - **Unchanged.** A lookup to a parent that was never in the tree is still asked about. A REQUIRED lookup to an excluded parent is still filled with a random existing record of that parent from the org, as before. The confirmation's "Unticked, not sent" line still names only the fields you unticked.
 - **Tests.** `RecipeCockpitExcludeFields.test.ts` checks that a disabled lookup is left out of the insert's targets and parent picker, and that the same lookup is still asked about without the exclusion.
+
+## [3.129.0] - Recipe Cockpit: a Treecipe Updater tab that draws the tree and lets you choose the fields to fill
+
+Closes [#415](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/415), the first slice of [#414](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/414).
+
+#414 will fill a field on records an org already holds. This slice adds the tab where you choose those fields. It contacts no org and writes nothing.
+
+- **A fifth tab, Treecipe Updater.** Every card with a folder draws it after Query. It is built the first time you open it.
+- **The tree, as the Treecipe tab draws it.** Each object appears once, in insert order, with its lookups. Its field rows are built on first expand and show the label (when it differs from the api name), the sized type and the faker expression. The tab has no chain link, count box, field checkbox or edit button.
+- **A box per field.** Ticking a field chooses it, and a line at the top says how many fields are chosen on how many objects. A lookup (a tree lookup, or a `Lookup`, `MasterDetail` or `Hierarchy` field), `RecordTypeId`, a dependent picklist, an `AutoNumber` or roll-up `Summary` field (Salesforce sets their values) and a field read only from the recipe file are drawn disabled, and each says why. A formula field is not locked yet, since the objects wrapper does not record one. Choosing posts no command to the extension, and a click redraws only its box, its object's count and the summary, so it never opens or closes a row.
+- **Its own search.** It matches what a row draws: field name, label, sized type and faker expression. Like the Treecipe tab's search, it never hides an object and opens matching objects within the same budget.
+- **The place.** The tab, its search, the chosen fields and the opened objects are saved in the panel place as the optional `updaterChosenFieldKeys` and `updaterExpandedObjectKeys`, so the place version did not change and an older place opens as before. A saved choice of a field that is now locked, or that the tree no longer has, is dropped.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the tab.
+- **Tests.** `RecipeCockpitTreecipeUpdater.test.ts` runs the real panel script. It covers where the tab is drawn, object order and lookups, building rows on expand, labels, choosing and unchoosing (a click during a search opens and closes nothing), every lock reason, text-only rendering, `__proto__` and `constructor` names, the search, saving and restoring the place (stale choices and opened objects dropped), and `normalizePanelPlace`.
+
+## [3.128.0] - Recipe Cockpit: an "All fields" checkbox ticks or unticks every field of an object
+
+Closes [#410](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/410).
+
+#343 hid **All / None**, so an object's fields could only be ticked one at a time. An expanded object now draws one **All fields** checkbox above its field rows.
+
+- **One box with three states.** It shows ticked when every field you can untick is ticked, unticked when none is, and mixed (`−`, `aria-checked="mixed"`) when some are. A click from ticked unticks them all; from mixed or unticked, it ticks them all. The box and its label both toggle it.
+- **Locked fields are left out of its count.** These are `RecordTypeId` while record type sections depend on it, a lookup whose parent is excluded, and a controlling field while a dependent is ticked. After "untick all", the box reads unticked while those fields stay ticked.
+- **The host still decides.** A click posts `setAllFieldsIncluded {treeKey, objectApiName, nickname?, included}`, the message #220 defined and #343 left routed. The router, the `selectableObjectKeys` allow-list, the executor and the stored selection (version 7) are unchanged. The box redraws only from the host's `objectSelection` answer, in place, as the field checkboxes do.
+- **Where it is drawn.** Only on a card with a folder, for an object that is not an iteration and not written more than once without distinct nicknames, and that has a field with a recipe line. It is hidden while every field is locked, and disabled on an excluded object.
+- **Styled by its kind.** It is a `createButton('check', …)` box like every other checkbox, so it draws no new colour pair.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` name it under "Unticked fields", and the guide's pictures are re-taken.
+- **Tests.** `RecipeCockpitExcludeFields.test.ts` runs the real panel script and covers the box's three states, what each click posts (nickname included), a locked field left out of the count, the box hidden while every field is locked, redrawing in place, the disabled box on an excluded object, and no box on a card with no folder, a self-lookup's iteration or an object with indistinct occurrences. The #343 test now asserts that no All / None buttons are drawn and that the box sits above the first field row.
+
+## [3.127.0] - Recipe Cockpit: a friend row shows a holding-hands chip per parent, `<parent nickname>-<n>`
+
+Closes [#411](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/411).
+
+The Treecipe tab lists a card's objects flat, so nothing on a row said it was a friend nested under another object, whose friend it was, or which of a parent's friends it was.
+
+- **One chip per parent.** Every row nested under `friends:` in a faker-js recipe, a self-lookup iteration (#188) included, draws a holding-hands chip for each parent it belongs to: the occurrence it is nested under first, then each other row one of its fields points to by nickname (#380), in field order, each once. A chip reads `<parent nickname>-<n>`, where `n` is the row's place among that parent's friends (the rows naming it, in recipe line order), so a parent is numbered the same on every row and an excluded friend keeps its number. In the writer fixture, Case reads `Contact_NickName-1` and `Account_NickName-2`.
+- **A chip opens its parent.** Clicking a chip opens and scrolls to the parent's row and focuses its nickname, the same way the #380 back-link does. Nothing is posted to the host. A nesting parent no single row holds by nickname (no nickname, a name two rows share, or `__proto__`) is drawn as muted `<Parent object>-<n>` text with nothing to open.
+- **The glyph.** One SVG path (`RECIPE_COCKPIT_FRIEND_GLYPH_PATH`) built with `createElementNS`, `aria-hidden`, and stroked from the palette. Each chip's `aria-label` starts with the text it shows, then says it in words ("Account_NickName-2, friend 2 of Account_NickName: go to Account").
+- **Searched and listed.** The Treecipe tab's search and the Treecipes section search match a chip's text, and the object list under the Treecipes dropdown (#385) names each object's chips in parentheses (a self-lookup iteration's chip stays on its own row, since beside the object's one name it would read as the top occurrence's).
+- **Cost.** A parent's friends are numbered in one pass after the sort, and a card with no friend row (every snowfakery card) builds no nickname index for the chips at all.
+- **The model.** A nested first occurrence carries the optional `parentNickname` of the occurrence holding it, beside `countParentObjectApiName`, set only when that occurrence has one nickname. A snowfakery recipe, and any top-level object, draws no chip and posts the model it did.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the chips.
+- **Tests.** `RecipeCockpitFriendChips.test.ts` covers the model field, the chips and their numbering, the glyph and labels, a click, both searches, the dropdown list, a stray nickname, the fallback, a `__proto__` nickname and a flat snowfakery tree.
 
 ## [3.126.0] - Recipe Cockpit: switching recipe runs asks whether to reset or carry over the tree selections
 

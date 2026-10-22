@@ -27,6 +27,8 @@ To generate without inserting, use **Run Faker by Recipe** from the command pale
 
 Each object shows its nickname, the name its lookups use in the recipe file.
 Click it to list the fields that point to it and jump to one; a field holding a nickname shows it highlighted (**↖ Account_NickName**), and clicking it jumps back to that object.
+A friend, an object nested under another's `friends:` in a faker-js recipe, shows a holding-hands chip for each parent it belongs to: the one it is nested under first, then any other its lookups name.
+Each chip reads the parent's nickname and the friend's place among that parent's friends (**Account_NickName-2**); click it to jump to that parent.
 
 Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply.
 Tick **TODOs only** on a card's Treecipe tab to see just the fields and objects with one, or open its **Troubleshooting** tab, whose **TODO's** list shows them all, each under its field with a link to its line (**↗ yml**).
@@ -45,7 +47,7 @@ Each action there is a card you click anywhere on, saying when you would need it
 These settings change what is generated, but the recipe file stays exactly as Generate Treecipe wrote it, so it always shows what was generated from your metadata:
 
 - **Excluded objects** (the chain link): the object and its children are left out.
-- **Unticked fields**: the field is left out.
+- **Unticked fields**: the field is left out. **All fields**, above an object's fields, ticks or unticks them all.
 - **Record counts**: how many records an object gets.
 - **The rules box**: a field generated without the limits its validation rules set.
 
@@ -68,6 +70,8 @@ The **Troubleshooting** tab also deploys to a sandbox or scratch org, never prod
 Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; **Cancel** or Escape does nothing.
 
 The **Query** tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree (the same queries as the tree folder's `soql-sosl-templates--….md`). Edit a query, **Run…** it against any connected org you pick in the command palette (a query only reads), and **Export JSON** or **Export CSV** what came back, under `treecipe/QueryResults/<tree folder>/`, which git ignores. A run reads at most 50,000 records or 1,000,000 values, and the tab previews the first 50 rows and 50 columns.
+
+The **Treecipe Updater** tab, after **Query**, draws the tree's objects and fields as the Treecipe tab does, each object once. Tick the fields you want to fill on records an org already holds, and its search narrows the rows by field name, label, type or faker expression. A lookup, `RecordTypeId`, a dependent picklist, an auto number or roll-up summary field (Salesforce sets those) and a field read only from the recipe file cannot be chosen, and each says why. Loading and updating those records are still to come ([#414](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/414)), so choosing a field reads and writes nothing yet. The cockpit remembers the fields you ticked.
 
 ![A card's Treecipe tab with Wire TODO lookups at the top and Wire to… on Contact's AccountId lookup](images/recipe-cockpit/what-edits-the-yaml.png)
 
