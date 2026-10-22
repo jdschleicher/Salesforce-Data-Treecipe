@@ -324,6 +324,11 @@ export const RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH = 'M4.5 8 H6.5 A4 4 0 0 1 6.5
 */
 export const RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH = 'M4 20 L5 15 L15.5 4.5 L19.5 8.5 L9 19 Z M13.5 6.5 L17.5 10.5';
 export const RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = 'fixed';
+/*
+    A friend chip (#411): two people holding hands, one path built like the chain link and stroked
+    from the palette, in front of "<parent nickname>-<n>" on every row nested under friends:.
+*/
+export const RECIPE_COCKPIT_FRIEND_GLYPH_PATH = 'M5 5 A2 2 0 1 0 9 5 A2 2 0 1 0 5 5 Z M15 5 A2 2 0 1 0 19 5 A2 2 0 1 0 15 5 Z M7 8 V15 L5 21 M7 15 L9 21 M17 8 V15 L15 21 M17 15 L19 21 M7 10 L12 13 L17 10 M7 10 L4 14 M17 10 L20 14';
 export const RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL = 'edited';
 /*
     A field's validation-rule checkbox (#325), at the end of its row: checked while the rules #324
@@ -498,6 +503,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Each object shows its nickname, the name its lookups use in the recipe file. Click it to list the fields that point to it and jump to one; a field holding a nickname shows it highlighted, and clicking it jumps back to that object.',
+            'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a holding-hands chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent.',
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all, each under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out.',
             'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types and Global Value Sets, each with its own search. It opens on the one you chose last. Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.',
             'Validation Rules lists each object\'s validation rules from your project: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not. Show formula opens a rule\'s formula.'
@@ -724,6 +730,8 @@ export interface IRecipeCockpitObjectViewModel {
     */
     recordCount?: number;
     countParentObjectApiName?: string;
+    // THE ONE NICKNAME OF THE OCCURRENCE WHOSE friends: BLOCK HOLDS THE FIRST OCCURRENCE, WHICH ITS FRIEND CHIP NAMES (#411)
+    parentNickname?: string;
     /*
         Set only on an object with two or more record types under a valid developer name (#195):
         what the Record types section offers. generatedRecordTypeDeveloperNames is what the run's recipe
@@ -1047,6 +1055,7 @@ export interface IRecipeSourceObjectEntry {
     nickname?: string;
     recordCount?: number;
     countParentObjectApiName?: string;
+    parentNickname?: string;
     fieldEntries: Map<string, IRecipeSourceFieldEntry>;
     iterations?: IRecipeSourceObjectIterationEntry[];
     // A LATER OCCURRENCE WAS LEFT TO THE FIRST: NO NICKNAME TELLS THEM APART, SO THE OBJECT CANNOT BE EXCLUDED (#219)
@@ -12798,12 +12807,14 @@ export class RecipeCockpitService {
             if ( !firstObjectEntry ) {
                 const nickname = scannedObject.nicknames.length === 1 ? scannedObject.nicknames[0] : undefined;
                 const recordCount = RecipeCockpitRecipeWriter.readObjectCount(lines, scannedObject);
-                const countParentObjectApiName = scannedObject.parentHeaderIndex !== undefined ? scannedObjectsByHeaderIndex.get(scannedObject.parentHeaderIndex)?.objectApiName : undefined;
+                const parentScannedObject = scannedObject.parentHeaderIndex !== undefined ? scannedObjectsByHeaderIndex.get(scannedObject.parentHeaderIndex) : undefined;
+                const countParentObjectApiName = parentScannedObject?.objectApiName;
                 objectEntries.set(scannedObject.objectApiName, {
                     lineNumber: scannedObject.headerIndex + 1,
                     ...( nickname !== undefined ? { nickname: nickname } : {} ),
                     ...( recordCount !== undefined ? { recordCount: recordCount } : {} ),
                     ...( countParentObjectApiName !== undefined ? { countParentObjectApiName: countParentObjectApiName } : {} ),
+                    ...( parentScannedObject?.nicknames.length === 1 ? { parentNickname: parentScannedObject.nicknames[0] } : {} ),
                     fieldEntries: this.readRecipeSourceFieldEntries(scannedObject, lines),
                     ...( RecipeCockpitRecipeWriter.hasRecordTypeSections(lines, scannedObject) ? { hasRecordTypeSections: true } : {} )
                 });
@@ -12992,6 +13003,7 @@ export class RecipeCockpitService {
                 ...( objectEntry.hasRecordTypeSections ? { hasRecordTypeSections: true } : {} ),
                 ...( objectEntry.recordCount !== undefined ? { recordCount: objectEntry.recordCount } : {} ),
                 ...( objectEntry.countParentObjectApiName !== undefined ? { countParentObjectApiName: objectEntry.countParentObjectApiName } : {} ),
+                ...( objectEntry.parentNickname !== undefined ? { parentNickname: objectEntry.parentNickname } : {} ),
                 ...( objectEntry.todos ? { todos: objectEntry.todos.slice() } : {} ),
                 ...( !objectEntry.iterations && objectEntry.nickname !== undefined ? { recipeNickname: objectEntry.nickname } : {} ),
                 ...( objectEntry.iterations ? {
@@ -13608,6 +13620,11 @@ ${this.buildPaletteCustomProperties()}
         z-index: 2;
     }
     .treeNicknameBackLink { font-size: 0.85em; }
+    .treeFriendSlot { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
+    .treeFriendChip { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85em; }
+    .treeFriendGlyph { width: 1.1em; height: 1.1em; flex: none; }
+    .treeFriendGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .treeFriendChip.muted .treeFriendGlyph path { stroke: var(--sdt-muted); }
     .treeObjectBody { padding-bottom: 0.25rem; }
     .treeField { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
     .treeFieldHeader .fieldType {
@@ -13966,6 +13983,7 @@ ${this.buildPaletteCustomProperties()}
     const TREE_BROKEN_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH)};
     const FIELD_PARENT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON)};
     const FIXED_VALUE_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH)};
+    const FRIEND_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_FRIEND_GLYPH_PATH)};
     const TOGGLE_COLLAPSED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH)};
     const SEARCH_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_SEARCH_GLYPH_PATH)};
     const MOTION_REVEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS};
@@ -14540,11 +14558,14 @@ ${this.buildPaletteCustomProperties()}
         }
 
         const exclusionsByObjectApiName = indexObjectExclusions(shownTreeState.tree);
+        const friendLabelsByObjectApiName = listFriendLabelsByObjectApiName(shownTreeState);
         objectApiNames.forEach(function (objectApiName, objectIndex) {
             if (objectIndex > 0) { treePickerObjectsElement.appendChild(createElement('span', 'treePickerObjectSeparator muted', TREE_PICKER_OBJECTS_SEPARATOR)); }
             const exclusion = Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
             const suffix = !exclusion ? '' : exclusion.kind === 'autoExcluded' ? TREE_PICKER_AUTO_EXCLUDED_SUFFIX : TREE_PICKER_EXCLUDED_SUFFIX;
-            treePickerObjectsElement.appendChild(createElement('span', exclusion ? 'treePickerObject excluded' : 'treePickerObject', objectApiName + suffix));
+            const friendLabels = hasOwnKey(friendLabelsByObjectApiName, objectApiName) ? friendLabelsByObjectApiName[objectApiName] : [];
+            const friendText = friendLabels.length > 0 ? ' (' + friendLabels.join(', ') + ')' : '';
+            treePickerObjectsElement.appendChild(createElement('span', exclusion ? 'treePickerObject excluded' : 'treePickerObject', objectApiName + friendText + suffix));
         });
 
         treePickerObjectsElement.appendChild(createElement('span', 'treePickerObjectsCount muted', ' · ' + pluralize(objectApiNames.length, 'object', 'objects')));
@@ -14599,6 +14620,7 @@ ${this.buildPaletteCustomProperties()}
             const tree = treeState.tree;
             const entries = [{ kind: 'treecipe', text: displayTitleOf(tree) + (tree.folderName && tree.customName ? ' · ' + tree.folderName : ''), haystack: (displayTitleOf(tree) + '\\n' + (tree.folderName || '')).toLowerCase() }];
             const indexedObjectApiNames = Object.create(null);
+            const friendLabelsByObjectApiName = listFriendLabelsByObjectApiName(treeState);
 
             treeState.objectStates.forEach(function (treeObjectState) {
 
@@ -14606,7 +14628,13 @@ ${this.buildPaletteCustomProperties()}
                 if (treeObjectState.isIteration || indexedObjectApiNames[object.objectApiName] === true) { return; }
                 indexedObjectApiNames[object.objectApiName] = true;
 
-                entries.push({ kind: 'object', objectApiName: object.objectApiName, text: object.objectApiName, haystack: object.objectApiName.toLowerCase() });
+                const friendLabels = hasOwnKey(friendLabelsByObjectApiName, object.objectApiName) ? friendLabelsByObjectApiName[object.objectApiName] : [];
+                entries.push({
+                    kind: 'object',
+                    objectApiName: object.objectApiName,
+                    text: object.objectApiName + (friendLabels.length > 0 ? ' · ' + friendLabels.join(', ') : ''),
+                    haystack: [object.objectApiName].concat(friendLabels).join('\\n').toLowerCase()
+                });
 
                 object.fields.forEach(function (field) {
                     const fieldLabel = typeof field.fieldLabel === 'string' ? field.fieldLabel : '';
@@ -15159,6 +15187,184 @@ ${this.buildPaletteCustomProperties()}
         });
 
         return backLinkElement;
+
+    }
+
+    // THE OCCURRENCE WHOSE friends: BLOCK HOLDS A ROW (#411), OR null FOR A TOP-LEVEL ONE
+    function readNestingParent(object) {
+
+        if (object.iteration) {
+            return object.iteration.parentObjectApiName ? { objectApiName: object.iteration.parentObjectApiName, nickname: object.iteration.parentNickname || '' } : null;
+        }
+
+        return typeof object.countParentObjectApiName === 'string' && object.countParentObjectApiName
+            ? { objectApiName: object.countParentObjectApiName, nickname: typeof object.parentNickname === 'string' ? object.parentNickname : '' }
+            : null;
+
+    }
+
+    /*
+        The parents each FRIEND row names (#411): the occurrence its friends: block nests it under,
+        then every other row a field of it points to by nickname (#380's index), in field order, each
+        once. A parent is the ONE row holding its nickname; a nesting parent no row holds that way is
+        named by its object, with no row to open. A parent's friends are the friend rows naming it,
+        in recipe line order, and a chip's number is the row's place among them -- so one parent is
+        numbered the same on every row, and an excluded friend keeps its number. Built once per card,
+        with no prototype, since a hand-edited recipe can name anything.
+    */
+    function ensureFriendIndex(treeState) {
+
+        if (treeState.friendIndex) { return treeState.friendIndex; }
+
+        // A FLAT CARD (EVERY SNOWFAKERY ONE) HAS NO FRIEND ROW, SO ITS FIELDS ARE NEVER READ FOR NICKNAMES HERE
+        if (!treeState.objectStates.some(function (treeObjectState) { return readNestingParent(treeObjectState.object) !== null; })) {
+            treeState.friendIndex = { chipsByObjectState: new Map() };
+            return treeState.friendIndex;
+        }
+
+        const nicknameIndex = ensureNicknameIndex(treeState);
+        const parentsByObjectState = new Map();
+        const friendStatesByParentKey = Object.create(null);
+
+        treeState.objectStates.forEach(function (treeObjectState) {
+
+            const nestingParent = readNestingParent(treeObjectState.object);
+            if (!nestingParent) { return; }
+
+            const recipeFilePath = treeObjectState.object.recipeFilePath;
+            const parents = [];
+            const parentKeys = Object.create(null);
+            const addParent = function (parent) {
+                if (parentKeys[parent.parentKey] === true) { return; }
+                parentKeys[parent.parentKey] = true;
+                parents.push(parent);
+                if (!hasOwnKey(friendStatesByParentKey, parent.parentKey)) { friendStatesByParentKey[parent.parentKey] = []; }
+                friendStatesByParentKey[parent.parentKey].push(treeObjectState);
+            };
+
+            const nestingNicknameKey = nicknameKeyOf(recipeFilePath, nestingParent.nickname);
+            const nestingOwnerState = nestingParent.nickname && hasOwnKey(nicknameIndex.ownerStateByKey, nestingNicknameKey) && nicknameIndex.ownerStateByKey[nestingNicknameKey] !== treeObjectState
+                ? nicknameIndex.ownerStateByKey[nestingNicknameKey]
+                : null;
+
+            addParent(nestingOwnerState
+                ? { parentKey: 'nickname\\n' + nestingNicknameKey, label: nestingParent.nickname, ownerState: nestingOwnerState }
+                : { parentKey: 'object\\n' + String(recipeFilePath || '') + '\\n' + nestingParent.objectApiName, label: nestingParent.objectApiName, ownerState: null });
+
+            treeObjectState.fieldStates.forEach(function (fieldState) {
+                const ownerState = findReferencedOwnerState(treeObjectState, fieldState);
+                if (!ownerState) { return; }
+                const ownerNickname = nicknameOfObject(ownerState.object);
+                addParent({ parentKey: 'nickname\\n' + nicknameKeyOf(recipeFilePath, ownerNickname), label: ownerNickname, ownerState: ownerState });
+            });
+
+            parentsByObjectState.set(treeObjectState, parents);
+
+        });
+
+        // ONE POSITION MAP PER PARENT, SO A ROOT WITH THOUSANDS OF FRIENDS IS NUMBERED IN ONE PASS
+        const lineNumberOf = function (treeObjectState) { return typeof treeObjectState.object.lineNumber === 'number' ? treeObjectState.object.lineNumber : Number.MAX_SAFE_INTEGER; };
+        const friendNumbersByParentKey = Object.create(null);
+        Object.keys(friendStatesByParentKey).forEach(function (parentKey) {
+            const friendNumbers = new Map();
+            friendStatesByParentKey[parentKey]
+                .sort(function (firstState, secondState) { return lineNumberOf(firstState) - lineNumberOf(secondState); })
+                .forEach(function (friendState, friendIndex) { friendNumbers.set(friendState, friendIndex + 1); });
+            friendNumbersByParentKey[parentKey] = friendNumbers;
+        });
+
+        const chipsByObjectState = new Map();
+        parentsByObjectState.forEach(function (parents, treeObjectState) {
+            chipsByObjectState.set(treeObjectState, parents.map(function (parent) {
+                const friendNumber = friendNumbersByParentKey[parent.parentKey].get(treeObjectState);
+                return { label: parent.label + '-' + friendNumber, parentLabel: parent.label, friendNumber: friendNumber, ownerState: parent.ownerState };
+            }));
+        });
+
+        treeState.friendIndex = { chipsByObjectState: chipsByObjectState };
+        return treeState.friendIndex;
+
+    }
+
+    function listFriendChips(treeObjectState) {
+        if (!treeObjectState.treeState) { return []; }
+        return ensureFriendIndex(treeObjectState.treeState).chipsByObjectState.get(treeObjectState) || [];
+    }
+
+    /*
+        Every chip's text by object, for the two places that name an object once (#374, #385). An
+        iteration is left out: beside the object's one name, its chip would read as the TOP
+        occurrence being a friend of its own nickname.
+    */
+    function listFriendLabelsByObjectApiName(treeState) {
+
+        const friendLabelsByObjectApiName = Object.create(null);
+
+        treeState.objectStates.forEach(function (treeObjectState) {
+            if (treeObjectState.isIteration) { return; }
+            listFriendChips(treeObjectState).forEach(function (chip) {
+                const objectApiName = treeObjectState.object.objectApiName;
+                if (!hasOwnKey(friendLabelsByObjectApiName, objectApiName)) { friendLabelsByObjectApiName[objectApiName] = []; }
+                if (friendLabelsByObjectApiName[objectApiName].indexOf(chip.label) === -1) { friendLabelsByObjectApiName[objectApiName].push(chip.label); }
+            });
+        });
+
+        return friendLabelsByObjectApiName;
+
+    }
+
+    function buildFriendGlyph() {
+
+        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
+        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
+
+        glyphElement.setAttribute('class', 'treeFriendGlyph');
+        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
+        glyphElement.setAttribute('aria-hidden', 'true');
+        glyphElement.setAttribute('focusable', 'false');
+        pathElement.setAttribute('d', FRIEND_GLYPH_PATH);
+        glyphElement.appendChild(pathElement);
+
+        return glyphElement;
+
+    }
+
+    // ONE CHIP PER PARENT (#411): A BUTTON OPENING THE PARENT'S ROW, OR MUTED TEXT WHEN NO ONE ROW IS THAT PARENT
+    function drawFriendChips(treeObjectState) {
+
+        const slotElement = treeObjectState.friendSlotElement;
+        if (!slotElement) { return; }
+
+        slotElement.textContent = '';
+        const chips = listFriendChips(treeObjectState);
+        treeObjectState.friendSearchText = chips.map(function (chip) { return chip.label; }).join('\\n').toLowerCase();
+
+        chips.forEach(function (chip) {
+
+            const description = 'Friend ' + chip.friendNumber + ' of ' + chip.parentLabel;
+            const chipElement = chip.ownerState
+                ? createButton('secondary', 'treeFriendChip', '', 'compact')
+                : createElement('span', 'treeFriendChip muted');
+
+            chipElement.appendChild(buildFriendGlyph());
+            chipElement.appendChild(createElement('span', 'treeFriendLabel', chip.label));
+
+            if (chip.ownerState) {
+                const ownerState = chip.ownerState;
+                // THE NAME STARTS WITH THE TEXT ON THE CHIP, SO A VOICE COMMAND SAYING WHAT IS SHOWN REACHES IT
+                chipElement.setAttribute('aria-label', chip.label + ', friend ' + chip.friendNumber + ' of ' + chip.parentLabel + ': go to ' + ownerState.object.objectApiName);
+                chipElement.setAttribute('title', description + '. Go to ' + ownerState.object.objectApiName + ', which holds ' + chip.parentLabel);
+                chipElement.addEventListener('click', function () {
+                    closeNicknameMenu(false);
+                    revealTreeObjectRow(treeObjectState.treeState, ownerState, null, ownerState.nicknameChipElement || ownerState.toggleElement);
+                });
+            } else {
+                chipElement.setAttribute('title', description + ', which no one row of this recipe holds by nickname');
+            }
+
+            slotElement.appendChild(chipElement);
+
+        });
 
     }
 
@@ -16856,7 +17062,10 @@ ${this.buildPaletteCustomProperties()}
             headerElement: objectHeaderElement,
             nicknameSlotElement: null,
             nicknameChipElement: null,
-            nicknameMenuElement: null
+            nicknameMenuElement: null,
+            // THE PARENTS A FRIEND ROW NAMES, DRAWN WITH THE TREECIPE TAB (#411); THEIR TEXT IS SEARCHED WITH THE OBJECT'S NAME
+            friendSlotElement: null,
+            friendSearchText: ''
         };
 
         treeObjectState.todoCount = treeObjectState.fieldStates.reduce(function (todoCount, fieldState) { return todoCount + fieldState.todos.length; }, treeObjectState.objectTodos.length);
@@ -16903,6 +17112,11 @@ ${this.buildPaletteCustomProperties()}
         if (object.iteration) {
             const parentName = object.iteration.parentNickname || object.iteration.parentObjectApiName;
             if (parentName) { objectHeaderElement.appendChild(createElement('span', 'treeIteration muted', 'nested under ' + parentName)); }
+        }
+
+        if (readNestingParent(object)) {
+            treeObjectState.friendSlotElement = createElement('span', 'treeFriendSlot');
+            objectHeaderElement.appendChild(treeObjectState.friendSlotElement);
         }
 
         // A COUNT BOX ONLY WHERE THE HOST CAN STORE ONE: A CARD WITH A FOLDER, AN OBJECT TOLD APART, WITH A READABLE "count:" (#255)
@@ -16955,6 +17169,7 @@ ${this.buildPaletteCustomProperties()}
 
         treeState.objectStates.forEach(function (treeObjectState) {
             drawObjectNickname(treeObjectState);
+            drawFriendChips(treeObjectState);
             structureElement.appendChild(treeObjectState.element);
         });
 
@@ -18070,8 +18285,10 @@ ${this.buildPaletteCustomProperties()}
             // THE TOP OF THE TREECIPE TAB (#255), MADE WITH THE TAB
             resetSelectionElement: null,
             insert: null,
-            // WHICH ROW OWNS EACH NICKNAME AND WHICH FIELDS POINT TO IT (#380), BUILT WITH THE TREECIPE TAB
-            nicknameIndex: null
+            // WHICH ROW OWNS EACH NICKNAME AND WHICH FIELDS POINT TO IT (#380), BUILT WITH THE TREECIPE TAB OR FIRST ASKED FOR BY A FRIEND CHIP (#411)
+            nicknameIndex: null,
+            // WHICH PARENTS EACH FRIEND ROW NAMES AND ITS NUMBER AMONG THEIR FRIENDS (#411)
+            friendIndex: null
         };
 
         treeState.objectStates.forEach(function (treeObjectState) { treeObjectState.treeState = treeState; });
@@ -20015,7 +20232,7 @@ ${this.buildPaletteCustomProperties()}
 
         treeState.objectStates.forEach(function (treeObjectState) {
 
-            const isObjectNameMatch = !searchQuery || treeObjectState.objectSearchText.indexOf(searchQuery) !== -1;
+            const isObjectNameMatch = !searchQuery || treeObjectState.objectSearchText.indexOf(searchQuery) !== -1 || treeObjectState.friendSearchText.indexOf(searchQuery) !== -1;
             let objectMatchingFieldCount = 0;
 
             treeObjectState.fieldStates.forEach(function (fieldState) {
