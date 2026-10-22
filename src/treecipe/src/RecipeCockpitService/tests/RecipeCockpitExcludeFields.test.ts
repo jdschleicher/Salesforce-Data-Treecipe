@@ -1049,6 +1049,24 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
             });
 
+            it('is not drawn on a self-lookup\'s iteration, whose boxes follow its object', () => {
+
+                const panel = drawRecipe(recipe => {
+                    const accountObject = objectOf(recipe, 'Account');
+                    accountObject.nickname = 'Account_NickName';
+                    accountObject.iterations = [{ nickname: 'Account_child_NickName', lineNumber: 40, parentObjectApiName: 'Account', parentNickname: 'Account_NickName', fields: [{ fieldApiName: 'Name', lineNumber: 42, recipeValue: '${{fake.Company}}' } as any] }];
+                    treeOf(recipe, ACCOUNT_TREE_KEY).objects.push({ objectApiName: 'Account', parentLookups: [], iterationNickname: 'Account_child_NickName' });
+                });
+                const [account, iteration] = objectsNamed(panel, 'Account');
+                panel.expandObject(account);
+                panel.expandObject(iteration);
+
+                expect(panel.findAll(panel.objectBodyOf(account), 'treeFieldSelectAll')).toHaveLength(1);
+                expect(panel.findAll(panel.objectBodyOf(iteration), 'treeField').length).toBeGreaterThan(0);
+                expect(panel.findAll(panel.objectBodyOf(iteration), 'treeFieldSelectAll')).toEqual([]);
+
+            });
+
             it('is not drawn on a card with no folder, or on an object written more than once without distinct nicknames', () => {
 
                 const panel = drawRecipe(recipe => { objectOf(recipe, 'Contact').hasIndistinctOccurrences = true; });

@@ -12,7 +12,7 @@ Closes [#410](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/41
 - **Where it is drawn.** Only on a card with a folder, for an object that is not an iteration and not written more than once without distinct nicknames, and that has a field with a recipe line. It is hidden while every field is locked, and disabled on an excluded object.
 - **Styled by its kind.** It is a `createButton('check', …)` box like every other checkbox, so it draws no new colour pair.
 - **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` name it under "Unticked fields", and the guide's pictures are re-taken.
-- **Tests.** `RecipeCockpitExcludeFields.test.ts` runs the real panel script and covers the box's three states, what each click posts (nickname included), a locked field left out of the count, the box hidden while every field is locked, redrawing in place, the disabled box on an excluded object, and no box on a card with no folder or an object with indistinct occurrences. The #343 test now asserts that no All / None buttons are drawn and that the box sits above the first field row.
+- **Tests.** `RecipeCockpitExcludeFields.test.ts` runs the real panel script and covers the box's three states, what each click posts (nickname included), a locked field left out of the count, the box hidden while every field is locked, redrawing in place, the disabled box on an excluded object, and no box on a card with no folder, a self-lookup's iteration or an object with indistinct occurrences. The #343 test now asserts that no All / None buttons are drawn and that the box sits above the first field row.
 
 ## [3.126.0] - Recipe Cockpit: switching recipe runs asks whether to reset or carry over the tree selections
 
