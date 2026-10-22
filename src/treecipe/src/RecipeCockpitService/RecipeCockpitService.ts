@@ -68,6 +68,9 @@ import {
 } from './RecipeCockpitRecordCreation';
 import { CollectionsApiService, DataSetRecordPreparer, IDataSetInsertResult } from '../CollectionsApiService/CollectionsApiService';
 import { RecipeCockpitInsertFailureTriage } from './RecipeCockpitInsertFailureTriage';
+import { IFakerRecipeProcessor } from '../FakerRecipeProcessor/IFakerRecipeProcessor';
+import { FakerJSRecipeProcessor } from '../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
+import { SnowfakeryRecipeProcessor } from '../FakerRecipeProcessor/SnowfakeryRecipeProcessor/SnowfakeryRecipeProcessor';
 import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { DATASET_COLLECTIONS_API_FOLDER_NAME, DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
@@ -540,7 +543,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against any connected org you pick in the command palette (a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.',
-            'The Treecipe Updater tab, after Query, draws the tree\'s objects and fields as the Treecipe tab does. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the tree\'s existing records, with the fields you ticked and an optional WHERE per object, from the sandbox or scratch org chosen in Target Org Management (with none chosen, it asks), and shows how many each object has and the first rows. It only reads; updating them is still to come.'
+            'The Treecipe Updater tab, after Query, draws the tree\'s objects and fields as the Treecipe tab does. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the tree\'s existing records, with the fields you ticked and an optional WHERE per object, from the sandbox or scratch org chosen in Target Org Management (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Nothing is written yet; updating the records is still to come.'
         ]
     },
     {
@@ -1103,6 +1106,7 @@ export interface IRecipeCockpitPanelMessage {
     exportFormat?: unknown;
     // THE TREECIPE UPDATER'S LOAD (#416): PER OBJECT, THE FIELDS CHOSEN AND THE READER'S WHERE
     objects?: unknown;
+    fields?: unknown;
     // A ROW OF THE TODO'S SUB-TAB'S REMOVED LIST (#391)
     removalKey?: unknown;
     filePath?: unknown;
@@ -1583,6 +1587,8 @@ export interface IRecipeCockpitUpdaterLoadStateMessage {
     command: 'updaterLoadState';
     isRunning: boolean;
     treeKey: string;
+    // A VALUE GENERATION (#417) SHARES THE LOAD'S ONE RUN PER WINDOW; ABSENT IS A LOAD
+    runKind?: 'generate';
 }
 
 // ONE OBJECT'S RECORDS AS THE PANEL IS SENT THEM: COUNTS AND A PREVIEW AS TEXT, OR WHY THEY COULD NOT BE READ
@@ -1609,6 +1615,40 @@ export interface IRecipeCockpitUpdaterRecordsMessage {
     treeKey: string;
     orgLabel: string;
     objects: IRecipeCockpitUpdaterObjectRecordsViewModel[];
+}
+
+// WHAT ONE CHOSEN FIELD'S NEW VALUES COME FROM (#417), AS THE PANEL POSTED IT: value ABSENT IS THE RECIPE'S OWN EXPRESSION
+export interface IRecipeCockpitUpdaterFieldValueRequest {
+    objectApiName: string;
+    fieldApiName: string;
+    value?: string;
+}
+
+// ONE LOADED RECORD'S NEW VALUES (#417), BY FIELD, HELD ON THE HOST FOR THE UPDATE (#418)
+export interface IRecipeCockpitUpdaterRecordValues {
+    recordId: string;
+    fieldValues: Record<string, unknown>;
+}
+
+// ONE OBJECT'S NEW VALUES AS THE PANEL IS SENT THEM: Id, THEN CURRENT AND NEW PER FIELD, AS TEXT
+export interface IRecipeCockpitUpdaterObjectValuesViewModel {
+    objectApiName: string;
+    recordCount: number;
+    fieldApiNames: string[];
+    columns: string[];
+    rows: string[][];
+    hiddenColumnCount: number;
+}
+
+/*
+    The values a generation made (#417), as a preview only: the values themselves stay on the host
+    for the slice that writes them (#418). Drawn only on the model it was generated on.
+*/
+export interface IRecipeCockpitUpdaterValuesMessage {
+    command: 'updaterValues';
+    renderSequence: number;
+    treeKey: string;
+    objects: IRecipeCockpitUpdaterObjectValuesViewModel[];
 }
 
 /*
@@ -1861,7 +1901,7 @@ export const RECIPE_COCKPIT_QUERY_TAB_LABEL = 'Query';
     writes nothing, and the box of a field the Updater cannot change is disabled with the reason.
 */
 export const RECIPE_COCKPIT_UPDATER_TAB_LABEL = 'Treecipe Updater';
-export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads this tree\'s records, with those fields, from the sandbox or scratch org chosen in Target Org Management. Updating them is still to come: nothing is written to the org.';
+export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads this tree\'s records, with those fields, from the sandbox or scratch org chosen in Target Org Management. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with ✎. Updating the records is still to come: nothing is written to the org.';
 export const RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER = 'Search objects and fields';
 export const RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN = 'No fields chosen';
 export const RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON = 'read from the recipe file, so its type is not known';
@@ -1879,6 +1919,13 @@ export const RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER = 'Select the sandbox or scr
 export const RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT = 10;
 export const RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON = `Not read: the load reached its limit of ${RECIPE_COCKPIT_QUERY_RECORD_CAP} records or ${RECIPE_COCKPIT_QUERY_VALUE_BUDGET} values on the objects before this one. Add a WHERE to those to read this one.`;
 export const RECIPE_COCKPIT_UPDATER_BUSY_REFUSAL = 'Records were not loaded: another run is changing the org selection. Try again when it ends.';
+export const RECIPE_COCKPIT_UPDATER_GENERATE_LABEL = 'Generate values';
+export const RECIPE_COCKPIT_UPDATER_GENERATING_LABEL = 'Generating…';
+export const RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL = 'Generate values';
+export const RECIPE_COCKPIT_UPDATER_NOT_LOADED_REFUSAL = 'No values were generated: load this tree\'s records first. Values are generated for the records the last Load records read.';
+// A FIELD WHOSE RECIPE VALUE IS A COMMENT (A TODO) HAS NO EXPRESSION TO GENERATE FROM; A VALUE TYPED FOR IT STILL WORKS
+export const RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_REASON = 'its recipe has no faker expression for it; type a value or an expression in its editor';
+export const RECIPE_COCKPIT_UPDATER_VALUE_EDIT_HINT = 'Keeps this value in the Treecipe Updater only: nothing is written to the recipe or to the org.';
 
 export const RECIPE_COCKPIT_QUERY_INTRO = 'The SOQL Generate Treecipe wrote for this tree. Edit a query, run it against any connected org you choose, then export what it returned as JSON or CSV. A query only reads.';
 
@@ -1922,6 +1969,7 @@ export const RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT: Record<ScratchOrgSetupPhase 
 export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitUpdaterLoadStateMessage
                                         | IRecipeCockpitUpdaterRecordsMessage
+                                        | IRecipeCockpitUpdaterValuesMessage
                                         | IRecipeCockpitRecipeDataMessage
                                         | IRecipeCockpitLoadFailedMessage
                                         | IRecipeCockpitRunSwitchCancelledMessage
@@ -2166,6 +2214,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'loadUpdaterRecords'; treeKey: string; renderSequence: number; requests: IRecipeCockpitUpdaterObjectRequest[]; isOrgPrompted: boolean }
     // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refuseUpdaterLoad'; refusalText?: string; hostMessage: IRecipeCockpitUpdaterLoadStateMessage }
+    // THE UPDATER'S VALUES (#417): THE FIELDS, AND ANY VALUE TYPED FOR ONE, CHECKED AGAIN AND CONFIRMED BY THE EXECUTOR
+    | { kind: 'generateUpdaterValues'; treeKey: string; renderSequence: number; fieldRequests: IRecipeCockpitUpdaterFieldValueRequest[] }
     | { kind: 'exportTreeQueryResult'; treeKey: string; queryKey: string; exportFormat: RecipeCockpitQueryExportFormat }
     // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refuseMetadataRetrieve'; refusalText?: string; hostMessage: IRecipeCockpitMetadataRetrieveStateMessage }
@@ -2262,6 +2312,8 @@ export interface IRecipeCockpitPanelState {
     isUpdaterOrgPromptOpen?: boolean;
     // THE LAST RECORDS IT POSTED, REPLAYED WHILE ITS MODEL IS THE ONE ON SCREEN
     updaterRecordsMessage?: IRecipeCockpitUpdaterRecordsMessage;
+    // THE LAST VALUE GENERATION'S PREVIEW (#417), REPLAYED WHILE ITS MODEL IS ON SCREEN
+    updaterValuesMessage?: IRecipeCockpitUpdaterValuesMessage;
     // HOST-ONLY, REPLACED WITH THE MODEL: THE WRAPPER THE QUERY TAB'S QUERIES ARE READ FROM (#367)
     objectsWrapperFilePath?: string;
     // THE PLACE workspaceState KEPT FOR THIS MODEL (#230), REPLAYED UNTIL THE MODEL'S "rendered" SAYS IT WAS DRAWN
@@ -5476,6 +5528,7 @@ export class RecipeCockpitService {
         this.clearHeldTreeQueryResult();
         // SO ARE AN UPDATER LOAD'S RECORDS (#416)
         panelState.updaterRecordsMessage = undefined;
+        panelState.updaterValuesMessage = undefined;
         this.clearHeldUpdaterRecords();
         panelState.loadFailedMessage = undefined;
         panelState.loadPhaseMessage = '';
@@ -5988,6 +6041,11 @@ export class RecipeCockpitService {
             case 'loadUpdaterRecords':
 
                 await this.loadUpdaterRecordsFromPanel(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'generateUpdaterValues':
+
+                await this.generateUpdaterValuesFromPanel(cockpitPanel, panelState, panelAction);
                 return;
 
             case 'refuseUpdaterLoad':
@@ -8076,11 +8134,37 @@ export class RecipeCockpitService {
     private static heldUpdaterRecords: {
         // THE WORKSPACE, MODEL, TREE FOLDER AND ORG USERNAME IT WAS LOADED FOR, AS ONE KEY
         resultKey: string;
+        workspaceRoot: string;
+        renderSequence: number;
+        folderName: string;
+        orgUsername: string;
         recordsByObjectApiName: Map<string, Record<string, unknown>[]>;
+        // THE FIELDS EACH OBJECT WAS READ WITH: A VALUE IS GENERATED ONLY FOR A FIELD WHOSE CURRENT VALUE WAS READ (#417)
+        loadedFieldApiNamesByObjectApiName: Map<string, string[]>;
+    } | undefined;
+
+    /*
+        The last generation's new values (#417), per object and in the loaded records' order, for the
+        slice that writes them (#418). They belong to the records they were generated for, so they
+        go whenever those records go.
+    */
+    private static heldUpdaterValues: {
+        // THE HELD RECORDS' resultKey THEY WERE GENERATED FOR
+        resultKey: string;
+        valuesByObjectApiName: Map<string, IRecipeCockpitUpdaterRecordValues[]>;
     } | undefined;
 
     static clearHeldUpdaterRecords() {
         this.heldUpdaterRecords = undefined;
+        this.heldUpdaterValues = undefined;
+    }
+
+    static clearHeldUpdaterValues() {
+        this.heldUpdaterValues = undefined;
+    }
+
+    static readHeldUpdaterValues(objectApiName: string): IRecipeCockpitUpdaterRecordValues[] | undefined {
+        return this.heldUpdaterValues?.valuesByObjectApiName.get(objectApiName);
     }
 
     static readHeldUpdaterRecordCount(): number {
@@ -8144,6 +8228,7 @@ export class RecipeCockpitService {
         // A LOAD REPLACES THE LAST ONE FROM ITS START, ON THE HOST AND (ON THE RUNNING STATE) IN THE PANEL, SO THE SCREEN NEVER SHOWS RECORDS THE HOST LET GO
         this.clearHeldUpdaterRecords();
         panelState.updaterRecordsMessage = undefined;
+        panelState.updaterValuesMessage = undefined;
         this.setUpdaterLoadState({ command: 'updaterLoadState', isRunning: true, treeKey: loadAction.treeKey });
 
         try {
@@ -8320,7 +8405,12 @@ export class RecipeCockpitService {
 
         this.heldUpdaterRecords = {
             resultKey: JSON.stringify([panelState.workspaceRoot, renderSequence, tree.folderName, orgUsername]),
-            recordsByObjectApiName: recordsByObjectApiName
+            workspaceRoot: panelState.workspaceRoot,
+            renderSequence: renderSequence,
+            folderName: tree.folderName,
+            orgUsername: orgUsername,
+            recordsByObjectApiName: recordsByObjectApiName,
+            loadedFieldApiNamesByObjectApiName: new Map(requests.map(request => [request.objectApiName, [...request.fieldApiNames]] as const))
         };
 
         const recordsMessage: IRecipeCockpitUpdaterRecordsMessage = {
@@ -8348,6 +8438,410 @@ export class RecipeCockpitService {
         }
 
         VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(`${loadedText}.`));
+
+    }
+
+    /*
+        The panel's "Generate values" request (#417), untrusted: a list of the card's fields, each at
+        most once, each naming an object and a field its model lists, and a value -- typed in the
+        Updater's editor -- only as a string the editor could have held. Anything else refuses the
+        WHOLE request.
+    */
+    static readUpdaterFieldValueRequests(candidateFields: unknown, treeObjects: readonly IRecipeCockpitUpdaterTreeObject[]): { requests: IRecipeCockpitUpdaterFieldValueRequest[] } | { refusal: string } {
+
+        const treeObjectsByApiName = new Map(treeObjects.map(treeObject => [treeObject.objectApiName, treeObject] as const));
+        const fieldCount = treeObjects.reduce((total, treeObject) => total + treeObject.fieldApiNames.length, 0);
+
+        if ( !Array.isArray(candidateFields) || candidateFields.length === 0 || candidateFields.length > fieldCount ) {
+            return { refusal: 'the fields chosen are not fields of this treecipe.' };
+        }
+
+        const requestedFieldKeys = new Set<string>();
+        const requests: IRecipeCockpitUpdaterFieldValueRequest[] = [];
+
+        for ( const candidateField of candidateFields ) {
+
+            if ( !candidateField || typeof candidateField !== 'object' || Array.isArray(candidateField) ) {
+                return { refusal: 'the fields chosen are not fields of this treecipe.' };
+            }
+
+            const { objectApiName, fieldApiName, value } = candidateField as Record<string, unknown>;
+            const treeObject = typeof objectApiName === 'string' ? treeObjectsByApiName.get(objectApiName) : undefined;
+            const fieldKey = `${String(objectApiName)}\n${String(fieldApiName)}`;
+
+            if ( !treeObject || typeof fieldApiName !== 'string' || !treeObject.fieldApiNames.includes(fieldApiName) || requestedFieldKeys.has(fieldKey) ) {
+                return { refusal: 'the fields chosen are not fields of this treecipe.' };
+            }
+
+            if ( value !== undefined && ( typeof value !== 'string' || value.length === 0 || value.length > RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH ) ) {
+                return { refusal: `the value typed for ${treeObject.objectApiName}.${fieldApiName} is not one the editor holds.` };
+            }
+
+            requestedFieldKeys.add(fieldKey);
+            requests.push({ objectApiName: treeObject.objectApiName, fieldApiName: fieldApiName, ...( typeof value === 'string' ? { value: value } : {} ) });
+
+        }
+
+        return { requests: requests };
+
+    }
+
+    /*
+        Why a field cannot be filled by the Treecipe Updater (#415, #417), or undefined: the panel's
+        findUpdaterFieldLockReason, held by the host so a forged request is checked against the same
+        rule the box was drawn with. Recipe selections (#219/#220) are no lock here: the Updater is
+        about the org's records, not the recipe's generation.
+    */
+    static findUpdaterFieldLockReason(tree: IRecipeCockpitTreeViewModel, objectApiName: string, fieldViewModel: IRecipeCockpitFieldViewModel): string | undefined {
+
+        if ( fieldViewModel.isOnlyInRecipeFile ) {
+            return RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON;
+        }
+        if ( fieldViewModel.fieldApiName === 'RecordTypeId' ) {
+            return RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON;
+        }
+
+        const isTreeLookup = tree.objects.some(treeObject => treeObject.objectApiName === objectApiName
+                                                            && treeObject.parentLookups.some(parentLookup => parentLookup.fieldApiName === fieldViewModel.fieldApiName));
+        if ( isTreeLookup || RECIPE_COCKPIT_FIXED_VALUE_LOOKUP_FIELD_TYPES.includes(fieldViewModel.fieldType) ) {
+            return RECIPE_COCKPIT_UPDATER_LOOKUP_REASON;
+        }
+        if ( fieldViewModel.controllingField ) {
+            return `${RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX}${fieldViewModel.controllingField}`;
+        }
+        if ( RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES.includes(fieldViewModel.fieldType) ) {
+            return RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON;
+        }
+
+        return undefined;
+
+    }
+
+    // WHETHER A RECIPE VALUE IS AN EXPRESSION THE BACKEND CAN GENERATE FROM: A TODO COMMENT LOADS AS null
+    static isGeneratableRecipeValue(recipeValue: string | undefined): recipeValue is string {
+        return typeof recipeValue === 'string' && recipeValue.trim() !== '' && !recipeValue.trim().startsWith('#');
+    }
+
+    /*
+        A fixed value as the org would take it (#417): the value typed, as the kind its field writes --
+        a number as a number unless a double would round it (then the digits, as the recipe writes
+        them), true or false as a boolean, anything else as the text typed.
+    */
+    static toUpdaterFixedValue(value: string, kind: RecipeFixedValueKind): unknown {
+        if ( kind === 'boolean' ) {
+            return value === 'true';
+        }
+        if ( kind === 'number' && value.replace(/[-.]/g, '').replace(/^0+/, '').length <= 15 ) {
+            return Number(value);
+        }
+        return value;
+    }
+
+    // THE ONE PROCESSOR PER BACKEND THE UPDATER GENERATES WITH, SO A TEST CAN STAND ONE IN
+    static createUpdaterRecipeProcessor(fakerService: 'faker-js' | 'snowfakery'): IFakerRecipeProcessor {
+        return fakerService === 'faker-js' ? new FakerJSRecipeProcessor() : new SnowfakeryRecipeProcessor();
+    }
+
+    /*
+        "Generate values" (#417): one run per window, shared with the load. Each chosen field's new
+        value for every record the last load read: a value typed in the Updater's editor that is not
+        an expression is that value for every record, and anything else -- the recipe's own
+        expression, or one the reader edited -- is generated by the recipe's OWN backend from a
+        one-object recipe in a temporary folder outside the workspace, then paired with the loaded
+        Ids in order. Every value is shown in the panel's confirmation before anything runs. The new
+        values stay on the host; a preview is posted. Nothing is written to the org or the recipe.
+    */
+    private static async generateUpdaterValuesFromPanel(cockpitPanel: vscode.WebviewPanel,
+                                                        panelState: IRecipeCockpitPanelState,
+                                                        generateAction: Extract<RecipeCockpitPanelAction, { kind: 'generateUpdaterValues' }>) {
+
+        const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: generateAction.treeKey, runKind: 'generate' };
+
+        if ( this.isUpdaterLoadInFlight ) {
+            this.postToPanel(cockpitPanel, this.updaterLoadRunStateMessage ?? notRunning);
+            return;
+        }
+
+        this.isUpdaterLoadInFlight = true;
+        // A GENERATION REPLACES THE LAST ONE FROM ITS START, AS A LOAD DOES
+        this.clearHeldUpdaterValues();
+        panelState.updaterValuesMessage = undefined;
+        this.setUpdaterLoadState({ command: 'updaterLoadState', isRunning: true, treeKey: generateAction.treeKey, runKind: 'generate' });
+
+        try {
+            await this.performUpdaterGenerate(cockpitPanel, panelState, generateAction);
+        } finally {
+            this.isUpdaterLoadInFlight = false;
+            this.setUpdaterLoadState(notRunning);
+        }
+
+    }
+
+    private static async performUpdaterGenerate(cockpitPanel: vscode.WebviewPanel,
+                                                panelState: IRecipeCockpitPanelState,
+                                                generateAction: Extract<RecipeCockpitPanelAction, { kind: 'generateUpdaterValues' }>) {
+
+        const { treeKey, renderSequence, fieldRequests } = generateAction;
+        const clickedRecipeDataMessage = panelState.recipeDataMessage;
+        const tree = clickedRecipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+        const refuse = (refusalText: string) => { VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`No values were generated: ${refusalText}`)); };
+
+        if ( !clickedRecipeDataMessage || clickedRecipeDataMessage.renderSequence !== renderSequence || !tree?.folderName ) {
+            return;
+        }
+
+        const heldRecords = this.heldUpdaterRecords;
+        if ( !heldRecords || heldRecords.workspaceRoot !== panelState.workspaceRoot || heldRecords.renderSequence !== renderSequence || heldRecords.folderName !== tree.folderName ) {
+            VSCodeWorkspaceService.showWarningMessage(RECIPE_COCKPIT_UPDATER_NOT_LOADED_REFUSAL);
+            return;
+        }
+
+        const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey);
+        if ( !recipeFilePath || !this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot) ) {
+            refuse('this card has no single recipe file to read its backend from.');
+            return;
+        }
+
+        const generatedRecipesFolderPath = path.join(panelState.workspaceRoot, ConfigurationService.getGeneratedRecipesFolderPath());
+        const fakerService = VSCodeWorkspaceService.readRecipeFakerService(generatedRecipesFolderPath, recipeFilePath);
+        if ( !fakerService ) {
+            refuse('the faker backend this card\'s recipe was written for could not be told from its path.');
+            return;
+        }
+
+        let recipeNicknames: Set<string>;
+        try {
+            const recipeText = fs.readFileSync(recipeFilePath, 'utf8');
+            recipeNicknames = new Set(RecipeCockpitRecipeWriter.scanRecipeObjects(RecipeCockpitRecipeWriter.splitRecipeLines(recipeText).lines).flatMap(scannedObject => scannedObject.nicknames));
+        } catch {
+            refuse('this card\'s recipe file could not be read.');
+            return;
+        }
+
+        // EACH FIELD CHECKED AGAIN AGAINST THE MODEL ON SCREEN AND THE RECORDS LOADED, IN THE ORDER POSTED
+        // valueText IS WHAT THE RECIPE GETS; shownValue IS WHAT THE CONFIRMATION SHOWS -- THE READER'S OWN TEXT FOR AN EDIT
+        interface IPlannedField { objectApiName: string; fieldApiName: string; source: 'recipe' | 'expression' | 'fixed'; valueText: string; shownValue: string; fixedValue?: unknown }
+        const plannedFields: IPlannedField[] = [];
+
+        for ( const fieldRequest of fieldRequests ) {
+
+            const fieldLabel = `${fieldRequest.objectApiName}.${fieldRequest.fieldApiName}`;
+            const objectViewModel = clickedRecipeDataMessage.recipe.objects.find(object => object.objectApiName === fieldRequest.objectApiName);
+            const fieldViewModel = objectViewModel?.fields.find(field => field.fieldApiName === fieldRequest.fieldApiName);
+
+            if ( !objectViewModel || !fieldViewModel ) {
+                refuse(`${fieldLabel} is not a field of this treecipe.`);
+                return;
+            }
+
+            const lockReason = this.findUpdaterFieldLockReason(tree, fieldRequest.objectApiName, fieldViewModel);
+            if ( lockReason !== undefined ) {
+                refuse(`${fieldLabel} cannot be filled: ${lockReason}.`);
+                return;
+            }
+
+            if ( !( heldRecords.loadedFieldApiNamesByObjectApiName.get(fieldRequest.objectApiName) ?? [] ).includes(fieldRequest.fieldApiName) ) {
+                refuse(`${fieldLabel} was not chosen when the records were loaded, so its current value was not read. Load records again.`);
+                return;
+            }
+
+            if ( fieldRequest.value === undefined ) {
+                if ( !this.isGeneratableRecipeValue(fieldViewModel.recipeValue) ) {
+                    refuse(`${fieldLabel}: ${RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_REASON}.`);
+                    return;
+                }
+                plannedFields.push({ objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'recipe', valueText: fieldViewModel.recipeValue, shownValue: fieldViewModel.recipeValue.trim() });
+                continue;
+            }
+
+            const valueRefusal = this.validateFixedValueInput(fieldRequest.value, fieldViewModel, this.listDeclaredPicklistValues(panelState, fieldRequest.objectApiName, fieldRequest.fieldApiName));
+            if ( valueRefusal !== undefined ) {
+                refuse(`${fieldLabel}: ${valueRefusal}`);
+                return;
+            }
+
+            const kind = this.resolveFixedValueKind(fieldRequest.value, fieldViewModel);
+
+            // AS A PIN IS: A WHOLE-STRING NICKNAME IS A REFERENCE TO faker-js AND THE INSERT'S Id SWAP, NEVER TEXT
+            if ( kind !== 'expression' && recipeNicknames.has(fieldRequest.value) ) {
+                refuse(`${fieldLabel}: "${fieldRequest.value}" is a nickname in this card's recipe, which is read as a reference to a record, not as text.`);
+                return;
+            }
+
+            plannedFields.push(kind === 'expression'
+                ? { objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'expression', valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: fieldRequest.value, kind: kind }), shownValue: fieldRequest.value }
+                : { objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'fixed', valueText: fieldRequest.value, shownValue: fieldRequest.value, fixedValue: this.toUpdaterFixedValue(fieldRequest.value, kind) });
+
+        }
+
+        const objectApiNames = [...new Set(plannedFields.map(plannedField => plannedField.objectApiName))];
+        const recordsOf = (objectApiName: string) => heldRecords.recordsByObjectApiName.get(objectApiName) ?? [];
+        const describeRecords = (recordCount: number) => `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
+        const treeTitle = tree.customName ?? tree.title;
+
+        if ( objectApiNames.every(objectApiName => recordsOf(objectApiName).length === 0) ) {
+            refuse(`the last load read no records of ${objectApiNames.join(', ')}.`);
+            return;
+        }
+
+        // EVERY VALUE IS SHOWN BEFORE IT RUNS: AN EDITED EXPRESSION IS CODE THE BACKEND RUNS, AND ONLY THE READER'S EDITOR SUPPLIES ONE
+        const sourceLabels: Record<IPlannedField['source'], string> = { recipe: 'recipe expression', expression: 'edited expression', fixed: 'fixed value' };
+        const detailLines: string[] = [`Generated by the recipe's own backend, ${fakerService}. Nothing is written to the org or the recipe file.`, ''];
+        objectApiNames.forEach(objectApiName => {
+            const recordCount = recordsOf(objectApiName).length;
+            detailLines.push(`${objectApiName}: ${describeRecords(recordCount)}${recordCount === 0 ? ', so nothing is generated' : ''}`);
+            plannedFields.filter(plannedField => plannedField.objectApiName === objectApiName).forEach(plannedField => {
+                detailLines.push(`  ${plannedField.fieldApiName} -- ${sourceLabels[plannedField.source]}: ${plannedField.shownValue}`);
+            });
+        });
+
+        const answer = await this.confirmInPanel(
+            `Generate new values for ${plannedFields.length} ${plannedFields.length === 1 ? 'field' : 'fields'} of ${treeTitle}?`,
+            { detail: detailLines.join('\n') },
+            RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL
+        );
+
+        const isStillCurrent = () => this.recipeCockpitPanel === cockpitPanel
+                                    && this.recipeCockpitPanelState === panelState
+                                    && panelState.recipeDataMessage === clickedRecipeDataMessage
+                                    && this.heldUpdaterRecords === heldRecords;
+
+        if ( answer !== RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL || !isStillCurrent() ) {
+            return;
+        }
+
+        const valuesByObjectApiName = new Map<string, IRecipeCockpitUpdaterRecordValues[]>();
+        let generationRefusal: string | undefined;
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: generating new values for ${treeTitle} with ${fakerService}`),
+            cancellable: false
+        }, async (progress) => {
+
+            for ( const objectApiName of objectApiNames ) {
+
+                const records = recordsOf(objectApiName);
+                if ( records.length === 0 ) {
+                    continue;
+                }
+
+                progress.report({ message: objectApiName });
+
+                const objectFields = plannedFields.filter(plannedField => plannedField.objectApiName === objectApiName);
+                const generatedFields = objectFields.filter(plannedField => plannedField.source !== 'fixed');
+                let generatedRecords: Record<string, unknown>[] = [];
+
+                if ( generatedFields.length > 0 ) {
+                    const generation = await this.generateUpdaterObjectValues(fakerService, objectApiName, records.length, generatedFields.map(plannedField => ({ fieldApiName: plannedField.fieldApiName, valueText: plannedField.valueText })));
+                    if ( 'refusal' in generation ) {
+                        generationRefusal = generation.refusal;
+                        return;
+                    }
+                    generatedRecords = generation.records;
+                }
+
+                valuesByObjectApiName.set(objectApiName, records.map((record, recordIndex) => ({
+                    recordId: String(record.Id),
+                    fieldValues: Object.fromEntries(objectFields.map(plannedField => [
+                        plannedField.fieldApiName,
+                        // A BACKEND THAT WROTE NO VALUE FOR A FIELD (A null EXPRESSION) GIVES IT NONE, NEVER ANOTHER RECORD'S
+                        plannedField.source === 'fixed' ? plannedField.fixedValue : generatedRecords[recordIndex][plannedField.fieldApiName] ?? null
+                    ]))
+                })));
+
+            }
+
+        });
+
+        if ( generationRefusal !== undefined ) {
+            refuse(generationRefusal);
+            return;
+        }
+
+        if ( !isStillCurrent() ) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The values for ${treeTitle} were not kept: the run on screen or its records changed while they were generated. Generate them again.`));
+            return;
+        }
+
+        this.heldUpdaterValues = { resultKey: heldRecords.resultKey, valuesByObjectApiName: valuesByObjectApiName };
+
+        const objectViewModels: IRecipeCockpitUpdaterObjectValuesViewModel[] = objectApiNames.map(objectApiName => {
+            const fieldApiNames = plannedFields.filter(plannedField => plannedField.objectApiName === objectApiName).map(plannedField => plannedField.fieldApiName);
+            const records = recordsOf(objectApiName);
+            // AN OBJECT WITH NO RECORDS LOADED HAS NO VALUES, AND IS LISTED SO THE PANEL CAN SAY SO
+            const recordValues = valuesByObjectApiName.get(objectApiName) ?? [];
+            const previewRecords = recordValues.slice(0, RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT).map((recordValue, recordIndex) => {
+                const previewRecord: Record<string, unknown> = { Id: recordValue.recordId };
+                fieldApiNames.forEach(fieldApiName => {
+                    previewRecord[`${fieldApiName} (current)`] = records[recordIndex][fieldApiName] ?? null;
+                    previewRecord[`${fieldApiName} (new)`] = recordValue.fieldValues[fieldApiName];
+                });
+                return previewRecord;
+            });
+            const preview = RecipeCockpitQuery.buildPreview(previewRecords, RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT);
+            return {
+                objectApiName: objectApiName,
+                recordCount: recordValues.length,
+                fieldApiNames: fieldApiNames,
+                columns: preview.columns,
+                rows: preview.rows,
+                hiddenColumnCount: preview.hiddenColumnCount
+            };
+        });
+
+        const valuesMessage: IRecipeCockpitUpdaterValuesMessage = {
+            command: 'updaterValues',
+            renderSequence: renderSequence,
+            treeKey: treeKey,
+            objects: objectViewModels
+        };
+        panelState.updaterValuesMessage = valuesMessage;
+        this.postToPanel(cockpitPanel, valuesMessage);
+
+        const recordCount = objectViewModels.reduce((total, objectViewModel) => total + objectViewModel.recordCount, 0);
+        VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(`Generated new values for ${describeRecords(recordCount)} of ${treeTitle}. Nothing was written to the org.`));
+
+    }
+
+    /*
+        One object's generated values (#417): the one-object recipe the writer builds, written to a
+        temporary folder outside the workspace -- never beside the recipe -- run by the recipe's own
+        backend through the same processor Run Faker uses, and read back as one record per loaded
+        record. A count that differs refuses, so values are never paired with the wrong records.
+    */
+    static async generateUpdaterObjectValues(fakerService: 'faker-js' | 'snowfakery',
+                                             objectApiName: string,
+                                             recordCount: number,
+                                             fields: readonly { fieldApiName: string; valueText: string }[]): Promise<{ records: Record<string, unknown>[] } | { refusal: string }> {
+
+        const recipeBuild = RecipeCockpitRecipeWriter.buildUpdaterValueRecipe(objectApiName, recordCount, fields);
+        if ( recipeBuild.isBuilt === false ) {
+            return { refusal: recipeBuild.refusal };
+        }
+
+        let temporaryFolderPath: string | undefined;
+        try {
+            temporaryFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-updater-values-'));
+            const temporaryRecipePath = path.join(temporaryFolderPath, `updaterValues-${objectApiName}.yml`);
+            fs.writeFileSync(temporaryRecipePath, recipeBuild.recipeText, { encoding: 'utf8', flag: 'wx' });
+
+            const processor = this.createUpdaterRecipeProcessor(fakerService);
+            const generatedJson = await processor.generateFakeDataBySelectedRecipeFile(temporaryRecipePath) as string;
+            const generatedRecords = processor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(generatedJson).get(objectApiName)?.records ?? [];
+
+            if ( generatedRecords.length !== recordCount ) {
+                return { refusal: `${fakerService} generated ${generatedRecords.length} ${objectApiName} ${generatedRecords.length === 1 ? 'record' : 'records'} for ${recordCount} loaded.` };
+            }
+
+            return { records: generatedRecords as Record<string, unknown>[] };
+        } catch (generationError) {
+            return { refusal: `${fakerService} could not generate the values of ${objectApiName}: ${this.describeThrown(generationError)}` };
+        } finally {
+            if ( temporaryFolderPath ) {
+                fs.rmSync(temporaryFolderPath, { recursive: true, force: true });
+            }
+        }
 
     }
 
@@ -11880,6 +12374,42 @@ export class RecipeCockpitService {
 
             }
 
+            /*
+                "Generate values" (#417): the card on screen and, per chosen field, its object and
+                field names and the value typed for it, if any. Only the shape and the names are
+                checked here -- every field must be one the card's model lists, each once -- and the
+                executor checks each field and value again against the model and the loaded records.
+            */
+            case 'generateUpdaterValues': {
+
+                const { treeKey, renderSequence, fields } = panelMessage;
+                const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '', runKind: 'generate' };
+
+                if ( panelState.updaterLoadStateMessage?.isRunning ) {
+                    return { kind: 'refuseUpdaterLoad', hostMessage: panelState.updaterLoadStateMessage };
+                }
+
+                const recipeDataMessage = panelState.recipeDataMessage;
+                const tree = typeof treeKey === 'string' ? recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey) : undefined;
+
+                if ( typeof treeKey !== 'string'
+                        || !recipeDataMessage
+                        || !tree
+                        || renderSequence !== recipeDataMessage.renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+                    return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
+                }
+
+                const fieldRequests = this.readUpdaterFieldValueRequests(fields, this.listUpdaterTreeObjects(recipeDataMessage.recipe, tree));
+
+                if ( 'refusal' in fieldRequests ) {
+                    return { kind: 'refuseUpdaterLoad', refusalText: `No values were generated: ${fieldRequests.refusal}`, hostMessage: notRunning };
+                }
+
+                return { kind: 'generateUpdaterValues', treeKey: treeKey, renderSequence: renderSequence, fieldRequests: fieldRequests.requests };
+
+            }
+
             case 'exportTreeQueryResult': {
 
                 const { treeKey, queryKey, exportFormat } = panelMessage;
@@ -12051,6 +12581,10 @@ export class RecipeCockpitService {
 
         if ( panelState.updaterRecordsMessage && panelState.updaterRecordsMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
             replayMessages.push(panelState.updaterRecordsMessage);
+        }
+
+        if ( panelState.updaterValuesMessage && panelState.updaterValuesMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
+            replayMessages.push(panelState.updaterValuesMessage);
         }
 
         if ( panelState.permissionSetAssignStateMessage ) {
@@ -14194,7 +14728,9 @@ ${this.buildPaletteCustomProperties()}
     .updaterFieldHeader .fieldType { font-size: 0.85em; padding: 0 0.4rem; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); border-radius: 0.6rem; }
     .updaterFieldNote { font-size: 0.85em; }
     .updaterLoadRow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0 0.6rem 0.5rem; }
-    .updaterWhere, .updaterRecords { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
+    .updaterWhere, .updaterRecords, .updaterValues { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
+    .updaterFieldEdit { position: relative; z-index: 2; width: 1.5em; height: 1.5em; border-radius: 3px; }
+    .updaterFieldEdit[aria-pressed="true"] .fixedValueGlyph path { fill: var(--sdt-accent); }
     .updaterWhereInput {
         box-sizing: border-box;
         width: 100%;
@@ -14265,7 +14801,7 @@ ${this.buildPaletteCustomProperties()}
     .picklistValues { margin: 0.2rem 0 0 1.4rem; }
     .recordTypeHeading { margin-top: 0.3rem; font-weight: 600; }
     .picklistValue { padding-left: 0.6rem; word-break: break-word; }
-    .expression {
+    .expression, .updaterEditedValue {
         margin: 0.15rem 0 0 0;
         white-space: pre-wrap;
         word-break: break-word;
@@ -14412,6 +14948,10 @@ ${this.buildPaletteCustomProperties()}
     const UPDATER_LOADING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_LOADING_LABEL)};
     const UPDATER_WHERE_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_WHERE_PLACEHOLDER)};
     const UPDATER_WHERE_MAX_LENGTH = ${RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH};
+    const UPDATER_GENERATE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_GENERATE_LABEL)};
+    const UPDATER_GENERATING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_GENERATING_LABEL)};
+    const UPDATER_NO_EXPRESSION_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_REASON)};
+    const UPDATER_VALUE_EDIT_HINT = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_VALUE_EDIT_HINT)};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
     const DATA_ORG_CONNECTION_CHECK_INSERT_REASON = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON)};
     const DATA_ORG_LOADING_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER)};
@@ -14550,6 +15090,8 @@ ${this.buildPaletteCustomProperties()}
     let isTreeQueryRunning = false;
     // THE TREECIPE UPDATER'S LOAD (#416): SET ON THE CLICK, CLEARED BY THE HOST'S updaterLoadState; THE KEY NAMES THE CARD CLICKED
     let updaterLoadRunningTreeKey = null;
+    // WHICH UPDATER RUN THAT IS: 'load', OR 'generate' FOR A VALUE GENERATION (#417), WHICH SHARES THE ONE RUN PER WINDOW
+    let updaterRunKind = '';
     // THE TROUBLESHOOTING TAB'S DEPLOYS (#346): SET ON THE CLICK, CLEARED BY THE HOST'S metadataDeployState; THE KEY NAMES THE BUTTON CLICKED
     let isMetadataDeployRunning = false;
     let metadataDeployRunningKey = null;
@@ -18857,6 +19399,9 @@ ${this.buildPaletteCustomProperties()}
             // THE READER'S WHERE PER OBJECT (#416), BY OBJECT NAME; PANEL-ONLY, NEVER SAVED IN THE PLACE
             updaterWhereTexts: Object.create(null),
             updaterRecordsMessage: null,
+            // A VALUE OR EXPRESSION TYPED PER FIELD IN THE UPDATER'S EDITOR (#417), BY FIELD KEY; PANEL-ONLY, NEVER SAVED IN THE PLACE OR THE RECIPE
+            updaterEditedValues: Object.create(null),
+            updaterValuesMessage: null,
             isDatasetFavoritesOnly: false,
             datasetFavoritesToggleElement: null,
             isRecordTypeFieldsOnly: false,
@@ -20031,7 +20576,10 @@ ${this.buildPaletteCustomProperties()}
         treeState.updaterLoadButtonElement = createButton('primary', 'updaterLoad', UPDATER_LOAD_LABEL);
         treeState.updaterLoadButtonElement.addEventListener('click', function () { requestUpdaterRecords(treeState); });
         treeState.updaterLoadNoteElement = createElement('span', 'updaterLoadNote muted');
+        treeState.updaterGenerateButtonElement = createButton('secondary', 'updaterGenerate', UPDATER_GENERATE_LABEL);
+        treeState.updaterGenerateButtonElement.addEventListener('click', function () { requestUpdaterValues(treeState); });
         loadRowElement.appendChild(treeState.updaterLoadButtonElement);
+        loadRowElement.appendChild(treeState.updaterGenerateButtonElement);
         loadRowElement.appendChild(treeState.updaterLoadNoteElement);
         panelElement.appendChild(loadRowElement);
 
@@ -20073,6 +20621,7 @@ ${this.buildPaletteCustomProperties()}
         applyUpdaterFilter(treeState);
         drawUpdaterLoadButtons();
         if (treeState.updaterRecordsMessage) { applyUpdaterRecords(treeState, treeState.updaterRecordsMessage); }
+        if (treeState.updaterValuesMessage) { applyUpdaterValues(treeState, treeState.updaterValuesMessage); }
 
     }
 
@@ -20099,6 +20648,9 @@ ${this.buildPaletteCustomProperties()}
             // WHAT THE LAST LOAD READ FOR THIS OBJECT (#416), AND ITS SECTION ONCE THE BODY IS BUILT
             loadedRecords: null,
             recordsElement: null,
+            // WHAT THE LAST GENERATION MADE FOR THIS OBJECT (#417), AND ITS SECTION ONCE THE BODY IS BUILT
+            generatedValues: null,
+            valuesElement: null,
             fieldStates: object.fields.map(function (field) {
                 return {
                     field: field,
@@ -20108,7 +20660,13 @@ ${this.buildPaletteCustomProperties()}
                     searchText: [field.fieldApiName, field.fieldLabel, field.fieldTypeWithSize || field.fieldType, field.recipeValue].join('\\n').toLowerCase(),
                     isMatch: true,
                     rowElement: null,
-                    chooseElement: null
+                    chooseElement: null,
+                    editButtonElement: null,
+                    editBadgeElement: null,
+                    editedValueElement: null,
+                    expressionRowElement: null,
+                    editorElement: null,
+                    isEditorOpen: false
                 };
             })
         };
@@ -20148,6 +20706,9 @@ ${this.buildPaletteCustomProperties()}
             updaterObjectState.recordsElement = createElement('div', 'updaterRecords hidden');
             updaterObjectState.bodyElement.appendChild(updaterObjectState.recordsElement);
             drawUpdaterObjectRecords(updaterObjectState);
+            updaterObjectState.valuesElement = createElement('div', 'updaterValues hidden');
+            updaterObjectState.bodyElement.appendChild(updaterObjectState.valuesElement);
+            drawUpdaterObjectValues(updaterObjectState);
             updaterObjectState.fieldStates.forEach(function (fieldState) {
                 fieldState.rowElement = buildUpdaterFieldRow(treeState, updaterObjectState, fieldState);
                 setShown(fieldState.rowElement, fieldState.isMatch);
@@ -20183,11 +20744,13 @@ ${this.buildPaletteCustomProperties()}
             drawUpdaterFieldChoice(treeState, updaterObjectState, fieldState);
             drawUpdaterObjectCount(updaterObjectState);
             drawUpdaterSummary(treeState);
+            drawUpdaterLoadButtons();
             savePanelPlace();
         });
         fieldState.chooseElement = chooseElement;
 
         headerElement.appendChild(chooseElement);
+        if (!fieldState.lockReason) { headerElement.appendChild(buildUpdaterFieldEditElement(treeState, updaterObjectState, fieldState)); }
         headerElement.appendChild(createElement('span', 'updaterFieldName', field.fieldApiName));
 
         if (field.fieldLabel && field.fieldLabel !== field.fieldApiName) {
@@ -20202,15 +20765,23 @@ ${this.buildPaletteCustomProperties()}
             headerElement.appendChild(createElement('span', 'updaterFieldNote muted', fieldState.lockReason));
         }
 
+        fieldState.editBadgeElement = createElement('span', 'fixedValueBadge hidden');
+        headerElement.appendChild(fieldState.editBadgeElement);
+
         rowElement.appendChild(headerElement);
 
         if (field.recipeValue) {
-            const expressionRowElement = createElement('div', 'expressionRow');
-            expressionRowElement.appendChild(createElement('pre', 'expression', field.recipeValue));
-            rowElement.appendChild(expressionRowElement);
+            fieldState.expressionRowElement = createElement('div', 'expressionRow');
+            fieldState.expressionRowElement.appendChild(createElement('pre', 'expression', field.recipeValue));
+            rowElement.appendChild(fieldState.expressionRowElement);
         }
 
+        fieldState.editedValueElement = createElement('pre', 'updaterEditedValue hidden');
+        rowElement.appendChild(fieldState.editedValueElement);
+        fieldState.rowElement = rowElement;
+
         drawUpdaterFieldChoice(treeState, updaterObjectState, fieldState);
+        drawUpdaterFieldEdit(treeState, updaterObjectState, fieldState);
 
         return rowElement;
 
@@ -20284,8 +20855,267 @@ ${this.buildPaletteCustomProperties()}
         if (objects.length === 0) { return; }
 
         updaterLoadRunningTreeKey = treeState.tree.treeKey;
+        updaterRunKind = 'load';
         drawUpdaterLoadButtons();
         vscodeApi.postMessage({ command: 'loadUpdaterRecords', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, objects: objects });
+
+    }
+
+    /*
+        The Updater's own editor (#417): the Treecipe tab's inline editor's parts -- one input, its
+        hint and Save / Clear / Cancel -- but Save keeps the value in this card's panel state ONLY.
+        Nothing is written to the recipe: the value is posted with Generate values, where the host
+        checks it as a pin's value is checked and shows it in the confirmation before anything runs.
+    */
+    function buildUpdaterFieldEditElement(treeState, updaterObjectState, fieldState) {
+
+        const buttonElement = createButton('icon', 'updaterFieldEdit');
+        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
+        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
+
+        glyphElement.setAttribute('class', 'fixedValueGlyph');
+        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
+        glyphElement.setAttribute('aria-hidden', 'true');
+        glyphElement.setAttribute('focusable', 'false');
+        pathElement.setAttribute('d', FIXED_VALUE_GLYPH_PATH);
+        glyphElement.appendChild(pathElement);
+        buttonElement.appendChild(glyphElement);
+        buttonElement.setAttribute('aria-expanded', 'false');
+
+        buttonElement.addEventListener('click', function () {
+            if (buttonElement.disabled) { return; }
+            if (fieldState.isEditorOpen) {
+                closeUpdaterFieldEditor(fieldState);
+            } else {
+                openUpdaterFieldEditor(treeState, updaterObjectState, fieldState);
+            }
+        });
+        fieldState.editButtonElement = buttonElement;
+
+        return buttonElement;
+
+    }
+
+    function findUpdaterEditStartValue(treeState, fieldState) {
+
+        if (hasOwnKey(treeState.updaterEditedValues, fieldState.fieldKey)) { return treeState.updaterEditedValues[fieldState.fieldKey]; }
+
+        const valueLines = String(fieldState.field.recipeValue || '').split('\\n').map(function (valueLine) { return unquoteExpressionLine(valueLine.trim()); });
+        const expressionLine = valueLines.find(function (valueLine) { return isExpressionValue(valueLine); });
+
+        return expressionLine !== undefined ? expressionLine : '';
+
+    }
+
+    function openUpdaterFieldEditor(treeState, updaterObjectState, fieldState) {
+
+        if (!fieldState.rowElement) { return; }
+
+        const field = fieldState.field;
+        const fieldLabel = updaterObjectState.object.objectApiName + '.' + field.fieldApiName;
+        const recipeStartValue = findUpdaterEditStartValue({ updaterEditedValues: Object.create(null) }, fieldState);
+
+        // BUILT ONCE PER ROW AND EMPTIED ON CLOSE, AS THE TREECIPE TAB'S EDITOR IS
+        if (!fieldState.editorElement) {
+            fieldState.editorElement = createElement('div', 'fieldEditor updaterFieldEditor hidden');
+            fieldState.editorElement.setAttribute('role', 'group');
+            fieldState.rowElement.appendChild(fieldState.editorElement);
+        }
+
+        const editorElement = fieldState.editorElement;
+        const inputsElement = createElement('div', 'fieldEditorInputs');
+        const valueElement = buildFieldEditorInput(FIXED_VALUE_MAX_LENGTH, findUpdaterEditStartValue(treeState, fieldState), 'New value or faker expression for ' + fieldLabel, '');
+
+        editorElement.setAttribute('aria-label', 'New value for ' + fieldLabel);
+        inputsElement.appendChild(valueElement);
+
+        const describeEdit = function () {
+            return ( isExpressionValue(String(valueElement.value).trim())
+                ? 'Generated from this faker expression for every loaded record.'
+                : 'This fixed value for every loaded record. ' + describeFixedValueForm(field) + ' Start with \${{ to generate from a faker expression instead.' )
+                + ' ' + UPDATER_VALUE_EDIT_HINT;
+        };
+        const hintElement = createElement('div', 'fieldEditorHint muted', describeEdit());
+        valueElement.addEventListener('input', function () { hintElement.textContent = describeEdit(); });
+
+        const save = function () {
+            const typedValue = String(valueElement.value);
+            const value = isExpressionValue(typedValue.trim()) ? typedValue.trim() : typedValue;
+            // THE RECIPE'S OWN EXPRESSION, OR NOTHING, IS NO EDIT: THE FIELD GENERATES FROM ITS RECIPE
+            if (value === '' || value === recipeStartValue) {
+                delete treeState.updaterEditedValues[fieldState.fieldKey];
+            } else {
+                treeState.updaterEditedValues[fieldState.fieldKey] = value;
+            }
+            closeUpdaterFieldEditor(fieldState);
+            drawUpdaterFieldEdit(treeState, updaterObjectState, fieldState);
+        };
+
+        const actionsElement = createElement('div', 'fieldEditorActions');
+        const saveElement = createButton('primary', 'fieldEditorSave', 'Save', 'compact');
+        const clearElement = createButton('secondary', 'fieldEditorClear', 'Clear', 'compact');
+        const cancelElement = createButton('secondary', 'fieldEditorCancel', 'Cancel', 'compact');
+        saveElement.addEventListener('click', function (event) { event.stopPropagation(); save(); });
+        clearElement.addEventListener('click', function (event) {
+            event.stopPropagation();
+            delete treeState.updaterEditedValues[fieldState.fieldKey];
+            closeUpdaterFieldEditor(fieldState);
+            drawUpdaterFieldEdit(treeState, updaterObjectState, fieldState);
+        });
+        cancelElement.addEventListener('click', function (event) { event.stopPropagation(); closeUpdaterFieldEditor(fieldState); });
+        valueElement.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') { event.preventDefault(); save(); }
+            if (event.key === 'Escape') { event.preventDefault(); closeUpdaterFieldEditor(fieldState); }
+        });
+        actionsElement.appendChild(saveElement);
+        actionsElement.appendChild(clearElement);
+        actionsElement.appendChild(cancelElement);
+
+        editorElement.appendChild(inputsElement);
+        editorElement.appendChild(hintElement);
+        editorElement.appendChild(actionsElement);
+        editorElement.classList.remove('hidden');
+        fieldState.isEditorOpen = true;
+        fieldState.editButtonElement.setAttribute('aria-expanded', 'true');
+        if (typeof valueElement.focus === 'function') { valueElement.focus(); }
+
+    }
+
+    function closeUpdaterFieldEditor(fieldState) {
+
+        if (!fieldState.editorElement || !fieldState.isEditorOpen) { return; }
+
+        fieldState.editorElement.textContent = '';
+        fieldState.editorElement.classList.add('hidden');
+        fieldState.isEditorOpen = false;
+        if (fieldState.editButtonElement) {
+            fieldState.editButtonElement.setAttribute('aria-expanded', 'false');
+            if (typeof fieldState.editButtonElement.focus === 'function') { fieldState.editButtonElement.focus(); }
+        }
+
+    }
+
+    // A TYPED VALUE TAKES THE EXPRESSION'S PLACE ON THE ROW, WRITTEN WITH textContent; THE PENCIL SAYS SO BY SHAPE, aria-pressed AND TITLE
+    function drawUpdaterFieldEdit(treeState, updaterObjectState, fieldState) {
+
+        const isEdited = hasOwnKey(treeState.updaterEditedValues, fieldState.fieldKey);
+        const editedValue = isEdited ? treeState.updaterEditedValues[fieldState.fieldKey] : '';
+        const fieldName = updaterObjectState.object.objectApiName + '.' + fieldState.field.fieldApiName;
+        const hasNoExpression = !isEdited && findUpdaterEditStartValue(treeState, fieldState) === '';
+
+        if (fieldState.editedValueElement) {
+            fieldState.editedValueElement.textContent = editedValue;
+            setShown(fieldState.editedValueElement, isEdited);
+        }
+        if (fieldState.expressionRowElement) { setShown(fieldState.expressionRowElement, !isEdited); }
+        if (fieldState.editBadgeElement) {
+            fieldState.editBadgeElement.textContent = !isEdited ? '' : isExpressionValue(editedValue) ? EDITED_EXPRESSION_BADGE_LABEL : FIXED_VALUE_BADGE_LABEL;
+            setShown(fieldState.editBadgeElement, isEdited);
+        }
+        if (fieldState.editButtonElement) {
+            const title = isEdited
+                ? 'New value: ' + editedValue + ' — click to change it'
+                : hasNoExpression ? 'Its recipe has no faker expression for it: click to type a value or an expression'
+                : 'Click to type a fixed value, or edit the faker expression, for this field’s new values';
+            fieldState.editButtonElement.setAttribute('aria-pressed', isEdited ? 'true' : 'false');
+            fieldState.editButtonElement.setAttribute('title', title);
+            fieldState.editButtonElement.setAttribute('aria-label', fieldName + ': ' + title);
+        }
+
+    }
+
+    /*
+        "Generate values" (#417): every chosen field of this card, in the tab's order, with the value
+        typed for it when there is one. The host checks each again, asks in the panel, and answers
+        with updaterValues; the button is held until it says the run ended.
+    */
+    function requestUpdaterValues(treeState) {
+
+        if (renderedSequence === null || updaterLoadRunningTreeKey !== null || !treeState.updaterObjectStates || !treeState.updaterRecordsMessage) { return; }
+
+        const fields = [];
+        treeState.updaterObjectStates.forEach(function (updaterObjectState) {
+            updaterObjectState.fieldStates.forEach(function (fieldState) {
+                if (fieldState.lockReason || !hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey)) { return; }
+                const fieldRequest = { objectApiName: updaterObjectState.object.objectApiName, fieldApiName: fieldState.field.fieldApiName };
+                if (hasOwnKey(treeState.updaterEditedValues, fieldState.fieldKey)) { fieldRequest.value = treeState.updaterEditedValues[fieldState.fieldKey]; }
+                fields.push(fieldRequest);
+            });
+        });
+
+        if (fields.length === 0) { return; }
+
+        updaterLoadRunningTreeKey = treeState.tree.treeKey;
+        updaterRunKind = 'generate';
+        drawUpdaterLoadButtons();
+        vscodeApi.postMessage({ command: 'generateUpdaterValues', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, fields: fields });
+
+    }
+
+    // THE VALUES ARE DRAWN ONLY ON THE MODEL THEY WERE GENERATED ON, AND A TAB NOT YET BUILT DRAWS THEM WHEN IT IS
+    function renderUpdaterValues(valuesMessage) {
+
+        if (renderedSequence === null || valuesMessage.renderSequence !== renderedSequence) { return; }
+
+        const treeState = findTreeState(valuesMessage.treeKey);
+        if (!treeState) { return; }
+
+        treeState.updaterValuesMessage = valuesMessage;
+        if (treeState.updaterObjectStates) { applyUpdaterValues(treeState, valuesMessage); }
+
+    }
+
+    function applyUpdaterValues(treeState, valuesMessage) {
+
+        const generatedObjects = Array.isArray(valuesMessage.objects) ? valuesMessage.objects : [];
+
+        treeState.updaterObjectStates.forEach(function (updaterObjectState) {
+            updaterObjectState.generatedValues = generatedObjects.find(function (generatedObject) { return generatedObject && generatedObject.objectApiName === updaterObjectState.object.objectApiName; }) || null;
+            drawUpdaterObjectValues(updaterObjectState);
+        });
+
+    }
+
+    function clearUpdaterValues() {
+
+        treeStates.forEach(function (treeState) {
+            if (!treeState.updaterValuesMessage) { return; }
+            treeState.updaterValuesMessage = null;
+            if (!treeState.updaterObjectStates) { return; }
+            treeState.updaterObjectStates.forEach(function (updaterObjectState) {
+                updaterObjectState.generatedValues = null;
+                drawUpdaterObjectValues(updaterObjectState);
+            });
+        });
+
+    }
+
+    function drawUpdaterObjectValues(updaterObjectState) {
+
+        const valuesElement = updaterObjectState.valuesElement;
+        if (!valuesElement) { return; }
+
+        valuesElement.textContent = '';
+        const generatedValues = updaterObjectState.generatedValues;
+
+        if (!generatedValues) {
+            valuesElement.classList.add('hidden');
+            return;
+        }
+
+        const columns = Array.isArray(generatedValues.columns) ? generatedValues.columns.map(String) : [];
+        const rows = Array.isArray(generatedValues.rows) ? generatedValues.rows : [];
+        const recordCount = Number(generatedValues.recordCount) || 0;
+        const hiddenColumnCount = Number(generatedValues.hiddenColumnCount) || 0;
+        let summaryText = recordCount === 0
+            ? 'No new values: the last load read no records of this object'
+            : 'New values for ' + pluralize(recordCount, 'record', 'records') + ', not written to the org yet';
+        if (rows.length < recordCount) { summaryText += '. Showing the first ' + rows.length; }
+        if (hiddenColumnCount > 0) { summaryText += (rows.length < recordCount ? ', ' : '. Showing ') + pluralize(columns.length, 'column', 'columns') + ', ' + hiddenColumnCount + ' more not shown'; }
+
+        valuesElement.appendChild(createElement('div', 'updaterValuesSummary muted', summaryText));
+        if (columns.length > 0 && rows.length > 0) { valuesElement.appendChild(buildRecordTable(columns, rows)); }
+        valuesElement.classList.remove('hidden');
 
     }
 
@@ -20295,8 +21125,18 @@ ${this.buildPaletteCustomProperties()}
             if (!treeState.updaterLoadButtonElement) { return; }
             const isThisCardLoading = updaterLoadRunningTreeKey === treeState.tree.treeKey;
             treeState.updaterLoadButtonElement.disabled = updaterLoadRunningTreeKey !== null || treeState.updaterObjectStates.length === 0;
-            treeState.updaterLoadButtonElement.textContent = isThisCardLoading ? UPDATER_LOADING_LABEL : UPDATER_LOAD_LABEL;
+            treeState.updaterLoadButtonElement.textContent = isThisCardLoading && updaterRunKind !== 'generate' ? UPDATER_LOADING_LABEL : UPDATER_LOAD_LABEL;
             treeState.updaterLoadButtonElement.setAttribute('title', 'Read this tree’s records, with the fields you chose, from the sandbox or scratch org chosen in Target Org Management. It only reads.');
+
+            const generateElement = treeState.updaterGenerateButtonElement;
+            if (!generateElement) { return; }
+            const hasChosenField = treeState.updaterObjectStates.some(function (updaterObjectState) { return updaterObjectState.chosenFieldCount > 0; });
+            const generateReason = !treeState.updaterRecordsMessage ? 'Load records first: new values are generated for the records the last load read.'
+                : !hasChosenField ? 'Choose a field to fill first.'
+                : '';
+            generateElement.disabled = updaterLoadRunningTreeKey !== null || generateReason !== '';
+            generateElement.textContent = isThisCardLoading && updaterRunKind === 'generate' ? UPDATER_GENERATING_LABEL : UPDATER_GENERATE_LABEL;
+            generateElement.setAttribute('title', generateReason || 'Make a new value for every loaded record of each chosen field, from its faker expression or the value you typed. Nothing is written to the org.');
         });
 
     }
@@ -20328,6 +21168,7 @@ ${this.buildPaletteCustomProperties()}
         });
 
         treeState.updaterLoadNoteElement.textContent = 'Loaded ' + pluralize(recordCount, 'record', 'records') + ' from ' + String(recordsMessage.orgLabel || 'the org');
+        drawUpdaterLoadButtons();
 
     }
 
@@ -20344,6 +21185,7 @@ ${this.buildPaletteCustomProperties()}
             });
             treeState.updaterLoadNoteElement.textContent = '';
         });
+        drawUpdaterLoadButtons();
 
     }
 
@@ -22288,14 +23130,23 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'updaterLoadState') {
             updaterLoadRunningTreeKey = hostMessage.isRunning ? String(hostMessage.treeKey) : null;
-            // THE HOST LETS THE LAST LOAD GO WHEN THE NEXT STARTS, SO EVERY CARD STOPS SHOWING IT
-            if (hostMessage.isRunning) { clearUpdaterRecords(); }
+            updaterRunKind = hostMessage.isRunning ? ( hostMessage.runKind === 'generate' ? 'generate' : 'load' ) : '';
+            // THE HOST LETS THE LAST LOAD GO WHEN THE NEXT STARTS, AND ITS VALUES WITH IT; A GENERATION LETS ONLY THE VALUES GO
+            if (hostMessage.isRunning) {
+                if (updaterRunKind === 'load') { clearUpdaterRecords(); }
+                clearUpdaterValues();
+            }
             drawUpdaterLoadButtons();
             return;
         }
 
         if (hostMessage.command === 'updaterRecords') {
             renderUpdaterRecords(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'updaterValues') {
+            renderUpdaterValues(hostMessage);
             return;
         }
 
