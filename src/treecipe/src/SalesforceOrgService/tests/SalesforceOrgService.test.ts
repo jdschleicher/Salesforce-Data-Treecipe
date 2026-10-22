@@ -120,6 +120,7 @@ describe('SalesforceOrgService', () => {
                 referenceTo: [],
                 isNillable: true,
                 isCreateable: true,
+                isUpdateable: true,
                 isCalculated: false,
                 isDefaultedOnCreate: false,
                 isNameField: false
@@ -171,6 +172,7 @@ describe('SalesforceOrgService', () => {
                         referenceTo: ['Account', 3],
                         nillable: 'true',
                         createable: 1,
+                        updateable: 'true',
                         calculated: {}
                     }
                 ]
@@ -180,6 +182,7 @@ describe('SalesforceOrgService', () => {
                 objectApiName: 'Widget__c',
                 objectLabel: '',
                 isCreateable: false,
+                isUpdateable: false,
                 fields: [{
                     fieldApiName: 'Odd__c',
                     fieldLabel: '',
@@ -192,6 +195,7 @@ describe('SalesforceOrgService', () => {
                     referenceTo: ['Account'],
                     isNillable: false,
                     isCreateable: false,
+                    isUpdateable: false,
                     isCalculated: false,
                     isDefaultedOnCreate: false,
                     isNameField: false

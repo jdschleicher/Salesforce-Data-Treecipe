@@ -94,6 +94,7 @@ import {
     RecipeCockpitQuery,
     RecipeCockpitQueryExportFormat
 } from './RecipeCockpitQuery';
+import { IUpdateRecordResult, IUpdateRequestRecord, IUpdateSnapshotObject, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RECIPE_COCKPIT_UPDATE_REQUEST_RECORD_LIMIT, RecipeCockpitRecordUpdate } from './RecipeCockpitRecordUpdate';
 import { IRecipeCockpitUpdaterObjectQuery, IRecipeCockpitUpdaterObjectRequest, IRecipeCockpitUpdaterTreeObject, RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH, RecipeCockpitTreeUpdaterQuery } from './RecipeCockpitTreeUpdaterQuery';
 import { ISOQLTreeQuery, SOQL_QUERY_KIND_LABELS, SOQLQueryKind, SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
@@ -557,7 +558,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against any connected org you pick in the command palette (a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.',
-            'The Treecipe Updater tab, after Query, draws the tree\'s objects and fields as the Treecipe tab does. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the tree\'s existing records, with the fields you ticked and an optional WHERE per object, from the sandbox or scratch org chosen in Target Org Management (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Nothing is written yet; updating the records is still to come.'
+            'The Treecipe Updater tab, after Query, draws the tree\'s objects and fields as the Treecipe tab does. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the tree\'s existing records, with the fields you ticked and an optional WHERE per object, from the sandbox or scratch org chosen in Target Org Management (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to treecipe/UpdateAttempts first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed.'
         ]
     },
     {
@@ -1160,6 +1161,8 @@ export interface IRecipeCockpitPanelMessage {
     // THE TREECIPE UPDATER'S LOAD (#416): PER OBJECT, THE FIELDS CHOSEN AND THE READER'S WHERE
     objects?: unknown;
     fields?: unknown;
+    // "updaterValuesRendered" (#418): THE GENERATED VALUES THE PANEL DREW
+    valuesSequence?: unknown;
     // A ROW OF THE TODO'S SUB-TAB'S REMOVED LIST (#391)
     removalKey?: unknown;
     filePath?: unknown;
@@ -1640,8 +1643,10 @@ export interface IRecipeCockpitUpdaterLoadStateMessage {
     command: 'updaterLoadState';
     isRunning: boolean;
     treeKey: string;
-    // A VALUE GENERATION (#417) SHARES THE LOAD'S ONE RUN PER WINDOW; ABSENT IS A LOAD
-    runKind?: 'generate';
+    // A VALUE GENERATION (#417) AND AN UPDATE (#418) SHARE THE LOAD'S ONE RUN PER WINDOW; ABSENT IS A LOAD
+    runKind?: 'generate' | 'update';
+    // AN UPDATE THAT SENT A REQUEST ENDS WITH THIS: THE LOADED RECORDS AND THEIR VALUES ARE SPENT, SO THE PANEL LETS THEM GO
+    isRecordsSpent?: true;
 }
 
 // ONE OBJECT'S RECORDS AS THE PANEL IS SENT THEM: COUNTS AND A PREVIEW AS TEXT, OR WHY THEY COULD NOT BE READ
@@ -1697,11 +1702,26 @@ export interface IRecipeCockpitUpdaterObjectValuesViewModel {
     The values a generation made (#417), as a preview only: the values themselves stay on the host
     for the slice that writes them (#418). Drawn only on the model it was generated on.
 */
+// HOW AN UPDATE'S REQUESTS ENDED (#418), WRITTEN TO THE RESULTS FILE AND SAID IN THE NOTIFICATION
+export interface IRecipeCockpitUpdaterSendResult {
+    outcome: 'completed' | 'stopped' | 'cancelled';
+    isAnyRequestSent: boolean;
+    updatedRecordCount: number;
+    failedRecordCount: number;
+    objectResults: Array<{ objectApiName: string; results: IUpdateRecordResult[] }>;
+    // AN ALL-OR-NONE UPDATE THAT STOPPED OR WAS CANCELLED: WHAT SETTING THE UPDATED RECORDS BACK TO THEIR OLD VALUES DID
+    putBack?: { putBackRecordCount: number; failedRecordCount: number; objects: Array<{ objectApiName: string; results: IUpdateRecordResult[] }> };
+    // THE FIRST REQUEST THAT THREW, NAMED WITH ITS ERROR
+    requestFailureDetail?: string;
+}
+
 export interface IRecipeCockpitUpdaterValuesMessage {
     command: 'updaterValues';
     renderSequence: number;
     treeKey: string;
     objects: IRecipeCockpitUpdaterObjectValuesViewModel[];
+    // ECHOED BY THE PANEL'S "updaterValuesRendered" (#418): ONLY THAT ACK OFFERS "Update records" ON THESE VALUES
+    valuesSequence: number;
 }
 
 /*
@@ -1954,7 +1974,7 @@ export const RECIPE_COCKPIT_QUERY_TAB_LABEL = 'Query';
     writes nothing, and the box of a field the Updater cannot change is disabled with the reason.
 */
 export const RECIPE_COCKPIT_UPDATER_TAB_LABEL = 'Treecipe Updater';
-export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads this tree\'s records, with those fields, from the sandbox or scratch org chosen in Target Org Management. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with ✎. Updating the records is still to come: nothing is written to the org.';
+export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads this tree\'s records, with those fields, from the sandbox or scratch org chosen in Target Org Management. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with ✎. Update records writes those values to the records by Id, after saving their old values to treecipe/UpdateAttempts.';
 export const RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER = 'Search objects and fields';
 export const RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN = 'No fields chosen';
 export const RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON = 'read from the recipe file, so its type is not known';
@@ -1982,6 +2002,14 @@ export const RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_REASON = 'its recipe has no fa
 // SECONDS (faker-js) OR OVERFLOWED SNOWFAKERY'S 10 MB OUTPUT BUFFER, SO VALUES ARE MADE IN RUNS OF THIS SIZE, YIELDING BETWEEN THEM
 export const RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE = 2000;
 export const RECIPE_COCKPIT_UPDATER_VALUE_EDIT_HINT = 'Keeps this value in the Treecipe Updater only: nothing is written to the recipe or to the org.';
+// THE UPDATE (#418): THE GENERATED VALUES WRITTEN TO THE LOADED RECORDS BY Id, IN THE SANDBOX THEY WERE LOADED FROM
+export const RECIPE_COCKPIT_UPDATER_UPDATE_LABEL = 'Update records';
+export const RECIPE_COCKPIT_UPDATER_UPDATING_LABEL = 'Updating…';
+export const RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL = 'Update records';
+export const RECIPE_COCKPIT_UPDATER_UPDATE_BUSY_REFUSAL = 'Nothing was updated: another run is using the org selection. Try again when it ends.';
+export const RECIPE_COCKPIT_UPDATER_NOT_GENERATED_REFUSAL = 'Nothing was updated: generate values for the loaded records first. The update writes the values the last Generate values made.';
+export const RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE = 'A picklist value is the field\'s default list, not its record type\'s: a record whose record type does not allow the value is rejected by the org, and its error is in the results file.';
+export const RECIPE_COCKPIT_UPDATER_SNAPSHOT_FAILED_REFUSAL = 'Nothing was updated: the old values could not be saved to treecipe/UpdateAttempts, and an update never runs without them.';
 
 export const RECIPE_COCKPIT_QUERY_INTRO = 'The SOQL Generate Treecipe wrote for this tree. Edit a query, run it against any connected org you choose, then export what it returned as JSON or CSV. A query only reads.';
 
@@ -2272,6 +2300,8 @@ export type RecipeCockpitPanelAction =
     // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refuseUpdaterLoad'; refusalText?: string; hostMessage: IRecipeCockpitUpdaterLoadStateMessage }
     // THE UPDATER'S VALUES (#417): THE FIELDS, AND ANY VALUE TYPED FOR ONE, CHECKED AGAIN AND CONFIRMED BY THE EXECUTOR
+    | { kind: 'activateUpdaterValues' }
+    | { kind: 'updateUpdaterRecords'; treeKey: string }
     | { kind: 'generateUpdaterValues'; treeKey: string; renderSequence: number; fieldRequests: IRecipeCockpitUpdaterFieldValueRequest[] }
     | { kind: 'exportTreeQueryResult'; treeKey: string; queryKey: string; exportFormat: RecipeCockpitQueryExportFormat }
     // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
@@ -2372,8 +2402,15 @@ export interface IRecipeCockpitPanelState {
     isUpdaterOrgPromptOpen?: boolean;
     // THE LAST RECORDS IT POSTED, REPLAYED WHILE ITS MODEL IS THE ONE ON SCREEN
     updaterRecordsMessage?: IRecipeCockpitUpdaterRecordsMessage;
-    // THE LAST VALUE GENERATION'S PREVIEW (#417), REPLAYED WHILE ITS MODEL IS ON SCREEN
+    // THE LAST VALUE GENERATION'S PREVIEW (#417), REPLAYED WHILE ITS MODEL IS ON SCREEN; SET ONLY THROUGH setUpdaterValuesMessage
     updaterValuesMessage?: IRecipeCockpitUpdaterValuesMessage;
+    /*
+        "Update records" (#418): the card whose generated values were posted, a pending/active pair.
+        PENDING is set with the values; only the panel's "updaterValuesRendered" echoing them makes it
+        ACTIVE, and a ready, a new model, a failure to draw and values let go each empty it.
+    */
+    pendingUpdatableTreeKeys: Set<string>;
+    updatableTreeKeys: Set<string>;
     // HOST-ONLY, REPLACED WITH THE MODEL: THE WRAPPER THE QUERY TAB'S QUERIES ARE READ FROM (#367)
     objectsWrapperFilePath?: string;
     // THE PLACE workspaceState KEPT FOR THIS MODEL (#230), REPLAYED UNTIL THE MODEL'S "rendered" SAYS IT WAS DRAWN
@@ -5400,6 +5437,8 @@ export class RecipeCockpitService {
             treeHistoryTargets: RecipeCockpitTreeHistory.buildEmptyTargets(),
             pendingTreeHistoryAllowLists: this.buildEmptyTreeHistoryAllowLists(),
             treeHistoryAllowLists: this.buildEmptyTreeHistoryAllowLists(),
+            pendingUpdatableTreeKeys: new Set(),
+            updatableTreeKeys: new Set(),
             isGenerateTreecipeInFlight: false,
             pendingIsGenerateTreecipeOffered: false,
             isGenerateTreecipeOffered: false,
@@ -5868,7 +5907,7 @@ export class RecipeCockpitService {
         this.clearHeldTreeQueryResult();
         // SO ARE AN UPDATER LOAD'S RECORDS (#416)
         panelState.updaterRecordsMessage = undefined;
-        panelState.updaterValuesMessage = undefined;
+        this.setUpdaterValuesMessage(panelState, undefined);
         this.clearHeldUpdaterRecords();
         panelState.loadFailedMessage = undefined;
         panelState.loadPhaseMessage = '';
@@ -6009,6 +6048,7 @@ export class RecipeCockpitService {
                 panelState.addableParentTargets = new Map();
                 panelState.orgRecordLookupTargets = new Map();
                 panelState.acknowledgedRenderSequence = null;
+                panelState.updatableTreeKeys = new Set();
                 panelState.dataOrgSelection = undefined;
                 panelState.dataOrgRequestSequence++;
                 panelAction.hostMessages.forEach(hostMessage => cockpitPanel.webview.postMessage(hostMessage));
@@ -6063,6 +6103,8 @@ export class RecipeCockpitService {
                     panelState.addableParentTargets = new Map();
                     panelState.orgRecordLookupTargets = new Map();
                     panelState.acknowledgedRenderSequence = null;
+                    panelState.updatableTreeKeys = new Set();
+                panelState.updatableTreeKeys = new Set();
                     // A REVEAL OF A PANEL THAT FAILED TO DRAW MUST NOT KEEP RE-OPENING THE TAB AN OPEN ASKED FOR
                     panelState.openFocusTree = undefined;
                     // NOTHING IS ON SCREEN TO DRAW AN ANSWER IN, SO A SELECTION STILL BEING CHECKED STOPS ASKING THE ORG
@@ -6397,6 +6439,16 @@ export class RecipeCockpitService {
             case 'generateUpdaterValues':
 
                 await this.generateUpdaterValuesFromPanel(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'activateUpdaterValues':
+
+                panelState.updatableTreeKeys = panelState.pendingUpdatableTreeKeys;
+                return;
+
+            case 'updateUpdaterRecords':
+
+                await this.updateUpdaterRecordsFromPanel(cockpitPanel, panelState, panelAction);
                 return;
 
             case 'refuseUpdaterLoad':
@@ -8474,6 +8526,16 @@ export class RecipeCockpitService {
 
     }
 
+    /*
+        Whether the Treecipe Updater holds the org selection: its load asking for an org (#416), or an
+        update writing to the org selected (#418). Every route that would change the selection, or
+        write to it, refuses while it does.
+    */
+    static isSelectionHeldByUpdater(panelState: IRecipeCockpitPanelState): boolean {
+        return panelState.isUpdaterOrgPromptOpen === true
+            || ( panelState.updaterLoadStateMessage?.isRunning === true && panelState.updaterLoadStateMessage.runKind === 'update' );
+    }
+
     private static isUpdaterLoadInFlight = false;
 
     private static updaterLoadRunStateMessage: IRecipeCockpitUpdaterLoadStateMessage | undefined;
@@ -8513,6 +8575,15 @@ export class RecipeCockpitService {
     static clearHeldUpdaterValues() {
         this.heldUpdaterValues = undefined;
     }
+
+    // THE ONE PLACE THE VALUES ON SCREEN CHANGE (#418): "Update records" IS OFFERED ONLY ON THE ONES POSTED LAST, ONCE THE PANEL SAYS IT DREW THEM
+    private static setUpdaterValuesMessage(panelState: IRecipeCockpitPanelState, valuesMessage: IRecipeCockpitUpdaterValuesMessage | undefined) {
+        panelState.updaterValuesMessage = valuesMessage;
+        panelState.pendingUpdatableTreeKeys = valuesMessage ? new Set([valuesMessage.treeKey]) : new Set();
+        panelState.updatableTreeKeys = new Set();
+    }
+
+    private static updaterValuesSequence = 0;
 
     static readHeldUpdaterValues(objectApiName: string): IRecipeCockpitUpdaterRecordValues[] | undefined {
         return this.heldUpdaterValues?.valuesByObjectApiName.get(objectApiName);
@@ -8579,7 +8650,7 @@ export class RecipeCockpitService {
         // A LOAD REPLACES THE LAST ONE FROM ITS START, ON THE HOST AND (ON THE RUNNING STATE) IN THE PANEL, SO THE SCREEN NEVER SHOWS RECORDS THE HOST LET GO
         this.clearHeldUpdaterRecords();
         panelState.updaterRecordsMessage = undefined;
-        panelState.updaterValuesMessage = undefined;
+        this.setUpdaterValuesMessage(panelState, undefined);
         this.setUpdaterLoadState({ command: 'updaterLoadState', isRunning: true, treeKey: loadAction.treeKey });
 
         try {
@@ -8950,7 +9021,7 @@ export class RecipeCockpitService {
         this.isUpdaterLoadInFlight = true;
         // A GENERATION REPLACES THE LAST ONE FROM ITS START, AS A LOAD DOES
         this.clearHeldUpdaterValues();
-        panelState.updaterValuesMessage = undefined;
+        this.setUpdaterValuesMessage(panelState, undefined);
         this.setUpdaterLoadState({ command: 'updaterLoadState', isRunning: true, treeKey: generateAction.treeKey, runKind: 'generate' });
 
         try {
@@ -9225,13 +9296,387 @@ export class RecipeCockpitService {
             command: 'updaterValues',
             renderSequence: renderSequence,
             treeKey: treeKey,
-            objects: objectViewModels
+            objects: objectViewModels,
+            valuesSequence: ++this.updaterValuesSequence
         };
-        panelState.updaterValuesMessage = valuesMessage;
+        this.setUpdaterValuesMessage(panelState, valuesMessage);
         this.postToPanel(cockpitPanel, valuesMessage);
 
         const recordCount = objectViewModels.reduce((total, objectViewModel) => total + objectViewModel.recordCount, 0);
         VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(`Generated new values for ${describeRecords(recordCount)} of ${treeTitle}. Nothing was written to the org.`));
+
+    }
+
+    /*
+        "Update records" (#418): the values the last Generate values made, written to the records the
+        last Load records read, by Id, in the sandbox they were read from. It shares the load's one
+        run per window (runKind 'update'), and holds the org selection while it runs. Once a request
+        has been sent the loaded records and their values are spent -- their "current" values are no
+        longer current -- so they are let go and the panel is told so.
+    */
+    private static async updateUpdaterRecordsFromPanel(cockpitPanel: vscode.WebviewPanel,
+                                                        panelState: IRecipeCockpitPanelState,
+                                                        updateAction: Extract<RecipeCockpitPanelAction, { kind: 'updateUpdaterRecords' }>) {
+
+        const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: updateAction.treeKey, runKind: 'update' };
+
+        if ( this.isUpdaterLoadInFlight ) {
+            this.postToPanel(cockpitPanel, this.updaterLoadRunStateMessage ?? notRunning);
+            return;
+        }
+
+        this.isUpdaterLoadInFlight = true;
+        this.setUpdaterLoadState({ command: 'updaterLoadState', isRunning: true, treeKey: updateAction.treeKey, runKind: 'update' });
+        let isRecordsSpent = false;
+
+        try {
+            isRecordsSpent = await this.performUpdaterUpdate(cockpitPanel, panelState, updateAction);
+        } finally {
+            this.isUpdaterLoadInFlight = false;
+            if ( isRecordsSpent ) {
+                this.clearHeldUpdaterRecords();
+                panelState.updaterRecordsMessage = undefined;
+                this.setUpdaterValuesMessage(panelState, undefined);
+            }
+            this.setUpdaterLoadState(isRecordsSpent ? { ...notRunning, isRecordsSpent: true } : notRunning);
+        }
+
+    }
+
+    // TRUE ONCE A REQUEST WAS SENT, WHICH SPENDS THE LOADED RECORDS AND THEIR VALUES
+    private static async performUpdaterUpdate(cockpitPanel: vscode.WebviewPanel,
+                                                panelState: IRecipeCockpitPanelState,
+                                                updateAction: Extract<RecipeCockpitPanelAction, { kind: 'updateUpdaterRecords' }>): Promise<boolean> {
+
+        const { treeKey } = updateAction;
+        const clickedRecipeDataMessage = panelState.recipeDataMessage;
+        const tree = clickedRecipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+        const refuse = (refusalText: string) => { VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(refusalText)); return false; };
+
+        if ( !clickedRecipeDataMessage || !tree?.folderName ) {
+            return false;
+        }
+
+        const heldRecords = this.heldUpdaterRecords;
+        const heldValues = this.heldUpdaterValues;
+
+        if ( !heldRecords
+                || !heldValues
+                || heldValues.resultKey !== heldRecords.resultKey
+                || heldRecords.workspaceRoot !== panelState.workspaceRoot
+                || heldRecords.renderSequence !== clickedRecipeDataMessage.renderSequence
+                || heldRecords.folderName !== tree.folderName ) {
+            return refuse(RECIPE_COCKPIT_UPDATER_NOT_GENERATED_REFUSAL);
+        }
+
+        const dataOrgSelection = panelState.dataOrgSelection;
+        if ( dataOrgSelection?.orgTypeDetail?.isSandbox !== true ) {
+            return refuse('Nothing was updated: the org selected in Target Org Management has not answered that it is a sandbox or scratch org.');
+        }
+
+        const orgDetail = dataOrgSelection.orgDetail;
+        const orgUsername = orgDetail.username;
+        // NO PARENTHESES: A NOTIFICATION ESCAPES THEM
+        const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgUsername}` : orgUsername;
+        const treeTitle = tree.customName ?? tree.title;
+        const describeRecords = (recordCount: number) => `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
+
+        // THE ORG WRITTEN TO IS THE ORG READ FROM: ANOTHER ORG'S Ids WOULD NAME NOTHING THERE, OR SOMETHING ELSE
+        if ( orgUsername !== heldRecords.orgUsername ) {
+            return refuse(`Nothing was updated: the records of ${treeTitle} were loaded from ${heldRecords.orgUsername}, not ${orgLabel}. Load them again from the org selected now.`);
+        }
+
+        // PARENTS FIRST: THE CARD'S OBJECTS ARE IN INSERT ORDER, WHICH IS RELATIONSHIP LEVEL ORDER
+        const plannedObjects = this.listUpdaterTreeObjects(clickedRecipeDataMessage.recipe, tree).flatMap(treeObject => {
+            const recordValues = heldValues.valuesByObjectApiName.get(treeObject.objectApiName) ?? [];
+            const loadedRecords = heldRecords.recordsByObjectApiName.get(treeObject.objectApiName) ?? [];
+            if ( recordValues.length === 0 || recordValues.length !== loadedRecords.length ) {
+                return [];
+            }
+            return [{
+                objectApiName: treeObject.objectApiName,
+                fieldApiNames: Object.keys(recordValues[0].fieldValues),
+                recordValues: recordValues,
+                loadedRecords: loadedRecords
+            }];
+        }).filter(plannedObject => plannedObject.fieldApiNames.length > 0);
+
+        if ( plannedObjects.length === 0 ) {
+            return refuse(`Nothing was updated: there are no new values for the loaded records of ${treeTitle}.`);
+        }
+
+        const recordTotal = plannedObjects.reduce((total, plannedObject) => total + plannedObject.recordValues.length, 0);
+
+        let connection: Connection;
+        try {
+            connection = await SalesforceOrgService.getConnection(orgUsername);
+        } catch {
+            // ITS ERROR CAN CARRY AN AUTH URL OR TOKEN TEXT, SO IT IS NOT QUOTED
+            return refuse(`Nothing was updated: ${orgLabel} could not be connected to. ${RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE}`);
+        }
+
+        // READINESS: EVERY FIELD WRITTEN IS IN THE ORG'S DESCRIBE AND UPDATEABLE THERE; A DESCRIBE THAT FAILED IS A REASON, NEVER A DEFAULT
+        const describeResult = await SalesforceOrgService.describeObjects(orgUsername, plannedObjects.map(plannedObject => plannedObject.objectApiName), async () => connection);
+        const describeOutcomes = new Map(describeResult.outcomes.map(describeOutcome => [describeOutcome.objectApiName, describeOutcome] as const));
+
+        for ( const plannedObject of plannedObjects ) {
+            // describeObjects ANSWERS EVERY NAME IT WAS ASKED FOR
+            const describeOutcome = describeOutcomes.get(plannedObject.objectApiName)!;
+            const updateReason = RecipeCockpitRecordUpdate.findUpdateReason(plannedObject.objectApiName, plannedObject.fieldApiNames, describeOutcome.describe, describeOutcome.failureMessage);
+            if ( updateReason ) {
+                return refuse(`Nothing was updated in ${orgLabel}: ${updateReason}`);
+            }
+        }
+
+        // A PICKLIST ON AN OBJECT WITH RECORD TYPES GETS THE FIELD'S OWN VALUES, WHICH A RECORD TYPE CAN NARROW: THE ORG DECIDES, AND SAYS SO PER RECORD
+        // EVERY OBJECT HERE PASSED READINESS, SO ITS DESCRIBE LISTS EVERY FIELD WRITTEN
+        const hasRecordTypePicklist = plannedObjects.some(plannedObject => {
+            const describedFields = describeOutcomes.get(plannedObject.objectApiName)!.describe!.fields;
+            return clickedRecipeDataMessage.recipe.objects.some(object => object.objectApiName === plannedObject.objectApiName && ( object.recordTypes ?? [] ).length > 1)
+                && plannedObject.fieldApiNames.some(fieldApiName => {
+                    const fieldType = describedFields.find(describedField => describedField.fieldApiName.toLowerCase() === fieldApiName.toLowerCase())!.fieldType;
+                    return fieldType === 'picklist' || fieldType === 'multipicklist';
+                });
+        });
+
+        const detailLines: string[] = [
+            `Org: ${orgLabel} (${SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail)})`,
+            `Each record is updated by its Id. The old values are saved first to treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${tree.folderName}/, and nothing is updated if they cannot be.`,
+            ''
+        ];
+        plannedObjects.forEach(plannedObject => {
+            detailLines.push(`${plannedObject.objectApiName}: ${describeRecords(plannedObject.recordValues.length)} -- ${plannedObject.fieldApiNames.join(', ')}`);
+        });
+        if ( hasRecordTypePicklist ) {
+            detailLines.push('', RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE);
+        }
+
+        const answer = await this.confirmInPanel(
+            `Update ${describeRecords(recordTotal)} of ${treeTitle} in ${orgLabel}?`,
+            { detail: detailLines.join('\n'), isDestructive: true },
+            RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL
+        );
+
+        if ( answer !== RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL ) {
+            return false;
+        }
+
+        // THE SAME QUESTION INSERT DATA SET BY DIRECTORY AND THE TREE INSERT ASK
+        const allOrNoneSelection = await CollectionsApiService.promptForAllOrNoneInsertDecision();
+        if ( allOrNoneSelection === undefined ) {
+            return false;
+        }
+
+        const isStillCurrent = this.recipeCockpitPanel === cockpitPanel
+                                && this.recipeCockpitPanelState === panelState
+                                && panelState.recipeDataMessage === clickedRecipeDataMessage
+                                && panelState.dataOrgSelection === dataOrgSelection
+                                && this.heldUpdaterRecords === heldRecords
+                                && this.heldUpdaterValues === heldValues;
+
+        if ( !isStillCurrent ) {
+            return refuse(`Nothing was updated: the run, the org selection or the loaded records changed after ${orgLabel} was confirmed. Load and generate again.`);
+        }
+
+        // ASKED AGAIN, NOT READ FROM THE SELECTION: THIS IS THE ANSWER THE UPDATE RELIES ON, ON THE CONNECTION IT UPDATES WITH
+        const orgTypeDetail = await SalesforceOrgService.queryOrganizationType(SalesforceOrgService.toQuerySource(connection));
+        if ( orgTypeDetail?.isSandbox !== true ) {
+            return refuse(`Nothing was updated in ${orgLabel}: it answered ${SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail)}, and the Treecipe Updater updates only a sandbox or scratch org.`);
+        }
+
+        const startedAt = new Date();
+        const snapshotObjects = plannedObjects.map(plannedObject => RecipeCockpitRecordUpdate.buildSnapshotObject(plannedObject.objectApiName, plannedObject.fieldApiNames, plannedObject.loadedRecords));
+        const attemptFiles = RecipeCockpitRecordUpdate.writeSnapshot(panelState.workspaceRoot, {
+            orgUsername: orgUsername,
+            treeFolderName: tree.folderName,
+            takenAt: startedAt.toISOString(),
+            objects: snapshotObjects
+        }, startedAt);
+
+        if ( !attemptFiles ) {
+            return refuse(RECIPE_COCKPIT_UPDATER_SNAPSHOT_FAILED_REFUSAL);
+        }
+
+        const sendResult = await this.sendUpdaterRequests(connection, plannedObjects, snapshotObjects, allOrNoneSelection, treeTitle, orgLabel);
+
+        const isResultsWritten = RecipeCockpitRecordUpdate.writeResults(attemptFiles.resultsFilePath, panelState.workspaceRoot, {
+            orgUsername: orgUsername,
+            treeFolderName: tree.folderName,
+            snapshotFile: path.basename(attemptFiles.snapshotFilePath),
+            startedAt: startedAt.toISOString(),
+            allOrNone: allOrNoneSelection,
+            outcome: sendResult.outcome,
+            updatedRecordCount: sendResult.updatedRecordCount,
+            failedRecordCount: sendResult.failedRecordCount,
+            ...( sendResult.putBack ? { putBack: sendResult.putBack } : {} ),
+            objects: sendResult.objectResults
+        });
+
+        this.showUpdaterUpdateNotification(sendResult, treeTitle, orgLabel, path.basename(attemptFiles.snapshotFilePath), isResultsWritten ? attemptFiles.resultsFilePath : undefined, panelState.workspaceRoot);
+
+        return sendResult.isAnyRequestSent;
+
+    }
+
+    /*
+        Every object's records, parents first, at most RECIPE_COCKPIT_UPDATE_REQUEST_RECORD_LIMIT per
+        PATCH composite/sobjects request, all-or-none as chosen, cancellable between requests. With
+        all-or-none, the first request that fails stops the update, and so does a cancel: every
+        record an earlier request updated is then set back to its snapshot value -- what all-or-none
+        means across requests, as the tree insert deletes what it inserted.
+    */
+    static async sendUpdaterRequests(connection: Connection,
+                                        plannedObjects: ReadonlyArray<{ objectApiName: string; fieldApiNames: string[]; recordValues: IRecipeCockpitUpdaterRecordValues[] }>,
+                                        snapshotObjects: readonly IUpdateSnapshotObject[],
+                                        allOrNoneSelection: boolean,
+                                        treeTitle: string,
+                                        orgLabel: string): Promise<IRecipeCockpitUpdaterSendResult> {
+
+        const objectResults: Array<{ objectApiName: string; results: IUpdateRecordResult[] }> = [];
+        let outcome: IRecipeCockpitUpdaterSendResult['outcome'] = 'completed';
+        let isAnyRequestSent = false;
+        let requestFailureDetail: string | undefined;
+        const requestTotal = plannedObjects.reduce((total, plannedObject) => total + Math.ceil(plannedObject.recordValues.length / RECIPE_COCKPIT_UPDATE_REQUEST_RECORD_LIMIT), 0);
+        let requestNumber = 0;
+
+        const sendRequest = async (objectApiName: string, requestRecords: IUpdateRequestRecord[], isAllOrNone: boolean): Promise<IUpdateRecordResult[]> => {
+            try {
+                return RecipeCockpitRecordUpdate.readRequestResults(requestRecords, await CollectionsApiService.updateCollectionsApiCallout(requestRecords, connection, isAllOrNone, objectApiName));
+            } catch (requestError) {
+                const failureMessage = String(( requestError as Error )?.message ?? requestError);
+                requestFailureDetail = requestFailureDetail ?? `${objectApiName} failed: ${failureMessage}`;
+                return RecipeCockpitRecordUpdate.failRequestRecords(requestRecords, failureMessage);
+            }
+        };
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: updating ${treeTitle} in ${orgLabel}`),
+            cancellable: true
+        }, async (progress, cancellationToken) => {
+
+            for ( const plannedObject of plannedObjects ) {
+
+                const objectResult = { objectApiName: plannedObject.objectApiName, results: [] as IUpdateRecordResult[] };
+                objectResults.push(objectResult);
+                const requestRecords = RecipeCockpitRecordUpdate.buildRequestRecords(plannedObject.objectApiName, plannedObject.fieldApiNames, plannedObject.recordValues);
+
+                for ( const request of RecipeCockpitRecordUpdate.splitIntoRequests(requestRecords) ) {
+
+                    if ( cancellationToken.isCancellationRequested ) {
+                        outcome = 'cancelled';
+                        return;
+                    }
+
+                    requestNumber++;
+                    progress.report({ message: `${plannedObject.objectApiName}: request ${requestNumber} of ${requestTotal}` });
+                    isAnyRequestSent = true;
+                    const results = await sendRequest(plannedObject.objectApiName, request, allOrNoneSelection);
+                    objectResult.results.push(...results);
+
+                    if ( allOrNoneSelection && results.some(result => !result.isSuccess) ) {
+                        outcome = 'stopped';
+                        return;
+                    }
+
+                }
+
+            }
+
+        });
+
+        let putBack: IRecipeCockpitUpdaterSendResult['putBack'];
+
+        if ( allOrNoneSelection && outcome !== 'completed' ) {
+
+            putBack = { putBackRecordCount: 0, failedRecordCount: 0, objects: [] };
+
+            for ( const objectResult of objectResults ) {
+
+                const updatedRecordIds = new Set(objectResult.results.filter(result => result.isSuccess).map(result => result.recordId));
+                const snapshotObject = snapshotObjects.find(candidateObject => candidateObject.objectApiName === objectResult.objectApiName);
+                if ( updatedRecordIds.size === 0 || !snapshotObject ) {
+                    continue;
+                }
+
+                const putBackRecords = RecipeCockpitRecordUpdate.buildRequestRecords(snapshotObject.objectApiName, snapshotObject.fieldApiNames, RecipeCockpitRecordUpdate.selectSnapshotRecords(snapshotObject, updatedRecordIds));
+                const putBackResults: IUpdateRecordResult[] = [];
+                for ( const request of RecipeCockpitRecordUpdate.splitIntoRequests(putBackRecords) ) {
+                    // EACH RECORD ON ITS OWN: ONE THAT CANNOT BE PUT BACK MUST NOT KEEP THE OTHERS FROM IT
+                    putBackResults.push(...await sendRequest(snapshotObject.objectApiName, request, false));
+                }
+                putBack.objects.push({ objectApiName: snapshotObject.objectApiName, results: putBackResults });
+                putBack.putBackRecordCount += putBackResults.filter(result => result.isSuccess).length;
+                putBack.failedRecordCount += putBackResults.filter(result => !result.isSuccess).length;
+
+            }
+
+        }
+
+        const allResults = objectResults.flatMap(objectResult => objectResult.results);
+
+        return {
+            outcome: outcome,
+            isAnyRequestSent: isAnyRequestSent,
+            updatedRecordCount: allResults.filter(result => result.isSuccess).length,
+            failedRecordCount: allResults.filter(result => !result.isSuccess).length,
+            objectResults: objectResults,
+            ...( putBack ? { putBack: putBack } : {} ),
+            ...( requestFailureDetail ? { requestFailureDetail: requestFailureDetail } : {} )
+        };
+
+    }
+
+    /*
+        How the update ended, as ONE notification (#301): information when every record was updated,
+        an ERROR when it stopped, otherwise a warning. "View errors" when a record failed or it
+        stopped, "View results" otherwise, opened through showNotificationWithWorkspaceFile; a
+        results file that could not be written offers no button. NOT AWAITED. Escaped whole.
+    */
+    static showUpdaterUpdateNotification(sendResult: IRecipeCockpitUpdaterSendResult,
+                                            treeTitle: string,
+                                            orgLabel: string,
+                                            snapshotFileName: string,
+                                            resultsFilePath: string | undefined,
+                                            workspaceRoot: string) {
+
+        const describeRecords = (recordCount: number) => `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
+        const wasOrWere = (recordCount: number) => recordCount === 1 ? 'was' : 'were';
+        const hasErrors = sendResult.failedRecordCount > 0 || sendResult.outcome === 'stopped' || ( sendResult.putBack?.failedRecordCount ?? 0 ) > 0;
+        const putBackText = sendResult.putBack
+            ? sendResult.putBack.failedRecordCount > 0
+                ? ` ${describeRecords(sendResult.putBack.putBackRecordCount)} it had updated ${wasOrWere(sendResult.putBack.putBackRecordCount)} set back to their old values, and ${describeRecords(sendResult.putBack.failedRecordCount)} could not be: their old values are in ${snapshotFileName}.`
+                : sendResult.putBack.putBackRecordCount > 0
+                    ? ` The ${describeRecords(sendResult.putBack.putBackRecordCount)} it had updated ${wasOrWere(sendResult.putBack.putBackRecordCount)} set back to their old values, because all-or-none was chosen.`
+                    : ''
+            : '';
+        let severity: 'information' | 'warning' | 'error' = 'warning';
+        let notificationText: string;
+
+        if ( sendResult.outcome === 'cancelled' ) {
+            notificationText = `The update of ${treeTitle} in ${orgLabel} was cancelled after ${describeRecords(sendResult.updatedRecordCount)}.${putBackText}`;
+        } else if ( sendResult.outcome === 'stopped' ) {
+            severity = 'error';
+            notificationText = `The update of ${treeTitle} in ${orgLabel} stopped at a request that failed: ${describeRecords(sendResult.failedRecordCount)} failed.${putBackText}`;
+        } else if ( sendResult.failedRecordCount > 0 ) {
+            notificationText = `${describeRecords(sendResult.updatedRecordCount)} of ${treeTitle} ${wasOrWere(sendResult.updatedRecordCount)} updated in ${orgLabel} and ${sendResult.failedRecordCount} failed. Their old values are in ${snapshotFileName}.`;
+        } else {
+            severity = 'information';
+            notificationText = `${describeRecords(sendResult.updatedRecordCount)} of ${treeTitle} ${wasOrWere(sendResult.updatedRecordCount)} updated in ${orgLabel}. Their old values are in ${snapshotFileName}.`;
+        }
+
+        if ( sendResult.requestFailureDetail ) {
+            notificationText += ` The request for ${sendResult.requestFailureDetail}`;
+        }
+
+        VSCodeWorkspaceService.showNotificationWithWorkspaceFile(
+            severity,
+            RecipeYamlScalar.escapeForNotification(notificationText),
+            hasErrors ? RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL : RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
+            resultsFilePath && fs.existsSync(resultsFilePath) ? resultsFilePath : undefined,
+            workspaceRoot,
+            'The update results file no longer exists in this workspace.'
+        );
 
     }
 
@@ -11723,6 +12168,20 @@ export class RecipeCockpitService {
 
                 return { kind: 'activateDatasetActions' };
 
+            // THE PANEL DREW THE LAST GENERATED VALUES (#418), ON THE MODEL IT ACKNOWLEDGED: "Update records" IS OFFERED ON THEM FROM HERE
+            case 'updaterValuesRendered':
+
+                if ( !panelState.recipeDataMessage
+                        || !panelState.updaterValuesMessage
+                        || panelMessage.renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || panelState.acknowledgedRenderSequence !== panelState.recipeDataMessage.renderSequence
+                        || panelState.updaterValuesMessage.renderSequence !== panelState.recipeDataMessage.renderSequence
+                        || panelMessage.valuesSequence !== panelState.updaterValuesMessage.valuesSequence ) {
+                    return undefined;
+                }
+
+                return { kind: 'activateUpdaterValues' };
+
             case 'renderFailed': {
 
                 // ONLY FROM A PANEL THAT WAS ACTUALLY GIVEN SOMETHING TO DRAW
@@ -11800,7 +12259,7 @@ export class RecipeCockpitService {
 
                 // A RELOAD CLEARS THE ORG SELECTION, WHICH WOULD CANCEL AN INSERT THE READER CONFIRMED; THE PANEL DISABLED ITS BUTTONS ON THE CLICK, SO A REFUSAL GIVES THEM BACK
                 if ( panelState.isGenerateTreecipeInFlight
-                        || ( panelState.insertStateMessage || panelState.isUpdaterOrgPromptOpen )
+                        || ( panelState.insertStateMessage || this.isSelectionHeldByUpdater(panelState) )
                         || typeof treeKey !== 'string'
                         || !panelState.treeHistoryAllowLists.recordTypeTreeKeys.has(treeKey)
                         || !recordTypeSelection ) {
@@ -11927,7 +12386,7 @@ export class RecipeCockpitService {
                 // A RUN ENDS BY LISTING THE ORGS ITSELF; A SECOND LISTING MEANWHILE WOULD DISCARD ITS ANSWER AND FORGET ITS ORG
                 // AN INSERT IN FLIGHT HOLDS THE SELECTION IT CONFIRMED; ITS RELOAD ASKS AGAIN ONCE IT HAS ENDED
                 // A PERMISSION SET ASSIGNMENT HOLDS THE SELECTION IT ASSIGNS IN, AND CHECKS IT AGAIN WHEN IT ENDS
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || ( panelState.insertStateMessage || panelState.isUpdaterOrgPromptOpen ) || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || ( panelState.insertStateMessage || this.isSelectionHeldByUpdater(panelState) ) || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
                     return undefined;
                 }
 
@@ -11941,7 +12400,7 @@ export class RecipeCockpitService {
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning
-                        || ( panelState.insertStateMessage || panelState.isUpdaterOrgPromptOpen )
+                        || ( panelState.insertStateMessage || this.isSelectionHeldByUpdater(panelState) )
                         || !Number.isInteger(orgIndex)
                         || orgIndex < 0
                         || orgIndex >= panelState.dataOrgDetails.length
@@ -11960,7 +12419,7 @@ export class RecipeCockpitService {
             */
             case 'refreshDataOrgs':
 
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || ( panelState.insertStateMessage || panelState.isUpdaterOrgPromptOpen ) || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || ( panelState.insertStateMessage || this.isSelectionHeldByUpdater(panelState) ) || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
                     return undefined;
                 }
 
@@ -11979,7 +12438,7 @@ export class RecipeCockpitService {
                 }
 
                 // A METADATA DEPLOY (#346) DEPLOYS TO THE ORG SELECTED, WHICH THE RUN WOULD CHANGE; A RETRIEVE DOES NOT HOLD IT, SINCE THE RUN DEPLOYS NOTHING (#358)
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || ( panelState.insertStateMessage || panelState.isUpdaterOrgPromptOpen ) || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || ( panelState.insertStateMessage || this.isSelectionHeldByUpdater(panelState) ) || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
                     return {
                         kind: 'postScratchOrgState',
                         hostMessage: panelState.scratchOrgStateMessage ?? { command: 'scratchOrgState', isRunning: false }
@@ -12009,7 +12468,7 @@ export class RecipeCockpitService {
                 const recipeFilePath = typeof treeKey === 'string' ? panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey) : undefined;
                 // A SCRATCH ORG RUN IS ABOUT TO CHANGE THE SELECTION, SO NOTHING IS INSERTED WHILE IT IS IN FLIGHT
                 const isTreeRoutable = !panelState.scratchOrgStateMessage?.isRunning
-                                        && !panelState.isUpdaterOrgPromptOpen
+                                        && !this.isSelectionHeldByUpdater(panelState)
                                         && !panelState.permissionSetAssignStateMessage?.isRunning
                                         && !panelState.metadataDeployStateMessage?.isRunning
                                         && typeof treeKey === 'string'
@@ -12498,7 +12957,7 @@ export class RecipeCockpitService {
                         || !panelState.recipeDataMessage
                         || !panelState.assignableTreeKeys.has(treeKey)
                         || panelState.scratchOrgStateMessage?.isRunning
-                        || ( panelState.insertStateMessage || panelState.isUpdaterOrgPromptOpen ) ) {
+                        || ( panelState.insertStateMessage || this.isSelectionHeldByUpdater(panelState) ) ) {
                     return refuse();
                 }
 
@@ -12631,7 +13090,7 @@ export class RecipeCockpitService {
                     return refuse();
                 }
 
-                if ( ( panelState.insertStateMessage || panelState.isUpdaterOrgPromptOpen )
+                if ( ( panelState.insertStateMessage || this.isSelectionHeldByUpdater(panelState) )
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataRetrieveStateMessage?.isRunning ) {
@@ -12851,6 +13310,53 @@ export class RecipeCockpitService {
                 }
 
                 return { kind: 'generateUpdaterValues', treeKey: treeKey, renderSequence: renderSequence, fieldRequests: fieldRequests.requests };
+
+            }
+
+            /*
+                "Update records" (#418) posts the card's KEY and nothing else: what is written, to which
+                records and in which org are the host's -- the values it holds for the records it
+                loaded. The key must be the card whose values the panel confirmed drawing, the org
+                selected now must have answered that it is a sandbox, and no run that holds the
+                selection may be in flight. The panel disabled the button on the click, so every
+                refusal gives it back.
+            */
+            case 'updateUpdaterRecords': {
+
+                const { treeKey } = panelMessage;
+                const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '', runKind: 'update' };
+
+                if ( panelState.updaterLoadStateMessage?.isRunning ) {
+                    return { kind: 'refuseUpdaterLoad', hostMessage: panelState.updaterLoadStateMessage };
+                }
+
+                if ( typeof treeKey !== 'string'
+                        || !panelState.recipeDataMessage
+                        || !panelState.updatableTreeKeys.has(treeKey) ) {
+                    return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
+                }
+
+                if ( panelState.insertStateMessage
+                        || panelState.isUpdaterOrgPromptOpen
+                        || panelState.scratchOrgStateMessage?.isRunning
+                        || panelState.permissionSetAssignStateMessage?.isRunning
+                        || panelState.metadataDeployStateMessage?.isRunning ) {
+                    return { kind: 'refuseUpdaterLoad', refusalText: RECIPE_COCKPIT_UPDATER_UPDATE_BUSY_REFUSAL, hostMessage: notRunning };
+                }
+
+                const dataOrgSelection = panelState.dataOrgSelection;
+
+                if ( dataOrgSelection?.orgTypeDetail?.isSandbox !== true ) {
+                    return {
+                        kind: 'refuseUpdaterLoad',
+                        refusalText: dataOrgSelection
+                            ? `Nothing was updated: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Updater updates only a sandbox or scratch org.`
+                            : 'Nothing was updated: choose the sandbox or scratch org the records were loaded from in Target Org Management.',
+                        hostMessage: notRunning
+                    };
+                }
+
+                return { kind: 'updateUpdaterRecords', treeKey: treeKey };
 
             }
 
@@ -15461,6 +15967,8 @@ ${this.buildPaletteCustomProperties()}
     const UPDATER_WHERE_MAX_LENGTH = ${RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH};
     const UPDATER_GENERATE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_GENERATE_LABEL)};
     const UPDATER_GENERATING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_GENERATING_LABEL)};
+    const UPDATER_UPDATE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_UPDATE_LABEL)};
+    const UPDATER_UPDATING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_UPDATING_LABEL)};
     const UPDATER_NO_EXPRESSION_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_REASON)};
     const UPDATER_VALUE_EDIT_HINT = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_VALUE_EDIT_HINT)};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
@@ -21208,8 +21716,11 @@ ${this.buildPaletteCustomProperties()}
         treeState.updaterLoadNoteElement = createElement('span', 'updaterLoadNote muted');
         treeState.updaterGenerateButtonElement = createButton('secondary', 'updaterGenerate', UPDATER_GENERATE_LABEL);
         treeState.updaterGenerateButtonElement.addEventListener('click', function () { requestUpdaterValues(treeState); });
+        treeState.updaterUpdateButtonElement = createButton('secondary', 'updaterUpdate', UPDATER_UPDATE_LABEL);
+        treeState.updaterUpdateButtonElement.addEventListener('click', function () { requestUpdaterUpdate(treeState); });
         loadRowElement.appendChild(treeState.updaterLoadButtonElement);
         loadRowElement.appendChild(treeState.updaterGenerateButtonElement);
+        loadRowElement.appendChild(treeState.updaterUpdateButtonElement);
         loadRowElement.appendChild(treeState.updaterLoadNoteElement);
         panelElement.appendChild(loadRowElement);
 
@@ -21692,6 +22203,29 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    /*
+        "Update records" (#418): the card's KEY and nothing else. What is written, to which records
+        and in which org are the host's: the values it holds, which this card shows a preview of.
+    */
+    function requestUpdaterUpdate(treeState) {
+
+        if (renderedSequence === null || updaterLoadRunningTreeKey !== null || !treeState.updaterValuesMessage) { return; }
+
+        updaterLoadRunningTreeKey = treeState.tree.treeKey;
+        updaterRunKind = 'update';
+        drawUpdaterLoadButtons();
+        vscodeApi.postMessage({ command: 'updateUpdaterRecords', treeKey: treeState.tree.treeKey });
+
+    }
+
+    function countUpdaterValueRecords(valuesMessage) {
+
+        return (Array.isArray(valuesMessage.objects) ? valuesMessage.objects : []).reduce(function (total, generatedObject) {
+            return total + (generatedObject ? Number(generatedObject.recordCount) || 0 : 0);
+        }, 0);
+
+    }
+
     // THE VALUES ARE DRAWN ONLY ON THE MODEL THEY WERE GENERATED ON, AND A TAB NOT YET BUILT DRAWS THEM WHEN IT IS
     function renderUpdaterValues(valuesMessage) {
 
@@ -21702,6 +22236,9 @@ ${this.buildPaletteCustomProperties()}
 
         treeState.updaterValuesMessage = valuesMessage;
         if (treeState.updaterObjectStates) { applyUpdaterValues(treeState, valuesMessage); }
+        drawUpdaterLoadButtons();
+        // ONLY THIS ACK OFFERS "Update records" ON THESE VALUES (#418)
+        vscodeApi.postMessage({ command: 'updaterValuesRendered', renderSequence: renderedSequence, valuesSequence: valuesMessage.valuesSequence });
 
     }
 
@@ -21777,6 +22314,21 @@ ${this.buildPaletteCustomProperties()}
             generateElement.disabled = updaterLoadRunningTreeKey !== null || generateReason !== '';
             generateElement.textContent = isThisCardLoading && updaterRunKind === 'generate' ? UPDATER_GENERATING_LABEL : UPDATER_GENERATE_LABEL;
             generateElement.setAttribute('title', generateReason || 'Make a new value for every loaded record of each chosen field, from its faker expression or the value you typed. Nothing is written to the org.');
+
+            const updateElement = treeState.updaterUpdateButtonElement;
+            if (!updateElement) { return; }
+            const valueRecordCount = treeState.updaterValuesMessage ? countUpdaterValueRecords(treeState.updaterValuesMessage) : 0;
+            const orgLabel = treeState.updaterRecordsMessage ? String(treeState.updaterRecordsMessage.orgLabel || '') : '';
+            const updateReason = !treeState.updaterValuesMessage ? 'Generate values first: the update writes the values the last Generate values made.'
+                : valueRecordCount === 0 ? 'There are no new values to write: the last load read no records.'
+                : '';
+            updateElement.disabled = updaterLoadRunningTreeKey !== null || updateReason !== '';
+            updateElement.textContent = isThisCardLoading && updaterRunKind === 'update'
+                ? UPDATER_UPDATING_LABEL
+                : valueRecordCount > 0
+                    ? 'Update ' + pluralize(valueRecordCount, 'record', 'records') + (orgLabel ? ' in ' + orgLabel : '')
+                    : UPDATER_UPDATE_LABEL;
+            updateElement.setAttribute('title', updateReason || 'Write the new values to these records by Id, in the sandbox they were loaded from. Their old values are saved to treecipe/UpdateAttempts first.');
         });
 
     }
@@ -23771,10 +24323,16 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'updaterLoadState') {
             updaterLoadRunningTreeKey = hostMessage.isRunning ? String(hostMessage.treeKey) : null;
-            updaterRunKind = hostMessage.isRunning ? ( hostMessage.runKind === 'generate' ? 'generate' : 'load' ) : '';
+            updaterRunKind = hostMessage.isRunning ? ( hostMessage.runKind === 'generate' || hostMessage.runKind === 'update' ? hostMessage.runKind : 'load' ) : '';
             // THE HOST LETS THE LAST LOAD GO WHEN THE NEXT STARTS, AND ITS VALUES WITH IT; A GENERATION LETS ONLY THE VALUES GO
             if (hostMessage.isRunning) {
                 if (updaterRunKind === 'load') { clearUpdaterRecords(); }
+                // AN UPDATE (#418) KEEPS THE PREVIEW ON SCREEN WHILE ITS CONFIRMATION ASKS ABOUT IT
+                if (updaterRunKind !== 'update') { clearUpdaterValues(); }
+            }
+            // AN UPDATE THAT SENT A REQUEST SPENT THE LOADED RECORDS: THEIR "current" VALUES ARE NO LONGER CURRENT
+            if (!hostMessage.isRunning && hostMessage.isRecordsSpent === true) {
+                clearUpdaterRecords();
                 clearUpdaterValues();
             }
             drawUpdaterLoadButtons();

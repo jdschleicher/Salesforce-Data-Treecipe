@@ -641,6 +641,30 @@ export class CollectionsApiService {
 
     }
 
+    /*
+        One PATCH composite/sobjects request (#418): existing records by Id, at most
+        collectionsApiRecordBatchSizeLimit of them, all-or-none as chosen. jsforce sends an array
+        through composite/sobjects, and allowRecursive is off so it never splits the request itself:
+        the caller decides what one request is. A failed request throws.
+    */
+    static async updateCollectionsApiCallout(recordsToUpdate: ReadonlyArray<{ Id: string; [fieldApiName: string]: unknown }>,
+                                                aliasAuthenticationConnection: Connection,
+                                                allOrNoneSelection: boolean,
+                                                sobjectNameToUpdate: string): Promise<unknown> {
+
+        if ( recordsToUpdate.length > this.collectionsApiRecordBatchSizeLimit ) {
+            throw new SfError(`One update request carries at most ${this.collectionsApiRecordBatchSizeLimit} records, and ${recordsToUpdate.length} were given.`);
+        }
+
+        return aliasAuthenticationConnection
+                    .sobject(sobjectNameToUpdate)
+                    .update(recordsToUpdate as any, {
+                        allowRecursive: false,
+                        allOrNone: allOrNoneSelection
+                    });
+
+    }
+
     static getObjectNameFromCollectionsApiFilePath(filePath: string): string | null {
         // expected filename pattern should be "collectionsApi-Example_Object__c.json"
         const matchObjectNameInFilePathRegex = /collectionsApi-(.*?)\.json$/;
