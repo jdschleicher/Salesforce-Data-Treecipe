@@ -54,9 +54,6 @@ export interface INotificationFileAction {
 
 export const ORG_CONNECTION_CHECK_PLACEHOLDER = 'Checking org connections…';
 
-export const PARENT_PICKER_RANDOM_LABEL = 'Random parent';
-export const PARENT_PICKER_BLANK_LABEL = 'Leave blank';
-export const PARENT_PICKER_SELECT_ALL_LABEL = 'Select all matches';
 export const PARENT_PICKER_NO_NAME_LABEL = '(no name)';
 export const PARENT_PICKER_SEARCH_DELAY_MILLISECONDS = 300;
 
@@ -71,28 +68,17 @@ export interface IParentPickerSearchResult {
     hasMoreMatches: boolean;
 }
 
-/*
-    One lookup's picker (#254). searchUnavailableReason is set when the parent cannot be searched --
-    its describe marks no name field, or it could not be described -- and the picker then offers
-    Random (and Leave blank) only and says why.
-*/
+// ONE LOOKUP'S RECORD PICKER (#421): THE PARENT IS SEARCHED BY ITS ONE NAME FIELD, WHICH THE CALLER HAS ALREADY FOUND
 export interface IParentPickerOptions {
     fieldApiName: string;
     parentObjectApiName: string;
-    isRequired: boolean;
-    nameFieldApiName?: string;
-    searchUnavailableReason?: string;
+    nameFieldApiName: string;
     resultLimit: number;
     search: (searchText: string) => Promise<IParentPickerSearchResult>;
     searchDelayMilliseconds?: number;
 }
 
-export type ParentPickerAnswer =
-    | { kind: 'random' }
-    | { kind: 'blank' }
-    | { kind: 'chosen'; records: IParentPickerRecord[] };
-
-type ParentPickerItem = vscode.QuickPickItem & { parentPickerRole: 'random' | 'blank' | 'selectAll' | 'record' | 'message'; parentRecord?: IParentPickerRecord };
+type ParentPickerItem = vscode.QuickPickItem & { parentPickerRole: 'record' | 'message'; parentRecord?: IParentPickerRecord };
 
 // THE ORGS A PICKER OFFERS, AND WHAT TO SAY INSTEAD WHEN IT OFFERS NONE
 export interface IAuthenticatedOrgListingForPicker<TOrgDetail extends IAuthenticatedOrgDetail = IAuthenticatedOrgDetail> {
@@ -1177,80 +1163,45 @@ export class VSCodeWorkspaceService {
     }
 
     /*
-        The parent picker of one lookup (#254). Nothing is checked when it opens, and nothing is ever
-        applied implicitly: accepting with nothing checked, or dismissing it, answers undefined, which
-        the Create treats as a cancel. Random (and, for an optional lookup, Leave blank) is chosen by
-        checking it, which clears the search and keeps it cleared while it stays checked. Typing
-        searches the parent's name field after a short pause, and only the newest search's answer is
-        drawn. Checked records are kept across searches, so several can be gathered from several
-        searches; Select all matches -- or VS Code's own check-all -- checks every record the current
-        search listed. A record set is answered in the order the picker lists it.
+        The record picker of "Use existing <Parent> from org…" (#421): ONE record of the parent, found
+        by typing. Typing searches the parent's name field after a short pause, and only the newest
+        search's answer is drawn. Accepting a listed record answers it; dismissing answers undefined,
+        and accepting with no record listed does nothing, so nothing is ever chosen implicitly.
     */
-    static async promptForParentRecords(pickerOptions: IParentPickerOptions): Promise<ParentPickerAnswer | undefined> {
+    static async promptForParentRecord(pickerOptions: IParentPickerOptions): Promise<IParentPickerRecord | undefined> {
 
         const parentQuickPick = vscode.window.createQuickPick<ParentPickerItem>();
         const parentLabel = RecipeYamlScalar.escapeForNotification(pickerOptions.parentObjectApiName);
-        const isSearchable = !!pickerOptions.nameFieldApiName && !pickerOptions.searchUnavailableReason;
-
-        const defaultItems: ParentPickerItem[] = [
-            ...( pickerOptions.isRequired ? [] : [{ label: PARENT_PICKER_BLANK_LABEL, description: 'leave this lookup empty', parentPickerRole: 'blank' as const, alwaysShow: true }] ),
-            { label: PARENT_PICKER_RANDOM_LABEL, description: `a random existing ${parentLabel} record per new record`, parentPickerRole: 'random', alwaysShow: true }
-        ];
-        const selectAllItem: ParentPickerItem = { label: PARENT_PICKER_SELECT_ALL_LABEL, parentPickerRole: 'selectAll', alwaysShow: true };
         const messageItem = (messageText: string): ParentPickerItem => ({ label: messageText, kind: vscode.QuickPickItemKind.Separator, parentPickerRole: 'message', alwaysShow: true });
 
-        const keptRecordItemsById = new Map<string, ParentPickerItem>();
-        let listedRecordItems: ParentPickerItem[] = [];
-        let searchMessageItems: ParentPickerItem[] = [];
-        let previousSelection: ParentPickerItem[] = [];
         let searchSequence = 0;
         let searchTimer: ReturnType<typeof setTimeout> | undefined;
 
-        const baseTitle = `${RecipeYamlScalar.escapeForNotification(pickerOptions.fieldApiName)} → ${parentLabel} (${pickerOptions.isRequired ? 'required' : 'optional'})`;
+        const baseTitle = `${RecipeYamlScalar.escapeForNotification(pickerOptions.fieldApiName)} → ${parentLabel}`;
         // A SEPARATOR CAN BE HIDDEN WHILE THE INPUT FILTERS, SO WHAT A SEARCH ANSWERED IS ALSO SAID IN THE TITLE
         const setSearchStatus = (statusText: string) => { parentQuickPick.title = statusText ? `${baseTitle} — ${statusText}` : baseTitle; };
         setSearchStatus('');
-        parentQuickPick.placeholder = isSearchable
-            ? `Type to search ${parentLabel} by ${RecipeYamlScalar.escapeForNotification(pickerOptions.nameFieldApiName as string)}, or check ${PARENT_PICKER_RANDOM_LABEL}${pickerOptions.isRequired ? '' : ` or ${PARENT_PICKER_BLANK_LABEL}`}`
-            : `${parentLabel} cannot be searched, so only ${PARENT_PICKER_RANDOM_LABEL}${pickerOptions.isRequired ? '' : ` or ${PARENT_PICKER_BLANK_LABEL}`} can be chosen`;
-        parentQuickPick.canSelectMany = true;
+        parentQuickPick.placeholder = `Type to search ${parentLabel} by ${RecipeYamlScalar.escapeForNotification(pickerOptions.nameFieldApiName)}, then pick one record`;
+        parentQuickPick.canSelectMany = false;
         parentQuickPick.ignoreFocusOut = true;
         parentQuickPick.matchOnDescription = false;
         parentQuickPick.matchOnDetail = false;
+        parentQuickPick.items = [];
 
-        const unavailableMessageItems = isSearchable
-            ? []
-            : [messageItem(this.toQuickPickLabelText(pickerOptions.searchUnavailableReason ?? `${pickerOptions.parentObjectApiName} has no name field to search`))];
-
-        const isDefaultChosen = () => previousSelection.some(selectedItem => selectedItem.parentPickerRole === 'random' || selectedItem.parentPickerRole === 'blank');
-
-        const drawItems = (selectedItems: ParentPickerItem[]) => {
-            const listedIds = new Set(listedRecordItems.map(listedItem => listedItem.parentRecord?.recordId));
-            const keptOffListItems = [...keptRecordItemsById.values()].filter(keptItem => !listedIds.has(keptItem.parentRecord?.recordId));
-            parentQuickPick.items = [
-                ...defaultItems,
-                ...unavailableMessageItems,
-                ...( keptOffListItems.length > 0 ? [messageItem('Checked from earlier searches'), ...keptOffListItems] : [] ),
-                ...searchMessageItems,
-                ...( listedRecordItems.length > 1 ? [selectAllItem] : [] ),
-                ...listedRecordItems
-            ];
-            previousSelection = selectedItems;
-            parentQuickPick.selectedItems = selectedItems;
-        };
-
-        const toRecordItem = (parentRecord: IParentPickerRecord): ParentPickerItem => keptRecordItemsById.get(parentRecord.recordId) ?? {
+        const toRecordItem = (parentRecord: IParentPickerRecord): ParentPickerItem => ({
             label: parentRecord.recordName ? this.toQuickPickLabelText(parentRecord.recordName) : PARENT_PICKER_NO_NAME_LABEL,
             description: parentRecord.recordId,
             parentPickerRole: 'record',
             parentRecord: parentRecord,
             alwaysShow: true
-        };
+        });
 
         const runSearch = async (searchText: string) => {
 
             const thisSearch = ++searchSequence;
             parentQuickPick.busy = true;
+            let searchStatus: string;
+            let recordItems: ParentPickerItem[] = [];
 
             try {
 
@@ -1258,60 +1209,43 @@ export class VSCodeWorkspaceService {
                 if ( thisSearch !== searchSequence ) {
                     return;
                 }
-                listedRecordItems = searchResult.matches.map(toRecordItem);
-                const searchStatus = searchResult.matches.length === 0
+                recordItems = searchResult.matches.map(toRecordItem);
+                searchStatus = searchResult.matches.length === 0
                     ? `No ${pickerOptions.parentObjectApiName} record matches "${this.toQuickPickLabelText(searchText)}"`
                     : searchResult.hasMoreMatches
                         ? `The first ${pickerOptions.resultLimit} matches are listed; more match, so refine your search`
                         : `${searchResult.matches.length} ${searchResult.matches.length === 1 ? 'match' : 'matches'}`;
-                searchMessageItems = [messageItem(searchStatus)];
-                setSearchStatus(searchStatus);
 
             } catch (searchError) {
 
                 if ( thisSearch !== searchSequence ) {
                     return;
                 }
-                listedRecordItems = [];
-                const failureStatus = this.toQuickPickLabelText(`The search failed: ${searchError instanceof Error ? searchError.message : String(searchError)}`);
-                searchMessageItems = [messageItem(failureStatus)];
-                setSearchStatus(failureStatus);
+                searchStatus = this.toQuickPickLabelText(`The search failed: ${searchError instanceof Error ? searchError.message : String(searchError)}`);
 
             }
 
             parentQuickPick.busy = false;
-            drawItems([...keptRecordItemsById.values()]);
+            setSearchStatus(searchStatus);
+            parentQuickPick.items = [messageItem(searchStatus), ...recordItems];
 
         };
 
         // ANY CHANGE MAKES EVERY SEARCH IN FLIGHT STALE, AND A SEARCH STILL WAITING ON ITS PAUSE IS NOT SENT
-        const cancelPendingSearch = () => {
+        parentQuickPick.onDidChangeValue(changedValue => {
+
             searchSequence++;
             if ( searchTimer ) {
                 clearTimeout(searchTimer);
                 searchTimer = undefined;
-            }
-        };
-
-        parentQuickPick.onDidChangeValue(changedValue => {
-
-            cancelPendingSearch();
-
-            if ( !isSearchable || isDefaultChosen() ) {
-                if ( changedValue !== '' ) {
-                    parentQuickPick.value = '';
-                }
-                return;
             }
 
             const searchText = changedValue.trim();
 
             if ( searchText === '' ) {
                 parentQuickPick.busy = false;
-                listedRecordItems = [];
-                searchMessageItems = [];
                 setSearchStatus('');
-                drawItems([...keptRecordItemsById.values()]);
+                parentQuickPick.items = [];
                 return;
             }
 
@@ -1319,54 +1253,14 @@ export class VSCodeWorkspaceService {
 
         });
 
-        parentQuickPick.onDidChangeSelection(selectedItems => {
-
-            const previouslySelected = new Set(previousSelection);
-            const addedItems = selectedItems.filter(selectedItem => !previouslySelected.has(selectedItem));
-            const addedDefault = addedItems.find(addedItem => addedItem.parentPickerRole === 'random' || addedItem.parentPickerRole === 'blank');
-            // VS CODE'S CHECK-ALL ADDS THE DEFAULTS AND THE RECORDS AT ONCE: THAT IS A SELECT ALL, NEVER A CHOICE OF Random OR Leave blank
-            const addedRecordOrSelectAll = addedItems.some(addedItem => addedItem.parentPickerRole === 'record' || addedItem.parentPickerRole === 'selectAll');
-
-            if ( addedDefault && !addedRecordOrSelectAll ) {
-                cancelPendingSearch();
-                keptRecordItemsById.clear();
-                listedRecordItems = [];
-                searchMessageItems = [];
-                parentQuickPick.busy = false;
-                parentQuickPick.value = '';
-                setSearchStatus('');
-                drawItems([addedDefault]);
-                return;
-            }
-
-            const listedRecordItemsNow = listedRecordItems;
-            const isSelectAll = addedItems.some(addedItem => addedItem.parentPickerRole === 'selectAll') || ( !!addedDefault && listedRecordItemsNow.length > 0 );
-            const selectedRecordItems = isSelectAll
-                ? [...new Set([...selectedItems.filter(selectedItem => selectedItem.parentPickerRole === 'record'), ...listedRecordItemsNow])]
-                : selectedItems.filter(selectedItem => selectedItem.parentPickerRole === 'record');
-
-            keptRecordItemsById.clear();
-            selectedRecordItems.forEach(selectedItem => keptRecordItemsById.set((selectedItem.parentRecord as IParentPickerRecord).recordId, selectedItem));
-
-            const hasDroppedOtherItems = selectedItems.length !== selectedRecordItems.length;
-            if ( isSelectAll || hasDroppedOtherItems ) {
-                drawItems(selectedRecordItems);
-            } else {
-                previousSelection = selectedRecordItems;
-            }
-
-        });
-
-        const pickerAnswer = new Promise<ParentPickerAnswer | undefined>(resolveAnswer => {
+        const pickerAnswer = new Promise<IParentPickerRecord | undefined>(resolveAnswer => {
 
             parentQuickPick.onDidAccept(() => {
-                const chosenDefault = previousSelection.find(selectedItem => selectedItem.parentPickerRole === 'random' || selectedItem.parentPickerRole === 'blank');
-                const chosenRecords = previousSelection
-                    .filter(selectedItem => selectedItem.parentPickerRole === 'record' && selectedItem.parentRecord)
-                    .map(selectedItem => selectedItem.parentRecord as IParentPickerRecord);
-                resolveAnswer(chosenDefault
-                    ? { kind: chosenDefault.parentPickerRole as 'random' | 'blank' }
-                    : chosenRecords.length > 0 ? { kind: 'chosen', records: chosenRecords } : undefined);
+                const acceptedItem = parentQuickPick.selectedItems[0] ?? parentQuickPick.activeItems?.[0];
+                if ( acceptedItem?.parentPickerRole !== 'record' || !acceptedItem.parentRecord ) {
+                    return;
+                }
+                resolveAnswer(acceptedItem.parentRecord);
                 parentQuickPick.hide();
             });
 
@@ -1374,7 +1268,6 @@ export class VSCodeWorkspaceService {
 
         });
 
-        drawItems([]);
         parentQuickPick.show();
 
         try {

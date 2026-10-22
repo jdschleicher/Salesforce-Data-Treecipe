@@ -990,6 +990,56 @@ describe('SalesforceOrgService', () => {
 
     });
 
+    describe('queryExistingRecordIds and isSameRecordId (#421)', () => {
+
+        it('asks for the named Ids of one object in one query and keeps only the Id-shaped answers', async () => {
+
+            const querySource: IOrgQuerySource = { query: jest.fn().mockResolvedValue({ records: [{ Id: '001000000000001AAA' }, { Id: 'bad id' }, null] }) };
+
+            expect(await SalesforceOrgService.queryExistingRecordIds(querySource, 'Account', ['001000000000001', '001000000000002AAA', '001000000000001'])).toEqual(['001000000000001AAA']);
+            expect(querySource.query).toHaveBeenCalledWith("SELECT Id FROM Account WHERE Id IN ('001000000000001', '001000000000002AAA')");
+
+        });
+
+        it('sends no query for no Ids, and refuses an Id that could close the quote, or an object that is not an api name, before any query', async () => {
+
+            const querySource: IOrgQuerySource = { query: jest.fn() };
+
+            expect(await SalesforceOrgService.queryExistingRecordIds(querySource, 'Account', [])).toEqual([]);
+            await expect(SalesforceOrgService.queryExistingRecordIds(querySource, 'Account', ["001') OR Id != ('"])).rejects.toThrow('is not a Salesforce Id');
+            await expect(SalesforceOrgService.queryExistingRecordIds(querySource, 'Account; DELETE', ['001000000000001AAA'])).rejects.toThrow();
+            expect(querySource.query).not.toHaveBeenCalled();
+
+        });
+
+        it('throws, rather than answering "none exist", for an answer with no records list', async () => {
+
+            await expect(SalesforceOrgService.queryExistingRecordIds({ query: jest.fn().mockResolvedValue({ records: 'x' }) }, 'Account', ['001000000000001AAA'])).rejects.toThrow('could not be read');
+
+        });
+
+        it('reads a 15-character Id as the case-sensitive head of its 18-character form', () => {
+
+            expect(SalesforceOrgService.isSameRecordId('001000000000001AAA', '001000000000001')).toBe(true);
+            expect(SalesforceOrgService.isSameRecordId('001000000000001', '001000000000001AAA')).toBe(true);
+            expect(SalesforceOrgService.isSameRecordId('001000000000001AAA', '001000000000001AAA')).toBe(true);
+            expect(SalesforceOrgService.isSameRecordId('001000000000001AAA', '001000000000001AAB')).toBe(false);
+            expect(SalesforceOrgService.isSameRecordId('001000000000001aaa', '001000000000001')).toBe(true);
+            expect(SalesforceOrgService.isSameRecordId('001000000000001', '00100000000000a')).toBe(false);
+            expect(SalesforceOrgService.isSameRecordId('001', '001')).toBe(false);
+
+        });
+
+        it('keeps a describe\'s key prefix only when it is three letters or digits', () => {
+
+            expect(SalesforceOrgService.normalizeDescribeResult('Account', { name: 'Account', keyPrefix: '001', fields: [] }).keyPrefix).toBe('001');
+            expect(SalesforceOrgService.normalizeDescribeResult('Account', { name: 'Account', keyPrefix: null, fields: [] })).not.toHaveProperty('keyPrefix');
+            expect(SalesforceOrgService.normalizeDescribeResult('Account', { name: 'Account', keyPrefix: "0'1", fields: [] })).not.toHaveProperty('keyPrefix');
+
+        });
+
+    });
+
     describe('queryPermissionSetNames (#302)', () => {
 
         it('asks for the named permission sets in one query and keeps only the api names the org answers with', async () => {

@@ -630,15 +630,20 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
 
         const addButtonsOf = (panel: any) => panel.findAll(panel.cockpitBodyElement, 'treeAddParentObject');
 
-        it('draws "Add Account to recipe" on the one addable lookup and on no other row', () => {
+        it('draws "Create Account in recipe" enabled on the one addable lookup, disabled with its reason on every other empty lookup to one parent (#421)', () => {
 
             const panel = renderModel();
             const contactElement = panel.objectElements().find((objectElement: any) => panel.findAll(objectElement, 'treeAddParentObject').length > 0);
 
-            expect(addButtonsOf(panel).map((buttonElement: any) => buttonElement.textContent)).toEqual(['Add Account to recipe']);
-            expect(addButtonsOf(panel)[0].attributes['aria-label']).toBe('Add Account to the recipe for Contact.AccountId');
-            expect(panel.findAll(panel.fieldRowNamed(contactElement, 'AccountId'), 'treeAddParentObject')).toHaveLength(1);
-            ['Related__c', 'Owner__c', 'ReportsToId', 'LastName'].forEach(fieldApiName => {
+            expect(addButtonsOf(panel).map((buttonElement: any) => [buttonElement.textContent, buttonElement.disabled])).toEqual([
+                ['Create Account in recipe', false],
+                ['Create Contact in recipe', true],
+                ['Create User in recipe', true]
+            ]);
+            expect(addButtonsOf(panel)[0].attributes['aria-label']).toBe('Create Account in the recipe for Contact.AccountId');
+            expect(panel.findAll(panel.fieldRowNamed(contactElement, 'Owner__c'), 'treeAddParentObject')[0].attributes.title).toBe('Cannot be created: There is no minimum required fields template for User, so it cannot be added to the recipe.');
+            expect(panel.findAll(panel.fieldRowNamed(contactElement, 'ReportsToId'), 'treeAddParentObject')[0].attributes.title).toContain('already has a "- object: Contact" block');
+            ['Related__c', 'LastName'].forEach(fieldApiName => {
                 expect(panel.findAll(panel.fieldRowNamed(contactElement, fieldApiName), 'treeAddParentObject')).toHaveLength(0);
             });
 
@@ -663,7 +668,9 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
         it('names the occurrence when the object is written twice', () => {
 
             const recipeViewModel = loadModel();
-            recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === TREE_KEY).addableParents = [{ ...ACCOUNT_ADDITION, objectNickname: 'Contact_NickName' }];
+            const tree = recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === TREE_KEY);
+            tree.addableParents = [{ ...ACCOUNT_ADDITION, objectNickname: 'Contact_NickName' }];
+            tree.emptyLookups = [{ ...ACCOUNT_ADDITION, objectNickname: 'Contact_NickName' }];
             recipeViewModel.objects.find(objectViewModel => objectViewModel.objectApiName === 'Contact').nickname = 'Contact_NickName';
 
             const panel = renderModel(recipeViewModel);
@@ -681,7 +688,7 @@ describe.each(BACKENDS)('RecipeCockpitService, adding a lookup\'s parent to a %s
             panel.expandAllTrees();
             panel.objectElements().forEach((objectElement: any) => panel.expandObject(objectElement));
 
-            expect(addButtonsOf(panel).map((buttonElement: any) => buttonElement.disabled)).toEqual([true]);
+            expect(addButtonsOf(panel).map((buttonElement: any) => buttonElement.disabled)).toEqual([true, true, true]);
 
         });
 

@@ -70,6 +70,7 @@ import {
     RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON
 } from '../RecipeCockpitService';
 import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
+import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { OrgConnectionStatusUnavailableError, SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
@@ -181,6 +182,8 @@ interface IFakeConnectionOptions {
     organizationQueryFails?: boolean;
     withOutsideParent?: boolean;
     outsideParentIds?: string[];
+    // THE Region__c RECORDS A "WHERE Id IN" CHECK (#421) FINDS; DEFAULTS TO OUTSIDE_REGION_IDS
+    existingRegionIds?: string[];
     rejectRecord?: (objectApiName: string, record: any) => boolean;
     // FIELDS THE ORG DOES NOT HAVE, BY OBJECT: LEFT OUT OF ITS DESCRIBE
     missingFieldsByObject?: Record<string, string[]>;
@@ -223,6 +226,11 @@ function buildFakeConnection(options: IFakeConnectionOptions = {}) {
                     throw new Error('INVALID_SESSION_ID');
                 }
                 return { records: [{ IsSandbox: options.isSandbox ?? true, OrganizationType: options.isSandbox === false ? 'Enterprise Edition' : 'Unlimited Edition' }] };
+            }
+            const idInMatch = /^SELECT Id FROM Region__c WHERE Id IN \((.*)\)$/.exec(soql);
+            if ( idInMatch ) {
+                const askedIds = idInMatch[1].split(', ').map(quotedId => quotedId.slice(1, -1));
+                return { records: askedIds.filter(askedId => ( options.existingRegionIds ?? OUTSIDE_REGION_IDS ).includes(askedId)).map(recordId => ({ Id: recordId })) };
             }
             if ( soql === 'SELECT Id FROM Region__c LIMIT 2000' ) {
                 return { records: ( options.outsideParentIds ?? OUTSIDE_REGION_IDS ).map(recordId => ({ Id: recordId })) };
@@ -925,107 +933,101 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         });
 
-        describe('a parent picker for each lookup of the tree to a parent it does not insert (#254)', () => {
+        describe('a lookup set to an existing org record, and no parent picker (#421)', () => {
 
-            const CHOSEN_REGION_IDS = ['a05000000000007AAA', 'a05000000000008AAA'];
+            const ORG_RECORD_ID = OUTSIDE_REGION_IDS[1];
             const recipeWithRegion = () => buildFakerJsAccountRecipe(2, 3).replace(
                 '        AccountId: Account_NickName\n',
                 '        AccountId: Account_NickName\n        Region__c: ### TODO -- REFERENCE ID REQUIRED -- Region__c\n'
             );
-            const answerPickers = (answerPicker: (pickerOptions: any) => Promise<any>) =>
-                jest.spyOn(VSCodeWorkspaceService, 'promptForParentRecords').mockImplementation(answerPicker);
 
-            beforeEach(() => {
+            // THE RECIPE AND ITS FIXED-VALUES FILE AS "Use existing Region__c from org…" WRITES THEM
+            const buildWorkspaceWithOrgRecord = (recordId: string) => {
+                const pinResult = RecipeCockpitRecipeWriter.pinField(recipeWithRegion(), 'Contact', 'Region__c', { value: recordId, kind: 'text' });
+                if ( 'refusal' in pinResult ) { throw new Error(pinResult.refusal.message); }
+                buildWorkspace(pinResult.recipeText);
+                // THE BUTTON IS DRAWN ONLY ON A LOOKUP OF THE TREE, SO THE RUN'S WRAPPER NAMES Region__c AS Contact's PARENT, WITH NO RECIPE OF ITS OWN
+                const wrapperFilePath = path.join(generatedRecipesFolderPath(), FAKER_JS_RUN, 'treecipeObjectsWrapper-2026-09-21T00-00-00.json');
+                const objectsWrapper = JSON.parse(fs.readFileSync(wrapperFilePath, 'utf-8'));
+                objectsWrapper.RecipeFiles[0].objects.splice(2, 0, 'Region__c');
+                objectsWrapper.ObjectToObjectInfoMap.Region__c = { RelationshipDetail: { objectApiName: 'Region__c', level: 0, parentObjectToFieldReferences: {} } };
+                objectsWrapper.ObjectToObjectInfoMap.Contact.RelationshipDetail.parentObjectToFieldReferences.Region__c = ['Region__c'];
+                fs.writeFileSync(wrapperFilePath, JSON.stringify(objectsWrapper));
+                fs.writeFileSync(RecipeCockpitFixedValueStore.buildFilePath(accountRecipeFilePath(FAKER_JS_RUN)), RecipeCockpitFixedValueStore.serialize([{
+                    objectApiName: 'Contact',
+                    fieldApiName: 'Region__c',
+                    value: recordId,
+                    orgRecord: { orgUsername: 'dev@example.com', orgAlias: 'dev', parentObjectApiName: 'Region__c' },
+                    occurrences: pinResult.occurrences
+                }]));
+            };
+
+            it('opens no picker for a TODO lookup to an outside parent: a required one gets a random existing record, listed in the confirmation', async () => {
+
                 buildWorkspace(recipeWithRegion());
-                jest.spyOn(SalesforceOrgService, 'searchParentRecords').mockResolvedValue({
-                    matches: CHOSEN_REGION_IDS.map((recordId, matchIndex) => ({ recordId: recordId, recordName: `Region ${matchIndex}` })),
-                    hasMoreMatches: false
-                });
-            });
-
-            it('asks after the confirm, only about the outside lookup, and gives the chosen parents out round-robin', async () => {
-
                 const connection = buildFakeConnection({ withOutsideParent: true });
                 useConnection(connection);
-                const askedOrder: string[] = [];
-                (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => { askedOrder.push('confirm'); return RECIPE_COCKPIT_INSERT_CONFIRM_LABEL; });
-                allOrNoneSpy.mockImplementation(async () => { askedOrder.push('allOrNone'); return false; });
-                const pickerSpy = answerPickers(async (pickerOptions: any) => {
-                    askedOrder.push(`picker:${pickerOptions.fieldApiName}`);
-                    await pickerOptions.search('Region');
-                    return { kind: 'chosen', records: CHOSEN_REGION_IDS.map(recordId => ({ recordId: recordId, recordName: recordId })) };
-                });
+                const quickPickSpy = vscode.window.showQuickPick as jest.Mock;
+                quickPickSpy.mockClear();
 
                 await openSelectedCockpit(FAKER_JS_RUN);
                 await insertAccountTree();
 
-                expect(askedOrder).toEqual(['confirm', 'picker:Region__c', 'allOrNone']);
-                expect(pickerSpy).toHaveBeenCalledTimes(1);
-                expect(pickerSpy.mock.calls[0][0]).toMatchObject({ fieldApiName: 'Region__c', parentObjectApiName: 'Region__c', isRequired: true });
-                expect((vscode.window.showWarningMessage as jest.Mock).mock.calls[0][1].detail).toContain('  Contact.Region__c → Region__c (required)');
-                expect(connection.sentQueries).not.toContain('SELECT Id FROM Region__c LIMIT 2000');
-                const contacts = insertedOf(connection, 'Contact');
-                expect(contacts).toHaveLength(6);
-                expect(contacts.map(contact => contact.Region__c)).toEqual([0, 1, 2, 3, 4, 5].map(contactIndex => CHOSEN_REGION_IDS[contactIndex % 2]));
-
-            });
-
-            it('gives each record a random existing parent when Random parent is chosen', async () => {
-
-                const connection = buildFakeConnection({ withOutsideParent: true });
-                useConnection(connection);
-                answerPickers(async () => ({ kind: 'random' }));
-
-                await openSelectedCockpit(FAKER_JS_RUN);
-                await insertAccountTree();
-
-                expect(connection.sentQueries).toContain('SELECT Id FROM Region__c LIMIT 2000');
+                expect(quickPickSpy).not.toHaveBeenCalled();
+                const confirmationDetail = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0][1].detail;
+                expect(confirmationDetail).toContain('Required lookups to objects this tree does not insert get a random existing record of: Region__c (none means nothing is inserted).');
+                expect(confirmationDetail).toContain('Any other lookup to an object this tree does not insert is left blank.');
+                expect(confirmationDetail).not.toContain('Lookups set to existing org records');
                 insertedOf(connection, 'Contact').forEach(contact => expect(OUTSIDE_REGION_IDS).toContain(contact.Region__c));
 
             });
 
-            it('generates and inserts nothing when a picker is cancelled, and says which lookup had no parent', async () => {
+            it('keeps the Id on every record, checks it exists with WHERE Id IN before anything is written, and lists it with its org', async () => {
 
+                buildWorkspaceWithOrgRecord(ORG_RECORD_ID);
                 const connection = buildFakeConnection({ withOutsideParent: true });
                 useConnection(connection);
-                answerPickers(async () => undefined);
+                const askedOrder: string[] = [];
+                (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => { askedOrder.push('confirm'); return RECIPE_COCKPIT_INSERT_CONFIRM_LABEL; });
+                const runCommand = executeCommand.getMockImplementation() as (...commandArguments: unknown[]) => Promise<unknown>;
+                executeCommand.mockImplementation(async (command: string, ...commandArguments: unknown[]) => {
+                    if ( command === RECIPE_COCKPIT_RUN_FAKER_COMMAND ) { askedOrder.push(`generate:${connection.sentQueries.some(soql => soql.includes('WHERE Id IN'))}`); }
+                    return runCommand(command, ...commandArguments);
+                });
+
+                await openSelectedCockpit(FAKER_JS_RUN);
+                expect(panelState().recipeDataMessage.recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY).fixedValues)
+                    .toEqual([{ objectApiName: 'Contact', fieldApiName: 'Region__c', value: ORG_RECORD_ID, kind: 'text', orgRecord: { orgLabel: 'dev', parentObjectApiName: 'Region__c' } }]);
+                await insertAccountTree();
+
+                const confirmationDetail = (vscode.window.showWarningMessage as jest.Mock).mock.calls[0][1].detail;
+                expect(confirmationDetail).toContain(`  Contact.Region__c → Region__c ${ORG_RECORD_ID} (from dev)`);
+                expect(confirmationDetail).not.toContain('get a random existing record of: Region__c');
+                expect(confirmationDetail).not.toContain('Edited fields');
+                expect(askedOrder).toEqual(['confirm', 'generate:true']);
+                expect(connection.sentQueries).toContain(`SELECT Id FROM Region__c WHERE Id IN ('${ORG_RECORD_ID}')`);
+                expect(connection.sentQueries).not.toContain('SELECT Id FROM Region__c LIMIT 2000');
+                const contacts = insertedOf(connection, 'Contact');
+                expect(contacts).toHaveLength(6);
+                contacts.forEach(contact => expect(contact.Region__c).toBe(ORG_RECORD_ID));
+
+            });
+
+            it('refuses, naming the object, field, Id and the org it came from, when the org inserted into has no such record, and writes nothing', async () => {
+
+                buildWorkspaceWithOrgRecord('a05000000000099AAA');
+                const connection = buildFakeConnection({ withOutsideParent: true });
+                useConnection(connection);
 
                 await openSelectedCockpit(FAKER_JS_RUN);
                 await insertAccountTree();
 
-                expect(showWarningMessageSpy.mock.calls.at(-1)[0]).toContain('no Region__c parent was chosen for Contact.Region__c');
-                expect(allOrNoneSpy).not.toHaveBeenCalled();
+                expect(showWarningMessageSpy.mock.calls.at(-1)[0]).toBe('Nothing was generated or inserted for Account-thru-OtherChildObject__c: Contact.Region__c points at the Region__c record a05000000000099AAA, chosen in dev, and qa (qa@example.com.qa) has no such record. Clear it, or choose a record of this org with "Use existing Region__c from org…".');
+                expect(allOrNoneSpy).toHaveBeenCalled();
                 expect(runFakerCalls()).toEqual([]);
                 expect(connection.insertCalls).toEqual([]);
                 expect(datasetFolderNames()).toEqual([]);
-
-            });
-
-            it('refuses Ids its own search did not return, before anything is written', async () => {
-
-                const connection = buildFakeConnection({ withOutsideParent: true });
-                useConnection(connection);
-                answerPickers(async () => ({ kind: 'chosen', records: [{ recordId: 'a05000000000099AAA', recordName: 'forged' }] }));
-
-                await openSelectedCockpit(FAKER_JS_RUN);
-                await insertAccountTree();
-
-                expect(showWarningMessageSpy.mock.calls.at(-1)[0]).toContain('are not ones its search returned');
-                expect(runFakerCalls()).toEqual([]);
-                expect(connection.insertCalls).toEqual([]);
-
-            });
-
-            it('never asks about a lookup to a parent the tree inserts', async () => {
-
-                buildWorkspace(buildFakerJsAccountRecipe(2, 3));
-                useConnection(buildFakeConnection());
-                const pickerSpy = answerPickers(async () => ({ kind: 'random' }));
-
-                await openSelectedCockpit(FAKER_JS_RUN);
-                await insertAccountTree();
-
-                expect(pickerSpy).not.toHaveBeenCalled();
+                expect(postedNamed('insertState').at(-1).isRunning).toBe(false);
 
             });
 
@@ -2074,6 +2076,31 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
             expect(detailOf([['Contact', 1]], ['Region__c'])).toContain('Required lookups to objects this tree does not insert get a random existing record of: Region__c (none means nothing is inserted).');
             expect(detailOf([['Contact', 1]], ['[x](command:evil)'])).toContain('a random existing record of: [x](command:evil) (none');
+
+        });
+
+    });
+
+    describe('findMissingOrgRecordLookup (#421)', () => {
+
+        const lookupTo = (parentObjectApiName: string, recordId: string) => ({ objectApiName: 'Contact', fieldApiName: `${parentObjectApiName}__c`, recordId, parentObjectApiName, orgLabel: 'dev' });
+
+        it('sends one query per parent and answers the first Id the org does not hold, a 15-character Id matching its 18-character form', async () => {
+
+            const querySource = { query: jest.fn().mockImplementation(async (soql: string) => ({ records: soql.includes('FROM Region__c') ? [{ Id: 'a05000000000001AAA' }] : [] })) };
+
+            expect(await RecipeCockpitService.findMissingOrgRecordLookup(querySource, [lookupTo('Region__c', 'a05000000000001')])).toBeUndefined();
+            expect(await RecipeCockpitService.findMissingOrgRecordLookup(querySource, [lookupTo('Region__c', 'a05000000000001AAA'), lookupTo('Zone__c', 'a06000000000001AAA')]))
+                .toEqual(lookupTo('Zone__c', 'a06000000000001AAA'));
+            expect(querySource.query).toHaveBeenCalledTimes(3);
+
+        });
+
+        it('answers a failed query as that lookup\'s failure, never as "it exists"', async () => {
+
+            const missing = await RecipeCockpitService.findMissingOrgRecordLookup({ query: jest.fn().mockRejectedValue(new Error('INVALID_TYPE')) }, [lookupTo('Region__c', 'a05000000000001AAA')]);
+
+            expect(missing).toEqual({ ...lookupTo('Region__c', 'a05000000000001AAA'), failureMessage: 'INVALID_TYPE' });
 
         });
 
