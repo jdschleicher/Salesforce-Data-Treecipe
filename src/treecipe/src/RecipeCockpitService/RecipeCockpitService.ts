@@ -532,7 +532,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against any connected org you pick in the command palette (a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.',
-            'The Treecipe Updater tab, after Query, draws the tree\'s objects and fields as the Treecipe tab does. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist and a field read only from the recipe file cannot be chosen. Loading and updating those records are still to come, so choosing a field reads and writes nothing yet.'
+            'The Treecipe Updater tab, after Query, draws the tree\'s objects and fields as the Treecipe tab does. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Loading and updating those records are still to come, so choosing a field reads and writes nothing yet.'
         ]
     },
     {
@@ -1817,6 +1817,9 @@ export const RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN = 'No fields chosen';
 export const RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON = 'read from the recipe file, so its type is not known';
 export const RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON = 'the record type is not changed here';
 export const RECIPE_COCKPIT_UPDATER_LOOKUP_REASON = 'a lookup points to another record, which the Updater does not change';
+export const RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON = 'Salesforce sets this field\'s value';
+// AN AUTO NUMBER OR A ROLL-UP SUMMARY IS COMPUTED BY THE ORG, SO AN UPDATE OF IT FAILS; A FORMULA IS TOO, BUT THE WRAPPER DOES NOT RECORD ONE
+export const RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES = ['AutoNumber', 'Summary'];
 
 export const RECIPE_COCKPIT_QUERY_INTRO = 'The SOQL Generate Treecipe wrote for this tree. Edit a query, run it against any connected org you choose, then export what it returned as JSON or CSV. A query only reads.';
 
@@ -13901,6 +13904,8 @@ ${this.buildPaletteCustomProperties()}
     const UPDATER_RECIPE_ONLY_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON)};
     const UPDATER_RECORD_TYPE_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON)};
     const UPDATER_LOOKUP_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_LOOKUP_REASON)};
+    const UPDATER_SYSTEM_VALUE_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON)};
+    const UPDATER_SYSTEM_VALUE_FIELD_TYPES = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES)};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
     const DATA_ORG_CONNECTION_CHECK_INSERT_REASON = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON)};
     const DATA_ORG_LOADING_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER)};
@@ -19201,6 +19206,7 @@ ${this.buildPaletteCustomProperties()}
         const isTreeLookup = hasOwnKey(indexTreeLookupFields(tree), objectApiName + '\\n' + field.fieldApiName);
         if (isTreeLookup || FIXED_VALUE_LOOKUP_FIELD_TYPES.indexOf(field.fieldType) !== -1) { return UPDATER_LOOKUP_REASON; }
         if (field.controllingField) { return FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField; }
+        if (UPDATER_SYSTEM_VALUE_FIELD_TYPES.indexOf(field.fieldType) !== -1) { return UPDATER_SYSTEM_VALUE_REASON; }
 
         return '';
 
@@ -19229,10 +19235,19 @@ ${this.buildPaletteCustomProperties()}
         const chosenFieldKeys = Object.create(null);
         treeState.updaterObjectStates.forEach(function (updaterObjectState) {
             updaterObjectState.fieldStates.forEach(function (fieldState) {
-                if (!fieldState.lockReason && hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey)) { chosenFieldKeys[fieldState.fieldKey] = true; }
+                if (!fieldState.lockReason && hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey)) {
+                    chosenFieldKeys[fieldState.fieldKey] = true;
+                    updaterObjectState.chosenFieldCount++;
+                }
             });
         });
         treeState.updaterChosenFieldKeys = chosenFieldKeys;
+
+        const expandedObjectKeys = Object.create(null);
+        treeState.updaterObjectStates.forEach(function (updaterObjectState) {
+            if (updaterObjectState.isExpandedByReader) { expandedObjectKeys[updaterObjectState.object.objectApiName] = true; }
+        });
+        treeState.updaterExpandedObjectKeys = expandedObjectKeys;
 
         treeState.updaterObjectStates.forEach(function (updaterObjectState) { panelElement.appendChild(updaterObjectState.element); });
 
@@ -19263,12 +19278,15 @@ ${this.buildPaletteCustomProperties()}
             isExpanded: false,
             isExpandedByReader: hasOwnKey(treeState.updaterExpandedObjectKeys, object.objectApiName),
             matchingFieldCount: object.fields.length,
+            chosenFieldCount: 0,
+            countText: '',
             fieldStates: object.fields.map(function (field) {
                 return {
                     field: field,
                     fieldKey: updaterFieldKeyOf(object.objectApiName, field.fieldApiName),
                     lockReason: findUpdaterFieldLockReason(treeState.tree, object.objectApiName, field),
-                    searchText: [field.fieldApiName, field.fieldLabel, field.fieldTypeWithSize || field.fieldType].join('\\n').toLowerCase(),
+                    // WHAT THE ROW DRAWS: NAME, LABEL, SIZED TYPE AND FAKER EXPRESSION
+                    searchText: [field.fieldApiName, field.fieldLabel, field.fieldTypeWithSize || field.fieldType, field.recipeValue].join('\\n').toLowerCase(),
                     isMatch: true,
                     rowElement: null,
                     chooseElement: null
@@ -19331,20 +19349,27 @@ ${this.buildPaletteCustomProperties()}
         chooseElement.setAttribute('role', 'checkbox');
         chooseElement.addEventListener('click', function () {
             if (chooseElement.disabled) { return; }
+            // ONLY THIS BOX, ITS OBJECT'S COUNT AND THE SUMMARY CHANGE: A CHOICE CHANGES NO MATCH, SO NO ROW OPENS OR CLOSES
             if (hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey)) {
                 delete treeState.updaterChosenFieldKeys[fieldState.fieldKey];
+                updaterObjectState.chosenFieldCount--;
             } else {
                 treeState.updaterChosenFieldKeys[fieldState.fieldKey] = true;
+                updaterObjectState.chosenFieldCount++;
             }
             drawUpdaterFieldChoice(treeState, updaterObjectState, fieldState);
+            drawUpdaterObjectCount(updaterObjectState);
             drawUpdaterSummary(treeState);
-            applyUpdaterFilter(treeState);
             savePanelPlace();
         });
         fieldState.chooseElement = chooseElement;
 
         headerElement.appendChild(chooseElement);
         headerElement.appendChild(createElement('span', 'updaterFieldName', field.fieldApiName));
+
+        if (field.fieldLabel && field.fieldLabel !== field.fieldApiName) {
+            headerElement.appendChild(createElement('span', 'updaterFieldLabel muted', field.fieldLabel));
+        }
 
         if (field.fieldTypeWithSize || field.fieldType) {
             headerElement.appendChild(createElement('span', 'fieldType', field.fieldTypeWithSize || field.fieldType));
@@ -19387,8 +19412,9 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function chosenFieldCountOf(treeState, updaterObjectState) {
-        return updaterObjectState.fieldStates.filter(function (fieldState) { return hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey); }).length;
+    function drawUpdaterObjectCount(updaterObjectState) {
+        updaterObjectState.countElement.textContent = updaterObjectState.countText
+            + (updaterObjectState.chosenFieldCount > 0 ? ' · ' + updaterObjectState.chosenFieldCount + ' chosen' : '');
     }
 
     function drawUpdaterSummary(treeState) {
@@ -19399,9 +19425,8 @@ ${this.buildPaletteCustomProperties()}
         let chosenObjectCount = 0;
 
         treeState.updaterObjectStates.forEach(function (updaterObjectState) {
-            const objectChosenCount = chosenFieldCountOf(treeState, updaterObjectState);
-            chosenFieldCount += objectChosenCount;
-            if (objectChosenCount > 0) { chosenObjectCount++; }
+            chosenFieldCount += updaterObjectState.chosenFieldCount;
+            if (updaterObjectState.chosenFieldCount > 0) { chosenObjectCount++; }
         });
 
         treeState.updaterSummaryElement.textContent = chosenFieldCount === 0
@@ -19431,14 +19456,14 @@ ${this.buildPaletteCustomProperties()}
             });
 
             const objectFieldCount = updaterObjectState.fieldStates.length;
-            const chosenText = chosenFieldCountOf(treeState, updaterObjectState) > 0 ? ' · ' + chosenFieldCountOf(treeState, updaterObjectState) + ' chosen' : '';
             updaterObjectState.matchingFieldCount = objectMatchingFieldCount;
             totalFieldCount += objectFieldCount;
             matchingFieldCount += objectMatchingFieldCount;
 
-            updaterObjectState.countElement.textContent = (!searchQuery || isObjectNameMatch
+            updaterObjectState.countText = !searchQuery || isObjectNameMatch
                 ? pluralize(objectFieldCount, 'field', 'fields')
-                : objectMatchingFieldCount > 0 ? objectMatchingFieldCount + ' of ' + pluralize(objectFieldCount, 'field', 'fields') : 'no matching fields') + chosenText;
+                : objectMatchingFieldCount > 0 ? objectMatchingFieldCount + ' of ' + pluralize(objectFieldCount, 'field', 'fields') : 'no matching fields';
+            drawUpdaterObjectCount(updaterObjectState);
 
         });
 
