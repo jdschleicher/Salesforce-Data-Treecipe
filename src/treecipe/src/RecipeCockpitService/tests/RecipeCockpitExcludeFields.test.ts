@@ -900,7 +900,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
         const checkboxOf = (panel: ReturnType<typeof runPanelScript>, objectElement: any, fieldApiName: string) => panel.findAll(panel.fieldRowNamed(objectElement, fieldApiName), 'treeFieldInclude')[0];
         const noteOf = (panel: ReturnType<typeof runPanelScript>, objectElement: any, fieldApiName: string) => panel.findAll(panel.fieldRowNamed(objectElement, fieldApiName), 'treeFieldNote')[0];
 
-        // #343: ALL / NONE ARE HIDDEN, WITH NO WAY TO SHOW THEM; THE HOST STILL ROUTES setAllFieldsIncluded
+        // #343 HID ALL / NONE; #410 DRAWS ONE "All fields" BOX IN THEIR PLACE, NEVER THE TWO BUTTONS
         it('draws a ticked checkbox on each field with a recipe line, and no All / None', () => {
 
             const panel = drawRecipe();
@@ -915,7 +915,168 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             expect(panel.findAll(panel.objectBodyOf(contact), 'treeFieldBulk')).toEqual([]);
             expect(panel.findAll(panel.objectBodyOf(contact), 'treeFieldAll')).toEqual([]);
             expect(panel.findAll(panel.objectBodyOf(contact), 'treeFieldNone')).toEqual([]);
-            expect(panel.objectBodyOf(contact).children[0].classList.contains('treeField')).toBeTrue();
+            expect(panel.objectBodyOf(contact).children[0].classList.contains('treeFieldSelectAllRow')).toBeTrue();
+            expect(panel.objectBodyOf(contact).children[1].classList.contains('treeField')).toBeTrue();
+
+        });
+
+        describe('the "All fields" box (#410)', () => {
+
+            const selectAllOf = (panel: ReturnType<typeof runPanelScript>, objectElement: any) => panel.findAll(panel.objectBodyOf(objectElement), 'treeFieldSelectAll')[0];
+            const selectAllRowOf = (panel: ReturnType<typeof runPanelScript>, objectElement: any) => panel.findAll(panel.objectBodyOf(objectElement), 'treeFieldSelectAllRow')[0];
+            const postedSelectAll = (panel: ReturnType<typeof runPanelScript>) => panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'setAllFieldsIncluded');
+            const panelLabelOf = (panel: ReturnType<typeof runPanelScript>, objectElement: any) => panel.findAll(selectAllRowOf(panel, objectElement), 'treeFieldSelectAllLabel')[0];
+            const recipeFieldNamesOf = (recipe: IRecipeCockpitRecipeViewModel, objectApiName: string) => objectOf(recipe, objectApiName).fields.filter(field => field.lineNumber).map(field => field.fieldApiName);
+
+            it('draws one labelled checkbox above the field rows, ticked while every field is ticked', () => {
+
+                const panel = drawRecipe();
+                const contact = expanded(panel, 'Contact');
+                const selectAllElement = selectAllOf(panel, contact);
+
+                expect(panel.findAll(panel.objectBodyOf(contact), 'treeFieldSelectAll')).toHaveLength(1);
+                expect(selectAllElement.tagName).toBe('button');
+                expect(selectAllElement.classList.contains('sdtButton-check')).toBeTrue();
+                expect(selectAllElement.attributes.role).toBe('checkbox');
+                expect(selectAllElement.attributes['aria-checked']).toBe('true');
+                expect(selectAllElement.textContent).toBe('✓');
+                expect(selectAllElement.disabled).toBeFalse();
+                expect(selectAllElement.attributes.title).toBe('Every field ticked — click to leave every field out that can be unticked');
+                expect(selectAllElement.attributes['aria-label']).toBe('All fields of Contact: ' + selectAllElement.attributes.title);
+                expect(panel.findAll(selectAllRowOf(panel, contact), 'treeFieldSelectAllLabel')[0].textContent).toBe('All fields');
+
+            });
+
+            it('posts names only: from ticked it unticks, from mixed or unticked it ticks', () => {
+
+                const tickedPanel = drawRecipe();
+                selectAllOf(tickedPanel, expanded(tickedPanel, 'Contact')).dispatch('click');
+                expect(postedSelectAll(tickedPanel)).toEqual([{ command: 'setAllFieldsIncluded', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', included: false }]);
+
+                const mixedPanel = drawRecipe(recipe => untick(recipe, { Contact: ['LastName'] }));
+                const mixedContact = expanded(mixedPanel, 'Contact');
+                const mixedElement = selectAllOf(mixedPanel, mixedContact);
+                expect(mixedElement.attributes['aria-checked']).toBe('mixed');
+                expect(mixedElement.textContent).toBe('−');
+                expect(mixedElement.attributes.title).toBe('1 of 2 fields ticked — click to tick every field');
+                mixedElement.dispatch('click');
+                expect(postedSelectAll(mixedPanel)).toEqual([{ command: 'setAllFieldsIncluded', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', included: true }]);
+
+                const untickedPanel = drawRecipe(recipe => untick(recipe, { Contact: ['LastName', 'AccountId'] }));
+                const untickedContact = expanded(untickedPanel, 'Contact');
+                const untickedElement = selectAllOf(untickedPanel, untickedContact);
+                expect(untickedElement.attributes['aria-checked']).toBe('false');
+                expect(untickedElement.textContent).toBe('');
+                panelLabelOf(untickedPanel, untickedContact).dispatch('click');
+                expect(postedSelectAll(untickedPanel)).toEqual([{ command: 'setAllFieldsIncluded', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', included: true }]);
+
+                // THE BOX ITSELF CHANGES NOTHING: ONLY THE HOST'S ANSWER REDRAWS IT
+                expect(untickedElement.attributes['aria-checked']).toBe('false');
+
+            });
+
+            it('carries the object\'s nickname when the row has one', () => {
+
+                const panel = drawRecipe(recipe => { objectOf(recipe, 'Contact').nickname = 'Contact_NickName'; });
+                selectAllOf(panel, expanded(panel, 'Contact')).dispatch('click');
+
+                expect(postedSelectAll(panel)).toEqual([{ command: 'setAllFieldsIncluded', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', nickname: 'Contact_NickName', included: false }]);
+
+            });
+
+            it('leaves a locked field out of its state, so it reads unticked while the lock keeps that field ticked', () => {
+
+                const recipe = loadRecipe();
+                const otherFieldNames = recipeFieldNamesOf(recipe, 'OtherChildObject__c').filter(fieldApiName => fieldApiName !== 'Contact__c');
+                expect(otherFieldNames.length).toBeGreaterThan(0);
+
+                const panel = drawRecipe(drawnRecipe => {
+                    untick(drawnRecipe, { OtherChildObject__c: otherFieldNames });
+                    fieldSelectionOf(treeOf(drawnRecipe, ACCOUNT_TREE_KEY), 'OtherChildObject__c')!.lockedFields.push({ fieldApiName: 'Contact__c', reason: RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON });
+                });
+                const other = expanded(panel, 'OtherChildObject__c');
+
+                expect(checkboxOf(panel, other, 'Contact__c').attributes['aria-checked']).toBe('true');
+                expect(selectAllOf(panel, other).attributes['aria-checked']).toBe('false');
+
+            });
+
+            it('is hidden while every field is locked, and comes back when a lock goes', () => {
+
+                const recipe = loadRecipe();
+                const contactFieldNames = recipeFieldNamesOf(recipe, 'Contact');
+                const lockEveryContactField = { objects: [{ objectApiName: 'Contact', excludedFieldApiNames: [] as string[], lockedFields: contactFieldNames.map(fieldApiName => ({ fieldApiName: fieldApiName, reason: RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON })) }] };
+
+                const panel = drawRecipe(drawnRecipe => { treeOf(drawnRecipe, ACCOUNT_TREE_KEY).fieldSelection = lockEveryContactField; });
+                panel.postToPanel({ command: 'rendered' });
+                const contact = expanded(panel, 'Contact');
+                expect(panel.isHidden(selectAllRowOf(panel, contact))).toBeTrue();
+
+                panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3 });
+                expect(panel.isHidden(selectAllRowOf(panel, contact))).toBeFalse();
+                expect(selectAllOf(panel, contact).attributes['aria-checked']).toBe('true');
+
+            });
+
+            it('redraws in place when the host answers a single field\'s click', () => {
+
+                const panel = drawRecipe();
+                panel.postToPanel({ command: 'rendered' });
+                const contact = expanded(panel, 'Contact');
+                const selectAllElement = selectAllOf(panel, contact);
+
+                panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3, fieldSelection: { objects: [{ objectApiName: 'Contact', excludedFieldApiNames: ['LastName'], lockedFields: [] }] } });
+                expect(selectAllOf(panel, contact)).toBe(selectAllElement);
+                expect(selectAllElement.attributes['aria-checked']).toBe('mixed');
+
+                panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3, fieldSelection: { objects: [{ objectApiName: 'Contact', excludedFieldApiNames: ['LastName', 'AccountId'], lockedFields: [] }] } });
+                expect(selectAllElement.attributes['aria-checked']).toBe('false');
+
+            });
+
+            it('is disabled on an excluded object, and a click posts nothing', () => {
+
+                const panel = drawRecipe(recipe => untick(recipe, {}, ['Contact']));
+                const contact = expanded(panel, 'Contact');
+                const selectAllElement = selectAllOf(panel, contact);
+
+                expect(selectAllElement.disabled).toBeTrue();
+                expect(selectAllElement.attributes.title).toBe('Contact is excluded, so its fields are read-only');
+                expect(selectAllRowOf(panel, contact).children[0].classList.contains('disabled')).toBeTrue();
+
+                panelLabelOf(panel, contact).dispatch('click');
+                expect(postedSelectAll(panel)).toEqual([]);
+
+            });
+
+            it('is not drawn on a self-lookup\'s iteration, whose boxes follow its object', () => {
+
+                const panel = drawRecipe(recipe => {
+                    const accountObject = objectOf(recipe, 'Account');
+                    accountObject.nickname = 'Account_NickName';
+                    accountObject.iterations = [{ nickname: 'Account_child_NickName', lineNumber: 40, parentObjectApiName: 'Account', parentNickname: 'Account_NickName', fields: [{ fieldApiName: 'Name', lineNumber: 42, recipeValue: '${{fake.Company}}' } as any] }];
+                    treeOf(recipe, ACCOUNT_TREE_KEY).objects.push({ objectApiName: 'Account', parentLookups: [], iterationNickname: 'Account_child_NickName' });
+                });
+                const [account, iteration] = objectsNamed(panel, 'Account');
+                panel.expandObject(account);
+                panel.expandObject(iteration);
+
+                expect(panel.findAll(panel.objectBodyOf(account), 'treeFieldSelectAll')).toHaveLength(1);
+                expect(panel.findAll(panel.objectBodyOf(iteration), 'treeField').length).toBeGreaterThan(0);
+                expect(panel.findAll(panel.objectBodyOf(iteration), 'treeFieldSelectAll')).toEqual([]);
+
+            });
+
+            it('is not drawn on a card with no folder, or on an object written more than once without distinct nicknames', () => {
+
+                const panel = drawRecipe(recipe => { objectOf(recipe, 'Contact').hasIndistinctOccurrences = true; });
+                const ungroupedLead = objectsNamed(panel, 'Lead').find(objectElement => panel.findAll(objectElement, 'treeObjectInclude').length === 0);
+                panel.expandObject(ungroupedLead);
+
+                expect(panel.findAll(ungroupedLead, 'treeFieldSelectAll')).toEqual([]);
+                expect(panel.findAll(expanded(panel, 'Contact'), 'treeFieldSelectAll')).toEqual([]);
+
+            });
 
         });
 
