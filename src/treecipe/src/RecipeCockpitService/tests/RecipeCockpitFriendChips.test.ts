@@ -245,6 +245,14 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
 
         });
 
+        it('still draws the chip for a hand-edited friend with no count line', () => {
+
+            writeWorkspace(NESTED_RECIPE_WITHOUT_PARENT_NICKNAME.replace('      count: 1\n', ''), ['Account', 'Contact']);
+
+            expect(chipLines(renderModel(loadModel()))).toEqual(['Account: ', 'Contact: Account-1']);
+
+        });
+
         it('falls back for a __proto__ nickname, and a lookup holding it draws nothing more', () => {
 
             writeWorkspace(
