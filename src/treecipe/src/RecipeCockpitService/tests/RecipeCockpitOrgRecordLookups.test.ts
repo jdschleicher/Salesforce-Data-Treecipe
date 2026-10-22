@@ -124,8 +124,8 @@ describe('RecipeCockpitRecipeWriter.listEmptyLookups (#421)', () => {
 
         expect(RecipeCockpitRecipeWriter.listEmptyLookups(RECIPE_TEXT, LOOKUP_CONTEXT, TEMPLATES)).toEqual([
             { ...ACCOUNT_LOOKUP },
-            { objectApiName: 'Contact', fieldApiName: 'ReportsToId', parentObjectApiName: 'Contact', createRefusal: 'The recipe already has a "- object: Contact" block, so nothing was added.' },
-            { objectApiName: 'Contact', fieldApiName: 'Owner__c', parentObjectApiName: 'User', createRefusal: 'There is no minimum required fields template for User, so it cannot be added to the recipe.' }
+            { objectApiName: 'Contact', fieldApiName: 'ReportsToId', parentObjectApiName: 'Contact', createRefusalReason: 'parent-object-already-exists' },
+            { objectApiName: 'Contact', fieldApiName: 'Owner__c', parentObjectApiName: 'User', createRefusalReason: 'no-parent-template' }
         ]);
 
     });
@@ -133,7 +133,7 @@ describe('RecipeCockpitRecipeWriter.listEmptyLookups (#421)', () => {
     it('agrees with listAddableParentObjects: exactly the lookups with no createRefusal can be added', () => {
 
         const addable = RecipeCockpitRecipeWriter.listAddableParentObjects(RECIPE_TEXT, LOOKUP_CONTEXT, TEMPLATES);
-        const creatable = RecipeCockpitRecipeWriter.listEmptyLookups(RECIPE_TEXT, LOOKUP_CONTEXT, TEMPLATES).filter(emptyLookup => emptyLookup.createRefusal === undefined);
+        const creatable = RecipeCockpitRecipeWriter.listEmptyLookups(RECIPE_TEXT, LOOKUP_CONTEXT, TEMPLATES).filter(emptyLookup => emptyLookup.createRefusalReason === undefined);
 
         expect(creatable.map(({ objectApiName, fieldApiName, parentObjectApiName }) => ({ objectApiName, fieldApiName, parentObjectApiName }))).toEqual(addable);
 
@@ -180,7 +180,7 @@ describe('RecipeCockpitRecipeWriter.listEmptyLookups (#421)', () => {
             objectNickname: 'Contact_NickName',
             fieldApiName: 'ReportsToId',
             parentObjectApiName: 'Contact',
-            createRefusal: 'The recipe already has a "- object: Contact" block, so nothing was added.',
+            createRefusalReason: 'parent-object-already-exists',
             orgRecordRefusal: 'The recipe writes Contact 2 times and ReportsToId is already set on 1 of them; an org record is written on every one, so it would replace that value.'
         }]);
 
@@ -311,7 +311,7 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
 
             const recipeViewModel = loadModel();
 
-            expect(treeOf(recipeViewModel).emptyLookups.map(emptyLookup => [emptyLookup.fieldApiName, emptyLookup.parentObjectApiName, !!emptyLookup.createRefusal]))
+            expect(treeOf(recipeViewModel).emptyLookups.map(emptyLookup => [emptyLookup.fieldApiName, emptyLookup.parentObjectApiName, !!emptyLookup.createRefusalReason]))
                 .toEqual([['AccountId', 'Account', false], ['ReportsToId', 'Contact', true], ['Owner__c', 'User', true]]);
             expect([...RecipeCockpitService.collectOrgRecordLookupTargets(recipeViewModel, new Map([[TREE_KEY, recipeFilePath]])).keys()])
                 .toEqual([`${TREE_KEY}\nContact\n\nAccountId`, `${TREE_KEY}\nContact\n\nReportsToId`, `${TREE_KEY}\nContact\n\nOwner__c`]);
@@ -328,6 +328,16 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
             expect(tree.orgRecordLookups).toEqual([{ objectApiName: 'Contact', fieldApiName: 'AccountId', recordId: ACCOUNT_ID, parentObjectApiName: 'Account', orgLabel: 'dev' }]);
             expect(tree.fixedValues).toEqual([{ objectApiName: 'Contact', fieldApiName: 'AccountId', value: ACCOUNT_ID, kind: 'text', orgRecord: { orgLabel: 'dev', parentObjectApiName: 'Account' } }]);
             expect(tree.emptyLookups.map(emptyLookup => emptyLookup.fieldApiName)).toEqual(['ReportsToId', 'Owner__c']);
+
+        });
+
+        it('draws a stored org record whose parent is not the field\'s tree parent as nothing, since the insert checks the Id as a record of it', () => {
+
+            writeOrgRecordPin(ACCOUNT_ID, { orgUsername: DEV_ORG.username, parentObjectApiName: 'User' });
+            const tree = treeOf(loadModel());
+
+            expect(tree.orgRecordLookups).toHaveLength(1);
+            expect(tree).not.toHaveProperty('fixedValues');
 
         });
 
@@ -398,6 +408,7 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
             ['an occurrence nickname the row does not draw', () => undefined, { objectNickname: 'Contact_NickName' }],
             ['another card', () => undefined, { treeKey: 'Lead-ONLY' }],
             ['a field that is not a string', () => undefined, { fieldApiName: ['AccountId'] }],
+            ['while the model is not on screen', (panelState: IRecipeCockpitPanelState) => { panelState.recipeDataMessage = undefined; }, {}],
             ['while a friend is being added', (panelState: IRecipeCockpitPanelState) => { panelState.addFriendStateMessage = { command: 'addFriendState', isRunning: true }; }, {}]
         ])('refuses %s', (_description, adjust, override) => {
 
@@ -608,6 +619,36 @@ describe.each(BACKENDS)('RecipeCockpitService, "Use existing <Parent> from orgâ€
             expect(fs.existsSync(fixedValueFilePath())).toBe(false);
             expect(showWarningMessageSpy).not.toHaveBeenCalled();
             expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'recipeData')).toEqual([]);
+            expect(postedPanelMessages.at(-1)).toEqual({ command: 'wireLookupState', isRunning: false });
+
+        });
+
+        it('refuses, writing nothing, when the lookup was filled by hand after the cockpit drew its button', async () => {
+
+            chooseHow('Search Account');
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async () => {
+                fs.writeFileSync(recipeFilePath, RECIPE_TEXT.replace(`    AccountId: ${TODO}`, '    AccountId: Account_NickName'));
+                return RECIPE_COCKPIT_ORG_RECORD_CONFIRM_LABEL;
+            });
+
+            await openRenderedCockpit();
+            await receivedMessageHandler(USE_ACCOUNT_MESSAGE);
+
+            expect(showWarningMessageSpy.mock.calls.at(-1)[0]).toContain('is no longer a "### TODO -- REFERENCE ID REQUIRED" lookup');
+            expect(fs.readFileSync(recipeFilePath, 'utf-8')).toContain('    AccountId: Account_NickName');
+            expect(fs.existsSync(fixedValueFilePath())).toBe(false);
+
+        });
+
+        it('says the org could not be connected to, rather than reporting an error, when its connection fails', async () => {
+
+            (SalesforceOrgService.getConnection as jest.Mock).mockRejectedValue(new Error('expired access/refresh token'));
+
+            await openRenderedCockpit();
+            await receivedMessageHandler(USE_ACCOUNT_MESSAGE);
+
+            expect(showWarningMessageSpy.mock.calls.at(-1)[0]).toBe('Contact.AccountId was not set to an existing Account record: dev Â· dev@example.com could not be connected to. Check its authorization with "sf org list", then try again.');
+            expect(vscode.window.showQuickPick).not.toHaveBeenCalled();
             expect(postedPanelMessages.at(-1)).toEqual({ command: 'wireLookupState', isRunning: false });
 
         });

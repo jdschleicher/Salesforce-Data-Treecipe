@@ -52,7 +52,7 @@ import {
     ORG_PARENT_SEARCH_RESULT_LIMIT,
     SalesforceOrgService
 } from '../SalesforceOrgService/SalesforceOrgService';
-import { ILookupWiringContext, ILookupWiringRequest, IParentObjectAdditionRequest, IParentObjectAdditionWiring, IPinnedFieldRestoreRequest, IRecipeFilterLookup, IRecipeFixedValue, IRecipeUnconstrainedValue, IRemovedTodoComment, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind, RecipeParentObjectAdditionResult, RecipeTodoRemoveLock, YAML_NON_STRING_PLAIN_SCALAR_PATTERN } from './RecipeCockpitRecipeWriter';
+import { CreateParentRefusalReason, ILookupWiringContext, ILookupWiringRequest, IParentObjectAdditionRequest, IParentObjectAdditionWiring, IPinnedFieldRestoreRequest, IRecipeFilterLookup, IRecipeFixedValue, IRecipeUnconstrainedValue, IRemovedTodoComment, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind, RecipeParentObjectAdditionResult, RecipeTodoRemoveLock, YAML_NON_STRING_PLAIN_SCALAR_PATTERN } from './RecipeCockpitRecipeWriter';
 import { IFixedValueEntry, IFixedValueFileRead, IFixedValueOrgRecord, RecipeCockpitFixedValueStore } from './RecipeCockpitFixedValueStore';
 import { IRemovedTodoFileRead, RecipeCockpitRemovedTodoStore } from './RecipeCockpitRemovedTodoStore';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
@@ -391,6 +391,12 @@ export const RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX = 'Create ';
 export const RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX = ' in recipe';
 export const RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_PREFIX = 'Use existing ';
 export const RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_SUFFIX = ' from org…';
+// WHY "Create <Parent> in recipe" IS DISABLED, BY THE WRITER'S CODE; {parent} AND {object} ARE FILLED IN BY THE PANEL
+export const RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS: Readonly<Record<CreateParentRefusalReason, string>> = {
+    'no-parent-template': 'There is no minimum required fields template for {parent}, so it cannot be added to the recipe.',
+    'parent-object-already-exists': 'The recipe already has a "- object: {parent}" block; point this lookup at it with Wire to… or by hand.',
+    'parent-not-inserted-first': '{parent} is not at a lower relationship level than {object}, so the insert would not send it first.'
+};
 export const RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL = 'Wire TODO lookups';
 export const RECIPE_COCKPIT_WIRE_LOOKUP_CONFIRM_LABEL = 'Wire';
 // HOW MANY LOOKUPS THE WIRE-ALL CONFIRMATION NAMES BEFORE IT COUNTS THE REST
@@ -844,7 +850,7 @@ export interface IRecipeCockpitEmptyLookupViewModel {
     objectNickname?: string;
     fieldApiName: string;
     parentObjectApiName: string;
-    createRefusal?: string;
+    createRefusalReason?: CreateParentRefusalReason;
     orgRecordRefusal?: string;
 }
 
@@ -3450,10 +3456,22 @@ export class RecipeCockpitService {
     }
 
     // THE ORG RECORD A LOOKUP'S PINNED VALUE IS (#421), ONLY WHILE THE VALUE IS STILL THAT Id
+    // THE STORED PARENT MUST BE THE FIELD'S ONE TREE PARENT: THE FIXED-VALUES FILE IS WORKSPACE TEXT, AND THE INSERT CHECKS THE Id AS A RECORD OF IT
     static findOrgRecordLookup(tree: IRecipeCockpitTreeViewModel, objectApiName: string, fieldApiName: string, value: string | undefined): IRecipeCockpitOrgRecordLookupViewModel | undefined {
-        return value === undefined
+
+        const orgRecordLookup = value === undefined
             ? undefined
             : ( tree.orgRecordLookups ?? [] ).find(candidate => candidate.objectApiName === objectApiName && candidate.fieldApiName === fieldApiName && candidate.recordId === value);
+        if ( !orgRecordLookup ) {
+            return undefined;
+        }
+
+        const parentObjectApiNames = new Set(tree.objects
+            .filter(treeObject => treeObject.objectApiName === objectApiName)
+            .flatMap(treeObject => treeObject.parentLookups.filter(parentLookup => parentLookup.fieldApiName === fieldApiName).map(parentLookup => parentLookup.parentObjectApiName)));
+
+        return parentObjectApiNames.size === 1 && parentObjectApiNames.has(orgRecordLookup.parentObjectApiName) ? orgRecordLookup : undefined;
+
     }
 
     // WHAT A CARD GENERATES WITH, BY OBJECT THEN FIELD
@@ -4104,6 +4122,7 @@ export class RecipeCockpitService {
     */
     private static async writeOrgRecordLookup(useAction: Extract<RecipeCockpitPanelAction, { kind: 'useOrgRecordForLookup' }>,
                                                 tree: IRecipeCockpitTreeViewModel,
+                                                objectLevelsByApiName: Map<string, number> | undefined,
                                                 panelState: IRecipeCockpitPanelState): Promise<boolean> {
 
         const { recipeFilePath, emptyLookup } = useAction;
@@ -4133,10 +4152,17 @@ export class RecipeCockpitService {
         }
 
         const orgText = orgDetail.alias ? `${orgDetail.alias} · ${orgDetail.username}` : orgDetail.username;
+        // A QUICK PICK PLACEHOLDER AND AN INPUT BOX PROMPT RENDER [label](command:…) LIKE A NOTIFICATION
         const orgLabel = RecipeYamlScalar.escapeForNotification(orgText);
-        const connection = await SalesforceOrgService.getConnection(orgDetail.username);
-        const querySource = SalesforceOrgService.toQuerySource(connection);
-        const parentOutcome = ( await SalesforceOrgService.describeObjects(orgDetail.username, [parentObjectApiName], async () => connection as unknown as IOrgDescribeSource) ).outcomes[0];
+        let querySource: IOrgQuerySource;
+        let parentOutcome: Awaited<ReturnType<typeof SalesforceOrgService.describeObjects>>['outcomes'][number] | undefined;
+        try {
+            const connection = await SalesforceOrgService.getConnection(orgDetail.username);
+            querySource = SalesforceOrgService.toQuerySource(connection);
+            parentOutcome = ( await SalesforceOrgService.describeObjects(orgDetail.username, [parentObjectApiName], async () => connection as unknown as IOrgDescribeSource) ).outcomes[0];
+        } catch {
+            return refuse(`${orgLabel} could not be connected to. Check its authorization with "sf org list", then try again.`);
+        }
 
         if ( !parentOutcome?.describe ) {
             return refuse(`${parentLabel} could not be described in ${orgLabel} (${RecipeYamlScalar.escapeForNotification(parentOutcome?.failureMessage ?? 'no answer')}).`);
@@ -4150,7 +4176,7 @@ export class RecipeCockpitService {
                 description: nameFieldApiName ? `by ${nameFieldApiName}, and pick one record` : `${parentObjectApiName} has no name field to search`
             },
             { label: RECIPE_COCKPIT_ORG_RECORD_ENTER_ID_LABEL, description: `a 15- or 18-character ${parentObjectApiName} Id, checked in the org` }
-        ], { placeHolder: `How to choose the ${parentObjectApiName} record in ${orgText}`, ignoreFocusOut: true });
+        ], { placeHolder: `How to choose the ${parentObjectApiName} record in ${orgLabel}`, ignoreFocusOut: true });
 
         if ( !howChosen ) {
             return false;
@@ -4161,7 +4187,7 @@ export class RecipeCockpitService {
         if ( howChosen.label === RECIPE_COCKPIT_ORG_RECORD_ENTER_ID_LABEL ) {
 
             const enteredId = await vscode.window.showInputBox({
-                prompt: `The Id of the ${parentObjectApiName} record in ${orgText} that ${objectApiName}.${fieldApiName} points at`,
+                prompt: `The Id of the ${parentObjectApiName} record in ${orgLabel} that ${objectApiName}.${fieldApiName} points at`,
                 placeHolder: '15- or 18-character Salesforce Id',
                 ignoreFocusOut: true,
                 validateInput: typedId => RecipeCockpitFixedValueStore.isSalesforceRecordId(typedId.trim()) ? undefined : 'Type a 15- or 18-character Salesforce Id: letters and digits only.'
@@ -4232,7 +4258,14 @@ export class RecipeCockpitService {
         };
         const fixedValueFilePath = RecipeCockpitFixedValueStore.buildFilePath(recipeFilePath);
 
-        const planned = this.planFixedValueWrite(recipeFilePath, workspaceRoot, objectApiName, fieldApiName, fixedValue, orgRecord);
+        const planOrgRecordWrite = () => {
+            const emptyLookupRefusal = this.findEmptyLookupRefusal(recipeFilePath, tree, objectLevelsByApiName, emptyLookup);
+            return emptyLookupRefusal !== undefined
+                ? { refusal: emptyLookupRefusal }
+                : this.planFixedValueWrite(recipeFilePath, workspaceRoot, objectApiName, fieldApiName, fixedValue, orgRecord);
+        };
+
+        const planned = planOrgRecordWrite();
         if ( 'refusal' in planned ) {
             return refuse(RecipeYamlScalar.escapeForNotification(planned.refusal.replace(/^Not saved: /, '')));
         }
@@ -4260,7 +4293,7 @@ export class RecipeCockpitService {
         }
 
         // PLANNED AGAIN AFTER THE DIALOG: EITHER FILE CAN HAVE CHANGED WHILE IT WAS OPEN
-        const confirmed = this.planFixedValueWrite(recipeFilePath, workspaceRoot, objectApiName, fieldApiName, fixedValue, orgRecord);
+        const confirmed = planOrgRecordWrite();
         if ( 'refusal' in confirmed ) {
             return refuse(RecipeYamlScalar.escapeForNotification(confirmed.refusal.replace(/^Not saved: /, '')));
         }
@@ -4272,6 +4305,37 @@ export class RecipeCockpitService {
 
         VSCodeWorkspaceService.showInformationMessage(`${fieldLabel} now points at the ${parentLabel} record ${RecipeYamlScalar.escapeForNotification(chosenRecord.recordId)} from ${orgLabel}, in "${RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath))}".`);
         return true;
+
+    }
+
+    /*
+        Why the lookup can no longer be set to an org record, read from the recipe file as it is NOW
+        (#421): it must still be an empty lookup to the same parent on every occurrence, by the same
+        rule that drew the button. A lookup wired or filled by hand since the load is refused rather
+        than overwritten.
+    */
+    static findEmptyLookupRefusal(recipeFilePath: string,
+                                    tree: IRecipeCockpitTreeViewModel,
+                                    objectLevelsByApiName: Map<string, number> | undefined,
+                                    emptyLookup: IRecipeCockpitEmptyLookupViewModel): string | undefined {
+
+        let recipeText: string;
+        try {
+            recipeText = fs.readFileSync(recipeFilePath, 'utf-8');
+        } catch {
+            return `"${path.basename(recipeFilePath)}" could not be read.`;
+        }
+
+        const currentLookup = this.listTreeEmptyLookups(recipeFilePath, tree, objectLevelsByApiName, recipeText).find(candidate => candidate.objectApiName === emptyLookup.objectApiName
+                                                                                                                        && candidate.objectNickname === emptyLookup.objectNickname
+                                                                                                                        && candidate.fieldApiName === emptyLookup.fieldApiName
+                                                                                                                        && candidate.parentObjectApiName === emptyLookup.parentObjectApiName);
+
+        if ( !currentLookup ) {
+            return `${emptyLookup.objectApiName}.${emptyLookup.fieldApiName} is no longer a "### TODO -- REFERENCE ID REQUIRED" lookup in "${path.basename(recipeFilePath)}". Re-open the Recipe Cockpit to load it as it is now.`;
+        }
+
+        return currentLookup.orgRecordRefusal;
 
     }
 
@@ -6096,7 +6160,7 @@ export class RecipeCockpitService {
             case 'useOrgRecordForLookup':
 
                 await this.runRecipeLookupWrite(cockpitPanel, panelState, panelAction.treeKey,
-                    tree => this.writeOrgRecordLookup(panelAction, tree, panelState));
+                    (tree, objectLevelsByApiName) => this.writeOrgRecordLookup(panelAction, tree, objectLevelsByApiName, panelState));
                 return;
 
             case 'removeTodo':
@@ -14682,6 +14746,7 @@ ${this.buildPaletteCustomProperties()}
     const CREATE_PARENT_ACTION_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX)};
     const USE_ORG_RECORD_ACTION_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_PREFIX)};
     const USE_ORG_RECORD_ACTION_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_USE_ORG_RECORD_ACTION_SUFFIX)};
+    const CREATE_PARENT_REFUSAL_TEXTS = ${JSON.stringify(RECIPE_COCKPIT_CREATE_PARENT_REFUSAL_TEXTS)};
     const ORG_RECORD_BADGE_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX)};
     const WIRE_ALL_LOOKUPS_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL)};
     const INSERT_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_ACTION_LABEL)};
@@ -17857,7 +17922,7 @@ ${this.buildPaletteCustomProperties()}
             createParentElement: createParentElement,
             useOrgRecordElement: useOrgRecordElement,
             emptyLookup: emptyLookup,
-            createReason: addition ? '' : ( emptyLookup.createRefusal || 'the recipe cannot add ' + emptyLookup.parentObjectApiName ),
+            createReason: addition ? '' : describeCreateParentRefusal(emptyLookup),
             useReason: emptyLookup.orgRecordRefusal || ''
         };
         fieldState.lookupDecision = decision;
@@ -17892,6 +17957,14 @@ ${this.buildPaletteCustomProperties()}
             : '';
         drawLookupDecisionButtons(decision);
 
+    }
+
+    // THE HOST POSTS A CODE PER ROW; THE SENTENCE IS WORDED HERE, ONE CONSTANT FOR EVERY ROW
+    function describeCreateParentRefusal(emptyLookup) {
+        const template = hasOwnKey(CREATE_PARENT_REFUSAL_TEXTS, emptyLookup.createRefusalReason)
+            ? CREATE_PARENT_REFUSAL_TEXTS[emptyLookup.createRefusalReason]
+            : 'the recipe cannot add {parent}';
+        return template.split('{parent}').join(emptyLookup.parentObjectApiName).split('{object}').join(emptyLookup.objectApiName);
     }
 
     function drawLookupDecisionButtons(decision) {

@@ -277,8 +277,9 @@ export interface IParentObjectAddition {
 /*
     A TODO lookup to ONE parent, as the Recipe Cockpit's row draws its two decisions (#421): create
     the parent in the recipe (#294's addParentObject) or use an existing org record (a pin, #342).
-    createRefusal says why addParentObject would refuse -- no template, the parent already written,
-    or not inserted first -- and orgRecordRefusal why a pin of an Id cannot be written: pinField
+    createRefusalReason says why addParentObject would refuse -- no template, the parent already
+    written, or not inserted first; a code rather than the writer's sentence, since one is posted per
+    row and the panel words it -- and orgRecordRefusal why a pin of an Id cannot be written: pinField
     writes every occurrence of the object, so each one's field must still be the empty lookup.
 */
 export interface IEmptyLookup {
@@ -286,12 +287,14 @@ export interface IEmptyLookup {
     objectNickname?: string;
     fieldApiName: string;
     parentObjectApiName: string;
-    createRefusal?: string;
+    createRefusalReason?: CreateParentRefusalReason;
     orgRecordRefusal?: string;
 }
 
+export type CreateParentRefusalReason = 'no-parent-template' | 'parent-object-already-exists' | 'parent-not-inserted-first';
+
 // THE REFUSALS OF addParentObject THAT STILL LEAVE AN EMPTY LOOKUP TO ONE PARENT: THE ROW DRAWS "Create" DISABLED, WITH THE REASON
-const CREATE_PARENT_REFUSAL_REASONS: ReadonlySet<RecipeWriterRefusalReason> = new Set<RecipeWriterRefusalReason>(['no-parent-template', 'parent-object-already-exists', 'parent-not-inserted-first']);
+const CREATE_PARENT_REFUSAL_REASONS: ReadonlySet<RecipeWriterRefusalReason> = new Set<CreateParentRefusalReason>(['no-parent-template', 'parent-object-already-exists', 'parent-not-inserted-first']);
 
 /*
     WHAT addParentObject IS ASKED TO WRITE: THE LOOKUP, AND THE TEMPLATE'S FIELD VALUES FOR EVERY PARENT IT KNOWS.
@@ -1583,7 +1586,7 @@ export class RecipeCockpitRecipeWriter {
                     ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
                     fieldApiName: fieldApiName,
                     parentObjectApiName: parentObjectApiNames[0],
-                    ...( 'refusal' in located ? { createRefusal: located.refusal.message } : {} ),
+                    ...( 'refusal' in located ? { createRefusalReason: located.refusal.reason as CreateParentRefusalReason } : {} ),
                     ...( orgRecordRefusal !== undefined ? { orgRecordRefusal: orgRecordRefusal } : {} )
                 }];
 

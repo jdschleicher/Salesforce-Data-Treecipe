@@ -250,6 +250,11 @@ export class RecipeCockpitRecordCreation {
                                     lookupContext: ITreeInsertLookupContext,
                                     pickIndex: (choiceCount: number) => number): unknown[] {
 
+        // THE RECIPE'S FIELD NAMES COME FROM WORKSPACE XML AND THE LOOKUPS FROM THE ORG'S DESCRIBE: SALESFORCE READS BOTH CASE-INSENSITIVELY
+        const orgRecordIdsByLowerFieldApiName = new Map<string, Set<string>>();
+        lookupContext.orgRecordIdsByFieldApiName?.forEach((recordIds, fieldApiName) => {
+            orgRecordIdsByLowerFieldApiName.set(fieldApiName.toLowerCase(), new Set([...( orgRecordIdsByLowerFieldApiName.get(fieldApiName.toLowerCase()) ?? [] ), ...recordIds]));
+        });
         const pick = (choices: readonly string[]) => choices[Math.min(Math.max(Math.floor(pickIndex(choices.length)), 0), choices.length - 1)];
 
         return records.map(record => {
@@ -270,7 +275,7 @@ export class RecipeCockpitRecordCreation {
             lookups.forEach(lookup => {
 
                 const recordKeys = recordKeysByLowerName.get(lookup.fieldApiName.toLowerCase()) ?? [];
-                const orgRecordIds = lookupContext.orgRecordIdsByFieldApiName?.get(lookup.fieldApiName);
+                const orgRecordIds = orgRecordIdsByLowerFieldApiName.get(lookup.fieldApiName.toLowerCase());
                 const keptKey = recordKeys.find(recordKey => typeof preparedRecord[recordKey] === 'string'
                                                                 && ( lookupContext.isRunReference(preparedRecord[recordKey] as string) || !!orgRecordIds?.has(preparedRecord[recordKey] as string) ));
 

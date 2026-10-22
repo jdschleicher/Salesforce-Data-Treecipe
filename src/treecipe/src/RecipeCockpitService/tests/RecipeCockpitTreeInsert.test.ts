@@ -946,6 +946,13 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 const pinResult = RecipeCockpitRecipeWriter.pinField(recipeWithRegion(), 'Contact', 'Region__c', { value: recordId, kind: 'text' });
                 if ( 'refusal' in pinResult ) { throw new Error(pinResult.refusal.message); }
                 buildWorkspace(pinResult.recipeText);
+                // THE BUTTON IS DRAWN ONLY ON A LOOKUP OF THE TREE, SO THE RUN'S WRAPPER NAMES Region__c AS Contact's PARENT, WITH NO RECIPE OF ITS OWN
+                const wrapperFilePath = path.join(generatedRecipesFolderPath(), FAKER_JS_RUN, 'treecipeObjectsWrapper-2026-09-21T00-00-00.json');
+                const objectsWrapper = JSON.parse(fs.readFileSync(wrapperFilePath, 'utf-8'));
+                objectsWrapper.RecipeFiles[0].objects.splice(2, 0, 'Region__c');
+                objectsWrapper.ObjectToObjectInfoMap.Region__c = { RelationshipDetail: { objectApiName: 'Region__c', level: 0, parentObjectToFieldReferences: {} } };
+                objectsWrapper.ObjectToObjectInfoMap.Contact.RelationshipDetail.parentObjectToFieldReferences.Region__c = ['Region__c'];
+                fs.writeFileSync(wrapperFilePath, JSON.stringify(objectsWrapper));
                 fs.writeFileSync(RecipeCockpitFixedValueStore.buildFilePath(accountRecipeFilePath(FAKER_JS_RUN)), RecipeCockpitFixedValueStore.serialize([{
                     objectApiName: 'Contact',
                     fieldApiName: 'Region__c',
@@ -2069,6 +2076,31 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
             expect(detailOf([['Contact', 1]], ['Region__c'])).toContain('Required lookups to objects this tree does not insert get a random existing record of: Region__c (none means nothing is inserted).');
             expect(detailOf([['Contact', 1]], ['[x](command:evil)'])).toContain('a random existing record of: [x](command:evil) (none');
+
+        });
+
+    });
+
+    describe('findMissingOrgRecordLookup (#421)', () => {
+
+        const lookupTo = (parentObjectApiName: string, recordId: string) => ({ objectApiName: 'Contact', fieldApiName: `${parentObjectApiName}__c`, recordId, parentObjectApiName, orgLabel: 'dev' });
+
+        it('sends one query per parent and answers the first Id the org does not hold, a 15-character Id matching its 18-character form', async () => {
+
+            const querySource = { query: jest.fn().mockImplementation(async (soql: string) => ({ records: soql.includes('FROM Region__c') ? [{ Id: 'a05000000000001AAA' }] : [] })) };
+
+            expect(await RecipeCockpitService.findMissingOrgRecordLookup(querySource, [lookupTo('Region__c', 'a05000000000001')])).toBeUndefined();
+            expect(await RecipeCockpitService.findMissingOrgRecordLookup(querySource, [lookupTo('Region__c', 'a05000000000001AAA'), lookupTo('Zone__c', 'a06000000000001AAA')]))
+                .toEqual(lookupTo('Zone__c', 'a06000000000001AAA'));
+            expect(querySource.query).toHaveBeenCalledTimes(3);
+
+        });
+
+        it('answers a failed query as that lookup\'s failure, never as "it exists"', async () => {
+
+            const missing = await RecipeCockpitService.findMissingOrgRecordLookup({ query: jest.fn().mockRejectedValue(new Error('INVALID_TYPE')) }, [lookupTo('Region__c', 'a05000000000001AAA')]);
+
+            expect(missing).toEqual({ ...lookupTo('Region__c', 'a05000000000001AAA'), failureMessage: 'INVALID_TYPE' });
 
         });
 

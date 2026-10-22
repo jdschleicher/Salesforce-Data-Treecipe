@@ -437,6 +437,19 @@ describe('RecipeCockpitRecordCreation', () => {
 
         });
 
+        it('matches the Id\'s field to the describe\'s lookup whatever its case, as Salesforce does', () => {
+
+            const preparedRecords = RecipeCockpitRecordCreation.prepareTreeInsertRecords(
+                [{ accountid: ORG_RECORD_ID }],
+                [OUTSIDE_LOOKUPS[0]],
+                buildContext(new Map([['accountId', new Set([ORG_RECORD_ID])]])),
+                () => 0
+            );
+
+            expect(preparedRecords).toEqual([{ accountid: ORG_RECORD_ID }]);
+
+        });
+
         it('still replaces a hand-written Id that was not set through the button, and an Id set on another lookup', () => {
 
             const preparedRecords = RecipeCockpitRecordCreation.prepareTreeInsertRecords(
