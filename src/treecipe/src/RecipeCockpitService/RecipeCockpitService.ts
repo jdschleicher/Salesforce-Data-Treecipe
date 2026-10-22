@@ -1925,6 +1925,9 @@ export const RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL = 'Generate values';
 export const RECIPE_COCKPIT_UPDATER_NOT_LOADED_REFUSAL = 'No values were generated: load this tree\'s records first. Values are generated for the records the last Load records read.';
 // A FIELD WHOSE RECIPE VALUE IS A COMMENT (A TODO) HAS NO EXPRESSION TO GENERATE FROM; A VALUE TYPED FOR IT STILL WORKS
 export const RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_REASON = 'its recipe has no faker expression for it; type a value or an expression in its editor';
+// HOW MANY RECORDS ONE GENERATION RUN MAKES (#417): A LOAD CAN HOLD 50,000, AND ONE RUN OF THAT SIZE FROZE THE EXTENSION HOST FOR
+// SECONDS (faker-js) OR OVERFLOWED SNOWFAKERY'S 10 MB OUTPUT BUFFER, SO VALUES ARE MADE IN RUNS OF THIS SIZE, YIELDING BETWEEN THEM
+export const RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE = 2000;
 export const RECIPE_COCKPIT_UPDATER_VALUE_EDIT_HINT = 'Keeps this value in the Treecipe Updater only: nothing is written to the recipe or to the org.';
 
 export const RECIPE_COCKPIT_QUERY_INTRO = 'The SOQL Generate Treecipe wrote for this tree. Edit a query, run it against any connected org you choose, then export what it returned as JSON or CSV. A query only reads.';
@@ -8517,9 +8520,43 @@ export class RecipeCockpitService {
 
     }
 
-    // WHETHER A RECIPE VALUE IS AN EXPRESSION THE BACKEND CAN GENERATE FROM: A TODO COMMENT LOADS AS null
-    static isGeneratableRecipeValue(recipeValue: string | undefined): recipeValue is string {
-        return typeof recipeValue === 'string' && recipeValue.trim() !== '' && !recipeValue.trim().startsWith('#');
+    /*
+        The expression a field's new values are generated from (#417): the FIRST "\${{ ... }}" line of
+        its recipe value, as the Updater's editor starts from it -- a double-quoted one unquoted. The
+        model's value is the display form (continuation lines moved to column 0, a block indicator
+        dropped), so a record type's commented variants and a "### Driven by ValidationRule" note are
+        left out rather than written as lines no recipe layout reads. Undefined when there is none
+        (a TODO comment loads as null).
+    */
+    static findRecipeExpression(recipeValue: string | undefined): string | undefined {
+
+        for ( const valueLine of String(recipeValue ?? '').split('\n') ) {
+            const trimmedLine = valueLine.trim();
+            let candidate: unknown = trimmedLine;
+            if ( trimmedLine.length >= 2 && trimmedLine.startsWith('"') && trimmedLine.endsWith('"') ) {
+                try {
+                    candidate = JSON.parse(trimmedLine);
+                } catch {
+                    candidate = trimmedLine;
+                }
+            }
+            if ( typeof candidate === 'string' && candidate.startsWith(RECIPE_COCKPIT_EXPRESSION_OPENER) && !/[\r\n\u0085\u2028\u2029]/.test(candidate) ) {
+                return candidate;
+            }
+        }
+
+        return undefined;
+
+    }
+
+    // A FIELD'S VALUE AS THE ORG'S ANSWER CASES IT: SOQL NAMES ARE CASE-INSENSITIVE, AND THE ORG ANSWERS WITH ITS OWN CASING
+    static readRecordFieldValue(record: Record<string, unknown>, fieldApiName: string): unknown {
+        if ( Object.prototype.hasOwnProperty.call(record, fieldApiName) ) {
+            return record[fieldApiName];
+        }
+        const lowerCaseName = fieldApiName.toLowerCase();
+        const matchingKey = Object.keys(record).find(recordKey => recordKey.toLowerCase() === lowerCaseName);
+        return matchingKey === undefined ? null : record[matchingKey];
     }
 
     /*
@@ -8620,13 +8657,22 @@ export class RecipeCockpitService {
 
         // EACH FIELD CHECKED AGAIN AGAINST THE MODEL ON SCREEN AND THE RECORDS LOADED, IN THE ORDER POSTED
         // valueText IS WHAT THE RECIPE GETS; shownValue IS WHAT THE CONFIRMATION SHOWS -- THE READER'S OWN TEXT FOR AN EDIT
-        interface IPlannedField { objectApiName: string; fieldApiName: string; source: 'recipe' | 'expression' | 'fixed'; valueText: string; shownValue: string; fixedValue?: unknown }
+        type PlannedFieldSource = 'recipe' | 'recipeEdit' | 'recipeFixed' | 'expression' | 'fixed';
+        interface IPlannedField { objectApiName: string; fieldApiName: string; source: PlannedFieldSource; valueText: string; shownValue: string; fixedValue?: unknown }
         const plannedFields: IPlannedField[] = [];
+        const objectViewModelsByApiName = new Map<string, IRecipeCockpitObjectViewModel>();
+        clickedRecipeDataMessage.recipe.objects.forEach(object => {
+            if ( !objectViewModelsByApiName.has(object.objectApiName) ) {
+                objectViewModelsByApiName.set(object.objectApiName, object);
+            }
+        });
+        // A FIELD EDITED ON THE TREECIPE TAB (#342, #356) HOLDS ITS EDIT IN THE RECIPE FILE, WHICH WINS OVER THE WRAPPER'S EXPRESSION
+        const recipeFileEditsByFieldKey = new Map(( tree.fixedValues ?? [] ).map(fixedValue => [`${fixedValue.objectApiName}\n${fixedValue.fieldApiName}`, fixedValue] as const));
 
         for ( const fieldRequest of fieldRequests ) {
 
             const fieldLabel = `${fieldRequest.objectApiName}.${fieldRequest.fieldApiName}`;
-            const objectViewModel = clickedRecipeDataMessage.recipe.objects.find(object => object.objectApiName === fieldRequest.objectApiName);
+            const objectViewModel = objectViewModelsByApiName.get(fieldRequest.objectApiName);
             const fieldViewModel = objectViewModel?.fields.find(field => field.fieldApiName === fieldRequest.fieldApiName);
 
             if ( !objectViewModel || !fieldViewModel ) {
@@ -8646,11 +8692,24 @@ export class RecipeCockpitService {
             }
 
             if ( fieldRequest.value === undefined ) {
-                if ( !this.isGeneratableRecipeValue(fieldViewModel.recipeValue) ) {
+                const recipeFileEdit = recipeFileEditsByFieldKey.get(`${fieldRequest.objectApiName}\n${fieldRequest.fieldApiName}`);
+                if ( recipeFileEdit && recipeFileEdit.kind !== 'expression' ) {
+                    plannedFields.push({ objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'recipeFixed', valueText: recipeFileEdit.value, shownValue: recipeFileEdit.value, fixedValue: this.toUpdaterFixedValue(recipeFileEdit.value, recipeFileEdit.kind) });
+                    continue;
+                }
+                const expression = recipeFileEdit ? recipeFileEdit.value : this.findRecipeExpression(fieldViewModel.recipeValue);
+                if ( expression === undefined ) {
                     refuse(`${fieldLabel}: ${RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_REASON}.`);
                     return;
                 }
-                plannedFields.push({ objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'recipe', valueText: fieldViewModel.recipeValue, shownValue: fieldViewModel.recipeValue.trim() });
+                plannedFields.push({
+                    objectApiName: fieldRequest.objectApiName,
+                    fieldApiName: fieldRequest.fieldApiName,
+                    source: recipeFileEdit ? 'recipeEdit' : 'recipe',
+                    // DOUBLE-QUOTED, SO ": " OR "#" IN THE EXPRESSION IS NEVER READ AS YAML; IT LOADS AS THE SAME STRING
+                    valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: expression, kind: 'expression' }),
+                    shownValue: expression
+                });
                 continue;
             }
 
@@ -8675,6 +8734,7 @@ export class RecipeCockpitService {
         }
 
         const objectApiNames = [...new Set(plannedFields.map(plannedField => plannedField.objectApiName))];
+        const isFixedSource = (plannedField: IPlannedField) => plannedField.source === 'fixed' || plannedField.source === 'recipeFixed';
         const recordsOf = (objectApiName: string) => heldRecords.recordsByObjectApiName.get(objectApiName) ?? [];
         const describeRecords = (recordCount: number) => `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
         const treeTitle = tree.customName ?? tree.title;
@@ -8685,7 +8745,13 @@ export class RecipeCockpitService {
         }
 
         // EVERY VALUE IS SHOWN BEFORE IT RUNS: AN EDITED EXPRESSION IS CODE THE BACKEND RUNS, AND ONLY THE READER'S EDITOR SUPPLIES ONE
-        const sourceLabels: Record<IPlannedField['source'], string> = { recipe: 'recipe expression', expression: 'edited expression', fixed: 'fixed value' };
+        const sourceLabels: Record<PlannedFieldSource, string> = {
+            recipe: 'recipe expression',
+            recipeEdit: 'expression edited in the recipe file',
+            recipeFixed: 'fixed value in the recipe file',
+            expression: 'edited expression',
+            fixed: 'fixed value'
+        };
         const detailLines: string[] = [`Generated by the recipe's own backend, ${fakerService}. Nothing is written to the org or the recipe file.`, ''];
         objectApiNames.forEach(objectApiName => {
             const recordCount = recordsOf(objectApiName).length;
@@ -8712,12 +8778,13 @@ export class RecipeCockpitService {
 
         const valuesByObjectApiName = new Map<string, IRecipeCockpitUpdaterRecordValues[]>();
         let generationRefusal: string | undefined;
+        let isCancelled = false;
 
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: generating new values for ${treeTitle} with ${fakerService}`),
-            cancellable: false
-        }, async (progress) => {
+            cancellable: true
+        }, async (progress, cancellationToken) => {
 
             for ( const objectApiName of objectApiNames ) {
 
@@ -8729,11 +8796,22 @@ export class RecipeCockpitService {
                 progress.report({ message: objectApiName });
 
                 const objectFields = plannedFields.filter(plannedField => plannedField.objectApiName === objectApiName);
-                const generatedFields = objectFields.filter(plannedField => plannedField.source !== 'fixed');
+                const generatedFields = objectFields.filter(plannedField => !isFixedSource(plannedField));
                 let generatedRecords: Record<string, unknown>[] = [];
 
                 if ( generatedFields.length > 0 ) {
-                    const generation = await this.generateUpdaterObjectValues(fakerService, objectApiName, records.length, generatedFields.map(plannedField => ({ fieldApiName: plannedField.fieldApiName, valueText: plannedField.valueText })));
+                    const generation = await this.generateUpdaterObjectValues(
+                        fakerService,
+                        objectApiName,
+                        records.length,
+                        generatedFields.map(plannedField => ({ fieldApiName: plannedField.fieldApiName, valueText: plannedField.valueText })),
+                        () => cancellationToken.isCancellationRequested,
+                        (generatedCount: number) => progress.report({ message: `${objectApiName}: ${generatedCount} of ${records.length}` })
+                    );
+                    if ( 'isCancelled' in generation ) {
+                        isCancelled = true;
+                        return;
+                    }
                     if ( 'refusal' in generation ) {
                         generationRefusal = generation.refusal;
                         return;
@@ -8746,7 +8824,7 @@ export class RecipeCockpitService {
                     fieldValues: Object.fromEntries(objectFields.map(plannedField => [
                         plannedField.fieldApiName,
                         // A BACKEND THAT WROTE NO VALUE FOR A FIELD (A null EXPRESSION) GIVES IT NONE, NEVER ANOTHER RECORD'S
-                        plannedField.source === 'fixed' ? plannedField.fixedValue : generatedRecords[recordIndex][plannedField.fieldApiName] ?? null
+                        isFixedSource(plannedField) ? plannedField.fixedValue : generatedRecords[recordIndex][plannedField.fieldApiName] ?? null
                     ]))
                 })));
 
@@ -8756,6 +8834,11 @@ export class RecipeCockpitService {
 
         if ( generationRefusal !== undefined ) {
             refuse(generationRefusal);
+            return;
+        }
+
+        if ( isCancelled ) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Generating new values for ${treeTitle} was cancelled, so none were kept.`));
             return;
         }
 
@@ -8774,7 +8857,7 @@ export class RecipeCockpitService {
             const previewRecords = recordValues.slice(0, RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT).map((recordValue, recordIndex) => {
                 const previewRecord: Record<string, unknown> = { Id: recordValue.recordId };
                 fieldApiNames.forEach(fieldApiName => {
-                    previewRecord[`${fieldApiName} (current)`] = records[recordIndex][fieldApiName] ?? null;
+                    previewRecord[`${fieldApiName} (current)`] = this.readRecordFieldValue(records[recordIndex], fieldApiName) ?? null;
                     previewRecord[`${fieldApiName} (new)`] = recordValue.fieldValues[fieldApiName];
                 });
                 return previewRecord;
@@ -8805,15 +8888,50 @@ export class RecipeCockpitService {
     }
 
     /*
-        One object's generated values (#417): the one-object recipe the writer builds, written to a
-        temporary folder outside the workspace -- never beside the recipe -- run by the recipe's own
-        backend through the same processor Run Faker uses, and read back as one record per loaded
-        record. A count that differs refuses, so values are never paired with the wrong records.
+        One object's generated values (#417), RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE records at a
+        time: per run, the one-object recipe the writer builds is written to a temporary folder outside
+        the workspace -- never beside the recipe -- run by the recipe's own backend through the same
+        processor Run Faker uses, and read back as one record per record asked for. A count that
+        differs refuses, so values are never paired with the wrong records. Between runs it yields to
+        the extension host and checks for a cancel, so a 50,000-record load neither freezes the host
+        nor sends snowfakery past its output buffer in one run.
     */
     static async generateUpdaterObjectValues(fakerService: 'faker-js' | 'snowfakery',
                                              objectApiName: string,
                                              recordCount: number,
-                                             fields: readonly { fieldApiName: string; valueText: string }[]): Promise<{ records: Record<string, unknown>[] } | { refusal: string }> {
+                                             fields: readonly { fieldApiName: string; valueText: string }[],
+                                             isCancelled: () => boolean = () => false,
+                                             reportProgress: (generatedCount: number) => void = () => undefined): Promise<{ records: Record<string, unknown>[] } | { refusal: string } | { isCancelled: true }> {
+
+        const records: Record<string, unknown>[] = [];
+
+        while ( records.length < recordCount ) {
+
+            if ( records.length > 0 ) {
+                await new Promise(resolve => setImmediate(resolve));
+                if ( isCancelled() ) {
+                    return { isCancelled: true };
+                }
+            }
+
+            const chunkCount = Math.min(RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE, recordCount - records.length);
+            const chunk = await this.generateUpdaterChunk(fakerService, objectApiName, chunkCount, fields);
+            if ( 'refusal' in chunk ) {
+                return chunk;
+            }
+            records.push(...chunk.records);
+            reportProgress(records.length);
+
+        }
+
+        return { records: records };
+
+    }
+
+    private static async generateUpdaterChunk(fakerService: 'faker-js' | 'snowfakery',
+                                              objectApiName: string,
+                                              recordCount: number,
+                                              fields: readonly { fieldApiName: string; valueText: string }[]): Promise<{ records: Record<string, unknown>[] } | { refusal: string }> {
 
         const recipeBuild = RecipeCockpitRecipeWriter.buildUpdaterValueRecipe(objectApiName, recordCount, fields);
         if ( recipeBuild.isBuilt === false ) {
@@ -8831,7 +8949,7 @@ export class RecipeCockpitService {
             const generatedRecords = processor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(generatedJson).get(objectApiName)?.records ?? [];
 
             if ( generatedRecords.length !== recordCount ) {
-                return { refusal: `${fakerService} generated ${generatedRecords.length} ${objectApiName} ${generatedRecords.length === 1 ? 'record' : 'records'} for ${recordCount} loaded.` };
+                return { refusal: `${fakerService} generated ${generatedRecords.length} ${objectApiName} ${generatedRecords.length === 1 ? 'record' : 'records'} for ${recordCount} asked for.` };
             }
 
             return { records: generatedRecords as Record<string, unknown>[] };
@@ -20896,14 +21014,24 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function findUpdaterEditStartValue(treeState, fieldState) {
+    // WHAT A FIELD GENERATES FROM WITH NOTHING TYPED, AS THE HOST READS IT: A TREECIPE-TAB EDIT IN THE RECIPE FILE, ELSE THE FIRST EXPRESSION LINE
+    function findUpdaterRecipeStartValue(tree, objectApiName, field) {
 
-        if (hasOwnKey(treeState.updaterEditedValues, fieldState.fieldKey)) { return treeState.updaterEditedValues[fieldState.fieldKey]; }
+        const recipeFileEdit = findFixedValue(tree, objectApiName, field.fieldApiName);
+        if (recipeFileEdit !== null) { return recipeFileEdit; }
 
-        const valueLines = String(fieldState.field.recipeValue || '').split('\\n').map(function (valueLine) { return unquoteExpressionLine(valueLine.trim()); });
+        const valueLines = String(field.recipeValue || '').split('\\n').map(function (valueLine) { return unquoteExpressionLine(valueLine.trim()); });
         const expressionLine = valueLines.find(function (valueLine) { return isExpressionValue(valueLine); });
 
         return expressionLine !== undefined ? expressionLine : '';
+
+    }
+
+    function findUpdaterEditStartValue(treeState, updaterObjectState, fieldState) {
+
+        if (hasOwnKey(treeState.updaterEditedValues, fieldState.fieldKey)) { return treeState.updaterEditedValues[fieldState.fieldKey]; }
+
+        return findUpdaterRecipeStartValue(treeState.tree, updaterObjectState.object.objectApiName, fieldState.field);
 
     }
 
@@ -20913,7 +21041,7 @@ ${this.buildPaletteCustomProperties()}
 
         const field = fieldState.field;
         const fieldLabel = updaterObjectState.object.objectApiName + '.' + field.fieldApiName;
-        const recipeStartValue = findUpdaterEditStartValue({ updaterEditedValues: Object.create(null) }, fieldState);
+        const recipeStartValue = findUpdaterRecipeStartValue(treeState.tree, updaterObjectState.object.objectApiName, field);
 
         // BUILT ONCE PER ROW AND EMPTIED ON CLOSE, AS THE TREECIPE TAB'S EDITOR IS
         if (!fieldState.editorElement) {
@@ -20924,7 +21052,7 @@ ${this.buildPaletteCustomProperties()}
 
         const editorElement = fieldState.editorElement;
         const inputsElement = createElement('div', 'fieldEditorInputs');
-        const valueElement = buildFieldEditorInput(FIXED_VALUE_MAX_LENGTH, findUpdaterEditStartValue(treeState, fieldState), 'New value or faker expression for ' + fieldLabel, '');
+        const valueElement = buildFieldEditorInput(FIXED_VALUE_MAX_LENGTH, findUpdaterEditStartValue(treeState, updaterObjectState, fieldState), 'New value or faker expression for ' + fieldLabel, '');
 
         editorElement.setAttribute('aria-label', 'New value for ' + fieldLabel);
         inputsElement.appendChild(valueElement);
@@ -21001,7 +21129,7 @@ ${this.buildPaletteCustomProperties()}
         const isEdited = hasOwnKey(treeState.updaterEditedValues, fieldState.fieldKey);
         const editedValue = isEdited ? treeState.updaterEditedValues[fieldState.fieldKey] : '';
         const fieldName = updaterObjectState.object.objectApiName + '.' + fieldState.field.fieldApiName;
-        const hasNoExpression = !isEdited && findUpdaterEditStartValue(treeState, fieldState) === '';
+        const hasNoExpression = !isEdited && findUpdaterEditStartValue(treeState, updaterObjectState, fieldState) === '';
 
         if (fieldState.editedValueElement) {
             fieldState.editedValueElement.textContent = editedValue;
