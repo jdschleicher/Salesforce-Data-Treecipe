@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.127.0] - Recipe Cockpit: a friend row shows a holding-hands chip per parent, `<parent nickname>-<n>`
+
+Closes [#411](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/411).
+
+The Treecipe tab lists a card's objects flat, so nothing on a row said it was a friend nested under another object, whose friend it was, or which of a parent's friends it was.
+
+- **One chip per parent.** Every row nested under `friends:` in a faker-js recipe, a self-lookup iteration (#188) included, draws a holding-hands chip for each parent it belongs to: the occurrence it is nested under first, then each other row one of its fields points to by nickname (#380), in field order, each once. A chip reads `<parent nickname>-<n>`, where `n` is the row's place among that parent's friends (the rows naming it, in recipe line order), so a parent is numbered the same on every row and an excluded friend keeps its number. In the writer fixture, Case reads `Contact_NickName-1` and `Account_NickName-2`.
+- **A chip opens its parent.** Clicking a chip opens and scrolls to the parent's row and focuses its nickname, the same way the #380 back-link does. Nothing is posted to the host. A nesting parent no single row holds by nickname (no nickname, a name two rows share, or `__proto__`) is drawn as muted `<Parent object>-<n>` text with nothing to open.
+- **The glyph.** One SVG path (`RECIPE_COCKPIT_FRIEND_GLYPH_PATH`) built with `createElementNS`, `aria-hidden`, and stroked from the palette. Each chip has an `aria-label` and title in words ("Friend 2 of Account_NickName").
+- **Searched and listed.** The Treecipe tab's search and the Treecipes section search match a chip's text, and the object list under the Treecipes dropdown (#385) names each object's chips in parentheses.
+- **The model.** A nested first occurrence carries the optional `parentNickname` of the occurrence holding it, beside `countParentObjectApiName`, set only when that occurrence has one nickname. A snowfakery recipe, and any top-level object, draws no chip and posts the model it did.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the chips.
+- **Tests.** `RecipeCockpitFriendChips.test.ts` covers the model field, the chips and their numbering, the glyph and labels, a click, both searches, the dropdown list, a stray nickname, the fallback, a `__proto__` nickname and a flat snowfakery tree.
+
 ## [3.126.0] - Recipe Cockpit: switching recipe runs asks whether to reset or carry over the tree selections
 
 Closes [#399](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/399).
