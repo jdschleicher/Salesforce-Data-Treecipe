@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.127.0] - Recipe Cockpit: a Treecipe Updater tab that draws the tree and lets you choose the fields to fill
+
+Closes [#415](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/415), the first slice of [#414](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/414).
+
+#414 will fill a field on records an org already holds. This slice adds the tab where you choose those fields. It contacts no org and writes nothing.
+
+- **A fifth tab, Treecipe Updater.** Every card with a folder draws it after Query. It is built the first time you open it.
+- **The tree, as the Treecipe tab draws it.** Each object appears once, in insert order, with its lookups. Its field rows are built on first expand and show the sized type and the faker expression. The tab has no chain link, count box, field checkbox or edit button.
+- **A box per field.** Ticking a field chooses it, and a line at the top says how many fields are chosen on how many objects. A lookup (a tree lookup, or a `Lookup`, `MasterDetail` or `Hierarchy` field), `RecordTypeId`, a dependent picklist and a field read only from the recipe file are drawn disabled, and each says why. Choosing posts no command to the extension.
+- **Its own search.** It matches field names, labels and types. Like the Treecipe tab's search, it never hides an object and opens matching objects within the same budget.
+- **The place.** The tab, its search, the chosen fields and the opened objects are saved in the panel place as the optional `updaterChosenFieldKeys` and `updaterExpandedObjectKeys`, so the place version did not change and an older place opens as before. A saved choice of a field that is now locked, or that the tree no longer has, is dropped.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the tab.
+- **Tests.** `RecipeCockpitTreecipeUpdater.test.ts` runs the real panel script. It covers where the tab is drawn, object order and lookups, building rows on expand, choosing and unchoosing, every lock reason, text-only rendering, the search, saving and restoring the place, and `normalizePanelPlace`.
+
 ## [3.126.0] - Recipe Cockpit: switching recipe runs asks whether to reset or carry over the tree selections
 
 Closes [#399](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/399).

@@ -69,6 +69,8 @@ Each of these asks first, in a box over the cockpit. Scroll it to read everythin
 
 The **Query** tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree (the same queries as the tree folder's `soql-sosl-templates--….md`). Edit a query, **Run…** it against any connected org you pick in the command palette (a query only reads), and **Export JSON** or **Export CSV** what came back, under `treecipe/QueryResults/<tree folder>/`, which git ignores. A run reads at most 50,000 records or 1,000,000 values, and the tab previews the first 50 rows and 50 columns.
 
+The **Treecipe Updater** tab, after **Query**, draws the tree's objects and fields as the Treecipe tab does, each object once. Tick the fields you want to fill on records an org already holds, and its search narrows the rows by field name, label or type. A lookup, `RecordTypeId`, a dependent picklist and a field read only from the recipe file cannot be chosen, and each says why. Loading and updating those records are still to come ([#414](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/414)), so choosing a field reads and writes nothing yet. The cockpit remembers the fields you ticked.
+
 ![A card's Treecipe tab with Wire TODO lookups at the top and Wire to… on Contact's AccountId lookup](images/recipe-cockpit/what-edits-the-yaml.png)
 
 ## Where your changes are stored

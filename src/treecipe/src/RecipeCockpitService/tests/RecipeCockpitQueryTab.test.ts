@@ -82,7 +82,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
 
         it('is a tab a saved place can name, after Troubleshooting, keeping its search only when there is one', () => {
 
-            expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['treecipe', 'datasets', 'troubleshooting', 'query']);
+            expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['treecipe', 'datasets', 'troubleshooting', 'query', 'updater']);
 
             const treePlace = (searchQueries: Record<string, string>) => ({
                 version: 2,
@@ -797,7 +797,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             panel.expandAllTrees();
             const accountCard = cardOf(panel, 'OtherChildObject__c');
 
-            expect(panel.findAll(accountCard, 'treeTab').map((tabElement: any) => tabElement.textContent)).toEqual(['Treecipe', 'Previously Used Data Sets', 'Troubleshooting', 'Query']);
+            expect(panel.findAll(accountCard, 'treeTab').map((tabElement: any) => tabElement.textContent)).toEqual(['Treecipe', 'Previously Used Data Sets', 'Troubleshooting', 'Query', 'Treecipe Updater']);
             expect(panel.findAll(accountCard, 'treeQueryList')).toEqual([]);
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'loadTreeQueries')).toEqual([]);
 
