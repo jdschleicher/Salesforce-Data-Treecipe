@@ -250,7 +250,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
         it('is a tab a saved place can name, without a new place version, and drops the tab-wide search #365 replaced with one per sub-tab', () => {
 
-            expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['treecipe', 'datasets', 'troubleshooting', 'query']);
+            expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['treecipe', 'datasets', 'troubleshooting', 'query', 'updater']);
 
             const place = RecipeCockpitService.normalizePanelPlace({
                 version: 2,
@@ -1069,7 +1069,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             const panel = renderTrees();
             const accountCard = cardOf(panel, 'OtherChildObject__c');
 
-            expect(panel.findAll(accountCard, 'treeTab').map((tabElement: any) => tabElement.textContent)).toEqual(['Treecipe', 'Previously Used Data Sets', 'Troubleshooting', 'Query']);
+            expect(panel.findAll(accountCard, 'treeTab').map((tabElement: any) => tabElement.textContent)).toEqual(['Treecipe', 'Previously Used Data Sets', 'Troubleshooting', 'Query', 'Treecipe Updater']);
             // NOTHING IS BUILT OR ASKED FOR UNTIL THE TAB IS OPENED
             expect(panel.findAll(accountCard, 'troubleshootingSubPanel')).toEqual([]);
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'loadTroubleshootingSummary')).toEqual([]);

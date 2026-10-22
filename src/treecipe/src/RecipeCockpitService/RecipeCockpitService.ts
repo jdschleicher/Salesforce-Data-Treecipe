@@ -397,9 +397,9 @@ export const RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL = 'Add as the parent, n
     Every tab a card can draw. Treecipe is selected by default; the data sets tab is drawn only for
     a card with a history. Record types (#195) is a collapsible section of the Treecipe tab (#321),
     drawn only on a card listing an object with two or more record types. Troubleshooting (#346) is
-    drawn on every card with a folder.
+    drawn on every card with a folder, and so are Query (#367) and Treecipe Updater (#415).
 */
-export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'datasets', 'troubleshooting', 'query'] as const;
+export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'datasets', 'troubleshooting', 'query', 'updater'] as const;
 
 // THE TODO RecipeService WRITES UNDER A DEFAULT RecordTypeId (AND EVERY RECORD-TYPE VARIANT) WHEN AN OBJECT HAS SEVERAL RECORD TYPES
 export const RECIPE_COCKPIT_RECORD_TYPE_OPTIONS_MARKER = '### TODO: -- RecordType Options -- ';
@@ -440,7 +440,7 @@ export const RECIPE_COCKPIT_RECORD_TYPES_INTRO = 'Choose the record types Genera
 export type RecipeCockpitTreeTab = typeof RECIPE_COCKPIT_TREE_TABS[number];
 
 // A TAB ADDED SINCE THE PLACE VERSION THAT KEEPS ITS SEARCH ONLY WHEN THERE IS ONE (#367), SO AN OLDER PLACE READS AS IT WAS
-export const RECIPE_COCKPIT_OPTIONAL_SEARCH_TABS: readonly RecipeCockpitTreeTab[] = Object.freeze(['query'] as RecipeCockpitTreeTab[]);
+export const RECIPE_COCKPIT_OPTIONAL_SEARCH_TABS: readonly RecipeCockpitTreeTab[] = Object.freeze(['query', 'updater'] as RecipeCockpitTreeTab[]);
 
 // TABS WHOSE SEARCH IS NOT THE TAB'S OWN: TROUBLESHOOTING SEARCHES PER SUB-TAB (#365), SO A PLACE'S TAB-WIDE ONE IS DROPPED
 export const RECIPE_COCKPIT_TABS_WITHOUT_SEARCH: readonly RecipeCockpitTreeTab[] = Object.freeze(['troubleshooting'] as RecipeCockpitTreeTab[]);
@@ -538,7 +538,8 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of an org you pick into your project, and change nothing in the org.',
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
-            'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against any connected org you pick in the command palette (a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.'
+            'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against any connected org you pick in the command palette (a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.',
+            'The Treecipe Updater tab, after Query, draws the tree\'s objects and fields as the Treecipe tab does. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Loading and updating those records are still to come, so choosing a field reads and writes nothing yet.'
         ]
     },
     {
@@ -1190,6 +1191,9 @@ export interface IRecipeCockpitPanelTreePlace {
     // THE TODO'S SUB-TAB'S REMOVED LIST (#391), ONLY WHEN IT IS THE ONE OPEN, AND ITS SEARCH, ONLY WHEN THERE IS ONE
     todosView?: 'removed';
     removedTodosSearchText?: string;
+    // THE TREECIPE UPDATER TAB'S CHOSEN FIELDS ("<object>\n<field>") AND OPENED OBJECTS (#415), EACH ONLY WHEN THERE IS ONE
+    updaterChosenFieldKeys?: string[];
+    updaterExpandedObjectKeys?: string[];
 }
 
 export interface IRecipeCockpitPanelPlace {
@@ -1811,6 +1815,22 @@ export const RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL = 'TODO in this field\'s v
 
 export const RECIPE_COCKPIT_QUERY_TAB_LABEL = 'Query';
 
+/*
+    The Treecipe Updater tab (#415, the first slice of #414): the tree drawn read-only, one box per
+    field to choose what a later slice fills on records an org already holds. Choosing reads and
+    writes nothing, and the box of a field the Updater cannot change is disabled with the reason.
+*/
+export const RECIPE_COCKPIT_UPDATER_TAB_LABEL = 'Treecipe Updater';
+export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds. Loading those records and updating them are still to come: choosing a field here reads and writes nothing.';
+export const RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER = 'Search objects and fields';
+export const RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN = 'No fields chosen';
+export const RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON = 'read from the recipe file, so its type is not known';
+export const RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON = 'the record type is not changed here';
+export const RECIPE_COCKPIT_UPDATER_LOOKUP_REASON = 'a lookup points to another record, which the Updater does not change';
+export const RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON = 'Salesforce sets this field\'s value';
+// AN AUTO NUMBER OR A ROLL-UP SUMMARY IS COMPUTED BY THE ORG, SO AN UPDATE OF IT FAILS; A FORMULA IS TOO, BUT THE WRAPPER DOES NOT RECORD ONE
+export const RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES = ['AutoNumber', 'Summary'];
+
 export const RECIPE_COCKPIT_QUERY_INTRO = 'The SOQL Generate Treecipe wrote for this tree. Edit a query, run it against any connected org you choose, then export what it returned as JSON or CSV. A query only reads.';
 
 export const RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER = 'Choose the org to run the query against (it only reads)';
@@ -2340,6 +2360,8 @@ export class RecipeCockpitService {
             const troubleshootingSubTab = RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS.slice(1).find(subTab => subTab === candidateTree.troubleshootingSubTab);
             const storedSubTabQueries = this.isPlainRecord(candidateTree.troubleshootingSearchQueries) ? candidateTree.troubleshootingSearchQueries : {};
             const troubleshootingSearchQueries: Partial<Record<RecipeCockpitTroubleshootingSubTab, string>> = {};
+            const updaterChosenFieldKeys = this.normalizePlaceNames(candidateTree.updaterChosenFieldKeys);
+            const updaterExpandedObjectKeys = this.normalizePlaceNames(candidateTree.updaterExpandedObjectKeys);
             RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS.forEach(subTab => {
                 const candidateQuery = Object.prototype.hasOwnProperty.call(storedSubTabQueries, subTab) ? storedSubTabQueries[subTab] : undefined;
                 if ( this.isBoundedText(candidateQuery) && candidateQuery !== '' ) {
@@ -2362,7 +2384,9 @@ export class RecipeCockpitService {
                 ...( troubleshootingSubTab !== undefined ? { troubleshootingSubTab: troubleshootingSubTab } : {} ),
                 ...( Object.keys(troubleshootingSearchQueries).length > 0 ? { troubleshootingSearchQueries: troubleshootingSearchQueries } : {} ),
                 ...( candidateTree.todosView === 'removed' ? { todosView: 'removed' as const } : {} ),
-                ...( this.isBoundedText(candidateTree.removedTodosSearchText) && candidateTree.removedTodosSearchText !== '' ? { removedTodosSearchText: candidateTree.removedTodosSearchText } : {} )
+                ...( this.isBoundedText(candidateTree.removedTodosSearchText) && candidateTree.removedTodosSearchText !== '' ? { removedTodosSearchText: candidateTree.removedTodosSearchText } : {} ),
+                ...( updaterChosenFieldKeys.length > 0 ? { updaterChosenFieldKeys: updaterChosenFieldKeys } : {} ),
+                ...( updaterExpandedObjectKeys.length > 0 ? { updaterExpandedObjectKeys: updaterExpandedObjectKeys } : {} )
             }];
 
         });
@@ -13690,7 +13714,18 @@ ${this.buildPaletteCustomProperties()}
     .actionCardWhy, .actionCardDetail { -webkit-line-clamp: 2; }
     .actionCardReason { -webkit-line-clamp: 1; }
     .actionCardReason { font-style: italic; }
-    .treeQueryIntro { margin: 0.25rem 0.6rem 0.5rem; }
+    .treeQueryIntro, .updaterIntro { margin: 0.25rem 0.6rem 0.5rem; }
+    .updaterSummary { margin: 0 0.6rem 0.5rem; font-weight: 600; }
+    /* THE TREECIPE UPDATER TAB (#415) DRAWS ITS ROWS AS THE TREECIPE TAB DOES, UNDER ITS OWN CLASSES */
+    .updaterObjectHeader, .updaterFieldHeader { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .updaterObjectHeader { padding: 0.35rem 0.6rem; }
+    .updaterObjectHeader, .updaterField { transition: background-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease; }
+    .updaterObjectHeader:hover, .updaterField:hover, .updaterObjectHeader:focus-within, .updaterField:focus-within { background-color: var(--sdt-row-hover); }
+    .updaterObjectName { font-weight: 600; }
+    .updaterObjectBody { padding-bottom: 0.25rem; }
+    .updaterField { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
+    .updaterFieldHeader .fieldType { font-size: 0.85em; padding: 0 0.4rem; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); border-radius: 0.6rem; }
+    .updaterFieldNote { font-size: 0.85em; }
     .treeQuery { margin: 0.25rem 0.6rem 0.5rem; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
     .treeQueryTitle { font-weight: 600; }
     .treeQueryControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
@@ -13884,6 +13919,15 @@ ${this.buildPaletteCustomProperties()}
     const QUERY_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_QUERY_TAB_LABEL)};
     const QUERY_INTRO = ${JSON.stringify(RECIPE_COCKPIT_QUERY_INTRO)};
     const QUERY_MAX_LENGTH = ${RECIPE_COCKPIT_QUERY_MAX_LENGTH};
+    const UPDATER_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_TAB_LABEL)};
+    const UPDATER_INTRO = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_INTRO)};
+    const UPDATER_SEARCH_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER)};
+    const UPDATER_NO_FIELDS_CHOSEN = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN)};
+    const UPDATER_RECIPE_ONLY_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON)};
+    const UPDATER_RECORD_TYPE_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON)};
+    const UPDATER_LOOKUP_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_LOOKUP_REASON)};
+    const UPDATER_SYSTEM_VALUE_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON)};
+    const UPDATER_SYSTEM_VALUE_FIELD_TYPES = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES)};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
     const DATA_ORG_CONNECTION_CHECK_INSERT_REASON = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON)};
     const DATA_ORG_LOADING_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER)};
@@ -17236,6 +17280,7 @@ ${this.buildPaletteCustomProperties()}
         if (treeState.tree.folderName) {
             addTreeTab(treeState, tabsElement, 'troubleshooting', TROUBLESHOOTING_TAB_LABEL, createElement('div', 'treeTroubleshooting hidden'));
             addTreeTab(treeState, tabsElement, 'query', QUERY_TAB_LABEL, createElement('div', 'treeQueries hidden'));
+            addTreeTab(treeState, tabsElement, 'updater', UPDATER_TAB_LABEL, createElement('div', 'treeUpdater hidden'));
         }
 
         treeState.tabsElement = tabsElement;
@@ -17292,6 +17337,7 @@ ${this.buildPaletteCustomProperties()}
                 if (tabState.tabName === 'datasets') { buildDatasetsTab(treeState, tabState.panelElement); }
                 if (tabState.tabName === 'troubleshooting') { buildTroubleshootingTab(treeState, tabState.panelElement); }
                 if (tabState.tabName === 'query') { buildQueryTab(treeState, tabState.panelElement); }
+                if (tabState.tabName === 'updater') { buildUpdaterTab(treeState, tabState.panelElement); }
             }
 
             if (isSelected && tabState.tabName === 'troubleshooting') { requestTroubleshootingSummary(treeState); }
@@ -18315,9 +18361,13 @@ ${this.buildPaletteCustomProperties()}
             isExpanded: false,
             element: treeElement,
             bodyElement: createElement('div', 'treeBody hidden'),
-            searchQueries: { treecipe: '', datasets: '', troubleshooting: '', query: '' },
+            searchQueries: { treecipe: '', datasets: '', troubleshooting: '', query: '', updater: '' },
             // WHAT THE READER TYPED IN EACH BOX, AS TYPED -- searchQueries IS ITS TRIMMED, LOWERCASED FORM
-            searchTexts: { treecipe: '', datasets: '', troubleshooting: '', query: '' },
+            searchTexts: { treecipe: '', datasets: '', troubleshooting: '', query: '', updater: '' },
+            // THE TREECIPE UPDATER TAB (#415): CHOSEN FIELDS BY OBJECT AND FIELD NAME, AND OBJECTS THE READER OPENED, BOTH NAME-KEYED
+            updaterChosenFieldKeys: Object.create(null),
+            updaterExpandedObjectKeys: Object.create(null),
+            updaterObjectStates: null,
             isDatasetFavoritesOnly: false,
             datasetFavoritesToggleElement: null,
             isRecordTypeFieldsOnly: false,
@@ -19447,6 +19497,303 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
+    /*
+        The Treecipe Updater tab (#415): the card's objects in insert order, each once (an iteration
+        is the same object), with its lookups and its field rows as the Treecipe tab draws them, and
+        one box per field to choose it. Choosing posts nothing: the choice is the panel's, kept in
+        the place, until a later slice of #414 reads records for it.
+    */
+    function updaterFieldKeyOf(objectApiName, fieldApiName) {
+        return objectApiName + '\\n' + fieldApiName;
+    }
+
+    function findUpdaterFieldLockReason(tree, objectApiName, field) {
+
+        if (field.isOnlyInRecipeFile) { return UPDATER_RECIPE_ONLY_REASON; }
+        if (field.fieldApiName === 'RecordTypeId') { return UPDATER_RECORD_TYPE_REASON; }
+
+        const isTreeLookup = hasOwnKey(indexTreeLookupFields(tree), objectApiName + '\\n' + field.fieldApiName);
+        if (isTreeLookup || FIXED_VALUE_LOOKUP_FIELD_TYPES.indexOf(field.fieldType) !== -1) { return UPDATER_LOOKUP_REASON; }
+        if (field.controllingField) { return FIXED_VALUE_DEPENDENT_REASON_PREFIX + field.controllingField; }
+        if (UPDATER_SYSTEM_VALUE_FIELD_TYPES.indexOf(field.fieldType) !== -1) { return UPDATER_SYSTEM_VALUE_REASON; }
+
+        return '';
+
+    }
+
+    function buildUpdaterTab(treeState, panelElement) {
+
+        treeState.updaterSearch = buildTabSearch(treeState, 'updater', UPDATER_SEARCH_PLACEHOLDER, applyUpdaterFilter);
+        panelElement.appendChild(treeState.updaterSearch.element);
+        panelElement.appendChild(createElement('div', 'updaterIntro muted', UPDATER_INTRO));
+
+        treeState.updaterSummaryElement = createElement('div', 'updaterSummary');
+        panelElement.appendChild(treeState.updaterSummaryElement);
+
+        const drawnObjectApiNames = Object.create(null);
+        treeState.updaterObjectStates = [];
+
+        treeState.objectStates.forEach(function (treeObjectState) {
+            const objectApiName = treeObjectState.object.objectApiName;
+            if (treeObjectState.isIteration || hasOwnKey(drawnObjectApiNames, objectApiName)) { return; }
+            drawnObjectApiNames[objectApiName] = true;
+            treeState.updaterObjectStates.push(buildUpdaterObjectState(treeState, treeObjectState));
+        });
+
+        // A PLACE CAN NAME A FIELD THE TREE NO LONGER HAS, OR ONE WHOSE BOX IS LOCKED NOW; NEITHER STAYS CHOSEN
+        const chosenFieldKeys = Object.create(null);
+        treeState.updaterObjectStates.forEach(function (updaterObjectState) {
+            updaterObjectState.fieldStates.forEach(function (fieldState) {
+                if (!fieldState.lockReason && hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey)) {
+                    chosenFieldKeys[fieldState.fieldKey] = true;
+                    updaterObjectState.chosenFieldCount++;
+                }
+            });
+        });
+        treeState.updaterChosenFieldKeys = chosenFieldKeys;
+
+        const expandedObjectKeys = Object.create(null);
+        treeState.updaterObjectStates.forEach(function (updaterObjectState) {
+            if (updaterObjectState.isExpandedByReader) { expandedObjectKeys[updaterObjectState.object.objectApiName] = true; }
+        });
+        treeState.updaterExpandedObjectKeys = expandedObjectKeys;
+
+        treeState.updaterObjectStates.forEach(function (updaterObjectState) { panelElement.appendChild(updaterObjectState.element); });
+
+        if (treeState.updaterObjectStates.length === 0) {
+            panelElement.appendChild(createElement('div', 'treeEmpty muted', 'This tree has no objects with a recipe.'));
+        }
+
+        drawUpdaterSummary(treeState);
+        applyUpdaterFilter(treeState);
+
+    }
+
+    function buildUpdaterObjectState(treeState, treeObjectState) {
+
+        const object = treeObjectState.object;
+        const objectElement = createElement('div', 'updaterObject');
+        const headerElement = createElement('div', 'updaterObjectHeader');
+        const toggleElement = buildToggleElement('updaterObjectToggle');
+
+        const updaterObjectState = {
+            object: object,
+            element: objectElement,
+            toggleElement: toggleElement,
+            bodyElement: createElement('div', 'updaterObjectBody hidden'),
+            countElement: createElement('span', 'updaterObjectCount muted'),
+            objectSearchText: object.objectApiName.toLowerCase(),
+            isBodyBuilt: false,
+            isExpanded: false,
+            isExpandedByReader: hasOwnKey(treeState.updaterExpandedObjectKeys, object.objectApiName),
+            matchingFieldCount: object.fields.length,
+            chosenFieldCount: 0,
+            countText: '',
+            fieldStates: object.fields.map(function (field) {
+                return {
+                    field: field,
+                    fieldKey: updaterFieldKeyOf(object.objectApiName, field.fieldApiName),
+                    lockReason: findUpdaterFieldLockReason(treeState.tree, object.objectApiName, field),
+                    // WHAT THE ROW DRAWS: NAME, LABEL, SIZED TYPE AND FAKER EXPRESSION
+                    searchText: [field.fieldApiName, field.fieldLabel, field.fieldTypeWithSize || field.fieldType, field.recipeValue].join('\\n').toLowerCase(),
+                    isMatch: true,
+                    rowElement: null,
+                    chooseElement: null
+                };
+            })
+        };
+
+        toggleElement.setAttribute('aria-expanded', 'false');
+        toggleElement.setAttribute('aria-label', 'Show or hide the fields of ' + object.objectApiName);
+        toggleElement.addEventListener('click', function () {
+            updaterObjectState.isExpandedByReader = !updaterObjectState.isExpanded;
+            if (updaterObjectState.isExpandedByReader) {
+                treeState.updaterExpandedObjectKeys[object.objectApiName] = true;
+            } else {
+                delete treeState.updaterExpandedObjectKeys[object.objectApiName];
+            }
+            setUpdaterObjectExpanded(treeState, updaterObjectState, updaterObjectState.isExpandedByReader, true);
+            savePanelPlace();
+        });
+
+        headerElement.appendChild(toggleElement);
+        headerElement.appendChild(buildSourceLink('updaterObjectName', object.objectApiName, object.recipeFilePath, object.lineNumber));
+
+        const parentLookupsText = formatParentLookups(treeObjectState.treeObject);
+        if (parentLookupsText) { headerElement.appendChild(createElement('span', 'treeLookups muted', parentLookupsText)); }
+
+        headerElement.appendChild(updaterObjectState.countElement);
+
+        objectElement.appendChild(headerElement);
+        objectElement.appendChild(updaterObjectState.bodyElement);
+
+        return updaterObjectState;
+
+    }
+
+    function setUpdaterObjectExpanded(treeState, updaterObjectState, isExpanded, isAnimated) {
+
+        if (isExpanded && !updaterObjectState.isBodyBuilt) {
+            updaterObjectState.fieldStates.forEach(function (fieldState) {
+                fieldState.rowElement = buildUpdaterFieldRow(treeState, updaterObjectState, fieldState);
+                setShown(fieldState.rowElement, fieldState.isMatch);
+                updaterObjectState.bodyElement.appendChild(fieldState.rowElement);
+            });
+            updaterObjectState.isBodyBuilt = true;
+        }
+
+        setShownWithMotion(updaterObjectState.bodyElement, isExpanded, isAnimated);
+        updaterObjectState.isExpanded = isExpanded;
+        drawToggle(updaterObjectState.toggleElement, isExpanded, isAnimated);
+
+    }
+
+    function buildUpdaterFieldRow(treeState, updaterObjectState, fieldState) {
+
+        const field = fieldState.field;
+        const rowElement = createElement('div', 'updaterField');
+        const headerElement = createElement('div', 'updaterFieldHeader');
+        const chooseElement = createButton('check', 'updaterFieldChoose');
+
+        chooseElement.setAttribute('role', 'checkbox');
+        chooseElement.addEventListener('click', function () {
+            if (chooseElement.disabled) { return; }
+            // ONLY THIS BOX, ITS OBJECT'S COUNT AND THE SUMMARY CHANGE: A CHOICE CHANGES NO MATCH, SO NO ROW OPENS OR CLOSES
+            if (hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey)) {
+                delete treeState.updaterChosenFieldKeys[fieldState.fieldKey];
+                updaterObjectState.chosenFieldCount--;
+            } else {
+                treeState.updaterChosenFieldKeys[fieldState.fieldKey] = true;
+                updaterObjectState.chosenFieldCount++;
+            }
+            drawUpdaterFieldChoice(treeState, updaterObjectState, fieldState);
+            drawUpdaterObjectCount(updaterObjectState);
+            drawUpdaterSummary(treeState);
+            savePanelPlace();
+        });
+        fieldState.chooseElement = chooseElement;
+
+        headerElement.appendChild(chooseElement);
+        headerElement.appendChild(createElement('span', 'updaterFieldName', field.fieldApiName));
+
+        if (field.fieldLabel && field.fieldLabel !== field.fieldApiName) {
+            headerElement.appendChild(createElement('span', 'updaterFieldLabel muted', field.fieldLabel));
+        }
+
+        if (field.fieldTypeWithSize || field.fieldType) {
+            headerElement.appendChild(createElement('span', 'fieldType', field.fieldTypeWithSize || field.fieldType));
+        }
+
+        if (fieldState.lockReason) {
+            headerElement.appendChild(createElement('span', 'updaterFieldNote muted', fieldState.lockReason));
+        }
+
+        rowElement.appendChild(headerElement);
+
+        if (field.recipeValue) {
+            const expressionRowElement = createElement('div', 'expressionRow');
+            expressionRowElement.appendChild(createElement('pre', 'expression', field.recipeValue));
+            rowElement.appendChild(expressionRowElement);
+        }
+
+        drawUpdaterFieldChoice(treeState, updaterObjectState, fieldState);
+
+        return rowElement;
+
+    }
+
+    function drawUpdaterFieldChoice(treeState, updaterObjectState, fieldState) {
+
+        const chooseElement = fieldState.chooseElement;
+        if (!chooseElement) { return; }
+
+        const fieldName = updaterObjectState.object.objectApiName + '.' + fieldState.field.fieldApiName;
+        const isChosen = hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey);
+        const title = fieldState.lockReason ? 'Cannot be chosen: ' + fieldState.lockReason
+            : isChosen ? 'Chosen — click to leave this field as it is'
+            : 'Click to choose this field to fill';
+
+        chooseElement.textContent = isChosen ? '✓' : '';
+        chooseElement.setAttribute('aria-checked', isChosen ? 'true' : 'false');
+        chooseElement.disabled = !!fieldState.lockReason;
+        chooseElement.setAttribute('title', title);
+        chooseElement.setAttribute('aria-label', fieldName + ': ' + title);
+
+    }
+
+    function drawUpdaterObjectCount(updaterObjectState) {
+        updaterObjectState.countElement.textContent = updaterObjectState.countText
+            + (updaterObjectState.chosenFieldCount > 0 ? ' · ' + updaterObjectState.chosenFieldCount + ' chosen' : '');
+    }
+
+    function drawUpdaterSummary(treeState) {
+
+        if (!treeState.updaterSummaryElement) { return; }
+
+        let chosenFieldCount = 0;
+        let chosenObjectCount = 0;
+
+        treeState.updaterObjectStates.forEach(function (updaterObjectState) {
+            chosenFieldCount += updaterObjectState.chosenFieldCount;
+            if (updaterObjectState.chosenFieldCount > 0) { chosenObjectCount++; }
+        });
+
+        treeState.updaterSummaryElement.textContent = chosenFieldCount === 0
+            ? UPDATER_NO_FIELDS_CHOSEN
+            : pluralize(chosenFieldCount, 'field', 'fields') + ' chosen on ' + pluralize(chosenObjectCount, 'object', 'objects');
+
+    }
+
+    // THE TREECIPE TAB'S RULE: AN OBJECT IS NEVER HIDDEN, ONLY ITS ROWS, AND A SEARCH OPENS ITS MATCHES WITHIN THE SAME BUDGET
+    function applyUpdaterFilter(treeState) {
+
+        if (!treeState.updaterSearch || !treeState.updaterObjectStates) { return; }
+
+        const searchQuery = treeState.searchQueries.updater;
+        let totalFieldCount = 0;
+        let matchingFieldCount = 0;
+
+        treeState.updaterObjectStates.forEach(function (updaterObjectState) {
+
+            const isObjectNameMatch = !searchQuery || updaterObjectState.objectSearchText.indexOf(searchQuery) !== -1;
+            let objectMatchingFieldCount = 0;
+
+            updaterObjectState.fieldStates.forEach(function (fieldState) {
+                fieldState.isMatch = isObjectNameMatch || fieldState.searchText.indexOf(searchQuery) !== -1;
+                if (fieldState.isMatch) { objectMatchingFieldCount++; }
+                if (fieldState.rowElement) { setShown(fieldState.rowElement, fieldState.isMatch); }
+            });
+
+            const objectFieldCount = updaterObjectState.fieldStates.length;
+            updaterObjectState.matchingFieldCount = objectMatchingFieldCount;
+            totalFieldCount += objectFieldCount;
+            matchingFieldCount += objectMatchingFieldCount;
+
+            updaterObjectState.countText = !searchQuery || isObjectNameMatch
+                ? pluralize(objectFieldCount, 'field', 'fields')
+                : objectMatchingFieldCount > 0 ? objectMatchingFieldCount + ' of ' + pluralize(objectFieldCount, 'field', 'fields') : 'no matching fields';
+            drawUpdaterObjectCount(updaterObjectState);
+
+        });
+
+        treeState.updaterSearch.matchCountElement.textContent = !searchQuery
+            ? pluralize(totalFieldCount, 'field', 'fields')
+            : matchingFieldCount > 0 ? matchingFieldCount + ' of ' + pluralize(totalFieldCount, 'field', 'fields') : 'no matches';
+
+        if (!searchQuery) {
+            treeState.updaterObjectStates.forEach(function (updaterObjectState) {
+                setUpdaterObjectExpanded(treeState, updaterObjectState, updaterObjectState.isExpandedByReader);
+            });
+            return;
+        }
+
+        expandMatchesWithinBudget(treeState.updaterObjectStates,
+            function (updaterObjectState) { return updaterObjectState.matchingFieldCount; },
+            function (updaterObjectState) { return updaterObjectState.fieldStates.length; },
+            function (updaterObjectState, isExpanded) { setUpdaterObjectExpanded(treeState, updaterObjectState, isExpanded); });
+
+    }
+
     // WHAT A SECTION SAYS IT WOULD DEPLOY, AND WHY ITS BUTTON IS DISABLED WHEN THERE IS NOTHING
     function describeDeploySummary(summary, deployKind) {
 
@@ -20379,6 +20726,10 @@ ${this.buildPaletteCustomProperties()}
         const removedTodosSearchText = treeState.searchTexts[troubleshootingSearchKey('todosRemoved')] || '';
         if (isRemovedTodosView || removedTodosSearchText) { hasSearch = true; }
 
+        const updaterChosenFieldKeys = Object.keys(treeState.updaterChosenFieldKeys);
+        const updaterExpandedObjectKeys = Object.keys(treeState.updaterExpandedObjectKeys);
+        if (updaterChosenFieldKeys.length > 0 || updaterExpandedObjectKeys.length > 0) { hasSearch = true; }
+
         const selectedTab = treeState.selectedTab || 'treecipe';
 
         if (selectedTab === 'treecipe' && !hasSearch && !treeState.isDatasetFavoritesOnly && !treeState.isRecordTypesExpanded
@@ -20403,6 +20754,8 @@ ${this.buildPaletteCustomProperties()}
         if (hasTroubleshootingSearch) { treePlace.troubleshootingSearchQueries = troubleshootingSearchQueries; }
         if (isRemovedTodosView) { treePlace.todosView = 'removed'; }
         if (removedTodosSearchText) { treePlace.removedTodosSearchText = removedTodosSearchText; }
+        if (updaterChosenFieldKeys.length > 0) { treePlace.updaterChosenFieldKeys = updaterChosenFieldKeys; }
+        if (updaterExpandedObjectKeys.length > 0) { treePlace.updaterExpandedObjectKeys = updaterExpandedObjectKeys; }
 
         return treePlace;
 
@@ -20626,6 +20979,16 @@ ${this.buildPaletteCustomProperties()}
             // APPLIED BY THE applyStructureFilter BELOW, OR BY THE TREECIPE TAB WHEN IT IS BUILT
             treeState.isRecordTypeFieldsOnly = savedTree.isRecordTypeFieldsOnly === true;
             treeState.isTodosOnly = savedTree.isTodosOnly === true;
+
+            // READ BEFORE THE UPDATER TAB IS BUILT, WHICH DRAWS THEM; A CHOSEN FIELD WHOSE BOX IS LOCKED NOW IS DROPPED WHEN IT IS
+            treeState.updaterChosenFieldKeys = Object.create(null);
+            treeState.updaterExpandedObjectKeys = Object.create(null);
+            (Array.isArray(savedTree.updaterChosenFieldKeys) ? savedTree.updaterChosenFieldKeys : []).forEach(function (fieldKey) {
+                if (typeof fieldKey === 'string') { treeState.updaterChosenFieldKeys[fieldKey] = true; }
+            });
+            (Array.isArray(savedTree.updaterExpandedObjectKeys) ? savedTree.updaterExpandedObjectKeys : []).forEach(function (objectKey) {
+                if (typeof objectKey === 'string') { treeState.updaterExpandedObjectKeys[objectKey] = true; }
+            });
 
             const hasOpenPicklists = hasAnyString(openPicklistKeys);
 
