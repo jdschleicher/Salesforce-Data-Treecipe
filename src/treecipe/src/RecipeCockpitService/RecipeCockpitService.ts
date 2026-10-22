@@ -3690,7 +3690,9 @@ export class RecipeCockpitService {
 
         const fieldApiNamesByObject = new Map<string, string[]>();
         ( tree?.objectSelection?.disabledLookups ?? [] ).forEach(disabledLookup => {
-            fieldApiNamesByObject.set(disabledLookup.objectApiName, [...( fieldApiNamesByObject.get(disabledLookup.objectApiName) ?? [] ), disabledLookup.fieldApiName]);
+            const fieldApiNames = fieldApiNamesByObject.get(disabledLookup.objectApiName) ?? [];
+            fieldApiNames.push(disabledLookup.fieldApiName);
+            fieldApiNamesByObject.set(disabledLookup.objectApiName, fieldApiNames);
         });
 
         return fieldApiNamesByObject;

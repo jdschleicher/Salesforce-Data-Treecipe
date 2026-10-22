@@ -509,40 +509,66 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
             const loadedRecipe = loadRecipeRun();
             const accountTree = treeOf(loadedRecipe.recipeViewModel, ACCOUNT_TREE_KEY);
-            // CONTACT KEEPS ANOTHER INCLUDED PARENT, SO THE CASCADE KEEPS IT AND ONLY DISABLES ITS LOOKUP TO THE EXCLUDED ONE
-            accountTree.objectSelection = {
-                exclusions: [],
-                disabledLookups: [{ objectApiName: 'Contact', fieldApiName: 'AccountId', parentObjectApiName: 'Account' }],
-                includedObjectCount: 3,
-                objectCount: 3
-            };
+            // A SECOND PARENT KEEPS OtherChildObject__c INCLUDED WHEN Contact IS EXCLUDED, SO ONLY ITS LOOKUP TO Contact IS DISABLED
+            accountTree.objects
+                .filter(treeObject => treeObject.objectApiName === 'OtherChildObject__c')
+                .forEach(treeObject => treeObject.parentLookups.push({ fieldApiName: 'Account__c', parentObjectApiName: 'Account' }));
+            untick(loadedRecipe.recipeViewModel, {}, ['Contact']);
+
+            expect(accountTree.objectSelection?.disabledLookups).toEqual([{ objectApiName: 'OtherChildObject__c', fieldApiName: 'Contact__c', parentObjectApiName: 'Contact' }]);
+
             const panelState = RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT);
             panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
             const recipeDataMessage = { command: 'recipeData' as const, recipe: loadedRecipe.recipeViewModel, renderSequence: 2 };
+            const insertObjectApiNames = new Set(RecipeCockpitService.listTreeInsertObjectApiNames(loadedRecipe.recipeViewModel, accountTree));
 
-            const treeTargets = await RecipeCockpitService.collectCreateTargets(panelState, recipeDataMessage, ACCOUNT_TREE_KEY);
-            const contactTarget = treeTargets.find(createTarget => createTarget.objectApiName === 'Contact');
+            expect([...insertObjectApiNames]).toEqual(['Account', 'OtherChildObject__c']);
 
-            // NOT AN UNTICKED FIELD: THE READER NEVER UNTICKED IT, SO THE MODAL DOES NOT NAME IT AS ONE
-            expect(contactTarget).toEqual({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', recipeFieldApiNames: ['LastName'] });
+            const treeTargets = ( await RecipeCockpitService.collectCreateTargets(panelState, recipeDataMessage, ACCOUNT_TREE_KEY) )
+                .filter(createTarget => insertObjectApiNames.has(createTarget.objectApiName));
 
-            const contactDescribe: ICreateObjectDescribe = {
-                objectApiName: 'Contact',
+            // NOT AN UNTICKED FIELD: THE READER NEVER UNTICKED IT, SO THE MODAL'S "Unticked, not sent" LINE DOES NOT NAME IT
+            expect(treeTargets.find(createTarget => createTarget.objectApiName === 'OtherChildObject__c'))
+                .toEqual({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'OtherChildObject__c', recipeFieldApiNames: ['Score__c', 'Ratio__c'] });
+
+            // REQUIRED OR NOT, THE DISABLED LOOKUP IS NEVER ASKED ABOUT; A REQUIRED ONE IS FILLED FROM THE ORG'S RECORDS INSTEAD
+            const otherChildDescribe = (isNillable: boolean): ICreateObjectDescribe => ({
+                objectApiName: 'OtherChildObject__c',
                 isCreateable: true,
                 fields: [
-                    { fieldApiName: 'AccountId', fieldType: 'reference', referenceTo: ['Account'], isNillable: true, isCreateable: true, isDefaultedOnCreate: false },
-                    { fieldApiName: 'LastName', fieldType: 'string', referenceTo: [], isNillable: false, isCreateable: true, isDefaultedOnCreate: false }
+                    { fieldApiName: 'Contact__c', fieldType: 'reference', referenceTo: ['Contact'], isNillable: isNillable, isCreateable: true, isDefaultedOnCreate: false },
+                    { fieldApiName: 'Score__c', fieldType: 'double', referenceTo: [], isNillable: true, isCreateable: true, isDefaultedOnCreate: false }
                 ]
-            } as ICreateObjectDescribe;
-            jest.spyOn(SalesforceOrgService, 'getCachedDescribe').mockImplementation((_orgUsername: string, objectApiName: string) => ( objectApiName === 'Contact' ? contactDescribe : undefined ) as any);
+            } as ICreateObjectDescribe);
 
-            expect(RecipeCockpitService.listOutsidePickableLookups('qa@example.com', treeTargets, new Set(['Contact', 'OtherChildObject__c']))).toEqual([]);
+            [true, false].forEach(isNillable => {
+                jest.spyOn(SalesforceOrgService, 'getCachedDescribe').mockImplementation((_orgUsername: string, objectApiName: string) => ( objectApiName === 'OtherChildObject__c' ? otherChildDescribe(isNillable) : undefined ) as any);
+                expect(RecipeCockpitService.listOutsidePickableLookups('qa@example.com', treeTargets, insertObjectApiNames)).toEqual([]);
+            });
 
-            // WITHOUT THE EXCLUSION THE SAME LOOKUP TO A PARENT THE TREE DOES NOT INSERT IS STILL ASKED ABOUT (#254)
+            // WITHOUT THE EXCLUSION FILTERING IT, THE SAME LOOKUP TO A PARENT THE INSERT LEAVES OUT IS STILL ASKED ABOUT (#254)
             accountTree.objectSelection = undefined;
             const untouchedTargets = await RecipeCockpitService.collectCreateTargets(panelState, recipeDataMessage, ACCOUNT_TREE_KEY);
-            expect(RecipeCockpitService.listOutsidePickableLookups('qa@example.com', untouchedTargets, new Set(['Contact', 'OtherChildObject__c'])))
-                .toEqual([{ objectApiName: 'Contact', lookup: { fieldApiName: 'AccountId', parentObjectApiName: 'Account', isRequired: false } }]);
+            expect(RecipeCockpitService.listOutsidePickableLookups('qa@example.com', untouchedTargets, insertObjectApiNames))
+                .toEqual([{ objectApiName: 'OtherChildObject__c', lookup: { fieldApiName: 'Contact__c', parentObjectApiName: 'Contact', isRequired: true } }]);
+
+        });
+
+        it('leaves out both an unticked field and a disabled lookup of the same included object', async () => {
+
+            const loadedRecipe = loadRecipeRun();
+            const accountTree = treeOf(loadedRecipe.recipeViewModel, ACCOUNT_TREE_KEY);
+            accountTree.objects
+                .filter(treeObject => treeObject.objectApiName === 'OtherChildObject__c')
+                .forEach(treeObject => treeObject.parentLookups.push({ fieldApiName: 'Account__c', parentObjectApiName: 'Account' }));
+            untick(loadedRecipe.recipeViewModel, { OtherChildObject__c: ['Ratio__c'] }, ['Contact']);
+
+            const panelState = RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT);
+            panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
+            const otherChildTarget = ( await RecipeCockpitService.collectCreateTargets(panelState, { command: 'recipeData', recipe: loadedRecipe.recipeViewModel, renderSequence: 2 }, ACCOUNT_TREE_KEY) )
+                .find(createTarget => createTarget.objectApiName === 'OtherChildObject__c');
+
+            expect(otherChildTarget).toEqual({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'OtherChildObject__c', recipeFieldApiNames: ['Score__c'], excludedFieldApiNames: ['Ratio__c'] });
 
         });
 
