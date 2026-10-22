@@ -45,13 +45,15 @@ import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
     RECIPE_COCKPIT_UPDATER_BUSY_REFUSAL,
+    RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON,
     RECIPE_COCKPIT_UPDATER_LOAD_LABEL,
     RECIPE_COCKPIT_UPDATER_LOADING_LABEL,
     RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER,
     RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
-import { RECIPE_COCKPIT_QUERY_VALUE_BUDGET } from '../RecipeCockpitQuery';
+import { RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH } from '../RecipeCockpitTreeUpdaterQuery';
+import { RECIPE_COCKPIT_QUERY_RECORD_CAP, RECIPE_COCKPIT_QUERY_VALUE_BUDGET } from '../RecipeCockpitQuery';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -192,6 +194,29 @@ describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
             holdSelection(panelState);
 
             expect(RecipeCockpitService.routePanelMessage(loadRequest(3), panelState)).toEqual({ kind: 'refuseUpdaterLoad', refusalText: RECIPE_COCKPIT_UPDATER_BUSY_REFUSAL, hostMessage: notRunning() });
+
+        });
+
+        it.each([
+            ['selectDataOrg', { command: 'selectDataOrg', orgIndex: 0 }],
+            ['loadDataOrgs', { command: 'loadDataOrgs' }],
+            ['refreshDataOrgs', { command: 'refreshDataOrgs' }],
+            ['createScratchOrg', { command: 'createScratchOrg' }],
+            ['insertTree', { command: 'insertTree', treeKey: ACCOUNT_TREE_KEY }],
+            ['regenerateWithRecordTypes', { command: 'regenerateWithRecordTypes', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: {} }]
+        ])('routes no %s while the load asks for its org, since the pick becomes the selection', (_description, panelMessage) => {
+
+            const panelState = withSandbox(buildPanelState());
+            panelState.dataOrgDetails = [SANDBOX_ORG];
+            panelState.insertableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
+            panelState.treeHistoryAllowLists.recordTypeTreeKeys = new Set([ACCOUNT_TREE_KEY]);
+            panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.set(ACCOUNT_TREE_KEY, '/workspace/recipe.yml');
+            const routedFree = RecipeCockpitService.routePanelMessage(panelMessage, panelState);
+            panelState.isUpdaterOrgPromptOpen = true;
+            const routedHeld = RecipeCockpitService.routePanelMessage(panelMessage, panelState);
+
+            expect(routedHeld).not.toEqual(routedFree);
+            expect(routedHeld === undefined || /^refuse|^post/.test((routedHeld as any).kind)).toBe(true);
 
         });
 
@@ -398,7 +423,11 @@ describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
 
         it('asks for the org through the insert\'s prompt when none is chosen, then reads from the pick', async () => {
 
-            const promptSpy = jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed').mockImplementation(async (listing: any) => (await listing).orgDetails[0]);
+            const promptOpenStates: unknown[] = [];
+            const promptSpy = jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed').mockImplementation(async (listing: any) => {
+                promptOpenStates.push(panelState().isUpdaterOrgPromptOpen);
+                return (await listing).orgDetails[0];
+            });
             jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue({ orgDetails: [SANDBOX_ORG], hiddenOrgReasonCounts: {} } as any);
             const selectSpy = jest.spyOn(RecipeCockpitService as any, 'selectDataOrg').mockImplementation(async (_cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
                 selectedPanelState.dataOrgSelection = { orgIndex: orgIndex, orgDetail: selectedPanelState.dataOrgDetails[orgIndex], requestSequence: 2, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' } };
@@ -408,6 +437,9 @@ describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
             await send(loadRequest(lastRenderSequence()));
 
             expect(promptSpy).toHaveBeenCalledWith(expect.anything(), RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER);
+            // THE PROMPT HOLDS THE ORG SELECTION WHILE IT IS OPEN, AND LETS IT GO ONCE ANSWERED
+            expect(promptOpenStates).toEqual([true]);
+            expect(panelState().isUpdaterOrgPromptOpen).toBe(false);
             expect(selectSpy).toHaveBeenCalledTimes(1);
             expect(postedNamed('dataOrgList').at(-1)).toMatchObject({ selectedOrgIndex: 0 });
             expect(sentQueries).toHaveLength(3);
@@ -522,6 +554,47 @@ describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
             expect(recordsMessage.objects.find((loadedObject: any) => loadedObject.objectApiName === 'Account')).toMatchObject({ recordCount: 0, totalSize: 1, isTruncated: true });
             expect(warnings()).toEqual([expect.stringContaining('and stopped there')]);
             expect(informations()).toEqual([]);
+
+        });
+
+        it('holds the whole load to one record cap, and reads no object past it, saying which', async () => {
+
+            queryAnswer = async (soql: string) => {
+                const objectApiName = /FROM (\w+)/.exec(soql)![1];
+                const records = recordsOf(objectApiName, objectApiName === 'Account' ? RECIPE_COCKPIT_QUERY_RECORD_CAP : 1);
+                return { totalSize: records.length, done: true, records: records };
+            };
+
+            await openCockpit();
+            selectSandbox();
+            await send(loadRequest(lastRenderSequence()));
+
+            expect(sentQueries).toHaveLength(1);
+            const [recordsMessage] = postedNamed('updaterRecords');
+            expect(recordsMessage.objects.map((loadedObject: any) => [loadedObject.objectApiName, loadedObject.skippedReason])).toEqual([
+                ['Account', undefined],
+                ['Contact', RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON],
+                ['OtherChildObject__c', RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON]
+            ]);
+            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(RECIPE_COCKPIT_QUERY_RECORD_CAP);
+            expect(warnings()).toEqual([expect.stringContaining('and stopped there')]);
+
+        });
+
+        it('lets the last load\'s records go as a new one starts, so a cancelled load leaves none on screen or replayed', async () => {
+
+            await openCockpit();
+            selectSandbox();
+            await send(loadRequest(lastRenderSequence()));
+            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBeGreaterThan(0);
+
+            cancellationToken.isCancellationRequested = true;
+            await send(loadRequest(lastRenderSequence()));
+            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(0);
+
+            postedPanelMessages = [];
+            await send({ command: 'ready' });
+            expect(postedNamed('updaterRecords')).toEqual([]);
 
         });
 
@@ -670,6 +743,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
             panel.findAll(rowNamed(panel, accountObject, 'Legacy_Code__c'), 'updaterFieldChoose')[0].dispatch('click');
             const whereInput = panel.findAll(contactObject, 'updaterWhereInput')[0];
             expect(whereInput.attributes['aria-label']).toBe('WHERE for Contact records');
+            expect(whereInput.attributes['maxlength']).toBe(String(RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH));
             whereInput.value = 'LastName != null';
             whereInput.dispatch('input');
 
@@ -727,6 +801,29 @@ describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
             expect(panel.findAll(contactObject, 'updaterRecordsFailure')[0].textContent).toBe('Could not be read: No such column');
             expand(panel, otherObject);
             expect(panel.findAll(otherObject, 'updaterRecordsSummary')[0].textContent).toBe('50 records, the first of 900 it matched. Showing the first 10');
+
+        });
+
+        it('says an object past the load\'s limit was not read, and clears every card\'s records when a load starts', () => {
+
+            const { panel, updaterPanel } = renderUpdater();
+            const contactObject = objectNamed(panel, updaterPanel, 'Contact');
+            expand(panel, contactObject);
+
+            panel.postToPanel(recordsMessage({ objects: [
+                { objectApiName: 'Account', totalSize: 2, recordCount: 2, isTruncated: false, columns: ['Id'], rows: [['001A'], ['001B']], hiddenColumnCount: 0 },
+                { objectApiName: 'Contact', totalSize: 0, recordCount: 0, isTruncated: true, columns: [], rows: [], hiddenColumnCount: 0, skippedReason: 'Not read: the limit' }
+            ] }));
+
+            expect(panel.findAll(contactObject, 'updaterRecordsSkipped')[0].textContent).toBe('Not read: the limit');
+            expect(panel.findAll(contactObject.children[0], 'updaterObjectCount')[0].textContent).toMatch(/ · not read$/);
+            expect(panel.findAll(updaterPanel, 'updaterLoadNote')[0].textContent).toBe('Loaded 2 records from qa · qa@example.com.qa');
+
+            panel.postToPanel({ command: 'updaterLoadState', isRunning: true, treeKey: 'Lead-ONLY' });
+
+            expect(panel.findAll(updaterPanel, 'updaterLoadNote')[0].textContent).toBe('');
+            expect(panel.findAll(contactObject.children[0], 'updaterObjectCount')[0].textContent).not.toMatch(/not read/);
+            expect(panel.findAll(contactObject, 'updaterRecordsSkipped').filter((skippedElement: any) => !panel.isHidden(skippedElement))).toEqual([]);
 
         });
 

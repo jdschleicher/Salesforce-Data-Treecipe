@@ -7,6 +7,12 @@ export const RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH = 4000;
 // A WHERE THE READER STARTED WITH THE KEYWORD ITSELF; THE QUERY ADDS IT
 const LEADING_WHERE_KEYWORD_PATTERN = /^where\s+/i;
 
+// FOR VIEW AND FOR REFERENCE STAMP THE RECORDS AS VIEWED, AND FOR UPDATE LOCKS THEM: A LOAD ONLY READS
+const RECORD_TOUCHING_CLAUSE_PATTERN = /\bfor\s+(view|reference|update)\b/i;
+
+// A QUOTED VALUE, SO A CLAUSE NAMED INSIDE ONE IS NOT TAKEN FOR THE CLAUSE ITSELF
+const QUOTED_VALUE_PATTERN = /'(?:[^'\\]|\\.)*'/g;
+
 /*
     One object of a card as the Treecipe Updater reads it (#416): the fields the model lists for it
     and the lookups to parents in the SAME tree, which a later slice relates records by.
@@ -156,6 +162,11 @@ export class RecipeCockpitTreeUpdaterQuery {
         }
 
         const whereClause = request.whereClause.trim().replace(LEADING_WHERE_KEYWORD_PATTERN, '').trim();
+
+        if ( RECORD_TOUCHING_CLAUSE_PATTERN.test(whereClause.replace(QUOTED_VALUE_PATTERN, "''")) ) {
+            return { refusal: `The WHERE for ${treeObject.objectApiName} holds FOR VIEW, FOR REFERENCE or FOR UPDATE, which change or lock records, and a load only reads.` };
+        }
+
         const queryText = `SELECT ${selectedFieldApiNames.join(', ')} FROM ${treeObject.objectApiName}${whereClause ? ` WHERE ${whereClause}` : ''}`;
         const queryCheck = RecipeCockpitQuery.checkQueryText(queryText);
 

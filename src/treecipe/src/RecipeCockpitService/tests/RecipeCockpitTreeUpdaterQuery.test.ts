@@ -113,10 +113,19 @@ describe('RecipeCockpitTreeUpdaterQuery (#416)', () => {
         it.each([
             ['a second statement', 'Name = \'A\'; DELETE'],
             ['a quoted value never closed', 'Name = \'A'],
-            ['a control character', 'Name = \'A\'\u0000']
+            ['a control character', 'Name = \'A\'\u0000'],
+            ['FOR VIEW', 'Name = \'A\' FOR VIEW'],
+            ['FOR REFERENCE', 'Name = \'A\' for  reference'],
+            ['FOR UPDATE', 'Name = \'A\' FOR UPDATE']
         ])('refuses a WHERE with %s', (_description, whereClause) => {
 
             expect(RecipeCockpitTreeUpdaterQuery.buildObjectQuery(ACCOUNT, { objectApiName: 'Account', fieldApiNames: [], whereClause: whereClause })).toHaveProperty('refusal');
+
+        });
+
+        it('keeps FOR UPDATE named inside a quoted value, which is a value and not a clause', () => {
+
+            expect(queryOf(ACCOUNT, [], 'Name = \'ready for update\'')).toBe('SELECT Id, ParentId FROM Account WHERE Name = \'ready for update\'');
 
         });
 
