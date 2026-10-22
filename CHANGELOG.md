@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.126.0] - Recipe Cockpit: an "All fields" checkbox ticks or unticks every field of an object
+## [3.127.0] - Recipe Cockpit: an "All fields" checkbox ticks or unticks every field of an object
 
 Closes [#410](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/410).
 
@@ -14,6 +14,19 @@ Closes [#410](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/41
 - **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` name it under "Unticked fields", and the guide's pictures are re-taken.
 - **Tests.** `RecipeCockpitExcludeFields.test.ts` runs the real panel script and covers the box's three states, what each click posts (nickname included), a locked field left out of the count, the box hidden while every field is locked, redrawing in place, the disabled box on an excluded object, and no box on a card with no folder or an object with indistinct occurrences. The #343 test now asserts that no All / None buttons are drawn and that the box sits above the first field row.
 
+## [3.126.0] - Recipe Cockpit: switching recipe runs asks whether to reset or carry over the tree selections
+
+Closes [#399](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/399).
+
+Tree selections (excluded objects, unticked fields, record counts and validation rules switched off) are kept by tree folder name. Choosing another run in the run dropdown carried them, unseen, onto any tree of that run with the same folder.
+
+- **The cockpit now asks first.** When you choose a different run and a tree on screen has a selection, an in-panel confirmation lists those trees and offers **Reset selections**, **Apply same selections** and Cancel.
+- **Apply same selections** is offered only when a tree of the chosen run has one of those folder names. The confirmation says how many trees match, and that a selection naming an object or field the chosen run does not have is ignored. Nothing is written.
+- **Reset selections** clears the selections of every tree on screen, then loads the chosen run. A folder that is not on screen keeps its own. If the reset cannot be saved, the run on screen stays.
+- **Cancel** keeps the run on screen and puts the dropdown back on it.
+- **Unchanged.** With nothing stored, the run loads with no question, as before. Fixed values and edited expressions are written in the recipe file (#342), so neither choice touches them. The router still refuses any run it did not offer.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say what a run switch asks.
+- **Tests.** `RecipeCockpitRunSwitch.test.ts` covers no question with nothing stored or the same run, Reset, Apply, Cancel, Reset only when no folder matches, a failed reset, a run the router did not offer, and the panel putting the dropdown back.
 ## [3.125.0] - Generate Treecipe: a static map of standard-field parents, so Account.ParentId is a wired self-lookup
 
 Closes [#400](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/400).

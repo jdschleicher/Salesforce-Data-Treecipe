@@ -75,6 +75,7 @@ The **Query** tab writes no recipe either. It lists the SOQL Generate Treecipe w
 
 The settings that leave the YAML alone are kept by VS Code for this workspace on this machine, per tree.
 They carry over when you regenerate the same objects, but they are not in your repository, so a teammate or a fresh clone starts without them.
+Switching to another run while a tree on screen has settings asks first: Reset selections clears them, Apply same selections keeps them for the trees of that run with the same folder, and Cancel stays on the run.
 
 When you generate, the cockpit applies them to a copy of the recipe.
 The data set keeps that copy as `filteredRecipe-…` beside `originalRecipe-…` in its `BaseArtifactFiles` folder, and `datasetSource.json` lists what was changed.
