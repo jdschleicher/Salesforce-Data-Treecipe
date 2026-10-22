@@ -3711,8 +3711,8 @@ export class RecipeCockpitService {
     }
 
     /*
-        All / None (#220). The panel no longer draws the buttons (#343); the route stays, held to the
-        same allow-list, so they can come back by drawing them again. None stores every field with a line in the recipe except those a lock
+        An object's "All fields" box (#410, which replaced #220's All / None that #343 hid), held to the
+        object's allow-list. Unticking all stores every field with a line in the recipe except those a lock
         holds for a reason of its own (RecordTypeId, a parent-excluded lookup); a controlling field is
         stored too, because unticking every dependent with it is what frees it.
     */
@@ -10961,7 +10961,7 @@ export class RecipeCockpitService {
 
             }
 
-            // All / None OF ONE OBJECT (#220): THE OBJECT'S KEY, AS FOR ITS TREE ICON; WHICH FIELDS THAT TOUCHES IS THE HOST'S
+            // "All fields" OF ONE OBJECT (#410): THE OBJECT'S KEY, AS FOR ITS TREE ICON; WHICH FIELDS THAT TOUCHES IS THE HOST'S
             case 'setAllFieldsIncluded': {
 
                 const { treeKey, objectApiName, nickname, included } = panelMessage;
