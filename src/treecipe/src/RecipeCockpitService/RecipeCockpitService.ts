@@ -263,6 +263,7 @@ export const RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON = 'parent excluded';
 export const RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON = 'record-type sections depend on it';
 export const RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX = 'controls ';
 export const RECIPE_COCKPIT_EVERY_FIELD_UNTICKED_WARNING = 'every field unticked — records are generated with no fields set';
+export const RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL = 'All fields';
 export const RECIPE_COCKPIT_RESET_SELECTION_LABEL = 'Reset selection';
 
 /*
@@ -507,7 +508,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         ],
         items: [
             'Excluded objects (the chain link): the object and its children are left out.',
-            'Unticked fields: the field is left out.',
+            'Unticked fields: the field is left out. All fields, above an object\'s fields, ticks or unticks them all.',
             'Record counts: how many records an object gets.',
             'The rules box: a field generated without the limits its validation rules set.'
         ]
@@ -13475,6 +13476,10 @@ ${this.buildPaletteCustomProperties()}
     .treeNicknameBackLink { font-size: 0.85em; }
     .treeObjectBody { padding-bottom: 0.25rem; }
     .treeField { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
+    .treeFieldSelectAllRow { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
+    .treeFieldSelectAllCheck { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .treeFieldSelectAllLabel { cursor: pointer; }
+    .treeFieldSelectAllCheck.disabled .treeFieldSelectAllLabel { color: var(--sdt-muted); cursor: not-allowed; }
     .treeFieldHeader .fieldType {
         font-size: 0.85em;
         padding: 0 0.4rem;
@@ -13828,6 +13833,7 @@ ${this.buildPaletteCustomProperties()}
     const VALIDATION_RULE_FIXED_VALUE_REASON = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON)};
     const VALIDATION_RULE_NOT_APPLIED_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL)};
     const EVERY_FIELD_UNTICKED_WARNING = ${JSON.stringify(RECIPE_COCKPIT_EVERY_FIELD_UNTICKED_WARNING)};
+    const SELECT_ALL_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL)};
     const RESET_SELECTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RESET_SELECTION_LABEL)};
     const REFRESH_ORGS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REFRESH_ORGS_LABEL)};
     const OPEN_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OPEN_ORG_LABEL)};
@@ -15909,6 +15915,89 @@ ${this.buildPaletteCustomProperties()}
         if (!treeObjectState.isBodyBuilt) { return; }
 
         treeObjectState.fieldStates.forEach(function (fieldState) { drawFieldRowSelection(treeObjectState, fieldState); });
+        drawSelectAllFields(treeObjectState);
+
+    }
+
+    /*
+        The object's "All fields" box (#410): ticked when every field the reader can untick is ticked,
+        unticked when none is, mixed otherwise. A locked field is left out of that count, so after
+        "untick all" the box reads unticked while RecordTypeId and the like stay ticked. A click posts
+        setAllFieldsIncluded with NAMES only; which fields it touches is the host's decision.
+    */
+    function buildSelectAllFieldsElement(treeObjectState) {
+
+        const object = treeObjectState.object;
+        const rowElement = createElement('div', 'treeFieldSelectAllRow');
+        const checkElement = createElement('span', 'treeFieldSelectAllCheck');
+        const toggleElement = createButton('check', 'treeFieldInclude treeFieldSelectAll');
+        const labelElement = createElement('span', 'treeFieldSelectAllLabel', SELECT_ALL_FIELDS_LABEL);
+        toggleElement.setAttribute('role', 'checkbox');
+
+        const toggleAllFields = function () {
+            if (toggleElement.disabled) { return; }
+            const message = {
+                command: 'setAllFieldsIncluded',
+                treeKey: treeObjectState.tree.treeKey,
+                objectApiName: object.objectApiName,
+                included: treeObjectState.selectAllCheckedState !== 'true'
+            };
+            if (object.nickname) { message.nickname = object.nickname; }
+            vscodeApi.postMessage(message);
+        };
+        toggleElement.addEventListener('click', toggleAllFields);
+        labelElement.addEventListener('click', toggleAllFields);
+
+        checkElement.appendChild(toggleElement);
+        checkElement.appendChild(labelElement);
+        rowElement.appendChild(checkElement);
+        treeObjectState.selectAllRowElement = rowElement;
+        treeObjectState.selectAllCheckElement = checkElement;
+        treeObjectState.selectAllElement = toggleElement;
+
+        return rowElement;
+
+    }
+
+    function drawSelectAllFields(treeObjectState) {
+
+        const toggleElement = treeObjectState.selectAllElement;
+        if (!toggleElement) { return; }
+
+        const tree = treeObjectState.tree;
+        const objectApiName = treeObjectState.object.objectApiName;
+        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName);
+        const isObjectExcluded = !!findObjectExclusion(tree, objectApiName);
+        let untickableCount = 0;
+        let tickedCount = 0;
+
+        treeObjectState.fieldStates.forEach(function (fieldState) {
+            const fieldApiName = fieldState.field.fieldApiName;
+            if (!fieldState.field.lineNumber) { return; }
+            if (objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName)) { return; }
+            untickableCount++;
+            if (!objectFieldSelection || !hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName)) { tickedCount++; }
+        });
+
+        if (untickableCount === 0) {
+            treeObjectState.selectAllRowElement.classList.add('hidden');
+            return;
+        }
+        treeObjectState.selectAllRowElement.classList.remove('hidden');
+
+        const checkedState = tickedCount === untickableCount ? 'true' : tickedCount === 0 ? 'false' : 'mixed';
+        toggleElement.textContent = checkedState === 'true' ? '✓' : checkedState === 'mixed' ? '−' : '';
+        treeObjectState.selectAllCheckedState = checkedState;
+        toggleElement.setAttribute('aria-checked', checkedState);
+        toggleElement.disabled = isObjectExcluded;
+        if (isObjectExcluded) { treeObjectState.selectAllCheckElement.classList.add('disabled'); } else { treeObjectState.selectAllCheckElement.classList.remove('disabled'); }
+
+        const title = isObjectExcluded ? objectApiName + ' is excluded, so its fields are read-only'
+            : checkedState === 'true' ? 'Every field ticked — click to leave every field out that can be unticked'
+            : checkedState === 'mixed' ? tickedCount + ' of ' + untickableCount + ' fields ticked — click to tick every field'
+            : 'No field ticked — click to tick every field';
+        toggleElement.setAttribute('title', title);
+        toggleElement.setAttribute('aria-label', SELECT_ALL_FIELDS_LABEL + ' of ' + objectApiName + ': ' + title);
 
     }
 
@@ -16580,6 +16669,9 @@ ${this.buildPaletteCustomProperties()}
         if (isExpanded && !treeObjectState.isBodyBuilt) {
             if (treeObjectState.objectTodos.length > 0) {
                 treeObjectState.bodyElement.appendChild(buildTodoListElement(treeObjectState.object.recipeFilePath, treeObjectState.objectTodos));
+            }
+            if (treeObjectState.canSelectFields && !treeObjectState.isIteration && treeObjectState.fieldStates.some(function (fieldState) { return !!fieldState.field.lineNumber; })) {
+                treeObjectState.bodyElement.appendChild(buildSelectAllFieldsElement(treeObjectState));
             }
             treeObjectState.fieldStates.forEach(function (fieldState) {
                 fieldState.rowElement = buildTreeFieldRow(treeObjectState, fieldState);
