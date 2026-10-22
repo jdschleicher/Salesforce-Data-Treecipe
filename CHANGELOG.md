@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.128.0] - Recipe Cockpit: an "All fields" checkbox ticks or unticks every field of an object
+
+Closes [#410](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/410).
+
+#343 hid **All / None**, so an object's fields could only be ticked one at a time. An expanded object now draws one **All fields** checkbox above its field rows.
+
+- **One box with three states.** It shows ticked when every field you can untick is ticked, unticked when none is, and mixed (`−`, `aria-checked="mixed"`) when some are. A click from ticked unticks them all; from mixed or unticked, it ticks them all. The box and its label both toggle it.
+- **Locked fields are left out of its count.** These are `RecordTypeId` while record type sections depend on it, a lookup whose parent is excluded, and a controlling field while a dependent is ticked. After "untick all", the box reads unticked while those fields stay ticked.
+- **The host still decides.** A click posts `setAllFieldsIncluded {treeKey, objectApiName, nickname?, included}`, the message #220 defined and #343 left routed. The router, the `selectableObjectKeys` allow-list, the executor and the stored selection (version 7) are unchanged. The box redraws only from the host's `objectSelection` answer, in place, as the field checkboxes do.
+- **Where it is drawn.** Only on a card with a folder, for an object that is not an iteration and not written more than once without distinct nicknames, and that has a field with a recipe line. It is hidden while every field is locked, and disabled on an excluded object.
+- **Styled by its kind.** It is a `createButton('check', …)` box like every other checkbox, so it draws no new colour pair.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` name it under "Unticked fields", and the guide's pictures are re-taken.
+- **Tests.** `RecipeCockpitExcludeFields.test.ts` runs the real panel script and covers the box's three states, what each click posts (nickname included), a locked field left out of the count, the box hidden while every field is locked, redrawing in place, the disabled box on an excluded object, and no box on a card with no folder, a self-lookup's iteration or an object with indistinct occurrences. The #343 test now asserts that no All / None buttons are drawn and that the box sits above the first field row.
+
 ## [3.127.0] - Recipe Cockpit: a friend row shows a holding-hands chip per parent, `<parent nickname>-<n>`
 
 Closes [#411](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/411).

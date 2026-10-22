@@ -47,7 +47,7 @@ Each action there is a card you click anywhere on, saying when you would need it
 These settings change what is generated, but the recipe file stays exactly as Generate Treecipe wrote it, so it always shows what was generated from your metadata:
 
 - **Excluded objects** (the chain link): the object and its children are left out.
-- **Unticked fields**: the field is left out.
+- **Unticked fields**: the field is left out. **All fields**, above an object's fields, ticks or unticks them all.
 - **Record counts**: how many records an object gets.
 - **The rules box**: a field generated without the limits its validation rules set.
 
