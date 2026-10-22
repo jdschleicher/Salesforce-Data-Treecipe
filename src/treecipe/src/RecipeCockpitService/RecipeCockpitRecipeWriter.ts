@@ -112,6 +112,17 @@ export type RecipeBlockExtractionResult =
     | { isExtracted: true; recipeText: string }
     | { isExtracted: false; refusal: IRecipeWriterRefusal };
 
+// ONE FIELD OF A TREECIPE UPDATER VALUE RECIPE (#417): ITS VALUE TEXT AS A FAKER SERVICE WRITES IT AFTER "Field: "
+export interface IUpdaterValueRecipeField {
+    fieldApiName: string;
+    valueText: string;
+}
+
+// THE ONE-OBJECT RECIPE THE TREECIPE UPDATER GENERATES ITS VALUES FROM, OR WHY IT COULD NOT BE BUILT
+export type RecipeUpdaterValueRecipeResult =
+    | { isBuilt: true; recipeText: string }
+    | { isBuilt: false; refusal: string };
+
 export interface ICreateBlockFieldListRequest {
     objectApiName: string;
     objectNickname?: string;
@@ -2309,6 +2320,68 @@ export class RecipeCockpitRecipeWriter {
                 : this.listCreateBlockFieldApiNames(recipeText, objectApiName, objectNickname, excludedFieldApiNames);
 
         });
+
+    }
+
+    /*
+        The recipe the Treecipe Updater generates its values from (#417): ONE top-level object, a
+        nickname of its own, "count:" set to the records loaded, and only the fields given -- no
+        lookup, no friend, nothing else of the tree. Each value is written by buildFieldLines, the
+        line rule every other write is held to, so a value cannot add a line the layout would read
+        as another field or object, and the text is scanned back: one object, exactly these fields.
+    */
+    static buildUpdaterValueRecipe(objectApiName: string, recordCount: number, fields: readonly IUpdaterValueRecipeField[]): RecipeUpdaterValueRecipeResult {
+
+        if ( !API_NAME_PATTERN.test(objectApiName) ) {
+            return { isBuilt: false, refusal: `${objectApiName} is not an object api name.` };
+        }
+        if ( !this.isRecordCount(recordCount) ) {
+            return { isBuilt: false, refusal: `The count for ${objectApiName} must be a whole number of one or more.` };
+        }
+        if ( fields.length === 0 ) {
+            return { isBuilt: false, refusal: `No field of ${objectApiName} has a value to generate.` };
+        }
+
+        const layout = this.getObjectLayout(0);
+        const fieldLines: string[] = [];
+        const fieldApiNames = new Set<string>();
+
+        for ( const field of fields ) {
+            if ( !API_NAME_PATTERN.test(field.fieldApiName) || fieldApiNames.has(field.fieldApiName) ) {
+                return { isBuilt: false, refusal: `${objectApiName}.${field.fieldApiName} is not one field api name.` };
+            }
+            const builtLines = typeof field.valueText === 'string' && field.valueText.trim() !== ''
+                ? this.buildFieldLines(field.fieldApiName, field.valueText, layout)
+                : undefined;
+            if ( !builtLines ) {
+                return { isBuilt: false, refusal: `The value of ${objectApiName}.${field.fieldApiName} cannot be written as its own recipe lines.` };
+            }
+            fieldApiNames.add(field.fieldApiName);
+            fieldLines.push(...builtLines);
+        }
+
+        const recipeText = [
+            `# Recipe Cockpit -- Treecipe Updater values for ${recordCount} ${objectApiName} ${recordCount === 1 ? 'record' : 'records'}`,
+            '',
+            `- object: ${objectApiName}`,
+            `${layout.propertyIndent}nickname: ${objectApiName}_Updater_NickName`,
+            `${layout.propertyIndent}count: ${recordCount}`,
+            `${layout.propertyIndent}fields:`,
+            ...fieldLines,
+            ''
+        ].join('\n');
+
+        const scannedObjects = this.scanRecipeObjects(this.splitRecipeLines(recipeText).lines);
+        const scannedFieldApiNames = scannedObjects.length === 1 ? scannedObjects[0].fields.map(scannedField => scannedField.fieldApiName) : [];
+
+        if ( scannedObjects.length !== 1
+                || scannedObjects[0].objectApiName !== objectApiName
+                || scannedFieldApiNames.length !== fields.length
+                || scannedFieldApiNames.some((scannedFieldApiName, fieldIndex) => scannedFieldApiName !== fields[fieldIndex].fieldApiName) ) {
+            return { isBuilt: false, refusal: `The values of ${objectApiName} did not read back as one object with exactly the fields given.` };
+        }
+
+        return { isBuilt: true, recipeText: recipeText };
 
     }
 
