@@ -3647,6 +3647,22 @@ export class RecipeCockpitService {
         return `${treeKey}\n${objectApiName}\n${fieldApiName}`;
     }
 
+    /*
+        Every lookup of an included object to an excluded parent, by object (#420): the filtered copy
+        drops these lines, so the insert's field list leaves them out too -- otherwise the parent
+        picker asks about a lookup no record sends.
+    */
+    static listDisabledLookupFieldApiNamesByObject(tree: IRecipeCockpitTreeViewModel | undefined): Map<string, string[]> {
+
+        const fieldApiNamesByObject = new Map<string, string[]>();
+        ( tree?.objectSelection?.disabledLookups ?? [] ).forEach(disabledLookup => {
+            fieldApiNamesByObject.set(disabledLookup.objectApiName, [...( fieldApiNamesByObject.get(disabledLookup.objectApiName) ?? [] ), disabledLookup.fieldApiName]);
+        });
+
+        return fieldApiNamesByObject;
+
+    }
+
     // EVERY OBJECT A CARD LEAVES OUT OF GENERATION, THE ONES FOLLOWING A PARENT INCLUDED
     static listExcludedObjectApiNames(tree: IRecipeCockpitTreeViewModel | undefined): string[] {
         return ( tree?.objectSelection?.exclusions ?? [] ).map(exclusion => exclusion.objectApiName);
@@ -9482,10 +9498,11 @@ export class RecipeCockpitService {
             }
 
             const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByObject(tree);
+            const disabledLookupFieldApiNamesByObject = this.listDisabledLookupFieldApiNamesByObject(tree);
             const listings = RecipeCockpitRecipeWriter.listCreateBlockFieldApiNamesForObjects(recipeText, objectApiNames.map(objectApiName => ({
                 objectApiName: objectApiName,
                 objectNickname: this.readCreateObjectNickname(recipeObjectsByApiName.get(objectApiName)),
-                excludedFieldApiNames: excludedFieldApiNamesByObject.get(objectApiName) ?? []
+                excludedFieldApiNames: [...( excludedFieldApiNamesByObject.get(objectApiName) ?? [] ), ...( disabledLookupFieldApiNamesByObject.get(objectApiName) ?? [] )]
             })));
 
             objectApiNames.forEach((objectApiName, objectIndex) => createTargets.push(

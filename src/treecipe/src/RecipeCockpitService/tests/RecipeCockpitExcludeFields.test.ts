@@ -505,6 +505,47 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
         });
 
+        it('leaves a lookup to an excluded parent out of the insert\'s targets, so the parent picker never asks about it (#420)', async () => {
+
+            const loadedRecipe = loadRecipeRun();
+            const accountTree = treeOf(loadedRecipe.recipeViewModel, ACCOUNT_TREE_KEY);
+            // CONTACT KEEPS ANOTHER INCLUDED PARENT, SO THE CASCADE KEEPS IT AND ONLY DISABLES ITS LOOKUP TO THE EXCLUDED ONE
+            accountTree.objectSelection = {
+                exclusions: [],
+                disabledLookups: [{ objectApiName: 'Contact', fieldApiName: 'AccountId', parentObjectApiName: 'Account' }],
+                includedObjectCount: 3,
+                objectCount: 3
+            };
+            const panelState = RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT);
+            panelState.treeHistoryTargets = loadedRecipe.treeHistoryTargets;
+            const recipeDataMessage = { command: 'recipeData' as const, recipe: loadedRecipe.recipeViewModel, renderSequence: 2 };
+
+            const treeTargets = await RecipeCockpitService.collectCreateTargets(panelState, recipeDataMessage, ACCOUNT_TREE_KEY);
+            const contactTarget = treeTargets.find(createTarget => createTarget.objectApiName === 'Contact');
+
+            // NOT AN UNTICKED FIELD: THE READER NEVER UNTICKED IT, SO THE MODAL DOES NOT NAME IT AS ONE
+            expect(contactTarget).toEqual({ treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', recipeFieldApiNames: ['LastName'] });
+
+            const contactDescribe: ICreateObjectDescribe = {
+                objectApiName: 'Contact',
+                isCreateable: true,
+                fields: [
+                    { fieldApiName: 'AccountId', fieldType: 'reference', referenceTo: ['Account'], isNillable: true, isCreateable: true, isDefaultedOnCreate: false },
+                    { fieldApiName: 'LastName', fieldType: 'string', referenceTo: [], isNillable: false, isCreateable: true, isDefaultedOnCreate: false }
+                ]
+            } as ICreateObjectDescribe;
+            jest.spyOn(SalesforceOrgService, 'getCachedDescribe').mockImplementation((_orgUsername: string, objectApiName: string) => ( objectApiName === 'Contact' ? contactDescribe : undefined ) as any);
+
+            expect(RecipeCockpitService.listOutsidePickableLookups('qa@example.com', treeTargets, new Set(['Contact', 'OtherChildObject__c']))).toEqual([]);
+
+            // WITHOUT THE EXCLUSION THE SAME LOOKUP TO A PARENT THE TREE DOES NOT INSERT IS STILL ASKED ABOUT (#254)
+            accountTree.objectSelection = undefined;
+            const untouchedTargets = await RecipeCockpitService.collectCreateTargets(panelState, recipeDataMessage, ACCOUNT_TREE_KEY);
+            expect(RecipeCockpitService.listOutsidePickableLookups('qa@example.com', untouchedTargets, new Set(['Contact', 'OtherChildObject__c'])))
+                .toEqual([{ objectApiName: 'Contact', lookup: { fieldApiName: 'AccountId', parentObjectApiName: 'Account', isRequired: false } }]);
+
+        });
+
         it('names the unticked fields in the insert modal', () => {
 
             const recipe = loadRecipe();

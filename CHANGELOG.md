@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.126.1] - Recipe Cockpit: the tree insert no longer asks about a lookup to an excluded object
+
+Closes [#420](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/420).
+
+When an object was excluded from a tree card, **Generate fake data and insert** still opened the parent picker (#254) for an included object's lookup to it, and the confirmation listed that lookup. The generated data set was already right: the filtered copy drops those lookups.
+
+- **The insert's field list now matches what is generated.** `collectCreateTargets` leaves out each lookup the object cascade disabled (`objectSelection.disabledLookups`, drawn as `parent excluded`), as well as the fields you unticked. So the parent picker, the confirmation and the readiness check no longer see them.
+- **Unchanged.** A lookup to a parent that was never in the tree is still asked about. A REQUIRED lookup to an excluded parent is still filled with a random existing record of that parent from the org, as before. The confirmation's "Unticked, not sent" line still names only the fields you unticked.
+- **Tests.** `RecipeCockpitExcludeFields.test.ts` checks that a disabled lookup is left out of the insert's targets and parent picker, and that the same lookup is still asked about without the exclusion.
+
 ## [3.126.0] - Recipe Cockpit: switching recipe runs asks whether to reset or carry over the tree selections
 
 Closes [#399](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/399).
