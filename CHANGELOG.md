@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.130.0] - Recipe Cockpit: the Treecipe Updater loads a tree's existing records from the selected sandbox
+
+Closes [#416](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/416), slice B of [#414](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/414).
+
+The Treecipe Updater tab (#415) chose the fields to fill on records an org already holds. It can now read those records.
+
+- **Load records.** The tab's button reads every object of the tree from the sandbox or scratch org chosen in Target Org Management. With no org chosen, it asks for one in the command palette exactly as the tree insert does (#375): the same listing, the same checks, and the pick is put in the dropdown and remembered. An org that is not a sandbox or scratch org, or has not answered yet, is refused with the reason.
+- **Queries built from the tree, not the SOQL templates.** A new `RecipeCockpitTreeUpdaterQuery` (no vscode) builds one `SELECT Id, <lookups to parents in the tree>, <chosen fields> FROM <Object>` per object, each field once. Every name is held to `SalesforceApiName`. An optional WHERE per object, typed under the object, is added and the whole query is held to the Query tab's one-SELECT check (`checkQueryText`), so a `;` or an unclosed quote sends nothing.
+- **Checked on the host.** The panel posts only the card, its model and, per object, the field names and the WHERE. The router matches the card against the drawn model and every object and field against the card, and refuses the whole load otherwise. A load is refused while an insert, a scratch org run, a permission set assignment or a metadata deploy holds the org selection.
+- **Bounded, and held on the host.** Every page is read up to one 50,000-record cap and one 1,000,000-value budget shared by the whole load, so a tree of many objects reads no more than one Query tab run. Once either is spent, the objects after it send no query and say they were not read and why. A WHERE holding `FOR VIEW`, `FOR REFERENCE` or `FOR UPDATE` (outside a quoted value) is refused, since those stamp or lock records, and the WHERE box holds at most 4,000 characters. The load can be cancelled between pages and objects. The records stay on the host for the slices that update them. The panel is sent per object the record count, what the org matched, and the first 10 rows as text, or why the org would not read that object (one object's error does not stop the others).
+- **One load per window.** Its state is stored and replayed on a reveal, and the last records are replayed while their model is on screen and let go with a new one or as the next load starts, so a cancelled or failed load never leaves the previous org's records on screen. While the load asks for its org, nothing else can change the org selection, as during an insert. A run or org that changed during the load keeps nothing. How it went is one notification, and a connection that could not be opened is a fixed warning that quotes no error.
+- **The insert's org prompt is now shared.** `promptAndSelectSandboxDataOrg` is the middle of the insert's #375 prompt, unchanged in what it does or says, so the insert and the load ask the same way.
+- **Unchanged.** Nothing is written to any org. The WHERE text is kept in the panel only and never saved in the place.
+- **Tests.** `RecipeCockpitTreeUpdaterQuery.test.ts` covers the query, the request checks and the tree listing. `RecipeCockpitUpdaterLoad.test.ts` covers the router guards, the load against a faked connection (queries sent, counts and previews posted, one object's failure, a refused WHERE, a failed connection, a cancel, the prompted org, replay) and the panel.
+
 ## [3.129.0] - Recipe Cockpit: a Treecipe Updater tab that draws the tree and lets you choose the fields to fill
 
 Closes [#415](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/415), the first slice of [#414](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/414).

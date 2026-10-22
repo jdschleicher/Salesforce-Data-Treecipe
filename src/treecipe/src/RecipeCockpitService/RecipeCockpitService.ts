@@ -94,6 +94,7 @@ import {
     RecipeCockpitQuery,
     RecipeCockpitQueryExportFormat
 } from './RecipeCockpitQuery';
+import { IRecipeCockpitUpdaterObjectQuery, IRecipeCockpitUpdaterObjectRequest, IRecipeCockpitUpdaterTreeObject, RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH, RecipeCockpitTreeUpdaterQuery } from './RecipeCockpitTreeUpdaterQuery';
 import { ISOQLTreeQuery, SOQL_QUERY_KIND_LABELS, SOQLQueryKind, SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 
@@ -539,7 +540,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against any connected org you pick in the command palette (a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.',
-            'The Treecipe Updater tab, after Query, draws the tree\'s objects and fields as the Treecipe tab does. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Loading and updating those records are still to come, so choosing a field reads and writes nothing yet.'
+            'The Treecipe Updater tab, after Query, draws the tree\'s objects and fields as the Treecipe tab does. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the tree\'s existing records, with the fields you ticked and an optional WHERE per object, from the sandbox or scratch org chosen in Target Org Management (with none chosen, it asks), and shows how many each object has and the first rows. It only reads; updating them is still to come.'
         ]
     },
     {
@@ -1100,6 +1101,8 @@ export interface IRecipeCockpitPanelMessage {
     queryKey?: unknown;
     queryText?: unknown;
     exportFormat?: unknown;
+    // THE TREECIPE UPDATER'S LOAD (#416): PER OBJECT, THE FIELDS CHOSEN AND THE READER'S WHERE
+    objects?: unknown;
     // A ROW OF THE TODO'S SUB-TAB'S REMOVED LIST (#391)
     removalKey?: unknown;
     filePath?: unknown;
@@ -1572,6 +1575,43 @@ export interface IRecipeCockpitTreeQueryResultMessage {
 }
 
 /*
+    The Treecipe Updater's load (#416): one per window; while isRunning every Load records button is
+    disabled, and treeKey names the card clicked. How it went is a VS Code notification. Stored and
+    replayed, like a query run's.
+*/
+export interface IRecipeCockpitUpdaterLoadStateMessage {
+    command: 'updaterLoadState';
+    isRunning: boolean;
+    treeKey: string;
+}
+
+// ONE OBJECT'S RECORDS AS THE PANEL IS SENT THEM: COUNTS AND A PREVIEW AS TEXT, OR WHY THEY COULD NOT BE READ
+export interface IRecipeCockpitUpdaterObjectRecordsViewModel {
+    objectApiName: string;
+    totalSize: number;
+    recordCount: number;
+    isTruncated: boolean;
+    columns: string[];
+    rows: string[][];
+    hiddenColumnCount: number;
+    failureMessage?: string;
+    // NOT QUERIED: THE LOAD HAD SPENT ITS RECORD CAP OR VALUE BUDGET ON THE OBJECTS BEFORE IT
+    skippedReason?: string;
+}
+
+/*
+    The records a load read (#416), as counts and previews only: the records themselves stay on the
+    host for the slices that update them. Drawn only on the model it was loaded on.
+*/
+export interface IRecipeCockpitUpdaterRecordsMessage {
+    command: 'updaterRecords';
+    renderSequence: number;
+    treeKey: string;
+    orgLabel: string;
+    objects: IRecipeCockpitUpdaterObjectRecordsViewModel[];
+}
+
+/*
     "Open in browser" (#279): the panel disabled the button on the click, and this says the open has
     finished -- whether it opened, refused or failed is a notification's, since the URL it opened
     carries a session id and nothing about it is ever posted.
@@ -1821,7 +1861,7 @@ export const RECIPE_COCKPIT_QUERY_TAB_LABEL = 'Query';
     writes nothing, and the box of a field the Updater cannot change is disabled with the reason.
 */
 export const RECIPE_COCKPIT_UPDATER_TAB_LABEL = 'Treecipe Updater';
-export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds. Loading those records and updating them are still to come: choosing a field here reads and writes nothing.';
+export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads this tree\'s records, with those fields, from the sandbox or scratch org chosen in Target Org Management. Updating them is still to come: nothing is written to the org.';
 export const RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER = 'Search objects and fields';
 export const RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN = 'No fields chosen';
 export const RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON = 'read from the recipe file, so its type is not known';
@@ -1830,6 +1870,15 @@ export const RECIPE_COCKPIT_UPDATER_LOOKUP_REASON = 'a lookup points to another 
 export const RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON = 'Salesforce sets this field\'s value';
 // AN AUTO NUMBER OR A ROLL-UP SUMMARY IS COMPUTED BY THE ORG, SO AN UPDATE OF IT FAILS; A FORMULA IS TOO, BUT THE WRAPPER DOES NOT RECORD ONE
 export const RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES = ['AutoNumber', 'Summary'];
+// THE UPDATER'S LOAD (#416): THE TREE'S EXISTING RECORDS, READ FROM THE SANDBOX TARGET ORG MANAGEMENT HAS SELECTED
+export const RECIPE_COCKPIT_UPDATER_LOAD_LABEL = 'Load records';
+export const RECIPE_COCKPIT_UPDATER_LOADING_LABEL = 'Loading…';
+export const RECIPE_COCKPIT_UPDATER_WHERE_PLACEHOLDER = 'WHERE (optional), e.g. CreatedDate = LAST_N_DAYS:30';
+export const RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER = 'Select the sandbox or scratch org to load this tree\'s records from';
+// HOW MANY ROWS OF EACH OBJECT'S RECORDS THE PANEL IS SENT; THE REST STAY ON THE HOST
+export const RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT = 10;
+export const RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON = `Not read: the load reached its limit of ${RECIPE_COCKPIT_QUERY_RECORD_CAP} records or ${RECIPE_COCKPIT_QUERY_VALUE_BUDGET} values on the objects before this one. Add a WHERE to those to read this one.`;
+export const RECIPE_COCKPIT_UPDATER_BUSY_REFUSAL = 'Records were not loaded: another run is changing the org selection. Try again when it ends.';
 
 export const RECIPE_COCKPIT_QUERY_INTRO = 'The SOQL Generate Treecipe wrote for this tree. Edit a query, run it against any connected org you choose, then export what it returned as JSON or CSV. A query only reads.';
 
@@ -1871,6 +1920,8 @@ export const RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT: Record<ScratchOrgSetupPhase 
 };
 
 export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
+                                        | IRecipeCockpitUpdaterLoadStateMessage
+                                        | IRecipeCockpitUpdaterRecordsMessage
                                         | IRecipeCockpitRecipeDataMessage
                                         | IRecipeCockpitLoadFailedMessage
                                         | IRecipeCockpitRunSwitchCancelledMessage
@@ -2111,6 +2162,10 @@ export type RecipeCockpitPanelAction =
     | { kind: 'saveTreeQueryEdit'; treeKey: string; queryKey: string; queryText: string }
     | { kind: 'runTreeQuery'; treeKey: string; queryKey: string; queryText: string }
     | { kind: 'postTreeQueryState'; hostMessage: IRecipeCockpitTreeQueryStateMessage }
+    // THE UPDATER'S LOAD (#416): FROM THE SELECTED SANDBOX, OR, WITH NONE SELECTED, FROM ONE ASKED FOR AS THE INSERT ASKS
+    | { kind: 'loadUpdaterRecords'; treeKey: string; renderSequence: number; requests: IRecipeCockpitUpdaterObjectRequest[]; isOrgPrompted: boolean }
+    // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
+    | { kind: 'refuseUpdaterLoad'; refusalText?: string; hostMessage: IRecipeCockpitUpdaterLoadStateMessage }
     | { kind: 'exportTreeQueryResult'; treeKey: string; queryKey: string; exportFormat: RecipeCockpitQueryExportFormat }
     // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refuseMetadataRetrieve'; refusalText?: string; hostMessage: IRecipeCockpitMetadataRetrieveStateMessage }
@@ -2195,6 +2250,18 @@ export interface IRecipeCockpitPanelState {
     treeQueryStateMessage?: IRecipeCockpitTreeQueryStateMessage;
     // THE LAST PREVIEW POSTED (#367), REPLAYED WHILE ITS MODEL IS THE ONE ON SCREEN
     treeQueryResultMessage?: IRecipeCockpitTreeQueryResultMessage;
+    // THE TREECIPE UPDATER'S LOAD (#416): ONE PER WINDOW, STORED AND REPLAYED LIKE A QUERY RUN'S
+    updaterLoadStateMessage?: IRecipeCockpitUpdaterLoadStateMessage;
+    /*
+        Set while a load asks for an org and checks the pick (#416). It holds the window as the
+        insert's own state does while it asks (#375): every router the insert's state refuses --
+        the org listing, the dropdown, ⟳, + New scratch org, the insert, the assignment, the deploys
+        and a record type regenerate -- refuses while it is set, so no run changes the selection
+        under the pick.
+    */
+    isUpdaterOrgPromptOpen?: boolean;
+    // THE LAST RECORDS IT POSTED, REPLAYED WHILE ITS MODEL IS THE ONE ON SCREEN
+    updaterRecordsMessage?: IRecipeCockpitUpdaterRecordsMessage;
     // HOST-ONLY, REPLACED WITH THE MODEL: THE WRAPPER THE QUERY TAB'S QUERIES ARE READ FROM (#367)
     objectsWrapperFilePath?: string;
     // THE PLACE workspaceState KEPT FOR THIS MODEL (#230), REPLAYED UNTIL THE MODEL'S "rendered" SAYS IT WAS DRAWN
@@ -5075,6 +5142,7 @@ export class RecipeCockpitService {
         this.adoptMetadataRetrieveRunState(this.recipeCockpitPanelState);
         this.adoptMetadataDeployRunState(this.recipeCockpitPanelState);
         this.adoptTreeQueryRunState(this.recipeCockpitPanelState);
+        this.adoptUpdaterLoadRunState(this.recipeCockpitPanelState);
         this.recipeCockpitPanelState.isOrgOpenInFlight = this.isOrgOpenInFlightForWindow;
 
         if ( previousPanelState ) {
@@ -5090,6 +5158,8 @@ export class RecipeCockpitService {
             this.recipeCockpitPanelState.metadataDeployStateMessage = previousPanelState.metadataDeployStateMessage;
             // AND A QUERY RUN'S (#367)
             this.recipeCockpitPanelState.treeQueryStateMessage = previousPanelState.treeQueryStateMessage;
+            // AND AN UPDATER LOAD'S (#416)
+            this.recipeCockpitPanelState.updaterLoadStateMessage = previousPanelState.updaterLoadStateMessage;
         }
 
         if ( !existingCockpitPanel ) {
@@ -5108,6 +5178,7 @@ export class RecipeCockpitService {
                 this.recipeCockpitPanel = undefined;
                 this.recipeCockpitPanelState = this.buildInitialPanelState('');
                 this.clearHeldTreeQueryResult();
+                this.clearHeldUpdaterRecords();
             });
 
         }
@@ -5403,6 +5474,9 @@ export class RecipeCockpitService {
         panelState.treeQueryResultMessage = undefined;
         // A RESULT IS EXPORTED ONLY FROM THE MODEL IT WAS RUN ON, SO A NEW ONE LETS IT GO
         this.clearHeldTreeQueryResult();
+        // SO ARE AN UPDATER LOAD'S RECORDS (#416)
+        panelState.updaterRecordsMessage = undefined;
+        this.clearHeldUpdaterRecords();
         panelState.loadFailedMessage = undefined;
         panelState.loadPhaseMessage = '';
         panelState.reportedFailureDescriptions = new Set();
@@ -5908,6 +5982,19 @@ export class RecipeCockpitService {
 
             case 'postTreeQueryState':
 
+                this.postToPanel(cockpitPanel, panelAction.hostMessage);
+                return;
+
+            case 'loadUpdaterRecords':
+
+                await this.loadUpdaterRecordsFromPanel(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'refuseUpdaterLoad':
+
+                if ( panelAction.refusalText ) {
+                    VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(panelAction.refusalText));
+                }
                 this.postToPanel(cockpitPanel, panelAction.hostMessage);
                 return;
 
@@ -7978,6 +8065,292 @@ export class RecipeCockpitService {
 
     }
 
+    private static isUpdaterLoadInFlight = false;
+
+    private static updaterLoadRunStateMessage: IRecipeCockpitUpdaterLoadStateMessage | undefined;
+
+    /*
+        The last load's records (#416), held for the slices of #414 that update them and posted only
+        as counts and previews. One load is kept, so its records are let go before the next is read.
+    */
+    private static heldUpdaterRecords: {
+        // THE WORKSPACE, MODEL, TREE FOLDER AND ORG USERNAME IT WAS LOADED FOR, AS ONE KEY
+        resultKey: string;
+        recordsByObjectApiName: Map<string, Record<string, unknown>[]>;
+    } | undefined;
+
+    static clearHeldUpdaterRecords() {
+        this.heldUpdaterRecords = undefined;
+    }
+
+    static readHeldUpdaterRecordCount(): number {
+        let recordCount = 0;
+        this.heldUpdaterRecords?.recordsByObjectApiName.forEach(records => { recordCount += records.length; });
+        return recordCount;
+    }
+
+    private static setUpdaterLoadState(loadStateMessage: IRecipeCockpitUpdaterLoadStateMessage) {
+
+        this.updaterLoadRunStateMessage = loadStateMessage.isRunning ? loadStateMessage : undefined;
+        this.recipeCockpitPanelState.updaterLoadStateMessage = loadStateMessage;
+
+        if ( this.recipeCockpitPanel ) {
+            this.postToPanel(this.recipeCockpitPanel, loadStateMessage);
+        }
+
+    }
+
+    private static adoptUpdaterLoadRunState(panelState: IRecipeCockpitPanelState) {
+
+        if ( this.isUpdaterLoadInFlight && this.updaterLoadRunStateMessage ) {
+            panelState.updaterLoadStateMessage = this.updaterLoadRunStateMessage;
+        }
+
+    }
+
+    // A CARD'S OBJECTS AS THE UPDATER READS THEM: THE FIELDS THE MODEL LISTS FOR EACH, ITS FIRST ENTRY WINNING
+    static listUpdaterTreeObjects(recipe: IRecipeCockpitRecipeViewModel, tree: IRecipeCockpitTreeViewModel): IRecipeCockpitUpdaterTreeObject[] {
+
+        const fieldApiNamesByObjectApiName = new Map<string, string[]>();
+        recipe.objects.forEach(object => {
+            if ( !fieldApiNamesByObjectApiName.has(object.objectApiName) ) {
+                fieldApiNamesByObjectApiName.set(object.objectApiName, object.fields.map(field => field.fieldApiName));
+            }
+        });
+
+        return RecipeCockpitTreeUpdaterQuery.listTreeObjects(tree.objects, fieldApiNamesByObjectApiName);
+
+    }
+
+    /*
+        "Load records" (#416): one per window. The org is the Target Org Management selection, only
+        once it answered it is a sandbox; with none, it is asked for as the insert asks (#375). One
+        SELECT per tree object, built from the tree, every page read up to the Query tab's record cap
+        and a value budget the whole load shares, cancellable between pages and objects. The records
+        stay on the host; counts and a preview are posted, and how it went is ONE notification.
+    */
+    private static async loadUpdaterRecordsFromPanel(cockpitPanel: vscode.WebviewPanel,
+                                                     panelState: IRecipeCockpitPanelState,
+                                                     loadAction: Extract<RecipeCockpitPanelAction, { kind: 'loadUpdaterRecords' }>) {
+
+        const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: loadAction.treeKey };
+
+        if ( this.isUpdaterLoadInFlight ) {
+            this.postToPanel(cockpitPanel, this.updaterLoadRunStateMessage ?? notRunning);
+            return;
+        }
+
+        this.isUpdaterLoadInFlight = true;
+        // A LOAD REPLACES THE LAST ONE FROM ITS START, ON THE HOST AND (ON THE RUNNING STATE) IN THE PANEL, SO THE SCREEN NEVER SHOWS RECORDS THE HOST LET GO
+        this.clearHeldUpdaterRecords();
+        panelState.updaterRecordsMessage = undefined;
+        this.setUpdaterLoadState({ command: 'updaterLoadState', isRunning: true, treeKey: loadAction.treeKey });
+
+        try {
+            await this.performUpdaterLoad(cockpitPanel, panelState, loadAction);
+        } finally {
+            this.isUpdaterLoadInFlight = false;
+            this.setUpdaterLoadState(notRunning);
+        }
+
+    }
+
+    private static async performUpdaterLoad(cockpitPanel: vscode.WebviewPanel,
+                                            panelState: IRecipeCockpitPanelState,
+                                            loadAction: Extract<RecipeCockpitPanelAction, { kind: 'loadUpdaterRecords' }>) {
+
+        const { treeKey, renderSequence, requests } = loadAction;
+        const clickedRecipeDataMessage = panelState.recipeDataMessage;
+        const isClickStillCurrent = () => this.recipeCockpitPanel === cockpitPanel
+                                            && this.recipeCockpitPanelState === panelState
+                                            && panelState.recipeDataMessage === clickedRecipeDataMessage;
+        const tree = clickedRecipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+
+        if ( !clickedRecipeDataMessage || clickedRecipeDataMessage.renderSequence !== renderSequence || !tree?.folderName ) {
+            return;
+        }
+
+        if ( loadAction.isOrgPrompted ) {
+            let isSandboxSelected = false;
+            panelState.isUpdaterOrgPromptOpen = true;
+            try {
+                isSandboxSelected = await this.promptAndSelectSandboxDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
+                    RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER, 'Records were not loaded', 'the Treecipe Updater reads only from a sandbox or scratch org');
+            } finally {
+                panelState.isUpdaterOrgPromptOpen = false;
+            }
+            if ( !isSandboxSelected ) {
+                return;
+            }
+        }
+
+        const dataOrgSelection = panelState.dataOrgSelection;
+
+        // THE ROUTER CHECKED THE SELECTION AT THE CLICK; A PROMPT OR A NEW PICK SINCE IS CHECKED AGAIN HERE
+        if ( !isClickStillCurrent() || dataOrgSelection?.orgTypeDetail?.isSandbox !== true ) {
+            return;
+        }
+
+        const orgUsername = dataOrgSelection.orgDetail.username;
+        // NO PARENTHESES: A NOTIFICATION ESCAPES THEM
+        const orgLabel = dataOrgSelection.orgDetail.alias ? `${dataOrgSelection.orgDetail.alias} · ${orgUsername}` : orgUsername;
+        const treeTitle = tree.customName ?? tree.title;
+        const treeObjectsByApiName = new Map(this.listUpdaterTreeObjects(clickedRecipeDataMessage.recipe, tree).map(treeObject => [treeObject.objectApiName, treeObject] as const));
+        const objectQueries: IRecipeCockpitUpdaterObjectQuery[] = [];
+
+        for ( const request of requests ) {
+            const treeObject = treeObjectsByApiName.get(request.objectApiName);
+            const queryBuild = treeObject ? RecipeCockpitTreeUpdaterQuery.buildObjectQuery(treeObject, request) : { refusal: `${request.objectApiName} is no longer in this treecipe.` };
+            if ( 'refusal' in queryBuild ) {
+                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Records were not loaded: ${queryBuild.refusal}`));
+                return;
+            }
+            objectQueries.push(queryBuild.objectQuery);
+        }
+
+        const recordsByObjectApiName = new Map<string, Record<string, unknown>[]>();
+        const objectViewModels: IRecipeCockpitUpdaterObjectRecordsViewModel[] = [];
+        let isConnectionFailed = false;
+        let isCancelled = false;
+        let isTruncated = false;
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: loading the records of ${treeTitle} from ${orgLabel}`),
+            cancellable: true
+        }, async (progress, cancellationToken) => {
+
+            let connection: Connection;
+            try {
+                connection = await SalesforceOrgService.getConnection(orgUsername);
+            } catch {
+                isConnectionFailed = true;
+                return;
+            }
+
+            // ONE RECORD CAP AND ONE VALUE BUDGET FOR THE WHOLE LOAD, SO A TREE OF MANY OBJECTS IS HELD TO WHAT ONE QUERY RUN IS
+            let valueBudgetLeft = RECIPE_COCKPIT_QUERY_VALUE_BUDGET;
+            let recordCapLeft = RECIPE_COCKPIT_QUERY_RECORD_CAP;
+
+            for ( const objectQuery of objectQueries ) {
+
+                if ( cancellationToken.isCancellationRequested ) {
+                    isCancelled = true;
+                    return;
+                }
+
+                // A SPENT LIMIT SENDS NO MORE QUERIES: EACH WOULD DOWNLOAD A FIRST PAGE ONLY TO DROP IT
+                if ( valueBudgetLeft <= 0 || recordCapLeft <= 0 ) {
+                    isTruncated = true;
+                    objectViewModels.push({
+                        objectApiName: objectQuery.objectApiName,
+                        totalSize: 0,
+                        recordCount: 0,
+                        isTruncated: true,
+                        columns: [],
+                        rows: [],
+                        hiddenColumnCount: 0,
+                        skippedReason: RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON
+                    });
+                    continue;
+                }
+
+                progress.report({ message: objectQuery.objectApiName });
+
+                try {
+                    const queryResult = await RecipeCockpitQuery.fetchQueryRecords({
+                        query: async (soql: string) => await connection.query(soql),
+                        queryMore: async (nextRecordsUrl: string) => await connection.queryMore(nextRecordsUrl)
+                    }, objectQuery.query, recordCapLeft, () => cancellationToken.isCancellationRequested, valueBudgetLeft);
+
+                    if ( queryResult.isCancelled ) {
+                        isCancelled = true;
+                        return;
+                    }
+
+                    valueBudgetLeft -= RecipeCockpitQuery.countValues(queryResult.records);
+                    recordCapLeft -= queryResult.records.length;
+                    isTruncated = isTruncated || queryResult.isTruncated;
+                    recordsByObjectApiName.set(objectQuery.objectApiName, queryResult.records);
+
+                    const preview = RecipeCockpitQuery.buildPreview(queryResult.records, RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT);
+                    objectViewModels.push({
+                        objectApiName: objectQuery.objectApiName,
+                        totalSize: queryResult.totalSize,
+                        recordCount: queryResult.records.length,
+                        isTruncated: queryResult.isTruncated,
+                        columns: preview.columns,
+                        rows: preview.rows,
+                        hiddenColumnCount: preview.hiddenColumnCount
+                    });
+                } catch (queryError) {
+                    // ONE OBJECT THE ORG REFUSES (A FIELD IT LACKS, A WHERE IT CANNOT READ) IS THAT OBJECT'S, NOT THE LOAD'S
+                    objectViewModels.push({
+                        objectApiName: objectQuery.objectApiName,
+                        totalSize: 0,
+                        recordCount: 0,
+                        isTruncated: false,
+                        columns: [],
+                        rows: [],
+                        hiddenColumnCount: 0,
+                        failureMessage: this.describeThrown(queryError)
+                    });
+                }
+
+            }
+
+        });
+
+        // A CONNECTION THAT COULD NOT BE OPENED IS ONE FIXED WARNING: ITS ERROR CAN CARRY AN AUTH URL OR TOKEN TEXT
+        if ( isConnectionFailed ) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Records were not loaded: ${orgLabel} could not be connected to. ${RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE}`));
+            return;
+        }
+
+        if ( isCancelled ) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Loading the records of ${treeTitle} from ${orgLabel} was cancelled, so none were kept.`));
+            return;
+        }
+
+        // A MODEL OR A SELECTION CHANGED MEANWHILE: THE RECORDS ARE OF ANOTHER CARD OR ANOTHER ORG, SO NONE ARE KEPT OR DRAWN
+        if ( !isClickStillCurrent() || panelState.dataOrgSelection?.orgDetail.username !== orgUsername ) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The records of ${treeTitle} were not kept: the run or the org on screen changed while they were read. Load them again.`));
+            return;
+        }
+
+        this.heldUpdaterRecords = {
+            resultKey: JSON.stringify([panelState.workspaceRoot, renderSequence, tree.folderName, orgUsername]),
+            recordsByObjectApiName: recordsByObjectApiName
+        };
+
+        const recordsMessage: IRecipeCockpitUpdaterRecordsMessage = {
+            command: 'updaterRecords',
+            renderSequence: renderSequence,
+            treeKey: treeKey,
+            orgLabel: orgLabel,
+            objects: objectViewModels
+        };
+        panelState.updaterRecordsMessage = recordsMessage;
+        this.postToPanel(cockpitPanel, recordsMessage);
+
+        const recordCount = objectViewModels.reduce((total, objectViewModel) => total + objectViewModel.recordCount, 0);
+        const failedObjectApiNames = objectViewModels.filter(objectViewModel => objectViewModel.failureMessage !== undefined).map(objectViewModel => objectViewModel.objectApiName);
+        const loadedText = `Loaded ${recordCount} ${recordCount === 1 ? 'record' : 'records'} of ${treeTitle} from ${orgLabel}`;
+
+        if ( failedObjectApiNames.length > 0 ) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${loadedText}. ${failedObjectApiNames.join(', ')} could not be read; the Treecipe Updater tab says why.`));
+            return;
+        }
+
+        if ( isTruncated ) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${loadedText}, and stopped there: a load reads at most ${RECIPE_COCKPIT_QUERY_RECORD_CAP} records and ${RECIPE_COCKPIT_QUERY_VALUE_BUDGET} values in all. Add a WHERE or choose fewer fields to read them all.`));
+            return;
+        }
+
+        VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(`${loadedText}.`));
+
+    }
+
     /*
         "Export JSON" / "Export CSV" (#367): the result held for the same tree folder and query, and
         nothing else, written under treecipe/QueryResults/<folder>/. The panel posts only names; the
@@ -9720,63 +10093,21 @@ export class RecipeCockpitService {
         panelState.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: treeKey };
         this.postToPanel(cockpitPanel, panelState.insertStateMessage);
 
-        let dataOrgListing: IDataOrgListing | undefined;
-        let chosenOrgDetail: IDataOrgDetail | undefined;
-
         // THE INSERT'S STATE HOLDS THE WINDOW UNTIL THE PICK HAS BEEN CHECKED, SO NO RUN THAT CHANGES THE SELECTION STARTS MEANWHILE AND A REVEAL REPLAYS IT
         try {
 
-            try {
-                chosenOrgDetail = await VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(
-                    SalesforceOrgService.listDataOrgDetails(panelState.workspaceRoot).then(listing => {
-                        dataOrgListing = listing;
-                        return { orgDetails: listing.orgDetails, emptyListMessage: this.buildDataOrgNoOrgsMessage(listing.hiddenOrgReasonCounts) };
-                    }),
-                    RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER
-                );
-            } catch (listingError) {
-                // THE PANEL DISABLED THE BUTTON ON THE CLICK, SO A LISTING THAT FAILED STILL GIVES IT BACK
-                giveButtonBack();
-                if ( listingError instanceof OrgConnectionStatusUnavailableError ) {
-                    VSCodeWorkspaceService.showWarningMessage(`Nothing was generated or inserted: ${RecipeYamlScalar.escapeForNotification(listingError.message)}`);
-                    return;
-                }
-                throw listingError;
-            }
-
-            // A DISMISSED PICK, A NEW MODEL, OR AN ORG CHOSEN IN THE DROPDOWN MEANWHILE: NOTHING MORE IS DONE
-            const orgIndex = chosenOrgDetail && dataOrgListing ? dataOrgListing.orgDetails.findIndex(orgDetail => orgDetail.username === chosenOrgDetail.username) : -1;
-            if ( orgIndex < 0 || !isClickStillCurrent() || panelState.dataOrgSelection ) {
-                giveButtonBack();
-                return;
-            }
-
-            panelState.dataOrgDetails = dataOrgListing.orgDetails;
-            this.postToPanel(cockpitPanel, {
-                command: 'dataOrgList',
-                orgLabels: dataOrgListing.orgDetails.map(orgDetail => this.buildDataOrgListLabel(orgDetail)),
-                selectedOrgIndex: orgIndex,
-                noOrgsMessage: '',
-                hiddenOrgNote: this.buildDataOrgHiddenNote(dataOrgListing.hiddenOrgReasonCounts),
-                forgottenOrgNotice: '',
-                renderSequence: clickedRecipeDataMessage.renderSequence
-            });
+            let isSandboxSelected = false;
 
             try {
-                await this.selectDataOrg(cockpitPanel, panelState, orgIndex);
-            } catch (selectionError) {
+                isSandboxSelected = await this.promptAndSelectSandboxDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
+                    RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER, 'Nothing was generated or inserted', 'the Treecipe tab inserts only into a sandbox or scratch org');
+            } catch (promptError) {
+                // THE PANEL DISABLED THE BUTTON ON THE CLICK, SO A LISTING OR A CHECK THAT THREW STILL GIVES IT BACK
                 giveButtonBack();
-                throw selectionError;
+                throw promptError;
             }
 
-            const dataOrgSelection = panelState.dataOrgSelection;
-            if ( !isClickStillCurrent() || dataOrgSelection?.orgDetail.username !== chosenOrgDetail.username ) {
-                giveButtonBack();
-                return;
-            }
-
-            if ( dataOrgSelection.orgTypeDetail?.isSandbox !== true ) {
-                VSCodeWorkspaceService.showWarningMessage(`Nothing was generated or inserted: ${RecipeYamlScalar.escapeForNotification(this.buildDataOrgLabel(chosenOrgDetail))} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'could not be checked'}, and the Treecipe tab inserts only into a sandbox or scratch org.`);
+            if ( !isSandboxSelected ) {
                 giveButtonBack();
                 return;
             }
@@ -9793,6 +10124,75 @@ export class RecipeCockpitService {
         }
 
         await this.insertTreeIntoOrg(cockpitPanel, panelState, routedInsert);
+
+    }
+
+    /*
+        The org asked for in the command palette over the listing the Target Org Management dropdown
+        draws (sandbox, scratch and the CLI's default only), put in the dropdown and checked exactly
+        as a pick there is -- connection, Organization row, describes -- and remembered (#375). The
+        insert (#375) and the Treecipe Updater's load (#416) both ask through it. True only when the
+        pick is now the selection and answered it is a sandbox; a listing the CLI could not answer, a
+        dismissed pick, a new model, an org chosen in the dropdown meanwhile and an org that is not a
+        sandbox are false, the last two with a warning. Anything else thrown is the caller's.
+    */
+    private static async promptAndSelectSandboxDataOrg(cockpitPanel: vscode.WebviewPanel,
+                                                        panelState: IRecipeCockpitPanelState,
+                                                        clickedRecipeDataMessage: IRecipeCockpitRecipeDataMessage,
+                                                        isClickStillCurrent: () => boolean,
+                                                        placeholder: string,
+                                                        refusalPrefix: string,
+                                                        sandboxOnlyReason: string): Promise<boolean> {
+
+        let dataOrgListing: IDataOrgListing | undefined;
+        let chosenOrgDetail: IDataOrgDetail | undefined;
+
+        try {
+            chosenOrgDetail = await VSCodeWorkspaceService.promptForAuthenticatedOrgDetailOnceListed(
+                SalesforceOrgService.listDataOrgDetails(panelState.workspaceRoot).then(listing => {
+                    dataOrgListing = listing;
+                    return { orgDetails: listing.orgDetails, emptyListMessage: this.buildDataOrgNoOrgsMessage(listing.hiddenOrgReasonCounts) };
+                }),
+                placeholder
+            );
+        } catch (listingError) {
+            if ( listingError instanceof OrgConnectionStatusUnavailableError ) {
+                VSCodeWorkspaceService.showWarningMessage(`${refusalPrefix}: ${RecipeYamlScalar.escapeForNotification(listingError.message)}`);
+                return false;
+            }
+            throw listingError;
+        }
+
+        // A DISMISSED PICK, A NEW MODEL, OR AN ORG CHOSEN IN THE DROPDOWN MEANWHILE: NOTHING MORE IS DONE
+        const orgIndex = chosenOrgDetail && dataOrgListing ? dataOrgListing.orgDetails.findIndex(orgDetail => orgDetail.username === chosenOrgDetail.username) : -1;
+        if ( orgIndex < 0 || !isClickStillCurrent() || panelState.dataOrgSelection ) {
+            return false;
+        }
+
+        panelState.dataOrgDetails = dataOrgListing.orgDetails;
+        this.postToPanel(cockpitPanel, {
+            command: 'dataOrgList',
+            orgLabels: dataOrgListing.orgDetails.map(orgDetail => this.buildDataOrgListLabel(orgDetail)),
+            selectedOrgIndex: orgIndex,
+            noOrgsMessage: '',
+            hiddenOrgNote: this.buildDataOrgHiddenNote(dataOrgListing.hiddenOrgReasonCounts),
+            forgottenOrgNotice: '',
+            renderSequence: clickedRecipeDataMessage.renderSequence
+        });
+
+        await this.selectDataOrg(cockpitPanel, panelState, orgIndex);
+
+        const dataOrgSelection = panelState.dataOrgSelection;
+        if ( !isClickStillCurrent() || dataOrgSelection?.orgDetail.username !== chosenOrgDetail.username ) {
+            return false;
+        }
+
+        if ( dataOrgSelection.orgTypeDetail?.isSandbox !== true ) {
+            VSCodeWorkspaceService.showWarningMessage(`${refusalPrefix}: ${RecipeYamlScalar.escapeForNotification(this.buildDataOrgLabel(chosenOrgDetail))} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'could not be checked'}, and ${sandboxOnlyReason}.`);
+            return false;
+        }
+
+        return true;
 
     }
 
@@ -10492,7 +10892,7 @@ export class RecipeCockpitService {
 
                 // A RELOAD CLEARS THE ORG SELECTION, WHICH WOULD CANCEL AN INSERT THE READER CONFIRMED; THE PANEL DISABLED ITS BUTTONS ON THE CLICK, SO A REFUSAL GIVES THEM BACK
                 if ( panelState.isGenerateTreecipeInFlight
-                        || panelState.insertStateMessage
+                        || ( panelState.insertStateMessage || panelState.isUpdaterOrgPromptOpen )
                         || typeof treeKey !== 'string'
                         || !panelState.treeHistoryAllowLists.recordTypeTreeKeys.has(treeKey)
                         || !recordTypeSelection ) {
@@ -10619,7 +11019,7 @@ export class RecipeCockpitService {
                 // A RUN ENDS BY LISTING THE ORGS ITSELF; A SECOND LISTING MEANWHILE WOULD DISCARD ITS ANSWER AND FORGET ITS ORG
                 // AN INSERT IN FLIGHT HOLDS THE SELECTION IT CONFIRMED; ITS RELOAD ASKS AGAIN ONCE IT HAS ENDED
                 // A PERMISSION SET ASSIGNMENT HOLDS THE SELECTION IT ASSIGNS IN, AND CHECKS IT AGAIN WHEN IT ENDS
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || ( panelState.insertStateMessage || panelState.isUpdaterOrgPromptOpen ) || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
                     return undefined;
                 }
 
@@ -10633,7 +11033,7 @@ export class RecipeCockpitService {
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning
-                        || panelState.insertStateMessage
+                        || ( panelState.insertStateMessage || panelState.isUpdaterOrgPromptOpen )
                         || !Number.isInteger(orgIndex)
                         || orgIndex < 0
                         || orgIndex >= panelState.dataOrgDetails.length
@@ -10652,7 +11052,7 @@ export class RecipeCockpitService {
             */
             case 'refreshDataOrgs':
 
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || ( panelState.insertStateMessage || panelState.isUpdaterOrgPromptOpen ) || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
                     return undefined;
                 }
 
@@ -10671,7 +11071,7 @@ export class RecipeCockpitService {
                 }
 
                 // A METADATA DEPLOY (#346) DEPLOYS TO THE ORG SELECTED, WHICH THE RUN WOULD CHANGE; A RETRIEVE DOES NOT HOLD IT, SINCE THE RUN DEPLOYS NOTHING (#358)
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.insertStateMessage || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || ( panelState.insertStateMessage || panelState.isUpdaterOrgPromptOpen ) || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
                     return {
                         kind: 'postScratchOrgState',
                         hostMessage: panelState.scratchOrgStateMessage ?? { command: 'scratchOrgState', isRunning: false }
@@ -10701,6 +11101,7 @@ export class RecipeCockpitService {
                 const recipeFilePath = typeof treeKey === 'string' ? panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey) : undefined;
                 // A SCRATCH ORG RUN IS ABOUT TO CHANGE THE SELECTION, SO NOTHING IS INSERTED WHILE IT IS IN FLIGHT
                 const isTreeRoutable = !panelState.scratchOrgStateMessage?.isRunning
+                                        && !panelState.isUpdaterOrgPromptOpen
                                         && !panelState.permissionSetAssignStateMessage?.isRunning
                                         && !panelState.metadataDeployStateMessage?.isRunning
                                         && typeof treeKey === 'string'
@@ -11159,7 +11560,7 @@ export class RecipeCockpitService {
                         || !panelState.recipeDataMessage
                         || !panelState.assignableTreeKeys.has(treeKey)
                         || panelState.scratchOrgStateMessage?.isRunning
-                        || panelState.insertStateMessage ) {
+                        || ( panelState.insertStateMessage || panelState.isUpdaterOrgPromptOpen ) ) {
                     return refuse();
                 }
 
@@ -11292,7 +11693,7 @@ export class RecipeCockpitService {
                     return refuse();
                 }
 
-                if ( panelState.insertStateMessage
+                if ( ( panelState.insertStateMessage || panelState.isUpdaterOrgPromptOpen )
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataRetrieveStateMessage?.isRunning ) {
@@ -11418,6 +11819,64 @@ export class RecipeCockpitService {
                 }
 
                 return { kind: 'runTreeQuery', treeKey: treeKey, queryKey: queryKey, queryText: queryText };
+
+            }
+
+            case 'loadUpdaterRecords': {
+
+                const { treeKey, renderSequence, objects } = panelMessage;
+                const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '' };
+
+                // A RELOADED DOCUMENT MAY NOT KNOW A LOAD IS RUNNING: IT IS TOLD, AND THE LOAD'S OWN END GIVES THE BUTTONS BACK
+                if ( panelState.updaterLoadStateMessage?.isRunning ) {
+                    return { kind: 'refuseUpdaterLoad', hostMessage: panelState.updaterLoadStateMessage };
+                }
+
+                const recipeDataMessage = panelState.recipeDataMessage;
+                const tree = typeof treeKey === 'string' ? recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey) : undefined;
+
+                if ( typeof treeKey !== 'string'
+                        || !recipeDataMessage
+                        || !tree
+                        || renderSequence !== recipeDataMessage.renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+                    return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
+                }
+
+                // AN INSERT OR A RUN THAT IS ABOUT TO CHANGE THE SELECTION HOLDS THE ORG THE LOAD WOULD READ FROM
+                if ( panelState.insertStateMessage
+                        || panelState.scratchOrgStateMessage?.isRunning
+                        || panelState.permissionSetAssignStateMessage?.isRunning
+                        || panelState.metadataDeployStateMessage?.isRunning ) {
+                    return { kind: 'refuseUpdaterLoad', refusalText: RECIPE_COCKPIT_UPDATER_BUSY_REFUSAL, hostMessage: notRunning };
+                }
+
+                const requestRead = RecipeCockpitTreeUpdaterQuery.readRequest(objects, this.listUpdaterTreeObjects(recipeDataMessage.recipe, tree));
+
+                if ( 'refusal' in requestRead ) {
+                    return { kind: 'refuseUpdaterLoad', refusalText: `Records were not loaded: ${requestRead.refusal}`, hostMessage: notRunning };
+                }
+
+                const dataOrgSelection = panelState.dataOrgSelection;
+
+                if ( dataOrgSelection?.orgTypeDetail?.isSandbox === true ) {
+                    return { kind: 'loadUpdaterRecords', treeKey: treeKey, renderSequence: renderSequence, requests: requestRead.requests, isOrgPrompted: false };
+                }
+
+                if ( dataOrgSelection ) {
+                    return {
+                        kind: 'refuseUpdaterLoad',
+                        refusalText: `Records were not loaded: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Updater reads only from a sandbox or scratch org.`,
+                        hostMessage: notRunning
+                    };
+                }
+
+                // NO ORG CHOSEN YET: ASKED FOR AS THE INSERT ASKS (#375), OVER THE OBJECTS THE CONFIRMED-DRAWN MODEL CHECKS
+                if ( panelState.dataOrgObjectApiNames.size > 0 ) {
+                    return { kind: 'loadUpdaterRecords', treeKey: treeKey, renderSequence: renderSequence, requests: requestRead.requests, isOrgPrompted: true };
+                }
+
+                return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
 
             }
 
@@ -11584,6 +12043,14 @@ export class RecipeCockpitService {
 
         if ( panelState.treeQueryResultMessage && panelState.treeQueryResultMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
             replayMessages.push(panelState.treeQueryResultMessage);
+        }
+
+        if ( panelState.updaterLoadStateMessage ) {
+            replayMessages.push(panelState.updaterLoadStateMessage);
+        }
+
+        if ( panelState.updaterRecordsMessage && panelState.updaterRecordsMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
+            replayMessages.push(panelState.updaterRecordsMessage);
         }
 
         if ( panelState.permissionSetAssignStateMessage ) {
@@ -13726,6 +14193,19 @@ ${this.buildPaletteCustomProperties()}
     .updaterField { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
     .updaterFieldHeader .fieldType { font-size: 0.85em; padding: 0 0.4rem; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); border-radius: 0.6rem; }
     .updaterFieldNote { font-size: 0.85em; }
+    .updaterLoadRow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0 0.6rem 0.5rem; }
+    .updaterWhere, .updaterRecords { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
+    .updaterWhereInput {
+        box-sizing: border-box;
+        width: 100%;
+        padding: 0.2rem 0.4rem;
+        font-family: var(--vscode-editor-font-family);
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+    }
+    .updaterWhereInput:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
     .treeQuery { margin: 0.25rem 0.6rem 0.5rem; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
     .treeQueryTitle { font-weight: 600; }
     .treeQueryControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
@@ -13928,6 +14408,10 @@ ${this.buildPaletteCustomProperties()}
     const UPDATER_LOOKUP_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_LOOKUP_REASON)};
     const UPDATER_SYSTEM_VALUE_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON)};
     const UPDATER_SYSTEM_VALUE_FIELD_TYPES = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES)};
+    const UPDATER_LOAD_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_LOAD_LABEL)};
+    const UPDATER_LOADING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_LOADING_LABEL)};
+    const UPDATER_WHERE_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_WHERE_PLACEHOLDER)};
+    const UPDATER_WHERE_MAX_LENGTH = ${RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH};
     const DATA_ORG_CONNECTION_CHECK_TEXT = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_TEXT)};
     const DATA_ORG_CONNECTION_CHECK_INSERT_REASON = ${JSON.stringify(RECIPE_COCKPIT_ORG_CONNECTION_CHECK_INSERT_REASON)};
     const DATA_ORG_LOADING_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_ORG_LOADING_PLACEHOLDER)};
@@ -14064,6 +14548,8 @@ ${this.buildPaletteCustomProperties()}
     let metadataRetrieveRunningKey = null;
     // THE QUERY TAB'S RUN (#367): SET ON THE CLICK, CLEARED BY THE HOST'S treeQueryState; ONE PER WINDOW
     let isTreeQueryRunning = false;
+    // THE TREECIPE UPDATER'S LOAD (#416): SET ON THE CLICK, CLEARED BY THE HOST'S updaterLoadState; THE KEY NAMES THE CARD CLICKED
+    let updaterLoadRunningTreeKey = null;
     // THE TROUBLESHOOTING TAB'S DEPLOYS (#346): SET ON THE CLICK, CLEARED BY THE HOST'S metadataDeployState; THE KEY NAMES THE BUTTON CLICKED
     let isMetadataDeployRunning = false;
     let metadataDeployRunningKey = null;
@@ -18368,6 +18854,9 @@ ${this.buildPaletteCustomProperties()}
             updaterChosenFieldKeys: Object.create(null),
             updaterExpandedObjectKeys: Object.create(null),
             updaterObjectStates: null,
+            // THE READER'S WHERE PER OBJECT (#416), BY OBJECT NAME; PANEL-ONLY, NEVER SAVED IN THE PLACE
+            updaterWhereTexts: Object.create(null),
+            updaterRecordsMessage: null,
             isDatasetFavoritesOnly: false,
             datasetFavoritesToggleElement: null,
             isRecordTypeFieldsOnly: false,
@@ -19450,29 +19939,37 @@ ${this.buildPaletteCustomProperties()}
         queryState.resultElement.appendChild(createElement('div', 'treeQueryResultSummary muted', summaryText));
 
         if (columns.length > 0) {
-            const tableWrapElement = createElement('div', 'treeQueryTableWrap');
-            const tableElement = createElement('table', 'treeQueryTable');
-            const headElement = createElement('thead', '');
-            const headRowElement = createElement('tr', '');
-            columns.forEach(function (column) { headRowElement.appendChild(createElement('th', '', column)); });
-            headElement.appendChild(headRowElement);
-            tableElement.appendChild(headElement);
-            const bodyElement = createElement('tbody', '');
-            rows.forEach(function (row) {
-                const rowElement = createElement('tr', 'treeQueryRow');
-                columns.forEach(function (_column, columnIndex) {
-                    rowElement.appendChild(createElement('td', '', Array.isArray(row) && row[columnIndex] !== undefined ? String(row[columnIndex]) : ''));
-                });
-                bodyElement.appendChild(rowElement);
-            });
-            tableElement.appendChild(bodyElement);
-            tableWrapElement.appendChild(tableElement);
-            queryState.resultElement.appendChild(tableWrapElement);
+            queryState.resultElement.appendChild(buildRecordTable(columns, rows));
         }
 
         queryState.hasResult = true;
         queryState.resultElement.classList.remove('hidden');
         drawTreeQueryButtons();
+
+    }
+
+    // A PREVIEW OF RECORDS AS TEXT: THE QUERY TAB'S (#367) AND THE TREECIPE UPDATER'S (#416)
+    function buildRecordTable(columns, rows) {
+
+        const tableWrapElement = createElement('div', 'treeQueryTableWrap');
+        const tableElement = createElement('table', 'treeQueryTable');
+        const headElement = createElement('thead', '');
+        const headRowElement = createElement('tr', '');
+        columns.forEach(function (column) { headRowElement.appendChild(createElement('th', '', column)); });
+        headElement.appendChild(headRowElement);
+        tableElement.appendChild(headElement);
+        const bodyElement = createElement('tbody', '');
+        rows.forEach(function (row) {
+            const rowElement = createElement('tr', 'treeQueryRow');
+            columns.forEach(function (_column, columnIndex) {
+                rowElement.appendChild(createElement('td', '', Array.isArray(row) && row[columnIndex] !== undefined ? String(row[columnIndex]) : ''));
+            });
+            bodyElement.appendChild(rowElement);
+        });
+        tableElement.appendChild(bodyElement);
+        tableWrapElement.appendChild(tableElement);
+
+        return tableWrapElement;
 
     }
 
@@ -19530,6 +20027,14 @@ ${this.buildPaletteCustomProperties()}
         treeState.updaterSummaryElement = createElement('div', 'updaterSummary');
         panelElement.appendChild(treeState.updaterSummaryElement);
 
+        const loadRowElement = createElement('div', 'updaterLoadRow');
+        treeState.updaterLoadButtonElement = createButton('primary', 'updaterLoad', UPDATER_LOAD_LABEL);
+        treeState.updaterLoadButtonElement.addEventListener('click', function () { requestUpdaterRecords(treeState); });
+        treeState.updaterLoadNoteElement = createElement('span', 'updaterLoadNote muted');
+        loadRowElement.appendChild(treeState.updaterLoadButtonElement);
+        loadRowElement.appendChild(treeState.updaterLoadNoteElement);
+        panelElement.appendChild(loadRowElement);
+
         const drawnObjectApiNames = Object.create(null);
         treeState.updaterObjectStates = [];
 
@@ -19566,6 +20071,8 @@ ${this.buildPaletteCustomProperties()}
 
         drawUpdaterSummary(treeState);
         applyUpdaterFilter(treeState);
+        drawUpdaterLoadButtons();
+        if (treeState.updaterRecordsMessage) { applyUpdaterRecords(treeState, treeState.updaterRecordsMessage); }
 
     }
 
@@ -19589,6 +20096,9 @@ ${this.buildPaletteCustomProperties()}
             matchingFieldCount: object.fields.length,
             chosenFieldCount: 0,
             countText: '',
+            // WHAT THE LAST LOAD READ FOR THIS OBJECT (#416), AND ITS SECTION ONCE THE BODY IS BUILT
+            loadedRecords: null,
+            recordsElement: null,
             fieldStates: object.fields.map(function (field) {
                 return {
                     field: field,
@@ -19634,6 +20144,10 @@ ${this.buildPaletteCustomProperties()}
     function setUpdaterObjectExpanded(treeState, updaterObjectState, isExpanded, isAnimated) {
 
         if (isExpanded && !updaterObjectState.isBodyBuilt) {
+            updaterObjectState.bodyElement.appendChild(buildUpdaterWhereElement(treeState, updaterObjectState));
+            updaterObjectState.recordsElement = createElement('div', 'updaterRecords hidden');
+            updaterObjectState.bodyElement.appendChild(updaterObjectState.recordsElement);
+            drawUpdaterObjectRecords(updaterObjectState);
             updaterObjectState.fieldStates.forEach(function (fieldState) {
                 fieldState.rowElement = buildUpdaterFieldRow(treeState, updaterObjectState, fieldState);
                 setShown(fieldState.rowElement, fieldState.isMatch);
@@ -19722,8 +20236,149 @@ ${this.buildPaletteCustomProperties()}
     }
 
     function drawUpdaterObjectCount(updaterObjectState) {
+        const loadedRecords = updaterObjectState.loadedRecords;
         updaterObjectState.countElement.textContent = updaterObjectState.countText
-            + (updaterObjectState.chosenFieldCount > 0 ? ' · ' + updaterObjectState.chosenFieldCount + ' chosen' : '');
+            + (updaterObjectState.chosenFieldCount > 0 ? ' · ' + updaterObjectState.chosenFieldCount + ' chosen' : '')
+            + (!loadedRecords ? '' : loadedRecords.failureMessage || loadedRecords.skippedReason ? ' · not read' : ' · ' + pluralize(Number(loadedRecords.recordCount) || 0, 'record', 'records'));
+    }
+
+    // THE READER'S OWN WHERE FOR ONE OBJECT (#416): KEPT IN THE PANEL BY OBJECT NAME AND POSTED WITH THE LOAD, WHICH THE HOST CHECKS
+    function buildUpdaterWhereElement(treeState, updaterObjectState) {
+
+        const objectApiName = updaterObjectState.object.objectApiName;
+        const whereElement = createElement('div', 'updaterWhere');
+        const inputElement = createElement('input', 'updaterWhereInput');
+
+        inputElement.setAttribute('type', 'text');
+        inputElement.setAttribute('placeholder', UPDATER_WHERE_PLACEHOLDER);
+        inputElement.setAttribute('maxlength', String(UPDATER_WHERE_MAX_LENGTH));
+        inputElement.setAttribute('aria-label', 'WHERE for ' + objectApiName + ' records');
+        inputElement.value = hasOwnKey(treeState.updaterWhereTexts, objectApiName) ? treeState.updaterWhereTexts[objectApiName] : '';
+        inputElement.addEventListener('input', function () {
+            treeState.updaterWhereTexts[objectApiName] = String(inputElement.value || '');
+        });
+
+        whereElement.appendChild(inputElement);
+        updaterObjectState.whereInputElement = inputElement;
+
+        return whereElement;
+
+    }
+
+    // EVERY OBJECT OF THE CARD, ITS CHOSEN FIELDS IN ROW ORDER AND ITS WHERE; NAMES ONLY, AND THE HOST MATCHES THEM AGAINST THE CARD IT DREW
+    function requestUpdaterRecords(treeState) {
+
+        if (renderedSequence === null || updaterLoadRunningTreeKey !== null || !treeState.updaterObjectStates) { return; }
+
+        const objects = treeState.updaterObjectStates.map(function (updaterObjectState) {
+            const objectApiName = updaterObjectState.object.objectApiName;
+            return {
+                objectApiName: objectApiName,
+                fieldApiNames: updaterObjectState.fieldStates
+                    .filter(function (fieldState) { return hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey); })
+                    .map(function (fieldState) { return fieldState.field.fieldApiName; }),
+                whereClause: hasOwnKey(treeState.updaterWhereTexts, objectApiName) ? treeState.updaterWhereTexts[objectApiName] : ''
+            };
+        });
+
+        if (objects.length === 0) { return; }
+
+        updaterLoadRunningTreeKey = treeState.tree.treeKey;
+        drawUpdaterLoadButtons();
+        vscodeApi.postMessage({ command: 'loadUpdaterRecords', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, objects: objects });
+
+    }
+
+    function drawUpdaterLoadButtons() {
+
+        treeStates.forEach(function (treeState) {
+            if (!treeState.updaterLoadButtonElement) { return; }
+            const isThisCardLoading = updaterLoadRunningTreeKey === treeState.tree.treeKey;
+            treeState.updaterLoadButtonElement.disabled = updaterLoadRunningTreeKey !== null || treeState.updaterObjectStates.length === 0;
+            treeState.updaterLoadButtonElement.textContent = isThisCardLoading ? UPDATER_LOADING_LABEL : UPDATER_LOAD_LABEL;
+            treeState.updaterLoadButtonElement.setAttribute('title', 'Read this tree’s records, with the fields you chose, from the sandbox or scratch org chosen in Target Org Management. It only reads.');
+        });
+
+    }
+
+    // THE RECORDS ARE DRAWN ONLY ON THE MODEL THEY WERE LOADED ON, AND A TAB NOT YET BUILT DRAWS THEM WHEN IT IS
+    function renderUpdaterRecords(recordsMessage) {
+
+        if (renderedSequence === null || recordsMessage.renderSequence !== renderedSequence) { return; }
+
+        const treeState = findTreeState(recordsMessage.treeKey);
+        if (!treeState) { return; }
+
+        treeState.updaterRecordsMessage = recordsMessage;
+        if (treeState.updaterObjectStates) { applyUpdaterRecords(treeState, recordsMessage); }
+
+    }
+
+    function applyUpdaterRecords(treeState, recordsMessage) {
+
+        const loadedObjects = Array.isArray(recordsMessage.objects) ? recordsMessage.objects : [];
+        let recordCount = 0;
+
+        treeState.updaterObjectStates.forEach(function (updaterObjectState) {
+            const loadedRecords = loadedObjects.find(function (loadedObject) { return loadedObject && loadedObject.objectApiName === updaterObjectState.object.objectApiName; }) || null;
+            updaterObjectState.loadedRecords = loadedRecords;
+            if (loadedRecords && !loadedRecords.failureMessage && !loadedRecords.skippedReason) { recordCount += Number(loadedRecords.recordCount) || 0; }
+            drawUpdaterObjectCount(updaterObjectState);
+            drawUpdaterObjectRecords(updaterObjectState);
+        });
+
+        treeState.updaterLoadNoteElement.textContent = 'Loaded ' + pluralize(recordCount, 'record', 'records') + ' from ' + String(recordsMessage.orgLabel || 'the org');
+
+    }
+
+    function clearUpdaterRecords() {
+
+        treeStates.forEach(function (treeState) {
+            if (!treeState.updaterRecordsMessage) { return; }
+            treeState.updaterRecordsMessage = null;
+            if (!treeState.updaterObjectStates) { return; }
+            treeState.updaterObjectStates.forEach(function (updaterObjectState) {
+                updaterObjectState.loadedRecords = null;
+                drawUpdaterObjectCount(updaterObjectState);
+                drawUpdaterObjectRecords(updaterObjectState);
+            });
+            treeState.updaterLoadNoteElement.textContent = '';
+        });
+
+    }
+
+    function drawUpdaterObjectRecords(updaterObjectState) {
+
+        const recordsElement = updaterObjectState.recordsElement;
+        if (!recordsElement) { return; }
+
+        recordsElement.textContent = '';
+        const loadedRecords = updaterObjectState.loadedRecords;
+
+        if (!loadedRecords) {
+            recordsElement.classList.add('hidden');
+            return;
+        }
+
+        if (loadedRecords.failureMessage) {
+            recordsElement.appendChild(createElement('div', 'updaterRecordsFailure', 'Could not be read: ' + String(loadedRecords.failureMessage)));
+        } else if (loadedRecords.skippedReason) {
+            recordsElement.appendChild(createElement('div', 'updaterRecordsSkipped muted', String(loadedRecords.skippedReason)));
+        } else {
+            const columns = Array.isArray(loadedRecords.columns) ? loadedRecords.columns.map(String) : [];
+            const rows = Array.isArray(loadedRecords.rows) ? loadedRecords.rows : [];
+            const recordCount = Number(loadedRecords.recordCount) || 0;
+            const hiddenColumnCount = Number(loadedRecords.hiddenColumnCount) || 0;
+            let summaryText = pluralize(recordCount, 'record', 'records');
+            if (loadedRecords.isTruncated) { summaryText += ', the first of ' + String(loadedRecords.totalSize) + ' it matched'; }
+            if (rows.length < recordCount) { summaryText += '. Showing the first ' + rows.length; }
+            if (hiddenColumnCount > 0) { summaryText += (rows.length < recordCount ? ', ' : '. Showing ') + pluralize(columns.length, 'column', 'columns') + ', ' + hiddenColumnCount + ' more not shown'; }
+            recordsElement.appendChild(createElement('div', 'updaterRecordsSummary muted', summaryText));
+            if (columns.length > 0) { recordsElement.appendChild(buildRecordTable(columns, rows)); }
+        }
+
+        recordsElement.classList.remove('hidden');
+
     }
 
     function drawUpdaterSummary(treeState) {
@@ -21628,6 +22283,19 @@ ${this.buildPaletteCustomProperties()}
 
         if (hostMessage.command === 'treeQueryResult') {
             renderTreeQueryResult(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'updaterLoadState') {
+            updaterLoadRunningTreeKey = hostMessage.isRunning ? String(hostMessage.treeKey) : null;
+            // THE HOST LETS THE LAST LOAD GO WHEN THE NEXT STARTS, SO EVERY CARD STOPS SHOWING IT
+            if (hostMessage.isRunning) { clearUpdaterRecords(); }
+            drawUpdaterLoadButtons();
+            return;
+        }
+
+        if (hostMessage.command === 'updaterRecords') {
+            renderUpdaterRecords(hostMessage);
             return;
         }
 
