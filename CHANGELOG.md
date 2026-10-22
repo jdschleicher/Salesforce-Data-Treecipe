@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.127.0] - Recipe Cockpit: an "All fields" checkbox ticks or unticks every field of an object
+## [3.128.0] - Recipe Cockpit: an "All fields" checkbox ticks or unticks every field of an object
 
 Closes [#410](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/410).
 
@@ -13,6 +13,21 @@ Closes [#410](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/41
 - **Styled by its kind.** It is a `createButton('check', …)` box like every other checkbox, so it draws no new colour pair.
 - **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` name it under "Unticked fields", and the guide's pictures are re-taken.
 - **Tests.** `RecipeCockpitExcludeFields.test.ts` runs the real panel script and covers the box's three states, what each click posts (nickname included), a locked field left out of the count, the box hidden while every field is locked, redrawing in place, the disabled box on an excluded object, and no box on a card with no folder, a self-lookup's iteration or an object with indistinct occurrences. The #343 test now asserts that no All / None buttons are drawn and that the box sits above the first field row.
+
+## [3.127.0] - Recipe Cockpit: a friend row shows a holding-hands chip per parent, `<parent nickname>-<n>`
+
+Closes [#411](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/411).
+
+The Treecipe tab lists a card's objects flat, so nothing on a row said it was a friend nested under another object, whose friend it was, or which of a parent's friends it was.
+
+- **One chip per parent.** Every row nested under `friends:` in a faker-js recipe, a self-lookup iteration (#188) included, draws a holding-hands chip for each parent it belongs to: the occurrence it is nested under first, then each other row one of its fields points to by nickname (#380), in field order, each once. A chip reads `<parent nickname>-<n>`, where `n` is the row's place among that parent's friends (the rows naming it, in recipe line order), so a parent is numbered the same on every row and an excluded friend keeps its number. In the writer fixture, Case reads `Contact_NickName-1` and `Account_NickName-2`.
+- **A chip opens its parent.** Clicking a chip opens and scrolls to the parent's row and focuses its nickname, the same way the #380 back-link does. Nothing is posted to the host. A nesting parent no single row holds by nickname (no nickname, a name two rows share, or `__proto__`) is drawn as muted `<Parent object>-<n>` text with nothing to open.
+- **The glyph.** One SVG path (`RECIPE_COCKPIT_FRIEND_GLYPH_PATH`) built with `createElementNS`, `aria-hidden`, and stroked from the palette. Each chip's `aria-label` starts with the text it shows, then says it in words ("Account_NickName-2, friend 2 of Account_NickName: go to Account").
+- **Searched and listed.** The Treecipe tab's search and the Treecipes section search match a chip's text, and the object list under the Treecipes dropdown (#385) names each object's chips in parentheses (a self-lookup iteration's chip stays on its own row, since beside the object's one name it would read as the top occurrence's).
+- **Cost.** A parent's friends are numbered in one pass after the sort, and a card with no friend row (every snowfakery card) builds no nickname index for the chips at all.
+- **The model.** A nested first occurrence carries the optional `parentNickname` of the occurrence holding it, beside `countParentObjectApiName`, set only when that occurrence has one nickname. A snowfakery recipe, and any top-level object, draws no chip and posts the model it did.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the chips.
+- **Tests.** `RecipeCockpitFriendChips.test.ts` covers the model field, the chips and their numbering, the glyph and labels, a click, both searches, the dropdown list, a stray nickname, the fallback, a `__proto__` nickname and a flat snowfakery tree.
 
 ## [3.126.0] - Recipe Cockpit: switching recipe runs asks whether to reset or carry over the tree selections
 
