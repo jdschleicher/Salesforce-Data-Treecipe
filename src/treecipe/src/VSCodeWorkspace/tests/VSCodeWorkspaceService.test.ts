@@ -4,10 +4,8 @@ import {
     IAuthenticatedOrgListingForPicker,
     IParentPickerOptions,
     ORG_CONNECTION_CHECK_PLACEHOLDER,
-    PARENT_PICKER_BLANK_LABEL,
-    PARENT_PICKER_RANDOM_LABEL,
+    PARENT_PICKER_NO_NAME_LABEL,
     PARENT_PICKER_SEARCH_DELAY_MILLISECONDS,
-    PARENT_PICKER_SELECT_ALL_LABEL,
     RECIPE_COCKPIT_STATUS_BAR_TEXT,
     RECIPE_COCKPIT_STATUS_BAR_TOOLTIP,
     VSCodeWorkspaceService
@@ -2113,7 +2111,7 @@ describe('VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem (#251)', () 
 
 });
 
-describe('VSCodeWorkspaceService.promptForParentRecords (#254)', () => {
+describe('VSCodeWorkspaceService.promptForParentRecord (#421)', () => {
 
     const ACME_MATCHES = [
         { recordId: '001000000000011AAA', recordName: 'Acme East' },
@@ -2122,11 +2120,12 @@ describe('VSCodeWorkspaceService.promptForParentRecords (#254)', () => {
 
     const buildFakeParentQuickPick = () => {
 
-        const handlers: Record<string, Array<(eventValue?: any) => void>> = { accept: [], hide: [], value: [], selection: [] };
+        const handlers: Record<string, Array<(eventValue?: any) => void>> = { accept: [], hide: [], value: [] };
 
         const fakeQuickPick: any = {
             items: [] as any[],
             selectedItems: [] as any[],
+            activeItems: [] as any[],
             value: '',
             title: '',
             placeholder: '',
@@ -2137,19 +2136,11 @@ describe('VSCodeWorkspaceService.promptForParentRecords (#254)', () => {
             onDidAccept: jest.fn((acceptHandler: () => void) => handlers.accept.push(acceptHandler)),
             onDidHide: jest.fn((hideHandler: () => void) => handlers.hide.push(hideHandler)),
             onDidChangeValue: jest.fn((valueHandler: (changedValue: string) => void) => handlers.value.push(valueHandler)),
-            onDidChangeSelection: jest.fn((selectionHandler: (selectedItems: any[]) => void) => handlers.selection.push(selectionHandler)),
             type: (typedValue: string) => {
                 fakeQuickPick.value = typedValue;
                 handlers.value.forEach(valueHandler => valueHandler(typedValue));
             },
-            check: (...checkedItems: any[]) => {
-                fakeQuickPick.selectedItems = [...fakeQuickPick.selectedItems, ...checkedItems];
-                handlers.selection.forEach(selectionHandler => selectionHandler(fakeQuickPick.selectedItems));
-            },
-            uncheck: (uncheckedItem: any) => {
-                fakeQuickPick.selectedItems = fakeQuickPick.selectedItems.filter((selectedItem: any) => selectedItem !== uncheckedItem);
-                handlers.selection.forEach(selectionHandler => selectionHandler(fakeQuickPick.selectedItems));
-            },
+            choose: (chosenItem: any) => { fakeQuickPick.selectedItems = chosenItem ? [chosenItem] : []; },
             accept: () => handlers.accept.forEach(acceptHandler => acceptHandler()),
             itemLabeled: (itemLabel: string) => fakeQuickPick.items.find((listedItem: any) => listedItem.label === itemLabel),
             labels: () => fakeQuickPick.items.map((listedItem: any) => listedItem.label)
@@ -2166,7 +2157,6 @@ describe('VSCodeWorkspaceService.promptForParentRecords (#254)', () => {
     const buildPickerOptions = (overrides: Partial<IParentPickerOptions> = {}): IParentPickerOptions => ({
         fieldApiName: 'AccountId',
         parentObjectApiName: 'Account',
-        isRequired: true,
         nameFieldApiName: 'Name',
         resultLimit: 200,
         search: jest.fn().mockResolvedValue({ matches: ACME_MATCHES, hasMoreMatches: false }),
@@ -2174,16 +2164,15 @@ describe('VSCodeWorkspaceService.promptForParentRecords (#254)', () => {
         ...overrides
     });
 
-    test('opens with Random first, nothing checked, multi-select, titled with the lookup', async () => {
+    test('opens empty, single-select, titled with the lookup, offering no Random or Leave blank', async () => {
 
         const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(buildPickerOptions());
+        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecord(buildPickerOptions());
 
-        expect(fakeQuickPick.labels()).toEqual([PARENT_PICKER_RANDOM_LABEL]);
-        expect(fakeQuickPick.selectedItems).toEqual([]);
-        expect(fakeQuickPick.canSelectMany).toBe(true);
-        expect(fakeQuickPick.title).toBe('AccountId → Account (required)');
-        expect(fakeQuickPick.placeholder).toContain('search Account by Name');
+        expect(fakeQuickPick.labels()).toEqual([]);
+        expect(fakeQuickPick.canSelectMany).toBe(false);
+        expect(fakeQuickPick.title).toBe('AccountId → Account');
+        expect(fakeQuickPick.placeholder).toBe('Type to search Account by Name, then pick one record');
 
         fakeQuickPick.hide();
         expect(await pickerAnswer).toBeUndefined();
@@ -2191,63 +2180,11 @@ describe('VSCodeWorkspaceService.promptForParentRecords (#254)', () => {
 
     });
 
-    test('offers Leave blank first for an optional lookup', async () => {
-
-        const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(buildPickerOptions({ isRequired: false }));
-
-        expect(fakeQuickPick.labels()).toEqual([PARENT_PICKER_BLANK_LABEL, PARENT_PICKER_RANDOM_LABEL]);
-
-        fakeQuickPick.check(fakeQuickPick.itemLabeled(PARENT_PICKER_BLANK_LABEL));
-        fakeQuickPick.accept();
-
-        expect(await pickerAnswer).toEqual({ kind: 'blank' });
-
-    });
-
-    test('accepting with nothing checked is a cancel, never an implicit Random', async () => {
-
-        const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(buildPickerOptions());
-
-        fakeQuickPick.type('acme');
-        await flushSearch();
-        fakeQuickPick.accept();
-
-        expect(await pickerAnswer).toBeUndefined();
-
-    });
-
-    test('checking Random clears the search, lists no records, keeps the search cleared, and answers random', async () => {
+    test('lists every match by name and Id, and answers the one record accepted', async () => {
 
         const pickerOptions = buildPickerOptions();
         const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(pickerOptions);
-
-        fakeQuickPick.type('acme');
-        await flushSearch();
-        fakeQuickPick.check(fakeQuickPick.itemLabeled('Acme East'));
-        fakeQuickPick.check(fakeQuickPick.itemLabeled(PARENT_PICKER_RANDOM_LABEL));
-
-        expect(fakeQuickPick.value).toBe('');
-        expect(fakeQuickPick.labels()).toEqual([PARENT_PICKER_RANDOM_LABEL]);
-        expect(fakeQuickPick.selectedItems.map((selectedItem: any) => selectedItem.label)).toEqual([PARENT_PICKER_RANDOM_LABEL]);
-
-        fakeQuickPick.type('west');
-        await flushSearch();
-        expect(fakeQuickPick.value).toBe('');
-        expect(pickerOptions.search).toHaveBeenCalledTimes(1);
-
-        fakeQuickPick.accept();
-        expect(await pickerAnswer).toEqual({ kind: 'random' });
-
-    });
-
-    test('lists every match by name and Id, and answers the records checked', async () => {
-
-        const pickerOptions = buildPickerOptions();
-        const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(pickerOptions);
+        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecord(pickerOptions);
 
         fakeQuickPick.type('  acme ');
         await flushSearch();
@@ -2255,153 +2192,65 @@ describe('VSCodeWorkspaceService.promptForParentRecords (#254)', () => {
         expect(pickerOptions.search).toHaveBeenCalledWith('acme');
         const recordItems = fakeQuickPick.items.filter((listedItem: any) => listedItem.parentPickerRole === 'record');
         expect(recordItems.map((recordItem: any) => [recordItem.label, recordItem.description])).toEqual([['Acme East', '001000000000011AAA'], ['Acme West', '001000000000012AAA']]);
-        expect(fakeQuickPick.labels()).toContain('2 matches');
+        expect(fakeQuickPick.labels()[0]).toBe('2 matches');
 
-        fakeQuickPick.check(fakeQuickPick.itemLabeled('Acme West'));
+        fakeQuickPick.choose(fakeQuickPick.itemLabeled('Acme West'));
         fakeQuickPick.accept();
 
-        expect(await pickerAnswer).toEqual({ kind: 'chosen', records: [ACME_MATCHES[1]] });
+        expect(await pickerAnswer).toEqual(ACME_MATCHES[1]);
 
     });
 
-    test('Select all matches checks every listed record', async () => {
+    test('answers the active record when nothing is selected, and accepting with no record does nothing', async () => {
 
         const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(buildPickerOptions());
+        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecord(buildPickerOptions());
+        let isSettled = false;
+        void pickerAnswer.then(() => { isSettled = true; });
+
+        fakeQuickPick.accept();
+        await flushSearch();
+        expect(isSettled).toBe(false);
+        expect(fakeQuickPick.hide).not.toHaveBeenCalled();
 
         fakeQuickPick.type('acme');
         await flushSearch();
-        fakeQuickPick.check(fakeQuickPick.itemLabeled(PARENT_PICKER_SELECT_ALL_LABEL));
-
-        expect(fakeQuickPick.selectedItems.map((selectedItem: any) => selectedItem.label)).toEqual(['Acme East', 'Acme West']);
-
+        fakeQuickPick.activeItems = [fakeQuickPick.itemLabeled('Acme East')];
         fakeQuickPick.accept();
-        expect(await pickerAnswer).toEqual({ kind: 'chosen', records: ACME_MATCHES });
+
+        expect(await pickerAnswer).toEqual(ACME_MATCHES[0]);
 
     });
 
-    test('VS Code\'s check-all, which also checks Random and Leave blank, selects every listed record and neither default', async () => {
+    test('names a record with no name, and says what a search answered in the title too', async () => {
 
         const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(buildPickerOptions({ isRequired: false }));
+        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecord(buildPickerOptions({
+            search: jest.fn().mockResolvedValue({ matches: [{ recordId: '001000000000013AAA', recordName: '' }], hasMoreMatches: false })
+        }));
 
-        fakeQuickPick.type('acme');
-        await flushSearch();
-        fakeQuickPick.check(...fakeQuickPick.items.filter((listedItem: any) => listedItem.parentPickerRole !== 'message'));
-
-        expect(fakeQuickPick.selectedItems.map((selectedItem: any) => selectedItem.label)).toEqual(['Acme East', 'Acme West']);
-
-        fakeQuickPick.accept();
-        expect(await pickerAnswer).toEqual({ kind: 'chosen', records: ACME_MATCHES });
-
-    });
-
-    test('checking Random cancels a search still waiting on its pause, so it cannot uncheck Random', async () => {
-
-        jest.useFakeTimers();
-
-        try {
-
-            const pickerOptions = buildPickerOptions({ searchDelayMilliseconds: undefined });
-            const fakeQuickPick = buildFakeParentQuickPick();
-            const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(pickerOptions);
-
-            fakeQuickPick.type('acme');
-            fakeQuickPick.check(fakeQuickPick.itemLabeled(PARENT_PICKER_RANDOM_LABEL));
-            jest.advanceTimersByTime(PARENT_PICKER_SEARCH_DELAY_MILLISECONDS);
-
-            expect(pickerOptions.search).not.toHaveBeenCalled();
-            fakeQuickPick.accept();
-            expect(await pickerAnswer).toEqual({ kind: 'random' });
-
-        } finally {
-            jest.useRealTimers();
-        }
-
-    });
-
-    test('drops a search answer once the text has changed again, even before the next search starts', async () => {
-
-        let answerFirstSearch: (searchResult: any) => void = () => undefined;
-        const pickerOptions = buildPickerOptions({ search: jest.fn().mockImplementationOnce(() => new Promise(resolveSearch => { answerFirstSearch = resolveSearch; })) });
-        const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(pickerOptions);
-
-        fakeQuickPick.type('acm');
-        await flushSearch();
-        fakeQuickPick.type('');
-        answerFirstSearch({ matches: ACME_MATCHES, hasMoreMatches: false });
+        fakeQuickPick.type('x');
         await flushSearch();
 
-        expect(fakeQuickPick.labels()).toEqual([PARENT_PICKER_RANDOM_LABEL]);
-        expect(fakeQuickPick.title).toBe('AccountId → Account (required)');
+        expect(fakeQuickPick.labels()).toEqual(['1 match', PARENT_PICKER_NO_NAME_LABEL]);
+        expect(fakeQuickPick.title).toBe('AccountId → Account — 1 match');
 
         fakeQuickPick.hide();
         await pickerAnswer;
 
     });
 
-    test('says what a search answered in the title too, since a separator can be hidden while the input filters', async () => {
+    test('says so when nothing matches, refines when more matched, shows a failed search\'s reason, and clears with the text', async () => {
 
         const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(buildPickerOptions({ search: jest.fn().mockResolvedValue({ matches: [], hasMoreMatches: false }) }));
-
-        fakeQuickPick.type('zzz');
-        await flushSearch();
-
-        expect(fakeQuickPick.title).toBe('AccountId → Account (required) — No Account record matches "zzz"');
-
-        fakeQuickPick.hide();
-        await pickerAnswer;
-
-    });
-
-    test('keeps records checked in an earlier search', async () => {
-
-        const westOnly = { matches: [{ recordId: '001000000000021AAA', recordName: 'Westwind' }], hasMoreMatches: false };
-        const pickerOptions = buildPickerOptions({ search: jest.fn()
-            .mockResolvedValueOnce({ matches: ACME_MATCHES, hasMoreMatches: false })
-            .mockResolvedValueOnce(westOnly) });
-        const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(pickerOptions);
-
-        fakeQuickPick.type('acme');
-        await flushSearch();
-        fakeQuickPick.check(fakeQuickPick.itemLabeled('Acme East'));
-        fakeQuickPick.type('westwind');
-        await flushSearch();
-
-        expect(fakeQuickPick.labels()).toEqual(expect.arrayContaining(['Acme East', 'Westwind', 'Checked from earlier searches']));
-        fakeQuickPick.check(fakeQuickPick.itemLabeled('Westwind'));
-        fakeQuickPick.accept();
-
-        expect(await pickerAnswer).toEqual({ kind: 'chosen', records: [ACME_MATCHES[0], westOnly.matches[0]] });
-
-    });
-
-    test('says so when nothing matches, and selects nothing', async () => {
-
-        const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(buildPickerOptions({ search: jest.fn().mockResolvedValue({ matches: [], hasMoreMatches: false }) }));
-
-        fakeQuickPick.type('zzz');
-        await flushSearch();
-
-        expect(fakeQuickPick.labels()).toContain('No Account record matches "zzz"');
-        expect(fakeQuickPick.labels()).not.toContain(PARENT_PICKER_SELECT_ALL_LABEL);
-        expect(fakeQuickPick.selectedItems).toEqual([]);
-
-        fakeQuickPick.accept();
-        expect(await pickerAnswer).toBeUndefined();
-
-    });
-
-    test('says to refine the search when more matched than are listed, and shows a failed search\'s reason', async () => {
-
-        const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(buildPickerOptions({ search: jest.fn()
+        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecord(buildPickerOptions({ search: jest.fn()
+            .mockResolvedValueOnce({ matches: [], hasMoreMatches: false })
             .mockResolvedValueOnce({ matches: ACME_MATCHES, hasMoreMatches: true })
             .mockRejectedValueOnce(new Error('INVALID_FIELD')) }));
+
+        fakeQuickPick.type('zzz');
+        await flushSearch();
+        expect(fakeQuickPick.labels()).toEqual(['No Account record matches "zzz"']);
 
         fakeQuickPick.type('a');
         await flushSearch();
@@ -2409,21 +2258,45 @@ describe('VSCodeWorkspaceService.promptForParentRecords (#254)', () => {
 
         fakeQuickPick.type('ab');
         await flushSearch();
-        expect(fakeQuickPick.labels()).toContain('The search failed: INVALID_FIELD');
+        expect(fakeQuickPick.labels()).toEqual(['The search failed: INVALID_FIELD']);
+
+        fakeQuickPick.type('');
+        expect(fakeQuickPick.labels()).toEqual([]);
+        expect(fakeQuickPick.title).toBe('AccountId → Account');
 
         fakeQuickPick.hide();
         expect(await pickerAnswer).toBeUndefined();
 
     });
 
-    test('draws only the newest search\'s answer', async () => {
+    test('draws only the newest search\'s answer, and sends no search still waiting on its pause once the text changes', async () => {
+
+        jest.useFakeTimers();
+
+        try {
+
+            const pickerOptions = buildPickerOptions({ searchDelayMilliseconds: undefined });
+            const fakeQuickPick = buildFakeParentQuickPick();
+            const pickerAnswer = VSCodeWorkspaceService.promptForParentRecord(pickerOptions);
+
+            fakeQuickPick.type('acm');
+            fakeQuickPick.type('');
+            jest.advanceTimersByTime(PARENT_PICKER_SEARCH_DELAY_MILLISECONDS);
+            expect(pickerOptions.search).not.toHaveBeenCalled();
+
+            fakeQuickPick.hide();
+            await pickerAnswer;
+
+        } finally {
+            jest.useRealTimers();
+        }
 
         let answerFirstSearch: (searchResult: any) => void = () => undefined;
         const pickerOptions = buildPickerOptions({ search: jest.fn()
             .mockImplementationOnce(() => new Promise(resolveSearch => { answerFirstSearch = resolveSearch; }))
             .mockResolvedValueOnce({ matches: [ACME_MATCHES[1]], hasMoreMatches: false }) });
         const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(pickerOptions);
+        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecord(pickerOptions);
 
         fakeQuickPick.type('acme');
         await flushSearch();
@@ -2432,173 +2305,7 @@ describe('VSCodeWorkspaceService.promptForParentRecords (#254)', () => {
         answerFirstSearch({ matches: ACME_MATCHES, hasMoreMatches: false });
         await flushSearch();
 
-        expect(fakeQuickPick.labels()).not.toContain('Acme East');
-        expect(fakeQuickPick.labels()).toContain('Acme West');
-
-        fakeQuickPick.hide();
-        await pickerAnswer;
-
-    });
-
-    test('offers Random only and says why when the parent cannot be searched, never searching', async () => {
-
-        const pickerOptions = buildPickerOptions({ nameFieldApiName: undefined, searchUnavailableReason: 'Contact has no name field in its describe, so it cannot be searched' });
-        const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(pickerOptions);
-
-        expect(fakeQuickPick.labels()).toEqual([PARENT_PICKER_RANDOM_LABEL, 'Contact has no name field in its describe, so it cannot be searched']);
-        expect(fakeQuickPick.placeholder).toContain('cannot be searched');
-
-        fakeQuickPick.type('acme');
-        await flushSearch();
-        expect(pickerOptions.search).not.toHaveBeenCalled();
-        expect(fakeQuickPick.value).toBe('');
-
-        fakeQuickPick.check(fakeQuickPick.itemLabeled(PARENT_PICKER_RANDOM_LABEL));
-        fakeQuickPick.accept();
-        expect(await pickerAnswer).toEqual({ kind: 'random' });
-
-    });
-
-    test('clearing the search lists no records but keeps the checked ones, and typing fast sends one search', async () => {
-
-        const pickerOptions = buildPickerOptions();
-        const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(pickerOptions);
-
-        fakeQuickPick.type('a');
-        fakeQuickPick.type('ac');
-        fakeQuickPick.type('acme');
-        await flushSearch();
-        expect(pickerOptions.search).toHaveBeenCalledTimes(1);
-        expect(pickerOptions.search).toHaveBeenCalledWith('acme');
-
-        fakeQuickPick.check(fakeQuickPick.itemLabeled('Acme East'));
-        fakeQuickPick.type('acme w');
-        fakeQuickPick.type('   ');
-        await flushSearch();
-
-        expect(pickerOptions.search).toHaveBeenCalledTimes(1);
-        expect(fakeQuickPick.labels()).toEqual([PARENT_PICKER_RANDOM_LABEL, 'Checked from earlier searches', 'Acme East']);
-        expect(fakeQuickPick.busy).toBe(false);
-
-        fakeQuickPick.accept();
-        expect(await pickerAnswer).toEqual({ kind: 'chosen', records: [ACME_MATCHES[0]] });
-
-    });
-
-    test('unchecking a record leaves it out of the answer', async () => {
-
-        const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(buildPickerOptions());
-
-        fakeQuickPick.type('acme');
-        await flushSearch();
-        fakeQuickPick.check(fakeQuickPick.itemLabeled('Acme East'), fakeQuickPick.itemLabeled('Acme West'));
-        fakeQuickPick.uncheck(fakeQuickPick.itemLabeled('Acme East'));
-        fakeQuickPick.accept();
-
-        expect(await pickerAnswer).toEqual({ kind: 'chosen', records: [ACME_MATCHES[1]] });
-
-    });
-
-    test('drops a stale search\'s failure, and says a thrown non-Error as text', async () => {
-
-        let failFirstSearch: (searchError: unknown) => void = () => undefined;
-        const pickerOptions = buildPickerOptions({ search: jest.fn()
-            .mockImplementationOnce(() => new Promise((_resolveSearch, rejectSearch) => { failFirstSearch = rejectSearch; }))
-            .mockRejectedValueOnce('REQUEST_LIMIT_EXCEEDED') });
-        const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(pickerOptions);
-
-        fakeQuickPick.type('acme');
-        await flushSearch();
-        fakeQuickPick.type('acme w');
-        await flushSearch();
-        failFirstSearch(new Error('stale'));
-        await flushSearch();
-
-        expect(fakeQuickPick.labels()).toContain('The search failed: REQUEST_LIMIT_EXCEEDED');
-        expect(fakeQuickPick.labels().some((itemLabel: string) => itemLabel.includes('stale'))).toBe(false);
-
-        fakeQuickPick.hide();
-        await pickerAnswer;
-
-    });
-
-    test('lists a record with no name by its Id, under "(no name)"', async () => {
-
-        const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(buildPickerOptions({
-            search: jest.fn().mockResolvedValue({ matches: [{ recordId: '001000000000011AAA', recordName: '' }], hasMoreMatches: false })
-        }));
-
-        fakeQuickPick.type('0');
-        await flushSearch();
-
-        expect(fakeQuickPick.itemLabeled('(no name)').description).toBe('001000000000011AAA');
-        expect(fakeQuickPick.labels()).toContain('1 match');
-
-        fakeQuickPick.hide();
-        await pickerAnswer;
-
-    });
-
-    test('an optional lookup that cannot be searched offers Leave blank and Random, and says it has no name field', async () => {
-
-        const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(buildPickerOptions({ isRequired: false, nameFieldApiName: undefined }));
-
-        expect(fakeQuickPick.labels()).toEqual([PARENT_PICKER_BLANK_LABEL, PARENT_PICKER_RANDOM_LABEL, 'Account has no name field to search']);
-        expect(fakeQuickPick.placeholder).toBe(`Account cannot be searched, so only ${PARENT_PICKER_RANDOM_LABEL} or ${PARENT_PICKER_BLANK_LABEL} can be chosen`);
-        expect(fakeQuickPick.title).toBe('AccountId → Account (optional)');
-
-        fakeQuickPick.hide();
-        expect(await pickerAnswer).toBeUndefined();
-
-    });
-
-    test('waits the default pause before searching', async () => {
-
-        jest.useFakeTimers();
-
-        try {
-
-            const pickerOptions = buildPickerOptions({ searchDelayMilliseconds: undefined });
-            const fakeQuickPick = buildFakeParentQuickPick();
-            const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(pickerOptions);
-
-            fakeQuickPick.type('acme');
-            jest.advanceTimersByTime(PARENT_PICKER_SEARCH_DELAY_MILLISECONDS - 1);
-            expect(pickerOptions.search).not.toHaveBeenCalled();
-            jest.advanceTimersByTime(1);
-            expect(pickerOptions.search).toHaveBeenCalledWith('acme');
-
-            fakeQuickPick.type('acme e');
-            fakeQuickPick.hide();
-            await pickerAnswer;
-            jest.advanceTimersByTime(PARENT_PICKER_SEARCH_DELAY_MILLISECONDS);
-            expect(pickerOptions.search).toHaveBeenCalledTimes(1);
-
-        } finally {
-            jest.useRealTimers();
-        }
-
-    });
-
-    test('shows a record name as plain text, with icon syntax broken and nothing escaped for markdown', async () => {
-
-        const fakeQuickPick = buildFakeParentQuickPick();
-        const pickerAnswer = VSCodeWorkspaceService.promptForParentRecords(buildPickerOptions({
-            search: jest.fn().mockResolvedValue({ matches: [{ recordId: '001000000000011AAA', recordName: '$(alert) [Acme](x) (East)' }], hasMoreMatches: false })
-        }));
-
-        fakeQuickPick.type('$(alert)');
-        await flushSearch();
-
-        const recordItem = fakeQuickPick.items.find((listedItem: any) => listedItem.parentPickerRole === 'record');
-        expect(recordItem.label).toBe('$\u200B(alert) [Acme](x) (East)');
-        expect(fakeQuickPick.labels()).toContain('1 match');
+        expect(fakeQuickPick.labels()).toEqual(['1 match', 'Acme West']);
 
         fakeQuickPick.hide();
         await pickerAnswer;

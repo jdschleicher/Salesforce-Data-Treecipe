@@ -107,43 +107,16 @@ export interface ITreeInsertLookup {
     a later round resolves. runRecordIdsByObject is every Id this insert created so far, by object;
     orgRecordIdsByObject is the existing Ids queried for a REQUIRED lookup whose parent is not
     inserted by this tree. inTreeObjectApiNames is every object the tree inserts.
-    outsideParentsByFieldApiName is what the reader chose in the parent picker (#254) for a lookup of
-    this object to a parent the tree does not insert, and it outvotes orgRecordIdsByObject.
+    orgRecordIdsByFieldApiName is, per lookup of this object, the Ids the reader set it to with "Use
+    existing <Parent> from org…" (#421): a value that is one of them is kept, never replaced.
 */
 export interface ITreeInsertLookupContext {
     isRunReference: (value: string) => boolean;
     runRecordIdsByObject: ReadonlyMap<string, readonly string[]>;
     orgRecordIdsByObject: ReadonlyMap<string, readonly string[]>;
     inTreeObjectApiNames: ReadonlySet<string>;
-    outsideParentsByFieldApiName?: ReadonlyMap<string, IOutsideLookupParents>;
+    orgRecordIdsByFieldApiName?: ReadonlyMap<string, ReadonlySet<string>>;
 }
-
-/*
-    One lookup's parents outside the tree, as the picker answered (#254): left blank, a random one of
-    the Ids per record, or the Ids the reader chose, given out round-robin (record i gets i mod K).
-*/
-export type IOutsideLookupParents =
-    | { assignment: 'blank' }
-    | { assignment: 'random' | 'roundRobin'; parentRecordIds: readonly string[] };
-
-/*
-    A lookup of the cut recipe block the Create asks about (#254): it points at exactly one object,
-    so there is one object to search. isRequired decides whether "Leave blank" is offered.
-*/
-export interface IPickableLookup {
-    fieldApiName: string;
-    parentObjectApiName: string;
-    isRequired: boolean;
-}
-
-// WHAT THE READER CHOSE FOR ONE LOOKUP: NOTHING HERE IS A DEFAULT, EACH IS SOMETHING THEY PICKED
-export type LookupParentChoice =
-    | { kind: 'random' }
-    | { kind: 'blank' }
-    | { kind: 'chosen'; parentRecordIds: string[] };
-
-// AS datasetSource.json RECORDS IT: "random", "blank", OR THE CHOSEN Ids IN ORDER
-export type RecordedLookupParentChoice = 'random' | 'blank' | string[];
 
 const SALESFORCE_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
 
@@ -201,43 +174,6 @@ export class RecipeCockpitRecordCreation {
     }
 
     /*
-        The lookups of the cut block the reader is asked about, in the block's order: each is a lookup
-        the describe knows, points at exactly ONE object and can be written. A polymorphic one is
-        left as it was (blank when optional; a required one already blocks Create), and so is any
-        lookup the block does not carry -- a required one of those still gets a random parent.
-    */
-    static findPickableLookups(describe: ICreateObjectDescribe, recipeFieldApiNames: readonly string[]): IPickableLookup[] {
-
-        const requiredFieldApiNames = new Set(this.findRequiredLookups(describe).map(requiredLookup => requiredLookup.fieldApiName));
-        const describeLookupsByLowerName = new Map(describe.fields
-            .filter(describeField => this.isLookupField(describeField))
-            .map(describeField => [describeField.fieldApiName.toLowerCase(), describeField]));
-        const pickedFieldApiNames = new Set<string>();
-
-        return recipeFieldApiNames.flatMap(recipeFieldApiName => {
-
-            const describeField = describeLookupsByLowerName.get(recipeFieldApiName.toLowerCase());
-
-            if ( !describeField
-                    || describeField.referenceTo.length !== 1
-                    || describeField.isCreateable !== true
-                    || pickedFieldApiNames.has(describeField.fieldApiName) ) {
-                return [];
-            }
-
-            pickedFieldApiNames.add(describeField.fieldApiName);
-
-            return [{
-                fieldApiName: describeField.fieldApiName,
-                parentObjectApiName: describeField.referenceTo[0],
-                isRequired: requiredFieldApiNames.has(describeField.fieldApiName)
-            }];
-
-        });
-
-    }
-
-    /*
         Whether the Ids a picker handed back may be written: at least one, each a Salesforce Id, and
         each one the picker's OWN query returned. The picker only lists what its search answered, so
         this is the second time the same rule is held, at the point the Id becomes a record's value.
@@ -248,12 +184,6 @@ export class RecipeCockpitRecordCreation {
                 && chosenParentRecordIds.every(chosenParentRecordId => typeof chosenParentRecordId === 'string'
                                                                         && SALESFORCE_RECORD_ID_PATTERN.test(chosenParentRecordId)
                                                                         && searchReturnedRecordIds.has(chosenParentRecordId));
-
-    }
-
-    static toRecordedLookupParentChoice(lookupParentChoice: LookupParentChoice): RecordedLookupParentChoice {
-
-        return lookupParentChoice.kind === 'chosen' ? [...lookupParentChoice.parentRecordIds] : lookupParentChoice.kind;
 
     }
 
@@ -306,13 +236,13 @@ export class RecipeCockpitRecordCreation {
     /*
         One file's records with every lookup the recipe could not wire filled or cleared (#255). A
         value that already names a record of this insert is kept -- a faker-js friend's parent, which
-        the insert resolves. Any other value (a TODO, a nickname of nothing inserted, a hand-written
-        Id) is replaced: by a random record THIS insert created of the parent, when the tree inserts
-        that parent, so a snowfakery tree's children still hang off the parents inserted with them;
-        for a lookup to a parent outside the tree, by what the reader chose in its picker (#254) --
-        random, the records they chose round-robin by the record's index in the file, or blank; for a
-        required lookup with neither, by a random existing record of the parent; and otherwise the
-        field is removed and left blank. pickIndex is the randomness, handed in so a
+        the insert resolves -- and so is an Id the reader set the lookup to with "Use existing
+        <Parent> from org…" (#421), which the insert checked the org holds before anything was
+        written. Any other value (a TODO, a nickname of nothing inserted, a hand-written Id) is
+        replaced: by a random record THIS insert created of the parent, when the tree inserts that
+        parent, so a snowfakery tree's children still hang off the parents inserted with them; for a
+        required lookup to a parent outside the tree, by a random existing record of the parent; and
+        otherwise the field is removed and left blank. pickIndex is the randomness, handed in so a
         test can name the Id it expects. The records are copied; the ones handed in are not changed.
     */
     static prepareTreeInsertRecords(records: unknown[],
@@ -322,7 +252,7 @@ export class RecipeCockpitRecordCreation {
 
         const pick = (choices: readonly string[]) => choices[Math.min(Math.max(Math.floor(pickIndex(choices.length)), 0), choices.length - 1)];
 
-        return records.map((record, recordIndex) => {
+        return records.map(record => {
 
             if ( record === null || typeof record !== 'object' || Array.isArray(record) ) {
                 return record;
@@ -340,7 +270,9 @@ export class RecipeCockpitRecordCreation {
             lookups.forEach(lookup => {
 
                 const recordKeys = recordKeysByLowerName.get(lookup.fieldApiName.toLowerCase()) ?? [];
-                const keptKey = recordKeys.find(recordKey => typeof preparedRecord[recordKey] === 'string' && lookupContext.isRunReference(preparedRecord[recordKey] as string));
+                const orgRecordIds = lookupContext.orgRecordIdsByFieldApiName?.get(lookup.fieldApiName);
+                const keptKey = recordKeys.find(recordKey => typeof preparedRecord[recordKey] === 'string'
+                                                                && ( lookupContext.isRunReference(preparedRecord[recordKey] as string) || !!orgRecordIds?.has(preparedRecord[recordKey] as string) ));
 
                 if ( keptKey !== undefined ) {
                     recordKeys.filter(recordKey => recordKey !== keptKey).forEach(recordKey => { delete preparedRecord[recordKey]; });
@@ -360,19 +292,9 @@ export class RecipeCockpitRecordCreation {
                     return;
                 }
 
-                const outsideParents = lookupContext.outsideParentsByFieldApiName?.get(lookup.fieldApiName);
-                if ( outsideParents ) {
-                    if ( outsideParents.assignment !== 'blank' && outsideParents.parentRecordIds.length > 0 ) {
-                        preparedRecord[lookup.fieldApiName] = outsideParents.assignment === 'roundRobin'
-                            ? outsideParents.parentRecordIds[recordIndex % outsideParents.parentRecordIds.length]
-                            : pick(outsideParents.parentRecordIds);
-                    }
-                    return;
-                }
-
-                const orgRecordIds = lookup.isRequired ? lookupContext.orgRecordIdsByObject.get(parentObjectApiName) ?? [] : [];
-                if ( orgRecordIds.length > 0 ) {
-                    preparedRecord[lookup.fieldApiName] = pick(orgRecordIds);
+                const randomOrgRecordIds = lookup.isRequired ? lookupContext.orgRecordIdsByObject.get(parentObjectApiName) ?? [] : [];
+                if ( randomOrgRecordIds.length > 0 ) {
+                    preparedRecord[lookup.fieldApiName] = pick(randomOrgRecordIds);
                 }
 
             });

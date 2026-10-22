@@ -275,6 +275,25 @@ export interface IParentObjectAddition {
 }
 
 /*
+    A TODO lookup to ONE parent, as the Recipe Cockpit's row draws its two decisions (#421): create
+    the parent in the recipe (#294's addParentObject) or use an existing org record (a pin, #342).
+    createRefusal says why addParentObject would refuse -- no template, the parent already written,
+    or not inserted first -- and orgRecordRefusal why a pin of an Id cannot be written: pinField
+    writes every occurrence of the object, so each one's field must still be the empty lookup.
+*/
+export interface IEmptyLookup {
+    objectApiName: string;
+    objectNickname?: string;
+    fieldApiName: string;
+    parentObjectApiName: string;
+    createRefusal?: string;
+    orgRecordRefusal?: string;
+}
+
+// THE REFUSALS OF addParentObject THAT STILL LEAVE AN EMPTY LOOKUP TO ONE PARENT: THE ROW DRAWS "Create" DISABLED, WITH THE REASON
+const CREATE_PARENT_REFUSAL_REASONS: ReadonlySet<RecipeWriterRefusalReason> = new Set<RecipeWriterRefusalReason>(['no-parent-template', 'parent-object-already-exists', 'parent-not-inserted-first']);
+
+/*
     WHAT addParentObject IS ASKED TO WRITE: THE LOOKUP, AND THE TEMPLATE'S FIELD VALUES FOR EVERY PARENT IT KNOWS.
     nestTreeUnderParent (#405) moves the top-level block holding the lookup under the parent's friends:
 */
@@ -1486,6 +1505,88 @@ export class RecipeCockpitRecipeWriter {
                     parentTemplatesByObjectApiName: parentTemplates
                 }, wiringContext);
                 return 'refusal' in located || located.scannedObject !== scannedObject ? [] : [located.addition];
+            });
+
+        });
+
+    }
+
+    /*
+        Every TODO lookup to exactly ONE parent (#421), in file order: the field's one line is exactly
+        the "### TODO -- REFERENCE ID REQUIRED", and the card's lookups name one parent for it. Each
+        says whether addParentObject would add that parent (listAddableParentObjects' own rule, so the
+        two never disagree) and whether one Id can be pinned on it. A polymorphic lookup, or an
+        object written more than once without a distinct nickname on each, is left out: there is no
+        one parent, or no one row, to decide for.
+    */
+    static listEmptyLookups(recipeText: string,
+                            wiringContext: ILookupWiringContext,
+                            templateObjectApiNames: ReadonlySet<string>): IEmptyLookup[] {
+
+        const { lines } = this.splitRecipeLines(recipeText);
+        const scannedObjects = this.scanRecipeObjects(lines);
+        const additionIndex = this.buildParentObjectAdditionIndex(scannedObjects);
+        const parentTemplates = Object.fromEntries([...templateObjectApiNames].map(objectApiName => [objectApiName, {}]));
+        const orgRecordRefusalsByField = new Map<string, string | undefined>();
+
+        // pinField WRITES EVERY OCCURRENCE OF THE OBJECT THAT HAS THE FIELD, SO EACH MUST STILL BE THE EMPTY LOOKUP; ONCE PER OBJECT AND FIELD
+        const findOrgRecordRefusal = (objectApiName: string, fieldApiName: string): string | undefined => {
+            const fieldKey = `${objectApiName}\n${fieldApiName}`;
+            if ( !orgRecordRefusalsByField.has(fieldKey) ) {
+                const occurrences = additionIndex.occurrencesByObjectApiName.get(objectApiName) ?? [];
+                const filledCount = occurrences.filter(occurrence => {
+                    const { fieldIndent } = this.getObjectLayout(occurrence.objectIndent);
+                    return occurrence.fields.filter(scannedField => scannedField.fieldApiName === fieldApiName).some(scannedField => (
+                        !REFERENCE_ID_REQUIRED_TODO_PATTERN.test(lines[scannedField.startIndex].slice(fieldIndent.length + fieldApiName.length + 1).replace(/^[ \t]+/, ''))
+                            || lines.slice(scannedField.startIndex + 1, scannedField.endIndex).some(continuationLine => continuationLine.trim())
+                    ));
+                }).length;
+                orgRecordRefusalsByField.set(fieldKey, filledCount === 0
+                    ? undefined
+                    : `The recipe writes ${objectApiName} ${occurrences.length} times and ${fieldApiName} is already set on ${filledCount} of them; an org record is written on every one, so it would replace ${filledCount === 1 ? 'that value' : 'those values'}.`);
+            }
+            return orgRecordRefusalsByField.get(fieldKey);
+        };
+
+        return scannedObjects.flatMap(scannedObject => {
+
+            const parentLookups = wiringContext.parentLookupsByObjectApiName.get(scannedObject.objectApiName) ?? [];
+            if ( parentLookups.length === 0 ) {
+                return [];
+            }
+
+            const occurrences = additionIndex.occurrencesByObjectApiName.get(scannedObject.objectApiName);
+            const objectNickname = occurrences.length === 1 ? undefined : scannedObject.nicknames[0];
+
+            return [...new Set(scannedObject.fields.map(scannedField => scannedField.fieldApiName))].flatMap(fieldApiName => {
+
+                const parentObjectApiNames = [...new Set(parentLookups.filter(parentLookup => parentLookup.fieldApiName === fieldApiName).map(parentLookup => parentLookup.parentObjectApiName))];
+                if ( parentObjectApiNames.length !== 1 || !API_NAME_PATTERN.test(parentObjectApiNames[0]) ) {
+                    return [];
+                }
+
+                const located = this.locateParentObjectAddition(lines, additionIndex, {
+                    objectApiName: scannedObject.objectApiName,
+                    ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
+                    fieldApiName: fieldApiName,
+                    parentTemplatesByObjectApiName: parentTemplates
+                }, wiringContext);
+
+                if ( 'refusal' in located ? !CREATE_PARENT_REFUSAL_REASONS.has(located.refusal.reason) : located.scannedObject !== scannedObject ) {
+                    return [];
+                }
+
+                const orgRecordRefusal = findOrgRecordRefusal(scannedObject.objectApiName, fieldApiName);
+
+                return [{
+                    objectApiName: scannedObject.objectApiName,
+                    ...( objectNickname !== undefined ? { objectNickname: objectNickname } : {} ),
+                    fieldApiName: fieldApiName,
+                    parentObjectApiName: parentObjectApiNames[0],
+                    ...( 'refusal' in located ? { createRefusal: located.refusal.message } : {} ),
+                    ...( orgRecordRefusal !== undefined ? { orgRecordRefusal: orgRecordRefusal } : {} )
+                }];
+
             });
 
         });

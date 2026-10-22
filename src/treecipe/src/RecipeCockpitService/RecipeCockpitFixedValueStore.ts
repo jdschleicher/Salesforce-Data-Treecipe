@@ -17,6 +17,9 @@ export const RECIPE_COCKPIT_FIXED_VALUE_FILE_SUFFIX = '.fixedValues.json';
 const MAX_ENTRIES = 2000;
 const MAX_OCCURRENCES = 500;
 const MAX_TEXT_LENGTH = 100000;
+const MAX_ORG_NAME_LENGTH = 255;
+
+const SALESFORCE_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
 
 export interface IFixedValueOccurrence {
     occurrenceIndex: number;
@@ -26,10 +29,22 @@ export interface IFixedValueOccurrence {
     originalText?: string;
 }
 
+/*
+    Where a lookup's pinned Id came from (#421): the org it was chosen in, and the parent object it
+    is a record of. Present only on an entry written by "Use existing <Parent> from org…", whose
+    value is a Salesforce Id; it is what lets a lookup -- otherwise never pinned -- hold a value.
+*/
+export interface IFixedValueOrgRecord {
+    orgUsername: string;
+    orgAlias?: string;
+    parentObjectApiName: string;
+}
+
 export interface IFixedValueEntry {
     objectApiName: string;
     fieldApiName: string;
     value: string;
+    orgRecord?: IFixedValueOrgRecord;
     occurrences: IFixedValueOccurrence[];
 }
 
@@ -81,7 +96,14 @@ export class RecipeCockpitFixedValueStore {
             }
 
             seenKeys.add(entryKey);
-            entries.push({ objectApiName: storedEntry.objectApiName, fieldApiName: storedEntry.fieldApiName, value: storedEntry.value, occurrences: occurrences });
+            const orgRecord = this.readOrgRecord(storedEntry.orgRecord, storedEntry.value);
+            entries.push({
+                objectApiName: storedEntry.objectApiName,
+                fieldApiName: storedEntry.fieldApiName,
+                value: storedEntry.value,
+                ...( orgRecord ? { orgRecord: orgRecord } : {} ),
+                occurrences: occurrences
+            });
 
         });
 
@@ -101,6 +123,13 @@ export class RecipeCockpitFixedValueStore {
                 objectApiName: entry.objectApiName,
                 fieldApiName: entry.fieldApiName,
                 value: entry.value,
+                ...( entry.orgRecord ? {
+                    orgRecord: {
+                        orgUsername: entry.orgRecord.orgUsername,
+                        ...( entry.orgRecord.orgAlias !== undefined ? { orgAlias: entry.orgRecord.orgAlias } : {} ),
+                        parentObjectApiName: entry.orgRecord.parentObjectApiName
+                    }
+                } : {} ),
                 occurrences: [...entry.occurrences]
                     .sort((left, right) => left.occurrenceIndex - right.occurrenceIndex)
                     .map(occurrence => ({
@@ -216,6 +245,36 @@ export class RecipeCockpitFixedValueStore {
 
         return occurrences;
 
+    }
+
+    static isSalesforceRecordId(candidate: unknown): candidate is string {
+        return typeof candidate === 'string' && SALESFORCE_RECORD_ID_PATTERN.test(candidate);
+    }
+
+    /*
+        An entry's org record is kept only beside a value that is a Salesforce Id, with a parent that
+        is an api name and an org named on one line; anything else is dropped, and the entry then
+        reads as a plain fixed value -- which a lookup never takes, so it is not drawn as pinned.
+    */
+    private static readOrgRecord(storedOrgRecord: unknown, value: string): IFixedValueOrgRecord | undefined {
+
+        if ( storedOrgRecord === undefined || !this.isPlainRecord(storedOrgRecord) || !this.isSalesforceRecordId(value)
+                || !this.isOrgName(storedOrgRecord.orgUsername)
+                || ( storedOrgRecord.orgAlias !== undefined && !this.isOrgName(storedOrgRecord.orgAlias) )
+                || !SalesforceApiName.isApiName(storedOrgRecord.parentObjectApiName) ) {
+            return undefined;
+        }
+
+        return {
+            orgUsername: storedOrgRecord.orgUsername,
+            ...( storedOrgRecord.orgAlias !== undefined ? { orgAlias: storedOrgRecord.orgAlias as string } : {} ),
+            parentObjectApiName: storedOrgRecord.parentObjectApiName
+        };
+
+    }
+
+    private static isOrgName(candidate: unknown): candidate is string {
+        return typeof candidate === 'string' && candidate !== '' && candidate.length <= MAX_ORG_NAME_LENGTH && !/[\p{Cc}\u0085\u2028\u2029]/u.test(candidate);
     }
 
     private static buildEntryKey(objectApiName: string, fieldApiName: string): string {
