@@ -116,14 +116,15 @@ describe('RecipeCockpitService, button kinds (#363)', () => {
 
     });
 
-    it('gives the empty state\'s Generate Treecipe button the primary kind', () => {
+    it('draws the empty state\'s Generate Treecipe as a 🛠️ card (#384)', () => {
 
         const panel = runPanelScript();
         panel.postToPanel({ command: 'recipeData', recipe: { runs: [], selectedRunFolderName: '', objects: [], trees: [], notices: [], emptyStateMessage: RECIPE_COCKPIT_NO_RUN_MESSAGE }, renderSequence: 1 });
         const buttonElements = collectButtons([panel.cockpitBodyElement, panel.cockpitMetaElement]);
 
         expect(findButtonsWithoutOneKind(buttonElements)).toEqual([]);
-        expect(panel.findAll(panel.cockpitBodyElement, 'generateTreecipe')[0].className).toBe('sdtButton sdtButton-primary generateTreecipe');
+        expect(panel.findAll(panel.cockpitBodyElement, 'generateTreecipe')[0].className).toBe('sdtButton sdtButton-card actionCard generateTreecipe');
+        expect(panel.findAll(panel.findAll(panel.cockpitBodyElement, 'generateTreecipe')[0], 'actionCardEmoji')[0].textContent).toBe('🛠️');
 
     });
 

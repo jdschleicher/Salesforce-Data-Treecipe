@@ -2906,12 +2906,12 @@ describe('RecipeCockpitService', () => {
             panel.postToPanel({ command: 'recipeData', recipe: RecipeCockpitService.buildRecipeViewModel(path.join(MOCK_WORKSPACE_ROOT, 'doesNotExist')) });
 
             const [generateButton] = panel.findAll(panel.cockpitBodyElement, 'generateTreecipe');
-            expect(generateButton.textContent).toBe(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL);
+            expect(panel.cardTitleOf(generateButton)).toBe(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL);
 
             generateButton.dispatch('click');
 
             expect(generateButton.disabled).toBe(true);
-            expect(generateButton.textContent).toBe(RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL);
+            expect(panel.cardTitleOf(generateButton)).toBe(RECIPE_COCKPIT_GENERATE_TREECIPE_RUNNING_LABEL);
             expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'generateTreecipe')).toEqual([{ command: 'generateTreecipe' }]);
 
             // THE HOST'S RELOAD REDRAWS THE BODY, AND WITH STILL NO RUN THE BUTTON COMES BACK PRESSABLE
@@ -2919,7 +2919,7 @@ describe('RecipeCockpitService', () => {
 
             const [redrawnButton] = panel.findAll(panel.cockpitBodyElement, 'generateTreecipe');
             expect(redrawnButton.disabled).toBeFalsy();
-            expect(redrawnButton.textContent).toBe(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL);
+            expect(panel.cardTitleOf(redrawnButton)).toBe(RECIPE_COCKPIT_GENERATE_TREECIPE_ACTION_LABEL);
 
         });
 

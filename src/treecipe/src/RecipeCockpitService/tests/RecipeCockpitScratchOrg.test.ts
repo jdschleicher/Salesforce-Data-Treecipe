@@ -56,7 +56,8 @@ import {
     RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL,
     RECIPE_COCKPIT_SCRATCH_ORG_COPY_DEPLOY_LABEL,
     RECIPE_COCKPIT_SCRATCH_ORG_DEV_HUB_PLACEHOLDER,
-    RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL
+    RECIPE_COCKPIT_SCRATCH_ORG_VIEW_OUTPUT_LABEL,
+    RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService, TARGET_DEV_HUB_ENVIRONMENT_VARIABLE } from '../../SalesforceOrgService/SalesforceOrgService';
@@ -1123,7 +1124,9 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(pickerElement.parentNode.parentNode.attributes.id).toBe('cockpitOrgSectionBody');
             const newScratchElement = firstOf(panel, 'dataOrgNewScratch');
 
-            expect(newScratchElement.textContent).toBe('+ New scratch org');
+            expect(newScratchElement.textContent).toBe(RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL);
+            // #384: ➕ IS DRAWN BEFORE THE LABEL BY THE STYLESHEET, AND IT STAYS A PRIMARY BUTTON IN THE PINNED ROW
+            expect(newScratchElement.className).toBe('sdtButton sdtButton-primary dataOrgNewScratch');
             expect(newScratchElement.parentNode).toBe(pickerElement);
             expect(pickerElement.children.indexOf(newScratchElement)).toBeGreaterThan(pickerElement.children.indexOf(firstOf(panel, 'dataOrgSelect')));
 
