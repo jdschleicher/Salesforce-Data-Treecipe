@@ -855,8 +855,13 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             expect(checkboxNamed(panel, 'Business').attributes['aria-checked']).toBe('true');
             expect(checkboxNamed(panel, 'Business').disabled).toBe(true);
             expect(checkboxNamed(panel, 'Partner').attributes['aria-checked']).toBe('false');
-            expect(buttonOf(panel, 'recordTypesRegenerate').textContent).toBe(RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL);
-            expect(buttonOf(panel, 'recordTypesDefaults').textContent).toBe(RECIPE_COCKPIT_USE_DEFAULT_RECORD_TYPES_LABEL);
+            expect(panel.cardTitleOf(buttonOf(panel, 'recordTypesRegenerate'))).toBe(RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL);
+            expect(panel.cardTitleOf(buttonOf(panel, 'recordTypesDefaults'))).toBe(RECIPE_COCKPIT_USE_DEFAULT_RECORD_TYPES_LABEL);
+            // #384: BOTH ARE 🔄 CARDS
+            ['recordTypesRegenerate', 'recordTypesDefaults'].forEach(className => {
+                expect(buttonOf(panel, className).classList.contains('sdtButton-card')).toBe(true);
+                expect(panel.findAll(buttonOf(panel, className), 'actionCardEmoji')[0].textContent).toBe('🔄');
+            });
 
         });
 
@@ -927,13 +932,15 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
             expect(buttonOf(panel, 'recordTypesRegenerate').disabled).toBe(true);
             expect(buttonOf(panel, 'recordTypesRegenerate').attributes.title).toBe('Wait for the insert to finish');
+            expect(panel.findAll(buttonOf(panel, 'recordTypesRegenerate'), 'actionCardReason')[0].textContent).toBe('Wait for the insert to finish');
             expect(checkboxNamed(panel, 'Partner').disabled).toBe(true);
             expect(regenerateMessages(panel)).toEqual([]);
 
             panel.postToPanel({ command: 'insertState', isRunning: false });
 
             expect(buttonOf(panel, 'recordTypesRegenerate').disabled).toBe(false);
-            expect(buttonOf(panel, 'recordTypesRegenerate').attributes.title).toBeUndefined();
+            expect(buttonOf(panel, 'recordTypesRegenerate').attributes.title).toBe('Regenerate the run with the record types ticked above');
+            expect(panel.isHidden(panel.findAll(buttonOf(panel, 'recordTypesRegenerate'), 'actionCardReason')[0])).toBe(true);
             expect(checkboxNamed(panel, 'Partner').disabled).toBe(false);
 
         });
