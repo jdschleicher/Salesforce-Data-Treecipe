@@ -294,6 +294,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
         const loadGenerateAndUpdate = async () => {
             await send({
                 command: 'loadUpdaterRecords',
+                parentObjectApiName: 'Account',
                 treeKey: ACCOUNT_TREE_KEY,
                 renderSequence: lastRenderSequence(),
                 objects: [

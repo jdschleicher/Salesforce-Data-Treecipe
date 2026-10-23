@@ -70,6 +70,11 @@ import { IFakerRecipeProcessor } from '../../FakerRecipeProcessor/IFakerRecipePr
 import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
 
+
+// A RECORD Id OF THE SALESFORCE SHAPE, SINCE THE LOAD NARROWS A CHILD ONLY BY Ids THAT ARE (#444)
+const fakeRecordId = (objectApiName: string, recordIndex: number) =>
+    `${({ Account: '001', Contact: '003', OtherChildObject__c: 'a01' } as Record<string, string>)[objectApiName] ?? 'a99'}${String(recordIndex).padStart(15, '0')}`;
+
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const TREE_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
 const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
@@ -359,6 +364,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             selectOrg(SANDBOX_ORG);
             await send({
                 command: 'loadUpdaterRecords',
+                parentObjectApiName: 'Account',
                 treeKey: ACCOUNT_TREE_KEY,
                 renderSequence: lastRenderSequence(),
                 objects: [
@@ -452,7 +458,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                     const objectApiName = /FROM (\w+)/.exec(soql)![1];
                     const records = Array.from({ length: recordCountByObject[objectApiName] ?? 0 }, (_value, recordIndex) => ({
                         attributes: { type: objectApiName },
-                        Id: `${objectApiName}-${recordIndex}`,
+                        Id: fakeRecordId(objectApiName, recordIndex),
                         Legacy_Code__c: `OLD-${recordIndex}`,
                         Rating__c: 'Warm',
                         LastName: `Old ${recordIndex}`
@@ -612,7 +618,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 ['Account', 3, { allowRecursive: false, allOrNone: false }],
                 ['Contact', 2, { allowRecursive: false, allOrNone: false }]
             ]);
-            expect(updateCalls[0].records[0]).toEqual({ attributes: { type: 'Account' }, Id: 'Account-0', Legacy_Code__c: 'Legacy_Code__c-new-0', Rating__c: 'Hot' });
+            expect(updateCalls[0].records[0]).toEqual({ attributes: { type: 'Account' }, Id: fakeRecordId('Account', 0), Legacy_Code__c: 'Legacy_Code__c-new-0', Rating__c: 'Hot' });
 
             expect(attemptFiles()).toEqual([expect.stringMatching(/^\d{8}-\d{6}-before\.json$/), expect.stringMatching(/^\d{8}-\d{6}-results\.json$/)]);
             const snapshot = readAttemptFile('-before.json');
@@ -620,7 +626,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             expect(snapshot.objects[0]).toEqual({
                 objectApiName: 'Account',
                 fieldApiNames: ['Legacy_Code__c', 'Rating__c'],
-                records: [0, 1, 2].map(recordIndex => ({ recordId: `Account-${recordIndex}`, fieldValues: { Legacy_Code__c: `OLD-${recordIndex}`, Rating__c: 'Warm' } }))
+                records: [0, 1, 2].map(recordIndex => ({ recordId: fakeRecordId('Account', recordIndex), fieldValues: { Legacy_Code__c: `OLD-${recordIndex}`, Rating__c: 'Warm' } }))
             });
             const results = readAttemptFile('-results.json');
             expect(results).toMatchObject({ outcome: 'completed', allOrNone: false, updatedRecordCount: 5, failedRecordCount: 0, snapshotFile: attemptFiles()[0] });
@@ -650,7 +656,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             await requestUpdate();
 
             expect(updateCalls.map(updateCall => updateCall.records.length)).toEqual([200, 200, 50]);
-            expect(updateCalls[2].records[49].Id).toBe('Account-449');
+            expect(updateCalls[2].records[49].Id).toBe(fakeRecordId('Account', 449));
             // NO PICKLIST CHOSEN: NO RECORD TYPE NOTE
             expect(updateConfirmations()[0][1].detail).not.toContain(RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE);
 
@@ -670,7 +676,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             const results = readAttemptFile('-results.json');
             expect(results).toMatchObject({ outcome: 'completed', updatedRecordCount: 4, failedRecordCount: 1 });
             expect(results.objects[0].results[1]).toEqual({
-                recordId: 'Account-1',
+                recordId: fakeRecordId('Account', 1),
                 isSuccess: false,
                 errors: [{ statusCode: 'INVALID_OR_NULL_FOR_RESTRICTED_PICKLIST', message: 'Rating: bad value for restricted picklist field: Hot', fields: ['Rating__c'] }]
             });
@@ -696,7 +702,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 ['Account', false]
             ]);
             // PUT BACK FROM THE SNAPSHOT, NOT FROM WHAT WAS SENT
-            expect(updateCalls[2].records).toEqual([0, 1, 2].map(recordIndex => ({ attributes: { type: 'Account' }, Id: `Account-${recordIndex}`, Legacy_Code__c: `OLD-${recordIndex}`, Rating__c: 'Warm' })));
+            expect(updateCalls[2].records).toEqual([0, 1, 2].map(recordIndex => ({ attributes: { type: 'Account' }, Id: fakeRecordId('Account', recordIndex), Legacy_Code__c: `OLD-${recordIndex}`, Rating__c: 'Warm' })));
 
             const results = readAttemptFile('-results.json');
             expect(results).toMatchObject({ outcome: 'stopped', allOrNone: true, updatedRecordCount: 3, failedRecordCount: 2, putBack: { putBackRecordCount: 3, failedRecordCount: 0 } });
@@ -726,10 +732,10 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 ['Account', 3, false],
                 ['Contact', 2, false]
             ]);
-            expect(updateCalls[3].records[0]).toEqual({ attributes: { type: 'Contact' }, Id: 'Contact-0', LastName: 'Old 0' });
+            expect(updateCalls[3].records[0]).toEqual({ attributes: { type: 'Contact' }, Id: fakeRecordId('Contact', 0), LastName: 'Old 0' });
 
             const results = readAttemptFile('-results.json');
-            expect(results.objects[1].results[0]).toEqual({ recordId: 'Contact-0', isSuccess: false, errors: [{ statusCode: 'REQUEST_FAILED', message: 'socket hang up', fields: [] }], isUncertain: true });
+            expect(results.objects[1].results[0]).toEqual({ recordId: fakeRecordId('Contact', 0), isSuccess: false, errors: [{ statusCode: 'REQUEST_FAILED', message: 'socket hang up', fields: [] }], isUncertain: true });
             expect(results.putBack).toMatchObject({ putBackRecordCount: 2, failedRecordCount: 3, uncertainRecordCount: 2, requestFailureDetail: 'Contact failed: socket hang up' });
             expect(vscode.window.showErrorMessage).toHaveBeenLastCalledWith(
                 `The update of Account-thru-OtherChildObject__c in qa · qa@example.com.qa stopped at a request that failed: 2 records failed. 2 records it had updated or may have updated were set back to their old values, and 3 records could not be: their old values are in ${attemptFiles()[0]}. The request for Contact failed: socket hang up Setting back Contact failed: socket hang up`,

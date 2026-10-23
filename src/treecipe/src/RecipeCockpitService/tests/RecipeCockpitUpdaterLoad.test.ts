@@ -49,14 +49,20 @@ import {
     RECIPE_COCKPIT_UPDATER_LOAD_LABEL,
     RECIPE_COCKPIT_UPDATER_LOADING_LABEL,
     RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER,
+    RECIPE_COCKPIT_UPDATER_PARENT_NOT_READ_REASON_PREFIX,
     RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
-import { RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH } from '../RecipeCockpitTreeUpdaterQuery';
-import { RECIPE_COCKPIT_QUERY_RECORD_CAP, RECIPE_COCKPIT_QUERY_VALUE_BUDGET } from '../RecipeCockpitQuery';
+import { RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE, RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH } from '../RecipeCockpitTreeUpdaterQuery';
+import { RECIPE_COCKPIT_QUERY_MAX_LENGTH, RECIPE_COCKPIT_QUERY_RECORD_CAP, RECIPE_COCKPIT_QUERY_VALUE_BUDGET } from '../RecipeCockpitQuery';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+
+
+// A RECORD Id OF THE SALESFORCE SHAPE, SINCE THE LOAD NARROWS A CHILD ONLY BY Ids THAT ARE (#444)
+const fakeRecordId = (objectApiName: string, recordIndex: number) =>
+    `${({ Account: '001', Contact: '003', OtherChildObject__c: 'a01' } as Record<string, string>)[objectApiName] ?? 'a99'}${String(recordIndex).padStart(15, '0')}`;
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const TREE_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
@@ -72,6 +78,7 @@ const accountTreeOf = (recipe: any) => recipe.trees.find((tree: any) => tree.tre
 
 const loadRequest = (renderSequence: number, overrides: Record<string, unknown> = {}) => ({
     command: 'loadUpdaterRecords',
+    parentObjectApiName: 'Account',
     treeKey: ACCOUNT_TREE_KEY,
     renderSequence: renderSequence,
     objects: [
@@ -115,8 +122,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
                 isOrgPrompted: false,
                 requests: [
                     { objectApiName: 'Account', fieldApiNames: ['Legacy_Code__c'], whereClause: '' },
-                    { objectApiName: 'Contact', fieldApiNames: ['LastName'], whereClause: 'LastName != null' },
-                    { objectApiName: 'OtherChildObject__c', fieldApiNames: [], whereClause: '' }
+                    { objectApiName: 'Contact', fieldApiNames: ['LastName'], whereClause: 'LastName != null', narrowingLookup: { fieldApiName: 'AccountId', parentObjectApiName: 'Account' } },
+                    { objectApiName: 'OtherChildObject__c', fieldApiNames: [], whereClause: '', narrowingLookup: { fieldApiName: 'Contact__c', parentObjectApiName: 'Contact' } }
                 ]
             });
 
@@ -260,7 +267,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
 
         const recordsOf = (objectApiName: string, count: number) => Array.from({ length: count }, (_value, recordIndex) => ({
             attributes: { type: objectApiName },
-            Id: `${objectApiName}-${recordIndex}`,
+            Id: fakeRecordId(objectApiName, recordIndex),
             Name: `${objectApiName} ${recordIndex}`
         }));
 
@@ -334,8 +341,9 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             expect(sentQueries).toHaveLength(3);
             expect(sentQueries[0]).toMatch(/^SELECT Id, (\w+, )*Legacy_Code__c FROM Account$/);
             expect(sentQueries[0]).toContain('ParentId');
-            expect(sentQueries[1]).toBe('SELECT Id, AccountId, LastName FROM Contact WHERE LastName != null');
-            expect(sentQueries[2]).toBe('SELECT Id, Contact__c FROM OtherChildObject__c');
+            // EACH LEVEL BELOW THE PARENT READS ONLY UNDER THE RECORDS THE LEVEL ABOVE LOADED (#444)
+            expect(sentQueries[1]).toBe(`SELECT Id, AccountId, LastName FROM Contact WHERE (LastName != null) AND AccountId IN ('${fakeRecordId('Account', 0)}', '${fakeRecordId('Account', 1)}')`);
+            expect(sentQueries[2]).toBe(`SELECT Id, Contact__c FROM OtherChildObject__c WHERE Contact__c IN (${Array.from({ length: 25 }, (_value, recordIndex) => `'${fakeRecordId('Contact', recordIndex)}'`).join(', ')})`);
 
         });
 
@@ -352,7 +360,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             const contactRecords = recordsMessage.objects.find((loadedObject: any) => loadedObject.objectApiName === 'Contact');
             expect(contactRecords).toMatchObject({ totalSize: 25, recordCount: 25, isTruncated: false, columns: ['Id', 'Name'], hiddenColumnCount: 0 });
             expect(contactRecords.rows).toHaveLength(RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT);
-            expect(contactRecords.rows[0]).toEqual(['Contact-0', 'Contact 0']);
+            expect(contactRecords.rows[0]).toEqual([fakeRecordId('Contact', 0), 'Contact 0']);
             expect(JSON.stringify(recordsMessage)).not.toContain('attributes');
 
             expect(postedNamed('updaterLoadState').map(stateMessage => stateMessage.isRunning)).toEqual([true, false]);
@@ -383,7 +391,11 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
 
             await openCockpit();
             selectSandbox();
-            await send(loadRequest(lastRenderSequence(), { objects: [{ objectApiName: 'Account', fieldApiNames: [], whereClause: 'Name = \'A\'; DELETE' }] }));
+            await send(loadRequest(lastRenderSequence(), { objects: [
+                { objectApiName: 'Account', fieldApiNames: [], whereClause: 'Name = \'A\'; DELETE' },
+                { objectApiName: 'Contact', fieldApiNames: [], whereClause: '' },
+                { objectApiName: 'OtherChildObject__c', fieldApiNames: [], whereClause: '' }
+            ] }));
 
             expect(connectionSpy).not.toHaveBeenCalled();
             expect(sentQueries).toEqual([]);
@@ -511,7 +523,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
                 const objectApiName = /FROM (\w+)/.exec(soql)![1];
                 return { totalSize: 3, done: false, nextRecordsUrl: `/next/${objectApiName}`, records: recordsOf(objectApiName, 2) };
             };
-            const queryMoreSpy = jest.fn(async (nextRecordsUrl: string) => ({ totalSize: 3, done: true, records: recordsOf(nextRecordsUrl.split('/').pop()!, 1) }));
+            const queryMoreSpy = jest.fn(async (nextRecordsUrl: string) => ({ totalSize: 3, done: true, records: recordsOf(nextRecordsUrl.split('/').pop()!, 3).slice(2) }));
             connectionSpy.mockImplementation(async () => ({
                 query: async (soql: string) => { sentQueries.push(soql); return await queryAnswer(soql); },
                 queryMore: queryMoreSpy
@@ -578,6 +590,142 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
             ]);
             expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(RECIPE_COCKPIT_QUERY_RECORD_CAP);
             expect(warnings()).toEqual([expect.stringContaining('and stopped there')]);
+
+        });
+
+        it('reads the level under 2,500 parents in queries of at most the chunk size, and keeps each record once (#444)', async () => {
+
+            queryAnswer = async (soql: string) => {
+                const objectApiName = /FROM (\w+)/.exec(soql)![1];
+                const records = recordsOf(objectApiName, objectApiName === 'Account' ? 2500 : 3);
+                return { totalSize: records.length, done: true, records: records };
+            };
+
+            await openCockpit();
+            selectSandbox();
+            await send(loadRequest(lastRenderSequence()));
+
+            const contactQueries = sentQueries.filter(query => query.includes('FROM Contact'));
+            expect(contactQueries).toHaveLength(Math.ceil(2500 / RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE));
+            contactQueries.forEach(query => expect(query.length).toBeLessThanOrEqual(RECIPE_COCKPIT_QUERY_MAX_LENGTH));
+            expect(new Set(contactQueries.flatMap(query => query.match(/001[0-9]{15}/g) ?? [])).size).toBe(2500);
+
+            // EVERY CHUNK ANSWERED WITH THE SAME THREE CONTACTS; THEY ARE KEPT ONCE, AND THEIR CHILDREN READ UNDER THREE Ids
+            const [recordsMessage] = postedNamed('updaterRecords');
+            expect(recordsMessage.objects.map((loadedObject: any) => [loadedObject.objectApiName, loadedObject.recordCount])).toEqual([
+                ['Account', 2500],
+                ['Contact', 3],
+                ['OtherChildObject__c', 3]
+            ]);
+            expect(sentQueries.filter(query => query.includes('FROM OtherChildObject__c'))).toHaveLength(1);
+
+        });
+
+        it('sends no query under a parent that loaded no records, and says why (#444)', async () => {
+
+            queryAnswer = async (soql: string) => ({ totalSize: 0, done: true, records: [] });
+
+            await openCockpit();
+            selectSandbox();
+            await send(loadRequest(lastRenderSequence(), { objects: [
+                { objectApiName: 'Account', fieldApiNames: [], whereClause: 'Name = \'Nobody\'' },
+                { objectApiName: 'Contact', fieldApiNames: [], whereClause: '' },
+                { objectApiName: 'OtherChildObject__c', fieldApiNames: [], whereClause: '' }
+            ] }));
+
+            expect(sentQueries).toHaveLength(1);
+            const [recordsMessage] = postedNamed('updaterRecords');
+            expect(recordsMessage.objects.map((loadedObject: any) => [loadedObject.objectApiName, loadedObject.recordCount, loadedObject.skippedReason])).toEqual([
+                ['Account', 0, undefined],
+                ['Contact', 0, `${RECIPE_COCKPIT_UPDATER_PARENT_NOT_READ_REASON_PREFIX}no Account records were loaded, so none under them were read.`],
+                ['OtherChildObject__c', 0, `${RECIPE_COCKPIT_UPDATER_PARENT_NOT_READ_REASON_PREFIX}Contact records were not read, so none under them were.`]
+            ]);
+
+        });
+
+        it('reads nothing under a parent the org refused (#444)', async () => {
+
+            queryAnswer = async (soql: string) => {
+                if ( soql.includes('FROM Account') ) { throw new Error('No such column'); }
+                return { totalSize: 1, done: true, records: recordsOf('Contact', 1) };
+            };
+
+            await openCockpit();
+            selectSandbox();
+            await send(loadRequest(lastRenderSequence()));
+
+            expect(sentQueries).toHaveLength(1);
+            expect(warnings()).toEqual([expect.stringContaining('Account could not be read')]);
+
+        });
+
+        it('says an object could not be read when the org answered its parents with Ids that are not record Ids (#444)', async () => {
+
+            queryAnswer = async (soql: string) => {
+                const objectApiName = /FROM (\w+)/.exec(soql)![1];
+                return { totalSize: 1, done: true, records: [{ attributes: { type: objectApiName }, Id: objectApiName === 'Account' ? 'not-a-record-id' : fakeRecordId(objectApiName, 0) }] };
+            };
+
+            await openCockpit();
+            selectSandbox();
+            await send(loadRequest(lastRenderSequence()));
+
+            expect(sentQueries).toHaveLength(1);
+            const [recordsMessage] = postedNamed('updaterRecords');
+            expect(recordsMessage.objects[1]).toMatchObject({ objectApiName: 'Contact', failureMessage: 'One of the Account record Ids the org answered with is not a record Id.' });
+
+        });
+
+        it('stops a child\'s queries when the record cap runs out between them, and says so (#444)', async () => {
+
+            queryAnswer = async (soql: string) => {
+                const objectApiName = /FROM (\w+)/.exec(soql)![1];
+                const records = recordsOf(objectApiName, objectApiName === 'Account' ? 2500 : RECIPE_COCKPIT_QUERY_RECORD_CAP - 2500);
+                return { totalSize: records.length, done: true, records: records };
+            };
+
+            await openCockpit();
+            selectSandbox();
+            await send(loadRequest(lastRenderSequence()));
+
+            expect(sentQueries.filter(query => query.includes('FROM Contact'))).toHaveLength(1);
+            const [recordsMessage] = postedNamed('updaterRecords');
+            expect(recordsMessage.objects[1]).toMatchObject({ objectApiName: 'Contact', recordCount: RECIPE_COCKPIT_QUERY_RECORD_CAP - 2500, isTruncated: true });
+            expect(warnings()).toEqual([expect.stringContaining('and stopped there')]);
+
+        });
+
+        it('keeps nothing when the reader cancels between levels (#444)', async () => {
+
+            queryAnswer = async (soql: string) => {
+                const objectApiName = /FROM (\w+)/.exec(soql)![1];
+                if ( objectApiName === 'Contact' ) { cancellationToken.isCancellationRequested = true; }
+                return { totalSize: 2, done: true, records: recordsOf(objectApiName, 2) };
+            };
+
+            await openCockpit();
+            selectSandbox();
+            await send(loadRequest(lastRenderSequence()));
+
+            expect(sentQueries.some(query => query.includes('FROM OtherChildObject__c'))).toBe(false);
+            expect(postedNamed('updaterRecords')).toEqual([]);
+            expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(0);
+            expect(warnings()).toEqual([expect.stringContaining('was cancelled, so none were kept')]);
+
+        });
+
+        it('refuses a load of objects that are not the parent and those under it, sending nothing (#444)', async () => {
+
+            await openCockpit();
+            selectSandbox();
+            await send(loadRequest(lastRenderSequence(), { parentObjectApiName: 'Contact' }));
+            await send(loadRequest(lastRenderSequence(), { parentObjectApiName: undefined }));
+
+            expect(connectionSpy).not.toHaveBeenCalled();
+            expect(warnings()).toEqual([
+                'Records were not loaded: The objects to load are not the parent and the objects under it.',
+                'Records were not loaded: The parent object is not an object of this treecipe.'
+            ]);
 
         });
 
@@ -755,6 +903,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
 
             expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadUpdaterRecords')).toEqual([{
                 command: 'loadUpdaterRecords',
+                parentObjectApiName: 'Account',
                 treeKey: ACCOUNT_TREE_KEY,
                 renderSequence: 1,
                 objects: [

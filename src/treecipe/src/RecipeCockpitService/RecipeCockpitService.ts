@@ -95,7 +95,7 @@ import {
     RecipeCockpitQueryExportFormat
 } from './RecipeCockpitQuery';
 import { IUpdateRecordResult, IUpdateRecordValues, IUpdateRequestRecord, IUpdateSnapshotObject, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RECIPE_COCKPIT_UPDATE_REQUEST_RECORD_LIMIT, RecipeCockpitRecordUpdate } from './RecipeCockpitRecordUpdate';
-import { IRecipeCockpitUpdaterObjectQuery, IRecipeCockpitUpdaterObjectRequest, IRecipeCockpitUpdaterTreeObject, RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH, RecipeCockpitTreeUpdaterQuery } from './RecipeCockpitTreeUpdaterQuery';
+import { IRecipeCockpitUpdaterObjectRequest, IRecipeCockpitUpdaterTreeObject, RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH, RecipeCockpitTreeUpdaterQuery } from './RecipeCockpitTreeUpdaterQuery';
 import { ISOQLTreeQuery, SOQL_QUERY_KIND_LABELS, SOQLQueryKind, SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 
@@ -573,7 +573,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against any connected org you pick in the command palette (a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.',
-            'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the tree\'s existing records, with the fields you ticked and an optional WHERE per object, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to treecipe/UpdateAttempts first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
+            'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the parent records step 1\'s WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with the fields you ticked, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to treecipe/UpdateAttempts first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
         ]
     },
     {
@@ -1175,6 +1175,8 @@ export interface IRecipeCockpitPanelMessage {
     exportFormat?: unknown;
     // THE TREECIPE UPDATER'S LOAD (#416): PER OBJECT, THE FIELDS CHOSEN AND THE READER'S WHERE
     objects?: unknown;
+    // THE TREECIPE ADAPTER'S LOAD (#444): THE PARENT STEP 1 CHOSE, WHOSE OBJECTS ARE THE ONLY ONES IT READS
+    parentObjectApiName?: unknown;
     fields?: unknown;
     // "updaterValuesRendered" (#418): THE GENERATED VALUES THE PANEL DREW
     valuesSequence?: unknown;
@@ -2069,7 +2071,7 @@ export const RECIPE_COCKPIT_QUERY_TAB_LABEL = 'Query';
     Adapter cannot change is disabled with the reason.
 */
 export const RECIPE_COCKPIT_UPDATER_TAB_LABEL = 'Treecipe Adapter';
-export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads the records of the objects drawn here, with those fields, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with ✎. Update records writes those values to the records by Id, after saving their old values to treecipe/UpdateAttempts, and Restore previous values… puts saved ones back.';
+export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads the parent records and only the records under them, with those fields, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with ✎. Update records writes those values to the records by Id, after saving their old values to treecipe/UpdateAttempts, and Restore previous values… puts saved ones back.';
 export const RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER = 'Filter by fields & objects to add';
 /*
     The Adapter's two steps (#443): step 1 chooses the parent object and the WHERE for the parent
@@ -2101,6 +2103,9 @@ export const RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER = 'Select the sandbox or scr
 // HOW MANY ROWS OF EACH OBJECT'S RECORDS THE PANEL IS SENT; THE REST STAY ON THE HOST
 export const RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT = 10;
 export const RECIPE_COCKPIT_UPDATER_LIMIT_SKIPPED_REASON = `Not read: the load reached its limit of ${RECIPE_COCKPIT_QUERY_RECORD_CAP} records or ${RECIPE_COCKPIT_QUERY_VALUE_BUDGET} values on the objects before this one. Add a WHERE to those to read this one.`;
+// AN OBJECT UNDER THE PARENT IS READ ONLY UNDER RECORDS LOADED A LEVEL ABOVE (#444); WHEN THERE ARE NONE, IT SENDS NO QUERY
+export const RECIPE_COCKPIT_UPDATER_PARENT_NOT_READ_REASON_PREFIX = 'Not read: ';
+export const RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON = 'The last load read 0 records: change the parent\'s WHERE in step 1, or the WHERE under an object, and load again.';
 export const RECIPE_COCKPIT_UPDATER_BUSY_REFUSAL = 'Records were not loaded: another run is changing the org selection. Try again when it ends.';
 export const RECIPE_COCKPIT_UPDATER_GENERATE_LABEL = 'Generate values';
 export const RECIPE_COCKPIT_UPDATER_GENERATING_LABEL = 'Generating…';
@@ -8873,16 +8878,15 @@ export class RecipeCockpitService {
         const orgLabel = dataOrgSelection.orgDetail.alias ? `${dataOrgSelection.orgDetail.alias} · ${orgUsername}` : orgUsername;
         const treeTitle = tree.customName ?? tree.title;
         const treeObjectsByApiName = new Map(this.listUpdaterTreeObjects(clickedRecipeDataMessage.recipe, tree).map(treeObject => [treeObject.objectApiName, treeObject] as const));
-        const objectQueries: IRecipeCockpitUpdaterObjectQuery[] = [];
 
+        // EVERY QUERY IS CHECKED BEFORE ANY RECORD IS READ; A CHILD'S WITH A PLACEHOLDER Id, SINCE ITS PARENT Ids COME FROM THE LOAD
         for ( const request of requests ) {
             const treeObject = treeObjectsByApiName.get(request.objectApiName);
-            const queryBuild = treeObject ? RecipeCockpitTreeUpdaterQuery.buildObjectQuery(treeObject, request) : { refusal: `${request.objectApiName} is no longer in this treecipe.` };
-            if ( 'refusal' in queryBuild ) {
-                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Records were not loaded: ${queryBuild.refusal}`));
+            const queryRefusal = treeObject ? RecipeCockpitTreeUpdaterQuery.checkRequestQuery(treeObject, request) : { refusal: `${request.objectApiName} is no longer in this treecipe.` };
+            if ( queryRefusal ) {
+                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Records were not loaded: ${queryRefusal.refusal}`));
                 return;
             }
-            objectQueries.push(queryBuild.objectQuery);
         }
 
         const recordsByObjectApiName = new Map<string, Record<string, unknown>[]>();
@@ -8909,18 +8913,33 @@ export class RecipeCockpitService {
             let valueBudgetLeft = RECIPE_COCKPIT_QUERY_VALUE_BUDGET;
             let recordCapLeft = RECIPE_COCKPIT_QUERY_RECORD_CAP;
 
-            for ( const objectQuery of objectQueries ) {
+            // THE Ids EACH OBJECT LOADED, WHICH THE LEVEL BELOW IS NARROWED TO; AN OBJECT NOT READ HAS NONE, AND NOTHING UNDER IT IS READ
+            const loadedRecordIdsByObjectApiName = new Map<string, string[]>();
+
+            for ( const request of requests ) {
 
                 if ( cancellationToken.isCancellationRequested ) {
                     isCancelled = true;
                     return;
                 }
 
+                const treeObject = treeObjectsByApiName.get(request.objectApiName) as IRecipeCockpitUpdaterTreeObject;
+                const skipped = (skippedReason: string) => objectViewModels.push({
+                    objectApiName: request.objectApiName,
+                    totalSize: 0,
+                    recordCount: 0,
+                    isTruncated: false,
+                    columns: [],
+                    rows: [],
+                    hiddenColumnCount: 0,
+                    skippedReason: skippedReason
+                });
+
                 // A SPENT LIMIT SENDS NO MORE QUERIES: EACH WOULD DOWNLOAD A FIRST PAGE ONLY TO DROP IT
                 if ( valueBudgetLeft <= 0 || recordCapLeft <= 0 ) {
                     isTruncated = true;
                     objectViewModels.push({
-                        objectApiName: objectQuery.objectApiName,
+                        objectApiName: request.objectApiName,
                         totalSize: 0,
                         recordCount: 0,
                         isTruncated: true,
@@ -8932,30 +8951,89 @@ export class RecipeCockpitService {
                     continue;
                 }
 
-                progress.report({ message: objectQuery.objectApiName });
+                let queries: string[];
+
+                if ( request.narrowingLookup ) {
+                    const parentRecordIds = loadedRecordIdsByObjectApiName.get(request.narrowingLookup.parentObjectApiName);
+                    if ( !parentRecordIds ) {
+                        skipped(`${RECIPE_COCKPIT_UPDATER_PARENT_NOT_READ_REASON_PREFIX}${request.narrowingLookup.parentObjectApiName} records were not read, so none under them were.`);
+                        continue;
+                    }
+                    if ( parentRecordIds.length === 0 ) {
+                        skipped(`${RECIPE_COCKPIT_UPDATER_PARENT_NOT_READ_REASON_PREFIX}no ${request.narrowingLookup.parentObjectApiName} records were loaded, so none under them were read.`);
+                        continue;
+                    }
+                    const queriesBuild = RecipeCockpitTreeUpdaterQuery.buildNarrowedQueries(treeObject, request, parentRecordIds);
+                    if ( 'refusal' in queriesBuild ) {
+                        objectViewModels.push({
+                            objectApiName: request.objectApiName, totalSize: 0, recordCount: 0, isTruncated: false, columns: [], rows: [], hiddenColumnCount: 0,
+                            failureMessage: queriesBuild.refusal
+                        });
+                        continue;
+                    }
+                    queries = queriesBuild.queries;
+                } else {
+                    const queryBuild = RecipeCockpitTreeUpdaterQuery.buildObjectQuery(treeObject, request);
+                    queries = 'refusal' in queryBuild ? [] : [queryBuild.objectQuery.query];
+                }
+
+                progress.report({ message: request.objectApiName });
 
                 try {
-                    const queryResult = await RecipeCockpitQuery.fetchQueryRecords({
-                        query: async (soql: string) => await connection.query(soql),
-                        queryMore: async (nextRecordsUrl: string) => await connection.queryMore(nextRecordsUrl)
-                    }, objectQuery.query, recordCapLeft, () => cancellationToken.isCancellationRequested, valueBudgetLeft);
 
-                    if ( queryResult.isCancelled ) {
-                        isCancelled = true;
-                        return;
+                    // A RECORD IS KEPT ONCE BY Id, HOWEVER MANY OF A CHILD'S QUERIES ANSWERED WITH IT
+                    const records: Record<string, unknown>[] = [];
+                    const recordIds = new Set<string>();
+                    let totalSize = 0;
+                    let isObjectTruncated = false;
+
+                    for ( const query of queries ) {
+
+                        if ( valueBudgetLeft <= 0 || recordCapLeft <= 0 ) {
+                            isObjectTruncated = true;
+                            break;
+                        }
+
+                        const queryResult = await RecipeCockpitQuery.fetchQueryRecords({
+                            query: async (soql: string) => await connection.query(soql),
+                            queryMore: async (nextRecordsUrl: string) => await connection.queryMore(nextRecordsUrl)
+                        }, query, recordCapLeft, () => cancellationToken.isCancellationRequested, valueBudgetLeft);
+
+                        if ( queryResult.isCancelled ) {
+                            isCancelled = true;
+                            return;
+                        }
+
+                        const newRecords = queryResult.records.filter(record => {
+                            const recordId = this.readRecordFieldValue(record, 'Id');
+                            if ( typeof recordId !== 'string' ) { return true; }
+                            if ( recordIds.has(recordId) ) { return false; }
+                            recordIds.add(recordId);
+                            return true;
+                        });
+
+                        valueBudgetLeft -= RecipeCockpitQuery.countValues(newRecords);
+                        recordCapLeft -= newRecords.length;
+                        totalSize += queryResult.totalSize;
+                        isObjectTruncated = isObjectTruncated || queryResult.isTruncated;
+                        newRecords.forEach(record => records.push(record));
+
+                        if ( queryResult.isTruncated ) {
+                            break;
+                        }
+
                     }
 
-                    valueBudgetLeft -= RecipeCockpitQuery.countValues(queryResult.records);
-                    recordCapLeft -= queryResult.records.length;
-                    isTruncated = isTruncated || queryResult.isTruncated;
-                    recordsByObjectApiName.set(objectQuery.objectApiName, queryResult.records);
+                    isTruncated = isTruncated || isObjectTruncated;
+                    recordsByObjectApiName.set(request.objectApiName, records);
+                    loadedRecordIdsByObjectApiName.set(request.objectApiName, [...recordIds]);
 
-                    const preview = RecipeCockpitQuery.buildPreview(queryResult.records, RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT);
+                    const preview = RecipeCockpitQuery.buildPreview(records, RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT);
                     objectViewModels.push({
-                        objectApiName: objectQuery.objectApiName,
-                        totalSize: queryResult.totalSize,
-                        recordCount: queryResult.records.length,
-                        isTruncated: queryResult.isTruncated,
+                        objectApiName: request.objectApiName,
+                        totalSize: totalSize,
+                        recordCount: records.length,
+                        isTruncated: isObjectTruncated,
                         columns: preview.columns,
                         rows: preview.rows,
                         hiddenColumnCount: preview.hiddenColumnCount
@@ -8963,7 +9041,7 @@ export class RecipeCockpitService {
                 } catch (queryError) {
                     // ONE OBJECT THE ORG REFUSES (A FIELD IT LACKS, A WHERE IT CANNOT READ) IS THAT OBJECT'S, NOT THE LOAD'S
                     objectViewModels.push({
-                        objectApiName: objectQuery.objectApiName,
+                        objectApiName: request.objectApiName,
                         totalSize: 0,
                         recordCount: 0,
                         isTruncated: false,
@@ -13817,7 +13895,7 @@ export class RecipeCockpitService {
 
             case 'loadUpdaterRecords': {
 
-                const { treeKey, renderSequence, objects } = panelMessage;
+                const { treeKey, renderSequence, objects, parentObjectApiName } = panelMessage;
                 const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '' };
 
                 // A RELOADED DOCUMENT MAY NOT KNOW A LOAD IS RUNNING: IT IS TOLD, AND THE LOAD'S OWN END GIVES THE BUTTONS BACK
@@ -13844,7 +13922,7 @@ export class RecipeCockpitService {
                     return { kind: 'refuseUpdaterLoad', refusalText: RECIPE_COCKPIT_UPDATER_BUSY_REFUSAL, hostMessage: notRunning };
                 }
 
-                const requestRead = RecipeCockpitTreeUpdaterQuery.readRequest(objects, this.listUpdaterTreeObjects(recipeDataMessage.recipe, tree));
+                const requestRead = RecipeCockpitTreeUpdaterQuery.readRequest(objects, this.listUpdaterTreeObjects(recipeDataMessage.recipe, tree), parentObjectApiName);
 
                 if ( 'refusal' in requestRead ) {
                     return { kind: 'refuseUpdaterLoad', refusalText: `Records were not loaded: ${requestRead.refusal}`, hostMessage: notRunning };
@@ -16712,6 +16790,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const UPDATER_STRUCTURE_STEP_HEADING_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX)};
     const UPDATER_CHANGE_PARENT_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL)};
     const UPDATER_PARENT_WHERE_NOTE_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX)};
+    const UPDATER_NO_RECORDS_LOADED_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON)};
     const UPDATER_PARENT_WHERE_NONE_NOTE = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE)};
     const UPDATER_RETRIEVE_METADATA_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL)};
     const UPDATER_RETRIEVE_METADATA_PENDING_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_PENDING_REASON)};
@@ -22613,9 +22692,14 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     /*
         The parent and every object whose lookups, to parents in the tree, lead up to it: what step 2
-        draws. A self-lookup is never followed, so an object is under the parent only through another.
+        draws, and the host's RecipeCockpitTreeUpdaterQuery.planLoad, which refuses a load of any
+        other set (#444). Only the card's drawn objects are walked through, as the host walks only
+        objects with fields. A self-lookup is never followed.
     */
-    function indexUpdaterSubtree(tree, parentObjectApiName) {
+    function indexUpdaterSubtree(treeState, parentObjectApiName) {
+
+        const tree = treeState.tree;
+        const drawableObjectApiNames = treeState.updaterCardObjectApiNames;
 
         const subtreeObjectApiNames = Object.create(null);
         subtreeObjectApiNames[parentObjectApiName] = true;
@@ -22624,7 +22708,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         while (isGrowing) {
             isGrowing = false;
             tree.objects.forEach(function (treeObject) {
-                if (hasOwnKey(subtreeObjectApiNames, treeObject.objectApiName)) { return; }
+                if (hasOwnKey(subtreeObjectApiNames, treeObject.objectApiName) || drawableObjectApiNames.indexOf(treeObject.objectApiName) === -1) { return; }
                 const isUnderParent = treeObject.parentLookups.some(function (parentLookup) {
                     return parentLookup.parentObjectApiName !== treeObject.objectApiName && hasOwnKey(subtreeObjectApiNames, parentLookup.parentObjectApiName);
                 });
@@ -22715,7 +22799,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     function drawUpdaterStructure(treeState) {
 
         const parentObjectApiName = treeState.updaterParentObjectApiName;
-        const subtreeObjectApiNames = indexUpdaterSubtree(treeState.tree, parentObjectApiName);
+        const subtreeObjectApiNames = indexUpdaterSubtree(treeState, parentObjectApiName);
         const drawnObjectApiNames = Object.create(null);
 
         treeState.updaterObjectsElement.textContent = '';
@@ -23006,7 +23090,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         updaterLoadRunningTreeKey = treeState.tree.treeKey;
         updaterRunKind = 'load';
         drawUpdaterLoadButtons();
-        vscodeApi.postMessage({ command: 'loadUpdaterRecords', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, objects: objects });
+        vscodeApi.postMessage({ command: 'loadUpdaterRecords', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, parentObjectApiName: treeState.updaterParentObjectApiName, objects: objects });
 
     }
 
@@ -23372,6 +23456,12 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
+    function countUpdaterLoadedRecords(recordsMessage) {
+        return (Array.isArray(recordsMessage.objects) ? recordsMessage.objects : []).reduce(function (total, loadedObject) {
+            return total + (loadedObject ? Number(loadedObject.recordCount) || 0 : 0);
+        }, 0);
+    }
+
     function drawUpdaterLoadButtons() {
 
         treeStates.forEach(function (treeState) {
@@ -23391,6 +23481,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             if (!treeState.updaterGenerateCard) { return; }
             const hasChosenField = treeState.updaterObjectStates.some(function (updaterObjectState) { return updaterObjectState.chosenFieldCount > 0; });
             const generateReason = !treeState.updaterRecordsMessage ? 'Load records first: new values are generated for the records the last load read.'
+                : countUpdaterLoadedRecords(treeState.updaterRecordsMessage) === 0 ? UPDATER_NO_RECORDS_LOADED_REASON
                 : !hasChosenField ? 'Choose a field to fill first.'
                 : '';
             setTextShown(treeState.updaterGenerateCard.titleElement, isThisCardLoading && updaterRunKind === 'generate' ? UPDATER_GENERATING_LABEL : UPDATER_GENERATE_LABEL);
@@ -23400,7 +23491,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             if (!treeState.updaterUpdateCard) { return; }
             const valueRecordCount = treeState.updaterValuesMessage ? countUpdaterValueRecords(treeState.updaterValuesMessage) : 0;
             const orgLabel = treeState.updaterRecordsMessage ? String(treeState.updaterRecordsMessage.orgLabel || '') : '';
-            const updateReason = !treeState.updaterValuesMessage ? 'Generate values first: the update writes the values the last Generate values made.'
+            const updateReason = treeState.updaterRecordsMessage && countUpdaterLoadedRecords(treeState.updaterRecordsMessage) === 0 ? UPDATER_NO_RECORDS_LOADED_REASON
+                : !treeState.updaterValuesMessage ? 'Generate values first: the update writes the values the last Generate values made.'
                 : valueRecordCount === 0 ? 'There are no new values to write: the last load read no records.'
                 : '';
             setTextShown(treeState.updaterUpdateCard.titleElement, isThisCardLoading && updaterRunKind === 'update'

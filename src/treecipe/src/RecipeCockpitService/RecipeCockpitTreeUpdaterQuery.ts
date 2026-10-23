@@ -14,6 +14,23 @@ const RECORD_TOUCHING_CLAUSE_PATTERN = /\bfor\s+(view|reference|update)\b/i;
 const QUOTED_VALUE_PATTERN = /'(?:[^'\\]|\\.)*'/g;
 
 /*
+    How many parent Ids one child query names (#444): 150 Ids are about 3,300 characters, under
+    the 4,000 a WHERE clause was once held to, so a large load is many short queries rather than
+    one the org refuses.
+*/
+export const RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE = 150;
+
+const SALESFORCE_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
+
+// A WELL-FORMED Id THE QUERY IS CHECKED WITH BEFORE ANY RECORD IS READ, SO A WHERE THE ORG WOULD NEVER SEE IS REFUSED UP FRONT
+const PLACEHOLDER_RECORD_ID = '000000000000000AAA';
+
+export interface IRecipeCockpitUpdaterTreeLookup {
+    fieldApiName: string;
+    parentObjectApiName: string;
+}
+
+/*
     One object of a card as the Treecipe Adapter reads it (#416): the fields the model lists for it
     and the lookups to parents in the SAME tree, which a later slice relates records by.
 */
@@ -21,6 +38,8 @@ export interface IRecipeCockpitUpdaterTreeObject {
     objectApiName: string;
     fieldApiNames: readonly string[];
     lookupFieldApiNames: readonly string[];
+    // THE SAME LOOKUPS WITH THE PARENT EACH NAMES, A SELF-LOOKUP INCLUDED (#444)
+    treeLookups: readonly IRecipeCockpitUpdaterTreeLookup[];
 }
 
 // WHAT THE PANEL ASKED TO LOAD FOR ONE OBJECT, ONCE CHECKED AGAINST THE CARD ON SCREEN
@@ -28,7 +47,18 @@ export interface IRecipeCockpitUpdaterObjectRequest {
     objectApiName: string;
     fieldApiNames: string[];
     whereClause: string;
+    // EVERY OBJECT BELOW THE PARENT (#444): ITS LOOKUP TO THE LEVEL ABOVE, WHOSE LOADED Ids ITS RECORDS ARE NARROWED TO
+    narrowingLookup?: IRecipeCockpitUpdaterTreeLookup;
 }
+
+// ONE OBJECT OF A LOAD'S PLAN (#444): HOW FAR BELOW THE PARENT, AND THE LOOKUP ITS RECORDS ARE NARROWED BY
+export interface IRecipeCockpitUpdaterLoadStep {
+    objectApiName: string;
+    depth: number;
+    narrowingLookup?: IRecipeCockpitUpdaterTreeLookup;
+}
+
+export type RecipeCockpitUpdaterNarrowedQueriesBuild = { queries: string[] } | { refusal: string };
 
 export interface IRecipeCockpitUpdaterObjectQuery {
     objectApiName: string;
@@ -68,12 +98,14 @@ export class RecipeCockpitTreeUpdaterQuery {
             }
 
             listedObjectApiNames.add(treeObject.objectApiName);
+            const treeLookups = treeObject.parentLookups
+                .filter(parentLookup => treeObjectApiNames.has(parentLookup.parentObjectApiName))
+                .map(parentLookup => ({ fieldApiName: parentLookup.fieldApiName, parentObjectApiName: parentLookup.parentObjectApiName }));
             updaterTreeObjects.push({
                 objectApiName: treeObject.objectApiName,
                 fieldApiNames: fieldApiNames,
-                lookupFieldApiNames: treeObject.parentLookups
-                    .filter(parentLookup => treeObjectApiNames.has(parentLookup.parentObjectApiName))
-                    .map(parentLookup => parentLookup.fieldApiName)
+                lookupFieldApiNames: treeLookups.map(treeLookup => treeLookup.fieldApiName),
+                treeLookups: treeLookups
             });
 
         });
@@ -87,10 +119,16 @@ export class RecipeCockpitTreeUpdaterQuery {
         naming only fields its model lists, each field once, and a WHERE clause of bounded text.
         Anything else refuses the WHOLE request rather than loading part of what was asked for.
     */
-    static readRequest(candidateObjects: unknown, treeObjects: readonly IRecipeCockpitUpdaterTreeObject[]): RecipeCockpitUpdaterRequestRead {
+    static readRequest(candidateObjects: unknown, treeObjects: readonly IRecipeCockpitUpdaterTreeObject[], candidateParentObjectApiName: unknown): RecipeCockpitUpdaterRequestRead {
 
-        if ( !Array.isArray(candidateObjects) || candidateObjects.length === 0 || candidateObjects.length > treeObjects.length ) {
-            return { refusal: 'The objects to load are not the objects of this treecipe.' };
+        const loadPlan = typeof candidateParentObjectApiName === 'string' ? this.planLoad(treeObjects, candidateParentObjectApiName) : undefined;
+
+        if ( !loadPlan ) {
+            return { refusal: 'The parent object is not an object of this treecipe.' };
+        }
+
+        if ( !Array.isArray(candidateObjects) || candidateObjects.length !== loadPlan.length ) {
+            return { refusal: 'The objects to load are not the parent and the objects under it.' };
         }
 
         const treeObjectsByApiName = new Map(treeObjects.map(treeObject => [treeObject.objectApiName, treeObject] as const));
@@ -106,8 +144,8 @@ export class RecipeCockpitTreeUpdaterQuery {
             const { objectApiName, fieldApiNames, whereClause } = candidateObject as Record<string, unknown>;
             const treeObject = typeof objectApiName === 'string' ? treeObjectsByApiName.get(objectApiName) : undefined;
 
-            if ( !treeObject || requestedObjectApiNames.has(treeObject.objectApiName) ) {
-                return { refusal: 'The objects to load are not the objects of this treecipe.' };
+            if ( !treeObject || requestedObjectApiNames.has(treeObject.objectApiName) || !loadPlan.some(loadStep => loadStep.objectApiName === treeObject.objectApiName) ) {
+                return { refusal: 'The objects to load are not the parent and the objects under it.' };
             }
 
             if ( !Array.isArray(fieldApiNames)
@@ -129,7 +167,138 @@ export class RecipeCockpitTreeUpdaterQuery {
 
         }
 
-        return { requests: requests };
+        // IN THE PLAN'S ORDER, A LEVEL AT A TIME, SO EVERY OBJECT IS READ AFTER THE LEVEL IT IS NARROWED TO
+        return {
+            requests: loadPlan.map(loadStep => {
+                const request = requests.find(candidateRequest => candidateRequest.objectApiName === loadStep.objectApiName) as IRecipeCockpitUpdaterObjectRequest;
+                return loadStep.narrowingLookup ? { ...request, narrowingLookup: loadStep.narrowingLookup } : request;
+            })
+        };
+
+    }
+
+    /*
+        The parent and every object whose lookups lead up to it (#444), a level at a time: a level
+        is every object not yet placed with a lookup to the level above. A self-lookup is never
+        followed. An object is narrowed by its lookup to the level just above it (the first such
+        lookup it lists), so its records are only those under records already loaded. The same
+        objects the Adapter's step 2 draws. Undefined for a parent the card does not list.
+    */
+    static planLoad(treeObjects: readonly IRecipeCockpitUpdaterTreeObject[], parentObjectApiName: string): IRecipeCockpitUpdaterLoadStep[] | undefined {
+
+        if ( !treeObjects.some(treeObject => treeObject.objectApiName === parentObjectApiName) ) {
+            return undefined;
+        }
+
+        const depthByObjectApiName = new Map<string, number>([[parentObjectApiName, 0]]);
+        const loadPlan: IRecipeCockpitUpdaterLoadStep[] = [{ objectApiName: parentObjectApiName, depth: 0 }];
+
+        for ( let depth = 1; ; depth++ ) {
+
+            const levelSteps: IRecipeCockpitUpdaterLoadStep[] = [];
+
+            treeObjects.forEach(treeObject => {
+                if ( depthByObjectApiName.has(treeObject.objectApiName) ) {
+                    return;
+                }
+                const narrowingLookup = treeObject.treeLookups.find(treeLookup => treeLookup.parentObjectApiName !== treeObject.objectApiName
+                                                                                    && depthByObjectApiName.get(treeLookup.parentObjectApiName) === depth - 1);
+                if ( narrowingLookup ) {
+                    levelSteps.push({ objectApiName: treeObject.objectApiName, depth: depth, narrowingLookup: { ...narrowingLookup } });
+                }
+            });
+
+            if ( levelSteps.length === 0 ) {
+                return loadPlan;
+            }
+
+            levelSteps.forEach(levelStep => {
+                depthByObjectApiName.set(levelStep.objectApiName, depth);
+                loadPlan.push(levelStep);
+            });
+
+        }
+
+    }
+
+    /*
+        The queries that read one object below the parent (#444): its SELECT with WHERE
+        (<reader's WHERE>) AND <lookup> IN (<Ids loaded a level above>), the Ids in chunks of
+        RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE, each Id held to the Salesforce Id pattern before
+        it is quoted and each query to buildObjectQuery's checks. No Ids is no query. The reader's
+        WHERE must balance its parentheses outside quoted values, or it could close the group and
+        undo the narrowing.
+    */
+    static buildNarrowedQueries(treeObject: IRecipeCockpitUpdaterTreeObject,
+                                request: IRecipeCockpitUpdaterObjectRequest,
+                                parentRecordIds: readonly string[]): RecipeCockpitUpdaterNarrowedQueriesBuild {
+
+        const narrowingLookup = request.narrowingLookup;
+
+        if ( !narrowingLookup || !treeObject.treeLookups.some(treeLookup => treeLookup.fieldApiName === narrowingLookup.fieldApiName) ) {
+            return { refusal: `${treeObject.objectApiName} has no lookup to the records above it.` };
+        }
+
+        if ( !SalesforceApiName.isApiName(narrowingLookup.fieldApiName) ) {
+            return { refusal: `${treeObject.objectApiName}.${narrowingLookup.fieldApiName} is not a field api name.` };
+        }
+
+        if ( parentRecordIds.some(parentRecordId => !SALESFORCE_RECORD_ID_PATTERN.test(parentRecordId)) ) {
+            return { refusal: `One of the ${narrowingLookup.parentObjectApiName} record Ids the org answered with is not a record Id.` };
+        }
+
+        const readerWhereClause = request.whereClause.trim().replace(LEADING_WHERE_KEYWORD_PATTERN, '').trim();
+
+        if ( !this.isParenthesesBalanced(readerWhereClause) ) {
+            return { refusal: `The WHERE for ${treeObject.objectApiName} does not close every parenthesis it opens.` };
+        }
+
+        const uniqueParentRecordIds = [...new Set(parentRecordIds)];
+        const queries: string[] = [];
+
+        for ( let chunkStart = 0; chunkStart < uniqueParentRecordIds.length; chunkStart += RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE ) {
+
+            const idList = uniqueParentRecordIds.slice(chunkStart, chunkStart + RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE).map(parentRecordId => `'${parentRecordId}'`).join(', ');
+            const narrowingClause = `${narrowingLookup.fieldApiName} IN (${idList})`;
+            const queryBuild = this.buildObjectQuery(treeObject, {
+                objectApiName: request.objectApiName,
+                fieldApiNames: request.fieldApiNames,
+                whereClause: readerWhereClause ? `(${readerWhereClause}) AND ${narrowingClause}` : narrowingClause
+            });
+
+            if ( 'refusal' in queryBuild ) {
+                return queryBuild;
+            }
+
+            queries.push(queryBuild.objectQuery.query);
+
+        }
+
+        return { queries: queries };
+
+    }
+
+    // WHETHER A REQUEST'S QUERIES CAN BE BUILT, CHECKED WITH ONE PLACEHOLDER Id BEFORE ANY RECORD IS READ
+    static checkRequestQuery(treeObject: IRecipeCockpitUpdaterTreeObject, request: IRecipeCockpitUpdaterObjectRequest): { refusal: string } | undefined {
+
+        const queryBuild = request.narrowingLookup
+            ? this.buildNarrowedQueries(treeObject, request, [PLACEHOLDER_RECORD_ID])
+            : this.buildObjectQuery(treeObject, request);
+
+        return 'refusal' in queryBuild ? queryBuild : undefined;
+
+    }
+
+    private static isParenthesesBalanced(whereClause: string): boolean {
+
+        let depth = 0;
+
+        for ( const character of whereClause.replace(QUOTED_VALUE_PATTERN, "''") ) {
+            if ( character === '(' ) { depth++; }
+            if ( character === ')' && --depth < 0 ) { return false; }
+        }
+
+        return depth === 0;
 
     }
 

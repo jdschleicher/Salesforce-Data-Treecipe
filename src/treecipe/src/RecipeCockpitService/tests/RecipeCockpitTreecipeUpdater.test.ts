@@ -47,6 +47,7 @@ import {
     RECIPE_COCKPIT_UPDATER_INTRO,
     RECIPE_COCKPIT_UPDATER_LOOKUP_REASON,
     RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN,
+    RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON,
     RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON,
     RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON,
     RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON,
@@ -701,8 +702,26 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
             panel.findAll(updaterPanelOf(panel, accountCard), 'updaterLoad')[0].dispatch('click');
 
             const loadMessage = panel.postedHostMessages.find((hostMessage: any) => hostMessage.command === 'loadUpdaterRecords');
+            expect(loadMessage.parentObjectApiName).toBe('Contact');
             expect(loadMessage.objects.map((object: any) => [object.objectApiName, object.whereClause]))
                 .toEqual([['Contact', 'LastName = \'Smith\''], ['OtherChildObject__c', 'Name != null']]);
+
+        });
+
+        it('disables Generate values and Update records with the reason when the last load read 0 records (#444)', () => {
+
+            const { panel, accountCard } = openParentStep();
+            chooseParent(panel, accountCard, 'Account', 'Name = \'Nobody\'');
+            panel.postToPanel({
+                command: 'updaterRecords', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY, orgLabel: 'qa',
+                objects: ['Account', 'Contact', 'OtherChildObject__c'].map(objectApiName => ({ objectApiName, totalSize: 0, recordCount: 0, isTruncated: false, columns: [], rows: [], hiddenColumnCount: 0 }))
+            });
+
+            ['updaterGenerate', 'updaterUpdate'].forEach(cardClassName => {
+                const cardElement = panel.findAll(updaterPanelOf(panel, accountCard), cardClassName)[0];
+                expect(cardElement.disabled).toBe(true);
+                expect(panel.findAll(cardElement, 'actionCardReason')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON);
+            });
 
         });
 

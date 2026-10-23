@@ -1,5 +1,19 @@
 # Change Log
 
+## [3.140.0] - Recipe Cockpit: the Treecipe Adapter loads only the records under the parents you queried
+
+Closes [#444](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/444), slice B of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442).
+
+#443 rooted the Adapter's tree at a parent, but **Load records** still read every object on its own, so a Contact it loaded could belong to an Account it did not.
+
+- **A level at a time.** The parent's records are the ones step 1's WHERE asks for. Each object below it reads only the records whose lookup points to a record the level just above loaded (`RecipeCockpitTreeUpdaterQuery.planLoad`: a breadth-first walk of the tree's lookups from the parent, a self-lookup never followed, the narrowing lookup the first one an object lists to the level just above). Its query is `SELECT … WHERE (<your WHERE>) AND <lookup> IN (<Ids>)`.
+- **Many parents.** The Ids go `RECIPE_COCKPIT_UPDATER_PARENT_ID_CHUNK_SIZE` (150) to a query (`buildNarrowedQueries`), each Id held to the Salesforce Id pattern before it is quoted and each query to `checkQueryText`. Records are merged and kept once by Id. 2,500 parents are 17 queries. One record cap and one value budget still cover the whole load, and a spent limit is checked before an object's queries are built.
+- **Nothing to read under.** When the level above loaded no records, failed or was skipped, the object sends no query and says why (`RECIPE_COCKPIT_UPDATER_PARENT_NOT_READ_REASON_PREFIX`). A load that read 0 records disables **Generate values** and **Update records** with `RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON`.
+- **Your WHERE.** Each object below the parent keeps its own WHERE box, combined with AND. A WHERE that does not close every parenthesis it opens, outside quoted values, is refused, since it could undo the narrowing. Every query is checked with a placeholder Id before any record is read, so a bad WHERE is refused up front.
+- **The request.** `loadUpdaterRecords` carries `parentObjectApiName`. The router refuses the whole load unless that parent is one of the card's objects and the objects are exactly it and those under it. The panel's subtree now walks only through objects it draws, so the two rules agree.
+- **Next stays navigation.** Step 1's **Next** still posts nothing. The issue proposed loading there, but a load reads only the fields you ticked, which happens in step 2, and Generate values refuses a field the last load did not read.
+- **Tests.** `RecipeCockpitTreeUpdaterQuery.test.ts` covers the plan, the chunks (2,500 Ids, each within the limit, each named once), the combined WHERE, an unbalanced WHERE, a forged Id and the request check. `RecipeCockpitUpdaterLoad.test.ts` covers the narrowed queries, merging, no parents, a refused parent, a cancel between levels and a request that is not the subtree. The Adapter suites' fake records now carry Salesforce-shaped Ids (`fakeRecordId`).
+
 ## [3.139.0] - Recipe Cockpit: the Treecipe Updater is the Treecipe Adapter, and opens on choosing a parent
 
 Closes [#443](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/443), the first slice of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442).
