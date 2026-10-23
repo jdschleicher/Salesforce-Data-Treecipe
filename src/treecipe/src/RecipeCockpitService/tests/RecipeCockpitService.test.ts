@@ -250,7 +250,7 @@ describe('RecipeCockpitService', () => {
 
         const TEXT_TOKENS: RecipeCockpitPaletteToken[] = ['text', 'muted', 'accent', 'added', 'removed', 'changed'];
         // #434: THE HEADER IS NAVY, SO IT IS NOT A BACKGROUND FOR THESE; WHAT IS DRAWN ON IT IS onHeader AND onHeaderMuted
-        const BACKGROUND_TOKENS: RecipeCockpitPaletteToken[] = ['page', 'surface', 'rowHover'];
+        const BACKGROUND_TOKENS: RecipeCockpitPaletteToken[] = ['page', 'surface', 'rowHover', 'orgSection'];
 
         const TEXT_ON_BACKGROUND_PAIRS: [RecipeCockpitPaletteToken, RecipeCockpitPaletteToken][] = [
             ...TEXT_TOKENS.flatMap(textToken => BACKGROUND_TOKENS.map(backgroundToken =>
@@ -260,8 +260,9 @@ describe('RecipeCockpitService', () => {
             ['onHeader', 'header'],
             ['onHeaderMuted', 'header'],
             ['onAction', 'action'],
-            // THE TARGET ORG MANAGEMENT AND TREECIPES HEADINGS ARE NAVY TEXT ON THE PAGE (#434)
-            ['header', 'page']
+            // THE TREECIPES HEADING IS NAVY TEXT ON THE PAGE, THE TARGET ORG MANAGER HEADING ON ITS OWN TINT (#433, #434)
+            ['header', 'page'],
+            ['header', 'orgSection']
         ];
 
         const MINIMUM_TEXT_CONTRAST_RATIO = 4.5;
@@ -306,6 +307,7 @@ describe('RecipeCockpitService', () => {
                 rowHover: '#E8F8F2', chipBg: '#E3F7EF', chipText: '#1D3557',
                 added: '#15803D', removed: '#B91C1C', changed: '#B45309',
                 disabledBg: '#E4E9E8', disabledText: '#4F5654',
+                orgSection: '#EEF3FB',
                 excludedOverlay: 'rgba(148, 163, 184, 0.40)',
                 dialogBackdrop: 'rgba(51, 51, 51, 0.55)'
             });
@@ -532,7 +534,7 @@ describe('RecipeCockpitService', () => {
 
         it(`holds every text/background pair the stylesheet draws to at least ${MINIMUM_TEXT_CONTRAST_RATIO}:1`, () => {
 
-            expect(TEXT_ON_BACKGROUND_PAIRS).toHaveLength(24);
+            expect(TEXT_ON_BACKGROUND_PAIRS).toHaveLength(31);
             expect(findContrastFailures(RECIPE_COCKPIT_PALETTE)).toEqual([]);
 
         });
@@ -666,7 +668,8 @@ describe('RecipeCockpitService', () => {
 
             expect(findContrastFailures(paletteWithTheOldMuted)).toEqual([
                 'muted on page (4.48:1)',
-                'muted on rowHover (4.41:1)'
+                'muted on rowHover (4.41:1)',
+                'muted on orgSection (4.34:1)'
             ]);
 
         });

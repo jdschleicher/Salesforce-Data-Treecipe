@@ -6,7 +6,7 @@ Closes [#434](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/43
 
 The cockpit's one palette (#174) was blue on near-white, with the same blue for links, filled buttons and the selected tab. Each colour now has one job.
 
-- **Navy `#1D3557` for headers and navigation.** The title bar runs the panel's full width in navy with soft white text, and every tree card's header is navy too; its folder name and counts, the version and the GitHub mark are drawn in a soft gray (`#C9D3E0`, 8.17:1 on navy). The Target Org Management and Treecipes headings are navy over a navy rule. Navy is also every accent TEXT: links, outlined buttons, object names, chevrons, the chain link and the focus ring.
+- **Navy `#1D3557` for headers and navigation.** The title bar runs the panel's full width in navy with soft white text, and every tree card's header is navy too; its folder name and counts, the version and the GitHub mark are drawn in a soft gray (`#C9D3E0`, 8.17:1 on navy). The Target Org Manager and Treecipes headings are navy over a navy rule; the pinned Target Org Manager keeps #433's own light tint (`orgSection`), and navy headings on it are held to 4.5:1 too. Navy is also every accent TEXT: links, outlined buttons, object names, chevrons, the chain link and the focus ring.
 - **Soft White `#F4F7F6` for the page**, with cards and panels on white.
 - **Charcoal `#333333` for text.**
 - **Teal `#06D6A0` for buttons and active states, and never for text.** It fills the filled (`primary`) buttons, the selected tab's bar (now 3px) and ticked boxes, and is the focus ring on the navy headers, where a navy ring would vanish. Teal on white, and white on teal, are both 1.9:1, so text and glyphs on teal are navy (6.55:1). The selected tab's outline, its panel's border and a ticked box's edge are a darker teal, `#049C74`, held to 3:1 on white and on the row hover (#373's outline is otherwise unchanged).
@@ -15,6 +15,16 @@ The cockpit's one palette (#174) was blue on near-white, with the same blue for 
 - **From the issue.** The issue proposed `#04A57B` for the teal edge; it measured 2.87:1 on the row hover, under the 3:1 a ticked box's edge needs there, so the edge is `#049C74`.
 - **Guide.** The four pictures in `docs/RECIPE-COCKPIT-GUIDE.md` were re-taken.
 - **Tests.** The contrast test drops `header` as a background for body text and holds `onHeader`, `onHeaderMuted`, `onAction` and the navy section headings (`header` on `page`) to 4.5:1, the hover and pressed primary buttons too and the GitHub mark, the header focus ring and the teal edge to 3:1. A new test fails white on teal, teal as a text colour, and a teal `fill` or `stroke` anywhere but the GitHub mark on the navy title bar; another pins the navy title bar, tree headers and section headings. The overlay, backdrop, tab outline, motion and GitHub mark tests read the new tokens.
+## [3.135.1] - Recipe Cockpit: the org section is "Target Org Manager", on a light tint of its own
+
+Closes [#433](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/433).
+
+"Target Org Management" read like a process, not a place in the panel, and the pinned section's background (`--sdt-page`) was almost the same as the boxes around it, so it didn't stand out from the cards scrolling under it.
+
+- **A shorter name.** The section is titled **Target Org Manager** (`RECIPE_COCKPIT_ORG_SECTION_TITLE`), on its header and its `aria-label`. Every refusal, tooltip and ? help line that named the section, and the guide, now use the new name.
+- **Its own light background.** `#cockpitOrgSection` draws a new palette token, `orgSection` (`--sdt-org-section`, `#EEF3FB`), and is padded on its sides so its contents sit off the tint's edge. The token is separate from `header`, so a retuned header colour (#434) doesn't recolour the section. It is opaque, so cards scrolling under the pinned section don't show through, and a test holds it to a solid `#RRGGBB` that differs from the page.
+- **Held to contrast.** `orgSection` joins the contrast test's backgrounds, so every text token is held to 4.5:1 on it (33 pairs, from 27).
+- The guide's screenshots are re-taken.
 
 ## [3.135.0] - Recipe Cockpit: the TODO's and Validation Rules groups are cards, matching the action cards
 
