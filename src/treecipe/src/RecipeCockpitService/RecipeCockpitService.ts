@@ -109,7 +109,7 @@ export const RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT = 'Connecting to the Treecip
 
 export type RecipeCockpitPaletteToken =
     | 'page' | 'surface' | 'border' | 'header' | 'onHeader' | 'onHeaderMuted'
-    | 'text' | 'muted' | 'accent' | 'onAccent'
+    | 'text' | 'muted' | 'accent'
     | 'action' | 'onAction' | 'actionEdge'
     | 'rowHover' | 'chipBg' | 'chipText'
     | 'added' | 'removed' | 'changed'
@@ -139,7 +139,6 @@ export const RECIPE_COCKPIT_PALETTE: Readonly<Record<RecipeCockpitPaletteToken, 
     text: '#333333',
     muted: '#5C6470',
     accent: '#1D3557',
-    onAccent: '#FFFFFF',
     action: '#06D6A0',
     onAction: '#1D3557',
     // A DARKER TEAL FOR AN EDGE: THE SELECTED TAB'S OUTLINE AND ITS PANEL'S BORDER, HELD TO 3:1 ON --sdt-surface AND --sdt-row-hover
@@ -15729,6 +15728,7 @@ ${this.buildPaletteCustomProperties()}
     }
     ::-webkit-scrollbar-thumb:hover { background-color: var(--sdt-muted); }
     body {
+        margin: 0;
         font-family: var(--vscode-font-family);
         font-size: var(--vscode-font-size);
         padding: 0 1rem 2rem 1rem;
@@ -15989,7 +15989,7 @@ ${this.buildPaletteCustomProperties()}
         so every panel carries the outline and the selected class alone moves it. The selector is
         (0,4,0) against the secondary kind's (0,3,0) hover rule, so a hover cannot draw the bottom
         edge back wherever either rule sits. A hovered tab that is not selected draws no bottom edge,
-        which would lie on the panel's accent top. The sub-tab strip wraps on a narrow panel, and a
+        which would lie on the panel's teal top. The sub-tab strip wraps on a narrow panel, and a
         selected sub-tab on any row but the last then sits above the next row rather than its panel:
         scrolling the strip instead would clip the 1px overlap that joins every tab to its panel.
     */
@@ -16297,7 +16297,7 @@ ${this.buildPaletteCustomProperties()}
     #cockpitOrgSectionBody { padding: 0.5rem 0.6rem; margin-top: 0.4rem; background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 8px; }
     .treecipeActions, .treeInsertControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
     /*
-        The sub-panel pads its contents off its accent border (#393), and its search box drops its own
+        The sub-panel pads its contents off its teal border (#393), and its search box drops its own
         side padding so the search, the TODO's views, the cards and the lists all start one inset in.
     */
     .troubleshootingSubPanel { margin: 0 0.6rem 0.6rem; padding: 0 0.6rem 0.6rem; }

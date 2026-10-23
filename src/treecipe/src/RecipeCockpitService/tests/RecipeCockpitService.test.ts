@@ -256,11 +256,12 @@ describe('RecipeCockpitService', () => {
             ...TEXT_TOKENS.flatMap(textToken => BACKGROUND_TOKENS.map(backgroundToken =>
                 [textToken, backgroundToken] as [RecipeCockpitPaletteToken, RecipeCockpitPaletteToken])),
             ['chipText', 'chipBg'],
-            ['onAccent', 'accent'],
             ['disabledText', 'disabledBg'],
             ['onHeader', 'header'],
             ['onHeaderMuted', 'header'],
-            ['onAction', 'action']
+            ['onAction', 'action'],
+            // THE TARGET ORG MANAGEMENT AND TREECIPES HEADINGS ARE NAVY TEXT ON THE PAGE (#434)
+            ['header', 'page']
         ];
 
         const MINIMUM_TEXT_CONTRAST_RATIO = 4.5;
@@ -300,7 +301,7 @@ describe('RecipeCockpitService', () => {
             expect(RECIPE_COCKPIT_PALETTE).toEqual({
                 page: '#F4F7F6', surface: '#FFFFFF', border: '#D5DDDB', header: '#1D3557',
                 onHeader: '#F4F7F6', onHeaderMuted: '#C9D3E0',
-                text: '#333333', muted: '#5C6470', accent: '#1D3557', onAccent: '#FFFFFF',
+                text: '#333333', muted: '#5C6470', accent: '#1D3557',
                 action: '#06D6A0', onAction: '#1D3557', actionEdge: '#049C74',
                 rowHover: '#E8F8F2', chipBg: '#E3F7EF', chipText: '#1D3557',
                 added: '#15803D', removed: '#B91C1C', changed: '#B45309',
@@ -309,7 +310,7 @@ describe('RecipeCockpitService', () => {
                 dialogBackdrop: 'rgba(51, 51, 51, 0.55)'
             });
             expect(rootBlock).toContain('--sdt-page: #F4F7F6;');
-            expect(rootBlock).toContain('--sdt-on-accent: #FFFFFF;');
+            expect(rootBlock).not.toContain('--sdt-on-accent');
             expect(rootBlock).toContain('--sdt-on-header-muted: #C9D3E0;');
             expect(rootBlock).toContain('--sdt-on-action: #1D3557;');
             expect(rootBlock).toContain('--sdt-action-edge: #049C74;');
@@ -539,13 +540,15 @@ describe('RecipeCockpitService', () => {
         // #434: TEAL IS A FILL AND AN EDGE, NEVER TEXT, AND WHAT IS DRAWN ON IT IS NAVY
         it('fails white on teal and teal on white, which is why neither is drawn', () => {
 
-            expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.onAccent, RECIPE_COCKPIT_PALETTE.action)).toBeLessThan(MINIMUM_TEXT_CONTRAST_RATIO);
+            expect(contrastRatioOf('#FFFFFF', RECIPE_COCKPIT_PALETTE.action)).toBeLessThan(MINIMUM_TEXT_CONTRAST_RATIO);
             expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.action, RECIPE_COCKPIT_PALETTE.surface)).toBeLessThan(MINIMUM_TEXT_CONTRAST_RATIO);
             expect(findContrastFailures({ ...RECIPE_COCKPIT_PALETTE, onAction: '#FFFFFF' })).toEqual(['onAction on action (1.89:1)']);
 
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
-            expect(styleSheet).not.toMatch(/(^|[^-])color: var\(--sdt-action\)/);
-            expect(styleSheet).not.toMatch(/(^|[^-])color: var\(--sdt-action-edge\)/);
+            expect(styleSheet).not.toMatch(/(^|[^-])color: var\(--sdt-action(-edge)?\)/);
+            // A GLYPH IS DRAWN IN TEAL ONLY ON THE NAVY TITLE BAR: THE GITHUB MARK WHILE HOVERED (1.89:1 ON WHITE IS UNDER A GRAPHIC'S 3:1)
+            const tealGlyphRules = (styleSheet.match(/[^{}]*\{[^}]*(fill|stroke): var\(--sdt-action(-edge)?\)[^}]*\}/g) ?? []).map(rule => rule.trim());
+            expect(tealGlyphRules).toEqual(['.cockpitChangelog:hover .githubGlyph path, .cockpitChangelog:focus-visible .githubGlyph path { fill: var(--sdt-action); }']);
 
         });
 
