@@ -93,7 +93,7 @@ const ACCOUNT_DESCRIBE: IUpdateObjectDescribe = {
 
 answerInPanelConfirmationsThroughWarningMock();
 
-describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
+describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
     describe('RecipeCockpitRecordUpdate', () => {
 
@@ -551,7 +551,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
             selectOrg(SANDBOX_ORG, false);
             expect(RecipeCockpitService.routePanelMessage({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY }, panelState())).toMatchObject({
                 kind: 'refuseUpdaterLoad',
-                refusalText: 'Nothing was updated: qa is not a sandbox or scratch org, and the Treecipe Updater updates only a sandbox or scratch org.'
+                refusalText: 'Nothing was updated: qa is not a sandbox or scratch org, and the Treecipe Adapter updates only a sandbox or scratch org.'
             });
 
             panelState().dataOrgSelection = undefined;
@@ -864,7 +864,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
 
             expect(updateCalls).toEqual([]);
             expect(attemptFiles()).toEqual([]);
-            expect(warnings().at(-1)).toBe('Nothing was updated in qa · qa@example.com.qa: it answered Production · Enterprise Edition, and the Treecipe Updater updates only a sandbox or scratch org.');
+            expect(warnings().at(-1)).toBe('Nothing was updated in qa · qa@example.com.qa: it answered Production · Enterprise Edition, and the Treecipe Adapter updates only a sandbox or scratch org.');
 
         });
 
@@ -1027,7 +1027,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
             // AN UNCHECKED SELECTION IS REFUSED BY THE ROUTER
             panelState().dataOrgSelection = { orgIndex: 0, orgDetail: SANDBOX_ORG, requestSequence: 1 };
             expect(RecipeCockpitService.routePanelMessage({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY }, panelState())).toMatchObject({
-                refusalText: 'Nothing was updated: qa has not been checked yet, and the Treecipe Updater updates only a sandbox or scratch org.'
+                refusalText: 'Nothing was updated: qa has not been checked yet, and the Treecipe Adapter updates only a sandbox or scratch org.'
             });
 
         });
@@ -1072,7 +1072,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
             panel.postToPanel({ command: 'rendered' });
             panel.expandAllTrees();
             const accountCard = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeObjectName').some((nameElement: any) => nameElement.textContent.includes('OtherChildObject__c')));
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
             const updaterPanel = panel.findAll(accountCard, 'treeUpdater')[0];
             return { panel, accountCard, updaterPanel };
         };

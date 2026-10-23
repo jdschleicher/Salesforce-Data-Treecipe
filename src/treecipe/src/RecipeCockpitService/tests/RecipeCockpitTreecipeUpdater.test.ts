@@ -50,8 +50,17 @@ import {
     RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON,
     RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON,
     RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON,
+    RECIPE_COCKPIT_UPDATER_PARENT_STEP_HEADING,
+    RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE,
+    RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX,
+    RECIPE_COCKPIT_UPDATER_PARENT_WHERE_PLACEHOLDER,
+    RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL,
+    RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_PENDING_REASON,
+    RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER,
+    RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH } from '../RecipeCockpitTreeUpdaterQuery';
 import { IPanelScriptOptions, runPanelScript } from './RecipeCockpitPanelHarness';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
@@ -95,11 +104,11 @@ const commandsOf = (panel: Panel) => panel.postedHostMessages.map((hostMessage: 
 const openUpdater = (panelScriptOptions: IPanelScriptOptions = {}) => {
     const panel = drawRecipe(loadTreeRecipe(), panelScriptOptions);
     const accountCard = accountCardOf(panel);
-    panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+    panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
     return { panel, accountCard };
 };
 
-describe('RecipeCockpitService, the Treecipe Updater tab (#415)', () => {
+describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
 
     describe('the tab', () => {
 
@@ -119,7 +128,7 @@ describe('RecipeCockpitService, the Treecipe Updater tab (#415)', () => {
                 .toEqual(['Treecipe', 'Previously Used Data Sets', 'Troubleshooting', 'Query', RECIPE_COCKPIT_UPDATER_TAB_LABEL]);
             expect(updaterPanelOf(panel, accountCard).children).toEqual([]);
 
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
 
             expect(panel.isHidden(updaterPanelOf(panel, accountCard))).toBe(false);
             expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterIntro')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_INTRO);
@@ -263,7 +272,7 @@ describe('RecipeCockpitService, the Treecipe Updater tab (#415)', () => {
 
             const panel = drawRecipe(recipe);
             const accountCard = accountCardOf(panel);
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
             const accountObject = updaterObjectNamed(panel, accountCard, 'Account');
             expandUpdaterObject(panel, accountObject);
 
@@ -284,7 +293,7 @@ describe('RecipeCockpitService, the Treecipe Updater tab (#415)', () => {
 
             const panel = drawRecipe(recipe);
             const accountCard = accountCardOf(panel);
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
             const accountObject = updaterObjectNamed(panel, accountCard, 'Account');
             expandUpdaterObject(panel, accountObject);
 
@@ -304,7 +313,7 @@ describe('RecipeCockpitService, the Treecipe Updater tab (#415)', () => {
 
             const panel = drawRecipe(recipe);
             const accountCard = accountCardOf(panel);
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
             const accountObject = updaterObjectNamed(panel, accountCard, 'Account');
             expandUpdaterObject(panel, accountObject);
 
@@ -324,7 +333,7 @@ describe('RecipeCockpitService, the Treecipe Updater tab (#415)', () => {
 
             const panel = drawRecipe(recipe);
             const accountCard = accountCardOf(panel);
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
             const accountObject = updaterObjectNamed(panel, accountCard, 'Account');
             expandUpdaterObject(panel, accountObject);
 
@@ -347,7 +356,7 @@ describe('RecipeCockpitService, the Treecipe Updater tab (#415)', () => {
 
             const panel = drawRecipe(recipe);
             const accountCard = accountCardOf(panel);
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
             const accountObject = updaterObjectNamed(panel, accountCard, 'Account');
             expandUpdaterObject(panel, accountObject);
 
@@ -431,7 +440,7 @@ describe('RecipeCockpitService, the Treecipe Updater tab (#415)', () => {
 
             const panel = drawRecipe(recipe);
             const accountCard = accountCardOf(panel);
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
 
             panel.typeIntoTabSearch(accountCard, 'treeUpdater', 'catchphrase');
 
@@ -535,6 +544,241 @@ describe('RecipeCockpitService, the Treecipe Updater tab (#415)', () => {
             expect(withoutSearch?.version).toBe(RECIPE_COCKPIT_PANEL_PLACE_VERSION);
             const noUpdaterSearch = { ...treePlace({}), trees: [{ ...treePlace({}).trees[0], searchQueries: { treecipe: '', datasets: '' } }] };
             expect(RecipeCockpitService.normalizePanelPlace(noUpdaterSearch)?.trees[0].searchQueries).not.toHaveProperty('updater');
+
+        });
+
+    });
+
+    describe('the two steps (#443)', () => {
+
+        const parentStepOf = (panel: Panel, treeCard: any) => panel.findAll(updaterPanelOf(panel, treeCard), 'updaterParentStep')[0];
+        const structureStepOf = (panel: Panel, treeCard: any) => panel.findAll(updaterPanelOf(panel, treeCard), 'updaterStructureStep')[0];
+        const parentSelectOf = (panel: Panel, treeCard: any) => panel.findAll(parentStepOf(panel, treeCard), 'updaterParentSelect')[0];
+        const parentWhereOf = (panel: Panel, treeCard: any) => panel.findAll(parentStepOf(panel, treeCard), 'updaterParentWhereInput')[0];
+        const optionLabelsOf = (selectElement: any) => selectElement.children.map((optionElement: any) => optionElement.textContent);
+        const drawnObjectNamesOf = (panel: Panel, treeCard: any) => updaterObjectsOf(panel, treeCard)
+            .map((objectElement: any) => panel.findAll(objectElement, 'updaterObjectName')[0].textContent);
+
+        const openParentStep = (panelScriptOptions: IPanelScriptOptions = {}) => {
+            const panel = drawRecipe(loadTreeRecipe(), panelScriptOptions);
+            const accountCard = accountCardOf(panel);
+            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            return { panel, accountCard };
+        };
+
+        const chooseParent = (panel: Panel, treeCard: any, objectApiName: string, whereText?: string) => {
+            const selectElement = parentSelectOf(panel, treeCard);
+            selectElement.value = String(optionLabelsOf(selectElement).indexOf(objectApiName));
+            if (whereText !== undefined) {
+                const whereElement = parentWhereOf(panel, treeCard);
+                whereElement.value = whereText;
+                whereElement.dispatch('input');
+            }
+            panel.findAll(parentStepOf(panel, treeCard), 'updaterNext')[0].dispatch('click');
+        };
+
+        it('opens on step 1, listing the card\'s objects once each in insert order and starting on the root, and draws no object yet', () => {
+
+            const { panel, accountCard } = openParentStep();
+            const parentStep = parentStepOf(panel, accountCard);
+
+            expect(panel.isHidden(parentStep)).toBe(false);
+            expect(panel.isHidden(structureStepOf(panel, accountCard))).toBe(true);
+            expect(panel.findAll(parentStep, 'updaterStepHeading')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_PARENT_STEP_HEADING);
+            expect(optionLabelsOf(parentSelectOf(panel, accountCard))).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+            expect(parentSelectOf(panel, accountCard).value).toBe('0');
+            expect(parentWhereOf(panel, accountCard).attributes.placeholder).toBe(RECIPE_COCKPIT_UPDATER_PARENT_WHERE_PLACEHOLDER);
+            expect(panel.findAll(parentStep, 'updaterNext')[0].className).toBe('sdtButton sdtButton-primary updaterNext');
+            expect(updaterObjectsOf(panel, accountCard)).toEqual([]);
+
+        });
+
+        it('draws the root and every descendant on Next, posting nothing', () => {
+
+            const { panel, accountCard } = openParentStep();
+            const commandsBefore = commandsOf(panel).filter((command: string) => command !== 'savePlace').length;
+
+            chooseParent(panel, accountCard, 'Account');
+
+            expect(panel.isHidden(parentStepOf(panel, accountCard))).toBe(true);
+            expect(panel.isHidden(structureStepOf(panel, accountCard))).toBe(false);
+            expect(drawnObjectNamesOf(panel, accountCard)).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+            expect(panel.findAll(structureStepOf(panel, accountCard), 'updaterStepHeading')[0].textContent)
+                .toBe(RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX + 'Account');
+            expect(commandsOf(panel).filter((command: string) => command !== 'savePlace')).toHaveLength(commandsBefore);
+
+        });
+
+        it('roots the tree at a child, drawing it and its descendants only, and a leaf alone', () => {
+
+            const { panel, accountCard } = openParentStep();
+
+            chooseParent(panel, accountCard, 'Contact');
+            expect(drawnObjectNamesOf(panel, accountCard)).toEqual(['Contact', 'OtherChildObject__c']);
+
+            panel.findAll(structureStepOf(panel, accountCard), 'updaterChangeParent')[0].dispatch('click');
+            chooseParent(panel, accountCard, 'OtherChildObject__c');
+            expect(drawnObjectNamesOf(panel, accountCard)).toEqual(['OtherChildObject__c']);
+
+        });
+
+        it('never follows a self-lookup, so a child pointing only at itself is not under another parent', () => {
+
+            const recipe = loadTreeRecipe();
+            const accountCardModel: any = recipe.trees.find((tree: any) => tree.treeKey === ACCOUNT_TREE_KEY);
+            const contactTreeObject = accountCardModel.objects.find((treeObject: any) => treeObject.objectApiName === 'Contact');
+            contactTreeObject.parentLookups = [{ fieldApiName: 'ReportsToId', parentObjectApiName: 'Contact' }];
+            const otherTreeObject = accountCardModel.objects.find((treeObject: any) => treeObject.objectApiName === 'OtherChildObject__c');
+            otherTreeObject.parentLookups = [{ fieldApiName: 'Contact__c', parentObjectApiName: 'Contact' }];
+
+            const panel = drawRecipe(recipe);
+            const accountCard = accountCardOf(panel);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+
+            expect(drawnObjectNamesOf(panel, accountCard)).toEqual(['Account']);
+
+        });
+
+        it('goes back to step 1 with Change parent, keeping the parent and the WHERE typed, and keeps a choice on an object step 2 no longer draws', () => {
+
+            const { panel, accountCard } = openParentStep();
+            chooseParent(panel, accountCard, 'Account', 'Name LIKE \'Acme%\'');
+            const contactObject = updaterObjectNamed(panel, accountCard, 'Contact');
+            expandUpdaterObject(panel, contactObject);
+            chooseBoxOf(panel, updaterRowNamed(panel, contactObject, 'LastName')).dispatch('click');
+
+            panel.findAll(structureStepOf(panel, accountCard), 'updaterChangeParent')[0].dispatch('click');
+
+            expect(panel.isHidden(parentStepOf(panel, accountCard))).toBe(false);
+            expect(parentSelectOf(panel, accountCard).value).toBe('0');
+            expect(parentWhereOf(panel, accountCard).value).toBe('Name LIKE \'Acme%\'');
+
+            chooseParent(panel, accountCard, 'OtherChildObject__c');
+            expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterSummary')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN);
+
+            panel.findAll(structureStepOf(panel, accountCard), 'updaterChangeParent')[0].dispatch('click');
+            chooseParent(panel, accountCard, 'Account');
+            expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterSummary')[0].textContent).toBe('1 field chosen on 1 object');
+
+        });
+
+        it('draws the filter with the retrieve button beside it, disabled until it is wired, and says the parent records the WHERE asks for', () => {
+
+            const { panel, accountCard } = openParentStep();
+            chooseParent(panel, accountCard, 'Account');
+            const structureStep = structureStepOf(panel, accountCard);
+            const filterRow = panel.findAll(structureStep, 'updaterFilterRow')[0];
+
+            expect(panel.findAll(filterRow, 'tabSearchInput')[0].attributes.placeholder).toBe(RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER);
+            const retrieveButton = panel.findAll(filterRow, 'updaterRetrieveMetadata')[0];
+            expect(retrieveButton.textContent).toBe(RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL);
+            expect(retrieveButton.disabled).toBe(true);
+            expect(retrieveButton.attributes.title).toBe(RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_PENDING_REASON);
+            expect(retrieveButton.className).toBe('sdtButton sdtButton-secondary updaterRetrieveMetadata');
+            expect(panel.findAll(structureStep, 'updaterParentWhereNote')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE);
+
+            panel.findAll(structureStep, 'updaterChangeParent')[0].dispatch('click');
+            chooseParent(panel, accountCard, 'Account', ' Name = \'Acme\' ');
+
+            expect(panel.findAll(structureStep, 'updaterParentWhereNote')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX + 'Name = \'Acme\'');
+
+        });
+
+        it('loads only the objects step 2 draws, the parent with step 1\'s WHERE and no WHERE box of its own', () => {
+
+            const { panel, accountCard } = openParentStep();
+            chooseParent(panel, accountCard, 'Contact', 'LastName = \'Smith\'');
+            const contactObject = updaterObjectNamed(panel, accountCard, 'Contact');
+            const otherObject = updaterObjectNamed(panel, accountCard, 'OtherChildObject__c');
+            expandUpdaterObject(panel, contactObject);
+            expandUpdaterObject(panel, otherObject);
+
+            expect(panel.findAll(contactObject, 'updaterWhereInput')).toEqual([]);
+            const otherWhere = panel.findAll(otherObject, 'updaterWhereInput')[0];
+            otherWhere.value = 'Name != null';
+            otherWhere.dispatch('input');
+
+            panel.findAll(updaterPanelOf(panel, accountCard), 'updaterLoad')[0].dispatch('click');
+
+            const loadMessage = panel.postedHostMessages.find((hostMessage: any) => hostMessage.command === 'loadUpdaterRecords');
+            expect(loadMessage.objects.map((object: any) => [object.objectApiName, object.whereClause]))
+                .toEqual([['Contact', 'LastName = \'Smith\''], ['OtherChildObject__c', 'Name != null']]);
+
+        });
+
+        it('keeps the step, the parent and its WHERE in the place, and restores them in the next document', () => {
+
+            const { panel, accountCard } = openParentStep();
+            chooseParent(panel, accountCard, 'Contact', 'LastName = \'Smith\'');
+
+            const savedPlace = panel.savedState();
+            const savedTree = savedPlace.trees.find((treePlace: any) => treePlace.treeKey === ACCOUNT_TREE_KEY);
+            expect(savedTree).toMatchObject({ selectedTab: 'updater', updaterStep: 'structure', updaterParentObjectApiName: 'Contact', updaterParentWhereText: 'LastName = \'Smith\'' });
+            expect(savedPlace.version).toBe(RECIPE_COCKPIT_PANEL_PLACE_VERSION);
+
+            const restoredPanel = drawRecipe(loadTreeRecipe(), { savedState: savedPlace });
+            const restoredCard = accountCardOf(restoredPanel);
+
+            expect(restoredPanel.isHidden(structureStepOf(restoredPanel, restoredCard))).toBe(false);
+            expect(drawnObjectNamesOf(restoredPanel, restoredCard)).toEqual(['Contact', 'OtherChildObject__c']);
+            expect(parentWhereOf(restoredPanel, restoredCard).value).toBe('LastName = \'Smith\'');
+            expect(parentSelectOf(restoredPanel, restoredCard).value).toBe('1');
+
+        });
+
+        it('keeps step 1 and the WHERE typed in the place before Next', () => {
+
+            const { panel, accountCard } = openParentStep();
+            const whereElement = parentWhereOf(panel, accountCard);
+            whereElement.value = 'Industry = \'Energy\'';
+            whereElement.dispatch('input');
+
+            const restoredPanel = drawRecipe(loadTreeRecipe(), { savedState: panel.savedState() });
+            const restoredCard = accountCardOf(restoredPanel);
+
+            expect(restoredPanel.isHidden(parentStepOf(restoredPanel, restoredCard))).toBe(false);
+            expect(parentWhereOf(restoredPanel, restoredCard).value).toBe('Industry = \'Energy\'');
+
+        });
+
+        it('opens a place saved before the steps, or naming a parent the card no longer lists, on step 1 at the root', () => {
+
+            const { panel } = openParentStep();
+            const olderPlace = panel.savedState();
+
+            const olderPanel = drawRecipe(loadTreeRecipe(), { savedState: olderPlace });
+            const olderCard = accountCardOf(olderPanel);
+            expect(olderPanel.isHidden(updaterPanelOf(olderPanel, olderCard))).toBe(false);
+            expect(olderPanel.isHidden(parentStepOf(olderPanel, olderCard))).toBe(false);
+
+            const stalePlace = panel.savedState();
+            const staleTree = stalePlace.trees.find((treePlace: any) => treePlace.treeKey === ACCOUNT_TREE_KEY);
+            staleTree.updaterStep = 'structure';
+            staleTree.updaterParentObjectApiName = 'Gone__c';
+
+            const stalePanel = drawRecipe(loadTreeRecipe(), { savedState: stalePlace });
+            const staleCard = accountCardOf(stalePanel);
+            expect(stalePanel.isHidden(parentStepOf(stalePanel, staleCard))).toBe(false);
+            expect(parentSelectOf(stalePanel, staleCard).value).toBe('0');
+            expect(updaterObjectsOf(stalePanel, staleCard)).toEqual([]);
+
+        });
+
+        it('keeps a place\'s parent only when it is an api name, its WHERE only within the WHERE limit, and the step only with a parent', () => {
+
+            const normalizedTree = (treePlace: any) => RecipeCockpitService.normalizePanelPlace({
+                version: RECIPE_COCKPIT_PANEL_PLACE_VERSION, runFolderName: TREE_RUN_FOLDER_NAME, scrollY: 0,
+                trees: [{ treeKey: ACCOUNT_TREE_KEY, selectedTab: 'updater', ...treePlace }]
+            })!.trees[0];
+
+            expect(normalizedTree({ updaterStep: 'structure', updaterParentObjectApiName: 'Contact', updaterParentWhereText: 'Name = \'A\'' }))
+                .toMatchObject({ updaterStep: 'structure', updaterParentObjectApiName: 'Contact', updaterParentWhereText: 'Name = \'A\'' });
+            expect(normalizedTree({ updaterStep: 'structure', updaterParentObjectApiName: 'Contact\n- object: x' })).not.toHaveProperty('updaterParentObjectApiName');
+            expect(normalizedTree({ updaterStep: 'structure' })).not.toHaveProperty('updaterStep');
+            expect(normalizedTree({ updaterStep: 'parent', updaterParentObjectApiName: 'Contact' })).not.toHaveProperty('updaterStep');
+            expect(normalizedTree({ updaterParentWhereText: 'x'.repeat(RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH + 1) })).not.toHaveProperty('updaterParentWhereText');
+            expect(normalizedTree({ updaterParentWhereText: 42 })).not.toHaveProperty('updaterParentWhereText');
+            expect(normalizedTree({ updaterParentWhereText: '' })).not.toHaveProperty('updaterParentWhereText');
 
         });
 

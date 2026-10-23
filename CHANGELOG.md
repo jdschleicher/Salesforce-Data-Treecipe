@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.139.0] - Recipe Cockpit: the Treecipe Updater is the Treecipe Adapter, and opens on choosing a parent
+
+Closes [#443](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/443), the first slice of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442).
+
+The Updater drew the whole tree and asked for a WHERE per object. The Adapter starts from the records you care about: one parent object and a query for the parent records you expect, with everything under that parent drawn below it.
+
+- **Renamed.** The tab, its help, the guide, notifications and refusals say **Treecipe Adapter**. The internal tab id stays `updater`, so a saved place still opens on the tab.
+- **Step 1.** The tab opens on a **Parent object** dropdown (the card's objects in insert order, each once, starting on the root), a **WHERE** box for the parent records you expect and **Next**. Next posts nothing.
+- **Step 2.** The tree rooted at the parent: the parent and every object whose lookups to the tree's objects lead up to it, a self-lookup never followed. A heading names the parent, a note says which parent records the WHERE asks for, and **Change parent** goes back to step 1 keeping what was typed. A choice made on an object step 2 no longer draws is kept for when it is drawn again.
+- **Filter.** The search reads "Filter by fields & objects to add". Beside it, **Retrieve latest metadata** is drawn disabled, saying what it will do; #445 wires it.
+- **Load records.** Posts only the objects step 2 draws. The parent's WHERE is step 1's, so the parent draws no WHERE box of its own; each object under it keeps its own until #444 narrows them to the loaded parents. The host's checks are unchanged.
+- **The place.** The step, the parent and the parent's WHERE are optional fields (`updaterStep`, `updaterParentObjectApiName`, `updaterParentWhereText`), so the place version did not change. `normalizePanelPlace` keeps the parent only when it is an api name, the WHERE only within `RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH`, and step 2 only with a parent. A place saved before this, or naming a parent the card no longer lists, opens on step 1 at the root.
+- **Unchanged.** Generate values, Update records, Restore previous values… (shown on both steps), every guard and every posted message.
+- **Tests.** `RecipeCockpitTreecipeUpdater.test.ts` covers both steps, the subtree (a child, a leaf, a self-lookup), Change parent, the filter row, the load's objects and WHERE, and the place. The harness's `openAdapterStructure` opens the tab past step 1, and the other Adapter suites use it. `updaterNext` joins the primary buttons the standalone card inventory keeps.
+
 ## [3.138.0] - Recipe Cockpit: the standalone actions outside the Troubleshooting tab are action cards too
 
 Closes [#384](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/384), after [#381](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/381).

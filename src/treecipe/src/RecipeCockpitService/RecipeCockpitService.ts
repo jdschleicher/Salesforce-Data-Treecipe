@@ -430,7 +430,7 @@ export const RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL = 'Add as the parent, n
     Every tab a card can draw. Treecipe is selected by default; the data sets tab is drawn only for
     a card with a history. Record types (#195) is a collapsible section of the Treecipe tab (#321),
     drawn only on a card listing an object with two or more record types. Troubleshooting (#346) is
-    drawn on every card with a folder, and so are Query (#367) and Treecipe Updater (#415).
+    drawn on every card with a folder, and so are Query (#367) and Treecipe Adapter (#415).
 */
 export const RECIPE_COCKPIT_TREE_TABS = ['treecipe', 'datasets', 'troubleshooting', 'query', 'updater'] as const;
 
@@ -573,7 +573,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against any connected org you pick in the command palette (a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.',
-            'The Treecipe Updater tab, after Query, draws the tree\'s objects and fields as the Treecipe tab does. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the tree\'s existing records, with the fields you ticked and an optional WHERE per object, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to treecipe/UpdateAttempts first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
+            'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the tree\'s existing records, with the fields you ticked and an optional WHERE per object, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to treecipe/UpdateAttempts first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
         ]
     },
     {
@@ -1275,6 +1275,10 @@ export interface IRecipeCockpitPanelTreePlace {
     // THE TREECIPE UPDATER TAB'S CHOSEN FIELDS ("<object>\n<field>") AND OPENED OBJECTS (#415), EACH ONLY WHEN THERE IS ONE
     updaterChosenFieldKeys?: string[];
     updaterExpandedObjectKeys?: string[];
+    // THE TREECIPE ADAPTER'S STEP 2 (#443), ITS PARENT OBJECT AND THE PARENT'S WHERE, EACH ONLY WHEN THERE IS ONE; A PLACE WITH NONE OPENS ON STEP 1
+    updaterStep?: 'structure';
+    updaterParentObjectApiName?: string;
+    updaterParentWhereText?: string;
 }
 
 export interface IRecipeCockpitPanelPlace {
@@ -1653,7 +1657,7 @@ export interface IRecipeCockpitTreeQueryResultMessage {
 }
 
 /*
-    The Treecipe Updater's load (#416): one per window; while isRunning every Load records button is
+    The Treecipe Adapter's load (#416): one per window; while isRunning every Load records button is
     disabled, and treeKey names the card clicked. How it went is a VS Code notification. Stored and
     replayed, like a query run's.
 */
@@ -2059,17 +2063,33 @@ export const RECIPE_COCKPIT_TODO_IN_FIELD_VALUE_LABEL = 'TODO in this field\'s v
 export const RECIPE_COCKPIT_QUERY_TAB_LABEL = 'Query';
 
 /*
-    The Treecipe Updater tab (#415, the first slice of #414): the tree drawn read-only, one box per
-    field to choose what a later slice fills on records an org already holds. Choosing reads and
-    writes nothing, and the box of a field the Updater cannot change is disabled with the reason.
+    The Treecipe Adapter tab (#415, renamed by #443; its internal id stays 'updater' so a saved
+    place still opens on it): the tree drawn read-only, one box per field to choose what is filled
+    on records an org already holds. Choosing reads and writes nothing, and the box of a field the
+    Adapter cannot change is disabled with the reason.
 */
-export const RECIPE_COCKPIT_UPDATER_TAB_LABEL = 'Treecipe Updater';
-export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads this tree\'s records, with those fields, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with ✎. Update records writes those values to the records by Id, after saving their old values to treecipe/UpdateAttempts, and Restore previous values… puts saved ones back.';
-export const RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER = 'Search objects and fields';
+export const RECIPE_COCKPIT_UPDATER_TAB_LABEL = 'Treecipe Adapter';
+export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads the records of the objects drawn here, with those fields, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with ✎. Update records writes those values to the records by Id, after saving their old values to treecipe/UpdateAttempts, and Restore previous values… puts saved ones back.';
+export const RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER = 'Filter by fields & objects to add';
+/*
+    The Adapter's two steps (#443): step 1 chooses the parent object and the WHERE for the parent
+    records expected; step 2 draws the tree rooted at that parent -- it and every object whose
+    lookups lead up to it -- under the filter. Moving between the steps posts nothing.
+*/
+export const RECIPE_COCKPIT_UPDATER_PARENT_STEP_HEADING = '1. Choose the parent object, and query for the parent records you expect';
+export const RECIPE_COCKPIT_UPDATER_PARENT_SELECT_LABEL = 'Parent object';
+export const RECIPE_COCKPIT_UPDATER_PARENT_WHERE_PLACEHOLDER = 'WHERE for the parent records (optional), e.g. Name LIKE \'Acme%\'';
+export const RECIPE_COCKPIT_UPDATER_NEXT_LABEL = 'Next';
+export const RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX = '2. The treecipe under ';
+export const RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL = 'Change parent';
+export const RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX = 'Parent records: WHERE ';
+export const RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE = 'Parent records: every record (no WHERE in step 1)';
+export const RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL = 'Retrieve latest metadata';
+export const RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_PENDING_REASON = 'Coming soon: this will retrieve the latest object metadata from the target org and mark what is new or changed against this treecipe.';
 export const RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN = 'No fields chosen';
 export const RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON = 'read from the recipe file, so its type is not known';
 export const RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON = 'the record type is not changed here';
-export const RECIPE_COCKPIT_UPDATER_LOOKUP_REASON = 'a lookup points to another record, which the Updater does not change';
+export const RECIPE_COCKPIT_UPDATER_LOOKUP_REASON = 'a lookup points to another record, which the Adapter does not change';
 export const RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON = 'Salesforce sets this field\'s value';
 // AN AUTO NUMBER OR A ROLL-UP SUMMARY IS COMPUTED BY THE ORG, SO AN UPDATE OF IT FAILS; A FORMULA IS TOO, BUT THE WRAPPER DOES NOT RECORD ONE
 export const RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES = ['AutoNumber', 'Summary'];
@@ -2091,7 +2111,7 @@ export const RECIPE_COCKPIT_UPDATER_NO_EXPRESSION_REASON = 'its recipe has no fa
 // HOW MANY RECORDS ONE GENERATION RUN MAKES (#417): A LOAD CAN HOLD 50,000, AND ONE RUN OF THAT SIZE FROZE THE EXTENSION HOST FOR
 // SECONDS (faker-js) OR OVERFLOWED SNOWFAKERY'S 10 MB OUTPUT BUFFER, SO VALUES ARE MADE IN RUNS OF THIS SIZE, YIELDING BETWEEN THEM
 export const RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE = 2000;
-export const RECIPE_COCKPIT_UPDATER_VALUE_EDIT_HINT = 'Keeps this value in the Treecipe Updater only: nothing is written to the recipe or to the org.';
+export const RECIPE_COCKPIT_UPDATER_VALUE_EDIT_HINT = 'Keeps this value in the Treecipe Adapter only: nothing is written to the recipe or to the org.';
 // THE UPDATE (#418): THE GENERATED VALUES WRITTEN TO THE LOADED RECORDS BY Id, IN THE SANDBOX THEY WERE LOADED FROM
 export const RECIPE_COCKPIT_UPDATER_UPDATE_LABEL = 'Update records';
 export const RECIPE_COCKPIT_UPDATER_UPDATING_LABEL = 'Updating…';
@@ -2686,6 +2706,10 @@ export class RecipeCockpitService {
             const troubleshootingSearchQueries: Partial<Record<RecipeCockpitTroubleshootingSubTab, string>> = {};
             const updaterChosenFieldKeys = this.normalizePlaceNames(candidateTree.updaterChosenFieldKeys);
             const updaterExpandedObjectKeys = this.normalizePlaceNames(candidateTree.updaterExpandedObjectKeys);
+            const updaterParentObjectApiName = SalesforceApiName.isApiName(candidateTree.updaterParentObjectApiName) ? candidateTree.updaterParentObjectApiName as string : undefined;
+            const updaterParentWhereText = typeof candidateTree.updaterParentWhereText === 'string'
+                && candidateTree.updaterParentWhereText !== ''
+                && candidateTree.updaterParentWhereText.length <= RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH ? candidateTree.updaterParentWhereText : undefined;
             RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS.forEach(subTab => {
                 const candidateQuery = Object.prototype.hasOwnProperty.call(storedSubTabQueries, subTab) ? storedSubTabQueries[subTab] : undefined;
                 if ( this.isBoundedText(candidateQuery) && candidateQuery !== '' ) {
@@ -2710,7 +2734,10 @@ export class RecipeCockpitService {
                 ...( candidateTree.todosView === 'removed' ? { todosView: 'removed' as const } : {} ),
                 ...( this.isBoundedText(candidateTree.removedTodosSearchText) && candidateTree.removedTodosSearchText !== '' ? { removedTodosSearchText: candidateTree.removedTodosSearchText } : {} ),
                 ...( updaterChosenFieldKeys.length > 0 ? { updaterChosenFieldKeys: updaterChosenFieldKeys } : {} ),
-                ...( updaterExpandedObjectKeys.length > 0 ? { updaterExpandedObjectKeys: updaterExpandedObjectKeys } : {} )
+                ...( updaterExpandedObjectKeys.length > 0 ? { updaterExpandedObjectKeys: updaterExpandedObjectKeys } : {} ),
+                ...( candidateTree.updaterStep === 'structure' && updaterParentObjectApiName !== undefined ? { updaterStep: 'structure' as const } : {} ),
+                ...( updaterParentObjectApiName !== undefined ? { updaterParentObjectApiName: updaterParentObjectApiName } : {} ),
+                ...( updaterParentWhereText !== undefined ? { updaterParentWhereText: updaterParentWhereText } : {} )
             }];
 
         });
@@ -8669,7 +8696,7 @@ export class RecipeCockpitService {
     }
 
     /*
-        Whether the Treecipe Updater holds the org selection: its load asking for an org (#416), or an
+        Whether the Treecipe Adapter holds the org selection: its load asking for an org (#416), or an
         update (#418) or a restore (#419) writing to the org selected. Every route that would change the selection, or
         write to it, refuses while it does.
     */
@@ -8825,7 +8852,7 @@ export class RecipeCockpitService {
             panelState.isUpdaterOrgPromptOpen = true;
             try {
                 isSandboxSelected = await this.promptAndSelectSandboxDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
-                    RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER, 'Records were not loaded', 'the Treecipe Updater reads only from a sandbox or scratch org');
+                    RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER, 'Records were not loaded', 'the Treecipe Adapter reads only from a sandbox or scratch org');
             } finally {
                 panelState.isUpdaterOrgPromptOpen = false;
             }
@@ -8993,7 +9020,7 @@ export class RecipeCockpitService {
         const loadedText = `Loaded ${recordCount} ${recordCount === 1 ? 'record' : 'records'} of ${treeTitle} from ${orgLabel}`;
 
         if ( failedObjectApiNames.length > 0 ) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${loadedText}. ${failedObjectApiNames.join(', ')} could not be read; the Treecipe Updater tab says why.`));
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${loadedText}. ${failedObjectApiNames.join(', ')} could not be read; the Treecipe Adapter tab says why.`));
             return;
         }
 
@@ -9052,7 +9079,7 @@ export class RecipeCockpitService {
     }
 
     /*
-        Why a field cannot be filled by the Treecipe Updater (#415, #417), or undefined: the panel's
+        Why a field cannot be filled by the Treecipe Adapter (#415, #417), or undefined: the panel's
         findUpdaterFieldLockReason, held by the host so a forged request is checked against the same
         rule the box was drawn with. Recipe selections (#219/#220) are no lock here: the Updater is
         about the org's records, not the recipe's generation.
@@ -9623,7 +9650,7 @@ export class RecipeCockpitService {
         // ASKED AGAIN, NOT READ FROM THE SELECTION: THIS IS THE ANSWER THE UPDATE RELIES ON, ON THE CONNECTION IT UPDATES WITH
         const orgTypeDetail = await SalesforceOrgService.queryOrganizationType(SalesforceOrgService.toQuerySource(connection));
         if ( orgTypeDetail?.isSandbox !== true ) {
-            return refuse(`Nothing was updated in ${orgLabel}: it answered ${SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail)}, and the Treecipe Updater updates only a sandbox or scratch org.`);
+            return refuse(`Nothing was updated in ${orgLabel}: it answered ${SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail)}, and the Treecipe Adapter updates only a sandbox or scratch org.`);
         }
 
         const startedAt = new Date();
@@ -9816,7 +9843,7 @@ export class RecipeCockpitService {
                 const fieldViewModel = objectViewModelsByApiName.get(snapshotObject.objectApiName)?.fields.find(field => field.fieldApiName === fieldApiName);
                 const lockReason = fieldViewModel ? this.findUpdaterFieldLockReason(tree, snapshotObject.objectApiName, fieldViewModel) : 'it is not a field of the object in this run';
                 if ( lockReason ) {
-                    return refuse(`Nothing was restored: ${snapshotName} names ${snapshotObject.objectApiName}.${fieldApiName}, which the Treecipe Updater does not write: ${lockReason}.`);
+                    return refuse(`Nothing was restored: ${snapshotName} names ${snapshotObject.objectApiName}.${fieldApiName}, which the Treecipe Adapter does not write: ${lockReason}.`);
                 }
             }
         }
@@ -9921,7 +9948,7 @@ export class RecipeCockpitService {
 
         const orgTypeDetail = await SalesforceOrgService.queryOrganizationType(SalesforceOrgService.toQuerySource(connection));
         if ( orgTypeDetail?.isSandbox !== true ) {
-            return refuse(`Nothing was restored in ${orgLabel}: it answered ${SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail)}, and the Treecipe Updater restores only a sandbox or scratch org.`);
+            return refuse(`Nothing was restored in ${orgLabel}: it answered ${SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail)}, and the Treecipe Adapter restores only a sandbox or scratch org.`);
         }
 
         const startedAt = new Date();
@@ -12086,7 +12113,7 @@ export class RecipeCockpitService {
         The org asked for in the command palette over the listing the Target Org Manager dropdown
         draws (sandbox, scratch and the CLI's default only), put in the dropdown and checked exactly
         as a pick there is -- connection, Organization row, describes -- and remembered (#375). The
-        insert (#375) and the Treecipe Updater's load (#416) both ask through it. True only when the
+        insert (#375) and the Treecipe Adapter's load (#416) both ask through it. True only when the
         pick is now the selection and answered it is a sandbox; a listing the CLI could not answer, a
         dismissed pick, a new model, an org chosen in the dropdown meanwhile and an org that is not a
         sandbox are false, the last two with a warning. Anything else thrown is the caller's.
@@ -13832,7 +13859,7 @@ export class RecipeCockpitService {
                 if ( dataOrgSelection ) {
                     return {
                         kind: 'refuseUpdaterLoad',
-                        refusalText: `Records were not loaded: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Updater reads only from a sandbox or scratch org.`,
+                        refusalText: `Records were not loaded: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Adapter reads only from a sandbox or scratch org.`,
                         hostMessage: notRunning
                     };
                 }
@@ -13919,7 +13946,7 @@ export class RecipeCockpitService {
                     return {
                         kind: 'refuseUpdaterLoad',
                         refusalText: dataOrgSelection
-                            ? `Nothing was updated: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Updater updates only a sandbox or scratch org.`
+                            ? `Nothing was updated: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Adapter updates only a sandbox or scratch org.`
                             : 'Nothing was updated: choose the sandbox or scratch org the records were loaded from in Target Org Manager.',
                         hostMessage: notRunning
                     };
@@ -13982,7 +14009,7 @@ export class RecipeCockpitService {
                     return {
                         kind: 'refuseUpdaterLoad',
                         refusalText: dataOrgSelection
-                            ? `Nothing was restored: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Updater restores only a sandbox or scratch org.`
+                            ? `Nothing was restored: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Adapter restores only a sandbox or scratch org.`
                             : 'Nothing was restored: choose the sandbox or scratch org the update was made in, in Target Org Manager.',
                         hostMessage: notRunning
                     };
@@ -16391,7 +16418,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     .updaterWhere, .updaterRecords, .updaterValues { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
     .updaterFieldEdit { position: relative; z-index: 2; width: 1.5em; height: 1.5em; border-radius: 3px; }
     .updaterFieldEdit[aria-pressed="true"] .fixedValueGlyph path { fill: var(--sdt-accent); }
-    .updaterWhereInput {
+    .updaterWhereInput, .updaterParentWhereInput {
         box-sizing: border-box;
         width: 100%;
         padding: 0.2rem 0.4rem;
@@ -16401,7 +16428,27 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         border: 1px solid var(--sdt-border);
         border-radius: 4px;
     }
-    .updaterWhereInput:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
+    .updaterWhereInput:focus, .updaterParentWhereInput:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
+    .updaterParentStep { margin: 0.5rem 0.6rem; }
+    .updaterStepHeadingRow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; margin: 0.5rem 0.6rem 0.25rem; }
+    .updaterStepHeading { font-weight: 600; overflow-wrap: anywhere; }
+    .updaterParentStep .updaterStepHeading { margin-bottom: 0.4rem; }
+    .updaterParentFields { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .updaterParentSelectLabel { font-weight: 600; }
+    .updaterParentSelect {
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 4px;
+        padding: 0.3rem;
+        max-width: 100%;
+    }
+    .updaterParentSelect:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); cursor: not-allowed; }
+    .updaterParentWhereInput { width: auto; flex: 1 1 16rem; min-width: 0; }
+    .updaterParentWhereNote { margin: 0 0.6rem 0.25rem; overflow-wrap: anywhere; }
+    .updaterFilterRow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .updaterFilterRow .tabSearch { flex: 1 1 16rem; min-width: 0; }
+    .updaterFilterRow .updaterRetrieveMetadata { margin-right: 0.6rem; }
     .treeQuery { margin: 0.25rem 0.6rem 0.5rem; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
     .treeQueryTitle { font-weight: 600; }
     .treeQueryControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
@@ -16658,6 +16705,16 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const UPDATER_TAB_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_TAB_LABEL)};
     const UPDATER_INTRO = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_INTRO)};
     const UPDATER_SEARCH_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER)};
+    const UPDATER_PARENT_STEP_HEADING = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_PARENT_STEP_HEADING)};
+    const UPDATER_PARENT_SELECT_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_PARENT_SELECT_LABEL)};
+    const UPDATER_PARENT_WHERE_PLACEHOLDER = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_PARENT_WHERE_PLACEHOLDER)};
+    const UPDATER_NEXT_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_NEXT_LABEL)};
+    const UPDATER_STRUCTURE_STEP_HEADING_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX)};
+    const UPDATER_CHANGE_PARENT_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL)};
+    const UPDATER_PARENT_WHERE_NOTE_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX)};
+    const UPDATER_PARENT_WHERE_NONE_NOTE = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE)};
+    const UPDATER_RETRIEVE_METADATA_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL)};
+    const UPDATER_RETRIEVE_METADATA_PENDING_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_PENDING_REASON)};
     const UPDATER_NO_FIELDS_CHOSEN = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN)};
     const UPDATER_RECIPE_ONLY_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON)};
     const UPDATER_RECORD_TYPE_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON)};
@@ -21275,7 +21332,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             updaterChosenFieldKeys: Object.create(null),
             updaterExpandedObjectKeys: Object.create(null),
             updaterObjectStates: null,
-            // THE READER'S WHERE PER OBJECT (#416), BY OBJECT NAME; PANEL-ONLY, NEVER SAVED IN THE PLACE
+            // THE ADAPTER'S STEP (#443): 'parent' (STEP 1) OR 'structure' (STEP 2), THE PARENT IT CHOSE AND ITS WHERE, ALL KEPT IN THE PLACE
+            updaterStep: 'parent',
+            updaterParentObjectApiName: '',
+            updaterParentWhereText: '',
+            // THE READER'S WHERE PER DESCENDANT OBJECT (#416), BY OBJECT NAME; PANEL-ONLY, NEVER SAVED IN THE PLACE
             updaterWhereTexts: Object.create(null),
             updaterRecordsMessage: null,
             // A VALUE OR EXPRESSION TYPED PER FIELD IN THE UPDATER'S EDITOR (#417), BY FIELD KEY; PANEL-ONLY, NEVER SAVED IN THE PLACE OR THE RECIPE
@@ -22421,10 +22482,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
 
     /*
-        The Treecipe Updater tab (#415): the card's objects in insert order, each once (an iteration
-        is the same object), with its lookups and its field rows as the Treecipe tab draws them, and
-        one box per field to choose it. Choosing posts nothing: the choice is the panel's, kept in
-        the place, until a later slice of #414 reads records for it.
+        The Treecipe Adapter tab (#415, #443): step 2 draws the parent and its descendants in insert
+        order, each once (an iteration is the same object), with its lookups and its field rows as
+        the Treecipe tab draws them, and one box per field to choose it. Choosing posts nothing: the
+        choice is the panel's, kept in the place.
     */
     function updaterFieldKeyOf(objectApiName, fieldApiName) {
         return objectApiName + '\\n' + fieldApiName;
@@ -22444,14 +22505,57 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
+    /*
+        The Adapter's two steps (#443). Step 1 chooses the parent object, starting on the card's root,
+        and the WHERE for the parent records expected. Step 2 draws the tree rooted at that parent,
+        under the filter, with Change parent back to step 1. The step, the parent and its WHERE are
+        the panel's, kept in the place; moving between the steps posts nothing.
+    */
     function buildUpdaterTab(treeState, panelElement) {
 
+        treeState.updaterCardObjectApiNames = listUpdaterCardObjectApiNames(treeState);
+
+        // A PLACE CAN NAME A PARENT THE CARD NO LONGER LISTS; THE TAB THEN OPENS ON STEP 1, ON THE ROOT
+        if (treeState.updaterCardObjectApiNames.indexOf(treeState.updaterParentObjectApiName) === -1) {
+            treeState.updaterParentObjectApiName = '';
+            treeState.updaterStep = 'parent';
+        }
+
+        treeState.updaterParentStepElement = buildUpdaterParentStep(treeState);
+        panelElement.appendChild(treeState.updaterParentStepElement);
+
+        const structureElement = createElement('div', 'updaterStructureStep hidden');
+        const headingRowElement = createElement('div', 'updaterStepHeadingRow');
+        treeState.updaterStructureHeadingElement = createElement('div', 'updaterStepHeading');
+        const changeParentElement = createButton('link', 'updaterChangeParent', UPDATER_CHANGE_PARENT_LABEL);
+        changeParentElement.addEventListener('click', function () {
+            treeState.updaterStep = 'parent';
+            drawUpdaterStep(treeState);
+            if (typeof treeState.updaterParentSelectElement.focus === 'function') { treeState.updaterParentSelectElement.focus(); }
+            savePanelPlace();
+        });
+        headingRowElement.appendChild(treeState.updaterStructureHeadingElement);
+        headingRowElement.appendChild(changeParentElement);
+        structureElement.appendChild(headingRowElement);
+
+        treeState.updaterParentWhereNoteElement = createElement('div', 'updaterParentWhereNote muted');
+        structureElement.appendChild(treeState.updaterParentWhereNoteElement);
+
+        // THE FILTER, AND BESIDE IT THE RETRIEVE A LATER SLICE OF #442 WIRES; UNTIL THEN IT SAYS WHAT IT WILL DO
+        const filterRowElement = createElement('div', 'updaterFilterRow');
         treeState.updaterSearch = buildTabSearch(treeState, 'updater', UPDATER_SEARCH_PLACEHOLDER, applyUpdaterFilter);
-        panelElement.appendChild(treeState.updaterSearch.element);
-        panelElement.appendChild(createElement('div', 'updaterIntro muted', UPDATER_INTRO));
+        filterRowElement.appendChild(treeState.updaterSearch.element);
+        treeState.updaterRetrieveMetadataElement = createButton('secondary', 'updaterRetrieveMetadata', UPDATER_RETRIEVE_METADATA_LABEL);
+        treeState.updaterRetrieveMetadataElement.disabled = true;
+        treeState.updaterRetrieveMetadataElement.setAttribute('title', UPDATER_RETRIEVE_METADATA_PENDING_REASON);
+        treeState.updaterRetrieveMetadataElement.setAttribute('aria-label', UPDATER_RETRIEVE_METADATA_LABEL + ': ' + UPDATER_RETRIEVE_METADATA_PENDING_REASON);
+        filterRowElement.appendChild(treeState.updaterRetrieveMetadataElement);
+        structureElement.appendChild(filterRowElement);
+
+        structureElement.appendChild(createElement('div', 'updaterIntro muted', UPDATER_INTRO));
 
         treeState.updaterSummaryElement = createElement('div', 'updaterSummary');
-        panelElement.appendChild(treeState.updaterSummaryElement);
+        structureElement.appendChild(treeState.updaterSummaryElement);
 
         const loadRowElement = createElement('div', 'updaterLoadRow');
         const cardsElement = createElement('div', 'updaterCards actionCards');
@@ -22469,21 +22573,170 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         cardsElement.appendChild(treeState.updaterGenerateButtonElement);
         cardsElement.appendChild(treeState.updaterUpdateButtonElement);
         loadRowElement.appendChild(treeState.updaterLoadNoteElement);
-        panelElement.appendChild(cardsElement);
-        panelElement.appendChild(loadRowElement);
+        structureElement.appendChild(cardsElement);
+        structureElement.appendChild(loadRowElement);
 
+        treeState.updaterObjectsElement = createElement('div', 'updaterObjects');
+        structureElement.appendChild(treeState.updaterObjectsElement);
+        treeState.updaterStructureStepElement = structureElement;
+        panelElement.appendChild(structureElement);
+
+        // THE SNAPSHOTS EARLIER UPDATES SAVED (#419), LISTED BY NAME ONLY ON EITHER STEP; ASKED FOR EACH TIME THE TAB IS SELECTED
+        const snapshotsElement = createElement('div', 'updaterSnapshots');
+        snapshotsElement.appendChild(createElement('div', 'updaterSnapshotsHeading', UPDATER_SNAPSHOTS_HEADING));
+        treeState.updaterSnapshotListElement = createElement('div', 'updaterSnapshotList');
+        treeState.updaterSnapshotListElement.appendChild(createElement('div', 'updaterSnapshotsNote muted', 'Reading the saved old values…'));
+        treeState.updaterSnapshotButtonElements = [];
+        snapshotsElement.appendChild(treeState.updaterSnapshotListElement);
+        panelElement.appendChild(snapshotsElement);
+
+        treeState.updaterObjectStates = [];
+        if (treeState.updaterStep === 'structure') { drawUpdaterStructure(treeState); }
+        drawUpdaterStep(treeState);
+        drawUpdaterLoadButtons();
+
+    }
+
+    // THE CARD'S OBJECTS IN INSERT ORDER, EACH ONCE: AN ITERATION IS THE SAME OBJECT
+    function listUpdaterCardObjectApiNames(treeState) {
+
+        const objectApiNames = [];
+        treeState.objectStates.forEach(function (treeObjectState) {
+            const objectApiName = treeObjectState.object.objectApiName;
+            if (treeObjectState.isIteration || objectApiNames.indexOf(objectApiName) !== -1) { return; }
+            objectApiNames.push(objectApiName);
+        });
+
+        return objectApiNames;
+
+    }
+
+    /*
+        The parent and every object whose lookups, to parents in the tree, lead up to it: what step 2
+        draws. A self-lookup is never followed, so an object is under the parent only through another.
+    */
+    function indexUpdaterSubtree(tree, parentObjectApiName) {
+
+        const subtreeObjectApiNames = Object.create(null);
+        subtreeObjectApiNames[parentObjectApiName] = true;
+        let isGrowing = true;
+
+        while (isGrowing) {
+            isGrowing = false;
+            tree.objects.forEach(function (treeObject) {
+                if (hasOwnKey(subtreeObjectApiNames, treeObject.objectApiName)) { return; }
+                const isUnderParent = treeObject.parentLookups.some(function (parentLookup) {
+                    return parentLookup.parentObjectApiName !== treeObject.objectApiName && hasOwnKey(subtreeObjectApiNames, parentLookup.parentObjectApiName);
+                });
+                if (!isUnderParent) { return; }
+                subtreeObjectApiNames[treeObject.objectApiName] = true;
+                isGrowing = true;
+            });
+        }
+
+        return subtreeObjectApiNames;
+
+    }
+
+    function buildUpdaterParentStep(treeState) {
+
+        const stepElement = createElement('div', 'updaterParentStep');
+        const fieldsElement = createElement('div', 'updaterParentFields');
+        const selectId = 'updaterParentSelect-' + treeState.tree.treeKey.replace(/[^A-Za-z0-9_-]/g, '_');
+        const labelElement = createElement('label', 'updaterParentSelectLabel', UPDATER_PARENT_SELECT_LABEL);
+        const selectElement = createElement('select', 'updaterParentSelect');
+        const whereInputElement = createElement('input', 'updaterParentWhereInput');
+        const nextElement = createButton('primary', 'updaterNext', UPDATER_NEXT_LABEL);
+        const objectApiNames = treeState.updaterCardObjectApiNames;
+        const chosenIndex = Math.max(0, objectApiNames.indexOf(treeState.updaterParentObjectApiName));
+
+        stepElement.appendChild(createElement('div', 'updaterStepHeading', UPDATER_PARENT_STEP_HEADING));
+
+        selectElement.setAttribute('id', selectId);
+        selectElement.setAttribute('aria-label', UPDATER_PARENT_SELECT_LABEL + ' (' + displayTitleOf(treeState.tree) + ')');
+        labelElement.setAttribute('for', selectId);
+        objectApiNames.forEach(function (objectApiName, optionIndex) {
+            const optionElement = createElement('option', '', objectApiName);
+            optionElement.value = String(optionIndex);
+            optionElement.selected = optionIndex === chosenIndex;
+            selectElement.appendChild(optionElement);
+        });
+        selectElement.value = objectApiNames.length > 0 ? String(chosenIndex) : '';
+        selectElement.disabled = objectApiNames.length === 0;
+
+        whereInputElement.setAttribute('type', 'text');
+        whereInputElement.setAttribute('placeholder', UPDATER_PARENT_WHERE_PLACEHOLDER);
+        whereInputElement.setAttribute('maxlength', String(UPDATER_WHERE_MAX_LENGTH));
+        whereInputElement.setAttribute('aria-label', UPDATER_PARENT_WHERE_PLACEHOLDER);
+        whereInputElement.value = treeState.updaterParentWhereText;
+        whereInputElement.addEventListener('input', function () {
+            treeState.updaterParentWhereText = String(whereInputElement.value || '');
+            savePanelPlace();
+        });
+
+        nextElement.disabled = objectApiNames.length === 0;
+        nextElement.addEventListener('click', function () {
+            const optionIndex = /^[0-9]+$/.test(String(selectElement.value)) ? Number(selectElement.value) : -1;
+            const objectApiName = objectApiNames[optionIndex];
+            if (!objectApiName) { return; }
+            treeState.updaterParentObjectApiName = objectApiName;
+            treeState.updaterStep = 'structure';
+            drawUpdaterStructure(treeState);
+            drawUpdaterStep(treeState);
+            savePanelPlace();
+        });
+
+        fieldsElement.appendChild(labelElement);
+        fieldsElement.appendChild(selectElement);
+        fieldsElement.appendChild(whereInputElement);
+        fieldsElement.appendChild(nextElement);
+        stepElement.appendChild(fieldsElement);
+
+        if (objectApiNames.length === 0) {
+            stepElement.appendChild(createElement('div', 'treeEmpty muted', 'This tree has no objects with a recipe.'));
+        }
+
+        treeState.updaterParentSelectElement = selectElement;
+        treeState.updaterParentWhereInputElement = whereInputElement;
+
+        return stepElement;
+
+    }
+
+    function drawUpdaterStep(treeState) {
+
+        const isStructure = treeState.updaterStep === 'structure';
+        setShown(treeState.updaterParentStepElement, !isStructure);
+        setShown(treeState.updaterStructureStepElement, isStructure);
+
+    }
+
+    // STEP 2'S OBJECTS, FOR THE PARENT CHOSEN NOW; A NEW PARENT REBUILDS THEM, AND THE RECORDS OR VALUES ON SCREEN ARE DRAWN ON WHAT IS LEFT
+    function drawUpdaterStructure(treeState) {
+
+        const parentObjectApiName = treeState.updaterParentObjectApiName;
+        const subtreeObjectApiNames = indexUpdaterSubtree(treeState.tree, parentObjectApiName);
         const drawnObjectApiNames = Object.create(null);
+
+        treeState.updaterObjectsElement.textContent = '';
         treeState.updaterObjectStates = [];
 
         treeState.objectStates.forEach(function (treeObjectState) {
             const objectApiName = treeObjectState.object.objectApiName;
-            if (treeObjectState.isIteration || hasOwnKey(drawnObjectApiNames, objectApiName)) { return; }
+            if (treeObjectState.isIteration || hasOwnKey(drawnObjectApiNames, objectApiName) || !hasOwnKey(subtreeObjectApiNames, objectApiName)) { return; }
             drawnObjectApiNames[objectApiName] = true;
             treeState.updaterObjectStates.push(buildUpdaterObjectState(treeState, treeObjectState));
         });
 
-        // A PLACE CAN NAME A FIELD THE TREE NO LONGER HAS, OR ONE WHOSE BOX IS LOCKED NOW; NEITHER STAYS CHOSEN
+        /*
+            A PLACE CAN NAME A FIELD THE TREE NO LONGER HAS, OR ONE WHOSE BOX IS LOCKED NOW; NEITHER STAYS CHOSEN. A CHOICE ON
+            ANOTHER OF THE CARD'S OBJECTS IS KEPT FOR WHEN IT IS DRAWN AGAIN, AND ONE ON AN OBJECT THE CARD NO LONGER LISTS IS NOT
+        */
         const chosenFieldKeys = Object.create(null);
+        Object.keys(treeState.updaterChosenFieldKeys).forEach(function (fieldKey) {
+            const objectApiName = fieldKey.split('\\n')[0];
+            if (!hasOwnKey(drawnObjectApiNames, objectApiName) && treeState.updaterCardObjectApiNames.indexOf(objectApiName) !== -1) { chosenFieldKeys[fieldKey] = true; }
+        });
         treeState.updaterObjectStates.forEach(function (updaterObjectState) {
             updaterObjectState.fieldStates.forEach(function (fieldState) {
                 if (!fieldState.lockReason && hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey)) {
@@ -22500,27 +22753,21 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         });
         treeState.updaterExpandedObjectKeys = expandedObjectKeys;
 
-        treeState.updaterObjectStates.forEach(function (updaterObjectState) { panelElement.appendChild(updaterObjectState.element); });
+        treeState.updaterObjectStates.forEach(function (updaterObjectState) { treeState.updaterObjectsElement.appendChild(updaterObjectState.element); });
 
-        if (treeState.updaterObjectStates.length === 0) {
-            panelElement.appendChild(createElement('div', 'treeEmpty muted', 'This tree has no objects with a recipe.'));
-        }
-
-        // THE SNAPSHOTS EARLIER UPDATES SAVED (#419), LISTED BY NAME ONLY; ASKED FOR EACH TIME THE TAB IS SELECTED
-        const snapshotsElement = createElement('div', 'updaterSnapshots');
-        snapshotsElement.appendChild(createElement('div', 'updaterSnapshotsHeading', UPDATER_SNAPSHOTS_HEADING));
-        treeState.updaterSnapshotListElement = createElement('div', 'updaterSnapshotList');
-        treeState.updaterSnapshotListElement.appendChild(createElement('div', 'updaterSnapshotsNote muted', 'Reading the saved old values…'));
-        treeState.updaterSnapshotButtonElements = [];
-        snapshotsElement.appendChild(treeState.updaterSnapshotListElement);
-        panelElement.appendChild(snapshotsElement);
-
+        treeState.updaterStructureHeadingElement.textContent = UPDATER_STRUCTURE_STEP_HEADING_PREFIX + parentObjectApiName;
+        drawUpdaterParentWhereNote(treeState);
         drawUpdaterSummary(treeState);
         applyUpdaterFilter(treeState);
         drawUpdaterLoadButtons();
         if (treeState.updaterRecordsMessage) { applyUpdaterRecords(treeState, treeState.updaterRecordsMessage); }
         if (treeState.updaterValuesMessage) { applyUpdaterValues(treeState, treeState.updaterValuesMessage); }
 
+    }
+
+    function drawUpdaterParentWhereNote(treeState) {
+        const whereText = treeState.updaterParentWhereText.trim();
+        treeState.updaterParentWhereNoteElement.textContent = whereText ? UPDATER_PARENT_WHERE_NOTE_PREFIX + whereText : UPDATER_PARENT_WHERE_NONE_NOTE;
     }
 
     function buildUpdaterObjectState(treeState, treeObjectState) {
@@ -22600,7 +22847,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     function setUpdaterObjectExpanded(treeState, updaterObjectState, isExpanded, isAnimated) {
 
         if (isExpanded && !updaterObjectState.isBodyBuilt) {
-            updaterObjectState.bodyElement.appendChild(buildUpdaterWhereElement(treeState, updaterObjectState));
+            // THE PARENT'S RECORDS ARE STEP 1'S WHERE, SO ONLY ITS DESCENDANTS TAKE ONE OF THEIR OWN
+            if (updaterObjectState.object.objectApiName !== treeState.updaterParentObjectApiName) {
+                updaterObjectState.bodyElement.appendChild(buildUpdaterWhereElement(treeState, updaterObjectState));
+            }
             updaterObjectState.recordsElement = createElement('div', 'updaterRecords hidden');
             updaterObjectState.bodyElement.appendChild(updaterObjectState.recordsElement);
             drawUpdaterObjectRecords(updaterObjectState);
@@ -22734,7 +22984,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
-    // EVERY OBJECT OF THE CARD, ITS CHOSEN FIELDS IN ROW ORDER AND ITS WHERE; NAMES ONLY, AND THE HOST MATCHES THEM AGAINST THE CARD IT DREW
+    // EVERY OBJECT STEP 2 DRAWS, ITS CHOSEN FIELDS IN ROW ORDER AND ITS WHERE (THE PARENT'S IS STEP 1'S); NAMES ONLY, AND THE HOST MATCHES THEM AGAINST THE CARD IT DREW
     function requestUpdaterRecords(treeState) {
 
         if (renderedSequence === null || updaterLoadRunningTreeKey !== null || !treeState.updaterObjectStates) { return; }
@@ -22746,7 +22996,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                 fieldApiNames: updaterObjectState.fieldStates
                     .filter(function (fieldState) { return hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey); })
                     .map(function (fieldState) { return fieldState.field.fieldApiName; }),
-                whereClause: hasOwnKey(treeState.updaterWhereTexts, objectApiName) ? treeState.updaterWhereTexts[objectApiName] : ''
+                whereClause: objectApiName === treeState.updaterParentObjectApiName ? treeState.updaterParentWhereText
+                    : hasOwnKey(treeState.updaterWhereTexts, objectApiName) ? treeState.updaterWhereTexts[objectApiName] : ''
             };
         });
 
@@ -24265,7 +24516,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         const updaterChosenFieldKeys = Object.keys(treeState.updaterChosenFieldKeys);
         const updaterExpandedObjectKeys = Object.keys(treeState.updaterExpandedObjectKeys);
+        const isUpdaterStructureStep = treeState.updaterStep === 'structure' && !!treeState.updaterParentObjectApiName;
         if (updaterChosenFieldKeys.length > 0 || updaterExpandedObjectKeys.length > 0) { hasSearch = true; }
+        if (isUpdaterStructureStep || treeState.updaterParentObjectApiName || treeState.updaterParentWhereText) { hasSearch = true; }
 
         const selectedTab = treeState.selectedTab || 'treecipe';
 
@@ -24293,6 +24546,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (removedTodosSearchText) { treePlace.removedTodosSearchText = removedTodosSearchText; }
         if (updaterChosenFieldKeys.length > 0) { treePlace.updaterChosenFieldKeys = updaterChosenFieldKeys; }
         if (updaterExpandedObjectKeys.length > 0) { treePlace.updaterExpandedObjectKeys = updaterExpandedObjectKeys; }
+        if (isUpdaterStructureStep) { treePlace.updaterStep = 'structure'; }
+        if (treeState.updaterParentObjectApiName) { treePlace.updaterParentObjectApiName = treeState.updaterParentObjectApiName; }
+        if (treeState.updaterParentWhereText) { treePlace.updaterParentWhereText = treeState.updaterParentWhereText; }
 
         return treePlace;
 
@@ -24526,6 +24782,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             (Array.isArray(savedTree.updaterExpandedObjectKeys) ? savedTree.updaterExpandedObjectKeys : []).forEach(function (objectKey) {
                 if (typeof objectKey === 'string') { treeState.updaterExpandedObjectKeys[objectKey] = true; }
             });
+            // A PLACE SAVED BEFORE #443 HAS NONE OF THESE AND OPENS ON STEP 1; A PARENT THE CARD NO LONGER LISTS IS DROPPED WHEN THE TAB IS BUILT
+            treeState.updaterParentObjectApiName = typeof savedTree.updaterParentObjectApiName === 'string' ? savedTree.updaterParentObjectApiName : '';
+            treeState.updaterStep = savedTree.updaterStep === 'structure' && treeState.updaterParentObjectApiName ? 'structure' : 'parent';
+            treeState.updaterParentWhereText = typeof savedTree.updaterParentWhereText === 'string' ? savedTree.updaterParentWhereText.slice(0, UPDATER_WHERE_MAX_LENGTH) : '';
 
             const hasOpenPicklists = hasAnyString(openPicklistKeys);
 

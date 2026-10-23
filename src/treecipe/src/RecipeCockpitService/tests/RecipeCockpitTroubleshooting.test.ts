@@ -1069,7 +1069,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             const panel = renderTrees();
             const accountCard = cardOf(panel, 'OtherChildObject__c');
 
-            expect(panel.findAll(accountCard, 'treeTab').map((tabElement: any) => tabElement.textContent)).toEqual(['Treecipe', 'Previously Used Data Sets', 'Troubleshooting', 'Query', 'Treecipe Updater']);
+            expect(panel.findAll(accountCard, 'treeTab').map((tabElement: any) => tabElement.textContent)).toEqual(['Treecipe', 'Previously Used Data Sets', 'Troubleshooting', 'Query', 'Treecipe Adapter']);
             // NOTHING IS BUILT OR ASKED FOR UNTIL THE TAB IS OPENED
             expect(panel.findAll(accountCard, 'troubleshootingSubPanel')).toEqual([]);
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'loadTroubleshootingSummary')).toEqual([]);

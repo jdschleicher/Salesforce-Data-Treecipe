@@ -109,7 +109,7 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
             const panelScript = panelScriptOf(shellHtml());
             const primaryClassNames = Array.from(panelScript.matchAll(/createButton\('primary', '([A-Za-z ]+)'/g), match => match[1]);
 
-            expect([...new Set(primaryClassNames)].sort()).toEqual(['dataOrgLoad', 'dataOrgNewScratch', 'favoritesToggle', 'fieldEditorSave', 'helpGuideOpen', 'helpToggle', 'treeInsert'].sort());
+            expect([...new Set(primaryClassNames)].sort()).toEqual(['dataOrgLoad', 'dataOrgNewScratch', 'favoritesToggle', 'fieldEditorSave', 'helpGuideOpen', 'helpToggle', 'treeInsert', 'updaterNext'].sort());
 
         });
 
@@ -170,11 +170,11 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
 
         });
 
-        it('draws the Treecipe Updater\'s three actions as cards in one grid, each with its verb', () => {
+        it('draws the Treecipe Adapter\'s three actions as cards in one grid, each with its verb', () => {
 
             const panel = drawTreeRecipe();
             const treeCard = panel.shownTreeCards()[0];
-            panel.openTab(treeCard, 'Treecipe Updater');
+            panel.openTab(treeCard, 'Treecipe Adapter');
 
             const cards = ['updaterLoad', 'updaterGenerate', 'updaterUpdate'].map(className => panel.findAll(treeCard, className)[0]);
             const expectedEmojis = ['loadUpdaterRecords', 'generateUpdaterValues', 'updateUpdaterRecords']

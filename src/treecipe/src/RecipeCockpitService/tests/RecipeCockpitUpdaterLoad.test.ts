@@ -82,7 +82,7 @@ const loadRequest = (renderSequence: number, overrides: Record<string, unknown> 
     ...overrides
 });
 
-describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
+describe('RecipeCockpitService, the Treecipe Adapter\'s load (#416)', () => {
 
     describe('routePanelMessage', () => {
 
@@ -137,7 +137,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
 
             expect(RecipeCockpitService.routePanelMessage(loadRequest(3), withSandbox(buildPanelState(), false))).toEqual({
                 kind: 'refuseUpdaterLoad',
-                refusalText: 'Records were not loaded: qa is not a sandbox or scratch org, and the Treecipe Updater reads only from a sandbox or scratch org.',
+                refusalText: 'Records were not loaded: qa is not a sandbox or scratch org, and the Treecipe Adapter reads only from a sandbox or scratch org.',
                 hostMessage: notRunning()
             });
             expect(RecipeCockpitService.routePanelMessage(loadRequest(3), withSandbox(buildPanelState(), null))).toMatchObject({
@@ -463,7 +463,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
             promptSpy.mockImplementation(async (listing: any) => (await listing).orgDetails[0]);
             await send(loadRequest(lastRenderSequence()));
             expect(sentQueries).toEqual([]);
-            expect(warnings()).toEqual(['Records were not loaded: qa is not a sandbox or scratch org, and the Treecipe Updater reads only from a sandbox or scratch org.']);
+            expect(warnings()).toEqual(['Records were not loaded: qa is not a sandbox or scratch org, and the Treecipe Adapter reads only from a sandbox or scratch org.']);
             expect(postedNamed('updaterLoadState').at(-1)).toMatchObject({ isRunning: false });
 
         });
@@ -476,7 +476,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
             await send(loadRequest(lastRenderSequence()));
 
             expect(connectionSpy).not.toHaveBeenCalled();
-            expect(warnings()).toEqual(['Records were not loaded: qa is not a sandbox or scratch org, and the Treecipe Updater reads only from a sandbox or scratch org.']);
+            expect(warnings()).toEqual(['Records were not loaded: qa is not a sandbox or scratch org, and the Treecipe Adapter reads only from a sandbox or scratch org.']);
             expect(postedNamed('updaterLoadState')).toEqual([{ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY }]);
 
         });
@@ -707,7 +707,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
             panel.postToPanel({ command: 'rendered' });
             panel.expandAllTrees();
             const accountCard = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeObjectName').some((nameElement: any) => nameElement.textContent.includes('OtherChildObject__c')));
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
             const updaterPanel = panel.findAll(accountCard, 'treeUpdater')[0];
             return { panel, accountCard, updaterPanel, recipe };
         };
@@ -840,7 +840,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
             panel.postToPanel(recordsMessage());
 
             const accountCard = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeObjectName').some((nameElement: any) => nameElement.textContent.includes('OtherChildObject__c')));
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
             const updaterPanel = panel.findAll(accountCard, 'treeUpdater')[0];
 
             expect(panel.findAll(updaterPanel, 'updaterLoadNote')[0].textContent).toBe('Loaded 52 records from qa · qa@example.com.qa');

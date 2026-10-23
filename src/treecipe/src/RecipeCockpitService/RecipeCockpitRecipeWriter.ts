@@ -2324,7 +2324,7 @@ export class RecipeCockpitRecipeWriter {
     }
 
     /*
-        The recipe the Treecipe Updater generates its values from (#417): ONE top-level object, a
+        The recipe the Treecipe Adapter generates its values from (#417): ONE top-level object, a
         nickname of its own, "count:" set to the records loaded, and only the fields given -- no
         lookup, no friend, nothing else of the tree. Each value is written by buildFieldLines, the
         line rule every other write is held to, so a value cannot add a line the layout would read
@@ -2361,7 +2361,7 @@ export class RecipeCockpitRecipeWriter {
         }
 
         const recipeText = [
-            `# Recipe Cockpit -- Treecipe Updater values for ${recordCount} ${objectApiName} ${recordCount === 1 ? 'record' : 'records'}`,
+            `# Recipe Cockpit -- Treecipe Adapter values for ${recordCount} ${objectApiName} ${recordCount === 1 ? 'record' : 'records'}`,
             '',
             `- object: ${objectApiName}`,
             `${layout.propertyIndent}nickname: ${objectApiName}_Updater_NickName`,

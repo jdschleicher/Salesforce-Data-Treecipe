@@ -95,7 +95,7 @@ const generateRequest = (renderSequence: number, fields: unknown, treeKey: unkno
 
 answerInPanelConfirmationsThroughWarningMock();
 
-describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
+describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
 
     describe('RecipeCockpitRecipeWriter.buildUpdaterValueRecipe', () => {
 
@@ -1002,7 +1002,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
             panel.postToPanel({ command: 'rendered' });
             panel.expandAllTrees();
             const accountCard = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeObjectName').some((nameElement: any) => nameElement.textContent.includes('OtherChildObject__c')));
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
             const updaterPanel = panel.findAll(accountCard, 'treeUpdater')[0];
             return { panel, accountCard, updaterPanel };
         };
@@ -1208,7 +1208,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
             panel.postToPanel({ command: 'rendered' });
             panel.expandAllTrees();
             const accountCard = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeObjectName').some((nameElement: any) => nameElement.textContent.includes('OtherChildObject__c')));
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
             const updaterPanel = panel.findAll(accountCard, 'treeUpdater')[0];
             const accountObject = objectNamed(panel, updaterPanel, 'Account');
             expand(panel, accountObject);
@@ -1233,7 +1233,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
             panel.postToPanel({ command: 'updaterValues', renderSequence: 1, treeKey: 'Not-A-Card', objects: [] });
 
             const accountCard = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeObjectName').some((nameElement: any) => nameElement.textContent.includes('OtherChildObject__c')));
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
             const updaterPanel = panel.findAll(accountCard, 'treeUpdater')[0];
             const accountObject = objectNamed(panel, updaterPanel, 'Account');
             expand(panel, accountObject);

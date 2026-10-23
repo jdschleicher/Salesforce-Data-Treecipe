@@ -14,7 +14,7 @@ const RECORD_TOUCHING_CLAUSE_PATTERN = /\bfor\s+(view|reference|update)\b/i;
 const QUOTED_VALUE_PATTERN = /'(?:[^'\\]|\\.)*'/g;
 
 /*
-    One object of a card as the Treecipe Updater reads it (#416): the fields the model lists for it
+    One object of a card as the Treecipe Adapter reads it (#416): the fields the model lists for it
     and the lookups to parents in the SAME tree, which a later slice relates records by.
 */
 export interface IRecipeCockpitUpdaterTreeObject {
@@ -40,7 +40,7 @@ export type RecipeCockpitUpdaterRequestRead = { requests: IRecipeCockpitUpdaterO
 export type RecipeCockpitUpdaterQueryBuild = { objectQuery: IRecipeCockpitUpdaterObjectQuery } | { refusal: string };
 
 /*
-    The Treecipe Updater's load (#416): one SELECT per tree object, built from the TREE -- the
+    The Treecipe Adapter's load (#416): one SELECT per tree object, built from the TREE -- the
     record Id, the lookups to parents in the tree and the fields the reader chose -- never from the
     SOQL templates. Everything the panel posts is matched against the card the host drew; the WHERE
     clause is the reader's own text and is held to the Query tab's one-SELECT rule once the query is
