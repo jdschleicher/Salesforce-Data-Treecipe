@@ -50,6 +50,7 @@ import {
     RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
     RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_NO_SNAPSHOTS_NOTE,
+    RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE,
     RECIPE_COCKPIT_UPDATER_RESTORE_BUSY_REFUSAL,
     RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_RESTORE_LABEL,
@@ -223,11 +224,27 @@ describe('RecipeCockpitService, the Treecipe Updater\'s restore (#419)', () => {
             writeSnapshotFile('20261023-100000-before.json', JSON.stringify(validSnapshot()));
             const snapshotFilePath = path.join(treeFolderPath, '20261023-100000-before.json');
             const readSpy = jest.spyOn(fs, 'readFileSync');
-            jest.spyOn(fs, 'statSync').mockReturnValueOnce({ size: RECIPE_COCKPIT_UPDATE_SNAPSHOT_MAX_BYTES + 1 } as fs.Stats);
+            const closeSpy = jest.spyOn(fs, 'closeSync');
+            jest.spyOn(fs, 'fstatSync').mockReturnValueOnce({ size: RECIPE_COCKPIT_UPDATE_SNAPSHOT_MAX_BYTES + 1, isFile: () => true } as fs.Stats);
 
             expect(RecipeCockpitRecordUpdate.readSnapshotFile(snapshotFilePath)).toEqual({ refusal: 'it is larger than any update writes' });
             expect(readSpy).not.toHaveBeenCalled();
+            // THE HANDLE IS CLOSED ON A REFUSAL TOO
+            expect(closeSpy).toHaveBeenCalledTimes(1);
             expect(RecipeCockpitRecordUpdate.readSnapshotFile(path.join(treeFolderPath, 'gone-before.json'))).toEqual({ refusal: 'it could not be read' });
+
+        });
+
+        it('reads the file through one handle that never follows a link, so a link swapped in after the check is refused', () => {
+
+            fs.writeFileSync(path.join(temporaryRoot, 'outside.json'), JSON.stringify(validSnapshot()));
+            fs.symlinkSync(path.join(temporaryRoot, 'outside.json'), path.join(treeFolderPath, '20261023-100000-before.json'));
+
+            expect(RecipeCockpitRecordUpdate.readSnapshotFile(path.join(treeFolderPath, '20261023-100000-before.json'))).toEqual({ refusal: 'it could not be read' });
+
+            // A FOLDER UNDER A SNAPSHOT'S NAME IS NOT READ EITHER
+            fs.mkdirSync(path.join(treeFolderPath, '20261023-100001-before.json'));
+            expect(RecipeCockpitRecordUpdate.readSnapshotFile(path.join(treeFolderPath, '20261023-100001-before.json'))).toEqual({ refusal: 'it could not be read' });
 
         });
 
@@ -243,6 +260,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s restore (#419)', () => {
         let orgRecords: Record<string, Map<string, Record<string, unknown>>>;
         let updateCalls: Array<{ objectApiName: string; records: any[]; options: any }>;
         let organizationAnswers: Array<{ IsSandbox: boolean; OrganizationType: string }>;
+        let describeAnswers: Record<string, unknown>;
         let allOrNoneAnswer: boolean | undefined;
         let confirmationAnswers: Record<string, string | undefined>;
 
@@ -338,7 +356,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s restore (#419)', () => {
                 Contact: new Map([0, 1].map(recordIndex => [buildRecordId(CONTACT_ID_PREFIX, recordIndex), { Id: buildRecordId(CONTACT_ID_PREFIX, recordIndex), LastName: `Old ${recordIndex}` }])),
                 OtherChildObject__c: new Map()
             };
-            const describeAnswers: Record<string, unknown> = {
+            describeAnswers = {
                 Account: { name: 'Account', updateable: true, fields: [{ name: 'Legacy_Code__c', type: 'string', updateable: true }, { name: 'Rating__c', type: 'string', updateable: true }] },
                 Contact: { name: 'Contact', updateable: true, fields: [{ name: 'LastName', type: 'string', updateable: true }] }
             };
@@ -537,6 +555,31 @@ describe('RecipeCockpitService, the Treecipe Updater\'s restore (#419)', () => {
 
         });
 
+        it('empties both lists on a failure to draw and on a new model', async () => {
+
+            await openCockpit();
+            writeWorkspaceSnapshot('20261023-100000-before.json', JSON.stringify(validSnapshot()));
+            await listAndAcknowledgeSnapshots();
+            expect(panelState().restorableSnapshots.get(ACCOUNT_TREE_KEY)?.has('20261023-100000-before.json')).toBe(true);
+
+            (vscode.window.showErrorMessage as jest.Mock).mockResolvedValue(undefined);
+            await send({ command: 'renderFailed', message: 'draw failed', stack: '', phase: 'render' });
+            expect(panelState().restorableSnapshots.size).toBe(0);
+            expect(panelState().pendingRestorableSnapshots.size).toBe(0);
+
+            await send({ command: 'rendered', renderSequence: lastRenderSequence() });
+            await listAndAcknowledgeSnapshots();
+            expect(panelState().restorableSnapshots.size).toBe(1);
+            await send({ command: 'loadUpdaterSnapshots', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence() });
+            expect(panelState().pendingRestorableSnapshots.size).toBe(1);
+
+            await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState);
+            await flushAsyncWork();
+            expect(panelState().restorableSnapshots.size).toBe(0);
+            expect(panelState().pendingRestorableSnapshots.size).toBe(0);
+
+        });
+
         it('lists nothing for a card with no folder or a model not on screen', async () => {
 
             await openCockpit();
@@ -689,6 +732,88 @@ describe('RecipeCockpitService, the Treecipe Updater\'s restore (#419)', () => {
                 expect.stringMatching(/^The restore of Account-thru-OtherChildObject__c in qa · qa@example\.com\.qa stopped at a request that failed: 1 record failed\. The 2 records it had restored were set back/),
                 expect.anything()
             );
+
+        });
+
+        it('stops quietly when the read of the current values is cancelled, and refuses an answer it cannot read', async () => {
+
+            await openCockpit();
+            writeWorkspaceSnapshot('20261023-100000-before.json', JSON.stringify(validSnapshot()));
+            await listAndAcknowledgeSnapshots();
+
+            // THE READ IS A CANCELLABLE PROGRESS OF ITS OWN
+            (vscode.window.withProgress as jest.Mock).mockImplementationOnce(async (options: any, progressTask: any) => {
+                expect(options).toMatchObject({ cancellable: true, title: 'Recipe Cockpit: reading the current values of Account-thru-OtherChildObject__c in qa · qa@example.com.qa' });
+                return await progressTask({ report: jest.fn() }, { isCancellationRequested: true });
+            });
+            await requestRestore('20261023-100000-before.json');
+            expect(restoreConfirmations()).toEqual([]);
+            expect(warnings()).toEqual([]);
+            expect(updateCalls).toEqual([]);
+            expect(attemptFiles()).toEqual(['20261023-100000-before.json']);
+
+            // AN ANSWER THAT IS NOT DONE IN ONE PAGE IS NOT READ AS NONE
+            const getConnection = SalesforceOrgService.getConnection as jest.Mock;
+            const fakedConnection = await getConnection('qa@example.com.qa');
+            getConnection.mockResolvedValue({
+                ...fakedConnection,
+                query: async (soql: string) => /FROM Organization/.test(soql) ? fakedConnection.query(soql) : { done: false, records: [] }
+            });
+            await requestRestore('20261023-100000-before.json');
+            expect(warnings()).toContain('Nothing was restored: the current values of the records could not be read from qa · qa@example.com.qa.');
+            expect(restoreConfirmations()).toEqual([]);
+
+            // A CONNECTION THAT CANNOT BE OPENED QUOTES NOTHING OF ITS ERROR
+            getConnection.mockRejectedValue(new Error('token=SECRET'));
+            await requestRestore('20261023-100000-before.json');
+            expect(warnings().at(-1)).toMatch(/^Nothing was restored: qa · qa@example\.com\.qa could not be connected to\./);
+            expect(warnings().join('\n')).not.toContain('SECRET');
+            expect(updateCalls).toEqual([]);
+
+        });
+
+        it('refuses a snapshot that holds no records, and a selection that changed while the confirmation was open', async () => {
+
+            await openCockpit();
+            const emptySnapshot: any = validSnapshot();
+            emptySnapshot.objects[0].records = [];
+            writeWorkspaceSnapshot('20261023-100000-before.json', JSON.stringify(emptySnapshot));
+            writeWorkspaceSnapshot('20261023-100001-before.json', JSON.stringify(validSnapshot()));
+            await listAndAcknowledgeSnapshots();
+
+            await requestRestore('20261023-100000-before.json');
+            expect(warnings()).toContain('Nothing was restored: 20261023-100000-before.json holds no records.');
+
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation((message: string, options?: { inPanel?: boolean }) => {
+                if ( options?.inPanel && message.startsWith('Restore ') ) {
+                    selectOrg();
+                    return Promise.resolve(RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL);
+                }
+                return Promise.resolve(undefined);
+            });
+            await requestRestore('20261023-100001-before.json');
+            expect(warnings()).toContain('Nothing was restored: the run or the org selection changed after qa · qa@example.com.qa was confirmed.');
+            expect(updateCalls).toEqual([]);
+            expect(attemptFiles()).toEqual(['20261023-100000-before.json', '20261023-100001-before.json']);
+
+        });
+
+        it('says the org decides a picklist on an object with record types, as the update does', async () => {
+
+            await openCockpit();
+            writeWorkspaceSnapshot('20261023-100000-before.json', JSON.stringify(validSnapshot()));
+            await listAndAcknowledgeSnapshots();
+
+            await requestRestore('20261023-100000-before.json');
+            expect(restoreConfirmations()[0][1].detail).not.toContain(RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE);
+
+            describeAnswers = {
+                ...describeAnswers,
+                Account: { name: 'Account', updateable: true, fields: [{ name: 'Legacy_Code__c', type: 'string', updateable: true }, { name: 'Rating__c', type: 'picklist', updateable: true }] }
+            };
+            SalesforceOrgService.clearDescribeCache();
+            await requestRestore('20261023-100000-before.json');
+            expect(restoreConfirmations()[1][1].detail.split('\n').slice(-1)).toEqual([RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE]);
 
         });
 

@@ -421,17 +421,33 @@ export class RecipeCockpitRecordUpdate {
 
     }
 
-    // A SNAPSHOT FILE READ AND PARSED, OR WHY IT WAS REFUSED; A FILE PAST RECIPE_COCKPIT_UPDATE_SNAPSHOT_MAX_BYTES IS NOT READ AT ALL
+    /*
+        A snapshot file read and parsed, or why it was refused. It is opened ONCE, without following a
+        link where the platform can refuse one (O_NOFOLLOW; Windows has none, and a link there was
+        already refused by resolveSnapshotFilePath), and the size and kind are read from that same
+        handle, so a link swapped in after the path was checked is never read. A file past
+        RECIPE_COCKPIT_UPDATE_SNAPSHOT_MAX_BYTES is not read at all.
+    */
     static readSnapshotFile(snapshotFilePath: string): IUpdateSnapshot | { refusal: string } {
 
+        let fileDescriptor: number | undefined;
         let snapshotText: string;
         try {
-            if ( fs.statSync(snapshotFilePath).size > RECIPE_COCKPIT_UPDATE_SNAPSHOT_MAX_BYTES ) {
+            fileDescriptor = fs.openSync(snapshotFilePath, fs.constants.O_RDONLY | ( fs.constants.O_NOFOLLOW ?? 0 ));
+            const fileStats = fs.fstatSync(fileDescriptor);
+            if ( !fileStats.isFile() ) {
+                return { refusal: 'it could not be read' };
+            }
+            if ( fileStats.size > RECIPE_COCKPIT_UPDATE_SNAPSHOT_MAX_BYTES ) {
                 return { refusal: 'it is larger than any update writes' };
             }
-            snapshotText = fs.readFileSync(snapshotFilePath, 'utf-8');
+            snapshotText = fs.readFileSync(fileDescriptor, 'utf-8');
         } catch {
             return { refusal: 'it could not be read' };
+        } finally {
+            if ( fileDescriptor !== undefined ) {
+                fs.closeSync(fileDescriptor);
+            }
         }
 
         return this.parseSnapshot(snapshotText);

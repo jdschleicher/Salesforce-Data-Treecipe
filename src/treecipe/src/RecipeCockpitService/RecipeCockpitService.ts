@@ -1706,6 +1706,15 @@ export interface IRecipeCockpitUpdaterObjectValuesViewModel {
     for the slice that writes them (#418). Drawn only on the model it was generated on.
 */
 // HOW AN UPDATE'S REQUESTS ENDED (#418), WRITTEN TO THE RESULTS FILE AND SAID IN THE NOTIFICATION
+// ONE OBJECT OF A RESTORE (#419): THE SNAPSHOT'S VALUES FOR THE RECORDS THE ORG STILL RETURNS, AND WHAT THOSE RECORDS HOLD NOW
+export interface IRecipeCockpitUpdaterRestoreTarget {
+    objectApiName: string;
+    fieldApiNames: string[];
+    recordValues: IUpdateRecordValues[];
+    currentRecords: Record<string, unknown>[];
+    missingRecordCount: number;
+}
+
 export interface IRecipeCockpitUpdaterSendResult {
     outcome: 'completed' | 'stopped' | 'cancelled';
     isAnyRequestSent: boolean;
@@ -9514,14 +9523,7 @@ export class RecipeCockpitService {
         }
 
         // A PICKLIST ON AN OBJECT WITH RECORD TYPES GETS THE FIELD'S OWN VALUES, WHICH A RECORD TYPE CAN NARROW: THE ORG DECIDES, AND SAYS SO PER RECORD
-        const hasRecordTypePicklist = plannedObjects.some(plannedObject => {
-            const describedFields = describeOutcomes.get(plannedObject.objectApiName)?.describe?.fields ?? [];
-            return clickedRecipeDataMessage.recipe.objects.some(object => object.objectApiName === plannedObject.objectApiName && ( object.recordTypes ?? [] ).length > 1)
-                && plannedObject.fieldApiNames.some(fieldApiName => {
-                    const fieldType = describedFields.find(describedField => describedField.fieldApiName.toLowerCase() === fieldApiName.toLowerCase())?.fieldType;
-                    return fieldType === 'picklist' || fieldType === 'multipicklist';
-                });
-        });
+        const hasRecordTypePicklist = this.hasRecordTypePicklist(clickedRecipeDataMessage.recipe, plannedObjects, describeOutcomes);
 
         const detailLines: string[] = [
             `Org: ${orgLabel} (${SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail)})`,
@@ -9790,11 +9792,26 @@ export class RecipeCockpitService {
         }
 
         // WHAT THE RECORDS HOLD NOW, SAVED BEFORE ANYTHING IS WRITTEN; A RECORD THE ORG DOES NOT RETURN IS NOT RESTORED
-        let plannedObjects: Array<{ objectApiName: string; fieldApiNames: string[]; recordValues: IUpdateRecordValues[]; currentRecords: Record<string, unknown>[]; missingRecordCount: number }>;
+        // A LARGE SNAPSHOT IS HUNDREDS OF QUERIES, SO IT IS READ BEHIND A CANCELLABLE PROGRESS, AS A LOAD IS
+        let plannedObjects: IRecipeCockpitUpdaterRestoreTarget[] | undefined;
         try {
-            plannedObjects = await this.readUpdaterRestoreTargets(connection, snapshotObjects);
+            const recordTotal = snapshotObjects.reduce((total, snapshotObject) => total + snapshotObject.records.length, 0);
+            plannedObjects = await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: reading the current values of ${treeTitle} in ${orgLabel}`),
+                cancellable: true
+            }, async (progress, cancellationToken) => this.readUpdaterRestoreTargets(
+                connection,
+                snapshotObjects,
+                () => cancellationToken.isCancellationRequested,
+                readCount => progress.report({ message: `${readCount} of ${recordTotal} records` })
+            ));
         } catch {
             return refuse(`Nothing was restored: the current values of the records could not be read from ${orgLabel}.`);
+        }
+
+        if ( !plannedObjects ) {
+            return false;
         }
 
         const restoredObjects = plannedObjects.filter(plannedObject => plannedObject.recordValues.length > 0);
@@ -9816,6 +9833,10 @@ export class RecipeCockpitService {
         });
         if ( missingRecordTotal > 0 ) {
             detailLines.push('', `${describeRecords(missingRecordTotal)} of the snapshot ${missingRecordTotal === 1 ? 'is' : 'are'} no longer in the org, or not visible to this user, and will not be restored.`);
+        }
+        // AS THE UPDATE SAYS (#418): A RECORD WHOSE RECORD TYPE NO LONGER ALLOWS ITS OLD PICKLIST VALUE IS REJECTED BY THE ORG
+        if ( this.hasRecordTypePicklist(clickedRecipeDataMessage.recipe, restoredObjects, describeOutcomes) ) {
+            detailLines.push('', RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE);
         }
 
         const answer = await this.confirmInPanel(
@@ -9884,22 +9905,46 @@ export class RecipeCockpitService {
 
     }
 
+    // WHETHER A PICKLIST IS WRITTEN ON AN OBJECT WITH RECORD TYPES, WHICH CAN NARROW IT: THE ORG DECIDES, PER RECORD (#418)
+    private static hasRecordTypePicklist(recipe: IRecipeCockpitRecipeViewModel,
+                                         plannedObjects: ReadonlyArray<{ objectApiName: string; fieldApiNames: readonly string[] }>,
+                                         describeOutcomes: ReadonlyMap<string, { describe?: { fields: ReadonlyArray<{ fieldApiName: string; fieldType: string }> } }>): boolean {
+
+        return plannedObjects.some(plannedObject => {
+            const describedFields = describeOutcomes.get(plannedObject.objectApiName)?.describe?.fields ?? [];
+            return recipe.objects.some(object => object.objectApiName === plannedObject.objectApiName && ( object.recordTypes ?? [] ).length > 1)
+                && plannedObject.fieldApiNames.some(fieldApiName => {
+                    const fieldType = describedFields.find(describedField => describedField.fieldApiName.toLowerCase() === fieldApiName.toLowerCase())?.fieldType;
+                    return fieldType === 'picklist' || fieldType === 'multipicklist';
+                });
+        });
+
+    }
+
     /*
         Per snapshot object, the records the org returns now -- one SELECT of the snapshot's fields
         per RECIPE_COCKPIT_UPDATE_REQUEST_RECORD_LIMIT Ids, every Id a Salesforce Id the parse held
         to its shape -- and the snapshot's values for exactly those, in the snapshot's order. An
-        answer with no records list, or one not done in one page, THROWS rather than reading as none.
+        answer with no records list, or one not done in one page, THROWS rather than reading as none;
+        a cancel between queries answers undefined.
     */
-    static async readUpdaterRestoreTargets(connection: Connection, snapshotObjects: readonly IUpdateSnapshotObject[]) {
+    static async readUpdaterRestoreTargets(connection: Connection,
+                                           snapshotObjects: readonly IUpdateSnapshotObject[],
+                                           isCancelled: () => boolean,
+                                           reportProgress: (readCount: number) => void): Promise<IRecipeCockpitUpdaterRestoreTarget[] | undefined> {
 
         const querySource = SalesforceOrgService.toQuerySource(connection);
-        const plannedObjects: Array<{ objectApiName: string; fieldApiNames: string[]; recordValues: IUpdateRecordValues[]; currentRecords: Record<string, unknown>[]; missingRecordCount: number }> = [];
+        const plannedObjects: IRecipeCockpitUpdaterRestoreTarget[] = [];
+        let readCount = 0;
 
         for ( const snapshotObject of snapshotObjects ) {
 
             const currentRecordsByIdHead = new Map<string, Record<string, unknown>>();
 
             for ( const requestRecords of RecipeCockpitRecordUpdate.splitIntoRequests(snapshotObject.records) ) {
+                if ( isCancelled() ) {
+                    return undefined;
+                }
                 const quotedIds = requestRecords.map(snapshotRecord => `'${snapshotRecord.recordId}'`).join(', ');
                 const queryAnswer = await querySource.query(`SELECT Id, ${snapshotObject.fieldApiNames.join(', ')} FROM ${snapshotObject.objectApiName} WHERE Id IN (${quotedIds})`) as { done?: unknown; records?: unknown };
                 if ( !queryAnswer || !Array.isArray(queryAnswer.records) || queryAnswer.done === false ) {
@@ -9911,6 +9956,8 @@ export class RecipeCockpitService {
                         currentRecordsByIdHead.set(recordId.slice(0, 15), currentRecord as Record<string, unknown>);
                     }
                 });
+                readCount += requestRecords.length;
+                reportProgress(readCount);
             }
 
             const restoredRecords = snapshotObject.records.filter(snapshotRecord => currentRecordsByIdHead.has(snapshotRecord.recordId.slice(0, 15)));
