@@ -1,5 +1,12 @@
 # Change Log
 
+## [3.132.1] - Recipe Cockpit: Deploy fields… also deploys a tree's platform events (`__e`) as custom objects
+
+[#402](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/402)'s **Deploy fields…** added a `CustomObject` member only for a `__c` object, so a tree holding a platform event that was not in the org yet still failed every one of the event's fields.
+
+- **Platform events count as custom objects.** A `__e` tree object whose `<Object>.object-meta.xml` is in the project is deployed as a `CustomObject` beside its fields, and one the project lacks is named in the confirmation as not deployed, exactly as a `__c` object. Custom metadata types (`__mdt`), external objects (`__x`) and big objects (`__b`) are still never deployed.
+- **Tests.** `RecipeCockpitMetadataDeploy.test.ts` deploys a platform event with its field, leaves the other suffixes out, and refuses `__x`, `__b` and a dotted member as a `CustomObject`.
+
 ## [3.132.0] - Recipe Cockpit: the Treecipe Updater generates a new value per loaded record, with a before/after preview
 
 Closes [#417](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/417), slice C of [#414](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/414).
