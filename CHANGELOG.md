@@ -1,5 +1,9 @@
 # Change Log
 
+## [3.140.0] - Recipe Cockpit: generating fake data is a seedling
+
+`RECIPE_COCKPIT_ACTION_VERB_EMOJI`'s `generateData` verb is now 🌱 instead of 🎲, as in seed data. It is drawn on the Treecipe tab's **Generate fake data and insert** button and on the Treecipe Updater's **Generate values** card. No other verb or icon uses 🌱, so every verb still has its own emoji. Nothing else changes.
+
 ## [3.139.0] - Recipe Cockpit: the object row's count reads as what gets created
 
 Closes [#438](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/438).

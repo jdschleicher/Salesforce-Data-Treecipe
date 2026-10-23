@@ -62,7 +62,7 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
 
         it('adds Run, Export, Create, Regenerate and Generate data with the emojis the issue names, and still gives each verb its own', () => {
 
-            expect(RECIPE_COCKPIT_ACTION_VERB_EMOJI).toMatchObject({ run: '▶️', export: '💾', create: '➕', regenerate: '🔄', generateData: '🎲', update: '✍️' });
+            expect(RECIPE_COCKPIT_ACTION_VERB_EMOJI).toMatchObject({ run: '▶️', export: '💾', create: '➕', regenerate: '🔄', generateData: '🌱', update: '✍️' });
 
             const verbs = Object.keys(RECIPE_COCKPIT_ACTION_VERB_EMOJI);
             expect(new Set(Object.values(RECIPE_COCKPIT_ACTION_VERB_EMOJI)).size).toBe(verbs.length);
@@ -121,7 +121,7 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
 
             const styleSheet = styleSheetOf(shellHtml());
 
-            expect(styleSheet).toContain(".sdtButton.treeInsert::before { content: '🎲' / ''; margin-right: 0.35em; }");
+            expect(styleSheet).toContain(".sdtButton.treeInsert::before { content: '🌱' / ''; margin-right: 0.35em; }");
             expect(styleSheet).toContain(".sdtButton.dataOrgNewScratch::before { content: '➕' / ''; margin-right: 0.35em; }");
 
         });
