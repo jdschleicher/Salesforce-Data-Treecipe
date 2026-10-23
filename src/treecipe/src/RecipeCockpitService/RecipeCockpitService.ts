@@ -551,7 +551,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         items: [
             'Excluded objects (the chain link): the object and its children are left out.',
             'Unticked fields: the field is left out. All fields, above an object\'s fields, ticks or unticks them all.',
-            'Record counts: how many records an object gets.',
+            'Record counts: each object\'s row says what is created, such as Create 5 ✎ Contact records per Account (a friend\'s count is records per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe\'s says changed.',
             'The rules box: a field generated without the limits its validation rules set.'
         ]
     },
@@ -15956,7 +15956,7 @@ ${this.buildPaletteCustomProperties()}
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
     .treeAddFriendChoice, .historyAction { text-decoration: underline; }
-    .sdtButton-primary:disabled, .sdtButton-secondary:disabled, .treeRecordCountInput:disabled {
+    .sdtButton-primary:disabled, .sdtButton-secondary:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
         border-color: var(--sdt-border);
@@ -16488,9 +16488,14 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     .troubleshootingTodoText { display: block; margin: 0.1rem 0 0 0; white-space: pre-wrap; word-break: break-word; font-family: var(--vscode-editor-font-family); color: var(--sdt-muted); }
     .todosViews { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0 0.2rem 0; }
     .todosViews .todosView.selected.sdtButton { color: var(--sdt-text); background-color: var(--sdt-row-hover); font-weight: 600; }
-    .treeRecordCount { display: inline-flex; align-items: baseline; gap: 0.3rem; }
+    .treeRecordCount { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .treeRecordCountButton { display: inline-flex; align-items: center; gap: 0.3rem; font-weight: 600; }
+    .treeRecordCountButton.changed:not(:disabled) { border-color: var(--sdt-changed); }
+    .treeRecordCountChanged { font-weight: normal; font-size: 0.85em; color: var(--sdt-muted); }
+    .treeRecordCountButton:disabled .fixedValueGlyph path { stroke: var(--sdt-disabled-text); }
+    .treeRecordCountButton:disabled .treeRecordCountChanged { color: var(--sdt-disabled-text); }
     .treeRecordCountInput {
-        width: 5.5rem;
+        width: 4.5rem;
         padding: 0.15rem 0.3rem;
         color: var(--sdt-text);
         background-color: var(--sdt-surface);
@@ -18672,12 +18677,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             if (treeObjectState.lookupsElement.textContent) { treeObjectState.lookupsElement.classList.remove('hidden'); } else { treeObjectState.lookupsElement.classList.add('hidden'); }
 
             // AN EXCLUDED OBJECT IS NOT GENERATED, SO ITS COUNT CANNOT BE CHANGED; RE-INCLUDED, ITS STORED COUNT COMES BACK
-            if (treeObjectState.countInputElement) {
-                treeObjectState.countInputElement.disabled = !!exclusion;
-                treeObjectState.countInputElement.value = String(currentRecordCountOf(treeObjectState));
-                treeObjectState.countErrorElement.textContent = '';
-                treeObjectState.countErrorElement.classList.add('hidden');
-            }
+            if (treeObjectState.countButtonElement) { drawRecordCount(treeObjectState, !!exclusion); }
 
             if (!treeObjectState.includeElement) { return; }
 
@@ -19955,51 +19955,172 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
 
     /*
-        The count box right of an object's name (#255): a root's record count, or a nested faker-js
-        friend's records PER parent record, as "count:" means there. It starts at the recipe's own
-        count and posts only a whole number of one or more; anything else is refused on the row and
-        nothing is posted. The host holds the count to the same rule again, and the recipe file is
-        never written.
+        The count right of an object's name (#255) reads as what is created (#438): "Create [5 ✎]
+        Contact records per Account", a nested faker-js friend's count being records PER parent
+        record, as "count:" means there. The count is a button; a click anywhere on it swaps in the
+        number box, where Enter or leaving the box keeps the count and Escape puts the button back.
+        Only a whole number of one or more is posted, anything else is refused on the row and the box
+        stays open. The host holds the count to the same rule again, and the recipe file is never
+        written.
     */
     function buildRecordCountElement(treeObjectState) {
 
-        const object = treeObjectState.object;
         const countElement = createElement('span', 'treeRecordCount');
-        const inputElement = createElement('input', 'treeRecordCountInput');
-        const labelText = object.countParentObjectApiName ? 'per ' + object.countParentObjectApiName : 'records';
+        const buttonElement = createButton('secondary', 'treeRecordCountButton', '', 'compact');
+        const valueElement = createElement('span', 'treeRecordCountValue');
+        const changedElement = createElement('span', 'treeRecordCountChanged hidden', 'changed');
+        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
+        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
+        const labelElement = createElement('span', 'treeRecordCountLabel');
+
+        glyphElement.setAttribute('class', 'fixedValueGlyph');
+        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
+        glyphElement.setAttribute('aria-hidden', 'true');
+        glyphElement.setAttribute('focusable', 'false');
+        pathElement.setAttribute('d', FIXED_VALUE_GLYPH_PATH);
+        glyphElement.appendChild(pathElement);
+        buttonElement.appendChild(valueElement);
+        buttonElement.appendChild(glyphElement);
+        buttonElement.appendChild(changedElement);
+
+        buttonElement.addEventListener('click', function () {
+            if (buttonElement.disabled) { return; }
+            openRecordCountEditor(treeObjectState);
+        });
+
+        countElement.appendChild(createElement('span', 'treeRecordCountVerb', 'Create'));
+        countElement.appendChild(buttonElement);
+        countElement.appendChild(labelElement);
+        treeObjectState.recordCountElement = countElement;
+        treeObjectState.countButtonElement = buttonElement;
+        treeObjectState.countValueElement = valueElement;
+        treeObjectState.countChangedElement = changedElement;
+        treeObjectState.countLabelElement = labelElement;
+        drawRecordCount(treeObjectState, false);
+
+        return countElement;
+
+    }
+
+    // "1 Contact record per Account", ANY OTHER COUNT "records"; THE PARENT'S RECORD IS ALWAYS ONE
+    function describeRecordCount(object, recordCount) {
+
+        return object.objectApiName + (recordCount === 1 ? ' record' : ' records') + (object.countParentObjectApiName ? ' per ' + object.countParentObjectApiName : '');
+
+    }
+
+    /*
+        The button says the whole sentence to a screen reader, and whether the count differs from the
+        recipe's own. A redraw of an object's selection redraws every row, so a row whose count,
+        exclusion and recipe count are what it last drew is left alone.
+    */
+    function drawRecordCount(treeObjectState, isExcluded) {
+
+        const object = treeObjectState.object;
+        const recordCount = currentRecordCountOf(treeObjectState);
+        const isChanged = recordCount !== object.recordCount;
+        const buttonElement = treeObjectState.countButtonElement;
+        const drawnKey = recordCount + '|' + (isExcluded ? 1 : 0);
+
+        if (isExcluded && treeObjectState.isCountEditorOpen) {
+            const wasFocused = document.activeElement === treeObjectState.countInputElement;
+            closeRecordCountEditor(treeObjectState, false);
+            if (wasFocused && treeObjectState.includeElement) { treeObjectState.includeElement.focus(); }
+        }
+        if (treeObjectState.countDrawnKey === drawnKey) { return; }
+        treeObjectState.countDrawnKey = drawnKey;
+
+        treeObjectState.countValueElement.textContent = String(recordCount);
+        treeObjectState.countLabelElement.textContent = describeRecordCount(object, recordCount);
+        buttonElement.disabled = !!isExcluded;
+        if (isChanged) { buttonElement.classList.add('changed'); } else { buttonElement.classList.remove('changed'); }
+        if (isChanged) { treeObjectState.countChangedElement.classList.remove('hidden'); } else { treeObjectState.countChangedElement.classList.add('hidden'); }
+        buttonElement.setAttribute('title', isExcluded
+            ? 'Excluded objects are not generated, so their count cannot be changed.'
+            : (isChanged ? 'recipe: ' + object.recordCount + '. ' : '') + 'Click to change the count.');
+        buttonElement.setAttribute('aria-label', 'Create ' + recordCount + ' ' + object.objectApiName + (recordCount === 1 ? ' record' : ' records')
+            + (object.countParentObjectApiName ? ' per ' + object.countParentObjectApiName + ' record' : '')
+            + (isChanged ? ', changed from the recipe\\'s ' + object.recordCount : '')
+            + ', edit count');
+
+    }
+
+    // THE BOX AND ITS REFUSAL ARE BUILT ON THE FIRST OPEN: FEW READERS EVER CHANGE A COUNT, AND A CARD CAN HOLD THOUSANDS OF ROWS
+    function ensureRecordCountEditor(treeObjectState) {
+
+        if (treeObjectState.countInputElement) { return; }
+
+        const object = treeObjectState.object;
+        const inputElement = createElement('input', 'treeRecordCountInput hidden');
+        const errorElement = createElement('span', 'treeRecordCountError hidden');
 
         inputElement.setAttribute('type', 'text');
         inputElement.setAttribute('inputmode', 'numeric');
         inputElement.setAttribute('aria-label', object.objectApiName + ' records' + (object.countParentObjectApiName ? ' per ' + object.countParentObjectApiName + ' record' : ''));
-        inputElement.addEventListener('change', function () {
-
-            const countText = String(inputElement.value);
-            const recordCount = Number(countText);
-
-            if (!/^[1-9][0-9]*$/.test(countText) || !Number.isSafeInteger(recordCount)) {
-                treeObjectState.countErrorElement.textContent = 'Enter a whole number of 1 or more.';
-                treeObjectState.countErrorElement.classList.remove('hidden');
-                return;
+        inputElement.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') {
+                if (typeof event.preventDefault === 'function') { event.preventDefault(); }
+                commitRecordCount(treeObjectState);
+            } else if (event.key === 'Escape') {
+                if (typeof event.preventDefault === 'function') { event.preventDefault(); }
+                closeRecordCountEditor(treeObjectState, true);
             }
-
-            treeObjectState.countErrorElement.textContent = '';
-            treeObjectState.countErrorElement.classList.add('hidden');
-            if (recordCount === currentRecordCountOf(treeObjectState)) { return; }
-
-            const countMessage = { command: 'setObjectCount', treeKey: treeObjectState.tree.treeKey, objectApiName: object.objectApiName, count: recordCount };
-            if (object.nickname) { countMessage.nickname = object.nickname; }
-            vscodeApi.postMessage(countMessage);
-
+        });
+        inputElement.addEventListener('blur', function () {
+            if (treeObjectState.isCountEditorOpen) { commitRecordCount(treeObjectState); }
         });
 
-        countElement.appendChild(inputElement);
-        countElement.appendChild(createElement('span', 'treeRecordCountLabel muted', labelText));
+        treeObjectState.recordCountElement.insertBefore(inputElement, treeObjectState.countLabelElement);
+        treeObjectState.recordCountElement.appendChild(errorElement);
         treeObjectState.countInputElement = inputElement;
-        treeObjectState.countErrorElement = createElement('span', 'treeRecordCountError hidden');
-        countElement.appendChild(treeObjectState.countErrorElement);
-        inputElement.value = String(currentRecordCountOf(treeObjectState));
+        treeObjectState.countErrorElement = errorElement;
 
-        return countElement;
+    }
+
+    function openRecordCountEditor(treeObjectState) {
+
+        ensureRecordCountEditor(treeObjectState);
+        const inputElement = treeObjectState.countInputElement;
+
+        treeObjectState.isCountEditorOpen = true;
+        inputElement.value = String(currentRecordCountOf(treeObjectState));
+        treeObjectState.countButtonElement.classList.add('hidden');
+        inputElement.classList.remove('hidden');
+        inputElement.focus();
+        if (typeof inputElement.select === 'function') { inputElement.select(); }
+
+    }
+
+    // CLOSED BEFORE FOCUS MOVES, SO THE BOX'S OWN blur DOES NOT COMMIT A COUNT THE READER CANCELLED
+    function closeRecordCountEditor(treeObjectState, isFocusReturned) {
+
+        treeObjectState.isCountEditorOpen = false;
+        treeObjectState.countInputElement.classList.add('hidden');
+        treeObjectState.countButtonElement.classList.remove('hidden');
+        treeObjectState.countErrorElement.textContent = '';
+        treeObjectState.countErrorElement.classList.add('hidden');
+        if (isFocusReturned) { treeObjectState.countButtonElement.focus(); }
+
+    }
+
+    function commitRecordCount(treeObjectState) {
+
+        const object = treeObjectState.object;
+        const countText = String(treeObjectState.countInputElement.value);
+        const recordCount = Number(countText);
+
+        if (!/^[1-9][0-9]*$/.test(countText) || !Number.isSafeInteger(recordCount)) {
+            treeObjectState.countErrorElement.textContent = 'Enter a whole number of 1 or more.';
+            treeObjectState.countErrorElement.classList.remove('hidden');
+            return;
+        }
+
+        closeRecordCountEditor(treeObjectState, true);
+        if (recordCount === currentRecordCountOf(treeObjectState)) { return; }
+
+        const countMessage = { command: 'setObjectCount', treeKey: treeObjectState.tree.treeKey, objectApiName: object.objectApiName, count: recordCount };
+        if (object.nickname) { countMessage.nickname = object.nickname; }
+        vscodeApi.postMessage(countMessage);
 
     }
 
@@ -20046,8 +20167,15 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             tree: tree,
             // A CARD WITH A FOLDER KEEPS ITS UNTICKED FIELDS (#220); AN ITERATION'S BOXES FOLLOW ITS OBJECT AND ARE DRAWN DISABLED
             canSelectFields: !!tree.folderName && !object.hasIndistinctOccurrences,
+            recordCountElement: null,
+            countButtonElement: null,
+            countValueElement: null,
+            countChangedElement: null,
+            countLabelElement: null,
             countInputElement: null,
             countErrorElement: null,
+            countDrawnKey: null,
+            isCountEditorOpen: false,
             hasRecordTypes: hasOwnKey(recordTypeFieldsByObjectApiName, object.objectApiName),
             recordTypeFieldCount: 0,
             // THE TODO COMMENTS OF THE BLOCK THAT SIT ON NO FIELD, AND EVERY TODO OF THE OCCURRENCE (#354)

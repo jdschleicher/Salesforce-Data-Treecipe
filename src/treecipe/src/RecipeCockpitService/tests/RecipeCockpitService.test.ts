@@ -512,7 +512,7 @@ describe('RecipeCockpitService', () => {
             expect(disabledRule).not.toBeNull();
             const disabledSelectors = (disabledRule as RegExpMatchArray)[1].split(',').map(selector => selector.trim());
             // #363: ONE RULE PER KIND, SO A NEW BUTTON IS DISABLED IN THE SHARED STYLE BY ITS KIND ALONE
-            expect(disabledSelectors).toEqual(['.sdtButton-primary:disabled', '.sdtButton-secondary:disabled', '.treeRecordCountInput:disabled']);
+            expect(disabledSelectors).toEqual(['.sdtButton-primary:disabled', '.sdtButton-secondary:disabled']);
             expect((disabledRule as RegExpMatchArray)[2]).toContain('color: var(--sdt-disabled-text);');
             expect((disabledRule as RegExpMatchArray)[2]).toContain('background-color: var(--sdt-disabled-bg);');
             expect((disabledRule as RegExpMatchArray)[2]).toContain('cursor: not-allowed;');
