@@ -1,5 +1,21 @@
 # Change Log
 
+## [3.135.0] - Recipe Cockpit: the TODO's and Validation Rules groups are cards, matching the action cards
+
+Closes [#383](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/383).
+
+After #381 four Troubleshooting sub-tabs drew cards, while TODO's and the Validation Rules list still drew plain ▸ groups, so the tab read as two designs.
+
+- **One card per object group.** Every group in TODO's (Open and Removed) and in the Validation Rules list sits on the action cards' surface, border and radius, in the same grid. Its header is one `card` button that opens and closes the group and carries `aria-expanded`: 📝 for a TODO group or 📏 for a rule group, the object (and nickname) and the count. The ▸ toggle is gone.
+- **A rule group's status line.** Its header adds one line counting the rules by status, such as `2 applied · 1 not applied · 1 inactive`, in the status labels' order.
+- **Closed at the card's height, open across the grid.** A closed card has the action cards' fixed height and tiles beside the others; an open one takes the grid's full width and grows to hold its rows.
+- **Nothing to open, nothing to press.** A removed TODO group (built open, as before) and a rule group with no rule draw the same header as text.
+- **From review.** A card that cannot open no longer turns its border accent on hover, and its header no longer fills the card, so an empty rule card's note sits under its header. A rule status named like an Object member (`__proto__`, `toString`) is labelled by its own name, where it used to read an inherited member and stop the status line from drawing. A redundant margin rule is gone.
+- **Behaviour unchanged.** Rows are still built on open within the auto-expand budgets, search still matches unbuilt rows, line links, Show/Hide formula and the "no rule for any tree object" note work as before, and the posted model is the same.
+- **Measured.** A group costs a constant 7 elements (8 with a rule's status line), one fewer than the ▸ header, whatever its row count. With 110,000 TODOs over three groups the sub-tab drew 220,071 elements before and 220,069 after (the panel harness).
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say each object's TODOs and rules are on a card you open; `changes-without-editing-the-yaml.png` was re-taken, picking up the lookup buttons #421 added.
+- **Tests.** `RecipeCockpitTroubleshootingGroupCards.test.ts` covers the cards in both lists, the header as the one card button and its `aria-expanded`, the status line (an unknown status included), the text headers, a closed group's constant element count at 10 and 5,000 TODOs, and the stylesheet. The sub-tab and rule list suites read the card header as the toggle.
+
 ## [3.134.0] - Recipe Cockpit: the Treecipe Updater restores an update's old values from its snapshot
 
 Closes [#419](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/419), slice E of [#414](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/414).

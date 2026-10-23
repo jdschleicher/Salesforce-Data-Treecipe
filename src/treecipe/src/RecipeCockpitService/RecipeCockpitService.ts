@@ -523,9 +523,9 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
             'Each object shows its nickname, the name its lookups use in the recipe file. Click it to list the fields that point to it and jump to one; a field holding a nickname shows it highlighted, and clicking it jumps back to that object.',
             'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a holding-hands chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent.',
-            'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all, each under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out.',
+            'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out.',
             'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types and Global Value Sets, each with its own search. It opens on the one you chose last. Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.',
-            'Validation Rules lists each object\'s validation rules from your project: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not. Show formula opens a rule\'s formula.'
+            'Validation Rules lists each object\'s validation rules from your project on a card you click to open, its header counting them by what Generate Treecipe did: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not. Show formula opens a rule\'s formula.'
         ]
     },
     {
@@ -1878,6 +1878,16 @@ export const RECIPE_COCKPIT_ACTION_VERB_EMOJI: Readonly<Record<RecipeCockpitActi
     retrieve: '📥',
     assign: '👤',
     generate: '🛠️'
+});
+
+/*
+    The TODO's and Validation Rules lists draw each object group as a card (#383) on the action
+    cards' surface: one emoji per kind of group, never a verb's.
+*/
+export type RecipeCockpitTroubleshootingGroupKind = 'todos' | 'validationRules';
+export const RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI: Readonly<Record<RecipeCockpitTroubleshootingGroupKind, string>> = Object.freeze({
+    todos: '📝',
+    validationRules: '📏'
 });
 
 export type RecipeCockpitTroubleshootingAction = 'assignPermissionSets' | 'generatePermissionSet' | 'deployPermissionSet' | 'deployFields' | 'retrieveFields' | 'retrieveValidationRules' | 'deployRecordTypes' | 'retrieveRecordTypes' | 'deployGlobalValueSets' | 'retrieveGlobalValueSets';
@@ -16356,22 +16366,62 @@ ${this.buildPaletteCustomProperties()}
     .treeQueryTableWrap { overflow: auto; max-height: 24rem; margin-top: 0.2rem; }
     .treeQueryTable { border-collapse: collapse; font-size: 0.9em; }
     .treeQueryTable th, .treeQueryTable td { border: 1px solid var(--sdt-border); padding: 0.15rem 0.4rem; text-align: left; vertical-align: top; white-space: pre-wrap; }
-    .validationRuleList { margin-top: 0.4rem; }
-    .validationRuleObject { margin-top: 0.5rem; }
-    .validationRuleObjectHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; }
-    .validationRuleObjectName { font-weight: 600; }
+    /*
+        A TODO or validation rule group is a card (#383): the action cards' surface, border and
+        radius around a header that is the card kind's button. Closed, the header button fills the
+        card's fixed height and the groups tile like the action cards; open, the header shrinks to
+        its content, the card takes the grid's full width and grows to hold its rows. A text header
+        (nothing to open) neither fills the card nor turns its border accent on hover.
+    */
+    .troubleshootingGroupCards {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, ${RECIPE_COCKPIT_ACTION_CARD_WIDTH}), 1fr));
+        align-items: start;
+        gap: 0.6rem;
+        margin-top: 0.5rem;
+    }
+    .troubleshootingGroupCards > :not(.troubleshootingGroupCard) { grid-column: 1 / -1; }
+    .troubleshootingGroupCard {
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: ${RECIPE_COCKPIT_ACTION_CARD_HEIGHT};
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 8px;
+    }
+    .troubleshootingGroupCard.expanded { grid-column: 1 / -1; }
+    .troubleshootingGroupCard:has(> button.troubleshootingGroupCardHeader:hover) { border-color: var(--sdt-accent); }
+    .troubleshootingGroupCard > .troubleshootingGroupCardHeader {
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        flex: 0 0 auto;
+        width: 100%;
+        height: auto;
+        padding: 0.6rem 0.75rem;
+        border: none;
+        border-radius: 7px;
+    }
+    .troubleshootingGroupCard:not(.expanded) > button.troubleshootingGroupCardHeader { flex-grow: 1; }
+    .troubleshootingGroupCard.expanded > .troubleshootingGroupCardHeader { border-radius: 7px 7px 0 0; }
+    .troubleshootingGroupCardLabel { min-width: 0; overflow-wrap: anywhere; color: var(--sdt-accent); }
+    .troubleshootingGroupCardHeading .troubleshootingTodoCount, .troubleshootingGroupCardHeading .validationRuleCount { margin-left: auto; flex: none; font-weight: normal; }
+    .validationRuleDetail { font-size: 0.95em; }
+    .troubleshootingTodoRows, .validationRuleRows { padding: 0 0.75rem 0.6rem; }
+    .validationRuleEmpty, .validationRuleUnread { padding: 0 0.75rem 0.6rem; }
     .validationRuleCount { font-size: 0.9em; }
-    .validationRule { margin: 0.3rem 0 0 0.8rem; padding: 0.3rem 0.5rem; border: 1px solid var(--sdt-border); border-radius: 6px; font-size: 0.9em; }
+    .validationRule { margin: 0.3rem 0 0 0; padding: 0.3rem 0.5rem; border: 1px solid var(--sdt-border); border-radius: 6px; font-size: 0.9em; }
     .validationRuleHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
     .validationRuleName { font-family: var(--vscode-editor-font-family); font-weight: 600; }
     .validationRuleStatus { font-weight: 600; }
     .validationRuleMessage, .validationRuleReason, .validationRuleFormula { white-space: pre-wrap; word-break: break-word; margin-top: 0.15rem; }
     .validationRuleFormula { font-family: var(--vscode-editor-font-family); }
     .validationRuleFormulaToggle { margin-top: 0.25rem; }
-    .troubleshootingTodoHeader { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.4rem; }
-    .troubleshootingTodoObject { font-weight: 600; }
     .troubleshootingTodoCount { font-size: 0.9em; }
-    .troubleshootingTodo { margin: 0.3rem 0 0 0.8rem; font-size: 0.9em; }
+    .troubleshootingTodo { margin: 0.3rem 0 0 0; font-size: 0.9em; }
     .troubleshootingTodoHead { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
     .troubleshootingTodoField { font-family: var(--vscode-editor-font-family); font-weight: 600; color: var(--sdt-accent); }
     .troubleshootingTodoField.muted { font-weight: normal; color: var(--sdt-muted); }
@@ -16497,6 +16547,7 @@ ${this.buildPaletteCustomProperties()}
     const DEPLOY_ACTION_LABELS = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_LABELS)};
     const BUTTON_KINDS = ${JSON.stringify(RECIPE_COCKPIT_BUTTON_KINDS)};
     const ACTION_VERB_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_ACTION_VERB_EMOJI)};
+    const TROUBLESHOOTING_GROUP_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI)};
     const TROUBLESHOOTING_ACTION_CARDS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS)};
     const DEPLOY_ACTION_BY_KIND = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND)};
     const RETRIEVE_ACTION_BY_KIND = ${JSON.stringify(RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND)};
@@ -16824,6 +16875,38 @@ ${this.buildPaletteCustomProperties()}
 
         return { action: action, buttonElement: buttonElement, titleElement: titleElement, detailElement: detailElement, reasonElement: reasonElement };
 
+    }
+
+    /*
+        A TODO or validation rule group as a card (#383). Its header is ONE card button that opens
+        and closes the group -- the kind's emoji, the object and the count on one line -- and its
+        rows go in the body under it, built by the caller on first open. A group with nothing to
+        open draws the same header as text. Constant per group: no element is added per row.
+    */
+    function buildTroubleshootingGroupCard(groupKind, groupClassName, headerClassName, label, labelClassName, countElement, bodyElement, isToggle) {
+
+        const element = createElement('div', 'troubleshootingGroupCard ' + groupClassName);
+        const headerElement = isToggle ? createButton('card', 'troubleshootingGroupCardHeader ' + headerClassName) : createElement('div', 'troubleshootingGroupCardHeader');
+        const headingElement = createElement('span', 'actionCardHeading troubleshootingGroupCardHeading');
+        const emojiElement = createElement('span', 'actionCardEmoji', TROUBLESHOOTING_GROUP_EMOJI[groupKind]);
+
+        emojiElement.setAttribute('aria-hidden', 'true');
+        if (isToggle) { headerElement.setAttribute('aria-expanded', 'false'); }
+
+        headingElement.appendChild(emojiElement);
+        headingElement.appendChild(createElement('span', labelClassName + ' troubleshootingGroupCardLabel', label));
+        headingElement.appendChild(countElement);
+        headerElement.appendChild(headingElement);
+        element.appendChild(headerElement);
+        if (bodyElement) { element.appendChild(bodyElement); }
+
+        return { element: element, headerElement: headerElement };
+
+    }
+
+    function drawTroubleshootingGroupExpanded(groupState, isExpanded) {
+        groupState.toggleElement.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+        if (isExpanded) { groupState.element.classList.add('expanded'); } else { groupState.element.classList.remove('expanded'); }
     }
 
     function setTextShown(element, text) {
@@ -21496,8 +21579,8 @@ ${this.buildPaletteCustomProperties()}
             const groupState = {
                 object: object,
                 treeState: treeState,
-                element: createElement('div', 'troubleshootingTodoGroup'),
-                toggleElement: buildToggleElement('troubleshootingTodoToggle'),
+                element: null,
+                toggleElement: null,
                 countElement: createElement('span', 'troubleshootingTodoCount muted'),
                 bodyElement: createElement('div', 'troubleshootingTodoRows hidden'),
                 entries: [],
@@ -21530,19 +21613,18 @@ ${this.buildPaletteCustomProperties()}
                 });
             });
 
-            const headerElement = createElement('div', 'troubleshootingTodoHeader');
-            groupState.toggleElement.setAttribute('aria-label', 'Show or hide the TODOs of ' + objectLabel);
-            groupState.toggleElement.setAttribute('aria-expanded', 'false');
+            const groupCard = buildTroubleshootingGroupCard('todos', 'troubleshootingTodoGroup', 'troubleshootingTodoToggle', objectLabel, 'troubleshootingTodoObject', groupState.countElement, groupState.bodyElement, true);
+            groupState.element = groupCard.element;
+            groupState.toggleElement = groupCard.headerElement;
             groupState.toggleElement.addEventListener('click', function () {
                 setTodoGroupExpanded(groupState, !groupState.isExpanded, true);
             });
-            headerElement.appendChild(groupState.toggleElement);
-            headerElement.appendChild(createElement('span', 'troubleshootingTodoObject', objectLabel));
-            headerElement.appendChild(groupState.countElement);
-            groupState.element.appendChild(headerElement);
-            groupState.element.appendChild(groupState.bodyElement);
 
-            subTabState.listElement.appendChild(groupState.element);
+            if (!subTabState.groupGridElement) {
+                subTabState.groupGridElement = createElement('div', 'troubleshootingGroupCards');
+                subTabState.listElement.appendChild(subTabState.groupGridElement);
+            }
+            subTabState.groupGridElement.appendChild(groupState.element);
             subTabState.todoGroups.push(groupState);
 
         });
@@ -21689,7 +21771,7 @@ ${this.buildPaletteCustomProperties()}
         }
 
         subTabState.removedSearch = buildTabSearch(treeState, searchKey, REMOVED_TODOS_PLACEHOLDER, function () { applyTroubleshootingFilter(treeState, 'todos'); });
-        subTabState.removedListElement = createElement('div', 'troubleshootingList');
+        subTabState.removedListElement = createElement('div', 'troubleshootingList troubleshootingGroupCards');
         subTabState.removedGroups = [];
         subTabState.removedEntries = [];
         removedPanelElement.appendChild(subTabState.removedSearch.element);
@@ -21703,17 +21785,16 @@ ${this.buildPaletteCustomProperties()}
             const objectLabel = removedTodo.objectApiName + (removedTodo.objectNickname ? ' · ' + removedTodo.objectNickname : '');
             let groupState = groupsByLabel[objectLabel];
             if (!groupState) {
+                // A REMOVED GROUP IS BUILT OPEN AND STAYS OPEN, SO ITS HEADER IS TEXT ON THE SAME CARD
                 groupState = {
-                    element: createElement('div', 'troubleshootingTodoGroup'),
+                    element: null,
                     countElement: createElement('span', 'troubleshootingTodoCount muted'),
+                    bodyElement: createElement('div', 'troubleshootingTodoRows'),
                     entries: [],
                     matchingCount: 0,
                     isShown: true
                 };
-                const headerElement = createElement('div', 'troubleshootingTodoHeader');
-                headerElement.appendChild(createElement('span', 'troubleshootingTodoObject', objectLabel));
-                headerElement.appendChild(groupState.countElement);
-                groupState.element.appendChild(headerElement);
+                groupState.element = buildTroubleshootingGroupCard('todos', 'troubleshootingTodoGroup expanded', '', objectLabel, 'troubleshootingTodoObject', groupState.countElement, groupState.bodyElement, false).element;
                 subTabState.removedListElement.appendChild(groupState.element);
                 groupsByLabel[objectLabel] = groupState;
                 subTabState.removedGroups.push(groupState);
@@ -21738,7 +21819,7 @@ ${this.buildPaletteCustomProperties()}
                 element: buildTodoRowElement(true, fieldLabel, !!removedTodo.fieldApiName, null, restoreElement, removedTodo.text)
             };
             groupState.entries.push(entry);
-            groupState.element.appendChild(entry.element);
+            groupState.bodyElement.appendChild(entry.element);
             subTabState.removedEntries.push(entry);
 
         });
@@ -21766,7 +21847,7 @@ ${this.buildPaletteCustomProperties()}
 
         groupState.isExpanded = isExpanded;
         setShownWithMotion(groupState.bodyElement, isExpanded, isAnimated);
-        drawToggle(groupState.toggleElement, isExpanded, isAnimated);
+        drawTroubleshootingGroupExpanded(groupState, isExpanded);
 
     }
 
@@ -23255,7 +23336,7 @@ ${this.buildPaletteCustomProperties()}
         subTabState.noun = ['rule', 'rules'];
         subTabState.ruleGroups = [];
         treeState.validationRuleSubTabState = subTabState;
-        treeState.validationRuleListElement = createElement('div', 'validationRuleList');
+        treeState.validationRuleListElement = createElement('div', 'validationRuleList troubleshootingGroupCards');
         treeState.validationRuleListElement.appendChild(createElement('div', 'treeEmpty muted', VALIDATION_RULES_LOADING_NOTE));
         subTabState.listElement.appendChild(treeState.validationRuleListElement);
 
@@ -23322,7 +23403,7 @@ ${this.buildPaletteCustomProperties()}
             const objectApiName = String(object.objectApiName);
             const groupState = {
                 objectApiName: objectApiName,
-                element: createElement('div', 'validationRuleObject'),
+                element: null,
                 toggleElement: null,
                 countElement: createElement('span', 'validationRuleCount muted'),
                 bodyElement: createElement('div', 'validationRuleRows hidden'),
@@ -23333,19 +23414,16 @@ ${this.buildPaletteCustomProperties()}
                 isShown: true
             };
 
-            const headerElement = createElement('div', 'validationRuleObjectHeader');
+            const groupCard = buildTroubleshootingGroupCard('validationRules', 'validationRuleObject', 'validationRuleToggle', objectApiName, 'validationRuleObjectName', groupState.countElement, null, groupState.entries.length > 0);
+            groupState.element = groupCard.element;
+            const statusDetail = describeValidationRuleStatuses(groupState.entries);
+            if (statusDetail) { groupCard.headerElement.appendChild(createElement('span', 'validationRuleDetail muted', statusDetail)); }
             if (groupState.entries.length > 0) {
-                groupState.toggleElement = buildToggleElement('validationRuleToggle');
-                groupState.toggleElement.setAttribute('aria-label', 'Show or hide the validation rules of ' + objectApiName);
-                groupState.toggleElement.setAttribute('aria-expanded', 'false');
+                groupState.toggleElement = groupCard.headerElement;
                 groupState.toggleElement.addEventListener('click', function () {
                     setValidationRuleGroupExpanded(treeState, groupState, !groupState.isExpanded, true);
                 });
-                headerElement.appendChild(groupState.toggleElement);
             }
-            headerElement.appendChild(createElement('span', 'validationRuleObjectName', objectApiName));
-            headerElement.appendChild(groupState.countElement);
-            groupState.element.appendChild(headerElement);
 
             if (groupState.entries.length === 0 && !(object.unreadRuleCount > 0)) {
                 groupState.element.appendChild(createElement('div', 'validationRuleEmpty muted', OBJECT_NO_VALIDATION_RULES_NOTE));
@@ -23377,7 +23455,7 @@ ${this.buildPaletteCustomProperties()}
         const entry = {
             rule: rule,
             ruleName: String(rule.ruleName),
-            statusLabel: VALIDATION_RULE_STATUS_LABELS[rule.status] || String(rule.status),
+            statusLabel: hasOwnKey(VALIDATION_RULE_STATUS_LABELS, rule.status) ? VALIDATION_RULE_STATUS_LABELS[rule.status] : String(rule.status),
             activeLabel: rule.isActive === true ? 'active' : rule.isActive === false ? 'inactive' : '',
             messageText: typeof rule.errorMessage === 'string' && rule.errorMessage !== '' ? 'Error message: ' + rule.errorMessage : '',
             fieldsText: fieldApiNames.length > 0 ? 'Constrains: ' + fieldApiNames.map(String).join(', ') : VALIDATION_RULE_NO_FIELDS_NOTE,
@@ -23412,7 +23490,28 @@ ${this.buildPaletteCustomProperties()}
 
         groupState.isExpanded = isExpanded;
         setShownWithMotion(groupState.bodyElement, isExpanded, isAnimated);
-        drawToggle(groupState.toggleElement, isExpanded, isAnimated);
+        drawTroubleshootingGroupExpanded(groupState, isExpanded);
+
+    }
+
+    // A RULE GROUP'S ONE DETAIL LINE (#383): HOW MANY RULES ARE IN EACH STATUS, IN THE STATUS LABELS' ORDER, A STATUS NONE HAS LEFT OUT
+    function describeValidationRuleStatuses(entries) {
+
+        const countsByLabel = Object.create(null);
+        const labels = [];
+        Object.keys(VALIDATION_RULE_STATUS_LABELS).forEach(function (status) { labels.push(VALIDATION_RULE_STATUS_LABELS[status]); });
+        entries.forEach(function (entry) {
+            if (!hasOwnKey(countsByLabel, entry.statusLabel)) {
+                countsByLabel[entry.statusLabel] = 0;
+                if (labels.indexOf(entry.statusLabel) === -1) { labels.push(entry.statusLabel); }
+            }
+            countsByLabel[entry.statusLabel]++;
+        });
+
+        return labels
+            .filter(function (label) { return hasOwnKey(countsByLabel, label); })
+            .map(function (label) { return countsByLabel[label] + ' ' + label.toLowerCase(); })
+            .join(' · ');
 
     }
 

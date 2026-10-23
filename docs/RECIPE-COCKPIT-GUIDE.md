@@ -31,13 +31,13 @@ A friend, an object nested under another's `friends:` in a faker-js recipe, show
 Each chip reads the parent's nickname and the friend's place among that parent's friends (**Account_NickName-2**); click it to jump to that parent.
 
 Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply.
-Tick **TODOs only** on a card's Treecipe tab to see just the fields and objects with one, or open its **Troubleshooting** tab, whose **TODO's** list shows them all, each under its field with a link to its line (**↗ yml**).
+Tick **TODOs only** on a card's Treecipe tab to see just the fields and objects with one, or open its **Troubleshooting** tab, whose **TODO's** list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line (**↗ yml**).
 Its **Open** list holds the TODOs still in the recipe, and **Removed** the ones you took out.
 
 The **Troubleshooting** tab shows one area at a time: **TODO's**, **Fields**, **Permissions**, **Validation Rules**, **Record Types** and **Global Value Sets**, each with its own search.
 It opens on the one you chose last.
 Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.
-**Validation Rules** lists each object's validation rules from your project: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not.
+**Validation Rules** lists each object's validation rules from your project on a card you click to open, its header counting them by what Generate Treecipe did (such as *2 applied · 1 not applied*): whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not.
 **Show formula** opens a rule's formula.
 
 ![The cockpit's title row with the GitHub icon and the ? button at its right, the toolbar with the run list and Favorites only under it, above the Target Org Management section and the Treecipes section's search box, its Treecipe dropdown with the line naming the card's objects in insert order, and the one card it shows](images/recipe-cockpit/where-recipes-come-from.png)
