@@ -12167,19 +12167,21 @@ export class RecipeCockpitService {
             renderSequence: clickedRecipeDataMessage.renderSequence
         });
 
+        /*
+            A query (#439) only reads and opens its own connection, so it goes on as soon as the pick
+            IS the selection -- selectDataOrg sets it before its first await -- and the check, with a
+            sandbox's describes of every tree object, finishes behind it rather than in front of it.
+        */
+        if ( sandboxOnlyReason === undefined ) {
+            this.selectDataOrg(cockpitPanel, panelState, orgIndex).catch(selectError => ErrorHandlingService.handleCapturedError(selectError, 'openRecipeCockpit'));
+            return isClickStillCurrent() && panelState.dataOrgSelection?.orgDetail.username === chosenOrgDetail.username;
+        }
+
         await this.selectDataOrg(cockpitPanel, panelState, orgIndex);
 
         const dataOrgSelection = panelState.dataOrgSelection;
         if ( !isClickStillCurrent() || dataOrgSelection?.orgDetail.username !== chosenOrgDetail.username ) {
             return false;
-        }
-
-        if ( sandboxOnlyReason === undefined ) {
-            if ( dataOrgSelection.isConnectionFailed ) {
-                VSCodeWorkspaceService.showWarningMessage(`${refusalPrefix}: ${RecipeYamlScalar.escapeForNotification(this.buildDataOrgLabel(chosenOrgDetail))} could not be connected to.`);
-                return false;
-            }
-            return true;
         }
 
         if ( dataOrgSelection.orgTypeDetail?.isSandbox !== true ) {
@@ -13849,8 +13851,9 @@ export class RecipeCockpitService {
                     return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
                 }
 
-                // AN INSERT OR A RUN THAT IS ABOUT TO CHANGE THE SELECTION HOLDS THE ORG THE LOAD WOULD READ FROM
+                // AN INSERT OR A RUN THAT IS ABOUT TO CHANGE THE SELECTION HOLDS THE ORG THE LOAD WOULD READ FROM, AS A QUERY'S OPEN PROMPT DOES (#439)
                 if ( panelState.insertStateMessage
+                        || panelState.isQueryOrgPromptOpen
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning ) {
@@ -13947,6 +13950,7 @@ export class RecipeCockpitService {
 
                 if ( panelState.insertStateMessage
                         || panelState.isUpdaterOrgPromptOpen
+                        || panelState.isQueryOrgPromptOpen
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning ) {
@@ -14010,6 +14014,7 @@ export class RecipeCockpitService {
 
                 if ( panelState.insertStateMessage
                         || panelState.isUpdaterOrgPromptOpen
+                        || panelState.isQueryOrgPromptOpen
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning ) {
@@ -22255,6 +22260,7 @@ ${this.buildPaletteCustomProperties()}
             editedElement: editedElement,
             refusalElement: refusalElement,
             runButtonElement: runButtonElement,
+            drawnRunLabel: null,
             exportButtonElements: [exportJsonButtonElement, exportCsvButtonElement],
             resultElement: resultElement,
             hasResult: false
@@ -22346,8 +22352,12 @@ ${this.buildPaletteCustomProperties()}
         treeStates.forEach(function (treeState) {
             (treeState.queryStates || []).forEach(function (queryState) {
                 queryState.runButtonElement.disabled = isTreeQueryRunning;
-                queryState.runButtonElement.textContent = runLabel;
-                queryState.runButtonElement.setAttribute('title', runTitle);
+                // WRITTEN ONLY ON A CHANGE: EVERY INSERT REDRAW COMES THROUGH HERE
+                if (queryState.drawnRunLabel !== runLabel) {
+                    queryState.drawnRunLabel = runLabel;
+                    queryState.runButtonElement.textContent = runLabel;
+                    queryState.runButtonElement.setAttribute('title', runTitle);
+                }
                 queryState.exportButtonElements.forEach(function (exportButtonElement) {
                     exportButtonElement.disabled = isTreeQueryRunning || !queryState.hasResult;
                     exportButtonElement.setAttribute('title', queryState.hasResult ? 'Write what this query returned to treecipe/QueryResults' : 'Run this query first');

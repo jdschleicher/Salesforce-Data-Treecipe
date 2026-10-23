@@ -187,7 +187,8 @@ describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
             ['an insert', (panelState: IRecipeCockpitPanelState) => { panelState.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: ACCOUNT_TREE_KEY }; }],
             ['a scratch org run', (panelState: IRecipeCockpitPanelState) => { panelState.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true } as any; }],
             ['a permission set assignment', (panelState: IRecipeCockpitPanelState) => { panelState.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY }; }],
-            ['a metadata deploy', (panelState: IRecipeCockpitPanelState) => { panelState.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, deployKind: 'fields' }; }]
+            ['a metadata deploy', (panelState: IRecipeCockpitPanelState) => { panelState.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, deployKind: 'fields' }; }],
+            ['a query asking for an org', (panelState: IRecipeCockpitPanelState) => { panelState.isQueryOrgPromptOpen = true; }]
         ])('is refused while %s holds the org selection', (_description, holdSelection) => {
 
             const panelState = withSandbox(buildPanelState());

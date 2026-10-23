@@ -528,7 +528,8 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
             ['a scratch org run', (state: IRecipeCockpitPanelState) => { state.scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true }; }],
             ['a permission set assignment', (state: IRecipeCockpitPanelState) => { state.permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY }; }],
             ['a metadata deploy', (state: IRecipeCockpitPanelState) => { state.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, deployKind: 'fields' }; }],
-            ['a load asking for an org', (state: IRecipeCockpitPanelState) => { state.isUpdaterOrgPromptOpen = true; }]
+            ['a load asking for an org', (state: IRecipeCockpitPanelState) => { state.isUpdaterOrgPromptOpen = true; }],
+            ['a query asking for an org', (state: IRecipeCockpitPanelState) => { state.isQueryOrgPromptOpen = true; }]
         ])('refuses the update while %s holds the org selection', async (_description, holdSelection) => {
 
             await openCockpitLoadAndGenerate();

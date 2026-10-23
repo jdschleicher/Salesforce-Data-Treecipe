@@ -56,6 +56,7 @@ import { RECIPE_COCKPIT_QUERY_RECORD_CAP, RecipeCockpitQuery } from '../RecipeCo
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
+import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const TREE_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
@@ -452,14 +453,51 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             expect(notifications()).toEqual([{ severity: 'warning', text: 'The query was not run: prod could not be connected to. Log in to it again with sf org login web, then run the query again.', actions: [] }]);
             expect(postedNamed('treeQueryState').at(-1)).toMatchObject({ isRunning: false });
 
-            // A PICK THAT COULD NOT BE CONNECTED TO IS REFUSED THE SAME WAY
-            panelState().dataOrgSelection = undefined;
-            selectSpy.mockImplementationOnce(async (_cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
-                selectedPanelState.dataOrgSelection = { orgIndex: orgIndex, orgDetail: selectedPanelState.dataOrgDetails[orgIndex], requestSequence: 2, isConnectionFailed: true };
+        });
+
+        it('runs a prompted query once the pick is the selection, never waiting for the selection\'s describes, and lets the prompt\'s hold go first', async () => {
+
+            await openCockpit();
+            await loadQueries();
+            const selectionHolds: unknown[] = [];
+            selectSpy.mockImplementationOnce((_cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
+                selectedPanelState.dataOrgSelection = { orgIndex: orgIndex, orgDetail: selectedPanelState.dataOrgDetails[orgIndex], requestSequence: 2 };
+                // THE CHECK, WITH A SANDBOX'S DESCRIBES OF EVERY TREE OBJECT, NEVER ANSWERS HERE
+                return new Promise(() => undefined);
             });
+            connectionSpy.mockImplementationOnce(async () => {
+                selectionHolds.push(panelState().isQueryOrgPromptOpen);
+                return { query: async (soql: string) => { sentQueries.push(soql); return await queryAnswer(soql); }, queryMore: async () => ({}) } as any;
+            });
+
             await run();
-            expect(connectionSpy).not.toHaveBeenCalled();
-            expect(notifications().at(-1)?.text).toBe('The query was not run: prod could not be connected to.');
+
+            expect(sentQueries).toEqual([CONTACT_BASE_QUERY.text]);
+            expect(selectionHolds).toEqual([false]);
+
+            // A PICK THAT CANNOT BE CONNECTED TO IS THE QUERY'S OWN FIXED WARNING, NEVER ITS ERROR
+            panelState().dataOrgSelection = undefined;
+            connectionSpy.mockRejectedValueOnce(new Error('expired [x](command:evil)'));
+            await run();
+            expect(notifications().at(-1)?.text).toBe(`The Contact Base Query was not run: prod · ${PROD_USERNAME} could not be connected to. Log in to it again with sf org login web, then run the query again.`);
+
+        });
+
+
+        it('reports a selection check that throws behind a prompted query through the shared handler, and still runs the query', async () => {
+
+            await openCockpit();
+            await loadQueries();
+            const capturedErrorSpy = jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined as any);
+            selectSpy.mockImplementationOnce((_cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
+                selectedPanelState.dataOrgSelection = { orgIndex: orgIndex, orgDetail: selectedPanelState.dataOrgDetails[orgIndex], requestSequence: 2 };
+                return Promise.reject(new Error('describe failed'));
+            });
+
+            await run();
+
+            expect(sentQueries).toEqual([CONTACT_BASE_QUERY.text]);
+            expect(capturedErrorSpy).toHaveBeenCalledWith(expect.objectContaining({ message: 'describe failed' }), 'openRecipeCockpit');
 
         });
 
