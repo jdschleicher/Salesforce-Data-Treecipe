@@ -258,7 +258,8 @@ describe('RecipeCockpitService, the version and the CHANGELOG link at the top ri
         it('puts the title and the top-right slot in one row, outside the body every render replaces', () => {
 
             expect(shellHtml()).toContain('<div class="cockpitHeader">\n<h1>Recipe Cockpit</h1>\n<div id="cockpitMeta" class="cockpitMeta"></div>\n</div>\n<div id="loadStatus"');
-            expect(styleSheet()).toContain('.cockpitHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;');
+            // #434: THE ROW IS ALSO THE NAVY TITLE BAR, RUNNING THE PANEL'S FULL WIDTH
+            expect(styleSheet()).toMatch(/\.cockpitHeader \{\s*display: flex;\s*flex-wrap: wrap;\s*align-items: center;\s*justify-content: space-between;[^}]*margin: 0 -1rem;[^}]*background-color: var\(--sdt-header\);/);
 
         });
 
@@ -279,8 +280,9 @@ describe('RecipeCockpitService, the version and the CHANGELOG link at the top ri
 
         it('fills the GitHub mark only from palette tokens, and keeps the reduced-motion block last', () => {
 
-            expect(styleSheet()).toContain('.githubGlyph path { fill: var(--sdt-muted); }');
-            expect(styleSheet()).toContain('.cockpitChangelog:hover .githubGlyph path, .cockpitChangelog:focus-visible .githubGlyph path { fill: var(--sdt-accent); }');
+            // #434: ON THE NAVY TITLE BAR, SOFT GRAY AT REST AND TEAL WHILE HOVERED
+            expect(styleSheet()).toContain('.githubGlyph path { fill: var(--sdt-on-header-muted); }');
+            expect(styleSheet()).toContain('.cockpitChangelog:hover .githubGlyph path, .cockpitChangelog:focus-visible .githubGlyph path { fill: var(--sdt-action); }');
             expect(styleSheet().indexOf('.githubGlyph')).toBeLessThan(styleSheet().indexOf('@media (prefers-reduced-motion: reduce)'));
 
         });

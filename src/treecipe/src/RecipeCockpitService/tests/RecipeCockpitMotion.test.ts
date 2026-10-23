@@ -108,7 +108,7 @@ describe('RecipeCockpitService, motion (#227)', () => {
 
         it('draws the selected tab\'s underline as a scaled bar whose origin follows the direction of the move', () => {
 
-            expect(motionStyleSheet).toMatch(/\.treeTab::after \{[^}]*background-color: var\(--sdt-accent\);[^}]*transform: scaleX\(0\);[^}]*transition: transform \d+ms ease;/);
+            expect(motionStyleSheet).toMatch(/\.treeTab::after \{[^}]*background-color: var\(--sdt-action\);[^}]*transform: scaleX\(0\);[^}]*transition: transform \d+ms ease;/);
             expect(motionStyleSheet).toContain('.treeTab.selected::after { transform: scaleX(1); }');
             expect(motionStyleSheet).toContain('.treeTabs.movingRight .treeTab::after, .treeTabs.movingLeft .treeTab.selected::after { transform-origin: right; }');
             expect(motionStyleSheet).toContain('.treeTabs.movingLeft .treeTab::after, .treeTabs.movingRight .treeTab.selected::after { transform-origin: left; }');

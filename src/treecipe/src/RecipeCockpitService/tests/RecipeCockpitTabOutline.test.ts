@@ -94,10 +94,10 @@ describe('RecipeCockpitService, the selected tab\'s outline and the search icon 
 
         });
 
-        it('draws the selected tab and its panel in the accent, with no line between them and no rule under the strip', () => {
+        it('draws the selected tab and its panel in the teal edge (#434), with no line between them and no rule under the strip', () => {
 
-            expect(styleSheet).toMatch(/\.treeTabs \.treeTab\.selected\.sdtButton, \.troubleshootingSubTabs \.troubleshootingSubTab\.selected\.sdtButton \{[^}]*margin-bottom: -1px;[^}]*border-color: var\(--sdt-accent\);[^}]*border-bottom-color: var\(--sdt-surface\);[^}]*background-color: var\(--sdt-surface\);/);
-            expect(styleSheet).toMatch(/\.treeTabPanel, \.troubleshootingSubPanel \{[^}]*border: 1px solid var\(--sdt-accent\);[^}]*background-color: var\(--sdt-surface\);/);
+            expect(styleSheet).toMatch(/\.treeTabs \.treeTab\.selected\.sdtButton, \.troubleshootingSubTabs \.troubleshootingSubTab\.selected\.sdtButton \{[^}]*margin-bottom: -1px;[^}]*border-color: var\(--sdt-action-edge\);[^}]*border-bottom-color: var\(--sdt-surface\);[^}]*background-color: var\(--sdt-surface\);/);
+            expect(styleSheet).toMatch(/\.treeTabPanel, \.troubleshootingSubPanel \{[^}]*border: 1px solid var\(--sdt-action-edge\);[^}]*background-color: var\(--sdt-surface\);/);
             expect(styleSheet.match(/\.treeTabs \{[^}]*\}/)![0]).not.toContain('border-bottom');
             expect(styleSheet.match(/\.troubleshootingSubTabs \{[^}]*\}/)![0]).not.toContain('border-bottom');
             // THE MOVING BAR IS ON THE TOP EDGE, SO NOTHING IS DRAWN BETWEEN A TAB AND ITS PANEL
