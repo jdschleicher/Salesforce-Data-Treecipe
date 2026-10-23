@@ -143,6 +143,30 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
 
             });
 
+            it('deploys a platform event (__e) as a CustomObject beside its custom fields, and never a custom metadata type, external or big object', async () => {
+
+                const objectsFolderPath = path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects');
+                ['Order_Event__e', 'Setting__mdt', 'External__x', 'Archive__b'].forEach(objectApiName => {
+                    fs.mkdirSync(path.join(objectsFolderPath, objectApiName, 'fields'), { recursive: true });
+                    fs.writeFileSync(path.join(objectsFolderPath, objectApiName, `${objectApiName}.object-meta.xml`), '<?xml version="1.0"?><CustomObject/>');
+                    fs.writeFileSync(path.join(objectsFolderPath, objectApiName, 'fields', 'Amount__c.field-meta.xml'), '<?xml version="1.0"?><CustomField><fullName>Amount__c</fullName><type>Number</type></CustomField>');
+                });
+
+                const summary = await summarize(['Order_Event__e', 'Setting__mdt', 'External__x', 'Archive__b', 'Missing_Event__e']
+                    .map(objectApiName => ({ objectApiName: objectApiName, fieldApiNames: ['Amount__c'] })));
+
+                expect(summary.customObjects).toEqual(['Order_Event__e']);
+                expect(summary.missingCustomObjects).toEqual(['Missing_Event__e']);
+                expect(summary.unreadableCustomObjects).toEqual([]);
+
+                const components = RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields');
+                expect(components).toContainEqual({ type: 'CustomObject', member: 'Order_Event__e' });
+                expect(components).toContainEqual({ type: 'CustomField', member: 'Order_Event__e.Amount__c' });
+                expect(components.filter(component => component.type === 'CustomObject')).toEqual([{ type: 'CustomObject', member: 'Order_Event__e' }]);
+                expect(RecipeCockpitMetadataDeploy.buildPackageXml(components)).toContain('<members>Order_Event__e</members>');
+
+            });
+
             it('never reads an .object-meta.xml that is a link, so a file outside the workspace is not deployed', async () => {
 
                 const objectFolderPath = path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'OtherChildObject__c');
@@ -418,6 +442,9 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
                 [{ type: 'Layout' as any, member: 'Account-Account_Layout' }],
                 [{ type: 'CustomObject', member: 'Account' }],
                 [{ type: 'CustomObject', member: 'Gadget__mdt' }],
+                [{ type: 'CustomObject', member: 'Gadget__x' }],
+                [{ type: 'CustomObject', member: 'Gadget__b' }],
+                [{ type: 'CustomObject', member: 'Gadget__e.Field__c' }],
                 [{ type: 'CustomObject', member: 'Account.Rating__c' }],
                 [{ type: 'ValidationRule', member: 'Account' }],
                 [{ type: 'ValidationRule', member: 'Account.Bad Rule' }],
