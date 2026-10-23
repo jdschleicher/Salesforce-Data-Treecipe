@@ -151,6 +151,21 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
 
         });
 
+        it('holds the org selection while a run asks for an org, as the Updater\'s prompt does (#439)', () => {
+
+            const panelState = buildPanelState();
+            panelState.dataOrgObjectApiNames = new Set(['Account']);
+            panelState.dataOrgDetails = [PROD_ORG];
+
+            expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, panelState)).toMatchObject({ kind: 'selectDataOrg' });
+
+            panelState.isQueryOrgPromptOpen = true;
+            expect(RecipeCockpitService.isSelectionHeldByPromptOrUpdater(panelState)).toBe(true);
+            expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, panelState)).toBeUndefined();
+            expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, panelState)).toBeUndefined();
+
+        });
+
     });
 
     describe('the host, against a faked org prompt and connection', () => {
@@ -162,6 +177,9 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
         let storedWorkspaceState: Map<string, unknown>;
         let workspaceState: { get: jest.Mock; update: jest.Mock };
         let promptSpy: jest.SpyInstance;
+        let selectSpy: jest.SpyInstance;
+        let listedOrgDetails: any[];
+        let pickedOrgTypeDetail: any;
         let connectionSpy: jest.SpyInstance;
         let sentQueries: string[];
         let queryAnswer: (soql: string) => Promise<unknown>;
@@ -252,7 +270,14 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             jest.spyOn(VSCodeWorkspaceService, 'createStatusBarPhaseItem').mockImplementation(() => ({ text: '', dispose: jest.fn() }) as any);
             jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation((warningText: string) => { vscode.window.showWarningMessage(warningText); });
             jest.spyOn(VSCodeWorkspaceService, 'showInformationMessage').mockImplementation((informationText: string) => { vscode.window.showInformationMessage(informationText); });
-            promptSpy = jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg').mockResolvedValue(PROD_ORG);
+            // WITH NO ORG CHOSEN, A RUN ASKS ONCE OVER THE TARGET ORG MANAGER'S LISTING, AND THE PICK BECOMES THE SELECTION (#439)
+            listedOrgDetails = [PROD_ORG];
+            pickedOrgTypeDetail = { isSandbox: false, organizationType: 'Enterprise Edition' };
+            jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockImplementation(async () => ({ orgDetails: listedOrgDetails, hiddenOrgReasonCounts: {} }) as any);
+            promptSpy = jest.spyOn(VSCodeWorkspaceService, 'promptForAuthenticatedOrgDetailOnceListed').mockImplementation(async (listing: any) => (await listing).orgDetails[0]);
+            selectSpy = jest.spyOn(RecipeCockpitService as any, 'selectDataOrg').mockImplementation(async (_cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
+                selectedPanelState.dataOrgSelection = { orgIndex: orgIndex, orgDetail: selectedPanelState.dataOrgDetails[orgIndex], requestSequence: 2, orgTypeDetail: pickedOrgTypeDetail };
+            });
             connectionSpy = jest.spyOn(SalesforceOrgService, 'getConnection').mockImplementation(async () => ({
                 query: async (soql: string) => { sentQueries.push(soql); return await queryAnswer(soql); },
                 queryMore: async (nextRecordsUrl: string) => await queryMoreAnswer(nextRecordsUrl)
@@ -348,17 +373,20 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
 
         });
 
-        it('asks for the org in the command palette every time, queries on a connection by username, posts a preview and says how it went', async () => {
+        it('runs against the Target Org Manager selection with no prompt, a production default included, on a connection by username, posts a preview and says how it went', async () => {
 
             await openCockpit();
             await loadQueries();
-            panelState().dataOrgSelection = { orgIndex: 0, orgDetail: { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa' }, requestSequence: 1, orgTypeDetail: { isSandbox: true, organizationType: 'Developer Edition' }, isReadinessPosted: true };
+            const qaOrg = { targetOrgIdentifier: 'qa', username: 'qa@example.com.qa', alias: 'qa' };
+            panelState().dataOrgDetails = [qaOrg, PROD_ORG];
+            panelState().dataOrgSelection = { orgIndex: 1, orgDetail: PROD_ORG, requestSequence: 1, orgTypeDetail: { isSandbox: false, organizationType: 'Enterprise Edition' } };
 
             await run(`  ${CONTACT_BASE_QUERY.text}  `);
             await run();
 
-            expect(promptSpy).toHaveBeenCalledTimes(2);
-            expect(promptSpy).toHaveBeenCalledWith(RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER);
+            expect(promptSpy).not.toHaveBeenCalled();
+            expect(vscode.window.createQuickPick).not.toHaveBeenCalled();
+            expect(connectionSpy).toHaveBeenCalledTimes(2);
             expect(connectionSpy).toHaveBeenCalledWith(PROD_USERNAME);
             expect(sentQueries).toEqual([CONTACT_BASE_QUERY.text, CONTACT_BASE_QUERY.text]);
 
@@ -385,6 +413,109 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             postedPanelMessages = [];
             await send({ command: 'ready' });
             expect(postedNamed('treeQueryResult')).toHaveLength(1);
+
+        });
+
+        it('asks ONCE when no org is chosen, over the Target Org Manager listing, and the pick becomes the selection later runs use', async () => {
+
+            await openCockpit();
+            await loadQueries();
+            const promptOpenStates: unknown[] = [];
+            promptSpy.mockImplementation(async (listing: any) => { promptOpenStates.push(panelState().isQueryOrgPromptOpen); return (await listing).orgDetails[0]; });
+
+            await run();
+            await run();
+
+            expect(promptSpy).toHaveBeenCalledTimes(1);
+            expect(promptSpy).toHaveBeenCalledWith(expect.anything(), RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER);
+            // THE PROMPT HOLDS THE SELECTION WHILE IT IS OPEN, AS THE UPDATER'S DOES, AND LETS IT GO ONCE ANSWERED
+            expect(promptOpenStates).toEqual([true]);
+            expect(panelState().isQueryOrgPromptOpen).toBe(false);
+            expect(selectSpy).toHaveBeenCalledTimes(1);
+            expect(postedNamed('dataOrgList').at(-1)).toMatchObject({ selectedOrgIndex: 0, orgLabels: ['prod'] });
+            expect(panelState().dataOrgSelection?.orgDetail).toEqual(PROD_ORG);
+            expect(sentQueries).toEqual([CONTACT_BASE_QUERY.text, CONTACT_BASE_QUERY.text]);
+
+        });
+
+        it('refuses a selection no connection could be opened to, naming it, and sends nothing', async () => {
+
+            await openCockpit();
+            await loadQueries();
+            panelState().dataOrgDetails = [PROD_ORG];
+            panelState().dataOrgSelection = { orgIndex: 0, orgDetail: PROD_ORG, requestSequence: 1, isConnectionFailed: true };
+
+            await run();
+
+            expect(promptSpy).not.toHaveBeenCalled();
+            expect(connectionSpy).not.toHaveBeenCalled();
+            expect(notifications()).toEqual([{ severity: 'warning', text: 'The query was not run: prod could not be connected to. Log in to it again with sf org login web, then run the query again.', actions: [] }]);
+            expect(postedNamed('treeQueryState').at(-1)).toMatchObject({ isRunning: false });
+
+            // A PICK THAT COULD NOT BE CONNECTED TO IS REFUSED THE SAME WAY
+            panelState().dataOrgSelection = undefined;
+            selectSpy.mockImplementationOnce(async (_cockpitPanel: any, selectedPanelState: any, orgIndex: any) => {
+                selectedPanelState.dataOrgSelection = { orgIndex: orgIndex, orgDetail: selectedPanelState.dataOrgDetails[orgIndex], requestSequence: 2, isConnectionFailed: true };
+            });
+            await run();
+            expect(connectionSpy).not.toHaveBeenCalled();
+            expect(notifications().at(-1)?.text).toBe('The query was not run: prod could not be connected to.');
+
+        });
+
+        it('asks nothing while another run holds the org selection, and sends nothing', async () => {
+
+            await openCockpit();
+            await loadQueries();
+
+            for ( const holdSelection of [
+                () => { panelState().insertStateMessage = { command: 'insertState', isRunning: true, treeKey: ACCOUNT_TREE_KEY }; },
+                () => { panelState().isUpdaterOrgPromptOpen = true; },
+                () => { panelState().scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true } as any; },
+                () => { panelState().permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY } as any; },
+                () => { panelState().metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY } as any; }
+            ] ) {
+                (vscode.window.showWarningMessage as jest.Mock).mockClear();
+                holdSelection();
+                await run();
+                expect(notifications()).toEqual([{ severity: 'warning', text: 'The query was not run: another run is using the org selection. Choose an org in Target Org Manager, or try again when it ends.', actions: [] }]);
+                panelState().insertStateMessage = undefined;
+                panelState().isUpdaterOrgPromptOpen = false;
+                panelState().scratchOrgStateMessage = undefined;
+                panelState().permissionSetAssignStateMessage = undefined;
+                panelState().metadataDeployStateMessage = undefined;
+            }
+
+            expect(promptSpy).not.toHaveBeenCalled();
+            expect(sentQueries).toEqual([]);
+
+        });
+
+        it('runs nothing when the model changed, or an org was chosen in the dropdown, while the prompt was open', async () => {
+
+            await openCockpit();
+            await loadQueries();
+            const otherOrg = { targetOrgIdentifier: 'other', username: 'other@example.com', alias: 'other' };
+
+            promptSpy.mockImplementationOnce(async (listing: any) => {
+                const orgDetails = (await listing).orgDetails;
+                panelState().dataOrgSelection = { orgIndex: 0, orgDetail: otherOrg, requestSequence: 5 };
+                return orgDetails[0];
+            });
+            await run();
+            expect(selectSpy).not.toHaveBeenCalled();
+            expect(sentQueries).toEqual([]);
+
+            panelState().dataOrgSelection = undefined;
+            promptSpy.mockImplementationOnce(async (listing: any) => {
+                const orgDetails = (await listing).orgDetails;
+                panelState().recipeDataMessage = { ...panelState().recipeDataMessage!, renderSequence: 99 };
+                return orgDetails[0];
+            });
+            await run();
+            expect(selectSpy).not.toHaveBeenCalled();
+            expect(sentQueries).toEqual([]);
+            expect(postedNamed('treeQueryState').at(-1)).toMatchObject({ isRunning: false });
 
         });
 
@@ -676,7 +807,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             expect(notifications().at(-1)?.text).toBe('The query was not run: The Salesforce CLI could not list orgs');
             expect(connectionSpy).not.toHaveBeenCalled();
 
-            promptSpy.mockResolvedValueOnce({ targetOrgIdentifier: PROD_USERNAME, username: PROD_USERNAME });
+            listedOrgDetails = [{ targetOrgIdentifier: PROD_USERNAME, username: PROD_USERNAME }];
             queryAnswer = async () => ({ totalSize: 1, done: true, records: [{ attributes: {}, Id: '003000000000001AAA' }] });
             await run();
             const informationTexts = () => notifications().filter(notice => notice.severity === 'information').map(notice => notice.text);
@@ -883,6 +1014,27 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
 
             panel.postToPanel({ command: 'treeQueryState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, queryKey: 'Contact:base:0' });
             expect(panel.findAll(accountCard, 'treeQueryRun').every((buttonElement: any) => !buttonElement.disabled)).toBe(true);
+
+        });
+
+        it('names the Target Org Manager selection on every Run button, and asks for one when none is chosen (#439)', () => {
+
+            const { panel, accountCard } = renderQueryTab();
+            panel.postToPanel(queriesMessage());
+            const runLabels = () => panel.findAll(accountCard, 'treeQueryRun').map((buttonElement: any) => buttonElement.textContent);
+
+            expect(new Set(runLabels())).toEqual(new Set(['Run…']));
+
+            panel.postToPanel({ command: 'dataOrgList', orgLabels: ['qa', 'prod (default)'], selectedOrgIndex: 1, noOrgsMessage: '', renderSequence: 1 });
+            expect(new Set(runLabels())).toEqual(new Set(['Run in prod (default)']));
+            expect(panel.findAll(accountCard, 'treeQueryRun')[0].attributes.title).toBe('Run this query against prod (default), the org chosen in Target Org Manager');
+
+            panel.postToPanel({ command: 'dataOrgSelection', orgIndex: 0, orgLabel: 'qa', orgTypeLabel: '', isSandbox: null, failureMessage: '', requestSequence: 1, renderSequence: 1 });
+            expect(new Set(runLabels())).toEqual(new Set(['Run in qa']));
+
+            // A RUN STILL POSTS NO ORG: THE HOST READS ITS OWN SELECTION
+            panel.findAll(accountCard, 'treeQueryRun')[0].dispatch('click');
+            expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'runTreeQuery').at(-1)).toEqual({ command: 'runTreeQuery', treeKey: ACCOUNT_TREE_KEY, queryKey: ACCOUNT_TREE_QUERIES[0].queryKey, queryText: expect.any(String) });
 
         });
 

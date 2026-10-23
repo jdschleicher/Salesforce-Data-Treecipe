@@ -570,7 +570,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
             panelState().assignableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
             panelState().insertableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
 
-            expect(RecipeCockpitService.isSelectionHeldByUpdater(panelState())).toBe(true);
+            expect(RecipeCockpitService.isSelectionHeldByPromptOrUpdater(panelState())).toBe(true);
             expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, panelState())).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'refreshDataOrgs' }, panelState())).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'loadDataOrgs' }, panelState())).toBeUndefined();
@@ -584,7 +584,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
 
             // A LOAD OR A GENERATION ON ITS OWN DOES NOT HOLD THE SELECTION
             panelState().updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'generate' };
-            expect(RecipeCockpitService.isSelectionHeldByUpdater(panelState())).toBe(false);
+            expect(RecipeCockpitService.isSelectionHeldByPromptOrUpdater(panelState())).toBe(false);
 
         });
 

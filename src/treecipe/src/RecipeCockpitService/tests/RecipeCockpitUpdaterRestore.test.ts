@@ -829,7 +829,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s restore (#419)', () => {
                 .toEqual({ kind: 'refuseUpdaterLoad', hostMessage: runningLoad });
 
             panelState().updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'restore' };
-            expect(RecipeCockpitService.isSelectionHeldByUpdater(panelState())).toBe(true);
+            expect(RecipeCockpitService.isSelectionHeldByPromptOrUpdater(panelState())).toBe(true);
             expect(RecipeCockpitService.routePanelMessage({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY }, panelState())).toMatchObject({ kind: 'refuseUpdaterLoad', hostMessage: { runKind: 'restore', isRunning: true } });
             expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, panelState())).toBeUndefined();
             panelState().updaterLoadStateMessage = undefined;

@@ -1,5 +1,18 @@
 # Change Log
 
+## [3.137.0] - Recipe Cockpit: the Query tab runs against the Target Org Manager selection
+
+Closes [#439](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/439).
+
+The Query tab's **Run** (#367) asked for an org in the command palette on every run, even when an org was already chosen in Target Org Manager, so a query could read from a different org than the one the insert and the Treecipe Updater were working against.
+
+- **The selection is the query's org.** With an org chosen in Target Org Manager, **Run** sends the query on a connection opened by that org's username, with no prompt. The button reads **Run in** and the org's name (the dropdown's own label), and **Run…** while none is chosen. `runTreeQuery` still carries no org: the host reads its own selection as it is at the click, so changing the dropdown while a query runs does not move it.
+- **Asked once when none is chosen.** With no selection, **Run** asks over the Target Org Manager's listing, the way the insert (#375) and the Updater's load (#416) do (`promptAndSelectDataOrg`, formerly `promptAndSelectSandboxDataOrg`), and the pick becomes the selection, checked and remembered as one made in the dropdown; later runs ask nothing. A dismissed pick is a quiet cancel, and a listing the CLI cannot answer is one warning. While the prompt is open it holds the selection (`isQueryOrgPromptOpen`, counted by `isSelectionHeldByPromptOrUpdater`, renamed from `isSelectionHeldByUpdater`), and it asks nothing while an insert, a scratch org run, a permission set assignment, a metadata deploy or the Updater holds it.
+- **Any org the picker lists.** A query only reads, so the CLI's default org can be queried even when it answered that it is not a sandbox; the insert, Updater and deploy rules for it are unchanged. Production orgs the picker does not list can no longer be queried from the cockpit. A selection no connection could be opened to (`isConnectionFailed`, now set by `selectDataOrg`) is refused with one warning naming it.
+- **Unchanged:** the one-SELECT check, the record and value caps, cancelling between pages, the preview, the exports, edit saving and one query per window. The retrieves and "Use existing <Parent> from org…" still ask in the command palette.
+- **Help and guide.** The ? help, `docs/RECIPE-COCKPIT-GUIDE.md` and the Query tab's intro say where the query's org comes from.
+- **Tests.** The Query tab suite runs against a selection (a production default included) with no prompt, asks once with none and reuses the pick, refuses a selection that could not be connected to, asks nothing while another run holds the selection or after a model or selection change during the prompt, routes no dropdown change while the prompt is open, and draws **Run in** with the selection's label.
+
 ## [3.136.0] - Recipe Cockpit: a Navy, Soft White, Charcoal and Teal palette
 
 Closes [#434](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/434).
