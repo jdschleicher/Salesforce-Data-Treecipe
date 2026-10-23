@@ -75,6 +75,13 @@ export interface INormalizedOrgObjectDescribe {
     fields: INormalizedOrgField[];
     // THE THREE CHARACTERS EVERY RECORD Id OF THE OBJECT STARTS WITH; ABSENT WHEN THE DESCRIBE NAMES NONE
     keyPrefix?: string;
+    // EACH OBJECT WHOSE LOOKUP NAMES THIS ONE, AND THAT LOOKUP (#445); ABSENT WHEN THE DESCRIBE LISTS NONE
+    childRelationships?: IOrgChildRelationship[];
+}
+
+export interface IOrgChildRelationship {
+    childObjectApiName: string;
+    fieldApiName: string;
 }
 
 /*
@@ -1561,8 +1568,21 @@ export class SalesforceOrgService {
             isCreateable: describeRecord.createable === true,
             isUpdateable: describeRecord.updateable === true,
             fields: fields,
-            ...( typeof describeRecord.keyPrefix === 'string' && /^[A-Za-z0-9]{3}$/.test(describeRecord.keyPrefix) ? { keyPrefix: describeRecord.keyPrefix } : {} )
+            ...( typeof describeRecord.keyPrefix === 'string' && /^[A-Za-z0-9]{3}$/.test(describeRecord.keyPrefix) ? { keyPrefix: describeRecord.keyPrefix } : {} ),
+            ...this.normalizeChildRelationships(describeRecord.childRelationships)
         };
+
+    }
+
+    // ONLY ENTRIES WHOSE CHILD AND FIELD ARE API NAMES; NONE LEFT IS NO KEY, SO A DESCRIBE WITHOUT THEM NORMALIZES AS IT DID
+    static normalizeChildRelationships(describeChildRelationships: unknown): { childRelationships?: IOrgChildRelationship[] } {
+
+        const childRelationships = ( Array.isArray(describeChildRelationships) ? describeChildRelationships : [] )
+            .map(childRelationship => this.asRecord(childRelationship))
+            .filter(childRelationship => SalesforceApiName.isApiName(childRelationship?.childSObject) && SalesforceApiName.isApiName(childRelationship?.field))
+            .map(childRelationship => ({ childObjectApiName: childRelationship.childSObject as string, fieldApiName: childRelationship.field as string }));
+
+        return childRelationships.length > 0 ? { childRelationships: childRelationships } : {};
 
     }
 

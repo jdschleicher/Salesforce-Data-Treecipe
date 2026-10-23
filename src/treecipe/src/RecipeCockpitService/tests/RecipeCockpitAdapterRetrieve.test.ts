@@ -44,16 +44,27 @@ jest.mock('child_process', () => ({ execFile: jest.fn(), exec: jest.fn() }));
 import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
+    RECIPE_COCKPIT_ADAPTER_APPLY_BUSY_REFUSAL,
+    RECIPE_COCKPIT_ADAPTER_APPLY_CONFIRM_LABEL,
+    RECIPE_COCKPIT_ADAPTER_APPLY_LABEL,
+    RECIPE_COCKPIT_ADAPTER_APPLY_NOTHING_REASON,
+    RECIPE_COCKPIT_ADAPTER_APPLYING_LABEL,
+    RECIPE_COCKPIT_ADAPTER_AUDIT_TRAIL_HEADING,
     RECIPE_COCKPIT_ADAPTER_CHANGED_IN_ORG_LABEL,
+    RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_LABEL,
+    RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_NOTE,
+    RECIPE_COCKPIT_ADAPTER_SOURCE_TRACKING_HEADING,
     RECIPE_COCKPIT_ADAPTER_NEW_IN_ORG_LABEL,
     RECIPE_COCKPIT_ADAPTER_NOT_RETRIEVED_LABEL,
     RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE,
     RECIPE_COCKPIT_ADAPTER_RETRIEVE_BUSY_REFUSAL,
     RECIPE_COCKPIT_ADAPTER_RETRIEVE_ORG_PLACEHOLDER,
     RECIPE_COCKPIT_UPDATER_RETRIEVING_METADATA_LABEL,
+    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
 } from '../RecipeCockpitService';
 import { PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
 import { RecipeCockpitOrgChangeDetection } from '../RecipeCockpitOrgChangeDetection';
 import { IPanelScriptOptions, runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -189,6 +200,67 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
             expect(RecipeCockpitService.routePanelMessage(retrieveRequest(2), withSandbox(buildPanelState()))).toEqual({ kind: 'refuseUpdaterLoad', hostMessage: notRunning });
             expect(RecipeCockpitService.routePanelMessage(retrieveRequest(3, { treeKey: 'Lead-ONLY' }), withSandbox(buildPanelState())))
                 .toEqual({ kind: 'refuseUpdaterLoad', hostMessage: { ...notRunning, treeKey: 'Lead-ONLY' } });
+
+        });
+
+    });
+
+    describe('routePanelMessage, Apply retrieved files to project', () => {
+
+        const buildPanelState = (): IRecipeCockpitPanelState => {
+            const panelState = RecipeCockpitService.buildInitialPanelState('/workspace');
+            panelState.recipeDataMessage = { command: 'recipeData', recipe: loadTreeRecipe(), renderSequence: 3 };
+            panelState.treeHistoryAllowLists.nameableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
+            panelState.adapterMetadataChangesMessage = changesMessage(3) as any;
+            panelState.adapterRetrieveStagingFolderPath = '/workspace/treecipe/OrgOperations/qa/1-adapter-retrieve';
+            return panelState;
+        };
+        const applyRequest = (overrides: Record<string, unknown> = {}) => ({ command: 'applyAdapterRetrievedFiles', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3, ...overrides });
+        const notRunning = { command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY };
+
+        afterEach(() => {
+            (RecipeCockpitService as any).isMetadataDeployInFlight = false;
+            (RecipeCockpitService as any).isMetadataRetrieveInFlight = false;
+        });
+
+        it('routes the changes on screen, carrying nothing but the card and the model', () => {
+
+            expect(RecipeCockpitService.routePanelMessage(applyRequest({ files: ['/etc/passwd'] }), buildPanelState())).toEqual({ kind: 'applyAdapterRetrievedFiles', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3 });
+
+        });
+
+        it.each([
+            ['another card', applyRequest({ treeKey: 'Lead-ONLY' }), (panelState: IRecipeCockpitPanelState) => panelState],
+            ['a card key that is not text', applyRequest({ treeKey: 7 }), (panelState: IRecipeCockpitPanelState) => panelState],
+            ['another model', applyRequest({ renderSequence: 2 }), (panelState: IRecipeCockpitPanelState) => panelState],
+            ['changes found on an older model', applyRequest(), (panelState: IRecipeCockpitPanelState) => { panelState.recipeDataMessage!.renderSequence = 4; return panelState; }],
+            ['no retrieve on screen', applyRequest(), (panelState: IRecipeCockpitPanelState) => { panelState.adapterMetadataChangesMessage = undefined; return panelState; }],
+            ['no staged files held', applyRequest(), (panelState: IRecipeCockpitPanelState) => { panelState.adapterRetrieveStagingFolderPath = undefined; return panelState; }],
+            ['a card that cannot be named', applyRequest(), (panelState: IRecipeCockpitPanelState) => { panelState.treeHistoryAllowLists.nameableTreeKeys = new Set(); return panelState; }]
+        ])('refuses %s, quietly', (_description, panelMessage, prepare) => {
+
+            expect(RecipeCockpitService.routePanelMessage(panelMessage, prepare(buildPanelState()))).toEqual({ kind: 'refuseUpdaterLoad', hostMessage: expect.objectContaining({ isRunning: false }) });
+
+        });
+
+        it('answers with the running state while a load, generation, update, restore or retrieve holds the window', () => {
+
+            const panelState = buildPanelState();
+            const running = { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'retrieve' } as const;
+            panelState.updaterLoadStateMessage = running;
+
+            expect(RecipeCockpitService.routePanelMessage(applyRequest(), panelState)).toEqual({ kind: 'refuseUpdaterLoad', hostMessage: running });
+
+        });
+
+        it.each([
+            ['a metadata deploy', (panelState: IRecipeCockpitPanelState) => { (RecipeCockpitService as any).isMetadataDeployInFlight = true; return panelState; }],
+            ['a Troubleshooting retrieve', (panelState: IRecipeCockpitPanelState) => { (RecipeCockpitService as any).isMetadataRetrieveInFlight = true; return panelState; }],
+            ['a recipe write', (panelState: IRecipeCockpitPanelState) => { panelState.wireLookupStateMessage = { command: 'wireLookupState', isRunning: true } as any; return panelState; }],
+            ['a generation', (panelState: IRecipeCockpitPanelState) => { panelState.isGenerateTreecipeInFlight = true; return panelState; }]
+        ])('refuses while %s runs, saying why', (_description, prepare) => {
+
+            expect(RecipeCockpitService.routePanelMessage(applyRequest(), prepare(buildPanelState()))).toEqual({ kind: 'refuseUpdaterLoad', refusalText: RECIPE_COCKPIT_ADAPTER_APPLY_BUSY_REFUSAL, hostMessage: notRunning });
 
         });
 
@@ -564,6 +636,330 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
 
         });
 
+        describe('what the org says beside the files', () => {
+
+            const { Org } = jest.requireMock('@salesforce/core');
+            let connection: any;
+
+            beforeEach(() => {
+                SalesforceOrgService.clearDescribeCache();
+                connection = {
+                    describe: jest.fn().mockImplementation(async (objectApiName: string) => objectApiName === 'OtherChildObject__c'
+                        ? Promise.reject(Object.assign(new Error('not found'), { errorCode: 'NOT_FOUND' }))
+                        : { name: objectApiName, label: objectApiName === 'Account' ? 'Customer' : objectApiName, fields: [], childRelationships: objectApiName === 'Account'
+                            ? [{ childSObject: 'Gadget__c', field: 'Account__c' }, { childSObject: 'Contact', field: 'AccountId' }, { childSObject: 'OtherChildObject__c', field: 'Account__c' }]
+                            : [] }),
+                    query: jest.fn().mockResolvedValue({ records: [
+                        { Display: 'Created custom field Is Priority on Customer', CreatedDate: '2026-10-21T09:00:00Z', CreatedBy: { Name: 'Ada' } },
+                        { Display: 'Changed Opportunity settings' }
+                    ] }),
+                    tooling: { query: jest.fn().mockResolvedValue({ records: [{ MemberType: 'CustomField', MemberName: 'Account.Is_Priority__c', LastModifiedDate: '2026-10-21T09:00:00.000+0000' }] }) }
+                };
+                (Org.create as jest.Mock).mockResolvedValue({ getConnection: () => connection });
+            });
+
+            afterEach(() => {
+                (Org.create as jest.Mock).mockReset();
+                SalesforceOrgService.clearDescribeCache();
+            });
+
+            it('lists source tracking and audit trail rows naming the tree\'s objects, and the custom child objects the tree lacks', async () => {
+
+                await openCockpit();
+                selectSandbox();
+                await send(retrieveRequest(lastRenderSequence()));
+
+                const [changes] = postedNamed('adapterMetadataChanges');
+                expect(Org.create).toHaveBeenCalledWith({ aliasOrUsername: SANDBOX_ORG.username });
+                expect(changes.hints.sourceTracking.rows).toEqual([{ objectApiName: 'Account', text: 'CustomField Account.Is_Priority__c', changedAt: '2026-10-21T09:00:00.000+0000' }]);
+                expect(changes.hints.auditTrail.rows).toEqual([{ objectApiName: 'Account', text: 'Created custom field Is Priority on Customer · Ada', changedAt: '2026-10-21T09:00:00Z' }]);
+                expect(changes.objects[0].newChildObjects).toEqual([{ childObjectApiName: 'Gadget__c', fieldApiName: 'Account__c' }]);
+                expect(changes.objects[1]).not.toHaveProperty('newChildObjects');
+                expect(changes.childObjectsNote).toBe('1 object could not be described in the org, so its new child objects are not listed.');
+
+            });
+
+            it('says nothing about child objects when every object was described', async () => {
+
+                connection.describe.mockImplementation(async (objectApiName: string) => ({ name: objectApiName, label: objectApiName, fields: [] }));
+                await openCockpit();
+                selectSandbox();
+                await send(retrieveRequest(lastRenderSequence()));
+
+                const [changes] = postedNamed('adapterMetadataChanges');
+                expect(changes).not.toHaveProperty('childObjectsNote');
+                expect(changes.objects.some((objectChanges: any) => 'newChildObjects' in objectChanges)).toBe(false);
+
+            });
+
+            it('describes the objects afresh, since the org just changed', async () => {
+
+                const clearSpy = jest.spyOn(SalesforceOrgService, 'clearDescribeCache');
+                await openCockpit();
+                selectSandbox();
+                await send(retrieveRequest(lastRenderSequence()));
+
+                expect(clearSpy.mock.calls).toEqual(expect.arrayContaining([[SANDBOX_ORG.username, 'Account'], [SANDBOX_ORG.username, 'Contact'], [SANDBOX_ORG.username, 'OtherChildObject__c']]));
+
+            });
+
+            it('notes what it could not read when the org cannot be connected to, still marking from the files', async () => {
+
+                (Org.create as jest.Mock).mockRejectedValue(new Error('expired access token 00D!secret'));
+                await openCockpit();
+                selectSandbox();
+                await send(retrieveRequest(lastRenderSequence()));
+
+                const [changes] = postedNamed('adapterMetadataChanges');
+                expect(changes.objects[0].fieldChanges).toHaveLength(2);
+                expect(changes.hints.sourceTracking.note).toContain('could not be connected to');
+                expect(changes.hints.auditTrail.note).toContain('could not be connected to');
+                expect(changes.childObjectsNote).toContain('new child objects are not listed');
+                expect(JSON.stringify(changes)).not.toContain('secret');
+
+            });
+
+            it('notes that no child object is listed when the describes themselves throw', async () => {
+
+                jest.spyOn(SalesforceOrgService, 'describeObjects').mockRejectedValue(new Error('describe failed'));
+                await openCockpit();
+                selectSandbox();
+                await send(retrieveRequest(lastRenderSequence()));
+
+                const [changes] = postedNamed('adapterMetadataChanges');
+                expect(changes.childObjectsNote).toBe('3 objects could not be described in the org, so their new child objects are not listed.');
+                expect(changes.hints.sourceTracking.rows).toHaveLength(1);
+
+            });
+
+        });
+
+        describe('Apply retrieved files to project', () => {
+
+            const applyRequest = () => ({ command: 'applyAdapterRetrievedFiles', treeKey: ACCOUNT_TREE_KEY, renderSequence: panelState().recipeDataMessage!.renderSequence });
+            const localFieldPath = (fieldApiName: string) => path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'Account', 'fields', `${fieldApiName}.field-meta.xml`);
+            let confirmSpy: jest.SpyInstance;
+
+            const retrieveFirst = async () => {
+                await openCockpit();
+                selectSandbox();
+                await send(retrieveRequest(lastRenderSequence()));
+                (vscode.window.showWarningMessage as jest.Mock).mockClear();
+                (vscode.window.showInformationMessage as jest.Mock).mockClear();
+                postedPanelMessages = [];
+            };
+
+            beforeEach(() => {
+                confirmSpy = jest.spyOn(RecipeCockpitService, 'confirmInPanel').mockResolvedValue(RECIPE_COCKPIT_ADAPTER_APPLY_CONFIRM_LABEL);
+                (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue(undefined);
+            });
+
+            afterEach(() => {
+                (RecipeCockpitService as any).isMetadataDeployInFlight = false;
+            });
+
+            it('asks first, naming each file it overwrites and adds, then copies them and marks again from the files', async () => {
+
+                await retrieveFirst();
+                await send(applyRequest());
+
+                expect(confirmSpy).toHaveBeenCalledTimes(1);
+                const [title, confirmOptions, confirmLabel] = confirmSpy.mock.calls[0];
+                expect(title).toBe('Apply 2 field files retrieved from qa · qa@example.com.qa to this project?');
+                expect(confirmOptions.isDestructive).toBe(true);
+                expect(confirmOptions.detail).toContain('Overwritten with the org\'s version (1):\nforce-app/main/default/objects/Account/fields/Legacy_Code__c.field-meta.xml');
+                expect(confirmOptions.detail).toContain('Added (1):\nforce-app/main/default/objects/Account/fields/Is_Priority__c.field-meta.xml');
+                expect(confirmLabel).toBe(RECIPE_COCKPIT_ADAPTER_APPLY_CONFIRM_LABEL);
+
+                expect(fs.readFileSync(localFieldPath('Legacy_Code__c'), 'utf-8')).toContain('<length>255</length>');
+                expect(fs.readFileSync(localFieldPath('Is_Priority__c'), 'utf-8')).toContain('<type>Checkbox</type>');
+                const [remarked] = postedNamed('adapterMetadataChanges');
+                expect(remarked.objects[0].fieldChanges).toEqual([]);
+                expect(panelState().adapterMetadataChangesMessage).toBe(remarked);
+                expect(postedNamed('updaterLoadState').map(stateMessage => [stateMessage.isRunning, stateMessage.runKind])).toEqual([[true, 'apply'], [false, undefined]]);
+                expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+                    expect.stringMatching(/^Applied 2 field files retrieved from qa · qa@example\.com\.qa to this project\. Run Generate Treecipe/),
+                    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL
+                );
+
+            });
+
+            it('keeps the child objects the retrieve listed when it marks again', async () => {
+
+                await openCockpit();
+                selectSandbox();
+                await send(retrieveRequest(lastRenderSequence()));
+                const retrieved = panelState().adapterMetadataChangesMessage!;
+                panelState().adapterMetadataChangesMessage = { ...retrieved, objects: retrieved.objects.map(objectChanges => objectChanges.objectApiName === 'Account' ? { ...objectChanges, newChildObjects: [{ childObjectApiName: 'Gadget__c', fieldApiName: 'Account__c' }], moreNewChildObjectCount: 0 } : objectChanges) };
+                postedPanelMessages = [];
+
+                await send(applyRequest());
+
+                const [remarked] = postedNamed('adapterMetadataChanges');
+                expect(remarked.objects[0].newChildObjects).toEqual([{ childObjectApiName: 'Gadget__c', fieldApiName: 'Account__c' }]);
+                expect(remarked.objects[1]).not.toHaveProperty('newChildObjects');
+
+            });
+
+            it('names only what it overwrites, or only what it adds, for one file', async () => {
+
+                await retrieveFirst();
+                const stagedFolder = path.join(panelState().adapterRetrieveStagingFolderPath!, 'main', 'default', 'objects', 'Account', 'fields');
+                fs.rmSync(path.join(stagedFolder, 'Is_Priority__c.field-meta.xml'));
+                await send(applyRequest());
+
+                expect(confirmSpy.mock.calls[0][0]).toBe('Apply 1 field file retrieved from qa · qa@example.com.qa to this project?');
+                expect(confirmSpy.mock.calls[0][1].detail).not.toContain('Added');
+
+                fs.writeFileSync(path.join(stagedFolder, 'Is_Priority__c.field-meta.xml'), fieldXml('Is_Priority__c', 'Checkbox'));
+                await send(applyRequest());
+
+                expect(confirmSpy.mock.calls[1][1].detail).toMatch(/^Added \(1\):/);
+                expect(confirmSpy.mock.calls[1][1].detail).not.toContain('Overwritten');
+
+            });
+
+            it('answers with the state it is not running when the window was held without one', async () => {
+
+                await retrieveFirst();
+                (RecipeCockpitService as any).isUpdaterLoadInFlight = true;
+                (RecipeCockpitService as any).updaterLoadRunStateMessage = undefined;
+
+                await (RecipeCockpitService as any).applyAdapterRetrievedFilesFromPanel((RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'applyAdapterRetrievedFiles', treeKey: ACCOUNT_TREE_KEY, renderSequence: panelState().recipeDataMessage!.renderSequence });
+
+                expect(postedNamed('updaterLoadState')).toEqual([{ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY }]);
+                (RecipeCockpitService as any).isUpdaterLoadInFlight = false;
+
+            });
+
+            it('writes nothing when the reader cancels', async () => {
+
+                await retrieveFirst();
+                const legacyBefore = fs.readFileSync(localFieldPath('Legacy_Code__c'), 'utf-8');
+                confirmSpy.mockResolvedValue(undefined);
+
+                await send(applyRequest());
+
+                expect(fs.readFileSync(localFieldPath('Legacy_Code__c'), 'utf-8')).toBe(legacyBefore);
+                expect(fs.existsSync(localFieldPath('Is_Priority__c'))).toBe(false);
+                expect(postedNamed('adapterMetadataChanges')).toEqual([]);
+                expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+
+            });
+
+            it('writes nothing when the files changed while it asked', async () => {
+
+                await retrieveFirst();
+                const stagedFolder = path.join(panelState().adapterRetrieveStagingFolderPath!, 'main', 'default', 'objects', 'Account', 'fields');
+                confirmSpy.mockImplementation(async () => {
+                    fs.rmSync(path.join(stagedFolder, 'Is_Priority__c.field-meta.xml'));
+                    return RECIPE_COCKPIT_ADAPTER_APPLY_CONFIRM_LABEL;
+                });
+
+                await send(applyRequest());
+
+                expect(fs.existsSync(localFieldPath('Is_Priority__c'))).toBe(false);
+                expect(fs.readFileSync(localFieldPath('Legacy_Code__c'), 'utf-8')).toContain('<length>50</length>');
+                expect(warnings()).toEqual([expect.stringContaining('changed while the confirmation was open')]);
+
+            });
+
+            it('writes nothing when a metadata deploy started while it asked', async () => {
+
+                await retrieveFirst();
+                confirmSpy.mockImplementation(async () => {
+                    (RecipeCockpitService as any).isMetadataDeployInFlight = true;
+                    return RECIPE_COCKPIT_ADAPTER_APPLY_CONFIRM_LABEL;
+                });
+
+                await send(applyRequest());
+
+                expect(fs.existsSync(localFieldPath('Is_Priority__c'))).toBe(false);
+                expect(warnings()).toEqual([RECIPE_COCKPIT_ADAPTER_APPLY_BUSY_REFUSAL]);
+
+            });
+
+            it('says there is nothing to apply when the files already match, asking nothing', async () => {
+
+                await retrieveFirst();
+                const stagedFolder = path.join(panelState().adapterRetrieveStagingFolderPath!, 'main', 'default', 'objects', 'Account', 'fields');
+                fs.copyFileSync(path.join(stagedFolder, 'Legacy_Code__c.field-meta.xml'), localFieldPath('Legacy_Code__c'));
+                fs.copyFileSync(path.join(stagedFolder, 'Is_Priority__c.field-meta.xml'), localFieldPath('Is_Priority__c'));
+
+                await send(applyRequest());
+
+                expect(confirmSpy).not.toHaveBeenCalled();
+                expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(`Nothing was applied: ${RECIPE_COCKPIT_ADAPTER_APPLY_NOTHING_REASON}`);
+
+            });
+
+            it('applies nothing from a project whose sfdx-project.json cannot be read', async () => {
+
+                await retrieveFirst();
+                fs.writeFileSync(path.join(workspaceRoot, 'sfdx-project.json'), '{ not json');
+
+                await send(applyRequest());
+
+                expect(confirmSpy).not.toHaveBeenCalled();
+                expect(warnings()).toEqual([expect.stringMatching(/^Nothing was applied: /)]);
+
+            });
+
+            it('names each file it could not write, as a warning that still offers Generate Treecipe for the rest', async () => {
+
+                await retrieveFirst();
+                jest.spyOn(RecipeCockpitOrgChangeDetection, 'copyFieldFiles').mockReturnValue({ copiedCount: 1, failures: ['Account.Is_Priority__c: its folder is not inside this workspace'] });
+
+                await send(applyRequest());
+
+                expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+                    expect.stringContaining('Applied 1 field file retrieved from qa · qa@example.com.qa to this project. 1 file was not written: Account.Is_Priority__c: its folder is not inside this workspace.'),
+                    RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL
+                );
+
+            });
+
+            it('offers nothing to follow when no file could be written, and keeps quiet about a run on screen that changed', async () => {
+
+                await retrieveFirst();
+                jest.spyOn(RecipeCockpitOrgChangeDetection, 'copyFieldFiles').mockImplementation(() => {
+                    panelState().adapterMetadataChangesMessage = undefined;
+                    return { copiedCount: 0, failures: ['Account.A__c: x', 'Account.B__c: y'] };
+                });
+
+                await send(applyRequest());
+
+                expect(postedNamed('adapterMetadataChanges')).toEqual([]);
+                expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(expect.stringMatching(/Applied 0 field files .* 2 files were not written: Account\.A__c: x; Account\.B__c: y\. Nothing was deployed\.$/));
+
+            });
+
+            it('answers an apply that reaches the host while another run holds the window with that run', async () => {
+
+                await retrieveFirst();
+                const runningState = { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'generate' };
+                (RecipeCockpitService as any).isUpdaterLoadInFlight = true;
+                (RecipeCockpitService as any).updaterLoadRunStateMessage = runningState;
+
+                await (RecipeCockpitService as any).applyAdapterRetrievedFilesFromPanel((RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'applyAdapterRetrievedFiles', treeKey: ACCOUNT_TREE_KEY, renderSequence: panelState().recipeDataMessage!.renderSequence });
+
+                expect(postedNamed('updaterLoadState')).toEqual([runningState]);
+                expect(confirmSpy).not.toHaveBeenCalled();
+
+            });
+
+            it('does nothing for changes it no longer holds', async () => {
+
+                await retrieveFirst();
+
+                await (RecipeCockpitService as any).applyAdapterRetrievedFilesFromPanel((RecipeCockpitService as any).recipeCockpitPanel, panelState(), { kind: 'applyAdapterRetrievedFiles', treeKey: 'Lead-ONLY', renderSequence: panelState().recipeDataMessage!.renderSequence });
+
+                expect(confirmSpy).not.toHaveBeenCalled();
+
+            });
+
+        });
+
         it('replays what it found on a reveal of the same model, and lets it go with a new model', async () => {
 
             await openCockpit();
@@ -693,6 +1089,96 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
             panel.findAll(updaterPanelOf(panel, accountCard), 'updaterNext')[0].dispatch('click');
 
             expect(chipOf(panel, objectNamed(panel, accountCard, 'Account').children[0]).textContent).toContain(RECIPE_COCKPIT_ADAPTER_NEW_IN_ORG_LABEL);
+
+        });
+
+        it('shows Apply once something was found, enabled only when a file is new or changed, and says it is applying', () => {
+
+            const { panel, accountCard } = drawAdapter();
+            const applyButton = panel.findAll(updaterPanelOf(panel, accountCard), 'updaterApplyRetrieved')[0];
+            expect(panel.isHidden(applyButton)).toBe(true);
+
+            const unchanged = changesMessage(1);
+            unchanged.objects[0].fieldChanges = [];
+            panel.postToPanel(unchanged);
+            expect(panel.isHidden(applyButton)).toBe(false);
+            expect(applyButton.disabled).toBe(true);
+            expect(applyButton.attributes.title).toBe(RECIPE_COCKPIT_ADAPTER_APPLY_NOTHING_REASON);
+
+            panel.postToPanel(changesMessage(1));
+            expect(applyButton.disabled).toBe(false);
+            expect(applyButton.textContent).toBe(RECIPE_COCKPIT_ADAPTER_APPLY_LABEL);
+
+            applyButton.dispatch('click');
+            expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'applyAdapterRetrievedFiles', treeKey: ACCOUNT_TREE_KEY, renderSequence: 1 });
+            expect(applyButton.textContent).toBe(RECIPE_COCKPIT_ADAPTER_APPLYING_LABEL);
+            expect(applyButton.disabled).toBe(true);
+            const postedCount = panel.postedHostMessages.length;
+            applyButton.dispatch('click');
+            expect(panel.postedHostMessages).toHaveLength(postedCount);
+
+            panel.postToPanel({ command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'apply' });
+            panel.postToPanel({ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
+            expect(applyButton.textContent).toBe(RECIPE_COCKPIT_ADAPTER_APPLY_LABEL);
+            expect(applyButton.disabled).toBe(false);
+
+        });
+
+        it('lists recent changes in the org under their hint, and each hint\'s note when it could not be read', () => {
+
+            const { panel, accountCard } = drawAdapter();
+            const hintsElement = panel.findAll(updaterPanelOf(panel, accountCard), 'updaterOrgHints')[0];
+            expect(panel.isHidden(hintsElement)).toBe(true);
+
+            panel.postToPanel({ ...changesMessage(1), hints: {
+                sourceTracking: { rows: [], moreCount: 0, skippedCount: 0, note: 'This org does not track source.' },
+                auditTrail: { rows: [{ objectApiName: 'Account', text: 'Created custom field Tier on Account · Ada', changedAt: '2026-10-21T09:00:00Z' }, { objectApiName: 'Contact', text: 'Changed Contact layout', changedAt: '' }], moreCount: 4, skippedCount: 1 }
+            } });
+
+            expect(panel.isHidden(hintsElement)).toBe(false);
+            const sourceTracking = panel.findAll(hintsElement, 'updaterOrgHintsSourceTracking')[0];
+            expect(panel.findAll(sourceTracking, 'updaterOrgHintListHeading')[0].textContent).toBe(RECIPE_COCKPIT_ADAPTER_SOURCE_TRACKING_HEADING);
+            expect(panel.findAll(sourceTracking, 'updaterOrgHintNote').map((noteElement: any) => noteElement.textContent)).toEqual(['This org does not track source.']);
+            const auditTrail = panel.findAll(hintsElement, 'updaterOrgHintsAuditTrail')[0];
+            expect(panel.findAll(auditTrail, 'updaterOrgHintListHeading')[0].textContent).toBe(RECIPE_COCKPIT_ADAPTER_AUDIT_TRAIL_HEADING);
+            expect(panel.findAll(auditTrail, 'updaterOrgHint').map((rowElement: any) => rowElement.children.map((child: any) => child.textContent))).toEqual([
+                ['2026-10-21 09:00', 'Account', 'Created custom field Tier on Account · Ada'],
+                ['Contact', 'Changed Contact layout']
+            ]);
+            expect(panel.findAll(auditTrail, 'updaterOrgHintNote').map((noteElement: any) => noteElement.textContent)).toEqual(['4 more not shown.', '1 row could not be read.']);
+
+            panel.postToPanel({ ...changesMessage(1), hints: { sourceTracking: { rows: [], moreCount: 0, skippedCount: 0 }, auditTrail: { rows: [], moreCount: 0, skippedCount: 0 } } });
+            expect(panel.findAll(hintsElement, 'updaterOrgHintNote').map((noteElement: any) => noteElement.textContent)).toEqual(['Nothing listed for these objects.', 'Nothing listed for these objects.']);
+
+            panel.postToPanel(changesMessage(1));
+            expect(panel.isHidden(hintsElement)).toBe(true);
+
+        });
+
+        it('draws each new child object in the org as a row under its parent, counted on the object, found by the filter, and says why some are not listed', () => {
+
+            const { panel, accountCard } = drawAdapter();
+            const message: any = changesMessage(1);
+            message.objects[0].newChildObjects = [{ childObjectApiName: 'Gadget__c', fieldApiName: 'Account__c' }, { childObjectApiName: 'Widget__c', fieldApiName: 'Owner_Account__c' }];
+            message.objects[0].moreNewChildObjectCount = 3;
+            message.childObjectsNote = '1 object could not be described in the org, so its new child objects are not listed.';
+            panel.postToPanel(message);
+            const accountObject = objectNamed(panel, accountCard, 'Account');
+            expand(panel, accountObject);
+
+            const childRows = panel.findAll(accountObject, 'updaterOrgOnlyObject');
+            expect(childRows.map((rowElement: any) => panel.findAll(rowElement, 'updaterFieldName')[0].textContent)).toEqual(['Gadget__c', 'Widget__c']);
+            expect(panel.findAll(childRows[1], 'updaterFieldLabel')[0].textContent).toBe('via Owner_Account__c');
+            expect(chipOf(panel, childRows[0]).textContent).toBe(RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_LABEL);
+            expect(panel.findAll(childRows[0], 'updaterFieldNote')[0].textContent).toBe(RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_NOTE);
+            expect(panel.findAll(childRows[0], 'updaterFieldChoose')).toEqual([]);
+            expect(panel.findAll(accountObject, 'updaterOrgOnlyMore')[0].textContent).toBe('3 more new child objects in org not listed');
+            expect(chipOf(panel, accountObject.children[0]).textContent).toBe(`1 ${RECIPE_COCKPIT_ADAPTER_NEW_IN_ORG_LABEL} · 1 ${RECIPE_COCKPIT_ADAPTER_CHANGED_IN_ORG_LABEL} · 5 new child objects in org`);
+            expect(panel.findAll(updaterPanelOf(panel, accountCard), 'updaterOrgChangesNote')[0].textContent).toContain('its new child objects are not listed.');
+
+            panel.typeIntoTabSearch(accountCard, 'treeUpdater', 'widget');
+            expect(panel.isHidden(childRows[0])).toBe(true);
+            expect(panel.isHidden(childRows[1])).toBe(false);
 
         });
 

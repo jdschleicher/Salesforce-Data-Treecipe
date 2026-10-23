@@ -42,6 +42,87 @@ export interface IOrgObjectChanges {
     unchangedFieldCount: number;
     // FIELD FILES ON EITHER SIDE THAT COULD NOT BE READ, SO COULD NOT BE COMPARED
     unreadableFieldCount: number;
+    // CUSTOM CHILD OBJECTS THE ORG'S DESCRIBE NAMES AND THE TREE DOES NOT HOLD; SET ONLY WHEN THERE ARE ANY
+    newChildObjects?: IOrgNewChildObject[];
+    moreNewChildObjectCount?: number;
+}
+
+/*
+    The two hints read beside the file diff (#445): source tracking's SourceMember (Tooling API) and
+    the last 180 days of SetupAuditTrail. Each is context, never the marks: a failed or unavailable
+    one is a note, and an empty one says nothing about the files.
+*/
+export const ORG_CHANGE_SOURCE_MEMBER_QUERY = "SELECT MemberType, MemberName, RevisionCounter, LastModifiedDate FROM SourceMember WHERE MemberType IN ('CustomObject', 'CustomField', 'RecordType', 'ValidationRule') ORDER BY RevisionCounter DESC LIMIT 2000";
+export const ORG_CHANGE_SETUP_AUDIT_TRAIL_QUERY = 'SELECT Action, Section, Display, CreatedDate, CreatedBy.Name FROM SetupAuditTrail WHERE CreatedDate = LAST_N_DAYS:180 ORDER BY CreatedDate DESC LIMIT 2000';
+export const ORG_CHANGE_HINT_ROW_LIMIT = 50;
+// HOW MANY NEW CHILD OBJECTS ONE OBJECT LISTS; A LARGER ORG'S REST ARE COUNTED
+export const ORG_CHANGE_CHILD_OBJECT_LIMIT = 100;
+
+const SOURCE_MEMBER_TYPES = new Set(['CustomObject', 'CustomField', 'RecordType', 'ValidationRule']);
+const HINT_TEXT_MAX_LENGTH = 200;
+const ORG_DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:?\d{2})$/;
+const ORG_ERROR_CODE_PATTERN = /^[A-Z][A-Z_]{1,63}$/;
+
+export interface IOrgChangeHintRow {
+    objectApiName: string;
+    text: string;
+    // THE ORG'S DATE-TIME AS IT SENT IT, OR '' WHEN IT SENT NONE THAT READS AS ONE
+    changedAt: string;
+}
+
+export interface IOrgChangeHintList {
+    rows: IOrgChangeHintRow[];
+    // ROWS NAMING A TREE OBJECT PAST ORG_CHANGE_HINT_ROW_LIMIT
+    moreCount: number;
+    // ROWS THAT COULD NOT BE READ AS ONE
+    skippedCount: number;
+    // SET WHEN THE HINT COULD NOT BE READ AT ALL; rows IS THEN EMPTY
+    note?: string;
+}
+
+export interface IOrgChangeHints {
+    sourceTracking: IOrgChangeHintList;
+    auditTrail: IOrgChangeHintList;
+}
+
+// THE TWO QUERIES THE HINTS NEED, SO A TEST CAN HAND IN ANYTHING THAT ANSWERS THEM
+export interface IOrgChangeHintQuerySource {
+    query(soql: string): Promise<unknown>;
+    toolingQuery(soql: string): Promise<unknown>;
+}
+
+// AN OBJECT AN AUDIT TRAIL LINE IS MATCHED BY: ITS API NAME, AND ITS LABEL WHEN THE ORG'S DESCRIBE GAVE ONE
+export interface IOrgChangeObjectName {
+    objectApiName: string;
+    objectLabel?: string;
+}
+
+export interface IOrgNewChildObject {
+    childObjectApiName: string;
+    fieldApiName: string;
+}
+
+// ONE OBJECT'S CHILD RELATIONSHIPS AS THE DESCRIBE NORMALIZED THEM
+export interface IOrgDescribedChildRelationships {
+    objectApiName: string;
+    childRelationships?: readonly IOrgNewChildObject[];
+}
+
+// ONE FILE "Apply retrieved files to project" WRITES; HOST-ONLY, NEVER POSTED
+export interface IOrgFieldFileCopy {
+    objectApiName: string;
+    fieldApiName: string;
+    status: OrgFieldChangeStatus;
+    stagedFilePath: string;
+    targetFilePath: string;
+}
+
+interface IFieldFileComparison {
+    objectApiName: string;
+    fieldApiName: string;
+    status: OrgFieldChangeStatus;
+    stagedFilePath: string;
+    localFilePath?: string;
 }
 
 // THE PARTS OF A FIELD'S XML A CHANGE IS JUDGED BY; EVERY VALUE ONE LINE, AS THE XML SPELLS IT
@@ -234,6 +315,111 @@ export class RecipeCockpitOrgChangeDetection {
                                     stagingFolderPath: string,
                                     objectApiNames: readonly string[]): Promise<IOrgObjectChanges[]> {
 
+        return ( await this.compareStagedObjects(workspaceRoot, packageDirectoryPaths, stagingFolderPath, objectApiNames) ).objectChanges;
+
+    }
+
+    /*
+        What "Apply retrieved files to project" copies, drawn again from the files as they are NOW:
+        each changed field's staged file over the project file it was compared with, wherever that
+        is, and each new field's into the default package directory -- under the object's folder
+        there when it has one, else main/default/objects/<Object>/fields. Paths stay on the host.
+    */
+    static async planFieldFileCopies(workspaceRoot: string,
+                                     packageDirectoryPaths: readonly string[],
+                                     defaultPackageDirectoryPath: string,
+                                     stagingFolderPath: string,
+                                     objectApiNames: readonly string[]): Promise<IOrgFieldFileCopy[]> {
+
+        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+        const defaultRelativePath = path.relative(resolvedWorkspaceRoot, path.resolve(resolvedWorkspaceRoot, defaultPackageDirectoryPath));
+        const defaultObjectFolderPathsByObject = RecipeCockpitMetadataDeploy.findObjectFolderPaths(resolvedWorkspaceRoot, [defaultRelativePath], objectApiNames);
+        const { fileComparisons } = await this.compareStagedObjects(workspaceRoot, packageDirectoryPaths, stagingFolderPath, objectApiNames);
+
+        return fileComparisons.map(fileComparison => {
+            const newFieldFolderPath = path.join(
+                defaultObjectFolderPathsByObject.get(fileComparison.objectApiName)?.[0]
+                    ?? path.join(resolvedWorkspaceRoot, defaultRelativePath, 'main', 'default', 'objects', fileComparison.objectApiName),
+                'fields'
+            );
+            return {
+                objectApiName: fileComparison.objectApiName,
+                fieldApiName: fileComparison.fieldApiName,
+                status: fileComparison.status,
+                stagedFilePath: fileComparison.stagedFilePath,
+                targetFilePath: fileComparison.localFilePath ?? path.join(newFieldFolderPath, `${fileComparison.fieldApiName}${FIELD_FILE_SUFFIX}`)
+            };
+        });
+
+    }
+
+    /*
+        Copies each planned file, in order, and answers what was written. A staged file is read
+        again without following a link; a target is written only inside the workspace -- its
+        deepest existing folder checked before any is made, and its folder again once made -- never
+        over a link or anything but a file, through a temporary file renamed over it. A copy that
+        cannot be made is named in failures and the rest carry on.
+    */
+    static copyFieldFiles(workspaceRoot: string, fieldFileCopies: readonly IOrgFieldFileCopy[]): { copiedCount: number; failures: string[] } {
+
+        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+        const failures: string[] = [];
+        let copiedCount = 0;
+
+        fieldFileCopies.forEach(fieldFileCopy => {
+
+            const fieldName = `${fieldFileCopy.objectApiName}.${fieldFileCopy.fieldApiName}`;
+            const fieldText = this.readFieldFileText(fieldFileCopy.stagedFilePath);
+
+            if ( fieldText === undefined ) {
+                failures.push(`${fieldName}: the retrieved file could not be read`);
+                return;
+            }
+
+            const targetFolderPath = path.dirname(fieldFileCopy.targetFilePath);
+            let existingAncestorPath = targetFolderPath;
+            while ( !fs.existsSync(existingAncestorPath) && path.dirname(existingAncestorPath) !== existingAncestorPath ) {
+                existingAncestorPath = path.dirname(existingAncestorPath);
+            }
+
+            if ( !SfdxProjectService.isPathContainedInWorkspace(existingAncestorPath, resolvedWorkspaceRoot) ) {
+                failures.push(`${fieldName}: its folder is not inside this workspace`);
+                return;
+            }
+
+            const temporaryFilePath = `${fieldFileCopy.targetFilePath}.${process.pid}-${Date.now()}.tmp`;
+            try {
+                fs.mkdirSync(targetFolderPath, { recursive: true });
+                if ( !SfdxProjectService.isPathContainedInWorkspace(targetFolderPath, resolvedWorkspaceRoot) ) {
+                    failures.push(`${fieldName}: its folder is not inside this workspace`);
+                    return;
+                }
+                // lstat, NOT existsSync: A LINK THAT POINTS NOWHERE "DOES NOT EXIST" YET IS STILL NOT A PLAIN FILE
+                const targetStat = fs.lstatSync(fieldFileCopy.targetFilePath, { throwIfNoEntry: false });
+                if ( targetStat && !targetStat.isFile() ) {
+                    failures.push(`${fieldName}: the project file is not a plain file, so it was left as it is`);
+                    return;
+                }
+                fs.writeFileSync(temporaryFilePath, fieldText, { encoding: 'utf-8', flag: 'wx' });
+                fs.renameSync(temporaryFilePath, fieldFileCopy.targetFilePath);
+                copiedCount++;
+            } catch (copyError) {
+                fs.rmSync(temporaryFilePath, { force: true });
+                failures.push(`${fieldName}: ${this.toSingleLine(copyError instanceof Error ? copyError.message : String(copyError)).slice(0, DIFFERENCE_VALUE_MAX_LENGTH)}`);
+            }
+
+        });
+
+        return { copiedCount: copiedCount, failures: failures };
+
+    }
+
+    private static async compareStagedObjects(workspaceRoot: string,
+                                              packageDirectoryPaths: readonly string[],
+                                              stagingFolderPath: string,
+                                              objectApiNames: readonly string[]): Promise<{ objectChanges: IOrgObjectChanges[]; fileComparisons: IFieldFileComparison[] }> {
+
+        const fileComparisons: IFieldFileComparison[] = [];
         const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
         const stagingRelativePath = path.relative(resolvedWorkspaceRoot, stagingFolderPath);
         const stagedFolderPathsByObject = RecipeCockpitMetadataDeploy.findObjectFolderPaths(resolvedWorkspaceRoot, [stagingRelativePath], objectApiNames);
@@ -263,6 +449,7 @@ export class RecipeCockpitOrgChangeDetection {
                 if ( !localFile ) {
                     if ( CUSTOM_FIELD_NAME_PATTERN.test(stagedFile.fieldApiName) ) {
                         fieldChanges.push({ fieldApiName: stagedFile.fieldApiName, status: 'new', fieldType: stagedField.fieldType, fieldLabel: stagedField.fieldLabel, differences: [] });
+                        fileComparisons.push({ objectApiName: objectApiName, fieldApiName: stagedFile.fieldApiName, status: 'new', stagedFilePath: stagedFile.filePath });
                     }
                     continue;
                 }
@@ -280,6 +467,7 @@ export class RecipeCockpitOrgChangeDetection {
                     unchangedFieldCount++;
                 } else {
                     fieldChanges.push({ fieldApiName: localFile.fieldApiName, status: 'changed', fieldType: stagedField.fieldType, fieldLabel: stagedField.fieldLabel, differences: differences });
+                    fileComparisons.push({ objectApiName: objectApiName, fieldApiName: localFile.fieldApiName, status: 'changed', stagedFilePath: stagedFile.filePath, localFilePath: localFile.filePath });
                 }
 
             }
@@ -297,8 +485,196 @@ export class RecipeCockpitOrgChangeDetection {
 
         }
 
-        return objectChanges;
+        return { objectChanges: objectChanges, fileComparisons: fileComparisons };
 
+    }
+
+    /*
+        Both hints, each on its own: a query that throws or answers with no records list is that
+        hint's note, never "no change", and the other is still read.
+    */
+    static async readChangeHints(querySource: IOrgChangeHintQuerySource, objectNames: readonly IOrgChangeObjectName[]): Promise<IOrgChangeHints> {
+
+        const readHint = async (runQuery: () => Promise<unknown>, parse: (queryResult: unknown) => IOrgChangeHintList, describeFailure: (queryError: unknown) => string): Promise<IOrgChangeHintList> => {
+            try {
+                return parse(await runQuery());
+            } catch (queryError) {
+                return { rows: [], moreCount: 0, skippedCount: 0, note: describeFailure(queryError) };
+            }
+        };
+
+        const [sourceTracking, auditTrail] = await Promise.all([
+            readHint(() => querySource.toolingQuery(ORG_CHANGE_SOURCE_MEMBER_QUERY), queryResult => this.parseSourceMembers(queryResult, objectNames),
+                queryError => this.readErrorCode(queryError) === 'INVALID_TYPE'
+                    ? 'This org does not track source, so source tracking lists nothing. The marks come from the files alone.'
+                    : `Source tracking could not be read${this.describeErrorCode(queryError)}. The marks come from the files alone.`),
+            readHint(() => querySource.query(ORG_CHANGE_SETUP_AUDIT_TRAIL_QUERY), queryResult => this.parseSetupAuditTrail(queryResult, objectNames),
+                queryError => `The setup audit trail could not be read${this.describeErrorCode(queryError)}. The user may lack View Setup and Configuration.`)
+        ]);
+
+        return { sourceTracking: sourceTracking, auditTrail: auditTrail };
+
+    }
+
+    /*
+        SourceMember rows naming a tree object, untrusted: a member type of the four asked for, a
+        member name whose object half and member half are api names, the object half a tree object
+        as Salesforce reads names. An answer with no records list throws.
+    */
+    static parseSourceMembers(queryResult: unknown, objectNames: readonly IOrgChangeObjectName[]): IOrgChangeHintList {
+
+        const treeObjectApiNameByLowerName = new Map(objectNames.map(objectName => [objectName.objectApiName.toLowerCase(), objectName.objectApiName] as const));
+        const matchedRows: IOrgChangeHintRow[] = [];
+        let skippedCount = 0;
+
+        this.readQueryRecords(queryResult, 'source tracking').forEach(queryRecord => {
+
+            const sourceMember = this.asRecord(queryRecord);
+            const memberType = sourceMember?.MemberType;
+            const memberName = sourceMember?.MemberName;
+
+            if ( typeof memberType !== 'string' || !SOURCE_MEMBER_TYPES.has(memberType) || typeof memberName !== 'string' ) {
+                skippedCount++;
+                return;
+            }
+
+            const dotIndex = memberName.indexOf('.');
+            const objectHalf = dotIndex < 0 ? memberName : memberName.slice(0, dotIndex);
+            const memberHalf = dotIndex < 0 ? undefined : memberName.slice(dotIndex + 1);
+
+            if ( !SalesforceApiName.isApiName(objectHalf) || ( memberHalf !== undefined && !SalesforceApiName.isApiName(memberHalf) ) ) {
+                skippedCount++;
+                return;
+            }
+
+            const treeObjectApiName = treeObjectApiNameByLowerName.get(objectHalf.toLowerCase());
+            if ( treeObjectApiName ) {
+                matchedRows.push({ objectApiName: treeObjectApiName, text: `${memberType} ${memberName}`, changedAt: this.readDateTime(sourceMember.LastModifiedDate) });
+            }
+
+        });
+
+        return this.toHintList(matchedRows, skippedCount);
+
+    }
+
+    /*
+        SetupAuditTrail rows whose Display names a tree object, by api name or by the label the
+        org's describe gave it, as a whole word whatever its case. Display is the org's text, so it
+        is cut to one short line; a row with none is skipped. An answer with no records list throws.
+    */
+    static parseSetupAuditTrail(queryResult: unknown, objectNames: readonly IOrgChangeObjectName[]): IOrgChangeHintList {
+
+        const objectMatchers = objectNames.map(objectName => ({
+            objectApiName: objectName.objectApiName,
+            patterns: [objectName.objectApiName, ...( objectName.objectLabel?.trim() ? [objectName.objectLabel.trim()] : [] )]
+                .map(name => new RegExp(`(^|[^A-Za-z0-9_])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|[^A-Za-z0-9_])`, 'i'))
+        }));
+        const matchedRows: IOrgChangeHintRow[] = [];
+        let skippedCount = 0;
+
+        this.readQueryRecords(queryResult, 'the setup audit trail').forEach(queryRecord => {
+
+            const auditRow = this.asRecord(queryRecord);
+            const display = typeof auditRow?.Display === 'string' ? this.toSingleLine(auditRow.Display) : '';
+
+            if ( !display ) {
+                skippedCount++;
+                return;
+            }
+
+            const objectMatcher = objectMatchers.find(candidate => candidate.patterns.some(pattern => pattern.test(display)));
+            if ( !objectMatcher ) {
+                return;
+            }
+
+            const changedBy = this.asRecord(auditRow.CreatedBy)?.Name;
+            const changedByText = typeof changedBy === 'string' && this.toSingleLine(changedBy) ? ` · ${this.toSingleLine(changedBy)}` : '';
+            matchedRows.push({
+                objectApiName: objectMatcher.objectApiName,
+                text: `${display}${changedByText}`.slice(0, HINT_TEXT_MAX_LENGTH),
+                changedAt: this.readDateTime(auditRow.CreatedDate)
+            });
+
+        });
+
+        return this.toHintList(matchedRows, skippedCount);
+
+    }
+
+    /*
+        Each object's CUSTOM child objects the tree does not hold, from the describe's child
+        relationships: by object, sorted with "<", each child and field once, at most
+        ORG_CHANGE_CHILD_OBJECT_LIMIT, and an object with none left out.
+    */
+    static listNewChildObjects(describedObjects: readonly IOrgDescribedChildRelationships[], treeObjectApiNames: readonly string[]): Map<string, { childObjects: IOrgNewChildObject[]; moreCount: number }> {
+
+        const treeLowerNames = new Set(treeObjectApiNames.map(objectApiName => objectApiName.toLowerCase()));
+        const newChildObjectsByObject = new Map<string, { childObjects: IOrgNewChildObject[]; moreCount: number }>();
+
+        describedObjects.forEach(describedObject => {
+
+            const seenKeys = new Set<string>();
+            const childObjects = ( describedObject.childRelationships ?? [] )
+                .filter(childRelationship => CUSTOM_FIELD_NAME_PATTERN.test(childRelationship.childObjectApiName)
+                    && SalesforceApiName.isApiName(childRelationship.childObjectApiName)
+                    && SalesforceApiName.isApiName(childRelationship.fieldApiName)
+                    && !treeLowerNames.has(childRelationship.childObjectApiName.toLowerCase()))
+                .filter(childRelationship => {
+                    const key = `${childRelationship.childObjectApiName.toLowerCase()}\n${childRelationship.fieldApiName.toLowerCase()}`;
+                    return seenKeys.has(key) ? false : ( seenKeys.add(key), true );
+                })
+                .map(childRelationship => ({ childObjectApiName: childRelationship.childObjectApiName, fieldApiName: childRelationship.fieldApiName }))
+                .sort((first, second) => first.childObjectApiName !== second.childObjectApiName
+                    ? ( first.childObjectApiName < second.childObjectApiName ? -1 : 1 )
+                    : ( first.fieldApiName < second.fieldApiName ? -1 : first.fieldApiName > second.fieldApiName ? 1 : 0 ));
+
+            if ( childObjects.length > 0 ) {
+                newChildObjectsByObject.set(describedObject.objectApiName, {
+                    childObjects: childObjects.slice(0, ORG_CHANGE_CHILD_OBJECT_LIMIT),
+                    moreCount: Math.max(childObjects.length - ORG_CHANGE_CHILD_OBJECT_LIMIT, 0)
+                });
+            }
+
+        });
+
+        return newChildObjectsByObject;
+
+    }
+
+    private static readQueryRecords(queryResult: unknown, hintName: string): unknown[] {
+
+        const queryRecords = this.asRecord(queryResult)?.records;
+
+        if ( !Array.isArray(queryRecords) ) {
+            throw new Error(`The org answered ${hintName} with no records list.`);
+        }
+
+        return queryRecords;
+
+    }
+
+    private static toHintList(matchedRows: IOrgChangeHintRow[], skippedCount: number): IOrgChangeHintList {
+        return {
+            rows: matchedRows.slice(0, ORG_CHANGE_HINT_ROW_LIMIT),
+            moreCount: Math.max(matchedRows.length - ORG_CHANGE_HINT_ROW_LIMIT, 0),
+            skippedCount: skippedCount
+        };
+    }
+
+    private static readDateTime(candidate: unknown): string {
+        return typeof candidate === 'string' && ORG_DATE_TIME_PATTERN.test(candidate) ? candidate : '';
+    }
+
+    // ONLY A PLAIN ERROR CODE IS SHOWN: AN ERROR'S MESSAGE IS THE ORG'S OR THE CONNECTION'S TEXT
+    private static readErrorCode(queryError: unknown): string | undefined {
+        const errorCode = this.asRecord(queryError)?.errorCode;
+        return typeof errorCode === 'string' && ORG_ERROR_CODE_PATTERN.test(errorCode) ? errorCode : undefined;
+    }
+
+    private static describeErrorCode(queryError: unknown): string {
+        const errorCode = this.readErrorCode(queryError);
+        return errorCode ? ` (${errorCode})` : '';
     }
 
     // WHAT DIFFERS BETWEEN THE PROJECT'S FIELD AND THE ORG'S, ONE LINE EACH, IN A FIXED ORDER
@@ -368,20 +744,9 @@ export class RecipeCockpitOrgChangeDetection {
     // ONE FIELD FILE, READ THROUGH ONE HANDLE THAT REFUSES A LINK, HELD TO A SIZE AND PARSED; UNDEFINED WHEN IT CANNOT BE
     private static async readComparedField(filePath: string): Promise<IComparedField | undefined> {
 
-        let fieldXml: string;
+        const fieldXml = this.readFieldFileText(filePath);
 
-        try {
-            const fileHandle = fs.openSync(filePath, fs.constants.O_RDONLY | ( fs.constants.O_NOFOLLOW ?? 0 ));
-            try {
-                const fileStat = fs.fstatSync(fileHandle);
-                if ( !fileStat.isFile() || fileStat.size > FIELD_FILE_MAX_BYTES ) {
-                    return undefined;
-                }
-                fieldXml = fs.readFileSync(fileHandle, 'utf-8');
-            } finally {
-                fs.closeSync(fileHandle);
-            }
-        } catch {
+        if ( fieldXml === undefined ) {
             return undefined;
         }
 
@@ -416,6 +781,26 @@ export class RecipeCockpitOrgChangeDetection {
             valueSetName: this.readText(valueSet?.valueSetName),
             picklistValues: picklistValues
         };
+
+    }
+
+    // A FIELD FILE'S TEXT, READ THROUGH ONE HANDLE THAT REFUSES A LINK AND HELD TO A SIZE; UNDEFINED WHEN IT CANNOT BE
+    private static readFieldFileText(filePath: string): string | undefined {
+
+        try {
+            const fileHandle = fs.openSync(filePath, fs.constants.O_RDONLY | ( fs.constants.O_NOFOLLOW ?? 0 ));
+            try {
+                const fileStat = fs.fstatSync(fileHandle);
+                if ( !fileStat.isFile() || fileStat.size > FIELD_FILE_MAX_BYTES ) {
+                    return undefined;
+                }
+                return fs.readFileSync(fileHandle, 'utf-8');
+            } finally {
+                fs.closeSync(fileHandle);
+            }
+        } catch {
+            return undefined;
+        }
 
     }
 

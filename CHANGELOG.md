@@ -1,5 +1,36 @@
 # Change Log
 
+## [3.142.0] - Recipe Cockpit: the Treecipe Adapter lists recent changes and new child objects in the org, and applies the retrieved files to the project
+
+Closes [#445](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/445) (C2 of two), slice C of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442).
+
+3.141.0 marked each field new or changed in the org from the retrieved files. This adds what the org says beside the files, and a way to bring the files into the project.
+
+- **Recent changes in the org.** After a retrieve, one connection to the same sandbox reads two hints. `RecipeCockpitOrgChangeDetection.readChangeHints` sends the Tooling API's `SourceMember` query (`MemberType`, `MemberName`, `RevisionCounter`, `LastModifiedDate` for custom objects, fields, record types and validation rules). It also reads the last 180 days of `SetupAuditTrail`. Both answers are untrusted:
+  - **SourceMember:** a row is kept when its member type is one asked for, both halves of its member name are api names, and the object half is a tree object (`parseSourceMembers`).
+  - **SetupAuditTrail:** a row is kept when its `Display` names a tree object by api name or by the label the describe gave it, as a whole word (`parseSetupAuditTrail`).
+  - Each list shows at most 50 rows and counts the rest and any it could not read.
+  - A query that fails is that hint's **note**, never "no change". An org without source tracking says so (`INVALID_TYPE`), and only a plain error code is shown. The hints never decide a mark.
+- **New child objects in the org.** The same connection describes the objects afresh (their cached describes are dropped first, since the org just changed). `SalesforceOrgService.normalizeDescribeResult` now keeps a describe's `childRelationships` (child and field held to `SalesforceApiName`; absent when none, so every other describe normalizes as before).
+  - `listNewChildObjects` lists each object's CUSTOM `__c` children that the tree does not hold, once each, sorted, at most 100 per object.
+  - The panel draws them as `updaterOrgOnlyObject` rows under their parent (`via <lookup>`, **new child object in org**, no box) until #447 can add them. The object's chip counts them, and the filter finds them.
+  - An object that could not be described is a note.
+- **Apply retrieved files to project.** A button under the summary line (`applyAdapterRetrievedFiles {treeKey, renderSequence}`, nothing else). It is routed only for the changes on screen, from a retrieve whose staging folder the host still holds. It is refused while a metadata deploy, a Troubleshooting retrieve, a recipe write or a generation runs (`RECIPE_COCKPIT_ADAPTER_APPLY_BUSY_REFUSAL`), and it shares the Adapter's one run per window (`runKind: 'apply'`).
+  - **Planning.** The host plans the copies from the files as they are NOW (`planFieldFileCopies`). A changed field's staged file goes over the project file it was compared with. A new field goes into the default package directory, under the object's folder there or `main/default/objects/<Object>/fields`.
+  - **Confirmation.** One destructive `confirmInPanel` lists what is overwritten and what is added. Cancel writes nothing. After the answer the host plans again and refuses if the plan differs.
+  - **Writing.** `copyFieldFiles` writes each file through a temporary file renamed over the target. It checks the deepest existing folder before any folder is made, and the folder again once made. It refuses a target that is a link, a dangling one included (`lstat`, not `existsSync`). It names every file it could not write.
+  - **Afterwards.** The marks are read again from the files, and one notification offers **Generate Treecipe**. Nothing is deployed.
+- **Tests.** `RecipeCockpitOrgChangeDetection.test.ts` covers:
+  - both hints' parsing, with malformed answers, limits and notes;
+  - the child objects;
+  - the plan and the copy, with links, outside folders and failed writes.
+
+  `RecipeCockpitAdapterRetrieve.test.ts` covers:
+  - the hints and child objects against a faked connection, an org that cannot be connected to, and describes that throw;
+  - Apply's router;
+  - Apply's executor: the confirmation, Cancel, a plan that changed, a deploy started meanwhile, nothing to apply, partial failures;
+  - the panel's button, hints and child rows.
+
 ## [3.141.0] - Recipe Cockpit: the Treecipe Adapter's Retrieve latest metadata marks what is new or changed in the org
 
 Part of [#445](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/445) (C1 of two), slice C of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442).

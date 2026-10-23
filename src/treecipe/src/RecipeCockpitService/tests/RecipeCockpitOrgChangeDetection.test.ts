@@ -325,4 +325,267 @@ describe('RecipeCockpitOrgChangeDetection (#445)', () => {
 
     });
 
+    describe('applying the retrieved files', () => {
+
+        const withWorkspaceCopy = async (runTest: (workspaceRoot: string, stagingFolderPath: string) => Promise<void> | void) => {
+            const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-org-change-apply-'));
+            try {
+                const workspaceRoot = path.join(temporaryRoot, 'workspace');
+                fs.cpSync(WORKSPACE_ROOT, workspaceRoot, { recursive: true });
+                await runTest(workspaceRoot, path.join(workspaceRoot, path.relative(WORKSPACE_ROOT, STAGING_FOLDER_PATH)));
+            } finally {
+                fs.rmSync(temporaryRoot, { recursive: true, force: true });
+            }
+        };
+
+        const relativeTargets = (workspaceRoot: string, fieldFileCopies: { status: string; targetFilePath: string }[]) =>
+            fieldFileCopies.map(fieldFileCopy => [fieldFileCopy.status, path.relative(workspaceRoot, fieldFileCopy.targetFilePath).split(path.sep).join('/')]);
+
+        it('plans a changed field over the project file it was compared with, and a new one into the default package directory', async () => {
+
+            await withWorkspaceCopy(async (workspaceRoot, stagingFolderPath) => {
+                const fieldFileCopies = await RecipeCockpitOrgChangeDetection.planFieldFileCopies(workspaceRoot, PACKAGE_DIRECTORY_PATHS, 'unpackaged', stagingFolderPath, ['Account', 'Contact']);
+
+                expect(relativeTargets(workspaceRoot, fieldFileCopies)).toEqual([
+                    ['new', 'unpackaged/main/default/objects/Account/fields/Is_Priority__c.field-meta.xml'],
+                    ['changed', 'force-app/main/default/objects/Account/fields/Legacy_Code__c.field-meta.xml'],
+                    ['changed', 'force-app/main/default/objects/Account/fields/Rating__c.field-meta.xml'],
+                    ['new', 'unpackaged/main/default/objects/Contact/fields/Email_Opt_In__c.field-meta.xml']
+                ]);
+                expect(fieldFileCopies.every(fieldFileCopy => fieldFileCopy.stagedFilePath.startsWith(stagingFolderPath))).toBe(true);
+            });
+
+        });
+
+        it('copies each planned file byte for byte, after which nothing is new or changed', async () => {
+
+            await withWorkspaceCopy(async (workspaceRoot, stagingFolderPath) => {
+                const fieldFileCopies = await RecipeCockpitOrgChangeDetection.planFieldFileCopies(workspaceRoot, PACKAGE_DIRECTORY_PATHS, path.join(workspaceRoot, 'force-app'), stagingFolderPath, ['Account']);
+
+                expect(RecipeCockpitOrgChangeDetection.copyFieldFiles(workspaceRoot, fieldFileCopies)).toEqual({ copiedCount: 3, failures: [] });
+                fieldFileCopies.forEach(fieldFileCopy => expect(fs.readFileSync(fieldFileCopy.targetFilePath, 'utf-8')).toBe(fs.readFileSync(fieldFileCopy.stagedFilePath, 'utf-8')));
+                expect(fs.readdirSync(path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'Account', 'fields')).filter(fileName => fileName.endsWith('.tmp'))).toEqual([]);
+
+                const [accountChanges] = await detect(['Account'], workspaceRoot, stagingFolderPath);
+                expect(accountChanges.fieldChanges).toEqual([]);
+            });
+
+        });
+
+        it('writes through no link and outside no workspace, names each file it could not write, and carries on', async () => {
+
+            await withWorkspaceCopy(async (workspaceRoot, stagingFolderPath) => {
+                const outsideFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-org-change-outside-'));
+                try {
+                    const linkedTarget = path.join(workspaceRoot, 'force-app', 'linked.field-meta.xml');
+                    fs.symlinkSync(path.join(outsideFolder, 'target.xml'), linkedTarget);
+                    const linkedFolder = path.join(workspaceRoot, 'force-app', 'linkedFolder');
+                    fs.symlinkSync(outsideFolder, linkedFolder, 'dir');
+                    const stagedFilePath = path.join(stagingFolderPath, 'main', 'default', 'objects', 'Account', 'fields', 'Is_Priority__c.field-meta.xml');
+
+                    const copyResult = RecipeCockpitOrgChangeDetection.copyFieldFiles(workspaceRoot, [
+                        { objectApiName: 'Account', fieldApiName: 'Gone__c', status: 'new', stagedFilePath: path.join(stagingFolderPath, 'missing.field-meta.xml'), targetFilePath: path.join(workspaceRoot, 'force-app', 'x.field-meta.xml') },
+                        { objectApiName: 'Account', fieldApiName: 'Linked__c', status: 'changed', stagedFilePath: stagedFilePath, targetFilePath: linkedTarget },
+                        { objectApiName: 'Account', fieldApiName: 'Outside__c', status: 'new', stagedFilePath: stagedFilePath, targetFilePath: path.join(outsideFolder, 'new', 'Outside__c.field-meta.xml') },
+                        { objectApiName: 'Account', fieldApiName: 'ThroughLink__c', status: 'new', stagedFilePath: stagedFilePath, targetFilePath: path.join(linkedFolder, 'deeper', 'ThroughLink__c.field-meta.xml') },
+                        { objectApiName: 'Account', fieldApiName: 'Is_Priority__c', status: 'new', stagedFilePath: stagedFilePath, targetFilePath: path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'Account', 'fields', 'Is_Priority__c.field-meta.xml') }
+                    ]);
+
+                    expect(copyResult.copiedCount).toBe(1);
+                    expect(copyResult.failures).toEqual([
+                        'Account.Gone__c: the retrieved file could not be read',
+                        'Account.Linked__c: the project file is not a plain file, so it was left as it is',
+                        'Account.Outside__c: its folder is not inside this workspace',
+                        'Account.ThroughLink__c: its folder is not inside this workspace'
+                    ]);
+                    expect(fs.readdirSync(outsideFolder)).toEqual([]);
+                    expect(fs.lstatSync(linkedTarget).isSymbolicLink()).toBe(true);
+                } finally {
+                    fs.rmSync(outsideFolder, { recursive: true, force: true });
+                }
+            });
+
+        });
+
+        it('refuses a folder that leads out of the workspace once it is made, and names a thrown value that is not an error', async () => {
+
+            await withWorkspaceCopy(async (workspaceRoot, stagingFolderPath) => {
+                const stagedFilePath = path.join(stagingFolderPath, 'main', 'default', 'objects', 'Account', 'fields', 'Is_Priority__c.field-meta.xml');
+                const targetFilePath = path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'Account', 'fields', 'Is_Priority__c.field-meta.xml');
+                const containmentSpy = jest.spyOn(SfdxProjectService, 'isPathContainedInWorkspace').mockReturnValueOnce(true).mockReturnValueOnce(false);
+
+                expect(RecipeCockpitOrgChangeDetection.copyFieldFiles(workspaceRoot, [{ objectApiName: 'Account', fieldApiName: 'Is_Priority__c', status: 'new', stagedFilePath, targetFilePath }]))
+                    .toEqual({ copiedCount: 0, failures: ['Account.Is_Priority__c: its folder is not inside this workspace'] });
+
+                containmentSpy.mockRestore();
+                const thrownValue: unknown = 'disk full';
+                jest.spyOn(fs, 'renameSync').mockImplementation(() => { throw thrownValue; });
+                expect(RecipeCockpitOrgChangeDetection.copyFieldFiles(workspaceRoot, [{ objectApiName: 'Account', fieldApiName: 'Is_Priority__c', status: 'new', stagedFilePath, targetFilePath }]))
+                    .toEqual({ copiedCount: 0, failures: ['Account.Is_Priority__c: disk full'] });
+            });
+
+        });
+
+        it('names the error of a write that fails, leaving no temporary file', async () => {
+
+            await withWorkspaceCopy(async (workspaceRoot, stagingFolderPath) => {
+                const stagedFilePath = path.join(stagingFolderPath, 'main', 'default', 'objects', 'Account', 'fields', 'Is_Priority__c.field-meta.xml');
+                const targetFilePath = path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'Account', 'fields', 'Is_Priority__c.field-meta.xml');
+                jest.spyOn(fs, 'renameSync').mockImplementation(() => { throw new Error('EPERM: rename\nrefused'); });
+
+                const copyResult = RecipeCockpitOrgChangeDetection.copyFieldFiles(workspaceRoot, [{ objectApiName: 'Account', fieldApiName: 'Is_Priority__c', status: 'new', stagedFilePath, targetFilePath }]);
+
+                expect(copyResult).toEqual({ copiedCount: 0, failures: ['Account.Is_Priority__c: EPERM: rename refused'] });
+                expect(fs.readdirSync(path.dirname(targetFilePath)).filter(fileName => fileName.endsWith('.tmp'))).toEqual([]);
+            });
+
+        });
+
+    });
+
+    describe('the hints', () => {
+
+        const treeObjectNames = [{ objectApiName: 'Account', objectLabel: 'Account' }, { objectApiName: 'Gadget__c', objectLabel: 'Gadget (Lab)' }];
+
+        it('lists source tracking rows naming a tree object, as Salesforce reads names, and counts what it cannot read', () => {
+
+            const hintList = RecipeCockpitOrgChangeDetection.parseSourceMembers({ records: [
+                { MemberType: 'CustomField', MemberName: 'account.Rating__c', RevisionCounter: 9, LastModifiedDate: '2026-10-20T08:15:00.000+0000' },
+                { MemberType: 'CustomObject', MemberName: 'Gadget__c', LastModifiedDate: 'yesterday' },
+                { MemberType: 'CustomField', MemberName: 'Case.Origin__c' },
+                { MemberType: 'ApexClass', MemberName: 'Account' },
+                { MemberType: 'CustomField', MemberName: 'Account.Bad Name' },
+                { MemberType: 'CustomField', MemberName: 'Account..x' },
+                { MemberType: 'CustomField' },
+                null
+            ] }, treeObjectNames);
+
+            expect(hintList).toEqual({
+                rows: [
+                    { objectApiName: 'Account', text: 'CustomField account.Rating__c', changedAt: '2026-10-20T08:15:00.000+0000' },
+                    { objectApiName: 'Gadget__c', text: 'CustomObject Gadget__c', changedAt: '' }
+                ],
+                moreCount: 0,
+                skippedCount: 5
+            });
+
+        });
+
+        it('lists audit trail rows naming a tree object by api name or label as a whole word, and ignores the rest', () => {
+
+            const hintList = RecipeCockpitOrgChangeDetection.parseSetupAuditTrail({ records: [
+                { Display: 'Created custom field Tier (Picklist) on Account', CreatedDate: '2026-10-21T09:00:00Z', CreatedBy: { Name: 'Ada\nLovelace' } },
+                { Display: 'Changed Gadget (Lab) page layout', CreatedDate: 'nope' },
+                { Display: 'Changed Accounts settings' },
+                { Display: 'Created custom field on Opportunity' },
+                { Display: '' },
+                { Section: 'Manage Users' },
+                null
+            ] }, treeObjectNames);
+
+            expect(hintList).toEqual({
+                rows: [
+                    { objectApiName: 'Account', text: 'Created custom field Tier (Picklist) on Account · Ada Lovelace', changedAt: '2026-10-21T09:00:00Z' },
+                    { objectApiName: 'Gadget__c', text: 'Changed Gadget (Lab) page layout', changedAt: '' }
+                ],
+                moreCount: 0,
+                skippedCount: 3
+            });
+
+        });
+
+        it('keeps the first rows past its limit and counts the rest', () => {
+
+            const records = Array.from({ length: 53 }, (_unused, index) => ({ MemberType: 'CustomField', MemberName: `Account.Field_${index}__c` }));
+            const hintList = RecipeCockpitOrgChangeDetection.parseSourceMembers({ records }, treeObjectNames);
+
+            expect(hintList.rows).toHaveLength(50);
+            expect(hintList.rows[0].text).toBe('CustomField Account.Field_0__c');
+            expect(hintList.moreCount).toBe(3);
+
+        });
+
+        it('throws on an answer with no records list, which the reader turns into a note', () => {
+
+            expect(() => RecipeCockpitOrgChangeDetection.parseSourceMembers({ totalSize: 1 }, treeObjectNames)).toThrow('no records list');
+            expect(() => RecipeCockpitOrgChangeDetection.parseSetupAuditTrail('nope', treeObjectNames)).toThrow('no records list');
+
+        });
+
+        it('reads each hint on its own query, and a failed one is a note naming only a plain error code', async () => {
+
+            const toolingQuery = jest.fn().mockRejectedValue(Object.assign(new Error('sObject type SourceMember is not supported'), { errorCode: 'INVALID_TYPE' }));
+            const query = jest.fn().mockResolvedValue({ records: [{ Display: 'Changed Account field Rating' }] });
+
+            const hints = await RecipeCockpitOrgChangeDetection.readChangeHints({ query, toolingQuery }, treeObjectNames);
+
+            expect(toolingQuery).toHaveBeenCalledWith(expect.stringMatching(/^SELECT MemberType, MemberName, RevisionCounter, LastModifiedDate FROM SourceMember /));
+            expect(query).toHaveBeenCalledWith(expect.stringMatching(/FROM SetupAuditTrail WHERE CreatedDate = LAST_N_DAYS:180 /));
+            expect(hints.sourceTracking).toEqual({ rows: [], moreCount: 0, skippedCount: 0, note: expect.stringContaining('does not track source') });
+            expect(hints.auditTrail.rows).toHaveLength(1);
+
+            const failingHints = await RecipeCockpitOrgChangeDetection.readChangeHints({
+                query: jest.fn().mockRejectedValue(Object.assign(new Error('token 00Dxx!secret'), { errorCode: 'INSUFFICIENT_ACCESS' })),
+                toolingQuery: jest.fn().mockResolvedValue({ size: 0 })
+            }, treeObjectNames);
+
+            expect(failingHints.sourceTracking.note).toBe('Source tracking could not be read. The marks come from the files alone.');
+            expect(failingHints.auditTrail.note).toBe('The setup audit trail could not be read (INSUFFICIENT_ACCESS). The user may lack View Setup and Configuration.');
+            expect(JSON.stringify(failingHints)).not.toContain('secret');
+
+            const thrownValueHints = await RecipeCockpitOrgChangeDetection.readChangeHints({
+                query: jest.fn().mockRejectedValue('refused'),
+                toolingQuery: jest.fn().mockRejectedValue(Object.assign(new Error('x'), { errorCode: 'not a code' }))
+            }, treeObjectNames);
+            expect(thrownValueHints.auditTrail.note).toBe('The setup audit trail could not be read. The user may lack View Setup and Configuration.');
+            expect(thrownValueHints.sourceTracking.note).toBe('Source tracking could not be read. The marks come from the files alone.');
+
+        });
+
+    });
+
+    describe('listNewChildObjects', () => {
+
+        it('lists each object\'s custom child objects the tree lacks, once each, sorted, and leaves out an object with none', () => {
+
+            const newChildObjectsByObject = RecipeCockpitOrgChangeDetection.listNewChildObjects([
+                { objectApiName: 'Account', childRelationships: [
+                    { childObjectApiName: 'Zeta__c', fieldApiName: 'Account__c' },
+                    { childObjectApiName: 'Alpha__c', fieldApiName: 'Second_Account__c' },
+                    { childObjectApiName: 'Zeta__c', fieldApiName: 'Beta_Account__c' },
+                    { childObjectApiName: 'Alpha__c', fieldApiName: 'Third_Account__c' },
+                    { childObjectApiName: 'Alpha__c', fieldApiName: 'Account__c' },
+                    { childObjectApiName: 'alpha__c', fieldApiName: 'account__c' },
+                    { childObjectApiName: 'Contact', fieldApiName: 'AccountId' },
+                    { childObjectApiName: 'gadget__c', fieldApiName: 'Account__c' },
+                    { childObjectApiName: 'Bad Name__c', fieldApiName: 'Account__c' }
+                ] },
+                { objectApiName: 'Gadget__c', childRelationships: [] },
+                { objectApiName: 'Contact' }
+            ], ['Account', 'Gadget__c', 'Contact']);
+
+            expect([...newChildObjectsByObject.entries()]).toEqual([
+                ['Account', { childObjects: [
+                    { childObjectApiName: 'Alpha__c', fieldApiName: 'Account__c' },
+                    { childObjectApiName: 'Alpha__c', fieldApiName: 'Second_Account__c' },
+                    { childObjectApiName: 'Alpha__c', fieldApiName: 'Third_Account__c' },
+                    { childObjectApiName: 'Zeta__c', fieldApiName: 'Account__c' },
+                    { childObjectApiName: 'Zeta__c', fieldApiName: 'Beta_Account__c' }
+                ], moreCount: 0 }]
+            ]);
+
+        });
+
+        it('lists at most its limit and counts the rest', () => {
+
+            const childRelationships = Array.from({ length: 103 }, (_unused, index) => ({ childObjectApiName: `Child_${String(index).padStart(3, '0')}__c`, fieldApiName: 'Account__c' }));
+            const { childObjects, moreCount } = RecipeCockpitOrgChangeDetection.listNewChildObjects([{ objectApiName: 'Account', childRelationships }], ['Account']).get('Account')!;
+
+            expect(childObjects).toHaveLength(100);
+            expect(moreCount).toBe(3);
+
+        });
+
+    });
+
 });
