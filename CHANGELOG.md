@@ -13,6 +13,17 @@ The friend chip (#411) drew a hand-made holding-hands SVG that matched none of t
 - **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say what 👥 and 🌳 mean.
 - **Tests.** `RecipeCockpitFriendChips.test.ts` and `RecipeCockpitNicknameReferences.test.ts` check each emoji, its `aria-hidden` and the unchanged labels, and that neither search finds a row by an emoji; the suites reading a nickname read its `treeNicknameText` span.
 
+## [3.135.1] - Recipe Cockpit: the org section is "Target Org Manager", on a light tint of its own
+
+Closes [#433](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/433).
+
+"Target Org Management" read like a process, not a place in the panel, and the pinned section's background (`--sdt-page`) was almost the same as the boxes around it, so it didn't stand out from the cards scrolling under it.
+
+- **A shorter name.** The section is titled **Target Org Manager** (`RECIPE_COCKPIT_ORG_SECTION_TITLE`), on its header and its `aria-label`. Every refusal, tooltip and ? help line that named the section, and the guide, now use the new name.
+- **Its own light background.** `#cockpitOrgSection` draws a new palette token, `orgSection` (`--sdt-org-section`, `#EEF3FB`), and is padded on its sides so its contents sit off the tint's edge. The token is separate from `header`, so a retuned header colour (#434) doesn't recolour the section. It is opaque, so cards scrolling under the pinned section don't show through, and a test holds it to a solid `#RRGGBB` that differs from the page.
+- **Held to contrast.** `orgSection` joins the contrast test's backgrounds, so every text token is held to 4.5:1 on it (33 pairs, from 27).
+- The guide's screenshots are re-taken.
+
 ## [3.135.0] - Recipe Cockpit: the TODO's and Validation Rules groups are cards, matching the action cards
 
 Closes [#383](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/383).

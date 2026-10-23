@@ -1110,7 +1110,7 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             return panel.findAll(leadCard, 'treeInsert')[0];
         };
 
-        it('draws "+ New scratch org" beside the org dropdown in the Target Org Management section (#348, #355), never in the toolbar or a card, and posts a message that carries nothing', () => {
+        it('draws "+ New scratch org" beside the org dropdown in the Target Org Manager section (#348, #355), never in the toolbar or a card, and posts a message that carries nothing', () => {
 
             const panel = renderPanel();
 

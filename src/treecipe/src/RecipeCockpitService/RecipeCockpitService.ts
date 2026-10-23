@@ -113,6 +113,7 @@ export type RecipeCockpitPaletteToken =
     | 'rowHover' | 'chipBg' | 'chipText'
     | 'added' | 'removed' | 'changed'
     | 'disabledBg' | 'disabledText'
+    | 'orgSection'
     | 'excludedOverlay'
     | 'dialogBackdrop';
 
@@ -140,6 +141,8 @@ export const RECIPE_COCKPIT_PALETTE: Readonly<Record<RecipeCockpitPaletteToken, 
     changed: '#B45309',
     disabledBg: '#E5E7EB',
     disabledText: '#4B5563',
+    // THE PINNED TARGET ORG MANAGER SECTION'S OWN LIGHT TINT (#433), A TOKEN OF ITS OWN SO A RETUNED header NEVER RECOLOURS IT; IT MUST STAY OPAQUE, SINCE CARDS SCROLL UNDER IT
+    orgSection: '#EEF3FB',
     // SLATE GRAY AT 40%, LAID OVER AN OBJECT THE STRUCTURE TAB EXCLUDES (#219); --sdt-text UNDER IT HOLDS 4.5:1, A TEST COMPOSITES IT
     excludedOverlay: 'rgba(148, 163, 184, 0.40)',
     // --sdt-text AT 50%, BEHIND AN IN-PANEL CONFIRMATION (#349); A TEST COMPOSITES IT AND HOLDS THE DIALOG'S EDGE TO 3:1 AGAINST IT
@@ -433,7 +436,7 @@ export const RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_TITLE = 'Save the choice in tr
 export const RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE = 'The record type selection could not be saved in treecipe.config.json, so it was used for this run only.';
 export const RECIPE_COCKPIT_RECORD_TYPES_SECTION_TITLE = 'Record types';
 // THE PANEL'S TWO SECTIONS (#348): THE ONE ORG PICKER, ALWAYS OPEN (#355), THEN EVERY TREE CARD
-export const RECIPE_COCKPIT_ORG_SECTION_TITLE = 'Target Org Management';
+export const RECIPE_COCKPIT_ORG_SECTION_TITLE = 'Target Org Manager';
 export const RECIPE_COCKPIT_TREECIPES_SECTION_TITLE = 'Treecipes';
 // THE TREECIPES SECTION DRAWS ONE CARD, CHOSEN IN A DROPDOWN, UNDER ONE SEARCH ACROSS EVERY CARD (#374)
 export const RECIPE_COCKPIT_TREECIPE_PICKER_LABEL = 'Treecipe';
@@ -518,7 +521,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.',
-            'Under the run list, the Target Org Management section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll. The Treecipes section below it shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with ✎.',
+            'Under the run list, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll. The Treecipes section below it shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with ✎.',
             'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
             'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
@@ -559,7 +562,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against any connected org you pick in the command palette (a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.',
-            'The Treecipe Updater tab, after Query, draws the tree\'s objects and fields as the Treecipe tab does. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the tree\'s existing records, with the fields you ticked and an optional WHERE per object, from the sandbox or scratch org chosen in Target Org Management (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to treecipe/UpdateAttempts first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
+            'The Treecipe Updater tab, after Query, draws the tree\'s objects and fields as the Treecipe tab does. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the tree\'s existing records, with the fields you ticked and an optional WHERE per object, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to treecipe/UpdateAttempts first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
         ]
     },
     {
@@ -2021,7 +2024,7 @@ export const RECIPE_COCKPIT_QUERY_TAB_LABEL = 'Query';
     writes nothing, and the box of a field the Updater cannot change is disabled with the reason.
 */
 export const RECIPE_COCKPIT_UPDATER_TAB_LABEL = 'Treecipe Updater';
-export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads this tree\'s records, with those fields, from the sandbox or scratch org chosen in Target Org Management. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with ✎. Update records writes those values to the records by Id, after saving their old values to treecipe/UpdateAttempts, and Restore previous values… puts saved ones back.';
+export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads this tree\'s records, with those fields, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with ✎. Update records writes those values to the records by Id, after saving their old values to treecipe/UpdateAttempts, and Restore previous values… puts saved ones back.';
 export const RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER = 'Search objects and fields';
 export const RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN = 'No fields chosen';
 export const RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON = 'read from the recipe file, so its type is not known';
@@ -2030,7 +2033,7 @@ export const RECIPE_COCKPIT_UPDATER_LOOKUP_REASON = 'a lookup points to another 
 export const RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON = 'Salesforce sets this field\'s value';
 // AN AUTO NUMBER OR A ROLL-UP SUMMARY IS COMPUTED BY THE ORG, SO AN UPDATE OF IT FAILS; A FORMULA IS TOO, BUT THE WRAPPER DOES NOT RECORD ONE
 export const RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES = ['AutoNumber', 'Summary'];
-// THE UPDATER'S LOAD (#416): THE TREE'S EXISTING RECORDS, READ FROM THE SANDBOX TARGET ORG MANAGEMENT HAS SELECTED
+// THE UPDATER'S LOAD (#416): THE TREE'S EXISTING RECORDS, READ FROM THE SANDBOX TARGET ORG MANAGER HAS SELECTED
 export const RECIPE_COCKPIT_UPDATER_LOAD_LABEL = 'Load records';
 export const RECIPE_COCKPIT_UPDATER_LOADING_LABEL = 'Loading…';
 export const RECIPE_COCKPIT_UPDATER_WHERE_PLACEHOLDER = 'WHERE (optional), e.g. CreatedDate = LAST_N_DAYS:30';
@@ -8727,7 +8730,7 @@ export class RecipeCockpitService {
     }
 
     /*
-        "Load records" (#416): one per window. The org is the Target Org Management selection, only
+        "Load records" (#416): one per window. The org is the Target Org Manager selection, only
         once it answered it is a sandbox; with none, it is asked for as the insert asks (#375). One
         SELECT per tree object, built from the tree, every page read up to the Query tab's record cap
         and a value budget the whole load shares, cancellable between pages and objects. The records
@@ -9471,7 +9474,7 @@ export class RecipeCockpitService {
 
         const dataOrgSelection = panelState.dataOrgSelection;
         if ( dataOrgSelection?.orgTypeDetail?.isSandbox !== true ) {
-            return refuse('Nothing was updated: the org selected in Target Org Management has not answered that it is a sandbox or scratch org.');
+            return refuse('Nothing was updated: the org selected in Target Org Manager has not answered that it is a sandbox or scratch org.');
         }
 
         const orgDetail = dataOrgSelection.orgDetail;
@@ -9727,7 +9730,7 @@ export class RecipeCockpitService {
 
         const dataOrgSelection = panelState.dataOrgSelection;
         if ( dataOrgSelection?.orgTypeDetail?.isSandbox !== true ) {
-            return refuse('Nothing was restored: the org selected in Target Org Management has not answered that it is a sandbox or scratch org.');
+            return refuse('Nothing was restored: the org selected in Target Org Manager has not answered that it is a sandbox or scratch org.');
         }
 
         // RESOLVED AGAIN, NOT TAKEN FROM THE LIST: IT MAY HAVE GONE, OR BECOME A LINK, SINCE IT WAS LISTED
@@ -9755,7 +9758,7 @@ export class RecipeCockpitService {
 
         // AN Id NAMES A RECORD IN ONE ORG: THE VALUES GO BACK ONLY WHERE THEY WERE TAKEN
         if ( snapshot.orgUsername !== orgUsername ) {
-            return refuse(`Nothing was restored: ${snapshotName} was taken in ${snapshot.orgUsername}, not ${orgLabel}. Select that org in Target Org Management.`);
+            return refuse(`Nothing was restored: ${snapshotName} was taken in ${snapshot.orgUsername}, not ${orgLabel}. Select that org in Target Org Manager.`);
         }
 
         // ONLY WHAT AN UPDATE OF THIS CARD COULD HAVE WRITTEN: ITS OBJECTS, AND FIELDS THE UPDATER DOES NOT LOCK
@@ -11981,7 +11984,7 @@ export class RecipeCockpitService {
 
     /*
         "Generate fake data and insert" with no org chosen yet (#375). The org is asked for in the
-        command palette over the same listing the Target Org Management dropdown draws (sandbox,
+        command palette over the same listing the Target Org Manager dropdown draws (sandbox,
         scratch and the CLI's default only), then put in the dropdown and checked exactly as a pick
         there is -- connection, Organization row, describes -- and remembered. Only an org that
         answered it is a sandbox goes on to the insert, through the router like a click, so every
@@ -12038,7 +12041,7 @@ export class RecipeCockpitService {
     }
 
     /*
-        The org asked for in the command palette over the listing the Target Org Management dropdown
+        The org asked for in the command palette over the listing the Target Org Manager dropdown
         draws (sandbox, scratch and the CLI's default only), put in the dropdown and checked exactly
         as a pick there is -- connection, Organization row, describes -- and remembered (#375). The
         insert (#375) and the Treecipe Updater's load (#416) both ask through it. True only when the
@@ -13875,7 +13878,7 @@ export class RecipeCockpitService {
                         kind: 'refuseUpdaterLoad',
                         refusalText: dataOrgSelection
                             ? `Nothing was updated: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Updater updates only a sandbox or scratch org.`
-                            : 'Nothing was updated: choose the sandbox or scratch org the records were loaded from in Target Org Management.',
+                            : 'Nothing was updated: choose the sandbox or scratch org the records were loaded from in Target Org Manager.',
                         hostMessage: notRunning
                     };
                 }
@@ -13938,7 +13941,7 @@ export class RecipeCockpitService {
                         kind: 'refuseUpdaterLoad',
                         refusalText: dataOrgSelection
                             ? `Nothing was restored: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Updater restores only a sandbox or scratch org.`
-                            : 'Nothing was restored: choose the sandbox or scratch org the update was made in, in Target Org Management.',
+                            : 'Nothing was restored: choose the sandbox or scratch org the update was made in, in Target Org Manager.',
                         hostMessage: notRunning
                     };
                 }
@@ -16274,7 +16277,7 @@ ${this.buildPaletteCustomProperties()}
     .treecipeHeader { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
     .cockpitSection { margin: 0.6rem 0; }
     .cockpitSectionHeader { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; cursor: default; border-bottom: 1px solid var(--sdt-border); }
-    #cockpitOrgSection { position: sticky; top: 0; z-index: 10; margin: 0; padding: 0.6rem 0; background-color: var(--sdt-page); border-bottom: 1px solid var(--sdt-border); }
+    #cockpitOrgSection { position: sticky; top: 0; z-index: 10; margin: 0; padding: 0.6rem; background-color: var(--sdt-org-section); border-bottom: 1px solid var(--sdt-border); }
     html:has(#cockpitOrgSection) { scroll-padding-top: ${RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING}; }
     .cockpitSectionTitle { font-weight: 600; font-size: 1.1em; }
     #cockpitOrgSectionBody { padding: 0.5rem 0.6rem; margin-top: 0.4rem; background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 8px; }
@@ -21336,7 +21339,7 @@ ${this.buildPaletteCustomProperties()}
 
     /*
         The top of a card's Treecipe tab: Reset selection, then "Generate fake data and insert into
-        <org>". The org picker is the panel's Target Org Management section since #348, not a view per card. Each posts
+        <org>". The org picker is the panel's Target Org Manager section since #348, not a view per card. Each posts
         the tree's KEY alone; which org, which recipe file, which counts and which objects are the
         host's.
     */
@@ -23048,9 +23051,9 @@ ${this.buildPaletteCustomProperties()}
                 const isThisRestoring = isThisCardLoading && updaterRunKind === 'restore' && updaterRestoringSnapshotName === snapshotButton.snapshotName;
                 snapshotButton.element.disabled = updaterLoadRunningTreeKey !== null;
                 snapshotButton.element.textContent = isThisRestoring ? UPDATER_RESTORING_LABEL : UPDATER_RESTORE_LABEL;
-                snapshotButton.element.setAttribute('title', 'Set each record this update changed back to the value it held before, by Id, in the sandbox selected in Target Org Management. The values they hold now are saved to treecipe/UpdateAttempts first.');
+                snapshotButton.element.setAttribute('title', 'Set each record this update changed back to the value it held before, by Id, in the sandbox selected in Target Org Manager. The values they hold now are saved to treecipe/UpdateAttempts first.');
             });
-            treeState.updaterLoadButtonElement.setAttribute('title', 'Read this tree’s records, with the fields you chose, from the sandbox or scratch org chosen in Target Org Management. It only reads.');
+            treeState.updaterLoadButtonElement.setAttribute('title', 'Read this tree’s records, with the fields you chose, from the sandbox or scratch org chosen in Target Org Manager. It only reads.');
 
             const generateElement = treeState.updaterGenerateButtonElement;
             if (!generateElement) { return; }
@@ -24532,7 +24535,7 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    // THE TARGET ORG MANAGEMENT (#355) AND TREECIPES (#364) SECTIONS: A HEADER AND A BODY, WITH NO TOGGLE AND NO LISTENER
+    // THE TARGET ORG MANAGER (#355) AND TREECIPES (#364) SECTIONS: A HEADER AND A BODY, WITH NO TOGGLE AND NO LISTENER
     function buildStaticCockpitSection(sectionId, title) {
 
         const sectionElement = createElement('section', 'cockpitSection');

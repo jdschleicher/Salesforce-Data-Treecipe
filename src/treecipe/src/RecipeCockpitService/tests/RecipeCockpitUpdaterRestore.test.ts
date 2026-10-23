@@ -596,7 +596,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s restore (#419)', () => {
             ['an Id written to break out of the query', () => { const snapshot: any = validSnapshot(); snapshot.objects[0].records[0].recordId = '001\') OR (Id != \''; return JSON.stringify(snapshot); },
                 'Nothing was restored: 20261023-100000-before.json was refused, because a record of Account in it has no Salesforce Id or no values.'],
             ['another org', () => JSON.stringify({ ...validSnapshot(), orgUsername: 'prod@example.com' }),
-                'Nothing was restored: 20261023-100000-before.json was taken in prod@example.com, not qa · qa@example.com.qa. Select that org in Target Org Management.'],
+                'Nothing was restored: 20261023-100000-before.json was taken in prod@example.com, not qa · qa@example.com.qa. Select that org in Target Org Manager.'],
             ['another tree', () => JSON.stringify({ ...validSnapshot(), treeFolderName: 'Lead-ONLY' }),
                 `Nothing was restored: 20261023-100000-before.json names the tree Lead-ONLY, not ${ACCOUNT_TREE_KEY}.`],
             ['an object that is not the tree\'s', () => { const snapshot: any = validSnapshot(); snapshot.objects[0].objectApiName = 'Opportunity'; return JSON.stringify(snapshot); },
@@ -858,7 +858,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s restore (#419)', () => {
             selectOrg(false);
             expect(route()).toMatchObject({ refusalText: 'Nothing was restored: qa is not a sandbox or scratch org, and the Treecipe Updater restores only a sandbox or scratch org.' });
             panelState().dataOrgSelection = undefined;
-            expect(route()).toMatchObject({ refusalText: 'Nothing was restored: choose the sandbox or scratch org the update was made in, in Target Org Management.' });
+            expect(route()).toMatchObject({ refusalText: 'Nothing was restored: choose the sandbox or scratch org the update was made in, in Target Org Manager.' });
 
             selectOrg();
             holdSelection(panelState());

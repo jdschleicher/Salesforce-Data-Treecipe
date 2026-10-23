@@ -557,7 +557,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
             panelState().dataOrgSelection = undefined;
             expect(RecipeCockpitService.routePanelMessage({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY }, panelState())).toMatchObject({
                 kind: 'refuseUpdaterLoad',
-                refusalText: 'Nothing was updated: choose the sandbox or scratch org the records were loaded from in Target Org Management.'
+                refusalText: 'Nothing was updated: choose the sandbox or scratch org the records were loaded from in Target Org Manager.'
             });
 
         });
@@ -1015,7 +1015,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
             // THE SELECTION STOPPED BEING A CHECKED SANDBOX BETWEEN THE CLICK AND THE RUN
             selectOrg(SANDBOX_ORG, false);
             await runUpdate();
-            expect(warnings().at(-1)).toBe('Nothing was updated: the org selected in Target Org Management has not answered that it is a sandbox or scratch org.');
+            expect(warnings().at(-1)).toBe('Nothing was updated: the org selected in Target Org Manager has not answered that it is a sandbox or scratch org.');
 
             selectOrg(SANDBOX_ORG);
             const heldValues = (RecipeCockpitService as any).heldUpdaterValues;
