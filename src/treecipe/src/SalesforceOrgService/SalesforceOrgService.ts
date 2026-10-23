@@ -57,6 +57,8 @@ export interface INormalizedOrgField {
     referenceTo: string[];
     isNillable: boolean;
     isCreateable: boolean;
+    // THE DESCRIBE'S updateable: WHETHER THE USER CAN CHANGE THE FIELD ON AN EXISTING RECORD (#418)
+    isUpdateable: boolean;
     isCalculated: boolean;
     isDefaultedOnCreate: boolean;
     // THE DESCRIBE'S nameField: THE ONE FIELD A RECORD IS NAMED BY (Name, CaseNumber, ...)
@@ -68,6 +70,8 @@ export interface INormalizedOrgObjectDescribe {
     objectApiName: string;
     objectLabel: string;
     isCreateable: boolean;
+    // THE OBJECT'S OWN "updateable" -- WHETHER THE USER CAN UPDATE RECORDS OF IT AT ALL (#418)
+    isUpdateable: boolean;
     fields: INormalizedOrgField[];
     // THE THREE CHARACTERS EVERY RECORD Id OF THE OBJECT STARTS WITH; ABSENT WHEN THE DESCRIBE NAMES NONE
     keyPrefix?: string;
@@ -1541,6 +1545,7 @@ export class SalesforceOrgService {
                     : [],
                 isNillable: fieldRecord.nillable === true,
                 isCreateable: fieldRecord.createable === true,
+                isUpdateable: fieldRecord.updateable === true,
                 isCalculated: fieldRecord.calculated === true,
                 isDefaultedOnCreate: fieldRecord.defaultedOnCreate === true,
                 isNameField: fieldRecord.nameField === true
@@ -1554,6 +1559,7 @@ export class SalesforceOrgService {
             objectApiName: typeof describedObjectApiName === 'string' && describedObjectApiName ? describedObjectApiName : requestedObjectApiName,
             objectLabel: this.asString(describeRecord.label),
             isCreateable: describeRecord.createable === true,
+            isUpdateable: describeRecord.updateable === true,
             fields: fields,
             ...( typeof describeRecord.keyPrefix === 'string' && /^[A-Za-z0-9]{3}$/.test(describeRecord.keyPrefix) ? { keyPrefix: describeRecord.keyPrefix } : {} )
         };

@@ -91,6 +91,7 @@ function buildOrgField(fieldApiName: string, fieldType: string, overrides: Parti
         referenceTo: [],
         isNillable: true,
         isCreateable: true,
+        isUpdateable: true,
         isCalculated: false,
         isDefaultedOnCreate: false,
         isNameField: false,
@@ -110,6 +111,7 @@ const ACCOUNT_ORG_DESCRIBE: INormalizedOrgObjectDescribe = {
     objectApiName: 'Account',
     objectLabel: 'Account',
     isCreateable: true,
+    isUpdateable: true,
     fields: [
         buildOrgField('Id', 'id', { isCreateable: false }),
         buildOrgField('Name', 'string'),
