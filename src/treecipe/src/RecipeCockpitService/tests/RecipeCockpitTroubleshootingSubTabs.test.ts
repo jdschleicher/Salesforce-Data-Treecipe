@@ -275,7 +275,8 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s sub-tabs (#365)', () 
             // THE FIRST GROUP ALWAYS OPENS; THE NEXT WOULD PASS THE ROW BUDGET, SO IT AND EVERY LATER ONE STAY CLOSED AND UNBUILT
             expect(groups.map(rowCountOf)).toEqual([1503, 0, 0]);
             expect(groups.map((groupElement: any) => toggleOf(groupElement).attributes['aria-expanded'])).toEqual(['true', 'false', 'false']);
-            expect(groups.every((groupElement: any) => toggleOf(groupElement).classList.contains('chevronToggle'))).toBe(true);
+            // EACH GROUP'S CARD HEADER IS ITS TOGGLE (#383)
+            expect(groups.every((groupElement: any) => toggleOf(groupElement).classList.contains('sdtButton-card'))).toBe(true);
             expect(panel.findAll(groups[1], 'troubleshootingTodoCount')[0].textContent).toBe('1501 TODOs');
 
             toggleOf(groups[1]).dispatch('click');
