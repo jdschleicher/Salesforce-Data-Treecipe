@@ -15834,9 +15834,10 @@ ${this.buildPaletteCustomProperties()}
     .treeQueryTable th, .treeQueryTable td { border: 1px solid var(--sdt-border); padding: 0.15rem 0.4rem; text-align: left; vertical-align: top; white-space: pre-wrap; }
     /*
         A TODO or validation rule group is a card (#383): the action cards' surface, border and
-        radius around a header that is the card kind's button. Closed, the header fills the card's
-        fixed height and the groups tile like the action cards; open, the header shrinks to its
-        content, the card takes the grid's full width and grows to hold its rows.
+        radius around a header that is the card kind's button. Closed, the header button fills the
+        card's fixed height and the groups tile like the action cards; open, the header shrinks to
+        its content, the card takes the grid's full width and grows to hold its rows. A text header
+        (nothing to open) neither fills the card nor turns its border accent on hover.
     */
     .troubleshootingGroupCards {
         display: grid;
@@ -15857,26 +15858,26 @@ ${this.buildPaletteCustomProperties()}
         border-radius: 8px;
     }
     .troubleshootingGroupCard.expanded { grid-column: 1 / -1; }
-    .troubleshootingGroupCard:has(> .troubleshootingGroupCardHeader:hover) { border-color: var(--sdt-accent); }
+    .troubleshootingGroupCard:has(> button.troubleshootingGroupCardHeader:hover) { border-color: var(--sdt-accent); }
     .troubleshootingGroupCard > .troubleshootingGroupCardHeader {
         box-sizing: border-box;
         display: flex;
         flex-direction: column;
         gap: 0.3rem;
-        flex: 1 0 auto;
+        flex: 0 0 auto;
         width: 100%;
         height: auto;
         padding: 0.6rem 0.75rem;
         border: none;
         border-radius: 7px;
     }
-    .troubleshootingGroupCard.expanded > .troubleshootingGroupCardHeader { flex-grow: 0; border-radius: 7px 7px 0 0; }
+    .troubleshootingGroupCard:not(.expanded) > button.troubleshootingGroupCardHeader { flex-grow: 1; }
+    .troubleshootingGroupCard.expanded > .troubleshootingGroupCardHeader { border-radius: 7px 7px 0 0; }
     .troubleshootingGroupCardLabel { min-width: 0; overflow-wrap: anywhere; color: var(--sdt-accent); }
     .troubleshootingGroupCardHeading .troubleshootingTodoCount, .troubleshootingGroupCardHeading .validationRuleCount { margin-left: auto; flex: none; font-weight: normal; }
     .validationRuleDetail { font-size: 0.95em; }
     .troubleshootingTodoRows, .validationRuleRows { padding: 0 0.75rem 0.6rem; }
     .validationRuleEmpty, .validationRuleUnread { padding: 0 0.75rem 0.6rem; }
-    .validationRuleList { margin-top: 0.4rem; }
     .validationRuleCount { font-size: 0.9em; }
     .validationRule { margin: 0.3rem 0 0 0; padding: 0.3rem 0.5rem; border: 1px solid var(--sdt-border); border-radius: 6px; font-size: 0.9em; }
     .validationRuleHeader { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
@@ -22830,7 +22831,7 @@ ${this.buildPaletteCustomProperties()}
         const entry = {
             rule: rule,
             ruleName: String(rule.ruleName),
-            statusLabel: VALIDATION_RULE_STATUS_LABELS[rule.status] || String(rule.status),
+            statusLabel: hasOwnKey(VALIDATION_RULE_STATUS_LABELS, rule.status) ? VALIDATION_RULE_STATUS_LABELS[rule.status] : String(rule.status),
             activeLabel: rule.isActive === true ? 'active' : rule.isActive === false ? 'inactive' : '',
             messageText: typeof rule.errorMessage === 'string' && rule.errorMessage !== '' ? 'Error message: ' + rule.errorMessage : '',
             fieldsText: fieldApiNames.length > 0 ? 'Constrains: ' + fieldApiNames.map(String).join(', ') : VALIDATION_RULE_NO_FIELDS_NOTE,

@@ -214,6 +214,18 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s group cards (#383)', 
 
     });
 
+    it('labels a status named like an Object member by its own name, and still draws the list', () => {
+
+        const panel = drawRecipe(loadRecipe(VALIDATION_RULE_WORKSPACE_ROOT, VALIDATION_RULE_RUN_FOLDER_NAME));
+        const subPanel = openValidationRules(panel, [
+            { objectApiName: 'Gadget__c', rules: [rule('A', '__proto__'), rule('B', 'constructor'), rule('C', 'toString'), rule('D', 'applied')] }
+        ]);
+
+        expect(panel.findAll(subPanel, 'validationRuleDetail')[0].textContent).toBe('1 applied · 1 __proto__ · 1 constructor · 1 tostring');
+        expect(panel.findAll(subPanel, 'validationRuleStatus').map((statusElement: any) => statusElement.textContent)).toEqual(['__proto__', 'constructor', 'toString', 'Applied']);
+
+    });
+
     describe('the stylesheet', () => {
 
         it('puts the group on the action cards\' surface, border and radius, closed at the card height, open across the grid', () => {
@@ -229,11 +241,15 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s group cards (#383)', 
             expect(ruleFor('.troubleshootingGroupCards')).toContain('align-items: start;');
             expect(ruleFor('.troubleshootingGroupCard.expanded')).toContain('grid-column: 1 / -1;');
 
-            // THE HEADER FILLS A CLOSED CARD AND SHRINKS TO ITS CONTENT IN AN OPEN ONE
+            // A HEADER BUTTON FILLS A CLOSED CARD AND SHRINKS TO ITS CONTENT IN AN OPEN ONE; A TEXT HEADER NEVER FILLS IT
             const headerRule = ruleFor('.troubleshootingGroupCard > .troubleshootingGroupCardHeader');
             expect(headerRule).toContain('height: auto;');
-            expect(headerRule).toContain('flex: 1 0 auto;');
-            expect(ruleFor('.troubleshootingGroupCard.expanded > .troubleshootingGroupCardHeader')).toContain('flex-grow: 0;');
+            expect(headerRule).toContain('flex: 0 0 auto;');
+            expect(ruleFor('.troubleshootingGroupCard:not(.expanded) > button.troubleshootingGroupCardHeader')).toContain('flex-grow: 1;');
+
+            // ONLY A CARD THAT OPENS ANSWERS A HOVER
+            expect(ruleFor('.troubleshootingGroupCard:has(> button.troubleshootingGroupCardHeader:hover)')).toContain('border-color: var(--sdt-accent);');
+            expect(styleSheet()).not.toMatch(/\.troubleshootingGroupCard:has\(> \.troubleshootingGroupCardHeader:hover\)/);
 
         });
 
