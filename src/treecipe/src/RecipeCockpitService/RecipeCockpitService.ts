@@ -347,10 +347,11 @@ export const RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH = 'M4.5 8 H6.5 A4 4 0 0 1 6.5
 export const RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH = 'M4 20 L5 15 L15.5 4.5 L19.5 8.5 L9 19 Z M13.5 6.5 L17.5 10.5';
 export const RECIPE_COCKPIT_FIXED_VALUE_BADGE_LABEL = 'fixed';
 /*
-    A friend chip (#411): two people holding hands, one path built like the chain link and stroked
-    from the palette, in front of "<parent nickname>-<n>" on every row nested under friends:.
+    A friend chip (#411) and a row's nickname (#380) each start with an emoji (#432), hidden from a
+    screen reader: the chip is named by its words, and a nickname is the text beside it.
 */
-export const RECIPE_COCKPIT_FRIEND_GLYPH_PATH = 'M5 5 A2 2 0 1 0 9 5 A2 2 0 1 0 5 5 Z M15 5 A2 2 0 1 0 19 5 A2 2 0 1 0 15 5 Z M7 8 V15 L5 21 M7 15 L9 21 M17 8 V15 L15 21 M17 15 L19 21 M7 10 L12 13 L17 10 M7 10 L4 14 M17 10 L20 14';
+export const RECIPE_COCKPIT_FRIEND_EMOJI = '👥';
+export const RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI = '🌳';
 export const RECIPE_COCKPIT_EDITED_EXPRESSION_BADGE_LABEL = 'edited';
 /*
     A field's validation-rule checkbox (#325), at the end of its row: checked while the rules #324
@@ -535,8 +536,8 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
             'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
-            'Each object shows its nickname, the name its lookups use in the recipe file. Click it to list the fields that point to it and jump to one; a field holding a nickname shows it highlighted, and clicking it jumps back to that object.',
-            'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a holding-hands chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent.',
+            'Each object shows its nickname after a 🌳: the name the rows nested under it or pointing to it use for it in the recipe file. The 🌳 marks that name, not a tree card. Click it to list the fields that point to it and jump to one; a field holding a nickname shows it highlighted, and clicking it jumps back to that object.',
+            'A friend (an object nested under another\'s friends: in a faker-js recipe) shows a 👥 chip per parent: the parent\'s nickname and its place among that parent\'s friends, such as Account_NickName-2. Click a chip to jump to that parent.',
             'Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply. Tick TODOs only on a card\'s Treecipe tab to see just the fields and objects with one, or open its Troubleshooting tab, whose TODO\'s list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line. Its Open list holds the TODOs still in the recipe, and Removed the ones you took out.',
             'The Troubleshooting tab shows one area at a time: TODO\'s, Fields, Permissions, Validation Rules, Record Types and Global Value Sets, each with its own search. It opens on the one you chose last. Each action there is a card you click anywhere on, saying when you would need it and, when it cannot run, why.',
             'Validation Rules lists each object\'s validation rules from your project on a card you click to open, its header counting them by what Generate Treecipe did: whether each is active, its error message, the fields it constrains and whether Generate Treecipe applied it, or why not. Show formula opens a rule\'s formula.'
@@ -16293,7 +16294,7 @@ ${this.buildPaletteCustomProperties()}
     .treeObjectHeader:focus-within, .treeField:focus-within { background-color: var(--sdt-row-hover); }
     .treeObjectName { font-weight: 600; }
     .treeNicknameSlot { display: inline-flex; align-items: center; }
-    .treeNickname { font-size: 0.85em; }
+    .treeNickname { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85em; }
     .treeNicknameMenu {
         flex-basis: 100%;
         display: flex;
@@ -16311,9 +16312,7 @@ ${this.buildPaletteCustomProperties()}
     .treeNicknameBackLink { font-size: 0.85em; }
     .treeFriendSlot { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
     .treeFriendChip { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85em; }
-    .treeFriendGlyph { width: 1.1em; height: 1.1em; flex: none; }
-    .treeFriendGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-    .treeFriendChip.muted .treeFriendGlyph path { stroke: var(--sdt-muted); }
+    .treeChipEmoji { flex: none; }
     .treeObjectBody { padding-bottom: 0.25rem; }
     .treeField { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
     .treeFieldSelectAllRow { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
@@ -16768,7 +16767,8 @@ ${this.buildPaletteCustomProperties()}
     const TREE_BROKEN_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH)};
     const FIELD_PARENT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON)};
     const FIXED_VALUE_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH)};
-    const FRIEND_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_FRIEND_GLYPH_PATH)};
+    const FRIEND_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_FRIEND_EMOJI)};
+    const PARENT_NICKNAME_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI)};
     const TOGGLE_COLLAPSED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH)};
     const SEARCH_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_SEARCH_GLYPH_PATH)};
     const MOTION_REVEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS};
@@ -17830,7 +17830,9 @@ ${this.buildPaletteCustomProperties()}
         treeObjectState.nicknameChipElement = null;
 
         if (!usages || usages.length === 0) {
-            const nicknameTextElement = createElement('span', 'treeNickname muted', nickname);
+            const nicknameTextElement = createElement('span', 'treeNickname muted');
+            nicknameTextElement.appendChild(buildChipEmoji(PARENT_NICKNAME_EMOJI));
+            nicknameTextElement.appendChild(createElement('span', 'treeNicknameText', nickname));
             nicknameTextElement.setAttribute('title', usages
                 ? 'No field of this treecipe points to ' + nickname
                 : nickname + ' does not name exactly one object of this recipe, so no field can point to it');
@@ -17838,7 +17840,9 @@ ${this.buildPaletteCustomProperties()}
             return;
         }
 
-        const chipElement = createButton('secondary', 'treeNickname', nickname, 'compact');
+        const chipElement = createButton('secondary', 'treeNickname', '', 'compact');
+        chipElement.appendChild(buildChipEmoji(PARENT_NICKNAME_EMOJI));
+        chipElement.appendChild(createElement('span', 'treeNicknameText', nickname));
         chipElement.setAttribute('aria-haspopup', 'menu');
         chipElement.setAttribute('aria-expanded', 'false');
         chipElement.setAttribute('aria-label', nickname + ': ' + pluralize(usages.length, 'field points', 'fields point') + ' to it');
@@ -18140,19 +18144,11 @@ ${this.buildPaletteCustomProperties()}
 
     }
 
-    function buildFriendGlyph() {
+    function buildChipEmoji(emoji) {
 
-        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
-        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
-
-        glyphElement.setAttribute('class', 'treeFriendGlyph');
-        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
-        glyphElement.setAttribute('aria-hidden', 'true');
-        glyphElement.setAttribute('focusable', 'false');
-        pathElement.setAttribute('d', FRIEND_GLYPH_PATH);
-        glyphElement.appendChild(pathElement);
-
-        return glyphElement;
+        const emojiElement = createElement('span', 'treeChipEmoji', emoji);
+        emojiElement.setAttribute('aria-hidden', 'true');
+        return emojiElement;
 
     }
 
@@ -18173,7 +18169,7 @@ ${this.buildPaletteCustomProperties()}
                 ? createButton('secondary', 'treeFriendChip', '', 'compact')
                 : createElement('span', 'treeFriendChip muted');
 
-            chipElement.appendChild(buildFriendGlyph());
+            chipElement.appendChild(buildChipEmoji(FRIEND_EMOJI));
             chipElement.appendChild(createElement('span', 'treeFriendLabel', chip.label));
 
             if (chip.ownerState) {

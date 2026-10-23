@@ -13,7 +13,7 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
-import { RecipeCockpitService, IRecipeCockpitRecipeViewModel } from '../RecipeCockpitService';
+import { RecipeCockpitService, IRecipeCockpitRecipeViewModel, RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
 /*
@@ -84,7 +84,7 @@ describe('RecipeCockpitService, nicknames and the fields that point to them (#38
     };
 
     const objectElementNamed = (panel: any, nickname: string) => panel.objectElements()
-        .find((objectElement: any) => panel.findAll(objectElement.children[0], 'treeNickname').some((nicknameElement: any) => nicknameElement.textContent === nickname));
+        .find((objectElement: any) => panel.findAll(objectElement.children[0], 'treeNicknameText').some((nicknameElement: any) => nicknameElement.textContent === nickname));
     const nicknameChipOf = (panel: any, nickname: string) => panel.findAll(objectElementNamed(panel, nickname).children[0], 'treeNickname')[0];
     const menuItemsOf = (panel: any, nickname: string) => panel.findAll(objectElementNamed(panel, nickname).children[0], 'treeNicknameMenuItem');
     const menuItemLabels = (panel: any, nickname: string) => menuItemsOf(panel, nickname).map((itemElement: any) => itemElement.textContent);
@@ -123,7 +123,7 @@ describe('RecipeCockpitService, nicknames and the fields that point to them (#38
 
             const panel = renderModel(loadModel());
 
-            expect(panel.findAll(panel.cockpitBodyElement, 'treeNickname').map((element: any) => element.textContent)).toEqual([
+            expect(panel.findAll(panel.cockpitBodyElement, 'treeNicknameText').map((element: any) => element.textContent)).toEqual([
                 'Account_NickName', 'Account_child_NickName', 'Contact_NickName', 'Case_NickName', 'Opportunity_NickName', 'Lead_NickName'
             ]);
 
@@ -136,7 +136,7 @@ describe('RecipeCockpitService, nicknames and the fields that point to them (#38
             const nameIndex = headerChildren.findIndex((element: any) => element.classList.contains('treeObjectName'));
 
             expect(headerChildren[nameIndex + 1].classList.contains('treeNicknameSlot')).toBe(true);
-            expect(headerChildren[nameIndex + 1].children[0].textContent).toBe('Contact_NickName');
+            expect(panel.findAll(headerChildren[nameIndex + 1], 'treeNicknameText')[0].textContent).toBe('Contact_NickName');
 
             const iterationHeaderChildren = objectElementNamed(panel, 'Account_child_NickName').children[0].children;
             const iterationNameIndex = iterationHeaderChildren.findIndex((element: any) => element.classList.contains('treeObjectName'));
@@ -159,6 +159,24 @@ describe('RecipeCockpitService, nicknames and the fields that point to them (#38
                 expect(nicknameChipOf(panel, nickname).attributes.title).toBe(`No field of this treecipe points to ${nickname}`);
             });
             expect(nicknameChipOf(panel, 'Account_NickName').attributes['aria-label']).toBe('Account_NickName: 4 fields point to it');
+
+        });
+
+        it('starts every nickname, button or plain text, with a 🌳 hidden from a screen reader (#432)', () => {
+
+            const panel = renderModel(loadModel());
+
+            expect(RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI).toBe('🌳');
+            ['Account_NickName', 'Contact_NickName', 'Account_child_NickName', 'Lead_NickName'].forEach(nickname => {
+                const [emojiElement, textElement] = nicknameChipOf(panel, nickname).children;
+                expect(emojiElement.classList.contains('treeChipEmoji')).toBe(true);
+                expect(emojiElement.textContent).toBe('🌳');
+                expect(emojiElement.attributes['aria-hidden']).toBe('true');
+                expect(textElement.classList.contains('treeNicknameText')).toBe(true);
+                expect(textElement.textContent).toBe(nickname);
+            });
+            expect(nicknameChipOf(panel, 'Contact_NickName').attributes['aria-label']).not.toContain('🌳');
+            expect(nicknameChipOf(panel, 'Lead_NickName').attributes.title).not.toContain('🌳');
 
         });
 
@@ -461,7 +479,7 @@ describe('RecipeCockpitService, nicknames and the fields that point to them (#38
 
             expect(panel.objectElements()).toHaveLength(3);
             expect(backLinksOf(panel)).toEqual(['↖ constructor']);
-            expect(panel.findAll(panel.cockpitBodyElement, 'treeNickname').map((element: any) => element.textContent)).toEqual(['__proto__', 'constructor', 'hasOwnProperty']);
+            expect(panel.findAll(panel.cockpitBodyElement, 'treeNicknameText').map((element: any) => element.textContent)).toEqual(['__proto__', 'constructor', 'hasOwnProperty']);
 
         });
 
