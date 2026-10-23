@@ -24,8 +24,11 @@ export const RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME = 'UpdateAttempts';
 // TWO UPDATES OF ONE TREE IN ONE SECOND TAKE <ts>-2, <ts>-3, ... RATHER THAN SHARE A SNAPSHOT
 const UPDATE_ATTEMPT_FILE_ATTEMPTS = 20;
 
-// A FOLDER NAME IS ONE PLAIN SEGMENT: NO SEPARATOR, NO "." OR "..", NO CONTROL CHARACTER
-const FOLDER_NAME_PATTERN = /^(?!\.{1,2}$)[^\\/\u0000-\u001F\u007F]+$/;
+// A FOLDER NAME IS ONE PLAIN SEGMENT: NO SEPARATOR, NO CONTROL CHARACTER, AND NO TRAILING "." OR SPACE, WHICH WINDOWS STRIPS (SO NEITHER "." NOR "..")
+const FOLDER_NAME_PATTERN = /^[^\\/\u0000-\u001F\u007F]*[^\\/\u0000-\u001F\u007F. ]$/;
+
+// A WINDOWS DEVICE NAME, WITH OR WITHOUT AN EXTENSION: ScratchOrgService's RULE FOR AN OrgOperations FOLDER, NOT IMPORTED SO THIS STAYS FREE OF THE CLI SERVICES
+const WINDOWS_RESERVED_FOLDER_NAME_PATTERN = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
 
 // WHAT A FIELD OR OBJECT DESCRIBE MUST SAY FOR AN UPDATE; SalesforceOrgService's NORMALIZED DESCRIBE CARRIES IT
 export interface IUpdateFieldDescribe {
@@ -75,6 +78,8 @@ export interface IUpdateRecordResult {
     recordId: string;
     isSuccess: boolean;
     errors: IUpdateRecordError[];
+    // THE ORG GAVE NO READABLE ANSWER FOR IT (A REQUEST THAT THREW, AN ANSWER THAT DID NOT PARSE): IT MAY HAVE BEEN SAVED
+    isUncertain?: true;
 }
 
 export interface IUpdateAttemptFiles {
@@ -123,6 +128,13 @@ export class RecipeCockpitRecordUpdate {
 
     }
 
+    // WHETHER EVERY RECORD HOLDS A VALUE FOR EVERY FIELD: A FIELD MISSING FROM ONE WOULD BE SENT AS null, WHICH CLEARS IT IN THE ORG
+    static hasEveryField(recordValues: readonly IUpdateRecordValues[], fieldApiNames: readonly string[]): boolean {
+
+        return recordValues.every(recordValue => fieldApiNames.every(fieldApiName => Object.prototype.hasOwnProperty.call(recordValue.fieldValues, fieldApiName)));
+
+    }
+
     // THE RECORDS ONE OBJECT'S REQUESTS CARRY: ITS TYPE, THE Id AND ONLY THE FIELDS BEING UPDATED
     static buildRequestRecords(objectApiName: string, fieldApiNames: readonly string[], recordValues: readonly IUpdateRecordValues[]): IUpdateRequestRecord[] {
 
@@ -165,7 +177,8 @@ export class RecipeCockpitRecordUpdate {
                 return {
                     recordId: requestRecord.Id,
                     isSuccess: false,
-                    errors: [{ statusCode: 'UNREADABLE_RESULT', message: 'The org returned no readable result for this record.', fields: [] }]
+                    errors: [{ statusCode: 'UNREADABLE_RESULT', message: 'The org returned no readable result for this record.', fields: [] }],
+                    isUncertain: true
                 };
             }
 
@@ -183,7 +196,8 @@ export class RecipeCockpitRecordUpdate {
         return requestRecords.map(requestRecord => ({
             recordId: requestRecord.Id,
             isSuccess: false,
-            errors: [{ statusCode: 'REQUEST_FAILED', message: failureMessage, fields: [] }]
+            errors: [{ statusCode: 'REQUEST_FAILED', message: failureMessage, fields: [] }],
+            isUncertain: true as const
         }));
 
     }
@@ -235,6 +249,7 @@ export class RecipeCockpitRecordUpdate {
     static writeSnapshot(workspaceRoot: string, snapshot: IUpdateSnapshot, date: Date): IUpdateAttemptFiles | undefined {
 
         if ( !FOLDER_NAME_PATTERN.test(snapshot.treeFolderName)
+                || WINDOWS_RESERVED_FOLDER_NAME_PATTERN.test(snapshot.treeFolderName)
                 || snapshot.objects.some(snapshotObject => !SalesforceApiName.isApiName(snapshotObject.objectApiName)) ) {
             return undefined;
         }
@@ -265,7 +280,7 @@ export class RecipeCockpitRecordUpdate {
             // ALREADY THERE -- OR NOT WRITABLE, WHICH THE SNAPSHOT'S OWN WRITE WILL SAY
         }
 
-        const snapshotText = `${JSON.stringify(snapshot, null, 2)}\n`;
+        const snapshotText = `${JSON.stringify(snapshot)}\n`;
         const timestamp = RecipeCockpitQuery.buildCompactTimestamp(date);
 
         for ( let attempt = 1; attempt <= UPDATE_ATTEMPT_FILE_ATTEMPTS; attempt++ ) {
@@ -285,6 +300,17 @@ export class RecipeCockpitRecordUpdate {
 
     }
 
+    /*
+        Whether treecipe/UpdateAttempts/.gitignore still ignores everything under it, read back as
+        the Query tab reads its own: the snapshots and results hold the org's data, and a file the
+        repository already carried is not trusted for having been there.
+    */
+    static isUpdateAttemptsFolderGitIgnored(workspaceRoot: string): boolean {
+
+        return RecipeCockpitQuery.isFolderWhollyGitIgnored(path.join(path.resolve(workspaceRoot), 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME));
+
+    }
+
     // THE RESULTS BESIDE THE SNAPSHOT; A FAILED WRITE ANSWERS false, AND THE NOTIFICATION THEN OFFERS NO BUTTON
     static writeResults(resultsFilePath: string, workspaceRoot: string, results: unknown): boolean {
 
@@ -293,7 +319,7 @@ export class RecipeCockpitRecordUpdate {
         }
 
         try {
-            fs.writeFileSync(resultsFilePath, `${JSON.stringify(results, null, 2)}\n`, { encoding: 'utf-8', flag: 'wx' });
+            fs.writeFileSync(resultsFilePath, `${JSON.stringify(results)}\n`, { encoding: 'utf-8', flag: 'wx' });
             return true;
         } catch {
             return false;

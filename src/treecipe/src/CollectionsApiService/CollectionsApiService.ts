@@ -658,7 +658,7 @@ export class CollectionsApiService {
 
         return aliasAuthenticationConnection
                     .sobject(sobjectNameToUpdate)
-                    .update(recordsToUpdate as any, {
+                    .update([...recordsToUpdate], {
                         allowRecursive: false,
                         allOrNone: allOrNoneSelection
                     });

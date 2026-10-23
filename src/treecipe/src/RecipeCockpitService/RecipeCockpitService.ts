@@ -1709,8 +1709,19 @@ export interface IRecipeCockpitUpdaterSendResult {
     updatedRecordCount: number;
     failedRecordCount: number;
     objectResults: Array<{ objectApiName: string; results: IUpdateRecordResult[] }>;
-    // AN ALL-OR-NONE UPDATE THAT STOPPED OR WAS CANCELLED: WHAT SETTING THE UPDATED RECORDS BACK TO THEIR OLD VALUES DID
-    putBack?: { putBackRecordCount: number; failedRecordCount: number; objects: Array<{ objectApiName: string; results: IUpdateRecordResult[] }> };
+    /*
+        An all-or-none update that stopped or was cancelled: what setting the updated records back to
+        their old values did. uncertainRecordCount is how many of them the org may not have saved (a
+        request that threw or answered unreadably), set back all the same; requestFailureDetail is the
+        first SET-BACK request that threw.
+    */
+    putBack?: {
+        putBackRecordCount: number;
+        failedRecordCount: number;
+        uncertainRecordCount: number;
+        objects: Array<{ objectApiName: string; results: IUpdateRecordResult[] }>;
+        requestFailureDetail?: string;
+    };
     // THE FIRST REQUEST THAT THREW, NAMED WITH ITS ERROR
     requestFailureDetail?: string;
 }
@@ -2009,6 +2020,7 @@ export const RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL = 'Update records';
 export const RECIPE_COCKPIT_UPDATER_UPDATE_BUSY_REFUSAL = 'Nothing was updated: another run is using the org selection. Try again when it ends.';
 export const RECIPE_COCKPIT_UPDATER_NOT_GENERATED_REFUSAL = 'Nothing was updated: generate values for the loaded records first. The update writes the values the last Generate values made.';
 export const RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE = 'A picklist value is the field\'s default list, not its record type\'s: a record whose record type does not allow the value is rejected by the org, and its error is in the results file.';
+export const RECIPE_COCKPIT_UPDATER_NOT_GIT_IGNORED_NOTE = 'treecipe/UpdateAttempts/.gitignore does not ignore everything in that folder, so these files of org data could be committed: check them before you commit.';
 export const RECIPE_COCKPIT_UPDATER_SNAPSHOT_FAILED_REFUSAL = 'Nothing was updated: the old values could not be saved to treecipe/UpdateAttempts, and an update never runs without them.';
 
 export const RECIPE_COCKPIT_QUERY_INTRO = 'The SOQL Generate Treecipe wrote for this tree. Edit a query, run it against any connected org you choose, then export what it returned as JSON or CSV. A query only reads.';
@@ -6104,7 +6116,6 @@ export class RecipeCockpitService {
                     panelState.orgRecordLookupTargets = new Map();
                     panelState.acknowledgedRenderSequence = null;
                     panelState.updatableTreeKeys = new Set();
-                panelState.updatableTreeKeys = new Set();
                     // A REVEAL OF A PANEL THAT FAILED TO DRAW MUST NOT KEEP RE-OPENING THE TAB AN OPEN ASKED FOR
                     panelState.openFocusTree = undefined;
                     // NOTHING IS ON SCREEN TO DRAW AN ANSWER IN, SO A SELECTION STILL BEING CHECKED STOPS ASKING THE ORG
@@ -9405,6 +9416,12 @@ export class RecipeCockpitService {
             return refuse(`Nothing was updated: there are no new values for the loaded records of ${treeTitle}.`);
         }
 
+        // A FIELD MISSING FROM ONE RECORD'S VALUES WOULD BE SENT AS null AND CLEAR IT IN THE ORG, SO THE WHOLE UPDATE IS REFUSED
+        const incompleteObject = plannedObjects.find(plannedObject => !RecipeCockpitRecordUpdate.hasEveryField(plannedObject.recordValues, plannedObject.fieldApiNames));
+        if ( incompleteObject ) {
+            return refuse(`Nothing was updated: the new values for ${incompleteObject.objectApiName} do not cover every record. Generate them again.`);
+        }
+
         const recordTotal = plannedObjects.reduce((total, plannedObject) => total + plannedObject.recordValues.length, 0);
 
         let connection: Connection;
@@ -9420,21 +9437,19 @@ export class RecipeCockpitService {
         const describeOutcomes = new Map(describeResult.outcomes.map(describeOutcome => [describeOutcome.objectApiName, describeOutcome] as const));
 
         for ( const plannedObject of plannedObjects ) {
-            // describeObjects ANSWERS EVERY NAME IT WAS ASKED FOR
-            const describeOutcome = describeOutcomes.get(plannedObject.objectApiName)!;
-            const updateReason = RecipeCockpitRecordUpdate.findUpdateReason(plannedObject.objectApiName, plannedObject.fieldApiNames, describeOutcome.describe, describeOutcome.failureMessage);
+            const describeOutcome = describeOutcomes.get(plannedObject.objectApiName);
+            const updateReason = RecipeCockpitRecordUpdate.findUpdateReason(plannedObject.objectApiName, plannedObject.fieldApiNames, describeOutcome?.describe, describeOutcome?.failureMessage);
             if ( updateReason ) {
                 return refuse(`Nothing was updated in ${orgLabel}: ${updateReason}`);
             }
         }
 
         // A PICKLIST ON AN OBJECT WITH RECORD TYPES GETS THE FIELD'S OWN VALUES, WHICH A RECORD TYPE CAN NARROW: THE ORG DECIDES, AND SAYS SO PER RECORD
-        // EVERY OBJECT HERE PASSED READINESS, SO ITS DESCRIBE LISTS EVERY FIELD WRITTEN
         const hasRecordTypePicklist = plannedObjects.some(plannedObject => {
-            const describedFields = describeOutcomes.get(plannedObject.objectApiName)!.describe!.fields;
+            const describedFields = describeOutcomes.get(plannedObject.objectApiName)?.describe?.fields ?? [];
             return clickedRecipeDataMessage.recipe.objects.some(object => object.objectApiName === plannedObject.objectApiName && ( object.recordTypes ?? [] ).length > 1)
                 && plannedObject.fieldApiNames.some(fieldApiName => {
-                    const fieldType = describedFields.find(describedField => describedField.fieldApiName.toLowerCase() === fieldApiName.toLowerCase())!.fieldType;
+                    const fieldType = describedFields.find(describedField => describedField.fieldApiName.toLowerCase() === fieldApiName.toLowerCase())?.fieldType;
                     return fieldType === 'picklist' || fieldType === 'multipicklist';
                 });
         });
@@ -9520,10 +9535,12 @@ export class RecipeCockpitService {
 
     /*
         Every object's records, parents first, at most RECIPE_COCKPIT_UPDATE_REQUEST_RECORD_LIMIT per
-        PATCH composite/sobjects request, all-or-none as chosen, cancellable between requests. With
-        all-or-none, the first request that fails stops the update, and so does a cancel: every
-        record an earlier request updated is then set back to its snapshot value -- what all-or-none
-        means across requests, as the tree insert deletes what it inserted.
+        PATCH composite/sobjects request, each request built just before it is sent, all-or-none as
+        chosen, cancellable between requests. With all-or-none, the first request that fails stops the
+        update, and so does a cancel: every record an earlier request updated -- and every record of
+        a request that threw or whose answer could not be read, which the org may have saved -- is
+        then set back to its snapshot value, each record on its own, behind its own progress. That is
+        what all-or-none means across requests, as the tree insert deletes what it inserted.
     */
     static async sendUpdaterRequests(connection: Connection,
                                         plannedObjects: ReadonlyArray<{ objectApiName: string; fieldApiNames: string[]; recordValues: IRecipeCockpitUpdaterRecordValues[] }>,
@@ -9535,19 +9552,22 @@ export class RecipeCockpitService {
         const objectResults: Array<{ objectApiName: string; results: IUpdateRecordResult[] }> = [];
         let outcome: IRecipeCockpitUpdaterSendResult['outcome'] = 'completed';
         let isAnyRequestSent = false;
-        let requestFailureDetail: string | undefined;
         const requestTotal = plannedObjects.reduce((total, plannedObject) => total + Math.ceil(plannedObject.recordValues.length / RECIPE_COCKPIT_UPDATE_REQUEST_RECORD_LIMIT), 0);
         let requestNumber = 0;
 
-        const sendRequest = async (objectApiName: string, requestRecords: IUpdateRequestRecord[], isAllOrNone: boolean): Promise<IUpdateRecordResult[]> => {
+        // THE FIRST REQUEST THAT THREW, NAMED WITH ITS ERROR; THE UPDATE'S AND THE SET-BACK'S ARE KEPT APART
+        const sendRequest = async (objectApiName: string, requestRecords: IUpdateRequestRecord[], isAllOrNone: boolean, onRequestFailed: (failureDetail: string) => void): Promise<IUpdateRecordResult[]> => {
             try {
                 return RecipeCockpitRecordUpdate.readRequestResults(requestRecords, await CollectionsApiService.updateCollectionsApiCallout(requestRecords, connection, isAllOrNone, objectApiName));
             } catch (requestError) {
                 const failureMessage = String(( requestError as Error )?.message ?? requestError);
-                requestFailureDetail = requestFailureDetail ?? `${objectApiName} failed: ${failureMessage}`;
+                onRequestFailed(`${objectApiName} failed: ${failureMessage}`);
                 return RecipeCockpitRecordUpdate.failRequestRecords(requestRecords, failureMessage);
             }
         };
+
+        let requestFailureDetail: string | undefined;
+        const noteRequestFailure = (failureDetail: string) => { requestFailureDetail = requestFailureDetail ?? failureDetail; };
 
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
@@ -9559,9 +9579,8 @@ export class RecipeCockpitService {
 
                 const objectResult = { objectApiName: plannedObject.objectApiName, results: [] as IUpdateRecordResult[] };
                 objectResults.push(objectResult);
-                const requestRecords = RecipeCockpitRecordUpdate.buildRequestRecords(plannedObject.objectApiName, plannedObject.fieldApiNames, plannedObject.recordValues);
 
-                for ( const request of RecipeCockpitRecordUpdate.splitIntoRequests(requestRecords) ) {
+                for ( const requestValues of RecipeCockpitRecordUpdate.splitIntoRequests(plannedObject.recordValues) ) {
 
                     if ( cancellationToken.isCancellationRequested ) {
                         outcome = 'cancelled';
@@ -9571,7 +9590,8 @@ export class RecipeCockpitService {
                     requestNumber++;
                     progress.report({ message: `${plannedObject.objectApiName}: request ${requestNumber} of ${requestTotal}` });
                     isAnyRequestSent = true;
-                    const results = await sendRequest(plannedObject.objectApiName, request, allOrNoneSelection);
+                    const request = RecipeCockpitRecordUpdate.buildRequestRecords(plannedObject.objectApiName, plannedObject.fieldApiNames, requestValues);
+                    const results = await sendRequest(plannedObject.objectApiName, request, allOrNoneSelection, noteRequestFailure);
                     objectResult.results.push(...results);
 
                     if ( allOrNoneSelection && results.some(result => !result.isSuccess) ) {
@@ -9589,27 +9609,40 @@ export class RecipeCockpitService {
 
         if ( allOrNoneSelection && outcome !== 'completed' ) {
 
-            putBack = { putBackRecordCount: 0, failedRecordCount: 0, objects: [] };
+            const putBackResult: NonNullable<IRecipeCockpitUpdaterSendResult['putBack']> = { putBackRecordCount: 0, failedRecordCount: 0, uncertainRecordCount: 0, objects: [] };
+            putBack = putBackResult;
+            const noteSetBackFailure = (failureDetail: string) => { putBackResult.requestFailureDetail = putBackResult.requestFailureDetail ?? failureDetail; };
 
-            for ( const objectResult of objectResults ) {
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: setting ${treeTitle} back to its old values in ${orgLabel}`),
+                cancellable: false
+            }, async () => {
 
-                const updatedRecordIds = new Set(objectResult.results.filter(result => result.isSuccess).map(result => result.recordId));
-                const snapshotObject = snapshotObjects.find(candidateObject => candidateObject.objectApiName === objectResult.objectApiName);
-                if ( updatedRecordIds.size === 0 || !snapshotObject ) {
-                    continue;
+                for ( const objectResult of objectResults ) {
+
+                    // A RECORD THE ORG MAY HAVE SAVED IS SET BACK TOO: WRITING ITS OLD VALUE AGAIN CHANGES NOTHING IF IT WAS NOT
+                    const setBackResults = objectResult.results.filter(result => result.isSuccess || result.isUncertain === true);
+                    const snapshotObject = snapshotObjects.find(candidateObject => candidateObject.objectApiName === objectResult.objectApiName);
+                    if ( setBackResults.length === 0 || !snapshotObject ) {
+                        continue;
+                    }
+
+                    putBackResult.uncertainRecordCount += setBackResults.filter(result => result.isUncertain === true).length;
+                    const snapshotRecords = RecipeCockpitRecordUpdate.selectSnapshotRecords(snapshotObject, new Set(setBackResults.map(result => result.recordId)));
+                    const putBackResults: IUpdateRecordResult[] = [];
+                    for ( const requestValues of RecipeCockpitRecordUpdate.splitIntoRequests(snapshotRecords) ) {
+                        // EACH RECORD ON ITS OWN: ONE THAT CANNOT BE PUT BACK MUST NOT KEEP THE OTHERS FROM IT
+                        const request = RecipeCockpitRecordUpdate.buildRequestRecords(snapshotObject.objectApiName, snapshotObject.fieldApiNames, requestValues);
+                        putBackResults.push(...await sendRequest(snapshotObject.objectApiName, request, false, noteSetBackFailure));
+                    }
+                    putBackResult.objects.push({ objectApiName: snapshotObject.objectApiName, results: putBackResults });
+                    putBackResult.putBackRecordCount += putBackResults.filter(result => result.isSuccess).length;
+                    putBackResult.failedRecordCount += putBackResults.filter(result => !result.isSuccess).length;
+
                 }
 
-                const putBackRecords = RecipeCockpitRecordUpdate.buildRequestRecords(snapshotObject.objectApiName, snapshotObject.fieldApiNames, RecipeCockpitRecordUpdate.selectSnapshotRecords(snapshotObject, updatedRecordIds));
-                const putBackResults: IUpdateRecordResult[] = [];
-                for ( const request of RecipeCockpitRecordUpdate.splitIntoRequests(putBackRecords) ) {
-                    // EACH RECORD ON ITS OWN: ONE THAT CANNOT BE PUT BACK MUST NOT KEEP THE OTHERS FROM IT
-                    putBackResults.push(...await sendRequest(snapshotObject.objectApiName, request, false));
-                }
-                putBack.objects.push({ objectApiName: snapshotObject.objectApiName, results: putBackResults });
-                putBack.putBackRecordCount += putBackResults.filter(result => result.isSuccess).length;
-                putBack.failedRecordCount += putBackResults.filter(result => !result.isSuccess).length;
-
-            }
+            });
 
         }
 
@@ -9631,7 +9664,9 @@ export class RecipeCockpitService {
         How the update ended, as ONE notification (#301): information when every record was updated,
         an ERROR when it stopped, otherwise a warning. "View errors" when a record failed or it
         stopped, "View results" otherwise, opened through showNotificationWithWorkspaceFile; a
-        results file that could not be written offers no button. NOT AWAITED. Escaped whole.
+        results file that could not be written offers no button. A set-back that included records
+        the org may not have saved says so, and an UpdateAttempts folder git does not ignore wholly
+        turns it into at least a warning. NOT AWAITED. Escaped whole.
     */
     static showUpdaterUpdateNotification(sendResult: IRecipeCockpitUpdaterSendResult,
                                             treeTitle: string,
@@ -9642,12 +9677,14 @@ export class RecipeCockpitService {
 
         const describeRecords = (recordCount: number) => `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
         const wasOrWere = (recordCount: number) => recordCount === 1 ? 'was' : 'were';
-        const hasErrors = sendResult.failedRecordCount > 0 || sendResult.outcome === 'stopped' || ( sendResult.putBack?.failedRecordCount ?? 0 ) > 0;
-        const putBackText = sendResult.putBack
-            ? sendResult.putBack.failedRecordCount > 0
-                ? ` ${describeRecords(sendResult.putBack.putBackRecordCount)} it had updated ${wasOrWere(sendResult.putBack.putBackRecordCount)} set back to their old values, and ${describeRecords(sendResult.putBack.failedRecordCount)} could not be: their old values are in ${snapshotFileName}.`
-                : sendResult.putBack.putBackRecordCount > 0
-                    ? ` The ${describeRecords(sendResult.putBack.putBackRecordCount)} it had updated ${wasOrWere(sendResult.putBack.putBackRecordCount)} set back to their old values, because all-or-none was chosen.`
+        const putBack = sendResult.putBack;
+        const hasErrors = sendResult.failedRecordCount > 0 || sendResult.outcome === 'stopped' || ( putBack?.failedRecordCount ?? 0 ) > 0;
+        const updatedText = putBack && putBack.uncertainRecordCount > 0 ? 'it had updated or may have updated' : 'it had updated';
+        const putBackText = putBack
+            ? putBack.failedRecordCount > 0
+                ? ` ${describeRecords(putBack.putBackRecordCount)} ${updatedText} ${wasOrWere(putBack.putBackRecordCount)} set back to their old values, and ${describeRecords(putBack.failedRecordCount)} could not be: their old values are in ${snapshotFileName}.`
+                : putBack.putBackRecordCount > 0
+                    ? ` The ${describeRecords(putBack.putBackRecordCount)} ${updatedText} ${wasOrWere(putBack.putBackRecordCount)} set back to their old values, because all-or-none was chosen.`
                     : ''
             : '';
         let severity: 'information' | 'warning' | 'error' = 'warning';
@@ -9667,6 +9704,15 @@ export class RecipeCockpitService {
 
         if ( sendResult.requestFailureDetail ) {
             notificationText += ` The request for ${sendResult.requestFailureDetail}`;
+        }
+
+        if ( putBack?.requestFailureDetail ) {
+            notificationText += ` Setting back ${putBack.requestFailureDetail}`;
+        }
+
+        if ( !RecipeCockpitRecordUpdate.isUpdateAttemptsFolderGitIgnored(workspaceRoot) ) {
+            notificationText += ` ${RECIPE_COCKPIT_UPDATER_NOT_GIT_IGNORED_NOTE}`;
+            severity = severity === 'information' ? 'warning' : severity;
         }
 
         VSCodeWorkspaceService.showNotificationWithWorkspaceFile(

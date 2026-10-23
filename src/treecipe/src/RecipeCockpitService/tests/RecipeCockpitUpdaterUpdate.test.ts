@@ -51,6 +51,7 @@ import {
     RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
     RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
     RECIPE_COCKPIT_UPDATER_NOT_GENERATED_REFUSAL,
+    RECIPE_COCKPIT_UPDATER_NOT_GIT_IGNORED_NOTE,
     RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE,
     RECIPE_COCKPIT_UPDATER_SNAPSHOT_FAILED_REFUSAL,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL,
@@ -170,16 +171,17 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
                 ] }
             ]);
 
+            // AN ANSWER IT CANNOT READ SAYS NOTHING ABOUT WHETHER THE ORG SAVED THE RECORD: A FAILURE, AND UNCERTAIN
             [undefined, {}, [{ success: true }], ['yes', null]].forEach(unreadableAnswer => {
                 const results = RecipeCockpitRecordUpdate.readRequestResults(requestRecords, unreadableAnswer);
-                expect(results.every(result => !result.isSuccess)).toBe(true);
+                expect(results.every(result => !result.isSuccess && result.isUncertain === true)).toBe(true);
             });
 
             expect(RecipeCockpitRecordUpdate.readRequestResults(requestRecords, [{ success: 'true' }, { success: true }]).map(result => result.isSuccess)).toEqual([false, true]);
 
             expect(RecipeCockpitRecordUpdate.failRequestRecords(requestRecords, 'socket hang up')).toEqual([
-                { recordId: '001A', isSuccess: false, errors: [{ statusCode: 'REQUEST_FAILED', message: 'socket hang up', fields: [] }] },
-                { recordId: '001B', isSuccess: false, errors: [{ statusCode: 'REQUEST_FAILED', message: 'socket hang up', fields: [] }] }
+                { recordId: '001A', isSuccess: false, errors: [{ statusCode: 'REQUEST_FAILED', message: 'socket hang up', fields: [] }], isUncertain: true },
+                { recordId: '001B', isSuccess: false, errors: [{ statusCode: 'REQUEST_FAILED', message: 'socket hang up', fields: [] }], isUncertain: true }
             ]);
 
         });
@@ -231,6 +233,8 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
         it.each([
             ['a folder name with a separator', { treeFolderName: '../outside', objects: [] }],
             ['a ".." folder name', { treeFolderName: '..', objects: [] }],
+            ['a folder name ending in a dot, which Windows strips', { treeFolderName: 'Account.', objects: [] }],
+            ['a Windows device name', { treeFolderName: 'NUL', objects: [] }],
             ['an object that is not an api name', { treeFolderName: 'Account', objects: [{ objectApiName: 'Account/../x', fieldApiNames: [], records: [] }] }]
         ])('writes nothing for %s', (_description, snapshotFields) => {
 
@@ -703,7 +707,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
 
         });
 
-        it('says which records could not be put back, and names a request that threw', async () => {
+        it('sets back the records of a request that threw, since the org may have saved them, and says which could not be', async () => {
 
             allOrNoneAnswer = true;
             updateAnswer = (objectApiName, records, callNumber) => {
@@ -715,13 +719,93 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
             await acknowledgeValues();
             await requestUpdate();
 
+            // THE UPDATE: Account, THEN Contact THREW; THE SET-BACK: Account's 3, THEN Contact's 2 IT MAY HAVE SAVED
+            expect(updateCalls.map(updateCall => [updateCall.objectApiName, updateCall.records.length, updateCall.options.allOrNone])).toEqual([
+                ['Account', 3, true],
+                ['Contact', 2, true],
+                ['Account', 3, false],
+                ['Contact', 2, false]
+            ]);
+            expect(updateCalls[3].records[0]).toEqual({ attributes: { type: 'Contact' }, Id: 'Contact-0', LastName: 'Old 0' });
+
             const results = readAttemptFile('-results.json');
-            expect(results.objects[1].results[0].errors).toEqual([{ statusCode: 'REQUEST_FAILED', message: 'socket hang up', fields: [] }]);
-            expect(results.putBack).toMatchObject({ putBackRecordCount: 2, failedRecordCount: 1 });
+            expect(results.objects[1].results[0]).toEqual({ recordId: 'Contact-0', isSuccess: false, errors: [{ statusCode: 'REQUEST_FAILED', message: 'socket hang up', fields: [] }], isUncertain: true });
+            expect(results.putBack).toMatchObject({ putBackRecordCount: 2, failedRecordCount: 3, uncertainRecordCount: 2, requestFailureDetail: 'Contact failed: socket hang up' });
             expect(vscode.window.showErrorMessage).toHaveBeenLastCalledWith(
-                `The update of Account-thru-OtherChildObject__c in qa · qa@example.com.qa stopped at a request that failed: 2 records failed. 2 records it had updated were set back to their old values, and 1 record could not be: their old values are in ${attemptFiles()[0]}. The request for Contact failed: socket hang up`,
+                `The update of Account-thru-OtherChildObject__c in qa · qa@example.com.qa stopped at a request that failed: 2 records failed. 2 records it had updated or may have updated were set back to their old values, and 3 records could not be: their old values are in ${attemptFiles()[0]}. The request for Contact failed: socket hang up Setting back Contact failed: socket hang up`,
                 RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL
             );
+
+        });
+
+        it('names a set-back request that threw as the set-back\'s, not the update\'s, behind its own progress', async () => {
+
+            allOrNoneAnswer = true;
+            updateAnswer = (objectApiName, records, callNumber) => {
+                if ( callNumber === 3 ) { throw new Error('timed out'); }
+                return records.map(record => ({ id: record.Id, success: objectApiName === 'Account', errors: [] }));
+            };
+
+            await openCockpitLoadAndGenerate();
+            await acknowledgeValues();
+            await requestUpdate();
+
+            const progressTitles = (vscode.window.withProgress as jest.Mock).mock.calls.map(([options]) => [options.title, options.cancellable]);
+            expect(progressTitles.slice(-2)).toEqual([
+                ['Recipe Cockpit: updating Account-thru-OtherChildObject__c in qa · qa@example.com.qa', true],
+                ['Recipe Cockpit: setting Account-thru-OtherChildObject__c back to its old values in qa · qa@example.com.qa', false]
+            ]);
+            expect(vscode.window.showErrorMessage).toHaveBeenLastCalledWith(
+                `The update of Account-thru-OtherChildObject__c in qa · qa@example.com.qa stopped at a request that failed: 2 records failed. 0 records it had updated were set back to their old values, and 3 records could not be: their old values are in ${attemptFiles()[0]}. Setting back Account failed: timed out`,
+                RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL
+            );
+
+        });
+
+        it('refuses values that do not cover every record, which would clear a field in the org', async () => {
+
+            await openCockpitLoadAndGenerate();
+            await acknowledgeValues();
+            const heldValues = (RecipeCockpitService as any).heldUpdaterValues;
+            delete heldValues.valuesByObjectApiName.get('Account')[1].fieldValues.Rating__c;
+            await requestUpdate();
+
+            expect(updateConfirmations()).toEqual([]);
+            expect(updateCalls).toEqual([]);
+            expect(warnings().at(-1)).toBe('Nothing was updated: the new values for Account do not cover every record. Generate them again.');
+
+        });
+
+        it('warns when treecipe/UpdateAttempts/.gitignore does not ignore everything, even after a full success', async () => {
+
+            fs.mkdirSync(path.join(workspaceRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME), { recursive: true });
+            fs.writeFileSync(path.join(workspaceRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, '.gitignore'), '*\n!*.json\n');
+            await openCockpitLoadAndGenerate();
+            await acknowledgeValues();
+            await requestUpdate();
+
+            expect(updateCalls).toHaveLength(2);
+            expect(RecipeCockpitRecordUpdate.isUpdateAttemptsFolderGitIgnored(workspaceRoot)).toBe(false);
+            expect(warnings().at(-1)).toBe(RecipeYamlScalar.escapeForNotification(`5 records of Account-thru-OtherChildObject__c were updated in qa · qa@example.com.qa. Their old values are in ${attemptFiles()[0]}. ${RECIPE_COCKPIT_UPDATER_NOT_GIT_IGNORED_NOTE}`));
+
+        });
+
+        it('empties the active list on a failure to draw and on a new model', async () => {
+
+            await openCockpitLoadAndGenerate();
+            await acknowledgeValues();
+            expect(panelState().updatableTreeKeys.has(ACCOUNT_TREE_KEY)).toBe(true);
+
+            // THE FAILURE IS REPORTED THROUGH THE ERROR HANDLER, WHICH WAITS ON ITS NOTIFICATION
+            (vscode.window.showErrorMessage as jest.Mock).mockResolvedValue(undefined);
+            await send({ command: 'renderFailed', message: 'draw failed', stack: '', phase: 'render' });
+            expect(panelState().updatableTreeKeys.size).toBe(0);
+
+            await acknowledgeValues();
+            await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState);
+            await flushAsyncWork();
+            expect(panelState().updatableTreeKeys.size).toBe(0);
+            expect(panelState().pendingUpdatableTreeKeys.size).toBe(0);
 
         });
 

@@ -360,7 +360,14 @@ export class RecipeCockpitQuery {
     */
     static isQueryResultsFolderGitIgnored(workspaceRoot: string): boolean {
 
-        const gitignoreFilePath = path.join(path.resolve(workspaceRoot), 'treecipe', RECIPE_COCKPIT_QUERY_RESULTS_FOLDER_NAME, '.gitignore');
+        return this.isFolderWhollyGitIgnored(path.join(path.resolve(workspaceRoot), 'treecipe', RECIPE_COCKPIT_QUERY_RESULTS_FOLDER_NAME));
+
+    }
+
+    // WHETHER THE .gitignore IN A FOLDER IS A PLAIN FILE WHOSE LINES IGNORE EVERYTHING ("*") AND UN-IGNORE NOTHING ("!")
+    static isFolderWhollyGitIgnored(folderPath: string): boolean {
+
+        const gitignoreFilePath = path.join(folderPath, '.gitignore');
 
         try {
             if ( !fs.lstatSync(gitignoreFilePath).isFile() ) {
