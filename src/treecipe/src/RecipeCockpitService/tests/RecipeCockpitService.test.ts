@@ -249,7 +249,7 @@ describe('RecipeCockpitService', () => {
         const FONT_VARIABLES_FOLLOWING_THE_EDITOR = ['--vscode-font-family', '--vscode-editor-font-family', '--vscode-font-size'];
 
         const TEXT_TOKENS: RecipeCockpitPaletteToken[] = ['text', 'muted', 'accent', 'added', 'removed', 'changed'];
-        const BACKGROUND_TOKENS: RecipeCockpitPaletteToken[] = ['page', 'surface', 'header', 'rowHover'];
+        const BACKGROUND_TOKENS: RecipeCockpitPaletteToken[] = ['page', 'surface', 'header', 'rowHover', 'orgSection'];
 
         const TEXT_ON_BACKGROUND_PAIRS: [RecipeCockpitPaletteToken, RecipeCockpitPaletteToken][] = [
             ...TEXT_TOKENS.flatMap(textToken => BACKGROUND_TOKENS.map(backgroundToken =>
@@ -298,6 +298,7 @@ describe('RecipeCockpitService', () => {
                 rowHover: '#F1F5FF', chipBg: '#EEF2FF', chipText: '#3730A3',
                 added: '#15803D', removed: '#B91C1C', changed: '#B45309',
                 disabledBg: '#E5E7EB', disabledText: '#4B5563',
+                orgSection: '#EEF3FB',
                 excludedOverlay: 'rgba(148, 163, 184, 0.40)',
                 dialogBackdrop: 'rgba(31, 41, 55, 0.50)'
             });
@@ -520,7 +521,7 @@ describe('RecipeCockpitService', () => {
 
         it(`holds every text/background pair the stylesheet draws to at least ${MINIMUM_TEXT_CONTRAST_RATIO}:1`, () => {
 
-            expect(TEXT_ON_BACKGROUND_PAIRS).toHaveLength(27);
+            expect(TEXT_ON_BACKGROUND_PAIRS).toHaveLength(33);
             expect(findContrastFailures(RECIPE_COCKPIT_PALETTE)).toEqual([]);
 
         });
@@ -622,7 +623,8 @@ describe('RecipeCockpitService', () => {
             expect(findContrastFailures(paletteWithTheOldMuted)).toEqual([
                 'muted on page (4.47:1)',
                 'muted on header (4.34:1)',
-                'muted on rowHover (4.43:1)'
+                'muted on rowHover (4.43:1)',
+                'muted on orgSection (4.34:1)'
             ]);
 
         });
