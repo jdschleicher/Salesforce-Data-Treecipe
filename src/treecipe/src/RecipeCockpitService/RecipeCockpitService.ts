@@ -339,6 +339,13 @@ export const RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM = 'rotate(45 12 12)';
 export const RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH = 'M6 8 H10 A4 4 0 0 1 10 16 H6 A4 4 0 0 1 6 8 Z M14 8 H18 A4 4 0 0 1 18 16 H14 A4 4 0 0 1 14 8 Z';
 export const RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH = 'M4.5 8 H6.5 A4 4 0 0 1 6.5 16 H4.5 A4 4 0 0 1 4.5 8 Z M17.5 8 H19.5 A4 4 0 0 1 19.5 16 H17.5 A4 4 0 0 1 17.5 8 Z M12 3.5 V6 M12 18 V20.5';
 /*
+    IMPACTED (#449): the object is still included, but a lookup of it points at an excluded parent, so
+    that lookup is left out of what is generated. One link stays where the joined glyph has it, the
+    other is pulled away with one spark at the gap -- half joined, half broken -- stroked in
+    --sdt-changed, and the row's label, title and aria-label name the parent.
+*/
+export const RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH = 'M6 8 H10 A4 4 0 0 1 10 16 H6 A4 4 0 0 1 6 8 Z M17.5 8 H19.5 A4 4 0 0 1 19.5 16 H17.5 A4 4 0 0 1 17.5 8 Z M14.75 3.5 V6';
+/*
     A field's edit button (#356, the pin of #262 and the ✎ of #323 in one), built the same way as the
     chain link: one path -- a pencil -- stroked from the palette by CSS, and filled while the field
     holds an edit, so the shape, aria-pressed, the title and the row's badge ("edited" for an
@@ -460,6 +467,7 @@ export const RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SEPARATOR = ' → ';
 export const RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS = 'No objects';
 export const RECIPE_COCKPIT_TREE_PICKER_EXCLUDED_SUFFIX = ' (excluded)';
 export const RECIPE_COCKPIT_TREE_PICKER_AUTO_EXCLUDED_SUFFIX = ' (auto-excluded)';
+export const RECIPE_COCKPIT_TREE_PICKER_IMPACTED_SUFFIX = ' (impacted)';
 // HOW MANY RESULT ROWS THE SECTION SEARCH DRAWS; THE REST IS ONE "N more" LINE
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT = 50;
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX = ' more — type more of the name to narrow the search';
@@ -549,7 +557,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'These settings change what is generated, but the recipe file stays exactly as Generate Treecipe wrote it, so it always shows what was generated from your metadata:'
         ],
         items: [
-            'Excluded objects (the chain link): the object and its children are left out.',
+            'Excluded objects (the chain link): the object and its children are left out. A child that another included parent keeps shows a half-broken link and names the excluded parent: it is still generated, without its lookup to that parent.',
             'Unticked fields: the field is left out. All fields, above an object\'s fields, ticks or unticks them all.',
             'Record counts: each object\'s row says what is created, such as Create 5 ✎ Contact records per Account (a friend\'s count is records per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe\'s says changed.',
             'The rules box: a field generated without the limits its validation rules set.'
@@ -16111,6 +16119,7 @@ ${this.buildPaletteCustomProperties()}
     .treeGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .treeGlyph.excluded path, .treeGlyph.autoExcluded path { stroke: var(--sdt-muted); }
     .treeGlyph.autoExcluded path { stroke-dasharray: 2 2.5; }
+    .treeGlyph.impacted path { stroke: var(--sdt-changed); }
     .treeExclusion { font-size: 0.85em; }
     .treeField { position: relative; }
     .treeField.fieldExcluded::after {
@@ -16707,6 +16716,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const TREE_PICKER_NO_OBJECTS = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS)};
     const TREE_PICKER_EXCLUDED_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_EXCLUDED_SUFFIX)};
     const TREE_PICKER_AUTO_EXCLUDED_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_AUTO_EXCLUDED_SUFFIX)};
+    const TREE_PICKER_IMPACTED_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_IMPACTED_SUFFIX)};
     const TREECIPES_SEARCH_RESULT_LIMIT = ${RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT};
     const TREECIPES_SEARCH_MORE_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX)};
     const REGENERATE_WITH_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL)};
@@ -16741,6 +16751,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const TREE_GLYPH_TRANSFORM = ${JSON.stringify(RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM)};
     const TREE_LINKED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH)};
     const TREE_BROKEN_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH)};
+    const TREE_IMPACTED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH)};
     const FIELD_PARENT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON)};
     const FIXED_VALUE_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH)};
     const FRIEND_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_FRIEND_EMOJI)};
@@ -17361,11 +17372,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         }
 
         const exclusionsByObjectApiName = indexObjectExclusions(shownTreeState.tree);
+        const impactsByObjectApiName = indexObjectImpacts(shownTreeState.tree);
         const friendLabelsByObjectApiName = listFriendLabelsByObjectApiName(shownTreeState);
         objectApiNames.forEach(function (objectApiName, objectIndex) {
             if (objectIndex > 0) { treePickerObjectsElement.appendChild(createElement('span', 'treePickerObjectSeparator muted', TREE_PICKER_OBJECTS_SEPARATOR)); }
             const exclusion = Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
-            const suffix = !exclusion ? '' : exclusion.kind === 'autoExcluded' ? TREE_PICKER_AUTO_EXCLUDED_SUFFIX : TREE_PICKER_EXCLUDED_SUFFIX;
+            const suffix = !exclusion ? ( hasOwnKey(impactsByObjectApiName, objectApiName) ? TREE_PICKER_IMPACTED_SUFFIX : '' )
+                : exclusion.kind === 'autoExcluded' ? TREE_PICKER_AUTO_EXCLUDED_SUFFIX : TREE_PICKER_EXCLUDED_SUFFIX;
             const friendLabels = hasOwnKey(friendLabelsByObjectApiName, objectApiName) ? friendLabelsByObjectApiName[objectApiName] : [];
             const friendText = friendLabels.length > 0 ? ' (' + friendLabels.join(', ') + ')' : '';
             treePickerObjectsElement.appendChild(createElement('span', exclusion ? 'treePickerObject excluded' : 'treePickerObject', objectApiName + friendText + suffix));
@@ -18619,6 +18632,57 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
+    /*
+        #449: an object the cascade kept INCLUDED whose lookup to an excluded parent is disabled --
+        the host's disabledLookups, read here and drawn, never decided. A self-lookup is never one,
+        and an object the selection excludes is drawn as excluded instead. Parents and fields are
+        listed once each, sorted with "<".
+    */
+    const impactIndexesBySelection = new WeakMap();
+
+    function indexObjectImpacts(tree) {
+
+        const objectSelection = tree.objectSelection;
+        if (!objectSelection || typeof objectSelection !== 'object') { return Object.create(null); }
+        if (impactIndexesBySelection.has(objectSelection)) { return impactIndexesBySelection.get(objectSelection); }
+
+        const exclusionsByObjectApiName = indexObjectExclusions(tree);
+        const impactsByObjectApiName = Object.create(null);
+        const disabledLookups = Array.isArray(objectSelection.disabledLookups) ? objectSelection.disabledLookups : [];
+        const compareNames = function (left, right) { return left < right ? -1 : left > right ? 1 : 0; };
+
+        disabledLookups.forEach(function (disabledLookup) {
+            if (!disabledLookup || typeof disabledLookup !== 'object') { return; }
+            const objectApiName = disabledLookup.objectApiName;
+            const parentObjectApiName = disabledLookup.parentObjectApiName;
+            const fieldApiName = disabledLookup.fieldApiName;
+            if (typeof objectApiName !== 'string' || typeof parentObjectApiName !== 'string' || typeof fieldApiName !== 'string') { return; }
+            if (objectApiName === parentObjectApiName || hasOwnKey(exclusionsByObjectApiName, objectApiName)) { return; }
+            if (!hasOwnKey(impactsByObjectApiName, objectApiName)) {
+                impactsByObjectApiName[objectApiName] = { parentObjectApiNames: [], fieldApiNames: [] };
+            }
+            const impact = impactsByObjectApiName[objectApiName];
+            if (impact.parentObjectApiNames.indexOf(parentObjectApiName) === -1) { impact.parentObjectApiNames.push(parentObjectApiName); }
+            if (impact.fieldApiNames.indexOf(fieldApiName) === -1) { impact.fieldApiNames.push(fieldApiName); }
+        });
+
+        Object.keys(impactsByObjectApiName).forEach(function (objectApiName) {
+            impactsByObjectApiName[objectApiName].parentObjectApiNames.sort(compareNames);
+            impactsByObjectApiName[objectApiName].fieldApiNames.sort(compareNames);
+        });
+        impactIndexesBySelection.set(objectSelection, impactsByObjectApiName);
+
+        return impactsByObjectApiName;
+
+    }
+
+    function describeObjectImpact(impact) {
+
+        const parentText = impact.parentObjectApiNames.length === 1 ? 'parent ' + impact.parentObjectApiNames[0] : 'parents ' + impact.parentObjectApiNames.join(', ');
+        return parentText + ' excluded';
+
+    }
+
     function findObjectExclusion(tree, objectApiName) {
 
         const exclusionsByObjectApiName = indexObjectExclusions(tree);
@@ -18634,7 +18698,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             ? objectSelection.includedObjectCount + ' of ' + pluralize(objectSelection.objectCount, 'object', 'objects')
             : pluralize(treeState.countedObjectCount, 'object', 'objects');
 
-        return objectText + ' · ' + pluralize(treeState.countedFieldCount, 'field', 'fields');
+        const impactedObjectCount = Object.keys(indexObjectImpacts(treeState.tree)).length;
+        const impactedText = impactedObjectCount > 0 ? ' · ' + impactedObjectCount + ' impacted' : '';
+
+        return objectText + impactedText + ' · ' + pluralize(treeState.countedFieldCount, 'field', 'fields');
 
     }
 
@@ -18648,9 +18715,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const tree = treeState.tree;
         const disabledLookups = tree.objectSelection && Array.isArray(tree.objectSelection.disabledLookups) ? tree.objectSelection.disabledLookups : [];
         const exclusionsByObjectApiName = indexObjectExclusions(tree);
+        const impactsByObjectApiName = indexObjectImpacts(tree);
         // INDEXED ONCE PER DRAW: A PER-ROW SCAN OF THE LISTS WAS OVER A SECOND AT 11,000 ROWS
         const disabledFieldApiNamesByObjectApiName = Object.create(null);
         disabledLookups.forEach(function (disabledLookup) {
+            if (!disabledLookup || typeof disabledLookup !== 'object' || typeof disabledLookup.objectApiName !== 'string') { return; }
             if (!Object.prototype.hasOwnProperty.call(disabledFieldApiNamesByObjectApiName, disabledLookup.objectApiName)) {
                 disabledFieldApiNamesByObjectApiName[disabledLookup.objectApiName] = [];
             }
@@ -18662,13 +18731,15 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             const objectApiName = treeObjectState.object.objectApiName;
             const exclusion = Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
             const isAutoExcluded = !!exclusion && exclusion.kind === 'autoExcluded';
+            const impact = !exclusion && hasOwnKey(impactsByObjectApiName, objectApiName) ? impactsByObjectApiName[objectApiName] : null;
 
             if (exclusion) { treeObjectState.element.classList.add('excluded'); } else { treeObjectState.element.classList.remove('excluded'); }
 
-            treeObjectState.exclusionElement.textContent = !exclusion ? ''
+            treeObjectState.exclusionElement.textContent = impact ? describeObjectImpact(impact)
+                : !exclusion ? ''
                 : isAutoExcluded ? 'auto-excluded — parent ' + exclusion.excludedParentObjectApiName + ' excluded'
                 : 'excluded';
-            if (exclusion) { treeObjectState.exclusionElement.classList.remove('hidden'); } else { treeObjectState.exclusionElement.classList.add('hidden'); }
+            if (exclusion || impact) { treeObjectState.exclusionElement.classList.remove('hidden'); } else { treeObjectState.exclusionElement.classList.add('hidden'); }
 
             const disabledFieldApiNames = Object.prototype.hasOwnProperty.call(disabledFieldApiNamesByObjectApiName, objectApiName)
                 ? disabledFieldApiNamesByObjectApiName[objectApiName]
@@ -18682,18 +18753,19 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             if (!treeObjectState.includeElement) { return; }
 
             const includeElement = treeObjectState.includeElement;
-            const glyphKind = !exclusion ? 'included' : exclusion.kind;
+            const glyphKind = exclusion ? exclusion.kind : impact ? 'impacted' : 'included';
             const isRefused = !!treeObjectState.object.hasIndistinctOccurrences;
 
             treeObjectState.isIncluded = !exclusion;
             treeObjectState.glyphElement.setAttribute('class', 'treeGlyph ' + glyphKind);
-            treeObjectState.glyphPathElement.setAttribute('d', exclusion ? TREE_BROKEN_GLYPH_PATH : TREE_LINKED_GLYPH_PATH);
+            treeObjectState.glyphPathElement.setAttribute('d', exclusion ? TREE_BROKEN_GLYPH_PATH : impact ? TREE_IMPACTED_GLYPH_PATH : TREE_LINKED_GLYPH_PATH);
             includeElement.setAttribute('aria-pressed', exclusion ? 'false' : 'true');
             includeElement.disabled = isAutoExcluded || isRefused;
 
             const title = isRefused ? objectApiName + ' is written more than once in its recipe with no nickname to tell them apart, so it cannot be excluded'
                 : isAutoExcluded ? 'Excluded because parent ' + exclusion.excludedParentObjectApiName + ' is excluded'
                 : exclusion ? 'Excluded — click to include'
+                : impact ? 'Included — ' + describeObjectImpact(impact) + ', so ' + impact.fieldApiNames.join(', ') + ( impact.fieldApiNames.length === 1 ? ' is' : ' are' ) + ' left out. Click to exclude'
                 : 'Included — click to exclude';
             includeElement.setAttribute('title', title);
             includeElement.setAttribute('aria-label', objectApiName + ': ' + title);

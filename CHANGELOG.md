@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.140.0] - Recipe Cockpit: an object a parent's exclusion cut a lookup from is marked impacted
+
+Closes [#449](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/449), after [#219](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/219) and [#257](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/257).
+
+When you excluded a parent, a child that another included parent kept stayed included, but its lookup to the excluded parent was left out of generation. Its chain link, title and label looked exactly like an untouched object's; only a muted ` · parent excluded` in the lookups line said otherwise.
+
+- **A third chain state.** Such an object is drawn **impacted**: `RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH`, one link where the joined glyph has it and the other pulled away with one spark, stroked in `--sdt-changed`. The shape says it, never the colour alone.
+- **Named.** The row's label reads `parent Contact excluded` (`parents A, B excluded` for several, sorted), and the title and `aria-label` read `Included — parent Contact excluded, so Contact__c is left out. Click to exclude`. `aria-pressed` stays `true`, and a click still excludes the object.
+- **Counted and listed.** The card header adds `· N impacted` when N > 0, and the Insert order line under the Treecipes dropdown marks the object `(impacted)`.
+- **Only the object whose lookup was cut.** Its descendants generate as before and are not marked. A self-lookup never makes an object impacted, and an auto-excluded object stays auto-excluded.
+- **Drawn from what the host already posts.** The panel reads the cascade's `disabledLookups` (`indexObjectImpacts`, cached per selection, no prototype). A malformed entry is skipped rather than throwing, which also guards the existing lookups line.
+- **Unchanged.** The cascade, what is generated in either backend, the stored selection (`RECIPE_COCKPIT_OBJECT_SELECTION_VERSION`) and every posted message.
+- **Guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the impacted state. The pictures were not re-taken: none shows an impacted row.
+- **Tests.** The panel suite draws the impacted glyph, label, title, `aria-label`, count and Insert order suffix, puts the row back when the parent is included again, lists two parents sorted, skips a grandchild, a self-lookup, an excluded object and malformed entries (a `__proto__` name included), and the contrast test holds `--sdt-changed` to 3:1 on a row and a hovered row.
+
 ## [3.139.0] - Recipe Cockpit: the object row's count reads as what gets created
 
 Closes [#438](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/438).
