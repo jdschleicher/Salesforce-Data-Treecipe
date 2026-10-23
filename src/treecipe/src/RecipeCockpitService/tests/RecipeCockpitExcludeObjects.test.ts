@@ -24,10 +24,12 @@ import {
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH,
     RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM,
+    RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH,
     RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
+import { RecipeCockpitObjectSelection } from '../RecipeCockpitObjectSelection';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 
 /*
@@ -802,6 +804,175 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
             expect(insertOf(0).disabled).toBeTrue();
             expect(insertReasonOf(0)).toBe('Can\'t insert: Every object of this tree is excluded.');
             expect(insertOf(1).disabled).toBeFalse();
+
+        });
+
+    });
+
+    /*
+        #449: an object the cascade keeps INCLUDED, because another parent is still included, but whose
+        lookup to the excluded parent is left out, is drawn IMPACTED: its own glyph, label, title and
+        aria-label, counted in the header and marked in the Insert order line. Drawn from the host's
+        disabledLookups only; nothing new is posted or stored.
+    */
+    describe('the panel script, an included object whose lookup to an excluded parent is cut (#449)', () => {
+
+        const drawRecipe = (recipeChanges: (recipe: IRecipeCockpitRecipeViewModel) => void = () => undefined) => {
+            const panel = runPanelScript();
+            const recipe = loadRecipe();
+            recipeChanges(recipe);
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 3 });
+            panel.postToPanel({ command: 'loadPhase', message: '' });
+            panel.expandAllTrees();
+            return panel;
+        };
+
+        const otherChildOf = (recipe: IRecipeCockpitRecipeViewModel) => treeOf(recipe, ACCOUNT_TREE_KEY).objects.find(treeObject => treeObject.objectApiName === 'OtherChildObject__c')!;
+        const contactLookupFieldOf = (recipe: IRecipeCockpitRecipeViewModel) => otherChildOf(recipe).parentLookups.find(lookup => lookup.parentObjectApiName === 'Contact')!.fieldApiName;
+        // OtherChildObject__c ALSO LOOKS UP TO Account, SO EXCLUDING Contact KEEPS IT AND CUTS ITS Contact LOOKUP
+        const giveOtherChildAnAccountParent = (recipe: IRecipeCockpitRecipeViewModel) => {
+            otherChildOf(recipe).parentLookups = [...otherChildOf(recipe).parentLookups, { fieldApiName: 'Account__c', parentObjectApiName: 'Account' }];
+        };
+        const excludeContact = (recipe: IRecipeCockpitRecipeViewModel) => {
+            giveOtherChildAnAccountParent(recipe);
+            RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]));
+        };
+
+        const objectNamed = (panel: ReturnType<typeof runPanelScript>, objectApiName: string) => panel.objectElements().find(objectElement => panel.objectNameOf(objectElement) === objectApiName);
+        const includeOf = (panel: ReturnType<typeof runPanelScript>, objectApiName: string) => panel.findAll(objectNamed(panel, objectApiName).children[0], 'treeObjectInclude')[0];
+        const glyphOf = (includeElement: any) => includeElement.children[0];
+        const pathOf = (includeElement: any) => glyphOf(includeElement).children[0].attributes.d;
+        const labelOf = (panel: ReturnType<typeof runPanelScript>, objectApiName: string) => panel.findAll(objectNamed(panel, objectApiName).children[0], 'treeExclusion')[0];
+        const countOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(panel.treeCards()[0], 'treeCount')[0].textContent;
+        const insertOrderOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(panel.findAll(panel.cockpitBodyElement, 'treePickerObjects')[0], 'treePickerObject').map((element: any) => element.textContent);
+
+        it('draws the impacted object with its own glyph, label, title and aria-label, still included and clickable', () => {
+
+            const recipe = loadRecipe();
+            excludeContact(recipe);
+            const contactLookupField = contactLookupFieldOf(recipe);
+            const panel = drawRecipe(excludeContact);
+
+            const otherInclude = includeOf(panel, 'OtherChildObject__c');
+            expect(glyphOf(otherInclude).attributes.class).toBe('treeGlyph impacted');
+            expect(pathOf(otherInclude)).toBe(RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH);
+            const title = `Included — parent Contact excluded, so ${contactLookupField} is left out. Click to exclude`;
+            expect(otherInclude.attributes).toMatchObject({ 'aria-pressed': 'true', title: title, 'aria-label': `OtherChildObject__c: ${title}` });
+            expect(otherInclude.disabled).toBeFalse();
+            expect(labelOf(panel, 'OtherChildObject__c').textContent).toBe('parent Contact excluded');
+            expect(panel.isHidden(labelOf(panel, 'OtherChildObject__c'))).toBeFalse();
+            expect(objectNamed(panel, 'OtherChildObject__c').classList.contains('excluded')).toBeFalse();
+
+            // ACCOUNT LOST NOTHING: STILL THE JOINED LINK, NO LABEL
+            expect(glyphOf(includeOf(panel, 'Account')).attributes.class).toBe('treeGlyph included');
+            expect(pathOf(includeOf(panel, 'Account'))).toBe(RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH);
+            expect(panel.isHidden(labelOf(panel, 'Account'))).toBeTrue();
+
+            otherInclude.dispatch('click');
+            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'setObjectIncluded')).toEqual([
+                { command: 'setObjectIncluded', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'OtherChildObject__c', included: false }
+            ]);
+
+        });
+
+        it('counts the impacted objects in the header and marks them in the Insert order line, and adds nothing when none is', () => {
+
+            const panel = drawRecipe(excludeContact);
+
+            expect(countOf(panel)).toBe('2 of 3 objects · 1 impacted · 13 fields');
+            expect(insertOrderOf(panel)).toEqual(['Account', 'Contact (excluded)', 'OtherChildObject__c (impacted)']);
+
+            const untouched = drawRecipe(giveOtherChildAnAccountParent);
+            expect(countOf(untouched)).toBe('3 objects · 13 fields');
+            expect(insertOrderOf(untouched)).toEqual(['Account', 'Contact', 'OtherChildObject__c']);
+
+        });
+
+        it('never marks an auto-excluded object impacted, and puts the row back in place when the parent is included again', () => {
+
+            const panel = drawRecipe(recipe => RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]])));
+            expect(glyphOf(includeOf(panel, 'OtherChildObject__c')).attributes.class).toBe('treeGlyph autoExcluded');
+            expect(labelOf(panel, 'OtherChildObject__c').textContent).toBe('auto-excluded — parent Contact excluded');
+
+            const impacted = drawRecipe(excludeContact);
+            impacted.postToPanel({ command: 'objectSelection', renderSequence: 3, treeKey: ACCOUNT_TREE_KEY });
+            const otherInclude = includeOf(impacted, 'OtherChildObject__c');
+            expect(glyphOf(otherInclude).attributes.class).toBe('treeGlyph included');
+            expect(pathOf(otherInclude)).toBe(RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH);
+            expect(otherInclude.attributes.title).toBe('Included — click to exclude');
+            expect(impacted.isHidden(labelOf(impacted, 'OtherChildObject__c'))).toBeTrue();
+            expect(countOf(impacted)).toBe('3 objects · 13 fields');
+
+        });
+
+        it('lists every excluded parent and every cut lookup once, sorted, and marks only the object whose lookup was cut', () => {
+
+            const panel = drawRecipe(recipe => {
+                treeOf(recipe, ACCOUNT_TREE_KEY).objectSelection = {
+                    exclusions: [{ objectApiName: 'Account', kind: 'excluded' }],
+                    disabledLookups: [
+                        { objectApiName: 'Contact', fieldApiName: 'Zeta__c', parentObjectApiName: 'Zeta__c' },
+                        { objectApiName: 'Contact', fieldApiName: 'AccountId', parentObjectApiName: 'Account' },
+                        { objectApiName: 'Contact', fieldApiName: 'AccountId', parentObjectApiName: 'Account' }
+                    ],
+                    includedObjectCount: 2,
+                    objectCount: 3
+                };
+            });
+
+            expect(labelOf(panel, 'Contact').textContent).toBe('parents Account, Zeta__c excluded');
+            expect(includeOf(panel, 'Contact').attributes.title).toBe('Included — parents Account, Zeta__c excluded, so AccountId, Zeta__c are left out. Click to exclude');
+            // OtherChildObject__c HANGS UNDER Contact ONLY: IT GENERATES AS BEFORE, SO IT IS NOT MARKED
+            expect(glyphOf(includeOf(panel, 'OtherChildObject__c')).attributes.class).toBe('treeGlyph included');
+            expect(countOf(panel)).toBe('2 of 3 objects · 1 impacted · 13 fields');
+
+        });
+
+        it('draws nothing impacted for a self-lookup, an excluded object or a malformed list, a __proto__ name included, and does not throw', () => {
+
+            const panel = drawRecipe(recipe => {
+                treeOf(recipe, ACCOUNT_TREE_KEY).objectSelection = {
+                    exclusions: [{ objectApiName: 'Contact', kind: 'excluded' }],
+                    disabledLookups: [
+                        { objectApiName: 'Account', fieldApiName: 'ParentId', parentObjectApiName: 'Account' },
+                        { objectApiName: 'Contact', fieldApiName: 'AccountId', parentObjectApiName: 'Account' },
+                        { objectApiName: 'OtherChildObject__c', fieldApiName: 7, parentObjectApiName: 'Contact' },
+                        null,
+                        'Account',
+                        { objectApiName: '__proto__', fieldApiName: 'x__c', parentObjectApiName: 'Contact' },
+                        { objectApiName: 'Gone__c', fieldApiName: 'Contact__c', parentObjectApiName: 'Contact' }
+                    ] as any,
+                    includedObjectCount: 2,
+                    objectCount: 3
+                };
+            });
+
+            expect(['Account', 'Contact', 'OtherChildObject__c'].map(objectApiName => glyphOf(includeOf(panel, objectApiName)).attributes.class))
+                .toEqual(['treeGlyph included', 'treeGlyph excluded', 'treeGlyph included']);
+            // A NAME THE CARD DOES NOT DRAW, __proto__ INCLUDED, IS NEVER COUNTED: THE HEADER AGREES WITH THE ROWS
+            expect(countOf(panel)).toBe('2 of 3 objects · 13 fields');
+            // AND A NON-STRING FIELD NEVER REACHES THE LOOKUPS LINE
+            expect(panel.findAll(objectNamed(panel, 'OtherChildObject__c').children[0], 'treeLookups')[0].textContent).not.toContain('parent excluded');
+
+            const notAList = drawRecipe(recipe => {
+                treeOf(recipe, ACCOUNT_TREE_KEY).objectSelection = { exclusions: [], disabledLookups: 'Contact', includedObjectCount: 3, objectCount: 3 } as any;
+            });
+            expect(glyphOf(includeOf(notAList, 'OtherChildObject__c')).attributes.class).toBe('treeGlyph included');
+            expect(countOf(notAList)).toBe('3 of 3 objects · 13 fields');
+
+        });
+
+        it('is a cascade the host already computes: the cut lookup is disabled, and a grandchild under the impacted object is not', () => {
+
+            const objectSelection = RecipeCockpitObjectSelection.computeObjectSelection([
+                { objectApiName: 'Root__c', parentLookups: [] },
+                { objectApiName: 'Other__c', parentLookups: [] },
+                { objectApiName: 'Child__c', parentLookups: [{ fieldApiName: 'Root__c', parentObjectApiName: 'Root__c' }, { fieldApiName: 'Other__c', parentObjectApiName: 'Other__c' }] },
+                { objectApiName: 'Grandchild__c', parentLookups: [{ fieldApiName: 'Child__c', parentObjectApiName: 'Child__c' }] }
+            ], ['Root__c']);
+
+            expect(objectSelection.exclusions).toEqual([{ objectApiName: 'Root__c', kind: 'excluded' }]);
+            expect(objectSelection.disabledLookups).toEqual([{ objectApiName: 'Child__c', fieldApiName: 'Root__c', parentObjectApiName: 'Root__c' }]);
 
         });
 

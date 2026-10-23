@@ -634,6 +634,8 @@ describe('RecipeCockpitService', () => {
                 ['muted', 'page'], ['accent', 'page'],
                 // #434: THE GITHUB MARK IS ON THE NAVY TITLE BAR, TEAL WHILE HOVERED, WHICH IS ALSO THE FOCUS RING THERE
                 ['onHeaderMuted', 'header'], ['action', 'header'],
+                // #449: AN IMPACTED ROW'S HALF-BROKEN LINK, ON A ROW AND A HOVERED ROW
+                ['changed', 'surface'], ['changed', 'rowHover'],
                 // THE SELECTED TAB'S OUTLINE AND ITS PANEL'S BORDER, AND A TICKED BOX'S EDGE
                 ['actionEdge', 'surface'], ['actionEdge', 'rowHover']
             ];
@@ -652,6 +654,7 @@ describe('RecipeCockpitService', () => {
                 expect(styleSheet).toContain('.treeGlyph path { fill: none; stroke: var(--sdt-accent);');
                 expect(styleSheet).toContain('.treeGlyph.excluded path, .treeGlyph.autoExcluded path { stroke: var(--sdt-muted); }');
                 expect(styleSheet).toMatch(/\.treeGlyph\.autoExcluded path \{ stroke-dasharray: [^;]+; \}/);
+                expect(styleSheet).toContain('.treeGlyph.impacted path { stroke: var(--sdt-changed); }');
                 expect(styleSheet).toMatch(/\.treeObject\.excluded::after \{[^}]*background-color: var\(--sdt-excluded-overlay\);[^}]*pointer-events: none;[^}]*z-index: 1;/);
                 // THE ICON SITS ABOVE THE OVERLAY, SO IT STAYS CRISP AND CLICKABLE
                 expect(styleSheet).toMatch(/\.treeObjectInclude \{[^}]*position: relative;[^}]*z-index: 2;/);
