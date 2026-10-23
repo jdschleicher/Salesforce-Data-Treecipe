@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.137.0] - Recipe Cockpit: the object row's count reads as what gets created
+
+Closes [#438](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/438).
+
+An object row's count (#255) was a bare text box followed by a muted `per Account` or `records`, so it didn't say that the number is how many records Generate creates, or for what.
+
+- **A sentence.** The row now reads `Create [5 ✎] Contact records per Account` for a nested faker-js friend and `Create [10 ✎] Account records` for a root (snowfakery cards always read as roots). The object is its API name as it is, never a made-up plural.
+- **The count is a button.** A `secondary`, compact button made by `createButton`, holding the count and the pencil glyph (`RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH`, built with `createElementNS`). Its accessible name is the whole sentence, such as "Create 5 Contact records per Account record, edit count".
+- **Edited in place.** A click anywhere on the button swaps in the number box, focused and selected. Enter or leaving the box keeps the count and gives the button back; Escape cancels and gives focus back to the button. An invalid count keeps the box open with the same refusal as before, and an unchanged one posts nothing.
+- **Changed counts show.** A count that differs from the recipe's own `count:` draws `changed` inside the button, edges it in `--sdt-changed`, and its tooltip says `recipe: N`; both go once the count is back to the recipe's, or after Reset selection.
+- **Excluded objects.** The button is disabled, a click opens nothing, and an open box closes without posting when its object is excluded. The shared disabled rule no longer names `.treeRecordCountInput`, which is never shown disabled now.
+- **Unchanged.** The `setObjectCount` message and its checks, how counts are stored (`RECIPE_COCKPIT_OBJECT_SELECTION_VERSION` 3), and which rows get a count. Neither faker backend changes.
+- **Guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the new row, and the pictures were re-taken.
+- **Tests.** The panel suite drives the button, the box, Enter, blur and Escape, the refusals, the exclusion and the `changed` marker; the panel harness's fake element counts `select()`.
+
 ## [3.136.0] - Recipe Cockpit: a Navy, Soft White, Charcoal and Teal palette
 
 Closes [#434](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/434).

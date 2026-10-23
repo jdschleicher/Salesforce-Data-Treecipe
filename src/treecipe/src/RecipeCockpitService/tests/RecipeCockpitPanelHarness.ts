@@ -67,6 +67,9 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
             },
             // THE FOCUSED ELEMENT IS document.activeElement, AS IN A BROWSER (#349)
             focus() { fakeDocument.activeElement = this; },
+            // A BOX OPENED FOR EDITING SELECTS ITS TEXT (#438); COUNTED, SINCE THERE IS NO SELECTION
+            selectedCount: 0,
+            select() { this.selectedCount++; },
             setAttribute(attributeName: string, attributeValue: string) { this.attributes[attributeName] = String(attributeValue); },
             removeAttribute(attributeName: string) { delete this.attributes[attributeName]; },
             appendChild(childElement: any) { this.children.push(childElement); childElement.parentNode = this; return childElement; },

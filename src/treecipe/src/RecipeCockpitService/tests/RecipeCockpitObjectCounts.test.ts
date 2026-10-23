@@ -26,6 +26,7 @@ import {
     RECIPE_COCKPIT_OBJECT_SELECTION_VERSION_WITHOUT_FIELDS,
     RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
+    RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH,
     RECIPE_COCKPIT_UNGROUPED_TREE_TITLE
 } from '../RecipeCockpitService';
 import { RecipeCockpitRecipeWriter, RecipeFilterResult, RecipeWriterRefusalReason } from '../RecipeCockpitRecipeWriter';
@@ -883,40 +884,81 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
         const objectNamed = (panel: Panel, objectApiName: string) => objectsNamed(panel, objectApiName)[0];
         const headerOf = (objectElement: any) => objectElement.children[0];
         const countBoxOf = (panel: Panel, objectElement: any) => panel.findAll(headerOf(objectElement), 'treeRecordCountInput')[0];
+        const countButtonOf = (panel: Panel, objectElement: any) => panel.findAll(headerOf(objectElement), 'treeRecordCountButton')[0];
+        const countValueOf = (panel: Panel, objectElement: any) => panel.findAll(countButtonOf(panel, objectElement), 'treeRecordCountValue')[0].textContent;
+        const countChangedOf = (panel: Panel, objectElement: any) => panel.findAll(countButtonOf(panel, objectElement), 'treeRecordCountChanged')[0];
         const countLabelOf = (panel: Panel, objectElement: any) => panel.findAll(headerOf(objectElement), 'treeRecordCountLabel')[0];
         const countErrorOf = (panel: Panel, objectElement: any) => panel.findAll(headerOf(objectElement), 'treeRecordCountError')[0];
-        const typeCount = (countBoxElement: any, countText: string) => { countBoxElement.value = countText; countBoxElement.dispatch('change'); };
+        const countSentenceOf = (panel: Panel, objectElement: any) => panel.findAll(headerOf(objectElement), 'treeRecordCount')[0];
+        const openCount = (panel: Panel, objectElement: any) => { countButtonOf(panel, objectElement).dispatch('click'); return countBoxOf(panel, objectElement); };
+        const typeCount = (panel: Panel, objectElement: any, countText: string, key = 'Enter') => {
+            const countBoxElement = panel.isHidden(countBoxOf(panel, objectElement)) ? openCount(panel, objectElement) : countBoxOf(panel, objectElement);
+            countBoxElement.value = countText;
+            if ( key === 'blur' ) { countBoxElement.dispatch('blur'); } else { countBoxElement.dispatch('keydown', { key: key }); }
+        };
+        const isEditorOpen = (panel: Panel, objectElement: any) => !panel.isHidden(countBoxOf(panel, objectElement)) && panel.isHidden(countButtonOf(panel, objectElement));
         const postedCounts = (panel: Panel) => panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'setObjectCount');
 
-        it('draws a count box right of the object name, starting at the recipe\'s own count', () => {
+        it('draws "Create [count ✎] <Object> records" right of the object name, the count a button starting at the recipe\'s own', () => {
 
             const panel = drawRecipe();
             const contact = objectNamed(panel, 'Contact');
             const headerChildren = headerOf(contact).children;
             const nameIndex = headerChildren.findIndex((childElement: any) => panel.findAll(childElement, 'treeObjectName').length > 0);
-            const countBox = countBoxOf(panel, contact);
+            const countButton = countButtonOf(panel, contact);
 
             expect(nameIndex).toBeGreaterThanOrEqual(0);
-            // THE OBJECT'S NICKNAME SITS BETWEEN ITS NAME AND THE COUNT BOX (#380)
+            // THE OBJECT'S NICKNAME SITS BETWEEN ITS NAME AND THE COUNT (#380)
             const countIndex = headerChildren[nameIndex + 1].classList.contains('treeNicknameSlot') ? nameIndex + 2 : nameIndex + 1;
             expect(headerChildren[countIndex].classList.contains('treeRecordCount')).toBeTrue();
-            expect(countBox.tagName).toBe('input');
-            expect(countBox.attributes.type).toBe('text');
-            expect(countBox.attributes.inputmode).toBe('numeric');
-            expect(countBox.value).toBe('1');
-            expect(countBox.disabled).toBeFalse();
+            expect(countSentenceOf(panel, contact).children.map((childElement: any) => childElement.className.split(' ')[0]))
+                .toEqual(['treeRecordCountVerb', 'sdtButton', 'treeRecordCountInput', 'treeRecordCountLabel', 'treeRecordCountError']);
+            expect(panel.findAll(countSentenceOf(panel, contact), 'treeRecordCountVerb')[0].textContent).toBe('Create');
+            expect(countButton.tagName).toBe('button');
+            expect(countButton.classList.contains('sdtButton-secondary')).toBeTrue();
+            expect(countButton.classList.contains('sdtButton-compact')).toBeTrue();
+            expect(countValueOf(panel, contact)).toBe('1');
+            expect(countButton.disabled).toBeFalse();
+            expect(countButton.attributes.title).toBe('Click to change the count.');
+            const glyph = countButton.children.find((childElement: any) => childElement.tagName === 'svg');
+            expect(glyph.attributes.class).toBe('fixedValueGlyph');
+            expect(glyph.namespaceURI).toBe('http://www.w3.org/2000/svg');
+            expect(glyph.attributes['aria-hidden']).toBe('true');
+            expect(glyph.children[0].attributes.d).toBe(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH);
+            expect(panel.isHidden(countChangedOf(panel, contact))).toBeTrue();
+            expect(panel.isHidden(countBoxOf(panel, contact))).toBeTrue();
             expect(panel.isHidden(countErrorOf(panel, contact))).toBeTrue();
 
         });
 
-        it('labels a nested friend\'s count "per <Parent>", and a root\'s as records', () => {
+        it('reads "<Object> records per <Parent>" for a nested friend and "<Object> records" for a root, and names the button by the whole sentence', () => {
 
             const panel = drawRecipe(recipe => { objectOf(recipe, 'Contact').countParentObjectApiName = 'Account'; });
 
-            expect(countLabelOf(panel, objectNamed(panel, 'Contact')).textContent).toBe('per Account');
+            expect(countLabelOf(panel, objectNamed(panel, 'Contact')).textContent).toBe('Contact records per Account');
+            expect(countButtonOf(panel, objectNamed(panel, 'Contact')).attributes['aria-label']).toBe('Create 1 Contact records per Account record, edit count');
             expect(countBoxOf(panel, objectNamed(panel, 'Contact')).attributes['aria-label']).toBe('Contact records per Account record');
-            expect(countLabelOf(panel, objectNamed(panel, 'Account')).textContent).toBe('records');
-            expect(countLabelOf(panel, objectNamed(panel, 'Account')).textContent).not.toContain('per');
+            expect(countLabelOf(panel, objectNamed(panel, 'Account')).textContent).toBe('Account records');
+            expect(countButtonOf(panel, objectNamed(panel, 'Account')).attributes['aria-label']).toBe('Create 1 Account records, edit count');
+            expect(countLabelOf(panel, objectNamed(panel, 'OtherChildObject__c')).textContent).toBe('OtherChildObject__c records');
+
+        });
+
+        it('opens the number box in place on a click, focused and selected, holding the current count', () => {
+
+            const panel = drawRecipe();
+            const contact = objectNamed(panel, 'Contact');
+
+            const countBox = openCount(panel, contact);
+
+            expect(isEditorOpen(panel, contact)).toBeTrue();
+            expect(countBox.tagName).toBe('input');
+            expect(countBox.attributes.type).toBe('text');
+            expect(countBox.attributes.inputmode).toBe('numeric');
+            expect(countBox.value).toBe('1');
+            expect(panel.activeElement()).toBe(countBox);
+            expect(countBox.selectedCount).toBe(1);
+            expect(postedCounts(panel)).toEqual([]);
 
         });
 
@@ -929,29 +971,63 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             ['a padded count', ' 5 '],
             ['a count past MAX_SAFE_INTEGER', '9007199254740993'],
             ['a leading zero', '05']
-        ])('refuses %s with the reason on the row, and posts nothing', (_caseName, countText) => {
+        ])('refuses %s with the reason on the row, keeps the box open and posts nothing', (_caseName, countText) => {
 
             const panel = drawRecipe();
             const contact = objectNamed(panel, 'Contact');
 
-            typeCount(countBoxOf(panel, contact), countText);
+            typeCount(panel, contact, countText);
 
             expect(postedCounts(panel)).toEqual([]);
             expect(countErrorOf(panel, contact).textContent).toBe('Enter a whole number of 1 or more.');
             expect(panel.isHidden(countErrorOf(panel, contact))).toBeFalse();
+            expect(isEditorOpen(panel, contact)).toBeTrue();
 
         });
 
-        it('posts a valid count as names and a number, clearing an earlier refusal', () => {
+        it('posts a valid count on Enter as names and a number, clearing an earlier refusal and giving the button back', () => {
 
             const panel = drawRecipe();
             const contact = objectNamed(panel, 'Contact');
 
-            typeCount(countBoxOf(panel, contact), '0');
-            typeCount(countBoxOf(panel, contact), '25');
+            typeCount(panel, contact, '0');
+            typeCount(panel, contact, '25');
 
             expect(postedCounts(panel)).toEqual([{ command: 'setObjectCount', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 25 }]);
             expect(panel.isHidden(countErrorOf(panel, contact))).toBeTrue();
+            expect(isEditorOpen(panel, contact)).toBeFalse();
+            expect(panel.activeElement()).toBe(countButtonOf(panel, contact));
+
+        });
+
+        it('posts a valid count when the box loses focus', () => {
+
+            const panel = drawRecipe();
+            const contact = objectNamed(panel, 'Contact');
+
+            typeCount(panel, contact, '4', 'blur');
+
+            expect(postedCounts(panel)).toEqual([{ command: 'setObjectCount', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Contact', count: 4 }]);
+            expect(isEditorOpen(panel, contact)).toBeFalse();
+
+        });
+
+        it('cancels on Escape: posts nothing, gives focus back to the button, and a later blur posts nothing either', () => {
+
+            const panel = drawRecipe();
+            const contact = objectNamed(panel, 'Contact');
+
+            typeCount(panel, contact, '0', 'Escape');
+            countBoxOf(panel, contact).dispatch('blur');
+
+            expect(postedCounts(panel)).toEqual([]);
+            expect(isEditorOpen(panel, contact)).toBeFalse();
+            expect(panel.isHidden(countErrorOf(panel, contact))).toBeTrue();
+            expect(panel.activeElement()).toBe(countButtonOf(panel, contact));
+            expect(countValueOf(panel, contact)).toBe('1');
+
+            // OPENED AGAIN, THE BOX HOLDS THE CURRENT COUNT, NOT WHAT WAS CANCELLED
+            expect(openCount(panel, contact).value).toBe('1');
 
         });
 
@@ -960,14 +1036,15 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             const panel = drawRecipe(recipe => { objectOf(recipe, 'Account').nickname = 'Account_NickName'; });
             const account = objectNamed(panel, 'Account');
 
-            typeCount(countBoxOf(panel, account), '1');
-            typeCount(countBoxOf(panel, account), '3');
+            typeCount(panel, account, '1');
+            expect(isEditorOpen(panel, account)).toBeFalse();
+            typeCount(panel, account, '3');
 
             expect(postedCounts(panel)).toEqual([{ command: 'setObjectCount', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', nickname: 'Account_NickName', count: 3 }]);
 
         });
 
-        it('draws no count box on the ungrouped card, for an object written twice with no nickname, an iteration, or an object with no readable count', () => {
+        it('draws no count on the ungrouped card, for an object written twice with no nickname, an iteration, or an object with no readable count', () => {
 
             const panel = drawRecipe(recipe => {
                 objectOf(recipe, 'Contact').hasIndistinctOccurrences = true;
@@ -980,36 +1057,59 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
 
             const accounts = objectsNamed(panel, 'Account');
             expect(accounts).toHaveLength(2);
-            expect(countBoxOf(panel, accounts[0])).toBeDefined();
-            expect(countBoxOf(panel, accounts[1])).toBeUndefined();
-            expect(countBoxOf(panel, objectNamed(panel, 'Contact'))).toBeUndefined();
-            expect(countBoxOf(panel, objectNamed(panel, 'OtherChildObject__c'))).toBeUndefined();
+            expect(countButtonOf(panel, accounts[0])).toBeDefined();
+            expect(countButtonOf(panel, accounts[1])).toBeUndefined();
+            expect(countSentenceOf(panel, accounts[1])).toBeUndefined();
+            expect(countButtonOf(panel, objectNamed(panel, 'Contact'))).toBeUndefined();
+            expect(countButtonOf(panel, objectNamed(panel, 'OtherChildObject__c'))).toBeUndefined();
 
             const leads = objectsNamed(panel, 'Lead');
             expect(leads).toHaveLength(2);
-            expect(leads.map(leadElement => countBoxOf(panel, leadElement) === undefined).sort()).toEqual([false, true]);
+            expect(leads.map(leadElement => countButtonOf(panel, leadElement) === undefined).sort()).toEqual([false, true]);
 
         });
 
-        it('disables the box of an excluded object, and shows its stored count again once re-included', () => {
+        it('disables the button of an excluded object so a click opens nothing, and shows its stored count again once re-included', () => {
 
             const panel = drawRecipe(recipe => applyCounts(recipe, { [ACCOUNT_TREE_KEY]: { Contact: 5 } }, { [ACCOUNT_TREE_KEY]: ['Contact'] }));
             panel.postToPanel({ command: 'rendered' });
             const contact = objectNamed(panel, 'Contact');
 
-            expect(countBoxOf(panel, contact).disabled).toBeTrue();
-            expect(countBoxOf(panel, objectNamed(panel, 'OtherChildObject__c')).disabled).toBeTrue();
-            expect(countBoxOf(panel, objectNamed(panel, 'Account')).disabled).toBeFalse();
-            expect(countBoxOf(panel, contact).value).toBe('5');
+            expect(countButtonOf(panel, contact).disabled).toBeTrue();
+            expect(countButtonOf(panel, objectNamed(panel, 'OtherChildObject__c')).disabled).toBeTrue();
+            expect(countButtonOf(panel, objectNamed(panel, 'Account')).disabled).toBeFalse();
+            expect(countValueOf(panel, contact)).toBe('5');
+            expect(countButtonOf(panel, contact).attributes.title).toBe('Excluded objects are not generated, so their count cannot be changed.');
+
+            countButtonOf(panel, contact).dispatch('click');
+            expect(isEditorOpen(panel, contact)).toBeFalse();
 
             panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3, objectCounts: [{ objectApiName: 'Contact', count: 5 }] });
 
-            expect(countBoxOf(panel, contact).disabled).toBeFalse();
-            expect(countBoxOf(panel, contact).value).toBe('5');
+            expect(countButtonOf(panel, contact).disabled).toBeFalse();
+            expect(countValueOf(panel, contact)).toBe('5');
 
         });
 
-        it('follows tree.objectCounts from an objectSelection message for the model on screen, and shows Reset while a count differs', () => {
+        it('closes an open box, posting nothing, when its object is excluded', () => {
+
+            const panel = drawRecipe();
+            panel.postToPanel({ command: 'rendered' });
+            const contact = objectNamed(panel, 'Contact');
+
+            openCount(panel, contact).value = '9';
+            const excludedRecipe = loadRecipe();
+            applyCounts(excludedRecipe, {}, { [ACCOUNT_TREE_KEY]: ['Contact'] });
+            panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3, objectSelection: treeOf(excludedRecipe, ACCOUNT_TREE_KEY).objectSelection });
+
+            expect(countButtonOf(panel, contact).disabled).toBeTrue();
+            expect(isEditorOpen(panel, contact)).toBeFalse();
+            countBoxOf(panel, contact).dispatch('blur');
+            expect(postedCounts(panel)).toEqual([]);
+
+        });
+
+        it('marks a count that differs from the recipe\'s own "changed", says the recipe\'s in the tooltip, and follows tree.objectCounts for the model on screen', () => {
 
             const panel = drawRecipe();
             panel.postToPanel({ command: 'rendered' });
@@ -1018,18 +1118,27 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             expect(panel.isHidden(resetElement)).toBeTrue();
 
             panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 99, objectCounts: [{ objectApiName: 'Contact', count: 7 }] });
-            expect(countBoxOf(panel, contact).value).toBe('1');
+            expect(countValueOf(panel, contact)).toBe('1');
+            expect(countButtonOf(panel, contact).classList.contains('changed')).toBeFalse();
 
             panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3, objectCounts: [{ objectApiName: 'Contact', count: 7 }] });
-            expect(countBoxOf(panel, contact).value).toBe('7');
+            expect(countValueOf(panel, contact)).toBe('7');
+            expect(countButtonOf(panel, contact).classList.contains('changed')).toBeTrue();
+            expect(panel.isHidden(countChangedOf(panel, contact))).toBeFalse();
+            expect(countChangedOf(panel, contact).textContent).toBe('changed');
+            expect(countButtonOf(panel, contact).attributes.title).toBe('recipe: 1. Click to change the count.');
+            expect(countButtonOf(panel, contact).attributes['aria-label']).toBe('Create 7 Contact records, changed from the recipe\'s 1, edit count');
             expect(panel.isHidden(resetElement)).toBeFalse();
 
-            // AN UNCHANGED COUNT POSTS NOTHING; THE HOST'S STORE IS WHAT THE BOX SHOWS
-            typeCount(countBoxOf(panel, contact), '7');
+            // AN UNCHANGED COUNT POSTS NOTHING; THE HOST'S STORE IS WHAT THE BUTTON SHOWS
+            typeCount(panel, contact, '7');
             expect(postedCounts(panel)).toEqual([]);
 
             panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3 });
-            expect(countBoxOf(panel, contact).value).toBe('1');
+            expect(countValueOf(panel, contact)).toBe('1');
+            expect(countButtonOf(panel, contact).classList.contains('changed')).toBeFalse();
+            expect(panel.isHidden(countChangedOf(panel, contact))).toBeTrue();
+            expect(countButtonOf(panel, contact).attributes.title).toBe('Click to change the count.');
             expect(panel.isHidden(resetElement)).toBeTrue();
 
         });
