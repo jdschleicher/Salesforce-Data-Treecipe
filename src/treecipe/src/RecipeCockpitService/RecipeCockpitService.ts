@@ -18648,6 +18648,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         const exclusionsByObjectApiName = indexObjectExclusions(tree);
         const impactsByObjectApiName = Object.create(null);
+        // ONLY OBJECTS THE CARD DRAWS, SO THE HEADER'S COUNT AND THE ROWS NEVER DISAGREE
+        const drawnObjectApiNames = Object.create(null);
+        ( Array.isArray(tree.objects) ? tree.objects : [] ).forEach(function (treeObject) {
+            if (treeObject && typeof treeObject.objectApiName === 'string') { drawnObjectApiNames[treeObject.objectApiName] = true; }
+        });
         const disabledLookups = Array.isArray(objectSelection.disabledLookups) ? objectSelection.disabledLookups : [];
         const compareNames = function (left, right) { return left < right ? -1 : left > right ? 1 : 0; };
 
@@ -18657,7 +18662,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             const parentObjectApiName = disabledLookup.parentObjectApiName;
             const fieldApiName = disabledLookup.fieldApiName;
             if (typeof objectApiName !== 'string' || typeof parentObjectApiName !== 'string' || typeof fieldApiName !== 'string') { return; }
-            if (objectApiName === parentObjectApiName || hasOwnKey(exclusionsByObjectApiName, objectApiName)) { return; }
+            if (objectApiName === parentObjectApiName || hasOwnKey(exclusionsByObjectApiName, objectApiName) || !hasOwnKey(drawnObjectApiNames, objectApiName)) { return; }
             if (!hasOwnKey(impactsByObjectApiName, objectApiName)) {
                 impactsByObjectApiName[objectApiName] = { parentObjectApiNames: [], fieldApiNames: [] };
             }
@@ -18719,7 +18724,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         // INDEXED ONCE PER DRAW: A PER-ROW SCAN OF THE LISTS WAS OVER A SECOND AT 11,000 ROWS
         const disabledFieldApiNamesByObjectApiName = Object.create(null);
         disabledLookups.forEach(function (disabledLookup) {
-            if (!disabledLookup || typeof disabledLookup !== 'object' || typeof disabledLookup.objectApiName !== 'string') { return; }
+            if (!disabledLookup || typeof disabledLookup !== 'object' || typeof disabledLookup.objectApiName !== 'string' || typeof disabledLookup.fieldApiName !== 'string') { return; }
             if (!Object.prototype.hasOwnProperty.call(disabledFieldApiNamesByObjectApiName, disabledLookup.objectApiName)) {
                 disabledFieldApiNamesByObjectApiName[disabledLookup.objectApiName] = [];
             }

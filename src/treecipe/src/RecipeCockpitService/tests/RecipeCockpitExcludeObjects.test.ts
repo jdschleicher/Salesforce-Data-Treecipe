@@ -939,7 +939,8 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
                         { objectApiName: 'OtherChildObject__c', fieldApiName: 7, parentObjectApiName: 'Contact' },
                         null,
                         'Account',
-                        { objectApiName: '__proto__', fieldApiName: 'x__c', parentObjectApiName: 'Contact' }
+                        { objectApiName: '__proto__', fieldApiName: 'x__c', parentObjectApiName: 'Contact' },
+                        { objectApiName: 'Gone__c', fieldApiName: 'Contact__c', parentObjectApiName: 'Contact' }
                     ] as any,
                     includedObjectCount: 2,
                     objectCount: 3
@@ -948,8 +949,10 @@ describe('RecipeCockpitService, excluding objects in the Treecipe tab (#219)', (
 
             expect(['Account', 'Contact', 'OtherChildObject__c'].map(objectApiName => glyphOf(includeOf(panel, objectApiName)).attributes.class))
                 .toEqual(['treeGlyph included', 'treeGlyph excluded', 'treeGlyph included']);
-            // ONLY THE __proto__ ENTRY COUNTS, AND IT IS AN OWN KEY RATHER THAN THE PROTOTYPE
-            expect(countOf(panel)).toBe('2 of 3 objects · 1 impacted · 13 fields');
+            // A NAME THE CARD DOES NOT DRAW, __proto__ INCLUDED, IS NEVER COUNTED: THE HEADER AGREES WITH THE ROWS
+            expect(countOf(panel)).toBe('2 of 3 objects · 13 fields');
+            // AND A NON-STRING FIELD NEVER REACHES THE LOOKUPS LINE
+            expect(panel.findAll(objectNamed(panel, 'OtherChildObject__c').children[0], 'treeLookups')[0].textContent).not.toContain('parent excluded');
 
             const notAList = drawRecipe(recipe => {
                 treeOf(recipe, ACCOUNT_TREE_KEY).objectSelection = { exclusions: [], disabledLookups: 'Contact', includedObjectCount: 3, objectCount: 3 } as any;
