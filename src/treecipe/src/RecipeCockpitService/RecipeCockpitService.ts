@@ -108,8 +108,9 @@ export const RECIPE_COCKPIT_PANEL_TITLE = 'Recipe Cockpit';
 export const RECIPE_COCKPIT_PENDING_ACKNOWLEDGEMENT = 'Connecting to the Treecipe extension host…';
 
 export type RecipeCockpitPaletteToken =
-    | 'page' | 'surface' | 'border' | 'header'
-    | 'text' | 'muted' | 'accent' | 'onAccent'
+    | 'page' | 'surface' | 'border' | 'header' | 'onHeader' | 'onHeaderMuted'
+    | 'text' | 'muted' | 'accent'
+    | 'action' | 'onAction' | 'actionEdge'
     | 'rowHover' | 'chipBg' | 'chipText'
     | 'added' | 'removed' | 'changed'
     | 'disabledBg' | 'disabledText'
@@ -123,30 +124,40 @@ export type RecipeCockpitPaletteToken =
     with no hierarchy; it now looks the same whatever theme the editor uses. Every text/background
     pair the stylesheet draws is held to WCAG 4.5:1 by a test, so a value changed here is measured
     rather than eyeballed.
+
+    Each colour has one job (#434): navy is the header background and every accent TEXT (links,
+    outlined buttons, object names, the focus ring); teal is ONLY a fill or an edge (filled buttons,
+    the selected tab, ticked boxes). Teal is never text: it is 1.9:1 on white, and white on teal is
+    the same, so what is drawn on teal is navy.
 */
 export const RECIPE_COCKPIT_PALETTE: Readonly<Record<RecipeCockpitPaletteToken, string>> = Object.freeze({
-    page: '#F4F6F9',
+    page: '#F4F7F6',
     surface: '#FFFFFF',
-    border: '#DDE3EA',
-    header: '#EEF3FB',
-    text: '#1F2937',
-    muted: '#5B6472',
-    accent: '#2563EB',
-    onAccent: '#FFFFFF',
-    rowHover: '#F1F5FF',
-    chipBg: '#EEF2FF',
-    chipText: '#3730A3',
+    border: '#D5DDDB',
+    header: '#1D3557',
+    onHeader: '#F4F7F6',
+    onHeaderMuted: '#C9D3E0',
+    text: '#333333',
+    muted: '#5C6470',
+    accent: '#1D3557',
+    action: '#06D6A0',
+    onAction: '#1D3557',
+    // A DARKER TEAL FOR AN EDGE: THE SELECTED TAB'S OUTLINE AND ITS PANEL'S BORDER, HELD TO 3:1 ON --sdt-surface AND --sdt-row-hover
+    actionEdge: '#049C74',
+    rowHover: '#E8F8F2',
+    chipBg: '#E3F7EF',
+    chipText: '#1D3557',
     added: '#15803D',
     removed: '#B91C1C',
     changed: '#B45309',
-    disabledBg: '#E5E7EB',
-    disabledText: '#4B5563',
+    disabledBg: '#E4E9E8',
+    disabledText: '#4F5654',
     // THE PINNED TARGET ORG MANAGER SECTION'S OWN LIGHT TINT (#433), A TOKEN OF ITS OWN SO A RETUNED header NEVER RECOLOURS IT; IT MUST STAY OPAQUE, SINCE CARDS SCROLL UNDER IT
     orgSection: '#EEF3FB',
     // SLATE GRAY AT 40%, LAID OVER AN OBJECT THE STRUCTURE TAB EXCLUDES (#219); --sdt-text UNDER IT HOLDS 4.5:1, A TEST COMPOSITES IT
     excludedOverlay: 'rgba(148, 163, 184, 0.40)',
-    // --sdt-text AT 50%, BEHIND AN IN-PANEL CONFIRMATION (#349); A TEST COMPOSITES IT AND HOLDS THE DIALOG'S EDGE TO 3:1 AGAINST IT
-    dialogBackdrop: 'rgba(31, 41, 55, 0.50)'
+    // --sdt-text AT 55%, BEHIND AN IN-PANEL CONFIRMATION (#349); A TEST COMPOSITES IT AND HOLDS THE DIALOG'S EDGE TO 3:1 AGAINST IT
+    dialogBackdrop: 'rgba(51, 51, 51, 0.55)'
 });
 
 /*
@@ -15721,6 +15732,7 @@ ${this.buildPaletteCustomProperties()}
     }
     ::-webkit-scrollbar-thumb:hover { background-color: var(--sdt-muted); }
     body {
+        margin: 0;
         font-family: var(--vscode-font-family);
         font-size: var(--vscode-font-size);
         padding: 0 1rem 2rem 1rem;
@@ -15729,6 +15741,8 @@ ${this.buildPaletteCustomProperties()}
     .hidden { display: none !important; }
     .muted { color: var(--sdt-muted); }
     :focus-visible { outline: 2px solid var(--sdt-accent); outline-offset: 1px; }
+    /* A NAVY RING WOULD VANISH ON THE NAVY TITLE BAR AND TREE HEADERS (#434) */
+    .cockpitHeader :focus-visible, .treeHeader :focus-visible { outline-color: var(--sdt-action); }
     button, select, input {
         transition: color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, background-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, border-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, box-shadow ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, filter ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, transform 80ms ease;
     }
@@ -15850,8 +15864,10 @@ ${this.buildPaletteCustomProperties()}
         min-height: 4rem;
         box-sizing: border-box;
         padding: 0.8rem 1rem;
+        color: var(--sdt-on-header);
         background-color: var(--sdt-header);
     }
+    .treeHeader .muted { color: var(--sdt-on-header-muted); }
     .treeObjectHeader, .treeField, .treeDataset { transition: background-color ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease, box-shadow ${RECIPE_COCKPIT_MOTION_HOVER_MILLISECONDS}ms ease; }
     .treeTitle { font-weight: 600; font-size: 1.1em; }
     .treeHeaderActions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; cursor: default; }
@@ -15898,9 +15914,9 @@ ${this.buildPaletteCustomProperties()}
     .noMotion > .toggleGlyph { transition: none; }
     .toggleGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
     .sdtButton-primary {
-        color: var(--sdt-on-accent);
-        background-color: var(--sdt-accent);
-        border-color: var(--sdt-accent);
+        color: var(--sdt-on-action);
+        background-color: var(--sdt-action);
+        border-color: var(--sdt-action);
         font-weight: 600;
     }
     .sdtButton-primary:hover:not(:disabled) { filter: brightness(0.92); }
@@ -15977,19 +15993,19 @@ ${this.buildPaletteCustomProperties()}
         so every panel carries the outline and the selected class alone moves it. The selector is
         (0,4,0) against the secondary kind's (0,3,0) hover rule, so a hover cannot draw the bottom
         edge back wherever either rule sits. A hovered tab that is not selected draws no bottom edge,
-        which would lie on the panel's accent top. The sub-tab strip wraps on a narrow panel, and a
+        which would lie on the panel's teal top. The sub-tab strip wraps on a narrow panel, and a
         selected sub-tab on any row but the last then sits above the next row rather than its panel:
         scrolling the strip instead would clip the 1px overlap that joins every tab to its panel.
     */
     .treeTabs .treeTab.selected.sdtButton, .troubleshootingSubTabs .troubleshootingSubTab.selected.sdtButton {
         z-index: 1;
         margin-bottom: -1px;
-        border-color: var(--sdt-accent);
+        border-color: var(--sdt-action-edge);
         border-bottom-color: var(--sdt-surface);
         background-color: var(--sdt-surface);
     }
     .treeTabPanel, .troubleshootingSubPanel {
-        border: 1px solid var(--sdt-accent);
+        border: 1px solid var(--sdt-action-edge);
         border-radius: 0 6px 6px 6px;
         background-color: var(--sdt-surface);
     }
@@ -16007,9 +16023,9 @@ ${this.buildPaletteCustomProperties()}
         left: 0;
         right: 0;
         top: -1px;
-        height: 2px;
+        height: 3px;
         border-radius: 6px 6px 0 0;
-        background-color: var(--sdt-accent);
+        background-color: var(--sdt-action);
         transform: scaleX(0);
         transition: transform ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease;
         pointer-events: none;
@@ -16031,9 +16047,9 @@ ${this.buildPaletteCustomProperties()}
         left: 0;
         right: 0;
         top: -1px;
-        height: 2px;
+        height: 3px;
         border-radius: 6px 6px 0 0;
-        background-color: var(--sdt-accent);
+        background-color: var(--sdt-action);
         transform: scaleX(0);
         transition: transform ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS}ms ease;
         pointer-events: none;
@@ -16090,9 +16106,9 @@ ${this.buildPaletteCustomProperties()}
         font: inherit;
         font-weight: 700;
         line-height: 1;
-        color: var(--sdt-on-accent);
-        background-color: var(--sdt-accent);
-        border: 1px solid var(--sdt-accent);
+        color: var(--sdt-on-action);
+        background-color: var(--sdt-action);
+        border: 1px solid var(--sdt-action-edge);
         border-radius: 3px;
         cursor: pointer;
     }
@@ -16276,14 +16292,14 @@ ${this.buildPaletteCustomProperties()}
     .dataOrgStatus.failed { color: var(--sdt-removed); }
     .treecipeHeader { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sdt-border); }
     .cockpitSection { margin: 0.6rem 0; }
-    .cockpitSectionHeader { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; cursor: default; border-bottom: 1px solid var(--sdt-border); }
+    .cockpitSectionHeader { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; cursor: default; border-bottom: 2px solid var(--sdt-header); }
     #cockpitOrgSection { position: sticky; top: 0; z-index: 10; margin: 0; padding: 0.6rem; background-color: var(--sdt-org-section); border-bottom: 1px solid var(--sdt-border); }
     html:has(#cockpitOrgSection) { scroll-padding-top: ${RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING}; }
-    .cockpitSectionTitle { font-weight: 600; font-size: 1.1em; }
+    .cockpitSectionTitle { font-weight: 600; font-size: 1.1em; color: var(--sdt-header); }
     #cockpitOrgSectionBody { padding: 0.5rem 0.6rem; margin-top: 0.4rem; background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 8px; }
     .treecipeActions, .treeInsertControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
     /*
-        The sub-panel pads its contents off its accent border (#393), and its search box drops its own
+        The sub-panel pads its contents off its teal border (#393), and its search box drops its own
         side padding so the search, the TODO's views, the cards and the lists all start one inset in.
     */
     .troubleshootingSubPanel { margin: 0 0.6rem 0.6rem; padding: 0 0.6rem 0.6rem; }
@@ -16451,13 +16467,25 @@ ${this.buildPaletteCustomProperties()}
         font-family: var(--vscode-editor-font-family);
         color: var(--sdt-muted);
     }
-    .cockpitHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
-    .cockpitMeta { display: flex; flex-wrap: nowrap; align-items: center; gap: 0.4rem; margin-left: auto; color: var(--sdt-muted); }
+    /* THE TITLE BAR RUNS THE PANEL'S FULL WIDTH (#434): ITS SIDE MARGINS UNDO THE BODY'S 1rem PADDING */
+    .cockpitHeader {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin: 0 -1rem;
+        padding: 0.6rem 1rem;
+        color: var(--sdt-on-header);
+        background-color: var(--sdt-header);
+    }
+    .cockpitHeader h1 { margin: 0; }
+    .cockpitMeta { display: flex; flex-wrap: nowrap; align-items: center; gap: 0.4rem; margin-left: auto; color: var(--sdt-on-header-muted); }
     .cockpitChangelog { padding: 0.25rem; }
-    .cockpitChangelog:hover:not(:disabled) { background-color: var(--sdt-surface); }
+    .cockpitChangelog:hover:not(:disabled) { background-color: transparent; border-color: var(--sdt-on-header-muted); }
     .githubGlyph { display: block; width: 18px; height: 18px; }
-    .githubGlyph path { fill: var(--sdt-muted); }
-    .cockpitChangelog:hover .githubGlyph path, .cockpitChangelog:focus-visible .githubGlyph path { fill: var(--sdt-accent); }
+    .githubGlyph path { fill: var(--sdt-on-header-muted); }
+    .cockpitChangelog:hover .githubGlyph path, .cockpitChangelog:focus-visible .githubGlyph path { fill: var(--sdt-action); }
     .confirmOverlay {
         position: fixed;
         inset: 0;

@@ -249,14 +249,20 @@ describe('RecipeCockpitService', () => {
         const FONT_VARIABLES_FOLLOWING_THE_EDITOR = ['--vscode-font-family', '--vscode-editor-font-family', '--vscode-font-size'];
 
         const TEXT_TOKENS: RecipeCockpitPaletteToken[] = ['text', 'muted', 'accent', 'added', 'removed', 'changed'];
-        const BACKGROUND_TOKENS: RecipeCockpitPaletteToken[] = ['page', 'surface', 'header', 'rowHover', 'orgSection'];
+        // #434: THE HEADER IS NAVY, SO IT IS NOT A BACKGROUND FOR THESE; WHAT IS DRAWN ON IT IS onHeader AND onHeaderMuted
+        const BACKGROUND_TOKENS: RecipeCockpitPaletteToken[] = ['page', 'surface', 'rowHover', 'orgSection'];
 
         const TEXT_ON_BACKGROUND_PAIRS: [RecipeCockpitPaletteToken, RecipeCockpitPaletteToken][] = [
             ...TEXT_TOKENS.flatMap(textToken => BACKGROUND_TOKENS.map(backgroundToken =>
                 [textToken, backgroundToken] as [RecipeCockpitPaletteToken, RecipeCockpitPaletteToken])),
             ['chipText', 'chipBg'],
-            ['onAccent', 'accent'],
-            ['disabledText', 'disabledBg']
+            ['disabledText', 'disabledBg'],
+            ['onHeader', 'header'],
+            ['onHeaderMuted', 'header'],
+            ['onAction', 'action'],
+            // THE TREECIPES HEADING IS NAVY TEXT ON THE PAGE, THE TARGET ORG MANAGER HEADING ON ITS OWN TINT (#433, #434)
+            ['header', 'page'],
+            ['header', 'orgSection']
         ];
 
         const MINIMUM_TEXT_CONTRAST_RATIO = 4.5;
@@ -292,21 +298,27 @@ describe('RecipeCockpitService', () => {
 
             const rootBlock = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce')).match(/:root \{[^}]*\}/)?.[0] ?? '';
 
+            // #434: NAVY, SOFT WHITE, CHARCOAL AND TEAL
             expect(RECIPE_COCKPIT_PALETTE).toEqual({
-                page: '#F4F6F9', surface: '#FFFFFF', border: '#DDE3EA', header: '#EEF3FB',
-                text: '#1F2937', muted: '#5B6472', accent: '#2563EB', onAccent: '#FFFFFF',
-                rowHover: '#F1F5FF', chipBg: '#EEF2FF', chipText: '#3730A3',
+                page: '#F4F7F6', surface: '#FFFFFF', border: '#D5DDDB', header: '#1D3557',
+                onHeader: '#F4F7F6', onHeaderMuted: '#C9D3E0',
+                text: '#333333', muted: '#5C6470', accent: '#1D3557',
+                action: '#06D6A0', onAction: '#1D3557', actionEdge: '#049C74',
+                rowHover: '#E8F8F2', chipBg: '#E3F7EF', chipText: '#1D3557',
                 added: '#15803D', removed: '#B91C1C', changed: '#B45309',
-                disabledBg: '#E5E7EB', disabledText: '#4B5563',
+                disabledBg: '#E4E9E8', disabledText: '#4F5654',
                 orgSection: '#EEF3FB',
                 excludedOverlay: 'rgba(148, 163, 184, 0.40)',
-                dialogBackdrop: 'rgba(31, 41, 55, 0.50)'
+                dialogBackdrop: 'rgba(51, 51, 51, 0.55)'
             });
-            expect(rootBlock).toContain('--sdt-page: #F4F6F9;');
-            expect(rootBlock).toContain('--sdt-on-accent: #FFFFFF;');
-            expect(rootBlock).toContain('--sdt-row-hover: #F1F5FF;');
-            expect(rootBlock).toContain('--sdt-chip-bg: #EEF2FF;');
-            expect(rootBlock).toContain('--sdt-chip-text: #3730A3;');
+            expect(rootBlock).toContain('--sdt-page: #F4F7F6;');
+            expect(rootBlock).not.toContain('--sdt-on-accent');
+            expect(rootBlock).toContain('--sdt-on-header-muted: #C9D3E0;');
+            expect(rootBlock).toContain('--sdt-on-action: #1D3557;');
+            expect(rootBlock).toContain('--sdt-action-edge: #049C74;');
+            expect(rootBlock).toContain('--sdt-row-hover: #E8F8F2;');
+            expect(rootBlock).toContain('--sdt-chip-bg: #E3F7EF;');
+            expect(rootBlock).toContain('--sdt-chip-text: #1D3557;');
             (Object.keys(RECIPE_COCKPIT_PALETTE) as RecipeCockpitPaletteToken[]).forEach(paletteToken => {
                 expect(rootBlock).toContain(`${RecipeCockpitService.buildPaletteCustomPropertyName(paletteToken)}: ${RECIPE_COCKPIT_PALETTE[paletteToken]};`);
             });
@@ -383,7 +395,8 @@ describe('RecipeCockpitService', () => {
             const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
 
             // #363: THE FILLED STYLE IS ONE KIND, NOT A LIST OF BUTTON CLASSES
-            expect(styleSheet).toMatch(/\n\s*\.sdtButton-primary \{[^}]*color: var\(--sdt-on-accent\);[^}]*background-color: var\(--sdt-accent\);/);
+            // #434: A FILLED BUTTON IS TEAL WITH NAVY TEXT
+            expect(styleSheet).toMatch(/\n\s*\.sdtButton-primary \{[^}]*color: var\(--sdt-on-action\);[^}]*background-color: var\(--sdt-action\);/);
             expect(styleSheet).not.toMatch(/\.treeInsertResult|\.treeInsertErrors|\.scratchOrgStatus|\.scratchOrgViewOutput/);
             // #266: THE COMPARE TAB'S DIFF BADGES, ROWS AND CONTROLS ARE GONE, WITH THEIR RULES
             expect(styleSheet).not.toMatch(/\.diff|\.dataObject|\.dataField|\.treeCompare|\.orgStatus|\.orgProgress|\.orgDescribe|\.statusFilter|\.dataTreeCount|\.describeIn/);
@@ -521,8 +534,37 @@ describe('RecipeCockpitService', () => {
 
         it(`holds every text/background pair the stylesheet draws to at least ${MINIMUM_TEXT_CONTRAST_RATIO}:1`, () => {
 
-            expect(TEXT_ON_BACKGROUND_PAIRS).toHaveLength(33);
+            expect(TEXT_ON_BACKGROUND_PAIRS).toHaveLength(31);
             expect(findContrastFailures(RECIPE_COCKPIT_PALETTE)).toEqual([]);
+
+        });
+
+        // #434: TEAL IS A FILL AND AN EDGE, NEVER TEXT, AND WHAT IS DRAWN ON IT IS NAVY
+        it('fails white on teal and teal on white, which is why neither is drawn', () => {
+
+            expect(contrastRatioOf('#FFFFFF', RECIPE_COCKPIT_PALETTE.action)).toBeLessThan(MINIMUM_TEXT_CONTRAST_RATIO);
+            expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.action, RECIPE_COCKPIT_PALETTE.surface)).toBeLessThan(MINIMUM_TEXT_CONTRAST_RATIO);
+            expect(findContrastFailures({ ...RECIPE_COCKPIT_PALETTE, onAction: '#FFFFFF' })).toEqual(['onAction on action (1.89:1)']);
+
+            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+            expect(styleSheet).not.toMatch(/(^|[^-])color: var\(--sdt-action(-edge)?\)/);
+            // A GLYPH IS DRAWN IN TEAL ONLY ON THE NAVY TITLE BAR: THE GITHUB MARK WHILE HOVERED (1.89:1 ON WHITE IS UNDER A GRAPHIC'S 3:1)
+            const tealGlyphRules = (styleSheet.match(/[^{}]*\{[^}]*(fill|stroke): var\(--sdt-action(-edge)?\)[^}]*\}/g) ?? []).map(rule => rule.trim());
+            expect(tealGlyphRules).toEqual(['.cockpitChangelog:hover .githubGlyph path, .cockpitChangelog:focus-visible .githubGlyph path { fill: var(--sdt-action); }']);
+
+        });
+
+        it('draws the title bar and each tree header in navy with soft white text, and the section headings in navy', () => {
+
+            const styleSheet = styleSheetOf(RecipeCockpitService.buildWebviewShellHtml('testNonce'));
+
+            expect(ruleFor(styleSheet, '\\.treeHeader')).toContain('color: var(--sdt-on-header);');
+            expect(ruleFor(styleSheet, '\\.treeHeader')).toContain('background-color: var(--sdt-header);');
+            expect(styleSheet).toContain('.treeHeader .muted { color: var(--sdt-on-header-muted); }');
+            expect(styleSheet).toMatch(/\.cockpitHeader \{[^}]*color: var\(--sdt-on-header\);[^}]*background-color: var\(--sdt-header\);/);
+            expect(styleSheet).toContain('.cockpitHeader :focus-visible, .treeHeader :focus-visible { outline-color: var(--sdt-action); }');
+            expect(styleSheet).toContain('border-bottom: 2px solid var(--sdt-header); }');
+            expect(styleSheet).toContain('.cockpitSectionTitle { font-weight: 600; font-size: 1.1em; color: var(--sdt-header); }');
 
         });
 
@@ -562,12 +604,12 @@ describe('RecipeCockpitService', () => {
 
             });
 
-            // MEASURED, NOT ESTIMATED: THE ISSUE'S 5.01:1 WAS A LOWER BOUND; THIS PALETTE GIVES 10.44:1 AND 9.85:1
-            it('measures --sdt-text at 10.44:1 on the overlaid surface and 9.85:1 on the overlaid hover', () => {
+            // MEASURED, NOT ESTIMATED: THE ISSUE'S 5.01:1 WAS A LOWER BOUND; #434'S PALETTE GIVES 8.99:1 AND 8.45:1
+            it('measures --sdt-text at 8.99:1 on the overlaid surface and 8.45:1 on the overlaid hover', () => {
 
                 expect(compositeOver(RECIPE_COCKPIT_PALETTE.excludedOverlay, RECIPE_COCKPIT_PALETTE.surface)).toBe('#d4dae3');
-                expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.text, compositeOver(RECIPE_COCKPIT_PALETTE.excludedOverlay, RECIPE_COCKPIT_PALETTE.surface)).toFixed(2)).toBe('10.44');
-                expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.text, compositeOver(RECIPE_COCKPIT_PALETTE.excludedOverlay, RECIPE_COCKPIT_PALETTE.rowHover)).toFixed(2)).toBe('9.85');
+                expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.text, compositeOver(RECIPE_COCKPIT_PALETTE.excludedOverlay, RECIPE_COCKPIT_PALETTE.surface)).toFixed(2)).toBe('8.99');
+                expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.text, compositeOver(RECIPE_COCKPIT_PALETTE.excludedOverlay, RECIPE_COCKPIT_PALETTE.rowHover)).toFixed(2)).toBe('8.45');
 
             });
 
@@ -578,9 +620,9 @@ describe('RecipeCockpitService', () => {
             */
             it('composites the dialog backdrop over the page, and keeps the dialog surface at 3:1 or more against it (#349)', () => {
 
-                expect(parseRgba(RECIPE_COCKPIT_PALETTE.dialogBackdrop)).toEqual([31, 41, 55, 0.5]);
+                expect(parseRgba(RECIPE_COCKPIT_PALETTE.dialogBackdrop)).toEqual([51, 51, 51, 0.55]);
                 const dimmedPage = compositeOver(RECIPE_COCKPIT_PALETTE.dialogBackdrop, RECIPE_COCKPIT_PALETTE.page);
-                expect(dimmedPage).toBe('#8a9098');
+                expect(dimmedPage).toBe('#8a8b8b');
                 expect(contrastRatioOf(RECIPE_COCKPIT_PALETTE.surface, dimmedPage)).toBeGreaterThanOrEqual(3);
 
             });
@@ -589,7 +631,11 @@ describe('RecipeCockpitService', () => {
                 // accent ON surface IS ALSO THE SELECTED TAB'S OUTLINE, AND muted ON surface THE SEARCH BOX'S MAGNIFIER (#373)
                 ['accent', 'surface'], ['accent', 'rowHover'], ['muted', 'surface'], ['muted', 'rowHover'],
                 // THE GITHUB MARK AT THE TOP RIGHT (#333) SITS ON THE PAGE, AND ON --sdt-surface WHILE HOVERED
-                ['muted', 'page'], ['accent', 'page']
+                ['muted', 'page'], ['accent', 'page'],
+                // #434: THE GITHUB MARK IS ON THE NAVY TITLE BAR, TEAL WHILE HOVERED, WHICH IS ALSO THE FOCUS RING THERE
+                ['onHeaderMuted', 'header'], ['action', 'header'],
+                // THE SELECTED TAB'S OUTLINE AND ITS PANEL'S BORDER, AND A TICKED BOX'S EDGE
+                ['actionEdge', 'surface'], ['actionEdge', 'rowHover']
             ];
 
             it.each(ICON_ON_BACKGROUND_PAIRS)('draws the icon in --sdt-%s on --sdt-%s at 3:1 or more', (iconToken, backgroundToken) => {
@@ -621,9 +667,8 @@ describe('RecipeCockpitService', () => {
             const paletteWithTheOldMuted = { ...RECIPE_COCKPIT_PALETTE, muted: '#6B7280' };
 
             expect(findContrastFailures(paletteWithTheOldMuted)).toEqual([
-                'muted on page (4.47:1)',
-                'muted on header (4.34:1)',
-                'muted on rowHover (4.43:1)',
+                'muted on page (4.48:1)',
+                'muted on rowHover (4.41:1)',
                 'muted on orgSection (4.34:1)'
             ]);
 

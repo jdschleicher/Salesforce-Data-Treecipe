@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.136.0] - Recipe Cockpit: the friend chip shows 👥 and every nickname shows 🌳
+## [3.137.0] - Recipe Cockpit: the friend chip shows 👥 and every nickname shows 🌳
 
 Closes [#432](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/432).
 
@@ -12,6 +12,22 @@ The friend chip (#411) drew a hand-made holding-hands SVG that matched none of t
 - **Unchanged.** Chip numbering, what a click does, the nickname list's keys, the posted model and every message. A snowfakery card still draws no friend chip.
 - **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say what 👥 and 🌳 mean.
 - **Tests.** `RecipeCockpitFriendChips.test.ts` and `RecipeCockpitNicknameReferences.test.ts` check each emoji, its `aria-hidden` and the unchanged labels, and that neither search finds a row by an emoji; the suites reading a nickname read its `treeNicknameText` span.
+
+## [3.136.0] - Recipe Cockpit: a Navy, Soft White, Charcoal and Teal palette
+
+Closes [#434](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/434).
+
+The cockpit's one palette (#174) was blue on near-white, with the same blue for links, filled buttons and the selected tab. Each colour now has one job.
+
+- **Navy `#1D3557` for headers and navigation.** The title bar runs the panel's full width in navy with soft white text, and every tree card's header is navy too; its folder name and counts, the version and the GitHub mark are drawn in a soft gray (`#C9D3E0`, 8.17:1 on navy). The Target Org Manager and Treecipes headings are navy over a navy rule; the pinned Target Org Manager keeps #433's own light tint (`orgSection`), and navy headings on it are held to 4.5:1 too. Navy is also every accent TEXT: links, outlined buttons, object names, chevrons, the chain link and the focus ring.
+- **Soft White `#F4F7F6` for the page**, with cards and panels on white.
+- **Charcoal `#333333` for text.**
+- **Teal `#06D6A0` for buttons and active states, and never for text.** It fills the filled (`primary`) buttons, the selected tab's bar (now 3px) and ticked boxes, and is the focus ring on the navy headers, where a navy ring would vanish. Teal on white, and white on teal, are both 1.9:1, so text and glyphs on teal are navy (6.55:1). The selected tab's outline, its panel's border and a ticked box's edge are a darker teal, `#049C74`, held to 3:1 on white and on the row hover (#373's outline is otherwise unchanged).
+- **New palette tokens.** `onHeader`, `onHeaderMuted`, `action`, `onAction` and `actionEdge`, written as `--sdt-*` properties like the rest; no colour is hard-coded and no theme colour is read. `onAccent` is gone, since nothing is filled navy any more. The body's margin is now 0, so the title bar runs edge to edge whatever stylesheet the webview adds. The row hover and field type chips are light teal tints; the disabled tokens and the confirmation backdrop (`--sdt-text` at 55%, so the dialog's edge stays 3:1 against it) were retuned for the new page. `added`, `removed`, `changed` and the excluded overlay are unchanged and still pass.
+- **Button kinds unchanged.** Each kind's rule still sets its colours (#363); only the colours they read changed.
+- **From the issue.** The issue proposed `#04A57B` for the teal edge; it measured 2.87:1 on the row hover, under the 3:1 a ticked box's edge needs there, so the edge is `#049C74`.
+- **Guide.** The four pictures in `docs/RECIPE-COCKPIT-GUIDE.md` were re-taken.
+- **Tests.** The contrast test drops `header` as a background for body text and holds `onHeader`, `onHeaderMuted`, `onAction` and the navy section headings (`header` on `page`) to 4.5:1, the hover and pressed primary buttons too and the GitHub mark, the header focus ring and the teal edge to 3:1. A new test fails white on teal, teal as a text colour, and a teal `fill` or `stroke` anywhere but the GitHub mark on the navy title bar; another pins the navy title bar, tree headers and section headings. The overlay, backdrop, tab outline, motion and GitHub mark tests read the new tokens.
 
 ## [3.135.1] - Recipe Cockpit: the org section is "Target Org Manager", on a light tint of its own
 
