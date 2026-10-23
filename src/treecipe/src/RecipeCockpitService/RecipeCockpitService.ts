@@ -1880,11 +1880,13 @@ export const RECIPE_COCKPIT_DEPLOY_ACTION_LABELS: Readonly<Record<MetadataDeploy
 });
 
 /*
-    Every Troubleshooting action is a card (#381): the verb's emoji and the action's title, a line on
+    Every standalone action is a card (#381, #384): the verb's emoji and the action's title, a line on
     when it is needed, and a live detail line. The emoji is the VERB's, from one map, so every
-    deploy shares 🚀 and a later retrieve gets 📥 without choosing.
+    deploy shares 🚀 and a later retrieve gets 📥 without choosing. A primary button that keeps its
+    place (the tree's insert, + New scratch org in the pinned org row) carries its verb's emoji too,
+    drawn before its label from the same map.
 */
-export type RecipeCockpitActionVerb = 'deploy' | 'retrieve' | 'assign' | 'generate';
+export type RecipeCockpitActionVerb = 'deploy' | 'retrieve' | 'assign' | 'generate' | 'run' | 'export' | 'create' | 'regenerate' | 'generateData' | 'update';
 export const RECIPE_COCKPIT_ACTION_CARD_WIDTH = '18rem';
 export const RECIPE_COCKPIT_ACTION_CARD_HEIGHT = '10.5rem';
 
@@ -1892,7 +1894,13 @@ export const RECIPE_COCKPIT_ACTION_VERB_EMOJI: Readonly<Record<RecipeCockpitActi
     deploy: '🚀',
     retrieve: '📥',
     assign: '👤',
-    generate: '🛠️'
+    generate: '🛠️',
+    run: '▶️',
+    export: '💾',
+    create: '➕',
+    regenerate: '🔄',
+    generateData: '🎲',
+    update: '✍️'
 });
 
 /*
@@ -1922,6 +1930,27 @@ export const RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS: Readonly<Record<Recipe
     deployRecordTypes: { verb: 'deploy', why: 'Insert failed on RecordTypeId? The org is missing record types this recipe sets.' },
     deployGlobalValueSets: { verb: 'deploy', why: 'Restricted picklist rejected a value? The org is missing value sets these fields use.' }
 });
+// THE STANDALONE ACTIONS OUTSIDE THE TROUBLESHOOTING TAB THAT ARE CARDS (#384); THE PR'S INVENTORY SAYS WHY EVERY OTHER BUTTON IS NOT
+export type RecipeCockpitStandaloneAction = 'generateTreecipe' | 'regenerateWithRecordTypes' | 'regenerateWithDefaultRecordTypes' | 'runQuery' | 'exportQueryJson' | 'exportQueryCsv' | 'loadUpdaterRecords' | 'generateUpdaterValues' | 'updateUpdaterRecords';
+export const RECIPE_COCKPIT_STANDALONE_ACTION_CARDS: Readonly<Record<RecipeCockpitStandaloneAction, IRecipeCockpitActionCard>> = Object.freeze({
+    generateTreecipe: { verb: 'generate', why: 'No recipe run yet? Read this project\'s object metadata and write a Treecipe run to open here.' },
+    regenerateWithRecordTypes: { verb: 'regenerate', why: 'Write the run again with the record types ticked above, one block each.' },
+    regenerateWithDefaultRecordTypes: { verb: 'regenerate', why: 'Write the run again with each object\'s default record type, as Generate Treecipe does.' },
+    runQuery: { verb: 'run', why: 'Read what this query returns from the org chosen in Target Org Manager. It only reads.' },
+    exportQueryJson: { verb: 'export', why: 'Write every record the last run returned to treecipe/QueryResults as JSON.' },
+    exportQueryCsv: { verb: 'export', why: 'Write every record the last run returned to treecipe/QueryResults as CSV.' },
+    loadUpdaterRecords: { verb: 'retrieve', why: 'Read this tree\'s records, with the chosen fields, from the selected sandbox. It only reads.' },
+    generateUpdaterValues: { verb: 'generateData', why: 'Make a new value for each chosen field of every loaded record. Nothing is written yet.' },
+    updateUpdaterRecords: { verb: 'update', why: 'Write the new values to the loaded records by Id. Their old values are saved first.' }
+});
+
+// A PRIMARY BUTTON THAT STAYS A BUTTON BUT NAMES ITS VERB (#384): ITS EMOJI IS DRAWN BEFORE ITS LABEL BY THE STYLESHEET
+export type RecipeCockpitVerbButtonClassName = 'treeInsert' | 'dataOrgNewScratch';
+export const RECIPE_COCKPIT_VERB_BUTTON_VERBS: Readonly<Record<RecipeCockpitVerbButtonClassName, RecipeCockpitActionVerb>> = Object.freeze({
+    treeInsert: 'generateData',
+    dataOrgNewScratch: 'create'
+});
+
 export const RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND: Readonly<Record<MetadataRetrieveKind, RecipeCockpitTroubleshootingAction>> = Object.freeze({
     validationRules: 'retrieveValidationRules',
     fields: 'retrieveFields',
@@ -2223,6 +2252,8 @@ export const RECIPE_COCKPIT_INSERT_CONFIRM_LABEL = 'Generate and insert';
 
 // THE ONE BUTTON ALWAYS GENERATES AND INSERTS (#375); WHAT STOPS AN INSERT DISABLES IT, AND GENERATING ONLY IS Run Faker by Recipe'S
 export const RECIPE_COCKPIT_INSERT_ACTION_LABEL = 'Generate fake data and insert';
+// ➕ IS DRAWN BEFORE IT (#384), SO THE LABEL NO LONGER STARTS WITH +
+export const RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL = 'New scratch org';
 
 // THE ONE REASON THAT LEAVES THE BUTTON ENABLED (#375): A CLICK ASKS FOR THE ORG IN THE COMMAND PALETTE
 export const RECIPE_COCKPIT_NO_DATA_ORG_INSERT_REASON = 'No org is chosen yet.';
@@ -13750,8 +13781,8 @@ export class RecipeCockpitService {
                 reader's text: never an org, a path or an object. The key must be a card with a
                 folder the panel confirmed drawing; the host matches the query key against the
                 queries it read for that tree, and holds the text to one SELECT before it is sent.
-                A query only reads, and its org is asked for in the command palette every time, so
-                nothing else running holds it.
+                A query only reads, and its org is the Target Org Manager selection the host reads
+                at the run (#439), so nothing else running holds it at the router.
             */
             case 'loadTreeQueries': {
 
@@ -16206,7 +16237,6 @@ ${this.buildPaletteCustomProperties()}
     .recordTypeImpact { flex-basis: 100%; margin-left: 1.65em; }
     .recordTypesRememberRow { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.75rem; }
     .recordTypesRememberLabel { cursor: pointer; }
-    .recordTypeActions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
     .treeFieldFixedValue { position: relative; z-index: 2; width: 1.5em; height: 1.5em; border-radius: 3px; }
     .fixedValueGlyph { display: block; width: 1.1em; height: 1.1em; }
     .fixedValueGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -16392,6 +16422,17 @@ ${this.buildPaletteCustomProperties()}
         margin-top: 0.5rem;
     }
     .troubleshootingAction { min-width: 0; }
+    /* THE SAME CARDS ELSEWHERE IN THE COCKPIT (#384): THE EMPTY STATE, THE RECORD TYPES SECTION, EACH QUERY AND THE TREECIPE UPDATER */
+    .actionCards {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, ${RECIPE_COCKPIT_ACTION_CARD_WIDTH}), 1fr));
+        gap: 0.6rem;
+        margin: 0.5rem 0;
+    }
+    .actionCards > .sdtButton-card { min-width: 0; }
+    .recordTypeActions.actionCards { margin-top: 0.75rem; }
+    .updaterCards.actionCards { margin: 0.5rem 0.6rem; }
+${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => `    .sdtButton.${className}::before { content: '${RECIPE_COCKPIT_ACTION_VERB_EMOJI[verb]}' / ''; margin-right: 0.35em; }`).join('\n')}
     .actionCardHeading { display: flex; align-items: flex-start; gap: 0.5rem; min-width: 0; font-weight: 600; font-size: 1.05em; }
     .actionCardEmoji { flex: none; font-size: 1.25em; line-height: 1; }
     .actionCardTitle { min-width: 0; color: var(--sdt-accent); }
@@ -16646,6 +16687,7 @@ ${this.buildPaletteCustomProperties()}
     const ORG_RECORD_BADGE_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_ORG_RECORD_BADGE_PREFIX)};
     const WIRE_ALL_LOOKUPS_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_ALL_LOOKUPS_ACTION_LABEL)};
     const INSERT_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_ACTION_LABEL)};
+    const NEW_SCRATCH_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NEW_SCRATCH_ORG_LABEL)};
     const INSERT_RUNNING_LABEL = ${JSON.stringify(RECIPE_COCKPIT_INSERT_RUNNING_LABEL)};
     const PERMISSION_SET_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL)};
     const ASSIGN_PERMISSION_SETS_TITLE = "Choose the permission sets in this workspace's source that grant access to this tree's objects and assign the ones the org selected above, or a sandbox you choose, already holds to the user that org is authorized as, after a confirmation. Nothing is deployed.";
@@ -16654,7 +16696,7 @@ ${this.buildPaletteCustomProperties()}
     const BUTTON_KINDS = ${JSON.stringify(RECIPE_COCKPIT_BUTTON_KINDS)};
     const ACTION_VERB_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_ACTION_VERB_EMOJI)};
     const TROUBLESHOOTING_GROUP_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_GROUP_EMOJI)};
-    const TROUBLESHOOTING_ACTION_CARDS = ${JSON.stringify(RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS)};
+    const ACTION_CARDS = ${JSON.stringify({ ...RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS, ...RECIPE_COCKPIT_STANDALONE_ACTION_CARDS })};
     const DEPLOY_ACTION_BY_KIND = ${JSON.stringify(RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND)};
     const RETRIEVE_ACTION_BY_KIND = ${JSON.stringify(RECIPE_COCKPIT_RETRIEVE_ACTION_BY_KIND)};
     const RETRIEVE_ACTION_LABELS = ${JSON.stringify(RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS)};
@@ -16946,15 +16988,15 @@ ${this.buildPaletteCustomProperties()}
     let actionCardCount = 0;
 
     /*
-        A Troubleshooting action as ONE card (#381). The whole card is the button, so its parts are
+        A standalone action as ONE card (#381, #384). The whole card is the button, so its parts are
         spans and never controls: the verb's emoji (hidden from a screen reader) and the title, the
         line on when it is needed, the live detail and the reason it is disabled. The title names
         the button; the rest describes it.
     */
     function buildActionCard(action, className, title) {
 
-        const card = TROUBLESHOOTING_ACTION_CARDS[action];
-        if (!card || typeof ACTION_VERB_EMOJI[card.verb] !== 'string') { throw new Error('Unknown troubleshooting action: ' + action); }
+        const card = ACTION_CARDS[action];
+        if (!card || typeof ACTION_VERB_EMOJI[card.verb] !== 'string') { throw new Error('Unknown action: ' + action); }
 
         actionCardCount++;
         const buttonElement = createButton('card', 'actionCard ' + className);
@@ -18226,7 +18268,7 @@ ${this.buildPaletteCustomProperties()}
             typeElement: createElement('span', 'dataOrgType hidden'),
             openOrgElement: createButton('secondary', 'dataOrgOpen hidden', OPEN_ORG_LABEL),
             refreshElement: createButton('secondary', 'dataOrgRefresh hidden'),
-            newScratchElement: createButton('primary', 'dataOrgNewScratch', '+ New scratch org'),
+            newScratchElement: createButton('primary', 'dataOrgNewScratch', NEW_SCRATCH_ORG_LABEL),
             hiddenNoteElement: createElement('div', 'dataOrgHiddenNote muted hidden'),
             statusElement: createElement('div', 'dataOrgStatus muted hidden'),
             drawnLabels: null
@@ -18386,7 +18428,7 @@ ${this.buildPaletteCustomProperties()}
         // AN INSERT IN FLIGHT HOLDS IT TOO: THE HOST WOULD REFUSE A RUN THAT CHANGES THE SELECTION UNDER IT
         // SO DOES A METADATA DEPLOY (#346), TO THE ORG SELECTED; A RETRIEVE DOES NOT, SINCE THE RUN DEPLOYS NOTHING (#358)
         dataOrgView.newScratchElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning || insertRunningTreeKey !== null;
-        dataOrgView.newScratchElement.textContent = isScratchOrgRunning ? 'Setting up scratch org…' : '+ New scratch org';
+        dataOrgView.newScratchElement.textContent = isScratchOrgRunning ? 'Setting up scratch org…' : NEW_SCRATCH_ORG_LABEL;
         // A PERMISSION SET ASSIGNMENT HOLDS THE PICKER TOO: IT ASSIGNS IN THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
         // AND A METADATA DEPLOY (#346): IT DEPLOYS TO THE ORG SELECTED, AND CHECKS IT AGAIN WHEN IT ENDS
         dataOrgView.selectElement.disabled = isScratchOrgRunning || isPermissionSetAssignRunning || isMetadataDeployRunning;
@@ -18540,7 +18582,7 @@ ${this.buildPaletteCustomProperties()}
     let recordTypeChoices = Object.create(null);
     let recordTypeObjects = [];
     let recordTypeRowStates = [];
-    let recordTypeButtonElements = [];
+    let recordTypeActionCards = [];
     let isRecordTypeRegenerating = false;
     // "Remember this selection" (#196): PANEL-WIDE LIKE THE CHOICE, UNTICKED BY DEFAULT AND AGAIN WITH EVERY MODEL
     let isRecordTypeSelectionRemembered = false;
@@ -20866,9 +20908,11 @@ ${this.buildPaletteCustomProperties()}
 
         });
 
-        const actionsElement = createElement('div', 'recordTypeActions');
-        const regenerateElement = createButton('primary', 'recordTypesRegenerate', REGENERATE_WITH_RECORD_TYPES_LABEL);
-        const defaultsElement = createButton('secondary', 'historyAction recordTypesDefaults', USE_DEFAULT_RECORD_TYPES_LABEL);
+        const actionsElement = createElement('div', 'recordTypeActions actionCards');
+        const regenerateCard = buildActionCard('regenerateWithRecordTypes', 'recordTypesRegenerate', REGENERATE_WITH_RECORD_TYPES_LABEL);
+        const defaultsCard = buildActionCard('regenerateWithDefaultRecordTypes', 'recordTypesDefaults', USE_DEFAULT_RECORD_TYPES_LABEL);
+        const regenerateElement = regenerateCard.buttonElement;
+        const defaultsElement = defaultsCard.buttonElement;
 
         const rememberRowElement = createElement('div', 'recordTypesRememberRow');
         const rememberElement = createButton('check', 'treeFieldInclude recordTypesRemember');
@@ -20894,12 +20938,14 @@ ${this.buildPaletteCustomProperties()}
 
         regenerateElement.addEventListener('click', function () { postRecordTypeRegenerate(treeState, buildRecordTypeSelection()); });
         defaultsElement.addEventListener('click', function () { postRecordTypeRegenerate(treeState, {}); });
-        defaultsElement.setAttribute('title', 'Regenerate the run with every object\\'s default record type, as Generate Treecipe writes it');
 
         actionsElement.appendChild(regenerateElement);
         actionsElement.appendChild(defaultsElement);
         panelElement.appendChild(actionsElement);
-        recordTypeButtonElements.push(regenerateElement, defaultsElement);
+        recordTypeActionCards.push(
+            { actionCard: regenerateCard, title: 'Regenerate the run with the record types ticked above' },
+            { actionCard: defaultsCard, title: 'Regenerate the run with every object\\'s default record type, as Generate Treecipe writes it' }
+        );
 
         drawRecordTypeChoices();
         applyRecordTypesFilter(treeState);
@@ -21017,13 +21063,11 @@ ${this.buildPaletteCustomProperties()}
             rememberElement.disabled = isRecordTypeRegenerating || insertRunningTreeKey !== null;
         });
 
-        recordTypeButtonElements.forEach(function (buttonElement) {
-            buttonElement.disabled = isRecordTypeRegenerating || insertRunningTreeKey !== null;
-            if (insertRunningTreeKey !== null) {
-                buttonElement.setAttribute('title', 'Wait for the insert to finish');
-            } else {
-                buttonElement.removeAttribute('title');
-            }
+        recordTypeActionCards.forEach(function (recordTypeAction) {
+            const reason = insertRunningTreeKey !== null ? 'Wait for the insert to finish'
+                : isRecordTypeRegenerating ? 'The run is being regenerated.'
+                : '';
+            drawActionCardState(recordTypeAction.actionCard, reason, recordTypeAction.title);
         });
 
     }
@@ -22225,10 +22269,14 @@ ${this.buildPaletteCustomProperties()}
         const editedElement = createElement('span', 'treeQueryEdited muted hidden', 'edited');
         const refusalElement = createElement('div', 'fieldEditorRefusal hidden');
         const controlsElement = createElement('div', 'treeQueryControls');
-        const runButtonElement = createButton('primary', 'treeQueryRun', 'Run…');
+        const runCard = buildActionCard('runQuery', 'treeQueryRun', 'Run…');
+        const runButtonElement = runCard.buttonElement;
         const resetButtonElement = createButton('secondary', 'treeQueryReset', 'Reset');
-        const exportJsonButtonElement = createButton('secondary', 'treeQueryExport treeQueryExport-json', 'Export JSON');
-        const exportCsvButtonElement = createButton('secondary', 'treeQueryExport treeQueryExport-csv', 'Export CSV');
+        const exportJsonCard = buildActionCard('exportQueryJson', 'treeQueryExport treeQueryExport-json', 'Export JSON');
+        const exportCsvCard = buildActionCard('exportQueryCsv', 'treeQueryExport treeQueryExport-csv', 'Export CSV');
+        const exportJsonButtonElement = exportJsonCard.buttonElement;
+        const exportCsvButtonElement = exportCsvCard.buttonElement;
+        const cardsElement = createElement('div', 'treeQueryCards actionCards');
         const resultElement = createElement('div', 'treeQueryResult hidden');
         const titleElement = createElement('div', 'treeQueryTitle', queryTitle);
 
@@ -22259,9 +22307,9 @@ ${this.buildPaletteCustomProperties()}
             textElement: textElement,
             editedElement: editedElement,
             refusalElement: refusalElement,
-            runButtonElement: runButtonElement,
+            runCard: runCard,
             drawnRunLabel: null,
-            exportButtonElements: [exportJsonButtonElement, exportCsvButtonElement],
+            exportCards: [exportJsonCard, exportCsvCard],
             resultElement: resultElement,
             hasResult: false
         };
@@ -22316,11 +22364,12 @@ ${this.buildPaletteCustomProperties()}
             });
         });
 
-        controlsElement.appendChild(runButtonElement);
         controlsElement.appendChild(resetButtonElement);
-        controlsElement.appendChild(exportJsonButtonElement);
-        controlsElement.appendChild(exportCsvButtonElement);
+        cardsElement.appendChild(runButtonElement);
+        cardsElement.appendChild(exportJsonButtonElement);
+        cardsElement.appendChild(exportCsvButtonElement);
         queryElement.appendChild(controlsElement);
+        queryElement.appendChild(cardsElement);
         queryElement.appendChild(resultElement);
 
         drawEdited();
@@ -22351,16 +22400,14 @@ ${this.buildPaletteCustomProperties()}
 
         treeStates.forEach(function (treeState) {
             (treeState.queryStates || []).forEach(function (queryState) {
-                queryState.runButtonElement.disabled = isTreeQueryRunning;
+                drawActionCardState(queryState.runCard, isTreeQueryRunning ? 'A query is running.' : '', runTitle);
                 // WRITTEN ONLY ON A CHANGE: EVERY INSERT REDRAW COMES THROUGH HERE
                 if (queryState.drawnRunLabel !== runLabel) {
                     queryState.drawnRunLabel = runLabel;
-                    queryState.runButtonElement.textContent = runLabel;
-                    queryState.runButtonElement.setAttribute('title', runTitle);
+                    queryState.runCard.titleElement.textContent = runLabel;
                 }
-                queryState.exportButtonElements.forEach(function (exportButtonElement) {
-                    exportButtonElement.disabled = isTreeQueryRunning || !queryState.hasResult;
-                    exportButtonElement.setAttribute('title', queryState.hasResult ? 'Write what this query returned to treecipe/QueryResults' : 'Run this query first');
+                queryState.exportCards.forEach(function (exportCard) {
+                    drawActionCardState(exportCard, isTreeQueryRunning ? 'A query is running.' : queryState.hasResult ? '' : 'Run this query first', 'Write what this query returned to treecipe/QueryResults');
                 });
             });
         });
@@ -22494,17 +22541,22 @@ ${this.buildPaletteCustomProperties()}
         panelElement.appendChild(treeState.updaterSummaryElement);
 
         const loadRowElement = createElement('div', 'updaterLoadRow');
-        treeState.updaterLoadButtonElement = createButton('primary', 'updaterLoad', UPDATER_LOAD_LABEL);
+        const cardsElement = createElement('div', 'updaterCards actionCards');
+        treeState.updaterLoadCard = buildActionCard('loadUpdaterRecords', 'updaterLoad', UPDATER_LOAD_LABEL);
+        treeState.updaterLoadButtonElement = treeState.updaterLoadCard.buttonElement;
         treeState.updaterLoadButtonElement.addEventListener('click', function () { requestUpdaterRecords(treeState); });
         treeState.updaterLoadNoteElement = createElement('span', 'updaterLoadNote muted');
-        treeState.updaterGenerateButtonElement = createButton('secondary', 'updaterGenerate', UPDATER_GENERATE_LABEL);
+        treeState.updaterGenerateCard = buildActionCard('generateUpdaterValues', 'updaterGenerate', UPDATER_GENERATE_LABEL);
+        treeState.updaterGenerateButtonElement = treeState.updaterGenerateCard.buttonElement;
         treeState.updaterGenerateButtonElement.addEventListener('click', function () { requestUpdaterValues(treeState); });
-        treeState.updaterUpdateButtonElement = createButton('secondary', 'updaterUpdate', UPDATER_UPDATE_LABEL);
+        treeState.updaterUpdateCard = buildActionCard('updateUpdaterRecords', 'updaterUpdate', UPDATER_UPDATE_LABEL);
+        treeState.updaterUpdateButtonElement = treeState.updaterUpdateCard.buttonElement;
         treeState.updaterUpdateButtonElement.addEventListener('click', function () { requestUpdaterUpdate(treeState); });
-        loadRowElement.appendChild(treeState.updaterLoadButtonElement);
-        loadRowElement.appendChild(treeState.updaterGenerateButtonElement);
-        loadRowElement.appendChild(treeState.updaterUpdateButtonElement);
+        cardsElement.appendChild(treeState.updaterLoadButtonElement);
+        cardsElement.appendChild(treeState.updaterGenerateButtonElement);
+        cardsElement.appendChild(treeState.updaterUpdateButtonElement);
         loadRowElement.appendChild(treeState.updaterLoadNoteElement);
+        panelElement.appendChild(cardsElement);
         panelElement.appendChild(loadRowElement);
 
         const drawnObjectApiNames = Object.create(null);
@@ -23161,40 +23213,39 @@ ${this.buildPaletteCustomProperties()}
         treeStates.forEach(function (treeState) {
             if (!treeState.updaterLoadButtonElement) { return; }
             const isThisCardLoading = updaterLoadRunningTreeKey === treeState.tree.treeKey;
-            treeState.updaterLoadButtonElement.disabled = updaterLoadRunningTreeKey !== null || treeState.updaterObjectStates.length === 0;
-            treeState.updaterLoadButtonElement.textContent = isThisCardLoading && updaterRunKind === 'load' ? UPDATER_LOADING_LABEL : UPDATER_LOAD_LABEL;
+            const busyReason = updaterLoadRunningTreeKey !== null ? 'Records are being loaded, generated, updated or restored.' : '';
+            setTextShown(treeState.updaterLoadCard.titleElement, isThisCardLoading && updaterRunKind === 'load' ? UPDATER_LOADING_LABEL : UPDATER_LOAD_LABEL);
+            drawActionCardState(treeState.updaterLoadCard, busyReason || (treeState.updaterObjectStates.length === 0 ? 'This tree has no object to load.' : ''),
+                'Read this tree’s records, with the fields you chose, from the sandbox or scratch org chosen in Target Org Manager. It only reads.');
             (treeState.updaterSnapshotButtonElements || []).forEach(function (snapshotButton) {
                 const isThisRestoring = isThisCardLoading && updaterRunKind === 'restore' && updaterRestoringSnapshotName === snapshotButton.snapshotName;
                 snapshotButton.element.disabled = updaterLoadRunningTreeKey !== null;
                 snapshotButton.element.textContent = isThisRestoring ? UPDATER_RESTORING_LABEL : UPDATER_RESTORE_LABEL;
                 snapshotButton.element.setAttribute('title', 'Set each record this update changed back to the value it held before, by Id, in the sandbox selected in Target Org Manager. The values they hold now are saved to treecipe/UpdateAttempts first.');
             });
-            treeState.updaterLoadButtonElement.setAttribute('title', 'Read this tree’s records, with the fields you chose, from the sandbox or scratch org chosen in Target Org Manager. It only reads.');
 
-            const generateElement = treeState.updaterGenerateButtonElement;
-            if (!generateElement) { return; }
+            if (!treeState.updaterGenerateCard) { return; }
             const hasChosenField = treeState.updaterObjectStates.some(function (updaterObjectState) { return updaterObjectState.chosenFieldCount > 0; });
             const generateReason = !treeState.updaterRecordsMessage ? 'Load records first: new values are generated for the records the last load read.'
                 : !hasChosenField ? 'Choose a field to fill first.'
                 : '';
-            generateElement.disabled = updaterLoadRunningTreeKey !== null || generateReason !== '';
-            generateElement.textContent = isThisCardLoading && updaterRunKind === 'generate' ? UPDATER_GENERATING_LABEL : UPDATER_GENERATE_LABEL;
-            generateElement.setAttribute('title', generateReason || 'Make a new value for every loaded record of each chosen field, from its faker expression or the value you typed. Nothing is written to the org.');
+            setTextShown(treeState.updaterGenerateCard.titleElement, isThisCardLoading && updaterRunKind === 'generate' ? UPDATER_GENERATING_LABEL : UPDATER_GENERATE_LABEL);
+            drawActionCardState(treeState.updaterGenerateCard, generateReason || busyReason,
+                'Make a new value for every loaded record of each chosen field, from its faker expression or the value you typed. Nothing is written to the org.');
 
-            const updateElement = treeState.updaterUpdateButtonElement;
-            if (!updateElement) { return; }
+            if (!treeState.updaterUpdateCard) { return; }
             const valueRecordCount = treeState.updaterValuesMessage ? countUpdaterValueRecords(treeState.updaterValuesMessage) : 0;
             const orgLabel = treeState.updaterRecordsMessage ? String(treeState.updaterRecordsMessage.orgLabel || '') : '';
             const updateReason = !treeState.updaterValuesMessage ? 'Generate values first: the update writes the values the last Generate values made.'
                 : valueRecordCount === 0 ? 'There are no new values to write: the last load read no records.'
                 : '';
-            updateElement.disabled = updaterLoadRunningTreeKey !== null || updateReason !== '';
-            updateElement.textContent = isThisCardLoading && updaterRunKind === 'update'
+            setTextShown(treeState.updaterUpdateCard.titleElement, isThisCardLoading && updaterRunKind === 'update'
                 ? UPDATER_UPDATING_LABEL
                 : valueRecordCount > 0
                     ? 'Update ' + pluralize(valueRecordCount, 'record', 'records') + (orgLabel ? ' in ' + orgLabel : '')
-                    : UPDATER_UPDATE_LABEL;
-            updateElement.setAttribute('title', updateReason || 'Write the new values to these records by Id, in the sandbox they were loaded from. Their old values are saved to treecipe/UpdateAttempts first.');
+                    : UPDATER_UPDATE_LABEL);
+            drawActionCardState(treeState.updaterUpdateCard, updateReason || busyReason,
+                'Write the new values to these records by Id, in the sandbox they were loaded from. Their old values are saved to treecipe/UpdateAttempts first.');
         });
 
     }
@@ -24708,7 +24759,7 @@ ${this.buildPaletteCustomProperties()}
         recordTypeObjects = [];
         recordTypeFieldsByObjectApiName = Object.create(null);
         recordTypeRowStates = [];
-        recordTypeButtonElements = [];
+        recordTypeActionCards = [];
         isRecordTypeRegenerating = false;
         isRecordTypeSelectionRemembered = false;
         recordTypeRememberElements = [];
@@ -24823,15 +24874,18 @@ ${this.buildPaletteCustomProperties()}
     // DISABLED UNTIL THE HOST'S RELOAD REDRAWS THE BODY, WHICH IT DOES HOWEVER GENERATION ENDED
     function buildGenerateTreecipeElement() {
 
-        const generateElement = createElement('div', 'emptyStateActions');
-        const generateButtonElement = createButton('primary', 'generateTreecipe', GENERATE_TREECIPE_ACTION_LABEL);
+        const generateElement = createElement('div', 'emptyStateActions actionCards');
+        const actionCard = buildActionCard('generateTreecipe', 'generateTreecipe', GENERATE_TREECIPE_ACTION_LABEL);
+        const generateButtonElement = actionCard.buttonElement;
 
         generateButtonElement.addEventListener('click', function () {
-            generateButtonElement.disabled = true;
-            generateButtonElement.textContent = GENERATE_TREECIPE_RUNNING_LABEL;
+            if (generateButtonElement.disabled) { return; }
+            actionCard.titleElement.textContent = GENERATE_TREECIPE_RUNNING_LABEL;
+            drawActionCardState(actionCard, 'Generate Treecipe is running.', '');
             vscodeApi.postMessage({ command: 'generateTreecipe' });
         });
 
+        drawActionCardState(actionCard, '', 'Run Generate Treecipe on this project, then open the run it writes here.');
         generateElement.appendChild(generateButtonElement);
 
         return generateElement;

@@ -749,8 +749,9 @@ describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
             whereInput.dispatch('input');
 
             const loadButton = panel.findAll(updaterPanel, 'updaterLoad')[0];
-            expect(loadButton.textContent).toBe(RECIPE_COCKPIT_UPDATER_LOAD_LABEL);
-            expect(loadButton.className).toContain('sdtButton-primary');
+            expect(panel.cardTitleOf(loadButton)).toBe(RECIPE_COCKPIT_UPDATER_LOAD_LABEL);
+            expect(loadButton.className).toContain('sdtButton-card');
+            expect(panel.findAll(loadButton, 'actionCardEmoji')[0].textContent).toBe('📥');
             loadButton.dispatch('click');
 
             expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadUpdaterRecords')).toEqual([{
@@ -764,7 +765,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
                 ]
             }]);
             expect(loadButton.disabled).toBe(true);
-            expect(loadButton.textContent).toBe(RECIPE_COCKPIT_UPDATER_LOADING_LABEL);
+            expect(panel.cardTitleOf(loadButton)).toBe(RECIPE_COCKPIT_UPDATER_LOADING_LABEL);
 
             // A SECOND CLICK WHILE IT RUNS POSTS NOTHING
             loadButton.dispatch('click');
@@ -772,7 +773,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
 
             panel.postToPanel({ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY });
             expect(loadButton.disabled).toBe(false);
-            expect(loadButton.textContent).toBe(RECIPE_COCKPIT_UPDATER_LOAD_LABEL);
+            expect(panel.cardTitleOf(loadButton)).toBe(RECIPE_COCKPIT_UPDATER_LOAD_LABEL);
 
         });
 
@@ -863,7 +864,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s load (#416)', () => {
             panel.postToPanel({ command: 'updaterLoadState', isRunning: true, treeKey: 'Lead-ONLY' });
             const loadButton = panel.findAll(updaterPanel, 'updaterLoad')[0];
             expect(loadButton.disabled).toBe(true);
-            expect(loadButton.textContent).toBe(RECIPE_COCKPIT_UPDATER_LOAD_LABEL);
+            expect(panel.cardTitleOf(loadButton)).toBe(RECIPE_COCKPIT_UPDATER_LOAD_LABEL);
 
             panel.typeIntoTabSearch(accountCard, 'treeUpdater', 'last');
             expect(JSON.stringify(panel.savedState())).not.toContain('Secret');

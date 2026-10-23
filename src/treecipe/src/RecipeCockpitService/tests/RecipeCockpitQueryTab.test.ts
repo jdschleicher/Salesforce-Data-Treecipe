@@ -996,9 +996,18 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             // EXPORT WAITS FOR A RESULT
             expect(panel.findAll(accountBase, 'treeQueryExport').every((buttonElement: any) => buttonElement.disabled)).toBe(true);
 
-            // #363: RUN IS EACH QUERY'S ONE MAIN ACTION; EVERY OTHER BUTTON IS SECONDARY
-            expect(panel.findAll(accountBase, 'treeQueryRun')[0].className).toBe('sdtButton sdtButton-primary treeQueryRun');
-            expect(['treeQueryReset', 'treeQueryExport'].flatMap(className => panel.findAll(accountBase, className)).every((buttonElement: any) => buttonElement.classList.contains('sdtButton-secondary'))).toBe(true);
+            // #384: RUN AND THE TWO EXPORTS ARE CARDS (▶️, 💾); RESET EDITS THE BOX, SO IT STAYS A SECONDARY BUTTON
+            const runCard = panel.findAll(accountBase, 'treeQueryRun')[0];
+            expect(runCard.className).toBe('sdtButton sdtButton-card actionCard treeQueryRun');
+            expect(panel.cardTitleOf(runCard)).toBe('Run…');
+            expect(panel.findAll(runCard, 'actionCardEmoji')[0].textContent).toBe('▶️');
+            expect(panel.findAll(accountBase, 'treeQueryExport').map((exportCard: any) => panel.cardTitleOf(exportCard))).toEqual(['Export JSON', 'Export CSV']);
+            panel.findAll(accountBase, 'treeQueryExport').forEach((exportCard: any) => {
+                expect(exportCard.classList.contains('sdtButton-card')).toBe(true);
+                expect(panel.findAll(exportCard, 'actionCardEmoji')[0].textContent).toBe('💾');
+                expect(panel.findAll(exportCard, 'actionCardReason')[0].textContent).toBe('Run this query first');
+            });
+            expect(panel.findAll(accountBase, 'treeQueryReset')[0].className).toBe('sdtButton sdtButton-secondary treeQueryReset');
 
         });
 
@@ -1059,7 +1068,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
 
             const { panel, accountCard } = renderQueryTab();
             panel.postToPanel(queriesMessage());
-            const runLabels = () => panel.findAll(accountCard, 'treeQueryRun').map((buttonElement: any) => buttonElement.textContent);
+            const runLabels = () => panel.findAll(accountCard, 'treeQueryRun').map((buttonElement: any) => panel.findAll(buttonElement, 'actionCardTitle')[0].textContent);
 
             expect(new Set(runLabels())).toEqual(new Set(['Run…']));
 

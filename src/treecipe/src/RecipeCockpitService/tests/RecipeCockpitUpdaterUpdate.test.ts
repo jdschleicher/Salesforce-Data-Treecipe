@@ -1104,10 +1104,11 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
             const { panel, updaterPanel } = renderUpdater();
             const updateButton = panel.findAll(updaterPanel, 'updaterUpdate')[0];
 
-            expect(updateButton.textContent).toBe(RECIPE_COCKPIT_UPDATER_UPDATE_LABEL);
+            expect(panel.cardTitleOf(updateButton)).toBe(RECIPE_COCKPIT_UPDATER_UPDATE_LABEL);
             expect(updateButton.disabled).toBe(true);
             expect(updateButton.attributes.title).toMatch(/^Generate values first/);
-            expect(updateButton.classList.contains('sdtButton-secondary')).toBe(true);
+            expect(updateButton.classList.contains('sdtButton-card')).toBe(true);
+            expect(panel.findAll(updateButton, 'actionCardEmoji')[0].textContent).toBe('✍️');
 
             panel.postToPanel(loadedMessage);
             panel.postToPanel({ ...valuesMessage, renderSequence: 2 });
@@ -1117,11 +1118,11 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
             panel.postToPanel(valuesMessage);
             expect(postedNamed(panel, 'updaterValuesRendered')).toEqual([{ command: 'updaterValuesRendered', renderSequence: 1, valuesSequence: 7 }]);
             expect(updateButton.disabled).toBe(false);
-            expect(updateButton.textContent).toBe('Update 3 records in qa · qa@example.com.qa');
+            expect(panel.cardTitleOf(updateButton)).toBe('Update 3 records in qa · qa@example.com.qa');
 
             updateButton.dispatch('click');
             expect(postedNamed(panel, 'updateUpdaterRecords')).toEqual([{ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY }]);
-            expect(updateButton.textContent).toBe(RECIPE_COCKPIT_UPDATER_UPDATING_LABEL);
+            expect(panel.cardTitleOf(updateButton)).toBe(RECIPE_COCKPIT_UPDATER_UPDATING_LABEL);
             expect(updateButton.disabled).toBe(true);
 
             // A SECOND CLICK WHILE IT RUNS POSTS NOTHING
@@ -1142,7 +1143,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
 
             panel.postToPanel({ command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'update' });
             expect(panel.isHidden(valuesElement)).toBe(false);
-            expect(updateButton.textContent).toBe(RECIPE_COCKPIT_UPDATER_UPDATING_LABEL);
+            expect(panel.cardTitleOf(updateButton)).toBe(RECIPE_COCKPIT_UPDATER_UPDATING_LABEL);
 
             // A CANCELLED CONFIRMATION SPENDS NOTHING
             panel.postToPanel({ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, runKind: 'update' });
@@ -1153,7 +1154,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s update (#418)', () => {
             expect(panel.isHidden(valuesElement)).toBe(true);
             expect(panel.isHidden(panel.findAll(accountObject, 'updaterRecords')[0])).toBe(true);
             expect(updateButton.disabled).toBe(true);
-            expect(updateButton.textContent).toBe(RECIPE_COCKPIT_UPDATER_UPDATE_LABEL);
+            expect(panel.cardTitleOf(updateButton)).toBe(RECIPE_COCKPIT_UPDATER_UPDATE_LABEL);
 
         });
 

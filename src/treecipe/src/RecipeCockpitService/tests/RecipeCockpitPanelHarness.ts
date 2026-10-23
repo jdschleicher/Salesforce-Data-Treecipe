@@ -188,6 +188,8 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
         activeElement: () => fakeDocument.activeElement,
         findAll,
         isHidden,
+        // AN ACTION CARD (#381, #384) NAMES ITSELF IN ITS TITLE SPAN, NOT ITS OWN TEXT
+        cardTitleOf: (buttonElement: any) => findAll(buttonElement, 'actionCardTitle')[0].textContent,
         treeCards,
         objectElements,
         objectBodyOf,
