@@ -1029,8 +1029,9 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
 
             const { panel, updaterPanel } = renderUpdater();
             const generateButton = panel.findAll(updaterPanel, 'updaterGenerate')[0];
-            expect(generateButton.textContent).toBe(RECIPE_COCKPIT_UPDATER_GENERATE_LABEL);
-            expect(generateButton.className).toContain('sdtButton-secondary');
+            expect(panel.cardTitleOf(generateButton)).toBe(RECIPE_COCKPIT_UPDATER_GENERATE_LABEL);
+            expect(generateButton.className).toContain('sdtButton-card');
+            expect(panel.findAll(generateButton, 'actionCardEmoji')[0].textContent).toBe('🎲');
             expect(generateButton.disabled).toBe(true);
             expect(generateButton.attributes.title).toMatch(/^Load records first/);
 
@@ -1075,9 +1076,9 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
                 ]
             }]);
             expect(generateButton.disabled).toBe(true);
-            expect(generateButton.textContent).toBe(RECIPE_COCKPIT_UPDATER_GENERATING_LABEL);
+            expect(panel.cardTitleOf(generateButton)).toBe(RECIPE_COCKPIT_UPDATER_GENERATING_LABEL);
             expect(panel.findAll(updaterPanel, 'updaterLoad')[0].disabled).toBe(true);
-            expect(panel.findAll(updaterPanel, 'updaterLoad')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_LOAD_LABEL);
+            expect(panel.cardTitleOf(panel.findAll(updaterPanel, 'updaterLoad')[0])).toBe(RECIPE_COCKPIT_UPDATER_LOAD_LABEL);
 
             // A SECOND CLICK WHILE IT RUNS POSTS NOTHING, AND THE RECIPE IS NEVER WRITTEN FROM THIS EDITOR
             generateButton.dispatch('click');
@@ -1086,7 +1087,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
 
             panel.postToPanel({ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, runKind: 'generate' });
             expect(generateButton.disabled).toBe(false);
-            expect(generateButton.textContent).toBe(RECIPE_COCKPIT_UPDATER_GENERATE_LABEL);
+            expect(panel.cardTitleOf(generateButton)).toBe(RECIPE_COCKPIT_UPDATER_GENERATE_LABEL);
 
         });
 
@@ -1193,7 +1194,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
             panel.postToPanel(valuesMessage(1));
             panel.postToPanel({ command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY });
             expect(panel.isHidden(valuesElement)).toBe(true);
-            expect(panel.findAll(updaterPanel, 'updaterLoad')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_LOADING_LABEL);
+            expect(panel.cardTitleOf(panel.findAll(updaterPanel, 'updaterLoad')[0])).toBe(RECIPE_COCKPIT_UPDATER_LOADING_LABEL);
             expect(panel.findAll(updaterPanel, 'updaterGenerate')[0].attributes.title).toMatch(/^Load records first/);
 
         });

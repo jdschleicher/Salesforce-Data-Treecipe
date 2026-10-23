@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.138.0] - Recipe Cockpit: the object row's count reads as what gets created
+## [3.139.0] - Recipe Cockpit: the object row's count reads as what gets created
 
 Closes [#438](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/438).
 
@@ -15,6 +15,21 @@ An object row's count (#255) was a bare text box followed by a muted `per Accoun
 - **Unchanged.** The `setObjectCount` message and its checks, how counts are stored (`RECIPE_COCKPIT_OBJECT_SELECTION_VERSION` 3), and which rows get a count. Neither faker backend changes.
 - **Guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the new row, and the pictures were re-taken.
 - **Tests.** The panel suite drives the button, the box, Enter, blur and Escape, the refusals, the exclusion and the `changed` marker, Enter then blur posting once, an invalid blur, a refusal kept through a redraw, focus after an exclusion and the disabled border; the panel harness's fake element counts `select()`.
+
+## [3.138.0] - Recipe Cockpit: the standalone actions outside the Troubleshooting tab are action cards too
+
+Closes [#384](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/384), after [#381](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/381).
+
+#381 made every Troubleshooting action one card: its verb's emoji, its title, a line on when it is needed, and why it is disabled. The cockpit's other standalone actions were still bare buttons with their reason in a tooltip.
+
+- **New cards.** The no-run **Generate Treecipe** (🛠️), the Record types section's **Regenerate with these record types** and **Use defaults** (🔄), each query's **Run…** (▶️) and **Export JSON** / **Export CSV** (💾), and the Treecipe Updater's **Load records** (📥), **Generate values** (🎲) and **Update records** (✍️). Each is `buildActionCard`'s card from `RECIPE_COCKPIT_STANDALONE_ACTION_CARDS`, in an `actionCards` grid laid out like the Troubleshooting one, and says why it waits on the card (for example Export's "Run this query first"). A running label (`Generating…`, `Loading…`, `Updating…`) replaces the card's title.
+- **New verbs.** `RECIPE_COCKPIT_ACTION_VERB_EMOJI` gains run ▶️, export 💾, create ➕, regenerate 🔄, generateData 🎲 and update ✍️. A test still requires one emoji per verb, and now also fails on a verb nothing uses.
+- **Primary buttons that keep their place.** The Treecipe tab's full-width **Generate fake data and insert** carries 🎲 and **+ New scratch org** carries ➕, drawn before the label by the stylesheet (`RECIPE_COCKPIT_VERB_BUTTON_VERBS`, hidden from a screen reader), so its label is now `New scratch org`. Both stay `primary`: the insert is the tab's one main action across its full width, and a 10.5rem card in the pinned Target Org Manager row would make that section taller at every width (#364).
+- **What stays a button.** Tabs and sub-tabs, ▸ toggles, checks, ✎, ☆, chain links, line links and nickname links, the field editors' Save/Clear/Cancel, the confirmation dialog's buttons, Choose org…, ⟳, Open in browser, a query's **Reset** (it edits the query box), the help's **Open the full guide**, Favorites only, Reset selection, a tree's rename, a data set row's Open/Insert…/☆/✎/Show record counts (they belong to a row, as #384 proposed), a lookup row's Wire/Wire all/Create/Use existing, Add friend and the TODO rows' Remove/Restore.
+- **With #419, #383 and #434.** The Updater's **Restore previous values…** buttons stay row buttons under **Previous updates**, and the Load records card reads `Loading…` only for a load. The `update` verb is ✍️ rather than 📝, which #383 gave the TODO's group cards. The two primary buttons keep #434's teal fill, with the emoji drawn before the label.
+- **Unchanged.** Every guard, every posted message and the pinned org section's layout. A test keeps the pinned section free of cards and pins which buttons keep the `primary` kind.
+- **Design guide.** `CLAUDE.md`'s button-kind bullet says when to use `card` and when `primary`/`secondary`. `docs/RECIPE-COCKPIT-GUIDE.md` names **➕ New scratch org**, and its screenshots are re-taken; the ? help names no changed label, so its text is unchanged.
+- **Tests.** `RecipeCockpitStandaloneActionCards.test.ts` holds the verb map, the inventory (every card drawn is declared, every primary is one the inventory kept), the stylesheet's emoji before the two primary buttons, the pinned section, the Generate Treecipe card and the Updater's three cards. The Query, Record types, Updater, scratch org and button kind suites read each card's title.
 
 ## [3.137.0] - Recipe Cockpit: the friend chip shows 👥 and every nickname shows 🌳
 
