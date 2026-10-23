@@ -1,13 +1,13 @@
 # Change Log
 
-## [3.136.0] - Recipe Cockpit: the friend chip shows 👥 and the nickname button shows 🌳
+## [3.136.0] - Recipe Cockpit: the friend chip shows 👥 and every nickname shows 🌳
 
 Closes [#432](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/432).
 
 The friend chip (#411) drew a hand-made holding-hands SVG that matched none of the cockpit's emoji, and a row's nickname (#380) had no icon, so nothing said it was the name the rows under it point to.
 
 - **👥 on every friend chip.** The chip's SVG is replaced by 👥, clickable and muted chips alike. `RECIPE_COCKPIT_FRIEND_GLYPH_PATH`, `buildFriendGlyph` and the `.treeFriendGlyph` rules are gone.
-- **🌳 on every nickname.** The nickname button, and the muted nickname drawn when no field points to it, start with 🌳: a parent, which the rows nested under it or pointing to it branch from.
+- **🌳 on every nickname.** The nickname button, and the muted nickname drawn when no field points to it, start with 🌳, marking the name the rows nested under it or pointing to it use for it, even on a row nothing points to yet.
 - **Hidden from a screen reader.** Each emoji is an `aria-hidden` span; every chip's and button's `aria-label` and `title` are unchanged, and no search matches an emoji.
 - **Unchanged.** Chip numbering, what a click does, the nickname list's keys, the posted model and every message. A snowfakery card still draws no friend chip.
 - **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say what 👥 and 🌳 mean.
