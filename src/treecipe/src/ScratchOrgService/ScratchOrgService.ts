@@ -24,7 +24,8 @@ export const ORG_OPERATIONS_FOLDER_NAME = 'OrgOperations';
 
 export type OrgOperationName = 'scratch-create' | 'permission-set-assign'
     | 'validation-rule-retrieve' | 'field-retrieve' | 'record-type-retrieve' | 'global-value-set-retrieve'
-    | 'permission-set-deploy' | 'field-deploy' | 'global-value-set-deploy' | 'record-type-deploy';
+    | 'permission-set-deploy' | 'field-deploy' | 'global-value-set-deploy' | 'record-type-deploy'
+    | 'adapter-retrieve';
 
 export type ScratchOrgSetupPhase = 'creating';
 

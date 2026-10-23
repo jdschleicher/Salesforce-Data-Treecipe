@@ -56,7 +56,7 @@ import {
     RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX,
     RECIPE_COCKPIT_UPDATER_PARENT_WHERE_PLACEHOLDER,
     RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL,
-    RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_PENDING_REASON,
+    RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_TITLE,
     RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER,
     RECIPE_COCKPIT_UPDATER_STRUCTURE_STEP_HEADING_PREFIX,
     RECIPE_COCKPIT_UPDATER_TAB_LABEL
@@ -663,7 +663,7 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
 
         });
 
-        it('draws the filter with the retrieve button beside it, disabled until it is wired, and says the parent records the WHERE asks for', () => {
+        it('draws the filter with the retrieve button beside it and says the parent records the WHERE asks for', () => {
 
             const { panel, accountCard } = openParentStep();
             chooseParent(panel, accountCard, 'Account');
@@ -673,8 +673,8 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
             expect(panel.findAll(filterRow, 'tabSearchInput')[0].attributes.placeholder).toBe(RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER);
             const retrieveButton = panel.findAll(filterRow, 'updaterRetrieveMetadata')[0];
             expect(retrieveButton.textContent).toBe(RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL);
-            expect(retrieveButton.disabled).toBe(true);
-            expect(retrieveButton.attributes.title).toBe(RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_PENDING_REASON);
+            expect(retrieveButton.disabled).toBe(false);
+            expect(retrieveButton.attributes.title).toBe(RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_TITLE);
             expect(retrieveButton.className).toBe('sdtButton sdtButton-secondary updaterRetrieveMetadata');
             expect(panel.findAll(structureStep, 'updaterParentWhereNote')[0].textContent).toBe(RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE);
 

@@ -96,6 +96,7 @@ import {
 } from './RecipeCockpitQuery';
 import { IUpdateRecordResult, IUpdateRecordValues, IUpdateRequestRecord, IUpdateSnapshotObject, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RECIPE_COCKPIT_UPDATE_REQUEST_RECORD_LIMIT, RecipeCockpitRecordUpdate } from './RecipeCockpitRecordUpdate';
 import { IRecipeCockpitUpdaterObjectRequest, IRecipeCockpitUpdaterTreeObject, RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH, RecipeCockpitTreeUpdaterQuery } from './RecipeCockpitTreeUpdaterQuery';
+import { IOrgObjectChanges, ORG_CHANGE_RETRIEVE_OPERATION_NAME, RecipeCockpitOrgChangeDetection } from './RecipeCockpitOrgChangeDetection';
 import { ISOQLTreeQuery, SOQL_QUERY_KIND_LABELS, SOQLQueryKind, SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 
@@ -573,7 +574,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against any connected org you pick in the command palette (a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.',
-            'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the parent records step 1\'s WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with the fields you ticked, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to treecipe/UpdateAttempts first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
+            'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Retrieve latest metadata, beside the filter, retrieves those objects from the org into treecipe/OrgOperations (never your package directories) and marks each field new in org or changed in org against your project. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the parent records step 1\'s WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with the fields you ticked, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to treecipe/UpdateAttempts first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
         ]
     },
     {
@@ -1667,10 +1668,23 @@ export interface IRecipeCockpitUpdaterLoadStateMessage {
     command: 'updaterLoadState';
     isRunning: boolean;
     treeKey: string;
-    // A VALUE GENERATION (#417), AN UPDATE (#418) AND A RESTORE (#419) SHARE THE LOAD'S ONE RUN PER WINDOW; ABSENT IS A LOAD
-    runKind?: 'generate' | 'update' | 'restore';
+    // A VALUE GENERATION (#417), AN UPDATE (#418), A RESTORE (#419) AND A METADATA RETRIEVE (#445) SHARE THE LOAD'S ONE RUN PER WINDOW; ABSENT IS A LOAD
+    runKind?: 'generate' | 'update' | 'restore' | 'retrieve';
     // AN UPDATE OR A RESTORE THAT SENT A REQUEST ENDS WITH THIS: THE LOADED RECORDS AND THEIR VALUES ARE SPENT, SO THE PANEL LETS THEM GO
     isRecordsSpent?: true;
+}
+
+/*
+    "Retrieve latest metadata" (#445): per object step 2 drew, whether the org's retrieve brought it
+    and its fields that are new or changed against this project. Names, types, labels and one-line
+    differences only; the staged files stay on the host.
+*/
+export interface IRecipeCockpitAdapterMetadataChangesMessage {
+    command: 'adapterMetadataChanges';
+    renderSequence: number;
+    treeKey: string;
+    orgLabel: string;
+    objects: IOrgObjectChanges[];
 }
 
 // ONE OBJECT'S RECORDS AS THE PANEL IS SENT THEM: COUNTS AND A PREVIEW AS TEXT, OR WHY THEY COULD NOT BE READ
@@ -2087,7 +2101,15 @@ export const RECIPE_COCKPIT_UPDATER_CHANGE_PARENT_LABEL = 'Change parent';
 export const RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX = 'Parent records: WHERE ';
 export const RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE = 'Parent records: every record (no WHERE in step 1)';
 export const RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL = 'Retrieve latest metadata';
-export const RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_PENDING_REASON = 'Coming soon: this will retrieve the latest object metadata from the target org and mark what is new or changed against this treecipe.';
+export const RECIPE_COCKPIT_UPDATER_RETRIEVING_METADATA_LABEL = 'Retrieving…';
+export const RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_TITLE = 'Retrieve the latest metadata of these objects from the sandbox or scratch org chosen in Target Org Manager, into treecipe/OrgOperations, and mark the fields that are new or changed in the org. Nothing in the project changes.';
+export const RECIPE_COCKPIT_ADAPTER_RETRIEVE_BUSY_REFUSAL = 'Nothing was retrieved: another run is using the org selection. Try again when it ends.';
+export const RECIPE_COCKPIT_ADAPTER_RETRIEVE_ORG_PLACEHOLDER = 'Select the sandbox or scratch org to retrieve the latest metadata from';
+export const RECIPE_COCKPIT_ADAPTER_NEW_IN_ORG_LABEL = 'new in org';
+export const RECIPE_COCKPIT_ADAPTER_CHANGED_IN_ORG_LABEL = 'changed in org';
+export const RECIPE_COCKPIT_ADAPTER_NOT_RETRIEVED_LABEL = 'not retrieved from the org';
+// A FIELD ONLY THE ORG HOLDS IS DRAWN, NOT FILLED: FILLING IT IS #446
+export const RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE = 'Only in the org: this project has no file for it yet.';
 export const RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN = 'No fields chosen';
 export const RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON = 'read from the recipe file, so its type is not known';
 export const RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON = 'the record type is not changed here';
@@ -2177,6 +2199,7 @@ export const RECIPE_COCKPIT_SCRATCH_ORG_PHASE_TEXT: Record<ScratchOrgSetupPhase 
 export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitUpdaterLoadStateMessage
                                         | IRecipeCockpitUpdaterRecordsMessage
+                                        | IRecipeCockpitAdapterMetadataChangesMessage
                                         | IRecipeCockpitUpdaterValuesMessage
                                         | IRecipeCockpitUpdaterSnapshotsMessage
                                         | IRecipeCockpitRecipeDataMessage
@@ -2426,6 +2449,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'loadUpdaterRecords'; treeKey: string; renderSequence: number; requests: IRecipeCockpitUpdaterObjectRequest[]; isOrgPrompted: boolean }
     // A REFUSAL WITH A REASON IS A WARNING NOTIFICATION; EVERY ONE GIVES THE CLICKED BUTTON BACK
     | { kind: 'refuseUpdaterLoad'; refusalText?: string; hostMessage: IRecipeCockpitUpdaterLoadStateMessage }
+    | { kind: 'retrieveAdapterMetadata'; treeKey: string; renderSequence: number; objectApiNames: string[]; isOrgPrompted: boolean }
     // THE UPDATER'S VALUES (#417): THE FIELDS, AND ANY VALUE TYPED FOR ONE, CHECKED AGAIN AND CONFIRMED BY THE EXECUTOR
     | { kind: 'activateUpdaterValues' }
     | { kind: 'updateUpdaterRecords'; treeKey: string }
@@ -2533,6 +2557,9 @@ export interface IRecipeCockpitPanelState {
     isUpdaterOrgPromptOpen?: boolean;
     // THE LAST RECORDS IT POSTED, REPLAYED WHILE ITS MODEL IS THE ONE ON SCREEN
     updaterRecordsMessage?: IRecipeCockpitUpdaterRecordsMessage;
+    // THE LAST "Retrieve latest metadata" (#445): WHAT IT POSTED, REPLAYED WHILE ITS MODEL IS ON SCREEN, AND THE STAGING FOLDER IT READ (HOST-ONLY)
+    adapterMetadataChangesMessage?: IRecipeCockpitAdapterMetadataChangesMessage;
+    adapterRetrieveStagingFolderPath?: string;
     // THE LAST VALUE GENERATION'S PREVIEW (#417), REPLAYED WHILE ITS MODEL IS ON SCREEN; SET ONLY THROUGH setUpdaterValuesMessage
     updaterValuesMessage?: IRecipeCockpitUpdaterValuesMessage;
     /*
@@ -6053,8 +6080,10 @@ export class RecipeCockpitService {
         panelState.treeQueryResultMessage = undefined;
         // A RESULT IS EXPORTED ONLY FROM THE MODEL IT WAS RUN ON, SO A NEW ONE LETS IT GO
         this.clearHeldTreeQueryResult();
-        // SO ARE AN UPDATER LOAD'S RECORDS (#416)
+        // SO ARE AN UPDATER LOAD'S RECORDS (#416), AND WHAT A METADATA RETRIEVE FOUND (#445)
         panelState.updaterRecordsMessage = undefined;
+        panelState.adapterMetadataChangesMessage = undefined;
+        panelState.adapterRetrieveStagingFolderPath = undefined;
         this.setUpdaterValuesMessage(panelState, undefined);
         this.clearHeldUpdaterRecords();
         // AND A SNAPSHOT LIST (#419): THE NEW MODEL'S CARDS ASK FOR THEIR OWN
@@ -6588,6 +6617,11 @@ export class RecipeCockpitService {
             case 'loadUpdaterRecords':
 
                 await this.loadUpdaterRecordsFromPanel(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'retrieveAdapterMetadata':
+
+                await this.retrieveAdapterMetadataFromPanel(cockpitPanel, panelState, panelAction);
                 return;
 
             case 'generateUpdaterValues':
@@ -9108,6 +9142,183 @@ export class RecipeCockpitService {
         }
 
         VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(`${loadedText}.`));
+
+    }
+
+    /*
+        "Retrieve latest metadata" (#445): one run per window, sharing the load's lock. The org is the
+        Target Org Manager selection once it answered it is a sandbox, or, with none, the load's own
+        prompt. The objects are retrieved as CustomObject members into a STAGING folder under
+        treecipe/OrgOperations -- never a package directory -- and compared with the project's field
+        files. What is posted is names and one-line differences; the staged files stay on the host
+        for a later Apply. How it went is ONE notification.
+    */
+    private static async retrieveAdapterMetadataFromPanel(cockpitPanel: vscode.WebviewPanel,
+                                                          panelState: IRecipeCockpitPanelState,
+                                                          retrieveAction: Extract<RecipeCockpitPanelAction, { kind: 'retrieveAdapterMetadata' }>) {
+
+        const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: retrieveAction.treeKey };
+
+        if ( this.isUpdaterLoadInFlight ) {
+            this.postToPanel(cockpitPanel, this.updaterLoadRunStateMessage ?? notRunning);
+            return;
+        }
+
+        this.isUpdaterLoadInFlight = true;
+        this.setUpdaterLoadState({ command: 'updaterLoadState', isRunning: true, treeKey: retrieveAction.treeKey, runKind: 'retrieve' });
+
+        try {
+            await this.performAdapterMetadataRetrieve(cockpitPanel, panelState, retrieveAction);
+        } finally {
+            this.isUpdaterLoadInFlight = false;
+            this.setUpdaterLoadState(notRunning);
+        }
+
+    }
+
+    private static async performAdapterMetadataRetrieve(cockpitPanel: vscode.WebviewPanel,
+                                                        panelState: IRecipeCockpitPanelState,
+                                                        retrieveAction: Extract<RecipeCockpitPanelAction, { kind: 'retrieveAdapterMetadata' }>) {
+
+        const { treeKey, renderSequence, objectApiNames } = retrieveAction;
+        const workspaceRoot = panelState.workspaceRoot;
+        const clickedRecipeDataMessage = panelState.recipeDataMessage;
+        const isClickStillCurrent = () => this.recipeCockpitPanel === cockpitPanel
+                                            && this.recipeCockpitPanelState === panelState
+                                            && panelState.recipeDataMessage === clickedRecipeDataMessage;
+        const tree = clickedRecipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+        const warn = (warningText: string) => VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(warningText));
+
+        if ( !clickedRecipeDataMessage || clickedRecipeDataMessage.renderSequence !== renderSequence || !tree?.folderName ) {
+            return;
+        }
+
+        // AN UNDEPLOYABLE PROJECT OPENS NO PROMPT: ITS PACKAGE DIRECTORIES ARE WHAT THE ORG'S FILES ARE COMPARED WITH
+        let packageDirectoryPaths: string[];
+        try {
+            packageDirectoryPaths = SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
+        } catch (projectError) {
+            warn(`Nothing was retrieved: ${this.describeThrown(projectError)}`);
+            return;
+        }
+
+        if ( retrieveAction.isOrgPrompted ) {
+            let isSandboxSelected = false;
+            panelState.isUpdaterOrgPromptOpen = true;
+            try {
+                isSandboxSelected = await this.promptAndSelectSandboxDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
+                    RECIPE_COCKPIT_ADAPTER_RETRIEVE_ORG_PLACEHOLDER, 'Nothing was retrieved', 'the Treecipe Adapter reads only from a sandbox or scratch org');
+            } finally {
+                panelState.isUpdaterOrgPromptOpen = false;
+            }
+            if ( !isSandboxSelected ) {
+                return;
+            }
+        }
+
+        const dataOrgSelection = panelState.dataOrgSelection;
+
+        if ( !isClickStillCurrent() || dataOrgSelection?.orgTypeDetail?.isSandbox !== true ) {
+            return;
+        }
+
+        const orgUsername = dataOrgSelection.orgDetail.username;
+        // NO PARENTHESES: A NOTIFICATION ESCAPES THEM
+        const orgLabel = dataOrgSelection.orgDetail.alias ? `${dataOrgSelection.orgDetail.alias} · ${orgUsername}` : orgUsername;
+        const treeTitle = tree.customName ?? tree.title;
+        let retrieveArguments: string[];
+        let stagingFolderPath: string | undefined;
+        try {
+            const packageXml = RecipeCockpitOrgChangeDetection.buildObjectRetrievePackageXml(objectApiNames, this.readSourceApiVersion(workspaceRoot));
+            const plannedStagingFolderPath = RecipeCockpitOrgChangeDetection.buildStagingFolderPath(workspaceRoot, orgUsername, new Date());
+            stagingFolderPath = plannedStagingFolderPath ? RecipeCockpitOrgChangeDetection.makeStagingFolder(workspaceRoot, plannedStagingFolderPath) : undefined;
+            const writtenPackageXmlFilePath = stagingFolderPath
+                ? RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, RecipeCockpitOrgChangeDetection.buildPackageXmlFilePath(stagingFolderPath), packageXml)
+                : undefined;
+            if ( !stagingFolderPath || !writtenPackageXmlFilePath ) {
+                warn(`Nothing was retrieved: the staging folder could not be made under treecipe/${ORG_OPERATIONS_FOLDER_NAME} in this workspace.`);
+                return;
+            }
+            retrieveArguments = RecipeCockpitOrgChangeDetection.buildRetrieveArguments(
+                RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, writtenPackageXmlFilePath),
+                RecipeCockpitOrgChangeDetection.toOutputDirectoryArgument(workspaceRoot, stagingFolderPath),
+                orgUsername
+            );
+        } catch (argumentError) {
+            warn(`Nothing was retrieved: ${this.describeThrown(argumentError)}`);
+            return;
+        }
+
+        const retrieveRun = await this.runCancellableCli(
+            RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: retrieving the latest metadata of ${treeTitle} from ${orgLabel}`),
+            retrieveArguments,
+            METADATA_RETRIEVE_TIMEOUT_MILLISECONDS,
+            workspaceRoot,
+            SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES
+        );
+
+        // THE STAGING FOLDER IS THE ONLY PLACE IT WRITES, SO A CANCEL CHANGED NOTHING IN THE PROJECT
+        if ( retrieveRun.isCancelled ) {
+            warn(`The retrieve of the latest metadata of ${treeTitle} from ${orgLabel} was cancelled. Nothing in the project changed.`);
+            return;
+        }
+
+        const retrievePayload = ScratchOrgService.readCliJsonPayload(retrieveRun.invocation);
+        const retrieveOutputFilePath = retrieveRun.invocation.spawnError || retrieveRun.invocation.isOutputTooLarge
+            ? undefined
+            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgUsername, ORG_CHANGE_RETRIEVE_OPERATION_NAME, retrieveRun.invocation, new Date(), retrievePayload);
+        const retrieveRead = RecipeCockpitOrgChangeDetection.readRetrieveSucceeded(retrieveRun.invocation, retrievePayload);
+
+        // A FAILED RETRIEVE KEEPS WHAT THE LAST ONE MARKED ON SCREEN
+        if ( 'failureMessage' in retrieveRead ) {
+            this.showMetadataRetrieveNotification('warning', `The latest metadata of ${treeTitle} could not be retrieved from ${orgLabel}: ${retrieveRead.failureMessage}`, retrieveOutputFilePath, workspaceRoot, false);
+            return;
+        }
+
+        const objectChanges = await RecipeCockpitOrgChangeDetection.detectFieldChanges(workspaceRoot, packageDirectoryPaths, stagingFolderPath, objectApiNames);
+
+        if ( !isClickStillCurrent() ) {
+            warn(`The latest metadata of ${treeTitle} was retrieved, but the run on screen changed meanwhile, so nothing was marked. Retrieve it again.`);
+            return;
+        }
+
+        const changesMessage: IRecipeCockpitAdapterMetadataChangesMessage = {
+            command: 'adapterMetadataChanges',
+            renderSequence: renderSequence,
+            treeKey: treeKey,
+            orgLabel: orgLabel,
+            objects: objectChanges
+        };
+        panelState.adapterMetadataChangesMessage = changesMessage;
+        panelState.adapterRetrieveStagingFolderPath = stagingFolderPath;
+        this.postToPanel(cockpitPanel, changesMessage);
+
+        this.showAdapterRetrieveNotification(objectChanges, treeTitle, orgLabel, retrieveOutputFilePath, workspaceRoot);
+
+    }
+
+    private static showAdapterRetrieveNotification(objectChanges: readonly IOrgObjectChanges[],
+                                                   treeTitle: string,
+                                                   orgLabel: string,
+                                                   retrieveOutputFilePath: string | undefined,
+                                                   workspaceRoot: string) {
+
+        const plural = (count: number, singular: string, many: string) => `${count} ${count === 1 ? singular : many}`;
+        const retrievedCount = objectChanges.filter(objectChange => objectChange.isRetrieved).length;
+        const notRetrieved = objectChanges.filter(objectChange => !objectChange.isRetrieved).map(objectChange => objectChange.objectApiName);
+        const newCount = objectChanges.reduce((total, objectChange) => total + objectChange.fieldChanges.filter(fieldChange => fieldChange.status === 'new').length, 0);
+        const changedCount = objectChanges.reduce((total, objectChange) => total + objectChange.fieldChanges.filter(fieldChange => fieldChange.status === 'changed').length, 0);
+        const unreadableCount = objectChanges.reduce((total, objectChange) => total + objectChange.unreadableFieldCount, 0);
+
+        const foundText = newCount + changedCount === 0
+            ? 'No field is new or changed against this project.'
+            : `${plural(newCount, 'field is', 'fields are')} new and ${plural(changedCount, 'field', 'fields')} changed in the org against this project; the Treecipe Adapter tab marks them.`;
+        const notRetrievedText = notRetrieved.length > 0 ? ` ${orgLabel} did not return ${notRetrieved.join(', ')}.` : '';
+        const unreadableText = unreadableCount > 0 ? ` ${plural(unreadableCount, 'field file', 'field files')} could not be read, so ${unreadableCount === 1 ? 'it was' : 'they were'} not compared.` : '';
+        const notificationText = `Retrieved the latest metadata of ${plural(retrievedCount, 'object', 'objects')} of ${treeTitle} from ${orgLabel}. ${foundText}${notRetrievedText}${unreadableText} Nothing in the project changed.`;
+
+        this.showMetadataRetrieveNotification(notRetrievedText || unreadableText ? 'warning' : 'information', notificationText,
+            notRetrievedText || unreadableText ? retrieveOutputFilePath : undefined, workspaceRoot, false);
 
     }
 
@@ -13952,6 +14163,70 @@ export class RecipeCockpitService {
             }
 
             /*
+                "Retrieve latest metadata" (#445): the card on screen and the parent step 1 chose,
+                nothing else. What is retrieved is the host's -- the parent and the objects under it,
+                planned as the load plans them -- and so is the org: the Target Org Manager
+                selection once it answered it is a sandbox, or, with none, the load's own prompt.
+            */
+            case 'retrieveAdapterMetadata': {
+
+                const { treeKey, renderSequence, parentObjectApiName } = panelMessage;
+                const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '' };
+
+                if ( panelState.updaterLoadStateMessage?.isRunning ) {
+                    return { kind: 'refuseUpdaterLoad', hostMessage: panelState.updaterLoadStateMessage };
+                }
+
+                const recipeDataMessage = panelState.recipeDataMessage;
+                const tree = typeof treeKey === 'string' ? recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey) : undefined;
+
+                if ( typeof treeKey !== 'string'
+                        || !recipeDataMessage
+                        || !tree
+                        || renderSequence !== recipeDataMessage.renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+                    return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
+                }
+
+                if ( panelState.insertStateMessage
+                        || panelState.scratchOrgStateMessage?.isRunning
+                        || panelState.permissionSetAssignStateMessage?.isRunning
+                        || panelState.metadataDeployStateMessage?.isRunning ) {
+                    return { kind: 'refuseUpdaterLoad', refusalText: RECIPE_COCKPIT_ADAPTER_RETRIEVE_BUSY_REFUSAL, hostMessage: notRunning };
+                }
+
+                const loadPlan = typeof parentObjectApiName === 'string'
+                    ? RecipeCockpitTreeUpdaterQuery.planLoad(this.listUpdaterTreeObjects(recipeDataMessage.recipe, tree), parentObjectApiName)
+                    : undefined;
+
+                if ( !loadPlan ) {
+                    return { kind: 'refuseUpdaterLoad', refusalText: 'Nothing was retrieved: the parent object is not an object of this treecipe.', hostMessage: notRunning };
+                }
+
+                const objectApiNames = loadPlan.map(loadStep => loadStep.objectApiName);
+                const dataOrgSelection = panelState.dataOrgSelection;
+
+                if ( dataOrgSelection?.orgTypeDetail?.isSandbox === true ) {
+                    return { kind: 'retrieveAdapterMetadata', treeKey: treeKey, renderSequence: renderSequence, objectApiNames: objectApiNames, isOrgPrompted: false };
+                }
+
+                if ( dataOrgSelection ) {
+                    return {
+                        kind: 'refuseUpdaterLoad',
+                        refusalText: `Nothing was retrieved: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} ${dataOrgSelection.orgTypeDetail ? 'is not a sandbox or scratch org' : 'has not been checked yet'}, and the Treecipe Adapter reads only from a sandbox or scratch org.`,
+                        hostMessage: notRunning
+                    };
+                }
+
+                if ( panelState.dataOrgObjectApiNames.size > 0 ) {
+                    return { kind: 'retrieveAdapterMetadata', treeKey: treeKey, renderSequence: renderSequence, objectApiNames: objectApiNames, isOrgPrompted: true };
+                }
+
+                return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
+
+            }
+
+            /*
                 "Generate values" (#417): the card on screen and, per chosen field, its object and
                 field names and the value typed for it, if any. Only the shape and the names are
                 checked here -- every field must be one the card's model lists, each once -- and the
@@ -14268,6 +14543,10 @@ export class RecipeCockpitService {
 
         if ( panelState.updaterRecordsMessage && panelState.updaterRecordsMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
             replayMessages.push(panelState.updaterRecordsMessage);
+        }
+
+        if ( panelState.adapterMetadataChangesMessage && panelState.adapterMetadataChangesMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
+            replayMessages.push(panelState.adapterMetadataChangesMessage);
         }
 
         if ( panelState.updaterValuesMessage && panelState.updaterValuesMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
@@ -16527,6 +16806,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     .updaterFilterRow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
     .updaterFilterRow .tabSearch { flex: 1 1 16rem; min-width: 0; }
     .updaterFilterRow .updaterRetrieveMetadata { margin-right: 0.6rem; }
+    .updaterOrgChangesNote { margin: 0 0.6rem 0.25rem; overflow-wrap: anywhere; }
+    .updaterOrgChangeChip { font-size: 0.85em; padding: 0 0.4rem; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); border: 1px dashed var(--sdt-accent); border-radius: 0.6rem; }
     .treeQuery { margin: 0.25rem 0.6rem 0.5rem; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
     .treeQueryTitle { font-weight: 600; }
     .treeQueryControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
@@ -16793,7 +17074,12 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const UPDATER_NO_RECORDS_LOADED_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_NO_RECORDS_LOADED_REASON)};
     const UPDATER_PARENT_WHERE_NONE_NOTE = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE)};
     const UPDATER_RETRIEVE_METADATA_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL)};
-    const UPDATER_RETRIEVE_METADATA_PENDING_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_PENDING_REASON)};
+    const UPDATER_RETRIEVING_METADATA_LABEL = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_RETRIEVING_METADATA_LABEL)};
+    const UPDATER_RETRIEVE_METADATA_TITLE = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_TITLE)};
+    const ADAPTER_NEW_IN_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_NEW_IN_ORG_LABEL)};
+    const ADAPTER_CHANGED_IN_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_CHANGED_IN_ORG_LABEL)};
+    const ADAPTER_NOT_RETRIEVED_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_NOT_RETRIEVED_LABEL)};
+    const ADAPTER_ORG_ONLY_FIELD_NOTE = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE)};
     const UPDATER_NO_FIELDS_CHOSEN = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN)};
     const UPDATER_RECIPE_ONLY_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON)};
     const UPDATER_RECORD_TYPE_REASON = ${JSON.stringify(RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON)};
@@ -21418,6 +21704,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             // THE READER'S WHERE PER DESCENDANT OBJECT (#416), BY OBJECT NAME; PANEL-ONLY, NEVER SAVED IN THE PLACE
             updaterWhereTexts: Object.create(null),
             updaterRecordsMessage: null,
+            // WHAT THE LAST "Retrieve latest metadata" FOUND (#445), DRAWN ON STEP 2 WHENEVER IT IS BUILT
+            adapterChangesMessage: null,
             // A VALUE OR EXPRESSION TYPED PER FIELD IN THE UPDATER'S EDITOR (#417), BY FIELD KEY; PANEL-ONLY, NEVER SAVED IN THE PLACE OR THE RECIPE
             updaterEditedValues: Object.create(null),
             updaterValuesMessage: null,
@@ -22620,16 +22908,17 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         treeState.updaterParentWhereNoteElement = createElement('div', 'updaterParentWhereNote muted');
         structureElement.appendChild(treeState.updaterParentWhereNoteElement);
 
-        // THE FILTER, AND BESIDE IT THE RETRIEVE A LATER SLICE OF #442 WIRES; UNTIL THEN IT SAYS WHAT IT WILL DO
+        // THE FILTER, AND BESIDE IT "Retrieve latest metadata" (#445), WHICH CAN BE PRESSED AT ANY TIME NO RUN HOLDS THE WINDOW
         const filterRowElement = createElement('div', 'updaterFilterRow');
         treeState.updaterSearch = buildTabSearch(treeState, 'updater', UPDATER_SEARCH_PLACEHOLDER, applyUpdaterFilter);
         filterRowElement.appendChild(treeState.updaterSearch.element);
         treeState.updaterRetrieveMetadataElement = createButton('secondary', 'updaterRetrieveMetadata', UPDATER_RETRIEVE_METADATA_LABEL);
-        treeState.updaterRetrieveMetadataElement.disabled = true;
-        treeState.updaterRetrieveMetadataElement.setAttribute('title', UPDATER_RETRIEVE_METADATA_PENDING_REASON);
-        treeState.updaterRetrieveMetadataElement.setAttribute('aria-label', UPDATER_RETRIEVE_METADATA_LABEL + ': ' + UPDATER_RETRIEVE_METADATA_PENDING_REASON);
+        treeState.updaterRetrieveMetadataElement.setAttribute('title', UPDATER_RETRIEVE_METADATA_TITLE);
+        treeState.updaterRetrieveMetadataElement.addEventListener('click', function () { requestAdapterMetadataRetrieve(treeState); });
         filterRowElement.appendChild(treeState.updaterRetrieveMetadataElement);
+        treeState.updaterOrgChangesNoteElement = createElement('div', 'updaterOrgChangesNote muted hidden');
         structureElement.appendChild(filterRowElement);
+        structureElement.appendChild(treeState.updaterOrgChangesNoteElement);
 
         structureElement.appendChild(createElement('div', 'updaterIntro muted', UPDATER_INTRO));
 
@@ -22846,6 +23135,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         drawUpdaterLoadButtons();
         if (treeState.updaterRecordsMessage) { applyUpdaterRecords(treeState, treeState.updaterRecordsMessage); }
         if (treeState.updaterValuesMessage) { applyUpdaterValues(treeState, treeState.updaterValuesMessage); }
+        applyAdapterMetadataChanges(treeState);
 
     }
 
@@ -22867,6 +23157,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             toggleElement: toggleElement,
             bodyElement: createElement('div', 'updaterObjectBody hidden'),
             countElement: createElement('span', 'updaterObjectCount muted'),
+            // WHAT THE LAST "Retrieve latest metadata" FOUND FOR THIS OBJECT (#445), ITS CHIP, AND ITS ORG-ONLY ROWS ONCE THE BODY IS BUILT
+            orgChanges: null,
+            orgChangesChipElement: createElement('span', 'updaterOrgChangeChip hidden'),
+            orgOnlyFieldsElement: null,
+            orgOnlyFieldStates: [],
             objectSearchText: object.objectApiName.toLowerCase(),
             isBodyBuilt: false,
             isExpanded: false,
@@ -22885,6 +23180,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                     field: field,
                     fieldKey: updaterFieldKeyOf(object.objectApiName, field.fieldApiName),
                     lockReason: findUpdaterFieldLockReason(treeState.tree, object.objectApiName, field),
+                    orgChange: null,
+                    orgChipElement: null,
+                    orgSearchText: '',
                     // WHAT THE ROW DRAWS: NAME, LABEL, SIZED TYPE AND FAKER EXPRESSION
                     searchText: [field.fieldApiName, field.fieldLabel, field.fieldTypeWithSize || field.fieldType, field.recipeValue].join('\\n').toLowerCase(),
                     isMatch: true,
@@ -22920,6 +23218,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (parentLookupsText) { headerElement.appendChild(createElement('span', 'treeLookups muted', parentLookupsText)); }
 
         headerElement.appendChild(updaterObjectState.countElement);
+        headerElement.appendChild(updaterObjectState.orgChangesChipElement);
 
         objectElement.appendChild(headerElement);
         objectElement.appendChild(updaterObjectState.bodyElement);
@@ -22946,7 +23245,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                 setShown(fieldState.rowElement, fieldState.isMatch);
                 updaterObjectState.bodyElement.appendChild(fieldState.rowElement);
             });
+            updaterObjectState.orgOnlyFieldsElement = createElement('div', 'updaterOrgOnlyFields');
+            updaterObjectState.bodyElement.appendChild(updaterObjectState.orgOnlyFieldsElement);
             updaterObjectState.isBodyBuilt = true;
+            drawAdapterObjectOrgOnlyFields(updaterObjectState);
         }
 
         setShownWithMotion(updaterObjectState.bodyElement, isExpanded, isAnimated);
@@ -22999,6 +23301,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         fieldState.editBadgeElement = createElement('span', 'fixedValueBadge hidden');
         headerElement.appendChild(fieldState.editBadgeElement);
+        fieldState.orgChipElement = createElement('span', 'updaterOrgChangeChip hidden');
+        headerElement.appendChild(fieldState.orgChipElement);
+        drawAdapterFieldOrgChip(fieldState);
 
         rowElement.appendChild(headerElement);
 
@@ -23469,6 +23774,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             const isThisCardLoading = updaterLoadRunningTreeKey === treeState.tree.treeKey;
             const busyReason = updaterLoadRunningTreeKey !== null ? 'Records are being loaded, generated, updated or restored.' : '';
             setTextShown(treeState.updaterLoadCard.titleElement, isThisCardLoading && updaterRunKind === 'load' ? UPDATER_LOADING_LABEL : UPDATER_LOAD_LABEL);
+            if (treeState.updaterRetrieveMetadataElement) {
+                treeState.updaterRetrieveMetadataElement.textContent = isThisCardLoading && updaterRunKind === 'retrieve' ? UPDATER_RETRIEVING_METADATA_LABEL : UPDATER_RETRIEVE_METADATA_LABEL;
+                treeState.updaterRetrieveMetadataElement.disabled = updaterLoadRunningTreeKey !== null;
+                treeState.updaterRetrieveMetadataElement.setAttribute('title', busyReason || UPDATER_RETRIEVE_METADATA_TITLE);
+            }
             drawActionCardState(treeState.updaterLoadCard, busyReason || (treeState.updaterObjectStates.length === 0 ? 'This tree has no object to load.' : ''),
                 'Read this tree’s records, with the fields you chose, from the sandbox or scratch org chosen in Target Org Manager. It only reads.');
             (treeState.updaterSnapshotButtonElements || []).forEach(function (snapshotButton) {
@@ -23621,9 +23931,15 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             let objectMatchingFieldCount = 0;
 
             updaterObjectState.fieldStates.forEach(function (fieldState) {
-                fieldState.isMatch = isObjectNameMatch || fieldState.searchText.indexOf(searchQuery) !== -1;
+                fieldState.isMatch = isObjectNameMatch || fieldState.searchText.indexOf(searchQuery) !== -1 || (fieldState.orgSearchText !== '' && fieldState.orgSearchText.indexOf(searchQuery) !== -1);
                 if (fieldState.isMatch) { objectMatchingFieldCount++; }
                 if (fieldState.rowElement) { setShown(fieldState.rowElement, fieldState.isMatch); }
+            });
+
+            // A FIELD ONLY THE ORG HOLDS (#445) IS SHOWN OR HIDDEN BY THE SAME SEARCH, AND COUNTED APART FROM THE RECIPE'S FIELDS
+            updaterObjectState.orgOnlyFieldStates.forEach(function (orgOnlyFieldState) {
+                orgOnlyFieldState.isMatch = !searchQuery || isObjectNameMatch || orgOnlyFieldState.searchText.indexOf(searchQuery) !== -1;
+                if (orgOnlyFieldState.rowElement) { setShown(orgOnlyFieldState.rowElement, orgOnlyFieldState.isMatch); }
             });
 
             const objectFieldCount = updaterObjectState.fieldStates.length;
@@ -23653,6 +23969,157 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             function (updaterObjectState) { return updaterObjectState.matchingFieldCount; },
             function (updaterObjectState) { return updaterObjectState.fieldStates.length; },
             function (updaterObjectState, isExpanded) { setUpdaterObjectExpanded(treeState, updaterObjectState, isExpanded); });
+
+    }
+
+    /*
+        "Retrieve latest metadata" (#445): posts the card and the parent step 1 chose, nothing
+        else; the host plans the objects and picks the org. What comes back marks each drawn row
+        "new in org" or "changed in org", counts them on the object, and draws a field only the org
+        holds as a row of its own -- every value written with textContent.
+    */
+    function requestAdapterMetadataRetrieve(treeState) {
+
+        if (renderedSequence === null || updaterLoadRunningTreeKey !== null || !treeState.updaterParentObjectApiName) { return; }
+
+        updaterLoadRunningTreeKey = treeState.tree.treeKey;
+        updaterRunKind = 'retrieve';
+        drawUpdaterLoadButtons();
+        vscodeApi.postMessage({ command: 'retrieveAdapterMetadata', treeKey: treeState.tree.treeKey, renderSequence: renderedSequence, parentObjectApiName: treeState.updaterParentObjectApiName });
+
+    }
+
+    function renderAdapterMetadataChanges(changesMessage) {
+
+        if (renderedSequence === null || changesMessage.renderSequence !== renderedSequence) { return; }
+
+        const treeState = findTreeState(changesMessage.treeKey);
+        if (!treeState) { return; }
+
+        treeState.adapterChangesMessage = changesMessage;
+        applyAdapterMetadataChanges(treeState);
+
+    }
+
+    function applyAdapterMetadataChanges(treeState) {
+
+        const changesMessage = treeState.adapterChangesMessage;
+        if (!changesMessage || !treeState.updaterObjectStates || !treeState.updaterOrgChangesNoteElement) { return; }
+
+        const objectChangesByName = Object.create(null);
+        (Array.isArray(changesMessage.objects) ? changesMessage.objects : []).forEach(function (objectChanges) {
+            if (objectChanges && typeof objectChanges.objectApiName === 'string') { objectChangesByName[objectChanges.objectApiName] = objectChanges; }
+        });
+
+        let newCount = 0;
+        let changedCount = 0;
+
+        treeState.updaterObjectStates.forEach(function (updaterObjectState) {
+
+            const objectChanges = hasOwnKey(objectChangesByName, updaterObjectState.object.objectApiName) ? objectChangesByName[updaterObjectState.object.objectApiName] : null;
+            const fieldChanges = objectChanges && Array.isArray(objectChanges.fieldChanges) ? objectChanges.fieldChanges : [];
+            const fieldChangesByLowerName = Object.create(null);
+            fieldChanges.forEach(function (fieldChange) {
+                if (fieldChange && typeof fieldChange.fieldApiName === 'string') { fieldChangesByLowerName[fieldChange.fieldApiName.toLowerCase()] = fieldChange; }
+            });
+
+            updaterObjectState.orgChanges = objectChanges;
+            updaterObjectState.fieldStates.forEach(function (fieldState) {
+                const lowerFieldName = fieldState.field.fieldApiName.toLowerCase();
+                fieldState.orgChange = hasOwnKey(fieldChangesByLowerName, lowerFieldName) ? fieldChangesByLowerName[lowerFieldName] : null;
+                fieldState.orgSearchText = fieldState.orgChange ? describeAdapterFieldChange(fieldState.orgChange).toLowerCase() : '';
+                drawAdapterFieldOrgChip(fieldState);
+            });
+
+            // A NEW FIELD THE RECIPE DOES NOT LIST IS A ROW OF ITS OWN; ONE IT LISTS IS MARKED ON ITS ROW
+            const modelFieldNames = Object.create(null);
+            updaterObjectState.fieldStates.forEach(function (fieldState) { modelFieldNames[fieldState.field.fieldApiName.toLowerCase()] = true; });
+            updaterObjectState.orgOnlyFieldStates = fieldChanges
+                .filter(function (fieldChange) { return fieldChange.status === 'new' && !hasOwnKey(modelFieldNames, String(fieldChange.fieldApiName).toLowerCase()); })
+                .map(function (fieldChange) {
+                    return {
+                        fieldChange: fieldChange,
+                        searchText: [fieldChange.fieldApiName, fieldChange.fieldLabel, fieldChange.fieldType, ADAPTER_NEW_IN_ORG_LABEL].join('\\n').toLowerCase(),
+                        isMatch: true,
+                        rowElement: null
+                    };
+                });
+
+            const objectNewCount = fieldChanges.filter(function (fieldChange) { return fieldChange.status === 'new'; }).length;
+            const objectChangedCount = fieldChanges.filter(function (fieldChange) { return fieldChange.status === 'changed'; }).length;
+            newCount += objectNewCount;
+            changedCount += objectChangedCount;
+
+            const chipParts = [];
+            if (objectChanges && objectChanges.isRetrieved === false) { chipParts.push(ADAPTER_NOT_RETRIEVED_LABEL); }
+            if (objectNewCount > 0) { chipParts.push(objectNewCount + ' ' + ADAPTER_NEW_IN_ORG_LABEL); }
+            if (objectChangedCount > 0) { chipParts.push(objectChangedCount + ' ' + ADAPTER_CHANGED_IN_ORG_LABEL); }
+            updaterObjectState.orgChangesChipElement.textContent = chipParts.join(' · ');
+            setShown(updaterObjectState.orgChangesChipElement, chipParts.length > 0);
+
+            drawAdapterObjectOrgOnlyFields(updaterObjectState);
+
+        });
+
+        treeState.updaterOrgChangesNoteElement.textContent = 'Retrieved from ' + String(changesMessage.orgLabel || 'the org') + ': '
+            + pluralize(newCount, 'field', 'fields') + ' ' + ADAPTER_NEW_IN_ORG_LABEL + ', ' + pluralize(changedCount, 'field', 'fields') + ' ' + ADAPTER_CHANGED_IN_ORG_LABEL + '.';
+        setShown(treeState.updaterOrgChangesNoteElement, true);
+
+        if (treeState.searchQueries.updater) { applyUpdaterFilter(treeState); }
+
+    }
+
+    function describeAdapterFieldChange(fieldChange) {
+        const differences = Array.isArray(fieldChange.differences) ? fieldChange.differences.map(String) : [];
+        return (fieldChange.status === 'new' ? ADAPTER_NEW_IN_ORG_LABEL : ADAPTER_CHANGED_IN_ORG_LABEL) + (differences.length > 0 ? ': ' + differences.join('; ') : '');
+    }
+
+    function drawAdapterFieldOrgChip(fieldState) {
+
+        const chipElement = fieldState.orgChipElement;
+        if (!chipElement) { return; }
+
+        if (!fieldState.orgChange) {
+            chipElement.textContent = '';
+            chipElement.removeAttribute('title');
+            setShown(chipElement, false);
+            return;
+        }
+
+        chipElement.textContent = fieldState.orgChange.status === 'new' ? ADAPTER_NEW_IN_ORG_LABEL : ADAPTER_CHANGED_IN_ORG_LABEL;
+        chipElement.setAttribute('title', describeAdapterFieldChange(fieldState.orgChange));
+        setShown(chipElement, true);
+
+    }
+
+    function drawAdapterObjectOrgOnlyFields(updaterObjectState) {
+
+        const containerElement = updaterObjectState.orgOnlyFieldsElement;
+        if (!containerElement) { return; }
+
+        containerElement.textContent = '';
+        updaterObjectState.orgOnlyFieldStates.forEach(function (orgOnlyFieldState) {
+
+            const fieldChange = orgOnlyFieldState.fieldChange;
+            const rowElement = createElement('div', 'updaterField updaterOrgOnlyField');
+            const headerElement = createElement('div', 'updaterFieldHeader');
+
+            headerElement.appendChild(createElement('span', 'updaterFieldName', String(fieldChange.fieldApiName)));
+            if (fieldChange.fieldLabel && fieldChange.fieldLabel !== fieldChange.fieldApiName) {
+                headerElement.appendChild(createElement('span', 'updaterFieldLabel muted', String(fieldChange.fieldLabel)));
+            }
+            if (fieldChange.fieldType) {
+                headerElement.appendChild(createElement('span', 'fieldType', String(fieldChange.fieldType)));
+            }
+            headerElement.appendChild(createElement('span', 'updaterOrgChangeChip', ADAPTER_NEW_IN_ORG_LABEL));
+            headerElement.appendChild(createElement('span', 'updaterFieldNote muted', ADAPTER_ORG_ONLY_FIELD_NOTE));
+
+            rowElement.appendChild(headerElement);
+            orgOnlyFieldState.rowElement = rowElement;
+            setShown(rowElement, orgOnlyFieldState.isMatch);
+            containerElement.appendChild(rowElement);
+
+        });
 
     }
 
@@ -25528,13 +25995,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         if (hostMessage.command === 'updaterLoadState') {
             updaterLoadRunningTreeKey = hostMessage.isRunning ? String(hostMessage.treeKey) : null;
-            updaterRunKind = hostMessage.isRunning ? ( hostMessage.runKind === 'generate' || hostMessage.runKind === 'update' || hostMessage.runKind === 'restore' ? hostMessage.runKind : 'load' ) : '';
+            updaterRunKind = hostMessage.isRunning ? ( hostMessage.runKind === 'generate' || hostMessage.runKind === 'update' || hostMessage.runKind === 'restore' || hostMessage.runKind === 'retrieve' ? hostMessage.runKind : 'load' ) : '';
             if (updaterRunKind !== 'restore') { updaterRestoringSnapshotName = ''; }
             // THE HOST LETS THE LAST LOAD GO WHEN THE NEXT STARTS, AND ITS VALUES WITH IT; A GENERATION LETS ONLY THE VALUES GO
             if (hostMessage.isRunning) {
                 if (updaterRunKind === 'load') { clearUpdaterRecords(); }
-                // AN UPDATE (#418) KEEPS THE PREVIEW ON SCREEN WHILE ITS CONFIRMATION ASKS ABOUT IT
-                if (updaterRunKind !== 'update' && updaterRunKind !== 'restore') { clearUpdaterValues(); }
+                // AN UPDATE (#418) KEEPS THE PREVIEW ON SCREEN WHILE ITS CONFIRMATION ASKS ABOUT IT, AND A METADATA RETRIEVE (#445) TOUCHES NO RECORD
+                if (updaterRunKind !== 'update' && updaterRunKind !== 'restore' && updaterRunKind !== 'retrieve') { clearUpdaterValues(); }
             }
             // AN UPDATE THAT SENT A REQUEST SPENT THE LOADED RECORDS: THEIR "current" VALUES ARE NO LONGER CURRENT
             if (!hostMessage.isRunning && hostMessage.isRecordsSpent === true) {
@@ -25547,6 +26014,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         if (hostMessage.command === 'updaterRecords') {
             renderUpdaterRecords(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'adapterMetadataChanges') {
+            renderAdapterMetadataChanges(hostMessage);
             return;
         }
 
