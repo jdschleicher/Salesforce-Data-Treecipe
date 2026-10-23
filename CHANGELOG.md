@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.140.0] - Recipe Cockpit: an object a parent's exclusion cut a lookup from is marked impacted
+## [3.141.0] - Recipe Cockpit: an object a parent's exclusion cut a lookup from is marked impacted
 
 Closes [#449](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/449), after [#219](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/219) and [#257](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/257).
 
@@ -14,6 +14,10 @@ When you excluded a parent, a child that another included parent kept stayed inc
 - **Unchanged.** The cascade, what is generated in either backend, the stored selection (`RECIPE_COCKPIT_OBJECT_SELECTION_VERSION`) and every posted message.
 - **Guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the impacted state. The pictures were not re-taken: none shows an impacted row.
 - **Tests.** The panel suite draws the impacted glyph, label, title, `aria-label`, count and Insert order suffix, puts the row back when the parent is included again, lists two parents sorted, skips a grandchild, a self-lookup, an excluded object and malformed entries (a `__proto__` name included), and the contrast test holds `--sdt-changed` to 3:1 on a row and a hovered row.
+
+## [3.140.0] - Recipe Cockpit: generating fake data is a seedling
+
+`RECIPE_COCKPIT_ACTION_VERB_EMOJI`'s `generateData` verb is now 🌱 instead of 🎲, as in seed data. It is drawn on the Treecipe tab's **Generate fake data and insert** button and on the Treecipe Updater's **Generate values** card. No other verb or icon uses 🌱, so every verb still has its own emoji. The guide's pictures were re-taken to show it. Nothing else changes.
 
 ## [3.139.0] - Recipe Cockpit: the object row's count reads as what gets created
 

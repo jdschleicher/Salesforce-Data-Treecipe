@@ -1907,7 +1907,7 @@ export const RECIPE_COCKPIT_ACTION_VERB_EMOJI: Readonly<Record<RecipeCockpitActi
     export: '💾',
     create: '➕',
     regenerate: '🔄',
-    generateData: '🎲',
+    generateData: '🌱',
     update: '✍️'
 });
 

@@ -1031,7 +1031,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
             const generateButton = panel.findAll(updaterPanel, 'updaterGenerate')[0];
             expect(panel.cardTitleOf(generateButton)).toBe(RECIPE_COCKPIT_UPDATER_GENERATE_LABEL);
             expect(generateButton.className).toContain('sdtButton-card');
-            expect(panel.findAll(generateButton, 'actionCardEmoji')[0].textContent).toBe('🎲');
+            expect(panel.findAll(generateButton, 'actionCardEmoji')[0].textContent).toBe('🌱');
             expect(generateButton.disabled).toBe(true);
             expect(generateButton.attributes.title).toMatch(/^Load records first/);
 
