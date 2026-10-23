@@ -1895,7 +1895,8 @@ export const RECIPE_COCKPIT_STANDALONE_ACTION_CARDS: Readonly<Record<RecipeCockp
 });
 
 // A PRIMARY BUTTON THAT STAYS A BUTTON BUT NAMES ITS VERB (#384): ITS EMOJI IS DRAWN BEFORE ITS LABEL BY THE STYLESHEET
-export const RECIPE_COCKPIT_VERB_BUTTON_VERBS: Readonly<Record<string, RecipeCockpitActionVerb>> = Object.freeze({
+export type RecipeCockpitVerbButtonClassName = 'treeInsert' | 'dataOrgNewScratch';
+export const RECIPE_COCKPIT_VERB_BUTTON_VERBS: Readonly<Record<RecipeCockpitVerbButtonClassName, RecipeCockpitActionVerb>> = Object.freeze({
     treeInsert: 'generateData',
     dataOrgNewScratch: 'create'
 });
@@ -20210,13 +20211,14 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         regenerateElement.addEventListener('click', function () { postRecordTypeRegenerate(treeState, buildRecordTypeSelection()); });
         defaultsElement.addEventListener('click', function () { postRecordTypeRegenerate(treeState, {}); });
-        regenerateCard.description = 'Regenerate the run with the record types ticked above';
-        defaultsCard.description = 'Regenerate the run with every object\\'s default record type, as Generate Treecipe writes it';
 
         actionsElement.appendChild(regenerateElement);
         actionsElement.appendChild(defaultsElement);
         panelElement.appendChild(actionsElement);
-        recordTypeActionCards.push(regenerateCard, defaultsCard);
+        recordTypeActionCards.push(
+            { actionCard: regenerateCard, title: 'Regenerate the run with the record types ticked above' },
+            { actionCard: defaultsCard, title: 'Regenerate the run with every object\\'s default record type, as Generate Treecipe writes it' }
+        );
 
         drawRecordTypeChoices();
         applyRecordTypesFilter(treeState);
@@ -20334,11 +20336,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             rememberElement.disabled = isRecordTypeRegenerating || insertRunningTreeKey !== null;
         });
 
-        recordTypeActionCards.forEach(function (actionCard) {
+        recordTypeActionCards.forEach(function (recordTypeAction) {
             const reason = insertRunningTreeKey !== null ? 'Wait for the insert to finish'
                 : isRecordTypeRegenerating ? 'The run is being regenerated.'
                 : '';
-            drawActionCardState(actionCard, reason, actionCard.description);
+            drawActionCardState(recordTypeAction.actionCard, reason, recordTypeAction.title);
         });
 
     }

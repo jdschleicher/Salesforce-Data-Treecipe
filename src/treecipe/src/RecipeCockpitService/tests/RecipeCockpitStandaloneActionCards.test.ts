@@ -190,6 +190,13 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
             expect(partOf(panel, cards[1], 'actionCardReason').textContent).toMatch(/^Load records first/);
             expect(partOf(panel, cards[2], 'actionCardReason').textContent).toMatch(/^Generate values first/);
 
+            // ANOTHER CARD'S LOAD HOLDS THIS ONE TOO, AND THE LOAD CARD SAYS SO
+            panel.postToPanel({ command: 'updaterLoadState', isRunning: true, treeKey: 'Lead-ONLY' });
+            expect(cards[0].disabled).toBe(true);
+            expect(partOf(panel, cards[0], 'actionCardReason').textContent).toBe('Records are being loaded, generated or updated.');
+            // A SPECIFIC REASON STILL WINS OVER THE BUSY ONE
+            expect(partOf(panel, cards[1], 'actionCardReason').textContent).toMatch(/^Load records first/);
+
         });
 
         it('lays out the new card grids as the Troubleshooting one does', () => {
