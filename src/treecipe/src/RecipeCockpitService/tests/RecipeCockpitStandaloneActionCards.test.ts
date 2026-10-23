@@ -28,7 +28,7 @@ import { runPanelScript } from './RecipeCockpitPanelHarness';
     #384: the standalone actions outside the Troubleshooting tab are #381's cards too, and the two
     primary buttons that keep their place (the tree's insert, + New scratch org in the pinned org
     row) carry their verb's emoji. These tests hold the verb map whole, pin which buttons are cards
-    and which stay primary, and keep the pinned Target Org Management section free of cards.
+    and which stay primary, and keep the pinned Target Org Manager section free of cards.
 */
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 
@@ -62,7 +62,7 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
 
         it('adds Run, Export, Create, Regenerate and Generate data with the emojis the issue names, and still gives each verb its own', () => {
 
-            expect(RECIPE_COCKPIT_ACTION_VERB_EMOJI).toMatchObject({ run: '▶️', export: '💾', create: '➕', regenerate: '🔄', generateData: '🎲' });
+            expect(RECIPE_COCKPIT_ACTION_VERB_EMOJI).toMatchObject({ run: '▶️', export: '💾', create: '➕', regenerate: '🔄', generateData: '🎲', update: '✍️' });
 
             const verbs = Object.keys(RECIPE_COCKPIT_ACTION_VERB_EMOJI);
             expect(new Set(Object.values(RECIPE_COCKPIT_ACTION_VERB_EMOJI)).size).toBe(verbs.length);
@@ -193,7 +193,7 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
             // ANOTHER CARD'S LOAD HOLDS THIS ONE TOO, AND THE LOAD CARD SAYS SO
             panel.postToPanel({ command: 'updaterLoadState', isRunning: true, treeKey: 'Lead-ONLY' });
             expect(cards[0].disabled).toBe(true);
-            expect(partOf(panel, cards[0], 'actionCardReason').textContent).toBe('Records are being loaded, generated or updated.');
+            expect(partOf(panel, cards[0], 'actionCardReason').textContent).toBe('Records are being loaded, generated, updated or restored.');
             // A SPECIFIC REASON STILL WINS OVER THE BUSY ONE
             expect(partOf(panel, cards[1], 'actionCardReason').textContent).toMatch(/^Load records first/);
 

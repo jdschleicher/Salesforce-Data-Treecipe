@@ -13,7 +13,7 @@ jest.mock('vscode', () => ({
     Uri: { file: (filePath: string) => ({ scheme: 'file', fsPath: filePath }) }
 }), { virtual: true });
 
-import { RecipeCockpitService, IRecipeCockpitRecipeViewModel, RECIPE_COCKPIT_FRIEND_GLYPH_PATH } from '../RecipeCockpitService';
+import { RecipeCockpitService, IRecipeCockpitRecipeViewModel, RECIPE_COCKPIT_FRIEND_EMOJI } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
 /*
@@ -90,7 +90,7 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
     });
 
     const objectElementWithNickname = (panel: any, nickname: string) => panel.objectElements()
-        .find((objectElement: any) => panel.findAll(objectElement.children[0], 'treeNickname').some((nicknameElement: any) => nicknameElement.textContent === nickname));
+        .find((objectElement: any) => panel.findAll(objectElement.children[0], 'treeNicknameText').some((nicknameElement: any) => nicknameElement.textContent === nickname));
 
     describe('the model', () => {
 
@@ -145,14 +145,19 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
 
         });
 
-        it('draws the holding-hands glyph with createElementNS, hidden from a screen reader, and names each chip in words', () => {
+        it('starts each chip with 👥 hidden from a screen reader (#432), and names each chip in words', () => {
 
             const panel = renderModel(loadModel());
             const caseChips = panel.findAll(objectElementWithNickname(panel, 'Case_NickName').children[0], 'treeFriendChip');
-            const glyphElement = caseChips[0].children[0];
 
-            expect(glyphElement.attributes['aria-hidden']).toBe('true');
-            expect(glyphElement.children[0].attributes.d).toBe(RECIPE_COCKPIT_FRIEND_GLYPH_PATH);
+            expect(RECIPE_COCKPIT_FRIEND_EMOJI).toBe('👥');
+            caseChips.forEach((chipElement: any) => {
+                const emojiElement = chipElement.children[0];
+                expect(emojiElement.classList.contains('treeChipEmoji')).toBe(true);
+                expect(emojiElement.textContent).toBe('👥');
+                expect(emojiElement.attributes['aria-hidden']).toBe('true');
+                expect(panel.findAll(chipElement, 'treeFriendGlyph')).toEqual([]);
+            });
             expect(caseChips.map((chipElement: any) => chipElement.attributes['aria-label'])).toEqual([
                 'Contact_NickName-1, friend 1 of Contact_NickName: go to Contact',
                 'Account_NickName-2, friend 2 of Account_NickName: go to Account'
@@ -218,6 +223,22 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
 
         });
 
+        it('searches no emoji: neither search finds a row by 👥 or 🌳 (#432)', () => {
+
+            const panel = renderModel(loadModel());
+
+            panel.typeIntoTreecipesSearch('👥');
+            expect(panel.findAll(panel.cockpitBodyElement, 'treecipesResult')).toEqual([]);
+            panel.typeIntoTreecipesSearch('🌳');
+            expect(panel.findAll(panel.cockpitBodyElement, 'treecipesResult')).toEqual([]);
+
+            ['👥', '🌳'].forEach(emoji => {
+                panel.typeIntoFilter(emoji);
+                panel.objectElements().forEach((objectElement: any) => expect(panel.visibleFieldNamesOf(objectElement)).toEqual([]));
+            });
+
+        });
+
         it('draws no extra chip for a field naming a nickname no row holds', () => {
 
             fs.writeFileSync(
@@ -242,6 +263,8 @@ describe('RecipeCockpitService, friend chips (#411)', () => {
             expect(chipLines(panel)).toEqual(['Account: ', 'Contact: Account-1']);
             expect(contactChips[0].tagName.toLowerCase()).toBe('span');
             expect(contactChips[0].classList.contains('muted')).toBe(true);
+            expect(contactChips[0].children[0].textContent).toBe('👥');
+            expect(contactChips[0].children[0].attributes['aria-hidden']).toBe('true');
 
         });
 

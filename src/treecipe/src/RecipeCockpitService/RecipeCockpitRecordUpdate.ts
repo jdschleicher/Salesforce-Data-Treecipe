@@ -30,6 +30,20 @@ const FOLDER_NAME_PATTERN = /^[^\\/\u0000-\u001F\u007F]*[^\\/\u0000-\u001F\u007F
 // A WINDOWS DEVICE NAME, WITH OR WITHOUT AN EXTENSION: ScratchOrgService's RULE FOR AN OrgOperations FOLDER, NOT IMPORTED SO THIS STAYS FREE OF THE CLI SERVICES
 const WINDOWS_RESERVED_FOLDER_NAME_PATTERN = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
 
+// A SNAPSHOT'S FILE NAME AS writeSnapshot WRITES IT: <yyyyMMdd-HHmmss>[-<n>]-before.json
+const SNAPSHOT_FILE_NAME_PATTERN = /^(\d{8}-\d{6})(?:-([2-9]|1\d|20))?-before\.json$/;
+
+const SALESFORCE_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
+
+// A USERNAME IS ONE LINE WITH NO SPACE, AS THE CLI RECORDS IT
+const ORG_USERNAME_PATTERN = /^[^\s\u0000-\u001F\u007F\u0085\u2028\u2029]{1,255}$/;
+
+// THE NEWEST SNAPSHOTS THE UPDATER TAB LISTS (#419); THE REST ARE COUNTED
+export const RECIPE_COCKPIT_UPDATE_SNAPSHOT_LIST_LIMIT = 50;
+
+// A SNAPSHOT HOLDS AT MOST A LOAD'S VALUE BUDGET, WHICH MEASURED WELL UNDER THIS; ANYTHING LARGER WAS NOT WRITTEN BY AN UPDATE
+export const RECIPE_COCKPIT_UPDATE_SNAPSHOT_MAX_BYTES = 128 * 1024 * 1024;
+
 // WHAT A FIELD OR OBJECT DESCRIBE MUST SAY FOR AN UPDATE; SalesforceOrgService's NORMALIZED DESCRIBE CARRIES IT
 export interface IUpdateFieldDescribe {
     fieldApiName: string;
@@ -80,6 +94,12 @@ export interface IUpdateRecordResult {
     errors: IUpdateRecordError[];
     // THE ORG GAVE NO READABLE ANSWER FOR IT (A REQUEST THAT THREW, AN ANSWER THAT DID NOT PARSE): IT MAY HAVE BEEN SAVED
     isUncertain?: true;
+}
+
+export interface IUpdateSnapshotList {
+    // NEWEST FIRST, AT MOST RECIPE_COCKPIT_UPDATE_SNAPSHOT_LIST_LIMIT
+    snapshotFileNames: string[];
+    hiddenSnapshotCount: number;
 }
 
 export interface IUpdateAttemptFiles {
@@ -324,6 +344,230 @@ export class RecipeCockpitRecordUpdate {
         } catch {
             return false;
         }
+
+    }
+
+
+    /*
+        The tree's snapshots (#419), newest first: the files under treecipe/UpdateAttempts/<tree
+        folder>/ whose names writeSnapshot writes, each a file and never a link. A tree with no such
+        folder has none; a folder name that is not plain, or a folder outside the workspace, lists
+        nothing.
+    */
+    static listSnapshots(workspaceRoot: string, treeFolderName: string): IUpdateSnapshotList {
+
+        const emptyList: IUpdateSnapshotList = { snapshotFileNames: [], hiddenSnapshotCount: 0 };
+        const treeFolderPath = this.resolveTreeAttemptsFolderPath(workspaceRoot, treeFolderName);
+
+        if ( !treeFolderPath ) {
+            return emptyList;
+        }
+
+        let directoryEntries: fs.Dirent[];
+        try {
+            directoryEntries = fs.readdirSync(treeFolderPath, { withFileTypes: true });
+        } catch {
+            return emptyList;
+        }
+
+        const snapshots = directoryEntries.flatMap(directoryEntry => {
+            const nameMatch = directoryEntry.isFile() ? SNAPSHOT_FILE_NAME_PATTERN.exec(directoryEntry.name) : null;
+            return nameMatch ? [{ fileName: directoryEntry.name, timestamp: nameMatch[1], attempt: nameMatch[2] ? Number(nameMatch[2]) : 1 }] : [];
+        });
+
+        snapshots.sort((left, right) => left.timestamp !== right.timestamp
+            ? ( left.timestamp < right.timestamp ? 1 : -1 )
+            : right.attempt - left.attempt);
+
+        return {
+            snapshotFileNames: snapshots.slice(0, RECIPE_COCKPIT_UPDATE_SNAPSHOT_LIST_LIMIT).map(snapshot => snapshot.fileName),
+            hiddenSnapshotCount: Math.max(0, snapshots.length - RECIPE_COCKPIT_UPDATE_SNAPSHOT_LIST_LIMIT)
+        };
+
+    }
+
+    // WHERE A LISTED SNAPSHOT IS, CHECKED AGAIN WHEN IT IS READ: A NAME writeSnapshot WRITES, A FILE AND NOT A LINK, INSIDE THE WORKSPACE
+    static resolveSnapshotFilePath(workspaceRoot: string, treeFolderName: string, snapshotFileName: string): string | undefined {
+
+        const treeFolderPath = SNAPSHOT_FILE_NAME_PATTERN.test(snapshotFileName) ? this.resolveTreeAttemptsFolderPath(workspaceRoot, treeFolderName) : undefined;
+        if ( !treeFolderPath ) {
+            return undefined;
+        }
+
+        const snapshotFilePath = path.join(treeFolderPath, snapshotFileName);
+
+        try {
+            if ( !fs.lstatSync(snapshotFilePath).isFile() ) {
+                return undefined;
+            }
+        } catch {
+            return undefined;
+        }
+
+        return SfdxProjectService.isPathContainedInWorkspace(snapshotFilePath, path.resolve(workspaceRoot)) ? snapshotFilePath : undefined;
+
+    }
+
+    private static resolveTreeAttemptsFolderPath(workspaceRoot: string, treeFolderName: string): string | undefined {
+
+        if ( !FOLDER_NAME_PATTERN.test(treeFolderName) || WINDOWS_RESERVED_FOLDER_NAME_PATTERN.test(treeFolderName) ) {
+            return undefined;
+        }
+
+        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+        const treeFolderPath = path.join(resolvedWorkspaceRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, treeFolderName);
+
+        return fs.existsSync(treeFolderPath) && SfdxProjectService.isPathContainedInWorkspace(treeFolderPath, resolvedWorkspaceRoot) ? treeFolderPath : undefined;
+
+    }
+
+    /*
+        A snapshot file read and parsed, or why it was refused. It is opened ONCE, without following a
+        link where the platform can refuse one (O_NOFOLLOW; Windows has none, and a link there was
+        already refused by resolveSnapshotFilePath), and the size and kind are read from that same
+        handle, so a link swapped in after the path was checked is never read. A file past
+        RECIPE_COCKPIT_UPDATE_SNAPSHOT_MAX_BYTES is not read at all.
+    */
+    static readSnapshotFile(snapshotFilePath: string): IUpdateSnapshot | { refusal: string } {
+
+        let fileDescriptor: number | undefined;
+        let snapshotText: string;
+        try {
+            fileDescriptor = fs.openSync(snapshotFilePath, fs.constants.O_RDONLY | ( fs.constants.O_NOFOLLOW ?? 0 ));
+            const fileStats = fs.fstatSync(fileDescriptor);
+            if ( !fileStats.isFile() ) {
+                return { refusal: 'it could not be read' };
+            }
+            if ( fileStats.size > RECIPE_COCKPIT_UPDATE_SNAPSHOT_MAX_BYTES ) {
+                return { refusal: 'it is larger than any update writes' };
+            }
+            snapshotText = fs.readFileSync(fileDescriptor, 'utf-8');
+        } catch {
+            return { refusal: 'it could not be read' };
+        } finally {
+            if ( fileDescriptor !== undefined ) {
+                fs.closeSync(fileDescriptor);
+            }
+        }
+
+        return this.parseSnapshot(snapshotText);
+
+    }
+
+    /*
+        A snapshot is a file in the workspace, so it is UNTRUSTED (#419): anyone can edit it, and what
+        it holds is written to an org. Every part is type-checked -- the org username one line, the
+        tree folder a plain name, each object and field an api name (never Id, never twice), each
+        record a Salesforce Id (never twice in an object) whose values name exactly the object's
+        fields, each null, a string, a finite number or a boolean -- and anything else refuses the
+        WHOLE file, never the part that is wrong. The answer is built afresh, so nothing the file
+        held beyond that shape reaches a request.
+    */
+    static parseSnapshot(snapshotText: string): IUpdateSnapshot | { refusal: string } {
+
+        let parsedSnapshot: unknown;
+        try {
+            parsedSnapshot = JSON.parse(snapshotText);
+        } catch {
+            return { refusal: 'it is not JSON' };
+        }
+
+        const isPlainObject = (candidate: unknown): candidate is Record<string, unknown> => !!candidate && typeof candidate === 'object' && !Array.isArray(candidate);
+
+        if ( !isPlainObject(parsedSnapshot) ) {
+            return { refusal: 'it is not a snapshot' };
+        }
+
+        const { orgUsername, treeFolderName, takenAt, objects } = parsedSnapshot;
+
+        if ( typeof orgUsername !== 'string' || !ORG_USERNAME_PATTERN.test(orgUsername) ) {
+            return { refusal: 'it names no usable org username' };
+        }
+        if ( typeof treeFolderName !== 'string' || !FOLDER_NAME_PATTERN.test(treeFolderName) ) {
+            return { refusal: 'it names no usable tree folder' };
+        }
+        if ( typeof takenAt !== 'string' || !Number.isFinite(Date.parse(takenAt)) ) {
+            return { refusal: 'it says no usable time it was taken' };
+        }
+        if ( !Array.isArray(objects) || objects.length === 0 ) {
+            return { refusal: 'it holds no objects' };
+        }
+
+        const snapshotObjects: IUpdateSnapshotObject[] = [];
+        const seenObjectApiNames = new Set<string>();
+
+        for ( const candidateObject of objects ) {
+
+            if ( !isPlainObject(candidateObject) || !SalesforceApiName.isApiName(candidateObject.objectApiName) ) {
+                return { refusal: 'an object in it is not an api name' };
+            }
+
+            const objectApiName = candidateObject.objectApiName;
+            if ( seenObjectApiNames.has(objectApiName.toLowerCase()) ) {
+                return { refusal: `it lists ${objectApiName} twice` };
+            }
+            seenObjectApiNames.add(objectApiName.toLowerCase());
+
+            const { fieldApiNames, records } = candidateObject;
+            if ( !Array.isArray(fieldApiNames) || fieldApiNames.length === 0 || !fieldApiNames.every(fieldApiName => SalesforceApiName.isApiName(fieldApiName)) ) {
+                return { refusal: `a field of ${objectApiName} in it is not an api name` };
+            }
+
+            const lowerCaseFieldApiNames = fieldApiNames.map(fieldApiName => ( fieldApiName as string ).toLowerCase());
+            if ( new Set(lowerCaseFieldApiNames).size !== fieldApiNames.length || lowerCaseFieldApiNames.includes('id') ) {
+                return { refusal: `it lists a field of ${objectApiName} twice, or its Id as a field` };
+            }
+
+            if ( !Array.isArray(records) ) {
+                return { refusal: `it holds no records of ${objectApiName}` };
+            }
+
+            const snapshotRecords: IUpdateRecordValues[] = [];
+            const seenRecordIds = new Set<string>();
+
+            for ( const candidateRecord of records ) {
+
+                if ( !isPlainObject(candidateRecord)
+                        || typeof candidateRecord.recordId !== 'string'
+                        || !SALESFORCE_RECORD_ID_PATTERN.test(candidateRecord.recordId)
+                        || !isPlainObject(candidateRecord.fieldValues) ) {
+                    return { refusal: `a record of ${objectApiName} in it has no Salesforce Id or no values` };
+                }
+
+                // A 15-CHARACTER Id IS THE HEAD OF ITS 18-CHARACTER FORM, SO THE TWO NAME ONE RECORD
+                const recordKey = candidateRecord.recordId.slice(0, 15);
+                if ( seenRecordIds.has(recordKey) ) {
+                    return { refusal: `it lists the ${objectApiName} record ${candidateRecord.recordId} twice` };
+                }
+                seenRecordIds.add(recordKey);
+
+                const candidateValues = candidateRecord.fieldValues;
+                if ( Object.keys(candidateValues).length !== fieldApiNames.length ) {
+                    return { refusal: `the ${objectApiName} record ${candidateRecord.recordId} holds other values than its fields` };
+                }
+
+                const fieldValues: Record<string, unknown> = {};
+                for ( const fieldApiName of fieldApiNames as string[] ) {
+                    const fieldValue = Object.prototype.hasOwnProperty.call(candidateValues, fieldApiName) ? candidateValues[fieldApiName] : undefined;
+                    const isUsableValue = fieldValue === null
+                        || typeof fieldValue === 'string'
+                        || typeof fieldValue === 'boolean'
+                        || ( typeof fieldValue === 'number' && Number.isFinite(fieldValue) );
+                    if ( !isUsableValue ) {
+                        return { refusal: `the ${objectApiName} record ${candidateRecord.recordId} has no usable value for ${fieldApiName}` };
+                    }
+                    fieldValues[fieldApiName] = fieldValue;
+                }
+
+                snapshotRecords.push({ recordId: candidateRecord.recordId, fieldValues: fieldValues });
+
+            }
+
+            snapshotObjects.push({ objectApiName: objectApiName, fieldApiNames: [...fieldApiNames as string[]], records: snapshotRecords });
+
+        }
+
+        return { orgUsername: orgUsername, treeFolderName: treeFolderName, takenAt: takenAt, objects: snapshotObjects };
 
     }
 

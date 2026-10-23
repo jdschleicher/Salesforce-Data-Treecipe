@@ -108,7 +108,7 @@ describe('RecipeCockpitService, motion (#227)', () => {
 
         it('draws the selected tab\'s underline as a scaled bar whose origin follows the direction of the move', () => {
 
-            expect(motionStyleSheet).toMatch(/\.treeTab::after \{[^}]*background-color: var\(--sdt-accent\);[^}]*transform: scaleX\(0\);[^}]*transition: transform \d+ms ease;/);
+            expect(motionStyleSheet).toMatch(/\.treeTab::after \{[^}]*background-color: var\(--sdt-action\);[^}]*transform: scaleX\(0\);[^}]*transition: transform \d+ms ease;/);
             expect(motionStyleSheet).toContain('.treeTab.selected::after { transform: scaleX(1); }');
             expect(motionStyleSheet).toContain('.treeTabs.movingRight .treeTab::after, .treeTabs.movingLeft .treeTab.selected::after { transform-origin: right; }');
             expect(motionStyleSheet).toContain('.treeTabs.movingLeft .treeTab::after, .treeTabs.movingRight .treeTab.selected::after { transform-origin: left; }');
@@ -135,7 +135,7 @@ describe('RecipeCockpitService, motion (#227)', () => {
         });
 
         // brightness() MULTIPLIES BOTH THE TEXT AND THE BACKGROUND, SO THE PRESSED STATE IS THE LOWEST CONTRAST A FILLED BUTTON DRAWS
-        it('keeps --sdt-on-accent on the accent at 4.5:1 or more under the hover and pressed brightness filters', () => {
+        it('keeps --sdt-on-action on the action teal at 4.5:1 or more under the hover and pressed brightness filters', () => {
 
             const channelsOf = (hexColour: string) => [1, 3, 5].map(offset => parseInt(hexColour.substring(offset, offset + 2), 16) / 255);
             const luminanceOf = (channels: number[]) => {
@@ -143,7 +143,7 @@ describe('RecipeCockpitService, motion (#227)', () => {
                 return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
             };
             const filteredContrastOf = (brightness: number) => {
-                const [lighter, darker] = [RECIPE_COCKPIT_PALETTE.onAccent, RECIPE_COCKPIT_PALETTE.accent]
+                const [lighter, darker] = [RECIPE_COCKPIT_PALETTE.onAction, RECIPE_COCKPIT_PALETTE.action]
                     .map(hexColour => luminanceOf(channelsOf(hexColour).map(channel => Math.min(1, channel * brightness))))
                     .sort((first, second) => second - first);
                 return (lighter + 0.05) / (darker + 0.05);

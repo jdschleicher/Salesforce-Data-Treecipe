@@ -16,6 +16,7 @@ import {
     IRecipeCockpitRecipeViewModel,
     RECIPE_COCKPIT_NO_RUN_MESSAGE,
     RECIPE_COCKPIT_ORG_SECTION_TITLE,
+    RECIPE_COCKPIT_PALETTE,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_PINNED_ORG_SECTION_SCROLL_PADDING,
     RECIPE_COCKPIT_TREECIPES_SECTION_TITLE
@@ -25,7 +26,7 @@ import { IPanelScriptOptions, runPanelScript } from './RecipeCockpitPanelHarness
 /*
     #348: the org controls are one section under the toolbar, and every tree card is in a
     Treecipes section under it. The org picker is drawn once, never inside a card.
-    #355: the org section is titled Target Org Management and never folds.
+    #355: the org section is titled Target Org Manager and never folds.
     #364: the Treecipes section never folds either, and the org section is pinned to the top of
     the panel while the cards scroll under it; neither fold is kept with the reader's place.
 */
@@ -82,16 +83,16 @@ const savedPlace = (extra: Record<string, unknown>) => ({
     ...extra
 });
 
-describe('RecipeCockpitService, the Target Org Management and Treecipes sections (#348, #355)', () => {
+describe('RecipeCockpitService, the Target Org Manager and Treecipes sections (#348, #355)', () => {
 
     describe('the layout', () => {
 
-        it('titles the org section Target Org Management, on its header and its aria-label', () => {
+        it('titles the org section Target Org Manager, on its header and its aria-label', () => {
 
             const panel = drawRecipe(loadRecipe());
 
-            expect(RECIPE_COCKPIT_ORG_SECTION_TITLE).toBe('Target Org Management');
-            expect(orgSectionOf(panel).attributes['aria-label']).toBe('Target Org Management');
+            expect(RECIPE_COCKPIT_ORG_SECTION_TITLE).toBe('Target Org Manager');
+            expect(orgSectionOf(panel).attributes['aria-label']).toBe('Target Org Manager');
 
         });
 
@@ -207,7 +208,7 @@ describe('RecipeCockpitService, the Target Org Management and Treecipes sections
 
         });
 
-        it('pins the org section to the top of the panel over the cards, on the page colour, and pads a scrolled-to row below it (#364)', () => {
+        it('pins the org section to the top of the panel over the cards, on its own opaque light tint (#433), and pads a scrolled-to row below it (#364)', () => {
 
             const shellHtml = RecipeCockpitService.buildWebviewShellHtml('nonce');
             const pinnedRule = shellHtml.split('\n').find(line => line.trim().startsWith('#cockpitOrgSection {'));
@@ -215,7 +216,10 @@ describe('RecipeCockpitService, the Target Org Management and Treecipes sections
             expect(pinnedRule).toBeDefined();
             expect(pinnedRule).toContain('position: sticky;');
             expect(pinnedRule).toContain('top: 0;');
-            expect(pinnedRule).toContain('background-color: var(--sdt-page);');
+            expect(pinnedRule).toContain('background-color: var(--sdt-org-section);');
+            // CARDS SCROLL UNDER IT, SO A TRANSLUCENT TINT WOULD LET THEM SHOW THROUGH
+            expect(RECIPE_COCKPIT_PALETTE.orgSection).toMatch(/^#[0-9A-F]{6}$/);
+            expect(RECIPE_COCKPIT_PALETTE.orgSection).not.toBe(RECIPE_COCKPIT_PALETTE.page);
             const zIndex = Number(/z-index: (\d+);/.exec(pinnedRule ?? '')?.[1]);
             // AN IN-PANEL CONFIRMATION (#349) IS THE ONE LAYER ABOVE IT: IT COVERS THE WHOLE COCKPIT
             const confirmOverlayZIndex = Number(/\.confirmOverlay \{[^}]*z-index: (\d+);/.exec(shellHtml)?.[1]);

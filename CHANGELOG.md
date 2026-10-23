@@ -1,18 +1,92 @@
 # Change Log
 
-## [3.134.0] - Recipe Cockpit: the standalone actions outside the Troubleshooting tab are action cards too
+## [3.138.0] - Recipe Cockpit: the standalone actions outside the Troubleshooting tab are action cards too
 
 Closes [#384](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/384), after [#381](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/381).
 
 #381 made every Troubleshooting action one card: its verb's emoji, its title, a line on when it is needed, and why it is disabled. The cockpit's other standalone actions were still bare buttons with their reason in a tooltip.
 
-- **New cards.** The no-run **Generate Treecipe** (🛠️), the Record types section's **Regenerate with these record types** and **Use defaults** (🔄), each query's **Run…** (▶️) and **Export JSON** / **Export CSV** (💾), and the Treecipe Updater's **Load records** (📥), **Generate values** (🎲) and **Update records** (📝). Each is `buildActionCard`'s card from `RECIPE_COCKPIT_STANDALONE_ACTION_CARDS`, in an `actionCards` grid laid out like the Troubleshooting one, and says why it waits on the card (for example Export's "Run this query first"). A running label (`Generating…`, `Loading…`, `Updating…`) replaces the card's title.
-- **New verbs.** `RECIPE_COCKPIT_ACTION_VERB_EMOJI` gains run ▶️, export 💾, create ➕, regenerate 🔄, generateData 🎲 and update 📝. A test still requires one emoji per verb, and now also fails on a verb nothing uses.
-- **Primary buttons that keep their place.** The Treecipe tab's full-width **Generate fake data and insert** carries 🎲 and **+ New scratch org** carries ➕, drawn before the label by the stylesheet (`RECIPE_COCKPIT_VERB_BUTTON_VERBS`, hidden from a screen reader), so its label is now `New scratch org`. Both stay `primary`: the insert is the tab's one main action across its full width, and a 10.5rem card in the pinned Target Org Management row would make that section taller at every width (#364).
+- **New cards.** The no-run **Generate Treecipe** (🛠️), the Record types section's **Regenerate with these record types** and **Use defaults** (🔄), each query's **Run…** (▶️) and **Export JSON** / **Export CSV** (💾), and the Treecipe Updater's **Load records** (📥), **Generate values** (🎲) and **Update records** (✍️). Each is `buildActionCard`'s card from `RECIPE_COCKPIT_STANDALONE_ACTION_CARDS`, in an `actionCards` grid laid out like the Troubleshooting one, and says why it waits on the card (for example Export's "Run this query first"). A running label (`Generating…`, `Loading…`, `Updating…`) replaces the card's title.
+- **New verbs.** `RECIPE_COCKPIT_ACTION_VERB_EMOJI` gains run ▶️, export 💾, create ➕, regenerate 🔄, generateData 🎲 and update ✍️. A test still requires one emoji per verb, and now also fails on a verb nothing uses.
+- **Primary buttons that keep their place.** The Treecipe tab's full-width **Generate fake data and insert** carries 🎲 and **+ New scratch org** carries ➕, drawn before the label by the stylesheet (`RECIPE_COCKPIT_VERB_BUTTON_VERBS`, hidden from a screen reader), so its label is now `New scratch org`. Both stay `primary`: the insert is the tab's one main action across its full width, and a 10.5rem card in the pinned Target Org Manager row would make that section taller at every width (#364).
 - **What stays a button.** Tabs and sub-tabs, ▸ toggles, checks, ✎, ☆, chain links, line links and nickname links, the field editors' Save/Clear/Cancel, the confirmation dialog's buttons, Choose org…, ⟳, Open in browser, a query's **Reset** (it edits the query box), the help's **Open the full guide**, Favorites only, Reset selection, a tree's rename, a data set row's Open/Insert…/☆/✎/Show record counts (they belong to a row, as #384 proposed), a lookup row's Wire/Wire all/Create/Use existing, Add friend and the TODO rows' Remove/Restore.
+- **With #419, #383 and #434.** The Updater's **Restore previous values…** buttons stay row buttons under **Previous updates**, and the Load records card reads `Loading…` only for a load. The `update` verb is ✍️ rather than 📝, which #383 gave the TODO's group cards. The two primary buttons keep #434's teal fill, with the emoji drawn before the label.
 - **Unchanged.** Every guard, every posted message and the pinned org section's layout. A test keeps the pinned section free of cards and pins which buttons keep the `primary` kind.
 - **Design guide.** `CLAUDE.md`'s button-kind bullet says when to use `card` and when `primary`/`secondary`. `docs/RECIPE-COCKPIT-GUIDE.md` names **➕ New scratch org**, and its screenshots are re-taken; the ? help names no changed label, so its text is unchanged.
 - **Tests.** `RecipeCockpitStandaloneActionCards.test.ts` holds the verb map, the inventory (every card drawn is declared, every primary is one the inventory kept), the stylesheet's emoji before the two primary buttons, the pinned section, the Generate Treecipe card and the Updater's three cards. The Query, Record types, Updater, scratch org and button kind suites read each card's title.
+
+## [3.137.0] - Recipe Cockpit: the friend chip shows 👥 and every nickname shows 🌳
+
+Closes [#432](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/432).
+
+The friend chip (#411) drew a hand-made holding-hands SVG that matched none of the cockpit's emoji, and a row's nickname (#380) had no icon, so nothing said it was the name the rows under it point to.
+
+- **👥 on every friend chip.** The chip's SVG is replaced by 👥, clickable and muted chips alike. `RECIPE_COCKPIT_FRIEND_GLYPH_PATH`, `buildFriendGlyph` and the `.treeFriendGlyph` rules are gone.
+- **🌳 on every nickname.** The nickname button, and the muted nickname drawn when no field points to it, start with 🌳, marking the name the rows nested under it or pointing to it use for it, even on a row nothing points to yet.
+- **Hidden from a screen reader.** Each emoji is an `aria-hidden` span; every chip's and button's `aria-label` and `title` are unchanged, and no search matches an emoji.
+- **Unchanged.** Chip numbering, what a click does, the nickname list's keys, the posted model and every message. A snowfakery card still draws no friend chip.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say what 👥 and 🌳 mean.
+- **Tests.** `RecipeCockpitFriendChips.test.ts` and `RecipeCockpitNicknameReferences.test.ts` check each emoji, its `aria-hidden` and the unchanged labels, and that neither search finds a row by an emoji; the suites reading a nickname read its `treeNicknameText` span.
+
+## [3.136.0] - Recipe Cockpit: a Navy, Soft White, Charcoal and Teal palette
+
+Closes [#434](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/434).
+
+The cockpit's one palette (#174) was blue on near-white, with the same blue for links, filled buttons and the selected tab. Each colour now has one job.
+
+- **Navy `#1D3557` for headers and navigation.** The title bar runs the panel's full width in navy with soft white text, and every tree card's header is navy too; its folder name and counts, the version and the GitHub mark are drawn in a soft gray (`#C9D3E0`, 8.17:1 on navy). The Target Org Manager and Treecipes headings are navy over a navy rule; the pinned Target Org Manager keeps #433's own light tint (`orgSection`), and navy headings on it are held to 4.5:1 too. Navy is also every accent TEXT: links, outlined buttons, object names, chevrons, the chain link and the focus ring.
+- **Soft White `#F4F7F6` for the page**, with cards and panels on white.
+- **Charcoal `#333333` for text.**
+- **Teal `#06D6A0` for buttons and active states, and never for text.** It fills the filled (`primary`) buttons, the selected tab's bar (now 3px) and ticked boxes, and is the focus ring on the navy headers, where a navy ring would vanish. Teal on white, and white on teal, are both 1.9:1, so text and glyphs on teal are navy (6.55:1). The selected tab's outline, its panel's border and a ticked box's edge are a darker teal, `#049C74`, held to 3:1 on white and on the row hover (#373's outline is otherwise unchanged).
+- **New palette tokens.** `onHeader`, `onHeaderMuted`, `action`, `onAction` and `actionEdge`, written as `--sdt-*` properties like the rest; no colour is hard-coded and no theme colour is read. `onAccent` is gone, since nothing is filled navy any more. The body's margin is now 0, so the title bar runs edge to edge whatever stylesheet the webview adds. The row hover and field type chips are light teal tints; the disabled tokens and the confirmation backdrop (`--sdt-text` at 55%, so the dialog's edge stays 3:1 against it) were retuned for the new page. `added`, `removed`, `changed` and the excluded overlay are unchanged and still pass.
+- **Button kinds unchanged.** Each kind's rule still sets its colours (#363); only the colours they read changed.
+- **From the issue.** The issue proposed `#04A57B` for the teal edge; it measured 2.87:1 on the row hover, under the 3:1 a ticked box's edge needs there, so the edge is `#049C74`.
+- **Guide.** The four pictures in `docs/RECIPE-COCKPIT-GUIDE.md` were re-taken.
+- **Tests.** The contrast test drops `header` as a background for body text and holds `onHeader`, `onHeaderMuted`, `onAction` and the navy section headings (`header` on `page`) to 4.5:1, the hover and pressed primary buttons too and the GitHub mark, the header focus ring and the teal edge to 3:1. A new test fails white on teal, teal as a text colour, and a teal `fill` or `stroke` anywhere but the GitHub mark on the navy title bar; another pins the navy title bar, tree headers and section headings. The overlay, backdrop, tab outline, motion and GitHub mark tests read the new tokens.
+
+## [3.135.1] - Recipe Cockpit: the org section is "Target Org Manager", on a light tint of its own
+
+Closes [#433](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/433).
+
+"Target Org Management" read like a process, not a place in the panel, and the pinned section's background (`--sdt-page`) was almost the same as the boxes around it, so it didn't stand out from the cards scrolling under it.
+
+- **A shorter name.** The section is titled **Target Org Manager** (`RECIPE_COCKPIT_ORG_SECTION_TITLE`), on its header and its `aria-label`. Every refusal, tooltip and ? help line that named the section, and the guide, now use the new name.
+- **Its own light background.** `#cockpitOrgSection` draws a new palette token, `orgSection` (`--sdt-org-section`, `#EEF3FB`), and is padded on its sides so its contents sit off the tint's edge. The token is separate from `header`, so a retuned header colour (#434) doesn't recolour the section. It is opaque, so cards scrolling under the pinned section don't show through, and a test holds it to a solid `#RRGGBB` that differs from the page.
+- **Held to contrast.** `orgSection` joins the contrast test's backgrounds, so every text token is held to 4.5:1 on it (33 pairs, from 27).
+- The guide's screenshots are re-taken.
+
+## [3.135.0] - Recipe Cockpit: the TODO's and Validation Rules groups are cards, matching the action cards
+
+Closes [#383](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/383).
+
+After #381 four Troubleshooting sub-tabs drew cards, while TODO's and the Validation Rules list still drew plain ▸ groups, so the tab read as two designs.
+
+- **One card per object group.** Every group in TODO's (Open and Removed) and in the Validation Rules list sits on the action cards' surface, border and radius, in the same grid. Its header is one `card` button that opens and closes the group and carries `aria-expanded`: 📝 for a TODO group or 📏 for a rule group, the object (and nickname) and the count. The ▸ toggle is gone.
+- **A rule group's status line.** Its header adds one line counting the rules by status, such as `2 applied · 1 not applied · 1 inactive`, in the status labels' order.
+- **Closed at the card's height, open across the grid.** A closed card has the action cards' fixed height and tiles beside the others; an open one takes the grid's full width and grows to hold its rows.
+- **Nothing to open, nothing to press.** A removed TODO group (built open, as before) and a rule group with no rule draw the same header as text.
+- **From review.** A card that cannot open no longer turns its border accent on hover, and its header no longer fills the card, so an empty rule card's note sits under its header. A rule status named like an Object member (`__proto__`, `toString`) is labelled by its own name, where it used to read an inherited member and stop the status line from drawing. A redundant margin rule is gone.
+- **Behaviour unchanged.** Rows are still built on open within the auto-expand budgets, search still matches unbuilt rows, line links, Show/Hide formula and the "no rule for any tree object" note work as before, and the posted model is the same.
+- **Measured.** A group costs a constant 7 elements (8 with a rule's status line), one fewer than the ▸ header, whatever its row count. With 110,000 TODOs over three groups the sub-tab drew 220,071 elements before and 220,069 after (the panel harness).
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say each object's TODOs and rules are on a card you open; `changes-without-editing-the-yaml.png` was re-taken, picking up the lookup buttons #421 added.
+- **Tests.** `RecipeCockpitTroubleshootingGroupCards.test.ts` covers the cards in both lists, the header as the one card button and its `aria-expanded`, the status line (an unknown status included), the text headers, a closed group's constant element count at 10 and 5,000 TODOs, and the stylesheet. The sub-tab and rule list suites read the card header as the toggle.
+
+## [3.134.0] - Recipe Cockpit: the Treecipe Updater restores an update's old values from its snapshot
+
+Closes [#419](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/419), slice E of [#414](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/414).
+
+An update (#418) saves the values it overwrites to `treecipe/UpdateAttempts/<tree folder>/<ts>-before.json`. Those snapshots can now be written back.
+
+- **Previous updates.** The Treecipe Updater tab lists the tree's snapshots under its objects, newest first (a same-second `-2` above the first), by file name only: files `writeSnapshot` names, never a link or a folder, at most 50 with the rest counted. The tab asks for them each time it is selected (`loadUpdaterSnapshots`), and an update or a restore lists its new snapshot by itself.
+- **Named by file name, never by path.** The host keeps each listed name's path in a host-only map, as the PENDING list of that card. Only the panel's `updaterSnapshotsRendered`, echoing the list's `snapshotsSequence` on the acknowledged model, makes it ACTIVE. `restoreUpdaterSnapshot {treeKey, snapshotName}` routes only for a name on the active list; anything else (a name not listed, a path, another card) gives the button back and does nothing. A ready, a new model and a failure to draw empty both lists, and the path is resolved again (a file, not a link, inside the workspace) when the restore reads it.
+- **The snapshot is untrusted.** `RecipeCockpitRecordUpdate.parseSnapshot` refuses the WHOLE file unless every part has the shape an update writes: a one-line org username, a plain tree folder name, a parseable time, each object and field an api name (no object or field twice, never `Id` as a field), each record a 15- or 18-character Salesforce Id (one record never twice, in either form) whose values name exactly its object's fields, each null, a string, a finite number or a boolean. The file is read through one handle opened without following a link, its kind and size checked on that handle, so a link swapped in after the listing is never read. A file over 128 MB is not read. The host then requires the snapshot to name this card's folder and the org selected now, and every object and field to be one the card offers and the Updater does not lock (no lookup, record type, dependent picklist or system value).
+- **Restore previous values… applies the update's guards.** A sandbox selection checked by the router, the org's describe letting every field be updated, a destructive in-panel confirmation, the all-or-none question, the run and selection checked again after it, and the Organization row asked again on the connection the restore uses.
+- **The values of now are saved first.** Before any request, the records' current values are read by Id (one `SELECT` of the snapshot's fields per 200 Ids), behind a cancellable progress (a cancel asks and sends nothing), and saved as a snapshot of their own, so a restore can itself be restored; nothing is sent if that save fails. A record the org no longer returns is left out, and the confirmation says how many. Ids are sent in the org's 18-character form. As in the update, a picklist written on an object with record types adds the note that the org decides per record.
+- **Sent as an update is.** 200 records per request, parents first, through `sendUpdaterRequests`; with all-or-none, a failed request or a cancel sets back what the restore had changed. Its results file says `operation: "restore"` and which snapshot it restored. One notification, worded for a restore, with View results or View errors.
+- **One run per window.** A restore shares the load's lock (`updaterLoadState.runKind: 'restore'`) and holds the org selection as an update does (`isSelectionHeldByUpdater`). Once a request was sent, the loaded records and values are let go.
+- **Load records shows Loading… only for a load.** It also said so while an update ran.
+- **Help and guide.** The ? help, the tab's intro and `docs/RECIPE-COCKPIT-GUIDE.md` describe the restore.
+- **Tests.** `RecipeCockpitUpdaterRestore.test.ts`: every way a snapshot file is refused, the listing and its ordering, limits and links, the pending/active list and forged names, a restore round-tripping an update's values against a faked org (and restoring the restore), tampered snapshots (another org, tree or object, a lookup, a field the run lacks, an injected Id) refused before any connection, a removed or linked file, records the org no longer returns, every guard refusing and writing nothing, all-or-none set-back, the shared lock, and the panel's list and button. `RecipeCockpitConfirmDialog.test.ts` counts 19 `confirmInPanel` call sites.
 
 ## [3.133.0] - Recipe Cockpit: the Treecipe Updater updates the loaded records by Id in a sandbox, saving their old values first
 
