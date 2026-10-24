@@ -6,7 +6,7 @@ import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { RecipeCockpitQuery } from './RecipeCockpitQuery';
 
 /*
-    The Treecipe Updater's update (#418): which chosen field an org lets the reader change, the
+    The Treecipe Adapter's update (#418): which chosen field an org lets the reader change, the
     snapshot of the old values written before anything is sent, the records one PATCH
     composite/sobjects request carries, and the org's answer read back. It imports no vscode: the
     cockpit owns the org, the confirmation, the progress and the notification.

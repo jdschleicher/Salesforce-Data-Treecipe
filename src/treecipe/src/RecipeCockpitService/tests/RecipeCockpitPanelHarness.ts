@@ -248,6 +248,13 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
         openTab: (treeCard: any, tabLabel: string) => findAll(treeCard, 'treeTab')
             .find((candidateElement: any) => candidateElement.textContent === tabLabel).dispatch('click'),
         tabPanelOf: (treeCard: any, panelClassName: string) => findAll(treeCard, panelClassName)[0],
+        // THE TREECIPE ADAPTER'S TAB (#443), OPENED AND PAST STEP 1 ON THE PARENT ITS DROPDOWN SHOWS (THE ROOT UNLESS CHANGED);
+        // A TAB A PLACE OPENED ON STEP 2 IS LEFT THERE
+        openAdapterStructure: (treeCard: any, tabLabel: string) => {
+            findAll(treeCard, 'treeTab').find((candidateElement: any) => candidateElement.textContent === tabLabel).dispatch('click');
+            const parentStepElement = findAll(treeCard, 'updaterParentStep')[0];
+            if (parentStepElement && !isHidden(parentStepElement)) { findAll(parentStepElement, 'updaterNext')[0].dispatch('click'); }
+        },
         // EVERY TAB HAS ITS OWN SEARCH BOX (#217); THE CARD MUST BE OPEN AND THE TAB BUILT
         typeIntoTabSearch: (treeCard: any, panelClassName: string, searchText: string) => typeIntoSearch(findAll(treeCard, panelClassName)[0], searchText),
         // THE STRUCTURE TAB'S SEARCH OF ONE CARD -- THE FIRST, UNLESS ONE IS NAMED

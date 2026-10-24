@@ -104,7 +104,7 @@ const validSnapshot = (): IUpdateSnapshot => ({
 
 answerInPanelConfirmationsThroughWarningMock();
 
-describe('RecipeCockpitService, the Treecipe Updater\'s restore (#419)', () => {
+describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
 
     describe('RecipeCockpitRecordUpdate', () => {
 
@@ -294,6 +294,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s restore (#419)', () => {
         const loadGenerateAndUpdate = async () => {
             await send({
                 command: 'loadUpdaterRecords',
+                parentObjectApiName: 'Account',
                 treeKey: ACCOUNT_TREE_KEY,
                 renderSequence: lastRenderSequence(),
                 objects: [
@@ -602,9 +603,9 @@ describe('RecipeCockpitService, the Treecipe Updater\'s restore (#419)', () => {
             ['an object that is not the tree\'s', () => { const snapshot: any = validSnapshot(); snapshot.objects[0].objectApiName = 'Opportunity'; return JSON.stringify(snapshot); },
                 'Nothing was restored: 20261023-100000-before.json names Opportunity, which is not an object of Account-thru-OtherChildObject__c.'],
             ['a field the run does not have', () => { const snapshot: any = validSnapshot(); snapshot.objects[0].fieldApiNames = ['Bogus__c']; snapshot.objects[0].records.forEach((record: any) => { record.fieldValues = { Bogus__c: 'x' }; }); return JSON.stringify(snapshot); },
-                'Nothing was restored: 20261023-100000-before.json names Account.Bogus__c, which the Treecipe Updater does not write: it is not a field of the object in this run.'],
+                'Nothing was restored: 20261023-100000-before.json names Account.Bogus__c, which the Treecipe Adapter does not write: it is not a field of the object in this run.'],
             ['a lookup', () => { const snapshot: any = validSnapshot(); snapshot.objects[0].fieldApiNames = ['OwnerId']; snapshot.objects[0].records.forEach((record: any) => { record.fieldValues = { OwnerId: '005000000000000AAA' }; }); return JSON.stringify(snapshot); },
-                'Nothing was restored: 20261023-100000-before.json names Account.OwnerId, which the Treecipe Updater does not write: a lookup points to another record, which the Updater does not change.']
+                'Nothing was restored: 20261023-100000-before.json names Account.OwnerId, which the Treecipe Adapter does not write: a lookup points to another record, which the Adapter does not change.']
         ])('refuses a tampered snapshot with %s, and connects to and writes nothing', async (_description, buildSnapshotText, expectedWarning) => {
 
             await openCockpit();
@@ -857,7 +858,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s restore (#419)', () => {
             const route = () => RecipeCockpitService.routePanelMessage({ command: 'restoreUpdaterSnapshot', treeKey: ACCOUNT_TREE_KEY, snapshotName: '20261023-100000-before.json' }, panelState());
 
             selectOrg(false);
-            expect(route()).toMatchObject({ refusalText: 'Nothing was restored: qa is not a sandbox or scratch org, and the Treecipe Updater restores only a sandbox or scratch org.' });
+            expect(route()).toMatchObject({ refusalText: 'Nothing was restored: qa is not a sandbox or scratch org, and the Treecipe Adapter restores only a sandbox or scratch org.' });
             panelState().dataOrgSelection = undefined;
             expect(route()).toMatchObject({ refusalText: 'Nothing was restored: choose the sandbox or scratch org the update was made in, in Target Org Manager.' });
 
@@ -878,7 +879,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s restore (#419)', () => {
             panel.postToPanel({ command: 'rendered' });
             panel.expandAllTrees();
             const accountCard = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeObjectName').some((nameElement: any) => nameElement.textContent.includes('OtherChildObject__c')));
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
             const updaterPanel = panel.findAll(accountCard, 'treeUpdater')[0];
             return { panel, accountCard, updaterPanel };
         };

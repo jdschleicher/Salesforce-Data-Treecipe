@@ -65,6 +65,11 @@ import { IFakerRecipeProcessor } from '../../FakerRecipeProcessor/IFakerRecipePr
 import { FakerJSRecipeFakerService } from '../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { PythonTestHarness } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/PythonTestHarness';
 
+
+// A RECORD Id OF THE SALESFORCE SHAPE, SINCE THE LOAD NARROWS A CHILD ONLY BY Ids THAT ARE (#444)
+const fakeRecordId = (objectApiName: string, recordIndex: number) =>
+    `${({ Account: '001', Contact: '003', OtherChildObject__c: 'a01' } as Record<string, string>)[objectApiName] ?? 'a99'}${String(recordIndex).padStart(15, '0')}`;
+
 const TREE_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'treeWorkspace');
 const TREE_RUN_FOLDER_NAME = 'recipe-2026-09-20T10-00-00';
 const ACCOUNT_TREE_KEY = 'Account-thru-OtherChildObject__c';
@@ -77,6 +82,7 @@ const loadTreeRecipe = () => {
 
 const loadRequest = (renderSequence: number) => ({
     command: 'loadUpdaterRecords',
+    parentObjectApiName: 'Account',
     treeKey: ACCOUNT_TREE_KEY,
     renderSequence: renderSequence,
     objects: [
@@ -95,7 +101,7 @@ const generateRequest = (renderSequence: number, fields: unknown, treeKey: unkno
 
 answerInPanelConfirmationsThroughWarningMock();
 
-describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
+describe('RecipeCockpitService, the Treecipe Adapter\'s values (#417)', () => {
 
     describe('RecipeCockpitRecipeWriter.buildUpdaterValueRecipe', () => {
 
@@ -199,8 +205,8 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
     describe('readUpdaterFieldValueRequests', () => {
 
         const treeObjects = [
-            { objectApiName: 'Account', fieldApiNames: ['Name', 'Rating__c'], lookupFieldApiNames: [] },
-            { objectApiName: 'Contact', fieldApiNames: ['LastName'], lookupFieldApiNames: [] }
+            { objectApiName: 'Account', fieldApiNames: ['Name', 'Rating__c'], lookupFieldApiNames: [], treeLookups: [] },
+            { objectApiName: 'Contact', fieldApiNames: ['LastName'], lookupFieldApiNames: [], treeLookups: [] }
         ];
 
         it('keeps the fields asked for, in order, with a value only where one was typed', () => {
@@ -549,7 +555,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
                     const recordCount = objectApiName === 'Account' ? 3 : objectApiName === 'Contact' ? 2 : 0;
                     const records = Array.from({ length: recordCount }, (_value, recordIndex) => ({
                         attributes: { type: objectApiName },
-                        Id: `${objectApiName}-${recordIndex}`,
+                        Id: fakeRecordId(objectApiName, recordIndex),
                         Legacy_Code__c: `OLD-${recordIndex}`,
                         Rating__c: 'Warm',
                         LastName: `Old ${recordIndex}`
@@ -605,9 +611,9 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
             ]);
 
             expect(RecipeCockpitService.readHeldUpdaterValues('Account')).toEqual([
-                { recordId: 'Account-0', fieldValues: { Legacy_Code__c: 'Legacy_Code__c-new-0' } },
-                { recordId: 'Account-1', fieldValues: { Legacy_Code__c: 'Legacy_Code__c-new-1' } },
-                { recordId: 'Account-2', fieldValues: { Legacy_Code__c: 'Legacy_Code__c-new-2' } }
+                { recordId: fakeRecordId('Account', 0), fieldValues: { Legacy_Code__c: 'Legacy_Code__c-new-0' } },
+                { recordId: fakeRecordId('Account', 1), fieldValues: { Legacy_Code__c: 'Legacy_Code__c-new-1' } },
+                { recordId: fakeRecordId('Account', 2), fieldValues: { Legacy_Code__c: 'Legacy_Code__c-new-2' } }
             ]);
 
             const [valuesMessage] = postedNamed('updaterValues');
@@ -617,10 +623,10 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
                 recordCount: 3,
                 fieldApiNames: ['Legacy_Code__c'],
                 columns: ['Id', 'Legacy_Code__c (current)', 'Legacy_Code__c (new)'],
-                rows: [['Account-0', 'OLD-0', 'Legacy_Code__c-new-0'], ['Account-1', 'OLD-1', 'Legacy_Code__c-new-1'], ['Account-2', 'OLD-2', 'Legacy_Code__c-new-2']],
+                rows: [[fakeRecordId('Account', 0), 'OLD-0', 'Legacy_Code__c-new-0'], [fakeRecordId('Account', 1), 'OLD-1', 'Legacy_Code__c-new-1'], [fakeRecordId('Account', 2), 'OLD-2', 'Legacy_Code__c-new-2']],
                 hiddenColumnCount: 0
             });
-            expect(valuesMessage.objects[1].rows[0]).toEqual(['Contact-0', 'Old 0', 'LastName-new-0']);
+            expect(valuesMessage.objects[1].rows[0]).toEqual([fakeRecordId('Contact', 0), 'Old 0', 'LastName-new-0']);
 
             // NOTHING WRITTEN: NOT THE RECIPE, AND NOTHING SENT TO THE ORG BUT THE LOAD'S READS
             expect(fs.readFileSync(recipeFilePath(), 'utf8')).toBe(recipeBefore);
@@ -673,7 +679,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
             ]));
 
             expect(generatedRecipeTexts).toEqual([]);
-            expect(RecipeCockpitService.readHeldUpdaterValues('Account')).toEqual(['Account-0', 'Account-1', 'Account-2'].map(recordId => ({
+            expect(RecipeCockpitService.readHeldUpdaterValues('Account')).toEqual([fakeRecordId('Account', 0), fakeRecordId('Account', 1), fakeRecordId('Account', 2)].map(recordId => ({
                 recordId: recordId,
                 fieldValues: { Rating__c: 'Hot', Annual_Budget__c: 1250.5 }
             })));
@@ -690,7 +696,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
             ]));
 
             expect(generatedRecipeTexts.map(recipeText => (yaml.load(recipeText) as any[])[0].fields)).toEqual([{ Legacy_Code__c: '${{fake.Word}}' }]);
-            expect(RecipeCockpitService.readHeldUpdaterValues('Account')![1]).toEqual({ recordId: 'Account-1', fieldValues: { Rating__c: 'Cold', Legacy_Code__c: 'Legacy_Code__c-new-1' } });
+            expect(RecipeCockpitService.readHeldUpdaterValues('Account')![1]).toEqual({ recordId: fakeRecordId('Account', 1), fieldValues: { Rating__c: 'Cold', Legacy_Code__c: 'Legacy_Code__c-new-1' } });
 
         });
 
@@ -887,7 +893,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
                 '  LastName -- recipe expression: ${{fake.LastName}}'
             ]);
             expect(generatedRecipeTexts).toHaveLength(1);
-            expect(RecipeCockpitService.readHeldUpdaterValues('Account')).toEqual([{ recordId: 'Account-0', fieldValues: { Legacy_Code__c: null } }]);
+            expect(RecipeCockpitService.readHeldUpdaterValues('Account')).toEqual([{ recordId: fakeRecordId('Account', 0), fieldValues: { Legacy_Code__c: null } }]);
             expect(postedNamed('updaterValues')[0].objects[1]).toEqual({ objectApiName: 'Contact', recordCount: 0, fieldApiNames: ['LastName'], columns: [], rows: [], hiddenColumnCount: 0 });
             expect(informations().at(-1)).toBe('Generated new values for 1 record of My Accounts. Nothing was written to the org.');
 
@@ -939,7 +945,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
                 '  Annual_Budget__c -- fixed value in the recipe file: 99'
             ]);
             expect(generatedRecipeTexts.map(recipeText => (yaml.load(recipeText) as any[])[0].fields)).toEqual([{ Legacy_Code__c: '${{ fake.Word ~ \'!\' }}' }]);
-            expect(RecipeCockpitService.readHeldUpdaterValues('Account')![0]).toEqual({ recordId: 'Account-0', fieldValues: { Legacy_Code__c: 'Legacy_Code__c-new-0', Annual_Budget__c: 99 } });
+            expect(RecipeCockpitService.readHeldUpdaterValues('Account')![0]).toEqual({ recordId: fakeRecordId('Account', 0), fieldValues: { Legacy_Code__c: 'Legacy_Code__c-new-0', Annual_Budget__c: 99 } });
 
         });
 
@@ -1002,7 +1008,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
             panel.postToPanel({ command: 'rendered' });
             panel.expandAllTrees();
             const accountCard = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeObjectName').some((nameElement: any) => nameElement.textContent.includes('OtherChildObject__c')));
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
             const updaterPanel = panel.findAll(accountCard, 'treeUpdater')[0];
             return { panel, accountCard, updaterPanel };
         };
@@ -1208,7 +1214,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
             panel.postToPanel({ command: 'rendered' });
             panel.expandAllTrees();
             const accountCard = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeObjectName').some((nameElement: any) => nameElement.textContent.includes('OtherChildObject__c')));
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
             const updaterPanel = panel.findAll(accountCard, 'treeUpdater')[0];
             const accountObject = objectNamed(panel, updaterPanel, 'Account');
             expand(panel, accountObject);
@@ -1233,7 +1239,7 @@ describe('RecipeCockpitService, the Treecipe Updater\'s values (#417)', () => {
             panel.postToPanel({ command: 'updaterValues', renderSequence: 1, treeKey: 'Not-A-Card', objects: [] });
 
             const accountCard = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeObjectName').some((nameElement: any) => nameElement.textContent.includes('OtherChildObject__c')));
-            panel.openTab(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            panel.openAdapterStructure(accountCard, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
             const updaterPanel = panel.findAll(accountCard, 'treeUpdater')[0];
             const accountObject = objectNamed(panel, updaterPanel, 'Account');
             expand(panel, accountObject);

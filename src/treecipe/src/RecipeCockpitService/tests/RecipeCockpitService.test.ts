@@ -2078,7 +2078,7 @@ describe('RecipeCockpitService', () => {
             expect(panel.isHidden(treeBodyOf(firstTreeCard))).toBe(false);
             // #321: RECORD TYPES IS A SECTION OF THE TREECIPE TAB, NOT A TAB OF ITS OWN
             // #346: TROUBLESHOOTING, THEN #367's QUERY, ON EVERY CARD WITH A FOLDER
-            expect(textOf(panel, firstTreeCard, 'treeTab')).toEqual(['Treecipe', 'Previously Used Data Sets', 'Troubleshooting', 'Query', 'Treecipe Updater']);
+            expect(textOf(panel, firstTreeCard, 'treeTab')).toEqual(['Treecipe', 'Previously Used Data Sets', 'Troubleshooting', 'Query', 'Treecipe Adapter']);
             expect(panel.findAll(firstTreeCard, 'treeTab').map((tabElement: any) => tabElement.attributes['aria-selected'])).toEqual(['true', 'false', 'false', 'false', 'false']);
             // #266: THE COMPARE TAB IS GONE
             expect(RECIPE_COCKPIT_TREE_TABS).toEqual(['treecipe', 'datasets', 'troubleshooting', 'query', 'updater']);
@@ -3537,7 +3537,7 @@ describe('RecipeCockpitService', () => {
                 const leadCard = expandCard(panel, 'Lead-ONLY');
                 panel.findAll(leadCard, 'treeTab').forEach((tabElement: any) => tabElement.dispatch('click'));
 
-                expect(textOf(panel, leadCard, 'treeTab')).toEqual(['Treecipe', 'Previously Used Data Sets', 'Troubleshooting', 'Query', 'Treecipe Updater']);
+                expect(textOf(panel, leadCard, 'treeTab')).toEqual(['Treecipe', 'Previously Used Data Sets', 'Troubleshooting', 'Query', 'Treecipe Adapter']);
                 expect(panel.findAll(leadCard, 'treeVersions')).toEqual([]);
                 expect(panel.findAll(leadCard, 'treeVersion')).toEqual([]);
                 expect(panel.findAll(leadCard, 'treeVersionToggle')).toEqual([]);
@@ -3612,7 +3612,7 @@ describe('RecipeCockpitService', () => {
 
                 const bareCard = treeCardFolded(panel, 'Lead-ONLY');
                 panel.chooseTreeCard(bareCard);
-                expect(textOf(panel, bareCard, 'treeTab')).toEqual(['Treecipe', 'Troubleshooting', 'Query', 'Treecipe Updater']);
+                expect(textOf(panel, bareCard, 'treeTab')).toEqual(['Treecipe', 'Troubleshooting', 'Query', 'Treecipe Adapter']);
 
             });
 

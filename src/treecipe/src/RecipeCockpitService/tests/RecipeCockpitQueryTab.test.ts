@@ -966,7 +966,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             panel.expandAllTrees();
             const accountCard = cardOf(panel, 'OtherChildObject__c');
 
-            expect(panel.findAll(accountCard, 'treeTab').map((tabElement: any) => tabElement.textContent)).toEqual(['Treecipe', 'Previously Used Data Sets', 'Troubleshooting', 'Query', 'Treecipe Updater']);
+            expect(panel.findAll(accountCard, 'treeTab').map((tabElement: any) => tabElement.textContent)).toEqual(['Treecipe', 'Previously Used Data Sets', 'Troubleshooting', 'Query', 'Treecipe Adapter']);
             expect(panel.findAll(accountCard, 'treeQueryList')).toEqual([]);
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'loadTreeQueries')).toEqual([]);
 

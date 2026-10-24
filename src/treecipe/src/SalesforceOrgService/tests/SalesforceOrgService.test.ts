@@ -1042,6 +1042,23 @@ describe('SalesforceOrgService', () => {
 
         });
 
+        it('keeps a describe\'s child relationships whose child and field are api names, and none at all when no entry is (#445)', () => {
+
+            expect(SalesforceOrgService.normalizeDescribeResult('Account', { name: 'Account', fields: [], childRelationships: [
+                { childSObject: 'Gadget__c', field: 'Account__c', relationshipName: 'Gadgets__r' },
+                { childSObject: 'Contact', field: 'AccountId' },
+                { childSObject: 'Bad Name', field: 'AccountId' },
+                { childSObject: 'Case', field: 7 },
+                null
+            ] }).childRelationships).toEqual([
+                { childObjectApiName: 'Gadget__c', fieldApiName: 'Account__c' },
+                { childObjectApiName: 'Contact', fieldApiName: 'AccountId' }
+            ]);
+            expect(SalesforceOrgService.normalizeDescribeResult('Account', { name: 'Account', fields: [], childRelationships: [{ childSObject: 'x y', field: 'z' }] })).not.toHaveProperty('childRelationships');
+            expect(SalesforceOrgService.normalizeDescribeResult('Account', { name: 'Account', fields: [], childRelationships: 'nope' })).not.toHaveProperty('childRelationships');
+
+        });
+
     });
 
     describe('queryPermissionSetNames (#302)', () => {

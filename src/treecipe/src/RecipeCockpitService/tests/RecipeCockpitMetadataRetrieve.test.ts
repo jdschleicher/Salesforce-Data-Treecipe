@@ -47,6 +47,7 @@ import { execFile } from 'child_process';
 import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
+    RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL,
     RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL,
     RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL,
     RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS,
@@ -667,6 +668,21 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
             expect(retrieveCalls()).toEqual([]);
             expect(notifications()).toEqual([{ severity: 'warning', text: RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL, actions: [] }]);
+
+        });
+
+        it('starts no retrieve when an Apply of retrieved files started while the prompt or the confirmation was open', async () => {
+
+            await openCockpit();
+            promptSpy.mockImplementationOnce(async () => {
+                (RecipeCockpitService as any).recipeCockpitPanelState.updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: true, treeKey: 'Account-thru-OtherChildObject__c', runKind: 'apply' };
+                return PROD_ORG;
+            });
+
+            await retrieve('fields');
+
+            expect(retrieveCalls()).toEqual([]);
+            expect(notifications()).toEqual([{ severity: 'warning', text: RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL, actions: [] }]);
 
         });
 

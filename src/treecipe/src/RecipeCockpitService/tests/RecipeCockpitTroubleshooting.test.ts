@@ -50,6 +50,7 @@ import {
     RECIPE_COCKPIT_ACTION_VERB_EMOJI,
     RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND,
     RECIPE_COCKPIT_DEPLOY_ACTION_LABELS,
+    RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL,
     RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL,
     RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL,
     RECIPE_COCKPIT_DEPLOY_FULL_SET_CHECKBOX_LABEL,
@@ -756,6 +757,25 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
         });
 
+        it('stops after the modal when an Apply of retrieved files started while it was open', async () => {
+
+            await openCockpitWithQaSelected();
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => {
+                if ( options?.inPanel ) {
+                    panelState().updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: true, treeKey: LEAD_TREE_KEY, runKind: 'apply' };
+                    return RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL;
+                }
+                return undefined;
+            });
+
+            await deploy('deployTreeFields');
+
+            expect(deployCalls()).toEqual([]);
+            expect(packageXmlFiles()).toEqual([]);
+            expect(lastWarning()?.text).toBe(RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL);
+
+        });
+
         it('answers a summary request with counts only, for the model it was asked for', async () => {
 
             await openCockpit();
@@ -1069,7 +1089,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             const panel = renderTrees();
             const accountCard = cardOf(panel, 'OtherChildObject__c');
 
-            expect(panel.findAll(accountCard, 'treeTab').map((tabElement: any) => tabElement.textContent)).toEqual(['Treecipe', 'Previously Used Data Sets', 'Troubleshooting', 'Query', 'Treecipe Updater']);
+            expect(panel.findAll(accountCard, 'treeTab').map((tabElement: any) => tabElement.textContent)).toEqual(['Treecipe', 'Previously Used Data Sets', 'Troubleshooting', 'Query', 'Treecipe Adapter']);
             // NOTHING IS BUILT OR ASKED FOR UNTIL THE TAB IS OPENED
             expect(panel.findAll(accountCard, 'troubleshootingSubPanel')).toEqual([]);
             expect(panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'loadTroubleshootingSummary')).toEqual([]);
