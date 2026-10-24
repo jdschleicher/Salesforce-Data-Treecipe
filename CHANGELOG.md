@@ -1,5 +1,9 @@
 # Change Log
 
+## [3.143.0] - Recipe Cockpit: data generation's emoji is a seedling
+
+- `RECIPE_COCKPIT_ACTION_VERB_EMOJI.generateData` is 🌱, replacing 🎲. It is the one entry both data-generation actions read: the Treecipe Adapter's **Generate values** card and the Treecipe tab's **Generate fake data and insert**, which draws it from the stylesheet. Every other verb keeps its emoji, and the one-emoji-per-verb test still holds.
+
 ## [3.142.0] - Recipe Cockpit: the Treecipe Adapter lists recent changes and new child objects in the org, and applies the retrieved files to the project
 
 Closes [#445](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/445) (C2 of two), slice C of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442).
