@@ -283,6 +283,35 @@ export class RecipeService {
     }
     
     /*
+        The ONE faker expression a field only the org holds (#446) generates its Treecipe Adapter
+        values from: what Generate Treecipe writes for its XML through this backend, with no record
+        type (the Adapter fills the field's own values), read as its first "${{ … }}" line and held to
+        checkConstrainedExpression. Undefined when the backend writes none -- an unknown type, a TODO,
+        a picklist whose file lists no values, or anything that is not one expression line -- so the
+        field is offered as a fixed value only.
+    */
+    getOrgOnlyFieldExpression(xmlFieldDetail: XMLFieldDetail): string | undefined {
+
+        const fieldType = String(xmlFieldDetail.fieldType ?? '').toLowerCase();
+
+        if ( ( fieldType === 'picklist' || fieldType === 'multiselectpicklist' ) && !( xmlFieldDetail.picklistValues?.length > 0 ) ) {
+            return undefined;
+        }
+
+        let recipeValue: unknown;
+        try {
+            recipeValue = this.getRecipeFakeValueByXMLFieldDetail(xmlFieldDetail, {});
+        } catch {
+            return undefined;
+        }
+
+        const expression = RecipeCockpitRecipeWriter.findFirstExpressionLine(typeof recipeValue === 'string' ? recipeValue : undefined);
+
+        return expression !== undefined && RecipeCockpitRecipeWriter.checkConstrainedExpression(expression) === undefined ? expression : undefined;
+
+    }
+
+    /*
         A plain picklist's values: its own <picklistValues>, else a standard value set by the field's
         name, else its global value set -- and a selected record type's own values over any of them.
     */

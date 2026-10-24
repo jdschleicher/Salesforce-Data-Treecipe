@@ -1,5 +1,34 @@
 # Change Log
 
+## [3.148.0] - Recipe Cockpit: the Treecipe Adapter fills fields only the org holds
+
+Closes [#446](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/446), slice D of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442).
+
+3.145.0 drew a field the org holds and this project has no file for as a row with no box. That row can now be ticked, given a value and written to the loaded records, without regenerating the treecipe.
+
+- **What it is offered.** After **Retrieve latest metadata**, the host reads each such field's staged file in the same pass as the comparison (`RecipeCockpitOrgChangeDetection.detectFieldChangesWithNewFields`: type, length, precision, scale, lookup, controlling field, formula, picklist values). `RecipeCockpitService.offerAdapterOrgOnlyFields` then decides what to offer:
+  - **An expression.** `RecipeService.getOrgOnlyFieldExpression` asks the recipe's OWN backend (faker-js or snowfakery, read from the card's recipe path) what Generate Treecipe writes for that XML, with no record type. It keeps the first `${{ … }}` line, held to `checkConstrainedExpression`. A Text(80) field gets `${{ faker.lorem.text(80).substring(0, 80) }}` or `${{fake.text(max_nb_chars=80)}}`.
+  - **A fixed value only.** An unknown type, a TODO, a picklist whose file lists no values (a global value set), anything that is not one expression line, or a card whose backend is not known gets no expression and a note (`RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE`). An expression typed for it is refused.
+  - **A lock.** The Updater's own rule (`findUpdaterFieldLockReason`), plus what only the staged file says: a lookup it names and a formula (`RECIPE_COCKPIT_UPDATER_FORMULA_REASON`). A lookup, `RecordTypeId`, a dependent picklist, a formula, a roll-up summary and an auto number are locked, each with its reason.
+
+  The offer rides on the posted field change as `orgOnly`. The field models stay on the host (`panelState.adapterOrgOnlyFields`), let go with the retrieve's message, and made again after **Apply retrieved files to project**.
+- **The panel.** The row is drawn with the Updater's own parts: its box, its ✎ editor and its expression, or the lock's reason, or the fixed-value-only note. **Load records** and **Generate values** post it like any other chosen field. A choice is kept while the last retrieve still offers the field and let go when it does not.
+- **The host.** `listUpdaterTreeObjects` adds the unlocked org-only fields of the card the last retrieve was for, on its model only, so the load's and the generation's routers accept them and nothing else. The generation checks each again against the held model. A typed value goes through `validateFixedValueInput` (a picklist's against the values its staged file lists). The confirmation marks each such field `(only in the org)`.
+- **Kept unchanged.** The preview, the before-values snapshot, all-or-none with set-back, the sandbox-only guards and the describe's `isUpdateable` all apply as they did. Load, generate, update and restore read the records loaded under the parent step 1 chose.
+- **Results, for slice F.** A snapshot object records `orgOnlyFieldApiNames` (only when there are any, so an older snapshot reads as it did). `RecipeCockpitRecordUpdate.parseSnapshot` refuses a list that is not among the object's fields. An update's and a restore's results carry `orgOnlyFields` by object.
+- **Restore.** A snapshot field the recipe does not list is restored only when the snapshot marks it as the org's. It is then held to the org's describe (`findDescribedOrgOnlyFieldLockReason`: a lookup, a dependent picklist, a calculated field and `RecordTypeId` are refused). This works from a later model with no retrieve on screen.
+- **From the review of #453.**
+  - **Restore marks.** A snapshot's `orgOnlyFieldApiNames` must name custom `__c` fields, so a hand-edited mark cannot widen what a restore writes to a standard field.
+  - **One retrieve.** The panel lets another card's org-only rows and choices go when a card retrieves, since the host holds one retrieve.
+  - **No recipe file.** A card with no single recipe file locks its org-only fields (`RECIPE_COCKPIT_ADAPTER_ORG_ONLY_NO_RECIPE_REASON`) rather than offering a fixed value that Generate values would refuse.
+  - **One parser.** The first-expression-line parser is one helper, `RecipeCockpitRecipeWriter.findFirstExpressionLine`, shared by the recipe fields and the org-only fields.
+  - **Hostile values.** An org-only picklist is held to the shared hostile payload list with both backends.
+- **Tests.** `RecipeService.orgOnlyField.test.ts` covers the expression with both backends. `RecipeCockpitAdapterOrgOnlyFields.test.ts` covers:
+  - the staged-file read and the offer with both backends: every lock, the fixed-value-only note, an unknown backend;
+  - the snapshot's new field;
+  - the host from retrieve to restore: the load query, a generation through a stand-in snowfakery processor and the real faker-js processor, the update written only to the org the records came from after the snapshot, the results, and the restore;
+  - the panel's rows and what they post.
+
 ## [3.147.0] - Recipe Cockpit: the Treecipe Adapter reads an object under its deepest loaded parent
 
 From the criteria check of #452 (#444, criterion 1):

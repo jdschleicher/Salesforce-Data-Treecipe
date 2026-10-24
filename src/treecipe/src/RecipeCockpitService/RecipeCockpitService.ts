@@ -46,6 +46,7 @@ import {
     IOrgQuerySource,
     IOrgTypeDetail,
     IHiddenAuthorizedOrg,
+    INormalizedOrgField,
     INormalizedOrgObjectDescribe,
     IHiddenOrgReasonCounts,
     NO_AUTHORIZED_ORGS_MESSAGE,
@@ -97,7 +98,9 @@ import {
 } from './RecipeCockpitQuery';
 import { IUpdateRecordResult, IUpdateRecordValues, IUpdateRequestRecord, IUpdateSnapshotObject, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RECIPE_COCKPIT_UPDATE_REQUEST_RECORD_LIMIT, RecipeCockpitRecordUpdate } from './RecipeCockpitRecordUpdate';
 import { IRecipeCockpitUpdaterObjectRequest, IRecipeCockpitUpdaterTreeObject, RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH, RecipeCockpitTreeUpdaterQuery } from './RecipeCockpitTreeUpdaterQuery';
-import { IOrgChangeHints, IOrgFieldFileCopy, IOrgObjectChanges, ORG_CHANGE_RETRIEVE_OPERATION_NAME, RecipeCockpitOrgChangeDetection } from './RecipeCockpitOrgChangeDetection';
+import { IOrgChangeHints, IOrgFieldFileCopy, IOrgNewFieldDetail, IOrgObjectChanges, ORG_CHANGE_RETRIEVE_OPERATION_NAME, RecipeCockpitOrgChangeDetection } from './RecipeCockpitOrgChangeDetection';
+import { RecipeService } from '../RecipeService/RecipeService';
+import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { ISOQLTreeQuery, SOQL_QUERY_KIND_LABELS, SOQLQueryKind, SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 
@@ -583,7 +586,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.',
-            'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Retrieve latest metadata, beside the filter, retrieves those objects from the org into treecipe/OrgOperations (never your package directories) and marks each field new in org or changed in org against your project, with new child objects in the org and the org\'s recent changes as hints; Apply retrieved files to project asks first, then copies those files into your project. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the parent records step 1\'s WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with the fields you ticked, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to treecipe/UpdateAttempts first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
+            'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Retrieve latest metadata, beside the filter, retrieves those objects from the org into treecipe/OrgOperations (never your package directories) and marks each field new in org or changed in org against your project, with new child objects in the org and the org\'s recent changes as hints; Apply retrieved files to project asks first, then copies those files into your project. A field only the org holds can be ticked too: its new values come from the faker expression the recipe\'s backend writes for its type, or, when it writes none, a fixed value you type, and a lookup, a formula and the rest stay locked. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the parent records step 1\'s WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with the fields you ticked, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to treecipe/UpdateAttempts first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
         ]
     },
     {
@@ -1726,6 +1729,20 @@ export interface IRecipeCockpitUpdaterRecordsMessage {
     objects: IRecipeCockpitUpdaterObjectRecordsViewModel[];
 }
 
+/*
+    A field only the org holds (#446), as the host holds it once a retrieve offered it: a field
+    model drawn from its staged file, so the Updater's own rules (lock, fixed value kind) read it as
+    they read a recipe field, its picklist values for a typed value's check, why it is locked, and
+    the expression the recipe's backend writes for it. Never posted whole.
+*/
+export interface IRecipeCockpitAdapterOrgOnlyField {
+    objectApiName: string;
+    fieldViewModel: IRecipeCockpitFieldViewModel;
+    picklistValues: string[];
+    lockReason?: string;
+    expression?: string;
+}
+
 // WHAT ONE CHOSEN FIELD'S NEW VALUES COME FROM (#417), AS THE PANEL POSTED IT: value ABSENT IS THE RECIPE'S OWN EXPRESSION
 export interface IRecipeCockpitUpdaterFieldValueRequest {
     objectApiName: string;
@@ -2141,6 +2158,11 @@ export const RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON = 'read from the recipe f
 export const RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON = 'the record type is not changed here';
 export const RECIPE_COCKPIT_UPDATER_LOOKUP_REASON = 'a lookup points to another record, which the Adapter does not change';
 export const RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON = 'Salesforce sets this field\'s value';
+// A FIELD ONLY THE ORG HOLDS (#446) IS READ FROM ITS STAGED FILE, WHICH SAYS WHETHER IT IS A FORMULA
+export const RECIPE_COCKPIT_UPDATER_FORMULA_REASON = 'a formula: Salesforce calculates its value';
+export const RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE = 'Fixed value only: this recipe\'s faker backend writes no expression for its type in the org. Type a value in its editor.';
+export const RECIPE_COCKPIT_ADAPTER_ORG_ONLY_NO_RECIPE_REASON = 'this card has no single recipe file to read its faker backend from, so no value can be generated';
+export const RECIPE_COCKPIT_ADAPTER_ORG_ONLY_EXPRESSION_REFUSAL = 'it takes a fixed value only, since this recipe\'s faker backend writes no expression for its type in the org';
 // AN AUTO NUMBER OR A ROLL-UP SUMMARY IS COMPUTED BY THE ORG, SO AN UPDATE OF IT FAILS; A FORMULA IS TOO, BUT THE WRAPPER DOES NOT RECORD ONE
 export const RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES = ['AutoNumber', 'Summary'];
 // THE UPDATER'S LOAD (#416): THE TREE'S EXISTING RECORDS, READ FROM THE SANDBOX TARGET ORG MANAGER HAS SELECTED
@@ -2593,6 +2615,8 @@ export interface IRecipeCockpitPanelState {
     // THE LAST "Retrieve latest metadata" (#445): WHAT IT POSTED, REPLAYED WHILE ITS MODEL IS ON SCREEN, AND THE STAGING FOLDER IT READ (HOST-ONLY)
     adapterMetadataChangesMessage?: IRecipeCockpitAdapterMetadataChangesMessage;
     adapterRetrieveStagingFolderPath?: string;
+    // THE FIELDS ONLY THE ORG HOLDS THAT IT OFFERED (#446), BY "<object>\n<field>": WHAT LOAD, GENERATE AND UPDATE ACCEPT BEYOND THE RECIPE'S FIELDS (HOST-ONLY)
+    adapterOrgOnlyFields?: Map<string, IRecipeCockpitAdapterOrgOnlyField>;
     // THE LAST VALUE GENERATION'S PREVIEW (#417), REPLAYED WHILE ITS MODEL IS ON SCREEN; SET ONLY THROUGH setUpdaterValuesMessage
     updaterValuesMessage?: IRecipeCockpitUpdaterValuesMessage;
     /*
@@ -6117,6 +6141,7 @@ export class RecipeCockpitService {
         panelState.updaterRecordsMessage = undefined;
         panelState.adapterMetadataChangesMessage = undefined;
         panelState.adapterRetrieveStagingFolderPath = undefined;
+        panelState.adapterOrgOnlyFields = undefined;
         this.setUpdaterValuesMessage(panelState, undefined);
         this.clearHeldUpdaterRecords();
         // AND A SNAPSHOT LIST (#419): THE NEW MODEL'S CARDS ASK FOR THEIR OWN
@@ -8872,6 +8897,8 @@ export class RecipeCockpitService {
         // THE HELD RECORDS' resultKey THEY WERE GENERATED FOR
         resultKey: string;
         valuesByObjectApiName: Map<string, IRecipeCockpitUpdaterRecordValues[]>;
+        // THE FIELDS ONLY THE ORG HOLDS (#446) AMONG THEM, BY OBJECT, WHICH THE SNAPSHOT AND THE RESULTS RECORD
+        orgOnlyFieldApiNamesByObjectApiName: Map<string, string[]>;
     } | undefined;
 
     static clearHeldUpdaterRecords() {
@@ -8922,16 +8949,168 @@ export class RecipeCockpitService {
     }
 
     // A CARD'S OBJECTS AS THE UPDATER READS THEM: THE FIELDS THE MODEL LISTS FOR EACH, ITS FIRST ENTRY WINNING
-    static listUpdaterTreeObjects(recipe: IRecipeCockpitRecipeViewModel, tree: IRecipeCockpitTreeViewModel): IRecipeCockpitUpdaterTreeObject[] {
+    // AND, ONCE A RETRIEVE OFFERED THEM (#446), THE FIELDS ONLY THE ORG HOLDS THAT NOTHING LOCKS, AFTER THE MODEL'S OWN
+    static listUpdaterTreeObjects(recipe: IRecipeCockpitRecipeViewModel,
+                                  tree: IRecipeCockpitTreeViewModel,
+                                  orgOnlyFieldApiNamesByObjectApiName?: ReadonlyMap<string, readonly string[]>): IRecipeCockpitUpdaterTreeObject[] {
 
         const fieldApiNamesByObjectApiName = new Map<string, string[]>();
         recipe.objects.forEach(object => {
             if ( !fieldApiNamesByObjectApiName.has(object.objectApiName) ) {
-                fieldApiNamesByObjectApiName.set(object.objectApiName, object.fields.map(field => field.fieldApiName));
+                fieldApiNamesByObjectApiName.set(object.objectApiName, [
+                    ...object.fields.map(field => field.fieldApiName),
+                    ...( orgOnlyFieldApiNamesByObjectApiName?.get(object.objectApiName) ?? [] )
+                ]);
             }
         });
 
         return RecipeCockpitTreeUpdaterQuery.listTreeObjects(tree.objects, fieldApiNamesByObjectApiName);
+
+    }
+
+    // THE OFFERED FIELDS ONLY THE ORG HOLDS (#446) THAT NOTHING LOCKS, FOR THE CARD THE LAST RETRIEVE WAS FOR AND ONLY ON ITS MODEL
+    static readAdapterOrgOnlyFieldApiNames(panelState: IRecipeCockpitPanelState, treeKey: string): Map<string, string[]> | undefined {
+
+        const changesMessage = panelState.adapterMetadataChangesMessage;
+
+        if ( !panelState.adapterOrgOnlyFields
+                || !changesMessage
+                || changesMessage.treeKey !== treeKey
+                || changesMessage.renderSequence !== panelState.recipeDataMessage?.renderSequence ) {
+            return undefined;
+        }
+
+        const fieldApiNamesByObjectApiName = new Map<string, string[]>();
+        panelState.adapterOrgOnlyFields.forEach(orgOnlyField => {
+            if ( orgOnlyField.lockReason === undefined ) {
+                fieldApiNamesByObjectApiName.set(orgOnlyField.objectApiName, [...( fieldApiNamesByObjectApiName.get(orgOnlyField.objectApiName) ?? [] ), orgOnlyField.fieldViewModel.fieldApiName]);
+            }
+        });
+
+        return fieldApiNamesByObjectApiName;
+
+    }
+
+    // ONE OFFERED FIELD ONLY THE ORG HOLDS (#446), ON THE SAME TERMS AS readAdapterOrgOnlyFieldApiNames, LOCKED OR NOT
+    static findAdapterOrgOnlyField(panelState: IRecipeCockpitPanelState, treeKey: string, objectApiName: string, fieldApiName: string): IRecipeCockpitAdapterOrgOnlyField | undefined {
+
+        return this.readAdapterOrgOnlyFieldApiNames(panelState, treeKey) === undefined
+            ? undefined
+            : panelState.adapterOrgOnlyFields?.get(`${objectApiName}\n${fieldApiName}`);
+
+    }
+
+    /*
+        What the Treecipe Adapter offers for each field only the org holds (#446): a NEW field (no
+        project file) that the card's model does not list either. Its staged file is read as
+        Generate Treecipe reads a field file -- type, sizes, picklist values, controlling field,
+        lookup -- and locked by the Updater's own rule, a formula and a lookup the staged file names
+        included. An unlocked one is offered the expression the recipe's OWN backend writes for its
+        type (RecipeService.getOrgOnlyFieldExpression), or, when it writes none or the backend is
+        not known, a fixed value only, with a note. The offer rides on the posted field change; the
+        field models stay on the host for the router and the executors.
+    */
+    static offerAdapterOrgOnlyFields(recipe: IRecipeCockpitRecipeViewModel,
+                                     tree: IRecipeCockpitTreeViewModel,
+                                     objectChanges: readonly IOrgObjectChanges[],
+                                     newFields: readonly IOrgNewFieldDetail[],
+                                     fakerService: 'faker-js' | 'snowfakery' | undefined): { objects: IOrgObjectChanges[]; orgOnlyFields: Map<string, IRecipeCockpitAdapterOrgOnlyField> } {
+
+        const recipeService = fakerService === undefined
+            ? undefined
+            : new RecipeService(fakerService === 'faker-js' ? new FakerJSRecipeFakerService() : new SnowfakeryRecipeFakerService());
+        const newFieldsByKey = new Map(newFields.map(newField => [`${newField.objectApiName}\n${newField.fieldApiName.toLowerCase()}`, newField] as const));
+        const orgOnlyFields = new Map<string, IRecipeCockpitAdapterOrgOnlyField>();
+
+        const objects = objectChanges.map(objectChange => {
+
+            const modelFieldNames = new Set(( recipe.objects.find(object => object.objectApiName === objectChange.objectApiName)?.fields ?? [] ).map(field => field.fieldApiName.toLowerCase()));
+
+            return {
+                ...objectChange,
+                fieldChanges: objectChange.fieldChanges.map(fieldChange => {
+
+                    const newField = newFieldsByKey.get(`${objectChange.objectApiName}\n${fieldChange.fieldApiName.toLowerCase()}`);
+
+                    if ( fieldChange.status !== 'new' || modelFieldNames.has(fieldChange.fieldApiName.toLowerCase()) || !newField ) {
+                        return fieldChange;
+                    }
+
+                    const fieldSize = {
+                        ...( newField.length !== undefined ? { length: newField.length } : {} ),
+                        ...( newField.precision !== undefined ? { precision: newField.precision } : {} ),
+                        ...( newField.scale !== undefined ? { scale: newField.scale } : {} )
+                    };
+                    const fieldViewModel: IRecipeCockpitFieldViewModel = {
+                        fieldApiName: fieldChange.fieldApiName,
+                        fieldLabel: newField.fieldLabel,
+                        fieldType: newField.fieldType,
+                        fieldTypeWithSize: this.formatFieldTypeWithSize(newField.fieldType, fieldSize),
+                        recipeValue: '',
+                        controllingField: newField.controllingField,
+                        isOnlyInRecipeFile: false,
+                        // SO A TYPED VALUE IS HELD TO THE VALUES ITS STAGED FILE LISTS, AS A RECIPE PICKLIST'S IS
+                        ...( newField.picklistValues.length > 0 ? { isPicklist: true } : {} )
+                    };
+                    const lockReason = newField.isFormula
+                        ? RECIPE_COCKPIT_UPDATER_FORMULA_REASON
+                        : newField.referenceTo !== ''
+                            ? RECIPE_COCKPIT_UPDATER_LOOKUP_REASON
+                            : this.findUpdaterFieldLockReason(tree, objectChange.objectApiName, fieldViewModel)
+                                // GENERATE VALUES NEEDS THE CARD'S RECIPE, SO A CARD WITHOUT ONE OFFERS NOTHING TO FILL
+                                ?? ( fakerService === undefined ? RECIPE_COCKPIT_ADAPTER_ORG_ONLY_NO_RECIPE_REASON : undefined );
+
+                    let expression: string | undefined;
+                    if ( lockReason === undefined && recipeService ) {
+                        const xmlFieldDetail = Object.assign(new XMLFieldDetail(), {
+                            apiName: fieldChange.fieldApiName,
+                            fieldType: newField.fieldType,
+                            fieldLabel: newField.fieldLabel,
+                            xmlMarkup: '',
+                            ...fieldSize,
+                            ...( newField.picklistValues.length > 0 ? { picklistValues: newField.picklistValues.map(picklistValue => ({ picklistOptionApiName: picklistValue, label: picklistValue })) } : {} ),
+                            ...( newField.valueSetName !== '' ? { globalValueSetName: newField.valueSetName } : {} )
+                        });
+                        expression = recipeService.getOrgOnlyFieldExpression(xmlFieldDetail);
+                    }
+                    fieldViewModel.recipeValue = expression ?? '';
+
+                    orgOnlyFields.set(`${objectChange.objectApiName}\n${fieldChange.fieldApiName}`, {
+                        objectApiName: objectChange.objectApiName,
+                        fieldViewModel: fieldViewModel,
+                        picklistValues: [...newField.picklistValues],
+                        ...( lockReason !== undefined ? { lockReason: lockReason } : {} ),
+                        ...( expression !== undefined ? { expression: expression } : {} )
+                    });
+
+                    return {
+                        ...fieldChange,
+                        orgOnly: {
+                            fieldTypeWithSize: fieldViewModel.fieldTypeWithSize,
+                            ...( lockReason !== undefined ? { lockReason: lockReason } : {} ),
+                            ...( expression !== undefined ? { expression: expression } : {} ),
+                            ...( lockReason === undefined && expression === undefined ? { note: RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE } : {} )
+                        }
+                    };
+
+                })
+            };
+
+        });
+
+        return { objects: objects, orgOnlyFields: orgOnlyFields };
+
+    }
+
+    // THE BACKEND A CARD'S RECIPE WAS WRITTEN FOR, FROM ITS PATH, OR UNDEFINED WHEN IT HAS NO SINGLE RECIPE OR THE PATH DOES NOT SAY
+    private static readTreeFakerService(panelState: IRecipeCockpitPanelState, treeKey: string): 'faker-js' | 'snowfakery' | undefined {
+
+        const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey);
+        if ( !recipeFilePath || !this.isUsableWorkspacePath(recipeFilePath, panelState.workspaceRoot) ) {
+            return undefined;
+        }
+
+        return VSCodeWorkspaceService.readRecipeFakerService(path.join(panelState.workspaceRoot, ConfigurationService.getGeneratedRecipesFolderPath()), recipeFilePath);
 
     }
 
@@ -9009,7 +9188,7 @@ export class RecipeCockpitService {
         // NO PARENTHESES: A NOTIFICATION ESCAPES THEM
         const orgLabel = dataOrgSelection.orgDetail.alias ? `${dataOrgSelection.orgDetail.alias} · ${orgUsername}` : orgUsername;
         const treeTitle = tree.customName ?? tree.title;
-        const treeObjectsByApiName = new Map(this.listUpdaterTreeObjects(clickedRecipeDataMessage.recipe, tree).map(treeObject => [treeObject.objectApiName, treeObject] as const));
+        const treeObjectsByApiName = new Map(this.listUpdaterTreeObjects(clickedRecipeDataMessage.recipe, tree, this.readAdapterOrgOnlyFieldApiNames(panelState, treeKey)).map(treeObject => [treeObject.objectApiName, treeObject] as const));
 
         // EVERY QUERY IS CHECKED BEFORE ANY RECORD IS READ; A CHILD'S WITH A PLACEHOLDER Id, SINCE ITS PARENT Ids COME FROM THE LOAD
         for ( const request of requests ) {
@@ -9373,7 +9552,9 @@ export class RecipeCockpitService {
             return;
         }
 
-        const objectChanges = await RecipeCockpitOrgChangeDetection.detectFieldChanges(workspaceRoot, packageDirectoryPaths, stagingFolderPath, objectApiNames);
+        const detectedChanges = await RecipeCockpitOrgChangeDetection.detectFieldChangesWithNewFields(workspaceRoot, packageDirectoryPaths, stagingFolderPath, objectApiNames);
+        const orgOnlyOffer = this.offerAdapterOrgOnlyFields(clickedRecipeDataMessage.recipe, tree, detectedChanges.objectChanges, detectedChanges.newFields, this.readTreeFakerService(panelState, treeKey));
+        const objectChanges = orgOnlyOffer.objects;
         const orgContext = await this.readAdapterOrgContext(orgUsername, objectApiNames);
         objectChanges.forEach(objectChange => {
             const newChildObjects = orgContext.newChildObjectsByObject.get(objectChange.objectApiName);
@@ -9399,6 +9580,7 @@ export class RecipeCockpitService {
         };
         panelState.adapterMetadataChangesMessage = changesMessage;
         panelState.adapterRetrieveStagingFolderPath = stagingFolderPath;
+        panelState.adapterOrgOnlyFields = orgOnlyOffer.orgOnlyFields;
         this.postToPanel(cockpitPanel, changesMessage);
 
         this.showAdapterRetrieveNotification(objectChanges, treeTitle, orgLabel, retrieveOutputFilePath, workspaceRoot);
@@ -9566,8 +9748,14 @@ export class RecipeCockpitService {
         const copyResult = RecipeCockpitOrgChangeDetection.copyFieldFiles(workspaceRoot, currentCopies);
 
         // THE MARKS ARE READ AGAIN FROM THE FILES; THE HINTS AND CHILD OBJECTS ARE THE ORG'S AND STAY AS THE RETRIEVE READ THEM
-        const remarkedObjects = await RecipeCockpitOrgChangeDetection.detectFieldChanges(workspaceRoot, packageDirectoryPaths, stagingFolderPath, objectApiNames);
-        if ( isClickStillCurrent() ) {
+        const remarkedChanges = await RecipeCockpitOrgChangeDetection.detectFieldChangesWithNewFields(workspaceRoot, packageDirectoryPaths, stagingFolderPath, objectApiNames);
+        const remarkedTree = panelState.recipeDataMessage?.renderSequence === changesMessage.renderSequence
+            ? panelState.recipeDataMessage.recipe.trees.find(recipeTree => recipeTree.treeKey === changesMessage.treeKey)
+            : undefined;
+        if ( isClickStillCurrent() && remarkedTree && panelState.recipeDataMessage ) {
+            // A FIELD APPLIED HAS A PROJECT FILE NOW, SO IT IS NO LONGER OFFERED AS ONLY THE ORG'S (#446) UNTIL GENERATE TREECIPE LISTS IT
+            const remarkedOffer = this.offerAdapterOrgOnlyFields(panelState.recipeDataMessage.recipe, remarkedTree, remarkedChanges.objectChanges, remarkedChanges.newFields, this.readTreeFakerService(panelState, changesMessage.treeKey));
+            const remarkedObjects = remarkedOffer.objects;
             const previousObjectsByName = new Map(changesMessage.objects.map(objectChanges => [objectChanges.objectApiName, objectChanges] as const));
             const updatedChangesMessage: IRecipeCockpitAdapterMetadataChangesMessage = {
                 ...changesMessage,
@@ -9579,6 +9767,7 @@ export class RecipeCockpitService {
                 })
             };
             panelState.adapterMetadataChangesMessage = updatedChangesMessage;
+            panelState.adapterOrgOnlyFields = remarkedOffer.orgOnlyFields;
             this.postToPanel(cockpitPanel, updatedChangesMessage);
         }
 
@@ -9703,22 +9892,7 @@ export class RecipeCockpitService {
     */
     static findRecipeExpression(recipeValue: string | undefined): string | undefined {
 
-        for ( const valueLine of String(recipeValue ?? '').split('\n') ) {
-            const trimmedLine = valueLine.trim();
-            let candidate: unknown = trimmedLine;
-            if ( trimmedLine.length >= 2 && trimmedLine.startsWith('"') && trimmedLine.endsWith('"') ) {
-                try {
-                    candidate = JSON.parse(trimmedLine);
-                } catch {
-                    candidate = trimmedLine;
-                }
-            }
-            if ( typeof candidate === 'string' && candidate.startsWith(RECIPE_COCKPIT_EXPRESSION_OPENER) && !/[\r\n\u0085\u2028\u2029]/.test(candidate) ) {
-                return candidate;
-            }
-        }
-
-        return undefined;
+        return RecipeCockpitRecipeWriter.findFirstExpressionLine(recipeValue);
 
     }
 
@@ -9830,8 +10004,8 @@ export class RecipeCockpitService {
 
         // EACH FIELD CHECKED AGAIN AGAINST THE MODEL ON SCREEN AND THE RECORDS LOADED, IN THE ORDER POSTED
         // valueText IS WHAT THE RECIPE GETS; shownValue IS WHAT THE CONFIRMATION SHOWS -- THE READER'S OWN TEXT FOR AN EDIT
-        type PlannedFieldSource = 'recipe' | 'recipeEdit' | 'recipeFixed' | 'expression' | 'fixed';
-        interface IPlannedField { objectApiName: string; fieldApiName: string; source: PlannedFieldSource; valueText: string; shownValue: string; fixedValue?: unknown }
+        type PlannedFieldSource = 'recipe' | 'recipeEdit' | 'recipeFixed' | 'orgExpression' | 'expression' | 'fixed';
+        interface IPlannedField { objectApiName: string; fieldApiName: string; source: PlannedFieldSource; valueText: string; shownValue: string; fixedValue?: unknown; isOrgOnly?: true }
         const plannedFields: IPlannedField[] = [];
         const objectViewModelsByApiName = new Map<string, IRecipeCockpitObjectViewModel>();
         clickedRecipeDataMessage.recipe.objects.forEach(object => {
@@ -9846,14 +10020,18 @@ export class RecipeCockpitService {
 
             const fieldLabel = `${fieldRequest.objectApiName}.${fieldRequest.fieldApiName}`;
             const objectViewModel = objectViewModelsByApiName.get(fieldRequest.objectApiName);
-            const fieldViewModel = objectViewModel?.fields.find(field => field.fieldApiName === fieldRequest.fieldApiName);
+            const recipeFieldViewModel = objectViewModel?.fields.find(field => field.fieldApiName === fieldRequest.fieldApiName);
+            // A FIELD ONLY THE ORG HOLDS (#446) IS ONE THE LAST RETRIEVE OFFERED FOR THIS CARD, READ FROM ITS STAGED FILE
+            const orgOnlyField = recipeFieldViewModel ? undefined : this.findAdapterOrgOnlyField(panelState, treeKey, fieldRequest.objectApiName, fieldRequest.fieldApiName);
+            const fieldViewModel = recipeFieldViewModel ?? orgOnlyField?.fieldViewModel;
+            const orgOnlyMark: { isOrgOnly?: true } = orgOnlyField ? { isOrgOnly: true } : {};
 
             if ( !objectViewModel || !fieldViewModel ) {
                 refuse(`${fieldLabel} is not a field of this treecipe.`);
                 return;
             }
 
-            const lockReason = this.findUpdaterFieldLockReason(tree, fieldRequest.objectApiName, fieldViewModel);
+            const lockReason = orgOnlyField ? orgOnlyField.lockReason : this.findUpdaterFieldLockReason(tree, fieldRequest.objectApiName, fieldViewModel);
             if ( lockReason !== undefined ) {
                 refuse(`${fieldLabel} cannot be filled: ${lockReason}.`);
                 return;
@@ -9862,6 +10040,22 @@ export class RecipeCockpitService {
             if ( !( heldRecords.loadedFieldApiNamesByObjectApiName.get(fieldRequest.objectApiName) ?? [] ).includes(fieldRequest.fieldApiName) ) {
                 refuse(`${fieldLabel} was not chosen when the records were loaded, so its current value was not read. Load records again.`);
                 return;
+            }
+
+            if ( fieldRequest.value === undefined && orgOnlyField ) {
+                if ( orgOnlyField.expression === undefined ) {
+                    refuse(`${fieldLabel}: ${RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE}`);
+                    return;
+                }
+                plannedFields.push({
+                    objectApiName: fieldRequest.objectApiName,
+                    fieldApiName: fieldRequest.fieldApiName,
+                    source: 'orgExpression',
+                    valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: orgOnlyField.expression, kind: 'expression' }),
+                    shownValue: orgOnlyField.expression,
+                    isOrgOnly: true
+                });
+                continue;
             }
 
             if ( fieldRequest.value === undefined ) {
@@ -9886,13 +10080,22 @@ export class RecipeCockpitService {
                 continue;
             }
 
-            const valueRefusal = this.validateFixedValueInput(fieldRequest.value, fieldViewModel, this.listDeclaredPicklistValues(panelState, fieldRequest.objectApiName, fieldRequest.fieldApiName));
+            const declaredPicklistValues = orgOnlyField
+                ? ( orgOnlyField.picklistValues.length > 0 ? orgOnlyField.picklistValues : undefined )
+                : this.listDeclaredPicklistValues(panelState, fieldRequest.objectApiName, fieldRequest.fieldApiName);
+            const valueRefusal = this.validateFixedValueInput(fieldRequest.value, fieldViewModel, declaredPicklistValues);
             if ( valueRefusal !== undefined ) {
                 refuse(`${fieldLabel}: ${valueRefusal}`);
                 return;
             }
 
             const kind = this.resolveFixedValueKind(fieldRequest.value, fieldViewModel);
+
+            // AN EXPRESSION IS OFFERED ONLY WHERE THE RECIPE'S BACKEND WRITES ONE FOR THE FIELD'S TYPE IN THE ORG
+            if ( orgOnlyField && kind === 'expression' && orgOnlyField.expression === undefined ) {
+                refuse(`${fieldLabel}: ${RECIPE_COCKPIT_ADAPTER_ORG_ONLY_EXPRESSION_REFUSAL}.`);
+                return;
+            }
 
             // AS A PIN IS: A WHOLE-STRING NICKNAME IS A REFERENCE TO faker-js AND THE INSERT'S Id SWAP, NEVER TEXT
             if ( kind !== 'expression' && recipeNicknames.has(fieldRequest.value) ) {
@@ -9901,8 +10104,8 @@ export class RecipeCockpitService {
             }
 
             plannedFields.push(kind === 'expression'
-                ? { objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'expression', valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: fieldRequest.value, kind: kind }), shownValue: fieldRequest.value }
-                : { objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'fixed', valueText: fieldRequest.value, shownValue: fieldRequest.value, fixedValue: this.toUpdaterFixedValue(fieldRequest.value, kind) });
+                ? { objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'expression', valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: fieldRequest.value, kind: kind }), shownValue: fieldRequest.value, ...orgOnlyMark }
+                : { objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'fixed', valueText: fieldRequest.value, shownValue: fieldRequest.value, fixedValue: this.toUpdaterFixedValue(fieldRequest.value, kind), ...orgOnlyMark });
 
         }
 
@@ -9922,6 +10125,7 @@ export class RecipeCockpitService {
             recipe: 'recipe expression',
             recipeEdit: 'expression edited in the recipe file',
             recipeFixed: 'fixed value in the recipe file',
+            orgExpression: 'expression the recipe\'s backend writes for its type in the org',
             expression: 'edited expression',
             fixed: 'fixed value'
         };
@@ -9930,7 +10134,7 @@ export class RecipeCockpitService {
             const recordCount = recordsOf(objectApiName).length;
             detailLines.push(`${objectApiName}: ${describeRecords(recordCount)}${recordCount === 0 ? ', so nothing is generated' : ''}`);
             plannedFields.filter(plannedField => plannedField.objectApiName === objectApiName).forEach(plannedField => {
-                detailLines.push(`  ${plannedField.fieldApiName} -- ${sourceLabels[plannedField.source]}: ${plannedField.shownValue}`);
+                detailLines.push(`  ${plannedField.fieldApiName}${plannedField.isOrgOnly ? ' (only in the org)' : ''} -- ${sourceLabels[plannedField.source]}: ${plannedField.shownValue}`);
             });
         });
 
@@ -10020,7 +10224,11 @@ export class RecipeCockpitService {
             return;
         }
 
-        this.heldUpdaterValues = { resultKey: heldRecords.resultKey, valuesByObjectApiName: valuesByObjectApiName };
+        const orgOnlyFieldApiNamesByObjectApiName = new Map<string, string[]>();
+        plannedFields.filter(plannedField => plannedField.isOrgOnly && valuesByObjectApiName.has(plannedField.objectApiName)).forEach(plannedField => {
+            orgOnlyFieldApiNamesByObjectApiName.set(plannedField.objectApiName, [...( orgOnlyFieldApiNamesByObjectApiName.get(plannedField.objectApiName) ?? [] ), plannedField.fieldApiName]);
+        });
+        this.heldUpdaterValues = { resultKey: heldRecords.resultKey, valuesByObjectApiName: valuesByObjectApiName, orgOnlyFieldApiNamesByObjectApiName: orgOnlyFieldApiNamesByObjectApiName };
 
         const objectViewModels: IRecipeCockpitUpdaterObjectValuesViewModel[] = objectApiNames.map(objectApiName => {
             const fieldApiNames = plannedFields.filter(plannedField => plannedField.objectApiName === objectApiName).map(plannedField => plannedField.fieldApiName);
@@ -10238,7 +10446,8 @@ export class RecipeCockpitService {
         }
 
         const startedAt = new Date();
-        const snapshotObjects = plannedObjects.map(plannedObject => RecipeCockpitRecordUpdate.buildSnapshotObject(plannedObject.objectApiName, plannedObject.fieldApiNames, plannedObject.loadedRecords));
+        const snapshotObjects = plannedObjects.map(plannedObject => RecipeCockpitRecordUpdate.buildSnapshotObject(plannedObject.objectApiName, plannedObject.fieldApiNames, plannedObject.loadedRecords,
+                                                                                                                  heldValues.orgOnlyFieldApiNamesByObjectApiName.get(plannedObject.objectApiName)));
         const attemptFiles = RecipeCockpitRecordUpdate.writeSnapshot(panelState.workspaceRoot, {
             orgUsername: orgUsername,
             treeFolderName: tree.folderName,
@@ -10262,6 +10471,7 @@ export class RecipeCockpitService {
             updatedRecordCount: sendResult.updatedRecordCount,
             failedRecordCount: sendResult.failedRecordCount,
             ...( sendResult.putBack ? { putBack: sendResult.putBack } : {} ),
+            ...this.buildOrgOnlyFieldsResult(snapshotObjects),
             objects: sendResult.objectResults
         });
 
@@ -10271,6 +10481,44 @@ export class RecipeCockpitService {
 
     }
 
+
+    // WHICH FIELDS AN UPDATE OR A RESTORE WROTE THAT ONLY THE ORG HELD (#446), FOR THE RESULTS FILE; NOTHING WHEN THERE WERE NONE
+    static buildOrgOnlyFieldsResult(snapshotObjects: readonly IUpdateSnapshotObject[]): { orgOnlyFields?: Record<string, string[]> } {
+
+        const orgOnlyEntries = snapshotObjects
+            .filter(snapshotObject => ( snapshotObject.orgOnlyFieldApiNames ?? [] ).length > 0)
+            .map((snapshotObject): [string, string[]] => [snapshotObject.objectApiName, [...snapshotObject.orgOnlyFieldApiNames as string[]]]);
+
+        return orgOnlyEntries.length > 0 ? { orgOnlyFields: Object.fromEntries(orgOnlyEntries) } : {};
+
+    }
+
+    /*
+        Why a field a snapshot says only the org held (#446) is not one the Treecipe Adapter writes
+        back, from the org's describe: the Updater's lock rule read off what the org says the field is,
+        since the recipe has no model of it. Not updateable or calculated is findUpdateReason's.
+    */
+    static findDescribedOrgOnlyFieldLockReason(fieldApiName: string, describedField: INormalizedOrgField | undefined): string | undefined {
+
+        if ( !describedField ) {
+            return undefined;
+        }
+        if ( fieldApiName.toLowerCase() === 'recordtypeid' ) {
+            return RECIPE_COCKPIT_UPDATER_RECORD_TYPE_REASON;
+        }
+        if ( describedField.fieldType === 'reference' || describedField.referenceTo.length > 0 ) {
+            return RECIPE_COCKPIT_UPDATER_LOOKUP_REASON;
+        }
+        if ( describedField.controllingField ) {
+            return `${RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX}${describedField.controllingField}`;
+        }
+        if ( describedField.isCalculated ) {
+            return RECIPE_COCKPIT_UPDATER_FORMULA_REASON;
+        }
+
+        return undefined;
+
+    }
 
     /*
         A card's snapshots (#419), listed by FILE NAME and posted, the paths kept host-only as the
@@ -10425,6 +10673,10 @@ export class RecipeCockpitService {
             }
             for ( const fieldApiName of snapshotObject.fieldApiNames ) {
                 const fieldViewModel = objectViewModelsByApiName.get(snapshotObject.objectApiName)?.fields.find(field => field.fieldApiName === fieldApiName);
+                // A FIELD ONLY THE ORG HELD WHEN THE UPDATE RAN (#446) IS CHECKED AGAINST THE ORG'S DESCRIBE BELOW, SINCE THE RECIPE HAS NO MODEL OF IT
+                if ( !fieldViewModel && ( snapshotObject.orgOnlyFieldApiNames ?? [] ).includes(fieldApiName) ) {
+                    continue;
+                }
                 const lockReason = fieldViewModel ? this.findUpdaterFieldLockReason(tree, snapshotObject.objectApiName, fieldViewModel) : 'it is not a field of the object in this run';
                 if ( lockReason ) {
                     return refuse(`Nothing was restored: ${snapshotName} names ${snapshotObject.objectApiName}.${fieldApiName}, which the Treecipe Adapter does not write: ${lockReason}.`);
@@ -10455,6 +10707,16 @@ export class RecipeCockpitService {
             const updateReason = RecipeCockpitRecordUpdate.findUpdateReason(snapshotObject.objectApiName, snapshotObject.fieldApiNames, describeOutcome?.describe, describeOutcome?.failureMessage);
             if ( updateReason ) {
                 return refuse(`Nothing was restored in ${orgLabel}: ${updateReason}`);
+            }
+            for ( const orgOnlyFieldApiName of snapshotObject.orgOnlyFieldApiNames ?? [] ) {
+                if ( objectViewModelsByApiName.get(snapshotObject.objectApiName)?.fields.some(field => field.fieldApiName === orgOnlyFieldApiName) ) {
+                    continue;
+                }
+                const describedField = describeOutcome?.describe?.fields.find(field => field.fieldApiName.toLowerCase() === orgOnlyFieldApiName.toLowerCase());
+                const lockReason = this.findDescribedOrgOnlyFieldLockReason(orgOnlyFieldApiName, describedField);
+                if ( lockReason ) {
+                    return refuse(`Nothing was restored: ${snapshotName} names ${snapshotObject.objectApiName}.${orgOnlyFieldApiName}, which the Treecipe Adapter does not write: ${lockReason}.`);
+                }
             }
         }
 
@@ -10536,7 +10798,8 @@ export class RecipeCockpitService {
         }
 
         const startedAt = new Date();
-        const currentSnapshotObjects = restoredObjects.map(plannedObject => RecipeCockpitRecordUpdate.buildSnapshotObject(plannedObject.objectApiName, plannedObject.fieldApiNames, plannedObject.currentRecords));
+        const currentSnapshotObjects = restoredObjects.map(plannedObject => RecipeCockpitRecordUpdate.buildSnapshotObject(plannedObject.objectApiName, plannedObject.fieldApiNames, plannedObject.currentRecords,
+                                                                                                                            snapshotObjects.find(snapshotObject => snapshotObject.objectApiName === plannedObject.objectApiName)?.orgOnlyFieldApiNames));
         const attemptFiles = RecipeCockpitRecordUpdate.writeSnapshot(panelState.workspaceRoot, {
             orgUsername: orgUsername,
             treeFolderName: tree.folderName,
@@ -10563,6 +10826,7 @@ export class RecipeCockpitService {
             failedRecordCount: sendResult.failedRecordCount,
             missingRecordCount: missingRecordTotal,
             ...( sendResult.putBack ? { putBack: sendResult.putBack } : {} ),
+            ...this.buildOrgOnlyFieldsResult(currentSnapshotObjects),
             objects: sendResult.objectResults
         });
 
@@ -14456,7 +14720,7 @@ export class RecipeCockpitService {
                     return { kind: 'refuseUpdaterLoad', refusalText: RECIPE_COCKPIT_UPDATER_BUSY_REFUSAL, hostMessage: notRunning };
                 }
 
-                const requestRead = RecipeCockpitTreeUpdaterQuery.readRequest(objects, this.listUpdaterTreeObjects(recipeDataMessage.recipe, tree), parentObjectApiName);
+                const requestRead = RecipeCockpitTreeUpdaterQuery.readRequest(objects, this.listUpdaterTreeObjects(recipeDataMessage.recipe, tree, this.readAdapterOrgOnlyFieldApiNames(panelState, treeKey)), parentObjectApiName);
 
                 if ( 'refusal' in requestRead ) {
                     return { kind: 'refuseUpdaterLoad', refusalText: `Records were not loaded: ${requestRead.refusal}`, hostMessage: notRunning };
@@ -14609,7 +14873,7 @@ export class RecipeCockpitService {
                     return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
                 }
 
-                const fieldRequests = this.readUpdaterFieldValueRequests(fields, this.listUpdaterTreeObjects(recipeDataMessage.recipe, tree));
+                const fieldRequests = this.readUpdaterFieldValueRequests(fields, this.listUpdaterTreeObjects(recipeDataMessage.recipe, tree, this.readAdapterOrgOnlyFieldApiNames(panelState, treeKey)));
 
                 if ( 'refusal' in fieldRequests ) {
                     return { kind: 'refuseUpdaterLoad', refusalText: `No values were generated: ${fieldRequests.refusal}`, hostMessage: notRunning };
@@ -23695,9 +23959,12 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             ANOTHER OF THE CARD'S OBJECTS IS KEPT FOR WHEN IT IS DRAWN AGAIN, AND ONE ON AN OBJECT THE CARD NO LONGER LISTS IS NOT
         */
         const chosenFieldKeys = Object.create(null);
+        const choosableOrgOnlyFieldKeys = listAdapterChoosableOrgOnlyFieldKeys(treeState);
         Object.keys(treeState.updaterChosenFieldKeys).forEach(function (fieldKey) {
             const objectApiName = fieldKey.split('\\n')[0];
             if (!hasOwnKey(drawnObjectApiNames, objectApiName) && treeState.updaterCardObjectApiNames.indexOf(objectApiName) !== -1) { chosenFieldKeys[fieldKey] = true; }
+            // A FIELD ONLY THE ORG HOLDS (#446) STAYS CHOSEN WHILE THE LAST RETRIEVE STILL OFFERS IT; applyAdapterMetadataChanges COUNTS IT
+            if (hasOwnKey(drawnObjectApiNames, objectApiName) && hasOwnKey(choosableOrgOnlyFieldKeys, fieldKey)) { chosenFieldKeys[fieldKey] = true; }
         });
         treeState.updaterObjectStates.forEach(function (updaterObjectState) {
             updaterObjectState.fieldStates.forEach(function (fieldState) {
@@ -23837,7 +24104,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             updaterObjectState.orgOnlyFieldsElement = createElement('div', 'updaterOrgOnlyFields');
             updaterObjectState.bodyElement.appendChild(updaterObjectState.orgOnlyFieldsElement);
             updaterObjectState.isBodyBuilt = true;
-            drawAdapterObjectOrgOnlyFields(updaterObjectState);
+            drawAdapterObjectOrgOnlyFields(treeState, updaterObjectState);
         }
 
         setShownWithMotion(updaterObjectState.bodyElement, isExpanded, isAnimated);
@@ -23849,7 +24116,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     function buildUpdaterFieldRow(treeState, updaterObjectState, fieldState) {
 
         const field = fieldState.field;
-        const rowElement = createElement('div', 'updaterField');
+        // A FIELD ONLY THE ORG HOLDS (#446) CARRIES THE FIELD CHANGE THE RETRIEVE FOUND
+        const isOrgOnlyField = !!fieldState.fieldChange;
+        const rowElement = createElement('div', isOrgOnlyField ? 'updaterField updaterOrgOnlyField' : 'updaterField');
         const headerElement = createElement('div', 'updaterFieldHeader');
         const chooseElement = createButton('check', 'updaterFieldChoose');
 
@@ -23894,6 +24163,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         headerElement.appendChild(fieldState.orgChipElement);
         drawAdapterFieldOrgChip(fieldState);
 
+        if (isOrgOnlyField) {
+            headerElement.appendChild(createElement('span', 'updaterFieldNote muted', ADAPTER_ORG_ONLY_FIELD_NOTE));
+            if (fieldState.orgOnlyNote) { headerElement.appendChild(createElement('span', 'updaterFieldNote updaterOrgOnlyFixedNote muted', fieldState.orgOnlyNote)); }
+        }
+
         rowElement.appendChild(headerElement);
 
         if (field.recipeValue) {
@@ -23930,6 +24204,25 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         chooseElement.setAttribute('title', title);
         chooseElement.setAttribute('aria-label', fieldName + ': ' + title);
 
+    }
+
+    // AN OBJECT'S FIELD ROWS A LOAD AND A GENERATION READ: THE RECIPE'S, THEN THE FIELDS ONLY THE ORG HOLDS THE LAST RETRIEVE OFFERED (#446)
+    function listUpdaterChoosableFieldStates(updaterObjectState) {
+        return updaterObjectState.fieldStates.concat(updaterObjectState.orgOnlyFieldStates.filter(function (orgOnlyFieldState) { return !!orgOnlyFieldState.field; }));
+    }
+
+    // "<object>\\n<field>" OF EVERY FIELD ONLY THE ORG HOLDS THAT THE CARD'S LAST RETRIEVE OFFERED UNLOCKED (#446)
+    function listAdapterChoosableOrgOnlyFieldKeys(treeState) {
+        const fieldKeys = Object.create(null);
+        const changesMessage = treeState.adapterChangesMessage;
+        (changesMessage && Array.isArray(changesMessage.objects) ? changesMessage.objects : []).forEach(function (objectChanges) {
+            (objectChanges && Array.isArray(objectChanges.fieldChanges) ? objectChanges.fieldChanges : []).forEach(function (fieldChange) {
+                if (fieldChange && fieldChange.orgOnly && typeof fieldChange.orgOnly === 'object' && !fieldChange.orgOnly.lockReason) {
+                    fieldKeys[updaterFieldKeyOf(String(objectChanges.objectApiName), String(fieldChange.fieldApiName))] = true;
+                }
+            });
+        });
+        return fieldKeys;
     }
 
     function drawUpdaterObjectCount(updaterObjectState) {
@@ -23971,7 +24264,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             const objectApiName = updaterObjectState.object.objectApiName;
             return {
                 objectApiName: objectApiName,
-                fieldApiNames: updaterObjectState.fieldStates
+                fieldApiNames: listUpdaterChoosableFieldStates(updaterObjectState)
                     .filter(function (fieldState) { return hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey); })
                     .map(function (fieldState) { return fieldState.field.fieldApiName; }),
                 whereClause: objectApiName === treeState.updaterParentObjectApiName ? treeState.updaterParentWhereText
@@ -24172,7 +24465,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         const fields = [];
         treeState.updaterObjectStates.forEach(function (updaterObjectState) {
-            updaterObjectState.fieldStates.forEach(function (fieldState) {
+            listUpdaterChoosableFieldStates(updaterObjectState).forEach(function (fieldState) {
                 if (fieldState.lockReason || !hasOwnKey(treeState.updaterChosenFieldKeys, fieldState.fieldKey)) { return; }
                 const fieldRequest = { objectApiName: updaterObjectState.object.objectApiName, fieldApiName: fieldState.field.fieldApiName };
                 if (hasOwnKey(treeState.updaterEditedValues, fieldState.fieldKey)) { fieldRequest.value = treeState.updaterEditedValues[fieldState.fieldKey]; }
@@ -24611,8 +24904,24 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const treeState = findTreeState(changesMessage.treeKey);
         if (!treeState) { return; }
 
+        // THE HOST HOLDS ONE RETRIEVE (#446): ANOTHER CARD'S MARKS, AND THE FIELDS ONLY THE ORG HOLDS IT OFFERED, ARE NO LONGER ONES IT ACCEPTS
+        treeStates.forEach(function (otherTreeState) {
+            if (otherTreeState !== treeState && otherTreeState.adapterChangesMessage) { clearAdapterMetadataChanges(otherTreeState); }
+        });
+
         treeState.adapterChangesMessage = changesMessage;
         applyAdapterMetadataChanges(treeState);
+
+    }
+
+    function clearAdapterMetadataChanges(treeState) {
+
+        treeState.adapterChangesMessage = { objects: [], orgLabel: '' };
+        applyAdapterMetadataChanges(treeState);
+        treeState.adapterChangesMessage = null;
+        if (treeState.updaterOrgChangesNoteElement) { setShown(treeState.updaterOrgChangesNoteElement, false); }
+        if (treeState.updaterApplyRetrievedElement) { setShown(treeState.updaterApplyRetrievedElement, false); }
+        drawUpdaterLoadButtons();
 
     }
 
@@ -24652,15 +24961,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             const newChildObjects = objectChanges && Array.isArray(objectChanges.newChildObjects) ? objectChanges.newChildObjects : [];
             updaterObjectState.orgOnlyFieldStates = fieldChanges
                 .filter(function (fieldChange) { return fieldChange.status === 'new' && !hasOwnKey(modelFieldNames, String(fieldChange.fieldApiName).toLowerCase()); })
-                .map(function (fieldChange) {
-                    return {
-                        fieldChange: fieldChange,
-                        childObject: null,
-                        searchText: [fieldChange.fieldApiName, fieldChange.fieldLabel, fieldChange.fieldType, ADAPTER_NEW_IN_ORG_LABEL].join('\\n').toLowerCase(),
-                        isMatch: true,
-                        rowElement: null
-                    };
-                })
+                .map(function (fieldChange) { return buildAdapterOrgOnlyFieldState(updaterObjectState, fieldChange); })
                 // A CUSTOM CHILD OBJECT ONLY THE ORG HOLDS IS A ROW UNDER ITS PARENT, DRAWN UNTIL #447 CAN ADD IT
                 .concat(newChildObjects.map(function (childObject) {
                     return {
@@ -24672,6 +24973,22 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                     };
                 }));
             updaterObjectState.moreNewChildObjectCount = objectChanges ? Number(objectChanges.moreNewChildObjectCount) || 0 : 0;
+
+            // A CHOICE IS KEPT ONLY ON A FIELD THIS OBJECT STILL OFFERS; THE COUNT IS MADE AGAIN FROM WHAT IS CHOSEN
+            const choosableFieldKeys = Object.create(null);
+            listUpdaterChoosableFieldStates(updaterObjectState).forEach(function (fieldState) {
+                if (!fieldState.lockReason) { choosableFieldKeys[fieldState.fieldKey] = true; }
+            });
+            updaterObjectState.chosenFieldCount = 0;
+            Object.keys(treeState.updaterChosenFieldKeys).forEach(function (fieldKey) {
+                if (fieldKey.split('\\n')[0] !== updaterObjectState.object.objectApiName) { return; }
+                if (hasOwnKey(choosableFieldKeys, fieldKey)) {
+                    updaterObjectState.chosenFieldCount++;
+                } else {
+                    delete treeState.updaterChosenFieldKeys[fieldKey];
+                }
+            });
+            drawUpdaterObjectCount(updaterObjectState);
 
             const objectNewCount = fieldChanges.filter(function (fieldChange) { return fieldChange.status === 'new'; }).length;
             const objectChangedCount = fieldChanges.filter(function (fieldChange) { return fieldChange.status === 'changed'; }).length;
@@ -24687,10 +25004,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             updaterObjectState.orgChangesChipElement.textContent = chipParts.join(' · ');
             setShown(updaterObjectState.orgChangesChipElement, chipParts.length > 0);
 
-            drawAdapterObjectOrgOnlyFields(updaterObjectState);
+            drawAdapterObjectOrgOnlyFields(treeState, updaterObjectState);
 
         });
 
+        drawUpdaterSummary(treeState);
         treeState.updaterOrgChangesNoteElement.textContent = 'Retrieved from ' + String(changesMessage.orgLabel || 'the org') + ': '
             + pluralize(newCount, 'field', 'fields') + ' ' + ADAPTER_NEW_IN_ORG_LABEL + ', ' + pluralize(changedCount, 'field', 'fields') + ' ' + ADAPTER_CHANGED_IN_ORG_LABEL + '.';
         if (changesMessage.childObjectsNote) { treeState.updaterOrgChangesNoteElement.textContent += ' ' + String(changesMessage.childObjectsNote); }
@@ -24726,7 +25044,52 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
-    function drawAdapterObjectOrgOnlyFields(updaterObjectState) {
+    /*
+        A field only the org holds (#446): a row the Updater's own parts draw -- its box, its editor
+        and its expression -- from what the host offered: the expression the recipe's backend
+        writes for its type, why it is locked, or that it takes a fixed value only. One the host
+        offered nothing for is a row with no box, as #445 drew it.
+    */
+    function buildAdapterOrgOnlyFieldState(updaterObjectState, fieldChange) {
+
+        const orgOnly = fieldChange.orgOnly && typeof fieldChange.orgOnly === 'object' ? fieldChange.orgOnly : null;
+        const fieldApiName = String(fieldChange.fieldApiName);
+        const field = !orgOnly ? null : {
+            fieldApiName: fieldApiName,
+            fieldLabel: String(fieldChange.fieldLabel || ''),
+            fieldType: String(fieldChange.fieldType || ''),
+            fieldTypeWithSize: String(orgOnly.fieldTypeWithSize || ''),
+            recipeValue: typeof orgOnly.expression === 'string' ? orgOnly.expression : '',
+            controllingField: '',
+            isOnlyInRecipeFile: false
+        };
+        const orgOnlyNote = orgOnly && typeof orgOnly.note === 'string' ? orgOnly.note : '';
+
+        return {
+            fieldChange: fieldChange,
+            childObject: null,
+            field: field,
+            fieldKey: updaterFieldKeyOf(updaterObjectState.object.objectApiName, fieldApiName),
+            lockReason: !orgOnly ? ADAPTER_ORG_ONLY_FIELD_NOTE : typeof orgOnly.lockReason === 'string' ? orgOnly.lockReason : '',
+            orgOnlyNote: orgOnlyNote,
+            orgChange: fieldChange,
+            orgChipElement: null,
+            orgSearchText: '',
+            searchText: [fieldApiName, fieldChange.fieldLabel, field ? field.fieldTypeWithSize || field.fieldType : fieldChange.fieldType, field ? field.recipeValue : '', ADAPTER_NEW_IN_ORG_LABEL, orgOnlyNote].join('\\n').toLowerCase(),
+            isMatch: true,
+            rowElement: null,
+            chooseElement: null,
+            editButtonElement: null,
+            editBadgeElement: null,
+            editedValueElement: null,
+            expressionRowElement: null,
+            editorElement: null,
+            isEditorOpen: false
+        };
+
+    }
+
+    function drawAdapterObjectOrgOnlyFields(treeState, updaterObjectState) {
 
         const containerElement = updaterObjectState.orgOnlyFieldsElement;
         if (!containerElement) { return; }
@@ -24745,6 +25108,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                 orgOnlyFieldState.rowElement = childRowElement;
                 setShown(childRowElement, orgOnlyFieldState.isMatch);
                 containerElement.appendChild(childRowElement);
+                return;
+            }
+
+            if (orgOnlyFieldState.field) {
+                const fieldRowElement = buildUpdaterFieldRow(treeState, updaterObjectState, orgOnlyFieldState);
+                setShown(fieldRowElement, orgOnlyFieldState.isMatch);
+                containerElement.appendChild(fieldRowElement);
                 return;
             }
 

@@ -3055,6 +3055,33 @@ export class RecipeCockpitRecipeWriter {
         template delimiter of either snowfakery environment inside -- and no "}}", which ends a
         faker-js expression early. The answer completes "The constrained expression for X ...".
     */
+    /*
+        The FIRST "${{ ... }}" line of a field's value, a double-quoted one unquoted, or undefined:
+        what the Treecipe Adapter generates a recipe field's values from (#417) and what it offers a
+        field only the org holds (#446). A line that does not parse as a quoted string, or carries a
+        line break either YAML reader sees, is not one.
+    */
+    static findFirstExpressionLine(value: string | undefined): string | undefined {
+
+        for ( const valueLine of String(value ?? '').split('\n') ) {
+            const trimmedLine = valueLine.trim();
+            let candidate: unknown = trimmedLine;
+            if ( trimmedLine.length >= 2 && trimmedLine.startsWith('"') && trimmedLine.endsWith('"') ) {
+                try {
+                    candidate = JSON.parse(trimmedLine);
+                } catch {
+                    candidate = trimmedLine;
+                }
+            }
+            if ( typeof candidate === 'string' && candidate.startsWith('${{') && !/[\r\n\u0085\u2028\u2029]/.test(candidate) ) {
+                return candidate;
+            }
+        }
+
+        return undefined;
+
+    }
+
     static checkConstrainedExpression(expression: string): string | undefined {
 
         if ( typeof expression !== 'string' || !expression.startsWith('${{') || !expression.endsWith('}}') || expression.length < 6 ) {

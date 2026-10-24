@@ -33,6 +33,8 @@ const WINDOWS_RESERVED_FOLDER_NAME_PATTERN = /^(con|prn|aux|nul|com[0-9]|lpt[0-9
 // A SNAPSHOT'S FILE NAME AS writeSnapshot WRITES IT: <yyyyMMdd-HHmmss>[-<n>]-before.json
 const SNAPSHOT_FILE_NAME_PATTERN = /^(\d{8}-\d{6})(?:-([2-9]|1\d|20))?-before\.json$/;
 
+const CUSTOM_FIELD_API_NAME_PATTERN = /__c$/i;
+
 const SALESFORCE_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
 
 // A USERNAME IS ONE LINE WITH NO SPACE, AS THE CLI RECORDS IT
@@ -67,6 +69,8 @@ export interface IUpdateSnapshotObject {
     fieldApiNames: string[];
     // EACH LOADED RECORD'S Id AND THE VALUE EACH UPDATED FIELD HELD BEFORE THE UPDATE
     records: IUpdateRecordValues[];
+    // THE FIELDS AMONG fieldApiNames THAT ONLY THE ORG HELD, NOT THE RECIPE (#446); SET ONLY WHEN THERE ARE ANY, SO AN OLDER SNAPSHOT READS AS IT DID
+    orgOnlyFieldApiNames?: string[];
 }
 
 export interface IUpdateSnapshot {
@@ -235,11 +239,17 @@ export class RecipeCockpitRecordUpdate {
     }
 
     // THE OLD VALUES OF EVERY FIELD BEING UPDATED, READ FROM THE LOADED RECORDS (A FIELD NAME MATCHED CASE-INSENSITIVELY)
-    static buildSnapshotObject(objectApiName: string, fieldApiNames: readonly string[], loadedRecords: readonly Record<string, unknown>[]): IUpdateSnapshotObject {
+    static buildSnapshotObject(objectApiName: string,
+                               fieldApiNames: readonly string[],
+                               loadedRecords: readonly Record<string, unknown>[],
+                               orgOnlyFieldApiNames: readonly string[] = []): IUpdateSnapshotObject {
+
+        const recordedOrgOnlyFieldApiNames = fieldApiNames.filter(fieldApiName => orgOnlyFieldApiNames.includes(fieldApiName));
 
         return {
             objectApiName: objectApiName,
             fieldApiNames: [...fieldApiNames],
+            ...( recordedOrgOnlyFieldApiNames.length > 0 ? { orgOnlyFieldApiNames: recordedOrgOnlyFieldApiNames } : {} ),
             records: loadedRecords.map(loadedRecord => {
                 const keysByLowerCase = new Map(Object.keys(loadedRecord).map(key => [key.toLowerCase(), key] as const));
                 const fieldValues: Record<string, unknown> = {};
@@ -508,7 +518,7 @@ export class RecipeCockpitRecordUpdate {
             }
             seenObjectApiNames.add(objectApiName.toLowerCase());
 
-            const { fieldApiNames, records } = candidateObject;
+            const { fieldApiNames, records, orgOnlyFieldApiNames } = candidateObject;
             if ( !Array.isArray(fieldApiNames) || fieldApiNames.length === 0 || !fieldApiNames.every(fieldApiName => SalesforceApiName.isApiName(fieldApiName)) ) {
                 return { refusal: `a field of ${objectApiName} in it is not an api name` };
             }
@@ -516,6 +526,16 @@ export class RecipeCockpitRecordUpdate {
             const lowerCaseFieldApiNames = fieldApiNames.map(fieldApiName => ( fieldApiName as string ).toLowerCase());
             if ( new Set(lowerCaseFieldApiNames).size !== fieldApiNames.length || lowerCaseFieldApiNames.includes('id') ) {
                 return { refusal: `it lists a field of ${objectApiName} twice, or its Id as a field` };
+            }
+
+            // ABSENT IN A SNAPSHOT FROM BEFORE #446; WHEN PRESENT, EVERY NAME IS ONE OF THE OBJECT'S FIELDS, ONCE
+            if ( orgOnlyFieldApiNames !== undefined
+                    && ( !Array.isArray(orgOnlyFieldApiNames)
+                        || orgOnlyFieldApiNames.length === 0
+                        || new Set(orgOnlyFieldApiNames).size !== orgOnlyFieldApiNames.length
+                        // ONLY A CUSTOM FIELD IS EVER OFFERED AS ONLY THE ORG'S, SO A HAND-EDITED MARK CANNOT WIDEN WHAT A RESTORE WRITES
+                        || !orgOnlyFieldApiNames.every(orgOnlyFieldApiName => typeof orgOnlyFieldApiName === 'string' && CUSTOM_FIELD_API_NAME_PATTERN.test(orgOnlyFieldApiName) && ( fieldApiNames as unknown[] ).includes(orgOnlyFieldApiName)) ) ) {
+                return { refusal: `its fields of ${objectApiName} only in the org are not among its fields` };
             }
 
             if ( !Array.isArray(records) ) {
@@ -563,7 +583,12 @@ export class RecipeCockpitRecordUpdate {
 
             }
 
-            snapshotObjects.push({ objectApiName: objectApiName, fieldApiNames: [...fieldApiNames as string[]], records: snapshotRecords });
+            snapshotObjects.push({
+                objectApiName: objectApiName,
+                fieldApiNames: [...fieldApiNames as string[]],
+                records: snapshotRecords,
+                ...( Array.isArray(orgOnlyFieldApiNames) ? { orgOnlyFieldApiNames: [...orgOnlyFieldApiNames as string[]] } : {} )
+            });
 
         }
 
