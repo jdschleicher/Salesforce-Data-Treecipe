@@ -395,7 +395,7 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
             const serviceSource = fs.readFileSync(SERVICE_SOURCE_PATH, 'utf8');
 
             expect(serviceSource).not.toMatch(/modal:\s*true/);
-            expect(serviceSource.match(/this\.confirmInPanel\(/g) ?? []).toHaveLength(20);
+            expect(serviceSource.match(/this\.confirmInPanel\(/g) ?? []).toHaveLength(21);
             expect(serviceSource.match(/this\.confirmInPanelWithCheckbox\(/g) ?? []).toHaveLength(1);
 
         });

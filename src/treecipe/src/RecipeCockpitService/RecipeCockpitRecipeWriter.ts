@@ -2332,14 +2332,37 @@ export class RecipeCockpitRecipeWriter {
     */
     static buildUpdaterValueRecipe(objectApiName: string, recordCount: number, fields: readonly IUpdaterValueRecipeField[]): RecipeUpdaterValueRecipeResult {
 
+        if ( fields.length === 0 && API_NAME_PATTERN.test(objectApiName) && this.isRecordCount(recordCount) ) {
+            return { isBuilt: false, refusal: `No field of ${objectApiName} has a value to generate.` };
+        }
+
+        return this.buildSingleObjectRecipe(objectApiName, recordCount, fields, 'Updater', `Treecipe Adapter values for ${recordCount} ${objectApiName} ${recordCount === 1 ? 'record' : 'records'}`);
+
+    }
+
+    /*
+        The block the Treecipe Adapter generates a NEW child object's records from (#447): one
+        top-level object, its own nickname, "count:" set to the count per parent times the parents
+        loaded, and only the fields ticked -- none is allowed, since the lookup to the parent is set
+        per record after generation. Built and read back by the same rule as the Updater's values.
+    */
+    static buildAdapterChildRecipe(objectApiName: string, recordCount: number, fields: readonly IUpdaterValueRecipeField[]): RecipeUpdaterValueRecipeResult {
+
+        return this.buildSingleObjectRecipe(objectApiName, recordCount, fields, 'Adapter', `Treecipe Adapter block for ${recordCount} new ${objectApiName} ${recordCount === 1 ? 'record' : 'records'}`);
+
+    }
+
+    private static buildSingleObjectRecipe(objectApiName: string,
+                                           recordCount: number,
+                                           fields: readonly IUpdaterValueRecipeField[],
+                                           nicknameInfix: string,
+                                           heading: string): RecipeUpdaterValueRecipeResult {
+
         if ( !API_NAME_PATTERN.test(objectApiName) ) {
             return { isBuilt: false, refusal: `${objectApiName} is not an object api name.` };
         }
         if ( !this.isRecordCount(recordCount) ) {
             return { isBuilt: false, refusal: `The count for ${objectApiName} must be a whole number of one or more.` };
-        }
-        if ( fields.length === 0 ) {
-            return { isBuilt: false, refusal: `No field of ${objectApiName} has a value to generate.` };
         }
 
         const layout = this.getObjectLayout(0);
@@ -2361,13 +2384,13 @@ export class RecipeCockpitRecipeWriter {
         }
 
         const recipeText = [
-            `# Recipe Cockpit -- Treecipe Adapter values for ${recordCount} ${objectApiName} ${recordCount === 1 ? 'record' : 'records'}`,
+            `# Recipe Cockpit -- ${heading}`,
             '',
             `- object: ${objectApiName}`,
-            `${layout.propertyIndent}nickname: ${objectApiName}_Updater_NickName`,
+            `${layout.propertyIndent}nickname: ${objectApiName}_${nicknameInfix}_NickName`,
             `${layout.propertyIndent}count: ${recordCount}`,
-            `${layout.propertyIndent}fields:`,
-            ...fieldLines,
+            // AN EMPTY "fields:" LOADS AS null, SO A BLOCK WITH NO FIELD HAS NO SUCH LINE
+            ...( fieldLines.length > 0 ? [`${layout.propertyIndent}fields:`, ...fieldLines] : [] ),
             ''
         ].join('\n');
 

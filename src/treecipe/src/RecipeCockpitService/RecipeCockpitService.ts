@@ -98,7 +98,7 @@ import {
 } from './RecipeCockpitQuery';
 import { IUpdateRecordResult, IUpdateRecordValues, IUpdateRequestRecord, IUpdateSnapshotObject, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RECIPE_COCKPIT_UPDATE_REQUEST_RECORD_LIMIT, RecipeCockpitRecordUpdate } from './RecipeCockpitRecordUpdate';
 import { IRecipeCockpitUpdaterObjectRequest, IRecipeCockpitUpdaterTreeObject, RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH, RecipeCockpitTreeUpdaterQuery } from './RecipeCockpitTreeUpdaterQuery';
-import { IOrgChangeHints, IOrgFieldFileCopy, IOrgNewFieldDetail, IOrgObjectChanges, ORG_CHANGE_RETRIEVE_OPERATION_NAME, RecipeCockpitOrgChangeDetection } from './RecipeCockpitOrgChangeDetection';
+import { IOrgChangeHints, IOrgFieldFileCopy, IOrgNewFieldDetail, IOrgObjectChanges, IOrgStagedFieldDetail, ORG_CHANGE_RETRIEVE_OPERATION_NAME, RecipeCockpitOrgChangeDetection } from './RecipeCockpitOrgChangeDetection';
 import { RecipeService } from '../RecipeService/RecipeService';
 import { XMLFieldDetail } from '../XMLProcessingService/XMLFieldDetail';
 import { ISOQLTreeQuery, SOQL_QUERY_KIND_LABELS, SOQLQueryKind, SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
@@ -1190,6 +1190,10 @@ export interface IRecipeCockpitPanelMessage {
     objects?: unknown;
     // THE TREECIPE ADAPTER'S LOAD (#444): THE PARENT STEP 1 CHOSE, WHOSE OBJECTS ARE THE ONLY ONES IT READS
     parentObjectApiName?: unknown;
+    // "Add to data set" (#447): THE NEW CHILD OBJECT, ITS LOOKUP TO THE PARENT, AND HOW MANY PER PARENT RECORD
+    childObjectApiName?: unknown;
+    lookupFieldApiName?: unknown;
+    countPerParent?: unknown;
     fields?: unknown;
     // "updaterValuesRendered" (#418): THE GENERATED VALUES THE PANEL DREW
     valuesSequence?: unknown;
@@ -1681,7 +1685,8 @@ export interface IRecipeCockpitUpdaterLoadStateMessage {
     isRunning: boolean;
     treeKey: string;
     // A VALUE GENERATION (#417), AN UPDATE (#418), A RESTORE (#419) AND A METADATA RETRIEVE (#445) SHARE THE LOAD'S ONE RUN PER WINDOW; ABSENT IS A LOAD
-    runKind?: 'generate' | 'update' | 'restore' | 'retrieve' | 'apply';
+    // A NEW CHILD OBJECT'S RETRIEVE AND ITS GENERATION (#447) SHARE IT TOO
+    runKind?: 'generate' | 'update' | 'restore' | 'retrieve' | 'apply' | 'prepareChild' | 'generateChild';
     // AN UPDATE OR A RESTORE THAT SENT A REQUEST ENDS WITH THIS: THE LOADED RECORDS AND THEIR VALUES ARE SPENT, SO THE PANEL LETS THEM GO
     isRecordsSpent?: true;
 }
@@ -1741,6 +1746,55 @@ export interface IRecipeCockpitAdapterOrgOnlyField {
     picklistValues: string[];
     lockReason?: string;
     expression?: string;
+}
+
+/*
+    A child object only the org holds, under the loaded parents (#447): every field its staged
+    files hold, as the Treecipe Adapter offers it -- the expression the recipe's backend writes, why
+    it is locked, or a fixed value only -- and whether the file says it is required. The lookup to
+    the parent is locked: each record's is a loaded parent's Id. Names and one-line text only.
+*/
+export interface IRecipeCockpitAdapterChildFieldViewModel {
+    fieldApiName: string;
+    fieldLabel: string;
+    fieldTypeWithSize: string;
+    isRequired: boolean;
+    lockReason?: string;
+    expression?: string;
+    note?: string;
+}
+
+export interface IRecipeCockpitAdapterChildBlockMessage {
+    command: 'adapterChildBlock';
+    renderSequence: number;
+    treeKey: string;
+    parentObjectApiName: string;
+    childObjectApiName: string;
+    lookupFieldApiName: string;
+    parentRecordCount: number;
+    orgLabel: string;
+    fakerService: 'faker-js' | 'snowfakery';
+    fields: IRecipeCockpitAdapterChildFieldViewModel[];
+    unreadableFieldCount: number;
+}
+
+// THE NEW CHILD RECORDS GENERATED (#447), AS THE PANEL IS SENT THEM: THE COUNT AND A PREVIEW AS TEXT, THE LOOKUP TO THE PARENT FIRST
+export interface IRecipeCockpitAdapterChildPreviewMessage {
+    command: 'adapterChildPreview';
+    renderSequence: number;
+    treeKey: string;
+    childObjectApiName: string;
+    countPerParent: number;
+    recordCount: number;
+    columns: string[];
+    rows: string[][];
+    hiddenColumnCount: number;
+}
+
+// ONE FIELD OF A NEW CHILD'S BLOCK AS THE PANEL POSTED IT: value ABSENT IS THE EXPRESSION THE RECIPE'S BACKEND WRITES FOR ITS TYPE
+export interface IRecipeCockpitAdapterChildFieldRequest {
+    fieldApiName: string;
+    value?: string;
 }
 
 // WHAT ONE CHOSEN FIELD'S NEW VALUES COME FROM (#417), AS THE PANEL POSTED IT: value ABSENT IS THE RECIPE'S OWN EXPRESSION
@@ -2143,6 +2197,18 @@ export const RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE = 'Only in the org: this
 // A CHILD OBJECT ONLY THE ORG HOLDS IS DRAWN, NOT ADDED: ADDING IT IS #447
 export const RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_LABEL = 'new child object in org';
 export const RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_NOTE = 'Only in the org: this treecipe has no block for it yet.';
+export const RECIPE_COCKPIT_ADAPTER_ADD_CHILD_LABEL = 'Add to data set';
+export const RECIPE_COCKPIT_ADAPTER_CHILD_GENERATE_LABEL = 'Generate preview';
+export const RECIPE_COCKPIT_ADAPTER_CHILD_GENERATE_CONFIRM_LABEL = 'Generate';
+export const RECIPE_COCKPIT_ADAPTER_CHILD_COUNT_LABEL = 'per loaded record of';
+export const RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_LOOKUP_REASON_PREFIX = 'set per record to a loaded ';
+export const RECIPE_COCKPIT_ADAPTER_CHILD_OTHER_LOOKUP_REASON = 'a lookup to another object: left out of the block';
+export const RECIPE_COCKPIT_ADAPTER_CHILD_NOT_LOADED_REASON = 'Load records first: new child records are added under the parent records the last load read.';
+export const RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON = 'The last load read no records of the parent object, so there is nothing to add under.';
+export const RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX = 'The parent object is excluded on the Treecipe tab: ';
+export const RECIPE_COCKPIT_ADAPTER_CHILD_PREVIEW_NOTE = 'A preview only: nothing is written to the org or the recipe file.';
+// HOW MANY NEW CHILD RECORDS ONE BLOCK GENERATES AT MOST: AS MANY AS A LOAD READS
+export const RECIPE_COCKPIT_ADAPTER_CHILD_RECORD_LIMIT = 50000;
 export const RECIPE_COCKPIT_ADAPTER_HINTS_HEADING = 'Recent changes in the org';
 export const RECIPE_COCKPIT_ADAPTER_SOURCE_TRACKING_HEADING = 'Source tracking';
 export const RECIPE_COCKPIT_ADAPTER_AUDIT_TRAIL_HEADING = 'Setup audit trail, last 180 days';
@@ -2250,6 +2316,8 @@ export type RecipeCockpitHostMessage = IRecipeCockpitLoadPhaseMessage
                                         | IRecipeCockpitUpdaterLoadStateMessage
                                         | IRecipeCockpitUpdaterRecordsMessage
                                         | IRecipeCockpitAdapterMetadataChangesMessage
+                                        | IRecipeCockpitAdapterChildBlockMessage
+                                        | IRecipeCockpitAdapterChildPreviewMessage
                                         | IRecipeCockpitUpdaterValuesMessage
                                         | IRecipeCockpitUpdaterSnapshotsMessage
                                         | IRecipeCockpitRecipeDataMessage
@@ -2503,6 +2571,8 @@ export type RecipeCockpitPanelAction =
     | { kind: 'refuseUpdaterLoad'; refusalText?: string; hostMessage: IRecipeCockpitUpdaterLoadStateMessage }
     | { kind: 'retrieveAdapterMetadata'; treeKey: string; renderSequence: number; objectApiNames: string[]; isOrgPrompted: boolean }
     | { kind: 'applyAdapterRetrievedFiles'; treeKey: string; renderSequence: number }
+    | { kind: 'prepareAdapterChild'; treeKey: string; renderSequence: number; parentObjectApiName: string; childObjectApiName: string; lookupFieldApiName: string }
+    | { kind: 'generateAdapterChild'; treeKey: string; renderSequence: number; childObjectApiName: string; countPerParent: number; fieldRequests: IRecipeCockpitAdapterChildFieldRequest[] }
     // THE UPDATER'S VALUES (#417): THE FIELDS, AND ANY VALUE TYPED FOR ONE, CHECKED AGAIN AND CONFIRMED BY THE EXECUTOR
     | { kind: 'activateUpdaterValues' }
     | { kind: 'updateUpdaterRecords'; treeKey: string }
@@ -2617,6 +2687,9 @@ export interface IRecipeCockpitPanelState {
     adapterRetrieveStagingFolderPath?: string;
     // THE FIELDS ONLY THE ORG HOLDS THAT IT OFFERED (#446), BY "<object>\n<field>": WHAT LOAD, GENERATE AND UPDATE ACCEPT BEYOND THE RECIPE'S FIELDS (HOST-ONLY)
     adapterOrgOnlyFields?: Map<string, IRecipeCockpitAdapterOrgOnlyField>;
+    // THE NEW CHILD OBJECT BEING ADDED (#447) AND ITS LAST PREVIEW, REPLAYED WHILE THEIR MODEL IS ON SCREEN; THE FIELD MODELS AND RECORDS ARE HELD ON THE CLASS
+    adapterChildBlockMessage?: IRecipeCockpitAdapterChildBlockMessage;
+    adapterChildPreviewMessage?: IRecipeCockpitAdapterChildPreviewMessage;
     // THE LAST VALUE GENERATION'S PREVIEW (#417), REPLAYED WHILE ITS MODEL IS ON SCREEN; SET ONLY THROUGH setUpdaterValuesMessage
     updaterValuesMessage?: IRecipeCockpitUpdaterValuesMessage;
     /*
@@ -6139,6 +6212,8 @@ export class RecipeCockpitService {
         this.clearHeldTreeQueryResult();
         // SO ARE AN UPDATER LOAD'S RECORDS (#416), AND WHAT A METADATA RETRIEVE FOUND (#445)
         panelState.updaterRecordsMessage = undefined;
+        panelState.adapterChildBlockMessage = undefined;
+        panelState.adapterChildPreviewMessage = undefined;
         panelState.adapterMetadataChangesMessage = undefined;
         panelState.adapterRetrieveStagingFolderPath = undefined;
         panelState.adapterOrgOnlyFields = undefined;
@@ -6685,6 +6760,16 @@ export class RecipeCockpitService {
             case 'applyAdapterRetrievedFiles':
 
                 await this.applyAdapterRetrievedFilesFromPanel(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'prepareAdapterChild':
+
+                await this.prepareAdapterChildFromPanel(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'generateAdapterChild':
+
+                await this.generateAdapterChildFromPanel(cockpitPanel, panelState, panelAction);
                 return;
 
             case 'generateUpdaterValues':
@@ -8901,9 +8986,32 @@ export class RecipeCockpitService {
         orgOnlyFieldApiNamesByObjectApiName: Map<string, string[]>;
     } | undefined;
 
+    /*
+        The new child object being added under the held records (#447): its staged fields as offered,
+        the parent Ids it is added under in the order they were read, and the recipe's backend. Its
+        generated records, once a preview was made. Both belong to the records they were made for.
+    */
+    private static heldAdapterChild: {
+        // THE HELD RECORDS' resultKey IT WAS PREPARED FOR
+        resultKey: string;
+        treeKey: string;
+        parentObjectApiName: string;
+        childObjectApiName: string;
+        lookupFieldApiName: string;
+        parentRecordIds: string[];
+        fakerService: 'faker-js' | 'snowfakery';
+        fields: Map<string, IRecipeCockpitAdapterOrgOnlyField>;
+        generatedRecords?: { countPerParent: number; records: Record<string, unknown>[] };
+    } | undefined;
+
     static clearHeldUpdaterRecords() {
         this.heldUpdaterRecords = undefined;
         this.heldUpdaterValues = undefined;
+        this.heldAdapterChild = undefined;
+    }
+
+    static readHeldAdapterChildRecords(): Record<string, unknown>[] | undefined {
+        return this.heldAdapterChild?.generatedRecords?.records;
     }
 
     static clearHeldUpdaterValues() {
@@ -9036,44 +9144,14 @@ export class RecipeCockpitService {
                         return fieldChange;
                     }
 
-                    const fieldSize = {
-                        ...( newField.length !== undefined ? { length: newField.length } : {} ),
-                        ...( newField.precision !== undefined ? { precision: newField.precision } : {} ),
-                        ...( newField.scale !== undefined ? { scale: newField.scale } : {} )
-                    };
-                    const fieldViewModel: IRecipeCockpitFieldViewModel = {
-                        fieldApiName: fieldChange.fieldApiName,
-                        fieldLabel: newField.fieldLabel,
-                        fieldType: newField.fieldType,
-                        fieldTypeWithSize: this.formatFieldTypeWithSize(newField.fieldType, fieldSize),
-                        recipeValue: '',
-                        controllingField: newField.controllingField,
-                        isOnlyInRecipeFile: false,
-                        // SO A TYPED VALUE IS HELD TO THE VALUES ITS STAGED FILE LISTS, AS A RECIPE PICKLIST'S IS
-                        ...( newField.picklistValues.length > 0 ? { isPicklist: true } : {} )
-                    };
-                    const lockReason = newField.isFormula
-                        ? RECIPE_COCKPIT_UPDATER_FORMULA_REASON
-                        : newField.referenceTo !== ''
-                            ? RECIPE_COCKPIT_UPDATER_LOOKUP_REASON
-                            : this.findUpdaterFieldLockReason(tree, objectChange.objectApiName, fieldViewModel)
-                                // GENERATE VALUES NEEDS THE CARD'S RECIPE, SO A CARD WITHOUT ONE OFFERS NOTHING TO FILL
-                                ?? ( fakerService === undefined ? RECIPE_COCKPIT_ADAPTER_ORG_ONLY_NO_RECIPE_REASON : undefined );
-
-                    let expression: string | undefined;
-                    if ( lockReason === undefined && recipeService ) {
-                        const xmlFieldDetail = Object.assign(new XMLFieldDetail(), {
-                            apiName: fieldChange.fieldApiName,
-                            fieldType: newField.fieldType,
-                            fieldLabel: newField.fieldLabel,
-                            xmlMarkup: '',
-                            ...fieldSize,
-                            ...( newField.picklistValues.length > 0 ? { picklistValues: newField.picklistValues.map(picklistValue => ({ picklistOptionApiName: picklistValue, label: picklistValue })) } : {} ),
-                            ...( newField.valueSetName !== '' ? { globalValueSetName: newField.valueSetName } : {} )
-                        });
-                        expression = recipeService.getOrgOnlyFieldExpression(xmlFieldDetail);
-                    }
-                    fieldViewModel.recipeValue = expression ?? '';
+                    const { fieldViewModel, lockReason, expression } = this.offerStagedField(
+                        newField,
+                        fieldChange.fieldApiName,
+                        candidateViewModel => this.findUpdaterFieldLockReason(tree, objectChange.objectApiName, candidateViewModel)
+                            // GENERATE VALUES NEEDS THE CARD'S RECIPE, SO A CARD WITHOUT ONE OFFERS NOTHING TO FILL
+                            ?? ( fakerService === undefined ? RECIPE_COCKPIT_ADAPTER_ORG_ONLY_NO_RECIPE_REASON : undefined ),
+                        recipeService
+                    );
 
                     orgOnlyFields.set(`${objectChange.objectApiName}\n${fieldChange.fieldApiName}`, {
                         objectApiName: objectChange.objectApiName,
@@ -9099,6 +9177,62 @@ export class RecipeCockpitService {
         });
 
         return { objects: objects, orgOnlyFields: orgOnlyFields };
+
+    }
+
+    /*
+        One staged field as the Adapter offers it (#446, #447): a field model drawn from its file, so
+        the Updater's own rules read it as they read a recipe field; locked by a formula, a lookup the
+        file names, or the lock given; else the expression the recipe's backend writes for its type,
+        or none (a fixed value only).
+    */
+    private static offerStagedField(newField: IOrgNewFieldDetail,
+                                    fieldApiName: string,
+                                    findLockReason: (fieldViewModel: IRecipeCockpitFieldViewModel) => string | undefined,
+                                    recipeService: RecipeService | undefined): { fieldViewModel: IRecipeCockpitFieldViewModel; lockReason?: string; expression?: string } {
+
+        const fieldSize = {
+            ...( newField.length !== undefined ? { length: newField.length } : {} ),
+            ...( newField.precision !== undefined ? { precision: newField.precision } : {} ),
+            ...( newField.scale !== undefined ? { scale: newField.scale } : {} )
+        };
+        const fieldViewModel: IRecipeCockpitFieldViewModel = {
+            fieldApiName: fieldApiName,
+            fieldLabel: newField.fieldLabel,
+            fieldType: newField.fieldType,
+            fieldTypeWithSize: this.formatFieldTypeWithSize(newField.fieldType, fieldSize),
+            recipeValue: '',
+            controllingField: newField.controllingField,
+            isOnlyInRecipeFile: false,
+            // SO A TYPED VALUE IS HELD TO THE VALUES ITS STAGED FILE LISTS, AS A RECIPE PICKLIST'S IS
+            ...( newField.picklistValues.length > 0 ? { isPicklist: true } : {} )
+        };
+        const lockReason = newField.isFormula
+            ? RECIPE_COCKPIT_UPDATER_FORMULA_REASON
+            : newField.referenceTo !== ''
+                ? RECIPE_COCKPIT_UPDATER_LOOKUP_REASON
+                : findLockReason(fieldViewModel);
+
+        let expression: string | undefined;
+        if ( lockReason === undefined && recipeService ) {
+            const xmlFieldDetail = Object.assign(new XMLFieldDetail(), {
+                apiName: fieldApiName,
+                fieldType: newField.fieldType,
+                fieldLabel: newField.fieldLabel,
+                xmlMarkup: '',
+                ...fieldSize,
+                ...( newField.picklistValues.length > 0 ? { picklistValues: newField.picklistValues.map(picklistValue => ({ picklistOptionApiName: picklistValue, label: picklistValue })) } : {} ),
+                ...( newField.valueSetName !== '' ? { globalValueSetName: newField.valueSetName } : {} )
+            });
+            expression = recipeService.getOrgOnlyFieldExpression(xmlFieldDetail);
+        }
+        fieldViewModel.recipeValue = expression ?? '';
+
+        return {
+            fieldViewModel: fieldViewModel,
+            ...( lockReason !== undefined ? { lockReason: lockReason } : {} ),
+            ...( expression !== undefined ? { expression: expression } : {} )
+        };
 
     }
 
@@ -9136,6 +9270,8 @@ export class RecipeCockpitService {
         // A LOAD REPLACES THE LAST ONE FROM ITS START, ON THE HOST AND (ON THE RUNNING STATE) IN THE PANEL, SO THE SCREEN NEVER SHOWS RECORDS THE HOST LET GO
         this.clearHeldUpdaterRecords();
         panelState.updaterRecordsMessage = undefined;
+        panelState.adapterChildBlockMessage = undefined;
+        panelState.adapterChildPreviewMessage = undefined;
         this.setUpdaterValuesMessage(panelState, undefined);
         this.setUpdaterLoadState({ command: 'updaterLoadState', isRunning: true, treeKey: loadAction.treeKey });
 
@@ -9584,6 +9720,467 @@ export class RecipeCockpitService {
         this.postToPanel(cockpitPanel, changesMessage);
 
         this.showAdapterRetrieveNotification(objectChanges, treeTitle, orgLabel, retrieveOutputFilePath, workspaceRoot);
+
+    }
+
+    // AN INSERT OR A RUN THAT IS ABOUT TO CHANGE THE SELECTION HOLDS THE ORG THE ADAPTER WOULD READ FROM
+    private static isUpdaterSelectionBusy(panelState: IRecipeCockpitPanelState): boolean {
+
+        return Boolean(panelState.insertStateMessage
+                        || panelState.isQueryOrgPromptOpen
+                        || panelState.scratchOrgStateMessage?.isRunning
+                        || panelState.permissionSetAssignStateMessage?.isRunning
+                        || panelState.metadataDeployStateMessage?.isRunning);
+
+    }
+
+    /*
+        "Add to data set" (#447), first half: the new child object's metadata retrieved on its own
+        from the sandbox the parent records came from, into a NEW staging folder under
+        treecipe/OrgOperations -- never a package directory -- and every field its files hold offered
+        as the Adapter offers a field only the org holds (#446): the expression the recipe's own
+        backend writes for its type, a fixed value only, or why it is locked. The lookup to the
+        parent is locked, since each record's is a loaded parent's Id. Shares the load's lock.
+    */
+    private static async prepareAdapterChildFromPanel(cockpitPanel: vscode.WebviewPanel,
+                                                      panelState: IRecipeCockpitPanelState,
+                                                      prepareAction: Extract<RecipeCockpitPanelAction, { kind: 'prepareAdapterChild' }>) {
+
+        const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: prepareAction.treeKey, runKind: 'prepareChild' };
+
+        if ( this.isUpdaterLoadInFlight ) {
+            this.postToPanel(cockpitPanel, this.updaterLoadRunStateMessage ?? notRunning);
+            return;
+        }
+
+        this.isUpdaterLoadInFlight = true;
+        this.heldAdapterChild = undefined;
+        panelState.adapterChildBlockMessage = undefined;
+        panelState.adapterChildPreviewMessage = undefined;
+        this.setUpdaterLoadState({ command: 'updaterLoadState', isRunning: true, treeKey: prepareAction.treeKey, runKind: 'prepareChild' });
+
+        try {
+            await this.performAdapterChildPrepare(cockpitPanel, panelState, prepareAction);
+        } finally {
+            this.isUpdaterLoadInFlight = false;
+            this.setUpdaterLoadState(notRunning);
+        }
+
+    }
+
+    private static async performAdapterChildPrepare(cockpitPanel: vscode.WebviewPanel,
+                                                    panelState: IRecipeCockpitPanelState,
+                                                    prepareAction: Extract<RecipeCockpitPanelAction, { kind: 'prepareAdapterChild' }>) {
+
+        const { treeKey, renderSequence, parentObjectApiName, childObjectApiName, lookupFieldApiName } = prepareAction;
+        const workspaceRoot = panelState.workspaceRoot;
+        const clickedRecipeDataMessage = panelState.recipeDataMessage;
+        const heldRecords = this.heldUpdaterRecords;
+        const orgDetail = panelState.dataOrgSelection?.orgDetail;
+        const refuse = (reason: string) => VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${childObjectApiName} was not added: ${reason}`));
+
+        // THE ROUTER CHECKED ALL OF THIS; A SCREEN THAT CHANGED SINCE IS ANSWERED WITH NOTHING
+        const tree = clickedRecipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+
+        if ( !clickedRecipeDataMessage || clickedRecipeDataMessage.renderSequence !== renderSequence || !tree || !heldRecords || orgDetail?.username !== heldRecords.orgUsername ) {
+            return;
+        }
+
+        const isClickStillCurrent = () => this.recipeCockpitPanel === cockpitPanel
+                                            && this.recipeCockpitPanelState === panelState
+                                            && panelState.recipeDataMessage === clickedRecipeDataMessage
+                                            && this.heldUpdaterRecords === heldRecords
+                                            && panelState.dataOrgSelection?.orgDetail.username === heldRecords.orgUsername;
+
+        const fakerService = this.readTreeFakerService(panelState, treeKey);
+        if ( !fakerService ) {
+            refuse('this card has no single recipe file to read its faker backend from.');
+            return;
+        }
+
+        // THE RETRIEVE RUNS IN PROJECT MODE, SO AN UNDEPLOYABLE PROJECT STARTS NO PROCESS
+        try {
+            SfdxProjectService.resolveDeployablePackageDirectoryPaths(workspaceRoot);
+        } catch (projectError) {
+            refuse(this.describeThrown(projectError));
+            return;
+        }
+
+        const orgUsername = heldRecords.orgUsername;
+        const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgUsername}` : orgUsername;
+        let retrieveArguments: string[];
+        let stagingFolderPath: string | undefined;
+        try {
+            const packageXml = RecipeCockpitOrgChangeDetection.buildObjectRetrievePackageXml([childObjectApiName], this.readSourceApiVersion(workspaceRoot));
+            const plannedStagingFolderPath = RecipeCockpitOrgChangeDetection.buildStagingFolderPath(workspaceRoot, orgUsername, new Date());
+            stagingFolderPath = plannedStagingFolderPath ? RecipeCockpitOrgChangeDetection.makeStagingFolder(workspaceRoot, plannedStagingFolderPath) : undefined;
+            const writtenPackageXmlFilePath = stagingFolderPath
+                ? RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, RecipeCockpitOrgChangeDetection.buildPackageXmlFilePath(stagingFolderPath), packageXml)
+                : undefined;
+            if ( !stagingFolderPath || !writtenPackageXmlFilePath ) {
+                refuse(`the staging folder could not be made under treecipe/${ORG_OPERATIONS_FOLDER_NAME} in this workspace.`);
+                return;
+            }
+            retrieveArguments = RecipeCockpitOrgChangeDetection.buildRetrieveArguments(
+                RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, writtenPackageXmlFilePath),
+                RecipeCockpitOrgChangeDetection.toOutputDirectoryArgument(workspaceRoot, stagingFolderPath),
+                orgUsername
+            );
+        } catch (argumentError) {
+            refuse(this.describeThrown(argumentError));
+            return;
+        }
+
+        const retrieveRun = await this.runCancellableCli(
+            RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: retrieving the metadata of ${childObjectApiName} from ${orgLabel}`),
+            retrieveArguments,
+            METADATA_RETRIEVE_TIMEOUT_MILLISECONDS,
+            workspaceRoot,
+            SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES
+        );
+
+        if ( retrieveRun.isCancelled ) {
+            refuse('its retrieve was cancelled. Nothing in the project changed.');
+            return;
+        }
+
+        const retrievePayload = ScratchOrgService.readCliJsonPayload(retrieveRun.invocation);
+        const retrieveOutputFilePath = retrieveRun.invocation.spawnError || retrieveRun.invocation.isOutputTooLarge
+            ? undefined
+            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgUsername, ORG_CHANGE_RETRIEVE_OPERATION_NAME, retrieveRun.invocation, new Date(), retrievePayload);
+        const retrieveRead = RecipeCockpitOrgChangeDetection.readRetrieveSucceeded(retrieveRun.invocation, retrievePayload);
+
+        if ( 'failureMessage' in retrieveRead ) {
+            this.showMetadataRetrieveNotification('warning', `${childObjectApiName} was not added: its metadata could not be retrieved from ${orgLabel}: ${retrieveRead.failureMessage}`, retrieveOutputFilePath, workspaceRoot, false);
+            return;
+        }
+
+        const stagedObject = await RecipeCockpitOrgChangeDetection.readStagedObjectFields(workspaceRoot, stagingFolderPath, childObjectApiName);
+
+        if ( !stagedObject.isRetrieved ) {
+            refuse(`${orgLabel} returned no metadata for it.`);
+            return;
+        }
+
+        if ( !isClickStillCurrent() ) {
+            refuse('the run, the records or the org on screen changed while its metadata was retrieved. Add it again.');
+            return;
+        }
+
+        const offer = this.offerAdapterChildFields(stagedObject.fields, parentObjectApiName, childObjectApiName, lookupFieldApiName, tree, fakerService);
+        // A RECORD THE ORG ANSWERED WITH NO Id IS NO PARENT, NEVER THE TEXT "undefined"
+        const parentRecordIds = ( heldRecords.recordsByObjectApiName.get(parentObjectApiName) ?? [] )
+            .map(record => this.readRecordFieldValue(record, 'Id'))
+            .filter((recordId): recordId is string => typeof recordId === 'string' && recordId !== '');
+
+        if ( parentRecordIds.length === 0 ) {
+            refuse(RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON);
+            return;
+        }
+
+        this.heldAdapterChild = {
+            resultKey: heldRecords.resultKey,
+            treeKey: treeKey,
+            parentObjectApiName: parentObjectApiName,
+            childObjectApiName: childObjectApiName,
+            lookupFieldApiName: lookupFieldApiName,
+            parentRecordIds: parentRecordIds,
+            fakerService: fakerService,
+            fields: offer.offeredFields
+        };
+
+        const blockMessage: IRecipeCockpitAdapterChildBlockMessage = {
+            command: 'adapterChildBlock',
+            renderSequence: renderSequence,
+            treeKey: treeKey,
+            parentObjectApiName: parentObjectApiName,
+            childObjectApiName: childObjectApiName,
+            lookupFieldApiName: lookupFieldApiName,
+            parentRecordCount: parentRecordIds.length,
+            orgLabel: orgLabel,
+            fakerService: fakerService,
+            fields: offer.fieldViewModels,
+            unreadableFieldCount: stagedObject.unreadableFieldCount
+        };
+        panelState.adapterChildBlockMessage = blockMessage;
+        this.postToPanel(cockpitPanel, blockMessage);
+
+        const unreadableText = stagedObject.unreadableFieldCount > 0
+            ? ` ${stagedObject.unreadableFieldCount} field ${stagedObject.unreadableFieldCount === 1 ? 'file' : 'files'} could not be read and ${stagedObject.unreadableFieldCount === 1 ? 'is' : 'are'} left out.`
+            : '';
+        VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(
+            `Retrieved ${childObjectApiName} from ${orgLabel}: ${offer.fieldViewModels.length} ${offer.fieldViewModels.length === 1 ? 'field' : 'fields'}.${unreadableText} Set the count and the fields on the Treecipe Adapter tab, then generate a preview.`
+        ));
+
+    }
+
+    /*
+        Each staged field of a new child object (#447) as the Adapter offers it: the lookup to the
+        parent locked (each record's is a loaded parent's Id), any other lookup locked, and every
+        other field by the rule a field only the org holds is offered by (#446), with the recipe's
+        own backend. Name first, then the order the files were read in.
+    */
+    static offerAdapterChildFields(stagedFields: readonly IOrgStagedFieldDetail[],
+                                   parentObjectApiName: string,
+                                   childObjectApiName: string,
+                                   lookupFieldApiName: string,
+                                   tree: IRecipeCockpitTreeViewModel,
+                                   fakerService: 'faker-js' | 'snowfakery'): { fieldViewModels: IRecipeCockpitAdapterChildFieldViewModel[]; offeredFields: Map<string, IRecipeCockpitAdapterOrgOnlyField> } {
+
+        const recipeService = new RecipeService(fakerService === 'faker-js' ? new FakerJSRecipeFakerService() : new SnowfakeryRecipeFakerService());
+        const fieldViewModels: IRecipeCockpitAdapterChildFieldViewModel[] = [];
+        const offeredFields = new Map<string, IRecipeCockpitAdapterOrgOnlyField>();
+
+        stagedFields.forEach(stagedField => {
+
+            const isParentLookup = stagedField.fieldApiName.toLowerCase() === lookupFieldApiName.toLowerCase();
+            const fixedLockReason = isParentLookup
+                ? `${RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_LOOKUP_REASON_PREFIX}${parentObjectApiName} Id`
+                : stagedField.referenceTo !== '' && !stagedField.isFormula ? RECIPE_COCKPIT_ADAPTER_CHILD_OTHER_LOOKUP_REASON : undefined;
+            const offered = this.offerStagedField(
+                fixedLockReason === undefined ? stagedField : { ...stagedField, referenceTo: '', isFormula: false },
+                stagedField.fieldApiName,
+                fieldViewModel => fixedLockReason ?? this.findUpdaterFieldLockReason(tree, childObjectApiName, fieldViewModel),
+                fixedLockReason === undefined ? recipeService : undefined
+            );
+
+            offeredFields.set(stagedField.fieldApiName, {
+                objectApiName: childObjectApiName,
+                fieldViewModel: offered.fieldViewModel,
+                picklistValues: [...stagedField.picklistValues],
+                ...( offered.lockReason !== undefined ? { lockReason: offered.lockReason } : {} ),
+                ...( offered.expression !== undefined ? { expression: offered.expression } : {} )
+            });
+            fieldViewModels.push({
+                fieldApiName: stagedField.fieldApiName,
+                fieldLabel: stagedField.fieldLabel,
+                fieldTypeWithSize: offered.fieldViewModel.fieldTypeWithSize,
+                isRequired: stagedField.isRequired,
+                ...( offered.lockReason !== undefined ? { lockReason: offered.lockReason } : {} ),
+                ...( offered.expression !== undefined ? { expression: offered.expression } : {} ),
+                ...( offered.lockReason === undefined && offered.expression === undefined ? { note: RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE } : {} )
+            });
+
+        });
+
+        return { fieldViewModels: fieldViewModels, offeredFields: offeredFields };
+
+    }
+
+    /*
+        "Generate preview" (#447): the new child's records, count per parent times the parents
+        loaded, generated by the recipe's OWN backend from a one-object block in a temporary folder
+        outside the workspace -- the recipe file is never read for it or written -- with each ticked
+        field's value: the backend's expression, an edited one, or a fixed value for every record.
+        Every value is shown in the panel's confirmation first. A generated count that differs
+        refuses. Each record's lookup is set to a loaded parent's Id, countPerParent in a row. The
+        records stay on the host; a preview is posted. Nothing is written to the org.
+    */
+    private static async generateAdapterChildFromPanel(cockpitPanel: vscode.WebviewPanel,
+                                                       panelState: IRecipeCockpitPanelState,
+                                                       generateAction: Extract<RecipeCockpitPanelAction, { kind: 'generateAdapterChild' }>) {
+
+        const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: generateAction.treeKey, runKind: 'generateChild' };
+
+        if ( this.isUpdaterLoadInFlight ) {
+            this.postToPanel(cockpitPanel, this.updaterLoadRunStateMessage ?? notRunning);
+            return;
+        }
+
+        this.isUpdaterLoadInFlight = true;
+        if ( this.heldAdapterChild ) {
+            this.heldAdapterChild.generatedRecords = undefined;
+        }
+        panelState.adapterChildPreviewMessage = undefined;
+        this.setUpdaterLoadState({ command: 'updaterLoadState', isRunning: true, treeKey: generateAction.treeKey, runKind: 'generateChild' });
+
+        try {
+            await this.performAdapterChildGenerate(cockpitPanel, panelState, generateAction);
+        } finally {
+            this.isUpdaterLoadInFlight = false;
+            this.setUpdaterLoadState(notRunning);
+        }
+
+    }
+
+    private static async performAdapterChildGenerate(cockpitPanel: vscode.WebviewPanel,
+                                                     panelState: IRecipeCockpitPanelState,
+                                                     generateAction: Extract<RecipeCockpitPanelAction, { kind: 'generateAdapterChild' }>) {
+
+        const { treeKey, renderSequence, childObjectApiName, countPerParent, fieldRequests } = generateAction;
+        const clickedRecipeDataMessage = panelState.recipeDataMessage;
+        const heldChild = this.heldAdapterChild;
+        const heldRecords = this.heldUpdaterRecords;
+        const refuse = (reason: string) => VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`No ${childObjectApiName} records were generated: ${reason}`));
+
+        if ( !clickedRecipeDataMessage
+                || clickedRecipeDataMessage.renderSequence !== renderSequence
+                || !heldChild
+                || !heldRecords
+                || heldChild.resultKey !== heldRecords.resultKey
+                || heldChild.childObjectApiName !== childObjectApiName ) {
+            return;
+        }
+
+        const blockNickname = `${childObjectApiName}_Adapter_NickName`;
+        type PlannedChildFieldSource = 'orgExpression' | 'expression' | 'fixed';
+        interface IPlannedChildField { fieldApiName: string; source: PlannedChildFieldSource; valueText: string; shownValue: string; fixedValue?: unknown }
+        const plannedFields: IPlannedChildField[] = [];
+
+        for ( const fieldRequest of fieldRequests ) {
+
+            const fieldLabel = `${childObjectApiName}.${fieldRequest.fieldApiName}`;
+            const offeredField = heldChild.fields.get(fieldRequest.fieldApiName);
+
+            if ( !offeredField || offeredField.lockReason !== undefined ) {
+                refuse(`${fieldLabel} cannot be filled${offeredField?.lockReason ? `: ${offeredField.lockReason}` : ''}.`);
+                return;
+            }
+
+            if ( fieldRequest.value === undefined ) {
+                if ( offeredField.expression === undefined ) {
+                    refuse(`${fieldLabel}: ${RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE}`);
+                    return;
+                }
+                plannedFields.push({
+                    fieldApiName: fieldRequest.fieldApiName,
+                    source: 'orgExpression',
+                    valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: offeredField.expression, kind: 'expression' }),
+                    shownValue: offeredField.expression
+                });
+                continue;
+            }
+
+            const valueRefusal = this.validateFixedValueInput(fieldRequest.value, offeredField.fieldViewModel, offeredField.picklistValues.length > 0 ? offeredField.picklistValues : undefined);
+            if ( valueRefusal !== undefined ) {
+                refuse(`${fieldLabel}: ${valueRefusal}`);
+                return;
+            }
+
+            const kind = this.resolveFixedValueKind(fieldRequest.value, offeredField.fieldViewModel);
+
+            if ( kind === 'expression' && offeredField.expression === undefined ) {
+                refuse(`${fieldLabel}: ${RECIPE_COCKPIT_ADAPTER_ORG_ONLY_EXPRESSION_REFUSAL}.`);
+                return;
+            }
+
+            // A WHOLE-STRING NICKNAME IS A REFERENCE TO faker-js AND THE INSERT'S Id SWAP, NEVER TEXT
+            if ( kind !== 'expression' && fieldRequest.value === blockNickname ) {
+                refuse(`${fieldLabel}: "${fieldRequest.value}" is the block's own nickname, which is read as a reference to a record, not as text.`);
+                return;
+            }
+
+            plannedFields.push(kind === 'expression'
+                ? { fieldApiName: fieldRequest.fieldApiName, source: 'expression', valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: fieldRequest.value, kind: kind }), shownValue: fieldRequest.value }
+                : { fieldApiName: fieldRequest.fieldApiName, source: 'fixed', valueText: fieldRequest.value, shownValue: fieldRequest.value, fixedValue: this.toUpdaterFixedValue(fieldRequest.value, kind) });
+
+        }
+
+        const parentRecordIdsByRecord = RecipeCockpitRecordCreation.spreadParentIds(heldChild.parentRecordIds, countPerParent);
+        if ( !parentRecordIdsByRecord ) {
+            refuse(RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON);
+            return;
+        }
+
+        const recordCount = parentRecordIdsByRecord.length;
+        const describeRecords = (count: number, objectApiName: string) => `${count} ${objectApiName} ${count === 1 ? 'record' : 'records'}`;
+        const sourceLabels: Record<PlannedChildFieldSource, string> = {
+            orgExpression: 'expression the recipe\'s backend writes for its type in the org',
+            expression: 'edited expression',
+            fixed: 'fixed value'
+        };
+        const detailLines = [
+            `Generated by the recipe's own backend, ${heldChild.fakerService}. ${RECIPE_COCKPIT_ADAPTER_CHILD_PREVIEW_NOTE}`,
+            '',
+            `${countPerParent} per ${heldChild.parentObjectApiName} record, under ${describeRecords(heldChild.parentRecordIds.length, heldChild.parentObjectApiName)}: ${describeRecords(recordCount, childObjectApiName)}`,
+            `  ${heldChild.lookupFieldApiName} -- the Id of a loaded ${heldChild.parentObjectApiName} record, ${countPerParent} in a row`,
+            ...plannedFields.map(plannedField => `  ${plannedField.fieldApiName} -- ${sourceLabels[plannedField.source]}: ${plannedField.shownValue}`)
+        ];
+
+        const answer = await this.confirmInPanel(
+            `Generate ${describeRecords(recordCount, childObjectApiName)} under the loaded ${heldChild.parentObjectApiName} records?`,
+            { detail: detailLines.join('\n') },
+            RECIPE_COCKPIT_ADAPTER_CHILD_GENERATE_CONFIRM_LABEL
+        );
+
+        const isStillCurrent = () => this.recipeCockpitPanel === cockpitPanel
+                                    && this.recipeCockpitPanelState === panelState
+                                    && panelState.recipeDataMessage === clickedRecipeDataMessage
+                                    && this.heldUpdaterRecords === heldRecords
+                                    && this.heldAdapterChild === heldChild;
+
+        if ( answer !== RECIPE_COCKPIT_ADAPTER_CHILD_GENERATE_CONFIRM_LABEL || !isStillCurrent() ) {
+            return;
+        }
+
+        const generatedFields = plannedFields.filter(plannedField => plannedField.source !== 'fixed');
+        let generation: { records: Record<string, unknown>[] } | { refusal: string } | { isCancelled: true } = { isCancelled: true };
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: RecipeYamlScalar.escapeForNotification(`Recipe Cockpit: generating ${describeRecords(recordCount, childObjectApiName)} with ${heldChild.fakerService}`),
+            cancellable: true
+        }, async (progress, cancellationToken) => {
+            generation = await this.generateUpdaterObjectValues(
+                heldChild.fakerService,
+                childObjectApiName,
+                recordCount,
+                generatedFields.map(plannedField => ({ fieldApiName: plannedField.fieldApiName, valueText: plannedField.valueText })),
+                () => cancellationToken.isCancellationRequested,
+                (generatedCount: number) => progress.report({ message: `${generatedCount} of ${recordCount}` }),
+                'adapterChild'
+            );
+        });
+
+        const finishedGeneration = generation as { records: Record<string, unknown>[] } | { refusal: string } | { isCancelled: true };
+
+        if ( 'refusal' in finishedGeneration ) {
+            refuse(finishedGeneration.refusal);
+            return;
+        }
+        if ( 'isCancelled' in finishedGeneration ) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Generating the ${childObjectApiName} records was cancelled, so none were kept.`));
+            return;
+        }
+        if ( !isStillCurrent() ) {
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The ${childObjectApiName} records were not kept: the run on screen or its records changed while they were generated. Generate them again.`));
+            return;
+        }
+
+        // THE GENERATED RECORDS ARE NEW OBJECTS, SO THEY ARE FILLED IN PLACE. EACH CHUNK IS ITS OWN RUN AND NUMBERS ITS referenceIds FROM 1,
+        // SO EVERY RECORD IS GIVEN ONE BY ITS PLACE IN THE WHOLE BLOCK, OR THE INSERT WOULD READ TWO RECORDS AS ONE
+        const fixedFields = plannedFields.filter(plannedField => plannedField.source === 'fixed');
+        const generatedFieldApiNames = generatedFields.map(plannedField => plannedField.fieldApiName);
+        const records = finishedGeneration.records;
+        records.forEach((record, recordIndex) => {
+            const attributes = record.attributes && typeof record.attributes === 'object' ? record.attributes as Record<string, unknown> : {};
+            record.attributes = { ...attributes, referenceId: `${childObjectApiName}_Adapter_Reference_${recordIndex + 1}` };
+            record[heldChild.lookupFieldApiName] = parentRecordIdsByRecord[recordIndex];
+            // A BACKEND THAT WROTE NO VALUE FOR A FIELD (A null EXPRESSION) GIVES IT NONE, NEVER ANOTHER RECORD'S
+            generatedFieldApiNames.forEach(fieldApiName => { record[fieldApiName] = record[fieldApiName] ?? null; });
+            fixedFields.forEach(plannedField => { record[plannedField.fieldApiName] = plannedField.fixedValue; });
+        });
+        heldChild.generatedRecords = { countPerParent: countPerParent, records: records };
+
+        const preview = RecipeCockpitQuery.buildPreview(records.slice(0, RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT).map(record => ({
+            [heldChild.lookupFieldApiName]: record[heldChild.lookupFieldApiName],
+            ...Object.fromEntries(plannedFields.map(plannedField => [plannedField.fieldApiName, record[plannedField.fieldApiName]]))
+        })), RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT);
+        const previewMessage: IRecipeCockpitAdapterChildPreviewMessage = {
+            command: 'adapterChildPreview',
+            renderSequence: renderSequence,
+            treeKey: treeKey,
+            childObjectApiName: childObjectApiName,
+            countPerParent: countPerParent,
+            recordCount: records.length,
+            columns: preview.columns,
+            rows: preview.rows,
+            hiddenColumnCount: preview.hiddenColumnCount
+        };
+        panelState.adapterChildPreviewMessage = previewMessage;
+        this.postToPanel(cockpitPanel, previewMessage);
+
+        VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(`Generated ${describeRecords(records.length, childObjectApiName)}, ${countPerParent} per loaded ${heldChild.parentObjectApiName} record. Nothing was written to the org or the recipe file.`));
 
     }
 
@@ -10298,6 +10895,8 @@ export class RecipeCockpitService {
             if ( isRecordsSpent ) {
                 this.clearHeldUpdaterRecords();
                 panelState.updaterRecordsMessage = undefined;
+                panelState.adapterChildBlockMessage = undefined;
+                panelState.adapterChildPreviewMessage = undefined;
                 this.setUpdaterValuesMessage(panelState, undefined);
             }
             this.setUpdaterLoadState(isRecordsSpent ? { ...notRunning, isRecordsSpent: true } : notRunning);
@@ -10598,6 +11197,8 @@ export class RecipeCockpitService {
             if ( isRecordsSpent ) {
                 this.clearHeldUpdaterRecords();
                 panelState.updaterRecordsMessage = undefined;
+                panelState.adapterChildBlockMessage = undefined;
+                panelState.adapterChildPreviewMessage = undefined;
                 this.setUpdaterValuesMessage(panelState, undefined);
             }
             this.setUpdaterLoadState(isRecordsSpent ? { ...notRunning, isRecordsSpent: true } : notRunning);
@@ -11119,7 +11720,8 @@ export class RecipeCockpitService {
                                              recordCount: number,
                                              fields: readonly { fieldApiName: string; valueText: string }[],
                                              isCancelled: () => boolean = () => false,
-                                             reportProgress: (generatedCount: number) => void = () => undefined): Promise<{ records: Record<string, unknown>[] } | { refusal: string } | { isCancelled: true }> {
+                                             reportProgress: (generatedCount: number) => void = () => undefined,
+                                             recipeKind: 'updaterValues' | 'adapterChild' = 'updaterValues'): Promise<{ records: Record<string, unknown>[] } | { refusal: string } | { isCancelled: true }> {
 
         const records: Record<string, unknown>[] = [];
 
@@ -11133,7 +11735,7 @@ export class RecipeCockpitService {
             }
 
             const chunkCount = Math.min(RECIPE_COCKPIT_UPDATER_GENERATION_CHUNK_SIZE, recordCount - records.length);
-            const chunk = await this.generateUpdaterChunk(fakerService, objectApiName, chunkCount, fields);
+            const chunk = await this.generateUpdaterChunk(fakerService, objectApiName, chunkCount, fields, recipeKind);
             if ( 'refusal' in chunk ) {
                 return chunk;
             }
@@ -11149,9 +11751,12 @@ export class RecipeCockpitService {
     private static async generateUpdaterChunk(fakerService: 'faker-js' | 'snowfakery',
                                               objectApiName: string,
                                               recordCount: number,
-                                              fields: readonly { fieldApiName: string; valueText: string }[]): Promise<{ records: Record<string, unknown>[] } | { refusal: string }> {
+                                              fields: readonly { fieldApiName: string; valueText: string }[],
+                                              recipeKind: 'updaterValues' | 'adapterChild'): Promise<{ records: Record<string, unknown>[] } | { refusal: string }> {
 
-        const recipeBuild = RecipeCockpitRecipeWriter.buildUpdaterValueRecipe(objectApiName, recordCount, fields);
+        const recipeBuild = recipeKind === 'adapterChild'
+            ? RecipeCockpitRecipeWriter.buildAdapterChildRecipe(objectApiName, recordCount, fields)
+            : RecipeCockpitRecipeWriter.buildUpdaterValueRecipe(objectApiName, recordCount, fields);
         if ( recipeBuild.isBuilt === false ) {
             return { refusal: recipeBuild.refusal };
         }
@@ -11159,7 +11764,7 @@ export class RecipeCockpitService {
         let temporaryFolderPath: string | undefined;
         try {
             temporaryFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-updater-values-'));
-            const temporaryRecipePath = path.join(temporaryFolderPath, `updaterValues-${objectApiName}.yml`);
+            const temporaryRecipePath = path.join(temporaryFolderPath, `${recipeKind}-${objectApiName}.yml`);
             fs.writeFileSync(temporaryRecipePath, recipeBuild.recipeText, { encoding: 'utf8', flag: 'wx' });
 
             const processor = this.createUpdaterRecipeProcessor(fakerService);
@@ -14848,6 +15453,131 @@ export class RecipeCockpitService {
             }
 
             /*
+                "Add to data set" (#447): a child object only the org holds that the last retrieve
+                listed under this parent, on the card and model on screen, under records the last
+                load read from the sandbox still selected, and a parent the Treecipe tab does not
+                exclude. The executor retrieves the child's metadata from that org.
+            */
+            case 'prepareAdapterChild': {
+
+                const { treeKey, renderSequence, parentObjectApiName, childObjectApiName, lookupFieldApiName } = panelMessage;
+                const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '', runKind: 'prepareChild' };
+
+                if ( panelState.updaterLoadStateMessage?.isRunning ) {
+                    return { kind: 'refuseUpdaterLoad', hostMessage: panelState.updaterLoadStateMessage };
+                }
+
+                const recipeDataMessage = panelState.recipeDataMessage;
+                const tree = typeof treeKey === 'string' ? recipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey) : undefined;
+                const changesMessage = panelState.adapterMetadataChangesMessage;
+                const isListedChild = changesMessage?.treeKey === treeKey
+                                        && changesMessage.renderSequence === renderSequence
+                                        && changesMessage.objects.some(objectChanges => objectChanges.objectApiName === parentObjectApiName
+                                            && ( objectChanges.newChildObjects ?? [] ).some(childObject => childObject.childObjectApiName === childObjectApiName && childObject.fieldApiName === lookupFieldApiName));
+
+                if ( typeof treeKey !== 'string'
+                        || !recipeDataMessage
+                        || !tree?.folderName
+                        || renderSequence !== recipeDataMessage.renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey)
+                        || typeof parentObjectApiName !== 'string'
+                        || typeof childObjectApiName !== 'string'
+                        || typeof lookupFieldApiName !== 'string'
+                        || !isListedChild ) {
+                    return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
+                }
+
+                if ( this.isUpdaterSelectionBusy(panelState) ) {
+                    return { kind: 'refuseUpdaterLoad', refusalText: RECIPE_COCKPIT_ADAPTER_RETRIEVE_BUSY_REFUSAL, hostMessage: notRunning };
+                }
+
+                const refuse = (reason: string) => ({ kind: 'refuseUpdaterLoad' as const, refusalText: `${childObjectApiName} was not added: ${reason}`, hostMessage: notRunning });
+                const heldRecords = this.heldUpdaterRecords;
+                const exclusion = tree.objectSelection?.exclusions.find(objectExclusion => objectExclusion.objectApiName === parentObjectApiName);
+
+                if ( exclusion ) {
+                    return refuse(`${RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX}${parentObjectApiName}.`);
+                }
+                if ( !heldRecords || heldRecords.workspaceRoot !== panelState.workspaceRoot || heldRecords.renderSequence !== renderSequence || heldRecords.folderName !== tree.folderName ) {
+                    return refuse(RECIPE_COCKPIT_ADAPTER_CHILD_NOT_LOADED_REASON);
+                }
+                if ( ( heldRecords.recordsByObjectApiName.get(parentObjectApiName) ?? [] ).length === 0 ) {
+                    return refuse(RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON);
+                }
+
+                // THE CHILD IS READ FROM THE SANDBOX ITS PARENTS CAME FROM, AND NO OTHER
+                const dataOrgSelection = panelState.dataOrgSelection;
+                if ( dataOrgSelection?.orgTypeDetail?.isSandbox !== true || dataOrgSelection.orgDetail.username !== heldRecords.orgUsername ) {
+                    return refuse('the org selected is not the sandbox or scratch org the parent records were loaded from. Load records again.');
+                }
+
+                return { kind: 'prepareAdapterChild', treeKey: treeKey, renderSequence: renderSequence, parentObjectApiName: parentObjectApiName, childObjectApiName: childObjectApiName, lookupFieldApiName: lookupFieldApiName };
+
+            }
+
+            /*
+                "Generate preview" (#447): only for the child prepared on the model and records on
+                screen, a count per parent the Treecipe tab would take, and fields it offered and
+                did not lock, each once, a value only as a string its editor holds. The executor
+                checks every value again.
+            */
+            case 'generateAdapterChild': {
+
+                const { treeKey, renderSequence, childObjectApiName, countPerParent, fields } = panelMessage;
+                const notRunning: IRecipeCockpitUpdaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: typeof treeKey === 'string' ? treeKey : '', runKind: 'generateChild' };
+
+                if ( panelState.updaterLoadStateMessage?.isRunning ) {
+                    return { kind: 'refuseUpdaterLoad', hostMessage: panelState.updaterLoadStateMessage };
+                }
+
+                const heldChild = this.heldAdapterChild;
+                const heldRecords = this.heldUpdaterRecords;
+
+                if ( typeof treeKey !== 'string'
+                        || !heldChild
+                        || !heldRecords
+                        || heldChild.treeKey !== treeKey
+                        || heldChild.childObjectApiName !== childObjectApiName
+                        || heldChild.resultKey !== heldRecords.resultKey
+                        || renderSequence !== panelState.recipeDataMessage?.renderSequence
+                        || heldRecords.renderSequence !== renderSequence
+                        || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
+                    return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
+                }
+
+                const refuse = (reason: string) => ({ kind: 'refuseUpdaterLoad' as const, refusalText: `No ${heldChild.childObjectApiName} records were generated: ${reason}`, hostMessage: notRunning });
+
+                if ( !RecipeCockpitRecipeWriter.isRecordCount(countPerParent) ) {
+                    return refuse('the count per parent record must be a whole number of one or more.');
+                }
+                if ( countPerParent * heldChild.parentRecordIds.length > RECIPE_COCKPIT_ADAPTER_CHILD_RECORD_LIMIT ) {
+                    return refuse(`${countPerParent} per record under ${heldChild.parentRecordIds.length} ${heldChild.parentObjectApiName} records is more than the ${RECIPE_COCKPIT_ADAPTER_CHILD_RECORD_LIMIT} one block generates.`);
+                }
+                if ( !Array.isArray(fields) ) {
+                    return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
+                }
+
+                const fieldRequests: IRecipeCockpitAdapterChildFieldRequest[] = [];
+                for ( const candidateField of fields as unknown[] ) {
+                    const fieldRecord = candidateField && typeof candidateField === 'object' ? candidateField as Record<string, unknown> : undefined;
+                    const fieldApiName = fieldRecord?.fieldApiName;
+                    const value = fieldRecord?.value;
+                    const offeredField = typeof fieldApiName === 'string' ? heldChild.fields.get(fieldApiName) : undefined;
+                    if ( typeof fieldApiName !== 'string'
+                            || !offeredField
+                            || offeredField.lockReason !== undefined
+                            || fieldRequests.some(fieldRequest => fieldRequest.fieldApiName === fieldApiName)
+                            || ( value !== undefined && ( typeof value !== 'string' || value.length > RECIPE_COCKPIT_FIXED_VALUE_MAX_LENGTH ) ) ) {
+                        return refuse(`${typeof fieldApiName === 'string' ? `${heldChild.childObjectApiName}.${fieldApiName}` : 'a field'} is not one this block offers to fill.`);
+                    }
+                    fieldRequests.push(value === undefined ? { fieldApiName: fieldApiName } : { fieldApiName: fieldApiName, value: value as string });
+                }
+
+                return { kind: 'generateAdapterChild', treeKey: treeKey, renderSequence: renderSequence, childObjectApiName: heldChild.childObjectApiName, countPerParent: countPerParent, fieldRequests: fieldRequests };
+
+            }
+
+            /*
                 "Generate values" (#417): the card on screen and, per chosen field, its object and
                 field names and the value typed for it, if any. Only the shape and the names are
                 checked here -- every field must be one the card's model lists, each once -- and the
@@ -15170,6 +15900,14 @@ export class RecipeCockpitService {
 
         if ( panelState.adapterMetadataChangesMessage && panelState.adapterMetadataChangesMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
             replayMessages.push(panelState.adapterMetadataChangesMessage);
+        }
+
+        if ( panelState.adapterChildBlockMessage && panelState.adapterChildBlockMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
+            replayMessages.push(panelState.adapterChildBlockMessage);
+        }
+
+        if ( panelState.adapterChildPreviewMessage && panelState.adapterChildPreviewMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
+            replayMessages.push(panelState.adapterChildPreviewMessage);
         }
 
         if ( panelState.updaterValuesMessage && panelState.updaterValuesMessage.renderSequence === panelState.recipeDataMessage?.renderSequence ) {
@@ -17438,7 +18176,18 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     .updaterOrgHintListHeading { font-weight: 600; font-size: 0.92em; }
     .updaterOrgHint { display: flex; flex-wrap: wrap; gap: 0.5rem; overflow-wrap: anywhere; }
     .updaterOrgHintObject { font-weight: 600; }
-    .updaterOrgChangeChip { font-size: 0.85em; padding: 0 0.4rem; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); border: 1px dashed var(--sdt-accent); border-radius: 0.6rem; }
+    .updaterOrgChangeChip, .adapterChildRequired { font-size: 0.85em; padding: 0 0.4rem; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); border: 1px dashed var(--sdt-accent); border-radius: 0.6rem; }
+    .adapterChildAdd { margin-left: auto; }
+    .adapterChildEditor { margin: 0.35rem 0 0.25rem 2.1rem; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-left: 3px solid var(--sdt-accent); border-radius: 4px; }
+    .adapterChildHeading { font-weight: 600; overflow-wrap: anywhere; }
+    .adapterChildCount { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0.35rem 0; }
+    .adapterChildCountInput { box-sizing: border-box; width: 5em; padding: 0.15rem 0.35rem; color: var(--sdt-text); background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-radius: 4px; }
+    .adapterChildCountInput:focus { outline: 1px solid var(--sdt-accent); border-color: var(--sdt-accent); }
+    .adapterChildFields { margin: 0.25rem 0 0.4rem; }
+    .adapterChildFields .updaterField { padding-left: 0; }
+    .adapterChildRefusal { color: var(--sdt-removed); font-size: 0.9em; margin-bottom: 0.3rem; }
+    .adapterChildPreviewNote, .adapterChildUnreadable { font-size: 0.9em; margin: 0.25rem 0; }
+    .adapterChildPreview { margin-top: 0.3rem; overflow-x: auto; }
     .treeQuery { margin: 0.25rem 0.6rem 0.5rem; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
     .treeQueryTitle { font-weight: 600; }
     .treeQueryControls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
@@ -17718,6 +18467,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const ADAPTER_ORG_ONLY_FIELD_NOTE = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE)};
     const ADAPTER_NEW_CHILD_OBJECT_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_LABEL)};
     const ADAPTER_NEW_CHILD_OBJECT_NOTE = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_NEW_CHILD_OBJECT_NOTE)};
+    const ADAPTER_ADD_CHILD_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_ADD_CHILD_LABEL)};
+    const ADAPTER_CHILD_GENERATE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_CHILD_GENERATE_LABEL)};
+    const ADAPTER_CHILD_COUNT_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_CHILD_COUNT_LABEL)};
+    const ADAPTER_CHILD_NOT_LOADED_REASON = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_CHILD_NOT_LOADED_REASON)};
+    const ADAPTER_CHILD_NO_PARENTS_REASON = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON)};
+    const ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX)};
+    const ADAPTER_CHILD_PREVIEW_NOTE = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_CHILD_PREVIEW_NOTE)};
     const ADAPTER_HINTS_HEADING = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_HINTS_HEADING)};
     const ADAPTER_SOURCE_TRACKING_HEADING = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_SOURCE_TRACKING_HEADING)};
     const ADAPTER_AUDIT_TRAIL_HEADING = ${JSON.stringify(RECIPE_COCKPIT_ADAPTER_AUDIT_TRAIL_HEADING)};
@@ -17891,6 +18647,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     let updaterLoadRunningTreeKey = null;
     // WHICH UPDATER RUN THAT IS: 'load', OR 'generate' FOR A VALUE GENERATION (#417), WHICH SHARES THE ONE RUN PER WINDOW
     let updaterRunKind = '';
+    // THE NEW CHILD WHOSE "Add to data set" (#447) IS RETRIEVING: PARENT, CHILD AND LOOKUP
+    let adapterChildPreparingKey = '';
     // THE SNAPSHOT A RESTORE (#419) WAS ASKED FOR, SO ONLY ITS BUTTON SAYS "Restoring…"
     let updaterRestoringSnapshotName = '';
     // THE TROUBLESHOOTING TAB'S DEPLOYS (#346): SET ON THE CLICK, CLEARED BY THE HOST'S metadataDeployState; THE KEY NAMES THE BUTTON CLICKED
@@ -22542,6 +23300,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             updaterRecordsMessage: null,
             // WHAT THE LAST "Retrieve latest metadata" FOUND (#445), DRAWN ON STEP 2 WHENEVER IT IS BUILT
             adapterChangesMessage: null,
+            // THE NEW CHILD OBJECT BEING ADDED UNDER THE LOADED RECORDS (#447), ITS BLOCK'S STATE AND ELEMENTS
+            adapterChild: null,
+            adapterChildBlockMessage: null,
+            adapterChildPreviewMessage: null,
             // A VALUE OR EXPRESSION TYPED PER FIELD IN THE UPDATER'S EDITOR (#417), BY FIELD KEY; PANEL-ONLY, NEVER SAVED IN THE PLACE OR THE RECIPE
             updaterEditedValues: Object.create(null),
             updaterValuesMessage: null,
@@ -23992,6 +24754,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (treeState.updaterRecordsMessage) { applyUpdaterRecords(treeState, treeState.updaterRecordsMessage); }
         if (treeState.updaterValuesMessage) { applyUpdaterValues(treeState, treeState.updaterValuesMessage); }
         applyAdapterMetadataChanges(treeState);
+        // A BLOCK REPLAYED BEFORE THIS TAB WAS BUILT IS DRAWN NOW; ONE ALREADY DRAWN IS PUT BACK UNDER ITS ROW BY THE LINE ABOVE
+        if (treeState.adapterChildBlockMessage && !treeState.adapterChild) { buildAdapterChildBlock(treeState); }
 
     }
 
@@ -24653,6 +25417,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         treeStates.forEach(function (treeState) {
             if (!treeState.updaterLoadButtonElement) { return; }
+            drawAdapterChildControls(treeState);
             const isThisCardLoading = updaterLoadRunningTreeKey === treeState.tree.treeKey;
             const busyReason = updaterLoadRunningTreeKey !== null ? 'Records are being loaded, generated, updated or restored.' : '';
             setTextShown(treeState.updaterLoadCard.titleElement, isThisCardLoading && updaterRunKind === 'load' ? UPDATER_LOADING_LABEL : UPDATER_LOAD_LABEL);
@@ -25021,6 +25786,332 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
+    function isAdapterChildOf(adapterChild, parentObjectApiName, childObject) {
+        return !!adapterChild && !!childObject
+            && adapterChild.parentObjectApiName === parentObjectApiName
+            && adapterChild.childObjectApiName === String(childObject.childObjectApiName)
+            && adapterChild.lookupFieldApiName === String(childObject.fieldApiName);
+    }
+
+    /*
+        Why "Add to data set" (#447) cannot run for a new child under this parent: a run holds the
+        Adapter, the Treecipe tab excludes the parent, no records are loaded, or the last load read
+        none of the parent. The host checks every one again.
+    */
+    function findAdapterChildAddReason(treeState, parentObjectApiName) {
+
+        if (updaterLoadRunningTreeKey !== null) { return 'Records are being loaded, generated, updated or restored.'; }
+        if (findObjectExclusion(treeState.tree, parentObjectApiName)) { return ADAPTER_CHILD_PARENT_EXCLUDED_REASON_PREFIX + parentObjectApiName + '.'; }
+        if (!treeState.updaterRecordsMessage) { return ADAPTER_CHILD_NOT_LOADED_REASON; }
+
+        const loadedObjects = Array.isArray(treeState.updaterRecordsMessage.objects) ? treeState.updaterRecordsMessage.objects : [];
+        const parentRecords = loadedObjects.find(function (loadedObject) { return loadedObject && loadedObject.objectApiName === parentObjectApiName; });
+
+        return parentRecords && Number(parentRecords.recordCount) > 0 ? '' : ADAPTER_CHILD_NO_PARENTS_REASON;
+
+    }
+
+    function drawAdapterChildAddButton(treeState, updaterObjectState, orgOnlyFieldState) {
+
+        const addElement = orgOnlyFieldState.addElement;
+        if (!addElement) { return; }
+
+        const parentObjectApiName = updaterObjectState.object.objectApiName;
+        const reason = findAdapterChildAddReason(treeState, parentObjectApiName);
+        const isPreparing = updaterRunKind === 'prepareChild' && updaterLoadRunningTreeKey === treeState.tree.treeKey && adapterChildPreparingKey === adapterChildKeyOf(parentObjectApiName, orgOnlyFieldState.childObject);
+
+        addElement.textContent = isPreparing ? 'Retrieving…' : ADAPTER_ADD_CHILD_LABEL;
+        addElement.disabled = reason !== '';
+        addElement.setAttribute('title', reason || 'Retrieve ' + String(orgOnlyFieldState.childObject.childObjectApiName) + ' from the org the records were loaded from, then set how many to add under each loaded ' + parentObjectApiName + ' record and which fields to fill.');
+
+    }
+
+    function adapterChildKeyOf(parentObjectApiName, childObject) {
+        return [parentObjectApiName, String(childObject.childObjectApiName), String(childObject.fieldApiName)].join('\\n');
+    }
+
+    function drawAdapterChildControls(treeState) {
+
+        (treeState.updaterObjectStates || []).forEach(function (updaterObjectState) {
+            (updaterObjectState.orgOnlyFieldStates || []).forEach(function (orgOnlyFieldState) {
+                if (orgOnlyFieldState.childObject) { drawAdapterChildAddButton(treeState, updaterObjectState, orgOnlyFieldState); }
+            });
+        });
+
+        const adapterChild = treeState.adapterChild;
+        if (!adapterChild) { return; }
+
+        const isGenerating = updaterRunKind === 'generateChild' && updaterLoadRunningTreeKey === treeState.tree.treeKey;
+        adapterChild.generateElement.textContent = isGenerating ? 'Generating…' : ADAPTER_CHILD_GENERATE_LABEL;
+        adapterChild.generateElement.disabled = updaterLoadRunningTreeKey !== null;
+        adapterChild.generateElement.setAttribute('title', updaterLoadRunningTreeKey !== null
+            ? 'Records are being loaded, generated, updated or restored.'
+            : 'Generate the new ' + adapterChild.childObjectApiName + ' records with the recipe’s own backend and show a preview. Nothing is written to the org.');
+
+    }
+
+    function requestAdapterChild(treeState, updaterObjectState, childObject) {
+
+        if (renderedSequence === null || updaterLoadRunningTreeKey !== null) { return; }
+
+        updaterLoadRunningTreeKey = treeState.tree.treeKey;
+        updaterRunKind = 'prepareChild';
+        adapterChildPreparingKey = adapterChildKeyOf(updaterObjectState.object.objectApiName, childObject);
+        drawUpdaterLoadButtons();
+        vscodeApi.postMessage({
+            command: 'prepareAdapterChild',
+            treeKey: treeState.tree.treeKey,
+            renderSequence: renderedSequence,
+            parentObjectApiName: updaterObjectState.object.objectApiName,
+            childObjectApiName: String(childObject.childObjectApiName),
+            lookupFieldApiName: String(childObject.fieldApiName)
+        });
+
+    }
+
+    function clearAdapterChildren() {
+
+        treeStates.forEach(function (treeState) {
+            const adapterChild = treeState.adapterChild;
+            treeState.adapterChildBlockMessage = null;
+            treeState.adapterChildPreviewMessage = null;
+            if (!adapterChild) { return; }
+            treeState.adapterChild = null;
+            // ITS PARENT'S ROWS ARE DRAWN AGAIN, NOW WITHOUT IT
+            (treeState.updaterObjectStates || []).forEach(function (updaterObjectState) {
+                if (updaterObjectState.object.objectApiName === adapterChild.parentObjectApiName) { drawAdapterObjectOrgOnlyFields(treeState, updaterObjectState); }
+            });
+        });
+
+    }
+
+    function clearAdapterChildPreviews() {
+
+        treeStates.forEach(function (treeState) {
+            treeState.adapterChildPreviewMessage = null;
+            if (treeState.adapterChild) { drawAdapterChildPreview(treeState.adapterChild, null); }
+        });
+
+    }
+
+    /*
+        The new child's block (#447), under its row: how many per loaded parent record, and each of
+        its fields with the Updater's own parts -- its box, its editor, its expression, or the lock's
+        reason -- in a box and an editor of its own, so nothing here touches the card's own choice.
+        What it posts is names, a count and the values typed; the host checks each again.
+    */
+    function renderAdapterChildBlock(blockMessage) {
+
+        if (renderedSequence === null || blockMessage.renderSequence !== renderedSequence) { return; }
+
+        const treeState = findTreeState(blockMessage.treeKey);
+        if (!treeState) { return; }
+
+        clearAdapterChildren();
+        // KEPT ON THE CARD, SO A REPLAY INTO A DOCUMENT WHOSE ADAPTER TAB IS NOT BUILT YET IS DRAWN WHEN IT IS
+        treeState.adapterChildBlockMessage = blockMessage;
+        if (treeState.updaterObjectStates) { buildAdapterChildBlock(treeState); }
+
+    }
+
+    function buildAdapterChildBlock(treeState) {
+
+        const blockMessage = treeState.adapterChildBlockMessage;
+        const childObjectApiName = String(blockMessage.childObjectApiName);
+        const parentObjectApiName = String(blockMessage.parentObjectApiName);
+        const parentRecordCount = Number(blockMessage.parentRecordCount) || 0;
+        const childTreeState = {
+            tree: { treeKey: treeState.tree.treeKey, fixedValues: [] },
+            updaterChosenFieldKeys: Object.create(null),
+            updaterEditedValues: Object.create(null),
+            updaterObjectStates: [],
+            updaterSummaryElement: null
+        };
+        const childObjectState = { object: { objectApiName: childObjectApiName }, chosenFieldCount: 0, countText: '', countElement: createElement('span', 'adapterChildChosen muted'), loadedRecords: null };
+        const editorElement = createElement('div', 'adapterChildEditor');
+        editorElement.setAttribute('role', 'group');
+        editorElement.setAttribute('aria-label', 'Add ' + childObjectApiName + ' under the loaded ' + parentObjectApiName + ' records');
+
+        editorElement.appendChild(createElement('div', 'adapterChildHeading',
+            'Add ' + childObjectApiName + ' under the ' + pluralize(parentRecordCount, parentObjectApiName + ' record', parentObjectApiName + ' records') + ' loaded from ' + String(blockMessage.orgLabel || 'the org')
+            + ', generated by ' + String(blockMessage.fakerService) + '.'));
+
+        const countRowElement = createElement('div', 'adapterChildCount');
+        const countInputElement = createElement('input', 'adapterChildCountInput');
+        countInputElement.setAttribute('type', 'text');
+        countInputElement.setAttribute('inputmode', 'numeric');
+        countInputElement.setAttribute('maxlength', '6');
+        countInputElement.setAttribute('aria-label', childObjectApiName + ' records ' + ADAPTER_CHILD_COUNT_LABEL + ' ' + parentObjectApiName);
+        countInputElement.value = '1';
+        countRowElement.appendChild(createElement('span', 'adapterChildCountText', 'Create'));
+        countRowElement.appendChild(countInputElement);
+        countRowElement.appendChild(createElement('span', 'adapterChildCountText', childObjectApiName + ' records ' + ADAPTER_CHILD_COUNT_LABEL + ' ' + parentObjectApiName));
+        countRowElement.appendChild(childObjectState.countElement);
+        editorElement.appendChild(countRowElement);
+
+        const fieldsElement = createElement('div', 'adapterChildFields');
+        const fieldStates = (Array.isArray(blockMessage.fields) ? blockMessage.fields : []).map(function (childField) {
+            const fieldApiName = String(childField.fieldApiName);
+            const fieldState = {
+                fieldChange: null,
+                childObject: null,
+                field: {
+                    fieldApiName: fieldApiName,
+                    fieldLabel: String(childField.fieldLabel || ''),
+                    fieldType: String(childField.fieldTypeWithSize || ''),
+                    fieldTypeWithSize: String(childField.fieldTypeWithSize || ''),
+                    recipeValue: typeof childField.expression === 'string' ? childField.expression : '',
+                    controllingField: '',
+                    isOnlyInRecipeFile: false
+                },
+                fieldKey: updaterFieldKeyOf(childObjectApiName, fieldApiName),
+                lockReason: typeof childField.lockReason === 'string' ? childField.lockReason : '',
+                orgOnlyNote: typeof childField.note === 'string' ? childField.note : '',
+                orgChange: null,
+                orgChipElement: null,
+                isMatch: true,
+                rowElement: null,
+                chooseElement: null,
+                editButtonElement: null,
+                editBadgeElement: null,
+                editedValueElement: null,
+                expressionRowElement: null,
+                editorElement: null,
+                isEditorOpen: false
+            };
+            // A FIELD WITH AN EXPRESSION STARTS TICKED, AS THE TREECIPE TAB'S FIELDS DO; A FIXED-VALUE-ONLY ONE WAITS FOR ITS VALUE
+            if (!fieldState.lockReason && fieldState.field.recipeValue) {
+                childTreeState.updaterChosenFieldKeys[fieldState.fieldKey] = true;
+                childObjectState.chosenFieldCount++;
+            }
+            const rowElement = buildUpdaterFieldRow(childTreeState, childObjectState, fieldState);
+            const headerElement = rowElement.firstChild;
+            if (childField.isRequired === true) { headerElement.appendChild(createElement('span', 'adapterChildRequired', 'required')); }
+            if (fieldState.orgOnlyNote) { headerElement.appendChild(createElement('span', 'updaterFieldNote muted', fieldState.orgOnlyNote)); }
+            fieldsElement.appendChild(rowElement);
+            return fieldState;
+        });
+        drawUpdaterObjectCount(childObjectState);
+        editorElement.appendChild(fieldsElement);
+
+        const unreadableFieldCount = Number(blockMessage.unreadableFieldCount) || 0;
+        if (unreadableFieldCount > 0) {
+            editorElement.appendChild(createElement('div', 'adapterChildUnreadable muted', pluralize(unreadableFieldCount, 'field file', 'field files') + ' could not be read and ' + (unreadableFieldCount === 1 ? 'is' : 'are') + ' left out.'));
+        }
+
+        const refusalElement = createElement('div', 'adapterChildRefusal hidden');
+        refusalElement.setAttribute('role', 'alert');
+        editorElement.appendChild(refusalElement);
+
+        const generateElement = createButton('primary', 'adapterChildGenerate', ADAPTER_CHILD_GENERATE_LABEL, 'compact');
+        editorElement.appendChild(generateElement);
+        editorElement.appendChild(createElement('div', 'adapterChildPreviewNote muted', ADAPTER_CHILD_PREVIEW_NOTE));
+        const previewElement = createElement('div', 'adapterChildPreview hidden');
+        editorElement.appendChild(previewElement);
+
+        const adapterChild = {
+            parentObjectApiName: parentObjectApiName,
+            childObjectApiName: childObjectApiName,
+            lookupFieldApiName: String(blockMessage.lookupFieldApiName),
+            childTreeState: childTreeState,
+            fieldStates: fieldStates,
+            editorElement: editorElement,
+            countInputElement: countInputElement,
+            refusalElement: refusalElement,
+            generateElement: generateElement,
+            previewElement: previewElement
+        };
+        generateElement.addEventListener('click', function () {
+            if (generateElement.disabled) { return; }
+            requestAdapterChildPreview(treeState, adapterChild);
+        });
+        countInputElement.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') { event.preventDefault(); requestAdapterChildPreview(treeState, adapterChild); }
+        });
+        treeState.adapterChild = adapterChild;
+
+        if (treeState.adapterChildPreviewMessage) { drawAdapterChildPreview(adapterChild, treeState.adapterChildPreviewMessage); }
+
+        const parentObjectState = treeState.updaterObjectStates.find(function (updaterObjectState) { return updaterObjectState.object.objectApiName === parentObjectApiName; });
+        if (parentObjectState) { drawAdapterObjectOrgOnlyFields(treeState, parentObjectState); }
+        drawUpdaterLoadButtons();
+
+    }
+
+    function requestAdapterChildPreview(treeState, adapterChild) {
+
+        if (renderedSequence === null || updaterLoadRunningTreeKey !== null || treeState.adapterChild !== adapterChild) { return; }
+
+        const countText = String(adapterChild.countInputElement.value || '').trim();
+        const countPerParent = Number(countText);
+
+        if (!/^[1-9][0-9]*$/.test(countText) || !Number.isSafeInteger(countPerParent)) {
+            adapterChild.refusalElement.textContent = 'The count per ' + adapterChild.parentObjectApiName + ' record must be a whole number of one or more.';
+            setShown(adapterChild.refusalElement, true);
+            return;
+        }
+        adapterChild.refusalElement.textContent = '';
+        setShown(adapterChild.refusalElement, false);
+
+        const fields = [];
+        adapterChild.fieldStates.forEach(function (fieldState) {
+            if (fieldState.lockReason || !hasOwnKey(adapterChild.childTreeState.updaterChosenFieldKeys, fieldState.fieldKey)) { return; }
+            const fieldRequest = { fieldApiName: fieldState.field.fieldApiName };
+            if (hasOwnKey(adapterChild.childTreeState.updaterEditedValues, fieldState.fieldKey)) { fieldRequest.value = adapterChild.childTreeState.updaterEditedValues[fieldState.fieldKey]; }
+            fields.push(fieldRequest);
+        });
+
+        updaterLoadRunningTreeKey = treeState.tree.treeKey;
+        updaterRunKind = 'generateChild';
+        drawUpdaterLoadButtons();
+        vscodeApi.postMessage({
+            command: 'generateAdapterChild',
+            treeKey: treeState.tree.treeKey,
+            renderSequence: renderedSequence,
+            childObjectApiName: adapterChild.childObjectApiName,
+            countPerParent: countPerParent,
+            fields: fields
+        });
+
+    }
+
+    function renderAdapterChildPreview(previewMessage) {
+
+        if (renderedSequence === null || previewMessage.renderSequence !== renderedSequence) { return; }
+
+        const treeState = findTreeState(previewMessage.treeKey);
+        if (!treeState || !treeState.adapterChildBlockMessage || treeState.adapterChildBlockMessage.childObjectApiName !== previewMessage.childObjectApiName) { return; }
+
+        treeState.adapterChildPreviewMessage = previewMessage;
+        if (treeState.adapterChild) { drawAdapterChildPreview(treeState.adapterChild, previewMessage); }
+
+    }
+
+    function drawAdapterChildPreview(adapterChild, previewMessage) {
+
+        const previewElement = adapterChild.previewElement;
+        previewElement.textContent = '';
+
+        if (!previewMessage) {
+            setShown(previewElement, false);
+            return;
+        }
+
+        const columns = Array.isArray(previewMessage.columns) ? previewMessage.columns.map(String) : [];
+        const rows = Array.isArray(previewMessage.rows) ? previewMessage.rows : [];
+        const recordCount = Number(previewMessage.recordCount) || 0;
+        const hiddenColumnCount = Number(previewMessage.hiddenColumnCount) || 0;
+        let summaryText = pluralize(recordCount, 'new ' + adapterChild.childObjectApiName + ' record', 'new ' + adapterChild.childObjectApiName + ' records')
+            + ', ' + String(previewMessage.countPerParent) + ' per ' + adapterChild.parentObjectApiName + ' record';
+        if (rows.length < recordCount) { summaryText += '. Showing the first ' + rows.length; }
+        if (hiddenColumnCount > 0) { summaryText += (rows.length < recordCount ? ', ' : '. Showing ') + pluralize(columns.length, 'column', 'columns') + ', ' + hiddenColumnCount + ' more not shown'; }
+
+        previewElement.appendChild(createElement('div', 'adapterChildPreviewSummary muted', summaryText));
+        if (columns.length > 0) { previewElement.appendChild(buildRecordTable(columns, rows)); }
+        setShown(previewElement, true);
+
+    }
+
     function describeAdapterFieldChange(fieldChange) {
         const differences = Array.isArray(fieldChange.differences) ? fieldChange.differences.map(String) : [];
         return (fieldChange.status === 'new' ? ADAPTER_NEW_IN_ORG_LABEL : ADAPTER_CHANGED_IN_ORG_LABEL) + (differences.length > 0 ? ': ' + differences.join('; ') : '');
@@ -25104,7 +26195,19 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                 childHeaderElement.appendChild(createElement('span', 'updaterFieldLabel muted', 'via ' + String(orgOnlyFieldState.childObject.fieldApiName)));
                 childHeaderElement.appendChild(createElement('span', 'updaterOrgChangeChip', ADAPTER_NEW_CHILD_OBJECT_LABEL));
                 childHeaderElement.appendChild(createElement('span', 'updaterFieldNote muted', ADAPTER_NEW_CHILD_OBJECT_NOTE));
+                const addElement = createButton('secondary', 'adapterChildAdd', ADAPTER_ADD_CHILD_LABEL, 'compact');
+                addElement.addEventListener('click', function () {
+                    if (addElement.disabled) { return; }
+                    requestAdapterChild(treeState, updaterObjectState, orgOnlyFieldState.childObject);
+                });
+                orgOnlyFieldState.addElement = addElement;
+                childHeaderElement.appendChild(addElement);
                 childRowElement.appendChild(childHeaderElement);
+                // A REDRAW OF THE ROWS PUTS THE OPEN BLOCK BACK UNDER ITS ROW, AS IT WAS
+                if (isAdapterChildOf(treeState.adapterChild, updaterObjectState.object.objectApiName, orgOnlyFieldState.childObject)) {
+                    childRowElement.appendChild(treeState.adapterChild.editorElement);
+                }
+                drawAdapterChildAddButton(treeState, updaterObjectState, orgOnlyFieldState);
                 orgOnlyFieldState.rowElement = childRowElement;
                 setShown(childRowElement, orgOnlyFieldState.isMatch);
                 containerElement.appendChild(childRowElement);
@@ -27069,18 +28172,23 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         if (hostMessage.command === 'updaterLoadState') {
             updaterLoadRunningTreeKey = hostMessage.isRunning ? String(hostMessage.treeKey) : null;
-            updaterRunKind = hostMessage.isRunning ? ( hostMessage.runKind === 'generate' || hostMessage.runKind === 'update' || hostMessage.runKind === 'restore' || hostMessage.runKind === 'retrieve' || hostMessage.runKind === 'apply' ? hostMessage.runKind : 'load' ) : '';
+            updaterRunKind = hostMessage.isRunning ? ( ['generate', 'update', 'restore', 'retrieve', 'apply', 'prepareChild', 'generateChild'].indexOf(hostMessage.runKind) !== -1 ? hostMessage.runKind : 'load' ) : '';
+            if (updaterRunKind !== 'prepareChild') { adapterChildPreparingKey = ''; }
             if (updaterRunKind !== 'restore') { updaterRestoringSnapshotName = ''; }
             // THE HOST LETS THE LAST LOAD GO WHEN THE NEXT STARTS, AND ITS VALUES WITH IT; A GENERATION LETS ONLY THE VALUES GO
             if (hostMessage.isRunning) {
                 if (updaterRunKind === 'load') { clearUpdaterRecords(); }
+                // A NEW CHILD (#447) BELONGS TO THE RECORDS IT IS ADDED UNDER; A NEW ONE REPLACES IT, AND A GENERATION ITS PREVIEW
+                if (updaterRunKind === 'load' || updaterRunKind === 'prepareChild') { clearAdapterChildren(); }
+                if (updaterRunKind === 'generateChild') { clearAdapterChildPreviews(); }
                 // AN UPDATE (#418) KEEPS THE PREVIEW ON SCREEN WHILE ITS CONFIRMATION ASKS ABOUT IT, AND A METADATA RETRIEVE (#445) TOUCHES NO RECORD
-                if (updaterRunKind !== 'update' && updaterRunKind !== 'restore' && updaterRunKind !== 'retrieve' && updaterRunKind !== 'apply') { clearUpdaterValues(); }
+                if (['update', 'restore', 'retrieve', 'apply', 'prepareChild', 'generateChild'].indexOf(updaterRunKind) === -1) { clearUpdaterValues(); }
             }
             // AN UPDATE THAT SENT A REQUEST SPENT THE LOADED RECORDS: THEIR "current" VALUES ARE NO LONGER CURRENT
             if (!hostMessage.isRunning && hostMessage.isRecordsSpent === true) {
                 clearUpdaterRecords();
                 clearUpdaterValues();
+                clearAdapterChildren();
             }
             drawUpdaterLoadButtons();
             return;
@@ -27093,6 +28201,16 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         if (hostMessage.command === 'adapterMetadataChanges') {
             renderAdapterMetadataChanges(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'adapterChildBlock') {
+            renderAdapterChildBlock(hostMessage);
+            return;
+        }
+
+        if (hostMessage.command === 'adapterChildPreview') {
+            renderAdapterChildPreview(hostMessage);
             return;
         }
 
