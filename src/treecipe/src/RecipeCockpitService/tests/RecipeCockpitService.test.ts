@@ -512,7 +512,7 @@ describe('RecipeCockpitService', () => {
             expect(disabledRule).not.toBeNull();
             const disabledSelectors = (disabledRule as RegExpMatchArray)[1].split(',').map(selector => selector.trim());
             // #363: ONE RULE PER KIND, SO A NEW BUTTON IS DISABLED IN THE SHARED STYLE BY ITS KIND ALONE
-            expect(disabledSelectors).toEqual(['.sdtButton-primary:disabled', '.sdtButton-secondary:disabled', '.treeRecordCountInput:disabled']);
+            expect(disabledSelectors).toEqual(['.sdtButton-primary:disabled', '.sdtButton-secondary:disabled']);
             expect((disabledRule as RegExpMatchArray)[2]).toContain('color: var(--sdt-disabled-text);');
             expect((disabledRule as RegExpMatchArray)[2]).toContain('background-color: var(--sdt-disabled-bg);');
             expect((disabledRule as RegExpMatchArray)[2]).toContain('cursor: not-allowed;');
@@ -634,6 +634,8 @@ describe('RecipeCockpitService', () => {
                 ['muted', 'page'], ['accent', 'page'],
                 // #434: THE GITHUB MARK IS ON THE NAVY TITLE BAR, TEAL WHILE HOVERED, WHICH IS ALSO THE FOCUS RING THERE
                 ['onHeaderMuted', 'header'], ['action', 'header'],
+                // #449: AN IMPACTED ROW'S HALF-BROKEN LINK, ON A ROW AND A HOVERED ROW
+                ['changed', 'surface'], ['changed', 'rowHover'],
                 // THE SELECTED TAB'S OUTLINE AND ITS PANEL'S BORDER, AND A TICKED BOX'S EDGE
                 ['actionEdge', 'surface'], ['actionEdge', 'rowHover']
             ];
@@ -652,6 +654,7 @@ describe('RecipeCockpitService', () => {
                 expect(styleSheet).toContain('.treeGlyph path { fill: none; stroke: var(--sdt-accent);');
                 expect(styleSheet).toContain('.treeGlyph.excluded path, .treeGlyph.autoExcluded path { stroke: var(--sdt-muted); }');
                 expect(styleSheet).toMatch(/\.treeGlyph\.autoExcluded path \{ stroke-dasharray: [^;]+; \}/);
+                expect(styleSheet).toContain('.treeGlyph.impacted path { stroke: var(--sdt-changed); }');
                 expect(styleSheet).toMatch(/\.treeObject\.excluded::after \{[^}]*background-color: var\(--sdt-excluded-overlay\);[^}]*pointer-events: none;[^}]*z-index: 1;/);
                 // THE ICON SITS ABOVE THE OVERLAY, SO IT STAYS CRISP AND CLICKABLE
                 expect(styleSheet).toMatch(/\.treeObjectInclude \{[^}]*position: relative;[^}]*z-index: 2;/);

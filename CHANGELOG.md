@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.139.0] - Recipe Cockpit: the Query tab runs against the Target Org Manager selection
+## [3.142.0] - Recipe Cockpit: the Query tab runs against the Target Org Manager selection
 
 Closes [#439](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/439).
 
@@ -13,6 +13,42 @@ The Query tab's **Run** (#367) asked for an org in the command palette on every 
 - **Unchanged:** the one-SELECT check, the record and value caps, cancelling between pages, the preview, the exports, edit saving and one query per window. The retrieves and "Use existing <Parent> from org…" still ask in the command palette.
 - **Help and guide.** The ? help, `docs/RECIPE-COCKPIT-GUIDE.md` and the Query tab's intro say where the query's org comes from.
 - **Tests.** The Query tab suite runs against a selection (a production default included) with no prompt, asks once with none and reuses the pick, refuses a selection that could not be connected to, asks nothing while another run holds the selection or after a model or selection change during the prompt, routes no dropdown change while the prompt is open, and draws **Run in** with the selection's label.
+
+## [3.141.0] - Recipe Cockpit: an object a parent's exclusion cut a lookup from is marked impacted
+
+Closes [#449](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/449), after [#219](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/219) and [#257](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/257).
+
+When you excluded a parent, a child that another included parent kept stayed included, but its lookup to the excluded parent was left out of generation. Its chain link, title and label looked exactly like an untouched object's; only a muted ` · parent excluded` in the lookups line said otherwise.
+
+- **A third chain state.** Such an object is drawn **impacted**: `RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH`, one link where the joined glyph has it and the other pulled away with one spark, stroked in `--sdt-changed`. The shape says it, never the colour alone.
+- **Named.** The row's label reads `parent Contact excluded` (`parents A, B excluded` for several, sorted), and the title and `aria-label` read `Included — parent Contact excluded, so Contact__c is left out. Click to exclude`. `aria-pressed` stays `true`, and a click still excludes the object.
+- **Counted and listed.** The card header adds `· N impacted` when N > 0, and the Insert order line under the Treecipes dropdown marks the object `(impacted)`.
+- **Only the object whose lookup was cut.** Its descendants generate as before and are not marked. A self-lookup never makes an object impacted, and an auto-excluded object stays auto-excluded.
+- **Drawn from what the host already posts.** The panel reads the cascade's `disabledLookups` (`indexObjectImpacts`, cached per selection, no prototype). A malformed entry is skipped rather than throwing, which also guards the existing lookups line.
+- **Unchanged.** The cascade, what is generated in either backend, the stored selection (`RECIPE_COCKPIT_OBJECT_SELECTION_VERSION`) and every posted message.
+- **Guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the impacted state. The pictures were not re-taken: none shows an impacted row.
+- **Tests.** The panel suite draws the impacted glyph, label, title, `aria-label`, count and Insert order suffix, puts the row back when the parent is included again, lists two parents sorted, skips a grandchild, a self-lookup, an excluded object and malformed entries (a `__proto__` name included), and the contrast test holds `--sdt-changed` to 3:1 on a row and a hovered row.
+
+## [3.140.0] - Recipe Cockpit: generating fake data is a seedling
+
+`RECIPE_COCKPIT_ACTION_VERB_EMOJI`'s `generateData` verb is now 🌱 instead of 🎲, as in seed data. It is drawn on the Treecipe tab's **Generate fake data and insert** button and on the Treecipe Updater's **Generate values** card. No other verb or icon uses 🌱, so every verb still has its own emoji. The guide's pictures were re-taken to show it. Nothing else changes.
+
+## [3.139.0] - Recipe Cockpit: the object row's count reads as what gets created
+
+Closes [#438](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/438).
+
+An object row's count (#255) was a bare text box followed by a muted `per Account` or `records`, so it didn't say that the number is how many records Generate creates, or for what.
+
+- **A sentence.** The row now reads `Create [5 ✎] Contact records per Account` for a nested faker-js friend and `Create [10 ✎] Account records` for a root (snowfakery cards always read as roots); a count of 1 reads `record`. The object is its API name as it is, never a made-up plural.
+- **The count is a button.** A `secondary`, compact button made by `createButton`, holding the count and the pencil glyph (`RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH`, built with `createElementNS`). Its accessible name is the whole sentence, such as "Create 5 Contact records per Account record, edit count".
+- **Edited in place.** A click anywhere on the button swaps in the number box, focused and selected. Enter or leaving the box keeps the count and gives the button back, posting once; Escape cancels and gives focus back to the button. An invalid count keeps the box open with the same refusal as before, which a redraw of the card no longer clears, and an unchanged one posts nothing.
+- **Changed counts show.** A count that differs from the recipe's own `count:` draws `changed` inside the button, edges an enabled button in `--sdt-changed` (a disabled one keeps the shared disabled border), and its tooltip says `recipe: N`; both go once the count is back to the recipe's, or after Reset selection.
+- **Excluded objects.** The button is disabled, a click opens nothing, and an open box closes without posting when its object is excluded, moving focus to the object's chain link. The shared disabled rule no longer names `.treeRecordCountInput`, which is never shown disabled now.
+- **Cost.** The number box and its refusal are built on the first open, not with every row, and a selection redraw leaves alone a row whose count and exclusion are what it last drew.
+- **Unchanged.** The `setObjectCount` message and its checks, how counts are stored (`RECIPE_COCKPIT_OBJECT_SELECTION_VERSION` 3), and which rows get a count. Neither faker backend changes.
+- **Guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the new row, and the pictures were re-taken.
+- **Tests.** The panel suite drives the button, the box, Enter, blur and Escape, the refusals, the exclusion and the `changed` marker, Enter then blur posting once, an invalid blur, a refusal kept through a redraw, focus after an exclusion and the disabled border; the panel harness's fake element counts `select()`.
+
 ## [3.138.0] - Recipe Cockpit: the standalone actions outside the Troubleshooting tab are action cards too
 
 Closes [#384](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/384), after [#381](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/381).
