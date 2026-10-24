@@ -1,13 +1,13 @@
 # Change Log
 
-## [3.146.0] - Recipe Cockpit: the Treecipe Adapter reads an object under its deepest loaded parent
+## [3.147.0] - Recipe Cockpit: the Treecipe Adapter reads an object under its deepest loaded parent
 
 From the criteria check of #452 (#444, criterion 1):
 
 - **The closest parent narrows.** An object with lookups to several objects of the subtree used to be narrowed by the first lookup it listed to the level just above, so an Opportunity with `AccountId` and a Contact lookup read under the Accounts. `RecipeCockpitTreeUpdaterQuery.planLoad` now places each object once every parent it has in the subtree is placed and narrows it by its lookup to the DEEPEST of them (the first it lists on a tie), as generation nests an object under its closest parent (#46): that Opportunity reads under the loaded Contacts. An object in a lookup cycle is placed under the deepest parent already placed.
 - **The same objects.** Which objects a load reads is unchanged (breadth-first from the parent, a self-lookup never followed), so the router still holds the panel's request to exactly step 2's objects.
 
-## [3.145.1] - Recipe Cockpit: what touches field files waits for the Treecipe Adapter's Apply, and the Adapter's comparison yields
+## [3.146.1] - Recipe Cockpit: what touches field files waits for the Treecipe Adapter's Apply, and the Adapter's comparison yields
 
 Three fixes from the review of #452 (#445):
 
@@ -18,11 +18,11 @@ Three fixes from the review of #452 (#445):
 - **The field-file comparison yields.** `compareStagedObjects` reads and parses each field file, and xml2js settles synchronously. It now yields to the event loop every `METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES` (200) files, as the other cockpit file walks do, so a large tree's Retrieve or Apply does not hold the extension host.
 - **Values are compared whole.** `readText` cut every compared value to 120 characters, so two values differing only past that point read as unchanged, and Apply left the field out. Values are now compared whole; only what is shown is cut (`cutForDisplay`, with an ellipsis): each difference line, and a changed field's type and label.
 
-## [3.145.0] - Recipe Cockpit: the Treecipe Adapter lists recent changes and new child objects in the org, and applies the retrieved files to the project
+## [3.146.0] - Recipe Cockpit: the Treecipe Adapter lists recent changes and new child objects in the org, and applies the retrieved files to the project
 
 Closes [#445](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/445) (C2 of two), slice C of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442).
 
-3.144.0 marked each field new or changed in the org from the retrieved files. This adds what the org says beside the files, and a way to bring the files into the project.
+3.145.0 marked each field new or changed in the org from the retrieved files. This adds what the org says beside the files, and a way to bring the files into the project.
 
 - **Recent changes in the org.** After a retrieve, one connection to the same sandbox reads two hints. `RecipeCockpitOrgChangeDetection.readChangeHints` sends the Tooling API's `SourceMember` query (`MemberType`, `MemberName`, `RevisionCounter`, `LastModifiedDate` for custom objects, fields, record types and validation rules). It also reads the last 180 days of `SetupAuditTrail`. Both answers are untrusted:
   - **SourceMember:** a row is kept when its member type is one asked for, both halves of its member name are api names, and the object half is a tree object (`parseSourceMembers`).
@@ -49,7 +49,7 @@ Closes [#445](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/44
   - Apply's executor: the confirmation, Cancel, a plan that changed, a deploy started meanwhile, nothing to apply, partial failures;
   - the panel's button, hints and child rows.
 
-## [3.144.0] - Recipe Cockpit: the Treecipe Adapter's Retrieve latest metadata marks what is new or changed in the org
+## [3.145.0] - Recipe Cockpit: the Treecipe Adapter's Retrieve latest metadata marks what is new or changed in the org
 
 Part of [#445](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/445) (C1 of two), slice C of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442).
 
@@ -63,7 +63,7 @@ Part of [#445](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/4
 - **Tests.** `RecipeCockpitOrgChangeDetection.test.ts` (with `mocks/orgChangeWorkspace/`, a project and a staged retrieve): new and changed by kind, a second package directory, a standard field the project lacks, unreadable files, a linked folder and file, the package.xml, the paths and the CLI's answer. `RecipeCockpitAdapterRetrieve.test.ts`: the router, the host against a faked CLI that writes the staged files (the package directory unchanged, the posted changes, a failure after a success, a cancel, no project, the prompt, replay), and the panel's chips, org-only rows, filter and markup safety.
 - **Next.** C2 of #445: `SourceMember` and `SetupAuditTrail` hints, new child objects from the describe, and **Apply retrieved files to project**.
 
-## [3.143.0] - Recipe Cockpit: the Treecipe Adapter loads only the records under the parents you queried
+## [3.144.0] - Recipe Cockpit: the Treecipe Adapter loads only the records under the parents you queried
 
 Closes [#444](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/444), slice B of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442).
 
@@ -77,7 +77,7 @@ Closes [#444](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/44
 - **Next stays navigation.** Step 1's **Next** still posts nothing. The issue proposed loading there, but a load reads only the fields you ticked, which happens in step 2, and Generate values refuses a field the last load did not read.
 - **Tests.** `RecipeCockpitTreeUpdaterQuery.test.ts` covers the plan, the chunks (2,500 Ids, each within the limit, each named once), the combined WHERE, an unbalanced WHERE, a forged Id and the request check. `RecipeCockpitUpdaterLoad.test.ts` covers the narrowed queries, merging, no parents, a refused parent, a cancel between levels and a request that is not the subtree. The Adapter suites' fake records now carry Salesforce-shaped Ids (`fakeRecordId`).
 
-## [3.142.0] - Recipe Cockpit: the Treecipe Updater is the Treecipe Adapter, and opens on choosing a parent
+## [3.143.0] - Recipe Cockpit: the Treecipe Updater is the Treecipe Adapter, and opens on choosing a parent
 
 Closes [#443](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/443), the first slice of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442).
 
@@ -91,6 +91,20 @@ The Updater drew the whole tree and asked for a WHERE per object. The Adapter st
 - **The place.** The step, the parent and the parent's WHERE are optional fields (`updaterStep`, `updaterParentObjectApiName`, `updaterParentWhereText`), so the place version did not change. `normalizePanelPlace` keeps the parent only when it is an api name, the WHERE only within `RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH`, and step 2 only with a parent. A place saved before this, or naming a parent the card no longer lists, opens on step 1 at the root.
 - **Unchanged.** Generate values, Update records, Restore previous values… (shown on both steps), every guard and every posted message.
 - **Tests.** `RecipeCockpitTreecipeUpdater.test.ts` covers both steps, the subtree (a child, a leaf, a self-lookup), Change parent, the filter row, the load's objects and WHERE, and the place. The harness's `openAdapterStructure` opens the tab past step 1, and the other Adapter suites use it. `updaterNext` joins the primary buttons the standalone card inventory keeps.
+## [3.142.0] - Recipe Cockpit: the Query tab runs against the Target Org Manager selection
+
+Closes [#439](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/439).
+
+The Query tab's **Run** (#367) asked for an org in the command palette on every run, even when an org was already chosen in Target Org Manager, so a query could read from a different org than the one the insert and the Treecipe Updater were working against.
+
+- **The selection is the query's org.** With an org chosen in Target Org Manager, **Run** sends the query on a connection opened by that org's username, with no prompt. The button reads **Run in** and the org's name (the dropdown's own label), and **Run…** while none is chosen. `runTreeQuery` still carries no org: the host reads its own selection as it is at the click, so changing the dropdown while a query runs does not move it.
+- **Asked once when none is chosen.** With no selection, **Run** asks over the Target Org Manager's listing, the way the insert (#375) and the Updater's load (#416) do (`promptAndSelectDataOrg`, formerly `promptAndSelectSandboxDataOrg`), and the pick becomes the selection, checked and remembered as one made in the dropdown; later runs ask nothing. A dismissed pick is a quiet cancel, and a listing the CLI cannot answer is one warning. While the prompt is open it holds the selection (`isQueryOrgPromptOpen`, counted by `isSelectionHeldByPromptOrUpdater`, renamed from `isSelectionHeldByUpdater`), and it asks nothing while an insert, a scratch org run, a permission set assignment, a metadata deploy or the Updater holds it.
+- **The query does not wait for the org check.** A prompted query runs as soon as the pick is the selection; the selection's check (and, for a sandbox, the describes the insert needs) finishes behind it, so a large tree does not hold a read-only query, or the selection, for seconds. The Updater's load, update and restore are refused while the query's prompt is open, as everything else that changes or writes the selection is. Each Run button's label is written only when it changes.
+- **Any org the picker lists.** A query only reads, so the CLI's default org can be queried even when it answered that it is not a sandbox; the insert, Updater and deploy rules for it are unchanged. Production orgs the picker does not list can no longer be queried from the cockpit. A selection no connection could be opened to (`isConnectionFailed`, now set by `selectDataOrg`) is refused with one warning naming it.
+- **Unchanged:** the one-SELECT check, the record and value caps, cancelling between pages, the preview, the exports, edit saving and one query per window. The retrieves and "Use existing <Parent> from org…" still ask in the command palette.
+- **Help and guide.** The ? help, `docs/RECIPE-COCKPIT-GUIDE.md` and the Query tab's intro say where the query's org comes from.
+- **Tests.** The Query tab suite runs against a selection (a production default included) with no prompt, asks once with none and reuses the pick, refuses a selection that could not be connected to, asks nothing while another run holds the selection or after a model or selection change during the prompt, routes no dropdown change while the prompt is open, and draws **Run in** with the selection's label.
+
 ## [3.141.0] - Recipe Cockpit: an object a parent's exclusion cut a lookup from is marked impacted
 
 Closes [#449](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/449), after [#219](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/219) and [#257](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/257).

@@ -830,7 +830,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
                 .toEqual({ kind: 'refuseUpdaterLoad', hostMessage: runningLoad });
 
             panelState().updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'restore' };
-            expect(RecipeCockpitService.isSelectionHeldByUpdater(panelState())).toBe(true);
+            expect(RecipeCockpitService.isSelectionHeldByPromptOrUpdater(panelState())).toBe(true);
             expect(RecipeCockpitService.routePanelMessage({ command: 'updateUpdaterRecords', treeKey: ACCOUNT_TREE_KEY }, panelState())).toMatchObject({ kind: 'refuseUpdaterLoad', hostMessage: { runKind: 'restore', isRunning: true } });
             expect(RecipeCockpitService.routePanelMessage({ command: 'selectDataOrg', orgIndex: 0 }, panelState())).toBeUndefined();
             panelState().updaterLoadStateMessage = undefined;
@@ -848,7 +848,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
         it.each([
             ['an insert', (state: IRecipeCockpitPanelState) => { state.insertStateMessage = { command: 'insertState', isRunning: true, treeKey: ACCOUNT_TREE_KEY }; }],
             ['a metadata deploy', (state: IRecipeCockpitPanelState) => { state.metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, deployKind: 'fields' }; }],
-            ['a load asking for an org', (state: IRecipeCockpitPanelState) => { state.isUpdaterOrgPromptOpen = true; }]
+            ['a load asking for an org', (state: IRecipeCockpitPanelState) => { state.isUpdaterOrgPromptOpen = true; }],
+            ['a query asking for an org', (state: IRecipeCockpitPanelState) => { state.isQueryOrgPromptOpen = true; }]
         ])('refuses a restore while %s holds the org selection, and one into an org that is not a sandbox', async (_description, holdSelection) => {
 
             await openCockpit();

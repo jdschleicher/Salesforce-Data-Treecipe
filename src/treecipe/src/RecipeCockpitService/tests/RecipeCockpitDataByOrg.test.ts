@@ -591,6 +591,8 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             expect(postedNamed('dataOrgSelection').at(-1).failureMessage).toContain('Could not connect to qa: expired access/refresh token');
             expect(postedNamed('dataOrgReadiness')).toEqual([]);
+            // A QUERY (#439) READS FROM ANY ORG THAT ANSWERED, SO THE SELECTION SAYS WHEN NONE DID
+            expect((RecipeCockpitService as any).recipeCockpitPanelState.dataOrgSelection.isConnectionFailed).toBe(true);
 
         });
 
