@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.143.1] - Recipe Cockpit: what touches field files waits for the Treecipe Adapter's Apply, and the Adapter's comparison yields
+## [3.145.1] - Recipe Cockpit: what touches field files waits for the Treecipe Adapter's Apply, and the Adapter's comparison yields
 
 Three fixes from the review of #452 (#445):
 
@@ -11,15 +11,11 @@ Three fixes from the review of #452 (#445):
 - **The field-file comparison yields.** `compareStagedObjects` reads and parses each field file, and xml2js settles synchronously. It now yields to the event loop every `METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES` (200) files, as the other cockpit file walks do, so a large tree's Retrieve or Apply does not hold the extension host.
 - **Values are compared whole.** `readText` cut every compared value to 120 characters, so two values differing only past that point read as unchanged, and Apply left the field out. Values are now compared whole; only what is shown is cut (`cutForDisplay`, with an ellipsis): each difference line, and a changed field's type and label.
 
-## [3.143.0] - Recipe Cockpit: data generation's emoji is a seedling
-
-- `RECIPE_COCKPIT_ACTION_VERB_EMOJI.generateData` is 🌱, replacing 🎲. It is the one entry both data-generation actions read: the Treecipe Adapter's **Generate values** card and the Treecipe tab's **Generate fake data and insert**, which draws it from the stylesheet. Every other verb keeps its emoji, and the one-emoji-per-verb test still holds.
-
-## [3.142.0] - Recipe Cockpit: the Treecipe Adapter lists recent changes and new child objects in the org, and applies the retrieved files to the project
+## [3.145.0] - Recipe Cockpit: the Treecipe Adapter lists recent changes and new child objects in the org, and applies the retrieved files to the project
 
 Closes [#445](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/445) (C2 of two), slice C of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442).
 
-3.141.0 marked each field new or changed in the org from the retrieved files. This adds what the org says beside the files, and a way to bring the files into the project.
+3.144.0 marked each field new or changed in the org from the retrieved files. This adds what the org says beside the files, and a way to bring the files into the project.
 
 - **Recent changes in the org.** After a retrieve, one connection to the same sandbox reads two hints. `RecipeCockpitOrgChangeDetection.readChangeHints` sends the Tooling API's `SourceMember` query (`MemberType`, `MemberName`, `RevisionCounter`, `LastModifiedDate` for custom objects, fields, record types and validation rules). It also reads the last 180 days of `SetupAuditTrail`. Both answers are untrusted:
   - **SourceMember:** a row is kept when its member type is one asked for, both halves of its member name are api names, and the object half is a tree object (`parseSourceMembers`).
@@ -46,7 +42,7 @@ Closes [#445](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/44
   - Apply's executor: the confirmation, Cancel, a plan that changed, a deploy started meanwhile, nothing to apply, partial failures;
   - the panel's button, hints and child rows.
 
-## [3.141.0] - Recipe Cockpit: the Treecipe Adapter's Retrieve latest metadata marks what is new or changed in the org
+## [3.144.0] - Recipe Cockpit: the Treecipe Adapter's Retrieve latest metadata marks what is new or changed in the org
 
 Part of [#445](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/445) (C1 of two), slice C of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442).
 
@@ -60,7 +56,7 @@ Part of [#445](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/4
 - **Tests.** `RecipeCockpitOrgChangeDetection.test.ts` (with `mocks/orgChangeWorkspace/`, a project and a staged retrieve): new and changed by kind, a second package directory, a standard field the project lacks, unreadable files, a linked folder and file, the package.xml, the paths and the CLI's answer. `RecipeCockpitAdapterRetrieve.test.ts`: the router, the host against a faked CLI that writes the staged files (the package directory unchanged, the posted changes, a failure after a success, a cancel, no project, the prompt, replay), and the panel's chips, org-only rows, filter and markup safety.
 - **Next.** C2 of #445: `SourceMember` and `SetupAuditTrail` hints, new child objects from the describe, and **Apply retrieved files to project**.
 
-## [3.140.0] - Recipe Cockpit: the Treecipe Adapter loads only the records under the parents you queried
+## [3.143.0] - Recipe Cockpit: the Treecipe Adapter loads only the records under the parents you queried
 
 Closes [#444](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/444), slice B of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442).
 
@@ -74,7 +70,7 @@ Closes [#444](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/44
 - **Next stays navigation.** Step 1's **Next** still posts nothing. The issue proposed loading there, but a load reads only the fields you ticked, which happens in step 2, and Generate values refuses a field the last load did not read.
 - **Tests.** `RecipeCockpitTreeUpdaterQuery.test.ts` covers the plan, the chunks (2,500 Ids, each within the limit, each named once), the combined WHERE, an unbalanced WHERE, a forged Id and the request check. `RecipeCockpitUpdaterLoad.test.ts` covers the narrowed queries, merging, no parents, a refused parent, a cancel between levels and a request that is not the subtree. The Adapter suites' fake records now carry Salesforce-shaped Ids (`fakeRecordId`).
 
-## [3.139.0] - Recipe Cockpit: the Treecipe Updater is the Treecipe Adapter, and opens on choosing a parent
+## [3.142.0] - Recipe Cockpit: the Treecipe Updater is the Treecipe Adapter, and opens on choosing a parent
 
 Closes [#443](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/443), the first slice of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442).
 
@@ -88,6 +84,40 @@ The Updater drew the whole tree and asked for a WHERE per object. The Adapter st
 - **The place.** The step, the parent and the parent's WHERE are optional fields (`updaterStep`, `updaterParentObjectApiName`, `updaterParentWhereText`), so the place version did not change. `normalizePanelPlace` keeps the parent only when it is an api name, the WHERE only within `RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH`, and step 2 only with a parent. A place saved before this, or naming a parent the card no longer lists, opens on step 1 at the root.
 - **Unchanged.** Generate values, Update records, Restore previous values… (shown on both steps), every guard and every posted message.
 - **Tests.** `RecipeCockpitTreecipeUpdater.test.ts` covers both steps, the subtree (a child, a leaf, a self-lookup), Change parent, the filter row, the load's objects and WHERE, and the place. The harness's `openAdapterStructure` opens the tab past step 1, and the other Adapter suites use it. `updaterNext` joins the primary buttons the standalone card inventory keeps.
+## [3.141.0] - Recipe Cockpit: an object a parent's exclusion cut a lookup from is marked impacted
+
+Closes [#449](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/449), after [#219](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/219) and [#257](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/257).
+
+When you excluded a parent, a child that another included parent kept stayed included, but its lookup to the excluded parent was left out of generation. Its chain link, title and label looked exactly like an untouched object's; only a muted ` · parent excluded` in the lookups line said otherwise.
+
+- **A third chain state.** Such an object is drawn **impacted**: `RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH`, one link where the joined glyph has it and the other pulled away with one spark, stroked in `--sdt-changed`. The shape says it, never the colour alone.
+- **Named.** The row's label reads `parent Contact excluded` (`parents A, B excluded` for several, sorted), and the title and `aria-label` read `Included — parent Contact excluded, so Contact__c is left out. Click to exclude`. `aria-pressed` stays `true`, and a click still excludes the object.
+- **Counted and listed.** The card header adds `· N impacted` when N > 0, and the Insert order line under the Treecipes dropdown marks the object `(impacted)`.
+- **Only the object whose lookup was cut.** Its descendants generate as before and are not marked. A self-lookup never makes an object impacted, and an auto-excluded object stays auto-excluded.
+- **Drawn from what the host already posts.** The panel reads the cascade's `disabledLookups` (`indexObjectImpacts`, cached per selection, no prototype). A malformed entry is skipped rather than throwing, which also guards the existing lookups line.
+- **Unchanged.** The cascade, what is generated in either backend, the stored selection (`RECIPE_COCKPIT_OBJECT_SELECTION_VERSION`) and every posted message.
+- **Guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the impacted state. The pictures were not re-taken: none shows an impacted row.
+- **Tests.** The panel suite draws the impacted glyph, label, title, `aria-label`, count and Insert order suffix, puts the row back when the parent is included again, lists two parents sorted, skips a grandchild, a self-lookup, an excluded object and malformed entries (a `__proto__` name included), and the contrast test holds `--sdt-changed` to 3:1 on a row and a hovered row.
+
+## [3.140.0] - Recipe Cockpit: generating fake data is a seedling
+
+`RECIPE_COCKPIT_ACTION_VERB_EMOJI`'s `generateData` verb is now 🌱 instead of 🎲, as in seed data. It is drawn on the Treecipe tab's **Generate fake data and insert** button and on the Treecipe Updater's **Generate values** card. No other verb or icon uses 🌱, so every verb still has its own emoji. The guide's pictures were re-taken to show it. Nothing else changes.
+
+## [3.139.0] - Recipe Cockpit: the object row's count reads as what gets created
+
+Closes [#438](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/438).
+
+An object row's count (#255) was a bare text box followed by a muted `per Account` or `records`, so it didn't say that the number is how many records Generate creates, or for what.
+
+- **A sentence.** The row now reads `Create [5 ✎] Contact records per Account` for a nested faker-js friend and `Create [10 ✎] Account records` for a root (snowfakery cards always read as roots); a count of 1 reads `record`. The object is its API name as it is, never a made-up plural.
+- **The count is a button.** A `secondary`, compact button made by `createButton`, holding the count and the pencil glyph (`RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH`, built with `createElementNS`). Its accessible name is the whole sentence, such as "Create 5 Contact records per Account record, edit count".
+- **Edited in place.** A click anywhere on the button swaps in the number box, focused and selected. Enter or leaving the box keeps the count and gives the button back, posting once; Escape cancels and gives focus back to the button. An invalid count keeps the box open with the same refusal as before, which a redraw of the card no longer clears, and an unchanged one posts nothing.
+- **Changed counts show.** A count that differs from the recipe's own `count:` draws `changed` inside the button, edges an enabled button in `--sdt-changed` (a disabled one keeps the shared disabled border), and its tooltip says `recipe: N`; both go once the count is back to the recipe's, or after Reset selection.
+- **Excluded objects.** The button is disabled, a click opens nothing, and an open box closes without posting when its object is excluded, moving focus to the object's chain link. The shared disabled rule no longer names `.treeRecordCountInput`, which is never shown disabled now.
+- **Cost.** The number box and its refusal are built on the first open, not with every row, and a selection redraw leaves alone a row whose count and exclusion are what it last drew.
+- **Unchanged.** The `setObjectCount` message and its checks, how counts are stored (`RECIPE_COCKPIT_OBJECT_SELECTION_VERSION` 3), and which rows get a count. Neither faker backend changes.
+- **Guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` describe the new row, and the pictures were re-taken.
+- **Tests.** The panel suite drives the button, the box, Enter, blur and Escape, the refusals, the exclusion and the `changed` marker, Enter then blur posting once, an invalid blur, a refusal kept through a redraw, focus after an exclusion and the disabled border; the panel harness's fake element counts `select()`.
 
 ## [3.138.0] - Recipe Cockpit: the standalone actions outside the Troubleshooting tab are action cards too
 

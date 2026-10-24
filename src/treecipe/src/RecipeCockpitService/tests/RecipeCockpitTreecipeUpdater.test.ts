@@ -163,7 +163,7 @@ describe('RecipeCockpitService, the Treecipe Adapter tab (#415)', () => {
             const contactObject = updaterObjectNamed(panel, accountCard, 'Contact');
             expect(panel.findAll(contactObject, 'treeLookups')[0].textContent).toBe('(AccountId → Account)');
 
-            ['treeObjectInclude', 'treeRecordCountInput', 'treeFieldInclude', 'treeFieldFixedValue', 'treeObject'].forEach(className => {
+            ['treeObjectInclude', 'treeRecordCountInput', 'treeRecordCountButton', 'treeFieldInclude', 'treeFieldFixedValue', 'treeObject'].forEach(className => {
                 expect(panel.findAll(updaterPanel, className)).toEqual([]);
             });
 

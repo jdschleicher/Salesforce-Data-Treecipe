@@ -341,6 +341,13 @@ export const RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM = 'rotate(45 12 12)';
 export const RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH = 'M6 8 H10 A4 4 0 0 1 10 16 H6 A4 4 0 0 1 6 8 Z M14 8 H18 A4 4 0 0 1 18 16 H14 A4 4 0 0 1 14 8 Z';
 export const RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH = 'M4.5 8 H6.5 A4 4 0 0 1 6.5 16 H4.5 A4 4 0 0 1 4.5 8 Z M17.5 8 H19.5 A4 4 0 0 1 19.5 16 H17.5 A4 4 0 0 1 17.5 8 Z M12 3.5 V6 M12 18 V20.5';
 /*
+    IMPACTED (#449): the object is still included, but a lookup of it points at an excluded parent, so
+    that lookup is left out of what is generated. One link stays where the joined glyph has it, the
+    other is pulled away with one spark at the gap -- half joined, half broken -- stroked in
+    --sdt-changed, and the row's label, title and aria-label name the parent.
+*/
+export const RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH = 'M6 8 H10 A4 4 0 0 1 10 16 H6 A4 4 0 0 1 6 8 Z M17.5 8 H19.5 A4 4 0 0 1 19.5 16 H17.5 A4 4 0 0 1 17.5 8 Z M14.75 3.5 V6';
+/*
     A field's edit button (#356, the pin of #262 and the ✎ of #323 in one), built the same way as the
     chain link: one path -- a pencil -- stroked from the palette by CSS, and filled while the field
     holds an edit, so the shape, aria-pressed, the title and the row's badge ("edited" for an
@@ -462,6 +469,7 @@ export const RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SEPARATOR = ' → ';
 export const RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS = 'No objects';
 export const RECIPE_COCKPIT_TREE_PICKER_EXCLUDED_SUFFIX = ' (excluded)';
 export const RECIPE_COCKPIT_TREE_PICKER_AUTO_EXCLUDED_SUFFIX = ' (auto-excluded)';
+export const RECIPE_COCKPIT_TREE_PICKER_IMPACTED_SUFFIX = ' (impacted)';
 // HOW MANY RESULT ROWS THE SECTION SEARCH DRAWS; THE REST IS ONE "N more" LINE
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT = 50;
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX = ' more — type more of the name to narrow the search';
@@ -551,9 +559,9 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'These settings change what is generated, but the recipe file stays exactly as Generate Treecipe wrote it, so it always shows what was generated from your metadata:'
         ],
         items: [
-            'Excluded objects (the chain link): the object and its children are left out.',
+            'Excluded objects (the chain link): the object and its children are left out. A child that another included parent keeps shows a half-broken link and names the excluded parent: it is still generated, without its lookup to that parent.',
             'Unticked fields: the field is left out. All fields, above an object\'s fields, ticks or unticks them all.',
-            'Record counts: how many records an object gets.',
+            'Record counts: each object\'s row says what is created, such as Create 5 ✎ Contact records per Account (a friend\'s count is records per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe\'s says changed.',
             'The rules box: a field generated without the limits its validation rules set.'
         ]
     },
@@ -16615,7 +16623,7 @@ ${this.buildPaletteCustomProperties()}
     .treeFavorite, .treeRename { padding: 0.4rem 0.6rem; font-size: 1.1em; line-height: 1; }
     .favoritesControls { display: inline-flex; align-items: center; gap: 0.5rem; }
     .treeAddFriendChoice, .historyAction { text-decoration: underline; }
-    .sdtButton-primary:disabled, .sdtButton-secondary:disabled, .treeRecordCountInput:disabled {
+    .sdtButton-primary:disabled, .sdtButton-secondary:disabled {
         color: var(--sdt-disabled-text);
         background-color: var(--sdt-disabled-bg);
         border-color: var(--sdt-border);
@@ -16770,6 +16778,7 @@ ${this.buildPaletteCustomProperties()}
     .treeGlyph path { fill: none; stroke: var(--sdt-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .treeGlyph.excluded path, .treeGlyph.autoExcluded path { stroke: var(--sdt-muted); }
     .treeGlyph.autoExcluded path { stroke-dasharray: 2 2.5; }
+    .treeGlyph.impacted path { stroke: var(--sdt-changed); }
     .treeExclusion { font-size: 0.85em; }
     .treeField { position: relative; }
     .treeField.fieldExcluded::after {
@@ -17176,9 +17185,14 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     .troubleshootingTodoText { display: block; margin: 0.1rem 0 0 0; white-space: pre-wrap; word-break: break-word; font-family: var(--vscode-editor-font-family); color: var(--sdt-muted); }
     .todosViews { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0 0.2rem 0; }
     .todosViews .todosView.selected.sdtButton { color: var(--sdt-text); background-color: var(--sdt-row-hover); font-weight: 600; }
-    .treeRecordCount { display: inline-flex; align-items: baseline; gap: 0.3rem; }
+    .treeRecordCount { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .treeRecordCountButton { display: inline-flex; align-items: center; gap: 0.3rem; font-weight: 600; }
+    .treeRecordCountButton.changed:not(:disabled) { border-color: var(--sdt-changed); }
+    .treeRecordCountChanged { font-weight: normal; font-size: 0.85em; color: var(--sdt-muted); }
+    .treeRecordCountButton:disabled .fixedValueGlyph path { stroke: var(--sdt-disabled-text); }
+    .treeRecordCountButton:disabled .treeRecordCountChanged { color: var(--sdt-disabled-text); }
     .treeRecordCountInput {
-        width: 5.5rem;
+        width: 4.5rem;
         padding: 0.15rem 0.3rem;
         color: var(--sdt-text);
         background-color: var(--sdt-surface);
@@ -17415,6 +17429,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const TREE_PICKER_NO_OBJECTS = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS)};
     const TREE_PICKER_EXCLUDED_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_EXCLUDED_SUFFIX)};
     const TREE_PICKER_AUTO_EXCLUDED_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_AUTO_EXCLUDED_SUFFIX)};
+    const TREE_PICKER_IMPACTED_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_IMPACTED_SUFFIX)};
     const TREECIPES_SEARCH_RESULT_LIMIT = ${RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT};
     const TREECIPES_SEARCH_MORE_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX)};
     const REGENERATE_WITH_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL)};
@@ -17449,6 +17464,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const TREE_GLYPH_TRANSFORM = ${JSON.stringify(RECIPE_COCKPIT_TREE_GLYPH_TRANSFORM)};
     const TREE_LINKED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_LINKED_GLYPH_PATH)};
     const TREE_BROKEN_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_BROKEN_GLYPH_PATH)};
+    const TREE_IMPACTED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TREE_IMPACTED_GLYPH_PATH)};
     const FIELD_PARENT_EXCLUDED_REASON = ${JSON.stringify(RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON)};
     const FIXED_VALUE_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_FIXED_VALUE_GLYPH_PATH)};
     const FRIEND_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_FRIEND_EMOJI)};
@@ -18069,11 +18085,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         }
 
         const exclusionsByObjectApiName = indexObjectExclusions(shownTreeState.tree);
+        const impactsByObjectApiName = indexObjectImpacts(shownTreeState.tree);
         const friendLabelsByObjectApiName = listFriendLabelsByObjectApiName(shownTreeState);
         objectApiNames.forEach(function (objectApiName, objectIndex) {
             if (objectIndex > 0) { treePickerObjectsElement.appendChild(createElement('span', 'treePickerObjectSeparator muted', TREE_PICKER_OBJECTS_SEPARATOR)); }
             const exclusion = Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
-            const suffix = !exclusion ? '' : exclusion.kind === 'autoExcluded' ? TREE_PICKER_AUTO_EXCLUDED_SUFFIX : TREE_PICKER_EXCLUDED_SUFFIX;
+            const suffix = !exclusion ? ( hasOwnKey(impactsByObjectApiName, objectApiName) ? TREE_PICKER_IMPACTED_SUFFIX : '' )
+                : exclusion.kind === 'autoExcluded' ? TREE_PICKER_AUTO_EXCLUDED_SUFFIX : TREE_PICKER_EXCLUDED_SUFFIX;
             const friendLabels = hasOwnKey(friendLabelsByObjectApiName, objectApiName) ? friendLabelsByObjectApiName[objectApiName] : [];
             const friendText = friendLabels.length > 0 ? ' (' + friendLabels.join(', ') + ')' : '';
             treePickerObjectsElement.appendChild(createElement('span', exclusion ? 'treePickerObject excluded' : 'treePickerObject', objectApiName + friendText + suffix));
@@ -19327,6 +19345,62 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
+    /*
+        #449: an object the cascade kept INCLUDED whose lookup to an excluded parent is disabled --
+        the host's disabledLookups, read here and drawn, never decided. A self-lookup is never one,
+        and an object the selection excludes is drawn as excluded instead. Parents and fields are
+        listed once each, sorted with "<".
+    */
+    const impactIndexesBySelection = new WeakMap();
+
+    function indexObjectImpacts(tree) {
+
+        const objectSelection = tree.objectSelection;
+        if (!objectSelection || typeof objectSelection !== 'object') { return Object.create(null); }
+        if (impactIndexesBySelection.has(objectSelection)) { return impactIndexesBySelection.get(objectSelection); }
+
+        const exclusionsByObjectApiName = indexObjectExclusions(tree);
+        const impactsByObjectApiName = Object.create(null);
+        // ONLY OBJECTS THE CARD DRAWS, SO THE HEADER'S COUNT AND THE ROWS NEVER DISAGREE
+        const drawnObjectApiNames = Object.create(null);
+        ( Array.isArray(tree.objects) ? tree.objects : [] ).forEach(function (treeObject) {
+            if (treeObject && typeof treeObject.objectApiName === 'string') { drawnObjectApiNames[treeObject.objectApiName] = true; }
+        });
+        const disabledLookups = Array.isArray(objectSelection.disabledLookups) ? objectSelection.disabledLookups : [];
+        const compareNames = function (left, right) { return left < right ? -1 : left > right ? 1 : 0; };
+
+        disabledLookups.forEach(function (disabledLookup) {
+            if (!disabledLookup || typeof disabledLookup !== 'object') { return; }
+            const objectApiName = disabledLookup.objectApiName;
+            const parentObjectApiName = disabledLookup.parentObjectApiName;
+            const fieldApiName = disabledLookup.fieldApiName;
+            if (typeof objectApiName !== 'string' || typeof parentObjectApiName !== 'string' || typeof fieldApiName !== 'string') { return; }
+            if (objectApiName === parentObjectApiName || hasOwnKey(exclusionsByObjectApiName, objectApiName) || !hasOwnKey(drawnObjectApiNames, objectApiName)) { return; }
+            if (!hasOwnKey(impactsByObjectApiName, objectApiName)) {
+                impactsByObjectApiName[objectApiName] = { parentObjectApiNames: [], fieldApiNames: [] };
+            }
+            const impact = impactsByObjectApiName[objectApiName];
+            if (impact.parentObjectApiNames.indexOf(parentObjectApiName) === -1) { impact.parentObjectApiNames.push(parentObjectApiName); }
+            if (impact.fieldApiNames.indexOf(fieldApiName) === -1) { impact.fieldApiNames.push(fieldApiName); }
+        });
+
+        Object.keys(impactsByObjectApiName).forEach(function (objectApiName) {
+            impactsByObjectApiName[objectApiName].parentObjectApiNames.sort(compareNames);
+            impactsByObjectApiName[objectApiName].fieldApiNames.sort(compareNames);
+        });
+        impactIndexesBySelection.set(objectSelection, impactsByObjectApiName);
+
+        return impactsByObjectApiName;
+
+    }
+
+    function describeObjectImpact(impact) {
+
+        const parentText = impact.parentObjectApiNames.length === 1 ? 'parent ' + impact.parentObjectApiNames[0] : 'parents ' + impact.parentObjectApiNames.join(', ');
+        return parentText + ' excluded';
+
+    }
+
     function findObjectExclusion(tree, objectApiName) {
 
         const exclusionsByObjectApiName = indexObjectExclusions(tree);
@@ -19342,7 +19416,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             ? objectSelection.includedObjectCount + ' of ' + pluralize(objectSelection.objectCount, 'object', 'objects')
             : pluralize(treeState.countedObjectCount, 'object', 'objects');
 
-        return objectText + ' · ' + pluralize(treeState.countedFieldCount, 'field', 'fields');
+        const impactedObjectCount = Object.keys(indexObjectImpacts(treeState.tree)).length;
+        const impactedText = impactedObjectCount > 0 ? ' · ' + impactedObjectCount + ' impacted' : '';
+
+        return objectText + impactedText + ' · ' + pluralize(treeState.countedFieldCount, 'field', 'fields');
 
     }
 
@@ -19356,9 +19433,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const tree = treeState.tree;
         const disabledLookups = tree.objectSelection && Array.isArray(tree.objectSelection.disabledLookups) ? tree.objectSelection.disabledLookups : [];
         const exclusionsByObjectApiName = indexObjectExclusions(tree);
+        const impactsByObjectApiName = indexObjectImpacts(tree);
         // INDEXED ONCE PER DRAW: A PER-ROW SCAN OF THE LISTS WAS OVER A SECOND AT 11,000 ROWS
         const disabledFieldApiNamesByObjectApiName = Object.create(null);
         disabledLookups.forEach(function (disabledLookup) {
+            if (!disabledLookup || typeof disabledLookup !== 'object' || typeof disabledLookup.objectApiName !== 'string' || typeof disabledLookup.fieldApiName !== 'string') { return; }
             if (!Object.prototype.hasOwnProperty.call(disabledFieldApiNamesByObjectApiName, disabledLookup.objectApiName)) {
                 disabledFieldApiNamesByObjectApiName[disabledLookup.objectApiName] = [];
             }
@@ -19370,13 +19449,15 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             const objectApiName = treeObjectState.object.objectApiName;
             const exclusion = Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
             const isAutoExcluded = !!exclusion && exclusion.kind === 'autoExcluded';
+            const impact = !exclusion && hasOwnKey(impactsByObjectApiName, objectApiName) ? impactsByObjectApiName[objectApiName] : null;
 
             if (exclusion) { treeObjectState.element.classList.add('excluded'); } else { treeObjectState.element.classList.remove('excluded'); }
 
-            treeObjectState.exclusionElement.textContent = !exclusion ? ''
+            treeObjectState.exclusionElement.textContent = impact ? describeObjectImpact(impact)
+                : !exclusion ? ''
                 : isAutoExcluded ? 'auto-excluded — parent ' + exclusion.excludedParentObjectApiName + ' excluded'
                 : 'excluded';
-            if (exclusion) { treeObjectState.exclusionElement.classList.remove('hidden'); } else { treeObjectState.exclusionElement.classList.add('hidden'); }
+            if (exclusion || impact) { treeObjectState.exclusionElement.classList.remove('hidden'); } else { treeObjectState.exclusionElement.classList.add('hidden'); }
 
             const disabledFieldApiNames = Object.prototype.hasOwnProperty.call(disabledFieldApiNamesByObjectApiName, objectApiName)
                 ? disabledFieldApiNamesByObjectApiName[objectApiName]
@@ -19385,28 +19466,24 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             if (treeObjectState.lookupsElement.textContent) { treeObjectState.lookupsElement.classList.remove('hidden'); } else { treeObjectState.lookupsElement.classList.add('hidden'); }
 
             // AN EXCLUDED OBJECT IS NOT GENERATED, SO ITS COUNT CANNOT BE CHANGED; RE-INCLUDED, ITS STORED COUNT COMES BACK
-            if (treeObjectState.countInputElement) {
-                treeObjectState.countInputElement.disabled = !!exclusion;
-                treeObjectState.countInputElement.value = String(currentRecordCountOf(treeObjectState));
-                treeObjectState.countErrorElement.textContent = '';
-                treeObjectState.countErrorElement.classList.add('hidden');
-            }
+            if (treeObjectState.countButtonElement) { drawRecordCount(treeObjectState, !!exclusion); }
 
             if (!treeObjectState.includeElement) { return; }
 
             const includeElement = treeObjectState.includeElement;
-            const glyphKind = !exclusion ? 'included' : exclusion.kind;
+            const glyphKind = exclusion ? exclusion.kind : impact ? 'impacted' : 'included';
             const isRefused = !!treeObjectState.object.hasIndistinctOccurrences;
 
             treeObjectState.isIncluded = !exclusion;
             treeObjectState.glyphElement.setAttribute('class', 'treeGlyph ' + glyphKind);
-            treeObjectState.glyphPathElement.setAttribute('d', exclusion ? TREE_BROKEN_GLYPH_PATH : TREE_LINKED_GLYPH_PATH);
+            treeObjectState.glyphPathElement.setAttribute('d', exclusion ? TREE_BROKEN_GLYPH_PATH : impact ? TREE_IMPACTED_GLYPH_PATH : TREE_LINKED_GLYPH_PATH);
             includeElement.setAttribute('aria-pressed', exclusion ? 'false' : 'true');
             includeElement.disabled = isAutoExcluded || isRefused;
 
             const title = isRefused ? objectApiName + ' is written more than once in its recipe with no nickname to tell them apart, so it cannot be excluded'
                 : isAutoExcluded ? 'Excluded because parent ' + exclusion.excludedParentObjectApiName + ' is excluded'
                 : exclusion ? 'Excluded — click to include'
+                : impact ? 'Included — ' + describeObjectImpact(impact) + ', so ' + impact.fieldApiNames.join(', ') + ( impact.fieldApiNames.length === 1 ? ' is' : ' are' ) + ' left out. Click to exclude'
                 : 'Included — click to exclude';
             includeElement.setAttribute('title', title);
             includeElement.setAttribute('aria-label', objectApiName + ': ' + title);
@@ -20668,51 +20745,172 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
 
     /*
-        The count box right of an object's name (#255): a root's record count, or a nested faker-js
-        friend's records PER parent record, as "count:" means there. It starts at the recipe's own
-        count and posts only a whole number of one or more; anything else is refused on the row and
-        nothing is posted. The host holds the count to the same rule again, and the recipe file is
-        never written.
+        The count right of an object's name (#255) reads as what is created (#438): "Create [5 ✎]
+        Contact records per Account", a nested faker-js friend's count being records PER parent
+        record, as "count:" means there. The count is a button; a click anywhere on it swaps in the
+        number box, where Enter or leaving the box keeps the count and Escape puts the button back.
+        Only a whole number of one or more is posted, anything else is refused on the row and the box
+        stays open. The host holds the count to the same rule again, and the recipe file is never
+        written.
     */
     function buildRecordCountElement(treeObjectState) {
 
-        const object = treeObjectState.object;
         const countElement = createElement('span', 'treeRecordCount');
-        const inputElement = createElement('input', 'treeRecordCountInput');
-        const labelText = object.countParentObjectApiName ? 'per ' + object.countParentObjectApiName : 'records';
+        const buttonElement = createButton('secondary', 'treeRecordCountButton', '', 'compact');
+        const valueElement = createElement('span', 'treeRecordCountValue');
+        const changedElement = createElement('span', 'treeRecordCountChanged hidden', 'changed');
+        const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
+        const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
+        const labelElement = createElement('span', 'treeRecordCountLabel');
+
+        glyphElement.setAttribute('class', 'fixedValueGlyph');
+        glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
+        glyphElement.setAttribute('aria-hidden', 'true');
+        glyphElement.setAttribute('focusable', 'false');
+        pathElement.setAttribute('d', FIXED_VALUE_GLYPH_PATH);
+        glyphElement.appendChild(pathElement);
+        buttonElement.appendChild(valueElement);
+        buttonElement.appendChild(glyphElement);
+        buttonElement.appendChild(changedElement);
+
+        buttonElement.addEventListener('click', function () {
+            if (buttonElement.disabled) { return; }
+            openRecordCountEditor(treeObjectState);
+        });
+
+        countElement.appendChild(createElement('span', 'treeRecordCountVerb', 'Create'));
+        countElement.appendChild(buttonElement);
+        countElement.appendChild(labelElement);
+        treeObjectState.recordCountElement = countElement;
+        treeObjectState.countButtonElement = buttonElement;
+        treeObjectState.countValueElement = valueElement;
+        treeObjectState.countChangedElement = changedElement;
+        treeObjectState.countLabelElement = labelElement;
+        drawRecordCount(treeObjectState, false);
+
+        return countElement;
+
+    }
+
+    // "1 Contact record per Account", ANY OTHER COUNT "records"; THE PARENT'S RECORD IS ALWAYS ONE
+    function describeRecordCount(object, recordCount) {
+
+        return object.objectApiName + (recordCount === 1 ? ' record' : ' records') + (object.countParentObjectApiName ? ' per ' + object.countParentObjectApiName : '');
+
+    }
+
+    /*
+        The button says the whole sentence to a screen reader, and whether the count differs from the
+        recipe's own. A redraw of an object's selection redraws every row, so a row whose count,
+        exclusion and recipe count are what it last drew is left alone.
+    */
+    function drawRecordCount(treeObjectState, isExcluded) {
+
+        const object = treeObjectState.object;
+        const recordCount = currentRecordCountOf(treeObjectState);
+        const isChanged = recordCount !== object.recordCount;
+        const buttonElement = treeObjectState.countButtonElement;
+        const drawnKey = recordCount + '|' + (isExcluded ? 1 : 0);
+
+        if (isExcluded && treeObjectState.isCountEditorOpen) {
+            const wasFocused = document.activeElement === treeObjectState.countInputElement;
+            closeRecordCountEditor(treeObjectState, false);
+            if (wasFocused && treeObjectState.includeElement) { treeObjectState.includeElement.focus(); }
+        }
+        if (treeObjectState.countDrawnKey === drawnKey) { return; }
+        treeObjectState.countDrawnKey = drawnKey;
+
+        treeObjectState.countValueElement.textContent = String(recordCount);
+        treeObjectState.countLabelElement.textContent = describeRecordCount(object, recordCount);
+        buttonElement.disabled = !!isExcluded;
+        if (isChanged) { buttonElement.classList.add('changed'); } else { buttonElement.classList.remove('changed'); }
+        if (isChanged) { treeObjectState.countChangedElement.classList.remove('hidden'); } else { treeObjectState.countChangedElement.classList.add('hidden'); }
+        buttonElement.setAttribute('title', isExcluded
+            ? 'Excluded objects are not generated, so their count cannot be changed.'
+            : (isChanged ? 'recipe: ' + object.recordCount + '. ' : '') + 'Click to change the count.');
+        buttonElement.setAttribute('aria-label', 'Create ' + recordCount + ' ' + object.objectApiName + (recordCount === 1 ? ' record' : ' records')
+            + (object.countParentObjectApiName ? ' per ' + object.countParentObjectApiName + ' record' : '')
+            + (isChanged ? ', changed from the recipe\\'s ' + object.recordCount : '')
+            + ', edit count');
+
+    }
+
+    // THE BOX AND ITS REFUSAL ARE BUILT ON THE FIRST OPEN: FEW READERS EVER CHANGE A COUNT, AND A CARD CAN HOLD THOUSANDS OF ROWS
+    function ensureRecordCountEditor(treeObjectState) {
+
+        if (treeObjectState.countInputElement) { return; }
+
+        const object = treeObjectState.object;
+        const inputElement = createElement('input', 'treeRecordCountInput hidden');
+        const errorElement = createElement('span', 'treeRecordCountError hidden');
 
         inputElement.setAttribute('type', 'text');
         inputElement.setAttribute('inputmode', 'numeric');
         inputElement.setAttribute('aria-label', object.objectApiName + ' records' + (object.countParentObjectApiName ? ' per ' + object.countParentObjectApiName + ' record' : ''));
-        inputElement.addEventListener('change', function () {
-
-            const countText = String(inputElement.value);
-            const recordCount = Number(countText);
-
-            if (!/^[1-9][0-9]*$/.test(countText) || !Number.isSafeInteger(recordCount)) {
-                treeObjectState.countErrorElement.textContent = 'Enter a whole number of 1 or more.';
-                treeObjectState.countErrorElement.classList.remove('hidden');
-                return;
+        inputElement.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') {
+                if (typeof event.preventDefault === 'function') { event.preventDefault(); }
+                commitRecordCount(treeObjectState);
+            } else if (event.key === 'Escape') {
+                if (typeof event.preventDefault === 'function') { event.preventDefault(); }
+                closeRecordCountEditor(treeObjectState, true);
             }
-
-            treeObjectState.countErrorElement.textContent = '';
-            treeObjectState.countErrorElement.classList.add('hidden');
-            if (recordCount === currentRecordCountOf(treeObjectState)) { return; }
-
-            const countMessage = { command: 'setObjectCount', treeKey: treeObjectState.tree.treeKey, objectApiName: object.objectApiName, count: recordCount };
-            if (object.nickname) { countMessage.nickname = object.nickname; }
-            vscodeApi.postMessage(countMessage);
-
+        });
+        inputElement.addEventListener('blur', function () {
+            if (treeObjectState.isCountEditorOpen) { commitRecordCount(treeObjectState); }
         });
 
-        countElement.appendChild(inputElement);
-        countElement.appendChild(createElement('span', 'treeRecordCountLabel muted', labelText));
+        treeObjectState.recordCountElement.insertBefore(inputElement, treeObjectState.countLabelElement);
+        treeObjectState.recordCountElement.appendChild(errorElement);
         treeObjectState.countInputElement = inputElement;
-        treeObjectState.countErrorElement = createElement('span', 'treeRecordCountError hidden');
-        countElement.appendChild(treeObjectState.countErrorElement);
-        inputElement.value = String(currentRecordCountOf(treeObjectState));
+        treeObjectState.countErrorElement = errorElement;
 
-        return countElement;
+    }
+
+    function openRecordCountEditor(treeObjectState) {
+
+        ensureRecordCountEditor(treeObjectState);
+        const inputElement = treeObjectState.countInputElement;
+
+        treeObjectState.isCountEditorOpen = true;
+        inputElement.value = String(currentRecordCountOf(treeObjectState));
+        treeObjectState.countButtonElement.classList.add('hidden');
+        inputElement.classList.remove('hidden');
+        inputElement.focus();
+        if (typeof inputElement.select === 'function') { inputElement.select(); }
+
+    }
+
+    // CLOSED BEFORE FOCUS MOVES, SO THE BOX'S OWN blur DOES NOT COMMIT A COUNT THE READER CANCELLED
+    function closeRecordCountEditor(treeObjectState, isFocusReturned) {
+
+        treeObjectState.isCountEditorOpen = false;
+        treeObjectState.countInputElement.classList.add('hidden');
+        treeObjectState.countButtonElement.classList.remove('hidden');
+        treeObjectState.countErrorElement.textContent = '';
+        treeObjectState.countErrorElement.classList.add('hidden');
+        if (isFocusReturned) { treeObjectState.countButtonElement.focus(); }
+
+    }
+
+    function commitRecordCount(treeObjectState) {
+
+        const object = treeObjectState.object;
+        const countText = String(treeObjectState.countInputElement.value);
+        const recordCount = Number(countText);
+
+        if (!/^[1-9][0-9]*$/.test(countText) || !Number.isSafeInteger(recordCount)) {
+            treeObjectState.countErrorElement.textContent = 'Enter a whole number of 1 or more.';
+            treeObjectState.countErrorElement.classList.remove('hidden');
+            return;
+        }
+
+        closeRecordCountEditor(treeObjectState, true);
+        if (recordCount === currentRecordCountOf(treeObjectState)) { return; }
+
+        const countMessage = { command: 'setObjectCount', treeKey: treeObjectState.tree.treeKey, objectApiName: object.objectApiName, count: recordCount };
+        if (object.nickname) { countMessage.nickname = object.nickname; }
+        vscodeApi.postMessage(countMessage);
 
     }
 
@@ -20759,8 +20957,15 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             tree: tree,
             // A CARD WITH A FOLDER KEEPS ITS UNTICKED FIELDS (#220); AN ITERATION'S BOXES FOLLOW ITS OBJECT AND ARE DRAWN DISABLED
             canSelectFields: !!tree.folderName && !object.hasIndistinctOccurrences,
+            recordCountElement: null,
+            countButtonElement: null,
+            countValueElement: null,
+            countChangedElement: null,
+            countLabelElement: null,
             countInputElement: null,
             countErrorElement: null,
+            countDrawnKey: null,
+            isCountEditorOpen: false,
             hasRecordTypes: hasOwnKey(recordTypeFieldsByObjectApiName, object.objectApiName),
             recordTypeFieldCount: 0,
             // THE TODO COMMENTS OF THE BLOCK THAT SIT ON NO FIELD, AND EVERY TODO OF THE OCCURRENCE (#354)

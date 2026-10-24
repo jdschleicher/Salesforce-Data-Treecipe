@@ -46,9 +46,9 @@ Each action there is a card you click anywhere on, saying when you would need it
 
 These settings change what is generated, but the recipe file stays exactly as Generate Treecipe wrote it, so it always shows what was generated from your metadata:
 
-- **Excluded objects** (the chain link): the object and its children are left out.
+- **Excluded objects** (the chain link): the object and its children are left out. A child that another included parent keeps shows a half-broken link and names the excluded parent: it is still generated, without its lookup to that parent.
 - **Unticked fields**: the field is left out. **All fields**, above an object's fields, ticks or unticks them all.
-- **Record counts**: how many records an object gets.
+- **Record counts**: each object's row says what is created, such as Create 5 ✎ Contact records per Account (a friend's count is records per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe's says changed.
 - **The rules box**: a field generated without the limits its validation rules set.
 
 ![A card with one object excluded, a field unticked and a count changed](images/recipe-cockpit/changes-without-editing-the-yaml.png)
