@@ -33,6 +33,8 @@ const WINDOWS_RESERVED_FOLDER_NAME_PATTERN = /^(con|prn|aux|nul|com[0-9]|lpt[0-9
 // A SNAPSHOT'S FILE NAME AS writeSnapshot WRITES IT: <yyyyMMdd-HHmmss>[-<n>]-before.json
 const SNAPSHOT_FILE_NAME_PATTERN = /^(\d{8}-\d{6})(?:-([2-9]|1\d|20))?-before\.json$/;
 
+const CUSTOM_FIELD_API_NAME_PATTERN = /__c$/i;
+
 const SALESFORCE_RECORD_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
 
 // A USERNAME IS ONE LINE WITH NO SPACE, AS THE CLI RECORDS IT
@@ -531,7 +533,8 @@ export class RecipeCockpitRecordUpdate {
                     && ( !Array.isArray(orgOnlyFieldApiNames)
                         || orgOnlyFieldApiNames.length === 0
                         || new Set(orgOnlyFieldApiNames).size !== orgOnlyFieldApiNames.length
-                        || !orgOnlyFieldApiNames.every(orgOnlyFieldApiName => typeof orgOnlyFieldApiName === 'string' && ( fieldApiNames as unknown[] ).includes(orgOnlyFieldApiName)) ) ) {
+                        // ONLY A CUSTOM FIELD IS EVER OFFERED AS ONLY THE ORG'S, SO A HAND-EDITED MARK CANNOT WIDEN WHAT A RESTORE WRITES
+                        || !orgOnlyFieldApiNames.every(orgOnlyFieldApiName => typeof orgOnlyFieldApiName === 'string' && CUSTOM_FIELD_API_NAME_PATTERN.test(orgOnlyFieldApiName) && ( fieldApiNames as unknown[] ).includes(orgOnlyFieldApiName)) ) ) {
                 return { refusal: `its fields of ${objectApiName} only in the org are not among its fields` };
             }
 

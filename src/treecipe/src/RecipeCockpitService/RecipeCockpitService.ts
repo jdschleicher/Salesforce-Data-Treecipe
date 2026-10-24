@@ -2161,6 +2161,7 @@ export const RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_REASON = 'Salesforce sets this 
 // A FIELD ONLY THE ORG HOLDS (#446) IS READ FROM ITS STAGED FILE, WHICH SAYS WHETHER IT IS A FORMULA
 export const RECIPE_COCKPIT_UPDATER_FORMULA_REASON = 'a formula: Salesforce calculates its value';
 export const RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE = 'Fixed value only: this recipe\'s faker backend writes no expression for its type in the org. Type a value in its editor.';
+export const RECIPE_COCKPIT_ADAPTER_ORG_ONLY_NO_RECIPE_REASON = 'this card has no single recipe file to read its faker backend from, so no value can be generated';
 export const RECIPE_COCKPIT_ADAPTER_ORG_ONLY_EXPRESSION_REFUSAL = 'it takes a fixed value only, since this recipe\'s faker backend writes no expression for its type in the org';
 // AN AUTO NUMBER OR A ROLL-UP SUMMARY IS COMPUTED BY THE ORG, SO AN UPDATE OF IT FAILS; A FORMULA IS TOO, BUT THE WRAPPER DOES NOT RECORD ONE
 export const RECIPE_COCKPIT_UPDATER_SYSTEM_VALUE_FIELD_TYPES = ['AutoNumber', 'Summary'];
@@ -9055,7 +9056,9 @@ export class RecipeCockpitService {
                         ? RECIPE_COCKPIT_UPDATER_FORMULA_REASON
                         : newField.referenceTo !== ''
                             ? RECIPE_COCKPIT_UPDATER_LOOKUP_REASON
-                            : this.findUpdaterFieldLockReason(tree, objectChange.objectApiName, fieldViewModel);
+                            : this.findUpdaterFieldLockReason(tree, objectChange.objectApiName, fieldViewModel)
+                                // GENERATE VALUES NEEDS THE CARD'S RECIPE, SO A CARD WITHOUT ONE OFFERS NOTHING TO FILL
+                                ?? ( fakerService === undefined ? RECIPE_COCKPIT_ADAPTER_ORG_ONLY_NO_RECIPE_REASON : undefined );
 
                     let expression: string | undefined;
                     if ( lockReason === undefined && recipeService ) {
@@ -9889,22 +9892,7 @@ export class RecipeCockpitService {
     */
     static findRecipeExpression(recipeValue: string | undefined): string | undefined {
 
-        for ( const valueLine of String(recipeValue ?? '').split('\n') ) {
-            const trimmedLine = valueLine.trim();
-            let candidate: unknown = trimmedLine;
-            if ( trimmedLine.length >= 2 && trimmedLine.startsWith('"') && trimmedLine.endsWith('"') ) {
-                try {
-                    candidate = JSON.parse(trimmedLine);
-                } catch {
-                    candidate = trimmedLine;
-                }
-            }
-            if ( typeof candidate === 'string' && candidate.startsWith(RECIPE_COCKPIT_EXPRESSION_OPENER) && !/[\r\n\u0085\u2028\u2029]/.test(candidate) ) {
-                return candidate;
-            }
-        }
-
-        return undefined;
+        return RecipeCockpitRecipeWriter.findFirstExpressionLine(recipeValue);
 
     }
 
@@ -24916,8 +24904,24 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const treeState = findTreeState(changesMessage.treeKey);
         if (!treeState) { return; }
 
+        // THE HOST HOLDS ONE RETRIEVE (#446): ANOTHER CARD'S MARKS, AND THE FIELDS ONLY THE ORG HOLDS IT OFFERED, ARE NO LONGER ONES IT ACCEPTS
+        treeStates.forEach(function (otherTreeState) {
+            if (otherTreeState !== treeState && otherTreeState.adapterChangesMessage) { clearAdapterMetadataChanges(otherTreeState); }
+        });
+
         treeState.adapterChangesMessage = changesMessage;
         applyAdapterMetadataChanges(treeState);
+
+    }
+
+    function clearAdapterMetadataChanges(treeState) {
+
+        treeState.adapterChangesMessage = { objects: [], orgLabel: '' };
+        applyAdapterMetadataChanges(treeState);
+        treeState.adapterChangesMessage = null;
+        if (treeState.updaterOrgChangesNoteElement) { setShown(treeState.updaterOrgChangesNoteElement, false); }
+        if (treeState.updaterApplyRetrievedElement) { setShown(treeState.updaterApplyRetrievedElement, false); }
+        drawUpdaterLoadButtons();
 
     }
 

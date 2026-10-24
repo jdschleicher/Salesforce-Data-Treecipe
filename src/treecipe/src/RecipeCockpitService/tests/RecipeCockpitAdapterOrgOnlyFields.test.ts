@@ -48,6 +48,7 @@ import {
     RECIPE_COCKPIT_ADAPTER_ORG_ONLY_EXPRESSION_REFUSAL,
     RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIELD_NOTE,
     RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE,
+    RECIPE_COCKPIT_ADAPTER_ORG_ONLY_NO_RECIPE_REASON,
     RECIPE_COCKPIT_FIXED_VALUE_DEPENDENT_REASON_PREFIX,
     RECIPE_COCKPIT_UPDATER_FORMULA_REASON,
     RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
@@ -58,6 +59,8 @@ import {
     RECIPE_COCKPIT_UPDATER_TAB_LABEL,
     RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL
 } from '../RecipeCockpitService';
+import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
+import { HOSTILE_PICKLIST_VALUES } from '../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
 import { IOrgNewFieldDetail, IOrgObjectChanges, RecipeCockpitOrgChangeDetection } from '../RecipeCockpitOrgChangeDetection';
 import { RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RecipeCockpitRecordUpdate } from '../RecipeCockpitRecordUpdate';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -243,11 +246,25 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
 
         });
 
-        it('offers every unlocked field a fixed value only when the card\'s backend is not known', () => {
+        it('locks every field when the card\'s backend is not known, since Generate values needs its recipe', () => {
 
             const offered = offer([newFieldDetail('Region_Code__c', { length: 80 })], undefined);
 
-            expect(offered.objects[0].fieldChanges[0].orgOnly).toEqual({ fieldTypeWithSize: 'Text(80)', note: RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE });
+            expect(offered.objects[0].fieldChanges[0].orgOnly).toEqual({ fieldTypeWithSize: 'Text(80)', lockReason: RECIPE_COCKPIT_ADAPTER_ORG_ONLY_NO_RECIPE_REASON });
+
+        });
+
+        it.each(['faker-js', 'snowfakery'] as const)('offers a %s picklist of hostile values either nothing or one expression checkConstrainedExpression accepts', (fakerService) => {
+
+            HOSTILE_PICKLIST_VALUES.forEach(([payloadName, payload]) => {
+                const offered = offer([newFieldDetail('Tier__c', { fieldType: 'Picklist', picklistValues: [payload, 'Gold'] })], fakerService);
+                const orgOnly = offered.objects[0].fieldChanges[0].orgOnly;
+                if ( orgOnly?.expression !== undefined ) {
+                    expect([payloadName, RecipeCockpitRecipeWriter.checkConstrainedExpression(orgOnly.expression)]).toEqual([payloadName, undefined]);
+                } else {
+                    expect([payloadName, orgOnly?.note]).toEqual([payloadName, RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE]);
+                }
+            });
 
         });
 
@@ -332,6 +349,9 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
 
             expect(RecipeCockpitRecordUpdate.parseSnapshot(snapshotText({ orgOnlyFieldApiNames: ['Region_Code__c'] }))).toMatchObject({ objects: [{ orgOnlyFieldApiNames: ['Region_Code__c'] }] });
             expect(RecipeCockpitRecordUpdate.parseSnapshot(snapshotText({}))).not.toHaveProperty('objects.0.orgOnlyFieldApiNames');
+
+            expect(RecipeCockpitRecordUpdate.parseSnapshot(snapshotText({ fieldApiNames: ['Description', 'Region_Code__c'], records: [{ recordId: fakeRecordId('Account', 0), fieldValues: { Description: 'A', Region_Code__c: null } }], orgOnlyFieldApiNames: ['Description'] })))
+                .toEqual({ refusal: 'its fields of Account only in the org are not among its fields' });
 
             [['Other__c'], [], ['Region_Code__c', 'Region_Code__c'], 'Region_Code__c', [7]].forEach(orgOnlyFieldApiNames => {
                 expect(RecipeCockpitRecordUpdate.parseSnapshot(snapshotText({ orgOnlyFieldApiNames: orgOnlyFieldApiNames }))).toEqual({ refusal: 'its fields of Account only in the org are not among its fields' });
@@ -642,7 +662,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
 
         });
 
-        it('offers a fixed value only when the card has no recipe file to read its backend from', async () => {
+        it('locks a field only the org holds when the card has no recipe file to read its backend from', async () => {
 
             await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState);
             await receivedMessageHandler({ command: 'ready' });
@@ -653,7 +673,8 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
             await send({ command: 'retrieveAdapterMetadata', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), parentObjectApiName: 'Account' });
 
             const accountChanges = postedNamed('adapterMetadataChanges')[0].objects.find((objectChanges: any) => objectChanges.objectApiName === 'Account');
-            expect(accountChanges.fieldChanges.find((fieldChange: any) => fieldChange.fieldApiName === 'Region_Code__c').orgOnly).toEqual({ fieldTypeWithSize: 'Text(80)', note: RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE });
+            expect(accountChanges.fieldChanges.find((fieldChange: any) => fieldChange.fieldApiName === 'Region_Code__c').orgOnly).toEqual({ fieldTypeWithSize: 'Text(80)', lockReason: RECIPE_COCKPIT_ADAPTER_ORG_ONLY_NO_RECIPE_REASON });
+            expect(RecipeCockpitService.readAdapterOrgOnlyFieldApiNames(panelState(), ACCOUNT_TREE_KEY)).toEqual(new Map());
 
         });
 
@@ -896,6 +917,21 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
                 { objectApiName: 'Account', fieldApiName: 'Region_Code__c' },
                 { objectApiName: 'Account', fieldApiName: 'Hologram__c', value: 'Shimmer' }
             ]);
+
+        });
+
+        it('lets another card\'s offer go when this card retrieves, since the host holds one retrieve', () => {
+
+            const panel = runPanelScript();
+            const { card, rowNamed } = openUpdaterTab(panel);
+            panel.findAll(rowNamed('Region_Code__c'), 'updaterFieldChoose')[0].dispatch('click');
+            expect(panel.findAll(card, 'updaterSummary')[0].textContent).toBe('1 field chosen on 1 object');
+
+            panel.postToPanel({ command: 'adapterMetadataChanges', renderSequence: 1, treeKey: 'Lead-ONLY', orgLabel: 'qa', objects: [] });
+
+            expect(rowNamed('Region_Code__c')).toBeUndefined();
+            expect(panel.findAll(card, 'updaterSummary')[0].textContent).not.toBe('1 field chosen on 1 object');
+            expect(panel.findAll(card, 'updaterOrgChangesNote')[0].classList.contains('hidden')).toBe(true);
 
         });
 

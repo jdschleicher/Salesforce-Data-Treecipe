@@ -305,22 +305,9 @@ export class RecipeService {
             return undefined;
         }
 
-        for ( const valueLine of String(recipeValue ?? '').split('\n') ) {
-            const trimmedLine = valueLine.trim();
-            let candidate: unknown = trimmedLine;
-            if ( trimmedLine.length >= 2 && trimmedLine.startsWith('"') && trimmedLine.endsWith('"') ) {
-                try {
-                    candidate = JSON.parse(trimmedLine);
-                } catch {
-                    return undefined;
-                }
-            }
-            if ( typeof candidate === 'string' && candidate.startsWith('${{') ) {
-                return RecipeCockpitRecipeWriter.checkConstrainedExpression(candidate) === undefined ? candidate : undefined;
-            }
-        }
+        const expression = RecipeCockpitRecipeWriter.findFirstExpressionLine(typeof recipeValue === 'string' ? recipeValue : undefined);
 
-        return undefined;
+        return expression !== undefined && RecipeCockpitRecipeWriter.checkConstrainedExpression(expression) === undefined ? expression : undefined;
 
     }
 

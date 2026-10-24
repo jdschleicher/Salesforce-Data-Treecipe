@@ -17,6 +17,12 @@ Closes [#446](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/44
 - **Kept unchanged.** The preview, the before-values snapshot, all-or-none with set-back, the sandbox-only guards and the describe's `isUpdateable` all apply as they did. Load, generate, update and restore read the records loaded under the parent step 1 chose.
 - **Results, for slice F.** A snapshot object records `orgOnlyFieldApiNames` (only when there are any, so an older snapshot reads as it did). `RecipeCockpitRecordUpdate.parseSnapshot` refuses a list that is not among the object's fields. An update's and a restore's results carry `orgOnlyFields` by object.
 - **Restore.** A snapshot field the recipe does not list is restored only when the snapshot marks it as the org's. It is then held to the org's describe (`findDescribedOrgOnlyFieldLockReason`: a lookup, a dependent picklist, a calculated field and `RecordTypeId` are refused). This works from a later model with no retrieve on screen.
+- **From the review of #453.**
+  - **Restore marks.** A snapshot's `orgOnlyFieldApiNames` must name custom `__c` fields, so a hand-edited mark cannot widen what a restore writes to a standard field.
+  - **One retrieve.** The panel lets another card's org-only rows and choices go when a card retrieves, since the host holds one retrieve.
+  - **No recipe file.** A card with no single recipe file locks its org-only fields (`RECIPE_COCKPIT_ADAPTER_ORG_ONLY_NO_RECIPE_REASON`) rather than offering a fixed value that Generate values would refuse.
+  - **One parser.** The first-expression-line parser is one helper, `RecipeCockpitRecipeWriter.findFirstExpressionLine`, shared by the recipe fields and the org-only fields.
+  - **Hostile values.** An org-only picklist is held to the shared hostile payload list with both backends.
 - **Tests.** `RecipeService.orgOnlyField.test.ts` covers the expression with both backends. `RecipeCockpitAdapterOrgOnlyFields.test.ts` covers:
   - the staged-file read and the offer with both backends: every lock, the fixed-value-only note, an unknown backend;
   - the snapshot's new field;

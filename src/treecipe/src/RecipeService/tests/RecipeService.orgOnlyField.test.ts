@@ -79,3 +79,15 @@ describe('getOrgOnlyFieldExpression per backend (#446)', () => {
     });
 
 });
+
+describe('RecipeCockpitRecipeWriter.findFirstExpressionLine (#446)', () => {
+
+    test('takes the first expression line, unquoting a double-quoted one, and nothing from a TODO or a broken quote', () => {
+        expect(RecipeCockpitRecipeWriter.findFirstExpressionLine('|\n${{ faker.number.int() }}')).toBe('${{ faker.number.int() }}');
+        expect(RecipeCockpitRecipeWriter.findFirstExpressionLine('"${{ fake.Word }}"\n### Driven by ValidationRule "R"')).toBe('${{ fake.Word }}');
+        expect(RecipeCockpitRecipeWriter.findFirstExpressionLine('"### TODO -- FieldType Not Handled"')).toBeUndefined();
+        expect(RecipeCockpitRecipeWriter.findFirstExpressionLine('"${{ broken \\q }}"')).toBeUndefined();
+        expect(RecipeCockpitRecipeWriter.findFirstExpressionLine(undefined)).toBeUndefined();
+    });
+
+});
