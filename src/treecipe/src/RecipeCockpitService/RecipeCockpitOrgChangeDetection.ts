@@ -32,6 +32,20 @@ export interface IOrgFieldChange {
     fieldLabel: string;
     // WHAT DIFFERS, ONE LINE EACH ("length: 80 → 255"); EMPTY FOR A NEW FIELD
     differences: string[];
+    // SET BY THE COCKPIT ONLY ON A NEW FIELD THE RECIPE DOES NOT LIST (#446): WHAT THE TREECIPE ADAPTER OFFERS TO FILL IT WITH
+    orgOnly?: IOrgOnlyFieldOffer;
+}
+
+/*
+    A field only the org holds, as the Treecipe Adapter offers it (#446): its sized type, and either
+    why it cannot be filled, or the expression the recipe's backend writes for it -- absent, with a
+    note, when the backend writes none, so it takes a fixed value only.
+*/
+export interface IOrgOnlyFieldOffer {
+    fieldTypeWithSize: string;
+    expression?: string;
+    lockReason?: string;
+    note?: string;
 }
 
 export interface IOrgObjectChanges {
@@ -134,6 +148,32 @@ export interface IComparedField {
     scale: string;
     required: string;
     referenceTo: string;
+    valueSetName: string;
+    picklistValues: string[];
+}
+
+// WHAT A FIELD FILE SAYS BEYOND WHAT IS COMPARED: WHAT DECIDES WHETHER THE TREECIPE ADAPTER CAN FILL A FIELD ONLY THE ORG HOLDS (#446)
+interface IReadField extends IComparedField {
+    isFormula: boolean;
+    controllingField: string;
+}
+
+/*
+    A field the org holds and the project has no file for (#446), as its staged file says: what the
+    recipe's backend writes its expression from, and what locks it. Every value is the org's XML,
+    one line each; host-only, never posted.
+*/
+export interface IOrgNewFieldDetail {
+    objectApiName: string;
+    fieldApiName: string;
+    fieldType: string;
+    fieldLabel: string;
+    length?: number;
+    precision?: number;
+    scale?: number;
+    referenceTo: string;
+    controllingField: string;
+    isFormula: boolean;
     valueSetName: string;
     picklistValues: string[];
 }
@@ -319,6 +359,17 @@ export class RecipeCockpitOrgChangeDetection {
 
     }
 
+    // AS detectFieldChanges, WITH EACH NEW FIELD'S STAGED FILE READ IN THE SAME PASS (#446), SO THE ADAPTER CAN FILL IT
+    static async detectFieldChangesWithNewFields(workspaceRoot: string,
+                                                 packageDirectoryPaths: readonly string[],
+                                                 stagingFolderPath: string,
+                                                 objectApiNames: readonly string[]): Promise<{ objectChanges: IOrgObjectChanges[]; newFields: IOrgNewFieldDetail[] }> {
+
+        const { objectChanges, newFields } = await this.compareStagedObjects(workspaceRoot, packageDirectoryPaths, stagingFolderPath, objectApiNames);
+        return { objectChanges: objectChanges, newFields: newFields };
+
+    }
+
     /*
         What "Apply retrieved files to project" copies, drawn again from the files as they are NOW:
         each changed field's staged file over the project file it was compared with, wherever that
@@ -417,9 +468,10 @@ export class RecipeCockpitOrgChangeDetection {
     private static async compareStagedObjects(workspaceRoot: string,
                                               packageDirectoryPaths: readonly string[],
                                               stagingFolderPath: string,
-                                              objectApiNames: readonly string[]): Promise<{ objectChanges: IOrgObjectChanges[]; fileComparisons: IFieldFileComparison[] }> {
+                                              objectApiNames: readonly string[]): Promise<{ objectChanges: IOrgObjectChanges[]; fileComparisons: IFieldFileComparison[]; newFields: IOrgNewFieldDetail[] }> {
 
         const fileComparisons: IFieldFileComparison[] = [];
+        const newFields: IOrgNewFieldDetail[] = [];
         // xml2js SETTLES SYNCHRONOUSLY, SO A LARGE TREE'S FILES WOULD HOLD THE EXTENSION HOST WITHOUT A YIELD NOW AND THEN
         let readFileCount = 0;
         const yieldEveryFewFiles = async () => {
@@ -459,6 +511,7 @@ export class RecipeCockpitOrgChangeDetection {
                     if ( CUSTOM_FIELD_NAME_PATTERN.test(stagedFile.fieldApiName) ) {
                         fieldChanges.push({ fieldApiName: stagedFile.fieldApiName, status: 'new', fieldType: this.cutForDisplay(stagedField.fieldType), fieldLabel: this.cutForDisplay(stagedField.fieldLabel), differences: [] });
                         fileComparisons.push({ objectApiName: objectApiName, fieldApiName: stagedFile.fieldApiName, status: 'new', stagedFilePath: stagedFile.filePath });
+                        newFields.push(this.toNewFieldDetail(objectApiName, stagedFile.fieldApiName, stagedField));
                     }
                     continue;
                 }
@@ -494,7 +547,7 @@ export class RecipeCockpitOrgChangeDetection {
 
         }
 
-        return { objectChanges: objectChanges, fileComparisons: fileComparisons };
+        return { objectChanges: objectChanges, fileComparisons: fileComparisons, newFields: newFields };
 
     }
 
@@ -751,7 +804,7 @@ export class RecipeCockpitOrgChangeDetection {
     }
 
     // ONE FIELD FILE, READ THROUGH ONE HANDLE THAT REFUSES A LINK, HELD TO A SIZE AND PARSED; UNDEFINED WHEN IT CANNOT BE
-    private static async readComparedField(filePath: string): Promise<IComparedField | undefined> {
+    private static async readComparedField(filePath: string): Promise<IReadField | undefined> {
 
         const fieldXml = this.readFieldFileText(filePath);
 
@@ -788,7 +841,34 @@ export class RecipeCockpitOrgChangeDetection {
             required: this.readText(customField.required) || 'false',
             referenceTo: this.readText(customField.referenceTo),
             valueSetName: this.readText(valueSet?.valueSetName),
-            picklistValues: picklistValues
+            picklistValues: picklistValues,
+            isFormula: customField.formula !== undefined,
+            controllingField: this.readText(valueSet?.controllingField)
+        };
+
+    }
+
+    // A SIZE IS KEPT ONLY AS A WHOLE NUMBER THE XML SPELLS AS ONE; ANYTHING ELSE IS NO SIZE, AS A FIELD WITHOUT ONE
+    private static toNewFieldDetail(objectApiName: string, fieldApiName: string, readField: IReadField): IOrgNewFieldDetail {
+
+        const readSize = (sizeText: string) => /^\d{1,6}$/.test(sizeText) ? Number(sizeText) : undefined;
+        const length = readSize(readField.length);
+        const precision = readSize(readField.precision);
+        const scale = readSize(readField.scale);
+
+        return {
+            objectApiName: objectApiName,
+            fieldApiName: fieldApiName,
+            fieldType: readField.fieldType,
+            fieldLabel: readField.fieldLabel,
+            ...( length !== undefined ? { length: length } : {} ),
+            ...( precision !== undefined ? { precision: precision } : {} ),
+            ...( scale !== undefined ? { scale: scale } : {} ),
+            referenceTo: readField.referenceTo,
+            controllingField: readField.controllingField,
+            isFormula: readField.isFormula,
+            valueSetName: readField.valueSetName,
+            picklistValues: readField.picklistValues
         };
 
     }
