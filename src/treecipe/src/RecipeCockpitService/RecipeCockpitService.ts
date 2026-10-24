@@ -580,7 +580,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of an org you pick into your project, and change nothing in the org.',
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
-            'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against any connected org you pick in the command palette (a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.',
+            'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.',
             'The Treecipe Updater tab, after Query, draws the tree\'s objects and fields as the Treecipe tab does. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the tree\'s existing records, with the fields you ticked and an optional WHERE per object, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to treecipe/UpdateAttempts first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
         ]
     },
@@ -616,7 +616,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", "Retrieve fields…", "Retrieve record types…" and "Retrieve global value sets…", on every tree, ask every time in the command palette for any connected org, production included, and retrieve that tree's validation rules, custom fields, record types or the global value sets its fields name from it into this project after a confirmation: they only read from that org and deploy nothing. The Query tab, on every tree, runs a query you can edit against any connected org you pick in the command palette every time, production included: a query only reads, and what it returns is written only when you export it, under treecipe/QueryResults. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields…" (the tree's custom fields and the custom objects that hold them, plus, only if you tick its confirmation's box, every tree object's validation rules, record types and global value sets; never a standard field, a standard object or a layout), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under treecipe/OrgOperations, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
+It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", "Retrieve fields…", "Retrieve record types…" and "Retrieve global value sets…", on every tree, ask every time in the command palette for any connected org, production included, and retrieve that tree's validation rules, custom fields, record types or the global value sets its fields name from it into this project after a confirmation: they only read from that org and deploy nothing. The Query tab, on every tree, runs a query you can edit against the org chosen in Target Org Manager, or asks once for one when none is chosen; that is any org the picker lists, the CLI's default org included even when it is production, and no other production org: a query only reads, and what it returns is written only when you export it, under treecipe/QueryResults. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields…" (the tree's custom fields and the custom objects that hold them, plus, only if you tick its confirmation's box, every tree object's validation rules, record types and global value sets; never a standard field, a standard object or a layout), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under treecipe/OrgOperations, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -1944,7 +1944,7 @@ export const RECIPE_COCKPIT_STANDALONE_ACTION_CARDS: Readonly<Record<RecipeCockp
     generateTreecipe: { verb: 'generate', why: 'No recipe run yet? Read this project\'s object metadata and write a Treecipe run to open here.' },
     regenerateWithRecordTypes: { verb: 'regenerate', why: 'Write the run again with the record types ticked above, one block each.' },
     regenerateWithDefaultRecordTypes: { verb: 'regenerate', why: 'Write the run again with each object\'s default record type, as Generate Treecipe does.' },
-    runQuery: { verb: 'run', why: 'Read what this query returns from an org you choose. It only reads.' },
+    runQuery: { verb: 'run', why: 'Read what this query returns from the org chosen in Target Org Manager. It only reads.' },
     exportQueryJson: { verb: 'export', why: 'Write every record the last run returned to treecipe/QueryResults as JSON.' },
     exportQueryCsv: { verb: 'export', why: 'Write every record the last run returned to treecipe/QueryResults as CSV.' },
     loadUpdaterRecords: { verb: 'retrieve', why: 'Read this tree\'s records, with the chosen fields, from the selected sandbox. It only reads.' },
@@ -2118,9 +2118,11 @@ export const RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL = 'Restore values';
 export const RECIPE_COCKPIT_UPDATER_RESTORE_BUSY_REFUSAL = 'Nothing was restored: another run is using the org selection. Try again when it ends.';
 export const RECIPE_COCKPIT_UPDATER_RESTORE_SNAPSHOT_FAILED_REFUSAL = 'Nothing was restored: the values the records hold now could not be saved to treecipe/UpdateAttempts, and a restore never runs without them.';
 
-export const RECIPE_COCKPIT_QUERY_INTRO = 'The SOQL Generate Treecipe wrote for this tree. Edit a query, run it against any connected org you choose, then export what it returned as JSON or CSV. A query only reads.';
+export const RECIPE_COCKPIT_QUERY_INTRO = 'The SOQL Generate Treecipe wrote for this tree. Edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks), then export what it returned as JSON or CSV. A query only reads.';
 
-export const RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER = 'Choose the org to run the query against (it only reads)';
+export const RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER = 'Select the org to run the query against; it becomes the Target Org Manager selection';
+
+export const RECIPE_COCKPIT_QUERY_BUSY_REFUSAL = 'The query was not run: another run is using the org selection. Choose an org in Target Org Manager, or try again when it ends.';
 
 export const RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL = 'Open file';
 
@@ -2299,6 +2301,8 @@ export interface IRecipeCockpitDataOrgSelection {
     orgDetail: IAuthenticatedOrgDetail;
     requestSequence: number;
     orgTypeDetail?: IOrgTypeDetail;
+    // SET WHEN NO CONNECTION COULD BE OPENED TO IT: A QUERY (#439), WHICH READS FROM ANY ORG THAT ANSWERED, REFUSES IT
+    isConnectionFailed?: boolean;
     /*
         Set once this selection's describes have answered and its readiness was posted (#274). A
         permission set assignment in the selection waits for it: a readiness built from describes
@@ -2514,6 +2518,8 @@ export interface IRecipeCockpitPanelState {
         under the pick.
     */
     isUpdaterOrgPromptOpen?: boolean;
+    // SET WHILE A QUERY ASKS FOR AN ORG AND CHECKS THE PICK (#439), HOLDING THE SELECTION AS isUpdaterOrgPromptOpen DOES
+    isQueryOrgPromptOpen?: boolean;
     // THE LAST RECORDS IT POSTED, REPLAYED WHILE ITS MODEL IS THE ONE ON SCREEN
     updaterRecordsMessage?: IRecipeCockpitUpdaterRecordsMessage;
     // THE LAST VALUE GENERATION'S PREVIEW (#417), REPLAYED WHILE ITS MODEL IS ON SCREEN; SET ONLY THROUGH setUpdaterValuesMessage
@@ -8531,9 +8537,9 @@ export class RecipeCockpitService {
     }
 
     /*
-        "Run" (#367): the text is held to one SELECT, the org is ALWAYS asked for in the command
-        palette over every connected org (a query only reads, as a retrieve does, #326), and the
-        query is sent on a connection opened by that org's username, every page read up to the cap
+        "Run" (#367): the text is held to one SELECT, the org is the Target Org Manager selection
+        (#439) -- any org it lists, the CLI's default production org included, since a query only
+        reads -- asked for once over that listing when none is chosen, and the query is sent on a connection opened by that org's username, every page read up to the cap
         and cancellable between pages. The whole result is held for an export, a preview is posted,
         and how it went is ONE notification. One run per window.
     */
@@ -8566,7 +8572,7 @@ export class RecipeCockpitService {
         this.setTreeQueryState({ command: 'treeQueryState', isRunning: true, treeKey: treeKey, queryKey: queryKey });
 
         try {
-            await this.performTreeQuery(treeKey, treeQueryRead.renderSequence, treeQueryRead.folderName, treeQuery, queryCheck.query);
+            await this.performTreeQuery(cockpitPanel, treeKey, treeQueryRead.renderSequence, treeQueryRead.folderName, treeQuery, queryCheck.query);
         } finally {
             this.isTreeQueryInFlight = false;
             this.setTreeQueryState(notRunning);
@@ -8574,13 +8580,13 @@ export class RecipeCockpitService {
 
     }
 
-    private static async performTreeQuery(treeKey: string, renderSequence: number, folderName: string, treeQuery: ISOQLTreeQuery, queryText: string) {
+    private static async performTreeQuery(cockpitPanel: vscode.WebviewPanel, treeKey: string, renderSequence: number, folderName: string, treeQuery: ISOQLTreeQuery, queryText: string) {
 
         const workspaceRoot = this.recipeCockpitPanelState.workspaceRoot;
 
         let orgDetail: IAuthenticatedOrgDetail | undefined;
         try {
-            orgDetail = await SalesforceOrgService.promptForAuthorizedOrg(RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER);
+            orgDetail = await this.resolveTreeQueryOrg(cockpitPanel, this.recipeCockpitPanelState);
         } catch (listError) {
             VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`The query was not run: ${this.describeThrown(listError)}`));
             return;
@@ -8677,12 +8683,67 @@ export class RecipeCockpitService {
     }
 
     /*
-        Whether the Treecipe Updater holds the org selection: its load asking for an org (#416), or an
-        update (#418) or a restore (#419) writing to the org selected. Every route that would change the selection, or
+        The org a query runs against is the Target Org Manager selection as it is at the click
+        (#439), whatever it answered about being a sandbox, unless no connection could be opened
+        to it. With none, it asks once over the dropdown's own listing and the pick becomes the
+        selection, checked and remembered as one made in the dropdown -- unless another run holds
+        the selection, which a prompt would change under it.
+    */
+    private static async resolveTreeQueryOrg(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState): Promise<IAuthenticatedOrgDetail | undefined> {
+
+        const refusalPrefix = 'The query was not run';
+        const usableSelectedOrg = (dataOrgSelection: IRecipeCockpitDataOrgSelection) => {
+            if ( dataOrgSelection.isConnectionFailed ) {
+                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${refusalPrefix}: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} could not be connected to. ${RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE}`));
+                return undefined;
+            }
+            return dataOrgSelection.orgDetail;
+        };
+
+        if ( panelState.dataOrgSelection ) {
+            return usableSelectedOrg(panelState.dataOrgSelection);
+        }
+
+        const clickedRecipeDataMessage = panelState.recipeDataMessage;
+
+        if ( !clickedRecipeDataMessage ) {
+            return undefined;
+        }
+
+        if ( panelState.insertStateMessage
+                || this.isSelectionHeldByPromptOrUpdater(panelState)
+                || panelState.scratchOrgStateMessage?.isRunning
+                || panelState.permissionSetAssignStateMessage?.isRunning
+                || panelState.metadataDeployStateMessage?.isRunning ) {
+            VSCodeWorkspaceService.showWarningMessage(RECIPE_COCKPIT_QUERY_BUSY_REFUSAL);
+            return undefined;
+        }
+
+        const isClickStillCurrent = () => this.recipeCockpitPanel === cockpitPanel
+                                            && this.recipeCockpitPanelState === panelState
+                                            && panelState.recipeDataMessage === clickedRecipeDataMessage;
+
+        let isOrgSelected = false;
+        panelState.isQueryOrgPromptOpen = true;
+        try {
+            isOrgSelected = await this.promptAndSelectDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
+                RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER, refusalPrefix);
+        } finally {
+            panelState.isQueryOrgPromptOpen = false;
+        }
+
+        return isOrgSelected && panelState.dataOrgSelection ? panelState.dataOrgSelection.orgDetail : undefined;
+
+    }
+
+    /*
+        Whether a prompt or the Treecipe Updater holds the org selection: the Updater's load (#416) or
+        a query (#439) asking for an org, or an update (#418) or a restore (#419) writing to the org selected. Every route that would change the selection, or
         write to it, refuses while it does.
     */
-    static isSelectionHeldByUpdater(panelState: IRecipeCockpitPanelState): boolean {
+    static isSelectionHeldByPromptOrUpdater(panelState: IRecipeCockpitPanelState): boolean {
         return panelState.isUpdaterOrgPromptOpen === true
+            || panelState.isQueryOrgPromptOpen === true
             || ( panelState.updaterLoadStateMessage?.isRunning === true
                     && ( panelState.updaterLoadStateMessage.runKind === 'update' || panelState.updaterLoadStateMessage.runKind === 'restore' ) );
     }
@@ -8832,7 +8893,7 @@ export class RecipeCockpitService {
             let isSandboxSelected = false;
             panelState.isUpdaterOrgPromptOpen = true;
             try {
-                isSandboxSelected = await this.promptAndSelectSandboxDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
+                isSandboxSelected = await this.promptAndSelectDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
                     RECIPE_COCKPIT_UPDATER_ORG_PLACEHOLDER, 'Records were not loaded', 'the Treecipe Updater reads only from a sandbox or scratch org');
             } finally {
                 panelState.isUpdaterOrgPromptOpen = false;
@@ -11650,6 +11711,7 @@ export class RecipeCockpitService {
             querySource = SalesforceOrgService.toQuerySource(connection);
         } catch (connectionError) {
             isOrgTypeAnswered = true;
+            dataOrgSelection.isConnectionFailed = true;
             postSelection(`Could not connect to ${orgLabel}: ${connectionError?.message ?? connectionError}. Re-authorize the org with "sf org login web" and try again.`);
             return;
         }
@@ -12062,7 +12124,7 @@ export class RecipeCockpitService {
             let isSandboxSelected = false;
 
             try {
-                isSandboxSelected = await this.promptAndSelectSandboxDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
+                isSandboxSelected = await this.promptAndSelectDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
                     RECIPE_COCKPIT_INSERT_ORG_PLACEHOLDER, 'Nothing was generated or inserted', 'the Treecipe tab inserts only into a sandbox or scratch org');
             } catch (promptError) {
                 // THE PANEL DISABLED THE BUTTON ON THE CLICK, SO A LISTING OR A CHECK THAT THREW STILL GIVES IT BACK
@@ -12097,15 +12159,16 @@ export class RecipeCockpitService {
         insert (#375) and the Treecipe Updater's load (#416) both ask through it. True only when the
         pick is now the selection and answered it is a sandbox; a listing the CLI could not answer, a
         dismissed pick, a new model, an org chosen in the dropdown meanwhile and an org that is not a
-        sandbox are false, the last two with a warning. Anything else thrown is the caller's.
+        sandbox are false, the last two with a warning. Anything else thrown is the caller's. With no
+        sandboxOnlyReason (a query, #439, only reads) any org that could be connected to is true.
     */
-    private static async promptAndSelectSandboxDataOrg(cockpitPanel: vscode.WebviewPanel,
+    private static async promptAndSelectDataOrg(cockpitPanel: vscode.WebviewPanel,
                                                         panelState: IRecipeCockpitPanelState,
                                                         clickedRecipeDataMessage: IRecipeCockpitRecipeDataMessage,
                                                         isClickStillCurrent: () => boolean,
                                                         placeholder: string,
                                                         refusalPrefix: string,
-                                                        sandboxOnlyReason: string): Promise<boolean> {
+                                                        sandboxOnlyReason?: string): Promise<boolean> {
 
         let dataOrgListing: IDataOrgListing | undefined;
         let chosenOrgDetail: IDataOrgDetail | undefined;
@@ -12142,6 +12205,16 @@ export class RecipeCockpitService {
             forgottenOrgNotice: '',
             renderSequence: clickedRecipeDataMessage.renderSequence
         });
+
+        /*
+            A query (#439) only reads and opens its own connection, so it goes on as soon as the pick
+            IS the selection -- selectDataOrg sets it before its first await -- and the check, with a
+            sandbox's describes of every tree object, finishes behind it rather than in front of it.
+        */
+        if ( sandboxOnlyReason === undefined ) {
+            this.selectDataOrg(cockpitPanel, panelState, orgIndex).catch(selectError => ErrorHandlingService.handleCapturedError(selectError, 'openRecipeCockpit'));
+            return isClickStillCurrent() && panelState.dataOrgSelection?.orgDetail.username === chosenOrgDetail.username;
+        }
 
         await this.selectDataOrg(cockpitPanel, panelState, orgIndex);
 
@@ -12836,7 +12909,7 @@ export class RecipeCockpitService {
 
                 // A RELOAD CLEARS THE ORG SELECTION, WHICH WOULD CANCEL AN INSERT THE READER CONFIRMED; THE PANEL DISABLED ITS BUTTONS ON THE CLICK, SO A REFUSAL GIVES THEM BACK
                 if ( panelState.isGenerateTreecipeInFlight
-                        || ( panelState.insertStateMessage || this.isSelectionHeldByUpdater(panelState) )
+                        || ( panelState.insertStateMessage || this.isSelectionHeldByPromptOrUpdater(panelState) )
                         || typeof treeKey !== 'string'
                         || !panelState.treeHistoryAllowLists.recordTypeTreeKeys.has(treeKey)
                         || !recordTypeSelection ) {
@@ -12963,7 +13036,7 @@ export class RecipeCockpitService {
                 // A RUN ENDS BY LISTING THE ORGS ITSELF; A SECOND LISTING MEANWHILE WOULD DISCARD ITS ANSWER AND FORGET ITS ORG
                 // AN INSERT IN FLIGHT HOLDS THE SELECTION IT CONFIRMED; ITS RELOAD ASKS AGAIN ONCE IT HAS ENDED
                 // A PERMISSION SET ASSIGNMENT HOLDS THE SELECTION IT ASSIGNS IN, AND CHECKS IT AGAIN WHEN IT ENDS
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || ( panelState.insertStateMessage || this.isSelectionHeldByUpdater(panelState) ) || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || ( panelState.insertStateMessage || this.isSelectionHeldByPromptOrUpdater(panelState) ) || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
                     return undefined;
                 }
 
@@ -12977,7 +13050,7 @@ export class RecipeCockpitService {
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning
-                        || ( panelState.insertStateMessage || this.isSelectionHeldByUpdater(panelState) )
+                        || ( panelState.insertStateMessage || this.isSelectionHeldByPromptOrUpdater(panelState) )
                         || !Number.isInteger(orgIndex)
                         || orgIndex < 0
                         || orgIndex >= panelState.dataOrgDetails.length
@@ -12996,7 +13069,7 @@ export class RecipeCockpitService {
             */
             case 'refreshDataOrgs':
 
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || ( panelState.insertStateMessage || this.isSelectionHeldByUpdater(panelState) ) || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || panelState.scratchOrgStateMessage?.isRunning || ( panelState.insertStateMessage || this.isSelectionHeldByPromptOrUpdater(panelState) ) || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
                     return undefined;
                 }
 
@@ -13015,7 +13088,7 @@ export class RecipeCockpitService {
                 }
 
                 // A METADATA DEPLOY (#346) DEPLOYS TO THE ORG SELECTED, WHICH THE RUN WOULD CHANGE; A RETRIEVE DOES NOT HOLD IT, SINCE THE RUN DEPLOYS NOTHING (#358)
-                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || ( panelState.insertStateMessage || this.isSelectionHeldByUpdater(panelState) ) || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
+                if ( !panelState.recipeDataMessage || panelState.dataOrgObjectApiNames.size === 0 || ( panelState.insertStateMessage || this.isSelectionHeldByPromptOrUpdater(panelState) ) || panelState.permissionSetAssignStateMessage?.isRunning || panelState.metadataDeployStateMessage?.isRunning ) {
                     return {
                         kind: 'postScratchOrgState',
                         hostMessage: panelState.scratchOrgStateMessage ?? { command: 'scratchOrgState', isRunning: false }
@@ -13045,7 +13118,7 @@ export class RecipeCockpitService {
                 const recipeFilePath = typeof treeKey === 'string' ? panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey) : undefined;
                 // A SCRATCH ORG RUN IS ABOUT TO CHANGE THE SELECTION, SO NOTHING IS INSERTED WHILE IT IS IN FLIGHT
                 const isTreeRoutable = !panelState.scratchOrgStateMessage?.isRunning
-                                        && !this.isSelectionHeldByUpdater(panelState)
+                                        && !this.isSelectionHeldByPromptOrUpdater(panelState)
                                         && !panelState.permissionSetAssignStateMessage?.isRunning
                                         && !panelState.metadataDeployStateMessage?.isRunning
                                         && typeof treeKey === 'string'
@@ -13534,7 +13607,7 @@ export class RecipeCockpitService {
                         || !panelState.recipeDataMessage
                         || !panelState.assignableTreeKeys.has(treeKey)
                         || panelState.scratchOrgStateMessage?.isRunning
-                        || ( panelState.insertStateMessage || this.isSelectionHeldByUpdater(panelState) ) ) {
+                        || ( panelState.insertStateMessage || this.isSelectionHeldByPromptOrUpdater(panelState) ) ) {
                     return refuse();
                 }
 
@@ -13667,7 +13740,7 @@ export class RecipeCockpitService {
                     return refuse();
                 }
 
-                if ( ( panelState.insertStateMessage || this.isSelectionHeldByUpdater(panelState) )
+                if ( ( panelState.insertStateMessage || this.isSelectionHeldByPromptOrUpdater(panelState) )
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataRetrieveStateMessage?.isRunning ) {
@@ -13716,8 +13789,8 @@ export class RecipeCockpitService {
                 reader's text: never an org, a path or an object. The key must be a card with a
                 folder the panel confirmed drawing; the host matches the query key against the
                 queries it read for that tree, and holds the text to one SELECT before it is sent.
-                A query only reads, and its org is asked for in the command palette every time, so
-                nothing else running holds it.
+                A query only reads, and its org is the Target Org Manager selection the host reads
+                at the run (#439), so nothing else running holds it at the router.
             */
             case 'loadTreeQueries': {
 
@@ -13817,8 +13890,9 @@ export class RecipeCockpitService {
                     return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
                 }
 
-                // AN INSERT OR A RUN THAT IS ABOUT TO CHANGE THE SELECTION HOLDS THE ORG THE LOAD WOULD READ FROM
+                // AN INSERT OR A RUN THAT IS ABOUT TO CHANGE THE SELECTION HOLDS THE ORG THE LOAD WOULD READ FROM, AS A QUERY'S OPEN PROMPT DOES (#439)
                 if ( panelState.insertStateMessage
+                        || panelState.isQueryOrgPromptOpen
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning ) {
@@ -13915,6 +13989,7 @@ export class RecipeCockpitService {
 
                 if ( panelState.insertStateMessage
                         || panelState.isUpdaterOrgPromptOpen
+                        || panelState.isQueryOrgPromptOpen
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning ) {
@@ -13978,6 +14053,7 @@ export class RecipeCockpitService {
 
                 if ( panelState.insertStateMessage
                         || panelState.isUpdaterOrgPromptOpen
+                        || panelState.isQueryOrgPromptOpen
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning ) {
@@ -22437,6 +22513,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             editedElement: editedElement,
             refusalElement: refusalElement,
             runCard: runCard,
+            drawnRunLabel: null,
             exportCards: [exportJsonCard, exportCsvCard],
             resultElement: resultElement,
             hasResult: false
@@ -22519,11 +22596,21 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
+    // A QUERY RUNS AGAINST THE TARGET ORG MANAGER SELECTION (#439); WITH NONE, THE HOST ASKS FOR ONE
     function drawTreeQueryButtons() {
+
+        const orgLabel = dataOrgLabels && dataOrgSelectedIndex !== null && dataOrgLabels[dataOrgSelectedIndex] ? dataOrgLabels[dataOrgSelectedIndex] : '';
+        const runLabel = orgLabel ? 'Run in ' + orgLabel : 'Run…';
+        const runTitle = orgLabel ? 'Run this query against ' + orgLabel + ', the org chosen in Target Org Manager' : 'Choose the org to run this query against; it becomes the Target Org Manager selection';
 
         treeStates.forEach(function (treeState) {
             (treeState.queryStates || []).forEach(function (queryState) {
-                drawActionCardState(queryState.runCard, isTreeQueryRunning ? 'A query is running.' : '', 'Run this query against an org you choose. It only reads.');
+                drawActionCardState(queryState.runCard, isTreeQueryRunning ? 'A query is running.' : '', runTitle);
+                // WRITTEN ONLY ON A CHANGE: EVERY INSERT REDRAW COMES THROUGH HERE
+                if (queryState.drawnRunLabel !== runLabel) {
+                    queryState.drawnRunLabel = runLabel;
+                    queryState.runCard.titleElement.textContent = runLabel;
+                }
                 queryState.exportCards.forEach(function (exportCard) {
                     drawActionCardState(exportCard, isTreeQueryRunning ? 'A query is running.' : queryState.hasResult ? '' : 'Run this query first', 'Write what this query returned to treecipe/QueryResults');
                 });
@@ -24197,6 +24284,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     function drawTreeInserts() {
         treeStates.forEach(drawTreeInsert);
         treeStates.forEach(drawTreePermissionSet);
+        drawTreeQueryButtons();
     }
 
     // THE CLICKED TREE'S BUTTON IS DISABLED ON THE CLICK AND EVERY OTHER IS DISABLED; ITS insertState GIVES THEM BACK
