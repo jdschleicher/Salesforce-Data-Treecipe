@@ -6,7 +6,7 @@ import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { ORG_OPERATIONS_FOLDER_NAME, ORG_OPERATION_RESULT_FILE_ATTEMPTS, ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
-import { METADATA_DEPLOY_PACKAGE_XML_SUFFIX, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
+import { METADATA_DEPLOY_PACKAGE_XML_SUFFIX, METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
 
 export const ORG_CHANGE_RETRIEVE_OPERATION_NAME = 'adapter-retrieve';
 
@@ -420,6 +420,14 @@ export class RecipeCockpitOrgChangeDetection {
                                               objectApiNames: readonly string[]): Promise<{ objectChanges: IOrgObjectChanges[]; fileComparisons: IFieldFileComparison[] }> {
 
         const fileComparisons: IFieldFileComparison[] = [];
+        // xml2js SETTLES SYNCHRONOUSLY, SO A LARGE TREE'S FILES WOULD HOLD THE EXTENSION HOST WITHOUT A YIELD NOW AND THEN
+        let readFileCount = 0;
+        const yieldEveryFewFiles = async () => {
+            readFileCount++;
+            if ( readFileCount % METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES === 0 ) {
+                await new Promise(resolve => setImmediate(resolve));
+            }
+        };
         const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
         const stagingRelativePath = path.relative(resolvedWorkspaceRoot, stagingFolderPath);
         const stagedFolderPathsByObject = RecipeCockpitMetadataDeploy.findObjectFolderPaths(resolvedWorkspaceRoot, [stagingRelativePath], objectApiNames);
@@ -437,6 +445,7 @@ export class RecipeCockpitOrgChangeDetection {
 
             for ( const [lowerFieldName, stagedFile] of stagedFieldFiles ) {
 
+                await yieldEveryFewFiles();
                 const stagedField = await this.readComparedField(stagedFile.filePath);
 
                 if ( !stagedField ) {

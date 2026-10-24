@@ -42,6 +42,28 @@ describe('RecipeCockpitOrgChangeDetection (#445)', () => {
 
         });
 
+        it('yields to the event loop every 200 field files it reads, so a large tree does not hold the extension host', async () => {
+
+            const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-org-change-'));
+            try {
+                const workspaceRoot = path.join(temporaryRoot, 'workspace');
+                fs.cpSync(WORKSPACE_ROOT, workspaceRoot, { recursive: true });
+                const stagingFolderPath = path.join(workspaceRoot, path.relative(WORKSPACE_ROOT, STAGING_FOLDER_PATH));
+                const stagedFieldsFolder = path.join(stagingFolderPath, 'main', 'default', 'objects', 'Account', 'fields');
+                Array.from({ length: 400 }, (_unused, index) => `Bulk_${String(index).padStart(3, '0')}__c`)
+                    .forEach(fieldApiName => fs.writeFileSync(path.join(stagedFieldsFolder, `${fieldApiName}.field-meta.xml`), `<CustomField><type>Text</type><label>${fieldApiName}</label></CustomField>`));
+                const setImmediateSpy = jest.spyOn(global, 'setImmediate');
+
+                const [accountChanges] = await detect(['Account'], workspaceRoot, stagingFolderPath);
+
+                expect(accountChanges.fieldChanges.filter(fieldChange => fieldChange.fieldApiName.startsWith('Bulk_'))).toHaveLength(400);
+                expect(setImmediateSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+            } finally {
+                fs.rmSync(temporaryRoot, { recursive: true, force: true });
+            }
+
+        });
+
         it('orders several new and changed fields new first, each by name', async () => {
 
             const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-org-change-'));

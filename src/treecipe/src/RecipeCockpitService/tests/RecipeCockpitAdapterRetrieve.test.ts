@@ -48,6 +48,7 @@ import {
     RECIPE_COCKPIT_ADAPTER_APPLY_CONFIRM_LABEL,
     RECIPE_COCKPIT_ADAPTER_APPLY_LABEL,
     RECIPE_COCKPIT_ADAPTER_APPLY_NOTHING_REASON,
+    RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL,
     RECIPE_COCKPIT_ADAPTER_APPLYING_LABEL,
     RECIPE_COCKPIT_ADAPTER_AUDIT_TRAIL_HEADING,
     RECIPE_COCKPIT_ADAPTER_CHANGED_IN_ORG_LABEL,
@@ -261,6 +262,44 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
         ])('refuses while %s runs, saying why', (_description, prepare) => {
 
             expect(RecipeCockpitService.routePanelMessage(applyRequest(), prepare(buildPanelState()))).toEqual({ kind: 'refuseUpdaterLoad', refusalText: RECIPE_COCKPIT_ADAPTER_APPLY_BUSY_REFUSAL, hostMessage: notRunning });
+
+        });
+
+    });
+
+    describe('routePanelMessage, what waits while Apply writes field files', () => {
+
+        const buildPanelState = (isApplying: boolean): IRecipeCockpitPanelState => {
+            const panelState = RecipeCockpitService.buildInitialPanelState('/workspace');
+            panelState.recipeDataMessage = { command: 'recipeData', recipe: loadTreeRecipe(), renderSequence: 3 };
+            panelState.treeHistoryAllowLists.nameableTreeKeys = new Set([ACCOUNT_TREE_KEY]);
+            panelState.treeHistoryAllowLists.recordTypeTreeKeys = new Set([ACCOUNT_TREE_KEY]);
+            if ( isApplying ) {
+                panelState.updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'apply' };
+            }
+            return panelState;
+        };
+
+        it.each([
+            ['a Troubleshooting retrieve', { command: 'retrieveTreeFields', treeKey: ACCOUNT_TREE_KEY }, 'retrieveTreeMetadata', { kind: 'refuseMetadataRetrieve', refusalText: RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL }],
+            ['a deploy', { command: 'deployTreeFields', treeKey: ACCOUNT_TREE_KEY }, 'deployTreeMetadataComponents', { kind: 'refuseMetadataDeploy', refusalText: RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL }],
+            ['a record type regenerate', { command: 'regenerateWithRecordTypes', treeKey: ACCOUNT_TREE_KEY, recordTypeSelection: {} }, 'regenerateWithRecordTypes', { kind: 'refuseRecordTypeRegenerate' }]
+        ])('refuses %s while Apply runs, and routes it otherwise', (_description, panelMessage, routedKind, refusal) => {
+
+            expect(RecipeCockpitService.routePanelMessage(panelMessage as any, buildPanelState(false))).toMatchObject({ kind: routedKind });
+            expect(RecipeCockpitService.routePanelMessage(panelMessage as any, buildPanelState(true))).toMatchObject(refusal);
+
+        });
+
+        it('counts only an Apply that is running as applying', () => {
+
+            const panelState = buildPanelState(false);
+            expect(RecipeCockpitService.isApplyingAdapterFiles(panelState)).toBe(false);
+            panelState.updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'retrieve' };
+            expect(RecipeCockpitService.isApplyingAdapterFiles(panelState)).toBe(false);
+            panelState.updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY };
+            expect(RecipeCockpitService.isApplyingAdapterFiles(panelState)).toBe(false);
+            expect(RecipeCockpitService.isApplyingAdapterFiles(buildPanelState(true))).toBe(true);
 
         });
 

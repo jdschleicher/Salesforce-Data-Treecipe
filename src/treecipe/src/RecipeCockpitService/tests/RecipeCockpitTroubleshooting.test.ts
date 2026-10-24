@@ -50,6 +50,7 @@ import {
     RECIPE_COCKPIT_ACTION_VERB_EMOJI,
     RECIPE_COCKPIT_DEPLOY_ACTION_BY_KIND,
     RECIPE_COCKPIT_DEPLOY_ACTION_LABELS,
+    RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL,
     RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL,
     RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL,
     RECIPE_COCKPIT_DEPLOY_FULL_SET_CHECKBOX_LABEL,
@@ -753,6 +754,25 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             expect(deployCalls()).toEqual([]);
             expect(packageXmlFiles()).toEqual([]);
             expect(lastWarning()?.text).toBe(RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL);
+
+        });
+
+        it('stops after the modal when an Apply of retrieved files started while it was open', async () => {
+
+            await openCockpitWithQaSelected();
+            (vscode.window.showWarningMessage as jest.Mock).mockImplementation(async (_message: string, options: any) => {
+                if ( options?.inPanel ) {
+                    panelState().updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: true, treeKey: LEAD_TREE_KEY, runKind: 'apply' };
+                    return RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL;
+                }
+                return undefined;
+            });
+
+            await deploy('deployTreeFields');
+
+            expect(deployCalls()).toEqual([]);
+            expect(packageXmlFiles()).toEqual([]);
+            expect(lastWarning()?.text).toBe(RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL);
 
         });
 

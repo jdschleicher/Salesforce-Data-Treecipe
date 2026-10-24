@@ -2126,6 +2126,7 @@ export const RECIPE_COCKPIT_ADAPTER_APPLYING_LABEL = 'Applying…';
 export const RECIPE_COCKPIT_ADAPTER_APPLY_TITLE = 'Copy the field files the org changed or added into this project: a changed field over its project file, a new field into the default package directory. Asks first.';
 export const RECIPE_COCKPIT_ADAPTER_APPLY_NOTHING_REASON = 'No field file is new or changed against this project, so there is nothing to apply.';
 export const RECIPE_COCKPIT_ADAPTER_APPLY_CONFIRM_LABEL = 'Apply files';
+export const RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL = 'Nothing was started: the Treecipe Adapter is applying retrieved files to this project. Try again when it ends.';
 export const RECIPE_COCKPIT_ADAPTER_APPLY_BUSY_REFUSAL = 'Nothing was applied: a metadata deploy, a retrieve, a recipe write or a generation is running. Try again when it ends.';
 export const RECIPE_COCKPIT_UPDATER_NO_FIELDS_CHOSEN = 'No fields chosen';
 export const RECIPE_COCKPIT_UPDATER_RECIPE_ONLY_REASON = 'read from the recipe file, so its type is not known';
@@ -8762,6 +8763,11 @@ export class RecipeCockpitService {
         update (#418) or a restore (#419) writing to the org selected. Every route that would change the selection, or
         write to it, refuses while it does.
     */
+    // APPLY WRITES FIELD FILES INTO THE PROJECT (#445): A RETRIEVE, A DEPLOY OR A GENERATION READING OR WRITING THEM WAITS FOR IT
+    static isApplyingAdapterFiles(panelState: IRecipeCockpitPanelState): boolean {
+        return panelState.updaterLoadStateMessage?.isRunning === true && panelState.updaterLoadStateMessage.runKind === 'apply';
+    }
+
     static isSelectionHeldByUpdater(panelState: IRecipeCockpitPanelState): boolean {
         return panelState.isUpdaterOrgPromptOpen === true
             || ( panelState.updaterLoadStateMessage?.isRunning === true
@@ -11122,6 +11128,9 @@ export class RecipeCockpitService {
                 || this.isMetadataRetrieveInFlight ) {
             return refuse(RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL);
         }
+        if ( this.isApplyingAdapterFiles(currentPanelState) ) {
+            return refuse(RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL);
+        }
 
         let orgTypeDetail: IOrgTypeDetail | undefined;
         try {
@@ -11468,6 +11477,9 @@ export class RecipeCockpitService {
         if ( currentPanelState.insertStateMessage || currentPanelState.permissionSetAssignStateMessage?.isRunning || this.isMetadataDeployInFlight ) {
             return refuse(RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL);
         }
+        if ( this.isApplyingAdapterFiles(currentPanelState) ) {
+            return refuse(RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL);
+        }
 
         let retrieveArguments: string[];
         try {
@@ -11604,8 +11616,8 @@ export class RecipeCockpitService {
             return;
         }
 
-        if ( panelState.isGenerateTreecipeInFlight || panelState.insertStateMessage ) {
-            VSCodeWorkspaceService.showWarningMessage('Generate Treecipe was not started: a generation or an insert is running. Run it once that has finished.');
+        if ( panelState.isGenerateTreecipeInFlight || panelState.insertStateMessage || this.isApplyingAdapterFiles(panelState) ) {
+            VSCodeWorkspaceService.showWarningMessage('Generate Treecipe was not started: a generation, an insert or an Apply of retrieved files is running. Run it once that has finished.');
             return;
         }
 
@@ -13365,6 +13377,7 @@ export class RecipeCockpitService {
                 // A RELOAD CLEARS THE ORG SELECTION, WHICH WOULD CANCEL AN INSERT THE READER CONFIRMED; THE PANEL DISABLED ITS BUTTONS ON THE CLICK, SO A REFUSAL GIVES THEM BACK
                 if ( panelState.isGenerateTreecipeInFlight
                         || ( panelState.insertStateMessage || this.isSelectionHeldByUpdater(panelState) )
+                        || this.isApplyingAdapterFiles(panelState)
                         || typeof treeKey !== 'string'
                         || !panelState.treeHistoryAllowLists.recordTypeTreeKeys.has(treeKey)
                         || !recordTypeSelection ) {
@@ -14153,6 +14166,10 @@ export class RecipeCockpitService {
                     return { kind: 'refuseMetadataRetrieve', refusalText: RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL, hostMessage: notRunning };
                 }
 
+                if ( this.isApplyingAdapterFiles(panelState) ) {
+                    return { kind: 'refuseMetadataRetrieve', refusalText: RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL, hostMessage: notRunning };
+                }
+
                 return { kind: 'retrieveTreeMetadata', treeKey: treeKey, retrieveKind: retrieveKind };
 
             }
@@ -14200,6 +14217,10 @@ export class RecipeCockpitService {
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataRetrieveStateMessage?.isRunning ) {
                     return refuse(RECIPE_COCKPIT_DEPLOY_BUSY_REFUSAL);
+                }
+
+                if ( this.isApplyingAdapterFiles(panelState) ) {
+                    return refuse(RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL);
                 }
 
                 if ( orgIndex === undefined || orgIndex === null ) {

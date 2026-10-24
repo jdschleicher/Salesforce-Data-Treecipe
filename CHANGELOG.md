@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.143.1] - Recipe Cockpit: what touches field files waits for the Treecipe Adapter's Apply, and the Adapter's comparison yields
+
+Two fixes from the review of #452 (#445):
+
+- **The Apply lock holds both ways.** Apply already refused to start while a deploy, a Troubleshooting retrieve, a recipe write or a generation ran. These now also wait while Apply runs (`runKind: 'apply'`, read by `isApplyingAdapterFiles`), so none can read or write the field files Apply is copying:
+  - the Troubleshooting retrieves and deploys, at the click and again after their confirmation (`RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL`);
+  - **Regenerate with these record types**;
+  - a notification's **Generate Treecipe**.
+- **The field-file comparison yields.** `compareStagedObjects` reads and parses each field file, and xml2js settles synchronously. It now yields to the event loop every `METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES` (200) files, as the other cockpit file walks do, so a large tree's Retrieve or Apply does not hold the extension host.
+
 ## [3.143.0] - Recipe Cockpit: data generation's emoji is a seedling
 
 - `RECIPE_COCKPIT_ACTION_VERB_EMOJI.generateData` is 🌱, replacing 🎲. It is the one entry both data-generation actions read: the Treecipe Adapter's **Generate values** card and the Treecipe tab's **Generate fake data and insert**, which draws it from the stylesheet. Every other verb keeps its emoji, and the one-emoji-per-verb test still holds.
