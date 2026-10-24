@@ -1,5 +1,12 @@
 # Change Log
 
+## [3.146.0] - Recipe Cockpit: the Treecipe Adapter reads an object under its deepest loaded parent
+
+From the criteria check of #452 (#444, criterion 1):
+
+- **The closest parent narrows.** An object with lookups to several objects of the subtree used to be narrowed by the first lookup it listed to the level just above, so an Opportunity with `AccountId` and a Contact lookup read under the Accounts. `RecipeCockpitTreeUpdaterQuery.planLoad` now places each object once every parent it has in the subtree is placed and narrows it by its lookup to the DEEPEST of them (the first it lists on a tie), as generation nests an object under its closest parent (#46): that Opportunity reads under the loaded Contacts. An object in a lookup cycle is placed under the deepest parent already placed.
+- **The same objects.** Which objects a load reads is unchanged (breadth-first from the parent, a self-lookup never followed), so the router still holds the panel's request to exactly step 2's objects.
+
 ## [3.145.1] - Recipe Cockpit: what touches field files waits for the Treecipe Adapter's Apply, and the Adapter's comparison yields
 
 Three fixes from the review of #452 (#445):

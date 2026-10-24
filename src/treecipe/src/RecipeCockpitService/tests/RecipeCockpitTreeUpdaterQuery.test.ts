@@ -176,14 +176,42 @@ describe('RecipeCockpitTreeUpdaterQuery (#416)', () => {
 
         describe('planLoad', () => {
 
-            it('puts the parent first, then a level at a time, each object narrowed by its first lookup to the level just above', () => {
+            it('puts the parent first and each object after its parents, narrowed by its lookup to the deepest of them', () => {
 
                 expect(RecipeCockpitTreeUpdaterQuery.planLoad(ACCOUNT_TREE, 'Account')).toEqual([
                     { objectApiName: 'Account', depth: 0 },
                     { objectApiName: 'Contact', depth: 1, narrowingLookup: { fieldApiName: 'AccountId', parentObjectApiName: 'Account' } },
-                    { objectApiName: 'Opportunity', depth: 1, narrowingLookup: { fieldApiName: 'AccountId', parentObjectApiName: 'Account' } },
+                    { objectApiName: 'Opportunity', depth: 2, narrowingLookup: { fieldApiName: 'ContactId__c', parentObjectApiName: 'Contact' } },
                     { objectApiName: 'Case', depth: 2, narrowingLookup: { fieldApiName: 'ContactId', parentObjectApiName: 'Contact' } }
                 ]);
+
+            });
+
+            it('waits for a deeper parent listed later in the tree, and takes the first lookup on a tie', () => {
+
+                const laterParentTree = [
+                    treeObject('Account', []),
+                    treeObject('Opportunity', [['AccountId', 'Account'], ['Project__c', 'Project__c']]),
+                    treeObject('Project__c', [['Account__c', 'Account']]),
+                    treeObject('Task__c', [['Owner__c', 'Account'], ['Sponsor__c', 'Account']])
+                ];
+
+                expect(RecipeCockpitTreeUpdaterQuery.planLoad(laterParentTree, 'Account')?.map(loadStep => [loadStep.objectApiName, loadStep.depth, loadStep.narrowingLookup?.fieldApiName]))
+                    .toEqual([['Account', 0, undefined], ['Project__c', 1, 'Account__c'], ['Opportunity', 2, 'Project__c'], ['Task__c', 1, 'Owner__c']]);
+
+            });
+
+            it('places objects in a lookup cycle under the deepest parent already placed, and ignores a parent outside the subtree', () => {
+
+                const cycleTree = [
+                    treeObject('Account', []),
+                    treeObject('First__c', [['Account__c', 'Account'], ['Second__c', 'Second__c'], ['Outside__c', 'Outside__c']]),
+                    treeObject('Second__c', [['First__c', 'First__c']]),
+                    treeObject('Outside__c', [])
+                ];
+
+                expect(RecipeCockpitTreeUpdaterQuery.planLoad(cycleTree, 'Account')?.map(loadStep => [loadStep.objectApiName, loadStep.depth, loadStep.narrowingLookup?.fieldApiName]))
+                    .toEqual([['Account', 0, undefined], ['First__c', 1, 'Account__c'], ['Second__c', 2, 'First__c']]);
 
             });
 

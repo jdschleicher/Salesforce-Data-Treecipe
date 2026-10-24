@@ -178,11 +178,13 @@ export class RecipeCockpitTreeUpdaterQuery {
     }
 
     /*
-        The parent and every object whose lookups lead up to it (#444), a level at a time: a level
-        is every object not yet placed with a lookup to the level above. A self-lookup is never
-        followed. An object is narrowed by its lookup to the level just above it (the first such
-        lookup it lists), so its records are only those under records already loaded. The same
-        objects the Adapter's step 2 draws. Undefined for a parent the card does not list.
+        The parent and every object whose lookups lead up to it (#444): the same objects the
+        Adapter's step 2 draws, found breadth-first, a self-lookup never followed. Each is then
+        placed once every parent it has among them is placed, and narrowed by its lookup to the
+        DEEPEST of those parents (the first it lists on a tie), so its records are only those under
+        the closest records already loaded, as generation nests an object under its closest parent
+        (#46). An object in a lookup cycle is placed under the deepest parent already placed.
+        Undefined for a parent the card does not list.
     */
     static planLoad(treeObjects: readonly IRecipeCockpitUpdaterTreeObject[], parentObjectApiName: string): IRecipeCockpitUpdaterLoadStep[] | undefined {
 
@@ -190,35 +192,46 @@ export class RecipeCockpitTreeUpdaterQuery {
             return undefined;
         }
 
+        const parentLookupsOf = (treeObject: IRecipeCockpitUpdaterTreeObject) => treeObject.treeLookups.filter(treeLookup => treeLookup.parentObjectApiName !== treeObject.objectApiName);
+
+        const subtreeObjectApiNames = new Set<string>([parentObjectApiName]);
+        for ( let isGrowing = true; isGrowing; ) {
+            isGrowing = false;
+            treeObjects.forEach(treeObject => {
+                if ( !subtreeObjectApiNames.has(treeObject.objectApiName)
+                        && parentLookupsOf(treeObject).some(treeLookup => subtreeObjectApiNames.has(treeLookup.parentObjectApiName)) ) {
+                    subtreeObjectApiNames.add(treeObject.objectApiName);
+                    isGrowing = true;
+                }
+            });
+        }
+
         const depthByObjectApiName = new Map<string, number>([[parentObjectApiName, 0]]);
         const loadPlan: IRecipeCockpitUpdaterLoadStep[] = [{ objectApiName: parentObjectApiName, depth: 0 }];
+        const unplacedObjects = treeObjects.filter(treeObject => treeObject.objectApiName !== parentObjectApiName && subtreeObjectApiNames.has(treeObject.objectApiName));
 
-        for ( let depth = 1; ; depth++ ) {
+        const placeUnderDeepestPlacedParent = (treeObject: IRecipeCockpitUpdaterTreeObject) => {
+            const placedLookups = parentLookupsOf(treeObject).filter(treeLookup => depthByObjectApiName.has(treeLookup.parentObjectApiName));
+            const narrowingLookup = placedLookups.reduce((deepestLookup, treeLookup) =>
+                depthByObjectApiName.get(treeLookup.parentObjectApiName) > depthByObjectApiName.get(deepestLookup.parentObjectApiName) ? treeLookup : deepestLookup);
+            const depth = depthByObjectApiName.get(narrowingLookup.parentObjectApiName) + 1;
+            depthByObjectApiName.set(treeObject.objectApiName, depth);
+            loadPlan.push({ objectApiName: treeObject.objectApiName, depth: depth, narrowingLookup: { ...narrowingLookup } });
+            unplacedObjects.splice(unplacedObjects.indexOf(treeObject), 1);
+        };
 
-            const levelSteps: IRecipeCockpitUpdaterLoadStep[] = [];
+        while ( unplacedObjects.length > 0 ) {
 
-            treeObjects.forEach(treeObject => {
-                if ( depthByObjectApiName.has(treeObject.objectApiName) ) {
-                    return;
-                }
-                const narrowingLookup = treeObject.treeLookups.find(treeLookup => treeLookup.parentObjectApiName !== treeObject.objectApiName
-                                                                                    && depthByObjectApiName.get(treeLookup.parentObjectApiName) === depth - 1);
-                if ( narrowingLookup ) {
-                    levelSteps.push({ objectApiName: treeObject.objectApiName, depth: depth, narrowingLookup: { ...narrowingLookup } });
-                }
-            });
+            const readyObject = unplacedObjects.find(treeObject => parentLookupsOf(treeObject).every(treeLookup =>
+                !subtreeObjectApiNames.has(treeLookup.parentObjectApiName) || depthByObjectApiName.has(treeLookup.parentObjectApiName)));
 
-            if ( levelSteps.length === 0 ) {
-                return loadPlan;
-            }
-
-            levelSteps.forEach(levelStep => {
-                depthByObjectApiName.set(levelStep.objectApiName, depth);
-                loadPlan.push(levelStep);
-            });
+            // A CYCLE: NO OBJECT HAS EVERY PARENT PLACED, SO THE FIRST WITH ANY PLACED PARENT GOES NEXT
+            placeUnderDeepestPlacedParent(readyObject
+                ?? unplacedObjects.find(treeObject => parentLookupsOf(treeObject).some(treeLookup => depthByObjectApiName.has(treeLookup.parentObjectApiName))));
 
         }
 
+        return loadPlan;
     }
 
     /*
