@@ -111,6 +111,8 @@ const CHILD_FIELD_FILES: Record<string, string> = {
     'Broken__c': '<CustomField><unclosed>'
 };
 
+const ORIGINAL_CHILD_FIELD_FILES: Record<string, string> = { ...CHILD_FIELD_FILES };
+
 const stageChildObject = (stagingFolderPath: string) => {
     const objectFolderPath = path.join(stagingFolderPath, 'main', 'default', 'objects', CHILD_OBJECT);
     fs.mkdirSync(path.join(objectFolderPath, 'fields'), { recursive: true });
@@ -174,6 +176,31 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
             expect(stagedObject.fields.map(field => field.fieldApiName)).not.toContain('Name');
 
             expect(await RecipeCockpitOrgChangeDetection.readStagedObjectFields(temporaryRoot, stagingFolderPath, 'Missing__c')).toEqual({ isRetrieved: false, fields: [], unreadableFieldCount: 0 });
+
+            const objectFilePath = path.join(stagingFolderPath, 'main', 'default', 'objects', CHILD_OBJECT, `${CHILD_OBJECT}.object-meta.xml`);
+            fs.writeFileSync(objectFilePath, '<Layout><nameField><type>Text</type></nameField></Layout>');
+            expect((await RecipeCockpitOrgChangeDetection.readStagedObjectFields(temporaryRoot, stagingFolderPath, CHILD_OBJECT)).fields.map(field => field.fieldApiName)).not.toContain('Name');
+
+            fs.writeFileSync(objectFilePath, '<CustomObject><nameField><type>Text</type></nameField></CustomObject>');
+            expect((await RecipeCockpitOrgChangeDetection.readStagedObjectFields(temporaryRoot, stagingFolderPath, CHILD_OBJECT)).fields[0]).toMatchObject({ fieldApiName: 'Name', fieldLabel: 'Name' });
+
+        });
+
+        it('reads an object of many fields, yielding as it goes, and lists no Name when the object file does not parse', async () => {
+
+            const stagingFolderPath = path.join(temporaryRoot, 'staged');
+            stageChildObject(stagingFolderPath);
+            const objectFolderPath = path.join(stagingFolderPath, 'main', 'default', 'objects', CHILD_OBJECT);
+            fs.writeFileSync(path.join(objectFolderPath, `${CHILD_OBJECT}.object-meta.xml`), '<CustomObject><unclosed>');
+            Array.from({ length: 250 }, (_value, fieldIndex) => `Extra_${String(fieldIndex).padStart(3, '0')}__c`)
+                .forEach(fieldApiName => fs.writeFileSync(path.join(objectFolderPath, 'fields', `${fieldApiName}.field-meta.xml`), fieldXml(fieldApiName, 'Text', '    <length>10</length>')));
+            const yieldSpy = jest.spyOn(global, 'setImmediate');
+
+            const stagedObject = await RecipeCockpitOrgChangeDetection.readStagedObjectFields(temporaryRoot, stagingFolderPath, CHILD_OBJECT);
+
+            expect(stagedObject.fields.map(field => field.fieldApiName)).not.toContain('Name');
+            expect(stagedObject.fields).toHaveLength(255);
+            expect(yieldSpy).toHaveBeenCalled();
 
         });
 
@@ -536,6 +563,23 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
 
         });
 
+        it('gives every record its own referenceId across generation chunks, which each number from 1', async () => {
+
+            await openRetrieveAndLoad();
+            await send(prepareMessage());
+
+            await send(generateMessage(1000, [{ fieldApiName: 'Carrier__c' }]));
+
+            expect(generatedRecipeTexts.map(recipeText => (yaml.load(recipeText) as any[])[0].count)).toEqual([2000, 1000]);
+            const records = RecipeCockpitService.readHeldAdapterChildRecords()!;
+            const referenceIds = records.map(record => (record.attributes as any).referenceId);
+            expect(records).toHaveLength(3000);
+            expect(new Set(referenceIds).size).toBe(3000);
+            expect(referenceIds[2000]).toBe(`${CHILD_OBJECT}_Adapter_Reference_2001`);
+            expect(records[2000]).toMatchObject({ Carrier__c: 'Carrier__c-new-0', Account__c: fakeRecordId('Account', 2) });
+
+        });
+
         it('refuses a generated count that differs from count times parents, and keeps nothing', async () => {
 
             await openRetrieveAndLoad();
@@ -585,6 +629,347 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
             await send(generateMessage(1, [{ fieldApiName: 'Mood__c' }]));
             expect(warnings().at(-1)).toBe(`No ${CHILD_OBJECT} records were generated: ${CHILD_OBJECT}.Mood__c: ${RECIPE_COCKPIT_ADAPTER_ORG_ONLY_FIXED_VALUE_NOTE}`);
             expect(generatedRecipeTexts).toEqual([]);
+
+        });
+
+        describe('every refusal of the two executors and their router cases', () => {
+
+            const cockpitPanel = () => (RecipeCockpitService as any).recipeCockpitPanel;
+            const prepareAction = (overrides: Record<string, unknown> = {}) => ({ kind: 'prepareAdapterChild', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), parentObjectApiName: 'Account', childObjectApiName: CHILD_OBJECT, lookupFieldApiName: 'Account__c', ...overrides });
+            const generateAction = (overrides: Record<string, unknown> = {}) => ({ kind: 'generateAdapterChild', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), childObjectApiName: CHILD_OBJECT, countPerParent: 1, fieldRequests: [], ...overrides });
+            const prepareDirectly = (overrides: Record<string, unknown> = {}) => (RecipeCockpitService as any).prepareAdapterChildFromPanel(cockpitPanel(), panelState(), prepareAction(overrides));
+            const generateDirectly = (overrides: Record<string, unknown> = {}) => (RecipeCockpitService as any).generateAdapterChildFromPanel(cockpitPanel(), panelState(), generateAction(overrides));
+            const lastWarning = () => warnings().at(-1);
+
+            it('answers a run in flight with its state, and starts nothing', async () => {
+
+                await openRetrieveAndLoad();
+                const runningState = { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY };
+                (RecipeCockpitService as any).isUpdaterLoadInFlight = true;
+                (RecipeCockpitService as any).updaterLoadRunStateMessage = runningState;
+                const cliCallCount = cliArgumentLists.length;
+
+                await prepareDirectly();
+                await generateDirectly();
+
+                expect(postedNamed('updaterLoadState').slice(-2)).toEqual([runningState, runningState]);
+                expect(cliArgumentLists).toHaveLength(cliCallCount);
+
+                panelState().updaterLoadStateMessage = runningState as any;
+                expect(RecipeCockpitService.routePanelMessage(prepareMessage(), panelState())).toEqual({ kind: 'refuseUpdaterLoad', hostMessage: runningState });
+                expect(RecipeCockpitService.routePanelMessage(generateMessage(1, []), panelState())).toEqual({ kind: 'refuseUpdaterLoad', hostMessage: runningState });
+
+            });
+
+            it('refuses Add to data set while another run holds the selection, and a preview whose fields are not a list', async () => {
+
+                await openRetrieveAndLoad();
+                panelState().insertStateMessage = { command: 'insertState', isRunning: true, treeKey: ACCOUNT_TREE_KEY } as any;
+                expect(RecipeCockpitService.routePanelMessage(prepareMessage(), panelState())).toMatchObject({ kind: 'refuseUpdaterLoad', refusalText: expect.any(String) });
+                panelState().insertStateMessage = undefined;
+
+                await send(prepareMessage());
+                expect(RecipeCockpitService.routePanelMessage({ ...generateMessage(1, []), fields: 'Carrier__c' }, panelState())).toEqual({ kind: 'refuseUpdaterLoad', hostMessage: expect.objectContaining({ isRunning: false }) });
+
+            });
+
+            it('says why Add to data set stopped: no backend, an undeployable project, no staging folder, a refused argument', async () => {
+
+                await openRetrieveAndLoad();
+
+                jest.spyOn(VSCodeWorkspaceService, 'readRecipeFakerService').mockReturnValueOnce(undefined);
+                await prepareDirectly();
+                expect(lastWarning()).toBe(`${CHILD_OBJECT} was not added: this card has no single recipe file to read its faker backend from.`);
+
+                const projectFilePath = path.join(workspaceRoot, 'sfdx-project.json');
+                const projectText = fs.readFileSync(projectFilePath, 'utf8');
+                fs.writeFileSync(projectFilePath, '{ not json');
+                await prepareDirectly();
+                expect(lastWarning()).toMatch(new RegExp(`^${CHILD_OBJECT} was not added: `));
+                fs.writeFileSync(projectFilePath, projectText);
+
+                const stagingSpy = jest.spyOn(RecipeCockpitOrgChangeDetection, 'makeStagingFolder').mockReturnValueOnce(undefined);
+                await prepareDirectly();
+                expect(lastWarning()).toBe(`${CHILD_OBJECT} was not added: the staging folder could not be made under treecipe/OrgOperations in this workspace.`);
+                stagingSpy.mockRestore();
+
+                jest.spyOn(RecipeCockpitOrgChangeDetection, 'buildRetrieveArguments').mockImplementationOnce(() => { throw new Error('refused argument'); });
+                await prepareDirectly();
+                expect(lastWarning()).toBe(`${CHILD_OBJECT} was not added: refused argument`);
+
+                // A MODEL THAT IS NOT THE ONE CLICKED ON IS ANSWERED WITH NOTHING
+                const warningCount = warnings().length;
+                await prepareDirectly({ renderSequence: -1 });
+                expect(warnings()).toHaveLength(warningCount);
+                expect(postedNamed('adapterChildBlock')).toEqual([]);
+
+            });
+
+            it('says why the retrieve brought nothing: cancelled, refused by the org, no metadata, or the screen changed meanwhile', async () => {
+
+                await openRetrieveAndLoad();
+
+                jest.spyOn(RecipeCockpitService as any, 'runCancellableCli').mockResolvedValueOnce({ isCancelled: true, invocation: { stdout: '', stderr: '', exitCode: 0 } });
+                await prepareDirectly();
+                expect(lastWarning()).toBe(`${CHILD_OBJECT} was not added: its retrieve was cancelled. Nothing in the project changed.`);
+
+                const cliSpy = PicklistDependencyCheckService.runSalesforceCli as unknown as jest.SpyInstance;
+                cliSpy.mockImplementationOnce(async () => ({ stdout: JSON.stringify({ status: 1, message: 'INVALID_CROSS_REFERENCE_KEY' }), stderr: '', exitCode: 1 }));
+                await prepareDirectly();
+                expect(lastWarning()).toMatch(new RegExp(`^${CHILD_OBJECT} was not added: its metadata could not be retrieved from qa`));
+
+                cliSpy.mockImplementationOnce(async () => ({ stdout: JSON.stringify({ status: 0, result: { success: true, files: [] } }), stderr: '', exitCode: 0 }));
+                await prepareDirectly();
+                expect(lastWarning()).toBe(`${CHILD_OBJECT} was not added: qa · qa@example.com.qa returned no metadata for it.`);
+
+                cliSpy.mockImplementationOnce(async (cliArguments: string[]) => {
+                    stageChildObject(path.join(workspaceRoot, cliArguments[cliArguments.indexOf('--output-dir') + 1]));
+                    selectOrg(OTHER_SANDBOX_ORG);
+                    return { stdout: JSON.stringify({ status: 0, result: { success: true, files: [] } }), stderr: '', exitCode: 0 };
+                });
+                await prepareDirectly();
+                expect(lastWarning()).toBe(`${CHILD_OBJECT} was not added: the run, the records or the org on screen changed while its metadata was retrieved. Add it again.`);
+                expect(postedNamed('adapterChildBlock')).toEqual([]);
+
+            });
+
+            it('refuses a value its type does not take, the block\'s own nickname, a locked field and no parents, before generating', async () => {
+
+                await openRetrieveAndLoad();
+                await send(prepareMessage());
+
+                await send(generateMessage(1, [{ fieldApiName: 'Carrier__c', value: 'a\u0007b' }]));
+                expect(lastWarning()).toMatch(new RegExp(`^No ${CHILD_OBJECT} records were generated: ${CHILD_OBJECT}\\.Carrier__c: This value `));
+
+                await send(generateMessage(1, [{ fieldApiName: 'Mood__c', value: `${CHILD_OBJECT}_Adapter_NickName` }]));
+                expect(lastWarning()).toBe(`No ${CHILD_OBJECT} records were generated: ${CHILD_OBJECT}.Mood__c: "${CHILD_OBJECT}_Adapter_NickName" is the block's own nickname, which is read as a reference to a record, not as text.`);
+
+                await generateDirectly({ fieldRequests: [{ fieldApiName: 'Account__c' }] });
+                expect(lastWarning()).toBe(`No ${CHILD_OBJECT} records were generated: ${CHILD_OBJECT}.Account__c cannot be filled: ${RECIPE_COCKPIT_ADAPTER_CHILD_PARENT_LOOKUP_REASON_PREFIX}Account Id.`);
+
+                await generateDirectly({ countPerParent: 0 });
+                expect(lastWarning()).toBe(`No ${CHILD_OBJECT} records were generated: ${RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON}`);
+
+                const warningCount = warnings().length;
+                await generateDirectly({ renderSequence: -1 });
+                expect(warnings()).toHaveLength(warningCount);
+                expect(generatedRecipeTexts).toEqual([]);
+
+            });
+
+            it('keeps nothing from a generation that was cancelled, declined, or outlived the records it was made for', async () => {
+
+                await openRetrieveAndLoad();
+                await send(prepareMessage());
+
+                (vscode.window.withProgress as jest.Mock).mockImplementationOnce(async (_options: unknown, progressTask: any) => await progressTask({ report: jest.fn() }, { isCancellationRequested: true, onCancellationRequested: jest.fn() }));
+                await send(generateMessage(1000, [{ fieldApiName: 'Carrier__c' }]));
+                expect(lastWarning()).toBe(`Generating the ${CHILD_OBJECT} records was cancelled, so none were kept.`);
+                expect(generatedRecipeTexts).toHaveLength(1);
+
+                (vscode.window.showWarningMessage as jest.Mock).mockImplementationOnce(() => Promise.resolve(undefined));
+                await send(generateMessage(1, [{ fieldApiName: 'Carrier__c' }]));
+                expect(generatedRecipeTexts).toHaveLength(1);
+
+                const heldRecords = (RecipeCockpitService as any).heldUpdaterRecords;
+                processorSpy.mockImplementationOnce(() => ({
+                    generateFakeDataBySelectedRecipeFile: async (recipePath: string) => {
+                        (RecipeCockpitService as any).heldUpdaterRecords = { ...heldRecords };
+                        return fs.readFileSync(recipePath, 'utf8');
+                    },
+                    transformFakerJsonDataToCollectionApiFormattedFilesBySObject: (recipeText: string) => {
+                        const [recipe] = yaml.load(recipeText) as any[];
+                        return new Map([[recipe.object, { allOrNone: true, records: Array.from({ length: recipe.count }, () => ({ attributes: { type: recipe.object } })) }]]);
+                    }
+                }));
+                await send(generateMessage(1, [{ fieldApiName: 'Carrier__c' }]));
+                expect(lastWarning()).toBe(`The ${CHILD_OBJECT} records were not kept: the run on screen or its records changed while they were generated. Generate them again.`);
+                expect(RecipeCockpitService.readHeldAdapterChildRecords()).toBeUndefined();
+                expect(postedNamed('adapterChildPreview')).toEqual([]);
+
+            });
+
+
+            it('refuses every forged or stale shape of the two messages', async () => {
+
+                const notRouted = { kind: 'refuseUpdaterLoad', hostMessage: expect.objectContaining({ isRunning: false }) };
+                await openRetrieveAndLoad();
+
+                expect(RecipeCockpitService.routePanelMessage({ ...prepareMessage(), treeKey: 7 }, panelState())).toEqual({ kind: 'refuseUpdaterLoad', hostMessage: expect.objectContaining({ treeKey: '' }) });
+                expect(RecipeCockpitService.routePanelMessage({ ...prepareMessage(), lookupFieldApiName: 7 }, panelState())).toEqual(notRouted);
+                expect(RecipeCockpitService.routePanelMessage({ ...prepareMessage(), renderSequence: -1 }, panelState())).toEqual(notRouted);
+
+                const changesMessage = panelState().adapterMetadataChangesMessage;
+                panelState().adapterMetadataChangesMessage = undefined;
+                expect(RecipeCockpitService.routePanelMessage(prepareMessage(), panelState())).toEqual(notRouted);
+                panelState().adapterMetadataChangesMessage = changesMessage;
+
+                const dataOrgSelection = panelState().dataOrgSelection;
+                panelState().dataOrgSelection = undefined;
+                expect(RecipeCockpitService.routePanelMessage(prepareMessage(), panelState())).toMatchObject({ refusalText: expect.stringContaining('not the sandbox or scratch org') });
+                panelState().dataOrgSelection = dataOrgSelection;
+
+                [
+                    () => { panelState().scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true } as any; },
+                    () => { panelState().permissionSetAssignStateMessage = { command: 'permissionSetAssignState', isRunning: true, treeKey: ACCOUNT_TREE_KEY } as any; },
+                    () => { panelState().metadataDeployStateMessage = { command: 'metadataDeployState', isRunning: true, treeKey: ACCOUNT_TREE_KEY } as any; }
+                ].forEach(holdSelection => {
+                    holdSelection();
+                    expect(RecipeCockpitService.routePanelMessage(prepareMessage(), panelState())).toMatchObject({ refusalText: expect.any(String) });
+                    panelState().scratchOrgStateMessage = undefined;
+                    panelState().permissionSetAssignStateMessage = undefined;
+                    panelState().metadataDeployStateMessage = undefined;
+                });
+
+                const recipeDataMessage = panelState().recipeDataMessage;
+                panelState().recipeDataMessage = undefined;
+                expect(RecipeCockpitService.routePanelMessage(prepareMessage(), panelState())).toEqual(notRouted);
+                panelState().recipeDataMessage = recipeDataMessage;
+
+                // NO CHILD IS HELD YET
+                expect(RecipeCockpitService.routePanelMessage(generateMessage(1, []), panelState())).toEqual(notRouted);
+                await send(prepareMessage());
+
+                expect(RecipeCockpitService.routePanelMessage({ ...generateMessage(1, []), treeKey: 7 }, panelState())).toEqual({ kind: 'refuseUpdaterLoad', hostMessage: expect.objectContaining({ treeKey: '' }) });
+                expect(RecipeCockpitService.routePanelMessage({ ...generateMessage(1, []), renderSequence: -1 }, panelState())).toEqual(notRouted);
+                expect(RecipeCockpitService.routePanelMessage(generateMessage(1, [null]), panelState())).toMatchObject({ refusalText: `No ${CHILD_OBJECT} records were generated: a field is not one this block offers to fill.` });
+                expect(RecipeCockpitService.routePanelMessage(generateMessage(1, [{ fieldApiName: 5 }]), panelState())).toMatchObject({ refusalText: expect.stringContaining('a field is not one') });
+                expect(RecipeCockpitService.routePanelMessage(generateMessage(1, [{ fieldApiName: 'Carrier__c', value: 7 }]), panelState())).toMatchObject({ refusalText: expect.stringContaining('Carrier__c is not one') });
+                expect(RecipeCockpitService.routePanelMessage(generateMessage(1, [{ fieldApiName: 'Carrier__c', value: 'x'.repeat(40000) }]), panelState())).toMatchObject({ refusalText: expect.stringContaining('Carrier__c is not one') });
+                expect(RecipeCockpitService.routePanelMessage(generateMessage(1, [{ fieldApiName: 'Carrier__c', value: 'Acme' }]), panelState())).toMatchObject({ kind: 'generateAdapterChild', fieldRequests: [{ fieldApiName: 'Carrier__c', value: 'Acme' }] });
+
+                const heldRecords = (RecipeCockpitService as any).heldUpdaterRecords;
+                (RecipeCockpitService as any).heldUpdaterRecords = { ...heldRecords, resultKey: 'another load' };
+                expect(RecipeCockpitService.routePanelMessage(generateMessage(1, []), panelState())).toEqual(notRouted);
+                (RecipeCockpitService as any).heldUpdaterRecords = undefined;
+                expect(RecipeCockpitService.routePanelMessage(generateMessage(1, []), panelState())).toEqual(notRouted);
+                (RecipeCockpitService as any).heldUpdaterRecords = heldRecords;
+
+                // AN EXECUTOR CALLED FOR A CHILD THE HOST DOES NOT HOLD, OR BEFORE ANY RUN STATE WAS STORED, DOES NOTHING
+                (RecipeCockpitService as any).isUpdaterLoadInFlight = true;
+                (RecipeCockpitService as any).updaterLoadRunStateMessage = undefined;
+                await prepareDirectly();
+                await generateDirectly();
+                expect(postedNamed('updaterLoadState').slice(-2).map((stateMessage: any) => stateMessage.runKind)).toEqual(['prepareChild', 'generateChild']);
+                (RecipeCockpitService as any).isUpdaterLoadInFlight = false;
+                await generateDirectly({ childObjectApiName: 'Gadget__c' });
+                expect(generatedRecipeTexts).toEqual([]);
+
+            });
+
+            it('names an org with no alias by its username, a single field and no unreadable file in its notice, and generates a typed expression and a picklist value', async () => {
+
+                // ONLY A TEXT NAME AND A PICKLIST, SO THE NOTICE COUNTS NO UNREADABLE FILE
+                Object.keys(CHILD_FIELD_FILES).forEach(fieldApiName => { delete CHILD_FIELD_FILES[fieldApiName]; });
+                CHILD_FIELD_FILES.Tier__c = fieldXml('Tier__c', 'Picklist', '    <valueSet><valueSetDefinition><value><fullName>Gold</fullName><label>Gold</label></value></valueSetDefinition></valueSet>');
+                try {
+                    await openRetrieveAndLoad();
+                    const unaliasedOrg = { targetOrgIdentifier: SANDBOX_ORG.username, username: SANDBOX_ORG.username } as typeof SANDBOX_ORG;
+                    selectOrg(unaliasedOrg);
+                    await send(prepareMessage());
+
+                    expect((vscode.window.showInformationMessage as jest.Mock).mock.calls.at(-1)[0]).toBe(`Retrieved ${CHILD_OBJECT} from ${SANDBOX_ORG.username}: 2 fields. Set the count and the fields on the Treecipe Adapter tab, then generate a preview.`);
+
+                    await send(generateMessage(1, [{ fieldApiName: 'Name', value: '${{ fake.Word }}' }, { fieldApiName: 'Tier__c', value: 'Platinum' }]));
+                    expect(warnings().at(-1)).toMatch(/Tier__c: .*Platinum/);
+
+                    await send(generateMessage(1, [{ fieldApiName: 'Name', value: '${{ fake.Word }}' }, { fieldApiName: 'Tier__c', value: 'Gold' }]));
+                    expect(generatedRecipeTexts.map(recipeText => (yaml.load(recipeText) as any[])[0].fields)).toEqual([{ Name: '${{ fake.Word }}' }]);
+                    expect(RecipeCockpitService.readHeldAdapterChildRecords()![0]).toMatchObject({ Name: 'Name-new-0', Tier__c: 'Gold' });
+                } finally {
+                    delete CHILD_FIELD_FILES.Tier__c;
+                    Object.assign(CHILD_FIELD_FILES, ORIGINAL_CHILD_FIELD_FILES);
+                }
+
+            });
+
+            it('gives a record its backend wrote no attributes or no value for a referenceId and a null, and a record of one its singular count', async () => {
+
+                accountRecordCount = 1;
+                await openRetrieveAndLoad();
+                await send(prepareMessage());
+                processorSpy.mockImplementationOnce(() => ({
+                    generateFakeDataBySelectedRecipeFile: async (recipePath: string) => fs.readFileSync(recipePath, 'utf8'),
+                    transformFakerJsonDataToCollectionApiFormattedFilesBySObject: (recipeText: string) => {
+                        const [recipe] = yaml.load(recipeText) as any[];
+                        return new Map([[recipe.object, { allOrNone: true, records: [{}] }]]);
+                    }
+                }));
+
+                await send(generateMessage(1, [{ fieldApiName: 'Carrier__c' }]));
+
+                expect(confirmations().at(-1)[0]).toBe(`Generate 1 ${CHILD_OBJECT} record under the loaded Account records?`);
+                expect(RecipeCockpitService.readHeldAdapterChildRecords()).toEqual([{ attributes: { referenceId: `${CHILD_OBJECT}_Adapter_Reference_1` }, Account__c: fakeRecordId('Account', 0), Carrier__c: null }]);
+
+            });
+
+            it('covers the last shapes: an unknown card, no load state yet, a parent Id the org left out, a CLI that did not start, and two unreadable files', async () => {
+
+                const notRouted = { kind: 'refuseUpdaterLoad', hostMessage: expect.objectContaining({ isRunning: false }) };
+                await openRetrieveAndLoad();
+
+                panelState().updaterLoadStateMessage = undefined;
+                expect(RecipeCockpitService.routePanelMessage({ ...prepareMessage(), treeKey: 'Nope' }, panelState())).toEqual(notRouted);
+                const heldRecords = (RecipeCockpitService as any).heldUpdaterRecords;
+                const heldAccounts = heldRecords.recordsByObjectApiName.get('Account');
+                heldRecords.recordsByObjectApiName.delete('Account');
+                expect(RecipeCockpitService.routePanelMessage(prepareMessage(), panelState())).toMatchObject({ refusalText: `${CHILD_OBJECT} was not added: ${RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON}` });
+
+                // EVERY LOADED PARENT WITH NO Id: NO PARENT, NEVER THE TEXT "undefined"
+                heldRecords.recordsByObjectApiName.set('Account', heldAccounts.map((record: any) => ({ attributes: record.attributes })));
+                await prepareDirectly();
+                expect(lastWarning()).toBe(`${CHILD_OBJECT} was not added: ${RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON}`);
+                heldRecords.recordsByObjectApiName.set('Account', heldAccounts);
+
+                await prepareDirectly({ treeKey: 'Nope' });
+                expect(postedNamed('adapterChildBlock')).toEqual([]);
+
+                const stagingPathSpy = jest.spyOn(RecipeCockpitOrgChangeDetection, 'buildStagingFolderPath').mockReturnValueOnce(undefined);
+                await prepareDirectly();
+                expect(lastWarning()).toBe(`${CHILD_OBJECT} was not added: the staging folder could not be made under treecipe/OrgOperations in this workspace.`);
+                stagingPathSpy.mockRestore();
+
+                const cliSpy = PicklistDependencyCheckService.runSalesforceCli as unknown as jest.SpyInstance;
+                cliSpy.mockImplementationOnce(async () => ({ stdout: '', stderr: '', exitCode: null, spawnError: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) }));
+                await prepareDirectly();
+                expect(lastWarning()).toMatch(new RegExp(`^${CHILD_OBJECT} was not added: its metadata could not be retrieved`));
+
+                CHILD_FIELD_FILES.Broken_Too__c = '<CustomField><unclosed>';
+                try {
+                    await prepareDirectly();
+                } finally {
+                    delete CHILD_FIELD_FILES.Broken_Too__c;
+                }
+                expect((vscode.window.showInformationMessage as jest.Mock).mock.calls.at(-1)[0]).toContain('2 field files could not be read and are left out.');
+
+                panelState().updaterLoadStateMessage = undefined;
+                const recipeDataMessage = panelState().recipeDataMessage;
+                panelState().recipeDataMessage = undefined;
+                expect(RecipeCockpitService.routePanelMessage(generateMessage(1, []), panelState())).toEqual(notRouted);
+                expect(RecipeCockpitService.buildReplayMessages(panelState()).filter((hostMessage: any) => /^adapterChild/.test(hostMessage.command))).toEqual([]);
+                panelState().recipeDataMessage = recipeDataMessage;
+
+                // A FIELD THE BLOCK NEVER OFFERED, ASKED OF THE EXECUTOR ITSELF
+                await generateDirectly({ fieldRequests: [{ fieldApiName: 'Secret__c' }] });
+                expect(lastWarning()).toBe(`No ${CHILD_OBJECT} records were generated: ${CHILD_OBJECT}.Secret__c cannot be filled.`);
+
+            });
+
+            it('replays neither the block nor its preview over another model', async () => {
+
+                await openRetrieveAndLoad();
+                await send(prepareMessage());
+                await send(generateMessage(1, [{ fieldApiName: 'Carrier__c' }]));
+                panelState().adapterChildBlockMessage = { ...panelState().adapterChildBlockMessage!, renderSequence: -1 };
+                panelState().adapterChildPreviewMessage = { ...panelState().adapterChildPreviewMessage!, renderSequence: -1 };
+
+                postedPanelMessages = [];
+                await send({ command: 'ready' });
+
+                expect(postedNamed('adapterChildBlock')).toEqual([]);
+                expect(postedNamed('adapterChildPreview')).toEqual([]);
+
+            });
 
         });
 
@@ -730,6 +1115,28 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
             panel.postToPanel({ command: 'updaterLoadState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, runKind: 'generateChild' });
             panel.postToPanel({ command: 'adapterChildPreview', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY, childObjectApiName: CHILD_OBJECT, countPerParent: 2, recordCount: 6, columns: ['Account__c', 'Carrier__c'], rows: [['001000000000000AAA', 'Acme']], hiddenColumnCount: 0 });
             expect(panel.findAll(editor, 'adapterChildPreviewSummary')[0].textContent).toBe('6 new Shipment__c records, 2 per Account record. Showing the first 1');
+
+        });
+
+        it('draws a block and its preview replayed before the Treecipe Adapter tab is built once the tab is opened', () => {
+
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 1 });
+            panel.postToPanel({ command: 'rendered' });
+            panel.postToPanel({ command: 'adapterMetadataChanges', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY, orgLabel: 'qa', objects: objects });
+            panel.postToPanel(recordsMessage(3));
+            panel.postToPanel(blockMessage);
+            panel.postToPanel({ command: 'adapterChildPreview', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY, childObjectApiName: CHILD_OBJECT, countPerParent: 1, recordCount: 3, columns: ['Account__c'], rows: [['001000000000000AAA']], hiddenColumnCount: 0 });
+
+            panel.expandAllTrees();
+            const card = panel.treeCards().find((treeCard: any) => panel.findAll(treeCard, 'treeObjectName').some((nameElement: any) => nameElement.textContent.includes('OtherChildObject__c')));
+            panel.openAdapterStructure(card, RECIPE_COCKPIT_UPDATER_TAB_LABEL);
+            const accountObject = panel.findAll(panel.findAll(card, 'treeUpdater')[0], 'updaterObject').find((objectElement: any) => panel.findAll(objectElement, 'updaterObjectName')[0].textContent === 'Account');
+            panel.findAll(accountObject.children[0], 'updaterObjectToggle')[0].dispatch('click');
+
+            const editor = panel.findAll(panel.findAll(accountObject, 'updaterOrgOnlyObject')[0], 'adapterChildEditor')[0];
+            expect(editor).toBeDefined();
+            expect(panel.findAll(editor, 'adapterChildPreviewSummary')[0].textContent).toBe('3 new Shipment__c records, 1 per Account record. Showing the first 1');
 
         });
 

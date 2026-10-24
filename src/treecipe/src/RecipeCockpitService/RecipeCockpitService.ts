@@ -9776,17 +9776,21 @@ export class RecipeCockpitService {
         const workspaceRoot = panelState.workspaceRoot;
         const clickedRecipeDataMessage = panelState.recipeDataMessage;
         const heldRecords = this.heldUpdaterRecords;
-        const tree = clickedRecipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+        const orgDetail = panelState.dataOrgSelection?.orgDetail;
         const refuse = (reason: string) => VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${childObjectApiName} was not added: ${reason}`));
+
+        // THE ROUTER CHECKED ALL OF THIS; A SCREEN THAT CHANGED SINCE IS ANSWERED WITH NOTHING
+        const tree = clickedRecipeDataMessage?.recipe.trees.find(recipeTree => recipeTree.treeKey === treeKey);
+
+        if ( !clickedRecipeDataMessage || clickedRecipeDataMessage.renderSequence !== renderSequence || !tree || !heldRecords || orgDetail?.username !== heldRecords.orgUsername ) {
+            return;
+        }
+
         const isClickStillCurrent = () => this.recipeCockpitPanel === cockpitPanel
                                             && this.recipeCockpitPanelState === panelState
                                             && panelState.recipeDataMessage === clickedRecipeDataMessage
                                             && this.heldUpdaterRecords === heldRecords
-                                            && panelState.dataOrgSelection?.orgDetail.username === heldRecords?.orgUsername;
-
-        if ( !clickedRecipeDataMessage || clickedRecipeDataMessage.renderSequence !== renderSequence || !tree?.folderName || !heldRecords ) {
-            return;
-        }
+                                            && panelState.dataOrgSelection?.orgDetail.username === heldRecords.orgUsername;
 
         const fakerService = this.readTreeFakerService(panelState, treeKey);
         if ( !fakerService ) {
@@ -9803,8 +9807,7 @@ export class RecipeCockpitService {
         }
 
         const orgUsername = heldRecords.orgUsername;
-        const orgDetail = panelState.dataOrgSelection?.orgDetail;
-        const orgLabel = orgDetail?.alias ? `${orgDetail.alias} · ${orgUsername}` : orgUsername;
+        const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgUsername}` : orgUsername;
         let retrieveArguments: string[];
         let stagingFolderPath: string | undefined;
         try {
@@ -9865,7 +9868,15 @@ export class RecipeCockpitService {
         }
 
         const offer = this.offerAdapterChildFields(stagedObject.fields, parentObjectApiName, childObjectApiName, lookupFieldApiName, tree, fakerService);
-        const parentRecordIds = ( heldRecords.recordsByObjectApiName.get(parentObjectApiName) ?? [] ).map(record => String(this.readRecordFieldValue(record, 'Id')));
+        // A RECORD THE ORG ANSWERED WITH NO Id IS NO PARENT, NEVER THE TEXT "undefined"
+        const parentRecordIds = ( heldRecords.recordsByObjectApiName.get(parentObjectApiName) ?? [] )
+            .map(record => this.readRecordFieldValue(record, 'Id'))
+            .filter((recordId): recordId is string => typeof recordId === 'string' && recordId !== '');
+
+        if ( parentRecordIds.length === 0 ) {
+            refuse(RECIPE_COCKPIT_ADAPTER_CHILD_NO_PARENTS_REASON);
+            return;
+        }
 
         this.heldAdapterChild = {
             resultKey: heldRecords.resultKey,
@@ -10136,15 +10147,19 @@ export class RecipeCockpitService {
             return;
         }
 
-        const records = finishedGeneration.records.map((generatedRecord, recordIndex) => ({
-            ...generatedRecord,
-            [heldChild.lookupFieldApiName]: parentRecordIdsByRecord[recordIndex],
-            ...Object.fromEntries(plannedFields.map(plannedField => [
-                plannedField.fieldApiName,
-                // A BACKEND THAT WROTE NO VALUE FOR A FIELD (A null EXPRESSION) GIVES IT NONE, NEVER ANOTHER RECORD'S
-                plannedField.source === 'fixed' ? plannedField.fixedValue : generatedRecord[plannedField.fieldApiName] ?? null
-            ]))
-        }));
+        // THE GENERATED RECORDS ARE NEW OBJECTS, SO THEY ARE FILLED IN PLACE. EACH CHUNK IS ITS OWN RUN AND NUMBERS ITS referenceIds FROM 1,
+        // SO EVERY RECORD IS GIVEN ONE BY ITS PLACE IN THE WHOLE BLOCK, OR THE INSERT WOULD READ TWO RECORDS AS ONE
+        const fixedFields = plannedFields.filter(plannedField => plannedField.source === 'fixed');
+        const generatedFieldApiNames = generatedFields.map(plannedField => plannedField.fieldApiName);
+        const records = finishedGeneration.records;
+        records.forEach((record, recordIndex) => {
+            const attributes = record.attributes && typeof record.attributes === 'object' ? record.attributes as Record<string, unknown> : {};
+            record.attributes = { ...attributes, referenceId: `${childObjectApiName}_Adapter_Reference_${recordIndex + 1}` };
+            record[heldChild.lookupFieldApiName] = parentRecordIdsByRecord[recordIndex];
+            // A BACKEND THAT WROTE NO VALUE FOR A FIELD (A null EXPRESSION) GIVES IT NONE, NEVER ANOTHER RECORD'S
+            generatedFieldApiNames.forEach(fieldApiName => { record[fieldApiName] = record[fieldApiName] ?? null; });
+            fixedFields.forEach(plannedField => { record[plannedField.fieldApiName] = plannedField.fixedValue; });
+        });
         heldChild.generatedRecords = { countPerParent: countPerParent, records: records };
 
         const preview = RecipeCockpitQuery.buildPreview(records.slice(0, RECIPE_COCKPIT_UPDATER_PREVIEW_ROW_LIMIT).map(record => ({
@@ -15516,14 +15531,16 @@ export class RecipeCockpitService {
                 }
 
                 const heldChild = this.heldAdapterChild;
+                const heldRecords = this.heldUpdaterRecords;
 
                 if ( typeof treeKey !== 'string'
                         || !heldChild
+                        || !heldRecords
                         || heldChild.treeKey !== treeKey
                         || heldChild.childObjectApiName !== childObjectApiName
-                        || heldChild.resultKey !== this.heldUpdaterRecords?.resultKey
+                        || heldChild.resultKey !== heldRecords.resultKey
                         || renderSequence !== panelState.recipeDataMessage?.renderSequence
-                        || this.heldUpdaterRecords?.renderSequence !== renderSequence
+                        || heldRecords.renderSequence !== renderSequence
                         || !panelState.treeHistoryAllowLists.nameableTreeKeys.has(treeKey) ) {
                     return { kind: 'refuseUpdaterLoad', hostMessage: notRunning };
                 }
@@ -23285,6 +23302,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             adapterChangesMessage: null,
             // THE NEW CHILD OBJECT BEING ADDED UNDER THE LOADED RECORDS (#447), ITS BLOCK'S STATE AND ELEMENTS
             adapterChild: null,
+            adapterChildBlockMessage: null,
+            adapterChildPreviewMessage: null,
             // A VALUE OR EXPRESSION TYPED PER FIELD IN THE UPDATER'S EDITOR (#417), BY FIELD KEY; PANEL-ONLY, NEVER SAVED IN THE PLACE OR THE RECIPE
             updaterEditedValues: Object.create(null),
             updaterValuesMessage: null,
@@ -24735,6 +24754,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (treeState.updaterRecordsMessage) { applyUpdaterRecords(treeState, treeState.updaterRecordsMessage); }
         if (treeState.updaterValuesMessage) { applyUpdaterValues(treeState, treeState.updaterValuesMessage); }
         applyAdapterMetadataChanges(treeState);
+        // A BLOCK REPLAYED BEFORE THIS TAB WAS BUILT IS DRAWN NOW; ONE ALREADY DRAWN IS PUT BACK UNDER ITS ROW BY THE LINE ABOVE
+        if (treeState.adapterChildBlockMessage && !treeState.adapterChild) { buildAdapterChildBlock(treeState); }
 
     }
 
@@ -25852,6 +25873,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         treeStates.forEach(function (treeState) {
             const adapterChild = treeState.adapterChild;
+            treeState.adapterChildBlockMessage = null;
+            treeState.adapterChildPreviewMessage = null;
             if (!adapterChild) { return; }
             treeState.adapterChild = null;
             // ITS PARENT'S ROWS ARE DRAWN AGAIN, NOW WITHOUT IT
@@ -25865,6 +25888,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     function clearAdapterChildPreviews() {
 
         treeStates.forEach(function (treeState) {
+            treeState.adapterChildPreviewMessage = null;
             if (treeState.adapterChild) { drawAdapterChildPreview(treeState.adapterChild, null); }
         });
 
@@ -25881,10 +25905,18 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (renderedSequence === null || blockMessage.renderSequence !== renderedSequence) { return; }
 
         const treeState = findTreeState(blockMessage.treeKey);
-        if (!treeState || !treeState.updaterObjectStates) { return; }
+        if (!treeState) { return; }
 
         clearAdapterChildren();
+        // KEPT ON THE CARD, SO A REPLAY INTO A DOCUMENT WHOSE ADAPTER TAB IS NOT BUILT YET IS DRAWN WHEN IT IS
+        treeState.adapterChildBlockMessage = blockMessage;
+        if (treeState.updaterObjectStates) { buildAdapterChildBlock(treeState); }
 
+    }
+
+    function buildAdapterChildBlock(treeState) {
+
+        const blockMessage = treeState.adapterChildBlockMessage;
         const childObjectApiName = String(blockMessage.childObjectApiName);
         const parentObjectApiName = String(blockMessage.parentObjectApiName);
         const parentRecordCount = Number(blockMessage.parentRecordCount) || 0;
@@ -25998,6 +26030,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         });
         treeState.adapterChild = adapterChild;
 
+        if (treeState.adapterChildPreviewMessage) { drawAdapterChildPreview(adapterChild, treeState.adapterChildPreviewMessage); }
+
         const parentObjectState = treeState.updaterObjectStates.find(function (updaterObjectState) { return updaterObjectState.object.objectApiName === parentObjectApiName; });
         if (parentObjectState) { drawAdapterObjectOrgOnlyFields(treeState, parentObjectState); }
         drawUpdaterLoadButtons();
@@ -26046,9 +26080,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (renderedSequence === null || previewMessage.renderSequence !== renderedSequence) { return; }
 
         const treeState = findTreeState(previewMessage.treeKey);
-        if (!treeState || !treeState.adapterChild || treeState.adapterChild.childObjectApiName !== previewMessage.childObjectApiName) { return; }
+        if (!treeState || !treeState.adapterChildBlockMessage || treeState.adapterChildBlockMessage.childObjectApiName !== previewMessage.childObjectApiName) { return; }
 
-        drawAdapterChildPreview(treeState.adapterChild, previewMessage);
+        treeState.adapterChildPreviewMessage = previewMessage;
+        if (treeState.adapterChild) { drawAdapterChildPreview(treeState.adapterChild, previewMessage); }
 
     }
 

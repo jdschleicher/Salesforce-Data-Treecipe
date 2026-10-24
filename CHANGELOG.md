@@ -21,12 +21,18 @@ The first half (E1) of [#447](https://github.com/jdschleicher/Salesforce-Data-Tr
   - `RecipeCockpitRecordCreation.spreadParentIds` sets each record's lookup to a loaded parent's Id, count per parent in a row, in the order the parents were read. For 2 per Account under 3 Accounts, that is A, A, B, B, C, C.
 
   The records stay on the host; a preview is posted. The next load, a new model or an update lets them go.
+- **From the review of #454.**
+  - **One referenceId per record.** Generation runs in chunks of 2,000, and each run numbers its referenceIds from 1. Each record is now given `<Object>_Adapter_Reference_<n>` by its place in the whole block, so the insert (E2) never reads two records as one.
+  - **A replayed block is kept.** The panel keeps the block and its preview on the card. A document reloaded while its Treecipe Adapter tab is not built now draws them when the tab opens, instead of dropping them.
+  - **No "undefined" parent.** A loaded record the org answered with no Id is no parent. When none is left, Add to data set refuses, as the router does for a load of no parents.
+  - **Filled in place.** The generated records are filled in place, with each fixed value built once, instead of being copied per record.
 - **Tests.** `RecipeCockpitAdapterAddChild.test.ts` covers:
   - the staged-field read;
   - the block writer, and the Updater's values recipe unchanged;
   - the parent-Id spread;
   - the offer with both backends;
   - on the host: the retrieve of the one object, every refusal, 6 records for 2 per Account under 3, a count mismatch, the real faker-js processor, the recipe file byte for byte, and the replay;
+  - every refusal of the two executors and their router cases;
   - the panel's button, block and what it posts.
 
 ## [3.148.0] - Recipe Cockpit: the Treecipe Adapter fills fields only the org holds
