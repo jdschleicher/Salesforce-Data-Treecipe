@@ -1,5 +1,34 @@
 # Change Log
 
+## [3.149.0] - Recipe Cockpit: the Treecipe Adapter builds a new child object's block under the loaded parents
+
+The first half (E1) of [#447](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/447), slice E of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442). Inserting the records (readiness, required lookups, all-or-none, rollback and results) is E2.
+
+3.146.0 listed each custom child object the org holds that the treecipe lacks as a row under its parent. That row can now build the child's block under the parent records the last load read, and generate a preview.
+
+- **Add to data set.** The row's new button retrieves that one object from the sandbox the parent records came from, into a new staging folder under `treecipe/OrgOperations`, never a package directory. It is disabled, with its reason, while:
+  - a run holds the Treecipe Adapter;
+  - the Treecipe tab excludes the parent;
+  - no records are loaded, or the last load read none of the parent.
+
+  The router checks each again. It also requires the child to be one the last retrieve listed under that parent, and the selected org to be the sandbox the records came from.
+- **The block's fields.** `RecipeCockpitOrgChangeDetection.readStagedObjectFields` reads every field file of the staged object, with whether it is required. It reads a Text `<nameField>` as `Name`; an Auto Number name is the org's to write. A file that cannot be read is counted. Each field is offered by #446's rule, now one helper (`offerStagedField`): the expression the recipe's OWN backend writes for its type, a fixed value only, or why it is locked. The lookup to the parent is locked, since each record's is a loaded parent's Id, and so is any other lookup.
+- **Editing, as on the Treecipe tab.** Under the row, the block draws a count per parent record and each field with the Updater's own box, ✎ editor and expression. It keeps its own choice, so nothing it ticks is loaded or generated as the parent's. A field with an expression starts ticked.
+- **Generate preview.** The host holds the request to a whole count of one or more, at most 50,000 records, and the offered unlocked fields. It checks each value as #446 does and lists every value in one in-panel confirmation. Then:
+  - `RecipeCockpitRecipeWriter.buildAdapterChildRecipe` writes one block of count × parents records (`<Object>_Adapter_NickName`; no `fields:` line when nothing is ticked);
+  - the recipe's own backend generates it from a temporary folder outside the workspace, so the recipe file is never read for it or written;
+  - a generated count that differs refuses;
+  - `RecipeCockpitRecordCreation.spreadParentIds` sets each record's lookup to a loaded parent's Id, count per parent in a row, in the order the parents were read. For 2 per Account under 3 Accounts, that is A, A, B, B, C, C.
+
+  The records stay on the host; a preview is posted. The next load, a new model or an update lets them go.
+- **Tests.** `RecipeCockpitAdapterAddChild.test.ts` covers:
+  - the staged-field read;
+  - the block writer, and the Updater's values recipe unchanged;
+  - the parent-Id spread;
+  - the offer with both backends;
+  - on the host: the retrieve of the one object, every refusal, 6 records for 2 per Account under 3, a count mismatch, the real faker-js processor, the recipe file byte for byte, and the replay;
+  - the panel's button, block and what it posts.
+
 ## [3.148.0] - Recipe Cockpit: the Treecipe Adapter fills fields only the org holds
 
 Closes [#446](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/446), slice D of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442).

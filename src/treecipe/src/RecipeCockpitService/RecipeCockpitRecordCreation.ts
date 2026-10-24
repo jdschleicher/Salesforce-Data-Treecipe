@@ -330,6 +330,22 @@ export class RecipeCockpitRecordCreation {
 
     }
 
+    /*
+        The parent each new child record of the Treecipe Adapter points to (#447): the loaded
+        parents in the order they were read, each given countPerParent records in a row, so 2 per
+        Account under 3 Accounts is [A, A, B, B, C, C]. Undefined for no parents or a count that is
+        not a whole number of one or more, so a record is never pointed at no parent.
+    */
+    static spreadParentIds(parentRecordIds: readonly string[], countPerParent: number): string[] | undefined {
+
+        if ( parentRecordIds.length === 0 || !Number.isSafeInteger(countPerParent) || countPerParent < 1 ) {
+            return undefined;
+        }
+
+        return parentRecordIds.flatMap(parentRecordId => Array.from({ length: countPerParent }, () => parentRecordId));
+
+    }
+
     private static isLookupField(describeField: ICreateDescribeField): boolean {
 
         return describeField.fieldType === 'reference' && describeField.fieldApiName !== RECORD_TYPE_ID_FIELD_API_NAME;

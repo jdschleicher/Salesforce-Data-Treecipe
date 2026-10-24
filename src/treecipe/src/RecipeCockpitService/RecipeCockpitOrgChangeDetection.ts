@@ -178,6 +178,11 @@ export interface IOrgNewFieldDetail {
     picklistValues: string[];
 }
 
+// ONE FIELD OF A CHILD OBJECT ONLY THE ORG HOLDS (#447), AS ITS STAGED FILE SAYS, WITH WHETHER THE FILE SAYS IT IS REQUIRED
+export interface IOrgStagedFieldDetail extends IOrgNewFieldDetail {
+    isRequired: boolean;
+}
+
 /*
     "Retrieve latest metadata" for the Treecipe Adapter (#445): the tree's objects retrieved from
     the target org into a STAGING folder under treecipe/OrgOperations, never into a package
@@ -367,6 +372,84 @@ export class RecipeCockpitOrgChangeDetection {
 
         const { objectChanges, newFields } = await this.compareStagedObjects(workspaceRoot, packageDirectoryPaths, stagingFolderPath, objectApiNames);
         return { objectChanges: objectChanges, newFields: newFields };
+
+    }
+
+    /*
+        Every field one staged object holds (#447): a child object only the org holds, retrieved on
+        its own, read as a new field is (#446), with whether its file says it is required. A custom
+        object's Name is not a field file: its <nameField> in the object file is read as one, and
+        only a Text one is listed, since an Auto Number name is the org's to write. Each file is read
+        without following a link, held to a size and parsed as untrusted.
+    */
+    static async readStagedObjectFields(workspaceRoot: string,
+                                        stagingFolderPath: string,
+                                        objectApiName: string): Promise<{ isRetrieved: boolean; fields: IOrgStagedFieldDetail[]; unreadableFieldCount: number }> {
+
+        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+        const stagingRelativePath = path.relative(resolvedWorkspaceRoot, stagingFolderPath);
+        const stagedFolderPaths = RecipeCockpitMetadataDeploy.findObjectFolderPaths(resolvedWorkspaceRoot, [stagingRelativePath], [objectApiName]).get(objectApiName) ?? [];
+        const fields: IOrgStagedFieldDetail[] = [];
+        let unreadableFieldCount = 0;
+        let readFileCount = 0;
+
+        const nameField = await this.readStagedNameField(RecipeCockpitMetadataDeploy.findObjectFilePath(stagedFolderPaths, objectApiName));
+        if ( nameField ) {
+            fields.push({ ...nameField, objectApiName: objectApiName });
+        }
+
+        for ( const stagedFile of this.listFieldFiles(stagedFolderPaths).values() ) {
+
+            readFileCount++;
+            if ( readFileCount % METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES === 0 ) {
+                await new Promise(resolve => setImmediate(resolve));
+            }
+
+            const stagedField = await this.readComparedField(stagedFile.filePath);
+            if ( !stagedField ) {
+                unreadableFieldCount++;
+                continue;
+            }
+
+            fields.push({ ...this.toNewFieldDetail(objectApiName, stagedFile.fieldApiName, stagedField), isRequired: stagedField.required === 'true' });
+
+        }
+
+        return { isRetrieved: stagedFolderPaths.length > 0, fields: fields, unreadableFieldCount: unreadableFieldCount };
+
+    }
+
+    private static async readStagedNameField(objectFilePath: string | undefined): Promise<Omit<IOrgStagedFieldDetail, 'objectApiName'> | undefined> {
+
+        const objectXml = objectFilePath ? this.readFieldFileText(objectFilePath) : undefined;
+        if ( objectXml === undefined ) {
+            return undefined;
+        }
+
+        let parsed: unknown;
+        try {
+            parsed = await xml2js.parseStringPromise(objectXml);
+        } catch {
+            return undefined;
+        }
+
+        const nameField = this.asRecord(this.firstOf(this.asRecord(this.asRecord(parsed)?.CustomObject)?.nameField));
+        if ( !nameField || this.readText(nameField.type) !== 'Text' ) {
+            return undefined;
+        }
+
+        return {
+            fieldApiName: 'Name',
+            fieldType: 'Text',
+            fieldLabel: this.readText(nameField.label) || 'Name',
+            length: 80,
+            referenceTo: '',
+            controllingField: '',
+            isFormula: false,
+            valueSetName: '',
+            picklistValues: [],
+            isRequired: true
+        };
 
     }
 
