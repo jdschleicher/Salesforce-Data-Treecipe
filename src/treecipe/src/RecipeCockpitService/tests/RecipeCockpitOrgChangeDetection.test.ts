@@ -185,6 +185,44 @@ describe('RecipeCockpitOrgChangeDetection (#445)', () => {
             fieldType: 'Number', fieldLabel: 'Amount', length: '', precision: '18', scale: '2', required: 'false', referenceTo: '', valueSetName: '', picklistValues: [], ...overrides
         });
 
+        it('compares whole values and cuts only what it shows, so a difference past 120 characters is still a change', () => {
+
+            const sharedHead = 'Value_'.repeat(25);
+            const differences = RecipeCockpitOrgChangeDetection.compareFields(
+                field({ valueSetName: `${sharedHead}Old`, picklistValues: [`${sharedHead}A`] }),
+                field({ valueSetName: `${sharedHead}New`, picklistValues: [`${sharedHead}A`, `${sharedHead}B`] })
+            );
+
+            expect(differences).toEqual([
+                `value set: ${sharedHead.slice(0, 120)}… → ${sharedHead.slice(0, 120)}…`,
+                `picklist values added: ${sharedHead.slice(0, 120)}…`
+            ]);
+
+        });
+
+        it('reads a staged field whose value differs only past 120 characters as changed, its label cut for display', async () => {
+
+            const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-org-change-'));
+            try {
+                const workspaceRoot = path.join(temporaryRoot, 'workspace');
+                fs.cpSync(WORKSPACE_ROOT, workspaceRoot, { recursive: true });
+                const stagingFolderPath = path.join(workspaceRoot, path.relative(WORKSPACE_ROOT, STAGING_FOLDER_PATH));
+                const longLabel = 'L'.repeat(130);
+                const fieldXml = (referenceTo: string) => `<CustomField><type>Lookup</type><label>${longLabel}</label><referenceTo>${referenceTo}</referenceTo></CustomField>`;
+                fs.writeFileSync(path.join(workspaceRoot, 'force-app', 'main', 'default', 'objects', 'Account', 'fields', 'Long_Ref__c.field-meta.xml'), fieldXml(`${'X'.repeat(125)}_One__c`));
+                fs.writeFileSync(path.join(stagingFolderPath, 'main', 'default', 'objects', 'Account', 'fields', 'Long_Ref__c.field-meta.xml'), fieldXml(`${'X'.repeat(125)}_Two__c`));
+
+                const [accountChanges] = await detect(['Account'], workspaceRoot, stagingFolderPath);
+                const longReference = accountChanges.fieldChanges.find(fieldChange => fieldChange.fieldApiName === 'Long_Ref__c');
+
+                expect(longReference).toMatchObject({ status: 'changed', fieldLabel: `${'L'.repeat(120)}…` });
+                expect(longReference!.differences).toEqual([`lookup to: ${'X'.repeat(120)}… → ${'X'.repeat(120)}…`]);
+            } finally {
+                fs.rmSync(temporaryRoot, { recursive: true, force: true });
+            }
+
+        });
+
         it('says nothing differs for the same field, whatever its label', () => {
 
             expect(RecipeCockpitOrgChangeDetection.compareFields(field(), field({ fieldLabel: 'Renamed' }))).toEqual([]);

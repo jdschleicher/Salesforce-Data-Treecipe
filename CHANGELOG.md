@@ -2,13 +2,14 @@
 
 ## [3.143.1] - Recipe Cockpit: what touches field files waits for the Treecipe Adapter's Apply, and the Adapter's comparison yields
 
-Two fixes from the review of #452 (#445):
+Three fixes from the review of #452 (#445):
 
 - **The Apply lock holds both ways.** Apply already refused to start while a deploy, a Troubleshooting retrieve, a recipe write or a generation ran. These now also wait while Apply runs (`runKind: 'apply'`, read by `isApplyingAdapterFiles`), so none can read or write the field files Apply is copying:
   - the Troubleshooting retrieves and deploys, at the click and again after their confirmation (`RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL`);
   - **Regenerate with these record types**;
   - a notification's **Generate Treecipe**.
 - **The field-file comparison yields.** `compareStagedObjects` reads and parses each field file, and xml2js settles synchronously. It now yields to the event loop every `METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES` (200) files, as the other cockpit file walks do, so a large tree's Retrieve or Apply does not hold the extension host.
+- **Values are compared whole.** `readText` cut every compared value to 120 characters, so two values differing only past that point read as unchanged, and Apply left the field out. Values are now compared whole; only what is shown is cut (`cutForDisplay`, with an ellipsis): each difference line, and a changed field's type and label.
 
 ## [3.143.0] - Recipe Cockpit: data generation's emoji is a seedling
 

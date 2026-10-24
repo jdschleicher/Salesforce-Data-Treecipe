@@ -457,7 +457,7 @@ export class RecipeCockpitOrgChangeDetection {
 
                 if ( !localFile ) {
                     if ( CUSTOM_FIELD_NAME_PATTERN.test(stagedFile.fieldApiName) ) {
-                        fieldChanges.push({ fieldApiName: stagedFile.fieldApiName, status: 'new', fieldType: stagedField.fieldType, fieldLabel: stagedField.fieldLabel, differences: [] });
+                        fieldChanges.push({ fieldApiName: stagedFile.fieldApiName, status: 'new', fieldType: this.cutForDisplay(stagedField.fieldType), fieldLabel: this.cutForDisplay(stagedField.fieldLabel), differences: [] });
                         fileComparisons.push({ objectApiName: objectApiName, fieldApiName: stagedFile.fieldApiName, status: 'new', stagedFilePath: stagedFile.filePath });
                     }
                     continue;
@@ -475,7 +475,7 @@ export class RecipeCockpitOrgChangeDetection {
                 if ( differences.length === 0 ) {
                     unchangedFieldCount++;
                 } else {
-                    fieldChanges.push({ fieldApiName: localFile.fieldApiName, status: 'changed', fieldType: stagedField.fieldType, fieldLabel: stagedField.fieldLabel, differences: differences });
+                    fieldChanges.push({ fieldApiName: localFile.fieldApiName, status: 'changed', fieldType: this.cutForDisplay(stagedField.fieldType), fieldLabel: this.cutForDisplay(stagedField.fieldLabel), differences: differences });
                     fileComparisons.push({ objectApiName: objectApiName, fieldApiName: localFile.fieldApiName, status: 'changed', stagedFilePath: stagedFile.filePath, localFilePath: localFile.filePath });
                 }
 
@@ -716,11 +716,11 @@ export class RecipeCockpitOrgChangeDetection {
     }
 
     private static showValue(value: string): string {
-        return value === '' ? 'none' : value;
+        return value === '' ? 'none' : this.cutForDisplay(value);
     }
 
     private static showList(values: readonly string[]): string {
-        const shown = values.slice(0, DIFFERENCE_PICKLIST_VALUES_SHOWN).join(', ');
+        const shown = values.slice(0, DIFFERENCE_PICKLIST_VALUES_SHOWN).map(value => this.cutForDisplay(value)).join(', ');
         return values.length > DIFFERENCE_PICKLIST_VALUES_SHOWN ? `${shown} and ${values.length - DIFFERENCE_PICKLIST_VALUES_SHOWN} more` : shown;
     }
 
@@ -817,10 +817,15 @@ export class RecipeCockpitOrgChangeDetection {
         return Array.isArray(candidate) ? candidate[0] : candidate;
     }
 
-    // ONE XML TEXT VALUE AS ONE SHORT LINE; A NON-TEXT VALUE (AN ELEMENT WITH CHILDREN) READS AS NONE
+    // ONE XML TEXT VALUE AS ONE LINE, WHOLE, SINCE IT IS COMPARED; A NON-TEXT VALUE (AN ELEMENT WITH CHILDREN) READS AS NONE
     private static readText(candidate: unknown): string {
         const first = this.firstOf(candidate);
-        return typeof first === 'string' ? this.toSingleLine(first).slice(0, DIFFERENCE_VALUE_MAX_LENGTH) : '';
+        return typeof first === 'string' ? this.toSingleLine(first) : '';
+    }
+
+    // WHAT IS SHOWN IS CUT, NEVER WHAT IS COMPARED: TWO VALUES DIFFERING PAST THE CUT ARE STILL CHANGED
+    private static cutForDisplay(value: string): string {
+        return value.length > DIFFERENCE_VALUE_MAX_LENGTH ? `${value.slice(0, DIFFERENCE_VALUE_MAX_LENGTH)}…` : value;
     }
 
     private static toSingleLine(text: string): string {
