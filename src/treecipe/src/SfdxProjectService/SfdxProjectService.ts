@@ -81,14 +81,19 @@ export class SfdxProjectService {
         */
         const resolveRealPath = resolveRealDirectoryPath ?? ((directoryPath: string) => this.getRealDirectoryPath(directoryPath));
 
-        const realPath = resolveRealPath(resolvedPath);
-        const realWorkspaceRoot = resolveRealPath(resolvedWorkspaceRoot);
-
         const isContained = (candidatePath: string, rootPath: string) => (
             candidatePath === rootPath || candidatePath.startsWith(rootPath + path.sep)
         );
 
-        return isContained(resolvedPath, resolvedWorkspaceRoot) && isContained(realPath, realWorkspaceRoot);
+        /*
+            Lexical first, and a path it refuses is never realpathed: on Windows a realpath of a UNC
+            path a workspace setting names (\\host\share) can contact that host before the refusal.
+        */
+        if ( !isContained(resolvedPath, resolvedWorkspaceRoot) ) {
+            return false;
+        }
+
+        return isContained(resolveRealPath(resolvedPath), resolveRealPath(resolvedWorkspaceRoot));
 
     }
 

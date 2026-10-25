@@ -5,6 +5,7 @@ import { ConfigurationService } from '../ConfigurationService/ConfigurationServi
 
 export const TREECIPE_SIDE_BAR_VIEW_ID = 'treecipe.commands';
 export const TREECIPE_WORKSPACE_CONTEXT_KEY = 'salesforce-data-treecipe.isTreecipeWorkspace';
+export const TREECIPE_CONFIGURATION_FILE_GLOB = '**/treecipe/treecipe.config.json';
 
 export interface ITreecipeSideBarCommand {
     commandId: string;
@@ -122,6 +123,12 @@ export class TreecipeSideBarService {
             }
         }));
 
+        // A CONFIG CREATED OR DELETED BY HAND, OR BY A GIT CHECKOUT, CHANGES THE VIEW WITHOUT A RELOAD
+        const configurationFileWatcher = vscode.workspace.createFileSystemWatcher(TREECIPE_CONFIGURATION_FILE_GLOB, false, true, false);
+        subscriptions.push(configurationFileWatcher);
+        subscriptions.push(configurationFileWatcher.onDidCreate(() => this.refresh()));
+        subscriptions.push(configurationFileWatcher.onDidDelete(() => this.refresh()));
+
         this.refresh();
 
     }
@@ -139,13 +146,25 @@ export class TreecipeSideBarService {
     /*
         Read-only on purpose: ConfigurationService.resolveTreecipeConfigurationFilePath can rewrite the
         stored setting and warn, which a view drawing itself must never do. A stored path counts only
-        under the same rule that resolver applies -- inside the workspace and a file.
+        under the same rule that resolver applies -- inside the workspace and a file. It runs during
+        activate, before any command is registered, so a file that vanishes mid-check or a denied stat
+        answers false rather than throwing.
     */
     static isTreecipeConfigurationPresent(workspaceRoot: string | undefined): boolean {
 
         if ( !workspaceRoot ) {
             return false;
         }
+
+        try {
+            return this.isStoredOrDefaultConfigurationAFile(workspaceRoot);
+        } catch {
+            return false;
+        }
+
+    }
+
+    private static isStoredOrDefaultConfigurationAFile(workspaceRoot: string): boolean {
 
         const storedConfigurationPath = ConfigurationService.getWorkspaceScopedExtensionConfigValue('treecipeConfigurationPath');
 
@@ -157,7 +176,7 @@ export class TreecipeSideBarService {
         }
 
         const defaultConfigurationPath = ConfigurationService.buildDefaultTreecipeConfigurationFilePath(workspaceRoot);
-        return fs.existsSync(defaultConfigurationPath) && fs.statSync(defaultConfigurationPath).isFile();
+        return fs.statSync(defaultConfigurationPath, { throwIfNoEntry: false })?.isFile() === true;
 
     }
 

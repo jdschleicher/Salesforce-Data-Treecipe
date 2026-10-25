@@ -38,13 +38,13 @@ import {
 } from "../RecipeCockpitService/RecipeCockpitService";
 
 import { SalesforceOrgService, IOrgTypeDetail } from '../SalesforceOrgService/SalesforceOrgService';
+import { TreecipeSideBarService } from '../TreecipeSideBarService/TreecipeSideBarService';
 import { RunFakerConfirmation } from './RunFakerConfirmation';
 
 import * as fs from 'fs';
 import * as os from 'os';
 import * as yaml from 'js-yaml';
 import * as vscode from 'vscode';
-import { TreecipeSideBarService } from '../TreecipeSideBarService/TreecipeSideBarService';
 import path = require("path");
 
 export const RECORD_TYPE_OPTIONS_TODO_MARKER = '### TODO: -- RecordType Options --';

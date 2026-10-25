@@ -37,6 +37,11 @@ jest.mock('vscode', () => {
             workspaceFolders: undefined,
             getConfiguration: jest.fn().mockReturnValue({ get: jest.fn(), update: jest.fn(), inspect: jest.fn() }),
             onDidChangeWorkspaceFolders: jest.fn().mockReturnValue({ dispose: jest.fn() }),
+            createFileSystemWatcher: jest.fn().mockReturnValue({
+                onDidCreate: jest.fn().mockReturnValue({ dispose: jest.fn() }),
+                onDidDelete: jest.fn().mockReturnValue({ dispose: jest.fn() }),
+                dispose: jest.fn()
+            }),
             onDidChangeConfiguration: jest.fn().mockReturnValue({ dispose: jest.fn() })
         },
         window: {
@@ -51,6 +56,7 @@ jest.mock('vscode', () => {
 
 import { ConfigurationService } from '../../ConfigurationService/ConfigurationService';
 import {
+    TREECIPE_CONFIGURATION_FILE_GLOB,
     TREECIPE_SIDE_BAR_GROUPS,
     TREECIPE_SIDE_BAR_VIEW_ID,
     TREECIPE_WORKSPACE_CONTEXT_KEY,
@@ -165,6 +171,17 @@ describe('TreecipeSideBarService (#456)', () => {
 
         });
 
+        it('disposes its change event on dispose', () => {
+
+            const provider = new TreecipeSideBarProvider();
+            const changeEmitter = (provider as unknown as { changeEmitter: { dispose: jest.Mock } }).changeEmitter;
+
+            provider.dispose();
+
+            expect(changeEmitter.dispose).toHaveBeenCalledTimes(1);
+
+        });
+
         // AN EMPTY TREE IS WHAT LETS VS CODE DRAW THE VIEW'S WELCOME CONTENT
         it('lists nothing until the workspace is a Treecipe workspace, and a command row has no children', () => {
 
@@ -239,6 +256,16 @@ describe('TreecipeSideBarService (#456)', () => {
 
         });
 
+        // IT RUNS DURING ACTIVATE, BEFORE ANY COMMAND IS REGISTERED: A THROW THERE WOULD REGISTER NONE
+        it('given a stat that throws, answers false rather than throwing', () => {
+
+            writeDefaultConfiguration();
+            jest.spyOn(fs, 'statSync').mockImplementation(() => { throw new Error('EACCES'); });
+
+            expect(TreecipeSideBarService.isTreecipeConfigurationPresent(temporaryWorkspace)).toBe(false);
+
+        });
+
         // THE RESOLVER COMMANDS USE CAN REWRITE THE SETTING AND WARN; DRAWING A VIEW MUST DO NEITHER
         it('given a stale stored path, writes no setting and shows nothing', () => {
 
@@ -269,7 +296,7 @@ describe('TreecipeSideBarService (#456)', () => {
             TreecipeSideBarService.register(subscriptions);
 
             expect(vscode.window.registerTreeDataProvider).toHaveBeenCalledWith(TREECIPE_SIDE_BAR_VIEW_ID, expect.any(TreecipeSideBarProvider));
-            expect(subscriptions).toHaveLength(4);
+            expect(subscriptions).toHaveLength(7);
             expect(packageJson.contributes.views.treecipe.map((view: { id: string }) => view.id)).toEqual([TREECIPE_SIDE_BAR_VIEW_ID]);
 
         });
@@ -304,6 +331,22 @@ describe('TreecipeSideBarService (#456)', () => {
 
             expect((vscode.commands.executeCommand as jest.Mock).mock.calls.map(call => call[0])).toEqual(['setContext']);
             expect(setExtensionConfigValueSpy).not.toHaveBeenCalled();
+
+        });
+
+        // A CONFIG CREATED OR DELETED BY HAND OR BY A CHECKOUT CHANGES THE VIEW WITHOUT A RELOAD; A CHANGE TO IT DOES NOT
+        it('watches the config file for creation and deletion only, and refreshes on either', () => {
+
+            TreecipeSideBarService.register([]);
+            const refreshSpy = jest.spyOn(TreecipeSideBarService, 'refresh');
+
+            expect(vscode.workspace.createFileSystemWatcher).toHaveBeenLastCalledWith(TREECIPE_CONFIGURATION_FILE_GLOB, false, true, false);
+            const watcher = (vscode.workspace.createFileSystemWatcher as jest.Mock).mock.results.at(-1).value;
+
+            (watcher.onDidCreate as jest.Mock).mock.calls.at(-1)[0]();
+            (watcher.onDidDelete as jest.Mock).mock.calls.at(-1)[0]();
+
+            expect(refreshSpy).toHaveBeenCalledTimes(2);
 
         });
 
