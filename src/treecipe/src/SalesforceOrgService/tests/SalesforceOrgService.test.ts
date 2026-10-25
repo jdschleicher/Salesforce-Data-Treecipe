@@ -2106,21 +2106,21 @@ describe('SalesforceOrgService', () => {
 
         });
 
-        it('does not cache an answer for a request started before a clear', async () => {
+        it('shares a request in flight across a clear rather than starting a second process for the same org', async () => {
 
             let answerFirstRequest: (stdout: ReturnType<typeof answeredWith>) => void = () => undefined;
             const runSalesforceCliSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli')
-                .mockImplementationOnce(() => new Promise(resolveRequest => { answerFirstRequest = resolveRequest; }))
-                .mockResolvedValue(answeredWith(readDisplayFixture('sfOrgDisplaySandbox.json')));
+                .mockImplementationOnce(() => new Promise(resolveRequest => { answerFirstRequest = resolveRequest; }));
 
-            const staleRequest = SalesforceOrgService.readOrgDisplayDetail('dev@example.com');
+            const firstRequest = SalesforceOrgService.readOrgDisplayDetail('dev@example.com');
             await new Promise(resolveYield => setImmediate(resolveYield));
             SalesforceOrgService.clearConnectedOrgStatusCache();
+            const requestAfterClear = SalesforceOrgService.readOrgDisplayDetail('dev@example.com');
             answerFirstRequest(answeredWith(readDisplayFixture('sfOrgDisplayScratchOrg.json')));
-            await staleRequest;
 
-            expect(await SalesforceOrgService.readOrgDisplayDetail('dev@example.com')).toEqual({ isScratchOrg: false });
-            expect(runSalesforceCliSpy).toHaveBeenCalledTimes(2);
+            expect(await firstRequest).toEqual({ isScratchOrg: true, expirationDate: '2026-11-01' });
+            expect(await requestAfterClear).toEqual({ isScratchOrg: true, expirationDate: '2026-11-01' });
+            expect(runSalesforceCliSpy).toHaveBeenCalledTimes(1);
 
         });
 

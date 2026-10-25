@@ -13280,7 +13280,9 @@ export class RecipeCockpitService {
 
         /*
             A sandbox's label waits for "sf org display" to say whether it is a scratch org (#458);
-            nothing else does. It runs beside the connection and the describes, never ahead of them.
+            nothing else does. It is asked only once the org has answered that it is a sandbox -- so
+            a production default never starts it, and the connection has already refreshed the
+            token the CLI reads -- and it runs beside the describes, never ahead of them.
         */
         const buildSelectionTypeLabel = () => {
             if ( !isOrgTypeAnswered ) {
@@ -13293,14 +13295,6 @@ export class RecipeCockpitService {
         };
 
         postSelection();
-
-        void SalesforceOrgService.readOrgDisplayDetail(orgDetail.username).then(orgDisplayDetail => {
-            dataOrgSelection.orgDisplayDetail = orgDisplayDetail;
-            isOrgDisplayAnswered = true;
-            if ( isOrgTypeAnswered && !dataOrgSelection.isConnectionFailed && dataOrgSelection.orgTypeDetail?.isSandbox === true ) {
-                postSelection();
-            }
-        });
 
         let connection: Connection;
         let querySource: IOrgQuerySource;
@@ -13346,6 +13340,12 @@ export class RecipeCockpitService {
         }
 
         postSelection();
+
+        void SalesforceOrgService.readOrgDisplayDetail(orgDetail.username).then(orgDisplayDetail => {
+            dataOrgSelection.orgDisplayDetail = orgDisplayDetail;
+            isOrgDisplayAnswered = true;
+            postSelection();
+        });
 
         // WHETHER A TREE'S INSERT IS OFFERED NEEDS EACH OBJECT'S DESCRIBE, NONE OF WHICH IS ASKED OF AN ORG THAT HAS NOT ANSWERED IT IS A SANDBOX
         let readinessByObjectApiName: Map<string, IRecipeCockpitCreateReadinessViewModel>;

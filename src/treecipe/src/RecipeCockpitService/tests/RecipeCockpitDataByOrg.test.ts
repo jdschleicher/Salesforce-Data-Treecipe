@@ -410,7 +410,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             expect(getConnectionSpy).toHaveBeenCalledWith('qa@example.com.qa');
             expect(fakeConnection.sentQueries).toEqual(['SELECT IsSandbox, OrganizationType FROM Organization']);
-            expect(postedNamed('dataOrgSelection').map(selection => [selection.orgTypeLabel, selection.isSandbox, selection.failureMessage])).toEqual([['', null, ''], ['Sandbox', true, '']]);
+            expect(postedNamed('dataOrgSelection').map(selection => [selection.orgTypeLabel, selection.isSandbox, selection.failureMessage])).toEqual([['', null, ''], ['', true, ''], ['Sandbox', true, '']]);
             expect(postedNamed('dataOrgCounts')).toEqual([]);
             expect(checkedObjects()).toIncludeSameMembers(TREE_OBJECT_API_NAMES);
             expect(workspaceStateValues.get(RECIPE_COCKPIT_DATA_ORG_STATE_KEY)).toBe('qa@example.com.qa');
@@ -421,7 +421,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             const selectionLabels = () => postedNamed('dataOrgSelection').map(selection => [selection.orgTypeLabel, selection.isSandbox, selection.failureMessage]);
 
-            it('labels a scratch org with its expiration date once "sf org display" answers, after the Organization row', async () => {
+            it('asks "sf org display" only once the Organization row says sandbox, and labels a scratch org with its expiration date when it answers', async () => {
 
                 let answerDisplay: (orgDisplayDetail: { isScratchOrg: boolean; expirationDate?: string } | undefined) => void = () => undefined;
                 const readOrgDisplayDetailSpy = jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockImplementation(() => new Promise(resolveDisplay => { answerDisplay = resolveDisplay; }));
@@ -445,16 +445,29 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             });
 
-            it('labels a scratch org once when "sf org display" answered before the Organization row', async () => {
+            it('drops a "sf org display" answer for an org the reader has since replaced', async () => {
 
-                jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue({ isScratchOrg: true });
+                const answersByUsername = new Map<string, (orgDisplayDetail: { isScratchOrg: boolean } | undefined) => void>();
+                jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockImplementation(username => new Promise(resolveDisplay => { answersByUsername.set(username, resolveDisplay); }));
+                jest.spyOn(SalesforceOrgService, 'listDataOrgDetails').mockResolvedValue(buildDataOrgListing([SANDBOX_ORG, { ...SANDBOX_ORG, username: 'uat@example.com.uat', alias: 'uat' } as IAuthenticatedOrgDetail]));
                 jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
 
                 await openRenderedCockpit();
                 await receivedMessageHandler({ command: 'loadDataOrgs' });
                 await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
+                await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 1 });
+                const postedBeforeLateAnswer = postedNamed('dataOrgSelection').length;
 
-                expect(selectionLabels()).toEqual([['', null, ''], ['Scratch org', true, '']]);
+                answersByUsername.get('qa@example.com.qa')?.({ isScratchOrg: true });
+                await new Promise(resolveYield => setImmediate(resolveYield));
+
+                expect(postedNamed('dataOrgSelection')).toHaveLength(postedBeforeLateAnswer);
+
+                answersByUsername.get('uat@example.com.uat')?.({ isScratchOrg: false });
+                await new Promise(resolveYield => setImmediate(resolveYield));
+
+                const [lastSelection] = postedNamed('dataOrgSelection').slice(-1);
+                expect([lastSelection.orgIndex, lastSelection.orgTypeLabel]).toEqual([1, 'Sandbox']);
 
             });
 
@@ -473,7 +486,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
 
             it('labels production from its Organization row without waiting for "sf org display", and never relabels it', async () => {
 
-                jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockImplementation(() => new Promise(() => undefined));
+                const readOrgDisplayDetailSpy = jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockImplementation(() => new Promise(() => undefined));
                 jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ IsSandbox: false, OrganizationType: 'Enterprise Edition' }) as any);
 
                 await openRenderedCockpit();
@@ -483,12 +496,14 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
                 const [lastLabel] = selectionLabels().slice(-1);
                 expect(lastLabel[0]).toBe('Production · Enterprise Edition');
                 expect(lastLabel[2]).toContain('It inserts records only into a sandbox or scratch org.');
+                // ONLY A SANDBOX IS ASKED: A PRODUCTION DEFAULT NEVER STARTS THE CLI
+                expect(readOrgDisplayDetailSpy).not.toHaveBeenCalled();
 
             });
 
             it('keeps "type unknown" and the connection failure when the org could not be connected to, whatever "sf org display" says', async () => {
 
-                jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue({ isScratchOrg: true, expirationDate: '2026-11-01' });
+                const readOrgDisplayDetailSpy = jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue({ isScratchOrg: true, expirationDate: '2026-11-01' });
                 jest.spyOn(SalesforceOrgService, 'getConnection').mockRejectedValue(new Error('expired token'));
 
                 await openRenderedCockpit();
@@ -499,6 +514,7 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
                 const [lastLabel] = selectionLabels().slice(-1);
                 expect(lastLabel[0]).toBe('type unknown');
                 expect(lastLabel[2]).toContain('Could not connect to qa');
+                expect(readOrgDisplayDetailSpy).not.toHaveBeenCalled();
 
             });
 

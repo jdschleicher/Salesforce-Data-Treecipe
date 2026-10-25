@@ -141,7 +141,8 @@ export interface IOrgDisplayDetail {
     expirationDate?: string;
 }
 
-export const ORG_DISPLAY_TIMEOUT_MILLISECONDS = 60000;
+// ONLY A LABEL WAITS ON IT, SO A HUNG CLI GIVES UP LONG BEFORE "sf org list" WOULD
+export const ORG_DISPLAY_TIMEOUT_MILLISECONDS = 20000;
 
 export const SCRATCH_ORG_TYPE_LABEL = 'Scratch org';
 
@@ -674,19 +675,17 @@ export class SalesforceOrgService {
     /*
         "sf org display" per USERNAME, asked once per session (#458) and cleared with the
         connected-org answer. Only the parsed facts are kept, never the CLI's answer, which carries
-        an access token. A failure is never cached.
+        an access token. A failure is never cached. A request in flight IS a fresh answer, so a
+        clear lets it finish and shares it rather than starting a second process for the same
+        org, as the connected-org check does.
     */
     private static orgDisplayCache = new Map<string, IOrgDisplayDetail>();
 
     private static orgDisplayRequests = new Map<string, Promise<IOrgDisplayDetail | undefined>>();
 
-    private static orgDisplayGeneration = 0;
-
     static clearOrgDisplayCache() {
 
         this.orgDisplayCache.clear();
-        this.orgDisplayRequests.clear();
-        this.orgDisplayGeneration++;
 
     }
 
@@ -711,13 +710,10 @@ export class SalesforceOrgService {
             return await requestInFlight;
         }
 
-        const requestGeneration = this.orgDisplayGeneration;
         const displayRequest = this.runOrgDisplayCommand(username).then(orgDisplayDetail => {
-            if ( requestGeneration === this.orgDisplayGeneration ) {
-                this.orgDisplayRequests.delete(username);
-                if ( orgDisplayDetail ) {
-                    this.orgDisplayCache.set(username, orgDisplayDetail);
-                }
+            this.orgDisplayRequests.delete(username);
+            if ( orgDisplayDetail ) {
+                this.orgDisplayCache.set(username, orgDisplayDetail);
             }
             return orgDisplayDetail;
         });
