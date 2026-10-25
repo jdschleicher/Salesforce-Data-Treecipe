@@ -806,6 +806,23 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
             });
 
+            it('writes the data set and says why there is no adapted recipe when the recipe no longer has an updated field', async () => {
+
+                await openCockpitLoadAndGenerate();
+                await acknowledgeValues();
+                fs.writeFileSync(recipeFilePath(), fs.readFileSync(recipeFilePath(), 'utf8').replace('    LastName: ${{fake.LastName}}\n', ''));
+                await requestUpdate();
+
+                expect(adaptedDatasetFolderNames()).toHaveLength(1);
+                expect(adaptedRecipeFileNames()).toEqual([]);
+                expect(vscode.window.showInformationMessage).toHaveBeenLastCalledWith(
+                    `5 records of Account-thru-OtherChildObject__c were updated in qa · qa@example.com.qa. Their old values are in ${attemptFiles()[0]}. The adapted data set is ${adaptedDatasetFolderNames()[0]}. No adapted recipe was written: Contact has no LastName line.`,
+                    RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
+                    RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL
+                );
+
+            });
+
             it('reveals the data set and opens the adapted recipe from the notification\'s buttons', async () => {
 
                 await openCockpitLoadAndGenerate();

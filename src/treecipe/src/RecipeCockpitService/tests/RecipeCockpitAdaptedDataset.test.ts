@@ -238,6 +238,33 @@ describe('the Treecipe Adapter\'s adapted data set and recipe (#448)', () => {
 
         });
 
+        it('refuses an org-only field on an object the recipe lacks, or on an occurrence with no fields: block', () => {
+
+            const noFieldsRecipe = '- object: Case\n  nickname: Case_NickName\n  count: 1\n';
+            const missingObject = RecipeCockpitRecipeWriter.buildAdaptedRecipe(ONE_OBJECT_RECIPE, [{ objectApiName: 'Case', fieldApiName: 'Subject', valueText: '"x"', isOrgOnly: true }], ADAPTED_COMMENT);
+            const noFieldsBlock = RecipeCockpitRecipeWriter.buildAdaptedRecipe(noFieldsRecipe, [{ objectApiName: 'Case', fieldApiName: 'Subject', valueText: '"x"', isOrgOnly: true }], ADAPTED_COMMENT);
+
+            expect('refusal' in missingObject && missingObject.refusal.reason).toBe('object-not-found');
+            expect('refusal' in noFieldsBlock && noFieldsBlock.refusal.reason).toBe('fields-block-not-found');
+
+        });
+
+        it.each([
+            ['another object count', (scannedObjects: any[]) => [...scannedObjects, scannedObjects[0]]],
+            ['other field names', (scannedObjects: any[]) => scannedObjects.map(scannedObject => ({ ...scannedObject, fields: scannedObject.fields.slice(1) }))],
+            ['a field line that no longer ends with the mark', (scannedObjects: any[]) => scannedObjects.map(scannedObject => ({ ...scannedObject, fields: scannedObject.fields.map((scannedField: any) => ({ ...scannedField, startIndex: 0 })) }))]
+        ])('refuses a result that does not read back: %s', (_description, alterScan) => {
+
+            const realScan = RecipeCockpitRecipeWriter.scanRecipeObjects.bind(RecipeCockpitRecipeWriter);
+            jest.spyOn(RecipeCockpitRecipeWriter, 'scanRecipeObjects')
+                .mockImplementationOnce(lines => realScan(lines))
+                .mockImplementationOnce(lines => alterScan(realScan(lines)));
+
+            const adaptedRecipe = RecipeCockpitRecipeWriter.buildAdaptedRecipe(ONE_OBJECT_RECIPE, [{ objectApiName: 'Account', fieldApiName: 'Name', valueText: '"x"' }], ADAPTED_COMMENT);
+            expect('refusal' in adaptedRecipe && adaptedRecipe.refusal.reason).toBe('unsupported-field-layout');
+
+        });
+
         it('builds the mark from a date and an org label held to characters no parser or template reads', () => {
 
             expect(RecipeCockpitRecipeWriter.buildAdaptedComment('2026-10-25', 'qa-sandbox.1@example.com')).toBe('# ADAPTED 2026-10-25 -- qa-sandbox.1@example.com');
@@ -698,6 +725,28 @@ describe('the Treecipe Adapter\'s adapted data set and recipe (#448)', () => {
                 isAdapted: true
             });
             expect(datasets[0]).not.toHaveProperty('isAdapted');
+
+        });
+
+        it('reads an adapted data set\'s backend from its run when it has no source file, and from nothing at all as snowfakery', () => {
+
+            const knownRecipeRuns = [{ runFolderName: 'recipe-fakerjs-2026-09-20T10-00-00', treeFolderNames: [ACCOUNT_TREE_KEY] }, { runFolderName: TREE_RUN_FOLDER_NAME, treeFolderNames: [ACCOUNT_TREE_KEY] }];
+            const listing = (datasetFolderName: string, source: any) => ({
+                datasetFolderName: datasetFolderName,
+                datasetFolderPath: datasetFolderName,
+                folderNameDetail: DatasetSourceService.parseDatasetFolderName(datasetFolderName)!,
+                source: source
+            });
+
+            const { historiesByTreeKey } = RecipeCockpitTreeHistory.groupTreeHistories(knownRecipeRuns, [
+                listing(`${ACCOUNT_TREE_KEY}-adapted-20261025-143005`, { status: 'linked', basis: 'inferred', recipeRunFolderName: 'recipe-fakerjs-2026-09-20T10-00-00', recipeTreeFolderName: ACCOUNT_TREE_KEY, reason: '' }),
+                listing(`${ACCOUNT_TREE_KEY}-adapted-20261024-143005`, { status: 'unknown', basis: 'inferred', recipeRunFolderName: null, recipeTreeFolderName: null, treeFolderNameHint: ACCOUNT_TREE_KEY, reason: '' })
+            ], [{ treeKey: ACCOUNT_TREE_KEY, folderName: ACCOUNT_TREE_KEY }], TREE_RUN_FOLDER_NAME);
+
+            expect(historiesByTreeKey.get(ACCOUNT_TREE_KEY)!.datasets.map(dataset => [dataset.fakerService, dataset.runFolderName, dataset.isAdapted])).toEqual([
+                ['faker-js', 'recipe-fakerjs-2026-09-20T10-00-00', undefined],
+                ['snowfakery', null, undefined]
+            ]);
 
         });
 
