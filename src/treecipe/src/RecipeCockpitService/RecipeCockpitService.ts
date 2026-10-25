@@ -4786,7 +4786,7 @@ export class RecipeCockpitService {
                     // THE FIXED-VALUES FILE IS WORKSPACE TEXT, SO WHAT IT PUTS BACK IS NEVER FOLDED AWAY
                     '',
                     'It puts back:',
-                    this.buildRestorePreview(planned.previewText)
+                    ...this.buildRestorePreview(planned.previewText).split(/\r\n|\r|\n/).map(previewLine => `  ${previewLine}`)
                 ]
             },
             RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL
@@ -5290,7 +5290,7 @@ export class RecipeCockpitService {
                 summary: [`${storedTreeText} excluded objects, unticked fields, record counts or validation rules switched off.`, '', matchingText],
                 sections: [
                     { title: 'Trees with selections', count: storedFolderNames.length, lines: storedFolderNames },
-                    { title: 'What each choice does', lines: ['Reset selections clears them for every tree on screen. Fixed values and edited expressions are written in each recipe file, so neither choice changes them.'] }
+                    { title: 'What each choice does', lines: ['Reset selections clears them for every tree on screen.', 'Fixed values and edited expressions are written in each recipe file, so neither choice changes them.'] }
                 ]
             },
             ...buttonLabels
@@ -7258,7 +7258,7 @@ export class RecipeCockpitService {
                             ? `Fields, from the ${fakerService} minimum required fields template: ${templateFieldApiNames.join(', ')}.`
                             : `The ${fakerService} template has no required field for ${addition.parentObjectApiName}, so its block has a count only.`]
                     },
-                    { title: 'What happens at insert', lines: [`Generate fake data and insert then inserts ${addition.parentObjectApiName} before ${addition.objectApiName} and points the lookup at its Id. A required field your org adds to ${addition.parentObjectApiName} is not in the template: add it to the block if the insert reports it.`] }
+                    { title: 'What happens at insert', lines: [`Generate fake data and insert then inserts ${addition.parentObjectApiName} before ${addition.objectApiName} and points the lookup at its Id.`, `A required field your org adds to ${addition.parentObjectApiName} is not in the template: add it to the block if the insert reports it.`] }
                 ]
             },
             ...buttonLabels
@@ -8178,7 +8178,7 @@ export class RecipeCockpitService {
             ],
             warnings: ['The definition file, authored in this repository, decides who administers the new org.'],
             sections: [
-                { title: 'What happens next', lines: ['Nothing is deployed to the new org: deploy what you need yourself once it is ready. The scratch org is kept whatever happens, and nothing here deletes an org.'] }
+                { title: 'What happens next', lines: ['Nothing is deployed to the new org: deploy what you need yourself once it is ready.', 'The scratch org is kept whatever happens, and nothing here deletes an org.'] }
             ]
         };
 
@@ -10392,7 +10392,7 @@ export class RecipeCockpitService {
                 summary: [`${[
                     ...( overwrites.length > 0 ? [`${overwrites.length} overwritten with the org's version`] : [] ),
                     ...( additions.length > 0 ? [`${additions.length} added`] : [] )
-                ].join(', ')}. Nothing is deployed, and the recipe changes only when Generate Treecipe runs.`],
+                ].join(', ')}.`, 'Nothing is deployed, and the recipe changes only when Generate Treecipe runs.'],
                 ...( overwrites.length > 0 ? { warnings: ['A project file overwritten here is not kept anywhere else: commit or stash it first if you need it.'] } : {} ),
                 sections: [
                     { title: 'Overwritten with the org\'s version', count: overwrites.length, lines: overwrites.length > 0 ? [RecipeCockpitMetadataDeploy.describeCappedList(overwrites.map(fieldFileCopy => toRelativePath(fieldFileCopy.targetFilePath)))] : [] },
@@ -11108,7 +11108,7 @@ export class RecipeCockpitService {
                         count: plannedObjects.length,
                         lines: plannedObjects.map(plannedObject => `${plannedObject.objectApiName}: ${describeRecords(plannedObject.recordValues.length)} -- ${plannedObject.fieldApiNames.join(', ')}`)
                     },
-                    { title: 'How it can be undone', lines: [`Each record is updated by its Id. The old values are saved first to treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${tree.folderName}/, and nothing is updated if they cannot be.`] }
+                    { title: 'How it can be undone', lines: ['Each record is updated by its Id.', `The old values are saved first to treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${tree.folderName}/, and nothing is updated if they cannot be.`] }
                 ],
                 isDestructive: true
             },
@@ -11556,7 +11556,7 @@ export class RecipeCockpitService {
                         count: restoredObjects.length,
                         lines: restoredObjects.map(plannedObject => `${plannedObject.objectApiName}: ${describeRecords(plannedObject.recordValues.length)} -- ${plannedObject.fieldApiNames.join(', ')}`)
                     },
-                    { title: 'How it can be undone', lines: [`Each record is set back by its Id to the value it held when ${snapshotName} was saved, on ${snapshot.takenAt}. The values it holds now are saved first to treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${tree.folderName}/, and nothing is restored if they cannot be.`] }
+                    { title: 'How it can be undone', lines: [`Each record is set back by its Id to the value it held when ${snapshotName} was saved, on ${snapshot.takenAt}.`, `The values it holds now are saved first to treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${tree.folderName}/, and nothing is restored if they cannot be.`] }
                 ],
                 isDestructive: true
             },
@@ -12887,7 +12887,7 @@ export class RecipeCockpitService {
                 ],
                 warnings: isOverwrite ? ['The file already exists and will be overwritten: Treecipe owns this file.'] : [],
                 sections: [
-                    { title: 'What happens next', lines: ['It will not be deployed: deploy it with your own flow, then assign it with "Assign permission sets to me…".'] }
+                    { title: 'What happens next', lines: ['It will not be deployed: deploy it with your own flow.', 'Then assign it with "Assign permission sets to me…".'] }
                 ]
             },
             RECIPE_COCKPIT_GENERATE_PERMISSION_SET_CONFIRM_LABEL
@@ -14378,7 +14378,7 @@ export class RecipeCockpitService {
                         `Backend: ${fakerService}`
                     ]
                 },
-                { title: 'What happens next', lines: ['The data set is written to FakeDataSets as Run Faker by Recipe writes it, then inserted the way Insert Data Set by Directory inserts: you choose all-or-none next.'] }
+                { title: 'What happens next', lines: ['The data set is written to FakeDataSets as Run Faker by Recipe writes it.', 'It is then inserted the way Insert Data Set by Directory inserts.', 'You choose all-or-none next.'] }
             ]
         };
 
@@ -18605,7 +18605,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         border-bottom: 1px solid var(--sdt-border);
     }
     .confirmLine { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0.15rem 0; }
-    .confirmListItem { padding-left: 1rem; }
+    .confirmBullets { margin: 0.15rem 0; padding-left: 1.25rem; }
+    .confirmBullets .confirmBullet { margin: 0.2rem 0; }
+    .confirmBullet::marker { color: var(--sdt-muted); }
+    .confirmSubBullets { margin: 0.1rem 0 0.25rem 0; list-style-type: circle; }
+    .confirmWarnings .confirmBullet::marker { color: var(--sdt-changed); }
     .confirmGap { height: 0.6rem; }
     .confirmSummary { margin: 0.5rem 0; font-size: 1.02rem; }
     .confirmBadge { display: inline-block; margin-top: 0.3rem; padding: 0.1rem 0.55rem; border-radius: 999px; font-size: 0.85rem; font-weight: 600; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); }
@@ -28217,17 +28221,63 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
-    function drawConfirmLines(parentElement, lines) {
+    /*
+        Each statement is its own bullet (#457), so separate thoughts never run together: a blank line
+        starts a new group, a line that ends with ":" leads in the indented lines under it as a nested
+        list, and any other indented line is a bullet of its own. A part with one statement and no
+        bullets asked for is drawn as plain text.
+    */
+    function drawConfirmLines(parentElement, lines, isBulleted) {
 
+        const groups = [[]];
         lines.forEach(function (line) {
             if (line.trim() === '') {
-                parentElement.appendChild(createElement('div', 'confirmGap'));
+                if (groups[groups.length - 1].length > 0) { groups.push([]); }
                 return;
             }
-            const isListItem = /^\\s*([-•]|\\u2026and )/.test(line);
-            parentElement.appendChild(createElement('div', isListItem ? 'confirmLine confirmListItem' : 'confirmLine', line));
+            groups[groups.length - 1].push(line);
         });
 
+        groups.filter(function (group) { return group.length > 0; }).forEach(function (group, groupIndex) {
+
+            if (groupIndex > 0) { parentElement.appendChild(createElement('div', 'confirmGap')); }
+
+            if (!isBulleted) {
+                group.forEach(function (line) { parentElement.appendChild(createElement('div', 'confirmLine', line)); });
+                return;
+            }
+
+            const listElement = createElement('ul', 'confirmBullets');
+            let leadInItem = null;
+            let leadInList = null;
+
+            group.forEach(function (line) {
+                const isIndented = /^\\s/.test(line);
+                // AN INDENTED LINE LOSES ONLY ITS TWO-SPACE STEP, SO A RECIPE LINE KEEPS ITS OWN INDENTATION; A WRITTEN "- " MARKER GIVES WAY TO THE BULLET
+                const text = isIndented ? line.replace(/^ {1,2}/, '').trimEnd() : line.trim().replace(/^[-•]\\s+/, '');
+                if (isIndented && leadInItem) {
+                    // THE NESTED LIST IS MADE WITH ITS FIRST ITEM, SO A LEAD-IN WITH NOTHING UNDER IT KEEPS NO EMPTY LIST
+                    if (!leadInList) {
+                        leadInList = createElement('ul', 'confirmBullets confirmSubBullets');
+                        leadInItem.appendChild(leadInList);
+                    }
+                    leadInList.appendChild(createElement('li', 'confirmLine confirmBullet confirmSubBullet', text));
+                    return;
+                }
+                const itemElement = createElement('li', 'confirmLine confirmBullet', text);
+                listElement.appendChild(itemElement);
+                leadInItem = !isIndented && /:$/.test(text) ? itemElement : null;
+                leadInList = null;
+            });
+
+            parentElement.appendChild(listElement);
+
+        });
+
+    }
+
+    function countConfirmStatements(lines) {
+        return lines.filter(function (line) { return line.trim() !== '' && !/^\\s/.test(line); }).length;
     }
 
     /*
@@ -28239,7 +28289,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     function drawConfirmContent(bodyElement, content) {
 
         const summaryElement = createElement('div', 'confirmSummary');
-        drawConfirmLines(summaryElement, content.summary);
+        drawConfirmLines(summaryElement, content.summary, countConfirmStatements(content.summary) > 1);
         if (content.badge) { summaryElement.appendChild(createElement('span', 'confirmBadge', content.badge)); }
         bodyElement.appendChild(summaryElement);
 
@@ -28248,7 +28298,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             warningsElement.setAttribute('role', 'note');
             warningsElement.setAttribute('aria-label', CONFIRM_WARNINGS_LABEL);
             warningsElement.appendChild(createElement('div', 'confirmWarningsHeading', CONFIRM_WARNINGS_LABEL));
-            drawConfirmLines(warningsElement, content.warnings);
+            drawConfirmLines(warningsElement, content.warnings, true);
             bodyElement.appendChild(warningsElement);
         }
 
@@ -28280,7 +28330,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             toggleElement.addEventListener('click', function () {
                 isSectionExpanded = !isSectionExpanded;
                 if (isSectionExpanded && !isBuilt) {
-                    drawConfirmLines(sectionBodyElement, section.lines);
+                    drawConfirmLines(sectionBodyElement, section.lines, true);
                     isBuilt = true;
                 }
                 drawToggle(toggleElement, isSectionExpanded, !isMotionReduced());

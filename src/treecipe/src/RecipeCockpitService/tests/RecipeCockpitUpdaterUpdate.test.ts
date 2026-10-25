@@ -622,7 +622,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 'Contact: 2 records -- LastName',
                 '',
                 'How it can be undone',
-                `Each record is updated by its Id. The old values are saved first to treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${ACCOUNT_TREE_KEY}/, and nothing is updated if they cannot be.`
+                'Each record is updated by its Id.',
+                `The old values are saved first to treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${ACCOUNT_TREE_KEY}/, and nothing is updated if they cannot be.`
             ]);
             expect((RecipeCockpitService.confirmInPanel as unknown as jest.Mock).mock.calls.find((call: unknown[]) => String(call[0]).startsWith('Update '))[1].badge).toBe('Sandbox');
 

@@ -444,7 +444,7 @@ export class RecipeCockpitPermissionSetAssign {
                     count: permissionSets.length,
                     lines: permissionSets.map(permissionSet => `  ${permissionSet.name} — ${toSingleLine(this.describeCoverage(permissionSet, treeObjectCount))}`)
                 },
-                { title: 'What happens next', lines: ['Nothing is deployed. Only the permission sets the org already holds are assigned; any it does not hold are named so you can deploy them. A permission set the user already holds counts as assigned.'] }
+                { title: 'What happens next', lines: ['Nothing is deployed.', 'Only the permission sets the org already holds are assigned; any it does not hold are named so you can deploy them.', 'A permission set the user already holds counts as assigned.'] }
             ]
         };
 

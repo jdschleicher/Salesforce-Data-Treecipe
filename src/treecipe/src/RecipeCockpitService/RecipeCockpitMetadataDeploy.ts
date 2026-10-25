@@ -799,7 +799,7 @@ export class RecipeCockpitMetadataDeploy {
                 { title: 'Components', count: components.length, lines: this.describeComponentsByType(components) },
                 { title: 'Not deployed', lines: notes },
                 { title: 'Ticking the box below also deploys, in the same package.xml', count: fullSetComponents.length, lines: this.describeComponentsByType(fullSetComponents) },
-                { title: 'How it deploys', lines: ['Only these components are deployed, through a generated package.xml. Nothing else in the object folders is.'] }
+                { title: 'How it deploys', lines: ['Only these components are deployed, through a generated package.xml.', 'Nothing else in the object folders is.'] }
             ]
         };
 

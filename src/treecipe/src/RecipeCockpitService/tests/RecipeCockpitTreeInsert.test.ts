@@ -2065,7 +2065,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                     title: 'Org and recipe',
                     lines: ['Org: qa (qa@example.com.qa)', 'Type: Sandbox', 'Recipe tree: Account-thru-OtherChildObject__c (recipe.yml)', 'Backend: snowfakery']
                 },
-                { title: 'What happens next', lines: [expect.stringContaining('you choose all-or-none next')] }
+                { title: 'What happens next', lines: [expect.stringContaining('FakeDataSets'), expect.stringContaining('Insert Data Set by Directory'), 'You choose all-or-none next.'] }
             ]);
             expect(detailOf([['Account', 1], ['Contact', 1]])).not.toContain('Generate only');
 

@@ -556,7 +556,9 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
             expect(componentsBody.attributes.id).toBe('confirmSection1');
             expect(panel.findAll(componentsBody, 'confirmLine')).toHaveLength(61);
             expect(panel.findAll(componentsBody, 'confirmGap')).toHaveLength(1);
-            expect(panel.findAll(componentsBody, 'confirmListItem').map((lineElement: any) => lineElement.textContent)).toContain('- line 0');
+            // #457 BULLETS: EVERY LINE IS ITS OWN BULLET, A WRITTEN "- " MARKER GIVING WAY TO IT, AND THE BLANK LINE STARTS A NEW LIST
+            expect(panel.findAll(componentsBody, 'confirmBullet').map((lineElement: any) => lineElement.textContent)).toContain('line 0');
+            expect(panel.findAll(componentsBody, 'confirmBullets')).toHaveLength(2);
 
             componentsToggle.dispatch('click');
             expect(componentsToggle.attributes['aria-expanded']).toBe('false');
@@ -567,6 +569,50 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
             // OPENING ONE SECTION LEAVES THE OTHER FOLDED
             expect(panel.findAll(bodyElement, 'confirmSectionBody')[0].children).toEqual([]);
+
+        });
+
+        /*
+            #457 bullets: each statement is its own bullet, so separate thoughts never run together. A
+            line ending with ":" leads in the indented lines under it as a nested list; an indented line
+            loses only its two-space step, so a recipe line keeps its own indentation and its "- ".
+        */
+        it('draws every warning and section line as its own bullet, nesting the indented lines a lead-in introduces (#457)', () => {
+
+            const panel = drawnPanel();
+            panel.postToPanel(confirmRequest({
+                warnings: ['Cancel deletes every record this insert saved.', 'Lookups set to existing org records:', '  Contact.ReportsToId → 003A', '  Contact.AccountId → 001B', 'This run will take time.'],
+                sections: [{ title: 'Puts back', lines: ['It puts back:', '  Rating__c:', '    - Hot', 'No lead-in:'] }]
+            }));
+
+            const bodyElement = panel.findAll(dialogOf(panel), 'confirmBody')[0];
+            const [warningsElement] = panel.findAll(bodyElement, 'confirmWarnings');
+            const [warningList] = panel.findAll(warningsElement, 'confirmBullets');
+            expect(warningList.tagName).toBe('ul');
+            expect(warningList.children.map((itemElement: any) => itemElement.ownTextContent)).toEqual(['Cancel deletes every record this insert saved.', 'Lookups set to existing org records:', 'This run will take time.']);
+            const [nestedList] = panel.findAll(warningList.children[1], 'confirmSubBullets');
+            expect(nestedList.children.map((itemElement: any) => itemElement.textContent)).toEqual(['Contact.ReportsToId → 003A', 'Contact.AccountId → 001B']);
+
+            panel.findAll(bodyElement, 'confirmSectionToggle')[0].dispatch('click');
+            const sectionBody = panel.findAll(bodyElement, 'confirmSectionBody')[0];
+            expect(panel.findAll(sectionBody, 'confirmSubBullet').map((itemElement: any) => itemElement.textContent)).toEqual(['Rating__c:', '  - Hot']);
+            // A LEAD-IN WITH NOTHING UNDER IT KEEPS NO EMPTY LIST
+            expect(panel.findAll(sectionBody, 'confirmSubBullets')).toHaveLength(1);
+
+        });
+
+        it('draws a one-statement summary as plain text and a summary of several statements as bullets (#457)', () => {
+
+            const onePanel = drawnPanel();
+            onePanel.postToPanel(confirmRequest());
+            const [oneSummary] = onePanel.findAll(dialogOf(onePanel), 'confirmSummary');
+            expect(onePanel.findAll(oneSummary, 'confirmBullet')).toEqual([]);
+            expect(onePanel.findAll(oneSummary, 'confirmLine')).toHaveLength(1);
+
+            const severalPanel = drawnPanel();
+            severalPanel.postToPanel(confirmRequest({ summary: ['Dev Hub: devhub', 'Alias: feature', '  Admin email: author@example.com'] }));
+            const [severalSummary] = severalPanel.findAll(dialogOf(severalPanel), 'confirmSummary');
+            expect(severalPanel.findAll(severalSummary, 'confirmBullet').map((itemElement: any) => itemElement.textContent)).toEqual(['Dev Hub: devhub', 'Alias: feature', 'Admin email: author@example.com']);
 
         });
 

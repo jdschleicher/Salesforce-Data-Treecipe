@@ -856,7 +856,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
                 fs.writeFileSync(path.join(stagedFolder, 'Is_Priority__c.field-meta.xml'), fieldXml('Is_Priority__c', 'Checkbox'));
                 await send(applyRequest());
 
-                expect(RecipeCockpitService.flattenConfirmContent(confirmSpy.mock.calls[1][1])).toMatch(/^1 added\. [^\n]*\n\nAdded · 1\n/);
+                expect(RecipeCockpitService.flattenConfirmContent(confirmSpy.mock.calls[1][1])).toMatch(/^1 added\.\nNothing is deployed[^\n]*\n\nAdded · 1\n/);
                 expect(RecipeCockpitService.flattenConfirmContent(confirmSpy.mock.calls[1][1])).not.toContain('Overwritten');
 
             });
