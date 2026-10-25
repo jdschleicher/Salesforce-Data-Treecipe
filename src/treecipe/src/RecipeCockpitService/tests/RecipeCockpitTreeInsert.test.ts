@@ -2065,6 +2065,20 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         });
 
+        it('names a scratch org, and when it expires, from what "sf org display" answered (#458)', () => {
+
+            const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns(), TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
+            const accountTree = recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY);
+            const detailFor = (orgDisplayDetail?: { isScratchOrg: boolean; expirationDate?: string }) => RecipeCockpitService.buildInsertConfirmationDetail(
+                'dev (test@example.com)', SANDBOX_TYPE, accountTree, recipe, new Map([['Account', 1]]), [], 'snowfakery', 'recipe.yml', [], orgDisplayDetail
+            ).split('\n')[1];
+
+            expect(detailFor({ isScratchOrg: true, expirationDate: '2026-11-01' })).toBe('Type: Scratch org · expires 2026-11-01');
+            expect(detailFor({ isScratchOrg: false })).toBe('Type: Sandbox');
+            expect(detailFor(undefined)).toBe('Type: Sandbox');
+
+        });
+
         it('warns past 2,000 records with the total and the requests, and not at 2,000', () => {
 
             expect(detailOf([['Account', 1000], ['Contact', 1000]])).not.toContain('This run will take time');

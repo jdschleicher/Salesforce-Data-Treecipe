@@ -607,6 +607,18 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         });
 
+        it('names a scratch org, and when it expires, in the confirmation (#458)', async () => {
+
+            await openCockpitLoadAndGenerate();
+            await acknowledgeValues();
+            panelState().dataOrgSelection.orgDisplayDetail = { isScratchOrg: true, expirationDate: '2026-11-01' };
+            await requestUpdate();
+
+            const [[, options]] = updateConfirmations();
+            expect(options.detail.split('\n')[0]).toBe('Org: qa · qa@example.com.qa (Scratch org · expires 2026-11-01)');
+
+        });
+
         it('saves the old values, then updates every record by Id, parents first, and says so with View results', async () => {
 
             await openCockpitLoadAndGenerate();

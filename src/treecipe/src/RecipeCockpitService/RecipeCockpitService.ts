@@ -11028,7 +11028,7 @@ export class RecipeCockpitService {
         const hasRecordTypePicklist = this.hasRecordTypePicklist(clickedRecipeDataMessage.recipe, plannedObjects, describeOutcomes);
 
         const detailLines: string[] = [
-            `Org: ${orgLabel} (${SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail)})`,
+            `Org: ${orgLabel} (${SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail, dataOrgSelection.orgDisplayDetail)})`,
             `Each record is updated by its Id. The old values are saved first to treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${tree.folderName}/, and nothing is updated if they cannot be.`,
             ''
         ];
@@ -11469,7 +11469,7 @@ export class RecipeCockpitService {
         const recordTotal = restoredObjects.reduce((total, plannedObject) => total + plannedObject.recordValues.length, 0);
 
         const detailLines: string[] = [
-            `Org: ${orgLabel} (${SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail)})`,
+            `Org: ${orgLabel} (${SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail, dataOrgSelection.orgDisplayDetail)})`,
             `Each record is set back by its Id to the value it held when ${snapshotName} was saved, on ${snapshot.takenAt}. The values it holds now are saved first to treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${tree.folderName}/, and nothing is restored if they cannot be.`,
             ''
         ];
@@ -13915,7 +13915,7 @@ export class RecipeCockpitService {
 
         const confirmation = await this.confirmInPanel(
             `Generate ${treeLabel} and insert it into ${orgLabel}?`,
-            { detail: this.buildInsertConfirmationDetail(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups), isDestructive: true },
+            { detail: this.buildInsertConfirmationDetail(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups, dataOrgSelection.orgDisplayDetail), isDestructive: true },
             RECIPE_COCKPIT_INSERT_CONFIRM_LABEL
         );
 
@@ -14258,7 +14258,8 @@ export class RecipeCockpitService {
                                             outsideParentObjectApiNames: string[],
                                             fakerService: string,
                                             recipeFileLabel: string,
-                                            orgRecordLookups: readonly IRecipeCockpitOrgRecordLookupViewModel[] = []): string {
+                                            orgRecordLookups: readonly IRecipeCockpitOrgRecordLookupViewModel[] = [],
+                                            orgDisplayDetail?: IOrgDisplayDetail): string {
 
         const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
         const objectCountsByObject = this.listObjectCountsByObject(tree);
@@ -14281,7 +14282,7 @@ export class RecipeCockpitService {
 
         return [
             `Org: ${orgLabel}`,
-            `Type: ${SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail)}`,
+            `Type: ${SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail, orgDisplayDetail)}`,
             `Recipe tree: ${tree.customName ?? tree.title} (${recipeFileLabel})`,
             `Backend: ${fakerService}`,
             'Records, inserted parents first:',
