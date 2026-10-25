@@ -5,6 +5,7 @@ import { ConfigurationService } from './treecipe/src/ConfigurationService/Config
 import { ExtensionCommandService, IRunFakerFilteredRecipe } from './treecipe/src/ExtensionCommandService/ExtensionCommandService';
 import { VSCodeWorkspaceService } from './treecipe/src/VSCodeWorkspace/VSCodeWorkspaceService';
 import { RecipeCockpitService } from './treecipe/src/RecipeCockpitService/RecipeCockpitService';
+import { TreecipeSideBarService } from './treecipe/src/TreecipeSideBarService/TreecipeSideBarService';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -30,6 +31,9 @@ export async function activate(context: vscode.ExtensionContext) {
 	VSCodeWorkspaceService.registerExtensionSubscriptions(context.subscriptions);
 
 	VSCodeWorkspaceService.registerRecipeCockpitStatusBarItem(context.subscriptions);
+
+	// THE ACTIVITY BAR'S TREECIPE VIEW: EVERY ROW RUNS A COMMAND REGISTERED BELOW, WITH NO ARGUMENTS (#456)
+	TreecipeSideBarService.register(context.subscriptions);
 
 	// THE RECIPE COCKPIT SHOWS IT AT THE TOP RIGHT (#333)
 	RecipeCockpitService.setExtensionVersion(context.extension?.packageJSON?.version);

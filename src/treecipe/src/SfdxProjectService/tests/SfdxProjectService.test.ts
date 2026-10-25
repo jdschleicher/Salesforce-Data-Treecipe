@@ -88,6 +88,20 @@ describe('SfdxProjectService', () => {
 
         });
 
+        // ON WINDOWS A REALPATH OF A UNC PATH A WORKSPACE SETTING NAMES CAN CONTACT THAT HOST
+        test('given a path the lexical check refuses, never realpaths either side', () => {
+
+            const realpathSpy = jest.spyOn(SfdxProjectService, 'getRealDirectoryPath');
+            const injectedResolver = jest.fn((givenPath: string) => givenPath);
+
+            expect(SfdxProjectService.isPathContainedInWorkspace(path.resolve('/elsewhere/share/treecipe.config.json'), workspaceRoot)).toBe(false);
+            expect(SfdxProjectService.isPathContainedInWorkspace(`${workspaceRoot}-evil`, workspaceRoot, injectedResolver)).toBe(false);
+
+            expect(realpathSpy).not.toHaveBeenCalled();
+            expect(injectedResolver).not.toHaveBeenCalled();
+
+        });
+
     });
 
     describe('resolvePackageDirectoryPaths', () => {

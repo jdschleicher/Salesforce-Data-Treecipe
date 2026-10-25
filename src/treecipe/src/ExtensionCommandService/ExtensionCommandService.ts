@@ -38,6 +38,7 @@ import {
 } from "../RecipeCockpitService/RecipeCockpitService";
 
 import { SalesforceOrgService, IOrgTypeDetail } from '../SalesforceOrgService/SalesforceOrgService';
+import { TreecipeSideBarService } from '../TreecipeSideBarService/TreecipeSideBarService';
 import { RunFakerConfirmation } from './RunFakerConfirmation';
 
 import * as fs from 'fs';
@@ -158,6 +159,8 @@ export class ExtensionCommandService {
 
             const configurationFilePath = await ConfigurationService.createTreecipeJSONConfigurationFile();
             if ( configurationFilePath ) {
+                // SO THE SIDE BAR SWAPS ITS INITIATE CONFIGURATION WELCOME FOR THE COMMAND LIST WITHOUT A RELOAD
+                TreecipeSideBarService.refresh();
                 this.showConfigurationCreatedNotification(configurationFilePath);
             }
 
