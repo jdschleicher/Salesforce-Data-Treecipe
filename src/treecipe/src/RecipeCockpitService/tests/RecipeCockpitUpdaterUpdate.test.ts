@@ -101,6 +101,11 @@ const ACCOUNT_DESCRIBE: IUpdateObjectDescribe = {
 
 answerInPanelConfirmationsThroughWarningMock();
 
+// AN ORG SELECTED HERE IS NOT ASKED "sf org display" (#458); RecipeCockpitDataByOrg.test.ts COVERS THE LABEL
+beforeEach(() => {
+    jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue(undefined);
+});
+
 describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
     describe('RecipeCockpitRecordUpdate', () => {
@@ -599,6 +604,21 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             // A LOAD OR A GENERATION ON ITS OWN DOES NOT HOLD THE SELECTION
             panelState().updaterLoadStateMessage = { command: 'updaterLoadState', isRunning: true, treeKey: ACCOUNT_TREE_KEY, runKind: 'generate' };
             expect(RecipeCockpitService.isSelectionHeldByPromptOrUpdater(panelState())).toBe(false);
+
+        });
+
+        it('names a scratch org, and when it expires, in the confirmation (#458)', async () => {
+
+            await openCockpitLoadAndGenerate();
+            await acknowledgeValues();
+            panelState().dataOrgSelection.orgDisplayDetail = { isScratchOrg: true, expirationDate: '2026-11-01' };
+            await requestUpdate();
+
+            expect(updateConfirmations()).toHaveLength(1);
+            // #457: THE ORG'S TYPE IS THE CONFIRMATION'S BADGE
+            const [, confirmOptions] = (RecipeCockpitService.confirmInPanel as unknown as jest.Mock).mock.calls.find(([title]) => String(title).startsWith('Update '));
+            expect(confirmOptions.summary).toEqual(['Org: qa · qa@example.com.qa']);
+            expect(confirmOptions.badge).toBe('Scratch org · expires 2026-11-01');
 
         });
 

@@ -105,6 +105,11 @@ const buildObject = (fields: Array<{ fieldApiName: string; controllingField?: st
 
 answerInPanelConfirmationsThroughWarningMock();
 
+// AN ORG SELECTED HERE IS NOT ASKED "sf org display" (#458); RecipeCockpitDataByOrg.test.ts COVERS THE LABEL
+beforeEach(() => {
+    jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue(undefined);
+});
+
 describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', () => {
 
     describe('buildObjectFieldSelection', () => {

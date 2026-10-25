@@ -91,6 +91,10 @@ const buildAssignAnswer = (successNames: string[], failures: Array<{ name?: stri
 
 answerInPanelConfirmationsThroughWarningMock();
 
+beforeEach(() => {
+    jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue(undefined);
+});
+
 describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecipe tab (#274, #302)', () => {
 
     describe('RecipeCockpitPermissionSetAssign', () => {

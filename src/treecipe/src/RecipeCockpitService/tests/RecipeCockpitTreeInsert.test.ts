@@ -284,6 +284,7 @@ const buildWorkspaceState = () => {
 // THE ORG SHOWN WHILE THE CONNECTIONS ARE CHECKED (#305) IS READ FROM THE MACHINE'S OWN AUTHORIZATIONS, SO NO SUITE DEPENDS ON THEM
 beforeEach(() => {
     jest.spyOn(SalesforceOrgService, 'readLocalDataOrgDetail').mockResolvedValue(undefined);
+    jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue(undefined);
 });
 
 answerInPanelConfirmationsThroughWarningMock();
@@ -2076,6 +2077,24 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             expect(RecipeCockpitService.buildConfirmRequestContent(contentOf([['Account', 1]])).summary).toEqual(['Generate 1 record and insert it into qa (qa@example.com.qa).']);
             expect(RecipeCockpitService.buildConfirmRequestContent(contentOf([['Account', 1000], ['Contact', 1001]])).warnings)
                 .toContain('This run will take time: 2001 records in at least 11 Collections API requests.');
+
+        });
+
+        it('names a scratch org, and when it expires, from what "sf org display" answered (#458)', () => {
+
+            const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns(), TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
+            const accountTree = recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY);
+            const typeFor = (orgDisplayDetail?: { isScratchOrg: boolean; expirationDate?: string }) => {
+                const content = RecipeCockpitService.buildInsertConfirmationContent(
+                    'dev (test@example.com)', SANDBOX_TYPE, accountTree, recipe, new Map([['Account', 1]]), [], 'snowfakery', 'recipe.yml', [], orgDisplayDetail
+                );
+                const orgSection = content.sections?.find(section => section.title === 'Org and recipe');
+                return { badge: content.badge, typeLine: orgSection?.lines[1] };
+            };
+
+            expect(typeFor({ isScratchOrg: true, expirationDate: '2026-11-01' })).toEqual({ badge: 'Scratch org · expires 2026-11-01', typeLine: 'Type: Scratch org · expires 2026-11-01' });
+            expect(typeFor({ isScratchOrg: false })).toEqual({ badge: 'Sandbox', typeLine: 'Type: Sandbox' });
+            expect(typeFor(undefined)).toEqual({ badge: 'Sandbox', typeLine: 'Type: Sandbox' });
 
         });
 
