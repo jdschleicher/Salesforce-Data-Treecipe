@@ -25,6 +25,15 @@ const TIMESTAMP_PATTERN_SOURCE = '\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}';
 */
 const DATASET_FOLDER_NAME_PATTERN = new RegExp(`^dataset-(?:(fakerjs)-)?(${TIMESTAMP_PATTERN_SOURCE})(?:-([2-9]|[1-9]\\d+))?$`);
 
+/*
+    A data set the Treecipe Adapter wrote (#448): "<source name>-adapted-<yyyyMMdd-HHmmss>", in UTC,
+    with the same "-<n>" suffix. The source name is the data set or tree folder it adapted, so it is
+    any plain name; the timestamp is read back in the form the other data sets carry.
+*/
+const ADAPTED_DATASET_FOLDER_NAME_PATTERN = /^(.+)-adapted-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-([2-9]|[1-9]\d+))?$/;
+
+export const DATASET_ADAPTED_NAME_MARKER = '-adapted-';
+
 const RECIPE_RUN_FOLDER_NAME_PATTERN = new RegExp(`^recipe(?:-fakerjs)?-${TIMESTAMP_PATTERN_SOURCE}$`);
 
 const LEGACY_WRAPPER_FILE_NAME_PATTERN = new RegExp(`^${ORIGINAL_WRAPPER_FILE_PREFIX}(${TIMESTAMP_PATTERN_SOURCE})\\.json$`);
@@ -35,9 +44,31 @@ export type DatasetSourceFakerService = 'faker-js' | 'snowfakery';
 
 export type DatasetSourceStatus = 'linked' | 'unreadable' | 'absent' | 'unknown';
 
-export type DatasetSourceOrigin = 'runFaker' | 'createInOrg';
+export type DatasetSourceOrigin = 'runFaker' | 'createInOrg' | 'adapt';
 
 export type LookupParentRecord = 'random' | 'blank' | string[];
+
+// ONE FIELD AN ADAPT RUN WROTE (#448); isOrgOnly WHEN ONLY THE ORG HELD IT (#446)
+export interface IDatasetSourceAdaptedField {
+    fieldApiName: string;
+    isOrgOnly?: true;
+}
+
+/*
+    What the Treecipe Adapter did (#448), present exactly when the origin is "adapt": the parent the
+    load started from and its WHERE as typed, the org the records were read from and written to, the
+    fields it updated by object, the objects it added and the Ids it inserted, and the adapted recipe
+    it wrote beside the original (null when none could be written).
+*/
+export interface IDatasetSourceAdaptation {
+    parentObjectApiName: string;
+    whereText: string;
+    orgUsername: string;
+    updatedFieldsByObject: Record<string, IDatasetSourceAdaptedField[]>;
+    addedObjectApiNames: string[];
+    insertedRecordIdsByObject: Record<string, string[]>;
+    adaptedRecipeFileName: string | null;
+}
 
 /*
     origin "createInOrg" is a data set the Recipe Cockpit's Create made and INSERTED (#180): it also
@@ -74,6 +105,7 @@ export interface IDatasetSource {
     constraintsByObject?: Record<string, Record<string, IDatasetSourceFieldConstraint>>;
     // THE FIELDS WHOSE VALIDATION RULES THE RECIPE COCKPIT SWITCHED OFF (#325), BY OBJECT; ABSENT WHEN NONE WAS. READ BACK WITH NO PROTOTYPE
     validationRulesOffByObject?: Record<string, string[]>;
+    adaptation?: IDatasetSourceAdaptation;
 }
 
 // A FIELD'S BOUNDS AS THE READER TYPED THEM (#323); AN ABSENT ONE WAS THE DEFAULT
@@ -117,10 +149,16 @@ export interface ILegacyRecordCountResult {
     unreadableFileNames: string[];
 }
 
+/*
+    An adapted data set's name says nothing of its backend, so its fakerService is null and is read
+    from its datasetSource.json instead.
+*/
 export interface IDatasetFolderNameDetail {
-    fakerService: DatasetSourceFakerService;
+    fakerService: DatasetSourceFakerService | null;
     timestamp: string;
     collisionSuffix: number | null;
+    // THE "<source name>-adapted-<ts>" FORM (#448), WITH THE NAME IT WAS ADAPTED FROM
+    adaptedFromName?: string;
 }
 
 export interface IDatasetListing {
@@ -255,6 +293,54 @@ export class DatasetSourceService {
 
     }
 
+    static buildAdaptDatasetSource(recipeSourceNames: IRecipeSourceNames,
+                                    fakerService: DatasetSourceFakerService,
+                                    generatedAt: string,
+                                    recordCountsByObject: Record<string, number>,
+                                    adaptation: IDatasetSourceAdaptation): IDatasetSource {
+
+        return {
+            ...this.buildDatasetSource(recipeSourceNames, fakerService, generatedAt, recordCountsByObject),
+            origin: 'adapt',
+            adaptation: this.copyAdaptation(adaptation)
+        };
+
+    }
+
+    // fromEntries DEFINES EACH KEY, SO AN OBJECT NAMED __proto__ IS RECORDED RATHER THAN SET AS A PROTOTYPE; ONLY THE SHAPE'S FIELDS ARE CARRIED
+    static copyAdaptation(adaptation: IDatasetSourceAdaptation): IDatasetSourceAdaptation {
+
+        return {
+            parentObjectApiName: adaptation.parentObjectApiName,
+            whereText: adaptation.whereText,
+            orgUsername: adaptation.orgUsername,
+            updatedFieldsByObject: Object.fromEntries(Object.entries(adaptation.updatedFieldsByObject).map(([objectApiName, adaptedFields]) => [
+                objectApiName,
+                adaptedFields.map(adaptedField => ({ fieldApiName: adaptedField.fieldApiName, ...( adaptedField.isOrgOnly === true ? { isOrgOnly: true as const } : {} ) }))
+            ])),
+            addedObjectApiNames: [...adaptation.addedObjectApiNames],
+            insertedRecordIdsByObject: Object.fromEntries(Object.entries(adaptation.insertedRecordIdsByObject).map(([objectApiName, recordIds]) => [objectApiName, [...recordIds]])),
+            adaptedRecipeFileName: adaptation.adaptedRecipeFileName
+        };
+
+    }
+
+    // "20261025-143005" IN UTC, AS THE OTHER DATA SET NAMES AND THEIR "... UTC" LABEL ARE
+    static buildAdaptedTimestamp(date: Date): string {
+
+        const twoDigits = (value: number) => String(value).padStart(2, '0');
+        return `${date.getUTCFullYear()}${twoDigits(date.getUTCMonth() + 1)}${twoDigits(date.getUTCDate())}-${twoDigits(date.getUTCHours())}${twoDigits(date.getUTCMinutes())}${twoDigits(date.getUTCSeconds())}`;
+
+    }
+
+    // UNDEFINED FOR A SOURCE NAME THAT IS NOT A PLAIN NAME, WHICH WOULD MAKE THE FOLDER NAME A PATH
+    static buildAdaptedDatasetFolderName(sourceName: string, date: Date): string | undefined {
+
+        const adaptedFolderName = `${sourceName}${DATASET_ADAPTED_NAME_MARKER}${this.buildAdaptedTimestamp(date)}`;
+        return this.isSafeFolderOrFileName(sourceName) && this.parseDatasetFolderName(adaptedFolderName) ? adaptedFolderName : undefined;
+
+    }
+
     static writeDatasetSourceFile(baseArtifactsFolderPath: string, datasetSource: IDatasetSource): string {
 
         const datasetSourceFilePath = path.join(baseArtifactsFolderPath, DATASET_SOURCE_FILE_NAME);
@@ -267,7 +353,7 @@ export class DatasetSourceService {
 
         const folderNameMatch = DATASET_FOLDER_NAME_PATTERN.exec(datasetFolderName);
         if ( !folderNameMatch ) {
-            return undefined;
+            return this.parseAdaptedDatasetFolderName(datasetFolderName);
         }
 
         const [, fakerJsIndicator, timestamp, collisionSuffix] = folderNameMatch;
@@ -276,6 +362,30 @@ export class DatasetSourceService {
             fakerService: fakerJsIndicator ? 'faker-js' : 'snowfakery',
             timestamp: timestamp,
             collisionSuffix: collisionSuffix ? Number(collisionSuffix) : null
+        };
+
+    }
+
+    private static parseAdaptedDatasetFolderName(datasetFolderName: string): IDatasetFolderNameDetail | undefined {
+
+        const adaptedMatch = ADAPTED_DATASET_FOLDER_NAME_PATTERN.exec(datasetFolderName);
+        if ( !adaptedMatch || !this.isSafeFolderOrFileName(adaptedMatch[1]) ) {
+            return undefined;
+        }
+
+        const [, adaptedFromName, year, month, day, hours, minutes, seconds, collisionSuffix] = adaptedMatch;
+        const parsedDate = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hours), Number(minutes), Number(seconds)));
+
+        // "20261399-250000" HAS THE SHAPE OF A TIMESTAMP AND IS NOT ONE
+        if ( this.buildAdaptedTimestamp(parsedDate) !== `${year}${month}${day}-${hours}${minutes}${seconds}` ) {
+            return undefined;
+        }
+
+        return {
+            fakerService: null,
+            timestamp: `${year}-${month}-${day}T${hours}-${minutes}-${seconds}`,
+            collisionSuffix: collisionSuffix ? Number(collisionSuffix) : null,
+            adaptedFromName: adaptedFromName
         };
 
     }
@@ -383,6 +493,11 @@ export class DatasetSourceService {
             && candidate.createdRecordIds.every(createdRecordId => typeof createdRecordId === 'string')
         );
 
+        // PRESENT EXACTLY ON AN adapt FILE (#448), AND THEN WHOLE
+        const isAdapt = candidate.origin === 'adapt';
+        const adaptation = candidate.adaptation;
+        const isAdaptationValid = isAdapt ? this.isAdaptation(adaptation) : adaptation === undefined;
+
         // OPTIONAL, SO A FILE WRITTEN BEFORE #219 READS AS IT ALWAYS DID; PRESENT, IT MUST BE A LIST OF NAMES
         const excludedObjectApiNames = candidate.excludedObjectApiNames;
         const isExcludedObjectListValid = excludedObjectApiNames === undefined || (
@@ -464,8 +579,9 @@ export class DatasetSourceService {
         );
 
         const isValid = candidate.schemaVersion === DATASET_SOURCE_SCHEMA_VERSION
-                        && (candidate.origin === 'runFaker' || isCreateInOrg)
+                        && (candidate.origin === 'runFaker' || isCreateInOrg || isAdapt)
                         && isCreateInOrgDetailValid
+                        && isAdaptationValid
                         && isExcludedObjectListValid
                         && isExcludedFieldMapValid
                         && isObjectCountMapValid
@@ -547,7 +663,7 @@ export class DatasetSourceService {
 
         return {
             schemaVersion: DATASET_SOURCE_SCHEMA_VERSION,
-            origin: isCreateInOrg ? 'createInOrg' : 'runFaker',
+            origin: isCreateInOrg ? 'createInOrg' : isAdapt ? 'adapt' : 'runFaker',
             recipeRunFolderName: candidate.recipeRunFolderName as string | null,
             recipeTreeFolderName: candidate.recipeTreeFolderName as string | null,
             recipeFileName: candidate.recipeFileName as string,
@@ -565,7 +681,58 @@ export class DatasetSourceService {
             ...( readObjectCounts ? { objectCountsByObject: readObjectCounts } : {} ),
             ...( readFixedValues ? { fixedValuesByObject: readFixedValues } : {} ),
             ...( readConstraints ? { constraintsByObject: readConstraints } : {} ),
-            ...( readValidationRulesOff ? { validationRulesOffByObject: readValidationRulesOff } : {} )
+            ...( readValidationRulesOff ? { validationRulesOffByObject: readValidationRulesOff } : {} ),
+            ...( isAdapt ? { adaptation: this.readAdaptation(adaptation as IDatasetSourceAdaptation) } : {} )
+        };
+
+    }
+
+    /*
+        An adapt file's "adaptation" as untrusted JSON (#448): every field of the shape, each the type
+        it is written as, the object and field names and the Ids strings, the record Ids lists of
+        strings. Anything out of shape makes the whole file unreadable.
+    */
+    static isAdaptation(candidate: unknown): candidate is IDatasetSourceAdaptation {
+
+        const isPlainObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+        const isStringList = (value: unknown) => Array.isArray(value) && value.every(listItem => typeof listItem === 'string');
+
+        if ( !isPlainObject(candidate) ) {
+            return false;
+        }
+
+        const { parentObjectApiName, whereText, orgUsername, updatedFieldsByObject, addedObjectApiNames, insertedRecordIdsByObject, adaptedRecipeFileName } = candidate;
+
+        const isAdaptedField = (value: unknown) => isPlainObject(value)
+                                                    && typeof value.fieldApiName === 'string'
+                                                    && ( value.isOrgOnly === undefined || value.isOrgOnly === true );
+
+        return typeof parentObjectApiName === 'string'
+            && typeof whereText === 'string'
+            && typeof orgUsername === 'string'
+            && isPlainObject(updatedFieldsByObject)
+            && Object.values(updatedFieldsByObject).every(adaptedFields => Array.isArray(adaptedFields) && adaptedFields.every(isAdaptedField))
+            && isStringList(addedObjectApiNames)
+            && isPlainObject(insertedRecordIdsByObject)
+            && Object.values(insertedRecordIdsByObject).every(isStringList)
+            && ( adaptedRecipeFileName === null || typeof adaptedRecipeFileName === 'string' );
+
+    }
+
+    // READ BACK WITH NO PROTOTYPE ON ITS NAME-KEYED MAPS
+    private static readAdaptation(adaptation: IDatasetSourceAdaptation): IDatasetSourceAdaptation {
+
+        const copiedAdaptation = this.copyAdaptation(adaptation);
+        const toPrototypeless = <T>(record: Record<string, T>): Record<string, T> => {
+            const prototypeless = Object.create(null) as Record<string, T>;
+            Object.entries(record).forEach(([key, value]) => { prototypeless[key] = value; });
+            return prototypeless;
+        };
+
+        return {
+            ...copiedAdaptation,
+            updatedFieldsByObject: toPrototypeless(copiedAdaptation.updatedFieldsByObject),
+            insertedRecordIdsByObject: toPrototypeless(copiedAdaptation.insertedRecordIdsByObject)
         };
 
     }

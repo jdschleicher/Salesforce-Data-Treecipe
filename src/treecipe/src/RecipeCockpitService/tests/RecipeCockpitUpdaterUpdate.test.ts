@@ -47,6 +47,8 @@ jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), exec
 import {
     IRecipeCockpitPanelState,
     RecipeCockpitService,
+    RECIPE_COCKPIT_ADAPTER_OPEN_ADAPTED_RECIPE_LABEL,
+    RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL,
     RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL,
     RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
     RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL,
@@ -69,6 +71,7 @@ import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceSer
 import { IFakerRecipeProcessor } from '../../FakerRecipeProcessor/IFakerRecipeProcessor';
 import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
+import { DatasetSourceService } from '../../DatasetSourceService/DatasetSourceService';
 
 
 // A RECORD Id OF THE SALESFORCE SHAPE, SINCE THE LOAD NARROWS A CHILD ONLY BY Ids THAT ARE (#444)
@@ -341,6 +344,10 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
         const updateConfirmations = () => confirmations().filter(([title]) => String(title).startsWith('Update '));
         const attemptsFolderPath = () => path.join(workspaceRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, ACCOUNT_TREE_KEY);
         const attemptFiles = () => fs.existsSync(attemptsFolderPath()) ? fs.readdirSync(attemptsFolderPath()).sort() : [];
+        // WHAT AN UPDATE THAT LANDED ADDS TO ITS NOTIFICATION (#448): THE ADAPTED DATA SET AND RECIPE IT WROTE
+        const adaptedDatasetFolderNames = () => fs.readdirSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets')).filter(folderName => folderName.includes('-adapted-')).sort();
+        const adaptedRecipeFileNames = () => fs.readdirSync(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', TREE_RUN_FOLDER_NAME, ACCOUNT_TREE_KEY)).filter(fileName => fileName.includes('-adapted-')).sort();
+        const adaptedNote = () => ` The adapted data set is ${adaptedDatasetFolderNames().at(-1)}, and the adapted recipe ${adaptedRecipeFileNames().at(-1)}.`;
         const readAttemptFile = (suffix: string) => JSON.parse(fs.readFileSync(path.join(attemptsFolderPath(), attemptFiles().find(fileName => fileName.endsWith(suffix))!), 'utf8'));
 
         const send = async (panelMessage: Record<string, unknown>) => {
@@ -634,8 +641,10 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             expect(results.putBack).toBeUndefined();
 
             expect(vscode.window.showInformationMessage).toHaveBeenLastCalledWith(
-                `5 records of Account-thru-OtherChildObject__c were updated in qa · qa@example.com.qa. Their old values are in ${attemptFiles()[0]}.`,
-                RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL
+                `5 records of Account-thru-OtherChildObject__c were updated in qa · qa@example.com.qa. Their old values are in ${attemptFiles()[0]}.${adaptedNote()}`,
+                RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
+                RECIPE_COCKPIT_ADAPTER_OPEN_ADAPTED_RECIPE_LABEL,
+                RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL
             );
 
             // THE LOADED RECORDS AND THEIR VALUES ARE SPENT
@@ -646,6 +655,241 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             expect(RecipeCockpitService.readHeldUpdaterRecordCount()).toBe(0);
             expect(panelState().updaterValuesMessage).toBeUndefined();
             expect(panelState().updatableTreeKeys.size).toBe(0);
+
+        });
+
+        describe('the adapted copy an update leaves (#448)', () => {
+
+            const recipeFolderPath = () => path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', TREE_RUN_FOLDER_NAME, ACCOUNT_TREE_KEY);
+            const recipeFilePath = () => path.join(recipeFolderPath(), `recipe--${ACCOUNT_TREE_KEY}-2026-09-20T10-00-00.yml`);
+            const adaptedDatasetPath = () => path.join(workspaceRoot, 'treecipe', 'FakeDataSets', adaptedDatasetFolderNames().at(-1)!);
+            const readCollectionsApiFile = (objectApiName: string) => JSON.parse(fs.readFileSync(path.join(adaptedDatasetPath(), 'DatasetFilesForCollectionsApi', `collectionsApi-${objectApiName}.json`), 'utf8'));
+
+            it('writes the loaded records with their new values, keyed by Id, and a datasetSource.json of origin "adapt"', async () => {
+
+                const recipeBefore = fs.readFileSync(recipeFilePath(), 'utf8');
+
+                await openCockpitLoadAndGenerate();
+                await acknowledgeValues();
+                await requestUpdate();
+
+                expect(adaptedDatasetFolderNames()).toEqual([expect.stringMatching(new RegExp(`^${ACCOUNT_TREE_KEY.replace(/[_]/g, '_')}-adapted-\\d{8}-\\d{6}$`))]);
+
+                const accountFile = readCollectionsApiFile('Account');
+                expect(accountFile.allOrNone).toBe(true);
+                expect(accountFile.records).toHaveLength(3);
+                expect(accountFile.records[0]).toEqual({
+                    attributes: { type: 'Account', referenceId: `Account_Reference_1__${fakeRecordId('Account', 0)}` },
+                    Legacy_Code__c: 'Legacy_Code__c-new-0',
+                    Rating__c: 'Hot',
+                    LastName: 'Old 0'
+                });
+                expect(readCollectionsApiFile('Contact').records[1]).toMatchObject({ LastName: 'LastName-new-1' });
+                // AN OBJECT THE LOAD READ NO RECORDS OF IS STILL ONE OF THE DATA SET'S, WITH NONE
+                expect(readCollectionsApiFile('OtherChildObject__c').records).toEqual([]);
+
+                const datasetSourceRead = DatasetSourceService.readDatasetSource(adaptedDatasetPath(), DatasetSourceService.findKnownRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')));
+                expect(datasetSourceRead.status).toBe('linked');
+                expect(datasetSourceRead.recipeTreeFolderName).toBe(ACCOUNT_TREE_KEY);
+                expect(datasetSourceRead.datasetSource).toMatchObject({
+                    origin: 'adapt',
+                    fakerService: 'snowfakery',
+                    recipeRunFolderName: TREE_RUN_FOLDER_NAME,
+                    recordCountsByObject: { Account: 3, Contact: 2, OtherChildObject__c: 0 },
+                    adaptation: {
+                        parentObjectApiName: 'Account',
+                        whereText: '',
+                        orgUsername: 'qa@example.com.qa',
+                        updatedFieldsByObject: {
+                            Account: [{ fieldApiName: 'Legacy_Code__c' }, { fieldApiName: 'Rating__c' }],
+                            Contact: [{ fieldApiName: 'LastName' }]
+                        },
+                        addedObjectApiNames: [],
+                        insertedRecordIdsByObject: {},
+                        adaptedRecipeFileName: adaptedRecipeFileNames()[0]
+                    }
+                });
+
+                // THE ORIGINAL IS NEVER WRITTEN, AND THE ADAPTED RECIPE SITS BESIDE IT, A COPY IN THE DATA SET
+                expect(fs.readFileSync(recipeFilePath(), 'utf8')).toBe(recipeBefore);
+                const adaptedRecipe = fs.readFileSync(path.join(recipeFolderPath(), adaptedRecipeFileNames()[0]), 'utf8');
+                expect(fs.readFileSync(path.join(adaptedDatasetPath(), 'BaseArtifactFiles', adaptedRecipeFileNames()[0]), 'utf8')).toBe(adaptedRecipe);
+                expect(fs.readFileSync(path.join(adaptedDatasetPath(), 'BaseArtifactFiles', `originalRecipe-${path.basename(recipeFilePath())}`), 'utf8')).toBe(recipeBefore);
+
+                const adaptedComment = `# ADAPTED ${new Date().toISOString().slice(0, 10)} -- qa`;
+                const adaptedLines = adaptedRecipe.split('\n').filter(recipeLine => recipeLine.includes('# ADAPTED'));
+                expect(adaptedLines).toEqual([
+                    `    Legacy_Code__c: \${{fake.Word}} ${adaptedComment}`,
+                    `    Rating__c: "Hot" ${adaptedComment}`,
+                    `    LastName: \${{fake.LastName}} ${adaptedComment}`
+                ]);
+                expect(adaptedRecipe.replace(/ # ADAPTED [^\n]*/g, '').replace('Rating__c: "Hot"', 'Rating__c: ${{ random_choice(\'Hot\',\'Warm\',\'Cold\') }}')).toBe(recipeBefore);
+
+            });
+
+            it('adds the data set in place, labelled adapted, and the card still reads one recipe', async () => {
+
+                await openCockpitLoadAndGenerate();
+                await acknowledgeValues();
+                await requestUpdate();
+
+                const [datasetAdded] = postedNamed('datasetAdded');
+                expect(datasetAdded.treeKeys).toEqual([ACCOUNT_TREE_KEY]);
+                expect(datasetAdded.dataset).toMatchObject({ datasetFolderName: adaptedDatasetFolderNames()[0], fakerService: 'snowfakery', runFolderName: TREE_RUN_FOLDER_NAME, isAdapted: true });
+
+                // A RELOAD LISTS IT THE SAME WAY, AND THE ADAPTED RECIPE IS NOT READ AS A SECOND RECIPE OF THE TREE
+                const reloadedRecipe = RecipeCockpitService.loadRecipeRunByRuns(RecipeCockpitService.findGeneratedRecipeRuns(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes')), workspaceRoot, TREE_RUN_FOLDER_NAME).recipeViewModel;
+                const reloadedTree = reloadedRecipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY)!;
+                expect(reloadedTree.history!.datasets[0]).toMatchObject({ datasetFolderName: adaptedDatasetFolderNames()[0], isAdapted: true });
+                expect(reloadedRecipe.objects.filter(object => object.objectApiName === 'Account')).toHaveLength(1);
+                expect(RecipeCockpitService.collectRecipeFilePaths(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', TREE_RUN_FOLDER_NAME)).map(filePath => path.basename(filePath))).not.toContain(adaptedRecipeFileNames()[0]);
+
+            });
+
+            it('keeps the loaded values of a record the org did not save, and the parent\'s WHERE as typed', async () => {
+
+                updateAnswer = (objectApiName, records) => records.map((record, recordIndex) => objectApiName === 'Account' && recordIndex === 1
+                    ? { id: record.Id, success: false, errors: [{ statusCode: 'FIELD_CUSTOM_VALIDATION_EXCEPTION', message: 'no', fields: [] }] }
+                    : { id: record.Id, success: true, errors: [] });
+
+                await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState);
+                await receivedMessageHandler({ command: 'ready' });
+                await receivedMessageHandler({ command: 'rendered', renderSequence: lastRenderSequence() });
+                selectOrg(SANDBOX_ORG);
+                await send({
+                    command: 'loadUpdaterRecords',
+                    parentObjectApiName: 'Account',
+                    treeKey: ACCOUNT_TREE_KEY,
+                    renderSequence: lastRenderSequence(),
+                    objects: [
+                        { objectApiName: 'Account', fieldApiNames: ['Legacy_Code__c'], whereClause: "Name LIKE 'Acme%'" },
+                        { objectApiName: 'Contact', fieldApiNames: [], whereClause: '' },
+                        { objectApiName: 'OtherChildObject__c', fieldApiNames: [], whereClause: '' }
+                    ]
+                });
+                await send({ command: 'generateUpdaterValues', treeKey: ACCOUNT_TREE_KEY, renderSequence: lastRenderSequence(), fields: [{ objectApiName: 'Account', fieldApiName: 'Legacy_Code__c' }] });
+                await acknowledgeValues();
+                await requestUpdate();
+
+                expect(readCollectionsApiFile('Account').records.map((record: any) => record.Legacy_Code__c)).toEqual(['Legacy_Code__c-new-0', 'OLD-1', 'Legacy_Code__c-new-2']);
+                const datasetSource = JSON.parse(fs.readFileSync(path.join(adaptedDatasetPath(), 'BaseArtifactFiles', 'datasetSource.json'), 'utf8'));
+                expect(datasetSource.adaptation).toMatchObject({ whereText: "Name LIKE 'Acme%'", updatedFieldsByObject: { Account: [{ fieldApiName: 'Legacy_Code__c' }] } });
+
+            });
+
+            it('writes no adapted data set when all-or-none set the updated records back, or nothing was updated', async () => {
+
+                allOrNoneAnswer = true;
+                updateAnswer = (objectApiName, records) => records.map(record => ( objectApiName === 'Contact'
+                    ? { id: record.Id, success: false, errors: [{ statusCode: 'X', message: 'no', fields: [] }] }
+                    : { id: record.Id, success: true, errors: [] } ));
+
+                await openCockpitLoadAndGenerate();
+                await acknowledgeValues();
+                await requestUpdate();
+
+                expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets')) ? adaptedDatasetFolderNames() : []).toEqual([]);
+                expect(adaptedRecipeFileNames()).toEqual([]);
+                expect(postedNamed('datasetAdded')).toEqual([]);
+
+            });
+
+            it('says in the notification why no copy was written when the card has no single recipe file, and still reports the update', async () => {
+
+                await openCockpitLoadAndGenerate();
+                await acknowledgeValues();
+                panelState().treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.delete(ACCOUNT_TREE_KEY);
+                await requestUpdate();
+
+                expect(updateCalls).toHaveLength(2);
+                expect(warnings().at(-1)).toBe(`5 records of Account-thru-OtherChildObject__c were updated in qa · qa@example.com.qa. Their old values are in ${attemptFiles()[0]}. No adapted data set was written: this card has no single recipe file whose backend can be told.`);
+
+            });
+
+            it('writes the data set and says why there is no adapted recipe when the recipe no longer has an updated field', async () => {
+
+                await openCockpitLoadAndGenerate();
+                await acknowledgeValues();
+                fs.writeFileSync(recipeFilePath(), fs.readFileSync(recipeFilePath(), 'utf8').replace('    LastName: ${{fake.LastName}}\n', ''));
+                await requestUpdate();
+
+                expect(adaptedDatasetFolderNames()).toHaveLength(1);
+                expect(adaptedRecipeFileNames()).toEqual([]);
+                expect(vscode.window.showInformationMessage).toHaveBeenLastCalledWith(
+                    `5 records of Account-thru-OtherChildObject__c were updated in qa · qa@example.com.qa. Their old values are in ${attemptFiles()[0]}. The adapted data set is ${adaptedDatasetFolderNames()[0]}. No adapted recipe was written: Contact has no LastName line.`,
+                    RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
+                    RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL
+                );
+
+            });
+
+            it('says when records of a request that threw keep old values the org may not hold', async () => {
+
+                updateAnswer = (objectApiName, records) => {
+                    if ( objectApiName === 'Contact' ) { throw new Error('socket hang up'); }
+                    return records.map(record => ({ id: record.Id, success: true, errors: [] }));
+                };
+
+                await openCockpitLoadAndGenerate();
+                await acknowledgeValues();
+                await requestUpdate();
+
+                expect(readCollectionsApiFile('Contact').records.map((record: any) => record.LastName)).toEqual(['Old 0', 'Old 1']);
+                expect(readCollectionsApiFile('Account').records.map((record: any) => record.Legacy_Code__c)).toEqual(['Legacy_Code__c-new-0', 'Legacy_Code__c-new-1', 'Legacy_Code__c-new-2']);
+                expect(warnings().at(-1)).toContain('2 records the org may have saved keep their old values in the adapted data set, so they may not match the org.');
+
+            });
+
+            it('names an org with no alias by its username in the mark, and one uncertain record in the singular', async () => {
+
+                recordCountByObject = { Account: 3, Contact: 1, OtherChildObject__c: 0 };
+                updateAnswer = (objectApiName, records) => {
+                    if ( objectApiName === 'Contact' ) { throw new Error('socket hang up'); }
+                    return records.map(record => ({ id: record.Id, success: true, errors: [] }));
+                };
+
+                await openCockpitLoadAndGenerate();
+                await acknowledgeValues();
+                selectOrg({ ...SANDBOX_ORG, alias: undefined } as unknown as typeof SANDBOX_ORG);
+                await requestUpdate();
+
+                const adaptedRecipe = fs.readFileSync(path.join(recipeFolderPath(), adaptedRecipeFileNames()[0]), 'utf8');
+                expect(adaptedRecipe).toContain(`    Legacy_Code__c: \${{fake.Word}} # ADAPTED ${new Date().toISOString().slice(0, 10)} -- qa@example.com.qa\n`);
+                expect(warnings().at(-1)).toContain('1 record the org may have saved keeps its old values in the adapted data set, so it may not match the org.');
+
+            });
+
+            it('reveals the data set and opens the adapted recipe from the notification\'s buttons', async () => {
+
+                await openCockpitLoadAndGenerate();
+                await acknowledgeValues();
+                (vscode.window.showInformationMessage as jest.Mock).mockImplementation((_text: string, ...buttons: string[]) => Promise.resolve(buttons.includes(RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL) ? RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL : undefined));
+                await requestUpdate();
+                await flushAsyncWork();
+
+                expect(vscode.commands.executeCommand).toHaveBeenCalledWith('revealInExplorer', expect.objectContaining({ fsPath: adaptedDatasetPath() }));
+
+            });
+
+            it('warns rather than revealing a data set that is gone when the button is chosen', async () => {
+
+                let chooseOpenDataset: (label: string) => void = () => undefined;
+                await openCockpitLoadAndGenerate();
+                await acknowledgeValues();
+                (vscode.window.showInformationMessage as jest.Mock).mockImplementation((_text: string, ...buttons: string[]) => (
+                    buttons.includes(RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL) ? new Promise(resolve => { chooseOpenDataset = resolve; }) : Promise.resolve(undefined)
+                ));
+                await requestUpdate();
+
+                fs.rmSync(adaptedDatasetPath(), { recursive: true });
+                (vscode.commands.executeCommand as jest.Mock).mockClear();
+                chooseOpenDataset(RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL);
+                await flushAsyncWork();
+
+                expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('revealInExplorer', expect.anything());
+                expect(warnings().at(-1)).toBe('The adapted data set no longer exists in this workspace.');
+
+            });
 
         });
 
@@ -681,7 +925,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 isSuccess: false,
                 errors: [{ statusCode: 'INVALID_OR_NULL_FOR_RESTRICTED_PICKLIST', message: 'Rating: bad value for restricted picklist field: Hot', fields: ['Rating__c'] }]
             });
-            expect(warnings().at(-1)).toBe(`4 records of Account-thru-OtherChildObject__c were updated in qa · qa@example.com.qa and 1 failed. Their old values are in ${attemptFiles()[0]}.`);
+            expect(warnings().at(-1)).toBe(`4 records of Account-thru-OtherChildObject__c were updated in qa · qa@example.com.qa and 1 failed. Their old values are in ${attemptFiles()[0]}.${adaptedNote()}`);
             expect((vscode.window.showWarningMessage as jest.Mock).mock.calls.at(-1)[1]).toBe(RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL);
 
         });
@@ -793,7 +1037,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
             expect(updateCalls).toHaveLength(2);
             expect(RecipeCockpitRecordUpdate.isUpdateAttemptsFolderGitIgnored(workspaceRoot)).toBe(false);
-            expect(warnings().at(-1)).toBe(RecipeYamlScalar.escapeForNotification(`5 records of Account-thru-OtherChildObject__c were updated in qa · qa@example.com.qa. Their old values are in ${attemptFiles()[0]}. ${RECIPE_COCKPIT_UPDATER_NOT_GIT_IGNORED_NOTE}`));
+            expect(warnings().at(-1)).toBe(RecipeYamlScalar.escapeForNotification(`5 records of Account-thru-OtherChildObject__c were updated in qa · qa@example.com.qa. Their old values are in ${attemptFiles()[0]}. ${RECIPE_COCKPIT_UPDATER_NOT_GIT_IGNORED_NOTE}${adaptedNote()}`));
 
         });
 
@@ -825,7 +1069,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
             expect(updateCalls.map(updateCall => updateCall.objectApiName)).toEqual(['Account']);
             expect(readAttemptFile('-results.json')).toMatchObject({ outcome: 'cancelled', updatedRecordCount: 3 });
-            expect(warnings().at(-1)).toBe('The update of Account-thru-OtherChildObject__c in qa · qa@example.com.qa was cancelled after 3 records.');
+            expect(warnings().at(-1)).toBe(`The update of Account-thru-OtherChildObject__c in qa · qa@example.com.qa was cancelled after 3 records.${adaptedNote()}`);
 
         });
 
