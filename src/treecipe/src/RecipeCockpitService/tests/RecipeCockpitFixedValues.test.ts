@@ -835,7 +835,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
             expect(showWarningMessage.mock.calls[2][1].detail).toContain('gets back the lines it had before it was pinned');
             // A CHANGE TO THE FIXED-VALUES FILE ALONE IS NEVER PUT BACK UNSEEN: THE MODAL SHOWS THE LINES
-            expect(showWarningMessage.mock.calls[2][1].detail).toEndWith('It puts back:\nLegacy_Code__c: ${{fake.Word}}');
+            expect(showWarningMessage.mock.calls[2][1].detail).toEndWith('It puts back\nLegacy_Code__c: ${{fake.Word}}');
             expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
             expect(fs.existsSync(ACCOUNT_FIXED_VALUE_FILE_PATH)).toBeFalse();
             expect(treeOf(lastPosted('recipeData').recipe, ACCOUNT_TREE_KEY)).not.toHaveProperty('fixedValues');
@@ -1078,7 +1078,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
                 await save('Legacy_Code__c', '');
 
                 expect(showWarningMessage.mock.calls[0][1].detail).toContain('has no recorded lines for Account.Legacy_Code__c');
-                expect(showWarningMessage.mock.calls[0][1].detail).toEndWith('It puts back:\nLegacy_Code__c: ${{fake.Word}}');
+                expect(showWarningMessage.mock.calls[0][1].detail).toEndWith('It puts back\nLegacy_Code__c: ${{fake.Word}}');
                 expect(fs.readFileSync(ACCOUNT_RECIPE_FILE_PATH, 'utf8')).toBe(recipeBefore);
                 expect(fs.existsSync(ACCOUNT_FIXED_VALUE_FILE_PATH)).toBeFalse();
             } finally {
@@ -1366,7 +1366,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
             const recipe = loadRecipe();
             applyFixedValues(recipe, { [ACCOUNT_TREE_KEY]: { Account: { Legacy_Code__c: '[x](command:y)' } } });
 
-            const detail = RecipeCockpitService.buildInsertConfirmationDetail('my-sandbox', undefined, treeOf(recipe, ACCOUNT_TREE_KEY), recipe, new Map([['Account', 1]]), [], 'snowfakery', 'recipe.yml');
+            const detail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitService.buildInsertConfirmationContent('my-sandbox', undefined, treeOf(recipe, ACCOUNT_TREE_KEY), recipe, new Map([['Account', 1]]), [], 'snowfakery', 'recipe.yml'));
 
             expect(detail).toContain('Edited fields: Account.Legacy_Code__c = [x](command:y)');
 

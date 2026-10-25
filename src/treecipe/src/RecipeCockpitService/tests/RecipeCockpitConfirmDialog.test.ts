@@ -17,6 +17,7 @@ import {
     IRecipeCockpitPanelState,
     RECIPE_COCKPIT_BUTTON_KINDS,
     RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL,
+    RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL,
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
     RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL
 } from '../RecipeCockpitService';
@@ -128,7 +129,9 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
                 confirmationId: expect.stringMatching(/^[0-9a-f]{32}$/),
                 renderSequence: recipeDataMessage.renderSequence,
                 title: 'Reset the selection of Lead-ONLY?',
-                lines: [expect.stringContaining('Every object is included')],
+                summary: [expect.stringContaining('Every object is included')],
+                warnings: [],
+                sections: [{ title: 'What stays', lines: [expect.stringContaining('The recipe file is not changed')] }],
                 buttons: [RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL],
                 isDestructive: false
             });
@@ -262,14 +265,14 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
             await openAndDraw();
 
-            const firstAnswer = RecipeCockpitService.confirmInPanel('First?', { detail: 'one' }, 'Go');
+            const firstAnswer = RecipeCockpitService.confirmInPanel('First?', { summary: ['one'] }, 'Go');
             const firstId = lastPosted('confirmRequest').confirmationId;
-            const secondAnswer = RecipeCockpitService.confirmInPanel('Second?', { detail: 'two\n\n  three', isDestructive: true }, 'Do it', 'Other');
+            const secondAnswer = RecipeCockpitService.confirmInPanel('Second?', { summary: ['two', '', '  three'], isDestructive: true }, 'Do it', 'Other');
             const secondRequest = lastPosted('confirmRequest');
 
             await expect(firstAnswer).resolves.toBeUndefined();
             expect(secondRequest.confirmationId).not.toBe(firstId);
-            expect(secondRequest).toMatchObject({ title: 'Second?', lines: ['two', '', '  three'], buttons: ['Do it', 'Other'], isDestructive: true });
+            expect(secondRequest).toMatchObject({ title: 'Second?', summary: ['two', '', '  three'], warnings: [], sections: [], buttons: ['Do it', 'Other'], isDestructive: true });
 
             await receivedMessageHandler({ command: 'confirmResponse', confirmationId: firstId, choice: 0 });
             await receivedMessageHandler({ command: 'confirmResponse', confirmationId: secondRequest.confirmationId, choice: 1 });
@@ -285,7 +288,7 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
             createdPanel.visible = false;
             createdPanel.reveal.mockClear();
 
-            await expect(RecipeCockpitService.confirmInPanel('Hidden?', { detail: 'x' }, 'Go')).resolves.toBeUndefined();
+            await expect(RecipeCockpitService.confirmInPanel('Hidden?', { summary: ['x'] }, 'Go')).resolves.toBeUndefined();
 
             expect(postedOf('confirmRequest')).toEqual([]);
             expect(createdPanel.reveal).toHaveBeenCalledTimes(1);
@@ -296,7 +299,7 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
         it('is Cancel the moment the cockpit is hidden with a confirmation open, not on the next reveal', async () => {
 
             await openAndDraw();
-            const answer = RecipeCockpitService.confirmInPanel('Open?', { detail: 'x' }, 'Go');
+            const answer = RecipeCockpitService.confirmInPanel('Open?', { summary: ['x'] }, 'Go');
             const confirmationId = lastPosted('confirmRequest').confirmationId;
 
             viewStateHandler?.({ webviewPanel: { visible: true } });
@@ -313,7 +316,7 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
         it('settles only under the pending id, even past the router', async () => {
 
             await openAndDraw();
-            const answer = RecipeCockpitService.confirmInPanel('Open?', { detail: 'x' }, 'Go');
+            const answer = RecipeCockpitService.confirmInPanel('Open?', { summary: ['x'] }, 'Go');
             const confirmationId = lastPosted('confirmRequest').confirmationId;
 
             ( RecipeCockpitService as any ).settlePendingConfirmation('0'.repeat(32), 0);
@@ -328,22 +331,22 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
             await openAndDraw();
 
-            const plainAnswer = RecipeCockpitService.confirmInPanel('Plain?', { detail: 'x' }, 'Go');
+            const plainAnswer = RecipeCockpitService.confirmInPanel('Plain?', { summary: ['x'] }, 'Go');
             expect(lastPosted('confirmRequest')).not.toHaveProperty('checkboxLabel');
             await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, isChecked: true });
             await expect(plainAnswer).resolves.toBe('Go');
 
-            const tickedAnswer = RecipeCockpitService.confirmInPanelWithCheckbox('Boxed?', { detail: 'x', isDestructive: true, checkboxLabel: 'Also this' }, 'Go');
+            const tickedAnswer = RecipeCockpitService.confirmInPanelWithCheckbox('Boxed?', { summary: ['x'], isDestructive: true, checkboxLabel: 'Also this' }, 'Go');
             expect(lastPosted('confirmRequest')).toMatchObject({ title: 'Boxed?', buttons: ['Go'], isDestructive: true, checkboxLabel: 'Also this' });
             await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, isChecked: true });
             await expect(tickedAnswer).resolves.toEqual({ chosenLabel: 'Go', isChecked: true });
 
-            const untickedAnswer = RecipeCockpitService.confirmInPanelWithCheckbox('Boxed?', { detail: 'x', checkboxLabel: 'Also this' }, 'Go');
+            const untickedAnswer = RecipeCockpitService.confirmInPanelWithCheckbox('Boxed?', { summary: ['x'], checkboxLabel: 'Also this' }, 'Go');
             await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0 });
             await expect(untickedAnswer).resolves.toEqual({ chosenLabel: 'Go', isChecked: false });
 
             // A TICKED BOX UNDER CANCEL IS NOTHING
-            const cancelledAnswer = RecipeCockpitService.confirmInPanelWithCheckbox('Boxed?', { detail: 'x', checkboxLabel: 'Also this' }, 'Go');
+            const cancelledAnswer = RecipeCockpitService.confirmInPanelWithCheckbox('Boxed?', { summary: ['x'], checkboxLabel: 'Also this' }, 'Go');
             await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: null, isChecked: true });
             await expect(cancelledAnswer).resolves.toEqual({ chosenLabel: undefined, isChecked: false });
 
@@ -358,11 +361,11 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
             await openAndDraw();
 
-            const boxedAnswer = RecipeCockpitService.confirmInPanelWithCheckbox('Boxed?', { detail: 'x', checkboxLabel: 'Also this' }, 'Go');
+            const boxedAnswer = RecipeCockpitService.confirmInPanelWithCheckbox('Boxed?', { summary: ['x'], checkboxLabel: 'Also this' }, 'Go');
             await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, isChecked: isChecked });
             await expect(boxedAnswer).resolves.toEqual({ chosenLabel: undefined, isChecked: false });
 
-            const plainAnswer = RecipeCockpitService.confirmInPanel('Plain?', { detail: 'x' }, 'Go');
+            const plainAnswer = RecipeCockpitService.confirmInPanel('Plain?', { summary: ['x'] }, 'Go');
             await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: 0, isChecked: isChecked });
             await expect(plainAnswer).resolves.toBeUndefined();
 
@@ -370,19 +373,61 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
         it('is Cancel, unticked, for a checkbox confirmation when nothing is drawn', async () => {
 
-            await expect(RecipeCockpitService.confirmInPanelWithCheckbox('Nothing open?', { detail: '', checkboxLabel: 'x' }, 'Go')).resolves.toEqual({ chosenLabel: undefined, isChecked: false });
+            await expect(RecipeCockpitService.confirmInPanelWithCheckbox('Nothing open?', { summary: [], checkboxLabel: 'x' }, 'Go')).resolves.toEqual({ chosenLabel: undefined, isChecked: false });
 
         });
 
         it('is Cancel at once, posting nothing, when no model is drawn or no panel is open', async () => {
 
-            await expect(RecipeCockpitService.confirmInPanel('Nothing open?', { detail: '' }, 'Go')).resolves.toBeUndefined();
+            await expect(RecipeCockpitService.confirmInPanel('Nothing open?', { summary: [] }, 'Go')).resolves.toBeUndefined();
 
             await RecipeCockpitService.openRecipeCockpitPanel(HISTORY_WORKSPACE_ROOT, buildWorkspaceState());
             await receivedMessageHandler({ command: 'ready' });
 
-            await expect(RecipeCockpitService.confirmInPanel('Not drawn yet?', { detail: '' }, 'Go')).resolves.toBeUndefined();
+            await expect(RecipeCockpitService.confirmInPanel('Not drawn yet?', { summary: [] }, 'Go')).resolves.toBeUndefined();
             expect(postedOf('confirmRequest')).toEqual([]);
+
+        });
+
+    });
+
+    describe('the parts a confirmation posts (#457)', () => {
+
+        it('splits a line break into lines, drops the gaps at either end of a part, and leaves out an empty section or a blank warning', () => {
+
+            expect(RecipeCockpitService.buildConfirmRequestContent({
+                summary: ['', 'One\nTwo', ''],
+                badge: 'Sandbox',
+                warnings: ['', 'Careful\r\nTwice', '  '],
+                sections: [
+                    { title: 'Empty', lines: [] },
+                    { title: 'Gaps only', lines: ['', ''] },
+                    { title: 'Kept', count: 2, lines: ['', 'a', '', 'b', ''] },
+                    { title: 'Bad count', count: -1, lines: ['c'] }
+                ]
+            })).toEqual({
+                summary: ['One', 'Two'],
+                badge: 'Sandbox',
+                warnings: ['Careful', 'Twice'],
+                sections: [{ title: 'Kept', count: 2, lines: ['a', '', 'b'] }, { title: 'Bad count', lines: ['c'] }]
+            });
+
+        });
+
+        it('posts every part even when the host gave only a summary, and no badge when it gave none', () => {
+
+            expect(RecipeCockpitService.buildConfirmRequestContent({ summary: ['Only this'] })).toEqual({ summary: ['Only this'], warnings: [], sections: [] });
+
+        });
+
+        it('flattens the parts into one text in the order the dialog draws them, for the suites that read one detail string', () => {
+
+            expect(RecipeCockpitService.flattenConfirmContent({
+                summary: ['Summary'],
+                badge: 'Sandbox',
+                warnings: ['Warning'],
+                sections: [{ title: 'Records', count: 2, lines: ['a', 'b'] }, { title: 'Next', lines: ['c'] }]
+            })).toBe('Summary\nWarning\n\nRecords · 2\na\nb\n\nNext\nc');
 
         });
 
@@ -424,7 +469,13 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
             confirmationId: 'c'.repeat(32),
             renderSequence: 4,
             title: 'Generate <b>Tree</b> and insert it?',
-            lines: ['Org: qa · qa@example.com', '', 'Records, inserted parents first:', '  Account: 300', '  Contact: 1500', ...Array.from({ length: 60 }, (_unused, lineIndex) => `- line ${lineIndex}`)],
+            summary: ['Generate 1800 records and insert them into qa · qa@example.com.'],
+            badge: 'Sandbox',
+            warnings: ['Cancel on the progress notification deletes every record this insert saved.'],
+            sections: [
+                { title: 'Records, inserted parents first', count: 2, lines: ['  Account: 300', '  Contact: 1500'] },
+                { title: 'Components <b>', lines: ['Org: qa · qa@example.com', '', ...Array.from({ length: 60 }, (_unused, lineIndex) => `- line ${lineIndex}`)] }
+            ],
             buttons: ['Generate and insert', 'Generate only'],
             isDestructive: true,
             ...overrides
@@ -433,7 +484,7 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
         const dialogOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(panel.cockpitDialogHostElement, 'confirmDialog')[0];
         const responses = (panel: ReturnType<typeof runPanelScript>) => panel.postedHostMessages.filter(hostMessage => hostMessage.command === 'confirmResponse');
 
-        it('draws a modal dialog over the cockpit: title, a scrolling body of lines, the host\'s buttons then Cancel, the rest inert', () => {
+        it('draws a modal dialog over the cockpit: title, a scrolling body, the host\'s buttons then Cancel, the rest inert', () => {
 
             const panel = drawnPanel();
             panel.postToPanel(confirmRequest());
@@ -443,15 +494,95 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
             expect(dialogElement.attributes).toMatchObject({ 'role': 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': 'confirmTitle', 'aria-describedby': 'confirmBody' });
             expect(panel.findAll(dialogElement, 'confirmTitle')[0]).toMatchObject({ tagName: 'h2', textContent: 'Generate <b>Tree</b> and insert it?' });
             expect(bodyElement.attributes).toMatchObject({ id: 'confirmBody', tabindex: '0' });
-            expect(panel.findAll(bodyElement, 'confirmLine').map((lineElement: any) => lineElement.textContent)).toEqual(confirmRequest().lines.filter(line => line !== ''));
-            expect(panel.findAll(bodyElement, 'confirmGap')).toHaveLength(1);
-            expect(panel.findAll(bodyElement, 'confirmListItem').map((lineElement: any) => lineElement.textContent)).toContain('- line 0');
-            expect(panel.findAll(dialogElement, 'sdtButton').map((buttonElement: any) => buttonElement.textContent)).toEqual(['Generate and insert', 'Generate only', 'Cancel']);
+            expect(panel.findAll(panel.findAll(dialogElement, 'confirmActions')[0], 'sdtButton').map((buttonElement: any) => buttonElement.textContent)).toEqual(['Generate and insert', 'Generate only', 'Cancel']);
             panel.findAll(dialogElement, 'sdtButton').forEach((buttonElement: any) => {
                 expect(RECIPE_COCKPIT_BUTTON_KINDS.filter(buttonKind => buttonElement.classList.contains(`sdtButton-${buttonKind}`))).toHaveLength(1);
             });
             expect(panel.findAll(dialogElement, 'confirmChoice')[0].classList.contains('sdtButton-primary')).toBeTrue();
             [panel.cockpitBodyElement, panel.cockpitMetaElement, panel.loadStatusElement].forEach(backgroundElement => expect(backgroundElement.attributes.inert).toBe(''));
+
+        });
+
+        /*
+            #457: the summary and the warnings are always on screen; every section is folded under
+            a toggle that names it and its count, and its lines are built only when it first opens.
+        */
+        it('draws the summary with the org type badge, then the warnings in one callout, then each section folded (#457)', () => {
+
+            const panel = drawnPanel();
+            panel.postToPanel(confirmRequest());
+
+            const bodyElement = panel.findAll(dialogOf(panel), 'confirmBody')[0];
+            expect(bodyElement.children.map((childElement: any) => childElement.className.split(' ')[0])).toEqual(['confirmSummary', 'confirmWarnings', 'confirmSection', 'confirmSection']);
+
+            const [summaryElement] = panel.findAll(bodyElement, 'confirmSummary');
+            expect(panel.findAll(summaryElement, 'confirmLine').map((lineElement: any) => lineElement.textContent)).toEqual(['Generate 1800 records and insert them into qa · qa@example.com.']);
+            expect(panel.findAll(summaryElement, 'confirmBadge')[0].textContent).toBe('Sandbox');
+
+            const [warningsElement] = panel.findAll(bodyElement, 'confirmWarnings');
+            expect(warningsElement.attributes).toMatchObject({ 'role': 'note', 'aria-label': RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL });
+            expect(panel.findAll(warningsElement, 'confirmWarningsHeading')[0].textContent).toBe(RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL);
+            expect(panel.findAll(warningsElement, 'confirmLine').map((lineElement: any) => lineElement.textContent)).toEqual(['Cancel on the progress notification deletes every record this insert saved.']);
+
+            const toggleElements = panel.findAll(bodyElement, 'confirmSectionToggle');
+            expect(toggleElements.map((toggleElement: any) => panel.findAll(toggleElement, 'confirmSectionTitle')[0].textContent)).toEqual(['Records, inserted parents first', 'Components <b>']);
+            expect(toggleElements.map((toggleElement: any) => panel.findAll(toggleElement, 'confirmSectionCount').map((countElement: any) => countElement.textContent))).toEqual([['2'], []]);
+            toggleElements.forEach((toggleElement: any, toggleIndex: number) => {
+                expect(toggleElement.classList.contains('sdtButton-secondary')).toBeTrue();
+                expect(toggleElement.attributes).toMatchObject({ 'aria-expanded': 'false', 'aria-controls': `confirmSection${toggleIndex}` });
+            });
+
+            // NOTHING OF A FOLDED SECTION IS BUILT
+            const sectionBodies = panel.findAll(bodyElement, 'confirmSectionBody');
+            sectionBodies.forEach((sectionBody: any) => {
+                expect(sectionBody.classList.contains('hidden')).toBeTrue();
+                expect(sectionBody.children).toEqual([]);
+            });
+
+        });
+
+        it('builds a section\'s lines the first time it opens, folds it again on a second click, and never builds it twice (#457)', () => {
+
+            const panel = drawnPanel();
+            panel.postToPanel(confirmRequest());
+
+            const bodyElement = panel.findAll(dialogOf(panel), 'confirmBody')[0];
+            const componentsToggle = panel.findAll(bodyElement, 'confirmSectionToggle')[1];
+            const componentsBody = panel.findAll(bodyElement, 'confirmSectionBody')[1];
+
+            componentsToggle.dispatch('click');
+            expect(componentsToggle.attributes['aria-expanded']).toBe('true');
+            expect(componentsBody.classList.contains('hidden')).toBeFalse();
+            expect(componentsBody.attributes.id).toBe('confirmSection1');
+            expect(panel.findAll(componentsBody, 'confirmLine')).toHaveLength(61);
+            expect(panel.findAll(componentsBody, 'confirmGap')).toHaveLength(1);
+            expect(panel.findAll(componentsBody, 'confirmListItem').map((lineElement: any) => lineElement.textContent)).toContain('- line 0');
+
+            componentsToggle.dispatch('click');
+            expect(componentsToggle.attributes['aria-expanded']).toBe('false');
+            expect(componentsBody.classList.contains('hidden')).toBeTrue();
+
+            componentsToggle.dispatch('click');
+            expect(panel.findAll(componentsBody, 'confirmLine')).toHaveLength(61);
+
+            // OPENING ONE SECTION LEAVES THE OTHER FOLDED
+            expect(panel.findAll(bodyElement, 'confirmSectionBody')[0].children).toEqual([]);
+
+        });
+
+        it('draws no callout without warnings, no badge without one, and no section with nothing to show (#457)', () => {
+
+            const panel = drawnPanel();
+            panel.postToPanel(confirmRequest({
+                badge: '',
+                warnings: ['', '   '],
+                sections: [{ title: 'Empty', lines: [] }, { title: 'Blank', lines: ['', '  '] }, { title: 'Kept', lines: ['one'] }]
+            }));
+
+            const bodyElement = panel.findAll(dialogOf(panel), 'confirmBody')[0];
+            expect(panel.findAll(bodyElement, 'confirmWarnings')).toEqual([]);
+            expect(panel.findAll(bodyElement, 'confirmBadge')).toEqual([]);
+            expect(panel.findAll(bodyElement, 'confirmSectionTitle').map((titleElement: any) => titleElement.textContent)).toEqual(['Kept']);
 
         });
 
@@ -526,16 +657,57 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
         });
 
+        it('puts every section toggle in the Tab cycle, in order, between the body and the buttons (#457)', () => {
+
+            const panel = drawnPanel();
+            panel.postToPanel(confirmRequest());
+            const dialogElement = dialogOf(panel);
+            const [bodyElement] = panel.findAll(dialogElement, 'confirmBody');
+            const [recordsToggle, componentsToggle] = panel.findAll(dialogElement, 'confirmSectionToggle');
+            const [insertElement] = panel.findAll(dialogElement, 'confirmChoice');
+
+            // A DESTRUCTIVE DIALOG STILL STARTS ON CANCEL
+            expect(panel.activeElement()).toBe(panel.findAll(dialogElement, 'confirmCancel')[0]);
+
+            bodyElement.focus();
+            const focusedAfterTabs = [1, 2, 3].map(() => { dialogElement.dispatch('keydown', { key: 'Tab' }); return panel.activeElement(); });
+            expect(focusedAfterTabs).toEqual([recordsToggle, componentsToggle, insertElement]);
+
+            // ESCAPE ON AN OPEN SECTION IS STILL CANCEL
+            componentsToggle.dispatch('click');
+            dialogElement.dispatch('keydown', { key: 'Escape' });
+            expect(responses(panel)).toEqual([{ command: 'confirmResponse', confirmationId: 'c'.repeat(32), choice: null }]);
+
+        });
+
         it('answers Cancel without drawing a request for a model that is not the one on screen, or one it cannot read', () => {
 
             const panel = drawnPanel();
 
             panel.postToPanel(confirmRequest({ renderSequence: 3 }));
             panel.postToPanel(confirmRequest({ confirmationId: 'd'.repeat(32), buttons: [] }));
-            panel.postToPanel(confirmRequest({ confirmationId: 'e'.repeat(32), lines: 'not a list' }));
+            panel.postToPanel(confirmRequest({ confirmationId: 'e'.repeat(32), summary: 'not a list' }));
+            // #457: ANY PART OUT OF SHAPE IS CANCEL, NEVER A DIALOG DRAWN WITH THE PART LEFT OUT
+            const malformedParts: Record<string, unknown>[] = [
+                { summary: ['ok', 7] },
+                { warnings: undefined },
+                { warnings: [null] },
+                { sections: 'not a list' },
+                { sections: [{ title: '', lines: ['x'] }] },
+                { sections: [{ title: 'No lines' }] },
+                { sections: [{ title: 'Bad line', lines: ['x', 1] }] },
+                { sections: [{ title: 'Bad count', lines: ['x'], count: -1 }] },
+                { sections: [{ title: 'Bad count', lines: ['x'], count: 1.5 }] },
+                { sections: [null] },
+                { badge: 3 }
+            ];
+            malformedParts.forEach((malformedPart, partIndex) => panel.postToPanel(confirmRequest({ confirmationId: String(partIndex).padStart(32, '0'), ...malformedPart })));
 
             expect(dialogOf(panel)).toBeUndefined();
-            expect(responses(panel).map(response => [response.confirmationId, response.choice])).toEqual([['c'.repeat(32), null], ['d'.repeat(32), null], ['e'.repeat(32), null]]);
+            expect(responses(panel).map(response => [response.confirmationId, response.choice])).toEqual([
+                ['c'.repeat(32), null], ['d'.repeat(32), null], ['e'.repeat(32), null],
+                ...malformedParts.map((_unused, partIndex) => [String(partIndex).padStart(32, '0'), null])
+            ]);
 
         });
 
@@ -589,9 +761,10 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
             const [checkElement] = panel.findAll(dialogElement, 'confirmCheck');
             expect(checkElement.attributes['aria-checked']).toBe('false');
 
+            // THE BOX COMES AFTER THE BODY AND ITS TWO SECTION TOGGLES (#457), BEFORE THE BUTTONS
             const [bodyElement] = panel.findAll(dialogElement, 'confirmBody');
             bodyElement.focus();
-            dialogElement.dispatch('keydown', { key: 'Tab' });
+            [1, 2, 3].forEach(() => dialogElement.dispatch('keydown', { key: 'Tab' }));
             expect(panel.activeElement()).toBe(checkElement);
 
             // A REQUEST WITHOUT ONE DRAWS NO BOX AND ANSWERS NO isChecked
@@ -634,6 +807,20 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
             expect(ruleFor('\\.confirmBody')).toContain('max-height: 60vh;');
             expect(ruleFor('\\.confirmActions')).toContain('flex: none;');
             expect(shellHtml()).toMatch(/\.confirmLine \{[^}]*white-space: pre-wrap;/);
+
+        });
+
+        // #457: ONLY PAIRS THE CONTRAST TEST ALREADY HOLDS: chipText ON chipBg, text AND changed ON surface, accent ON surface
+        it('draws the badge, the callout and the section toggles from token pairs the contrast test already holds (#457)', () => {
+
+            expect(ruleFor('\\.confirmBadge')).toContain('color: var(--sdt-chip-text);');
+            expect(ruleFor('\\.confirmBadge')).toContain('background-color: var(--sdt-chip-bg);');
+            expect(ruleFor('\\.confirmWarnings')).toContain('color: var(--sdt-text);');
+            expect(ruleFor('\\.confirmWarnings')).toContain('background-color: var(--sdt-surface);');
+            expect(ruleFor('\\.confirmWarnings')).toContain('border-left: 4px solid var(--sdt-changed);');
+            expect(ruleFor('\\.confirmWarningsHeading')).toContain('color: var(--sdt-changed);');
+            expect(ruleFor('\\.confirmSectionCount')).toContain('color: var(--sdt-chip-text);');
+            expect(ruleFor('\\.confirmSectionToggle')).not.toContain('color');
 
         });
 

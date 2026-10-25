@@ -568,7 +568,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
                 validationRulesOff: { [GADGET_TREE_KEY]: { Gadget__c: ['Amount__c', 'Stage__c', 'Description__c'] } }
             });
 
-            const detail = RecipeCockpitService.buildInsertConfirmationDetail('my-sandbox', undefined, treeOf(recipe), recipe, new Map([['Gadget__c', 1]]), [], 'faker-js', 'recipe.yml');
+            const detail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitService.buildInsertConfirmationContent('my-sandbox', undefined, treeOf(recipe), recipe, new Map([['Gadget__c', 1]]), [], 'faker-js', 'recipe.yml'));
 
             expect(detail).toContain('Validation rules switched off, so the org may reject these values: Gadget__c.Amount__c, Gadget__c.Stage__c\n');
             expect(detail).not.toContain('Faker constraints');
@@ -580,7 +580,7 @@ describe('RecipeCockpitService -- validation-rule checkbox (#325)', () => {
             const recipe = loadRecipe();
             applySelections(recipe);
 
-            expect(RecipeCockpitService.buildInsertConfirmationDetail('my-sandbox', undefined, treeOf(recipe), recipe, new Map([['Gadget__c', 1]]), [], 'faker-js', 'recipe.yml')).not.toContain('Validation rules');
+            expect(RecipeCockpitService.flattenConfirmContent(RecipeCockpitService.buildInsertConfirmationContent('my-sandbox', undefined, treeOf(recipe), recipe, new Map([['Gadget__c', 1]]), [], 'faker-js', 'recipe.yml'))).not.toContain('Validation rules');
 
         });
 

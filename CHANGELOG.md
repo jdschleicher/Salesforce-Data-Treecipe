@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.151.0] - Recipe Cockpit: confirmations open on a short summary, with the detail folded into sections
+
+[#457](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/457). Every in-panel confirmation (#349) drew its detail as one flat list of lines: the org, the record counts, the lookup rules, the rollback and the recipe file all at the same weight, so the one line that mattered could be the last.
+
+- **Three parts.** `confirmInPanel` and `confirmInPanelWithCheckbox` take a summary, warnings and sections in place of `detail` (`IRecipeCockpitConfirmContent`, in its own leaf file `RecipeCockpitConfirmContent.ts`, which imports nothing, so the vscode-free helpers that word a confirmation build one without importing the cockpit). `detail` is gone: all 21 `confirmInPanel` call sites and the one `confirmInPanelWithCheckbox` call site moved.
+  - **The summary** is always on screen: what will happen and to which org. A confirmation that names a target org's type carries it as a **badge** (the tree insert, the Treecipe Adapter's update and restore).
+  - **The warnings** are always on screen, in one callout headed **Before you confirm**: anything with no undo or anything surprising (Cancel deletes what an insert saved, an overwritten file, a custom object's settings overwritten by a deploy, the `replacements` notice, an edited expression the Adapter will run).
+  - **Each section** is folded under a toggle that names it and, when it has one, its count ("Records, inserted parents first · 11", "Components · 24"). Its lines are built the first time it opens.
+- **The tree insert**, from the issue: "Generate N records and insert them into <org>." with the org's type as its badge; the warning that Cancel deletes every record this insert saved; then Records, Lookups, Fields changed on this card, Org and recipe, and What happens next.
+- **Sent clean.** `RecipeCockpitConfirmContent.buildRequestParts` splits a line break into lines, drops gaps at either end of a part, and leaves out a section with no line or a blank warning, so the panel never draws an empty fold or an empty callout.
+- **Read whole or not at all.** The panel's `readConfirmContent` answers Cancel, drawing nothing, for a request whose summary, warnings, sections, a section's title, lines or count, or badge is out of shape, never a dialog with a part left out.
+- **Unchanged.** The answer is still a button label or Cancel under the one-use id; every executor re-plans after it; text is written with `textContent`; the shell still takes only a nonce; Escape, the Tab trap (now through each section toggle, in order, between the body and the check box or buttons), `alertdialog` and the start on Cancel for an action with no undo, and the #402 check box all behave as before. The palette commands keep VS Code's modal.
+- **Colours.** The badge and a section's count are `--sdt-chip-text` on `--sdt-chip-bg`, the callout `--sdt-text` on `--sdt-surface` with an `--sdt-changed` edge and heading, the toggles the secondary kind: every pair is one the contrast test already holds.
+- **Tests.** The suites that script a confirmation through the mocked modal get its parts as one `detail` text (`RecipeCockpitConfirmContent.flatten`, a section title followed by ` · <count>`), and the dialog suite drives the real panel script through the summary, the callout, folded and opened sections, malformed parts and the Tab order.
+
 ## [3.150.0] - Recipe Cockpit: an update by the Treecipe Adapter leaves an adapted data set and an adapted recipe
 
 The update half of [#448](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/448), slice F of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442). The insert of a new child object (slice E's second half) is not built yet, so a data set records no added objects or inserted Ids until it is.

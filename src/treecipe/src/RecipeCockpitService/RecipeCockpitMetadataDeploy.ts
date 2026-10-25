@@ -6,6 +6,7 @@ import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { ORG_OPERATIONS_FOLDER_NAME, ORG_OPERATION_RESULT_FILE_ATTEMPTS, ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
+import { IRecipeCockpitConfirmContent } from './RecipeCockpitConfirmContent';
 
 /*
     The Troubleshooting tab's deploys (#346): what one relationship tree would deploy -- its custom
@@ -741,24 +742,25 @@ export class RecipeCockpitMetadataDeploy {
     }
 
     // THE CONFIRMATION'S DETAIL, EACH VALUE ON ONE LINE AND WITH NO PARENTHESES OF ITS OWN, SINCE THE CALLER ESCAPES IT FOR A NOTIFICATION
-    static buildConfirmationDetail(deployKind: MetadataDeployKind,
+    static buildConfirmationContent(deployKind: MetadataDeployKind,
                                     treeLabel: string,
                                     orgLabel: string,
                                     packageDirectoryRelativePath: string,
                                     components: readonly IMetadataDeployComponent[],
                                     summary?: IMetadataDeploySummary,
                                     hasFileOrEnvironmentReplacements = false,
-                                    fullSetComponents: readonly IMetadataDeployComponent[] = []): string {
+                                    fullSetComponents: readonly IMetadataDeployComponent[] = []): IRecipeCockpitConfirmContent {
 
         const toSingleLine = (text: string) => String(text).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');
+        const warnings: string[] = [];
         const notes: string[] = [];
 
         if ( summary && deployKind === 'fields' ) {
             if ( summary.customObjects.length > 0 ) {
-                notes.push('Deploying a custom object overwrites the org\'s settings for it — its label, sharing model, name field and the rest — with this project\'s version.');
+                warnings.push('Deploying a custom object overwrites the org\'s settings for it — its label, sharing model, name field and the rest — with this project\'s version.');
             }
             if ( summary.missingCustomObjects.length > 0 ) {
-                notes.push(`Not deployed: ${summary.missingCustomObjects.length} custom ${summary.missingCustomObjects.length === 1 ? 'object' : 'objects'} not in this project — the org must already have ${summary.missingCustomObjects.length === 1 ? 'it' : 'them'}, or ${summary.missingCustomObjects.length === 1 ? 'its' : 'their'} fields fail: ${this.describeCappedList(summary.missingCustomObjects)}`);
+                warnings.push(`Not deployed: ${summary.missingCustomObjects.length} custom ${summary.missingCustomObjects.length === 1 ? 'object' : 'objects'} not in this project — the org must already have ${summary.missingCustomObjects.length === 1 ? 'it' : 'them'}, or ${summary.missingCustomObjects.length === 1 ? 'its' : 'their'} fields fail: ${this.describeCappedList(summary.missingCustomObjects)}`);
             }
             if ( summary.unreadableCustomObjects.length > 0 ) {
                 notes.push(`Not deployed: ${summary.unreadableCustomObjects.length} custom ${summary.unreadableCustomObjects.length === 1 ? 'object' : 'objects'} whose .object-meta.xml could not be read: ${this.describeCappedList(summary.unreadableCustomObjects)}`);
@@ -782,21 +784,24 @@ export class RecipeCockpitMetadataDeploy {
             notes.push(`Skipped: ${summary.skippedNameCount} ${summary.skippedNameCount === 1 ? 'name that is' : 'names that are'} not a Salesforce api name.`);
         }
 
-        return [
-            `Tree: ${toSingleLine(treeLabel)}`,
-            `Org: ${toSingleLine(orgLabel)}`,
-            `From: ${toSingleLine(packageDirectoryRelativePath)}`,
-            ...this.describeComponentsByType(components),
-            ...notes,
-            ...( fullSetComponents.length > 0
-                ? ['', 'Ticking the box below also deploys, in the same package.xml:', ...this.describeComponentsByType(fullSetComponents)]
-                : [] ),
-            '',
-            'Only these components are deployed, through a generated package.xml. Nothing else in the object folders is.',
-            ...( hasFileOrEnvironmentReplacements
-                ? ['sfdx-project.json has "replacements" that copy local files or environment variables into the deployed metadata.']
-                : [] )
-        ].join('\n');
+        if ( hasFileOrEnvironmentReplacements ) {
+            warnings.push('sfdx-project.json has "replacements" that copy local files or environment variables into the deployed metadata.');
+        }
+
+        return {
+            summary: [
+                `Tree: ${toSingleLine(treeLabel)}`,
+                `Org: ${toSingleLine(orgLabel)}`,
+                `From: ${toSingleLine(packageDirectoryRelativePath)}`
+            ],
+            warnings: warnings,
+            sections: [
+                { title: 'Components', count: components.length, lines: this.describeComponentsByType(components) },
+                { title: 'Not deployed', lines: notes },
+                { title: 'Ticking the box below also deploys, in the same package.xml', count: fullSetComponents.length, lines: this.describeComponentsByType(fullSetComponents) },
+                { title: 'How it deploys', lines: ['Only these components are deployed, through a generated package.xml. Nothing else in the object folders is.'] }
+            ]
+        };
 
     }
 

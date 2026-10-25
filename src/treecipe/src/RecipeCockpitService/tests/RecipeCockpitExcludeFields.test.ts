@@ -509,8 +509,8 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
             const recipe = loadRecipe();
             const totals = new Map([['Account', 1], ['Contact', 2]]);
-            const buildDetail = () => RecipeCockpitService.buildInsertConfirmationDetail('qa', { isSandbox: true, organizationType: 'Enterprise Edition' } as any,
-                treeOf(recipe, ACCOUNT_TREE_KEY), recipe, totals, [], 'faker-js', 'recipe.yml');
+            const buildDetail = () => RecipeCockpitService.flattenConfirmContent(RecipeCockpitService.buildInsertConfirmationContent('qa', { isSandbox: true, organizationType: 'Enterprise Edition' } as any,
+                treeOf(recipe, ACCOUNT_TREE_KEY), recipe, totals, [], 'faker-js', 'recipe.yml'));
 
             expect(buildDetail()).not.toContain('Unticked');
 
@@ -844,7 +844,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             await receivedMessageHandler({ command: 'resetTreeSelection', treeKey: ACCOUNT_TREE_KEY });
             expect(showWarningMessage).toHaveBeenCalledWith(
                 'Reset the selection of Account-thru-OtherChildObject__c?',
-                { inPanel: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every validation rule is applied again. The recipe file is not changed, so an edit written into it stays: clear it with its field\'s edit button.' },
+                { inPanel: true, detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every validation rule is applied again.\n\nWhat stays\nThe recipe file is not changed, so an edit written into it stays: clear it with its field\'s edit button.' },
                 RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL
             );
             expect(( storedOf(workspaceState) as any ).excludedObjectApiNamesByFolderName[ACCOUNT_TREE_KEY]).toEqual(['Contact']);

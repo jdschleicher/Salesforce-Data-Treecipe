@@ -3,6 +3,7 @@ import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { IMetadataDeployComponent, IMetadataDeployObject, IMetadataDeploySummary, METADATA_RETRIEVE_PACKAGE_XML_TYPES, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
+import { IRecipeCockpitConfirmContent } from './RecipeCockpitConfirmContent';
 
 /*
     The Troubleshooting tab's retrieves (#326, #382): the argv that brings one relationship tree's
@@ -416,28 +417,35 @@ export class RecipeCockpitMetadataRetrieve {
     }
 
     // THE CONFIRMATION'S DETAIL, EACH VALUE ON ONE LINE AND WITH NO PARENTHESES OF ITS OWN, SINCE THE CALLER ESCAPES IT FOR A NOTIFICATION
-    static buildConfirmationDetail(retrieveKind: MetadataRetrieveKind,
+    static buildConfirmationContent(retrieveKind: MetadataRetrieveKind,
                                     treeLabel: string,
                                     orgLabel: string,
                                     askedNames: readonly string[],
                                     packageDirectoryRelativePath: string,
-                                    localFileCount: number): string {
+                                    localFileCount: number): IRecipeCockpitConfirmContent {
 
         const words = RETRIEVE_WORDS[retrieveKind];
         const toSingleLine = (text: string) => String(text).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');
-        const askedLine = `${this.describeComponents(retrieveKind, askedNames.length)}: ${RecipeCockpitMetadataDeploy.describeCappedList(askedNames)}`;
+        const overwriteLine = `${localFileCount} existing local ${words.fileNoun} ${localFileCount === 1 ? 'file' : 'files'} for these ${words.scope} will be overwritten with the org's version wherever the org holds the same ${words.sameNoun}.`;
 
-        return [
-            `Tree: ${toSingleLine(treeLabel)}`,
-            `Org: ${toSingleLine(orgLabel)}`,
-            askedLine,
-            `New ${words.newFileNoun} files are written under: ${toSingleLine(packageDirectoryRelativePath)}`,
-            localFileCount === 0
-                ? `This project holds no ${words.fileNoun} file for these ${words.scope} yet.`
-                : `${localFileCount} existing local ${words.fileNoun} ${localFileCount === 1 ? 'file' : 'files'} for these ${words.scope} will be overwritten with the org's version wherever the org holds the same ${words.sameNoun}.`,
-            '',
-            `Nothing is deployed. Run Generate Treecipe afterwards ${words.afterwards}.`
-        ].join('\n');
+        return {
+            summary: [
+                `Tree: ${toSingleLine(treeLabel)}`,
+                `Org: ${toSingleLine(orgLabel)}`,
+                ...( localFileCount === 0 ? [`This project holds no ${words.fileNoun} file for these ${words.scope} yet.`] : [] )
+            ],
+            warnings: localFileCount === 0 ? [] : [overwriteLine],
+            sections: [
+                { title: this.describeComponents(retrieveKind, askedNames.length), lines: [RecipeCockpitMetadataDeploy.describeCappedList(askedNames)] },
+                {
+                    title: 'What happens next',
+                    lines: [
+                        `New ${words.newFileNoun} files are written under: ${toSingleLine(packageDirectoryRelativePath)}`,
+                        `Nothing is deployed. Run Generate Treecipe afterwards ${words.afterwards}.`
+                    ]
+                }
+            ]
+        };
 
     }
 

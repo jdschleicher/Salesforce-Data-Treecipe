@@ -475,7 +475,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
             expect(title).toBe('Restore 5 records of Account-thru-OtherChildObject__c in qa · qa@example.com.qa?');
             expect(options.isDestructive).toBe(true);
             expect(buttons).toEqual([RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL]);
-            expect(options.detail.split('\n').slice(2)).toEqual(['', 'Account: 3 records -- Legacy_Code__c, Rating__c', 'Contact: 2 records -- LastName']);
+            expect(options.detail.split('\n').slice(2, 6)).toEqual(['', 'Records and fields · 2', 'Account: 3 records -- Legacy_Code__c, Rating__c', 'Contact: 2 records -- LastName']);
 
             // PARENTS FIRST, ALL-OR-NONE AS CHOSEN, ONLY THE SNAPSHOT'S FIELDS
             expect(updateCalls.map(updateCall => [updateCall.objectApiName, updateCall.records.length, updateCall.options])).toEqual([
@@ -814,7 +814,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
             };
             SalesforceOrgService.clearDescribeCache();
             await requestRestore('20261023-100000-before.json');
-            expect(restoreConfirmations()[1][1].detail.split('\n').slice(-1)).toEqual([RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE]);
+            expect(restoreConfirmations()[1][1].detail.split('\n').slice(2, 3)).toEqual([RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE]);
 
         });
 

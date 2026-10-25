@@ -17,6 +17,7 @@ import {
     RecipeCockpitPermissionSetAssign
 } from './RecipeCockpitPermissionSetAssign';
 import { RecipeCockpitPermissionSetGenerate } from './RecipeCockpitPermissionSetGenerate';
+import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmRequestParts, IRecipeCockpitConfirmSection, RecipeCockpitConfirmContent } from './RecipeCockpitConfirmContent';
 import { IValidationRuleListObject, IValidationRuleListRunRecord, RecipeCockpitValidationRuleList } from './RecipeCockpitValidationRuleList';
 import {
     IMetadataDeployComponent,
@@ -2370,7 +2371,10 @@ export interface IRecipeCockpitConfirmRequestMessage {
     confirmationId: string;
     renderSequence: number;
     title: string;
-    lines: string[];
+    summary: string[];
+    badge?: string;
+    warnings: string[];
+    sections: IRecipeCockpitConfirmSection[];
     buttons: string[];
     // role="alertdialog" FOR AN ACTION THAT WRITES TO AN ORG OR OVERWRITES FILES WITH NO UNDO
     isDestructive: boolean;
@@ -2378,11 +2382,15 @@ export interface IRecipeCockpitConfirmRequestMessage {
     checkboxLabel?: string;
 }
 
+// THE HEADING OF A CONFIRMATION'S CALLOUT (#457), ALWAYS ON SCREEN ABOVE ITS FOLDED SECTIONS
+export const RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL = 'Before you confirm';
+
 // A CONFIRMATION ASKED WHILE THE COCKPIT IS HIDDEN (#349): ITS DOCUMENT IS GONE, SO NOTHING COULD SHOW IT
 export const RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL = 'The Recipe Cockpit was in the background, so it could not ask you to confirm, and nothing was done. It is shown now: start the action again.';
 
-export interface IRecipeCockpitConfirmOptions {
-    detail: string;
+export type { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmRequestParts, IRecipeCockpitConfirmSection };
+
+export interface IRecipeCockpitConfirmOptions extends IRecipeCockpitConfirmContent {
     isDestructive?: boolean;
 }
 
@@ -4452,11 +4460,10 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             `Write ${editLabel} into ${objectApiName}.${fieldApiName}?`,
             {
-                detail: [
-                    `This writes to "${path.basename(recipeFilePath)}": ${objectApiName}.${fieldApiName} becomes ${RecipeCockpitRecipeWriter.toFixedValueScalar(fixedValue)} on every ${objectApiName} in it, so Run Faker by Recipe generates it from the palette too. Every other line of the file is left as it is.`,
-                    '',
-                    `The lines it replaces are kept in "${path.basename(fixedValueFilePath)}" beside the recipe, so Clear can put them back exactly.`
-                ].join('\n')
+                summary: [`This writes to "${path.basename(recipeFilePath)}": ${objectApiName}.${fieldApiName} becomes ${RecipeCockpitRecipeWriter.toFixedValueScalar(fixedValue)} on every ${objectApiName} in it, so Run Faker by Recipe generates it from the palette too. Every other line of the file is left as it is.`],
+                sections: [
+                    { title: 'How Clear puts it back', lines: [`The lines it replaces are kept in "${path.basename(fixedValueFilePath)}" beside the recipe, so Clear can put them back exactly.`] }
+                ]
             },
             RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL
         );
@@ -4675,16 +4682,21 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             `Point ${objectApiName}.${fieldApiName} at an existing ${parentObjectApiName} record?`,
             {
-                detail: [
-                    `Org: ${orgText}`,
+                summary: [
                     `Record: ${chosenRecord.recordName ? `${chosenRecord.recordName} · ` : ''}${chosenRecord.recordId}`,
-                    '',
-                    `This writes to "${path.basename(recipeFilePath)}": ${objectApiName}.${fieldApiName} becomes "${chosenRecord.recordId}" on every ${objectApiName} in it, so every record generated points at that one ${parentObjectApiName}. Every other line of the file is left as it is.`,
-                    '',
-                    `The Id exists only in ${orgText}. The tree insert checks it exists in the org it inserts into, and inserts nothing when it does not.`,
-                    '',
-                    `The TODO line it replaces is kept in "${path.basename(fixedValueFilePath)}" beside the recipe, so Clear can put it back exactly.`
-                ].join('\n')
+                    `Org: ${orgText}`
+                ],
+                warnings: [`The Id exists only in ${orgText}. The tree insert checks it exists in the org it inserts into, and inserts nothing when it does not.`],
+                sections: [
+                    {
+                        title: 'What is written',
+                        lines: [
+                            `This writes to "${path.basename(recipeFilePath)}": ${objectApiName}.${fieldApiName} becomes "${chosenRecord.recordId}" on every ${objectApiName} in it, so every record generated points at that one ${parentObjectApiName}. Every other line of the file is left as it is.`,
+                            '',
+                            `The TODO line it replaces is kept in "${path.basename(fixedValueFilePath)}" beside the recipe, so Clear can put it back exactly.`
+                        ]
+                    }
+                ]
             },
             RECIPE_COCKPIT_ORG_RECORD_CONFIRM_LABEL
         );
@@ -4767,14 +4779,14 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             `Clear the edit of ${dialogFieldLabel}?`,
             {
-                detail: [
+                summary: [
                     planned.isRederived
                         ? `This writes to "${path.basename(recipeFilePath)}": "${path.basename(fixedValueFilePath)}" has no recorded lines for ${dialogFieldLabel}, so it gets back the value Generate Treecipe wrote for it rather than the exact lines it had. Every other line of the file is left as it is.`
-                        : `This writes to "${path.basename(recipeFilePath)}": ${dialogFieldLabel} gets back the lines it had before it was pinned, recorded in "${path.basename(fixedValueFilePath)}". Every other line of the file is left as it is.`,
-                    '',
-                    'It puts back:',
-                    this.buildRestorePreview(planned.previewText)
-                ].join('\n')
+                        : `This writes to "${path.basename(recipeFilePath)}": ${dialogFieldLabel} gets back the lines it had before it was pinned, recorded in "${path.basename(fixedValueFilePath)}". Every other line of the file is left as it is.`
+                ],
+                sections: [
+                    { title: 'It puts back', lines: [this.buildRestorePreview(planned.previewText)] }
+                ]
             },
             RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL
         );
@@ -4990,13 +5002,14 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             'Remove this TODO from the recipe?',
             {
-                detail: [
-                    `This writes to "${path.basename(recipeFilePath)}": ${planned.removed.kind === 'line' ? `line ${removeAction.lineNumber} is deleted` : `the comment is cut off the end of line ${removeAction.lineNumber}, and its value is kept`}. Every other line of the file is left as it is.`,
-                    '',
+                summary: [
                     planned.removed.todoText,
                     '',
-                    `The line is kept in "${path.basename(removedTodoFilePath)}" beside the recipe, so Restore in the Removed list can put it back exactly.`
-                ].join('\n')
+                    `This writes to "${path.basename(recipeFilePath)}": ${planned.removed.kind === 'line' ? `line ${removeAction.lineNumber} is deleted` : `the comment is cut off the end of line ${removeAction.lineNumber}, and its value is kept`}. Every other line of the file is left as it is.`
+                ],
+                sections: [
+                    { title: 'How Restore puts it back', lines: [`The line is kept in "${path.basename(removedTodoFilePath)}" beside the recipe, so Restore in the Removed list can put it back exactly.`] }
+                ]
             },
             RECIPE_COCKPIT_TODO_REMOVE_CONFIRM_LABEL
         );
@@ -5063,11 +5076,11 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             'Put this TODO back in the recipe?',
             {
-                detail: [
-                    `This writes to "${path.basename(recipeFilePath)}": ${removed.kind === 'line' ? `the line goes back as line ${planned.lineNumber}` : `the comment goes back on the end of line ${planned.lineNumber}`}, and "${path.basename(removedTodoFilePath)}" no longer lists it. Every other line of the file is left as it is.`,
+                summary: [
+                    removed.todoText,
                     '',
-                    removed.todoText
-                ].join('\n')
+                    `This writes to "${path.basename(recipeFilePath)}": ${removed.kind === 'line' ? `the line goes back as line ${planned.lineNumber}` : `the comment goes back on the end of line ${planned.lineNumber}`}, and "${path.basename(removedTodoFilePath)}" no longer lists it. Every other line of the file is left as it is.`
+                ]
             },
             RECIPE_COCKPIT_TODO_RESTORE_CONFIRM_LABEL
         );
@@ -5272,7 +5285,13 @@ export class RecipeCockpitService {
 
         const confirmation = await this.confirmInPanel(
             `Switch to ${nextRunLabel}?`,
-            { detail: `${storedTreeText} excluded objects, unticked fields, record counts or validation rules switched off: ${storedFolderNames.join(', ')}.\n\n${matchingText}\n\nReset selections clears them for every tree on screen. Fixed values and edited expressions are written in each recipe file, so neither choice changes them.` },
+            {
+                summary: [`${storedTreeText} excluded objects, unticked fields, record counts or validation rules switched off.`, '', matchingText],
+                sections: [
+                    { title: 'Trees with selections', count: storedFolderNames.length, lines: storedFolderNames },
+                    { title: 'What each choice does', lines: ['Reset selections clears them for every tree on screen. Fixed values and edited expressions are written in each recipe file, so neither choice changes them.'] }
+                ]
+            },
             ...buttonLabels
         );
 
@@ -5314,7 +5333,12 @@ export class RecipeCockpitService {
         const treeLabel = tree?.customName ?? tree?.title ?? folderName;
         const confirmation = await this.confirmInPanel(
             `Reset the selection of ${treeLabel}?`,
-            { detail: 'Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every validation rule is applied again. The recipe file is not changed, so an edit written into it stays: clear it with its field\'s edit button.' },
+            {
+                summary: ['Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every validation rule is applied again.'],
+                sections: [
+                    { title: 'What stays', lines: ['The recipe file is not changed, so an edit written into it stays: clear it with its field\'s edit button.'] }
+                ]
+            },
             RECIPE_COCKPIT_RESET_SELECTION_CONFIRM_LABEL
         );
 
@@ -6063,7 +6087,7 @@ export class RecipeCockpitService {
     */
     static confirmInPanel(message: string, confirmOptions: IRecipeCockpitConfirmOptions, ...buttonLabels: string[]): Promise<string | undefined> {
 
-        return this.askInPanel(message, { detail: confirmOptions.detail, isDestructive: confirmOptions.isDestructive }, undefined, buttonLabels)
+        return this.askInPanel(message, confirmOptions, undefined, buttonLabels)
             .then(answer => answer.chosenLabel);
 
     }
@@ -6075,7 +6099,7 @@ export class RecipeCockpitService {
     */
     static confirmInPanelWithCheckbox(message: string, confirmOptions: IRecipeCockpitConfirmWithCheckboxOptions, ...buttonLabels: string[]): Promise<IRecipeCockpitConfirmAnswer> {
 
-        return this.askInPanel(message, { detail: confirmOptions.detail, isDestructive: confirmOptions.isDestructive }, confirmOptions.checkboxLabel, buttonLabels);
+        return this.askInPanel(message, confirmOptions, confirmOptions.checkboxLabel, buttonLabels);
 
     }
 
@@ -6111,7 +6135,7 @@ export class RecipeCockpitService {
                 confirmationId: confirmationId,
                 renderSequence: drawnRenderSequence,
                 title: message,
-                lines: confirmOptions.detail.split(/\r\n|\r|\n/),
+                ...this.buildConfirmRequestContent(confirmOptions),
                 buttons: [...buttonLabels],
                 isDestructive: confirmOptions.isDestructive === true,
                 ...( checkboxLabel !== undefined ? { checkboxLabel: checkboxLabel } : {} )
@@ -6119,6 +6143,15 @@ export class RecipeCockpitService {
 
         });
 
+    }
+
+    // THE PARTS A CONFIRMATION POSTS (#457): SEE RecipeCockpitConfirmContent
+    static buildConfirmRequestContent(confirmContent: IRecipeCockpitConfirmContent): IRecipeCockpitConfirmRequestParts {
+        return RecipeCockpitConfirmContent.buildRequestParts(confirmContent);
+    }
+
+    static flattenConfirmContent(confirmContent: IRecipeCockpitConfirmContent): string {
+        return RecipeCockpitConfirmContent.flatten(confirmContent);
     }
 
     private static cancelPendingConfirmation() {
@@ -7044,7 +7077,7 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             `Add ${friendObjectApiName} under ${iterationNickname}?`,
             {
-                detail: `This writes to "${path.basename(recipeFilePath)}": a copy of the ${friendObjectApiName} block under the ${objectApiName} above ${iterationNickname}, nested under ${iterationNickname} with a nickname of its own, its lookups to that ${objectApiName} pointed at ${iterationNickname}. Every other line of the file is left as it is.`
+                summary: [`This writes to "${path.basename(recipeFilePath)}": a copy of the ${friendObjectApiName} block under the ${objectApiName} above ${iterationNickname}, nested under ${iterationNickname} with a nickname of its own, its lookups to that ${objectApiName} pointed at ${iterationNickname}. Every other line of the file is left as it is.`]
             },
             RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL
         );
@@ -7200,9 +7233,8 @@ export class RecipeCockpitService {
         const nestDetail = !nestPlan
             ? []
             : 'refusal' in nestPlan
-                ? ['', `Nesting the tree under ${addition.parentObjectApiName} is not offered: ${nestPlan.refusal}`]
+                ? [`Nesting the tree under ${addition.parentObjectApiName} is not offered: ${nestPlan.refusal}`]
                 : [
-                    '',
                     `${RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL} instead writes ${addition.parentObjectApiName} in place of the top-level block holding ${addition.objectApiName} and moves that block (${nestPlan.nestedObjectApiNames.join(', ')}) under ${addition.parentObjectApiName}'s friends:, four spaces deeper. It wires ${nestPlan.wiredLookups.map(describeWiredLookup).join(', ')} to ${addition.parentObjectApiName}.`,
                     `Under friends:, count is records PER ${addition.parentObjectApiName} record: with ${addition.parentObjectApiName} at count 1 the totals do not change, and raising its count multiplies every nested object's records.`
                 ];
@@ -7212,16 +7244,18 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             `Add ${addition.parentObjectApiName} to the recipe and wire ${dialogFieldLabel} to it?`,
             {
-                detail: [
-                    `${nestPlan ? `${RECIPE_COCKPIT_ADD_PARENT_OBJECT_TOP_LEVEL_LABEL} writes` : 'This writes'} to "${path.basename(recipeFilePath)}": a new top-level ${addition.parentObjectApiName} block, ahead of the block holding ${addition.objectApiName}, with one record and a nickname of its own, and ${dialogFieldLabel}'s "### TODO -- REFERENCE ID REQUIRED" line becomes that nickname. Every other line of the file is left as it is.`,
-                    ...nestDetail,
-                    '',
-                    templateFieldApiNames.length > 0
-                        ? `Fields, from the ${fakerService} minimum required fields template: ${templateFieldApiNames.join(', ')}.`
-                        : `The ${fakerService} template has no required field for ${addition.parentObjectApiName}, so its block has a count only.`,
-                    '',
-                    `Generate fake data and insert then inserts ${addition.parentObjectApiName} before ${addition.objectApiName} and points the lookup at its Id. A required field your org adds to ${addition.parentObjectApiName} is not in the template: add it to the block if the insert reports it.`
-                ].join('\n')
+                summary: [`${nestPlan ? `${RECIPE_COCKPIT_ADD_PARENT_OBJECT_TOP_LEVEL_LABEL} writes` : 'This writes'} to "${path.basename(recipeFilePath)}": a new top-level ${addition.parentObjectApiName} block, ahead of the block holding ${addition.objectApiName}, with one record and a nickname of its own, and ${dialogFieldLabel}'s "### TODO -- REFERENCE ID REQUIRED" line becomes that nickname. Every other line of the file is left as it is.`],
+                sections: [
+                    { title: `${RECIPE_COCKPIT_ADD_PARENT_OBJECT_NEST_LABEL}`, lines: nestDetail },
+                    {
+                        title: `Fields of ${addition.parentObjectApiName}`,
+                        ...( templateFieldApiNames.length > 0 ? { count: templateFieldApiNames.length } : {} ),
+                        lines: [templateFieldApiNames.length > 0
+                            ? `Fields, from the ${fakerService} minimum required fields template: ${templateFieldApiNames.join(', ')}.`
+                            : `The ${fakerService} template has no required field for ${addition.parentObjectApiName}, so its block has a count only.`]
+                    },
+                    { title: 'What happens at insert', lines: [`Generate fake data and insert then inserts ${addition.parentObjectApiName} before ${addition.objectApiName} and points the lookup at its Id. A required field your org adds to ${addition.parentObjectApiName} is not in the template: add it to the block if the insert reports it.`] }
+                ]
             },
             ...buttonLabels
         );
@@ -7380,13 +7414,17 @@ export class RecipeCockpitService {
                 ? `Wire ${describeWiring(wiringRequests[0])} to ${wiringRequests[0].parentNickname}?`
                 : `Wire ${wiringRequests.length} TODO lookups?`,
             {
-                detail: [
+                summary: [
                     `This writes to "${dialogRecipeFileLabel}": each lookup's "### TODO -- REFERENCE ID REQUIRED" line becomes the nickname below, which the insert replaces with the Id of the record holding it. Every other line of the file is left as it is.`,
-                    '',
-                    ...shownWiringLines,
-                    ...( unshownWiringCount > 0 ? [`…and ${unshownWiringCount} more`] : [] ),
                     ...( isWireAll ? ['', 'A lookup with more than one record to choose from is left as it is: use its "Wire to…".'] : [] )
-                ].join('\n')
+                ],
+                sections: [
+                    {
+                        title: 'Lookups to wire',
+                        count: wiringLines.length,
+                        lines: [...shownWiringLines, ...( unshownWiringCount > 0 ? [`…and ${unshownWiringCount} more`] : [] )]
+                    }
+                ]
             },
             RECIPE_COCKPIT_WIRE_LOOKUP_CONFIRM_LABEL
         );
@@ -7868,7 +7906,7 @@ export class RecipeCockpitService {
 
         const confirmation = await this.confirmInPanel(
             `Create a scratch org through the Dev Hub ${devHubLabel}? Nothing is deployed to it.`,
-            { detail: this.buildScratchOrgConfirmationDetail(scratchOrgPlan), isDestructive: true },
+            { ...this.buildScratchOrgConfirmationContent(scratchOrgPlan), isDestructive: true },
             RECIPE_COCKPIT_SCRATCH_ORG_CONFIRM_LABEL
         );
 
@@ -8106,7 +8144,7 @@ export class RecipeCockpitService {
         choose among the reader's Dev Hubs) and what the definition sets for the admin. Nothing is
         deployed (#358), so no package directory or replacement is named.
     */
-    static buildScratchOrgConfirmationDetail(scratchOrgPlan: IScratchOrgPlan): string {
+    static buildScratchOrgConfirmationContent(scratchOrgPlan: IScratchOrgPlan): IRecipeCockpitConfirmContent {
 
         const devHubSourceText: Record<DevHubConfigSource, string> = {
             environment: 'set by an environment variable',
@@ -8120,21 +8158,23 @@ export class RecipeCockpitService {
             definitionSummary.username ? `  Username: ${definitionSummary.username}` : ''
         ].filter(Boolean).map(definitionLine => this.toSingleLine(definitionLine));
 
-        return [
-            // WHERE THE SETTING CAME FROM IS SAID ONLY OF THE DEFAULT: ANY OTHER DEV HUB WAS NAMED BY THE READER ALONE
-            scratchOrgPlan.devHub.configSource
-                ? `Dev Hub: ${this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan))} — the Salesforce CLI's default, ${devHubSourceText[scratchOrgPlan.devHub.configSource]}`
-                : `Dev Hub: ${this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan))}`,
-            `Definition file: ${scratchOrgPlan.definitionFileRelativePath}`,
-            ...definitionLines,
-            scratchOrgPlan.aliasHolderUsername
-                ? this.toSingleLine(`Alias: ${scratchOrgPlan.alias} — currently ${scratchOrgPlan.aliasHolderUsername}; the Salesforce CLI will move it to the new org`)
-                : this.toSingleLine(`Alias: ${scratchOrgPlan.alias}`),
-            `Duration: ${scratchOrgPlan.durationDays} days`,
-            '',
-            'The definition file, authored in this repository, decides who administers the new org.',
-            'Nothing is deployed to the new org: deploy what you need yourself once it is ready. The scratch org is kept whatever happens, and nothing here deletes an org.'
-        ].join('\n');
+        return {
+            summary: [
+                // WHERE THE SETTING CAME FROM IS SAID ONLY OF THE DEFAULT: ANY OTHER DEV HUB WAS NAMED BY THE READER ALONE
+                scratchOrgPlan.devHub.configSource
+                    ? `Dev Hub: ${this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan))} — the Salesforce CLI's default, ${devHubSourceText[scratchOrgPlan.devHub.configSource]}`
+                    : `Dev Hub: ${this.toSingleLine(this.buildDevHubLabel(scratchOrgPlan))}`,
+                scratchOrgPlan.aliasHolderUsername
+                    ? this.toSingleLine(`Alias: ${scratchOrgPlan.alias} — currently ${scratchOrgPlan.aliasHolderUsername}; the Salesforce CLI will move it to the new org`)
+                    : this.toSingleLine(`Alias: ${scratchOrgPlan.alias}`),
+                `Duration: ${scratchOrgPlan.durationDays} days`
+            ],
+            warnings: ['The definition file, authored in this repository, decides who administers the new org.'],
+            sections: [
+                { title: 'Definition file', lines: [`Definition file: ${scratchOrgPlan.definitionFileRelativePath}`, ...definitionLines] },
+                { title: 'What happens next', lines: ['Nothing is deployed to the new org: deploy what you need yourself once it is ready. The scratch org is kept whatever happens, and nothing here deletes an org.'] }
+            ]
+        };
 
     }
 
@@ -10103,17 +10143,25 @@ export class RecipeCockpitService {
             expression: 'edited expression',
             fixed: 'fixed value'
         };
-        const detailLines = [
-            `Generated by the recipe's own backend, ${heldChild.fakerService}. ${RECIPE_COCKPIT_ADAPTER_CHILD_PREVIEW_NOTE}`,
-            '',
-            `${countPerParent} per ${heldChild.parentObjectApiName} record, under ${describeRecords(heldChild.parentRecordIds.length, heldChild.parentObjectApiName)}: ${describeRecords(recordCount, childObjectApiName)}`,
-            `  ${heldChild.lookupFieldApiName} -- the Id of a loaded ${heldChild.parentObjectApiName} record, ${countPerParent} in a row`,
-            ...plannedFields.map(plannedField => `  ${plannedField.fieldApiName} -- ${sourceLabels[plannedField.source]}: ${plannedField.shownValue}`)
-        ];
-
         const answer = await this.confirmInPanel(
             `Generate ${describeRecords(recordCount, childObjectApiName)} under the loaded ${heldChild.parentObjectApiName} records?`,
-            { detail: detailLines.join('\n') },
+            {
+                summary: [
+                    `${countPerParent} per ${heldChild.parentObjectApiName} record, under ${describeRecords(heldChild.parentRecordIds.length, heldChild.parentObjectApiName)}: ${describeRecords(recordCount, childObjectApiName)}`,
+                    '',
+                    `Generated by the recipe's own backend, ${heldChild.fakerService}. ${RECIPE_COCKPIT_ADAPTER_CHILD_PREVIEW_NOTE}`
+                ],
+                sections: [
+                    {
+                        title: 'Fields',
+                        count: plannedFields.length + 1,
+                        lines: [
+                            `  ${heldChild.lookupFieldApiName} -- the Id of a loaded ${heldChild.parentObjectApiName} record, ${countPerParent} in a row`,
+                            ...plannedFields.map(plannedField => `  ${plannedField.fieldApiName} -- ${sourceLabels[plannedField.source]}: ${plannedField.shownValue}`)
+                        ]
+                    }
+                ]
+            },
             RECIPE_COCKPIT_ADAPTER_CHILD_GENERATE_CONFIRM_LABEL
         );
 
@@ -10328,15 +10376,20 @@ export class RecipeCockpitService {
         const toRelativePath = (filePath: string) => path.relative(path.resolve(workspaceRoot), filePath).split(path.sep).join('/');
         const overwrites = fieldFileCopies.filter(fieldFileCopy => fieldFileCopy.status === 'changed');
         const additions = fieldFileCopies.filter(fieldFileCopy => fieldFileCopy.status === 'new');
-        const detailLines = [
-            ...( overwrites.length > 0 ? [`Overwritten with the org's version (${overwrites.length}):`, RecipeCockpitMetadataDeploy.describeCappedList(overwrites.map(fieldFileCopy => toRelativePath(fieldFileCopy.targetFilePath)))] : [] ),
-            ...( additions.length > 0 ? [`Added (${additions.length}):`, RecipeCockpitMetadataDeploy.describeCappedList(additions.map(fieldFileCopy => toRelativePath(fieldFileCopy.targetFilePath)))] : [] ),
-            'A project file overwritten here is not kept anywhere else: commit or stash it first if you need it. Nothing is deployed, and the recipe changes only when Generate Treecipe runs.'
-        ];
-
         const chosenLabel = await this.confirmInPanel(
             `Apply ${fieldFileCopies.length === 1 ? '1 field file' : `${fieldFileCopies.length} field files`} retrieved from ${changesMessage.orgLabel} to this project?`,
-            { detail: detailLines.join('\n'), isDestructive: true },
+            {
+                summary: [`${[
+                    ...( overwrites.length > 0 ? [`${overwrites.length} overwritten with the org's version`] : [] ),
+                    ...( additions.length > 0 ? [`${additions.length} added`] : [] )
+                ].join(', ')}. Nothing is deployed, and the recipe changes only when Generate Treecipe runs.`],
+                ...( overwrites.length > 0 ? { warnings: ['A project file overwritten here is not kept anywhere else: commit or stash it first if you need it.'] } : {} ),
+                sections: [
+                    { title: 'Overwritten with the org\'s version', count: overwrites.length, lines: overwrites.length > 0 ? [RecipeCockpitMetadataDeploy.describeCappedList(overwrites.map(fieldFileCopy => toRelativePath(fieldFileCopy.targetFilePath)))] : [] },
+                    { title: 'Added', count: additions.length, lines: additions.length > 0 ? [RecipeCockpitMetadataDeploy.describeCappedList(additions.map(fieldFileCopy => toRelativePath(fieldFileCopy.targetFilePath)))] : [] }
+                ],
+                isDestructive: true
+            },
             RECIPE_COCKPIT_ADAPTER_APPLY_CONFIRM_LABEL
         );
 
@@ -10743,18 +10796,27 @@ export class RecipeCockpitService {
             expression: 'edited expression',
             fixed: 'fixed value'
         };
-        const detailLines: string[] = [`Generated by the recipe's own backend, ${fakerService}. Nothing is written to the org or the recipe file.`, ''];
-        objectApiNames.forEach(objectApiName => {
+        const objectSections = objectApiNames.map(objectApiName => {
             const recordCount = recordsOf(objectApiName).length;
-            detailLines.push(`${objectApiName}: ${describeRecords(recordCount)}${recordCount === 0 ? ', so nothing is generated' : ''}`);
-            plannedFields.filter(plannedField => plannedField.objectApiName === objectApiName).forEach(plannedField => {
-                detailLines.push(`  ${plannedField.fieldApiName}${plannedField.isOrgOnly ? ' (only in the org)' : ''} -- ${sourceLabels[plannedField.source]}: ${plannedField.shownValue}`);
-            });
+            return {
+                title: `${objectApiName}: ${describeRecords(recordCount)}${recordCount === 0 ? ', so nothing is generated' : ''}`,
+                lines: plannedFields
+                    .filter(plannedField => plannedField.objectApiName === objectApiName)
+                    .map(plannedField => `  ${plannedField.fieldApiName}${plannedField.isOrgOnly ? ' (only in the org)' : ''} -- ${sourceLabels[plannedField.source]}: ${plannedField.shownValue}`)
+            };
         });
+        // AN EDITED EXPRESSION IS CODE THE BACKEND RUNS, SO IT STAYS ON SCREEN RATHER THAN FOLDED IN ITS OBJECT'S SECTION
+        const editedExpressionLines = plannedFields
+            .filter(plannedField => plannedField.source === 'expression')
+            .map(plannedField => `Runs the edited expression ${plannedField.objectApiName}.${plannedField.fieldApiName}: ${plannedField.shownValue}`);
 
         const answer = await this.confirmInPanel(
             `Generate new values for ${plannedFields.length} ${plannedFields.length === 1 ? 'field' : 'fields'} of ${treeTitle}?`,
-            { detail: detailLines.join('\n') },
+            {
+                summary: [`Generated by the recipe's own backend, ${fakerService}. Nothing is written to the org or the recipe file.`],
+                warnings: editedExpressionLines,
+                sections: objectSections
+            },
             RECIPE_COCKPIT_UPDATER_GENERATE_CONFIRM_LABEL
         );
 
@@ -11024,21 +11086,22 @@ export class RecipeCockpitService {
         // A PICKLIST ON AN OBJECT WITH RECORD TYPES GETS THE FIELD'S OWN VALUES, WHICH A RECORD TYPE CAN NARROW: THE ORG DECIDES, AND SAYS SO PER RECORD
         const hasRecordTypePicklist = this.hasRecordTypePicklist(clickedRecipeDataMessage.recipe, plannedObjects, describeOutcomes);
 
-        const detailLines: string[] = [
-            `Org: ${orgLabel} (${SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail)})`,
-            `Each record is updated by its Id. The old values are saved first to treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${tree.folderName}/, and nothing is updated if they cannot be.`,
-            ''
-        ];
-        plannedObjects.forEach(plannedObject => {
-            detailLines.push(`${plannedObject.objectApiName}: ${describeRecords(plannedObject.recordValues.length)} -- ${plannedObject.fieldApiNames.join(', ')}`);
-        });
-        if ( hasRecordTypePicklist ) {
-            detailLines.push('', RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE);
-        }
-
         const answer = await this.confirmInPanel(
             `Update ${describeRecords(recordTotal)} of ${treeTitle} in ${orgLabel}?`,
-            { detail: detailLines.join('\n'), isDestructive: true },
+            {
+                summary: [`Org: ${orgLabel}`],
+                badge: SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail),
+                warnings: hasRecordTypePicklist ? [RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE] : [],
+                sections: [
+                    {
+                        title: 'Records and fields',
+                        count: plannedObjects.length,
+                        lines: plannedObjects.map(plannedObject => `${plannedObject.objectApiName}: ${describeRecords(plannedObject.recordValues.length)} -- ${plannedObject.fieldApiNames.join(', ')}`)
+                    },
+                    { title: 'How it can be undone', lines: [`Each record is updated by its Id. The old values are saved first to treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${tree.folderName}/, and nothing is updated if they cannot be.`] }
+                ],
+                isDestructive: true
+            },
             RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL
         );
 
@@ -11465,25 +11528,28 @@ export class RecipeCockpitService {
 
         const recordTotal = restoredObjects.reduce((total, plannedObject) => total + plannedObject.recordValues.length, 0);
 
-        const detailLines: string[] = [
-            `Org: ${orgLabel} (${SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail)})`,
-            `Each record is set back by its Id to the value it held when ${snapshotName} was saved, on ${snapshot.takenAt}. The values it holds now are saved first to treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${tree.folderName}/, and nothing is restored if they cannot be.`,
-            ''
+        const restoreWarnings = [
+            ...( missingRecordTotal > 0 ? [`${describeRecords(missingRecordTotal)} of the snapshot ${missingRecordTotal === 1 ? 'is' : 'are'} no longer in the org, or not visible to this user, and will not be restored.`] : [] ),
+            // AS THE UPDATE SAYS (#418): A RECORD WHOSE RECORD TYPE NO LONGER ALLOWS ITS OLD PICKLIST VALUE IS REJECTED BY THE ORG
+            ...( this.hasRecordTypePicklist(clickedRecipeDataMessage.recipe, restoredObjects, describeOutcomes) ? [RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE] : [] )
         ];
-        restoredObjects.forEach(plannedObject => {
-            detailLines.push(`${plannedObject.objectApiName}: ${describeRecords(plannedObject.recordValues.length)} -- ${plannedObject.fieldApiNames.join(', ')}`);
-        });
-        if ( missingRecordTotal > 0 ) {
-            detailLines.push('', `${describeRecords(missingRecordTotal)} of the snapshot ${missingRecordTotal === 1 ? 'is' : 'are'} no longer in the org, or not visible to this user, and will not be restored.`);
-        }
-        // AS THE UPDATE SAYS (#418): A RECORD WHOSE RECORD TYPE NO LONGER ALLOWS ITS OLD PICKLIST VALUE IS REJECTED BY THE ORG
-        if ( this.hasRecordTypePicklist(clickedRecipeDataMessage.recipe, restoredObjects, describeOutcomes) ) {
-            detailLines.push('', RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE);
-        }
 
         const answer = await this.confirmInPanel(
             `Restore ${describeRecords(recordTotal)} of ${treeTitle} in ${orgLabel}?`,
-            { detail: detailLines.join('\n'), isDestructive: true },
+            {
+                summary: [`Org: ${orgLabel}`, `Back to the values ${snapshotName} saved on ${snapshot.takenAt}.`],
+                badge: SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail),
+                warnings: restoreWarnings,
+                sections: [
+                    {
+                        title: 'Records and fields',
+                        count: restoredObjects.length,
+                        lines: restoredObjects.map(plannedObject => `${plannedObject.objectApiName}: ${describeRecords(plannedObject.recordValues.length)} -- ${plannedObject.fieldApiNames.join(', ')}`)
+                    },
+                    { title: 'How it can be undone', lines: [`Each record is set back by its Id to the value it held when ${snapshotName} was saved, on ${snapshot.takenAt}. The values it holds now are saved first to treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${tree.folderName}/, and nothing is restored if they cannot be.`] }
+                ],
+                isDestructive: true
+            },
             RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL
         );
 
@@ -12191,7 +12257,7 @@ export class RecipeCockpitService {
         const describeComponentCount = (componentCount: number) => `${componentCount} ${componentCount === 1 ? 'component' : 'components'}`;
         const confirmTitle = `Deploy ${describeComponentCount(components.length)} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgLabel)}?`;
         const confirmOptions = {
-            detail: RecipeCockpitMetadataDeploy.buildConfirmationDetail(deployKind, treeLabel, orgLabel, packageDirectoryRelativePath, components, summary, SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot), fullSetComponents),
+            ...RecipeCockpitMetadataDeploy.buildConfirmationContent(deployKind, treeLabel, orgLabel, packageDirectoryRelativePath, components, summary, SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot), fullSetComponents),
             isDestructive: true
         };
 
@@ -12556,7 +12622,7 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             confirmationTitle,
             {
-                detail: RecipeCockpitMetadataRetrieve.buildConfirmationDetail(retrieveKind, treeLabel, orgLabel, askedNames, packageDirectoryRelativePath, localFileCount),
+                ...RecipeCockpitMetadataRetrieve.buildConfirmationContent(retrieveKind, treeLabel, orgLabel, askedNames, packageDirectoryRelativePath, localFileCount),
                 isDestructive: true
             },
             RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL
@@ -12805,12 +12871,14 @@ export class RecipeCockpitService {
             `${isOverwrite ? 'Overwrite' : 'Write'} the permission set ${permissionSetName} for ${this.toSingleLine(treeLabel)}?`,
             {
                 isDestructive: isOverwrite,
-                detail: [
+                summary: [
                     `File: ${relativeFilePath}`,
-                    `Grants Create and Read on ${objectCountText} and access to ${fieldCountText}, read-only where the org computes the value.`,
-                    ...( isOverwrite ? ['The file already exists and will be overwritten: Treecipe owns this file.'] : [] ),
-                    'It will not be deployed: deploy it with your own flow, then assign it with "Assign permission sets to me…".'
-                ].join('\n')
+                    `Grants Create and Read on ${objectCountText} and access to ${fieldCountText}, read-only where the org computes the value.`
+                ],
+                warnings: isOverwrite ? ['The file already exists and will be overwritten: Treecipe owns this file.'] : [],
+                sections: [
+                    { title: 'What happens next', lines: ['It will not be deployed: deploy it with your own flow, then assign it with "Assign permission sets to me…".'] }
+                ]
             },
             RECIPE_COCKPIT_GENERATE_PERMISSION_SET_CONFIRM_LABEL
         );
@@ -13011,7 +13079,7 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             `Assign ${describePermissionSets(pickedPermissionSets.length)} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgDetail.username)} in ${this.toSingleLine(orgLabel)}?`,
             {
-                detail: RecipeCockpitPermissionSetAssign.buildConfirmationDetail(treeLabel, orgLabel, orgDetail.username, pickedPermissionSets, objectApiNames.length),
+                ...RecipeCockpitPermissionSetAssign.buildConfirmationContent(treeLabel, orgLabel, orgDetail.username, pickedPermissionSets, objectApiNames.length),
                 isDestructive: true
             },
             RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL
@@ -13889,7 +13957,7 @@ export class RecipeCockpitService {
 
         const confirmation = await this.confirmInPanel(
             `Generate ${treeLabel} and insert it into ${orgLabel}?`,
-            { detail: this.buildInsertConfirmationDetail(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups), isDestructive: true },
+            { ...this.buildInsertConfirmationContent(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups), isDestructive: true },
             RECIPE_COCKPIT_INSERT_CONFIRM_LABEL
         );
 
@@ -14224,7 +14292,7 @@ export class RecipeCockpitService {
 
     }
 
-    static buildInsertConfirmationDetail(orgLabel: string,
+    static buildInsertConfirmationContent(orgLabel: string,
                                             orgTypeDetail: IOrgTypeDetail | undefined,
                                             tree: IRecipeCockpitTreeViewModel,
                                             recipeViewModel: IRecipeCockpitRecipeViewModel,
@@ -14232,7 +14300,7 @@ export class RecipeCockpitService {
                                             outsideParentObjectApiNames: string[],
                                             fakerService: string,
                                             recipeFileLabel: string,
-                                            orgRecordLookups: readonly IRecipeCockpitOrgRecordLookupViewModel[] = []): string {
+                                            orgRecordLookups: readonly IRecipeCockpitOrgRecordLookupViewModel[] = []): IRecipeCockpitConfirmContent {
 
         const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
         const objectCountsByObject = this.listObjectCountsByObject(tree);
@@ -14253,38 +14321,60 @@ export class RecipeCockpitService {
         const validationRulesOff = [...this.listUnconstrainedValuesByObject(recipeViewModel, tree)]
             .flatMap(([objectApiName, valuesByField]) => [...valuesByField.keys()].map(fieldApiName => `${objectApiName}.${fieldApiName}`));
 
-        return [
-            `Org: ${orgLabel}`,
-            `Type: ${SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail)}`,
-            `Recipe tree: ${tree.customName ?? tree.title} (${recipeFileLabel})`,
-            `Backend: ${fakerService}`,
-            'Records, inserted parents first:',
-            ...objectLines,
-            ...( excludedFieldApiNamesByObject.size > 0
-                ? [`Unticked, not sent: ${[...excludedFieldApiNamesByObject].map(([objectApiName, fieldApiNames]) => fieldApiNames.map(fieldApiName => `${objectApiName}.${fieldApiName}`).join(', ')).join(', ')}`]
-                : [] ),
-            ...( fixedValues.length > 0
-                ? [`Edited fields: ${fixedValues.map(fixedValue => `${fixedValue.objectApiName}.${fixedValue.fieldApiName} = ${fixedValue.value}`).join(', ')}`]
-                : [] ),
-            ...( validationRulesOff.length > 0
-                ? [`Validation rules switched off, so the org may reject these values: ${validationRulesOff.join(', ')}`]
-                : [] ),
-            ...( orgRecordLookups.length > 0
-                ? [
-                    'Lookups set to existing org records, each checked in this org before anything is written:',
-                    ...orgRecordLookups.map(orgRecordLookup => `  ${orgRecordLookup.objectApiName}.${orgRecordLookup.fieldApiName} → ${orgRecordLookup.parentObjectApiName} ${orgRecordLookup.recordId} (from ${orgRecordLookup.orgLabel})`)
-                ]
-                : [] ),
-            ...( outsideParentObjectApiNames.length > 0
-                ? [`Required lookups to objects this tree does not insert get a random existing record of: ${outsideParentObjectApiNames.join(', ')} (none means nothing is inserted).`]
-                : [] ),
-            'Any other lookup to an object this tree does not insert is left blank.',
-            ...( totalRecordCount > RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD
-                ? ['', `This run will take time: ${totalRecordCount} records in at least ${requestCount} Collections API requests.`]
-                : [] ),
-            '',
-            'The data set is written to FakeDataSets as Run Faker by Recipe writes it, then inserted the way Insert Data Set by Directory inserts: you choose all-or-none next, and Cancel on the progress notification deletes every record this insert saved.'
-        ].join('\n');
+        const orgTypeLabel = SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail);
+
+        return {
+            summary: [`Generate ${totalRecordCount} ${totalRecordCount === 1 ? 'record' : 'records'} and insert ${totalRecordCount === 1 ? 'it' : 'them'} into ${orgLabel}.`],
+            badge: orgTypeLabel,
+            warnings: [
+                'Cancel on the progress notification deletes every record this insert saved.',
+                ...( validationRulesOff.length > 0
+                    ? [`Validation rules switched off, so the org may reject these values: ${validationRulesOff.join(', ')}`]
+                    : [] ),
+                ...( totalRecordCount > RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD
+                    ? [`This run will take time: ${totalRecordCount} records in at least ${requestCount} Collections API requests.`]
+                    : [] )
+            ],
+            sections: [
+                { title: 'Records, inserted parents first', count: objectLines.length, lines: objectLines },
+                {
+                    title: 'Lookups',
+                    lines: [
+                        ...( orgRecordLookups.length > 0
+                            ? [
+                                'Lookups set to existing org records, each checked in this org before anything is written:',
+                                ...orgRecordLookups.map(orgRecordLookup => `  ${orgRecordLookup.objectApiName}.${orgRecordLookup.fieldApiName} → ${orgRecordLookup.parentObjectApiName} ${orgRecordLookup.recordId} (from ${orgRecordLookup.orgLabel})`)
+                            ]
+                            : [] ),
+                        ...( outsideParentObjectApiNames.length > 0
+                            ? [`Required lookups to objects this tree does not insert get a random existing record of: ${outsideParentObjectApiNames.join(', ')} (none means nothing is inserted).`]
+                            : [] ),
+                        'Any other lookup to an object this tree does not insert is left blank.'
+                    ]
+                },
+                {
+                    title: 'Fields changed on this card',
+                    lines: [
+                        ...( excludedFieldApiNamesByObject.size > 0
+                            ? [`Unticked, not sent: ${[...excludedFieldApiNamesByObject].map(([objectApiName, fieldApiNames]) => fieldApiNames.map(fieldApiName => `${objectApiName}.${fieldApiName}`).join(', ')).join(', ')}`]
+                            : [] ),
+                        ...( fixedValues.length > 0
+                            ? [`Edited fields: ${fixedValues.map(fixedValue => `${fixedValue.objectApiName}.${fixedValue.fieldApiName} = ${fixedValue.value}`).join(', ')}`]
+                            : [] )
+                    ]
+                },
+                {
+                    title: 'Org and recipe',
+                    lines: [
+                        `Org: ${orgLabel}`,
+                        `Type: ${orgTypeLabel}`,
+                        `Recipe tree: ${tree.customName ?? tree.title} (${recipeFileLabel})`,
+                        `Backend: ${fakerService}`
+                    ]
+                },
+                { title: 'What happens next', lines: ['The data set is written to FakeDataSets as Run Faker by Recipe writes it, then inserted the way Insert Data Set by Directory inserts: you choose all-or-none next.'] }
+            ]
+        };
 
     }
 
@@ -18511,6 +18601,15 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     .confirmLine { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0.15rem 0; }
     .confirmListItem { padding-left: 1rem; }
     .confirmGap { height: 0.6rem; }
+    .confirmSummary { margin: 0.5rem 0; font-size: 1.02rem; }
+    .confirmBadge { display: inline-block; margin-top: 0.3rem; padding: 0.1rem 0.55rem; border-radius: 999px; font-size: 0.85rem; font-weight: 600; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); }
+    .confirmWarnings { margin: 0.6rem 0; padding: 0.45rem 0.7rem; color: var(--sdt-text); background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-left: 4px solid var(--sdt-changed); border-radius: 6px; }
+    .confirmWarningsHeading { margin-bottom: 0.15rem; font-weight: 600; color: var(--sdt-changed); }
+    .confirmSection { margin: 0.35rem 0; }
+    .confirmSectionToggle { display: flex; align-items: center; gap: 0.4rem; width: 100%; padding: 0.35rem 0.5rem; text-align: left; line-height: 1.3; }
+    .confirmSectionTitle { flex: 1 1 auto; font-weight: 600; overflow-wrap: anywhere; }
+    .confirmSectionCount { flex: none; padding: 0 0.45rem; border-radius: 999px; font-size: 0.85rem; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); }
+    .confirmSectionBody { padding: 0.2rem 0.5rem 0.2rem 2rem; }
     .confirmCheckRow { flex: none; display: flex; align-items: center; gap: 0.4rem; padding: 0.75rem 1rem 0 1rem; }
     .confirmCheckLabel { cursor: pointer; overflow-wrap: anywhere; }
     .confirmActions { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1rem; }
@@ -18726,6 +18825,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const FRIEND_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_FRIEND_EMOJI)};
     const PARENT_NICKNAME_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI)};
     const TOGGLE_COLLAPSED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH)};
+    const CONFIRM_WARNINGS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL)};
     const SEARCH_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_SEARCH_GLYPH_PATH)};
     const MOTION_REVEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS};
     const MOTION_CONCEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS};
@@ -27977,10 +28077,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const confirmationId = hostMessage.confirmationId;
         if (typeof confirmationId !== 'string' || !confirmationId) { return; }
 
-        const lines = Array.isArray(hostMessage.lines) ? hostMessage.lines.filter(function (line) { return typeof line === 'string'; }) : null;
+        const content = readConfirmContent(hostMessage);
         const buttonLabels = Array.isArray(hostMessage.buttons) ? hostMessage.buttons.filter(function (label) { return typeof label === 'string' && !!label; }) : null;
 
-        if (hostMessage.renderSequence !== renderedSequence || typeof hostMessage.title !== 'string' || !lines || !buttonLabels || buttonLabels.length === 0) {
+        if (hostMessage.renderSequence !== renderedSequence || typeof hostMessage.title !== 'string' || !content || !buttonLabels || buttonLabels.length === 0) {
             vscodeApi.postMessage({ command: 'confirmResponse', confirmationId: confirmationId, choice: null });
             return;
         }
@@ -28005,14 +28105,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         dialogElement.setAttribute('aria-labelledby', 'confirmTitle');
         dialogElement.setAttribute('aria-describedby', 'confirmBody');
 
-        lines.forEach(function (line) {
-            if (line.trim() === '') {
-                bodyElement.appendChild(createElement('div', 'confirmGap'));
-                return;
-            }
-            const isListItem = /^\\s*([-•]|\\u2026and )/.test(line);
-            bodyElement.appendChild(createElement('div', isListItem ? 'confirmLine confirmListItem' : 'confirmLine', line));
-        });
+        const sectionToggleElements = drawConfirmContent(bodyElement, content);
 
         const buttonElements = buttonLabels.map(function (label, labelIndex) {
             const buttonElement = createButton(labelIndex === 0 ? 'primary' : 'secondary', 'confirmChoice', label);
@@ -28054,7 +28147,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         dialogElement.appendChild(actionsElement);
         overlayElement.appendChild(dialogElement);
 
-        const focusableElements = [bodyElement].concat(checkElement ? [checkElement] : [], buttonElements, [cancelElement]);
+        const focusableElements = [bodyElement].concat(sectionToggleElements, checkElement ? [checkElement] : [], buttonElements, [cancelElement]);
 
         dialogElement.addEventListener('keydown', function (event) {
             if (event.key === 'Escape') {
@@ -28088,6 +28181,113 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         // AN ACTION WITH NO UNDO STARTS ON CANCEL
         focusElement(isDestructive ? cancelElement : buttonElements[0]);
+
+    }
+
+    /*
+        The parts of a confirmation (#457), read whole or not at all: a summary of strings, warnings
+        of strings, and sections each with a title, lines and an optional count. Anything out of shape
+        is null, and the request is answered Cancel rather than drawn with a part missing.
+    */
+    function readConfirmContent(hostMessage) {
+
+        const isStringList = function (value) { return Array.isArray(value) && value.every(function (item) { return typeof item === 'string'; }); };
+
+        if (!isStringList(hostMessage.summary) || !isStringList(hostMessage.warnings) || !Array.isArray(hostMessage.sections)) { return null; }
+        if (hostMessage.badge !== undefined && typeof hostMessage.badge !== 'string') { return null; }
+
+        const isReadableSection = function (section) {
+            return !!section && typeof section === 'object' && typeof section.title === 'string' && !!section.title && isStringList(section.lines)
+                && (section.count === undefined || (typeof section.count === 'number' && Number.isSafeInteger(section.count) && section.count >= 0));
+        };
+        if (!hostMessage.sections.every(isReadableSection)) { return null; }
+
+        return {
+            summary: hostMessage.summary,
+            badge: hostMessage.badge || '',
+            warnings: hostMessage.warnings.filter(function (warning) { return warning.trim() !== ''; }),
+            sections: hostMessage.sections.filter(function (section) { return section.lines.some(function (line) { return line.trim() !== ''; }); })
+        };
+
+    }
+
+    function drawConfirmLines(parentElement, lines) {
+
+        lines.forEach(function (line) {
+            if (line.trim() === '') {
+                parentElement.appendChild(createElement('div', 'confirmGap'));
+                return;
+            }
+            const isListItem = /^\\s*([-•]|\\u2026and )/.test(line);
+            parentElement.appendChild(createElement('div', isListItem ? 'confirmLine confirmListItem' : 'confirmLine', line));
+        });
+
+    }
+
+    /*
+        Summary first, with the org type's badge; then the warnings in one callout that is always on
+        screen; then each section folded under a toggle that names it and its count. A section's
+        lines are built the first time it opens, since a long one (every component of a deploy) costs
+        nothing until the reader asks for it. Returns the toggles, in order, for the Tab cycle.
+    */
+    function drawConfirmContent(bodyElement, content) {
+
+        const summaryElement = createElement('div', 'confirmSummary');
+        drawConfirmLines(summaryElement, content.summary);
+        if (content.badge) { summaryElement.appendChild(createElement('span', 'confirmBadge', content.badge)); }
+        bodyElement.appendChild(summaryElement);
+
+        if (content.warnings.length > 0) {
+            const warningsElement = createElement('div', 'confirmWarnings');
+            warningsElement.setAttribute('role', 'note');
+            warningsElement.setAttribute('aria-label', CONFIRM_WARNINGS_LABEL);
+            warningsElement.appendChild(createElement('div', 'confirmWarningsHeading', CONFIRM_WARNINGS_LABEL));
+            drawConfirmLines(warningsElement, content.warnings);
+            bodyElement.appendChild(warningsElement);
+        }
+
+        return content.sections.map(function (section, sectionIndex) {
+
+            const sectionElement = createElement('div', 'confirmSection');
+            const toggleElement = createButton('secondary', 'confirmSectionToggle');
+            const glyphElement = document.createElementNS(SVG_NAMESPACE, 'svg');
+            const pathElement = document.createElementNS(SVG_NAMESPACE, 'path');
+            const sectionBodyElement = createElement('div', 'confirmSectionBody hidden');
+            const sectionBodyId = 'confirmSection' + sectionIndex;
+            let isBuilt = false;
+            let isSectionExpanded = false;
+
+            glyphElement.setAttribute('class', 'toggleGlyph');
+            glyphElement.setAttribute('viewBox', TREE_GLYPH_VIEW_BOX);
+            glyphElement.setAttribute('aria-hidden', 'true');
+            glyphElement.setAttribute('focusable', 'false');
+            pathElement.setAttribute('d', TOGGLE_COLLAPSED_GLYPH_PATH);
+            glyphElement.appendChild(pathElement);
+            toggleElement.appendChild(glyphElement);
+            toggleElement.appendChild(createElement('span', 'confirmSectionTitle', section.title));
+            if (section.count !== undefined) { toggleElement.appendChild(createElement('span', 'confirmSectionCount', String(section.count))); }
+
+            sectionBodyElement.setAttribute('id', sectionBodyId);
+            toggleElement.setAttribute('aria-controls', sectionBodyId);
+            drawToggle(toggleElement, false, false);
+
+            toggleElement.addEventListener('click', function () {
+                isSectionExpanded = !isSectionExpanded;
+                if (isSectionExpanded && !isBuilt) {
+                    drawConfirmLines(sectionBodyElement, section.lines);
+                    isBuilt = true;
+                }
+                drawToggle(toggleElement, isSectionExpanded, !isMotionReduced());
+                setShownWithMotion(sectionBodyElement, isSectionExpanded, !isMotionReduced());
+            });
+
+            sectionElement.appendChild(toggleElement);
+            sectionElement.appendChild(sectionBodyElement);
+            bodyElement.appendChild(sectionElement);
+
+            return toggleElement;
+
+        });
 
     }
 

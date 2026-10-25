@@ -857,7 +857,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
 
             expect(showWarningMessage).toHaveBeenCalledTimes(1);
             expect(showWarningMessage.mock.calls[0][1]).toMatchObject({ inPanel: true });
-            expect(showWarningMessage.mock.calls[0][1].detail).toBe('Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every validation rule is applied again. The recipe file is not changed, so an edit written into it stays: clear it with its field\'s edit button.');
+            expect(showWarningMessage.mock.calls[0][1].detail).toBe('Every object is included, every field is ticked, every record count goes back to the recipe\'s own again and every validation rule is applied again.\n\nWhat stays\nThe recipe file is not changed, so an edit written into it stays: clear it with its field\'s edit button.');
             expect(storedOf(workspaceState)).toEqual(storedSelections({ [LEAD_TREE_KEY]: { Lead: 3 } }));
             expect(lastPosted('objectSelection').treeKey).toBe(ACCOUNT_TREE_KEY);
             expect(lastPosted('objectSelection')).not.toHaveProperty('objectCounts');

@@ -301,24 +301,24 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
         it('names the tree, the org, what is asked for, where new files go and what is overwritten in each kind\'s confirmation, each on one line', () => {
 
-            const fieldsDetail = RecipeCockpitMetadataRetrieve.buildConfirmationDetail('fields', 'Tree\nTwo', `prod · ${PROD_USERNAME}`, ACCOUNT_RETRIEVE_FIELDS, 'force-app', 7);
+            const fieldsDetail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('fields', 'Tree\nTwo', `prod · ${PROD_USERNAME}`, ACCOUNT_RETRIEVE_FIELDS, 'force-app', 7));
             expect(fieldsDetail).toContain('Tree: Tree Two');
-            expect(fieldsDetail).toContain(`8 custom fields: ${ACCOUNT_RETRIEVE_FIELDS.join(', ')}`);
+            expect(fieldsDetail).toContain(`8 custom fields\n${ACCOUNT_RETRIEVE_FIELDS.join(', ')}`);
             expect(fieldsDetail).toContain('New field files are written under: force-app');
             expect(fieldsDetail).toContain('7 existing local field files for these fields will be overwritten with the org\'s version wherever the org holds the same field.');
             expect(fieldsDetail).toContain('Nothing is deployed.');
             expect(fieldsDetail).not.toMatch(/[()]/);
 
-            const valueSetDetail = RecipeCockpitMetadataRetrieve.buildConfirmationDetail('globalValueSets', 'T', 'o', ['Account_Ratings'], 'force-app', 0);
-            expect(valueSetDetail).toContain('1 global value set: Account_Ratings\n');
+            const valueSetDetail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('globalValueSets', 'T', 'o', ['Account_Ratings'], 'force-app', 0));
+            expect(valueSetDetail).toContain('1 global value set\nAccount_Ratings\n');
             expect(valueSetDetail).toContain('This project holds no global value set file for these value sets yet.');
 
-            const recordTypeDetail = RecipeCockpitMetadataRetrieve.buildConfirmationDetail('recordTypes', 'T', 'o', ['Account.Business', 'Account.Wholesale'], 'force-app', 1);
-            expect(recordTypeDetail).toContain('2 record types: Account.Business, Account.Wholesale');
+            const recordTypeDetail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('recordTypes', 'T', 'o', ['Account.Business', 'Account.Wholesale'], 'force-app', 1));
+            expect(recordTypeDetail).toContain('2 record types\nAccount.Business, Account.Wholesale');
             expect(recordTypeDetail).toContain('1 existing local record type file for these objects will be overwritten');
 
             const longList = Array.from({ length: 25 }, (_value, index) => `Account.Field${index}__c`);
-            expect(RecipeCockpitMetadataRetrieve.buildConfirmationDetail('fields', 'T', 'o', longList, 'force-app', 0)).toContain('and 5 more');
+            expect(RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('fields', 'T', 'o', longList, 'force-app', 0))).toContain('and 5 more');
 
         });
 
@@ -523,7 +523,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
             const [modalMessage, modalOptions] = modalCalls()[0];
             expect(modalMessage).toBe(`Retrieve 8 custom fields of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}?`);
-            expect(modalOptions.detail).toContain(`8 custom fields: ${ACCOUNT_RETRIEVE_FIELDS.join(', ')}`);
+            expect(modalOptions.detail).toContain(`8 custom fields\n${ACCOUNT_RETRIEVE_FIELDS.join(', ')}`);
             expect(modalOptions.detail).toContain('7 existing local field files for these fields will be overwritten');
 
             expect(retrieveCalls()).toHaveLength(1);
@@ -583,7 +583,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
             expect(promptSpy).toHaveBeenCalledWith(RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS.recordTypes);
             expect(modalCalls()[0][0]).toBe(`Retrieve 3 record types of 3 objects of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}?`);
-            expect(modalCalls()[0][1].detail).toContain('3 record types: Account.Business, Account.Partner, Account.Wholesale');
+            expect(modalCalls()[0][1].detail).toContain('3 record types\nAccount.Business, Account.Partner, Account.Wholesale');
             expect(modalCalls()[0][1].detail).toContain('2 existing local record type files for these objects will be overwritten');
             expect(cliCalls.filter(argumentList => argumentList[2] === 'metadata')).toEqual([['org', 'list', 'metadata', '--json', '--target-org', PROD_USERNAME, '--metadata-type', 'RecordType']]);
             expect(retrieveCalls()).toHaveLength(1);
