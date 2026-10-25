@@ -3,7 +3,7 @@
   "displayName": "Salesforce Data Treecipe",
   "description": "source-fidelity driven development, pairs well with cumulus-ci",
   "icon": "images/datatreecipe.png",
-  "version": "3.151.0",
+  "version": "3.152.0",
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -72,6 +72,35 @@
         "command": "treecipe.openRecipeCockpit",
         "title": "Open Recipe Cockpit",
         "category": "Salesforce Treecipe"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "treecipe",
+          "title": "Treecipe",
+          "icon": "images/treecipe-activity-bar.svg"
+        }
+      ]
+    },
+    "views": {
+      "treecipe": [
+        {
+          "id": "treecipe.commands",
+          "name": "Commands"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "treecipe.commands",
+        "contents": "Open a folder to use Salesforce Data Treecipe.",
+        "when": "workbenchState == empty"
+      },
+      {
+        "view": "treecipe.commands",
+        "contents": "This workspace has no Treecipe configuration yet.\n[Initiate Configuration](command:treecipe.initiateConfiguration)",
+        "when": "workbenchState != empty && !salesforce-data-treecipe.isTreecipeWorkspace"
       }
     ],
     "configuration": [

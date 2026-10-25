@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.151.0] - Recipe Cockpit: confirmations open on a short summary, with the detail folded into sections
+## [3.152.0] - Recipe Cockpit: confirmations open on a short summary, with the detail folded into sections
 
 [#457](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/457). Every in-panel confirmation (#349) drew its detail as one flat list of lines: the org, the record counts, the lookup rules, the rollback and the recipe file all at the same weight, so the one line that mattered could be the last.
 
@@ -14,6 +14,17 @@
 - **Unchanged.** The answer is still a button label or Cancel under the one-use id; every executor re-plans after it; text is written with `textContent`; the shell still takes only a nonce; Escape, the Tab trap (now through each section toggle, in order, between the body and the check box or buttons), `alertdialog` and the start on Cancel for an action with no undo, and the #402 check box all behave as before. The palette commands keep VS Code's modal.
 - **Colours.** The badge and a section's count are `--sdt-chip-text` on `--sdt-chip-bg`, the callout `--sdt-text` on `--sdt-surface` with an `--sdt-changed` edge and heading, the toggles the secondary kind: every pair is one the contrast test already holds.
 - **Tests.** The suites that script a confirmation through the mocked modal get its parts as one `detail` text (`RecipeCockpitConfirmContent.flatten`, a section title followed by ` · <count>`), and the dialog suite drives the real panel script through the summary, the callout, folded and opened sections, malformed parts and the Tab order.
+
+## [3.151.0] - A Treecipe icon in the Activity Bar and a side bar view of the extension's commands
+
+[#456](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/456). The extension had no home in VS Code's main side bar: its commands were found by searching the Command Palette, and the status bar item (#251) opens only the Recipe Cockpit.
+
+- **The icon.** `viewsContainers.activitybar` adds a **Treecipe** container whose icon is a new one-colour SVG, `images/treecipe-activity-bar.svg`, traced from the logo's outline: a trunk branching into nodes on a round base. VS Code draws an Activity Bar icon as a mask, so the logo PNG, which has no transparency, would have drawn as a solid square. The marketplace icon is still the PNG.
+- **The view.** `treecipe.commands` lists the commands in two groups, **Recipes** (Open Recipe Cockpit, Generate Treecipe, Run Faker by Recipe, Insert Data Set by Directory, Select Faker Implementation) and **Picklist Dependencies** (the four picklist dependency commands), each under its palette title and a codicon. A row runs its command id with **no arguments**, so every guard the command has holds: the Recipe Cockpit's preview opt-in, Run Faker's recipe picker, every org picker.
+- **The welcome states.** With no folder open the view says one is needed and offers nothing to click. In a folder with no Treecipe configuration it offers **Initiate Configuration**, and once that command writes the file the command list appears without a reload. The context key `salesforce-data-treecipe.isTreecipeWorkspace` decides which is shown.
+- **Read only.** Whether the workspace has a configuration is a read-only check (`TreecipeSideBarService.isTreecipeConfigurationPresent`): a stored `treecipeConfigurationPath` counts only when it is inside the workspace and is a file, the same rule the commands apply, and otherwise `treecipe/treecipe.config.json` must be a file. It never goes through `resolveTreecipeConfigurationFilePath`, which can rewrite the setting and warn. Drawing the view runs no command but `setContext`, writes no setting, loads no run and contacts no org. It is checked again when the workspace folders or the `treecipeConfigurationPath` setting change, and when a `treecipe/treecipe.config.json` is created or deleted (by hand or by a git checkout). The check runs during activation, before any command is registered, so a file that vanishes mid-check or a denied stat answers "no configuration" rather than throwing.
+- **Containment never realpaths a path it refuses.** `SfdxProjectService.isPathContainedInWorkspace` now returns as soon as the lexical check fails, before either side is realpathed. On Windows a realpath of a UNC path a workspace setting names (`\\host\share`) can contact that host; the side bar runs this check at activation, so the order now matters without any command being run. Every caller gets the same answer as before.
+- **Unchanged.** The status bar item and its setting, every command's behaviour and arguments, and both faker backends.
 
 ## [3.150.0] - Recipe Cockpit: an update by the Treecipe Adapter leaves an adapted data set and an adapted recipe
 

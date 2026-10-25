@@ -37,6 +37,7 @@ import { RecipeCockpitService } from '../treecipe/src/RecipeCockpitService/Recip
 import { VSCodeWorkspaceService } from '../treecipe/src/VSCodeWorkspace/VSCodeWorkspaceService';
 import { RunFakerConfirmation } from '../treecipe/src/ExtensionCommandService/RunFakerConfirmation';
 import { ExtensionCommandService } from '../treecipe/src/ExtensionCommandService/ExtensionCommandService';
+import { TreecipeSideBarService } from '../treecipe/src/TreecipeSideBarService/TreecipeSideBarService';
 
 /*
     The only tests for the extension entry point, and they exist for one behaviour rather than for
@@ -55,12 +56,26 @@ describe('activate', () => {
 
         jest.spyOn(VSCodeWorkspaceService, 'registerExtensionSubscriptions').mockImplementation(() => undefined);
         jest.spyOn(VSCodeWorkspaceService, 'registerRecipeCockpitStatusBarItem').mockImplementation(() => undefined);
+        jest.spyOn(TreecipeSideBarService, 'register').mockImplementation(() => undefined);
 
         // A jest.fn() FROM THE MODULE FACTORY, WHICH restoreMocks DOES NOT COVER -- ITS CALLS ACCUMULATE
         (vscode.commands.registerCommand as jest.Mock).mockClear();
 
         // SO NO TEST INHERITS THE FOLDERS THE ONE BEFORE IT SET ON THE MODULE-FACTORY MOCK
         (vscode.workspace as { workspaceFolders: unknown }).workspaceFolders = undefined;
+
+    });
+
+    // THE ACTIVITY BAR'S TREECIPE VIEW (#456)
+    it('registers the side bar once, into the extension\'s subscriptions', async () => {
+
+        jest.spyOn(ConfigurationService, 'setExtensionConfigValue').mockResolvedValue(true);
+        const extensionContext = buildExtensionContext();
+
+        await activate(extensionContext as never);
+
+        expect(TreecipeSideBarService.register).toHaveBeenCalledTimes(1);
+        expect(TreecipeSideBarService.register).toHaveBeenCalledWith(extensionContext.subscriptions);
 
     });
 
