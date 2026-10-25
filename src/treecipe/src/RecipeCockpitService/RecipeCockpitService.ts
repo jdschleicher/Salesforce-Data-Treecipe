@@ -54,7 +54,7 @@ import {
     ORG_PARENT_SEARCH_RESULT_LIMIT,
     SalesforceOrgService
 } from '../SalesforceOrgService/SalesforceOrgService';
-import { CreateParentRefusalReason, ILookupWiringContext, ILookupWiringRequest, IParentObjectAdditionRequest, IParentObjectAdditionWiring, IPinnedFieldRestoreRequest, IRecipeFilterLookup, IRecipeFixedValue, IRecipeUnconstrainedValue, IRemovedTodoComment, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind, RecipeParentObjectAdditionResult, RecipeTodoRemoveLock, YAML_NON_STRING_PLAIN_SCALAR_PATTERN } from './RecipeCockpitRecipeWriter';
+import { CreateParentRefusalReason, IAdaptedRecipeField, ILookupWiringContext, ILookupWiringRequest, IParentObjectAdditionRequest, IParentObjectAdditionWiring, IPinnedFieldRestoreRequest, IRecipeFilterLookup, IRecipeFixedValue, IRecipeUnconstrainedValue, IRemovedTodoComment, IScannedObject, RecipeBlockFieldListResult, RecipeCockpitRecipeWriter, RecipeFixedValueKind, RecipeParentObjectAdditionResult, RecipeTodoRemoveLock, YAML_NON_STRING_PLAIN_SCALAR_PATTERN } from './RecipeCockpitRecipeWriter';
 import { IFixedValueEntry, IFixedValueFileRead, IFixedValueOrgRecord, RecipeCockpitFixedValueStore } from './RecipeCockpitFixedValueStore';
 import { IRemovedTodoFileRead, RecipeCockpitRemovedTodoStore } from './RecipeCockpitRemovedTodoStore';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
@@ -73,6 +73,7 @@ import { SnowfakeryRecipeProcessor } from '../FakerRecipeProcessor/SnowfakeryRec
 import { IFieldSize } from '../ObjectInfoWrapper/FieldInfo';
 import { RelationshipService } from '../RelationshipService/RelationshipService';
 import { DATASET_COLLECTIONS_API_FOLDER_NAME, DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
+import { IAdaptedObjectRecords, RecipeCockpitAdaptedDataset, RecipeCockpitAdaptedRunWrite } from './RecipeCockpitAdaptedDataset';
 import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
@@ -86,7 +87,7 @@ import {
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { RunFakerConfirmation } from '../ExtensionCommandService/RunFakerConfirmation';
 import { IScratchOrgAliasChoice, IScratchOrgPlan, ORG_OPERATIONS_FOLDER_NAME, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
-import { VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
+import { INotificationCommandAction, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import {
     RECIPE_COCKPIT_QUERY_EXPORT_FORMATS,
     RECIPE_COCKPIT_QUERY_MAX_LENGTH,
@@ -586,7 +587,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.',
-            'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Retrieve latest metadata, beside the filter, retrieves those objects from the org into treecipe/OrgOperations (never your package directories) and marks each field new in org or changed in org against your project, with new child objects in the org and the org\'s recent changes as hints; Apply retrieved files to project asks first, then copies those files into your project. A field only the org holds can be ticked too: its new values come from the faker expression the recipe\'s backend writes for its type, or, when it writes none, a fixed value you type, and a lookup, a formula and the rest stay locked. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the parent records step 1\'s WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with the fields you ticked, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to treecipe/UpdateAttempts first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
+            'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Retrieve latest metadata, beside the filter, retrieves those objects from the org into treecipe/OrgOperations (never your package directories) and marks each field new in org or changed in org against your project, with new child objects in the org and the org\'s recent changes as hints; Apply retrieved files to project asks first, then copies those files into your project. A field only the org holds can be ticked too: its new values come from the faker expression the recipe\'s backend writes for its type, or, when it writes none, a fixed value you type, and a lookup, a formula and the rest stay locked. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the parent records step 1\'s WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with the fields you ticked, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to treecipe/UpdateAttempts first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. An update that lands also writes an adapted data set, FakeDataSets/<tree folder>-adapted-<time>, holding the loaded records with their new values and listed under Previously Used Data Sets as adapted, and an adapted recipe beside the original (which is never changed), every adapted line ending in # ADAPTED with the date and the org; its notification opens either. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
         ]
     },
     {
@@ -1890,6 +1891,11 @@ export interface IRecipeCockpitOrgOpenStateMessage {
 }
 
 export const RECIPE_COCKPIT_OPEN_ORG_LABEL = 'Open in browser';
+
+// THE ADAPT RUN'S TWO BUTTONS ON THE UPDATE'S NOTIFICATION (#448)
+export const RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL = 'Open data set';
+export const RECIPE_COCKPIT_DATASET_ADAPTED_LABEL = 'adapted';
+export const RECIPE_COCKPIT_ADAPTER_OPEN_ADAPTED_RECIPE_LABEL = 'Open adapted recipe';
 
 /*
     The version and the CHANGELOG link at the top right (#333). The URL is the HOST's: the shell's
@@ -8971,6 +8977,9 @@ export class RecipeCockpitService {
         recordsByObjectApiName: Map<string, Record<string, unknown>[]>;
         // THE FIELDS EACH OBJECT WAS READ WITH: A VALUE IS GENERATED ONLY FOR A FIELD WHOSE CURRENT VALUE WAS READ (#417)
         loadedFieldApiNamesByObjectApiName: Map<string, string[]>;
+        // THE OBJECT THE LOAD STARTED FROM AND EACH OBJECT'S WHERE AS TYPED, WHICH AN ADAPTED DATA SET RECORDS (#448)
+        parentObjectApiName: string;
+        whereClausesByObjectApiName: Map<string, string>;
     } | undefined;
 
     /*
@@ -8984,6 +8993,8 @@ export class RecipeCockpitService {
         valuesByObjectApiName: Map<string, IRecipeCockpitUpdaterRecordValues[]>;
         // THE FIELDS ONLY THE ORG HOLDS (#446) AMONG THEM, BY OBJECT, WHICH THE SNAPSHOT AND THE RESULTS RECORD
         orgOnlyFieldApiNamesByObjectApiName: Map<string, string[]>;
+        // EACH FIELD AS THE ADAPTED RECIPE WRITES IT (#448): THE SCALAR ITS VALUES CAME FROM, AND WHETHER THE RECIPE ALREADY HOLDS IT
+        adaptedRecipeFields: IAdaptedRecipeField[];
     } | undefined;
 
     /*
@@ -9527,7 +9538,10 @@ export class RecipeCockpitService {
             folderName: tree.folderName,
             orgUsername: orgUsername,
             recordsByObjectApiName: recordsByObjectApiName,
-            loadedFieldApiNamesByObjectApiName: new Map(requests.map(request => [request.objectApiName, [...request.fieldApiNames]] as const))
+            loadedFieldApiNamesByObjectApiName: new Map(requests.map(request => [request.objectApiName, [...request.fieldApiNames]] as const)),
+            // THE PLAN'S PARENT IS THE ONE OBJECT NOT NARROWED BY A LEVEL ABOVE IT (#444)
+            parentObjectApiName: requests.find(request => !request.narrowingLookup)?.objectApiName ?? requests[0]?.objectApiName ?? '',
+            whereClausesByObjectApiName: new Map(requests.map(request => [request.objectApiName, request.whereClause] as const))
         };
 
         const recordsMessage: IRecipeCockpitUpdaterRecordsMessage = {
@@ -10602,7 +10616,8 @@ export class RecipeCockpitService {
         // EACH FIELD CHECKED AGAIN AGAINST THE MODEL ON SCREEN AND THE RECORDS LOADED, IN THE ORDER POSTED
         // valueText IS WHAT THE RECIPE GETS; shownValue IS WHAT THE CONFIRMATION SHOWS -- THE READER'S OWN TEXT FOR AN EDIT
         type PlannedFieldSource = 'recipe' | 'recipeEdit' | 'recipeFixed' | 'orgExpression' | 'expression' | 'fixed';
-        interface IPlannedField { objectApiName: string; fieldApiName: string; source: PlannedFieldSource; valueText: string; shownValue: string; fixedValue?: unknown; isOrgOnly?: true }
+        // recipeValueText IS THE SCALAR THE ADAPTED RECIPE WRITES (#448): A FIXED VALUE AS ITS KIND IS WRITTEN
+        interface IPlannedField { objectApiName: string; fieldApiName: string; source: PlannedFieldSource; valueText: string; shownValue: string; fixedValue?: unknown; isOrgOnly?: true; recipeValueText?: string }
         const plannedFields: IPlannedField[] = [];
         const objectViewModelsByApiName = new Map<string, IRecipeCockpitObjectViewModel>();
         clickedRecipeDataMessage.recipe.objects.forEach(object => {
@@ -10658,7 +10673,8 @@ export class RecipeCockpitService {
             if ( fieldRequest.value === undefined ) {
                 const recipeFileEdit = recipeFileEditsByFieldKey.get(`${fieldRequest.objectApiName}\n${fieldRequest.fieldApiName}`);
                 if ( recipeFileEdit && recipeFileEdit.kind !== 'expression' ) {
-                    plannedFields.push({ objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'recipeFixed', valueText: recipeFileEdit.value, shownValue: recipeFileEdit.value, fixedValue: this.toUpdaterFixedValue(recipeFileEdit.value, recipeFileEdit.kind) });
+                    plannedFields.push({ objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'recipeFixed', valueText: recipeFileEdit.value, shownValue: recipeFileEdit.value, fixedValue: this.toUpdaterFixedValue(recipeFileEdit.value, recipeFileEdit.kind),
+                                         recipeValueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: recipeFileEdit.value, kind: recipeFileEdit.kind }) });
                     continue;
                 }
                 const expression = recipeFileEdit ? recipeFileEdit.value : this.findRecipeExpression(fieldViewModel.recipeValue);
@@ -10702,7 +10718,8 @@ export class RecipeCockpitService {
 
             plannedFields.push(kind === 'expression'
                 ? { objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'expression', valueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: fieldRequest.value, kind: kind }), shownValue: fieldRequest.value, ...orgOnlyMark }
-                : { objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'fixed', valueText: fieldRequest.value, shownValue: fieldRequest.value, fixedValue: this.toUpdaterFixedValue(fieldRequest.value, kind), ...orgOnlyMark });
+                : { objectApiName: fieldRequest.objectApiName, fieldApiName: fieldRequest.fieldApiName, source: 'fixed', valueText: fieldRequest.value, shownValue: fieldRequest.value, fixedValue: this.toUpdaterFixedValue(fieldRequest.value, kind),
+                    recipeValueText: RecipeCockpitRecipeWriter.toFixedValueScalar({ value: fieldRequest.value, kind: kind }), ...orgOnlyMark });
 
         }
 
@@ -10825,7 +10842,15 @@ export class RecipeCockpitService {
         plannedFields.filter(plannedField => plannedField.isOrgOnly && valuesByObjectApiName.has(plannedField.objectApiName)).forEach(plannedField => {
             orgOnlyFieldApiNamesByObjectApiName.set(plannedField.objectApiName, [...( orgOnlyFieldApiNamesByObjectApiName.get(plannedField.objectApiName) ?? [] ), plannedField.fieldApiName]);
         });
-        this.heldUpdaterValues = { resultKey: heldRecords.resultKey, valuesByObjectApiName: valuesByObjectApiName, orgOnlyFieldApiNamesByObjectApiName: orgOnlyFieldApiNamesByObjectApiName };
+        // THE RECIPE ALREADY HOLDS A VALUE THAT CAME FROM IT, SO ITS LINES ARE ONLY MARKED; ANY OTHER IS WRITTEN AS THE ONE LINE IT WAS GENERATED FROM
+        const adaptedRecipeFields: IAdaptedRecipeField[] = plannedFields.filter(plannedField => valuesByObjectApiName.has(plannedField.objectApiName)).map(plannedField => ({
+            objectApiName: plannedField.objectApiName,
+            fieldApiName: plannedField.fieldApiName,
+            valueText: plannedField.recipeValueText ?? plannedField.valueText,
+            ...( plannedField.source === 'recipe' || plannedField.source === 'recipeEdit' || plannedField.source === 'recipeFixed' ? { isRecipeValue: true as const } : {} ),
+            ...( plannedField.isOrgOnly ? { isOrgOnly: true as const } : {} )
+        }));
+        this.heldUpdaterValues = { resultKey: heldRecords.resultKey, valuesByObjectApiName: valuesByObjectApiName, orgOnlyFieldApiNamesByObjectApiName: orgOnlyFieldApiNamesByObjectApiName, adaptedRecipeFields: adaptedRecipeFields };
 
         const objectViewModels: IRecipeCockpitUpdaterObjectValuesViewModel[] = objectApiNames.map(objectApiName => {
             const fieldApiNames = plannedFields.filter(plannedField => plannedField.objectApiName === objectApiName).map(plannedField => plannedField.fieldApiName);
@@ -11074,12 +11099,102 @@ export class RecipeCockpitService {
             objects: sendResult.objectResults
         });
 
-        this.showUpdaterUpdateNotification(sendResult, treeTitle, orgLabel, path.basename(attemptFiles.snapshotFilePath), isResultsWritten ? attemptFiles.resultsFilePath : undefined, panelState.workspaceRoot);
+        const adaptedRun = this.writeAdaptedRunAfterUpdate(panelState, treeKey, tree.folderName, heldRecords, heldValues, sendResult, orgDetail, startedAt);
+
+        this.showUpdaterUpdateNotification(sendResult, treeTitle, orgLabel, path.basename(attemptFiles.snapshotFilePath), isResultsWritten ? attemptFiles.resultsFilePath : undefined, panelState.workspaceRoot, 'update', adaptedRun);
+
+        // IN PLACE (#226), ONLY ON THE PANEL AND MODEL THE UPDATE WAS CLICKED ON; THE NEXT RELOAD LISTS IT EITHER WAY
+        if ( adaptedRun && 'datasetFolderPath' in adaptedRun
+                && this.recipeCockpitPanel === cockpitPanel
+                && this.recipeCockpitPanelState === panelState
+                && panelState.recipeDataMessage === clickedRecipeDataMessage ) {
+            this.postAddedDataset(cockpitPanel, panelState, clickedRecipeDataMessage, adaptedRun.datasetFolderPath);
+        }
 
         return sendResult.isAnyRequestSent;
 
     }
 
+
+    /*
+        After an update lands (#448): a copy of the data set as the org holds it now -- every record the
+        load read, each one the org saved carrying its new values -- and the recipe that reproduces it,
+        marked "# ADAPTED". Nothing is written when no record was updated, or when all-or-none set the
+        updated records back. A card with no single recipe file, or a backend that cannot be told,
+        gets no copy; that is said in the notification rather than refused, since the update landed.
+    */
+    static writeAdaptedRunAfterUpdate(panelState: IRecipeCockpitPanelState,
+                                      treeKey: string,
+                                      treeFolderName: string,
+                                      heldRecords: NonNullable<typeof RecipeCockpitService.heldUpdaterRecords>,
+                                      heldValues: NonNullable<typeof RecipeCockpitService.heldUpdaterValues>,
+                                      sendResult: IRecipeCockpitUpdaterSendResult,
+                                      orgDetail: IAuthenticatedOrgDetail,
+                                      adaptedAt: Date): RecipeCockpitAdaptedRunWrite | undefined {
+
+        if ( sendResult.updatedRecordCount === 0 || sendResult.putBack ) {
+            return undefined;
+        }
+
+        const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey);
+        const generatedRecipesFolderPath = path.join(panelState.workspaceRoot, ConfigurationService.getGeneratedRecipesFolderPath());
+        const fakerService = recipeFilePath ? VSCodeWorkspaceService.readRecipeFakerService(generatedRecipesFolderPath, recipeFilePath) : undefined;
+
+        if ( !recipeFilePath || !fakerService ) {
+            return { isWritten: false, refusal: 'this card has no single recipe file whose backend can be told.' };
+        }
+
+        const savedRecordIdsByObjectApiName = new Map(sendResult.objectResults.map(objectResult => [
+            objectResult.objectApiName,
+            new Set(objectResult.results.filter(recordResult => recordResult.isSuccess).map(recordResult => recordResult.recordId))
+        ] as const));
+
+        const objects: IAdaptedObjectRecords[] = [...heldRecords.recordsByObjectApiName.entries()].map(([objectApiName, loadedRecords]) => {
+            const savedRecordIds = savedRecordIdsByObjectApiName.get(objectApiName);
+            const newValuesByRecordId = new Map(( heldValues.valuesByObjectApiName.get(objectApiName) ?? [] ).map(recordValues => [recordValues.recordId, recordValues.fieldValues] as const));
+            return {
+                objectApiName: objectApiName,
+                records: loadedRecords.map(loadedRecord => {
+                    const recordId = String(loadedRecord.Id);
+                    return savedRecordIds?.has(recordId) ? { ...loadedRecord, ...newValuesByRecordId.get(recordId) } : { ...loadedRecord };
+                })
+            };
+        });
+
+        const orgOnlyFieldsByObjectApiName = heldValues.orgOnlyFieldApiNamesByObjectApiName;
+        const updatedObjectApiNames = new Set([...savedRecordIdsByObjectApiName.entries()].filter(([, savedRecordIds]) => savedRecordIds.size > 0).map(([objectApiName]) => objectApiName));
+        const adaptedRecipeFields = heldValues.adaptedRecipeFields.filter(adaptedField => updatedObjectApiNames.has(adaptedField.objectApiName));
+        const updatedFieldsByObject = Object.fromEntries([...updatedObjectApiNames].map(objectApiName => [
+            objectApiName,
+            adaptedRecipeFields.filter(adaptedField => adaptedField.objectApiName === objectApiName).map(adaptedField => ({
+                fieldApiName: adaptedField.fieldApiName,
+                ...( ( orgOnlyFieldsByObjectApiName.get(objectApiName) ?? [] ).includes(adaptedField.fieldApiName) ? { isOrgOnly: true as const } : {} )
+            }))
+        ]));
+
+        return RecipeCockpitAdaptedDataset.writeAdaptedRun({
+            workspaceRoot: panelState.workspaceRoot,
+            fakeDataSetsFolderPath: path.join(panelState.workspaceRoot, ConfigurationService.getFakeDataSetsFolderPath()),
+            generatedRecipesFolderPath: generatedRecipesFolderPath,
+            recipeFilePath: recipeFilePath,
+            treeFolderName: treeFolderName,
+            fakerService: fakerService,
+            date: adaptedAt,
+            objects: objects,
+            adaptedFields: adaptedRecipeFields,
+            adaptation: {
+                parentObjectApiName: heldRecords.parentObjectApiName,
+                whereText: heldRecords.whereClausesByObjectApiName.get(heldRecords.parentObjectApiName) ?? '',
+                orgUsername: orgDetail.username,
+                updatedFieldsByObject: updatedFieldsByObject,
+                // A NEW CHILD OBJECT'S INSERT (#447, E2) IS NOT BUILT YET, SO AN UPDATE ADDS NONE
+                addedObjectApiNames: [],
+                insertedRecordIdsByObject: {}
+            },
+            orgLabel: orgDetail.alias || orgDetail.username
+        });
+
+    }
 
     // WHICH FIELDS AN UPDATE OR A RESTORE WROTE THAT ONLY THE ORG HELD (#446), FOR THE RESULTS FILE; NOTHING WHEN THERE WERE NONE
     static buildOrgOnlyFieldsResult(snapshotObjects: readonly IUpdateSnapshotObject[]): { orgOnlyFields?: Record<string, string[]> } {
@@ -11652,7 +11767,8 @@ export class RecipeCockpitService {
                                             snapshotFileName: string,
                                             resultsFilePath: string | undefined,
                                             workspaceRoot: string,
-                                            operation: 'update' | 'restore' = 'update') {
+                                            operation: 'update' | 'restore' = 'update',
+                                            adaptedRun?: RecipeCockpitAdaptedRunWrite) {
 
         const updatedWord = operation === 'restore' ? 'restored' : 'updated';
         const describeRecords = (recordCount: number) => `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
@@ -11695,13 +11811,51 @@ export class RecipeCockpitService {
             severity = severity === 'information' ? 'warning' : severity;
         }
 
-        VSCodeWorkspaceService.showNotificationWithWorkspaceFile(
+        // THE ADAPTED COPY (#448) IS SAID IN THE SAME NOTIFICATION, WITH ITS TWO BUTTONS; A COPY THAT COULD NOT BE WRITTEN SAYS WHY
+        const otherActions: INotificationCommandAction[] = [];
+        let adaptedRecipeFilePath: string | undefined;
+
+        if ( adaptedRun && 'refusal' in adaptedRun ) {
+            notificationText += ` No adapted data set was written: ${adaptedRun.refusal}`;
+            severity = severity === 'information' ? 'warning' : severity;
+        }
+
+        if ( adaptedRun && 'datasetFolderPath' in adaptedRun ) {
+            const datasetFolderPath = adaptedRun.datasetFolderPath;
+            adaptedRecipeFilePath = adaptedRun.adaptedRecipeFilePath;
+            notificationText += ` The adapted data set is ${path.basename(datasetFolderPath)}${adaptedRecipeFilePath ? `, and the adapted recipe ${path.basename(adaptedRecipeFilePath)}` : ''}.`;
+            if ( adaptedRun.recipeRefusal ) {
+                notificationText += ` No adapted recipe was written: ${adaptedRun.recipeRefusal}`;
+            }
+            otherActions.push({
+                label: RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL,
+                run: async () => {
+                    if ( SfdxProjectService.isExistingDirectory(datasetFolderPath) && SfdxProjectService.isPathContainedInWorkspace(path.resolve(datasetFolderPath), path.resolve(workspaceRoot)) ) {
+                        await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(datasetFolderPath));
+                    } else {
+                        VSCodeWorkspaceService.showWarningMessage('The adapted data set no longer exists in this workspace.');
+                    }
+                }
+            });
+        }
+
+        VSCodeWorkspaceService.showNotificationWithWorkspaceFiles(
             severity,
             RecipeYamlScalar.escapeForNotification(notificationText),
-            hasErrors ? RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL : RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
-            resultsFilePath && fs.existsSync(resultsFilePath) ? resultsFilePath : undefined,
+            [
+                {
+                    label: hasErrors ? RECIPE_COCKPIT_INSERT_VIEW_ERRORS_LABEL : RECIPE_COCKPIT_INSERT_VIEW_RESULTS_LABEL,
+                    filePath: resultsFilePath && fs.existsSync(resultsFilePath) ? resultsFilePath : undefined,
+                    missingFileText: `The ${operation} results file no longer exists in this workspace.`
+                },
+                {
+                    label: RECIPE_COCKPIT_ADAPTER_OPEN_ADAPTED_RECIPE_LABEL,
+                    filePath: adaptedRecipeFilePath,
+                    missingFileText: 'The adapted recipe no longer exists in this workspace.'
+                }
+            ],
             workspaceRoot,
-            `The ${operation} results file no longer exists in this workspace.`
+            otherActions
         );
 
     }
@@ -17114,8 +17268,11 @@ export class RecipeCockpitService {
     // THE RUN FOLDER AND ITS RELATIONSHIP-TREE SUBFOLDERS, WHICH IS WHERE DirectoryProcessor WRITES EACH RECIPE
     static collectRecipeFilePaths(runFolderPath: string): string[] {
 
+        // AN ADAPTED RECIPE (#448) IS A SIDE FILE: READING ITS OBJECTS TOO WOULD DRAW EVERY ONE TWICE
         const isRecipeFile = (fileEntry: fs.Dirent) => (
-            fileEntry.isFile() && RECIPE_FILE_EXTENSIONS.includes(path.extname(fileEntry.name).toLowerCase())
+            fileEntry.isFile()
+            && RECIPE_FILE_EXTENSIONS.includes(path.extname(fileEntry.name).toLowerCase())
+            && !RecipeCockpitAdaptedDataset.isAdaptedRecipeFileName(fileEntry.name)
         );
 
         const recipeFilePaths: string[] = [];
@@ -18535,6 +18692,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const RECORD_TYPES_INTRO = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_INTRO)};
     const RECORD_TYPES_UNAVAILABLE_SUMMARY = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY)};
     const RENAME_TREE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL)};
+    const DATASET_ADAPTED_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DATASET_ADAPTED_LABEL)};
     const FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITE_TREE_LABEL)};
     const NOT_FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL)};
     const FAVORITES_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITES_ONLY_LABEL)};
@@ -22388,6 +22546,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         datasetHeaderElement.appendChild(createElement('span', 'treeDatasetDate', dataset.generatedAtLabel));
         datasetHeaderElement.appendChild(createElement('span', 'treeDatasetBackend muted', dataset.fakerService));
+
+        // A DATA SET THE TREECIPE ADAPTER WROTE (#448), SAID IN TEXT SO THE LABEL IS NEVER COLOUR ALONE
+        if (dataset.isAdapted === true) {
+            datasetHeaderElement.appendChild(createElement('span', 'treeDatasetAdapted muted', DATASET_ADAPTED_LABEL));
+        }
 
         datasetHeaderElement.appendChild(createElement('span', dataset.runFolderName === null ? 'treeDatasetVersion unknownVersion' : 'treeDatasetVersion', versionLabelOf(treeState, dataset.runFolderName)));
 

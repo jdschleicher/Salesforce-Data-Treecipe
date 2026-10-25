@@ -72,7 +72,9 @@ export type RecipeWriterRefusalReason =
     | 'todo-owner-not-found'
     | 'todo-place-not-found'
     | 'todo-already-back'
-    | 'todo-structure-changed';
+    | 'todo-structure-changed'
+    | 'invalid-adapted-comment'
+    | 'no-adapted-fields';
 
 export interface IRecipeWriterRefusal {
     reason: RecipeWriterRefusalReason;
@@ -122,6 +124,25 @@ export interface IUpdaterValueRecipeField {
 export type RecipeUpdaterValueRecipeResult =
     | { isBuilt: true; recipeText: string }
     | { isBuilt: false; refusal: string };
+
+/*
+    One field an adapt run wrote (#448), as the adapted recipe records it. valueText is the scalar the
+    new values were generated from, on one line, as toFixedValueScalar writes it. isRecipeValue says
+    the field's own lines already hold it -- the recipe's own expression -- so they are kept and only
+    marked when the mark can sit on the field line; isOrgOnly is a field the recipe has no line for,
+    inserted on every occurrence of its object.
+*/
+export interface IAdaptedRecipeField {
+    objectApiName: string;
+    fieldApiName: string;
+    valueText: string;
+    isRecipeValue?: true;
+    isOrgOnly?: true;
+}
+
+export type RecipeAdaptedRecipeResult =
+    | { isAdapted: true; recipeText: string; markedLineCount: number }
+    | { isAdapted: false; refusal: IRecipeWriterRefusal };
 
 export interface ICreateBlockFieldListRequest {
     objectApiName: string;
@@ -527,6 +548,8 @@ const CONSTRAINED_EXPRESSION_MAX_LENGTH = 1000;
 // RelationshipService.referenceIdRequiredTodo, ALONE OR WITH THE " -- <Parent>, <Parent>" A NESTED TREE APPENDS (#46) -- A TEST HOLDS THE TWO TOGETHER
 // AN API NAME THAT YAML 1.1 (PyYAML, snowfakery's reader) OR 1.2 (js-yaml) LOADS AS A BOOLEAN OR NULL RATHER THAN A STRING
 export const YAML_NON_STRING_PLAIN_SCALAR_PATTERN = /^(?:y|Y|yes|Yes|YES|n|N|no|No|NO|true|True|TRUE|false|False|FALSE|on|On|ON|off|Off|OFF|null|Null|NULL)$/;
+// THE MARK AN ADAPTED RECIPE PUTS ON EVERY LINE IT ADAPTED (#448): A DATE AND AN ORG LABEL HELD TO CHARACTERS NO PARSER OR TEMPLATE READS
+const ADAPTED_COMMENT_PATTERN = /^# ADAPTED \d{4}-\d{2}-\d{2} -- [A-Za-z0-9._@+-]+$/;
 const REFERENCE_ID_REQUIRED_TODO_TEXT = '### TODO -- REFERENCE ID REQUIRED';
 const REFERENCE_ID_REQUIRED_TODO_PATTERN = /^### TODO -- REFERENCE ID REQUIRED(?: -- [^\r\n\u0085\u2028\u2029]*)?[ \t]*$/;
 
@@ -2349,6 +2372,215 @@ export class RecipeCockpitRecipeWriter {
     static buildAdapterChildRecipe(objectApiName: string, recordCount: number, fields: readonly IUpdaterValueRecipeField[]): RecipeUpdaterValueRecipeResult {
 
         return this.buildSingleObjectRecipe(objectApiName, recordCount, fields, 'Adapter', `Treecipe Adapter block for ${recordCount} new ${objectApiName} ${recordCount === 1 ? 'record' : 'records'}`);
+
+    }
+
+    /*
+        "# ADAPTED <yyyy-MM-dd> -- <org label>" (#448). The label is an alias or username, which the
+        CLI holds and the repository does not; anything but letters, digits and . _ @ + - becomes
+        "_", so the comment can never carry a quote, a template opener or a line break.
+    */
+    static buildAdaptedComment(adaptedDate: string, orgLabel: string): string {
+
+        const safeOrgLabel = orgLabel.replace(/[^A-Za-z0-9._@+-]/g, '_') || '_';
+        return `# ADAPTED ${adaptedDate} -- ${safeOrgLabel}`;
+
+    }
+
+    /*
+        The adapted recipe (#448): the recipe's text with every field the adapt run wrote marked
+        "# ADAPTED ...", by line patches -- never a YAML round trip, which drops the TODO comments.
+        On every occurrence of the object that has the field:
+        - the recipe's own value, whose line closes its value or opens a block scalar (| or >), keeps
+          its lines and gets the mark at the end of the field line, which is outside any quoted
+          scalar and, for a block scalar, on the line YAML allows a comment on;
+        - any other value -- an edit, a fixed value, or the recipe's own value in a quoted scalar
+          that runs past its line -- becomes the one line "Field: <value> # ADAPTED ...". The value
+          is a double-quoted scalar or a plain number or boolean, so a "#" inside it stays text.
+        An org-only field is inserted after the last line of each occurrence's fields: block, with
+        the mark. Every other line keeps its bytes and its ending; the text is scanned back to the
+        same objects, nicknames and fields, plus the inserted ones, with every adapted line marked.
+    */
+    static buildAdaptedRecipe(recipeText: string, adaptedFields: readonly IAdaptedRecipeField[], adaptedComment: string): RecipeAdaptedRecipeResult {
+
+        const refuseAdapt = (refusal: { refusal: IRecipeWriterRefusal }): RecipeAdaptedRecipeResult => ({ isAdapted: false, refusal: refusal.refusal });
+
+        if ( !ADAPTED_COMMENT_PATTERN.test(adaptedComment) ) {
+            return refuseAdapt(this.refuse('invalid-adapted-comment', 'The ADAPTED comment is not one "# ADAPTED <date> -- <org>" line.', ''));
+        }
+        if ( adaptedFields.length === 0 ) {
+            return refuseAdapt(this.refuse('no-adapted-fields', 'No field was adapted, so there is no adapted recipe to write.', ''));
+        }
+
+        const fieldKeys = new Set<string>();
+        for ( const adaptedField of adaptedFields ) {
+            if ( !API_NAME_PATTERN.test(adaptedField.objectApiName) ) {
+                return refuseAdapt(this.refuse('invalid-object-api-name', `"${adaptedField.objectApiName}" is not an object api name.`, adaptedField.objectApiName));
+            }
+            if ( !API_NAME_PATTERN.test(adaptedField.fieldApiName) ) {
+                return refuseAdapt(this.refuse('invalid-field-api-name', `"${adaptedField.fieldApiName}" is not a field api name.`, adaptedField.objectApiName, adaptedField.fieldApiName));
+            }
+            const fieldKey = `${adaptedField.objectApiName}.${adaptedField.fieldApiName}`;
+            if ( fieldKeys.has(fieldKey) ) {
+                return refuseAdapt(this.refuse('duplicate-field', `${fieldKey} is listed more than once.`, adaptedField.objectApiName, adaptedField.fieldApiName));
+            }
+            fieldKeys.add(fieldKey);
+            if ( typeof adaptedField.valueText !== 'string' || adaptedField.valueText.trim() === '' || LINE_BREAK_PATTERN.test(adaptedField.valueText) ) {
+                return refuseAdapt(this.refuse('invalid-value', `The value of ${fieldKey} is not one line.`, adaptedField.objectApiName, adaptedField.fieldApiName));
+            }
+        }
+
+        const recipeLines = this.splitRecipeLines(recipeText);
+        const scannedObjects = this.scanRecipeObjects(recipeLines.lines);
+        const edits: { startIndex: number; endIndex: number; newLines: string[] }[] = [];
+        const insertedFieldApiNamesByHeaderIndex = new Map<number, string[]>();
+        const markedFields: { headerIndex: number; fieldApiName: string }[] = [];
+
+        for ( const adaptedField of adaptedFields ) {
+
+            const { objectApiName, fieldApiName, valueText } = adaptedField;
+
+            if ( adaptedField.isOrgOnly ) {
+
+                const objectOccurrences = scannedObjects.filter(scannedObject => scannedObject.objectApiName === objectApiName);
+                if ( objectOccurrences.length === 0 ) {
+                    return refuseAdapt(this.refuse('object-not-found', `The recipe has no "- object: ${objectApiName}" line.`, objectApiName, fieldApiName));
+                }
+
+                for ( const scannedObject of objectOccurrences ) {
+                    const fieldsBlockRefusal = this.refuseUnlessOneFieldsBlock(scannedObject, fieldApiName, scannedObject.nicknames[0]);
+                    if ( fieldsBlockRefusal ) {
+                        return refuseAdapt(fieldsBlockRefusal);
+                    }
+                    if ( scannedObject.fields.some(scannedField => scannedField.fieldApiName === fieldApiName) ) {
+                        return refuseAdapt(this.refuse('field-already-exists', `${this.describeObject(objectApiName, scannedObject.nicknames[0])} already has a ${fieldApiName} line, so it is not an org-only field.`, objectApiName, fieldApiName));
+                    }
+                    const fieldIndent = this.getObjectLayout(scannedObject.objectIndent).fieldIndent;
+                    const insertIndex = scannedObject.lastFieldsBlockLineIndex + 1;
+                    edits.push({ startIndex: insertIndex, endIndex: insertIndex, newLines: [`${fieldIndent}${fieldApiName}: ${valueText} ${adaptedComment}`] });
+                    insertedFieldApiNamesByHeaderIndex.set(scannedObject.headerIndex, [...( insertedFieldApiNamesByHeaderIndex.get(scannedObject.headerIndex) ?? [] ), fieldApiName]);
+                    markedFields.push({ headerIndex: scannedObject.headerIndex, fieldApiName: fieldApiName });
+                }
+                continue;
+
+            }
+
+            const located = this.locatePinnableOccurrences(scannedObjects, objectApiName, fieldApiName);
+            if ( 'refusal' in located ) {
+                return refuseAdapt(located);
+            }
+
+            located.occurrences.forEach(({ scannedObject, scannedField }) => {
+                const fieldLine = recipeLines.lines[scannedField.startIndex];
+                const isMarkable = adaptedField.isRecipeValue === true
+                                    && ( this.isFieldValueClosedOnFirstLine(recipeLines.lines, scannedObject, scannedField) || this.isBlockScalarFieldLine(fieldLine, scannedObject, scannedField) );
+                if ( isMarkable ) {
+                    edits.push({ startIndex: scannedField.startIndex, endIndex: scannedField.startIndex + 1, newLines: [`${fieldLine.trimEnd()} ${adaptedComment}`] });
+                } else {
+                    const fieldIndent = this.getObjectLayout(scannedObject.objectIndent).fieldIndent;
+                    edits.push({ startIndex: scannedField.startIndex, endIndex: scannedField.endIndex, newLines: [`${fieldIndent}${fieldApiName}: ${valueText} ${adaptedComment}`] });
+                }
+                markedFields.push({ headerIndex: scannedObject.headerIndex, fieldApiName: fieldApiName });
+            });
+
+        }
+
+        const patchedLines = this.applyLineEdits(recipeLines, edits);
+
+        if ( !this.isAdaptedRecipeReadBack(scannedObjects, patchedLines.lines, insertedFieldApiNamesByHeaderIndex, markedFields, adaptedComment) ) {
+            return refuseAdapt(this.refuse('unsupported-field-layout', 'The adapted recipe did not read back as the same objects and fields with every adapted line marked, so it was not written.', adaptedFields[0].objectApiName));
+        }
+
+        return { isAdapted: true, recipeText: this.joinRecipeLines(patchedLines), markedLineCount: markedFields.length };
+
+    }
+
+    // "Field: |", "Field: >-", "Field: |2" ... WITH NOTHING BUT A COMMENT AFTER THE INDICATOR
+    private static isBlockScalarFieldLine(fieldLine: string, scannedObject: IScannedObject, scannedField: IScannedField): boolean {
+
+        const { fieldIndent } = this.getObjectLayout(scannedObject.objectIndent);
+        const firstLineValue = fieldLine.slice(fieldIndent.length + scannedField.fieldApiName.length + 1).trim();
+        return /^[|>][1-9]?[+-]?[1-9]?(?:\s+#.*)?$/.test(firstLineValue);
+
+    }
+
+    /*
+        Edits that never overlap, applied last first so every earlier index stays where it was. A
+        replacement keeps the ending after the lines it replaces; an insertion after a line takes that
+        line's ending, and a last line with none is given one so the inserted line follows it.
+    */
+    private static applyLineEdits(recipeLines: IRecipeLines, edits: readonly { startIndex: number; endIndex: number; newLines: string[] }[]): IRecipeLines {
+
+        const lines = [...recipeLines.lines];
+        const lineEndings = [...recipeLines.lineEndings];
+        const defaultLineEnding = recipeLines.lineEndings.find(lineEnding => lineEnding) ?? '\n';
+
+        // TWO INSERTIONS AT ONE PLACE: THE LATER ONE GOES IN FIRST, SO THE EARLIER ENDS UP ABOVE IT
+        edits
+            .map((edit, editOrder) => ({ ...edit, editOrder }))
+            .sort((left, right) => right.startIndex - left.startIndex || right.endIndex - left.endIndex || right.editOrder - left.editOrder)
+            .forEach(({ startIndex, endIndex, newLines }) => {
+
+            if ( startIndex === endIndex ) {
+                const precedingEnding = lineEndings[startIndex - 1];
+                const insertedEndings = newLines.map((_newLine, newLineIndex) => ( newLineIndex === newLines.length - 1 ? precedingEnding : precedingEnding || defaultLineEnding ));
+                if ( !precedingEnding ) {
+                    lineEndings[startIndex - 1] = defaultLineEnding;
+                }
+                lines.splice(startIndex, 0, ...newLines);
+                lineEndings.splice(startIndex, 0, ...insertedEndings);
+                return;
+            }
+
+            const trailingEnding = lineEndings[endIndex - 1];
+            const interiorEnding = lineEndings[startIndex] || defaultLineEnding;
+            lines.splice(startIndex, endIndex - startIndex, ...newLines);
+            lineEndings.splice(startIndex, endIndex - startIndex, ...newLines.map((_newLine, newLineIndex) => ( newLineIndex === newLines.length - 1 ? trailingEnding : interiorEnding )));
+
+        });
+
+        return { lines: lines, lineEndings: lineEndings };
+
+    }
+
+    // SAME OBJECTS, DEPTHS AND NICKNAMES; SAME FIELDS PLUS THE INSERTED ONES AT THE END OF THEIR BLOCK; EVERY ADAPTED FIELD LINE ENDS WITH THE MARK
+    private static isAdaptedRecipeReadBack(scannedObjectsBefore: IScannedObject[],
+                                           patchedLines: string[],
+                                           insertedFieldApiNamesByHeaderIndex: ReadonlyMap<number, string[]>,
+                                           markedFields: readonly { headerIndex: number; fieldApiName: string }[],
+                                           adaptedComment: string): boolean {
+
+        const scannedObjectsAfter = this.scanRecipeObjects(patchedLines);
+        if ( scannedObjectsAfter.length !== scannedObjectsBefore.length ) {
+            return false;
+        }
+
+        const markedFieldNamesByObjectIndex = new Map<number, Set<string>>();
+        scannedObjectsBefore.forEach((scannedObjectBefore, objectIndex) => {
+            markedFieldNamesByObjectIndex.set(objectIndex, new Set(markedFields.filter(markedField => markedField.headerIndex === scannedObjectBefore.headerIndex).map(markedField => markedField.fieldApiName)));
+        });
+
+        return scannedObjectsAfter.every((scannedObjectAfter, objectIndex) => {
+
+            const scannedObjectBefore = scannedObjectsBefore[objectIndex];
+            const expectedFieldApiNames = [
+                ...scannedObjectBefore.fields.map(scannedField => scannedField.fieldApiName),
+                ...( insertedFieldApiNamesByHeaderIndex.get(scannedObjectBefore.headerIndex) ?? [] )
+            ];
+
+            if ( scannedObjectAfter.objectApiName !== scannedObjectBefore.objectApiName
+                    || scannedObjectAfter.objectIndent !== scannedObjectBefore.objectIndent
+                    || scannedObjectAfter.nicknames.join('\n') !== scannedObjectBefore.nicknames.join('\n')
+                    || scannedObjectAfter.fields.map(scannedField => scannedField.fieldApiName).join('\n') !== expectedFieldApiNames.join('\n') ) {
+                return false;
+            }
+
+            const markedFieldNames = markedFieldNamesByObjectIndex.get(objectIndex) as Set<string>;
+            return scannedObjectAfter.fields
+                .filter(scannedField => markedFieldNames.has(scannedField.fieldApiName))
+                .every(scannedField => patchedLines[scannedField.startIndex].endsWith(` ${adaptedComment}`));
+
+        });
 
     }
 

@@ -3,6 +3,7 @@ import * as path from 'path';
 
 import { DatasetSourceFakerService, DatasetSourceService, IDatasetListing, IKnownRecipeRun } from '../DatasetSourceService/DatasetSourceService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
+import { RecipeCockpitAdaptedDataset } from './RecipeCockpitAdaptedDataset';
 
 const RUN_FOLDER_TIMESTAMP_PATTERN = /(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})$/;
 
@@ -47,6 +48,8 @@ export interface IRecipeCockpitTreeDatasetViewModel {
     // THE READER'S OWN NAME AND FAVORITE (#312), SET BY THE HOST AT POST TIME AND ONLY WHEN THEY HAVE ONE
     customName?: string;
     isFavorite?: boolean;
+    // A DATA SET THE TREECIPE ADAPTER WROTE (#448), DRAWN WITH AN "adapted" LABEL; ABSENT OTHERWISE
+    isAdapted?: true;
 }
 
 export interface IRecipeCockpitTreeHistoryViewModel {
@@ -217,13 +220,19 @@ export class RecipeCockpitTreeHistory {
             }
 
             const recordCountsByObject = datasetSourceRead.datasetSource?.recordCountsByObject;
+            const runFolderName = isLinkedToTree ? datasetSourceRead.recipeRunFolderName : null;
+            const isAdapted = datasetListing.folderNameDetail.adaptedFromName !== undefined && datasetSourceRead.datasetSource?.origin === 'adapt';
 
             const datasetViewModel: IRecipeCockpitTreeDatasetViewModel = {
                 datasetFolderName: datasetListing.datasetFolderName,
                 generatedAtLabel: this.formatTimestampLabel(datasetListing.folderNameDetail.timestamp),
-                fakerService: datasetListing.folderNameDetail.fakerService,
-                runFolderName: isLinkedToTree ? datasetSourceRead.recipeRunFolderName : null,
-                recordCounts: recordCountsByObject ? this.toRecordCountViewModels(recordCountsByObject) : null
+                // AN ADAPTED NAME CARRIES NO BACKEND: ITS SOURCE FILE DOES, AND ITS RUN DOES WHEN THE FILE IS GONE
+                fakerService: datasetListing.folderNameDetail.fakerService
+                                ?? datasetSourceRead.datasetSource?.fakerService
+                                ?? this.readFakerServiceOfRun(runFolderName ?? ''),
+                runFolderName: runFolderName,
+                recordCounts: recordCountsByObject ? this.toRecordCountViewModels(recordCountsByObject) : null,
+                ...( isAdapted ? { isAdapted: true as const } : {} )
             };
 
             treeKeys.forEach(treeKey => historiesByTreeKey.get(treeKey).datasets.push(datasetViewModel));
@@ -263,7 +272,10 @@ export class RecipeCockpitTreeHistory {
         }
 
         const recipeFileNames = treeFolderEntries
-            .filter(treeFolderEntry => treeFolderEntry.isFile() && RECIPE_FILE_EXTENSIONS.includes(path.extname(treeFolderEntry.name).toLowerCase()))
+            // AN ADAPTED RECIPE (#448) IS A SIDE FILE, NEVER THE TREE'S RECIPE
+            .filter(treeFolderEntry => treeFolderEntry.isFile()
+                                        && RECIPE_FILE_EXTENSIONS.includes(path.extname(treeFolderEntry.name).toLowerCase())
+                                        && !RecipeCockpitAdaptedDataset.isAdaptedRecipeFileName(treeFolderEntry.name))
             .map(treeFolderEntry => treeFolderEntry.name);
 
         return recipeFileNames.length === 1 ? path.join(treeFolderPath, recipeFileNames[0]) : undefined;

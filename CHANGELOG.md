@@ -1,5 +1,36 @@
 # Change Log
 
+## [3.150.0] - Recipe Cockpit: an update by the Treecipe Adapter leaves an adapted data set and an adapted recipe
+
+The update half of [#448](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/448), slice F of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442). The insert of a new child object (slice E's second half) is not built yet, so a data set records no added objects or inserted Ids until it is.
+
+Until now an update left only its `UpdateAttempts/` snapshot and results: no data set to reopen and no recipe that would reproduce the adapted data.
+
+- **The adapted data set.** Once an update lands, `RecipeCockpitAdaptedDataset.writeAdaptedRun` writes `FakeDataSets/<tree folder>-adapted-<yyyyMMdd-HHmmss>`, in UTC. The first free `-<n>` is taken, with `mkdirSync` as the existence check, as for every data set. It holds:
+  - every record the load read, each one the org saved carrying its new values (a record the org rejected keeps its loaded values), as Collections API files. Each record's `referenceId` ends in its Id, where a generated one ends in a nickname, so Insert Data Set by Directory points a lookup at the new Id of a record in the copy. The Id and the query's attributes are left out of the fields;
+  - `BaseArtifactFiles/` with a copy of the recipe, the adapted recipe and `datasetSource.json`, written last.
+
+  Nothing is written when no record was updated, or when all-or-none set the updated records back.
+- **`origin: "adapt"`.** `datasetSource.json` carries an `adaptation`: the parent object, its WHERE as typed, the org username, the fields updated by object (org-only ones marked `isOrgOnly`, #446), the added objects, the inserted Ids, and the adapted recipe's file name. `DatasetSourceService.readDatasetSource` type-checks every field of it. A malformed one, or one on another origin, reads as `unreadable`, never throwing. Its name-keyed maps are read back with no prototype.
+- **The folder name.** `parseDatasetFolderName` reads `<name>-adapted-<yyyyMMdd-HHmmss>[-<n>]`, refuses a timestamp that is no date, and gives the timestamp in the form the other data sets carry, so they sort together. The name says nothing of the backend, which is read from the data set's source.
+- **Previously Used Data Sets.** The row is added in place (#226) and drawn with an **adapted** label, in text. A reload lists it the same way.
+- **The adapted recipe.** `RecipeCockpitRecipeWriter.buildAdaptedRecipe` writes `<recipe>-adapted-<ts>.yml` beside the recipe, which is never written. It patches lines, never round-trips YAML, and reads the result back through `scanRecipeObjects`. On every occurrence of the object:
+  - a value that came from the recipe keeps its lines and gets `# ADAPTED <yyyy-MM-dd> -- <org alias>` at the end of its field line. That is outside any quoted scalar, and for a block scalar (`|`, `>`) it is the field line, where YAML takes a comment;
+  - any other value, or the recipe's own in a quoted scalar that runs past its line, becomes one line, `Field: <value> # ADAPTED …`. The value is double-quoted or a plain number or boolean, so a `#` in it stays text;
+  - a field only the org holds is inserted, marked, at the end of each occurrence's fields.
+
+  The org label keeps only letters, digits and `. _ @ + -`, so the comment can carry no quote, template opener or line break. A recipe the writer refuses still gets its data set, and the notification says why there is no recipe.
+- **A side file.** The adapted recipe stays beside the original (the drafted answer on #448). The cockpit's recipe reader (`collectRecipeFilePaths`) and the card's one recipe (`findTreeRecipeFilePath`) skip it, so no object is drawn twice and the card's generate button still uses the original. **Run Faker by Recipe** can run it.
+- **Never outside, never through a link.** The data set folder, its parent and the recipe's folder are held to the workspace by their real path, and no folder from the workspace down to them may be a link, checked before and after they are made. The recipe may not be a link. Every file is written `wx`, so a file or link already at the path is never written through.
+- **One notification.** The update's notification names the data set and the adapted recipe. It adds **Open adapted recipe** (the file, re-checked on the click) and **Open data set** (revealed in the Explorer, re-checked on the click).
+- **Tests.** `RecipeCockpitAdaptedDataset.test.ts` covers:
+  - the writer on every field Generate Treecipe writes with both backends, a `#` in a value, a block scalar, a quoted scalar over two lines, org-only fields on nested occurrences, CRLF and no final newline, and every refusal;
+  - the adapted recipe generated with faker-js through the real processor and with snowfakery through PyYAML, Jinja and Faker;
+  - the data set writer: keyed by Id, the lookup swap, `-2`, the recipe byte-identical, every refusal, and links in and out of the workspace;
+  - the source read-back, malformed adaptations, the folder name, the history, the side file, and the panel's label.
+
+  `RecipeCockpitUpdaterUpdate.test.ts` covers the host: what is written after an update, a record the org rejected, the WHERE, nothing after a set-back, a card with no recipe, the data set added in place, and the two buttons.
+
 ## [3.149.0] - Recipe Cockpit: the Treecipe Adapter builds a new child object's block under the loaded parents
 
 The first half (E1) of [#447](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/447), slice E of [#442](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/442). Inserting the records (readiness, required lookups, all-or-none, rollback and results) is E2.
