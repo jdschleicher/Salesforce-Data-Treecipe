@@ -741,7 +741,7 @@ export class RecipeCockpitMetadataDeploy {
 
     }
 
-    // THE CONFIRMATION'S DETAIL, EACH VALUE ON ONE LINE AND WITH NO PARENTHESES OF ITS OWN, SINCE THE CALLER ESCAPES IT FOR A NOTIFICATION
+    // WHAT THE IN-PANEL CONFIRMATION SAYS (#457): EACH VALUE ON ONE LINE, AND WHAT CANNOT BE UNDONE OR IS LEFT OUT AMONG THE WARNINGS, ON SCREEN
     static buildConfirmationContent(deployKind: MetadataDeployKind,
                                     treeLabel: string,
                                     orgLabel: string,
@@ -763,7 +763,7 @@ export class RecipeCockpitMetadataDeploy {
                 warnings.push(`Not deployed: ${summary.missingCustomObjects.length} custom ${summary.missingCustomObjects.length === 1 ? 'object' : 'objects'} not in this project — the org must already have ${summary.missingCustomObjects.length === 1 ? 'it' : 'them'}, or ${summary.missingCustomObjects.length === 1 ? 'its' : 'their'} fields fail: ${this.describeCappedList(summary.missingCustomObjects)}`);
             }
             if ( summary.unreadableCustomObjects.length > 0 ) {
-                notes.push(`Not deployed: ${summary.unreadableCustomObjects.length} custom ${summary.unreadableCustomObjects.length === 1 ? 'object' : 'objects'} whose .object-meta.xml could not be read: ${this.describeCappedList(summary.unreadableCustomObjects)}`);
+                warnings.push(`Not deployed: ${summary.unreadableCustomObjects.length} custom ${summary.unreadableCustomObjects.length === 1 ? 'object' : 'objects'} whose .object-meta.xml could not be read: ${this.describeCappedList(summary.unreadableCustomObjects)}`);
             }
             if ( summary.customObjects.length + summary.missingCustomObjects.length + summary.unreadableCustomObjects.length === 0 ) {
                 notes.push('Every object of this tree is a standard object, so no CustomObject is deployed.');

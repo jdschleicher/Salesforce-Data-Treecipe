@@ -2090,6 +2090,9 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
         it('names a required parent outside the tree, as written', () => {
 
             expect(detailOf([['Contact', 1]], ['Region__c'])).toContain('Required lookups to objects this tree does not insert get a random existing record of: Region__c (none means nothing is inserted).');
+            // #457: RECORDS POINTED AT EXISTING ORG RECORDS ARE NOT GENERATED DATA, SO IT IS A WARNING ON SCREEN
+            expect(RecipeCockpitService.buildConfirmRequestContent(contentOf([['Contact', 1]], ['Region__c'])).warnings)
+                .toContain('Required lookups to objects this tree does not insert get a random existing record of: Region__c (none means nothing is inserted).');
             expect(detailOf([['Contact', 1]], ['[x](command:evil)'])).toContain('a random existing record of: [x](command:evil) (none');
 
         });

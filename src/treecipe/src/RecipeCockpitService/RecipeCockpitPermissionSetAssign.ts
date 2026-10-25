@@ -426,8 +426,8 @@ export class RecipeCockpitPermissionSetAssign {
 
     }
 
-    // THE CONFIRMATION'S DETAIL: THE TREE, THE ORG, THE USER, AND EVERY PICK WITH WHAT IT COVERS, EACH ON ONE LINE AND WITH NO
-    // PARENTHESES OF ITS OWN, SINCE THE CALLER ESCAPES IT FOR A NOTIFICATION
+    // WHAT THE IN-PANEL CONFIRMATION SAYS (#457): THE TREE, THE ORG AND THE USER ON SCREEN, EVERY PICK WITH WHAT IT COVERS IN A
+    // FOLDED SECTION, EACH ON ONE LINE
     static buildConfirmationContent(treeLabel: string, orgLabel: string, orgUsername: string, permissionSets: readonly IPermissionSetCandidate[], treeObjectCount: number): IRecipeCockpitConfirmContent {
 
         const toSingleLine = (text: string) => String(text).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');

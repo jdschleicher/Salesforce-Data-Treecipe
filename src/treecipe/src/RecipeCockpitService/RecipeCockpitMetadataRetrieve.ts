@@ -416,7 +416,7 @@ export class RecipeCockpitMetadataRetrieve {
 
     }
 
-    // THE CONFIRMATION'S DETAIL, EACH VALUE ON ONE LINE AND WITH NO PARENTHESES OF ITS OWN, SINCE THE CALLER ESCAPES IT FOR A NOTIFICATION
+    // WHAT THE IN-PANEL CONFIRMATION SAYS (#457): EACH VALUE ON ONE LINE, AND WHAT CANNOT BE UNDONE OR IS LEFT OUT AMONG THE WARNINGS, ON SCREEN
     static buildConfirmationContent(retrieveKind: MetadataRetrieveKind,
                                     treeLabel: string,
                                     orgLabel: string,

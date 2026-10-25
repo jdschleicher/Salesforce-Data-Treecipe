@@ -837,6 +837,8 @@ describe('RecipeCockpitService, "+ New scratch org" in the Treecipe tab (#200, #
             expect(modalDetail).toContain('  Admin email: author@example.com Dev Hub: fake');
             expect(modalDetail.split('\n').filter(detailLine => detailLine.startsWith('Dev Hub:'))).toHaveLength(1);
             expect(modalDetail).not.toContain('replacements');
+            // #457: WHAT THE REPOSITORY DECIDES IS IN THE SUMMARY, NEVER ONLY IN A FOLDED SECTION
+            expect((RecipeCockpitService.confirmInPanel as unknown as jest.Mock).mock.calls[0][1].summary).toContain('  Admin email: author@example.com Dev Hub: fake');
 
         });
 

@@ -878,6 +878,8 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
                     expect(warnings().at(-1)).toMatch(/Tier__c: .*Platinum/);
 
                     await send(generateMessage(1, [{ fieldApiName: 'Name', value: '${{ fake.Word }}' }, { fieldApiName: 'Tier__c', value: 'Gold' }]));
+                    // #457: AN EDITED EXPRESSION THE BACKEND WILL RUN IS A WARNING ON SCREEN, NEVER ONLY IN THE FOLDED FIELDS SECTION
+                    expect((RecipeCockpitService.confirmInPanel as unknown as jest.Mock).mock.calls.at(-1)[1].warnings).toEqual([`Runs the edited expression ${CHILD_OBJECT}.Name: \${{ fake.Word }}`]);
                     expect(generatedRecipeTexts.map(recipeText => (yaml.load(recipeText) as any[])[0].fields)).toEqual([{ Name: '${{ fake.Word }}' }]);
                     expect(RecipeCockpitService.readHeldAdapterChildRecords()![0]).toMatchObject({ Name: 'Name-new-0', Tier__c: 'Gold' });
                 } finally {
