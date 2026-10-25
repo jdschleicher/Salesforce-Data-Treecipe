@@ -230,7 +230,9 @@ describe('the Treecipe Adapter\'s adapted data set and recipe (#448)', () => {
             ['a value on two lines', [{ objectApiName: 'Account', fieldApiName: 'Name', valueText: '"x"\n    Evil: 1' }], ADAPTED_COMMENT, 'invalid-value'],
             ['a value with a line break only PyYAML sees', [{ objectApiName: 'Account', fieldApiName: 'Name', valueText: '"x - object: Evil"' }], ADAPTED_COMMENT, 'invalid-value'],
             ['a field listed twice', [{ objectApiName: 'Account', fieldApiName: 'Name', valueText: '"x"' }, { objectApiName: 'Account', fieldApiName: 'Name', valueText: '"y"' }], ADAPTED_COMMENT, 'duplicate-field'],
-            ['a name that is not an api name', [{ objectApiName: 'Account', fieldApiName: 'Na me', valueText: '"x"' }], ADAPTED_COMMENT, 'invalid-field-api-name']
+            ['a name that is not an api name', [{ objectApiName: 'Account', fieldApiName: 'Na me', valueText: '"x"' }], ADAPTED_COMMENT, 'invalid-field-api-name'],
+            ['an object name that is not an api name', [{ objectApiName: 'Acc ount', fieldApiName: 'Name', valueText: '"x"' }], ADAPTED_COMMENT, 'invalid-object-api-name'],
+            ['a field of an object the recipe lacks', [{ objectApiName: 'Case', fieldApiName: 'Subject', valueText: '"x"' }], ADAPTED_COMMENT, 'object-not-found']
         ])('refuses %s', (_description, adaptedFields, adaptedComment, expectedReason) => {
 
             const adaptedRecipe = RecipeCockpitRecipeWriter.buildAdaptedRecipe(ONE_OBJECT_RECIPE, adaptedFields as IAdaptedRecipeField[], adaptedComment);
@@ -424,8 +426,8 @@ describe('the Treecipe Adapter\'s adapted data set and recipe (#448)', () => {
             ...requestChanges
         });
 
-        const write = (requestChanges: Partial<IAdaptedRunRequest> = {}) => {
-            const adaptedRun = RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest(requestChanges));
+        const write = async (requestChanges: Partial<IAdaptedRunRequest> = {}) => {
+            const adaptedRun = await RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest(requestChanges));
             if ( 'refusal' in adaptedRun ) {
                 throw new Error(adaptedRun.refusal);
             }
@@ -449,10 +451,10 @@ describe('the Treecipe Adapter\'s adapted data set and recipe (#448)', () => {
 
         });
 
-        it('writes the data set, its source and the adapted recipe, keyed by Id, and never writes the recipe', () => {
+        it('writes the data set, its source and the adapted recipe, keyed by Id, and never writes the recipe', async () => {
 
             const recipeBefore = fs.readFileSync(recipeFilePath(), 'utf8');
-            const adaptedRun = write();
+            const adaptedRun = await write();
 
             expect(path.basename(adaptedRun.datasetFolderPath)).toBe(`${ACCOUNT_TREE_KEY}-adapted-20261025-143005`);
             expect(path.basename(adaptedRun.adaptedRecipeFilePath!)).toBe(`recipe--${ACCOUNT_TREE_KEY}-2026-09-20T10-00-00-adapted-20261025-143005.yml`);
@@ -477,9 +479,33 @@ describe('the Treecipe Adapter\'s adapted data set and recipe (#448)', () => {
 
         });
 
-        it('lets an insert of the copy point a lookup at the new Id of a record in it, as a nickname is', () => {
+        it('lays a saved record\'s new values over its loaded ones in one pass, writes compact JSON, and leaves out the Id, the attributes and a __proto__ key', async () => {
 
-            const adaptedRun = write();
+            const adaptedRun = await write({
+                objects: [{
+                    objectApiName: 'Account',
+                    records: [
+                        JSON.parse('{"attributes":{"type":"Account"},"Id":"001000000000000AAA","Legacy_Code__c":"OLD-0","__proto__":{"polluted":true}}'),
+                        { Id: '001000000000000AAB', Legacy_Code__c: 'OLD-1' }
+                    ],
+                    newValuesByRecordId: new Map([['001000000000000AAA', { Legacy_Code__c: 'NEW-0', Region__c: 'West' }]])
+                }]
+            });
+            const accountFileText = fs.readFileSync(path.join(adaptedRun.datasetFolderPath, 'DatasetFilesForCollectionsApi', 'collectionsApi-Account.json'), 'utf8');
+            const accountRecords = JSON.parse(accountFileText).records;
+
+            expect(accountFileText).not.toContain('\n');
+            expect(accountRecords).toEqual([
+                { attributes: { type: 'Account', referenceId: 'Account_Reference_1__001000000000000AAA' }, Legacy_Code__c: 'NEW-0', Region__c: 'West' },
+                { attributes: { type: 'Account', referenceId: 'Account_Reference_2__001000000000000AAB' }, Legacy_Code__c: 'OLD-1' }
+            ]);
+            expect(({} as any).polluted).toBeUndefined();
+
+        });
+
+        it('lets an insert of the copy point a lookup at the new Id of a record in it, as a nickname is', async () => {
+
+            const adaptedRun = await write();
             const contactFile = fs.readFileSync(path.join(adaptedRun.datasetFolderPath, 'DatasetFilesForCollectionsApi', 'collectionsApi-Contact.json'), 'utf8');
 
             const { CollectionsApiService } = jest.requireActual('../../CollectionsApiService/CollectionsApiService');
@@ -488,10 +514,10 @@ describe('the Treecipe Adapter\'s adapted data set and recipe (#448)', () => {
 
         });
 
-        it('takes "-2" for a second run in the same second, for the data set and the recipe beside the first', () => {
+        it('takes "-2" for a second run in the same second, for the data set and the recipe beside the first', async () => {
 
-            const firstRun = write();
-            const secondRun = write();
+            const firstRun = await write();
+            const secondRun = await write();
 
             expect(path.basename(secondRun.datasetFolderPath)).toBe(`${path.basename(firstRun.datasetFolderPath)}-2`);
             expect(path.basename(secondRun.adaptedRecipeFilePath!)).toBe(`recipe--${ACCOUNT_TREE_KEY}-2026-09-20T10-00-00-adapted-20261025-143005-2.yml`);
@@ -499,9 +525,9 @@ describe('the Treecipe Adapter\'s adapted data set and recipe (#448)', () => {
 
         });
 
-        it('still writes the data set when the recipe cannot be adapted, and says why', () => {
+        it('still writes the data set when the recipe cannot be adapted, and says why', async () => {
 
-            const adaptedRun = write({ adaptedFields: [{ objectApiName: 'Account', fieldApiName: 'Gone__c', valueText: '"x"' }] });
+            const adaptedRun = await write({ adaptedFields: [{ objectApiName: 'Account', fieldApiName: 'Gone__c', valueText: '"x"' }] });
 
             expect(adaptedRun.adaptedRecipeFilePath).toBeUndefined();
             expect(adaptedRun.recipeRefusal).toBe('Account has no Gone__c line.');
@@ -509,59 +535,59 @@ describe('the Treecipe Adapter\'s adapted data set and recipe (#448)', () => {
 
         });
 
-        it('refuses a FakeDataSets folder outside the workspace or reached through a link, writing nothing', () => {
+        it('refuses a FakeDataSets folder outside the workspace or reached through a link, writing nothing', async () => {
 
             const outsideFolderPath = path.join(temporaryRoot, 'outside');
             fs.mkdirSync(outsideFolderPath);
 
-            expect(RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest({ fakeDataSetsFolderPath: outsideFolderPath }))).toEqual({
+            expect(await RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest({ fakeDataSetsFolderPath: outsideFolderPath }))).toEqual({
                 isWritten: false,
                 refusal: 'the FakeDataSets folder is outside the workspace or reached through a link.'
             });
 
             fs.symlinkSync(outsideFolderPath, fakeDataSetsPath(), 'dir');
-            expect(RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest())).toMatchObject({ isWritten: false });
+            expect(await RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest())).toMatchObject({ isWritten: false });
 
             // A LINK INSIDE THE WORKSPACE IS REFUSED TOO
             fs.rmSync(fakeDataSetsPath());
             fs.mkdirSync(path.join(workspaceRoot, 'elsewhere'));
             fs.symlinkSync(path.join(workspaceRoot, 'elsewhere'), fakeDataSetsPath(), 'dir');
-            expect(RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest())).toMatchObject({ isWritten: false });
+            expect(await RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest())).toMatchObject({ isWritten: false });
 
             expect(fs.readdirSync(outsideFolderPath)).toEqual([]);
             expect(fs.readdirSync(path.join(workspaceRoot, 'elsewhere'))).toEqual([]);
 
         });
 
-        it('refuses a recipe reached through a link, and never writes an adapted recipe over a file or link already there', () => {
+        it('refuses a recipe reached through a link, and never writes an adapted recipe over a file or link already there', async () => {
 
             const linkedRecipePath = path.join(recipeFolderPath(), 'linked.yml');
             fs.symlinkSync(recipeFilePath(), linkedRecipePath);
-            expect(RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest({ recipeFilePath: linkedRecipePath }))).toMatchObject({ isWritten: false, refusal: 'the card\'s recipe is outside the workspace or reached through a link.' });
+            expect(await RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest({ recipeFilePath: linkedRecipePath }))).toMatchObject({ isWritten: false, refusal: 'the card\'s recipe is outside the workspace or reached through a link.' });
             fs.rmSync(linkedRecipePath);
 
             const plantedTargetPath = path.join(temporaryRoot, 'planted.yml');
             fs.writeFileSync(plantedTargetPath, 'planted');
             fs.symlinkSync(plantedTargetPath, path.join(recipeFolderPath(), `recipe--${ACCOUNT_TREE_KEY}-2026-09-20T10-00-00-adapted-20261025-143005.yml`));
 
-            const adaptedRun = write();
+            const adaptedRun = await write();
             expect(adaptedRun.adaptedRecipeFilePath).toBeUndefined();
             expect(adaptedRun.recipeRefusal).toMatch(/could not be written beside the recipe; a copy is in the data set\.$/);
             expect(fs.readFileSync(plantedTargetPath, 'utf8')).toBe('planted');
 
         });
 
-        it('refuses a recipe outside GeneratedRecipes, a recipe that cannot be read, and a FakeDataSets path that is a file', () => {
+        it('refuses a recipe outside GeneratedRecipes, a recipe that cannot be read, and a FakeDataSets path that is a file', async () => {
 
-            expect(RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest({ recipeFilePath: path.join(workspaceRoot, 'recipe.yml') }))).toEqual({ isWritten: false, refusal: 'the card\'s recipe is not in a GeneratedRecipes run folder.' });
-            expect(RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest({ recipeFilePath: path.join(recipeFolderPath(), 'gone.yml') }))).toEqual({ isWritten: false, refusal: 'the card\'s recipe could not be read.' });
+            expect(await RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest({ recipeFilePath: path.join(workspaceRoot, 'recipe.yml') }))).toEqual({ isWritten: false, refusal: 'the card\'s recipe is not in a GeneratedRecipes run folder.' });
+            expect(await RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest({ recipeFilePath: path.join(recipeFolderPath(), 'gone.yml') }))).toEqual({ isWritten: false, refusal: 'the card\'s recipe could not be read.' });
 
             fs.writeFileSync(fakeDataSetsPath(), 'a file');
-            expect(RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest())).toMatchObject({ isWritten: false, refusal: 'the FakeDataSets folder is outside the workspace or reached through a link.' });
+            expect(await RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest())).toMatchObject({ isWritten: false, refusal: 'the FakeDataSets folder is outside the workspace or reached through a link.' });
 
         });
 
-        it('refuses when the data set folder cannot be made for another reason than a clash, or its files cannot all be written', () => {
+        it('refuses when the data set folder cannot be made for another reason than a clash, or its files cannot all be written', async () => {
 
             const realMkdirSync = fs.mkdirSync;
             const mkdirSpy = jest.spyOn(fs, 'mkdirSync').mockImplementation(((folderPath: fs.PathLike, options?: fs.MakeDirectoryOptions) => {
@@ -570,7 +596,7 @@ describe('the Treecipe Adapter\'s adapted data set and recipe (#448)', () => {
                 }
                 return realMkdirSync(folderPath, options);
             }) as typeof fs.mkdirSync);
-            expect(RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest())).toEqual({ isWritten: false, refusal: 'the data set folder could not be made inside the workspace.' });
+            expect(await RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest())).toEqual({ isWritten: false, refusal: 'the data set folder could not be made inside the workspace.' });
             mkdirSpy.mockRestore();
 
             const realWriteFileSync = fs.writeFileSync;
@@ -580,25 +606,27 @@ describe('the Treecipe Adapter\'s adapted data set and recipe (#448)', () => {
                 }
                 return (realWriteFileSync as any)(filePath, ...rest);
             }) as typeof fs.writeFileSync);
-            expect(RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest())).toEqual({ isWritten: false, refusal: `the files of ${ACCOUNT_TREE_KEY}-adapted-20261025-143005 could not all be written.` });
+            expect(await RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest())).toEqual({ isWritten: false, refusal: `the files of ${ACCOUNT_TREE_KEY}-adapted-20261025-143005 could not all be written.` });
+            // A HALF-WRITTEN FOLDER WOULD BE LISTED AS A DATA SET BY ITS NAME ALONE, SO IT IS GONE
+            expect(fs.readdirSync(fakeDataSetsPath())).toEqual([]);
 
         });
 
-        it('writes no adapted recipe for a recipe whose name an adapted name cannot be built from', () => {
+        it('writes no adapted recipe for a recipe whose name an adapted name cannot be built from', async () => {
 
             const textRecipePath = path.join(recipeFolderPath(), 'recipe.txt');
             fs.copyFileSync(recipeFilePath(), textRecipePath);
 
-            const adaptedRun = write({ recipeFilePath: textRecipePath });
+            const adaptedRun = await write({ recipeFilePath: textRecipePath });
             expect(adaptedRun.adaptedRecipeFilePath).toBeUndefined();
             expect(adaptedRun.recipeRefusal).toBe('the adapted recipe\'s file name could not be built from the recipe\'s.');
 
         });
 
-        it('refuses a tree folder name that is not a plain name, and an object name that is not an api name', () => {
+        it('refuses a tree folder name that is not a plain name, and an object name that is not an api name', async () => {
 
-            expect(RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest({ treeFolderName: '../escape' }))).toMatchObject({ isWritten: false });
-            expect(RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest({ objects: [{ objectApiName: '../Account', records: [] }] }))).toMatchObject({ isWritten: false });
+            expect(await RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest({ treeFolderName: '../escape' }))).toMatchObject({ isWritten: false });
+            expect(await RecipeCockpitAdaptedDataset.writeAdaptedRun(buildRequest({ objects: [{ objectApiName: '../Account', records: [] }] }))).toMatchObject({ isWritten: false });
             expect(fs.existsSync(fakeDataSetsPath())).toBe(false);
 
         });

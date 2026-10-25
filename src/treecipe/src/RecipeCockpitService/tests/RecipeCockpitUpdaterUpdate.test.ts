@@ -823,6 +823,42 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
             });
 
+            it('says when records of a request that threw keep old values the org may not hold', async () => {
+
+                updateAnswer = (objectApiName, records) => {
+                    if ( objectApiName === 'Contact' ) { throw new Error('socket hang up'); }
+                    return records.map(record => ({ id: record.Id, success: true, errors: [] }));
+                };
+
+                await openCockpitLoadAndGenerate();
+                await acknowledgeValues();
+                await requestUpdate();
+
+                expect(readCollectionsApiFile('Contact').records.map((record: any) => record.LastName)).toEqual(['Old 0', 'Old 1']);
+                expect(readCollectionsApiFile('Account').records.map((record: any) => record.Legacy_Code__c)).toEqual(['Legacy_Code__c-new-0', 'Legacy_Code__c-new-1', 'Legacy_Code__c-new-2']);
+                expect(warnings().at(-1)).toContain('2 records the org may have saved keep their old values in the adapted data set, so they may not match the org.');
+
+            });
+
+            it('names an org with no alias by its username in the mark, and one uncertain record in the singular', async () => {
+
+                recordCountByObject = { Account: 3, Contact: 1, OtherChildObject__c: 0 };
+                updateAnswer = (objectApiName, records) => {
+                    if ( objectApiName === 'Contact' ) { throw new Error('socket hang up'); }
+                    return records.map(record => ({ id: record.Id, success: true, errors: [] }));
+                };
+
+                await openCockpitLoadAndGenerate();
+                await acknowledgeValues();
+                selectOrg({ ...SANDBOX_ORG, alias: undefined } as unknown as typeof SANDBOX_ORG);
+                await requestUpdate();
+
+                const adaptedRecipe = fs.readFileSync(path.join(recipeFolderPath(), adaptedRecipeFileNames()[0]), 'utf8');
+                expect(adaptedRecipe).toContain(`    Legacy_Code__c: \${{fake.Word}} # ADAPTED ${new Date().toISOString().slice(0, 10)} -- qa@example.com.qa\n`);
+                expect(warnings().at(-1)).toContain('1 record the org may have saved keeps its old values in the adapted data set, so it may not match the org.');
+
+            });
+
             it('reveals the data set and opens the adapted recipe from the notification\'s buttons', async () => {
 
                 await openCockpitLoadAndGenerate();

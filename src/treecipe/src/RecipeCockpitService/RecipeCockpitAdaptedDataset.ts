@@ -22,10 +22,15 @@ const ADAPTED_NAME_ATTEMPTS = 100;
 
 const SALESFORCE_ID_PATTERN = /^[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/;
 
-// ONE OBJECT'S RECORDS AS THEY ARE IN THE ORG NOW: EACH LOADED RECORD WITH THE VALUES THE ADAPT RUN WROTE TO IT
+/*
+    One object's records as they are in the org now: each loaded record, with the values the adapt
+    run wrote to it laid over it -- only for a record the org saved, so newValuesByRecordId holds no
+    other. The two are merged as each record is written, so no copy of the load is made first.
+*/
 export interface IAdaptedObjectRecords {
     objectApiName: string;
-    records: Record<string, unknown>[];
+    records: readonly Record<string, unknown>[];
+    newValuesByRecordId?: ReadonlyMap<string, Record<string, unknown>>;
 }
 
 export interface IAdaptedRunRequest {
@@ -61,19 +66,42 @@ export class RecipeCockpitAdaptedDataset {
         A Collections API file's records for one object (#448), keyed by Id: each record's referenceId
         carries its Id where a generated one carries a nickname, so an insert of this data set swaps
         a lookup that names a record of the data set for that record's new Id, as it swaps a nickname.
-        The Id and the query's attributes are left out of the fields. A record with no Id is left out.
+        The Id and the query's attributes are left out of the fields, and a record's new values are
+        laid over its loaded ones in the same pass. A record with no Id is left out.
     */
-    static buildCollectionsApiRecords(objectApiName: string, records: readonly Record<string, unknown>[]): Record<string, unknown>[] {
+    static buildCollectionsApiRecords(objectApiName: string,
+                                      records: readonly Record<string, unknown>[],
+                                      newValuesByRecordId: ReadonlyMap<string, Record<string, unknown>> = new Map()): Record<string, unknown>[] {
 
-        return records
-            .filter(record => typeof record.Id === 'string' && SALESFORCE_ID_PATTERN.test(record.Id))
-            .map((record, recordIndex) => {
-                const fields = Object.fromEntries(Object.entries(record).filter(([fieldApiName]) => fieldApiName !== 'Id' && fieldApiName !== 'attributes'));
-                return {
-                    attributes: { type: objectApiName, referenceId: `${objectApiName}_Reference_${recordIndex + 1}__${record.Id as string}` },
-                    ...fields
-                };
-            });
+        const collectionsApiRecords: Record<string, unknown>[] = [];
+
+        records.forEach(record => {
+
+            const recordId = record.Id;
+            if ( typeof recordId !== 'string' || !SALESFORCE_ID_PATTERN.test(recordId) ) {
+                return;
+            }
+
+            const collectionsApiRecord: Record<string, unknown> = {
+                attributes: { type: objectApiName, referenceId: `${objectApiName}_Reference_${collectionsApiRecords.length + 1}__${recordId}` }
+            };
+            // A FIELD NAME IS THE ORG'S, NEVER "__proto__"; ONE THAT WAS WOULD SET A PROTOTYPE, SO IT IS LEFT OUT
+            const defineField = (fieldApiName: string, fieldValue: unknown) => {
+                if ( fieldApiName !== 'Id' && fieldApiName !== 'attributes' && fieldApiName !== '__proto__' ) {
+                    collectionsApiRecord[fieldApiName] = fieldValue;
+                }
+            };
+            Object.keys(record).forEach(fieldApiName => defineField(fieldApiName, record[fieldApiName]));
+            const newValues = newValuesByRecordId.get(recordId);
+            if ( newValues ) {
+                Object.keys(newValues).forEach(fieldApiName => defineField(fieldApiName, newValues[fieldApiName]));
+            }
+
+            collectionsApiRecords.push(collectionsApiRecord);
+
+        });
+
+        return collectionsApiRecords;
 
     }
 
@@ -81,11 +109,14 @@ export class RecipeCockpitAdaptedDataset {
         Writes FakeDataSets/<tree folder>-adapted-<ts>[-<n>] -- mkdirSync is the existence check, as
         for every data set -- with the records as Collections API files and BaseArtifactFiles holding
         a copy of the recipe, the adapted recipe and datasetSource.json, which is written LAST so a
-        failed write leaves no file claiming a complete data set. Then <recipe>-adapted-<ts>.yml beside
-        the recipe, "wx". Every folder is held to the workspace before and after it is made, no
-        folder on the way may be a link, and a file is never written over one.
+        failed write leaves no file claiming a complete data set, and a folder whose files could not
+        all be written is removed, since its name alone lists it as a data set. Then
+        <recipe>-adapted-<ts>.yml beside the recipe, "wx". Every folder is held to the workspace
+        before and after it is made, no folder on the way may be a link, and a file is never written
+        over one. The files are compact JSON, as the update's snapshot is, and the host is yielded to
+        between objects: at the Adapter's cap of 1,000,000 values one object can take a second.
     */
-    static writeAdaptedRun(request: IAdaptedRunRequest): RecipeCockpitAdaptedRunWrite {
+    static async writeAdaptedRun(request: IAdaptedRunRequest): Promise<RecipeCockpitAdaptedRunWrite> {
 
         const refuse = (refusal: string): RecipeCockpitAdaptedRunWrite => ({ isWritten: false, refusal: refusal });
         const resolvedWorkspaceRoot = path.resolve(request.workspaceRoot);
@@ -131,6 +162,7 @@ export class RecipeCockpitAdaptedDataset {
         const adaptedTimestamp = path.basename(datasetFolderPath).slice(request.treeFolderName.length + DATASET_ADAPTED_NAME_MARKER.length);
         const recordCountsByObject: Record<string, number> = Object.create(null);
         let adaptedRecipeFilePath: string | undefined;
+        let adaptedRecipeText: string | undefined;
         let recipeRefusal: string | undefined;
 
         try {
@@ -140,12 +172,13 @@ export class RecipeCockpitAdaptedDataset {
             fs.mkdirSync(collectionsApiFolderPath);
             fs.mkdirSync(baseArtifactsFolderPath);
 
-            request.objects.forEach(adaptedObject => {
-                const collectionsApiRecords = this.buildCollectionsApiRecords(adaptedObject.objectApiName, adaptedObject.records);
+            for ( const adaptedObject of request.objects ) {
+                const collectionsApiRecords = this.buildCollectionsApiRecords(adaptedObject.objectApiName, adaptedObject.records, adaptedObject.newValuesByRecordId);
                 recordCountsByObject[adaptedObject.objectApiName] = collectionsApiRecords.length;
                 this.writeNewFile(path.join(collectionsApiFolderPath, `collectionsApi-${adaptedObject.objectApiName}.json`),
-                                  JSON.stringify({ allOrNone: true, records: collectionsApiRecords }, null, 2));
-            });
+                                  JSON.stringify({ allOrNone: true, records: collectionsApiRecords }));
+                await new Promise(resolve => setImmediate(resolve));
+            }
 
             this.writeNewFile(path.join(baseArtifactsFolderPath, `originalRecipe-${path.basename(recipeFilePath)}`), recipeText);
 
@@ -159,7 +192,8 @@ export class RecipeCockpitAdaptedDataset {
                 const adaptedRecipeFileName = `${path.basename(recipeFilePath, recipeExtension)}${DATASET_ADAPTED_NAME_MARKER}${adaptedTimestamp}${recipeExtension}`;
                 adaptedRecipeFilePath = this.isAdaptedRecipeFileName(adaptedRecipeFileName) ? path.join(path.dirname(recipeFilePath), adaptedRecipeFileName) : undefined;
                 if ( adaptedRecipeFilePath ) {
-                    this.writeNewFile(path.join(baseArtifactsFolderPath, adaptedRecipeFileName), adaptedRecipe.recipeText);
+                    adaptedRecipeText = adaptedRecipe.recipeText;
+                    this.writeNewFile(path.join(baseArtifactsFolderPath, adaptedRecipeFileName), adaptedRecipeText);
                 } else {
                     recipeRefusal = 'the adapted recipe\'s file name could not be built from the recipe\'s.';
                 }
@@ -172,12 +206,12 @@ export class RecipeCockpitAdaptedDataset {
             this.writeNewFile(path.join(baseArtifactsFolderPath, 'datasetSource.json'), `${JSON.stringify(datasetSource, null, 2)}\n`);
 
         } catch {
+            this.removeFolderThisRunMade(datasetFolderPath, resolvedWorkspaceRoot);
             return refuse(`the files of ${path.basename(datasetFolderPath)} could not all be written.`);
         }
 
         // BESIDE THE RECIPE, WHICH IS NEVER WRITTEN; A FILE ALREADY THERE, OR A LINK, IS NEVER WRITTEN OVER
-        if ( adaptedRecipeFilePath ) {
-            const adaptedRecipeText = fs.readFileSync(path.join(datasetFolderPath, BASE_ARTIFACT_FILES_FOLDER_NAME, path.basename(adaptedRecipeFilePath)), 'utf8');
+        if ( adaptedRecipeFilePath && adaptedRecipeText !== undefined ) {
             try {
                 this.writeNewFile(adaptedRecipeFilePath, adaptedRecipeText);
             } catch {
@@ -193,6 +227,17 @@ export class RecipeCockpitAdaptedDataset {
             ...( recipeRefusal ? { recipeRefusal: recipeRefusal } : {} )
         };
 
+    }
+
+    // ONLY A FOLDER STILL INSIDE THE WORKSPACE WITH NO LINK ON THE WAY; ONE THAT CANNOT BE REMOVED IS LEFT, AS THE WRITE ALREADY FAILED
+    private static removeFolderThisRunMade(datasetFolderPath: string, resolvedWorkspaceRoot: string) {
+        if ( this.isWritableFolder(datasetFolderPath, resolvedWorkspaceRoot, false) ) {
+            try {
+                fs.rmSync(datasetFolderPath, { recursive: true, force: true });
+            } catch {
+                // NOTHING MORE TO DO
+            }
+        }
     }
 
     // "wx": A FILE OR A LINK ALREADY AT THE PATH THROWS RATHER THAN BEING WRITTEN THROUGH

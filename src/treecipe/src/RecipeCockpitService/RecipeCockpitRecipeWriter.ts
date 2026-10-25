@@ -2432,7 +2432,14 @@ export class RecipeCockpitRecipeWriter {
 
         const recipeLines = this.splitRecipeLines(recipeText);
         const scannedObjects = this.scanRecipeObjects(recipeLines.lines);
-        const edits: { startIndex: number; endIndex: number; newLines: string[] }[] = [];
+        // ONE INDEX BY OBJECT: A SEARCH OF THE WHOLE SCAN PER FIELD WAS 7.5 s FOR 55,000 FIELDS OF AN 11,000-OBJECT RECIPE
+        const occurrencesByObjectApiName = new Map<string, IScannedObject[]>();
+        scannedObjects.forEach(scannedObject => {
+            const objectOccurrences = occurrencesByObjectApiName.get(scannedObject.objectApiName) ?? [];
+            objectOccurrences.push(scannedObject);
+            occurrencesByObjectApiName.set(scannedObject.objectApiName, objectOccurrences);
+        });
+        const edits: { startIndex: number; endIndex: number; newLine: string }[] = [];
         const insertedFieldApiNamesByHeaderIndex = new Map<number, string[]>();
         const markedFields: { headerIndex: number; fieldApiName: string }[] = [];
 
@@ -2442,7 +2449,7 @@ export class RecipeCockpitRecipeWriter {
 
             if ( adaptedField.isOrgOnly ) {
 
-                const objectOccurrences = scannedObjects.filter(scannedObject => scannedObject.objectApiName === objectApiName);
+                const objectOccurrences = occurrencesByObjectApiName.get(objectApiName) ?? [];
                 if ( objectOccurrences.length === 0 ) {
                     return refuseAdapt(this.refuse('object-not-found', `The recipe has no "- object: ${objectApiName}" line.`, objectApiName, fieldApiName));
                 }
@@ -2457,7 +2464,7 @@ export class RecipeCockpitRecipeWriter {
                     }
                     const fieldIndent = this.getObjectLayout(scannedObject.objectIndent).fieldIndent;
                     const insertIndex = scannedObject.lastFieldsBlockLineIndex + 1;
-                    edits.push({ startIndex: insertIndex, endIndex: insertIndex, newLines: [`${fieldIndent}${fieldApiName}: ${valueText} ${adaptedComment}`] });
+                    edits.push({ startIndex: insertIndex, endIndex: insertIndex, newLine: `${fieldIndent}${fieldApiName}: ${valueText} ${adaptedComment}` });
                     insertedFieldApiNamesByHeaderIndex.set(scannedObject.headerIndex, [...( insertedFieldApiNamesByHeaderIndex.get(scannedObject.headerIndex) ?? [] ), fieldApiName]);
                     markedFields.push({ headerIndex: scannedObject.headerIndex, fieldApiName: fieldApiName });
                 }
@@ -2465,7 +2472,7 @@ export class RecipeCockpitRecipeWriter {
 
             }
 
-            const located = this.locatePinnableOccurrences(scannedObjects, objectApiName, fieldApiName);
+            const located = this.locatePinnableOccurrences(occurrencesByObjectApiName.get(objectApiName) ?? [], objectApiName, fieldApiName);
             if ( 'refusal' in located ) {
                 return refuseAdapt(located);
             }
@@ -2475,10 +2482,10 @@ export class RecipeCockpitRecipeWriter {
                 const isMarkable = adaptedField.isRecipeValue === true
                                     && ( this.isFieldValueClosedOnFirstLine(recipeLines.lines, scannedObject, scannedField) || this.isBlockScalarFieldLine(fieldLine, scannedObject, scannedField) );
                 if ( isMarkable ) {
-                    edits.push({ startIndex: scannedField.startIndex, endIndex: scannedField.startIndex + 1, newLines: [`${fieldLine.trimEnd()} ${adaptedComment}`] });
+                    edits.push({ startIndex: scannedField.startIndex, endIndex: scannedField.startIndex + 1, newLine: `${fieldLine.trimEnd()} ${adaptedComment}` });
                 } else {
                     const fieldIndent = this.getObjectLayout(scannedObject.objectIndent).fieldIndent;
-                    edits.push({ startIndex: scannedField.startIndex, endIndex: scannedField.endIndex, newLines: [`${fieldIndent}${fieldApiName}: ${valueText} ${adaptedComment}`] });
+                    edits.push({ startIndex: scannedField.startIndex, endIndex: scannedField.endIndex, newLine: `${fieldIndent}${fieldApiName}: ${valueText} ${adaptedComment}` });
                 }
                 markedFields.push({ headerIndex: scannedObject.headerIndex, fieldApiName: fieldApiName });
             });
@@ -2505,37 +2512,37 @@ export class RecipeCockpitRecipeWriter {
     }
 
     /*
-        Edits that never overlap, applied last first so every earlier index stays where it was. A
-        replacement keeps the ending after the lines it replaces; an insertion after a line takes that
-        line's ending, and a last line with none is given one so the inserted line follows it.
+        One-line edits that never overlap, applied last first so every earlier index stays where it
+        was. A replacement keeps the ending after the lines it replaces; an insertion after a line
+        takes that line's ending, and a last line with none is given the file's, so the inserted line
+        follows it and is the one left without.
     */
-    private static applyLineEdits(recipeLines: IRecipeLines, edits: readonly { startIndex: number; endIndex: number; newLines: string[] }[]): IRecipeLines {
+    private static applyLineEdits(recipeLines: IRecipeLines, edits: readonly { startIndex: number; endIndex: number; newLine: string }[]): IRecipeLines {
 
         const lines = [...recipeLines.lines];
         const lineEndings = [...recipeLines.lineEndings];
-        const defaultLineEnding = recipeLines.lineEndings.find(lineEnding => lineEnding) ?? '\n';
+        // A RECIPE WITH A FIELD SPANS SEVERAL LINES, SO IT HAS AN ENDING TO TAKE
+        const fileLineEnding = recipeLines.lineEndings.find(lineEnding => lineEnding) as string;
 
         // TWO INSERTIONS AT ONE PLACE: THE LATER ONE GOES IN FIRST, SO THE EARLIER ENDS UP ABOVE IT
         edits
             .map((edit, editOrder) => ({ ...edit, editOrder }))
             .sort((left, right) => right.startIndex - left.startIndex || right.endIndex - left.endIndex || right.editOrder - left.editOrder)
-            .forEach(({ startIndex, endIndex, newLines }) => {
+            .forEach(({ startIndex, endIndex, newLine }) => {
 
             if ( startIndex === endIndex ) {
                 const precedingEnding = lineEndings[startIndex - 1];
-                const insertedEndings = newLines.map((_newLine, newLineIndex) => ( newLineIndex === newLines.length - 1 ? precedingEnding : precedingEnding || defaultLineEnding ));
                 if ( !precedingEnding ) {
-                    lineEndings[startIndex - 1] = defaultLineEnding;
+                    lineEndings[startIndex - 1] = fileLineEnding;
                 }
-                lines.splice(startIndex, 0, ...newLines);
-                lineEndings.splice(startIndex, 0, ...insertedEndings);
+                lines.splice(startIndex, 0, newLine);
+                lineEndings.splice(startIndex, 0, precedingEnding);
                 return;
             }
 
             const trailingEnding = lineEndings[endIndex - 1];
-            const interiorEnding = lineEndings[startIndex] || defaultLineEnding;
-            lines.splice(startIndex, endIndex - startIndex, ...newLines);
-            lineEndings.splice(startIndex, endIndex - startIndex, ...newLines.map((_newLine, newLineIndex) => ( newLineIndex === newLines.length - 1 ? trailingEnding : interiorEnding )));
+            lines.splice(startIndex, endIndex - startIndex, newLine);
+            lineEndings.splice(startIndex, endIndex - startIndex, trailingEnding);
 
         });
 
@@ -2555,9 +2562,12 @@ export class RecipeCockpitRecipeWriter {
             return false;
         }
 
-        const markedFieldNamesByObjectIndex = new Map<number, Set<string>>();
-        scannedObjectsBefore.forEach((scannedObjectBefore, objectIndex) => {
-            markedFieldNamesByObjectIndex.set(objectIndex, new Set(markedFields.filter(markedField => markedField.headerIndex === scannedObjectBefore.headerIndex).map(markedField => markedField.fieldApiName)));
+        // ONE PASS OVER THE MARKS, NEVER ONE PER OBJECT: THAT WAS 121M STEPS FOR 11,000 MARKS ON 11,000 OBJECTS
+        const markedFieldNamesByHeaderIndex = new Map<number, Set<string>>();
+        markedFields.forEach(markedField => {
+            const markedFieldNames = markedFieldNamesByHeaderIndex.get(markedField.headerIndex) ?? new Set<string>();
+            markedFieldNames.add(markedField.fieldApiName);
+            markedFieldNamesByHeaderIndex.set(markedField.headerIndex, markedFieldNames);
         });
 
         return scannedObjectsAfter.every((scannedObjectAfter, objectIndex) => {
@@ -2575,7 +2585,10 @@ export class RecipeCockpitRecipeWriter {
                 return false;
             }
 
-            const markedFieldNames = markedFieldNamesByObjectIndex.get(objectIndex) as Set<string>;
+            const markedFieldNames = markedFieldNamesByHeaderIndex.get(scannedObjectBefore.headerIndex);
+            if ( !markedFieldNames ) {
+                return true;
+            }
             return scannedObjectAfter.fields
                 .filter(scannedField => markedFieldNames.has(scannedField.fieldApiName))
                 .every(scannedField => patchedLines[scannedField.startIndex].endsWith(` ${adaptedComment}`));

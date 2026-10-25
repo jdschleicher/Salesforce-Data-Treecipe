@@ -9539,8 +9539,8 @@ export class RecipeCockpitService {
             orgUsername: orgUsername,
             recordsByObjectApiName: recordsByObjectApiName,
             loadedFieldApiNamesByObjectApiName: new Map(requests.map(request => [request.objectApiName, [...request.fieldApiNames]] as const)),
-            // THE PLAN'S PARENT IS THE ONE OBJECT NOT NARROWED BY A LEVEL ABOVE IT (#444)
-            parentObjectApiName: requests.find(request => !request.narrowingLookup)?.objectApiName ?? requests[0]?.objectApiName ?? '',
+            // THE LOAD'S PLAN STARTS AT THE PARENT (#444), AND THE ROUTER HOLDS EVERY LOAD TO ITS PLAN
+            parentObjectApiName: requests[0].objectApiName,
             whereClausesByObjectApiName: new Map(requests.map(request => [request.objectApiName, request.whereClause] as const))
         };
 
@@ -11099,7 +11099,7 @@ export class RecipeCockpitService {
             objects: sendResult.objectResults
         });
 
-        const adaptedRun = this.writeAdaptedRunAfterUpdate(panelState, treeKey, tree.folderName, heldRecords, heldValues, sendResult, orgDetail, startedAt);
+        const adaptedRun = await this.writeAdaptedRunAfterUpdate(panelState, treeKey, tree.folderName, heldRecords, heldValues, sendResult, orgDetail, startedAt);
 
         this.showUpdaterUpdateNotification(sendResult, treeTitle, orgLabel, path.basename(attemptFiles.snapshotFilePath), isResultsWritten ? attemptFiles.resultsFilePath : undefined, panelState.workspaceRoot, 'update', adaptedRun);
 
@@ -11123,14 +11123,14 @@ export class RecipeCockpitService {
         updated records back. A card with no single recipe file, or a backend that cannot be told,
         gets no copy; that is said in the notification rather than refused, since the update landed.
     */
-    static writeAdaptedRunAfterUpdate(panelState: IRecipeCockpitPanelState,
+    static async writeAdaptedRunAfterUpdate(panelState: IRecipeCockpitPanelState,
                                       treeKey: string,
                                       treeFolderName: string,
                                       heldRecords: NonNullable<typeof RecipeCockpitService.heldUpdaterRecords>,
                                       heldValues: NonNullable<typeof RecipeCockpitService.heldUpdaterValues>,
                                       sendResult: IRecipeCockpitUpdaterSendResult,
                                       orgDetail: IAuthenticatedOrgDetail,
-                                      adaptedAt: Date): RecipeCockpitAdaptedRunWrite | undefined {
+                                      adaptedAt: Date): Promise<RecipeCockpitAdaptedRunWrite | undefined> {
 
         if ( sendResult.updatedRecordCount === 0 || sendResult.putBack ) {
             return undefined;
@@ -11149,16 +11149,13 @@ export class RecipeCockpitService {
             new Set(objectResult.results.filter(recordResult => recordResult.isSuccess).map(recordResult => recordResult.recordId))
         ] as const));
 
+        // THE LOADED RECORDS ARE PASSED AS THEY ARE, WITH THE NEW VALUES OF THE SAVED ONES BESIDE THEM: THE WRITE MERGES THEM, SO NOTHING IS COPIED HERE
         const objects: IAdaptedObjectRecords[] = [...heldRecords.recordsByObjectApiName.entries()].map(([objectApiName, loadedRecords]) => {
             const savedRecordIds = savedRecordIdsByObjectApiName.get(objectApiName);
-            const newValuesByRecordId = new Map(( heldValues.valuesByObjectApiName.get(objectApiName) ?? [] ).map(recordValues => [recordValues.recordId, recordValues.fieldValues] as const));
-            return {
-                objectApiName: objectApiName,
-                records: loadedRecords.map(loadedRecord => {
-                    const recordId = String(loadedRecord.Id);
-                    return savedRecordIds?.has(recordId) ? { ...loadedRecord, ...newValuesByRecordId.get(recordId) } : { ...loadedRecord };
-                })
-            };
+            const newValuesByRecordId = new Map(( heldValues.valuesByObjectApiName.get(objectApiName) ?? [] )
+                .filter(recordValues => savedRecordIds?.has(recordValues.recordId))
+                .map(recordValues => [recordValues.recordId, recordValues.fieldValues] as const));
+            return { objectApiName: objectApiName, records: loadedRecords, newValuesByRecordId: newValuesByRecordId };
         });
 
         const orgOnlyFieldsByObjectApiName = heldValues.orgOnlyFieldApiNamesByObjectApiName;
@@ -11826,6 +11823,11 @@ export class RecipeCockpitService {
             notificationText += ` The adapted data set is ${path.basename(datasetFolderPath)}${adaptedRecipeFilePath ? `, and the adapted recipe ${path.basename(adaptedRecipeFilePath)}` : ''}.`;
             if ( adaptedRun.recipeRefusal ) {
                 notificationText += ` No adapted recipe was written: ${adaptedRun.recipeRefusal}`;
+            }
+            // A REQUEST THAT THREW OR ANSWERED UNREADABLY MAY HAVE BEEN SAVED: THE COPY KEEPS THOSE RECORDS' OLD VALUES, WHICH THE ORG MAY NOT HOLD
+            const uncertainRecordCount = sendResult.objectResults.reduce((total, objectResult) => total + objectResult.results.filter(recordResult => recordResult.isUncertain).length, 0);
+            if ( uncertainRecordCount > 0 ) {
+                notificationText += ` ${describeRecords(uncertainRecordCount)} the org may have saved ${uncertainRecordCount === 1 ? 'keeps its' : 'keep their'} old values in the adapted data set, so ${uncertainRecordCount === 1 ? 'it' : 'they'} may not match the org.`;
             }
             otherActions.push({
                 label: RECIPE_COCKPIT_ADAPTER_OPEN_DATASET_LABEL,
