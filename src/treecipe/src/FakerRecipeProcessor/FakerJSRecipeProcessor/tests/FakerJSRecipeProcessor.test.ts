@@ -10,6 +10,8 @@ import { faker } from '@faker-js/faker';
 import { ProcessedYamlWrapper } from '../../../RecipeFakerService.ts/FakerJSRecipeFakerService/ProcessedYamlWrapper';
 import { FakerJSRecipeFakerService } from '../../../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { HOSTILE_PICKLIST_VALUES, ORDINARY_PICKLIST_VALUES } from '../../../RecipeFakerService.ts/RecipeYamlScalar/tests/mocks/HostilePicklistValues';
+import { ErrorHandlingService } from '../../../ErrorHandlingService/ErrorHandlingService';
+import * as path from 'path';
 
 
 // the below mock is required to prevent missing vscode module error when FakerJSRecipeProcessor references service layers that have vscode as a required library
@@ -1320,6 +1322,138 @@ describe('FakerJSRecipeProcessor gives sibling friends of one object type distin
         const generatedRecords = JSON.parse(await new FakerJSRecipeProcessor().generateFakeDataBySelectedRecipeFile('recipe.yml')) as GeneratedRecordJson[];
 
         expect(generatedRecords.find(generatedRecord => generatedRecord.object === 'Contact').nickname).toBe('Contact_Account_NickName');
+
+    });
+
+});
+
+/*
+    Generate Treecipe writes an object's fields in file-name order, so a dependent picklist is often
+    written BEFORE its controlling field (DependentPicklist__c before Picklist__c). The processor has to
+    evaluate the controller first, or every record of the object fails with "not found in existing
+    field evaluations".
+*/
+describe('FakerJSRecipeProcessor evaluates a dependent picklist after its controlling field', () => {
+
+    const fakerJSRecipeProcessor = new FakerJSRecipeProcessor();
+    const fakerJSRecipeFakerService = new FakerJSRecipeFakerService();
+
+    const countryToRegion: Record<string, string[]> = { 'US': ['West', 'East'], 'CA': ['Prairies'] };
+    const regionToCity: Record<string, string[]> = { 'West': ['Seattle'], 'East': ['Boston'], 'Prairies': ['Regina'] };
+
+    const loadFieldsWrittenBeforeTheirControllers = (): Record<string, unknown> => {
+        const cityValue = fakerJSRecipeFakerService.buildDependentPicklistRecipeFakerValue(regionToCity, {}, 'Region__c', 'City__c');
+        const regionValue = fakerJSRecipeFakerService.buildDependentPicklistRecipeFakerValue(countryToRegion, {}, 'Country__c', 'Region__c');
+        const recipe = [
+            '- object: Example__c',
+            '  count: 25',
+            '  fields:',
+            `    City__c: ${cityValue}`,
+            '    Name: ${{ faker.company.name() }}',
+            `    Region__c: ${regionValue}`,
+            '    Country__c: ${{ faker.helpers.arrayElement([`US`,`CA`]) }}',
+            ''
+        ].join('\n');
+        const loadedRecipe = yaml.load(recipe) as Array<{ fields: Record<string, unknown> }>;
+        return loadedRecipe[0].fields;
+    };
+
+    test('a chain written dependent-first generates every record with values its controllers allow', async () => {
+
+        const fields = loadFieldsWrittenBeforeTheirControllers();
+        const processedYamlWrapper: ProcessedYamlWrapper = { ObjectPropertyToExistingProcessedYaml: {}, VariablePropertyToExistingProcessedYaml: {} };
+
+        const result = await fakerJSRecipeProcessor.processObjectDeclarationForYamlDocumentItem('Example__c', { nickname: 'Example__c_NickName', count: 25, fields }, processedYamlWrapper);
+
+        const generatedRecords = result.ObjectPropertyToExistingProcessedYaml['Example__c'];
+        expect(generatedRecords).toHaveLength(25);
+        generatedRecords.forEach(generatedRecord => {
+            const { Country__c: country, Region__c: region, City__c: city } = generatedRecord.fields;
+            expect(countryToRegion[country]).toContain(region);
+            expect(regionToCity[region]).toContain(city);
+        });
+
+    });
+
+    test('the generated record keeps the fields in recipe order', async () => {
+
+        const fields = loadFieldsWrittenBeforeTheirControllers();
+        const processedYamlWrapper: ProcessedYamlWrapper = { ObjectPropertyToExistingProcessedYaml: {}, VariablePropertyToExistingProcessedYaml: {} };
+
+        const result = await fakerJSRecipeProcessor.processObjectDeclarationForYamlDocumentItem('Example__c', { nickname: 'Example__c_NickName', fields }, processedYamlWrapper);
+
+        expect(Object.keys(result.ObjectPropertyToExistingProcessedYaml['Example__c'][0].fields)).toEqual(['City__c', 'Name', 'Region__c', 'Country__c']);
+
+    });
+
+    test('a recipe Generate Treecipe wrote, with DependentPicklist__c before Picklist__c, generates', async () => {
+
+        const recipeFilePath = path.resolve(__dirname, '../../../RecipeCockpitService/tests/mocks/recipeWriter/recipe-fakerjs--RelationshipTree_1.yml');
+
+        const generatedRecords = JSON.parse(await fakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile(recipeFilePath));
+
+        const everythingRecords = generatedRecords.filter(generatedRecord => generatedRecord.object === 'Example_Everything__c');
+        expect(everythingRecords.length).toBeGreaterThan(0);
+        everythingRecords.forEach(everythingRecord => {
+            expect(everythingRecord.fields.Picklist__c).toEqual(expect.any(String));
+            expect(everythingRecord.fields.DependentPicklist__c).toEqual(expect.any(String));
+            expect(everythingRecord.fields.SuperDependent__c).toEqual(expect.any(String));
+        });
+
+    });
+
+    describe('orderFieldNamesControllingPicklistsFirst', () => {
+
+        test('moves each controller ahead of its dependents, transitively, and leaves the rest in place', () => {
+
+            expect(fakerJSRecipeProcessor.orderFieldNamesControllingPicklistsFirst(loadFieldsWrittenBeforeTheirControllers()))
+                .toEqual(['Country__c', 'Region__c', 'City__c', 'Name']);
+
+        });
+
+        test('returns the recipe order when no dependent picklist names a field of the block', () => {
+
+            const fields = loadFieldsWrittenBeforeTheirControllers();
+            delete fields['Country__c'];
+            delete fields['Region__c'];
+
+            expect(fakerJSRecipeProcessor.orderFieldNamesControllingPicklistsFirst(fields)).toEqual(['City__c', 'Name']);
+
+        });
+
+        test('a cycle lists every field once', () => {
+
+            const fields = {
+                A__c: { if: [{ choice: { when: "${{ B__c == 'x' }}", pick: { random_choice: ['y'] } } }] },
+                B__c: { if: [{ choice: { when: "${{ A__c == 'y' }}", pick: { random_choice: ['x'] } } }] },
+                Name: 'fixed'
+            };
+
+            const orderedFieldNames = fakerJSRecipeProcessor.orderFieldNamesControllingPicklistsFirst(fields);
+
+            expect([...orderedFieldNames].sort()).toEqual(['A__c', 'B__c', 'Name']);
+
+        });
+
+        test('a TODO value, which loads as null, and a malformed if: are left in place', () => {
+
+            const fields = { Todo__c: null, Malformed__c: { if: 'not a list' }, Name: 'fixed' };
+
+            expect(fakerJSRecipeProcessor.orderFieldNamesControllingPicklistsFirst(fields)).toEqual(['Todo__c', 'Malformed__c', 'Name']);
+
+        });
+
+    });
+
+    test('a controlling field missing from the block still fails, naming the field', async () => {
+
+        jest.spyOn(ErrorHandlingService, 'createFakerExpressionEvaluationErrorCaptureFile').mockImplementation(() => undefined);
+        const fields = loadFieldsWrittenBeforeTheirControllers();
+        delete fields['Country__c'];
+        const processedYamlWrapper: ProcessedYamlWrapper = { ObjectPropertyToExistingProcessedYaml: {}, VariablePropertyToExistingProcessedYaml: {} };
+
+        await expect(fakerJSRecipeProcessor.processObjectDeclarationForYamlDocumentItem('Example__c', { nickname: 'Example__c_NickName', fields }, processedYamlWrapper))
+            .rejects.toThrow('Field "Country__c" not found in existing field evaluations');
 
     });
 

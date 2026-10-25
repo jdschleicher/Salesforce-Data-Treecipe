@@ -1,5 +1,14 @@
 # Change Log
 
+## [3.152.1] - Generating fake data no longer fails when a dependent picklist sorts before its controlling field
+
+[#462](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/462). With the faker-js backend, **Generate fake data and insert** and Run Faker by Recipe stopped with `Field "Picklist__c" not found in existing field evaluations` for any object whose dependent picklist's file name sorts before its controlling field's. Generate Treecipe writes fields in file-name order, so this covered `DependentPicklist__c` and `Picklist__c`, for example.
+
+- **Controllers first.** `FakerJSRecipeProcessor.orderFieldNamesControllingPicklistsFirst` evaluates each dependent picklist after the field its first `when:` names, when that field is in the same block. A chain (`SuperDependent__c` → `DependentPicklist__c` → `Picklist__c`) is ordered transitively. Every other field keeps its recipe order.
+- **The record is unchanged.** Each generated record still lists its fields in recipe order, so the Collections API files are what they would have been.
+- **Failures stay failures.** A dependent whose controller is not in the block fails with the same error as before. A cycle lists every field once and fails the same way, and never loops. `isDependentPicklistYamlValue` is now the one test for a dependent value, shared with `handleNonFakerJSExpressionSyntaxValueScenarios`.
+- **Tests.** `FakerJSRecipeProcessor.test.ts` covers a dependent-first chain over 25 records, each value allowed by its controller's, along with field order, the generated `recipe-fakerjs--RelationshipTree_1.yml` fixture (which failed before), no dependents, a cycle, a `### TODO` value and a malformed `if:`, and a missing controller.
+
 ## [3.152.0] - Recipe Cockpit: Target Org Manager tells a scratch org from a sandbox
 
 [#458](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/458). The label beside the chosen org read **Sandbox** for a scratch org too: a scratch org's Organization row answers `IsSandbox: true`, and that was all the label read.
