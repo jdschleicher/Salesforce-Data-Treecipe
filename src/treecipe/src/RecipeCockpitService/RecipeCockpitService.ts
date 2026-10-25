@@ -44,6 +44,7 @@ import {
     IDataOrgListing,
     IOrgDescribeSource,
     IOrgQuerySource,
+    IOrgDisplayDetail,
     IOrgTypeDetail,
     IHiddenAuthorizedOrg,
     INormalizedOrgField,
@@ -546,7 +547,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'Generate Treecipe reads your object metadata and writes a run: a folder under treecipe/GeneratedRecipes holding the recipe files (.yml) and a list of the objects it read.',
             'The cockpit opens the newest run, or the one you pick in the run list. Each card is one tree: related objects written to one recipe file, parents before children.',
-            'Under the run list, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. It stays at the top of the panel while you scroll. The Treecipes section below it shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with ✎.',
+            'Under the run list, the Target Org Manager section picks the org a card can insert into, opens it in your browser or makes a new scratch org, which it creates and selects without deploying anything to it. Beside the chosen org it says what it is: Scratch org with the day it expires, Sandbox, or Production with its edition, as the Salesforce CLI and the org report it. It stays at the top of the panel while you scroll. The Treecipes section below it shows one card at a time: pick it in the Treecipe dropdown, which starts on the one you picked last. Each card is named after the folder its tree was written to: its first object thru its last, such as Account-thru-Contact, or Lead-ONLY for a single object, until you rename it with ✎.',
             'Under the dropdown, a line lists the card\'s objects in the order they are inserted, and marks each excluded object, whether you excluded it or its parent.',
             'The search box above the dropdown finds a treecipe by its name or folder, or by an object, field or record type in it, and lists what it found. Click a result to open that card on its Treecipe tab at that row. Favorites only narrows the dropdown to your starred cards.',
             'Each card\'s Generate fake data and insert button generates the tree and inserts it into that org; with no org chosen, it asks you for one first, and when something else stops the insert it is disabled and says why. It asks nothing about lookups: one still a TODO to an object the tree does not insert is left blank, or, when the org requires it, given a random existing record. If an insert fails, its message opens the generated file that failed and the card\'s Troubleshooting area that may fix it. To generate without inserting, use Run Faker by Recipe from the command palette.',
@@ -2463,6 +2464,8 @@ export interface IRecipeCockpitDataOrgSelection {
     orgDetail: IAuthenticatedOrgDetail;
     requestSequence: number;
     orgTypeDetail?: IOrgTypeDetail;
+    // WHAT "sf org display" SAID (#458): WHICH KIND OF SANDBOX IT IS, FOR THE LABEL ONLY
+    orgDisplayDetail?: IOrgDisplayDetail;
     // SET WHEN NO CONNECTION COULD BE OPENED TO IT: A QUERY (#439), WHICH READS FROM ANY ORG THAT ANSWERED, REFUSES IT
     isConnectionFailed?: boolean;
     /*
@@ -13253,6 +13256,7 @@ export class RecipeCockpitService {
         const dataOrgSelection: IRecipeCockpitDataOrgSelection = { orgIndex: orgIndex, orgDetail: orgDetail, requestSequence: requestSequence };
         const orgLabel = this.buildDataOrgLabel(orgDetail);
         let isOrgTypeAnswered = false;
+        let isOrgDisplayAnswered = false;
 
         panelState.dataOrgSelection = dataOrgSelection;
         panelState.dataOrgUsername = orgDetail.username;
@@ -13267,14 +13271,36 @@ export class RecipeCockpitService {
             command: 'dataOrgSelection',
             orgIndex: orgIndex,
             orgLabel: orgLabel,
-            orgTypeLabel: isOrgTypeAnswered ? SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail) : '',
+            orgTypeLabel: buildSelectionTypeLabel(),
             isSandbox: dataOrgSelection.orgTypeDetail?.isSandbox ?? null,
             failureMessage: failureMessage,
             requestSequence: requestSequence,
             renderSequence: renderSequence
         });
 
+        /*
+            A sandbox's label waits for "sf org display" to say whether it is a scratch org (#458);
+            nothing else does. It runs beside the connection and the describes, never ahead of them.
+        */
+        const buildSelectionTypeLabel = () => {
+            if ( !isOrgTypeAnswered ) {
+                return '';
+            }
+            if ( dataOrgSelection.orgTypeDetail?.isSandbox === true && !isOrgDisplayAnswered ) {
+                return '';
+            }
+            return SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail, dataOrgSelection.orgDisplayDetail);
+        };
+
         postSelection();
+
+        void SalesforceOrgService.readOrgDisplayDetail(orgDetail.username).then(orgDisplayDetail => {
+            dataOrgSelection.orgDisplayDetail = orgDisplayDetail;
+            isOrgDisplayAnswered = true;
+            if ( isOrgTypeAnswered && !dataOrgSelection.isConnectionFailed && dataOrgSelection.orgTypeDetail?.isSandbox === true ) {
+                postSelection();
+            }
+        });
 
         let connection: Connection;
         let querySource: IOrgQuerySource;

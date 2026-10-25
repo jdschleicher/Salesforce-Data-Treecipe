@@ -1,6 +1,7 @@
 import * as matchers from 'jest-extended';
 expect.extend(matchers);
 
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
@@ -36,7 +37,7 @@ import {
     OrgConnectionStatusUnavailableError,
     SalesforceOrgService
 } from '../../SalesforceOrgService/SalesforceOrgService';
-import { IAuthenticatedOrgDetail } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
+import { IAuthenticatedOrgDetail, PicklistDependencyCheckService } from '../../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { ErrorHandlingService } from '../../ErrorHandlingService/ErrorHandlingService';
 
@@ -87,6 +88,7 @@ function buildFakeConnection(organizationRow: unknown = { IsSandbox: true, Organ
 // THE ORG SHOWN WHILE THE CONNECTIONS ARE CHECKED (#305) IS READ FROM THE MACHINE'S OWN AUTHORIZATIONS, SO NO SUITE DEPENDS ON THEM
 beforeEach(() => {
     jest.spyOn(SalesforceOrgService, 'readLocalDataOrgDetail').mockResolvedValue(undefined);
+    jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue(undefined);
 });
 
 describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #255)', () => {
@@ -412,6 +414,114 @@ describe('RecipeCockpitService, the Treecipe tab\'s org picker (Data-by-Org, #25
             expect(postedNamed('dataOrgCounts')).toEqual([]);
             expect(checkedObjects()).toIncludeSameMembers(TREE_OBJECT_API_NAMES);
             expect(workspaceStateValues.get(RECIPE_COCKPIT_DATA_ORG_STATE_KEY)).toBe('qa@example.com.qa');
+
+        });
+
+        describe('says whether a sandbox is a scratch org, from "sf org display" (#458)', () => {
+
+            const selectionLabels = () => postedNamed('dataOrgSelection').map(selection => [selection.orgTypeLabel, selection.isSandbox, selection.failureMessage]);
+
+            it('labels a scratch org with its expiration date once "sf org display" answers, after the Organization row', async () => {
+
+                let answerDisplay: (orgDisplayDetail: { isScratchOrg: boolean; expirationDate?: string } | undefined) => void = () => undefined;
+                const readOrgDisplayDetailSpy = jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockImplementation(() => new Promise(resolveDisplay => { answerDisplay = resolveDisplay; }));
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ IsSandbox: true, OrganizationType: 'Developer Edition' }) as any);
+
+                await openRenderedCockpit();
+                await receivedMessageHandler({ command: 'loadDataOrgs' });
+                await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
+
+                expect(readOrgDisplayDetailSpy).toHaveBeenCalledWith('qa@example.com.qa');
+                // THE LABEL WAITS; THE DESCRIBES DO NOT
+                expect(selectionLabels()).toEqual([['', null, ''], ['', true, '']]);
+                expect(checkedObjects()).toIncludeSameMembers(TREE_OBJECT_API_NAMES);
+
+                answerDisplay({ isScratchOrg: true, expirationDate: '2026-11-01' });
+                await new Promise(resolveYield => setImmediate(resolveYield));
+
+                expect(selectionLabels().slice(-1)).toEqual([['Scratch org · expires 2026-11-01', true, '']]);
+                // THE SAME SELECTION: THE PANEL KEEPS ITS READINESS
+                expect(new Set(postedNamed('dataOrgSelection').map(selection => selection.requestSequence)).size).toBe(1);
+
+            });
+
+            it('labels a scratch org once when "sf org display" answered before the Organization row', async () => {
+
+                jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue({ isScratchOrg: true });
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
+
+                await openRenderedCockpit();
+                await receivedMessageHandler({ command: 'loadDataOrgs' });
+                await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
+
+                expect(selectionLabels()).toEqual([['', null, ''], ['Scratch org', true, '']]);
+
+            });
+
+            it('falls back to "Sandbox" when "sf org display" cannot answer', async () => {
+
+                jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue(undefined);
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
+
+                await openRenderedCockpit();
+                await receivedMessageHandler({ command: 'loadDataOrgs' });
+                await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
+
+                expect(selectionLabels().slice(-1)).toEqual([['Sandbox', true, '']]);
+
+            });
+
+            it('labels production from its Organization row without waiting for "sf org display", and never relabels it', async () => {
+
+                jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockImplementation(() => new Promise(() => undefined));
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection({ IsSandbox: false, OrganizationType: 'Enterprise Edition' }) as any);
+
+                await openRenderedCockpit();
+                await receivedMessageHandler({ command: 'loadDataOrgs' });
+                await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
+
+                const [lastLabel] = selectionLabels().slice(-1);
+                expect(lastLabel[0]).toBe('Production · Enterprise Edition');
+                expect(lastLabel[2]).toContain('It inserts records only into a sandbox or scratch org.');
+
+            });
+
+            it('keeps "type unknown" and the connection failure when the org could not be connected to, whatever "sf org display" says', async () => {
+
+                jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue({ isScratchOrg: true, expirationDate: '2026-11-01' });
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockRejectedValue(new Error('expired token'));
+
+                await openRenderedCockpit();
+                await receivedMessageHandler({ command: 'loadDataOrgs' });
+                await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
+                await new Promise(resolveYield => setImmediate(resolveYield));
+
+                const [lastLabel] = selectionLabels().slice(-1);
+                expect(lastLabel[0]).toBe('type unknown');
+                expect(lastLabel[2]).toContain('Could not connect to qa');
+
+            });
+
+            it('posts and stores no part of the access token "sf org display" answers with', async () => {
+
+                (SalesforceOrgService.readOrgDisplayDetail as jest.Mock).mockRestore();
+                SalesforceOrgService.clearConnectedOrgStatusCache();
+                const fixtureAnswer = fs.readFileSync(path.join(__dirname, '..', '..', 'SalesforceOrgService', 'tests', 'mocks', 'sfOrgDisplayScratchOrg.json'), 'utf8');
+                const runSalesforceCliSpy = jest.spyOn(PicklistDependencyCheckService, 'runSalesforceCli').mockResolvedValue({ stdout: fixtureAnswer, stderr: '', exitCode: 0 });
+                jest.spyOn(SalesforceOrgService, 'getConnection').mockResolvedValue(buildFakeConnection() as any);
+
+                await openRenderedCockpit();
+                await receivedMessageHandler({ command: 'loadDataOrgs' });
+                await receivedMessageHandler({ command: 'selectDataOrg', orgIndex: 0 });
+                await new Promise(resolveYield => setImmediate(resolveYield));
+
+                expect(runSalesforceCliSpy.mock.calls.map(([cliArguments]) => cliArguments.slice(0, 2).join(' '))).toContain('org display');
+                expect(selectionLabels().slice(-1)).toEqual([['Scratch org · expires 2026-11-01', true, '']]);
+                const fixtureToken = JSON.parse(fixtureAnswer).result.accessToken;
+                expect(JSON.stringify(postedPanelMessages)).not.toContain(fixtureToken);
+                expect(JSON.stringify([...workspaceStateValues.entries()])).not.toContain(fixtureToken);
+
+            });
 
         });
 

@@ -130,6 +130,25 @@ export interface IOrgTypeDetail {
 
 export const ORG_TYPE_UNKNOWN_LABEL = 'type unknown';
 
+/*
+    What "sf org display --json" says about an org (#458), and nothing else: a scratch org's
+    Organization row answers IsSandbox: true like a sandbox does, so this is what tells them apart.
+    The answer also carries an access token, which is never kept.
+*/
+export interface IOrgDisplayDetail {
+    isScratchOrg: boolean;
+    // yyyy-MM-dd, ONLY WHEN THE ANSWER CARRIED A READABLE ONE
+    expirationDate?: string;
+}
+
+export const ORG_DISPLAY_TIMEOUT_MILLISECONDS = 60000;
+
+export const SCRATCH_ORG_TYPE_LABEL = 'Scratch org';
+
+export const SANDBOX_ORG_TYPE_LABEL = 'Sandbox';
+
+const ORG_DISPLAY_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})/;
+
 // MATCHED EXACTLY: A CASE OR WHITESPACE VARIANT IS NOT AN ANSWER THE ORG GIVES, SO IT IS REFUSED
 export const DEVELOPER_EDITION_ORGANIZATION_TYPE = 'Developer Edition';
 
@@ -567,13 +586,22 @@ export class SalesforceOrgService {
 
     }
 
-    static buildOrgTypeLabel(orgTypeDetail: IOrgTypeDetail | undefined): string {
+    // THE ORGANIZATION ROW DECIDES SANDBOX OR NOT; "sf org display" ONLY NAMES WHICH KIND OF SANDBOX (#458)
+    static buildOrgTypeLabel(orgTypeDetail: IOrgTypeDetail | undefined, orgDisplayDetail?: IOrgDisplayDetail): string {
 
         if ( !orgTypeDetail ) {
             return ORG_TYPE_UNKNOWN_LABEL;
         }
 
-        return orgTypeDetail.isSandbox ? 'Sandbox' : `Production · ${orgTypeDetail.organizationType || 'type unknown'}`;
+        if ( !orgTypeDetail.isSandbox ) {
+            return `Production · ${orgTypeDetail.organizationType || 'type unknown'}`;
+        }
+
+        if ( orgDisplayDetail?.isScratchOrg !== true ) {
+            return SANDBOX_ORG_TYPE_LABEL;
+        }
+
+        return orgDisplayDetail.expirationDate ? `${SCRATCH_ORG_TYPE_LABEL} · expires ${orgDisplayDetail.expirationDate}` : SCRATCH_ORG_TYPE_LABEL;
 
     }
 
@@ -639,6 +667,123 @@ export class SalesforceOrgService {
         this.connectedOrgStatusCache = undefined;
         this.connectedOrgStatusRequest = undefined;
         this.connectedOrgStatusGeneration++;
+        this.clearOrgDisplayCache();
+
+    }
+
+    /*
+        "sf org display" per USERNAME, asked once per session (#458) and cleared with the
+        connected-org answer. Only the parsed facts are kept, never the CLI's answer, which carries
+        an access token. A failure is never cached.
+    */
+    private static orgDisplayCache = new Map<string, IOrgDisplayDetail>();
+
+    private static orgDisplayRequests = new Map<string, Promise<IOrgDisplayDetail | undefined>>();
+
+    private static orgDisplayGeneration = 0;
+
+    static clearOrgDisplayCache() {
+
+        this.orgDisplayCache.clear();
+        this.orgDisplayRequests.clear();
+        this.orgDisplayGeneration++;
+
+    }
+
+    static buildOrgDisplayArguments(username: string): string[] {
+
+        PicklistDependencyCheckService.assertValidTargetOrgIdentifier(username);
+
+        return ['org', 'display', '--target-org', username, '--json'];
+
+    }
+
+    // NEVER THROWS: AN ORG THE CLI CANNOT DISPLAY IS LABELLED BY ITS ORGANIZATION ROW ALONE
+    static async readOrgDisplayDetail(username: string): Promise<IOrgDisplayDetail | undefined> {
+
+        const cachedDetail = this.orgDisplayCache.get(username);
+        if ( cachedDetail ) {
+            return cachedDetail;
+        }
+
+        const requestInFlight = this.orgDisplayRequests.get(username);
+        if ( requestInFlight ) {
+            return await requestInFlight;
+        }
+
+        const requestGeneration = this.orgDisplayGeneration;
+        const displayRequest = this.runOrgDisplayCommand(username).then(orgDisplayDetail => {
+            if ( requestGeneration === this.orgDisplayGeneration ) {
+                this.orgDisplayRequests.delete(username);
+                if ( orgDisplayDetail ) {
+                    this.orgDisplayCache.set(username, orgDisplayDetail);
+                }
+            }
+            return orgDisplayDetail;
+        });
+
+        this.orgDisplayRequests.set(username, displayRequest);
+
+        return await displayRequest;
+
+    }
+
+    private static async runOrgDisplayCommand(username: string): Promise<IOrgDisplayDetail | undefined> {
+
+        try {
+            return this.parseOrgDisplayOutput(await PicklistDependencyCheckService.runSalesforceCli(this.buildOrgDisplayArguments(username), undefined, ORG_DISPLAY_TIMEOUT_MILLISECONDS));
+        } catch {
+            return undefined;
+        }
+
+    }
+
+    /*
+        The --json is untrusted. Read only on status 0 with a result object, and from it only
+        devHubId -- which the CLI fills in for a scratch org from its Dev Hub's ScratchOrgInfo --
+        and expirationDate. A date that is not a real yyyy-MM-dd is no date, never a refusal.
+    */
+    static parseOrgDisplayOutput(invocationResult: ISalesforceCliInvocationResult): IOrgDisplayDetail | undefined {
+
+        if ( invocationResult.spawnError || invocationResult.timedOut || invocationResult.isOutputTooLarge ) {
+            return undefined;
+        }
+
+        let payload: Record<string, unknown> | undefined;
+
+        try {
+            payload = this.asRecord(JSON.parse(invocationResult.stdout));
+        } catch {
+            return undefined;
+        }
+
+        const displayResult = this.asRecord(payload?.result);
+
+        if ( payload?.status !== 0 || !displayResult ) {
+            return undefined;
+        }
+
+        const isScratchOrg = typeof displayResult.devHubId === 'string' && displayResult.devHubId.trim() !== '';
+        const expirationDate = isScratchOrg ? this.readOrgDisplayDate(displayResult.expirationDate) : undefined;
+
+        return expirationDate ? { isScratchOrg: isScratchOrg, expirationDate: expirationDate } : { isScratchOrg: isScratchOrg };
+
+    }
+
+    private static readOrgDisplayDate(candidateDate: unknown): string | undefined {
+
+        const dateMatch = typeof candidateDate === 'string' ? ORG_DISPLAY_DATE_PATTERN.exec(candidateDate) : null;
+
+        if ( !dateMatch ) {
+            return undefined;
+        }
+
+        const [year, month, day] = [Number(dateMatch[1]), Number(dateMatch[2]), Number(dateMatch[3])];
+        const parsedDate = new Date(Date.UTC(year, month - 1, day));
+
+        return parsedDate.getUTCFullYear() === year && parsedDate.getUTCMonth() === month - 1 && parsedDate.getUTCDate() === day
+            ? dateMatch[0]
+            : undefined;
 
     }
 
@@ -696,6 +841,8 @@ export class SalesforceOrgService {
 
         if ( !this.connectedOrgStatusRequest ) {
             this.clearConnectedOrgStatusCache();
+        } else {
+            this.clearOrgDisplayCache();
         }
 
         return await this.listConnectedOrgAuthorizations();
