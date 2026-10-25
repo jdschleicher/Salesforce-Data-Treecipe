@@ -112,6 +112,7 @@ function buildFakeOrgQuickPick(fakeOptions: { acceptLabel?: string } = {}) {
 
 import { RunFakerConfirmation } from '../RunFakerConfirmation';
 import { ExtensionCommandService, RUN_AGAINST_ORG_ACTION_LABEL, PICKLIST_DEPENDENCY_EXPLORER_VIEW_TYPE, PREVIEW_FROM_METADATA_ACTION_LABEL, UPDATE_METADATA_ACTION_LABEL, DEPLOY_UPDATED_METADATA_ACTION_LABEL, VIEW_GENERATION_WARNING_DETAILS_ACTION_LABEL, VIEW_GENERATION_SUMMARY_ACTION_LABEL, OPEN_PICKLIST_DEPENDENCY_EXPLORER_ACTION_LABEL, REVEAL_IN_EXPLORER_ACTION_LABEL, OPEN_CONFIGURATION_FILE_ACTION_LABEL, OPEN_RECIPE_ACTION_LABEL, GENERATE_TREECIPE_PROGRESS_TITLE, GENERATE_TREECIPE_CANCELLED_MESSAGE, RECORD_TYPE_OPTIONS_TODO_MARKER, MAXIMUM_LISTED_BARE_RECORD_TYPE_VARIANT_LINES, SAVED_RECORD_TYPE_SELECTION_USED_MESSAGE } from "../ExtensionCommandService";
+import { TreecipeSideBarService } from '../../TreecipeSideBarService/TreecipeSideBarService';
 import { ConfigurationService } from "../../ConfigurationService/ConfigurationService";
 import { ErrorHandlingService } from "../../ErrorHandlingService/ErrorHandlingService";
 import { RecipeYamlScalar } from "../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
@@ -3369,11 +3370,26 @@ describe('ExtensionCommandService', () => {
             const configurationFilePath = `${workspaceRoot}/treecipe/treecipe.config.json`;
 
             let showCreatedFilesNotificationSpy: jest.SpyInstance;
+            let sideBarRefreshSpy: jest.SpyInstance;
 
             beforeEach(() => {
                 jest.spyOn(VSCodeWorkspaceService, 'getWorkspaceRoot').mockReturnValue(workspaceRoot);
                 jest.spyOn(ErrorHandlingService, 'handleCapturedError').mockImplementation(() => undefined);
                 showCreatedFilesNotificationSpy = jest.spyOn(VSCodeWorkspaceService, 'showCreatedFilesNotification').mockResolvedValue(undefined);
+                sideBarRefreshSpy = jest.spyOn(TreecipeSideBarService, 'refresh').mockImplementation(() => undefined);
+            });
+
+            // THE SIDE BAR'S INITIATE CONFIGURATION WELCOME BECOMES THE COMMAND LIST WITHOUT A RELOAD (#456)
+            test('given the file was written, refreshes the side bar once; given nothing was written, does not', async () => {
+
+                const createConfigurationFileSpy = jest.spyOn(ConfigurationService, 'createTreecipeJSONConfigurationFile').mockResolvedValue(configurationFilePath);
+                await new ExtensionCommandService().initiateTreecipeConfigurationSetup();
+                expect(sideBarRefreshSpy).toHaveBeenCalledTimes(1);
+
+                createConfigurationFileSpy.mockResolvedValue(undefined);
+                await new ExtensionCommandService().initiateTreecipeConfigurationSetup();
+                expect(sideBarRefreshSpy).toHaveBeenCalledTimes(1);
+
             });
 
             test('given the file was written, shows one notification naming it with Open and Reveal buttons', async () => {

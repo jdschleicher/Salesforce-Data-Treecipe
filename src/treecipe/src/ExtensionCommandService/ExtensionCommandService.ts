@@ -44,6 +44,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as yaml from 'js-yaml';
 import * as vscode from 'vscode';
+import { TreecipeSideBarService } from '../TreecipeSideBarService/TreecipeSideBarService';
 import path = require("path");
 
 export const RECORD_TYPE_OPTIONS_TODO_MARKER = '### TODO: -- RecordType Options --';
@@ -158,6 +159,8 @@ export class ExtensionCommandService {
 
             const configurationFilePath = await ConfigurationService.createTreecipeJSONConfigurationFile();
             if ( configurationFilePath ) {
+                // SO THE SIDE BAR SWAPS ITS INITIATE CONFIGURATION WELCOME FOR THE COMMAND LIST WITHOUT A RELOAD
+                TreecipeSideBarService.refresh();
                 this.showConfigurationCreatedNotification(configurationFilePath);
             }
 
