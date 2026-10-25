@@ -70,6 +70,11 @@ const PROD_ORG = { targetOrgIdentifier: 'prod', username: PROD_USERNAME, alias: 
 const ACCOUNT_TREE_QUERIES = RecipeCockpitQuery.listTreeQueries(JSON.parse(fs.readFileSync(TREE_WRAPPER_FILE_PATH, 'utf-8')), ACCOUNT_TREE_OBJECTS);
 const CONTACT_BASE_QUERY = ACCOUNT_TREE_QUERIES.find(treeQuery => treeQuery.queryKey === 'Contact:base:0')!;
 
+// AN ORG SELECTED HERE IS NOT ASKED "sf org display" (#458); RecipeCockpitDataByOrg.test.ts COVERS THE LABEL
+beforeEach(() => {
+    jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue(undefined);
+});
+
 describe('RecipeCockpitService, the Query tab (#367)', () => {
 
     describe('routePanelMessage', () => {

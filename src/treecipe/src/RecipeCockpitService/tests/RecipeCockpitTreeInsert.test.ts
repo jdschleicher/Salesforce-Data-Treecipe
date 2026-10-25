@@ -284,6 +284,7 @@ const buildWorkspaceState = () => {
 // THE ORG SHOWN WHILE THE CONNECTIONS ARE CHECKED (#305) IS READ FROM THE MACHINE'S OWN AUTHORIZATIONS, SO NO SUITE DEPENDS ON THEM
 beforeEach(() => {
     jest.spyOn(SalesforceOrgService, 'readLocalDataOrgDetail').mockResolvedValue(undefined);
+    jest.spyOn(SalesforceOrgService, 'readOrgDisplayDetail').mockResolvedValue(undefined);
 });
 
 answerInPanelConfirmationsThroughWarningMock();
@@ -2061,6 +2062,20 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             ]);
             expect(detailLines.at(-1)).toContain('you choose all-or-none next');
             expect(detailLines.join('\n')).not.toContain('Generate only');
+
+        });
+
+        it('names a scratch org, and when it expires, from what "sf org display" answered (#458)', () => {
+
+            const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns(), TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
+            const accountTree = recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY);
+            const detailFor = (orgDisplayDetail?: { isScratchOrg: boolean; expirationDate?: string }) => RecipeCockpitService.buildInsertConfirmationDetail(
+                'dev (test@example.com)', SANDBOX_TYPE, accountTree, recipe, new Map([['Account', 1]]), [], 'snowfakery', 'recipe.yml', [], orgDisplayDetail
+            ).split('\n')[1];
+
+            expect(detailFor({ isScratchOrg: true, expirationDate: '2026-11-01' })).toBe('Type: Scratch org · expires 2026-11-01');
+            expect(detailFor({ isScratchOrg: false })).toBe('Type: Sandbox');
+            expect(detailFor(undefined)).toBe('Type: Sandbox');
 
         });
 

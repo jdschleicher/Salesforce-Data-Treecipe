@@ -1,0 +1,14 @@
+{
+  "status": 0,
+  "result": {
+    "id": "00DFIXTURESANDBOX",
+    "apiVersion": "62.0",
+    "accessToken": "00DFIXTURE!fixture-access-token-not-real",
+    "instanceUrl": "https://fixture--qa.sandbox.my.salesforce.com",
+    "username": "qa@example.com.qa",
+    "clientId": "PlatformCLI",
+    "connectedStatus": "Connected",
+    "alias": "qa"
+  },
+  "warnings": []
+}
