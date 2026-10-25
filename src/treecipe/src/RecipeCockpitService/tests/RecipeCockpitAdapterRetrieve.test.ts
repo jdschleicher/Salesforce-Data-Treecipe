@@ -811,8 +811,11 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
                 const [title, confirmOptions, confirmLabel] = confirmSpy.mock.calls[0];
                 expect(title).toBe('Apply 2 field files retrieved from qa · qa@example.com.qa to this project?');
                 expect(confirmOptions.isDestructive).toBe(true);
-                expect(confirmOptions.detail).toContain('Overwritten with the org\'s version (1):\nforce-app/main/default/objects/Account/fields/Legacy_Code__c.field-meta.xml');
-                expect(confirmOptions.detail).toContain('Added (1):\nforce-app/main/default/objects/Account/fields/Is_Priority__c.field-meta.xml');
+                // #457: THE OVERWRITE IS A WARNING ON SCREEN; EACH LIST IS A FOLDED SECTION
+                expect(confirmOptions.warnings).toEqual(['A project file overwritten here is not kept anywhere else: commit or stash it first if you need it.']);
+                const confirmText = RecipeCockpitService.flattenConfirmContent(confirmOptions);
+                expect(confirmText).toContain('Overwritten with the org\'s version · 1\nforce-app/main/default/objects/Account/fields/Legacy_Code__c.field-meta.xml');
+                expect(confirmText).toContain('Added · 1\nforce-app/main/default/objects/Account/fields/Is_Priority__c.field-meta.xml');
                 expect(confirmLabel).toBe(RECIPE_COCKPIT_ADAPTER_APPLY_CONFIRM_LABEL);
 
                 expect(fs.readFileSync(localFieldPath('Legacy_Code__c'), 'utf-8')).toContain('<length>255</length>');
@@ -853,13 +856,13 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
                 await send(applyRequest());
 
                 expect(confirmSpy.mock.calls[0][0]).toBe('Apply 1 field file retrieved from qa · qa@example.com.qa to this project?');
-                expect(confirmSpy.mock.calls[0][1].detail).not.toContain('Added');
+                expect(RecipeCockpitService.flattenConfirmContent(confirmSpy.mock.calls[0][1])).not.toContain('Added');
 
                 fs.writeFileSync(path.join(stagedFolder, 'Is_Priority__c.field-meta.xml'), fieldXml('Is_Priority__c', 'Checkbox'));
                 await send(applyRequest());
 
-                expect(confirmSpy.mock.calls[1][1].detail).toMatch(/^Added \(1\):/);
-                expect(confirmSpy.mock.calls[1][1].detail).not.toContain('Overwritten');
+                expect(RecipeCockpitService.flattenConfirmContent(confirmSpy.mock.calls[1][1])).toMatch(/^1 added\.\nNothing is deployed[^\n]*\n\nAdded · 1\n/);
+                expect(RecipeCockpitService.flattenConfirmContent(confirmSpy.mock.calls[1][1])).not.toContain('Overwritten');
 
             });
 

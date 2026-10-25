@@ -359,21 +359,21 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
         it('names the tree, the org, every object, where new files go and how many local files are overwritten in the confirmation, each on one line', () => {
 
-            const detail = RecipeCockpitMetadataRetrieve.buildConfirmationDetail('validationRules', 'Tree\nTwo', `prod · ${PROD_USERNAME}`, ['Account.Name_Required', 'Account.Phone_Format', 'Contact.Email_Required'], 'force-app', 2);
+            const detail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('validationRules', 'Tree\nTwo', `prod · ${PROD_USERNAME}`, ['Account.Name_Required', 'Account.Phone_Format', 'Contact.Email_Required'], 'force-app', 2));
 
             expect(detail).toContain('Tree: Tree Two');
             expect(detail).toContain(`Org: prod · ${PROD_USERNAME}`);
-            expect(detail).toContain('3 validation rules: Account.Name_Required, Account.Phone_Format, Contact.Email_Required');
+            expect(detail).toContain('3 validation rules\nAccount.Name_Required, Account.Phone_Format, Contact.Email_Required');
             expect(detail).toContain('New rule files are written under: force-app');
             expect(detail).toContain('2 existing local validation rule files for these objects will be overwritten');
             expect(detail).toContain('Nothing is deployed.');
             expect(detail).not.toMatch(/[()]/);
 
-            expect(RecipeCockpitMetadataRetrieve.buildConfirmationDetail('validationRules', 'T', 'o', ['Account.One'], 'force-app', 0)).toContain('1 validation rule: Account.One\n');
-            expect(RecipeCockpitMetadataRetrieve.buildConfirmationDetail('validationRules', 'T', 'o', ['Account.One'], 'force-app', 0)).toContain('This project holds no validation rule file for these objects yet.');
-            expect(RecipeCockpitMetadataRetrieve.buildConfirmationDetail('validationRules', 'T', 'o', ['Account.One'], 'force-app', 1)).toContain('1 existing local validation rule file for');
-            expect(RecipeCockpitMetadataRetrieve.buildConfirmationDetail('validationRules', 'T', 'o', Array.from({ length: 25 }, (_value, index) => `Account.Rule_${index}`), 'force-app', 0))
-                .toContain('25 validation rules: Account.Rule_0, Account.Rule_1');
+            expect(RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('validationRules', 'T', 'o', ['Account.One'], 'force-app', 0))).toContain('1 validation rule\nAccount.One\n');
+            expect(RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('validationRules', 'T', 'o', ['Account.One'], 'force-app', 0))).toContain('This project holds no validation rule file for these objects yet.');
+            expect(RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('validationRules', 'T', 'o', ['Account.One'], 'force-app', 1))).toContain('1 existing local validation rule file for');
+            expect(RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('validationRules', 'T', 'o', Array.from({ length: 25 }, (_value, index) => `Account.Rule_${index}`), 'force-app', 0)))
+                .toContain('25 validation rules\nAccount.Rule_0, Account.Rule_1');
 
         });
 
@@ -582,7 +582,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
             const [modalMessage, modalOptions, modalAction] = modalCalls()[0];
             expect(modalMessage).toBe(`Retrieve 3 validation rules of 3 objects of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}?`);
-            expect(modalOptions.detail).toContain('3 validation rules: Account.Name_Required, Account.Phone_Format, OtherChildObject__c.Amount_Range');
+            expect(modalOptions.detail).toContain('3 validation rules\nAccount.Name_Required, Account.Phone_Format, OtherChildObject__c.Amount_Range');
             expect(modalOptions.detail).toContain(`Org: prod · ${PROD_USERNAME}`);
             expect(modalOptions.detail).toContain('New rule files are written under: force-app');
             expect(modalOptions.detail).toContain('1 existing local validation rule file for these objects will be overwritten');

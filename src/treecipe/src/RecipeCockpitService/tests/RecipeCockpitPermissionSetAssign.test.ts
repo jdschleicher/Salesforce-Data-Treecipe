@@ -317,14 +317,14 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
 
         it('names the tree, the org, the user and every pick with what it covers in the confirmation, each on one line', () => {
 
-            const detail = RecipeCockpitPermissionSetAssign.buildConfirmationDetail('Tree\nTwo', `qa · ${QA_USERNAME}`, QA_USERNAME, [
+            const detail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitPermissionSetAssign.buildConfirmationContent('Tree\nTwo', `qa · ${QA_USERNAME}`, QA_USERNAME, [
                 { name: 'Account_Tree_Access', relativeFilePath: ACCOUNT_TREE_ACCESS_PATH, coveredObjectApiNames: ['Account', 'OtherChildObject__c'], grantedObjectApiNames: ['Account', 'OtherChildObject__c'] }
-            ], 3);
+            ], 3));
 
             expect(detail).toContain('Tree: Tree Two');
             expect(detail).toContain(`Org: qa · ${QA_USERNAME}`);
             expect(detail).toContain(`Assigned to: ${QA_USERNAME}, the user this org is authorized as`);
-            expect(detail).toContain('1 permission set:\n  Account_Tree_Access — partial, 2 of 3: Account, OtherChildObject__c');
+            expect(detail).toContain('Permission set · 1\n  Account_Tree_Access — partial, 2 of 3: Account, OtherChildObject__c');
             expect(detail).toContain('Nothing is deployed.');
             expect(detail).not.toMatch(/[()]/);
 

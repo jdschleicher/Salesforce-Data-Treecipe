@@ -468,7 +468,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             expect(modalOptions.checkboxLabel).toBe(RECIPE_COCKPIT_DEPLOY_FULL_SET_CHECKBOX_LABEL);
             expect(modalOptions.detail).toContain('1 CustomObject: OtherChildObject__c');
             expect(modalOptions.detail).toContain('Deploying a custom object overwrites the org\'s settings for it');
-            expect(modalOptions.detail).toContain('Ticking the box below also deploys, in the same package.xml:');
+            expect(modalOptions.detail).toContain('Ticking the box below also deploys, in the same package.xml · 5');
             expect(modalOptions.detail).toContain(`Org: qa · ${QA_USERNAME}`);
             expect(modalOptions.detail).toContain('From: force-app');
             expect(modalOptions.detail).toContain(`6 CustomField: ${ACCOUNT_CUSTOM_FIELDS.join(', ')}`);

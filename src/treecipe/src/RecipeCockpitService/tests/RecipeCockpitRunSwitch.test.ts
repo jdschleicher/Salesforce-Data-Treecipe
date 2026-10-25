@@ -154,7 +154,8 @@ describe('RecipeCockpitService run switch (#399)', () => {
         const [message, confirmOptions, ...buttonLabels] = showWarningMessage.mock.calls[0];
         expect(message).toStartWith('Switch to ');
         expect(confirmOptions).toMatchObject({ inPanel: true });
-        expect(confirmOptions.detail).toContain(`2 trees on screen have excluded objects, unticked fields, record counts or validation rules switched off: ${ACCOUNT_TREE_KEY}, ${LEAD_TREE_KEY}.`);
+        expect(confirmOptions.detail).toContain(`2 trees on screen have excluded objects, unticked fields, record counts or validation rules switched off.`);
+        expect(confirmOptions.detail).toContain(`Trees with selections · 2\n${ACCOUNT_TREE_KEY}\n${LEAD_TREE_KEY}`);
         expect(confirmOptions.detail).toContain('1 tree of that run has the same folder name.');
         expect(confirmOptions.detail).toContain('a selection naming an object or field that run does not have is ignored');
         expect(confirmOptions.detail).toContain('Fixed values and edited expressions are written in each recipe file');

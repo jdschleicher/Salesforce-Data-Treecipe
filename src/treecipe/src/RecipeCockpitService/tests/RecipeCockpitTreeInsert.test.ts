@@ -690,7 +690,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                 'Org: qa (qa@example.com.qa)',
                 'Type: Sandbox',
                 'Backend: faker-js',
-                'Records, inserted parents first:',
+                'Records, inserted parents first · 3',
                 '  Account: 2',
                 '  Contact: 6 (3 per Account)',
                 '  OtherChildObject__c: 6 (1 per Contact)'
@@ -2038,30 +2038,45 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
     });
 
-    describe('buildInsertConfirmationDetail', () => {
+    describe('buildInsertConfirmationContent', () => {
 
         const recipeRuns = () => RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
-        const detailOf = (recordTotals: Array<[string, number]>, outsideParents: string[] = []) => {
+        const contentOf = (recordTotals: Array<[string, number]>, outsideParents: string[] = []) => {
             const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns(), TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
             const accountTree = recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY);
-            return RecipeCockpitService.buildInsertConfirmationDetail('qa (qa@example.com.qa)', SANDBOX_TYPE, accountTree, recipe, new Map(recordTotals), outsideParents, 'snowfakery', 'recipe.yml');
+            return RecipeCockpitService.buildInsertConfirmationContent('qa (qa@example.com.qa)', SANDBOX_TYPE, accountTree, recipe, new Map(recordTotals), outsideParents, 'snowfakery', 'recipe.yml');
         };
+        const detailOf = (recordTotals: Array<[string, number]>, outsideParents: string[] = []) => RecipeCockpitService.flattenConfirmContent(contentOf(recordTotals, outsideParents));
 
-        it('lists the org, its type, the tree, the backend and each object\'s total', () => {
+        /*
+            #457: the summary says how many records go into which org, with the org's type as its
+            badge; the rollback on Cancel is always on screen; the rest is folded into sections.
+        */
+        it('says how many records go into which org, badges its type, warns about Cancel, and folds the records, lookups, org and recipe', () => {
 
-            const detailLines = detailOf([['Account', 1], ['Contact', 1]]).split('\n');
+            const posted = RecipeCockpitService.buildConfirmRequestContent(contentOf([['Account', 1], ['Contact', 1]]));
 
-            expect(detailLines.slice(0, 7)).toEqual([
-                'Org: qa (qa@example.com.qa)',
-                'Type: Sandbox',
-                'Recipe tree: Account-thru-OtherChildObject__c (recipe.yml)',
-                'Backend: snowfakery',
-                'Records, inserted parents first:',
-                '  Account: 1',
-                '  Contact: 1'
+            expect(posted.summary).toEqual(['Generate 2 records and insert them into qa (qa@example.com.qa).']);
+            expect(posted.badge).toBe('Sandbox');
+            expect(posted.warnings).toEqual(['Cancel on the progress notification deletes every record this insert saved.']);
+            expect(posted.sections).toEqual([
+                { title: 'Records, inserted parents first', count: 2, lines: ['  Account: 1', '  Contact: 1'] },
+                { title: 'Lookups', lines: ['Any other lookup to an object this tree does not insert is left blank.'] },
+                {
+                    title: 'Org and recipe',
+                    lines: ['Org: qa (qa@example.com.qa)', 'Type: Sandbox', 'Recipe tree: Account-thru-OtherChildObject__c (recipe.yml)', 'Backend: snowfakery']
+                },
+                { title: 'What happens next', lines: [expect.stringContaining('FakeDataSets'), expect.stringContaining('Insert Data Set by Directory'), 'You choose all-or-none next.'] }
             ]);
-            expect(detailLines.at(-1)).toContain('you choose all-or-none next');
-            expect(detailLines.join('\n')).not.toContain('Generate only');
+            expect(detailOf([['Account', 1], ['Contact', 1]])).not.toContain('Generate only');
+
+        });
+
+        it('says one record as one, and puts a long run\'s note and switched-off rules among the warnings', () => {
+
+            expect(RecipeCockpitService.buildConfirmRequestContent(contentOf([['Account', 1]])).summary).toEqual(['Generate 1 record and insert it into qa (qa@example.com.qa).']);
+            expect(RecipeCockpitService.buildConfirmRequestContent(contentOf([['Account', 1000], ['Contact', 1001]])).warnings)
+                .toContain('This run will take time: 2001 records in at least 11 Collections API requests.');
 
         });
 
@@ -2069,13 +2084,17 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
             const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns(), TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
             const accountTree = recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY);
-            const detailFor = (orgDisplayDetail?: { isScratchOrg: boolean; expirationDate?: string }) => RecipeCockpitService.buildInsertConfirmationDetail(
-                'dev (test@example.com)', SANDBOX_TYPE, accountTree, recipe, new Map([['Account', 1]]), [], 'snowfakery', 'recipe.yml', [], orgDisplayDetail
-            ).split('\n')[1];
+            const typeFor = (orgDisplayDetail?: { isScratchOrg: boolean; expirationDate?: string }) => {
+                const content = RecipeCockpitService.buildInsertConfirmationContent(
+                    'dev (test@example.com)', SANDBOX_TYPE, accountTree, recipe, new Map([['Account', 1]]), [], 'snowfakery', 'recipe.yml', [], orgDisplayDetail
+                );
+                const orgSection = content.sections?.find(section => section.title === 'Org and recipe');
+                return { badge: content.badge, typeLine: orgSection?.lines[1] };
+            };
 
-            expect(detailFor({ isScratchOrg: true, expirationDate: '2026-11-01' })).toBe('Type: Scratch org · expires 2026-11-01');
-            expect(detailFor({ isScratchOrg: false })).toBe('Type: Sandbox');
-            expect(detailFor(undefined)).toBe('Type: Sandbox');
+            expect(typeFor({ isScratchOrg: true, expirationDate: '2026-11-01' })).toEqual({ badge: 'Scratch org · expires 2026-11-01', typeLine: 'Type: Scratch org · expires 2026-11-01' });
+            expect(typeFor({ isScratchOrg: false })).toEqual({ badge: 'Sandbox', typeLine: 'Type: Sandbox' });
+            expect(typeFor(undefined)).toEqual({ badge: 'Sandbox', typeLine: 'Type: Sandbox' });
 
         });
 
@@ -2090,6 +2109,9 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
         it('names a required parent outside the tree, as written', () => {
 
             expect(detailOf([['Contact', 1]], ['Region__c'])).toContain('Required lookups to objects this tree does not insert get a random existing record of: Region__c (none means nothing is inserted).');
+            // #457: RECORDS POINTED AT EXISTING ORG RECORDS ARE NOT GENERATED DATA, SO IT IS A WARNING ON SCREEN
+            expect(RecipeCockpitService.buildConfirmRequestContent(contentOf([['Contact', 1]], ['Region__c'])).warnings)
+                .toContain('Required lookups to objects this tree does not insert get a random existing record of: Region__c (none means nothing is inserted).');
             expect(detailOf([['Contact', 1]], ['[x](command:evil)'])).toContain('a random existing record of: [x](command:evil) (none');
 
         });

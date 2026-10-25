@@ -6,6 +6,7 @@ import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
+import { IRecipeCockpitConfirmContent } from './RecipeCockpitConfirmContent';
 
 /*
     "Assign permission sets to me…" (#274, #302): the project's permission sets that grant anything
@@ -425,22 +426,27 @@ export class RecipeCockpitPermissionSetAssign {
 
     }
 
-    // THE CONFIRMATION'S DETAIL: THE TREE, THE ORG, THE USER, AND EVERY PICK WITH WHAT IT COVERS, EACH ON ONE LINE AND WITH NO
-    // PARENTHESES OF ITS OWN, SINCE THE CALLER ESCAPES IT FOR A NOTIFICATION
-    static buildConfirmationDetail(treeLabel: string, orgLabel: string, orgUsername: string, permissionSets: readonly IPermissionSetCandidate[], treeObjectCount: number): string {
+    // WHAT THE IN-PANEL CONFIRMATION SAYS (#457): THE TREE, THE ORG AND THE USER ON SCREEN, EVERY PICK WITH WHAT IT COVERS IN A
+    // FOLDED SECTION, EACH ON ONE LINE
+    static buildConfirmationContent(treeLabel: string, orgLabel: string, orgUsername: string, permissionSets: readonly IPermissionSetCandidate[], treeObjectCount: number): IRecipeCockpitConfirmContent {
 
         const toSingleLine = (text: string) => String(text).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');
 
-        return [
-            `Tree: ${toSingleLine(treeLabel)}`,
-            `Org: ${toSingleLine(orgLabel)}`,
-            `Assigned to: ${toSingleLine(orgUsername)}, the user this org is authorized as`,
-            '',
-            `${permissionSets.length} ${permissionSets.length === 1 ? 'permission set' : 'permission sets'}:`,
-            ...permissionSets.map(permissionSet => `  ${permissionSet.name} — ${toSingleLine(this.describeCoverage(permissionSet, treeObjectCount))}`),
-            '',
-            'Nothing is deployed. Only the permission sets the org already holds are assigned; any it does not hold are named so you can deploy them. A permission set the user already holds counts as assigned.'
-        ].join('\n');
+        return {
+            summary: [
+                `Tree: ${toSingleLine(treeLabel)}`,
+                `Org: ${toSingleLine(orgLabel)}`,
+                `Assigned to: ${toSingleLine(orgUsername)}, the user this org is authorized as`
+            ],
+            sections: [
+                {
+                    title: permissionSets.length === 1 ? 'Permission set' : 'Permission sets',
+                    count: permissionSets.length,
+                    lines: permissionSets.map(permissionSet => `  ${permissionSet.name} — ${toSingleLine(this.describeCoverage(permissionSet, treeObjectCount))}`)
+                },
+                { title: 'What happens next', lines: ['Nothing is deployed.', 'Only the permission sets the org already holds are assigned; any it does not hold are named so you can deploy them.', 'A permission set the user already holds counts as assigned.'] }
+            ]
+        };
 
     }
 

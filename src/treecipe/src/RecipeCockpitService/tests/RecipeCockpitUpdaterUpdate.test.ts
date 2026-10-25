@@ -614,8 +614,11 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             panelState().dataOrgSelection.orgDisplayDetail = { isScratchOrg: true, expirationDate: '2026-11-01' };
             await requestUpdate();
 
-            const [[, options]] = updateConfirmations();
-            expect(options.detail.split('\n')[0]).toBe('Org: qa · qa@example.com.qa (Scratch org · expires 2026-11-01)');
+            expect(updateConfirmations()).toHaveLength(1);
+            // #457: THE ORG'S TYPE IS THE CONFIRMATION'S BADGE
+            const [, confirmOptions] = (RecipeCockpitService.confirmInPanel as unknown as jest.Mock).mock.calls.find(([title]) => String(title).startsWith('Update '));
+            expect(confirmOptions.summary).toEqual(['Org: qa · qa@example.com.qa']);
+            expect(confirmOptions.badge).toBe('Scratch org · expires 2026-11-01');
 
         });
 
@@ -629,15 +632,20 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             expect(title).toBe('Update 5 records of Account-thru-OtherChildObject__c in qa · qa@example.com.qa?');
             expect(options.isDestructive).toBe(true);
             expect(buttons).toEqual([RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL]);
+            // #457: THE ORG AND THE RECORD TYPE NOTE ON SCREEN, THE RECORDS AND THE SNAPSHOT FOLDED
             expect(options.detail.split('\n')).toEqual([
-                'Org: qa · qa@example.com.qa (Sandbox)',
-                `Each record is updated by its Id. The old values are saved first to treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${ACCOUNT_TREE_KEY}/, and nothing is updated if they cannot be.`,
+                'Org: qa · qa@example.com.qa',
+                RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE,
                 '',
+                'Records and fields · 2',
                 'Account: 3 records -- Legacy_Code__c, Rating__c',
                 'Contact: 2 records -- LastName',
                 '',
-                RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE
+                'How it can be undone',
+                'Each record is updated by its Id.',
+                `The old values are saved first to treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${ACCOUNT_TREE_KEY}/, and nothing is updated if they cannot be.`
             ]);
+            expect((RecipeCockpitService.confirmInPanel as unknown as jest.Mock).mock.calls.find((call: unknown[]) => String(call[0]).startsWith('Update '))[1].badge).toBe('Sandbox');
 
             expect(updateCalls.map(updateCall => [updateCall.objectApiName, updateCall.records.length, updateCall.options])).toEqual([
                 ['Account', 3, { allowRecursive: false, allOrNone: false }],
