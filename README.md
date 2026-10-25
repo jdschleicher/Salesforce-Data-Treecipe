@@ -81,6 +81,8 @@ Users have two choices of "Fake Data" implementations:
 
 Note: press `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS) to open the Command Palette.
 
+**Or use the Treecipe side bar.** Click the Treecipe icon in the Activity Bar (a tree of nodes on a round base) to see every command below in two groups, **Recipes** and **Picklist Dependencies**. Each row runs the same command the Command Palette does, so every prompt and preview opt-in still applies. In a folder with no Treecipe configuration yet, the view offers an **Initiate Configuration** button instead; once the file is written the list appears without a reload. Opening the view only reads where the configuration is: it loads no run, contacts no org and runs no `sf` command.
+
 1. [Initiate Configuration File](#1-salesforce-treecipe-initiate-configuration-file)
 2. [Generate Treecipe](#2-salesforce-treecipe-generate-treecipe)
 3. [Run Snowfakery by Recipe(Treecipe) to create FakeDataSet](#3-salesforce-treecipe-run-faker-by-recipe)
