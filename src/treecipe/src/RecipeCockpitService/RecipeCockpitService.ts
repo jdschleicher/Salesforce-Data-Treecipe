@@ -19006,6 +19006,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     let treePickerObjectsToggleElement = null;
     let isTreePickerObjectsExpanded = false;
     let treePickerObjectsResizeObserver = null;
+    let isTreePickerObjectsMeasureScheduled = false;
     let treePickerShownTreeState = null;
     let treecipesSearch = null;
     let treecipesSearchText = '';
@@ -19470,6 +19471,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         if (!treePickerObjectsElement) { return; }
 
+        releaseTreePickerObjectsList();
         treePickerObjectsElement.textContent = '';
         const shownTreeState = treePickerShownTreeState;
         if (!shownTreeState) {
@@ -19521,13 +19523,14 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         });
         treePickerObjectsElement.appendChild(toggleElement);
         treePickerObjectsToggleElement = toggleElement;
-        drawTreePickerObjectsToggle();
 
-        // THE LIST IS ONLY MEASURABLE ONCE IT IS LAID OUT, WHICH A DRAW DURING A RENDER CAN COME BEFORE
-        if (typeof ResizeObserver === 'function') {
-            treePickerObjectsResizeObserver = treePickerObjectsResizeObserver || new ResizeObserver(drawTreePickerObjectsToggle);
-            treePickerObjectsResizeObserver.disconnect();
+        // THE LIST IS ONLY MEASURABLE ONCE IT IS LAID OUT, WHICH A DRAW DURING A RENDER CAN COME BEFORE; THE
+        // OBSERVER'S FIRST DELIVERY IS THAT MEASURE. WITHOUT ONE, THE LIST IS MEASURED NOW AND ON EVERY RESIZE
+        if (typeof window.ResizeObserver === 'function') {
+            treePickerObjectsResizeObserver = treePickerObjectsResizeObserver || new window.ResizeObserver(scheduleTreePickerObjectsToggle);
             treePickerObjectsResizeObserver.observe(listElement);
+        } else {
+            drawTreePickerObjectsToggle();
         }
 
     }
@@ -19537,6 +19540,35 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         count (#464), so it is measured: on every draw and whenever the panel's width changes. An
         opened list keeps its toggle so it can be closed again.
     */
+    function releaseTreePickerObjectsList() {
+
+        if (treePickerObjectsResizeObserver) { treePickerObjectsResizeObserver.disconnect(); }
+        treePickerObjectsListElement = null;
+        treePickerObjectsToggleElement = null;
+
+    }
+
+    /*
+        Showing or hiding the toggle changes the observed list's own width, and a size changed inside an
+        observer callback is reported by the browser as a "ResizeObserver loop" error on window, which the
+        panel's error listener reports to the host. So the observer only schedules the measure for the
+        next frame, once per frame however many deliveries arrive.
+    */
+    function scheduleTreePickerObjectsToggle() {
+
+        if (isTreePickerObjectsMeasureScheduled) { return; }
+        if (typeof window.requestAnimationFrame !== 'function') {
+            drawTreePickerObjectsToggle();
+            return;
+        }
+        isTreePickerObjectsMeasureScheduled = true;
+        window.requestAnimationFrame(function () {
+            isTreePickerObjectsMeasureScheduled = false;
+            drawTreePickerObjectsToggle();
+        });
+
+    }
+
     function drawTreePickerObjectsToggle() {
 
         if (!treePickerObjectsToggleElement || !treePickerObjectsListElement) { return; }
@@ -28040,8 +28072,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         treePickerElement = null;
         treePickerTreeStates = [];
         treePickerObjectsElement = null;
-        treePickerObjectsListElement = null;
-        treePickerObjectsToggleElement = null;
+        releaseTreePickerObjectsList();
         isTreePickerObjectsExpanded = false;
         treePickerShownTreeState = null;
         treecipesSearch = null;
@@ -28800,8 +28831,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         closeNicknameMenu(false);
     }, true);
 
-    // A NARROWER OR WIDER PANEL CAN CUT THE INSERT ORDER LINE, OR STOP CUTTING IT (#464)
-    window.addEventListener('resize', drawTreePickerObjectsToggle);
+    // A NARROWER OR WIDER PANEL CAN CUT THE INSERT ORDER LINE, OR STOP CUTTING IT (#464); AN OBSERVER, WHERE THERE IS ONE, ALREADY HEARS IT
+    if (typeof window.ResizeObserver !== 'function') { window.addEventListener('resize', drawTreePickerObjectsToggle); }
 
     // A SCROLL FIRES PER FRAME, AND A SAVE WALKS EVERY CARD, SO A RUN OF THEM IS SAVED ONCE
     window.addEventListener('scroll', function () {

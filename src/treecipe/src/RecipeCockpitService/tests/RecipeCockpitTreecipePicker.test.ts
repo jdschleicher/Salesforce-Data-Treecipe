@@ -614,6 +614,79 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
 
         });
 
+        it('given a ResizeObserver, measures in the next frame rather than inside the observer callback, so the toggle never resizes the list while it is being observed', () => {
+
+            const { panel } = drawRecipe(() => undefined, { hasResizeObserver: true });
+
+            expect(panel.hasWindowListener('resize')).toBe(false);
+            expect(panel.resizeObservers).toHaveLength(1);
+            expect(panel.resizeObservers[0].observedElements).toEqual([objectsListOf(panel)]);
+
+            // THE FIRST DELIVERY IS THE FIRST MEASURE; IT CHANGES NOTHING UNTIL ITS FRAME
+            Object.assign(objectsListOf(panel), { scrollWidth: 900, clientWidth: 300 });
+            panel.deliverResizeObservations();
+            panel.deliverResizeObservations();
+            expect(panel.isHidden(objectsToggleOf(panel))).toBe(true);
+            expect(panel.pendingAnimationFrameCount()).toBe(1);
+
+            panel.runAnimationFrames();
+            expect(panel.isHidden(objectsToggleOf(panel))).toBe(false);
+
+            Object.assign(objectsListOf(panel), { scrollWidth: 300, clientWidth: 300 });
+            panel.deliverResizeObservations();
+            expect(panel.isHidden(objectsToggleOf(panel))).toBe(false);
+            panel.runAnimationFrames();
+            expect(panel.isHidden(objectsToggleOf(panel))).toBe(true);
+
+        });
+
+        it('given a ResizeObserver, observes only the list on screen, and lets go of it when no card is drawn or a new model resets the panel', () => {
+
+            const { panel, recipe } = drawRecipe(() => undefined, { hasResizeObserver: true });
+            const observer = panel.resizeObservers[0];
+
+            choose(panel, 'Lead-ONLY');
+            expect(panel.resizeObservers).toHaveLength(1);
+            expect(observer.observedElements).toEqual([objectsListOf(panel)]);
+
+            choose(panel, RECIPE_COCKPIT_UNGROUPED_TREE_TITLE);
+            expect(observer.observedElements).toEqual([]);
+
+            choose(panel, 'Lead-ONLY');
+            favoritesToggleOf(panel).dispatch('click');
+            expect(observer.observedElements).toEqual([]);
+
+            const trimmedRecipe = { ...recipe, trees: [] as any[] };
+            favoritesToggleOf(panel).dispatch('click');
+            expect(observer.observedElements).toHaveLength(1);
+            panel.postToPanel({ command: 'recipeData', recipe: trimmedRecipe, renderSequence: 2 });
+            expect(observer.observedElements).toEqual([]);
+
+        });
+
+        it('closes the list on a new model of the same run', () => {
+
+            const { panel, recipe } = drawRecipe();
+            cutObjectsList(panel);
+            objectsToggleOf(panel).dispatch('click');
+
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 2 });
+
+            expect(objectsListOf(panel).classList.contains('expanded')).toBe(false);
+
+        });
+
+        it('given a card with no objects, draws no toggle', () => {
+
+            const { panel } = drawRecipe();
+            choose(panel, RECIPE_COCKPIT_UNGROUPED_TREE_TITLE);
+
+            expect(objectsToggleOf(panel)).toBeUndefined();
+            panel.resizeWindow();
+            expect(objectsLineText(panel)).toBe('Insert order:' + RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS);
+
+        });
+
         it('posts nothing and saves nothing new in the place when toggled', () => {
 
             const { panel } = drawRecipe();
