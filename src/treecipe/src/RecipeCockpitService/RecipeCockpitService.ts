@@ -417,7 +417,10 @@ export const RECIPE_COCKPIT_INSERT_DATASET_COMMAND = 'treecipe.insertDataSetBySe
 export const RECIPE_COCKPIT_RUN_FAKER_COMMAND = 'treecipe.runFakerByRecipe';
 
 // A SELF-LOOKUP ITERATION'S "+" ADDS ONE OF ITS OBJECT'S FRIENDS BENEATH IT (#197)
-export const RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = '+';
+export const RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = '+ Add friend';
+// THE DEEPEST friends: LEVEL A NESTED ROW IS INDENTED FOR (#467); A DEEPER ONE IS DRAWN AT THIS INDENT, SO A CARD NEVER RUNS OFF A NARROW PANEL
+export const RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH = 8;
+export const RECIPE_COCKPIT_NESTING_INDENT_REM = 1.25;
 export const RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL = 'Add';
 export const RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL = 'Wire to…';
 // AN EMPTY LOOKUP'S TWO DECISIONS (#421), EACH NAMING THE PARENT BETWEEN ITS PREFIX AND SUFFIX
@@ -580,7 +583,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Wire to… and Wire TODO lookups: fill a lookup\'s TODO with its parent\'s nickname.',
             'Create <parent> in recipe, on a lookup that is still a TODO: adds a standard parent object, such as Account, above the child that needs it. In a faker-js recipe it can instead become the parent of the child\'s whole block, which moves under it. A parent with no template, such as a custom object, draws it disabled and says why.',
             'Use existing <parent> from org…, beside it: pick any connected org, then search the parent or enter a record Id, which is checked in that org. The Id is written as the lookup\'s value and the row shows org record and the org; the insert checks the Id exists in the org it inserts into. Clear, under the pencil, puts the TODO back.',
-            '+ beside an object that looks up to itself: adds a child record under it.',
+            '+ Add friend beside the copy of an object nested under itself: adds one of the object\'s friends under that copy. The card draws each nested copy, and its friends, indented right under the row it is nested in.',
             'Remove TODO (in the Troubleshooting tab\'s TODO\'s list): takes a TODO comment out of the recipe and lists it under Removed, where Restore puts it back exactly. The line is kept in a .removedTodos.json file beside the recipe. A TODO that is a field\'s whole value, such as a lookup\'s, stays.',
             'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.'
         ],
@@ -923,6 +926,8 @@ export interface IRecipeCockpitTreeObjectViewModel {
     parentLookups: IRecipeCockpitParentLookupViewModel[];
     // SET ON THE ENTRY FOR ONE OF THE OBJECT'S iterations, WHICH THE PANEL FINDS BY THIS NICKNAME
     iterationNickname?: string;
+    // HOW MANY friends: LEVELS UNDER THE OCCURRENCE IT IS LISTED BENEATH (#467); SET ONLY ON AN ITERATION DRAWN INDENTED
+    nestingDepth?: number;
 }
 
 /*
@@ -17169,18 +17174,13 @@ export class RecipeCockpitService {
 
                 treeObjects.push({ objectApiName: objectApiName, parentLookups: parentLookups });
 
-                // EACH LATER OCCURRENCE IS LISTED RIGHT AFTER ITS OBJECT, SO THE CARD READS "Account, then the Account nested under it" (#188)
-                ( objectsByApiName.get(objectApiName).iterations ?? [] ).forEach(iteration => {
-                    treeObjects.push({ objectApiName: objectApiName, parentLookups: parentLookups, iterationNickname: iteration.nickname });
-                });
-
             });
 
             trees.push(this.buildTreeViewModel(
                 this.claimTreeKey(treeSource.folderName, treeIndex, usedTreeKeys),
                 this.claimTreeTitle(treeSource.folderName, titleCountsByFolderName),
                 treeSource.folderName,
-                treeObjects,
+                this.placeTreeIterations(treeObjects, objectsByApiName),
                 objectsByApiName
             ));
 
@@ -17208,6 +17208,72 @@ export class RecipeCockpitService {
         const treeKey = usedTreeKeys.has(folderName) ? `${folderName}#${treeIndex + 1}` : folderName;
         usedTreeKeys.add(treeKey);
         return treeKey;
+
+    }
+
+    /*
+        Where a card lists each LATER occurrence of an object (#467): right under the occurrence whose
+        friends: block holds it, one level deeper, after what is already listed under that one -- so a
+        friend added under a self-lookup iteration is drawn under the iteration, and its own friends
+        under it in turn. Occurrences are placed in file order, so a parent is listed before what it
+        holds. A later block sharing its first occurrence's parent (a record type block, #194) is that
+        occurrence's sibling and follows it at its depth, as does an occurrence whose parent the card
+        cannot name. First occurrences keep insert order and draw no indent.
+    */
+    static placeTreeIterations(treeObjects: IRecipeCockpitTreeObjectViewModel[],
+                                objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>): IRecipeCockpitTreeObjectViewModel[] {
+
+        interface ITreeObjectPlace { entry: IRecipeCockpitTreeObjectViewModel; depth: number; children: ITreeObjectPlace[]; followers: ITreeObjectPlace[] }
+
+        const roots: ITreeObjectPlace[] = treeObjects.map(entry => ({ entry: entry, depth: 0, children: [], followers: [] }));
+        const placesByNickname = new Map<string, ITreeObjectPlace>();
+        const claimNickname = (nickname: string | undefined, place: ITreeObjectPlace) => {
+            if ( nickname !== undefined && !placesByNickname.has(nickname) ) {
+                placesByNickname.set(nickname, place);
+            }
+        };
+
+        const laterOccurrences: { place: ITreeObjectPlace; root: ITreeObjectPlace; iteration: IRecipeCockpitObjectIterationViewModel }[] = [];
+        roots.forEach(root => {
+            const objectViewModel = objectsByApiName.get(root.entry.objectApiName);
+            claimNickname(objectViewModel?.nickname ?? objectViewModel?.recipeNickname, root);
+            ( objectViewModel?.iterations ?? [] ).forEach(iteration => laterOccurrences.push({
+                place: { entry: { objectApiName: root.entry.objectApiName, parentLookups: root.entry.parentLookups, iterationNickname: iteration.nickname }, depth: 0, children: [], followers: [] },
+                root: root,
+                iteration: iteration
+            }));
+        });
+
+        if ( laterOccurrences.length === 0 ) {
+            return treeObjects;
+        }
+
+        laterOccurrences
+            .sort((first, second) => first.iteration.lineNumber - second.iteration.lineNumber)
+            .forEach(({ place, root, iteration }) => {
+                const firstOccurrence = objectsByApiName.get(root.entry.objectApiName);
+                const isSiblingOfFirst = iteration.parentNickname === undefined
+                    || ( iteration.parentNickname === firstOccurrence?.parentNickname && iteration.parentObjectApiName === firstOccurrence?.countParentObjectApiName );
+                const parentPlace = isSiblingOfFirst ? undefined : placesByNickname.get(iteration.parentNickname as string);
+                if ( parentPlace ) {
+                    place.depth = parentPlace.depth + 1;
+                    parentPlace.children.push(place);
+                } else {
+                    place.depth = root.depth;
+                    root.followers.push(place);
+                }
+                claimNickname(iteration.nickname, place);
+            });
+
+        const placedTreeObjects: IRecipeCockpitTreeObjectViewModel[] = [];
+        const listPlace = (place: ITreeObjectPlace) => {
+            placedTreeObjects.push(place.depth > 0 ? { ...place.entry, nestingDepth: place.depth } : place.entry);
+            place.children.forEach(listPlace);
+            place.followers.forEach(listPlace);
+        };
+        roots.forEach(listPlace);
+
+        return placedTreeObjects;
 
     }
 
@@ -18118,6 +18184,8 @@ ${this.buildPaletteCustomProperties()}
     .troubleshootingSubTabs.noMotion .troubleshootingSubTab::after { transition: none; }
     .treeObjectHeader { padding: 0.35rem 0.6rem; align-items: center; }
     .treeObject { position: relative; }
+    .treeObject.treeObjectNested { border-left: 2px solid var(--sdt-border); }
+${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, depthIndex) => `    .treeObject.treeObjectDepth${depthIndex + 1} { margin-left: ${( depthIndex + 1 ) * RECIPE_COCKPIT_NESTING_INDENT_REM}rem; }`).join('\n')}
     .treeObject.excluded::after {
         content: '';
         position: absolute;
@@ -18688,6 +18756,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const CHOOSE_INSERT_ORG_NOTE = ${JSON.stringify(RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE)};
     const CANNOT_INSERT_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_CANNOT_INSERT_PREFIX)};
     const ADD_FRIEND_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL)};
+    const MAX_DRAWN_NESTING_DEPTH = ${JSON.stringify(RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH)};
     const WIRE_LOOKUP_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL)};
     const CREATE_PARENT_ACTION_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX)};
     const CREATE_PARENT_ACTION_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX)};
@@ -21838,7 +21907,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const addFriendsElement = createElement('div', 'treeAddFriends hidden');
 
         addFriendElement.setAttribute('title', 'Add one of the friends of ' + object.objectApiName + ' under ' + object.nickname);
-        addFriendElement.setAttribute('aria-label', 'Add a friend under ' + object.nickname);
+        addFriendElement.setAttribute('aria-label', 'Add friend under ' + object.nickname);
         addFriendElement.setAttribute('aria-expanded', 'false');
         addFriendElement.addEventListener('click', function () {
             const isOpening = addFriendsElement.classList.contains('hidden');
@@ -22328,6 +22397,12 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const objectElement = createElement('div', 'treeObject');
         const objectHeaderElement = createElement('div', 'treeObjectHeader');
         const toggleElement = buildToggleElement('treeObjectToggle');
+
+        // A LATER OCCURRENCE IS INDENTED UNDER THE ONE WHOSE friends: BLOCK HOLDS IT (#467)
+        if (typeof treeObject.nestingDepth === 'number' && treeObject.nestingDepth > 0) {
+            objectElement.classList.add('treeObjectNested');
+            objectElement.classList.add('treeObjectDepth' + Math.min(Math.floor(treeObject.nestingDepth), MAX_DRAWN_NESTING_DEPTH));
+        }
 
         const treeObjectState = {
             treeObject: treeObject,

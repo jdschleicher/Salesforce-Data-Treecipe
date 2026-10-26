@@ -18,7 +18,9 @@ import {
     RecipeCockpitService,
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
-    RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL
+    RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL,
+    RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL,
+    RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH
 } from '../RecipeCockpitService';
 import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -71,6 +73,30 @@ const readRecipeFixtureWithoutLead = () => {
     const fixtureText = fs.readFileSync(RECIPE_FIXTURE_PATH, 'utf-8');
     return fixtureText.slice(0, fixtureText.indexOf('\n# Lead')) + '\n';
 };
+
+// THE FIXTURE WITH A Contact ADDED UNDER THE ITERATION, WHICH ENDS THE FILE, AND A Case BY HAND UNDER THAT Contact: A FRIEND OF A FRIEND (#467)
+const appendCaseUnderAddedContact = (recipeText: string) => recipeText.trimEnd().endsWith('### TODO -- the reader\'s own note about Contact') ? `${recipeText.trimEnd()}\n` + [
+    '          friends:',
+    '            - object: Case',
+    '              nickname: Case_child_NickName',
+    '              count: 1',
+    '              fields:',
+    '                Subject: ${{ faker.lorem.sentence() }}',
+    '                AccountId: Account_child_NickName',
+    '                ContactId: Contact_child_NickName',
+    ''
+].join('\n') : recipeText;
+
+const writeRecipeWithNestedFriends = (recipeFilePath: string) => {
+    const insertResult = RecipeCockpitRecipeWriter.insertFriend(fs.readFileSync(recipeFilePath, 'utf-8'), 'Account', ITERATION_NICKNAME, 'Contact');
+    if ( 'refusal' in insertResult ) { throw new Error(insertResult.refusal.message); }
+    const nestedRecipeText = appendCaseUnderAddedContact(insertResult.recipeText);
+    expect(nestedRecipeText).toContain('Case_child_NickName');
+    fs.writeFileSync(recipeFilePath, nestedRecipeText);
+};
+
+const describeTreeObject = (treeObject: { objectApiName: string; iterationNickname?: string; nestingDepth?: number }) =>
+    `${'  '.repeat(treeObject.nestingDepth ?? 0)}${treeObject.objectApiName}${treeObject.iterationNickname ? ` (${treeObject.iterationNickname})` : ''}`;
 
 answerInPanelConfirmationsThroughWarningMock();
 
@@ -128,6 +154,71 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
                 [RecipeCockpitService.buildInsertableFriendKey(TREE_KEY, 'Account', ITERATION_NICKNAME, 'Contact'), recipeFilePath],
                 [RecipeCockpitService.buildInsertableFriendKey(TREE_KEY, 'Account', ITERATION_NICKNAME, 'Opportunity'), recipeFilePath]
             ]);
+
+        });
+
+        it('lists the iteration right under the Account above it, one level deeper (#467)', () => {
+
+            expect(loadModel().trees[0].objects.map(describeTreeObject)).toEqual([
+                'Account',
+                `  Account (${ITERATION_NICKNAME})`,
+                'Contact',
+                'Case',
+                'Opportunity'
+            ]);
+
+        });
+
+        it('lists a friend added under the iteration under the iteration, and its own friend under it, not beside the object\'s first row (#467)', () => {
+
+            writeRecipeWithNestedFriends(recipeFilePath);
+
+            expect(loadModel().trees[0].objects.map(describeTreeObject)).toEqual([
+                'Account',
+                `  Account (${ITERATION_NICKNAME})`,
+                '    Contact (Contact_child_NickName)',
+                '      Case (Case_child_NickName)',
+                'Contact',
+                'Case',
+                'Opportunity'
+            ]);
+
+        });
+
+        it('keeps a later block that shares its first block\'s parent beside that block, and one whose parent is not listed after its object, at its depth (#467)', () => {
+
+            const objectsByApiName = new Map([
+                ['Account', { objectApiName: 'Account', recipeFilePath: recipeFilePath, fields: [], nickname: 'Account_NickName',
+                    iterations: [{ nickname: 'Account_Partner_NickName', lineNumber: 20, fields: [] }] }],
+                ['Contact', { objectApiName: 'Contact', recipeFilePath: recipeFilePath, fields: [], nickname: 'Contact_NickName', parentNickname: 'Account_NickName', countParentObjectApiName: 'Account',
+                    iterations: [
+                        { nickname: 'Contact_Partner_NickName', lineNumber: 12, fields: [], parentObjectApiName: 'Account', parentNickname: 'Account_NickName' },
+                        { nickname: 'Contact_child_NickName', lineNumber: 14, fields: [], parentObjectApiName: 'Contact', parentNickname: 'Contact_Partner_NickName' },
+                        { nickname: 'Contact_orphan_NickName', lineNumber: 30, fields: [], parentObjectApiName: 'Lead', parentNickname: 'Lead_NickName' }
+                    ] }]
+            ]);
+
+            const placed = RecipeCockpitService.placeTreeIterations([
+                { objectApiName: 'Account', parentLookups: [] },
+                { objectApiName: 'Contact', parentLookups: [] }
+            ], objectsByApiName);
+
+            expect(placed.map(describeTreeObject)).toEqual([
+                'Account',
+                'Account (Account_Partner_NickName)',
+                'Contact',
+                'Contact (Contact_Partner_NickName)',
+                '  Contact (Contact_child_NickName)',
+                'Contact (Contact_orphan_NickName)'
+            ]);
+
+        });
+
+        it('hands back the entries it was given when no object has a later occurrence', () => {
+
+            const treeObjects = [{ objectApiName: 'Lead', parentLookups: [] }];
+
+            expect(RecipeCockpitService.placeTreeIterations(treeObjects, new Map([['Lead', { objectApiName: 'Lead', recipeFilePath: recipeFilePath, fields: [] }]]))).toBe(treeObjects);
 
         });
 
@@ -424,6 +515,9 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
             const friendList = panel.findAll(iterationElement, 'treeAddFriends')[0];
 
             expect(addFriendButtons).toHaveLength(1);
+            expect(addFriendButtons[0].textContent).toBe('+ Add friend');
+            expect(addFriendButtons[0].textContent).toBe(RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL);
+            expect(addFriendButtons[0].attributes['aria-label']).toBe(`Add friend under ${ITERATION_NICKNAME}`);
             expect(panel.findAll(iterationElement, 'treeNicknameText')[0].textContent).toBe(ITERATION_NICKNAME);
             expect(panel.findAll(iterationElement, 'treeIteration')[0].textContent).toBe('nested under Account_NickName');
             expect(panel.findAll(friendList, 'treeAddFriendChoice').map((choice: any) => choice.textContent)).toEqual(['+ Contact', '+ Opportunity']);
@@ -452,6 +546,41 @@ describe('RecipeCockpitService, "+" adds a friend under a self-lookup iteration 
             panel.postToPanel({ command: 'addFriendState', isRunning: false });
 
             expect(everyAddFriendButton().map(buttonElement => buttonElement.disabled)).toEqual([false, false, false]);
+
+        });
+
+        it('draws each later occurrence right under the one it is nested in, indented one level per friends: level (#467)', () => {
+
+            writeRecipeWithNestedFriends(recipeFilePath);
+            const panel = renderModel();
+            const drawnRows = panel.objectElements().map((objectElement: any) => [
+                panel.findAll(objectElement.children[0], 'treeObjectName')[0].textContent,
+                panel.findAll(objectElement.children[0], 'treeNicknameText')[0]?.textContent,
+                ['treeObjectDepth1', 'treeObjectDepth2', 'treeObjectDepth3'].find(className => objectElement.classList.contains(className)) ?? 'top',
+                objectElement.classList.contains('treeObjectNested')
+            ]);
+
+            expect(drawnRows).toEqual([
+                ['Account', 'Account_NickName', 'top', false],
+                ['Account', ITERATION_NICKNAME, 'treeObjectDepth1', true],
+                ['Contact', 'Contact_child_NickName', 'treeObjectDepth2', true],
+                ['Case', 'Case_child_NickName', 'treeObjectDepth3', true],
+                ['Contact', 'Contact_NickName', 'top', false],
+                ['Case', 'Case_NickName', 'top', false],
+                ['Opportunity', 'Opportunity_NickName', 'top', false]
+            ]);
+
+        });
+
+        it('draws a row deeper than the deepest indent at the deepest indent', () => {
+
+            const recipeViewModel = loadModel();
+            recipeViewModel.trees[0].objects[1].nestingDepth = RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH + 3;
+            const panel = runPanelScript();
+            panel.postToPanel({ command: 'recipeData', recipe: recipeViewModel, renderSequence: 1 });
+            panel.expandAllTrees();
+
+            expect(panel.objectElements()[1].classList.contains(`treeObjectDepth${RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH}`)).toBe(true);
 
         });
 

@@ -1260,7 +1260,7 @@ describe('RecipeCockpitService', () => {
 
             expect(treeBuild.trees[0].objects).toEqual([
                 { objectApiName: 'Account', parentLookups: [{ fieldApiName: 'ParentId', parentObjectApiName: 'Account' }] },
-                { objectApiName: 'Account', parentLookups: [{ fieldApiName: 'ParentId', parentObjectApiName: 'Account' }], iterationNickname: 'Account_child_NickName' },
+                { objectApiName: 'Account', parentLookups: [{ fieldApiName: 'ParentId', parentObjectApiName: 'Account' }], iterationNickname: 'Account_child_NickName', nestingDepth: 1 },
                 { objectApiName: 'Contact', parentLookups: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }] }
             ]);
             expect(treeBuild.trees[0].fieldCount).toBe(4);
