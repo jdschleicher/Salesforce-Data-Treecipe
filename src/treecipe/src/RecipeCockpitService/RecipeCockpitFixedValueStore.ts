@@ -171,8 +171,10 @@ export class RecipeCockpitFixedValueStore {
         has no nickname to scope by and is held by its object's one entry.
     */
     static findHoldingEntry(entries: readonly IFixedValueEntry[], objectApiName: string, fieldApiName: string, occurrenceNickname?: string): IFixedValueEntry | undefined {
+        // AN OBJECT NOW WRITTEN ONCE (ITS ITERATIONS REMOVED BY HAND) IS STILL HELD BY A PIN OF ONE OF ITS OCCURRENCES
         if ( occurrenceNickname === undefined ) {
-            return this.findEntry(entries, objectApiName, fieldApiName);
+            return this.findEntry(entries, objectApiName, fieldApiName)
+                ?? entries.find(entry => entry.objectApiName === objectApiName && entry.fieldApiName === fieldApiName);
         }
         return this.findEntry(entries, objectApiName, fieldApiName, occurrenceNickname)
             ?? entries.find(entry => entry.objectApiName === objectApiName && entry.fieldApiName === fieldApiName && entry.scopeNickname === undefined
@@ -194,7 +196,11 @@ export class RecipeCockpitFixedValueStore {
         const previousEntry = this.findEntry(entries, pinnedEntry.objectApiName, pinnedEntry.fieldApiName, pinnedEntry.scopeNickname);
         const widerEntry = pinnedEntry.scopeNickname === undefined ? undefined : this.findEntry(entries, pinnedEntry.objectApiName, pinnedEntry.fieldApiName);
         const carvedOccurrences = ( widerEntry?.occurrences ?? [] ).filter(occurrence => occurrence.nickname === pinnedEntry.scopeNickname);
-        const previousOccurrences = [...( previousEntry?.occurrences ?? [] ), ...carvedOccurrences];
+        // A PIN OF EVERY OCCURRENCE TAKES IN THE PINS OF ONE OCCURRENCE OF THE SAME FIELD, ORIGINALS AND ALL, SO ONE ENTRY HOLDS EACH LINE
+        const absorbedEntries = pinnedEntry.scopeNickname !== undefined ? [] : entries.filter(entry => entry.objectApiName === pinnedEntry.objectApiName
+                                                                                                    && entry.fieldApiName === pinnedEntry.fieldApiName
+                                                                                                    && entry.scopeNickname !== undefined);
+        const previousOccurrences = [...( previousEntry?.occurrences ?? [] ), ...carvedOccurrences, ...absorbedEntries.flatMap(entry => entry.occurrences)];
         const occurrences = pinnedEntry.occurrences.map(occurrence => {
             const { originalText: currentText, ...occurrenceWithoutOriginal } = occurrence;
             // THE SAME OCCURRENCE BY NICKNAME, ELSE BY PLACE; OR A COPY OF A PINNED BLOCK MADE SINCE (Add friend), WHICH HOLDS A PINNED LINE AT ANOTHER DEPTH
@@ -219,7 +225,7 @@ export class RecipeCockpitFixedValueStore {
             : widerEntry;
 
         return [
-            ...entries.filter(entry => entry !== previousEntry && entry !== widerEntry),
+            ...entries.filter(entry => entry !== previousEntry && entry !== widerEntry && !absorbedEntries.includes(entry)),
             ...( narrowedWiderEntry && narrowedWiderEntry.occurrences.length > 0 ? [narrowedWiderEntry] : [] ),
             { ...pinnedEntry, occurrences: occurrences }
         ];
@@ -231,7 +237,7 @@ export class RecipeCockpitFixedValueStore {
     }
 
     /*
-        FIELD → VALUE BY OBJECT, WHAT A CARD DRAWS AS PINNED. A pin is listed under its object AND
+        FIELD → VALUE BY OBJECT, WHAT A CARD DRAWS AS PINNED. Every pin is listed under its object AND
         under the occurrence key (RecipeCockpitRecipeWriter.buildOccurrenceKey) of each occurrence it
         holds by nickname (#467): a card reads an object written once by the object, and each
         occurrence of an object written more than once by its own key, so a pin of one occurrence
@@ -247,9 +253,8 @@ export class RecipeCockpitFixedValueStore {
         };
         // EVERY WIDER PIN FIRST, SO A SCOPED ONE OF THE SAME OCCURRENCE IS WHAT ITS KEY SAYS
         [...entries].sort((left, right) => Number(left.scopeNickname !== undefined) - Number(right.scopeNickname !== undefined)).forEach(entry => {
-            if ( entry.scopeNickname === undefined ) {
-                setValue(entry.objectApiName, entry);
-            }
+            // A PIN OF ONE OCCURRENCE IS UNDER ITS OBJECT TOO, SO AN OBJECT WRITTEN ONCE SINCE STILL DRAWS IT; A CARD WITH iterations READS OCCURRENCE KEYS ONLY
+            setValue(entry.objectApiName, entry);
             new Set(entry.occurrences.flatMap(occurrence => ( occurrence.nickname !== undefined ? [occurrence.nickname] : [] )))
                 .forEach(nickname => setValue(RecipeCockpitRecipeWriter.buildOccurrenceKey(entry.objectApiName, nickname), entry));
         });

@@ -288,6 +288,24 @@ describe('RecipeCockpitRecipeWriter, a setting for one occurrence (#467)', () =>
 
         });
 
+        it('takes the pins of one occurrence into a pin of every occurrence of the same field, originals and all', () => {
+
+            const absorbed = RecipeCockpitFixedValueStore.upsertEntry([scopedPin('Child Co', '        Name: ${{ faker.company.name() }}')], {
+                objectApiName: 'Account', fieldApiName: 'Name', value: 'All Co',
+                occurrences: [occurrence(0, 'Account_NickName', '    Name: "All Co"', '    Name: ${{ faker.company.name() }}'), occurrence(1, ITERATION_NICKNAME, '        Name: "All Co"', '        Name: "Child Co"')]
+            });
+
+            expect(absorbed).toEqual([{
+                objectApiName: 'Account', fieldApiName: 'Name', value: 'All Co',
+                occurrences: [occurrence(0, 'Account_NickName', '    Name: "All Co"', '    Name: ${{ faker.company.name() }}'), occurrence(1, ITERATION_NICKNAME, '        Name: "All Co"', '        Name: ${{ faker.company.name() }}')]
+            }]);
+
+        });
+
+        it('finds a pin of one occurrence for an object written once since, when no wider pin holds the field', () => {
+            expect(RecipeCockpitFixedValueStore.findHoldingEntry([scopedPin('Child Co')], 'Account', 'Name')).toEqual(scopedPin('Child Co'));
+        });
+
         it('finds the entry a row holds: its own scoped pin first, else a wider one that recorded it, and removes by scope', () => {
 
             const entries = [widerPin, scopedPin('Child Co')];
@@ -300,10 +318,10 @@ describe('RecipeCockpitRecipeWriter, a setting for one occurrence (#467)', () =>
 
         });
 
-        it('lists a scoped pin under its occurrence key alone, over a wider pin of the same occurrence', () => {
+        it('lists a scoped pin under its occurrence key, over a wider pin of the same occurrence, and under its object for an object written once since', () => {
 
             expect(RecipeCockpitFixedValueStore.listValuesByObject([scopedPin('Child Co'), widerPin])).toEqual(new Map([
-                ['Account', new Map([['Name', 'Same Co']])],
+                ['Account', new Map([['Name', 'Child Co']])],
                 ['Account\nAccount_NickName', new Map([['Name', 'Same Co']])],
                 [ITERATION_KEY, new Map([['Name', 'Child Co']])]
             ]));

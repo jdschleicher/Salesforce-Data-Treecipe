@@ -206,6 +206,31 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
 
         });
 
+        it('keeps the object\'s settings for a hand-edited recipe whose nicknames are not api names, as before #467 (#467 review)', () => {
+
+            const recipe = loadModel();
+            const accountObject = recipe.objects.find(objectViewModel => objectViewModel.objectApiName === 'Account');
+            accountObject.iterations[0].nickname = 'Account-child';
+
+            expect(RecipeCockpitService.listTreeOccurrences(RecipeCockpitService.buildObjectsByApiName(recipe), treeOf(recipe))
+                .filter(occurrence => occurrence.objectApiName === 'Account')
+                .map(occurrence => occurrence.nickname)).toEqual([undefined]);
+
+        });
+
+        it('leaves a field out of a deploy only when every occurrence leaves it out', () => {
+
+            const recipe = loadModel();
+            const deployedAccountFields = () => RecipeCockpitService.listTreeDeployObjects(recipe, treeOf(recipe)).find(deployObject => deployObject.objectApiName === 'Account').fieldApiNames;
+
+            RecipeCockpitService.applyObjectSelections(recipe, new Map(), new Map([[TREE_KEY, new Map([[ITERATION_KEY, new Set(['Name'])]])]]));
+            expect(deployedAccountFields()).toEqual(['Name', 'ParentId']);
+
+            RecipeCockpitService.applyObjectSelections(recipe, new Map(), new Map([[TREE_KEY, new Map([[ITERATION_KEY, new Set(['Name'])], [FIRST_KEY, new Set(['Name'])]])]]));
+            expect(deployedAccountFields()).toEqual(['ParentId']);
+
+        });
+
         it('keeps an object written once on its object key, posting no nickname', () => {
 
             const recipe = loadModel();
@@ -362,6 +387,42 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
 
             expect(storedOf(workspaceState)).toEqual(storedSelections({ [TREE_KEY]: { [FIRST_KEY]: ['Name'] } }));
             expect(lastPosted('objectSelection').fieldSelection.objects.map((selection: any) => [selection.nickname, selection.excludedFieldApiNames])).toEqual([[FIRST_NICKNAME, ['Name']]]);
+
+        });
+
+        it('reads an occurrence\'s untick back: a second untick keeps the first, and a reopen draws both (#467 review)', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            await openAndDraw(workspaceState);
+
+            await receivedMessageHandler({ command: 'setFieldIncluded', treeKey: TREE_KEY, objectApiName: 'Account', nickname: ITERATION_NICKNAME, fieldApiName: 'Name', included: false });
+            await receivedMessageHandler({ command: 'rendered', renderSequence: lastPosted('recipeData').renderSequence });
+            await receivedMessageHandler({ command: 'setFieldIncluded', treeKey: TREE_KEY, objectApiName: 'Account', nickname: ITERATION_NICKNAME, fieldApiName: 'ParentId', included: false });
+            await receivedMessageHandler({ command: 'setObjectCount', treeKey: TREE_KEY, objectApiName: 'Account', nickname: ITERATION_NICKNAME, count: 6 });
+
+            expect(storedOf(workspaceState)).toEqual(storedSelections({ [TREE_KEY]: { [ITERATION_KEY]: ['Name', 'ParentId'] } }, { [TREE_KEY]: { [ITERATION_KEY]: 6 } }));
+
+            disposeHandler?.();
+            disposeHandler = undefined;
+            postedPanelMessages = [];
+            const reopenedMessage = await openAndDraw(workspaceState);
+
+            expect(treeOf(reopenedMessage.recipe).fieldSelection?.objects.map(selection => [selection.nickname, selection.excludedFieldApiNames])).toEqual([[ITERATION_NICKNAME, ['Name', 'ParentId']]]);
+            expect(treeOf(reopenedMessage.recipe).objectCounts).toEqual([{ objectApiName: 'Account', nickname: ITERATION_NICKNAME, count: 6 }]);
+
+        });
+
+        it('reads a count stored before #467 as the first occurrence\'s alone, and splits it onto that one only (#467 review)', async () => {
+
+            const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({}, { [TREE_KEY]: { Account: 50 } }) });
+            const recipeDataMessage = await openAndDraw(workspaceState);
+
+            expect(treeOf(recipeDataMessage.recipe).objectCounts).toEqual([{ objectApiName: 'Account', nickname: FIRST_NICKNAME, count: 50 }]);
+            expect(readAccounts(resolveFilteredRecipe().recipeText).map(account => [account.nickname, account.count])).toEqual([[FIRST_NICKNAME, 50], [ITERATION_NICKNAME, 2]]);
+
+            await receivedMessageHandler({ command: 'setObjectCount', treeKey: TREE_KEY, objectApiName: 'Account', nickname: ITERATION_NICKNAME, count: 3 });
+
+            expect(storedOf(workspaceState)).toEqual(storedSelections({}, { [TREE_KEY]: { [FIRST_KEY]: 50, [ITERATION_KEY]: 3 } }));
 
         });
 

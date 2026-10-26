@@ -3420,7 +3420,8 @@ export class RecipeCockpitService {
                 const fieldNamesByObject = new Map<string, Set<string>>();
                 Object.keys(storedByObject).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(objectApiName => {
                     const fieldApiNames = this.normalizePlaceNames(storedByObject[objectApiName]).filter(fieldApiName => SalesforceApiName.isApiName(fieldApiName));
-                    if ( SalesforceApiName.isApiName(objectApiName) && fieldApiNames.length > 0 ) {
+                    // AN OBJECT'S KEY, OR ONE OCCURRENCE'S "<Object>\n<Nickname>" (#467)
+                    if ( SalesforceApiName.isOccurrenceKey(objectApiName) && fieldApiNames.length > 0 ) {
                         fieldNamesByObject.set(objectApiName, new Set(fieldApiNames));
                     }
                 });
@@ -3441,7 +3442,7 @@ export class RecipeCockpitService {
                 const countsByObject = new Map<string, number>();
                 Object.keys(storedByObject).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(objectApiName => {
                     const recordCount = storedByObject[objectApiName];
-                    if ( SalesforceApiName.isApiName(objectApiName) && RecipeCockpitRecipeWriter.isRecordCount(recordCount) ) {
+                    if ( SalesforceApiName.isOccurrenceKey(objectApiName) && RecipeCockpitRecipeWriter.isRecordCount(recordCount) ) {
                         countsByObject.set(objectApiName, recordCount);
                     }
                 });
@@ -3898,28 +3899,60 @@ export class RecipeCockpitService {
         the panel builds an iteration's row (buildIterationObjectViewModel). An object with no
         iteration is one occurrence with no nickname.
     */
-    static listTreeOccurrences(objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>, tree: IRecipeCockpitTreeViewModel): IRecipeCockpitTreeOccurrence[] {
+    /*
+        Built once per tree and objects map, and reused while both are the same: a load builds every
+        card's field selection, counts, fixed values, rule switches and allow-lists from it, and each
+        rebuilt it, copying every iteration's fields, five times per tree. onlyObjectApiName narrows a
+        message about one object to that object's occurrences, never the whole model's.
+    */
+    private static readonly treeOccurrencesByTree = new WeakMap<IRecipeCockpitTreeViewModel, { objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>; occurrences: IRecipeCockpitTreeOccurrence[] }>();
+
+    static listTreeOccurrences(objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>, tree: IRecipeCockpitTreeViewModel, onlyObjectApiName?: string): IRecipeCockpitTreeOccurrence[] {
+
+        const cached = onlyObjectApiName === undefined ? this.treeOccurrencesByTree.get(tree) : undefined;
+        if ( cached && cached.objectsByApiName === objectsByApiName ) {
+            return cached.occurrences;
+        }
 
         const listedIterationKeys = new Set(tree.objects
-            .filter(treeObject => treeObject.iterationNickname !== undefined)
+            .filter(treeObject => treeObject.iterationNickname !== undefined && ( onlyObjectApiName === undefined || treeObject.objectApiName === onlyObjectApiName ))
             .map(treeObject => RecipeCockpitRecipeWriter.buildOccurrenceKey(treeObject.objectApiName, treeObject.iterationNickname)));
+        const objectApiNames = onlyObjectApiName === undefined
+            ? this.collectSelectableObjectApiNames(objectsByApiName, tree)
+            : this.collectSelectableObjectApiNames(objectsByApiName, tree).filter(objectApiName => objectApiName === onlyObjectApiName);
 
-        return this.collectSelectableObjectApiNames(objectsByApiName, tree).flatMap(objectApiName => {
+        const occurrences = objectApiNames.flatMap(objectApiName => {
             const objectViewModel = objectsByApiName.get(objectApiName) as IRecipeCockpitObjectViewModel;
             const firstNickname = this.readOccurrenceNickname(objectViewModel);
             return [
                 { objectApiName: objectApiName, ...( firstNickname !== undefined ? { nickname: firstNickname } : {} ), objectViewModel: objectViewModel },
-                ...( objectViewModel.iterations ?? [] )
+                ...( firstNickname === undefined ? [] : objectViewModel.iterations ?? [] )
                     .filter(iteration => listedIterationKeys.has(RecipeCockpitRecipeWriter.buildOccurrenceKey(objectApiName, iteration.nickname)))
                     .map(iteration => ({ objectApiName: objectApiName, nickname: iteration.nickname, objectViewModel: this.buildIterationObjectViewModel(objectViewModel, iteration) }))
             ];
         });
 
+        if ( onlyObjectApiName === undefined ) {
+            this.treeOccurrencesByTree.set(tree, { objectsByApiName: objectsByApiName, occurrences: occurrences });
+        }
+
+        return occurrences;
+
     }
 
-    // THE OCCURRENCE A SETTING IS KEPT FOR: AN OBJECT WITH iterations HAS ONE PER NICKNAME, ONE WITHOUT NONE (#467)
+    /*
+        The occurrence a setting is kept for: an object with iterations has one per nickname, one
+        without none (#467). A hand-edited recipe whose nicknames are not all api names keeps its
+        object's settings, as before #467: an occurrence key of such a nickname is one the filtered
+        copy refuses.
+    */
     static readOccurrenceNickname(objectViewModel: IRecipeCockpitObjectViewModel): string | undefined {
-        return objectViewModel.nickname !== undefined && ( objectViewModel.iterations?.length ?? 0 ) > 0 || objectViewModel.isIterationOccurrence
+        if ( objectViewModel.isIterationOccurrence ) {
+            return objectViewModel.nickname;
+        }
+        return objectViewModel.nickname !== undefined && ( objectViewModel.iterations?.length ?? 0 ) > 0
+                && SalesforceApiName.isApiName(objectViewModel.nickname)
+                && ( objectViewModel.iterations ?? [] ).every(iteration => SalesforceApiName.isApiName(iteration.nickname))
             ? objectViewModel.nickname
             : undefined;
     }
@@ -3931,13 +3964,19 @@ export class RecipeCockpitService {
     */
     static buildIterationObjectViewModel(objectViewModel: IRecipeCockpitObjectViewModel, iteration: IRecipeCockpitObjectIterationViewModel): IRecipeCockpitObjectViewModel {
 
+        // HOST-ONLY COPIES BUILT PER ITERATION ON EVERY LOAD: Object.assign AND PLAIN ASSIGNMENTS, SINCE AN ES6 TARGET TURNS OBJECT REST INTO A KEY-BY-KEY HELPER (~0.5 s AT 11,000 ITERATIONS)
         const iterationFieldsByApiName = new Map(iteration.fields.map(iterationField => [iterationField.fieldApiName, iterationField]));
         const objectFieldApiNames = new Set<string>();
         const fields: IRecipeCockpitFieldViewModel[] = objectViewModel.fields.map(fieldViewModel => {
             objectFieldApiNames.add(fieldViewModel.fieldApiName);
             const iterationField = iterationFieldsByApiName.get(fieldViewModel.fieldApiName);
-            const { lineNumber: _firstLineNumber, todos: _firstTodos, ...fieldWithoutLine } = fieldViewModel;
-            return iterationField ? { ...fieldWithoutLine, lineNumber: iterationField.lineNumber, recipeValue: iterationField.recipeValue } : fieldWithoutLine;
+            const occurrenceField: IRecipeCockpitFieldViewModel = Object.assign({}, fieldViewModel);
+            occurrenceField.lineNumber = iterationField?.lineNumber;
+            occurrenceField.todos = undefined;
+            if ( iterationField ) {
+                occurrenceField.recipeValue = iterationField.recipeValue;
+            }
+            return occurrenceField;
         });
         iteration.fields
             .filter(iterationField => !objectFieldApiNames.has(iterationField.fieldApiName))
@@ -3952,18 +3991,19 @@ export class RecipeCockpitService {
                 lineNumber: iterationField.lineNumber
             } as IRecipeCockpitFieldViewModel));
 
-        const { recordCount: _firstRecordCount, countParentObjectApiName: _firstParent, parentNickname: _firstParentNickname, iterations: _iterations, recipeNickname: _recipeNickname, todos: _todos, ...objectWithoutOccurrence } = objectViewModel;
+        const occurrenceObject: IRecipeCockpitObjectViewModel = Object.assign({}, objectViewModel);
+        occurrenceObject.lineNumber = iteration.lineNumber;
+        occurrenceObject.nickname = iteration.nickname;
+        occurrenceObject.isIterationOccurrence = true;
+        occurrenceObject.fields = fields;
+        occurrenceObject.recordCount = iteration.recordCount;
+        occurrenceObject.countParentObjectApiName = iteration.parentObjectApiName;
+        occurrenceObject.parentNickname = iteration.parentNickname;
+        occurrenceObject.iterations = undefined;
+        occurrenceObject.recipeNickname = undefined;
+        occurrenceObject.todos = undefined;
 
-        return {
-            ...objectWithoutOccurrence,
-            lineNumber: iteration.lineNumber,
-            nickname: iteration.nickname,
-            isIterationOccurrence: true,
-            fields: fields,
-            ...( iteration.recordCount !== undefined ? { recordCount: iteration.recordCount } : {} ),
-            ...( iteration.parentObjectApiName !== undefined ? { countParentObjectApiName: iteration.parentObjectApiName } : {} ),
-            ...( iteration.parentNickname !== undefined ? { parentNickname: iteration.parentNickname } : {} )
-        };
+        return occurrenceObject;
 
     }
 
@@ -3973,7 +4013,7 @@ export class RecipeCockpitService {
                                 objectApiName: string,
                                 nickname: string | undefined): IRecipeCockpitTreeOccurrence | undefined {
 
-        const occurrences = this.listTreeOccurrences(objectsByApiName, tree).filter(occurrence => occurrence.objectApiName === objectApiName);
+        const occurrences = this.listTreeOccurrences(objectsByApiName, tree, objectApiName);
         if ( nickname === undefined ) {
             return occurrences[0];
         }
@@ -4323,12 +4363,15 @@ export class RecipeCockpitService {
             return [];
         }
 
+        // A COUNT STORED BEFORE #467 WAS THE FIRST OCCURRENCE'S "count:" AND NEVER AN ITERATION'S, SO IT STILL IS
         return this.listTreeOccurrences(objectsByApiName, tree)
             .map(({ objectApiName, nickname, objectViewModel }) => ({
                 objectApiName: objectApiName,
                 nickname: nickname,
                 recordCount: objectViewModel.recordCount,
-                storedCount: this.pickStoredForOccurrence(storedCountsByObject, objectApiName, nickname)
+                storedCount: objectViewModel.isIterationOccurrence
+                    ? storedCountsByObject.get(RecipeCockpitRecipeWriter.buildOccurrenceKey(objectApiName, nickname))
+                    : this.pickStoredForOccurrence(storedCountsByObject, objectApiName, nickname)
             }))
             .filter(({ recordCount, storedCount }) => recordCount !== undefined && storedCount !== undefined && storedCount !== recordCount)
             .map(({ objectApiName, nickname, storedCount }) => ({ objectApiName: objectApiName, ...( nickname !== undefined ? { nickname: nickname } : {} ), count: storedCount as number }));
@@ -4590,7 +4633,7 @@ export class RecipeCockpitService {
         const recordCount = resolved.occurrence.objectViewModel.recordCount;
         const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
         const countsByObject = treeSelections.objectCountsByFolderName.get(panelAction.folderName) ?? new Map<string, number>();
-        const selectionKey = this.prepareOccurrenceSelectionKey(countsByObject, panelState, resolved.tree, panelAction.objectApiName, panelAction.nickname, storedCount => storedCount);
+        const selectionKey = this.prepareOccurrenceSelectionKey(countsByObject, panelState, resolved.tree, panelAction.objectApiName, panelAction.nickname, storedCount => storedCount, true);
 
         if ( panelAction.count === recordCount ) {
             countsByObject.delete(selectionKey);
@@ -5469,14 +5512,16 @@ export class RecipeCockpitService {
                                             tree: IRecipeCockpitTreeViewModel,
                                             objectApiName: string,
                                             nickname: string | undefined,
-                                            copyEntry: (entry: T) => T): string {
+                                            copyEntry: (entry: T) => T,
+                                            isFirstOccurrenceOnly = false): string {
 
         if ( nickname === undefined || !panelState.recipeDataMessage ) {
             return objectApiName;
         }
 
-        const occurrenceNicknames = this.listTreeOccurrences(this.buildObjectsByApiName(panelState.recipeDataMessage.recipe), tree)
-            .filter(occurrence => occurrence.objectApiName === objectApiName && occurrence.nickname !== undefined)
+        // A COUNT STORED BEFORE #467 MEANT THE FIRST OCCURRENCE ONLY, SO IT IS SPLIT ONTO THAT ONE ALONE
+        const occurrenceNicknames = this.listTreeOccurrences(this.buildObjectsByApiName(panelState.recipeDataMessage.recipe), tree, objectApiName)
+            .filter(occurrence => occurrence.nickname !== undefined && !( isFirstOccurrenceOnly && occurrence.objectViewModel.isIterationOccurrence ))
             .map(occurrence => occurrence.nickname as string);
         this.splitObjectWideEntry(storedByKey, objectApiName, occurrenceNicknames, copyEntry);
 
@@ -8597,13 +8642,34 @@ export class RecipeCockpitService {
 
         const insertObjectApiNames = new Set(this.listTreeInsertObjectApiNames(recipeViewModel, tree));
         const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
-        // A FIELD IS LEFT OUT OF A DEPLOY ONLY WHEN EVERY OCCURRENCE OF ITS OBJECT LEAVES IT OUT (#467): ONE OCCURRENCE STILL SENDING IT NEEDS IT IN THE ORG
-        const occurrences = this.listTreeOccurrences(objectsByApiName, tree);
+        /*
+            A field is left out of a deploy only when EVERY occurrence of its object leaves it out
+            (#467): one occurrence still sending it needs it in the org. Occurrences and selections are
+            each indexed once, so the list stays linear in the tree.
+        */
+        const occurrenceCountsByObject = new Map<string, number>();
+        tree.objects.forEach(treeObject => {
+            const objectViewModel = objectsByApiName.get(treeObject.objectApiName);
+            const isOwnOccurrence = treeObject.iterationNickname === undefined || ( !!objectViewModel && this.readOccurrenceNickname(objectViewModel) !== undefined );
+            if ( isOwnOccurrence ) {
+                occurrenceCountsByObject.set(treeObject.objectApiName, ( occurrenceCountsByObject.get(treeObject.objectApiName) ?? 0 ) + 1);
+            }
+        });
+        const exclusionsByObject = new Map<string, string[][]>();
+        ( tree.fieldSelection?.objects ?? [] ).forEach(objectFieldSelection => {
+            const exclusions = exclusionsByObject.get(objectFieldSelection.objectApiName) ?? [];
+            exclusions.push(objectFieldSelection.excludedFieldApiNames);
+            exclusionsByObject.set(objectFieldSelection.objectApiName, exclusions);
+        });
         const listExcludedEverywhere = (objectApiName: string): string[] => {
-            const excludedByOccurrence = occurrences
-                .filter(occurrence => occurrence.objectApiName === objectApiName)
-                .map(occurrence => this.findObjectFieldSelection(tree, occurrence.objectViewModel)?.excludedFieldApiNames ?? []);
-            return excludedByOccurrence.length === 0 ? [] : excludedByOccurrence.reduce((excludedEverywhere, excludedHere) => excludedEverywhere.filter(fieldApiName => excludedHere.includes(fieldApiName)));
+            const exclusions = exclusionsByObject.get(objectApiName) ?? [];
+            if ( exclusions.length === 0 || exclusions.length < ( occurrenceCountsByObject.get(objectApiName) ?? 1 ) ) {
+                return [];
+            }
+            return exclusions.reduce((excludedEverywhere, excludedHere) => {
+                const excludedHereSet = new Set(excludedHere);
+                return excludedEverywhere.filter(fieldApiName => excludedHereSet.has(fieldApiName));
+            });
         };
 
         return recipeViewModel.objects
