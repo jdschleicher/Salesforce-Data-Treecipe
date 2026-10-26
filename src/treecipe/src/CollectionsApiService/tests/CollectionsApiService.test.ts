@@ -1,6 +1,7 @@
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import { DatasetInsertAttemptService } from '../../DatasetInsertAttemptService/DatasetInsertAttemptService';
 import * as os from 'os';
 import * as path from 'path';
 import { CollectionsApiService, INSERT_DATA_SET_ORG_PICKER_PLACEHOLDER, INSERT_REQUEST_FAILED_STATUS_CODE, INSERT_RESULTS_FILE_MISSING_TEXT, INSERT_VIEW_ERRORS_LABEL } from '../CollectionsApiService';
@@ -1476,6 +1477,73 @@ describe('the one data set insert, shared by Insert Data Set by Directory and th
             expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('All files processed.');
             expect(progressReport).toHaveBeenCalledWith({ message: 'Processing file 1 of 2: collectionsApi-Account.json', increment: 50 });
             expect(progressReport).toHaveBeenCalledWith({ message: 'Inserting Contact: round 1 of 1' });
+
+        });
+
+        describe('the attempt summary the Recipe Cockpit\'s data set row reads (#469)', () => {
+
+            const readSummary = () => DatasetInsertAttemptService.parseSummary(fs.readFileSync(
+                path.join(datasetFolderPath, 'InsertAttempts', 'insertAttempt-2026-10-07T12-00-00', 'insertAttemptSummary-2026-10-07T12-00-00.json'), 'utf8'));
+
+            test('records a completed insert, its counts and the org it was given, beside the results file', async () => {
+
+                writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')] }, { Account: 0 });
+
+                await CollectionsApiService.upsertDataSetToSelectedOrg(datasetFolderPath, await CollectionsApiService.getDataSetChildDirectoriesNameToFilesMap(datasetFolderPath),
+                    { records: [] }, buildConnection() as any, true, { orgUsername: 'qa@example.com', orgAlias: 'qa' });
+
+                expect(readSummary()).toMatchObject({ outcome: 'completed', isRolledBack: false, isAllOrNone: true, savedRecordCount: 1, failedRecordCount: 0, orgUsername: 'qa@example.com', orgAlias: 'qa' });
+                expect(DatasetInsertAttemptService.readLatestAttempt(datasetFolderPath).lastInsert).toMatchObject({ status: 'succeeded', orgLabel: 'qa' });
+
+            });
+
+            test('records a cancel as cancelled, though the results file still lists the records it deleted', async () => {
+
+                writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')], Contact: [record('Contact', 1, 'Contact_NickName')] }, { Account: 0, Contact: 1 });
+                const connection = buildConnection((objectApiName, records) => {
+                    isCancelled = true;
+                    return records.map((_record, recordIndex) => ({ id: `${objectApiName}-${recordIndex}`, success: true, errors: [] }));
+                });
+                jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockResolvedValue(undefined);
+
+                await insertFolder(connection, false);
+
+                expect(readSummary()).toMatchObject({ outcome: 'cancelled', isRolledBack: true, isAllOrNone: false, savedRecordCount: 0, orgUsername: null });
+                expect(DatasetInsertAttemptService.readLatestAttempt(datasetFolderPath).lastInsert.status).toBe('cancelled');
+
+            });
+
+            test('records an all-or-none failure as rolled back, which the row reads as failed', async () => {
+
+                writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')], Contact: [record('Contact', 1, 'Contact_NickName')] }, { Account: 0, Contact: 1 });
+                const connection = buildConnection((objectApiName, records) => objectApiName === 'Contact'
+                    ? records.map(() => ({ success: false, errors: [{ statusCode: 'REQUIRED_FIELD_MISSING', message: 'LastName', fields: ['LastName'] }] }))
+                    : records.map((_record, recordIndex) => ({ id: `${objectApiName}-${recordIndex}`, success: true, errors: [] })));
+                jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockResolvedValue(undefined);
+
+                await insertFolder(connection, true);
+
+                expect(readSummary()).toMatchObject({ outcome: 'stopped', isRolledBack: true, isAllOrNone: true, savedRecordCount: 0, failedRecordCount: 1 });
+                expect(DatasetInsertAttemptService.readLatestAttempt(datasetFolderPath).lastInsert.status).toBe('failed');
+
+            });
+
+            test('records a stop without all-or-none that kept earlier records as partial', async () => {
+
+                writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')], Contact: [record('Contact', 1, 'Contact_NickName')] }, { Account: 0, Contact: 1 });
+                const connection = buildConnection((objectApiName, records) => {
+                    if ( objectApiName === 'Contact' ) {
+                        throw new Error('INVALID_SESSION_ID');
+                    }
+                    return records.map((_record, recordIndex) => ({ id: `${objectApiName}-${recordIndex}`, success: true, errors: [] }));
+                });
+
+                await insertFolder(connection, false);
+
+                expect(readSummary()).toMatchObject({ outcome: 'stopped', isRolledBack: false, savedRecordCount: 1, failedRecordCount: 0 });
+                expect(DatasetInsertAttemptService.readLatestAttempt(datasetFolderPath).lastInsert.status).toBe('partial');
+
+            });
 
         });
 

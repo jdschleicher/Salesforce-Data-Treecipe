@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { DatasetSourceFakerService, DatasetSourceService, IDatasetListing, IKnownRecipeRun } from '../DatasetSourceService/DatasetSourceService';
+import { DatasetInsertAttemptService, IDatasetLastInsertRead, InsertAttemptStatus } from '../DatasetInsertAttemptService/DatasetInsertAttemptService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { RecipeCockpitAdaptedDataset } from './RecipeCockpitAdaptedDataset';
 
@@ -34,6 +35,21 @@ export interface IRecipeCockpitDatasetRecordCountViewModel {
 }
 
 /*
+    How the newest insert of a data set ended (#469), as its row draws it. The counts are absent
+    when the attempt could not be read; isRecordedBeforeSummaries marks an attempt from before the
+    insert wrote its outcome, whose status is "unknown". hasResultsFile draws "View results".
+*/
+export interface IRecipeCockpitDatasetLastInsertViewModel {
+    status: InsertAttemptStatus;
+    attemptedAtLabel: string;
+    orgLabel?: string;
+    savedRecordCount?: number;
+    failedRecordCount?: number;
+    isRecordedBeforeSummaries?: true;
+    hasResultsFile?: true;
+}
+
+/*
     One data set made from this tree. runFolderName is null when only the TREE matched -- its run
     folder is gone, or its legacy copies disagree on which run -- and the panel tags it "version
     unknown". recordCounts is null when the data set predates datasetSource.json: its counts are
@@ -50,6 +66,8 @@ export interface IRecipeCockpitTreeDatasetViewModel {
     isFavorite?: boolean;
     // A DATA SET THE TREECIPE ADAPTER WROTE (#448), DRAWN WITH AN "adapted" LABEL; ABSENT OTHERWISE
     isAdapted?: true;
+    // ITS NEWEST INSERT (#469); ABSENT FOR A DATA SET NEVER INSERTED, WHICH DRAWS AS IT ALWAYS DID
+    lastInsert?: IRecipeCockpitDatasetLastInsertViewModel;
 }
 
 export interface IRecipeCockpitTreeHistoryViewModel {
@@ -75,6 +93,8 @@ export interface IRecipeCockpitTreeHistoryTree {
 export interface IRecipeCockpitTreeHistoryTargets {
     datasetFolderPathsByName: Map<string, string>;
     runFakerRecipeFilePathsByTreeKey: Map<string, string>;
+    // THE RESULTS FILE OF EACH DATA SET'S NEWEST INSERT (#469), BY DATA SET FOLDER NAME
+    insertResultsFilePathsByDatasetFolderName: Map<string, string>;
 }
 
 export interface IRecipeCockpitTreeHistoryBuild {
@@ -88,13 +108,14 @@ export interface IRecipeCockpitAddedDataset {
     dataset: IRecipeCockpitTreeDatasetViewModel;
     treeKeys: string[];
     datasetFolderPath: string;
+    insertResultsFilePath?: string;
 }
 
 export class RecipeCockpitTreeHistory {
 
     static buildEmptyTargets(): IRecipeCockpitTreeHistoryTargets {
 
-        return { datasetFolderPathsByName: new Map(), runFakerRecipeFilePathsByTreeKey: new Map() };
+        return { datasetFolderPathsByName: new Map(), runFakerRecipeFilePathsByTreeKey: new Map(), insertResultsFilePathsByDatasetFolderName: new Map() };
 
     }
 
@@ -168,7 +189,8 @@ export class RecipeCockpitTreeHistory {
     static groupTreeHistories(knownRecipeRuns: IKnownRecipeRun[],
                                 datasetListings: IDatasetListing[],
                                 trees: IRecipeCockpitTreeHistoryTree[],
-                                currentRunFolderName: string): { historiesByTreeKey: Map<string, IRecipeCockpitTreeHistoryViewModel>; unmatchedDatasetCount: number } {
+                                currentRunFolderName: string,
+                                lastInsertsByDatasetFolderName: ReadonlyMap<string, IDatasetLastInsertRead> = new Map()): { historiesByTreeKey: Map<string, IRecipeCockpitTreeHistoryViewModel>; unmatchedDatasetCount: number } {
 
         const historiesByTreeKey = new Map<string, IRecipeCockpitTreeHistoryViewModel>();
         const treeKeysByFolderName = new Map<string, string[]>();
@@ -222,6 +244,7 @@ export class RecipeCockpitTreeHistory {
             const recordCountsByObject = datasetSourceRead.datasetSource?.recordCountsByObject;
             const runFolderName = isLinkedToTree ? datasetSourceRead.recipeRunFolderName : null;
             const isAdapted = datasetListing.folderNameDetail.adaptedFromName !== undefined && datasetSourceRead.datasetSource?.origin === 'adapt';
+            const lastInsertRead = lastInsertsByDatasetFolderName.get(datasetListing.datasetFolderName);
 
             const datasetViewModel: IRecipeCockpitTreeDatasetViewModel = {
                 datasetFolderName: datasetListing.datasetFolderName,
@@ -232,7 +255,8 @@ export class RecipeCockpitTreeHistory {
                                 ?? this.readFakerServiceOfRun(runFolderName ?? ''),
                 runFolderName: runFolderName,
                 recordCounts: recordCountsByObject ? this.toRecordCountViewModels(recordCountsByObject) : null,
-                ...( isAdapted ? { isAdapted: true as const } : {} )
+                ...( isAdapted ? { isAdapted: true as const } : {} ),
+                ...( lastInsertRead ? { lastInsert: this.toLastInsertViewModel(lastInsertRead) } : {} )
             };
 
             treeKeys.forEach(treeKey => historiesByTreeKey.get(treeKey).datasets.push(datasetViewModel));
@@ -240,6 +264,45 @@ export class RecipeCockpitTreeHistory {
         });
 
         return { historiesByTreeKey, unmatchedDatasetCount };
+
+    }
+
+    static toLastInsertViewModel(lastInsertRead: IDatasetLastInsertRead): IRecipeCockpitDatasetLastInsertViewModel {
+
+        const { lastInsert } = lastInsertRead;
+
+        return {
+            status: lastInsert.status,
+            attemptedAtLabel: this.formatTimestampLabel(lastInsert.attemptTimestamp),
+            ...( lastInsert.orgLabel !== undefined ? { orgLabel: lastInsert.orgLabel } : {} ),
+            ...( lastInsert.savedRecordCount !== undefined ? { savedRecordCount: lastInsert.savedRecordCount } : {} ),
+            ...( lastInsert.failedRecordCount !== undefined ? { failedRecordCount: lastInsert.failedRecordCount } : {} ),
+            ...( lastInsert.isRecordedBeforeSummaries ? { isRecordedBeforeSummaries: true as const } : {} ),
+            ...( lastInsertRead.resultsFilePath !== undefined ? { hasResultsFile: true as const } : {} )
+        };
+
+    }
+
+    /*
+        Each data set's newest insert, read from its InsertAttempts folder. A results file is kept
+        only while it is inside the workspace, so a row never offers one the host would not open.
+    */
+    static readLastInserts(datasetListings: IDatasetListing[], isContained: (candidatePath: string) => boolean): Map<string, IDatasetLastInsertRead> {
+
+        const lastInsertsByDatasetFolderName = new Map<string, IDatasetLastInsertRead>();
+
+        datasetListings.forEach(datasetListing => {
+            const lastInsertRead = DatasetInsertAttemptService.readLatestAttempt(datasetListing.datasetFolderPath);
+            if ( !lastInsertRead ) {
+                return;
+            }
+            const isResultsFileUsable = lastInsertRead.resultsFilePath !== undefined && isContained(lastInsertRead.resultsFilePath);
+            lastInsertsByDatasetFolderName.set(datasetListing.datasetFolderName, isResultsFileUsable
+                ? lastInsertRead
+                : { lastInsert: lastInsertRead.lastInsert });
+        });
+
+        return lastInsertsByDatasetFolderName;
 
     }
 
@@ -301,10 +364,16 @@ export class RecipeCockpitTreeHistory {
         const datasetListings = DatasetSourceService.findDatasets(fakeDataSetsFolderPath, knownRecipeRuns)
             .filter(datasetListing => isContained(datasetListing.datasetFolderPath));
 
-        const groupedHistories = this.groupTreeHistories(knownRecipeRuns, datasetListings, trees, currentRunFolderName);
+        const lastInsertsByDatasetFolderName = this.readLastInserts(datasetListings, isContained);
+        const groupedHistories = this.groupTreeHistories(knownRecipeRuns, datasetListings, trees, currentRunFolderName, lastInsertsByDatasetFolderName);
         const targets = this.buildEmptyTargets();
 
         datasetListings.forEach(datasetListing => targets.datasetFolderPathsByName.set(datasetListing.datasetFolderName, datasetListing.datasetFolderPath));
+        lastInsertsByDatasetFolderName.forEach((lastInsertRead, datasetFolderName) => {
+            if ( lastInsertRead.resultsFilePath !== undefined ) {
+                targets.insertResultsFilePathsByDatasetFolderName.set(datasetFolderName, lastInsertRead.resultsFilePath);
+            }
+        });
 
         trees.forEach(tree => {
 
@@ -359,7 +428,11 @@ export class RecipeCockpitTreeHistory {
             source: DatasetSourceService.readDatasetSource(datasetFolderPath, knownRecipeRuns)
         };
 
-        const { historiesByTreeKey } = this.groupTreeHistories(knownRecipeRuns, [datasetListing], trees, currentRunFolderName);
+        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+        const lastInsertsByDatasetFolderName = this.readLastInserts([datasetListing],
+            candidatePath => SfdxProjectService.isPathContainedInWorkspace(path.resolve(candidatePath), resolvedWorkspaceRoot));
+        const { historiesByTreeKey } = this.groupTreeHistories(knownRecipeRuns, [datasetListing], trees, currentRunFolderName, lastInsertsByDatasetFolderName);
+        const insertResultsFilePath = lastInsertsByDatasetFolderName.get(datasetFolderName)?.resultsFilePath;
         const treeKeys = trees
             .map(tree => tree.treeKey)
             .filter(treeKey => historiesByTreeKey.get(treeKey)?.datasets.length === 1);
@@ -371,7 +444,8 @@ export class RecipeCockpitTreeHistory {
         return {
             dataset: historiesByTreeKey.get(treeKeys[0]).datasets[0],
             treeKeys: treeKeys,
-            datasetFolderPath: datasetFolderPath
+            datasetFolderPath: datasetFolderPath,
+            ...( insertResultsFilePath !== undefined ? { insertResultsFilePath } : {} )
         };
 
     }

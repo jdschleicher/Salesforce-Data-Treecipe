@@ -94,6 +94,9 @@ Switching to another run while a tree on screen has settings asks first: Reset s
 
 When you generate, the cockpit applies them to a copy of the recipe.
 The data set keeps that copy as `filteredRecipe-…` beside `originalRecipe-…` in its `BaseArtifactFiles` folder, and `datasetSource.json` lists what was changed.
+Each insert of a data set saves its results, and how it ended, in the data set's `InsertAttempts` folder.
+Under **Previously Used Data Sets**, each row shows its last insert: ✅ **Inserted**, ⚠️ **Partly inserted**, ❌ **Insert failed**, 🚫 **Insert cancelled** or ❔ **Insert outcome unknown** (an insert from before outcomes were saved), with when, which org and how many records in its tooltip.
+**View results** opens that insert's results file.
 **Reset selection** on a card clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field's pencil.
 Edits on the **Query** tab are kept the same way, per tree; **Reset** beside a query puts back the generated text.
 

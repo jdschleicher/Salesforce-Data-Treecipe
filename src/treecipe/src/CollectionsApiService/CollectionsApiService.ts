@@ -7,6 +7,7 @@ import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
 import { IAuthenticatedOrgDetail } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import { IInsertFailureError, RecipeCockpitInsertFailureTriage } from "../RecipeCockpitService/RecipeCockpitInsertFailureTriage";
+import { DatasetInsertAttemptService } from "../DatasetInsertAttemptService/DatasetInsertAttemptService";
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
@@ -48,9 +49,15 @@ export type DataSetRecordPreparer = (objectApiName: string, records: unknown[], 
     isFailureReportedByCaller: the caller shows how the insert ended in its own notification (the
     Recipe Cockpit's tree insert), so a file that stops the insert shows no second one here.
 */
+/*
+    orgUsername and orgAlias name the org in the attempt's summary (#469), which the Recipe Cockpit's
+    data set row is labelled by; the alias is optional.
+*/
 export interface IDataSetInsertOptions {
     prepareRecords?: DataSetRecordPreparer;
     isFailureReportedByCaller?: boolean;
+    orgUsername?: string;
+    orgAlias?: string;
 }
 
 export const INSERT_VIEW_ERRORS_LABEL = 'View errors';
@@ -202,6 +209,7 @@ export class CollectionsApiService {
         // Sort collection API files based on relationship levels from the wrapper
         collectionApiFiles = this.sortCollectionApiFilesByRelationshipLevel(collectionApiFiles, treecipeObjectWrapperDetail);
 
+        const insertStartedAt = new Date();
         const pathToInsertAttemptsDirectory = path.join(selectedDataSetFullDirectoryPath, this.insertAttemptsDirectoryName);
         if (!fs.existsSync(pathToInsertAttemptsDirectory)) {
             fs.mkdirSync(pathToInsertAttemptsDirectory);
@@ -354,12 +362,19 @@ export class CollectionsApiService {
 
         const countResults = (resultsByObject: Record<string, any[]> | undefined) => Object.values(resultsByObject ?? {}).reduce((recordCount, objectResults) => recordCount + countRecordFailures(objectResults), 0);
 
+        const savedRecordCount = isRolledBack ? 0 : countResults(allCollectionApiFilesSobjectResults.SuccessResults);
+        const failedRecordCount = countResults(allCollectionApiFilesSobjectResults.FailureResults);
+
+        // HOW THE INSERT ENDED, WHICH THE RESULTS FILE CANNOT SAY: A ROLLBACK LEAVES THE DELETED RECORDS UNDER SuccessResults
+        DatasetInsertAttemptService.writeSummary(fullPathToResultsFile, DatasetInsertAttemptService.buildSummary(outcome, isRolledBack, allOrNoneSelection,
+            savedRecordCount, failedRecordCount, insertOptions.orgUsername, insertOptions.orgAlias, insertStartedAt, new Date()));
+
         return {
             outcome: outcome,
             isRolledBack: isRolledBack,
             resultsFilePath: fullPathToResultsFile,
-            savedRecordCount: isRolledBack ? 0 : countResults(allCollectionApiFilesSobjectResults.SuccessResults),
-            failedRecordCount: countResults(allCollectionApiFilesSobjectResults.FailureResults),
+            savedRecordCount: savedRecordCount,
+            failedRecordCount: failedRecordCount,
             ...(requestFailureDetail === undefined ? {} : { requestFailureDetail }),
             ...(failedFilePath === undefined ? {} : { failedFilePath }),
             ...(firstFailure === undefined ? {} : { firstFailure })

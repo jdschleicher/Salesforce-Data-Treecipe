@@ -1,5 +1,17 @@
 # Change Log
 
+## [3.154.0] - Recipe Cockpit: each data set row says how its last insert ended, and opens its results
+
+[#469](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/469). A row in **Previously Used Data Sets** never said whether its data set had reached an org, or whether it worked: the outcome was only in a notification. Each insert already saved its results in the data set's `InsertAttempts/` folder, but that file cannot say how the insert ended: a cancel and an all-or-none rollback leave the deleted records under `SuccessResults`, and it names no org.
+
+- **An attempt summary.** Every insert (Insert Data Set by Directory and the cockpit's tree insert, both through `CollectionsApiService.upsertDataSetToSelectedOrg`) now writes `insertAttemptSummary-<ts>.json` beside `insertAttemptResults-<ts>.json`: the outcome, whether it was rolled back, all-or-none, the records saved and failed, the org's username and alias, and when it started and finished. It is written `wx` and never throws; the results file is unchanged. The new vscode-free `DatasetInsertAttemptService` (`fs` and `path` only) builds, writes and reads it.
+- **The row's status**, from the data set's NEWEST attempt: ✅ **Inserted** (completed, nothing failed), ⚠️ **Partly inserted** (records saved and records failed, nothing rolled back), ❌ **Insert failed** (stopped with nothing saved, or rolled back), 🚫 **Insert cancelled**, ❔ **Insert outcome unknown**. The emoji is `aria-hidden` and the label always says the state in words; the tooltip and the accessible name add when, into which org (alias, else username), and how many records saved and failed. A data set never inserted draws no chip, exactly as before. The search matches the label.
+- **Never a guessed success.** A summary is untrusted workspace JSON: every field is type-checked and anything out of shape, too large, or behind a link reads as unknown. An attempt from before this release has no summary, so it is unknown too, with the saved and failed counts its results file lists (read only while that file is under 512 KB) and a tooltip saying why.
+- **View results** opens the results file of that attempt. The panel posts only `viewDatasetInsertResults {datasetFolderName}`, matched against a new pending/active allow-list (`viewableInsertResultsDatasetFolderNames`, promoted on `rendered` like the rest); the host resolves it through its own map (`insertResultsFilePathsByDatasetFolderName`, kept only for a file inside the workspace) and checks the file exists and is contained again on the click. No path reaches the panel.
+- **In place.** A tree insert's new row (`datasetAdded`, #226) arrives with its status, and its View results joins the pending allow-list only.
+- **Cost.** One directory listing and one small summary read per data set when a model is built; nothing per record is posted.
+- **Help.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say where an insert's outcome is kept and what each row status means, under **Where your changes are stored**; its picture is re-taken.
+
 ## [3.153.0] - Recipe Cockpit: confirmations open on a short summary, with the detail folded into sections
 
 [#457](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/457). Every in-panel confirmation (#349) drew its detail as one flat list of lines: the org, the record counts, the lookup rules, the rollback and the recipe file all at the same weight, so the one line that mattered could be the last.

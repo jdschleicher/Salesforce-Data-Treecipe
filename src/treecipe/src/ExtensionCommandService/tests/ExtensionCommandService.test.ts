@@ -5357,7 +5357,7 @@ describe('ExtensionCommandService', () => {
                 expect(recordTypeSpy.mock.calls[0][0]).toBe(insertConnection);
                 expect(upsertSpy.mock.calls[0][3]).toBe(insertConnection);
                 expect(insertFolderSpy).toHaveBeenCalledTimes(1);
-                expect(insertFolderSpy).toHaveBeenCalledWith(datasetFolderPath, insertConnection, false);
+                expect(insertFolderSpy).toHaveBeenCalledWith(datasetFolderPath, insertConnection, false, { orgUsername: 'qa@example.com', orgAlias: 'qa' });
                 expect(allOrNoneSpy).toHaveBeenCalledTimes(1);
                 expect(showWarningMessageSpy).not.toHaveBeenCalled();
 
@@ -5443,7 +5443,7 @@ describe('ExtensionCommandService', () => {
                 await new ExtensionCommandService().insertDataSetBySelectedDirectory(datasetFolderPath);
 
                 const insertConnection = await getConnectionSpy.mock.results[0].value;
-                expect(insertFolderSpy).toHaveBeenCalledWith(datasetFolderPath, insertConnection, true);
+                expect(insertFolderSpy).toHaveBeenCalledWith(datasetFolderPath, insertConnection, true, { orgUsername: 'qa@example.com', orgAlias: 'qa' });
                 // THE SHARED INSERT WAS STUBBED, SO NOTHING OF THE OLD INLINE SEQUENCE RAN BESIDE IT
                 expect(recordTypeSpy).not.toHaveBeenCalled();
                 expect(upsertSpy).not.toHaveBeenCalled();

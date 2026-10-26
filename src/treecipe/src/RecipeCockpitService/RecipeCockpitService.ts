@@ -67,7 +67,8 @@ import {
     RecipeCockpitRecordCreation,
     RECIPE_COCKPIT_LARGE_INSERT_RECORD_THRESHOLD
 } from './RecipeCockpitRecordCreation';
-import { CollectionsApiService, DataSetRecordPreparer, IDataSetInsertResult } from '../CollectionsApiService/CollectionsApiService';
+import { CollectionsApiService, DataSetRecordPreparer, IDataSetInsertResult, INSERT_RESULTS_FILE_MISSING_TEXT } from '../CollectionsApiService/CollectionsApiService';
+import { InsertAttemptStatus } from '../DatasetInsertAttemptService/DatasetInsertAttemptService';
 import { RecipeCockpitInsertFailureTriage } from './RecipeCockpitInsertFailureTriage';
 import { IFakerRecipeProcessor } from '../FakerRecipeProcessor/IFakerRecipeProcessor';
 import { FakerJSRecipeProcessor } from '../FakerRecipeProcessor/FakerJSRecipeProcessor/FakerJSRecipeProcessor';
@@ -597,6 +598,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         paragraphs: [
             'The settings that leave the YAML alone are kept by VS Code for this workspace on this machine, per tree. They carry over when you regenerate the same objects, but they are not in your repository, so a teammate or a fresh clone starts without them. Switching to another run while a tree on screen has settings asks first: Reset selections clears them, Apply same selections keeps them for the trees of that run with the same folder, and Cancel stays on the run.',
             'When you generate, the cockpit applies them to a copy of the recipe. The data set keeps that copy as filteredRecipe-… beside originalRecipe-… in its BaseArtifactFiles folder, and datasetSource.json lists what was changed.',
+            'Each insert of a data set saves its results, and how it ended, in the data set\'s InsertAttempts folder. Under Previously Used Data Sets, each row shows its last insert: Inserted, Partly inserted, Insert failed, Insert cancelled or Insert outcome unknown (an insert from before outcomes were saved), with when, which org and how many records in its tooltip. View results opens that insert\'s results file.',
             'Reset selection on a card clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field\'s pencil.',
             'Edits on the Query tab are kept the same way, per tree; Reset beside a query puts back the generated text.'
         ]
@@ -1900,6 +1902,20 @@ export const RECIPE_COCKPIT_DATASET_ADAPTED_LABEL = 'adapted';
 export const RECIPE_COCKPIT_ADAPTER_OPEN_ADAPTED_RECIPE_LABEL = 'Open adapted recipe';
 
 /*
+    How a data set row draws its newest insert (#469): an emoji the label always repeats in words, so
+    the state is never the symbol or its colour alone. Keyed by DatasetInsertAttemptService's status.
+*/
+export const RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY: Readonly<Record<InsertAttemptStatus, { emoji: string; label: string }>> = {
+    succeeded: { emoji: '✅', label: 'Inserted' },
+    partial: { emoji: '⚠️', label: 'Partly inserted' },
+    failed: { emoji: '❌', label: 'Insert failed' },
+    cancelled: { emoji: '🚫', label: 'Insert cancelled' },
+    unknown: { emoji: '❔', label: 'Insert outcome unknown' }
+};
+export const RECIPE_COCKPIT_DATASET_INSERT_RESULTS_LABEL = 'View results';
+export const RECIPE_COCKPIT_DATASET_INSERT_BEFORE_SUMMARIES_NOTE = 'This insert ran before Treecipe recorded how an insert ended, so whether it was cancelled or rolled back is not known.';
+
+/*
     The version and the CHANGELOG link at the top right (#333). The URL is the HOST's: the shell's
     default-src 'none' would make a link in the panel dead, and a URL interpolated into the shell is
     an external reference the shell has none of. The panel posts "openChangelog" with nothing else,
@@ -2506,6 +2522,8 @@ export interface IRecipeCockpitTreeHistoryAllowLists {
     openableDatasetFolderNames: Set<string>;
     insertableDatasetFolderNames: Set<string>;
     countableDatasetFolderNames: Set<string>;
+    // THE DATA SET ROWS THAT DRAW "View results" FOR THEIR NEWEST INSERT (#469)
+    viewableInsertResultsDatasetFolderNames: Set<string>;
     // THE CARDS ✎ AND ☆ ARE DRAWN ON: EVERY CARD WITH A FOLDER, WHICH LEAVES OUT ONLY THE UNGROUPED ONE
     nameableTreeKeys: Set<string>;
     // THE DATA SET ROWS ✎ AND ☆ ARE DRAWN ON: EVERY ROW THE RENDERED HISTORIES LIST
@@ -2540,6 +2558,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'refuseRecordTypeRegenerate' }
     | { kind: 'postPicklistValues'; hostMessage: IRecipeCockpitPicklistValuesMessage }
     | { kind: 'loadDatasetRecordCounts'; datasetFolderName: string; datasetFolderPath: string; renderSequence: number }
+    | { kind: 'viewDatasetInsertResults'; resultsFilePath: string }
     | { kind: 'openDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
     | { kind: 'insertDataset'; datasetFolderName: string; datasetFolderPath: string; focusTree?: IRecipeCockpitTreeFocus }
     | { kind: 'promptInsertOrg'; treeKey: string; recipeFilePath: string }
@@ -5549,6 +5568,7 @@ export class RecipeCockpitService {
             openableDatasetFolderNames: new Set(),
             insertableDatasetFolderNames: new Set(),
             countableDatasetFolderNames: new Set(),
+            viewableInsertResultsDatasetFolderNames: new Set(),
             nameableTreeKeys: new Set(),
             nameableDatasetFolderNames: new Set(),
             selectableObjectKeys: new Set(),
@@ -5737,6 +5757,10 @@ export class RecipeCockpitService {
 
         if ( dataset.recordCounts === null ) {
             treeHistoryAllowLists.countableDatasetFolderNames.add(dataset.datasetFolderName);
+        }
+
+        if ( dataset.lastInsert?.hasResultsFile === true ) {
+            treeHistoryAllowLists.viewableInsertResultsDatasetFolderNames.add(dataset.datasetFolderName);
         }
 
     }
@@ -6539,6 +6563,12 @@ export class RecipeCockpitService {
             case 'loadDatasetRecordCounts':
 
                 this.postDatasetRecordCounts(cockpitPanel, panelState, panelAction.datasetFolderName, panelAction.datasetFolderPath, panelAction.renderSequence);
+                return;
+
+            case 'viewDatasetInsertResults':
+
+                // CHECKED AGAIN ON THE CLICK: THE FILE CAN BE MOVED OR DELETED WHILE THE ROW IS ON SCREEN
+                await VSCodeWorkspaceService.openWorkspaceResultFile(panelAction.resultsFilePath, panelState.workspaceRoot, INSERT_RESULTS_FILE_MISSING_TEXT);
                 return;
 
             case 'openDataset':
@@ -13670,6 +13700,9 @@ export class RecipeCockpitService {
             .forEach(tree => tree.history.datasets.unshift(addedDataset.dataset));
 
         panelState.treeHistoryTargets.datasetFolderPathsByName.set(datasetFolderName, addedDataset.datasetFolderPath);
+        if ( addedDataset.insertResultsFilePath !== undefined ) {
+            panelState.treeHistoryTargets.insertResultsFilePathsByDatasetFolderName.set(datasetFolderName, addedDataset.insertResultsFilePath);
+        }
         panelState.pendingTreeHistoryAllowLists = this.cloneTreeHistoryAllowLists(panelState.pendingTreeHistoryAllowLists);
         this.addDatasetToAllowLists(panelState.pendingTreeHistoryAllowLists, addedDataset.dataset);
 
@@ -14065,7 +14098,9 @@ export class RecipeCockpitService {
 
         const insertResult = await CollectionsApiService.insertDataSetFolderIntoOrg(datasetFolderPath, connection, allOrNoneSelection, {
             prepareRecords: this.buildTreeInsertRecordPreparer(orgDetail.username, insertObjectApiNameSet, orgRecordIdsByObject, choiceCount => Math.floor(Math.random() * choiceCount), orgRecordIdsByObjectField),
-            isFailureReportedByCaller: true
+            isFailureReportedByCaller: true,
+            orgUsername: orgDetail.username,
+            orgAlias: orgDetail.alias
         });
 
         onInsertFinished();
@@ -14686,6 +14721,21 @@ export class RecipeCockpitService {
                 return datasetFolderPath
                     ? { kind: 'loadDatasetRecordCounts', datasetFolderName: datasetFolderName, datasetFolderPath: datasetFolderPath, renderSequence: panelState.recipeDataMessage.renderSequence }
                     : undefined;
+
+            }
+
+            // THE RESULTS FILE OF A DATA SET'S NEWEST INSERT (#469): A NAME THE DRAWN ROW OFFERS, RESOLVED THROUGH THE HOST'S OWN MAP
+            case 'viewDatasetInsertResults': {
+
+                const { datasetFolderName } = panelMessage;
+
+                if ( typeof datasetFolderName !== 'string' || !panelState.treeHistoryAllowLists.viewableInsertResultsDatasetFolderNames.has(datasetFolderName) ) {
+                    return undefined;
+                }
+
+                const resultsFilePath = panelState.treeHistoryTargets.insertResultsFilePathsByDatasetFolderName.get(datasetFolderName);
+
+                return resultsFilePath ? { kind: 'viewDatasetInsertResults', resultsFilePath: resultsFilePath } : undefined;
 
             }
 
@@ -18319,6 +18369,16 @@ ${this.buildPaletteCustomProperties()}
     .treeDataset { padding: 0.3rem 0.6rem; }
     .treeDataset:hover { background-color: var(--sdt-row-hover); }
     .treeDatasetDate { font-weight: 600; }
+    .treeDatasetInsertStatus {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.25rem;
+        font-size: 0.85em;
+        padding: 0 0.4rem;
+        color: var(--sdt-chip-text);
+        background-color: var(--sdt-chip-bg);
+        border-radius: 0.6rem;
+    }
     .treeDatasetCounts { margin: 0.1rem 0 0 0; word-break: break-word; }
     .dataOrgControls { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
     .dataOrgSelect {
@@ -18831,6 +18891,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const RECORD_TYPES_UNAVAILABLE_SUMMARY = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY)};
     const RENAME_TREE_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RENAME_TREE_ACTION_LABEL)};
     const DATASET_ADAPTED_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DATASET_ADAPTED_LABEL)};
+    const DATASET_INSERT_STATUS_DISPLAY = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY)};
+    const DATASET_INSERT_RESULTS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_RESULTS_LABEL)};
+    const DATASET_INSERT_BEFORE_SUMMARIES_NOTE = ${JSON.stringify(RECIPE_COCKPIT_DATASET_INSERT_BEFORE_SUMMARIES_NOTE)};
     const FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITE_TREE_LABEL)};
     const NOT_FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL)};
     const FAVORITES_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITES_ONLY_LABEL)};
@@ -22683,6 +22746,12 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         rowState.nameElement = createElement('span', 'treeDatasetName');
         datasetHeaderElement.appendChild(rowState.nameElement);
 
+        const lastInsertElements = buildDatasetLastInsertElements(dataset);
+        if (lastInsertElements) {
+            datasetHeaderElement.appendChild(lastInsertElements.statusElement);
+            rowState.lastInsertSearchText = lastInsertElements.searchText;
+        }
+
         datasetHeaderElement.appendChild(createElement('span', 'treeDatasetDate', dataset.generatedAtLabel));
         datasetHeaderElement.appendChild(createElement('span', 'treeDatasetBackend muted', dataset.fakerService));
 
@@ -22703,6 +22772,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         datasetHeaderElement.appendChild(buildHistoryAction('treeDatasetOpen', 'Open', 'Reveal the folder of this data set in the Explorer',
             Object.assign({ command: 'openDataset' }, actionMessage)));
+        if (lastInsertElements && lastInsertElements.resultsElement) {
+            datasetHeaderElement.appendChild(lastInsertElements.resultsElement);
+        }
         datasetHeaderElement.appendChild(buildHistoryAction('treeDatasetInsert', 'Insert…', 'Insert this data set into an org with Insert Data Set by Directory',
             Object.assign({ command: 'insertDataset' }, actionMessage)));
 
@@ -22742,7 +22814,47 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         rowState.renameElement.setAttribute('aria-label', 'Rename ' + displayName);
         rowState.renameElement.setAttribute('title', 'Rename this data set');
 
-        rowState.searchText = (dataset.datasetFolderName + '\\n' + (dataset.customName || '')).toLowerCase();
+        rowState.searchText = (dataset.datasetFolderName + '\\n' + (dataset.customName || '') + '\\n' + (rowState.lastInsertSearchText || '')).toLowerCase();
+
+    }
+
+    /*
+        A data set's newest insert (#469): a chip whose emoji the label repeats in words, a tooltip
+        with when, where and how many, and "View results" when the host found its results file.
+        Absent for a data set never inserted, which draws as it always did.
+    */
+    function buildDatasetLastInsertElements(dataset) {
+
+        const lastInsert = dataset.lastInsert;
+        if (!lastInsert || !hasOwnKey(DATASET_INSERT_STATUS_DISPLAY, lastInsert.status)) {
+            return null;
+        }
+
+        const statusDisplay = DATASET_INSERT_STATUS_DISPLAY[lastInsert.status];
+        const statusElement = createElement('span', 'treeDatasetInsertStatus treeDatasetInsertStatus-' + lastInsert.status);
+        const emojiElement = createElement('span', 'treeDatasetInsertStatusEmoji', statusDisplay.emoji);
+        emojiElement.setAttribute('aria-hidden', 'true');
+        statusElement.appendChild(emojiElement);
+        statusElement.appendChild(createElement('span', 'treeDatasetInsertStatusLabel', statusDisplay.label));
+
+        const detailParts = ['Last insert: ' + lastInsert.attemptedAtLabel + (typeof lastInsert.orgLabel === 'string' ? ' into ' + lastInsert.orgLabel : '')];
+        if (typeof lastInsert.savedRecordCount === 'number') {
+            detailParts.push(lastInsert.savedRecordCount + (lastInsert.savedRecordCount === 1 ? ' record saved' : ' records saved'));
+        }
+        if (typeof lastInsert.failedRecordCount === 'number') {
+            detailParts.push(lastInsert.failedRecordCount + (lastInsert.failedRecordCount === 1 ? ' record failed' : ' records failed'));
+        }
+        const detailText = detailParts.join(' · ') + (lastInsert.isRecordedBeforeSummaries === true ? '. ' + DATASET_INSERT_BEFORE_SUMMARIES_NOTE : '');
+        statusElement.setAttribute('title', detailText);
+        statusElement.setAttribute('aria-label', statusDisplay.label + '. ' + detailText);
+
+        let resultsElement = null;
+        if (lastInsert.hasResultsFile === true) {
+            resultsElement = buildHistoryAction('treeDatasetInsertResults', DATASET_INSERT_RESULTS_LABEL, 'Open the results file of the last insert of this data set',
+                { command: 'viewDatasetInsertResults', datasetFolderName: dataset.datasetFolderName });
+        }
+
+        return { statusElement: statusElement, resultsElement: resultsElement, searchText: statusDisplay.label };
 
     }
 
