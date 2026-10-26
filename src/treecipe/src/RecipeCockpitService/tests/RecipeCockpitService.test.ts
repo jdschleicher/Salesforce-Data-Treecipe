@@ -37,8 +37,7 @@ import {
     RECIPE_COCKPIT_REFRESH_ORGS_LABEL,
     RECIPE_COCKPIT_PALETTE,
     RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH,
-    RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL,
-    RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL,
+    RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL,
     RECIPE_COCKPIT_INSERT_DATASET_COMMAND,
     RECIPE_COCKPIT_RUN_FAKER_COMMAND,
     RECIPE_COCKPIT_INSERT_ACTION_LABEL,
@@ -2218,7 +2217,7 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('expands a picklist to its values, asked for on expand and grouped per record type, and says when a picklist has none', () => {
+        it('opens a picklist\'s value tiles, asked for on every open, with each record type\'s values listed under them, and says when a picklist has none', () => {
 
             const { panel, loadedRecipe } = renderTreeRecipe();
             const [firstTreeCard] = treeCardsOf(panel);
@@ -2228,32 +2227,32 @@ describe('RecipeCockpitService', () => {
             expandTreeObject(panel, accountElement);
 
             const ratingRow = treeFieldNamed(panel, accountElement, 'Rating__c');
-            expect(panel.findAll(ratingRow, 'picklistValues')).toEqual([]);
+            expect(panel.isHidden(panel.findAll(ratingRow, 'picklistValues')[0])).toBe(true);
+            expect(panel.findAll(ratingRow, 'picklistTile')).toEqual([]);
             expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadPicklistValues')).toEqual([]);
 
             panel.findAll(ratingRow, 'picklistToggle')[0].dispatch('click');
 
             // THE PLACE IS SAVED AFTER THE CLICK TOO, SO THE REQUEST IS THE LAST MESSAGE THAT IS NOT A savePlace
-            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command !== 'savePlace').pop()).toEqual({ command: 'loadPicklistValues', objectApiName: 'Account', fieldApiName: 'Rating__c' });
+            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command !== 'savePlace').pop()).toEqual({ command: 'loadPicklistValues', objectApiName: 'Account', fieldApiName: 'Rating__c', treeKey: loadedRecipe.recipeViewModel.trees[0].treeKey });
             expect(textOf(panel, ratingRow, 'picklistLoading')).toEqual(['Loading values…']);
 
             answerLastPicklistRequest(panel, loadedRecipe);
 
             const ratingValuesElement = panel.findAll(ratingRow, 'picklistValues')[0];
-            expect(ratingValuesElement.children.map((element: any) => element.textContent)).toEqual([
-                'Hot', 'Warm', 'Cold',
-                'Record type: Business', 'Hot', 'Warm',
-                'Record type: Partner', 'Cold'
-            ]);
+            const ratingTiles = panel.findAll(ratingValuesElement, 'picklistTile');
+            expect(ratingTiles.map((element: any) => element.children.map((child: any) => child.textContent))).toEqual([['✓', 'Hot'], ['✓', 'Warm'], ['✓', 'Cold']]);
+            expect(textOf(panel, ratingValuesElement, 'recordTypeHeading')).toEqual(['Record type: Business', 'Record type: Partner']);
+            expect(textOf(panel, ratingValuesElement, 'picklistValue')).toEqual(['Hot', 'Warm', 'Cold', 'Hot', 'Warm', 'Cold']);
 
             panel.findAll(ratingRow, 'picklistToggle')[0].dispatch('click');
             expect(panel.isHidden(ratingValuesElement)).toBe(true);
 
-            // A SECOND EXPAND SHOWS WHAT WAS ALREADY ANSWERED RATHER THAN ASKING AGAIN
+            // A SECOND OPEN ASKS AGAIN: AN EDIT SINCE THE FIRST CHANGES WHICH TILES START TICKED
             const requestCount = panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadPicklistValues').length;
             panel.findAll(ratingRow, 'picklistToggle')[0].dispatch('click');
             expect(panel.isHidden(ratingValuesElement)).toBe(false);
-            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadPicklistValues')).toHaveLength(requestCount);
+            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadPicklistValues')).toHaveLength(requestCount + 1);
 
             const regionsRow = treeFieldNamed(panel, accountElement, 'Regions__c');
             panel.findAll(regionsRow, 'picklistToggle')[0].dispatch('click');
@@ -2305,8 +2304,8 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        // #343: A PICKLIST'S VALUES OPEN FROM A BUTTON THAT SAYS WHAT IT DOES, NOT FROM A CHEVRON
-        it('draws a picklist\'s toggle as a "Show values" / "Hide values" text button that says its state in aria-expanded', () => {
+        // #343, #465: A PICKLIST'S VALUES OPEN FROM A BUTTON THAT SAYS WHAT IT DOES, NOT FROM A CHEVRON
+        it('draws a picklist\'s toggle as an "Edit values" text button that says its state in aria-expanded', () => {
 
             const { panel } = renderTreeRecipe();
             const [firstTreeCard] = treeCardsOf(panel);
@@ -2316,24 +2315,22 @@ describe('RecipeCockpitService', () => {
 
             const picklistToggle = panel.findAll(treeFieldNamed(panel, accountElement, 'Rating__c'), 'picklistToggle')[0];
             expect(picklistToggle.tagName).toBe('button');
-            expect(picklistToggle.textContent).toBe(RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL);
+            expect(picklistToggle.textContent).toBe(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL);
             expect(panel.findAll(picklistToggle, 'toggleGlyph')).toEqual([]);
-            expect(picklistToggle.attributes['aria-label']).toBe('Show values of Rating__c');
+            expect(picklistToggle.attributes['aria-label']).toBe('Edit values of Rating__c');
             expect(picklistToggle.attributes['aria-expanded']).toBe('false');
             picklistToggle.dispatch('click');
             expect(picklistToggle.attributes['aria-expanded']).toBe('true');
-            expect(picklistToggle.textContent).toBe(RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL);
-            expect(picklistToggle.attributes['aria-label']).toBe('Hide values of Rating__c');
+            expect(picklistToggle.textContent).toBe(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL);
             picklistToggle.dispatch('click');
             expect(picklistToggle.attributes['aria-expanded']).toBe('false');
-            expect(picklistToggle.textContent).toBe(RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL);
-            expect(RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL).toBe('Show values');
-            expect(RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL).toBe('Hide values');
+            expect(picklistToggle.textContent).toBe(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL);
+            expect(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL).toBe('Edit values');
 
         });
 
         // #398: THE HEADER IS CHECKBOX, EDIT BUTTON, NAME FOR EVERY FIELD; A PICKLIST'S BUTTON IS UNDER ITS FAKER VALUE
-        it('puts every field name right after its checkbox and edit button, and a picklist\'s Show values after its faker value', () => {
+        it('puts every field name right after its checkbox and edit button, and a picklist\'s Edit values after its faker value', () => {
 
             const { panel } = renderTreeRecipe();
             const [firstTreeCard] = treeCardsOf(panel);
@@ -2368,7 +2365,7 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('still draws Show values, under the header, for a picklist with no faker value line (#398)', () => {
+        it('still draws Edit values, under the header, for a picklist with no faker value line (#398)', () => {
 
             const panel = runPanelScript();
             const recipeRuns = RecipeCockpitService.findGeneratedRecipeRuns(path.join(TREE_WORKSPACE_ROOT, 'treecipe', 'GeneratedRecipes'));
@@ -2392,7 +2389,7 @@ describe('RecipeCockpitService', () => {
         });
 
         // #277: THE VALUES OPEN UNDER THE ROW THAT WAS CLICKED, NEVER ABOVE IT
-        it('opens a picklist\'s values at the bottom of its own row, after its header, expression and Show values', () => {
+        it('opens a picklist\'s values at the bottom of its own row, after its header, expression and Edit values', () => {
 
             const { panel } = renderTreeRecipe();
             const [firstTreeCard] = treeCardsOf(panel);

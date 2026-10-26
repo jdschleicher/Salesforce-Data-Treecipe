@@ -1123,7 +1123,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             expect(regionsBox.attributes.title).toBe('Unticked — click to generate this field');
 
             panel.findAll(regionsRow, 'picklistToggle')[0].dispatch('click');
-            expect(panel.postedHostMessages).toContainEqual({ command: 'loadPicklistValues', objectApiName: 'Account', fieldApiName: 'Regions__c' });
+            expect(panel.postedHostMessages).toContainEqual({ command: 'loadPicklistValues', objectApiName: 'Account', fieldApiName: 'Regions__c', treeKey: 'Account-thru-OtherChildObject__c' });
             panel.findAll(regionsRow, 'treeFieldSource')[0].dispatch('click');
             expect(panel.postedHostMessages.some(hostMessage => hostMessage.command === 'openSource')).toBeTrue();
 

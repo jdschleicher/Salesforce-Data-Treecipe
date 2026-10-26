@@ -317,6 +317,16 @@ ${this.generateTabs(5)}${randomChoicesBreakdown}`;
 
     }
 
+    buildPicklistChoiceExpression(picklistValues: string[], isMultiSelect: boolean): string {
+
+        const choicesSyntax = isMultiSelect
+            ? this.buildMultPicklistFakerArrayElementsSyntaxByPicklistOptions(picklistValues)
+            : this.buildPicklistFakerArraySingleElementSyntaxByPicklistOptions(picklistValues);
+
+        return `${this.openingRecipeSyntax} ${choicesSyntax} ${this.closingRecipeSyntax}`;
+
+    }
+
     getMapSalesforceFieldToFakerValue():Record<string, string> {
 
         const salesforceFieldToNPMFakerMap: Record<string, string> = {

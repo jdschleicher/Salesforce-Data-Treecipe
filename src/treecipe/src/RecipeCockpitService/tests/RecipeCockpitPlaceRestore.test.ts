@@ -18,8 +18,7 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_PANEL_PLACE_VERSION_BEFORE_TREECIPE_TAB,
     RECIPE_COCKPIT_PANEL_PLACE_SCROLL_SAVE_DELAY,
-    RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL,
-    RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL
+    RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
@@ -116,9 +115,9 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Account')).toBe(true);
             expect(isObjectOpen(panel, ACCOUNT_TREE_KEY, 'Contact')).toBe(false);
             expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').attributes['aria-expanded']).toBe('true');
-            expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').textContent).toBe(RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL);
+            expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').textContent).toBe(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL);
             expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Regions__c').attributes['aria-expanded']).toBe('false');
-            expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Regions__c').textContent).toBe(RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL);
+            expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Regions__c').textContent).toBe(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL);
 
             expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(true);
             expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previously Used Data Sets');
@@ -139,7 +138,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
             const ratingRow = panel.fieldRowNamed(objectNamed(panel, ACCOUNT_TREE_KEY, 'Account'), 'Rating__c');
             expect(ratingRow.children[0].classList.contains('treeFieldHeader')).toBe(true);
-            // #398: THE VALUES SIT UNDER THE SHOW VALUES BUTTON, WHICH IS UNDER THE FAKER VALUE AT THE END OF THE ROW
+            // #398: THE VALUES SIT UNDER THE EDIT VALUES BUTTON, WHICH IS UNDER THE FAKER VALUE AT THE END OF THE ROW
             const picklistSection = ratingRow.children[ratingRow.children.length - 1];
             expect(picklistSection.classList.contains('picklistSection')).toBe(true);
             expect(picklistSection.children[0].classList.contains('picklistToggle')).toBe(true);
@@ -158,7 +157,7 @@ describe('RecipeCockpitService, the reader\'s place', () => {
 
             expect(indexOfCommand(panel, 'rendered')).toBeGreaterThan(-1);
             expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadPicklistValues'))
-                .toEqual([{ command: 'loadPicklistValues', objectApiName: 'Account', fieldApiName: 'Rating__c' }]);
+                .toEqual([{ command: 'loadPicklistValues', objectApiName: 'Account', fieldApiName: 'Rating__c', treeKey: ACCOUNT_TREE_KEY }]);
             expect(indexOfCommand(panel, 'loadPicklistValues')).toBeGreaterThan(indexOfCommand(panel, 'rendered'));
             expect(commandsPosted(panel)).not.toContain('loadVersionSummaries');
 

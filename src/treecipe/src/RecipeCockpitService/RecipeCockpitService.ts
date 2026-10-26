@@ -77,6 +77,7 @@ import { RelationshipService } from '../RelationshipService/RelationshipService'
 import { DATASET_COLLECTIONS_API_FOLDER_NAME, DatasetSourceService } from '../DatasetSourceService/DatasetSourceService';
 import { IAdaptedObjectRecords, RecipeCockpitAdaptedDataset, RecipeCockpitAdaptedRunWrite } from './RecipeCockpitAdaptedDataset';
 import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { IRecipeFakerService } from '../RecipeFakerService.ts/IRecipeFakerService';
 import { FakerJSRecipeFakerService } from '../RecipeFakerService.ts/FakerJSRecipeFakerService/FakerJSRecipeFakerService';
 import { SnowfakeryRecipeFakerService } from '../RecipeFakerService.ts/SnowfakeryRecipeFakerService/SnowfakeryRecipeFakerService';
 import {
@@ -401,8 +402,10 @@ export const RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL = '☆';
 export const RECIPE_COCKPIT_FAVORITES_ONLY_LABEL = 'Favorites only';
 // THE TREECIPE TAB'S CHECK (#320), AND WHY IT IS DISABLED ON A CARD WITH NO RECORD TYPES TO CHOOSE FROM
 export const RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL = 'Record type fields only';
-export const RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL = 'Show values';
-export const RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL = 'Hide values';
+export const RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL = 'Edit values';
+export const RECIPE_COCKPIT_PICKLIST_CHOICE_UNCHANGED_REFUSAL = 'Nothing to save: every value is ticked, which is what the field already generates.';
+export const RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON = 'Tick at least one value to save.';
+export const RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE = 'This field has an edit that is not a choice of its values. Saving a choice replaces it.';
 export const RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE = 'No object in this tree has more than one record type, so no field depends on one.';
 // THE TREECIPE TAB'S "TODOs only" CHECK (#354), AND WHY IT IS DISABLED ON A CARD WHOSE RECIPE HAS NO TODO COMMENT
 export const RECIPE_COCKPIT_TODOS_ONLY_LABEL = 'TODOs only';
@@ -582,7 +585,8 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Use existing <parent> from org…, beside it: pick any connected org, then search the parent or enter a record Id, which is checked in that org. The Id is written as the lookup\'s value and the row shows org record and the org; the insert checks the Id exists in the org it inserts into. Clear, under the pencil, puts the TODO back.',
             '+ beside an object that looks up to itself: adds a child record under it.',
             'Remove TODO (in the Troubleshooting tab\'s TODO\'s list): takes a TODO comment out of the recipe and lists it under Removed, where Restore puts it back exactly. The line is kept in a .removedTodos.json file beside the recipe. A TODO that is a field\'s whole value, such as a lookup\'s, stays.',
-            'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.'
+            'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.',
+            'Edit values (under a picklist\'s faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save: the field\'s expression is rewritten to choose only the ticked ones, by the recipe\'s own backend, and saved like an edit, so the pencil\'s Clear puts the old lines back. Cancel, × and Escape close it without saving. Record types keep their own values, listed under the tiles.'
         ],
         closingParagraphs: [
             'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of an org you pick into your project, and change nothing in the org.',
@@ -1071,9 +1075,12 @@ export interface IRecipeCockpitFieldEditResultMessage {
     treeKey: string;
     objectApiName: string;
     fieldApiName: string;
-    edit: 'fixedValue';
+    edit: RecipeCockpitFieldEdit;
     refusal?: string;
 }
+
+// THE ONE-BOX EDITOR (#356) OR A PICKLIST'S VALUE TILES (#465): BOTH WRITE THROUGH THE SAME FIXED-VALUE PATH
+export type RecipeCockpitFieldEdit = 'fixedValue' | 'picklistValues';
 
 // WHAT workspaceState HOLDS FOR THE CARDS, BY TREE FOLDER NAME; BOTH KEYED BY NAMES FROM DISK, SO NEITHER IS A PLAIN {}
 export interface IRecipeCockpitTreePreferences {
@@ -1233,6 +1240,7 @@ export interface IRecipeCockpitPanelMessage {
     isRemembered?: unknown;
     // A FIELD'S INLINE EDITOR (#337, #356): A FIXED VALUE OR AN EDITED EXPRESSION, AS TYPED -- CHECKED AGAIN BY THE HOST
     value?: unknown;
+    picklistValues?: unknown;
     min?: unknown;
     max?: unknown;
     // AN IN-PANEL CONFIRMATION'S ANSWER (#349): THE ONE-USE ID IT WAS ASKED WITH, AND THE INDEX OF THE BUTTON CHOSEN
@@ -1371,6 +1379,11 @@ export interface IRecipeCockpitPicklistValuesMessage extends IRecipeCockpitPickl
     objectApiName: string;
     fieldApiName: string;
     renderSequence: number;
+    // THE CARD WHOSE VALUE TILES ASKED (#465), AND WHAT ITS EDIT OF THE FIELD TICKS: SET ONLY WHEN THE EDIT IS A CHOICE OF VALUES
+    treeKey?: string;
+    chosenPicklistValues?: string[];
+    // THE FIELD HAS AN EDIT THAT IS NOT A CHOICE OF ITS VALUES, WHICH A SAVE FROM THE TILES REPLACES
+    isOtherEdit?: true;
 }
 
 // A LEGACY DATA SET'S RECORD COUNTS, READ FROM ITS COLLECTIONS API FILES WHEN IT WAS EXPANDED
@@ -2566,6 +2579,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'resetTreeSelection'; folderName: string }
     | { kind: 'setObjectCount'; treeKey: string; folderName: string; objectApiName: string; count: number }
     | { kind: 'setFieldFixedValue'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string; value: string }
+    | { kind: 'setPicklistValueChoice'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string; picklistValues: string[] }
     | { kind: 'setFieldValidationRuleApplied'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string; isApplied: boolean }
     | { kind: 'persistPlace'; place: IRecipeCockpitPanelPlace }
     | { kind: 'createScratchOrg' }
@@ -4387,7 +4401,8 @@ export class RecipeCockpitService {
     */
     private static async setFieldFixedValue(cockpitPanel: vscode.WebviewPanel,
                                             panelState: IRecipeCockpitPanelState,
-                                            panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setFieldFixedValue' }>) {
+                                            panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setFieldFixedValue' }>,
+                                            edit: RecipeCockpitFieldEdit = 'fixedValue') {
 
         const drawnField = this.recipeCockpitPanelState === panelState
             ? this.findDrawnField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.fieldApiName)
@@ -4400,25 +4415,25 @@ export class RecipeCockpitService {
 
         // A LOOKUP HOLDING AN ORG RECORD (#421) CAN BE CLEARED, NEVER GIVEN A TYPED VALUE
         if ( panelAction.value !== '' && this.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) !== undefined ) {
-            this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'fixedValue', RECIPE_COCKPIT_ORG_RECORD_TYPED_VALUE_REFUSAL);
+            this.postFieldEditResult(cockpitPanel, panelState, panelAction, edit, RECIPE_COCKPIT_ORG_RECORD_TYPED_VALUE_REFUSAL);
             return;
         }
 
         if ( panelState.wireLookupStateMessage ) {
-            this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'fixedValue', RECIPE_COCKPIT_FIELD_EDIT_WRITE_RUNNING_REFUSAL);
+            this.postFieldEditResult(cockpitPanel, panelState, panelAction, edit, RECIPE_COCKPIT_FIELD_EDIT_WRITE_RUNNING_REFUSAL);
             return;
         }
 
         const declaredPicklistValues = this.listDeclaredPicklistValues(panelState, panelAction.objectApiName, panelAction.fieldApiName);
         const valueRefusal = panelAction.value === '' ? undefined : this.validateFixedValueInput(panelAction.value, drawnField.fieldViewModel, declaredPicklistValues);
         if ( valueRefusal !== undefined ) {
-            this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'fixedValue', valueRefusal);
+            this.postFieldEditResult(cockpitPanel, panelState, panelAction, edit, valueRefusal);
             return;
         }
 
         const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(panelAction.treeKey);
         if ( !recipeFilePath ) {
-            this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'fixedValue', 'Not saved: this card has no single recipe file to write the value into.');
+            this.postFieldEditResult(cockpitPanel, panelState, panelAction, edit, 'Not saved: this card has no single recipe file to write the value into.');
             return;
         }
 
@@ -4432,8 +4447,85 @@ export class RecipeCockpitService {
         });
 
         if ( writeRefusal !== undefined ) {
-            this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'fixedValue', writeRefusal);
+            this.postFieldEditResult(cockpitPanel, panelState, panelAction, edit, writeRefusal);
         }
+
+    }
+
+    /*
+        A picklist's value tiles (#465): the router matched every value against the ones the host
+        holds for the field, so here the expression is BUILT -- by the card's own backend, every value
+        through its escaper -- and written exactly as an edited expression is, under the same lock,
+        confirmation and fixed-values file. Every value ticked is the field's own choice again: it
+        clears an edit, and with none there is nothing to write.
+    */
+    private static async setPicklistValueChoice(cockpitPanel: vscode.WebviewPanel,
+                                                panelState: IRecipeCockpitPanelState,
+                                                panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setPicklistValueChoice' }>) {
+
+        const drawnField = this.recipeCockpitPanelState === panelState
+            ? this.findDrawnField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.fieldApiName)
+            : undefined;
+        const declaredPicklistValues = panelState.picklistDisplayValuesByObjectApiName.get(panelAction.objectApiName)?.get(panelAction.fieldApiName)?.picklistValues;
+        if ( !drawnField || !declaredPicklistValues ) {
+            return;
+        }
+
+        const hasEdit = ( drawnField.tree.fixedValues ?? [] ).some(fixedValue => fixedValue.objectApiName === panelAction.objectApiName && fixedValue.fieldApiName === panelAction.fieldApiName);
+        const isEveryValueChosen = declaredPicklistValues.every(declaredValue => panelAction.picklistValues.includes(declaredValue));
+        let value = '';
+
+        if ( isEveryValueChosen && !hasEdit ) {
+            this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'picklistValues', RECIPE_COCKPIT_PICKLIST_CHOICE_UNCHANGED_REFUSAL);
+            return;
+        }
+
+        if ( !isEveryValueChosen ) {
+            const fakerService = this.readTreeFakerService(panelState, panelAction.treeKey);
+            if ( !fakerService ) {
+                this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'picklistValues', 'Not saved: the recipe file does not say which faker service it was written for.');
+                return;
+            }
+            value = this.buildPicklistChoiceExpression(fakerService, panelAction.picklistValues, drawnField.fieldViewModel);
+            const expressionRefusal = RecipeCockpitRecipeWriter.checkConstrainedExpression(value);
+            if ( expressionRefusal !== undefined ) {
+                this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'picklistValues', `Not saved: the faker expression for the values you ticked ${expressionRefusal}`);
+                return;
+            }
+        }
+
+        await this.setFieldFixedValue(cockpitPanel, panelState, { ...panelAction, kind: 'setFieldFixedValue', value: value }, 'picklistValues');
+
+    }
+
+    static buildPicklistChoiceExpression(fakerService: 'faker-js' | 'snowfakery', picklistValues: string[], fieldViewModel: IRecipeCockpitFieldViewModel): string {
+
+        const recipeFakerService: IRecipeFakerService = fakerService === 'faker-js' ? new FakerJSRecipeFakerService() : new SnowfakeryRecipeFakerService();
+        return recipeFakerService.buildPicklistChoiceExpression(picklistValues, fieldViewModel.fieldType === 'MultiselectPicklist');
+
+    }
+
+    /*
+        Which values an edit ticks (#465), or undefined when the edit is not a choice of them. Read
+        back by BUILDING: the values whose literal the expression holds, in declared order, must build
+        the expression exactly with one backend, so a hand-written expression is never read as a
+        choice it only resembles.
+    */
+    static recoverPicklistValueChoice(expression: string, declaredPicklistValues: readonly string[], fieldViewModel: IRecipeCockpitFieldViewModel): string[] | undefined {
+
+        const literalBuilders: { fakerService: 'faker-js' | 'snowfakery'; buildLiteral: (picklistValue: string) => string }[] = [
+            { fakerService: 'faker-js', buildLiteral: picklistValue => `\`${FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString(picklistValue, '`')}\`` },
+            { fakerService: 'snowfakery', buildLiteral: picklistValue => `'${SnowfakeryRecipeFakerService.escapePicklistValueForJinjaStringLiteral(picklistValue)}'` }
+        ];
+
+        for ( const literalBuilder of literalBuilders ) {
+            const chosenValues = declaredPicklistValues.filter(declaredValue => expression.includes(literalBuilder.buildLiteral(declaredValue)));
+            if ( chosenValues.length > 0 && this.buildPicklistChoiceExpression(literalBuilder.fakerService, chosenValues, fieldViewModel) === expression ) {
+                return chosenValues;
+            }
+        }
+
+        return undefined;
 
     }
 
@@ -5171,7 +5263,7 @@ export class RecipeCockpitService {
     private static postFieldEditResult(cockpitPanel: vscode.WebviewPanel,
                                         panelState: IRecipeCockpitPanelState,
                                         panelAction: { treeKey: string; objectApiName: string; fieldApiName: string },
-                                        edit: 'fixedValue',
+                                        edit: RecipeCockpitFieldEdit,
                                         refusal: string | undefined) {
 
         const recipeDataMessage = panelState.recipeDataMessage;
@@ -5220,6 +5312,29 @@ export class RecipeCockpitService {
         }
         rulesOffByObject.set(objectApiName, rulesOffFieldApiNames);
         treeSelections.validationRulesOffByFolderName.set(folderName, rulesOffByObject);
+
+    }
+
+    // WHAT A CARD'S EDIT OF A PICKLIST TICKS (#465), FOR THE TILES THAT ASKED; NOTHING FOR A CARD OR FIELD NOT ON SCREEN, OR NO EDIT
+    static readPicklistValueChoice(recipeViewModel: IRecipeCockpitRecipeViewModel,
+                                    treeKey: string,
+                                    objectApiName: string,
+                                    fieldApiName: string,
+                                    declaredPicklistValues: readonly string[]): { treeKey?: string; chosenPicklistValues?: string[]; isOtherEdit?: true } {
+
+        const tree = recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === treeKey);
+        if ( !tree ) {
+            return {};
+        }
+
+        const fixedValue = ( tree.fixedValues ?? [] ).find(candidate => candidate.objectApiName === objectApiName && candidate.fieldApiName === fieldApiName);
+        const fieldViewModel = recipeViewModel.objects.find(candidateObject => candidateObject.objectApiName === objectApiName)?.fields.find(candidateField => candidateField.fieldApiName === fieldApiName);
+        if ( !fixedValue || !fieldViewModel ) {
+            return { treeKey: treeKey };
+        }
+
+        const chosenPicklistValues = fixedValue.kind === 'expression' ? this.recoverPicklistValueChoice(fixedValue.value, declaredPicklistValues, fieldViewModel) : undefined;
+        return chosenPicklistValues ? { treeKey: treeKey, chosenPicklistValues: chosenPicklistValues } : { treeKey: treeKey, isOtherEdit: true };
 
     }
 
@@ -6672,6 +6787,11 @@ export class RecipeCockpitService {
             case 'setFieldFixedValue':
 
                 await this.setFieldFixedValue(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'setPicklistValueChoice':
+
+                await this.setPicklistValueChoice(cockpitPanel, panelState, panelAction);
                 return;
 
             case 'setFieldValidationRuleApplied':
@@ -14629,9 +14749,10 @@ export class RecipeCockpitService {
             */
             case 'loadPicklistValues': {
 
-                const { objectApiName, fieldApiName } = panelMessage;
+                const { objectApiName, fieldApiName, treeKey } = panelMessage;
 
-                if ( typeof objectApiName !== 'string' || typeof fieldApiName !== 'string' || !panelState.recipeDataMessage ) {
+                if ( typeof objectApiName !== 'string' || typeof fieldApiName !== 'string' || !panelState.recipeDataMessage
+                        || ( treeKey !== undefined && typeof treeKey !== 'string' ) ) {
                     return undefined;
                 }
 
@@ -14650,7 +14771,8 @@ export class RecipeCockpitService {
                         fieldApiName: fieldApiName,
                         picklistValues: picklistDisplayValues.picklistValues,
                         recordTypePicklistValues: picklistDisplayValues.recordTypePicklistValues,
-                        renderSequence: panelState.recipeDataMessage.renderSequence
+                        renderSequence: panelState.recipeDataMessage.renderSequence,
+                        ...( typeof treeKey === 'string' ? this.readPicklistValueChoice(panelState.recipeDataMessage.recipe, treeKey, objectApiName, fieldApiName, picklistDisplayValues.picklistValues) : {} )
                     }
                 };
 
@@ -15223,6 +15345,49 @@ export class RecipeCockpitService {
                 }
 
                 return { kind: 'setFieldFixedValue', treeKey: treeKey, folderName: tree.folderName, objectApiName: objectApiName, fieldApiName: fieldApiName, value: value };
+
+            }
+
+            /*
+                A picklist's value tiles (#465): the edit button's names and the values ticked. Each
+                value must be one the host holds for the field's default choice, once, and the field
+                must take an edit -- the same lock as the one-box editor's. The values come back in
+                the field's own order, so a choice builds one expression whatever order it was ticked in.
+            */
+            case 'setPicklistValueChoice': {
+
+                const { treeKey, objectApiName, nickname, fieldApiName, picklistValues } = panelMessage;
+
+                if ( typeof treeKey !== 'string' || !SalesforceApiName.isApiName(objectApiName) || !SalesforceApiName.isApiName(fieldApiName)
+                        || ( nickname !== undefined && typeof nickname !== 'string' )
+                        || !Array.isArray(picklistValues) || picklistValues.length === 0
+                        || !picklistValues.every(picklistValue => typeof picklistValue === 'string')
+                        || new Set(picklistValues).size !== picklistValues.length
+                        || !panelState.recipeDataMessage
+                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(this.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
+                    return undefined;
+                }
+
+                const declaredPicklistValues = panelState.picklistDisplayValuesByObjectApiName.get(objectApiName)?.get(fieldApiName)?.picklistValues;
+                const recipeViewModel = panelState.recipeDataMessage.recipe;
+                const objectViewModel = recipeViewModel.objects.find(candidateObject => candidateObject.objectApiName === objectApiName);
+                const fieldViewModel = objectViewModel?.fields.find(candidateField => candidateField.fieldApiName === fieldApiName && candidateField.lineNumber !== undefined);
+                const tree = recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === treeKey);
+
+                if ( !declaredPicklistValues || !picklistValues.every(picklistValue => declaredPicklistValues.includes(picklistValue))
+                        || !objectViewModel || !fieldViewModel?.isPicklist || !tree?.folderName || ( nickname !== undefined && nickname !== objectViewModel.nickname )
+                        || this.findFixedValueLockReason(tree, objectViewModel, fieldViewModel) !== undefined ) {
+                    return undefined;
+                }
+
+                return {
+                    kind: 'setPicklistValueChoice',
+                    treeKey: treeKey,
+                    folderName: tree.folderName,
+                    objectApiName: objectApiName,
+                    fieldApiName: fieldApiName,
+                    picklistValues: declaredPicklistValues.filter(declaredValue => picklistValues.includes(declaredValue))
+                };
 
             }
 
@@ -18572,6 +18737,40 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
     .treeRecordCountError { color: var(--sdt-removed); }
     .picklistValues { margin: 0.2rem 0 0 1.4rem; }
+    .picklistEditor {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        margin-left: 0;
+        padding: 0.4rem 0.5rem;
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 6px;
+    }
+    .picklistEditor.hidden { display: none; }
+    .picklistEditorHeader { display: flex; align-items: flex-start; gap: 0.4rem; }
+    .picklistEditorHeader .fieldEditorHint { flex: 1 1 auto; }
+    .picklistEditorClose { flex: none; padding: 0 0.3rem; font-size: 1.2em; line-height: 1; }
+    .picklistEditorBody { display: flex; flex-direction: column; gap: 0.3rem; }
+    .picklistTiles { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .picklistTile {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        max-width: 100%;
+        padding: 0.2rem 0.5rem;
+        color: var(--sdt-text);
+        background-color: var(--sdt-surface);
+        border: 1px solid var(--sdt-border);
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    .picklistTile.chosen { border-color: var(--sdt-action-edge); }
+    .picklistTile .picklistValue { padding-left: 0; }
+    .picklistEditorNote, .picklistEditorReason { font-size: 0.85em; }
     .recordTypeHeading { margin-top: 0.3rem; font-weight: 600; }
     .picklistValue { padding-left: 0.6rem; word-break: break-word; }
     .expression, .updaterEditedValue {
@@ -18835,8 +19034,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const NOT_FAVORITE_TREE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_NOT_FAVORITE_TREE_LABEL)};
     const FAVORITES_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_FAVORITES_ONLY_LABEL)};
     const RECORD_TYPE_FIELDS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL)};
-    const PICKLIST_SHOW_VALUES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_SHOW_VALUES_LABEL)};
-    const PICKLIST_HIDE_VALUES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_HIDE_VALUES_LABEL)};
+    const PICKLIST_EDIT_VALUES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL)};
+    const PICKLIST_CHOICE_EMPTY_REASON = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON)};
+    const PICKLIST_OTHER_EDIT_NOTE = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE)};
     const NO_RECORD_TYPE_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE)};
     const TODOS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODOS_ONLY_LABEL)};
     const TODO_IN_VALUE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODO_IN_VALUE_LABEL)};
@@ -21476,7 +21676,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (!fieldState.editorElement) {
             fieldState.editorElement = createElement('div', 'fieldEditor hidden');
             fieldState.editorElement.setAttribute('role', 'group');
-            // THE EDITOR EDITS THE FAKER VALUE, SO IT OPENS UNDER IT, ABOVE A PICKLIST'S SHOW VALUES (#398)
+            // THE EDITOR EDITS THE FAKER VALUE, SO IT OPENS UNDER IT, ABOVE A PICKLIST'S EDIT VALUES (#398)
             fieldState.rowElement.insertBefore(fieldState.editorElement, fieldState.picklistSectionElement);
         }
 
@@ -21559,6 +21759,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     function renderFieldEditResult(fieldEditResultMessage) {
 
         if (renderedSequence === null || fieldEditResultMessage.renderSequence !== renderedSequence) { return; }
+        if (fieldEditResultMessage.edit === 'picklistValues') { renderPicklistChoiceResult(fieldEditResultMessage); return; }
 
         const treeState = findTreeState(fieldEditResultMessage.treeKey);
         if (!treeState) { return; }
@@ -21600,7 +21801,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             todos: Array.isArray(field.todos) ? field.todos : [],
             editorElement: null,
             editorEdit: '',
-            editorRefusalElement: null
+            editorRefusalElement: null,
+            setPicklistExpanded: null,
+            picklistRefusalElement: null
         };
 
     }
@@ -21618,47 +21821,199 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
-    function buildPicklistKey(objectApiName, fieldApiName) {
-        return objectApiName + '\\n' + fieldApiName;
+    function buildPicklistKey(objectApiName, fieldApiName, treeKey) {
+        return objectApiName + '\\n' + fieldApiName + '\\n' + treeKey;
     }
 
-    // ASKED FOR ON FIRST EXPAND, AND SAYS SO UNTIL THE HOST ANSWERS
-    function requestPicklistValues(objectApiName, fieldApiName, picklistValuesElement) {
+    /*
+        Asked for on every open, since an edit since the last one changes which tiles start ticked,
+        and says so until the host answers. The answer is handed to the callback of the editor that
+        asked, which draws it only if that editor is still open.
+    */
+    function requestPicklistValues(treeKey, objectApiName, fieldApiName, onValues) {
 
-        picklistValuesElement.appendChild(createElement('div', 'picklistLoading muted', 'Loading values…'));
-        const picklistKey = buildPicklistKey(objectApiName, fieldApiName);
+        const picklistKey = buildPicklistKey(objectApiName, fieldApiName, treeKey);
 
         // A HAND-EDITED WRAPPER CAN REPEAT A FIELD, AND EVERY ROW THAT ASKED IS ANSWERED, NOT ONLY THE LAST
         if (!Object.prototype.hasOwnProperty.call(pendingPicklistValueElements, picklistKey)) {
             pendingPicklistValueElements[picklistKey] = [];
         }
-        pendingPicklistValueElements[picklistKey].push(picklistValuesElement);
-        vscodeApi.postMessage({ command: 'loadPicklistValues', objectApiName: objectApiName, fieldApiName: fieldApiName });
+        pendingPicklistValueElements[picklistKey].push(onValues);
+        vscodeApi.postMessage({ command: 'loadPicklistValues', objectApiName: objectApiName, fieldApiName: fieldApiName, treeKey: treeKey });
 
     }
 
     // DRAWN ONLY INTO A ROW OF THE MODEL ON SCREEN THAT ASKED FOR IT
     function renderPicklistValues(picklistValuesMessage) {
 
-        if (picklistValuesMessage.renderSequence !== renderedSequence) { return; }
+        if (picklistValuesMessage.renderSequence !== renderedSequence || typeof picklistValuesMessage.treeKey !== 'string') { return; }
 
-        const picklistKey = buildPicklistKey(picklistValuesMessage.objectApiName, picklistValuesMessage.fieldApiName);
+        const picklistKey = buildPicklistKey(picklistValuesMessage.objectApiName, picklistValuesMessage.fieldApiName, picklistValuesMessage.treeKey);
 
         if (!Object.prototype.hasOwnProperty.call(pendingPicklistValueElements, picklistKey)) { return; }
 
-        const picklistValuesElements = pendingPicklistValueElements[picklistKey];
+        const onValuesCallbacks = pendingPicklistValueElements[picklistKey];
         delete pendingPicklistValueElements[picklistKey];
 
-        picklistValuesElements.forEach(function (picklistValuesElement) {
+        onValuesCallbacks.forEach(function (onValues) { onValues(picklistValuesMessage); });
 
-            picklistValuesElement.textContent = '';
-            appendPicklistValueList(picklistValuesElement, picklistValuesMessage.picklistValues);
+    }
 
-            picklistValuesMessage.recordTypePicklistValues.forEach(function (recordTypeSection) {
-                picklistValuesElement.appendChild(createElement('div', 'recordTypeHeading', 'Record type: ' + recordTypeSection.recordTypeDeveloperName));
-                appendPicklistValueList(picklistValuesElement, recordTypeSection.picklistValues);
+    /*
+        Why a picklist's value tiles cannot be saved here (#465), or '' when they can: the edit
+        button's own rule, since a choice is written exactly as an edited expression is.
+    */
+    function findPicklistChoiceLockReason(treeObjectState, fieldState) {
+
+        if (!treeObjectState.canSelectFields || !fieldState.field.lineNumber) { return 'Values can be chosen only on a card with its own recipe file.'; }
+        if (treeObjectState.isIteration) { return 'Follows ' + treeObjectState.object.objectApiName + ' above.'; }
+        const lockReason = findFixedValueLockReason(treeObjectState, fieldState, false);
+        return lockReason ? 'Cannot be edited: ' + lockReason : '';
+
+    }
+
+    /*
+        A picklist's value tiles (#465), under its faker value: one tile per value, ticked for what
+        the field generates now. Save posts the NAMES the edit button posts plus the values ticked;
+        the host builds the expression with the recipe's own backend and writes it as an edit, and a
+        refusal comes back under the tiles. Cancel, the close button and Escape post nothing. Record
+        types keep their own values, listed under the tiles as they are.
+    */
+    function drawPicklistValueEditor(treeObjectState, fieldState, editorElement, picklistValuesMessage, closeEditor) {
+
+        const field = fieldState.field;
+        const object = treeObjectState.object;
+        const lockReason = findPicklistChoiceLockReason(treeObjectState, fieldState);
+        const picklistValues = Array.isArray(picklistValuesMessage.picklistValues) ? picklistValuesMessage.picklistValues : [];
+        const startValues = Array.isArray(picklistValuesMessage.chosenPicklistValues) ? picklistValuesMessage.chosenPicklistValues : picklistValues;
+        const tileStates = [];
+
+        editorElement.textContent = '';
+
+        if (picklistValues.length === 0) {
+            editorElement.appendChild(createElement('div', 'picklistEmpty muted', 'no values'));
+        }
+
+        if (picklistValuesMessage.isOtherEdit && !lockReason) {
+            editorElement.appendChild(createElement('div', 'picklistEditorNote muted', PICKLIST_OTHER_EDIT_NOTE));
+        }
+
+        const reasonElement = createElement('div', 'picklistEditorReason muted hidden');
+        const refusalElement = createElement('div', 'fieldEditorRefusal hidden');
+        refusalElement.setAttribute('role', 'alert');
+        const saveElement = createButton('primary', 'picklistEditorSave', 'Save', 'compact');
+        const cancelElement = createButton('secondary', 'picklistEditorCancel', 'Cancel', 'compact');
+
+        const drawChoice = function () {
+            const chosenCount = tileStates.filter(function (tileState) { return tileState.isChosen; }).length;
+            const reason = lockReason || ( picklistValues.length > 0 && chosenCount === 0 ? PICKLIST_CHOICE_EMPTY_REASON : '' );
+            saveElement.disabled = !!reason || picklistValues.length === 0;
+            reasonElement.textContent = reason;
+            if (reason) { reasonElement.classList.remove('hidden'); } else { reasonElement.classList.add('hidden'); }
+        };
+
+        if (picklistValues.length > 0) {
+
+            const tilesElement = createElement('div', 'picklistTiles');
+            tilesElement.setAttribute('role', 'group');
+            tilesElement.setAttribute('aria-label', 'Values of ' + object.objectApiName + '.' + field.fieldApiName);
+
+            picklistValues.forEach(function (picklistValue) {
+
+                const tileState = { value: picklistValue, isChosen: startValues.indexOf(picklistValue) !== -1, tileElement: null, checkElement: null };
+                const tileElement = createElement('div', 'picklistTile');
+                const checkElement = createButton('check', 'picklistTileCheck');
+                const valueElement = createElement('span', 'picklistValue', picklistValue);
+
+                checkElement.setAttribute('role', 'checkbox');
+                checkElement.setAttribute('aria-label', picklistValue);
+                checkElement.disabled = !!lockReason;
+                tileElement.appendChild(checkElement);
+                tileElement.appendChild(valueElement);
+                tileState.tileElement = tileElement;
+                tileState.checkElement = checkElement;
+
+                // THE WHOLE TILE TOGGLES; A CLICK ON THE BOX BUBBLES HERE, SO THE BOX HAS NO LISTENER OF ITS OWN
+                tileElement.addEventListener('click', function () {
+                    if (lockReason) { return; }
+                    tileState.isChosen = !tileState.isChosen;
+                    drawTile(tileState);
+                    drawChoice();
+                });
+
+                drawTile(tileState);
+                tileStates.push(tileState);
+                tilesElement.appendChild(tileElement);
+
             });
 
+            editorElement.appendChild(tilesElement);
+
+        }
+
+        const recordTypeSections = Array.isArray(picklistValuesMessage.recordTypePicklistValues) ? picklistValuesMessage.recordTypePicklistValues : [];
+        recordTypeSections.forEach(function (recordTypeSection) {
+            editorElement.appendChild(createElement('div', 'recordTypeHeading', 'Record type: ' + recordTypeSection.recordTypeDeveloperName));
+            appendPicklistValueList(editorElement, recordTypeSection.picklistValues);
+        });
+
+        saveElement.addEventListener('click', function (event) {
+            event.stopPropagation();
+            if (saveElement.disabled) { return; }
+            const message = {
+                command: 'setPicklistValueChoice',
+                treeKey: treeObjectState.tree.treeKey,
+                objectApiName: object.objectApiName,
+                fieldApiName: field.fieldApiName,
+                picklistValues: tileStates.filter(function (tileState) { return tileState.isChosen; }).map(function (tileState) { return tileState.value; })
+            };
+            if (object.nickname) { message.nickname = object.nickname; }
+            refusalElement.textContent = '';
+            refusalElement.classList.add('hidden');
+            // A SAVE RELOADS THE CARD, WHICH SHOULD FIND THE EDITOR CLOSED; A REFUSAL OPENS IT IN THE PLACE AGAIN
+            fieldState.isPicklistExpanded = false;
+            savePanelPlace();
+            vscodeApi.postMessage(message);
+        });
+        cancelElement.addEventListener('click', function (event) { event.stopPropagation(); closeEditor(); });
+
+        const actionsElement = createElement('div', 'fieldEditorActions');
+        actionsElement.appendChild(saveElement);
+        actionsElement.appendChild(cancelElement);
+        editorElement.appendChild(reasonElement);
+        editorElement.appendChild(refusalElement);
+        editorElement.appendChild(actionsElement);
+        fieldState.picklistRefusalElement = refusalElement;
+
+        drawChoice();
+
+    }
+
+    function drawTile(tileState) {
+        tileState.checkElement.setAttribute('aria-checked', tileState.isChosen ? 'true' : 'false');
+        tileState.checkElement.textContent = tileState.isChosen ? '✓' : '';
+        if (tileState.isChosen) { tileState.tileElement.classList.add('chosen'); } else { tileState.tileElement.classList.remove('chosen'); }
+    }
+
+    // A REFUSAL OF A CHOICE (#465) IS WRITTEN UNDER THE TILES, WHICH STAY OPEN; ANY OTHER ANSWER CLOSES THEM
+    function renderPicklistChoiceResult(fieldEditResultMessage) {
+
+        const treeState = findTreeState(fieldEditResultMessage.treeKey);
+        if (!treeState) { return; }
+
+        treeState.objectStates.forEach(function (treeObjectState) {
+            if (treeObjectState.object.objectApiName !== fieldEditResultMessage.objectApiName) { return; }
+            treeObjectState.fieldStates.forEach(function (fieldState) {
+                if (fieldState.field.fieldApiName !== fieldEditResultMessage.fieldApiName || !fieldState.setPicklistExpanded || !fieldState.picklistRefusalElement) { return; }
+                if (typeof fieldEditResultMessage.refusal === 'string') {
+                    fieldState.picklistRefusalElement.textContent = fieldEditResultMessage.refusal;
+                    fieldState.picklistRefusalElement.classList.remove('hidden');
+                    fieldState.isPicklistExpanded = true;
+                    savePanelPlace();
+                    return;
+                }
+                fieldState.setPicklistExpanded(false);
+            });
         });
 
     }
@@ -21776,39 +22131,70 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         fieldState.fixedValueElement = createElement('pre', 'fixedValue hidden');
         fieldRowElement.appendChild(fieldState.fixedValueElement);
 
-        // A PICKLIST'S SHOW VALUES SITS UNDER ITS FAKER VALUE, NOT IN THE HEADER, SO NO ROW KEEPS A SLOT FOR IT (#398)
+        // A PICKLIST'S EDIT VALUES SITS UNDER ITS FAKER VALUE, NOT IN THE HEADER, SO NO ROW KEEPS A SLOT FOR IT (#398, #465)
         let setPicklistExpanded = null;
 
         if (field.isPicklist) {
 
             const picklistSectionElement = createElement('div', 'picklistSection');
-            const picklistToggleElement = createButton('secondary', 'picklistToggle', PICKLIST_SHOW_VALUES_LABEL);
-            let picklistValuesElement = null;
+            const picklistToggleElement = createButton('secondary', 'picklistToggle', PICKLIST_EDIT_VALUES_LABEL);
+            const editorElement = createElement('div', 'picklistValues picklistEditor hidden');
+            const fieldLabel = treeObjectState.object.objectApiName + '.' + field.fieldApiName;
+            const closeButtonElement = createButton('icon', 'picklistEditorClose', '×');
+            const editorBodyElement = createElement('div', 'picklistEditorBody');
+            const editorHeaderElement = createElement('div', 'picklistEditorHeader');
+
+            editorElement.setAttribute('role', 'group');
+            editorElement.setAttribute('aria-label', 'Edit values of ' + fieldLabel);
+            closeButtonElement.setAttribute('aria-label', 'Close the values of ' + field.fieldApiName);
+            closeButtonElement.setAttribute('title', 'Close without saving');
+            editorHeaderElement.appendChild(createElement('span', 'fieldEditorHint muted', 'Tick the values ' + field.fieldApiName + ' generates. Save writes them into the recipe file; the edit button\\'s Clear puts back the lines the field had.'));
+            editorHeaderElement.appendChild(closeButtonElement);
+            editorElement.appendChild(editorHeaderElement);
+            editorElement.appendChild(editorBodyElement);
 
             setPicklistExpanded = function (isExpanding, isAnimated) {
-                if (isExpanding && !picklistValuesElement) {
-                    picklistValuesElement = createElement('div', 'picklistValues hidden');
-                    picklistSectionElement.appendChild(picklistValuesElement);
-                    requestPicklistValues(treeObjectState.object.objectApiName, field.fieldApiName, picklistValuesElement);
+                const wasExpanded = !editorElement.classList.contains('hidden');
+                editorBodyElement.textContent = '';
+                fieldState.picklistRefusalElement = null;
+                if (isExpanding) {
+                    editorBodyElement.appendChild(createElement('div', 'picklistLoading muted', 'Loading values…'));
+                    requestPicklistValues(treeObjectState.tree.treeKey, treeObjectState.object.objectApiName, field.fieldApiName, function (picklistValuesMessage) {
+                        if (editorElement.classList.contains('hidden')) { return; }
+                        drawPicklistValueEditor(treeObjectState, fieldState, editorBodyElement, picklistValuesMessage, function () {
+                            setPicklistExpanded(false, true);
+                            savePanelPlace();
+                        });
+                    });
                 }
-                if (picklistValuesElement) {
-                    setShownWithMotion(picklistValuesElement, isExpanding, isAnimated);
-                }
+                setShownWithMotion(editorElement, isExpanding, isAnimated);
                 fieldState.isPicklistExpanded = isExpanding;
-                picklistToggleElement.textContent = isExpanding ? PICKLIST_HIDE_VALUES_LABEL : PICKLIST_SHOW_VALUES_LABEL;
                 picklistToggleElement.setAttribute('aria-expanded', isExpanding ? 'true' : 'false');
-                picklistToggleElement.setAttribute('aria-label', (isExpanding ? PICKLIST_HIDE_VALUES_LABEL : PICKLIST_SHOW_VALUES_LABEL) + ' of ' + field.fieldApiName);
+                if (!isExpanding && wasExpanded && typeof picklistToggleElement.focus === 'function') { picklistToggleElement.focus(); }
             };
+            fieldState.setPicklistExpanded = setPicklistExpanded;
 
             // THE NAME STARTS WITH THE TEXT ON THE BUTTON, SO A VOICE COMMAND OF WHAT IS ON SCREEN REACHES IT
-            picklistToggleElement.setAttribute('aria-label', PICKLIST_SHOW_VALUES_LABEL + ' of ' + field.fieldApiName);
+            picklistToggleElement.setAttribute('aria-label', PICKLIST_EDIT_VALUES_LABEL + ' of ' + field.fieldApiName);
             picklistToggleElement.setAttribute('aria-expanded', 'false');
             picklistToggleElement.addEventListener('click', function () {
                 setPicklistExpanded(!fieldState.isPicklistExpanded, true);
                 savePanelPlace();
             });
+            closeButtonElement.addEventListener('click', function (event) {
+                event.stopPropagation();
+                setPicklistExpanded(false, true);
+                savePanelPlace();
+            });
+            editorElement.addEventListener('keydown', function (event) {
+                if (event.key !== 'Escape') { return; }
+                event.stopPropagation();
+                setPicklistExpanded(false, true);
+                savePanelPlace();
+            });
 
             picklistSectionElement.appendChild(picklistToggleElement);
+            picklistSectionElement.appendChild(editorElement);
             fieldRowElement.appendChild(picklistSectionElement);
             fieldState.picklistSectionElement = picklistSectionElement;
 

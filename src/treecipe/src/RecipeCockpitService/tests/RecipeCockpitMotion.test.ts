@@ -317,7 +317,8 @@ describe('RecipeCockpitService, motion (#227)', () => {
             picklistToggle.dispatch('click');
             expect(panel.isHidden(picklistValues)).toBe(false);
             expect(picklistValues.classList.contains('motionReveal')).toBe(true);
-            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadPicklistValues')).toHaveLength(1);
+            // EVERY OPEN ASKS AGAIN (#465): AN EDIT SINCE THE LAST ONE CHANGES WHICH TILES START TICKED
+            expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'loadPicklistValues')).toHaveLength(2);
 
         });
 
