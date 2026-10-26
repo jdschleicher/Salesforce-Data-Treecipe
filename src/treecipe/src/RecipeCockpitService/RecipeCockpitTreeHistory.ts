@@ -36,8 +36,9 @@ export interface IRecipeCockpitDatasetRecordCountViewModel {
 
 /*
     How the newest insert of a data set ended (#469), as its row draws it. The counts are absent
-    when the attempt could not be read; isRecordedBeforeSummaries marks an attempt from before the
-    insert wrote its outcome, whose status is "unknown". hasResultsFile draws "View results".
+    when the attempt could not be read; isOutcomeUnrecorded marks an attempt with no summary at all,
+    whose status is "unknown", and isInterrupted one that threw before it ended. hasResultsFile draws
+    "View results".
 */
 export interface IRecipeCockpitDatasetLastInsertViewModel {
     status: InsertAttemptStatus;
@@ -45,7 +46,8 @@ export interface IRecipeCockpitDatasetLastInsertViewModel {
     orgLabel?: string;
     savedRecordCount?: number;
     failedRecordCount?: number;
-    isRecordedBeforeSummaries?: true;
+    isInterrupted?: true;
+    isOutcomeUnrecorded?: true;
     hasResultsFile?: true;
 }
 
@@ -277,7 +279,8 @@ export class RecipeCockpitTreeHistory {
             ...( lastInsert.orgLabel !== undefined ? { orgLabel: lastInsert.orgLabel } : {} ),
             ...( lastInsert.savedRecordCount !== undefined ? { savedRecordCount: lastInsert.savedRecordCount } : {} ),
             ...( lastInsert.failedRecordCount !== undefined ? { failedRecordCount: lastInsert.failedRecordCount } : {} ),
-            ...( lastInsert.isRecordedBeforeSummaries ? { isRecordedBeforeSummaries: true as const } : {} ),
+            ...( lastInsert.isInterrupted ? { isInterrupted: true as const } : {} ),
+            ...( lastInsert.isOutcomeUnrecorded ? { isOutcomeUnrecorded: true as const } : {} ),
             ...( lastInsertRead.resultsFilePath !== undefined ? { hasResultsFile: true as const } : {} )
         };
 

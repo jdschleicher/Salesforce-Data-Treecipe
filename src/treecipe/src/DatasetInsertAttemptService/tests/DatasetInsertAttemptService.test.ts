@@ -61,6 +61,12 @@ describe('DatasetInsertAttemptService', () => {
             expect(DatasetInsertAttemptService.readStatus(buildSummary({ outcome: 'stopped', isRolledBack: true, savedRecordCount: 5, failedRecordCount: 1 }))).toBe('failed');
         });
 
+        test('an insert that threw is never read as finished: partial while records may remain, else failed', () => {
+            expect(DatasetInsertAttemptService.readStatus(buildSummary({ outcome: 'stopped', savedRecordCount: 2, isInterrupted: true }))).toBe('partial');
+            expect(DatasetInsertAttemptService.readStatus(buildSummary({ outcome: 'cancelled', savedRecordCount: 2, isInterrupted: true }))).toBe('partial');
+            expect(DatasetInsertAttemptService.readStatus(buildSummary({ outcome: 'stopped', savedRecordCount: 0, isInterrupted: true }))).toBe('failed');
+        });
+
     });
 
     describe('buildSummary', () => {
@@ -80,10 +86,16 @@ describe('DatasetInsertAttemptService', () => {
             });
         });
 
-        test('records no org name that is not one line', () => {
+        test('records no org name that is not one line, or that carries a bidi control', () => {
             const summary = DatasetInsertAttemptService.buildSummary('completed', false, false, 0, 0, 'a\nb', 'x\u2028y', STARTED_AT, FINISHED_AT);
             expect(summary.orgUsername).toBeNull();
             expect(summary).not.toHaveProperty('orgAlias');
+            ['prod\u202Exobdnas', 'a\u2066b', 'a\u200Fb', 'a\u061Cb'].forEach(orgName => expect(DatasetInsertAttemptService.isOrgName(orgName)).toBe(false));
+        });
+
+        test('marks an insert that threw, and only that one', () => {
+            expect(buildSummary()).not.toHaveProperty('isInterrupted');
+            expect(DatasetInsertAttemptService.buildSummary('stopped', false, true, 1, 0, undefined, undefined, STARTED_AT, FINISHED_AT, true).isInterrupted).toBe(true);
         });
 
     });
@@ -92,6 +104,11 @@ describe('DatasetInsertAttemptService', () => {
 
         test('reads back what buildSummary writes', () => {
             expect(DatasetInsertAttemptService.parseSummary(JSON.stringify(buildSummary()))).toEqual(buildSummary());
+        });
+
+        test('reads back an interrupted insert', () => {
+            const summary = buildSummary({ outcome: 'stopped', isInterrupted: true });
+            expect(DatasetInsertAttemptService.parseSummary(JSON.stringify(summary))).toEqual(summary);
         });
 
         test('reads a summary with no org', () => {
@@ -113,7 +130,9 @@ describe('DatasetInsertAttemptService', () => {
             ['a username across two lines', JSON.stringify({ ...buildSummary(), orgUsername: 'a\nb' })],
             ['an empty alias', JSON.stringify({ ...buildSummary(), orgAlias: '' })],
             ['a date that is not an instant', JSON.stringify({ ...buildSummary(), finishedAt: 'yesterday' })],
-            ['a missing start', JSON.stringify({ ...buildSummary(), startedAt: undefined })]
+            ['a missing start', JSON.stringify({ ...buildSummary(), startedAt: undefined })],
+            ['an interrupted flag that is not true', JSON.stringify({ ...buildSummary(), isInterrupted: false })],
+            ['an alias with a bidi override', JSON.stringify({ ...buildSummary(), orgAlias: 'prod\u202Exobdnas' })]
         ])('refuses %s', (_label, summaryText) => {
             expect(DatasetInsertAttemptService.parseSummary(summaryText)).toBeUndefined();
         });
@@ -122,27 +141,6 @@ describe('DatasetInsertAttemptService', () => {
             const parsedSummary = DatasetInsertAttemptService.parseSummary(JSON.stringify({ ...buildSummary(), __proto__: { polluted: true }, extra: 'x' }));
             expect(parsedSummary).toEqual(buildSummary());
             expect(parsedSummary).not.toHaveProperty('extra');
-        });
-
-    });
-
-    describe('countLegacyResults', () => {
-
-        test('counts records and leaves out a request that threw', () => {
-            const resultsText = JSON.stringify({
-                SuccessResults: { Account: [{ id: '001' }, { id: '002' }], Contact: [{ id: '003' }] },
-                FailureResults: { Contact: [{ success: false, errors: [{ statusCode: 'X' }] }, { success: false, fileName: 'collectionsApi-Contact.json', errors: [{ statusCode: 'REQUEST_FAILED' }] }] }
-            });
-            expect(DatasetInsertAttemptService.countLegacyResults(resultsText)).toEqual({ savedRecordCount: 3, failedRecordCount: 1 });
-        });
-
-        test.each([
-            ['not JSON', '{'],
-            ['an array', '[]'],
-            ['a section that is an array', '{"SuccessResults":[]}'],
-            ['an object whose results are not a list', '{"SuccessResults":{"Account":{}}}']
-        ])('refuses %s', (_label, resultsText) => {
-            expect(DatasetInsertAttemptService.countLegacyResults(resultsText)).toBeUndefined();
         });
 
     });
@@ -178,16 +176,31 @@ describe('DatasetInsertAttemptService', () => {
             expect(DatasetInsertAttemptService.readLatestAttempt(datasetFolderPath).lastInsert).not.toHaveProperty('orgLabel');
         });
 
-        test('an attempt from before summaries is unknown, with the results file\'s counts', () => {
-            writeAttempt('2026-10-26T10-00-00', undefined, JSON.stringify({ SuccessResults: { Account: [{ id: '001' }] }, FailureResults: {} }));
+        test('an attempt with no summary is unknown and unrecorded, and its results file is never counted in its place', () => {
+            const resultsFilePath = writeAttempt('2026-10-26T10-00-00', undefined, JSON.stringify({ SuccessResults: { Account: [{ id: '001' }] }, FailureResults: {} }));
+            const openSpy = jest.spyOn(fs, 'openSync');
+            const readFileSpy = jest.spyOn(fs, 'readFileSync');
+
+            expect(DatasetInsertAttemptService.readLatestAttempt(datasetFolderPath)).toEqual({
+                lastInsert: { status: 'unknown', attemptTimestamp: '2026-10-26T10-00-00', isOutcomeUnrecorded: true },
+                resultsFilePath: resultsFilePath
+            });
+            expect(openSpy.mock.calls.map(openCall => openCall[0])).not.toContain(resultsFilePath);
+            expect(readFileSpy).not.toHaveBeenCalled();
+        });
+
+        test('an interrupted attempt says so', () => {
+            writeAttempt('2026-10-26T10-00-00', JSON.stringify(buildSummary({ outcome: 'stopped', savedRecordCount: 2, failedRecordCount: 0, isInterrupted: true })));
 
             expect(DatasetInsertAttemptService.readLatestAttempt(datasetFolderPath).lastInsert).toEqual({
-                status: 'unknown',
-                attemptTimestamp: '2026-10-26T10-00-00',
-                savedRecordCount: 1,
-                failedRecordCount: 0,
-                isRecordedBeforeSummaries: true
+                status: 'partial', attemptTimestamp: '2026-10-26T10-00-00', orgLabel: 'mySandbox', savedRecordCount: 2, failedRecordCount: 0, isInterrupted: true
             });
+        });
+
+        test('a summary larger than any insert writes is unknown, not unrecorded', () => {
+            writeAttempt('2026-10-26T10-00-00', JSON.stringify(buildSummary()) + ' '.repeat(70 * 1024));
+
+            expect(DatasetInsertAttemptService.readLatestAttempt(datasetFolderPath).lastInsert).toEqual({ status: 'unknown', attemptTimestamp: '2026-10-26T10-00-00' });
         });
 
         test('an attempt whose summary is out of shape is unknown, never a success, and counts nothing', () => {
@@ -200,7 +213,7 @@ describe('DatasetInsertAttemptService', () => {
             makeAttemptFolder('2026-10-26T10-00-00');
 
             expect(DatasetInsertAttemptService.readLatestAttempt(datasetFolderPath)).toEqual({
-                lastInsert: { status: 'unknown', attemptTimestamp: '2026-10-26T10-00-00', isRecordedBeforeSummaries: true }
+                lastInsert: { status: 'unknown', attemptTimestamp: '2026-10-26T10-00-00', isOutcomeUnrecorded: true }
             });
         });
 

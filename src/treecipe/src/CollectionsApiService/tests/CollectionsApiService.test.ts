@@ -1528,6 +1528,21 @@ describe('the one data set insert, shared by Insert Data Set by Directory and th
 
             });
 
+            test('still records an insert whose rollback threw, as interrupted, so the row never reads it as one from before summaries', async () => {
+
+                writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')], Contact: [record('Contact', 1, 'Contact_NickName')] }, { Account: 0, Contact: 1 });
+                const connection = buildConnection((objectApiName, records) => objectApiName === 'Contact'
+                    ? records.map(() => ({ success: false, errors: [{ statusCode: 'REQUIRED_FIELD_MISSING', message: 'LastName', fields: ['LastName'] }] }))
+                    : records.map((_record, recordIndex) => ({ id: `${objectApiName}-${recordIndex}`, success: true, errors: [] })));
+                jest.spyOn(CollectionsApiService, 'deletePreviouslySavedRecords').mockRejectedValue(new Error('Error deleting records for Account: INVALID_SESSION_ID'));
+
+                await expect(insertFolder(connection, true)).rejects.toThrow('INVALID_SESSION_ID');
+
+                expect(readSummary()).toMatchObject({ outcome: 'stopped', isRolledBack: false, savedRecordCount: 1, failedRecordCount: 1, isInterrupted: true });
+                expect(DatasetInsertAttemptService.readLatestAttempt(datasetFolderPath).lastInsert).toMatchObject({ status: 'partial', isInterrupted: true });
+
+            });
+
             test('records a stop without all-or-none that kept earlier records as partial', async () => {
 
                 writeDataSetFolder({ Account: [record('Account', 1, 'Account_NickName')], Contact: [record('Contact', 1, 'Contact_NickName')] }, { Account: 0, Contact: 1 });

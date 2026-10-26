@@ -13,14 +13,10 @@ const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z
 // A SUMMARY IS A FEW HUNDRED BYTES; ANYTHING FAR LARGER IS NOT ONE THIS EXTENSION WROTE
 const MAXIMUM_SUMMARY_FILE_BYTES = 64 * 1024;
 
-// A LEGACY RESULTS FILE HOLDS ONE ENTRY PER RECORD, SO ITS COUNTS ARE READ ONLY WHILE IT IS SMALL ENOUGH TO READ WITH THE MODEL
-const MAXIMUM_LEGACY_RESULTS_FILE_BYTES = 512 * 1024;
-
-// CollectionsApiService's INSERT_REQUEST_FAILED_STATUS_CODE: A REQUEST THAT THREW, NEVER COUNTED AS A RECORD THE ORG REJECTED
-const REQUEST_FAILED_STATUS_CODE = 'REQUEST_FAILED';
-
-// THE ONE-LINE ORG NAME A SUMMARY CAN CARRY: AN ALIAS OR A USERNAME, NEVER A LINE BREAK OR CONTROL CHARACTER
+// THE ONE-LINE ORG NAME A SUMMARY CAN CARRY: AN ALIAS OR A USERNAME, NEVER A LINE BREAK, A CONTROL OR A BIDI CHARACTER (WHICH WOULD MAKE THE LABEL READ AS ANOTHER NAME)
 const MAXIMUM_ORG_NAME_LENGTH = 255;
+
+const DISALLOWED_ORG_NAME_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/;
 
 export type InsertAttemptOutcome = 'completed' | 'cancelled' | 'stopped';
 
@@ -42,12 +38,15 @@ export interface IInsertAttemptSummary {
     orgAlias?: string;
     startedAt: string;
     finishedAt: string;
+    // THE INSERT THREW BEFORE IT ENDED -- A ROLLBACK THAT FAILED INCLUDED -- SO RECORDS IT SAVED MAY STILL BE IN THE ORG
+    isInterrupted?: true;
 }
 
 /*
     The latest insert of a data set as its row draws it. orgLabel is the alias, else the username,
-    and absent when the attempt names neither. The counts are absent for an attempt whose summary
-    could not be read and whose results file could not be counted.
+    and absent when the attempt names neither. The counts are absent when the summary could not be
+    read: the results file is never counted in its place, since it cannot say what a cancel or a
+    rollback deleted, and reading it per data set per model cost seconds.
 */
 export interface IDatasetLastInsert {
     status: InsertAttemptStatus;
@@ -55,8 +54,9 @@ export interface IDatasetLastInsert {
     orgLabel?: string;
     savedRecordCount?: number;
     failedRecordCount?: number;
-    // AN ATTEMPT FROM BEFORE SUMMARIES WERE WRITTEN: ITS COUNTS ARE THE RESULTS FILE'S, AND ITS OUTCOME IS NOT KNOWN
-    isRecordedBeforeSummaries?: true;
+    isInterrupted?: true;
+    // NO SUMMARY WAS WRITTEN: AN INSERT FROM BEFORE SUMMARIES, OR ONE THE HOST STOPPED BEFORE IT COULD WRITE ONE
+    isOutcomeUnrecorded?: true;
 }
 
 export interface IDatasetLastInsertRead {
@@ -87,7 +87,8 @@ export class DatasetInsertAttemptService {
                         orgUsername: string | undefined,
                         orgAlias: string | undefined,
                         startedAt: Date,
-                        finishedAt: Date): IInsertAttemptSummary {
+                        finishedAt: Date,
+                        isInterrupted = false): IInsertAttemptSummary {
 
         return {
             schemaVersion: INSERT_ATTEMPT_SUMMARY_SCHEMA_VERSION,
@@ -99,7 +100,8 @@ export class DatasetInsertAttemptService {
             orgUsername: this.isOrgName(orgUsername) ? orgUsername : null,
             ...( this.isOrgName(orgAlias) ? { orgAlias: orgAlias } : {} ),
             startedAt: startedAt.toISOString(),
-            finishedAt: finishedAt.toISOString()
+            finishedAt: finishedAt.toISOString(),
+            ...( isInterrupted ? { isInterrupted: true as const } : {} )
         };
 
     }
@@ -132,6 +134,11 @@ export class DatasetInsertAttemptService {
         and a stop that kept earlier files' records is partial.
     */
     static readStatus(summary: IInsertAttemptSummary): InsertAttemptStatus {
+
+        // A ROLLBACK THAT THREW MAY HAVE LEFT RECORDS BEHIND, SO IT IS NEVER READ AS ONE THAT FINISHED
+        if ( summary.isInterrupted === true ) {
+            return summary.savedRecordCount > 0 ? 'partial' : 'failed';
+        }
 
         if ( summary.outcome === 'cancelled' ) {
             return 'cancelled';
@@ -168,6 +175,7 @@ export class DatasetInsertAttemptService {
         const isOutcome = candidate.outcome === 'completed' || candidate.outcome === 'cancelled' || candidate.outcome === 'stopped';
         const isUsername = candidate.orgUsername === null || this.isOrgName(candidate.orgUsername);
         const isAlias = !Object.prototype.hasOwnProperty.call(candidate, 'orgAlias') || this.isOrgName(candidate.orgAlias);
+        const isInterruptedFlag = !Object.prototype.hasOwnProperty.call(candidate, 'isInterrupted') || candidate.isInterrupted === true;
 
         if ( candidate.schemaVersion !== INSERT_ATTEMPT_SUMMARY_SCHEMA_VERSION
                 || !isOutcome
@@ -177,6 +185,7 @@ export class DatasetInsertAttemptService {
                 || !this.isRecordCount(candidate.failedRecordCount)
                 || !isUsername
                 || !isAlias
+                || !isInterruptedFlag
                 || !this.isIsoInstant(candidate.startedAt)
                 || !this.isIsoInstant(candidate.finishedAt) ) {
             return undefined;
@@ -192,51 +201,9 @@ export class DatasetInsertAttemptService {
             orgUsername: candidate.orgUsername as string | null,
             ...( typeof candidate.orgAlias === 'string' ? { orgAlias: candidate.orgAlias } : {} ),
             startedAt: candidate.startedAt as string,
-            finishedAt: candidate.finishedAt as string
+            finishedAt: candidate.finishedAt as string,
+            ...( candidate.isInterrupted === true ? { isInterrupted: true as const } : {} )
         };
-
-    }
-
-    /*
-        The records a results file lists, for an attempt with no summary. A request that threw is not
-        a record. Undefined for anything out of shape: a count the reader cannot trust is not drawn.
-    */
-    static countLegacyResults(resultsText: string): { savedRecordCount: number; failedRecordCount: number } | undefined {
-
-        let parsedResults: unknown;
-
-        try {
-            parsedResults = JSON.parse(resultsText);
-        } catch {
-            return undefined;
-        }
-
-        if ( typeof parsedResults !== 'object' || parsedResults === null || Array.isArray(parsedResults) ) {
-            return undefined;
-        }
-
-        const countSection = (sectionName: string): number | undefined => {
-            const section = (parsedResults as Record<string, unknown>)[sectionName];
-            if ( section === undefined ) {
-                return 0;
-            }
-            if ( typeof section !== 'object' || section === null || Array.isArray(section) ) {
-                return undefined;
-            }
-            let recordCount = 0;
-            for ( const objectResults of Object.values(section as Record<string, unknown>) ) {
-                if ( !Array.isArray(objectResults) ) {
-                    return undefined;
-                }
-                recordCount += objectResults.filter(objectResult => !this.isRequestFailureResult(objectResult)).length;
-            }
-            return recordCount;
-        };
-
-        const savedRecordCount = countSection('SuccessResults');
-        const failedRecordCount = countSection('FailureResults');
-
-        return savedRecordCount === undefined || failedRecordCount === undefined ? undefined : { savedRecordCount, failedRecordCount };
 
     }
 
@@ -274,10 +241,10 @@ export class DatasetInsertAttemptService {
         const attemptTimestamp = attemptTimestamps[attemptTimestamps.length - 1];
         const attemptFolderPath = path.join(insertAttemptsFolderPath, `insertAttempt-${attemptTimestamp}`);
         const resultsFilePath = path.join(attemptFolderPath, this.buildResultsFileName(attemptTimestamp));
-        const isResultsFile = this.isRealFile(resultsFilePath);
-        const summaryText = this.readSmallFile(path.join(attemptFolderPath, this.buildSummaryFileName(attemptTimestamp)), MAXIMUM_SUMMARY_FILE_BYTES);
+        const summaryFilePath = path.join(attemptFolderPath, this.buildSummaryFileName(attemptTimestamp));
+        const summaryText = this.readSmallFile(summaryFilePath, MAXIMUM_SUMMARY_FILE_BYTES);
         const summary = summaryText === undefined ? undefined : this.parseSummary(summaryText);
-        const resultsTarget = isResultsFile ? { resultsFilePath } : {};
+        const resultsTarget = this.isRealFile(resultsFilePath) ? { resultsFilePath } : {};
 
         if ( summary ) {
             const orgLabel = summary.orgAlias ?? summary.orgUsername ?? undefined;
@@ -287,22 +254,21 @@ export class DatasetInsertAttemptService {
                     attemptTimestamp: attemptTimestamp,
                     ...( orgLabel !== undefined ? { orgLabel } : {} ),
                     savedRecordCount: summary.savedRecordCount,
-                    failedRecordCount: summary.failedRecordCount
+                    failedRecordCount: summary.failedRecordCount,
+                    ...( summary.isInterrupted === true ? { isInterrupted: true as const } : {} )
                 },
                 ...resultsTarget
             };
         }
 
-        const isLegacy = summaryText === undefined && !this.pathExists(path.join(attemptFolderPath, this.buildSummaryFileName(attemptTimestamp)));
-        const resultsText = isLegacy && isResultsFile ? this.readSmallFile(resultsFilePath, MAXIMUM_LEGACY_RESULTS_FILE_BYTES) : undefined;
-        const legacyCounts = resultsText === undefined ? undefined : this.countLegacyResults(resultsText);
+        // NO SUMMARY AT ALL IS SAID SO; ONE THAT IS THERE AND UNREADABLE IS ONLY UNKNOWN
+        const isOutcomeUnrecorded = summaryText === undefined && !this.pathExists(summaryFilePath);
 
         return {
             lastInsert: {
                 status: 'unknown',
                 attemptTimestamp: attemptTimestamp,
-                ...( legacyCounts ?? {} ),
-                ...( isLegacy ? { isRecordedBeforeSummaries: true as const } : {} )
+                ...( isOutcomeUnrecorded ? { isOutcomeUnrecorded: true as const } : {} )
             },
             ...resultsTarget
         };
@@ -311,7 +277,7 @@ export class DatasetInsertAttemptService {
 
     static isOrgName(candidate: unknown): candidate is string {
 
-        return typeof candidate === 'string' && candidate.length > 0 && candidate.length <= MAXIMUM_ORG_NAME_LENGTH && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(candidate);
+        return typeof candidate === 'string' && candidate.length > 0 && candidate.length <= MAXIMUM_ORG_NAME_LENGTH && !DISALLOWED_ORG_NAME_CHARACTER_PATTERN.test(candidate);
 
     }
 
@@ -324,19 +290,6 @@ export class DatasetInsertAttemptService {
     static isIsoInstant(candidate: unknown): candidate is string {
 
         return typeof candidate === 'string' && ISO_INSTANT_PATTERN.test(candidate) && !Number.isNaN(Date.parse(candidate));
-
-    }
-
-    static isRequestFailureResult(objectResult: unknown): boolean {
-
-        if ( typeof objectResult !== 'object' || objectResult === null ) {
-            return false;
-        }
-
-        const candidate = objectResult as { errors?: unknown; fileName?: unknown };
-        return Array.isArray(candidate.errors)
-                && candidate.errors.some((resultError: unknown) => (resultError as { statusCode?: unknown } | null)?.statusCode === REQUEST_FAILED_STATUS_CODE)
-                && typeof candidate.fileName === 'string';
 
     }
 
@@ -371,17 +324,30 @@ export class DatasetInsertAttemptService {
 
     }
 
-    // A FILE (NEVER A LINK) NO LARGER THAN THE LIMIT, ELSE UNDEFINED
+    /*
+        A file (never a link) no larger than the limit, else undefined. Opened ONCE with O_NOFOLLOW and
+        checked and read through that handle, so a file swapped for a link, or grown past the limit,
+        between a check and a read is never followed or read past it.
+    */
     static readSmallFile(filePath: string, maximumBytes: number): string | undefined {
 
+        let fileDescriptor: number | undefined;
+
         try {
-            const fileStats = fs.lstatSync(filePath);
+            fileDescriptor = fs.openSync(filePath, fs.constants.O_RDONLY | ( fs.constants.O_NOFOLLOW ?? 0 ));
+            const fileStats = fs.fstatSync(fileDescriptor);
             if ( !fileStats.isFile() || fileStats.size > maximumBytes ) {
                 return undefined;
             }
-            return fs.readFileSync(filePath, 'utf8');
+            const fileBuffer = Buffer.alloc(maximumBytes + 1);
+            const bytesRead = fs.readSync(fileDescriptor, fileBuffer, 0, maximumBytes + 1, 0);
+            return bytesRead > maximumBytes ? undefined : fileBuffer.toString('utf8', 0, bytesRead);
         } catch {
             return undefined;
+        } finally {
+            if ( fileDescriptor !== undefined ) {
+                fs.closeSync(fileDescriptor);
+            }
         }
 
     }

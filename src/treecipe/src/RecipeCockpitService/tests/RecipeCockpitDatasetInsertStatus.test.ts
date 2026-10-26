@@ -18,7 +18,8 @@ import {
     RecipeCockpitService,
     IRecipeCockpitPanelState,
     IRecipeCockpitRecipeViewModel,
-    RECIPE_COCKPIT_DATASET_INSERT_BEFORE_SUMMARIES_NOTE,
+    RECIPE_COCKPIT_DATASET_INSERT_INTERRUPTED_NOTE,
+    RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE,
     RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY
 } from '../RecipeCockpitService';
 import { RecipeCockpitTreeHistory } from '../RecipeCockpitTreeHistory';
@@ -116,18 +117,24 @@ describe('RecipeCockpitService, a data set\'s last insert (#469)', () => {
 
         });
 
-        it('reads an attempt from before summaries as unknown, with its results file\'s counts', () => {
+        it('reads an attempt with no summary as unknown and unrecorded, with no counts, and keeps its results file', () => {
 
             writeAttempt(LEAD_DATASETS[0], '2026-10-26T10-00-00', undefined, JSON.stringify({ SuccessResults: { Lead: [{ id: '00Q1' }, { id: '00Q2' }] }, FailureResults: {} }));
 
             expect(leadDatasetsOf(loadRecipe().recipeViewModel)[0].lastInsert).toEqual({
                 status: 'unknown',
                 attemptedAtLabel: '2026-10-26 10:00:00 UTC',
-                savedRecordCount: 2,
-                failedRecordCount: 0,
-                isRecordedBeforeSummaries: true,
+                isOutcomeUnrecorded: true,
                 hasResultsFile: true
             });
+
+        });
+
+        it('carries an insert that threw as interrupted', () => {
+
+            writeAttempt(LEAD_DATASETS[0], '2026-10-26T10-00-00', summaryOf({ outcome: 'stopped', savedRecordCount: 2, failedRecordCount: 1, isInterrupted: true }));
+
+            expect(leadDatasetsOf(loadRecipe().recipeViewModel)[0].lastInsert).toMatchObject({ status: 'partial', isInterrupted: true });
 
         });
 
@@ -314,6 +321,48 @@ describe('RecipeCockpitService, a data set\'s last insert (#469)', () => {
 
         });
 
+        it('after a row\'s Insert…, posts that data set\'s newest insert in place and offers its new results file only once the row is redrawn', async () => {
+
+            const oldResultsFilePath = writeAttempt(LEAD_DATASETS[0], '2026-10-25T09-00-00', summaryOf());
+            const openSpy = jest.spyOn(VSCodeWorkspaceService, 'openWorkspaceResultFile').mockResolvedValue(undefined);
+            let newResultsFilePath = '';
+            (vscode.commands.executeCommand as jest.Mock).mockImplementation(async (commandId: string) => {
+                if ( commandId === 'treecipe.insertDataSetBySelectedDirectory' ) {
+                    newResultsFilePath = writeAttempt(LEAD_DATASETS[0], '2026-10-26T10-00-00', summaryOf({ outcome: 'stopped', savedRecordCount: 0, failedRecordCount: 3 }));
+                }
+            });
+            const workspaceState = { get: jest.fn(), update: jest.fn().mockResolvedValue(undefined) };
+
+            await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState as any);
+            await receivedMessageHandler({ command: 'ready' });
+            const renderSequence = lastPosted('recipeData').renderSequence;
+            await receivedMessageHandler({ command: 'rendered', renderSequence });
+            const recipeDataPostsBefore = postedPanelMessages.filter(hostMessage => hostMessage.command === 'recipeData').length;
+
+            await receivedMessageHandler({ command: 'insertDataset', datasetFolderName: LEAD_DATASETS[0] });
+
+            // NO RELOAD: ONE MESSAGE NAMING THE DATA SET, ITS NEW STATUS, AND NO PATH
+            expect(postedPanelMessages.filter(hostMessage => hostMessage.command === 'recipeData')).toHaveLength(recipeDataPostsBefore);
+            const lastInsertMessage = lastPosted('datasetLastInsert');
+            expect(lastInsertMessage).toMatchObject({ renderSequence, datasetFolderName: LEAD_DATASETS[0], lastInsert: { status: 'failed', attemptedAtLabel: '2026-10-26 10:00:00 UTC', hasResultsFile: true } });
+            expect(JSON.stringify(lastInsertMessage)).not.toContain(newResultsFilePath);
+
+            // A REVEAL REPLAYS THE STORED MODEL, WHICH CARRIES IT TOO
+            const panelState = (RecipeCockpitService as any).recipeCockpitPanelState as IRecipeCockpitPanelState;
+            expect(leadDatasetsOf(panelState.recipeDataMessage.recipe)[0].lastInsert.status).toBe('failed');
+
+            // UNTIL THE PANEL SAYS THE ROW IS REDRAWN, View results OPENS NOTHING -- NOT EVEN THE OLD FILE
+            await receivedMessageHandler({ command: 'viewDatasetInsertResults', datasetFolderName: LEAD_DATASETS[0] });
+            expect(openSpy).not.toHaveBeenCalled();
+
+            await receivedMessageHandler({ command: 'partialRendered', renderSequence, updateSequence: lastInsertMessage.updateSequence });
+            await receivedMessageHandler({ command: 'viewDatasetInsertResults', datasetFolderName: LEAD_DATASETS[0] });
+
+            expect(openSpy).toHaveBeenCalledWith(newResultsFilePath, workspaceRoot, INSERT_RESULTS_FILE_MISSING_TEXT);
+            expect(openSpy).not.toHaveBeenCalledWith(oldResultsFilePath, expect.anything(), expect.anything());
+
+        });
+
     });
 
     describe('the panel script', () => {
@@ -357,25 +406,29 @@ describe('RecipeCockpitService, a data set\'s last insert (#469)', () => {
                 expect(panel.findAll(statusElement, 'treeDatasetInsertStatusLabel')[0].textContent).toBe(statusDisplay.label);
                 expect(statusElement.attributes.title).toBe('Last insert: 2026-10-26 10:00:00 UTC into qaSandbox · 1 record saved · 2 records failed');
                 expect(statusElement.attributes['aria-label']).toBe(`${statusDisplay.label}. Last insert: 2026-10-26 10:00:00 UTC into qaSandbox · 1 record saved · 2 records failed`);
+                expect(statusElement.attributes.role).toBe('img');
             });
             expect(panel.findAll(rows[2], 'treeDatasetInsertStatus')).toEqual([]);
             expect(panel.findAll(rows[2], 'treeDatasetInsertResults')).toEqual([]);
 
         });
 
-        it('says an attempt from before summaries is unknown and why, and draws one it cannot label as nothing', () => {
+        it('says why an attempt is unknown or may have left records, and draws one it cannot label as nothing', () => {
 
             const panel = drawRecipe(recipe => {
                 const leadDatasets = leadDatasetsOf(recipe);
-                leadDatasets[0].lastInsert = { status: 'unknown', attemptedAtLabel: '2026-10-26 10:00:00 UTC', isRecordedBeforeSummaries: true };
+                leadDatasets[0].lastInsert = { status: 'unknown', attemptedAtLabel: '2026-10-26 10:00:00 UTC', isOutcomeUnrecorded: true };
                 leadDatasets[1].lastInsert = { status: 'constructor' as any, attemptedAtLabel: '2026-10-26 10:00:00 UTC' };
+                leadDatasets[2].lastInsert = { status: 'partial', attemptedAtLabel: '2026-10-26 10:00:00 UTC', savedRecordCount: 2, failedRecordCount: 0, isInterrupted: true };
             });
             const rows = panel.findAll(openLeadDatasets(panel), 'treeDataset');
             const statusElement = panel.findAll(rows[0], 'treeDatasetInsertStatus')[0];
 
             expect(panel.findAll(statusElement, 'treeDatasetInsertStatusLabel')[0].textContent).toBe(RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY.unknown.label);
-            expect(statusElement.attributes.title).toBe(`Last insert: 2026-10-26 10:00:00 UTC. ${RECIPE_COCKPIT_DATASET_INSERT_BEFORE_SUMMARIES_NOTE}`);
+            expect(statusElement.attributes.title).toBe(`Last insert: 2026-10-26 10:00:00 UTC. ${RECIPE_COCKPIT_DATASET_INSERT_UNRECORDED_NOTE}`);
             expect(panel.findAll(rows[1], 'treeDatasetInsertStatus')).toEqual([]);
+            expect(panel.findAll(rows[2], 'treeDatasetInsertStatus')[0].attributes.title)
+                .toBe(`Last insert: 2026-10-26 10:00:00 UTC · 2 records saved · 0 records failed. ${RECIPE_COCKPIT_DATASET_INSERT_INTERRUPTED_NOTE}`);
 
         });
 
@@ -392,6 +445,46 @@ describe('RecipeCockpitService, a data set\'s last insert (#469)', () => {
             panel.findAll(rows[0], 'treeDatasetInsertResults')[0].dispatch('click');
 
             expect(panel.postedHostMessages.at(-1)).toEqual({ command: 'viewDatasetInsertResults', datasetFolderName: LEAD_DATASETS[0] });
+
+        });
+
+        it('redraws a row\'s status in place for its model only, every other node kept, and acknowledges it', () => {
+
+            const panel = drawRecipe(recipe => {
+                leadDatasetsOf(recipe)[0].lastInsert = { status: 'succeeded', attemptedAtLabel: '2026-10-25 09:00:00 UTC', hasResultsFile: true };
+            });
+            const tabPanel = openLeadDatasets(panel);
+            const [firstRow] = panel.findAll(tabPanel, 'treeDataset');
+            const folderElementBefore = panel.findAll(firstRow, 'treeDatasetFolder')[0];
+            panel.postedHostMessages.length = 0;
+
+            panel.postToPanel({ command: 'datasetLastInsert', renderSequence: 2, updateSequence: 5, datasetFolderName: LEAD_DATASETS[0], lastInsert: { status: 'failed', attemptedAtLabel: '2026-10-26 10:00:00 UTC' } });
+            expect(panel.findAll(firstRow, 'treeDatasetInsertStatusLabel')[0].textContent).toBe(RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY.succeeded.label);
+            expect(panel.postedHostMessages).toEqual([]);
+
+            panel.postToPanel({ command: 'datasetLastInsert', renderSequence: 3, updateSequence: 5, datasetFolderName: LEAD_DATASETS[0], lastInsert: { status: 'failed', attemptedAtLabel: '2026-10-26 10:00:00 UTC' } });
+
+            expect(panel.findAll(tabPanel, 'treeDataset')[0]).toBe(firstRow);
+            expect(panel.findAll(firstRow, 'treeDatasetFolder')[0]).toBe(folderElementBefore);
+            expect(panel.findAll(firstRow, 'treeDatasetInsertStatus')).toHaveLength(1);
+            expect(panel.findAll(firstRow, 'treeDatasetInsertStatusLabel')[0].textContent).toBe(RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY.failed.label);
+            expect(panel.findAll(firstRow, 'treeDatasetInsertResults')).toEqual([]);
+            expect(panel.postedHostMessages).toEqual([{ command: 'partialRendered', renderSequence: 3, updateSequence: 5 }]);
+
+            // THE SEARCH READS THE NEW STATUS
+            panel.typeIntoTabSearch(panel.treeCards()[1], 'treeDatasets', 'insert failed');
+            expect(panel.isHidden(firstRow)).toBe(false);
+
+        });
+
+        it('draws the status of a row whose tab is built after the update', () => {
+
+            const panel = drawRecipe(() => undefined);
+            panel.postToPanel({ command: 'datasetLastInsert', renderSequence: 3, updateSequence: 1, datasetFolderName: LEAD_DATASETS[1], lastInsert: { status: 'cancelled', attemptedAtLabel: '2026-10-26 10:00:00 UTC' } });
+
+            const rows = panel.findAll(openLeadDatasets(panel), 'treeDataset');
+
+            expect(panel.findAll(rows[1], 'treeDatasetInsertStatusLabel')[0].textContent).toBe(RECIPE_COCKPIT_DATASET_INSERT_STATUS_DISPLAY.cancelled.label);
 
         });
 
