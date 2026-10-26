@@ -140,19 +140,21 @@ describe('buildPicklistChoiceExpression (#465)', () => {
 
         it.each(BACKENDS)('with %s, is refused as an expression or written as a line that loads as exactly the expression, and is read back as the choice', (backend, createFakerService) => {
 
-            const expression = createFakerService().buildPicklistChoiceExpression([hostileValue, 'Other'], false);
-            if ( RecipeCockpitRecipeWriter.checkConstrainedExpression(expression) !== undefined ) {
-                return;
-            }
-
-            const loaded = yaml.load(buildOneFieldRecipe(expression)) as Array<{ fields: Record<string, unknown> }>;
-            expect(loaded[0].fields).toEqual({ Choice__c: expression });
-            expect(RecipeCockpitService.recoverPicklistValueChoice(expression, [hostileValue, 'Other', 'Unchosen'], picklistField())).toEqual([hostileValue, 'Other']);
             expect(backend).toBeOneOf(['faker-js', 'snowfakery']);
+            [false, true].forEach(isMultiSelect => {
+                const expression = createFakerService().buildPicklistChoiceExpression([hostileValue, 'Other'], isMultiSelect);
+                if ( RecipeCockpitRecipeWriter.checkConstrainedExpression(expression) !== undefined ) {
+                    return;
+                }
+
+                const loaded = yaml.load(buildOneFieldRecipe(expression)) as Array<{ fields: Record<string, unknown> }>;
+                expect(loaded[0].fields).toEqual({ Choice__c: expression });
+                expect(RecipeCockpitService.recoverPicklistValueChoice(expression, [hostileValue, 'Other', 'Unchosen'], picklistField(isMultiSelect ? 'MultiselectPicklist' : 'Picklist'))).toEqual([hostileValue, 'Other']);
+            });
 
         });
 
-        it('with faker-js, generates the value itself and runs nothing it carries', async () => {
+        it('with faker-js, generates the value itself and runs nothing it carries, picked alone or as a multi-select', async () => {
 
             const expression = new FakerJSRecipeFakerService().buildPicklistChoiceExpression([hostileValue], false);
             if ( RecipeCockpitRecipeWriter.checkConstrainedExpression(expression) !== undefined ) {
@@ -161,6 +163,8 @@ describe('buildPicklistChoiceExpression (#465)', () => {
 
             const records = await generateWithFakerJs(buildOneFieldRecipe(expression));
             expect(records[0].fields.Choice__c).toBe(hostileValue);
+            const multiSelectRecords = await generateWithFakerJs(buildOneFieldRecipe(new FakerJSRecipeFakerService().buildPicklistChoiceExpression([hostileValue], true)));
+            expect(multiSelectRecords[0].fields.Choice__c).toBe(hostileValue);
             expect((globalThis as Record<string, unknown>)[INJECTION_MARKER]).toBeUndefined();
 
         });
@@ -281,6 +285,18 @@ describe('routePanelMessage setPicklistValueChoice (#465)', () => {
 
         ( leadTree as any ).fixedValues = [{ objectApiName: 'Lead', fieldApiName: 'Status', value: 'Open', kind: 'text' }];
         expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).toMatchObject({ isOtherEdit: true });
+        expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).not.toHaveProperty('chosenPicklistValues');
+
+        // WITH NO EDIT, A GENERATED LINE THE BACKEND BUILDS STARTS THE TILES FROM WHAT IT CHOOSES; ONE IT DOES NOT BUILD STARTS THEM ALL TICKED
+        ( leadTree as any ).fixedValues = undefined;
+        const statusField = panelState.recipeDataMessage?.recipe.objects.find(objectViewModel => objectViewModel.objectApiName === 'Lead')?.fields.find(field => field.fieldApiName === 'Status') as IRecipeCockpitFieldViewModel;
+        statusField.recipeValue = "${{ random_choice('Closed') }}";
+        expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).toMatchObject({ chosenPicklistValues: ['Closed'] });
+        statusField.recipeValue = '"${{ faker.helpers.arrayElement([`Open`]) }}"\n### Driven by ValidationRule Open_Only';
+        expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).toMatchObject({ chosenPicklistValues: ['Open'] });
+        statusField.recipeValue = "${{ random_choice('Open','Closed') }}";
+        expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).not.toHaveProperty('chosenPicklistValues');
+        statusField.recipeValue = '"not json';
         expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).not.toHaveProperty('chosenPicklistValues');
 
         // AN EDIT OF A FIELD THE MODEL NO LONGER LISTS TICKS NOTHING IT CAN NAME
@@ -410,6 +426,27 @@ describe('openRecipeCockpitPanel: saving a choice of values (#465)', () => {
         expect(showWarningMessage).not.toHaveBeenCalled();
         expect(lastPosted('fieldEditResult')).toMatchObject({ treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status', edit: 'picklistValues', refusal: RECIPE_COCKPIT_PICKLIST_CHOICE_UNCHANGED_REFUSAL });
         expect(fs.readFileSync(LEAD_RECIPE_FILE_PATH, 'utf8')).toBe(committedRecipe);
+
+    });
+
+    it('starts from, and compares a save with, what a narrowed generated line chooses -- not every declared value (#472 review)', async () => {
+
+        await openAndDraw();
+        const panelState = (RecipeCockpitService as any).recipeCockpitPanelState as IRecipeCockpitPanelState;
+        const statusField = panelState.recipeDataMessage?.recipe.objects.find(objectViewModel => objectViewModel.objectApiName === 'Lead')?.fields.find(field => field.fieldApiName === 'Status') as IRecipeCockpitFieldViewModel;
+        // AS A VALIDATION RULE'S ISPICKVAL WRITES IT: THE BACKEND'S OWN CHOICE OVER FEWER VALUES, DOUBLE-QUOTED
+        statusField.recipeValue = `"${new SnowfakeryRecipeFakerService().buildPicklistChoiceExpression(['Open'], false)}"\n### Driven by ValidationRule Status_Open_Only`;
+
+        expect(await askForValues()).toMatchObject({ chosenPicklistValues: ['Open'] });
+
+        await choose(['Open']);
+        expect(showWarningMessage).not.toHaveBeenCalled();
+        expect(lastPosted('fieldEditResult')).toMatchObject({ refusal: RECIPE_COCKPIT_PICKLIST_CHOICE_UNCHANGED_REFUSAL });
+
+        // TICKING A VALUE THE RULE LEFT OUT IS AN EDIT, NOT "NOTHING TO SAVE"
+        showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL);
+        await choose(['Open', 'Closed']);
+        expect(fs.readFileSync(LEAD_RECIPE_FILE_PATH, 'utf8')).toBe(committedRecipe.replace(GENERATED_STATUS_LINE, "    Status: \"${{ random_choice('Open', 'Closed') }}\""));
 
     });
 
@@ -555,6 +592,11 @@ describe('the panel script: a picklist\'s value tiles (#465)', () => {
 
         expect(choiceMessages(panel)).toEqual([{ command: 'setPicklistValueChoice', treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status', picklistValues: ['Closed', 'Pending'] }]);
 
+        // ONE SAVE AT A TIME: A SECOND CLICK BEFORE THE HOST ANSWERS POSTS NOTHING
+        expect(saveOf(panel, editorElement).disabled).toBe(true);
+        saveOf(panel, editorElement).dispatch('click');
+        expect(choiceMessages(panel)).toHaveLength(1);
+
     });
 
     it('disables Save, saying why, while nothing is ticked', () => {
@@ -642,6 +684,7 @@ describe('the panel script: a picklist\'s value tiles (#465)', () => {
         expect(panel.isHidden(editorElement)).toBe(false);
         // THE TICKS THE READER MADE ARE STILL THERE TO SAVE AGAIN
         expect(tileStates(panel, editorElement)).toEqual([['Open', 'false'], ['Closed', 'true']]);
+        expect(saveOf(panel, editorElement).disabled).toBe(false);
 
         // AN ANSWER FOR THE ONE-BOX EDITOR, OR FOR ANOTHER MODEL, LEAVES THE TILES ALONE
         panel.postToPanel({ command: 'fieldEditResult', renderSequence: 1, treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status', edit: 'fixedValue' });
@@ -649,6 +692,19 @@ describe('the panel script: a picklist\'s value tiles (#465)', () => {
         expect(panel.isHidden(editorElement)).toBe(false);
 
         panel.postToPanel({ command: 'fieldEditResult', renderSequence: 1, treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status', edit: 'picklistValues' });
+        expect(panel.isHidden(editorElement)).toBe(true);
+        expect(toggleElement.attributes['aria-expanded']).toBe('false');
+
+    });
+
+    it('closes on Edit values after a Save the host has not answered, though the place already says closed', () => {
+
+        const { panel, editorElement, toggleElement } = openEditor();
+        tilesOf(panel, editorElement)[0].dispatch('click');
+        saveOf(panel, editorElement).dispatch('click');
+
+        toggleElement.dispatch('click');
+
         expect(panel.isHidden(editorElement)).toBe(true);
         expect(toggleElement.attributes['aria-expanded']).toBe('false');
 
