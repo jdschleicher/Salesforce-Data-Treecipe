@@ -7,6 +7,7 @@ import { RecordTypeService } from "../RecordTypeService/RecordTypeService";
 import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
 import { IAuthenticatedOrgDetail } from "../PicklistDependencyCheckService/PicklistDependencyCheckService";
 import { IInsertFailureError, RecipeCockpitInsertFailureTriage } from "../RecipeCockpitService/RecipeCockpitInsertFailureTriage";
+import { DatasetInsertAttemptService } from "../DatasetInsertAttemptService/DatasetInsertAttemptService";
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
@@ -48,9 +49,15 @@ export type DataSetRecordPreparer = (objectApiName: string, records: unknown[], 
     isFailureReportedByCaller: the caller shows how the insert ended in its own notification (the
     Recipe Cockpit's tree insert), so a file that stops the insert shows no second one here.
 */
+/*
+    orgUsername and orgAlias name the org in the attempt's summary (#469), which the Recipe Cockpit's
+    data set row is labelled by; the alias is optional.
+*/
 export interface IDataSetInsertOptions {
     prepareRecords?: DataSetRecordPreparer;
     isFailureReportedByCaller?: boolean;
+    orgUsername?: string;
+    orgAlias?: string;
 }
 
 export const INSERT_VIEW_ERRORS_LABEL = 'View errors';
@@ -202,6 +209,7 @@ export class CollectionsApiService {
         // Sort collection API files based on relationship levels from the wrapper
         collectionApiFiles = this.sortCollectionApiFilesByRelationshipLevel(collectionApiFiles, treecipeObjectWrapperDetail);
 
+        const insertStartedAt = new Date();
         const pathToInsertAttemptsDirectory = path.join(selectedDataSetFullDirectoryPath, this.insertAttemptsDirectoryName);
         if (!fs.existsSync(pathToInsertAttemptsDirectory)) {
             fs.mkdirSync(pathToInsertAttemptsDirectory);
@@ -241,125 +249,148 @@ export class CollectionsApiService {
             firstFailure = RecipeCockpitInsertFailureTriage.readFirstFailure(objectFailures.slice(priorFailureCount));
         };
 
-        await vscode.window.withProgress(
-            {
-              location: vscode.ProgressLocation.Notification,
-              title: "Inserting Salesforce Collection API files...",
-              cancellable: true
-            },
-            
-            async (progress, token) => {
-
-              const totalFiles = collectionApiFiles.length;
-              const rollBackCancelledInsert = async () => {
-                  outcome = 'cancelled';
-                  isRolledBack = true;
-                  vscode.window.showWarningMessage("Import cancelled by user. Deleting any previously saved records...");
-                  if ( fs.existsSync(fullPathToResultsFile) ) {
-                      await this.deletePreviouslySavedRecords(fullPathToResultsFile, aliasAuthenticationConnection);
-                  }
-              };
-              // processAndInsertCollectionFile ROLLS BACK AN ALL-OR-NONE FAILURE ITSELF, SO A CANCEL SEEN AFTER ONE IS NOT A SECOND DELETE
-              const hasAllOrNoneFailure = () => allOrNoneSelection && Object.keys(allCollectionApiFilesSobjectResults.FailureResults).length > 0;
-              const showInsertFailure = (notificationText: string) => {
-                  if ( insertOptions.isFailureReportedByCaller ) {
-                      return;
-                  }
-                  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                  // THE FILE NAME AND THE ERROR ARE BOTH WORKSPACE OR ORG TEXT, AND A NOTIFICATION RENDERS [label](command:…) AS A LINK
-                  VSCodeWorkspaceService.showNotificationWithWorkspaceFile('error', RecipeYamlScalar.escapeForNotification(notificationText), INSERT_VIEW_ERRORS_LABEL,
-                      workspaceRoot && fs.existsSync(fullPathToResultsFile) ? fullPathToResultsFile : undefined,
-                      workspaceRoot ?? '', INSERT_RESULTS_FILE_MISSING_TEXT);
-              };
-          
-              for (let i = 0; i < totalFiles; i++) {
-
-                if (token.isCancellationRequested) {
-                  await rollBackCancelledInsert();
-                  return;
-                }
-          
-                const collectionsApiFilePath = collectionApiFiles[i];
-          
-                // Optional: just the filename (not full path)
-                const fileName = path.basename(collectionsApiFilePath);
-                const priorFailureCount = readObjectFailures(collectionsApiFilePath).length;
-          
-                progress.report({
-                    message: `Processing file ${i + 1} of ${totalFiles}: ${fileName}`,
-                    increment: (100 / totalFiles)
-                });
-          
-                try {
-
-                    const successResult = await this.processAndInsertCollectionFile(collectionsApiFilePath, 
-                                                            recordTypeDetailFromTargetOrg,
-                                                            objectReferenceIdToOrgCreatedRecordIdMap,
-                                                            aliasAuthenticationConnection,
-                                                            allOrNoneSelection,
-                                                            allCollectionApiFilesSobjectResults,
-                                                            fullPathToResultsFile,
-                                                            token,
-                                                            progress,
-                                                            insertOptions.prepareRecords);
-
-                    noteFailedFile(collectionsApiFilePath, priorFailureCount);
-
-                    if ( !successResult && token.isCancellationRequested && !hasAllOrNoneFailure() ) {
-                        await rollBackCancelledInsert();
-                        return;
-                    }
-
-                    if (!successResult) {
-                        outcome = 'stopped';
-                        isRolledBack = allOrNoneSelection;
-                        const failedCount = countRecordFailures(allCollectionApiFilesSobjectResults.FailureResults[this.getObjectNameFromCollectionsApiFilePath(collectionsApiFilePath)]);
-                        showInsertFailure(`Failed to process ${fileName}: ${failedCount} ${failedCount === 1 ? 'record' : 'records'} failed${isRolledBack ? ', and every record this insert had saved was deleted, because all-or-none was chosen' : ''}.`);
-                        break;                    
-                    }
-
-                } catch (error) {
-
-                    /*
-                        A request that threw saved nothing it could report, so the files after it --
-                        whose lookups name its records -- stop here too. Under all-or-none what the
-                        earlier files saved is deleted, as an all-or-none failure is.
-                    */
-                    outcome = 'stopped';
-                    const errorMessage = String((error as { message?: unknown })?.message ?? error);
-                    requestFailureDetail = `${fileName} failed: ${errorMessage}`;
-                    this.recordRequestFailure(allCollectionApiFilesSobjectResults, this.getObjectNameFromCollectionsApiFilePath(collectionsApiFilePath), fileName, errorMessage, fullPathToResultsFile);
-                    noteFailedFile(collectionsApiFilePath, priorFailureCount);
-                    // A FAILURE THE RESULTS MAP COULD NOT HOLD STILL NAMES ITS FILE
-                    failedFilePath ??= collectionsApiFilePath;
-                    if ( allOrNoneSelection ) {
-                        isRolledBack = true;
-                        if ( fs.existsSync(fullPathToResultsFile) ) {
-                            await this.deletePreviouslySavedRecords(fullPathToResultsFile, aliasAuthenticationConnection);
-                        }
-                    }
-                    showInsertFailure(`Failed to process ${fileName}: ${errorMessage}${isRolledBack ? ' — every record this insert had saved was deleted, because all-or-none was chosen.' : ''}`);
-                    break;
-
-                }
-
-              }
-          
-              if ( outcome === 'completed' ) {
-                  vscode.window.showInformationMessage("All files processed.");
-              }
-
-            }
-        );
-
         const countResults = (resultsByObject: Record<string, any[]> | undefined) => Object.values(resultsByObject ?? {}).reduce((recordCount, objectResults) => recordCount + countRecordFailures(objectResults), 0);
+
+        try {
+
+            await vscode.window.withProgress(
+                {
+                  location: vscode.ProgressLocation.Notification,
+                  title: "Inserting Salesforce Collection API files...",
+                  cancellable: true
+                },
+            
+                async (progress, token) => {
+
+                  const totalFiles = collectionApiFiles.length;
+                  const rollBackCancelledInsert = async () => {
+                      outcome = 'cancelled';
+                      isRolledBack = true;
+                      vscode.window.showWarningMessage("Import cancelled by user. Deleting any previously saved records...");
+                      if ( fs.existsSync(fullPathToResultsFile) ) {
+                          await this.deletePreviouslySavedRecords(fullPathToResultsFile, aliasAuthenticationConnection);
+                      }
+                  };
+                  // processAndInsertCollectionFile ROLLS BACK AN ALL-OR-NONE FAILURE ITSELF, SO A CANCEL SEEN AFTER ONE IS NOT A SECOND DELETE
+                  const hasAllOrNoneFailure = () => allOrNoneSelection && Object.keys(allCollectionApiFilesSobjectResults.FailureResults).length > 0;
+                  const showInsertFailure = (notificationText: string) => {
+                      if ( insertOptions.isFailureReportedByCaller ) {
+                          return;
+                      }
+                      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                      // THE FILE NAME AND THE ERROR ARE BOTH WORKSPACE OR ORG TEXT, AND A NOTIFICATION RENDERS [label](command:…) AS A LINK
+                      VSCodeWorkspaceService.showNotificationWithWorkspaceFile('error', RecipeYamlScalar.escapeForNotification(notificationText), INSERT_VIEW_ERRORS_LABEL,
+                          workspaceRoot && fs.existsSync(fullPathToResultsFile) ? fullPathToResultsFile : undefined,
+                          workspaceRoot ?? '', INSERT_RESULTS_FILE_MISSING_TEXT);
+                  };
+          
+                  for (let i = 0; i < totalFiles; i++) {
+
+                    if (token.isCancellationRequested) {
+                      await rollBackCancelledInsert();
+                      return;
+                    }
+          
+                    const collectionsApiFilePath = collectionApiFiles[i];
+          
+                    // Optional: just the filename (not full path)
+                    const fileName = path.basename(collectionsApiFilePath);
+                    const priorFailureCount = readObjectFailures(collectionsApiFilePath).length;
+          
+                    progress.report({
+                        message: `Processing file ${i + 1} of ${totalFiles}: ${fileName}`,
+                        increment: (100 / totalFiles)
+                    });
+          
+                    try {
+
+                        const successResult = await this.processAndInsertCollectionFile(collectionsApiFilePath, 
+                                                                recordTypeDetailFromTargetOrg,
+                                                                objectReferenceIdToOrgCreatedRecordIdMap,
+                                                                aliasAuthenticationConnection,
+                                                                allOrNoneSelection,
+                                                                allCollectionApiFilesSobjectResults,
+                                                                fullPathToResultsFile,
+                                                                token,
+                                                                progress,
+                                                                insertOptions.prepareRecords);
+
+                        noteFailedFile(collectionsApiFilePath, priorFailureCount);
+
+                        if ( !successResult && token.isCancellationRequested && !hasAllOrNoneFailure() ) {
+                            await rollBackCancelledInsert();
+                            return;
+                        }
+
+                        if (!successResult) {
+                            outcome = 'stopped';
+                            isRolledBack = allOrNoneSelection;
+                            const failedCount = countRecordFailures(allCollectionApiFilesSobjectResults.FailureResults[this.getObjectNameFromCollectionsApiFilePath(collectionsApiFilePath)]);
+                            showInsertFailure(`Failed to process ${fileName}: ${failedCount} ${failedCount === 1 ? 'record' : 'records'} failed${isRolledBack ? ', and every record this insert had saved was deleted, because all-or-none was chosen' : ''}.`);
+                            break;                    
+                        }
+
+                    } catch (error) {
+
+                        /*
+                            A request that threw saved nothing it could report, so the files after it --
+                            whose lookups name its records -- stop here too. Under all-or-none what the
+                            earlier files saved is deleted, as an all-or-none failure is.
+                        */
+                        outcome = 'stopped';
+                        const errorMessage = String((error as { message?: unknown })?.message ?? error);
+                        requestFailureDetail = `${fileName} failed: ${errorMessage}`;
+                        this.recordRequestFailure(allCollectionApiFilesSobjectResults, this.getObjectNameFromCollectionsApiFilePath(collectionsApiFilePath), fileName, errorMessage, fullPathToResultsFile);
+                        noteFailedFile(collectionsApiFilePath, priorFailureCount);
+                        // A FAILURE THE RESULTS MAP COULD NOT HOLD STILL NAMES ITS FILE
+                        failedFilePath ??= collectionsApiFilePath;
+                        if ( allOrNoneSelection ) {
+                            isRolledBack = true;
+                            if ( fs.existsSync(fullPathToResultsFile) ) {
+                                await this.deletePreviouslySavedRecords(fullPathToResultsFile, aliasAuthenticationConnection);
+                            }
+                        }
+                        showInsertFailure(`Failed to process ${fileName}: ${errorMessage}${isRolledBack ? ' — every record this insert had saved was deleted, because all-or-none was chosen.' : ''}`);
+                        break;
+
+                    }
+
+                  }
+          
+                  if ( outcome === 'completed' ) {
+                      vscode.window.showInformationMessage("All files processed.");
+                  }
+
+                }
+            );
+
+        } catch (insertError) {
+
+            /*
+                A throw here -- a rollback whose delete failed is the usual one -- still leaves a summary
+                (#469), marked interrupted: every record SuccessResults lists may still be in the org,
+                and the data set row must not read as an insert from before summaries were written.
+            */
+            DatasetInsertAttemptService.writeSummary(fullPathToResultsFile, DatasetInsertAttemptService.buildSummary(outcome === 'completed' ? 'stopped' : outcome,
+                false, allOrNoneSelection, countResults(allCollectionApiFilesSobjectResults.SuccessResults), countResults(allCollectionApiFilesSobjectResults.FailureResults),
+                insertOptions.orgUsername, insertOptions.orgAlias, insertStartedAt, new Date(), true));
+            throw insertError;
+
+        }
+
+        const savedRecordCount = isRolledBack ? 0 : countResults(allCollectionApiFilesSobjectResults.SuccessResults);
+        const failedRecordCount = countResults(allCollectionApiFilesSobjectResults.FailureResults);
+
+        // HOW THE INSERT ENDED, WHICH THE RESULTS FILE CANNOT SAY: A ROLLBACK LEAVES THE DELETED RECORDS UNDER SuccessResults
+        DatasetInsertAttemptService.writeSummary(fullPathToResultsFile, DatasetInsertAttemptService.buildSummary(outcome, isRolledBack, allOrNoneSelection,
+            savedRecordCount, failedRecordCount, insertOptions.orgUsername, insertOptions.orgAlias, insertStartedAt, new Date()));
 
         return {
             outcome: outcome,
             isRolledBack: isRolledBack,
             resultsFilePath: fullPathToResultsFile,
-            savedRecordCount: isRolledBack ? 0 : countResults(allCollectionApiFilesSobjectResults.SuccessResults),
-            failedRecordCount: countResults(allCollectionApiFilesSobjectResults.FailureResults),
+            savedRecordCount: savedRecordCount,
+            failedRecordCount: failedRecordCount,
             ...(requestFailureDetail === undefined ? {} : { requestFailureDetail }),
             ...(failedFilePath === undefined ? {} : { failedFilePath }),
             ...(firstFailure === undefined ? {} : { firstFailure })

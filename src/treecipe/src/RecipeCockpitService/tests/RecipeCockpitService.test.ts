@@ -3179,7 +3179,7 @@ describe('RecipeCockpitService', () => {
                     [{ treeKey: 'Lead-ONLY', folderName: 'Lead-ONLY' }]
                 );
 
-                expect(Object.keys(targets).sort()).toEqual(['datasetFolderPathsByName', 'runFakerRecipeFilePathsByTreeKey']);
+                expect(Object.keys(targets).sort()).toEqual(['datasetFolderPathsByName', 'insertResultsFilePathsByDatasetFolderName', 'runFakerRecipeFilePathsByTreeKey']);
                 expect(targets.runFakerRecipeFilePathsByTreeKey.get('Lead-ONLY')).toContain(HISTORY_CURRENT_RUN);
 
             });

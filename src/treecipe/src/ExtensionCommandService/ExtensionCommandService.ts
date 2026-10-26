@@ -2698,7 +2698,10 @@ export class ExtensionCommandService {
                 return;
             }
 
-            await CollectionsApiService.insertDataSetFolderIntoOrg(selectedDataSetFullDirectoryPath, aliasAuthenticationConnection, allOrNoneSelection);
+            await CollectionsApiService.insertDataSetFolderIntoOrg(selectedDataSetFullDirectoryPath, aliasAuthenticationConnection, allOrNoneSelection, {
+                orgUsername: targetOrgDetail.username,
+                orgAlias: targetOrgDetail.alias
+            });
 
         } catch(error) {
 
