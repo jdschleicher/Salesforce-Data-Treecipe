@@ -173,6 +173,12 @@ export interface IRecipeFilterLookup {
     self-lookup's iteration keeps its own. For a nested faker-js friend that is records per parent
     record, as "count:" always meant there.
 */
+/*
+    Every map keyed by object takes, beside an object api name, an OCCURRENCE key (#467):
+    "<Object>\n<Nickname>" (buildOccurrenceKey), which applies to the one occurrence of the object
+    holding that nickname. An occurrence takes its own key's entry when there is one, else the
+    object's, so an object-wide entry still applies to every occurrence nothing else is set for.
+*/
 export interface IRecipeFilterRequest {
     excludedObjectApiNames: readonly string[];
     parentLookupsByObjectApiName: ReadonlyMap<string, readonly IRecipeFilterLookup[]>;
@@ -227,18 +233,21 @@ export interface IRecipeFixedValue {
 // ONE FIXED VALUE buildFilteredRecipe WROTE, AS IT READ BACK
 export interface IRecipeFilterFixedValue extends IRecipeFixedValue {
     objectApiName: string;
+    nickname?: string;
     fieldApiName: string;
 }
 
-// ONE COUNT buildFilteredRecipe WROTE, AS IT READ BACK
+// ONE COUNT buildFilteredRecipe WROTE, AS IT READ BACK; nickname IS SET WHEN IT WAS SET FOR ONE OCCURRENCE (#467)
 export interface IRecipeFilterCount {
     objectApiName: string;
+    nickname?: string;
     count: number;
 }
 
 // ONE FIELD buildFilteredRecipe LEFT OUT BECAUSE THE READER UNTICKED IT
 export interface IRecipeFilterDroppedField {
     objectApiName: string;
+    nickname?: string;
     fieldApiName: string;
 }
 
@@ -661,7 +670,7 @@ export class RecipeCockpitRecipeWriter {
         stays missing. The value is held to checkFixedValue and refused when it is a nickname of the
         recipe, as the filtered copy refuses it, and the result is scanned again before it is answered.
     */
-    static pinField(recipeText: string, objectApiName: string, fieldApiName: string, fixedValue: IRecipeFixedValue): RecipeFieldPinResult {
+    static pinField(recipeText: string, objectApiName: string, fieldApiName: string, fixedValue: IRecipeFixedValue, objectNickname?: string): RecipeFieldPinResult {
 
         const refusePin = (refusal: { refusal: IRecipeWriterRefusal }): RecipeFieldPinResult => ({ isPinned: false, refusal: refusal.refusal });
 
@@ -684,7 +693,7 @@ export class RecipeCockpitRecipeWriter {
             return refusePin(this.refuse('invalid-value', `The fixed value for ${objectApiName}.${fieldApiName} is the nickname of an object in this recipe, which generation would read as a reference to that record.`, objectApiName, fieldApiName));
         }
 
-        const located = this.locatePinnableOccurrences(scannedObjects, objectApiName, fieldApiName);
+        const located = this.locatePinnableOccurrences(scannedObjects, objectApiName, fieldApiName, objectNickname);
         if ( 'refusal' in located ) {
             return refusePin(located);
         }
@@ -721,9 +730,16 @@ export class RecipeCockpitRecipeWriter {
         too, from a recorded original moved to its depth, so Clear never leaves the value behind. A
         line put back may not carry a bare CR or a line break only PyYAML sees, and the result must
         scan to the same objects and fields as before, each restored field spanning exactly the lines
-        put back; anything else would be a line this writer never checked.
+        put back; anything else would be a line this writer never checked. A Clear of one occurrence's
+        own pin (#467) puts back that occurrence alone, and a wider Clear passes over an occurrence
+        whose own pin holds it now.
     */
-    static restorePinnedField(recipeText: string, objectApiName: string, fieldApiName: string, restoreRequests: readonly IPinnedFieldRestoreRequest[]): RecipeFieldRestoreResult {
+    static restorePinnedField(recipeText: string,
+                                objectApiName: string,
+                                fieldApiName: string,
+                                restoreRequests: readonly IPinnedFieldRestoreRequest[],
+                                isScopedToRecordedOccurrences = false,
+                                ownPinNicknames: readonly string[] = []): RecipeFieldRestoreResult {
 
         const refuseRestore = (refusal: { refusal: IRecipeWriterRefusal }): RecipeFieldRestoreResult => ({ isRestored: false, refusal: refusal.refusal });
 
@@ -746,8 +762,12 @@ export class RecipeCockpitRecipeWriter {
         }
         const targets: { occurrenceIndex: number; scannedObject: IScannedObject; scannedField: IScannedField; request?: IPinnedFieldRestoreRequest }[] = [...recordedTargets];
 
-        const pinnedLineTexts = new Set(restoreRequests.map(restoreRequest => restoreRequest.writtenLine.trimStart()));
+        // A PIN OF ONE OCCURRENCE (#467) PUTS BACK ONLY THAT ONE: ANOTHER HOLDING THE SAME LINE HOLDS IT FOR ITS OWN REASON
+        const pinnedLineTexts = new Set(isScopedToRecordedOccurrences ? [] : restoreRequests.map(restoreRequest => restoreRequest.writtenLine.trimStart()));
         objectOccurrences.forEach((scannedObject, occurrenceIndex) => {
+            if ( scannedObject.nicknames.length === 1 && ownPinNicknames.includes(scannedObject.nicknames[0]) ) {
+                return;
+            }
             const scannedField = targets.some(target => target.occurrenceIndex === occurrenceIndex) ? undefined : this.findPinnedLineField(scannedObject, fieldApiName);
             if ( scannedField && pinnedLineTexts.has(recipeLines.lines[scannedField.startIndex].trimStart()) ) {
                 targets.push({ occurrenceIndex: occurrenceIndex, scannedObject: scannedObject, scannedField: scannedField });
@@ -890,8 +910,11 @@ export class RecipeCockpitRecipeWriter {
 
     }
 
-    // EVERY OCCURRENCE OF THE OBJECT THAT CARRIES THE FIELD ONCE, IN ONE fields: BLOCK -- ANY OTHER SHAPE IS REFUSED RATHER THAN GUESSED AT
-    private static locatePinnableOccurrences(scannedObjects: IScannedObject[], objectApiName: string, fieldApiName: string):
+    /*
+        EVERY OCCURRENCE OF THE OBJECT THAT CARRIES THE FIELD ONCE, IN ONE fields: BLOCK -- ANY OTHER SHAPE IS REFUSED RATHER THAN GUESSED AT.
+        With a nickname, only the ONE occurrence holding it (#467): none, or two, is refused, since which to change cannot be told.
+    */
+    private static locatePinnableOccurrences(scannedObjects: IScannedObject[], objectApiName: string, fieldApiName: string, onlyNickname?: string):
         { occurrences: { occurrenceIndex: number; scannedObject: IScannedObject; scannedField: IScannedField }[] } | { isApplied: false; refusal: IRecipeWriterRefusal } {
 
         const objectOccurrences = scannedObjects.filter(scannedObject => scannedObject.objectApiName === objectApiName);
@@ -899,8 +922,15 @@ export class RecipeCockpitRecipeWriter {
             return this.refuse('object-not-found', `The recipe has no "- object: ${objectApiName}" line.`, objectApiName, fieldApiName);
         }
 
+        if ( onlyNickname !== undefined && !this.findOccurrenceByNickname(objectOccurrences, objectApiName, onlyNickname) ) {
+            return this.refuse('object-not-found', `The recipe has no one ${objectApiName} nicknamed ${onlyNickname}, so which to change cannot be told.`, objectApiName, fieldApiName, onlyNickname);
+        }
+
         const occurrences: { occurrenceIndex: number; scannedObject: IScannedObject; scannedField: IScannedField }[] = [];
         for ( const [occurrenceIndex, scannedObject] of objectOccurrences.entries() ) {
+            if ( onlyNickname !== undefined && scannedObject.nicknames[0] !== onlyNickname ) {
+                continue;
+            }
             const scannedFields = scannedObject.fields.filter(scannedField => scannedField.fieldApiName === fieldApiName);
             if ( scannedFields.length === 0 ) {
                 continue;
@@ -2753,7 +2783,7 @@ export class RecipeCockpitRecipeWriter {
         // THE NAMES GO INTO THE COPY'S HEADER COMMENT, SO EACH IS HELD TO THE API NAME RULE BEFORE ANYTHING IS WRITTEN
         const excludedFieldsByObject = new Map<string, Set<string>>();
         for ( const [objectApiName, fieldApiNames] of filterRequest.excludedFieldApiNamesByObject ?? new Map<string, readonly string[]>() ) {
-            if ( !API_NAME_PATTERN.test(objectApiName) ) {
+            if ( !this.isOccurrenceKey(objectApiName) ) {
                 return refuseFilter('invalid-object-api-name', `"${objectApiName}" is not an object api name.`, objectApiName);
             }
             const invalidFieldApiName = fieldApiNames.find(fieldApiName => !API_NAME_PATTERN.test(fieldApiName));
@@ -2767,7 +2797,7 @@ export class RecipeCockpitRecipeWriter {
 
         const countsByObject = new Map<string, number>();
         for ( const [objectApiName, recordCount] of filterRequest.objectCountsByObject ?? new Map<string, number>() ) {
-            if ( !API_NAME_PATTERN.test(objectApiName) ) {
+            if ( !this.isOccurrenceKey(objectApiName) ) {
                 return refuseFilter('invalid-object-api-name', `"${objectApiName}" is not an object api name.`, objectApiName);
             }
             if ( !this.isRecordCount(recordCount) ) {
@@ -2778,7 +2808,7 @@ export class RecipeCockpitRecipeWriter {
 
         const fixedValuesByObject = new Map<string, Map<string, IRecipeFixedValue>>();
         for ( const [objectApiName, fixedValuesByField] of filterRequest.fixedValuesByObject ?? new Map<string, ReadonlyMap<string, IRecipeFixedValue>>() ) {
-            if ( !API_NAME_PATTERN.test(objectApiName) ) {
+            if ( !this.isOccurrenceKey(objectApiName) ) {
                 return refuseFilter('invalid-object-api-name', `"${objectApiName}" is not an object api name.`, objectApiName);
             }
             for ( const [fieldApiName, fixedValue] of fixedValuesByField ) {
@@ -2797,7 +2827,7 @@ export class RecipeCockpitRecipeWriter {
 
         const constrainedExpressionsByObject = new Map<string, Map<string, string>>();
         for ( const [objectApiName, expressionsByField] of filterRequest.constrainedExpressionsByObject ?? new Map<string, ReadonlyMap<string, string>>() ) {
-            if ( !API_NAME_PATTERN.test(objectApiName) ) {
+            if ( !this.isOccurrenceKey(objectApiName) ) {
                 return refuseFilter('invalid-object-api-name', `"${objectApiName}" is not an object api name.`, objectApiName);
             }
             for ( const [fieldApiName, expression] of expressionsByField ) {
@@ -2817,7 +2847,7 @@ export class RecipeCockpitRecipeWriter {
 
         const unconstrainedValuesByObject = new Map<string, Map<string, IRecipeUnconstrainedValue>>();
         for ( const [objectApiName, valuesByField] of filterRequest.unconstrainedValuesByObject ?? new Map<string, ReadonlyMap<string, IRecipeUnconstrainedValue>>() ) {
-            if ( !API_NAME_PATTERN.test(objectApiName) ) {
+            if ( !this.isOccurrenceKey(objectApiName) ) {
                 return refuseFilter('invalid-object-api-name', `"${objectApiName}" is not an object api name.`, objectApiName);
             }
             for ( const [fieldApiName, unconstrainedValue] of valuesByField ) {
@@ -2888,31 +2918,45 @@ export class RecipeCockpitRecipeWriter {
         const hasLookupToDrop = keptObjects.some(keptObject => ( filterRequest.parentLookupsByObjectApiName.get(keptObject.objectApiName) ?? [] )
             .some(lookup => excludedObjectApiNames.has(lookup.parentObjectApiName)));
         const hasFieldToDrop = keptObjects.some(keptObject => {
-            const excludedFieldApiNames = excludedFieldsByObject.get(keptObject.objectApiName);
+            const excludedFieldApiNames = this.pickForOccurrence(excludedFieldsByObject, keptObject);
             return !!excludedFieldApiNames && keptObject.fields.some(scannedField => excludedFieldApiNames.has(scannedField.fieldApiName));
         });
 
-        // A COUNT GOES ON THE FIRST OCCURRENCE'S ONE "count:" LINE; ONE ALREADY HOLDING IT CHANGES NOTHING
+        /*
+            An object's count goes on its FIRST occurrence's one "count:" line; an occurrence key's on
+            the one occurrence holding that nickname (#467), which wins over its object's. One already
+            holding it changes nothing.
+        */
+        const countsByHeaderIndex = new Map<number, { countedObject: IScannedObject; recordCount: number; nickname?: string }>();
+        for ( const [occurrenceKey, recordCount] of [...countsByObject].sort(([leftKey], [rightKey]) => Number(leftKey.includes('\n')) - Number(rightKey.includes('\n'))) ) {
+            const { objectApiName, nickname } = this.parseOccurrenceKey(occurrenceKey);
+            const countedObject = nickname === undefined
+                ? firstOccurrencesByApiName.get(objectApiName)
+                : this.findOccurrenceByNickname(scannedObjects, objectApiName, nickname);
+            if ( countedObject ) {
+                countsByHeaderIndex.set(countedObject.headerIndex, { countedObject: countedObject, recordCount: recordCount, ...( nickname !== undefined ? { nickname: nickname } : {} ) });
+            }
+        }
         const countOverridesByLineIndex = new Map<number, number>();
         const appliedCounts: IRecipeFilterCount[] = [];
-        for ( const [objectApiName, recordCount] of countsByObject ) {
-            const countedObject = firstOccurrencesByApiName.get(objectApiName);
-            if ( !countedObject || droppedHeaderIndexes.has(countedObject.headerIndex) ) {
+        for ( const { countedObject, recordCount, nickname } of countsByHeaderIndex.values() ) {
+            const objectApiName = countedObject.objectApiName;
+            if ( droppedHeaderIndexes.has(countedObject.headerIndex) ) {
                 continue;
             }
             if ( countedObject.propertyLineIndexes.count.length !== 1 ) {
-                return refuseFilter('unsupported-filter-layout', `${objectApiName} has ${countedObject.propertyLineIndexes.count.length === 0 ? 'no' : 'more than one'} "count:" line, so its count could not be set.`, objectApiName);
+                return refuseFilter('unsupported-filter-layout', `${this.describeObject(objectApiName, nickname)} has ${countedObject.propertyLineIndexes.count.length === 0 ? 'no' : 'more than one'} "count:" line, so its count could not be set.`, objectApiName);
             }
             if ( this.readObjectCount(lines, countedObject) !== recordCount ) {
                 countOverridesByLineIndex.set(countedObject.propertyLineIndexes.count[0], recordCount);
-                appliedCounts.push({ objectApiName: objectApiName, count: recordCount });
+                appliedCounts.push({ objectApiName: objectApiName, ...( nickname !== undefined ? { nickname: nickname } : {} ), count: recordCount });
             }
         }
 
         const hasFieldToFix = keptObjects.some(keptObject => {
-            const fixedValuesByField = fixedValuesByObject.get(keptObject.objectApiName);
-            const expressionsByField = constrainedExpressionsByObject.get(keptObject.objectApiName);
-            const unconstrainedByField = unconstrainedValuesByObject.get(keptObject.objectApiName);
+            const fixedValuesByField = this.pickForOccurrence(fixedValuesByObject, keptObject);
+            const expressionsByField = this.pickForOccurrence(constrainedExpressionsByObject, keptObject);
+            const unconstrainedByField = this.pickForOccurrence(unconstrainedValuesByObject, keptObject);
             return keptObject.fields.some(scannedField => !!fixedValuesByField?.has(scannedField.fieldApiName)
                                                             || !!expressionsByField?.has(scannedField.fieldApiName)
                                                             || !!unconstrainedByField?.has(scannedField.fieldApiName));
@@ -3017,20 +3061,23 @@ export class RecipeCockpitRecipeWriter {
             const fieldIndent = this.getObjectLayout(keptObject.objectIndent).fieldIndent;
             const parentsByFieldApiName = new Map(lookupsOf(keptObject.objectApiName).map(lookup => [lookup.fieldApiName, lookup.parentObjectApiName]));
             const newParent = newParentsByMovedHeaderIndex.get(keptObject.headerIndex);
-            const excludedFieldApiNames = excludedFieldsByObject.get(keptObject.objectApiName);
-            const fixedValuesByField = fixedValuesByObject.get(keptObject.objectApiName);
-            const expressionsByField = constrainedExpressionsByObject.get(keptObject.objectApiName);
-            const unconstrainedByField = unconstrainedValuesByObject.get(keptObject.objectApiName);
+            const excludedFieldApiNames = this.pickForOccurrence(excludedFieldsByObject, keptObject);
+            const fixedValuesByField = this.pickForOccurrence(fixedValuesByObject, keptObject);
+            const expressionsByField = this.pickForOccurrence(constrainedExpressionsByObject, keptObject);
+            const unconstrainedByField = this.pickForOccurrence(unconstrainedValuesByObject, keptObject);
+            // WHAT AN APPLIED CHANGE IS LISTED UNDER: THE OCCURRENCE WHEN ITS OWN KEY SET IT (#467), ELSE THE OBJECT
+            const scopeOf = (scopedMap: ReadonlyMap<string, unknown>) => this.findOccurrenceScope(scopedMap, keptObject);
 
             keptObject.fields.forEach(scannedField => {
 
                 // AN UNTICKED FIELD GOES, ITS CONTINUATION LINES WITH IT, BEFORE ANY LOOKUP IS RE-WIRED
                 if ( excludedFieldApiNames?.has(scannedField.fieldApiName) ) {
                     removeFieldLines(scannedField);
-                    const droppedFieldKey = `${keptObject.objectApiName}\n${scannedField.fieldApiName}`;
+                    const scopeNickname = scopeOf(excludedFieldsByObject);
+                    const droppedFieldKey = `${this.buildOccurrenceKey(keptObject.objectApiName, scopeNickname)}\n${scannedField.fieldApiName}`;
                     if ( !droppedFieldKeys.has(droppedFieldKey) ) {
                         droppedFieldKeys.add(droppedFieldKey);
-                        droppedFields.push({ objectApiName: keptObject.objectApiName, fieldApiName: scannedField.fieldApiName });
+                        droppedFields.push({ objectApiName: keptObject.objectApiName, ...( scopeNickname !== undefined ? { nickname: scopeNickname } : {} ), fieldApiName: scannedField.fieldApiName });
                     }
                     return;
                 }
@@ -3040,10 +3087,11 @@ export class RecipeCockpitRecipeWriter {
                 if ( fixedValue ) {
                     fixedFieldsByLineIndex.set(scannedField.startIndex, { fieldApiName: scannedField.fieldApiName, fixedValue: fixedValue });
                     removeFieldLines(scannedField, scannedField.startIndex + 1);
-                    const fixedValueKey = `${keptObject.objectApiName}\n${scannedField.fieldApiName}`;
+                    const scopeNickname = scopeOf(fixedValuesByObject);
+                    const fixedValueKey = `${this.buildOccurrenceKey(keptObject.objectApiName, scopeNickname)}\n${scannedField.fieldApiName}`;
                     if ( !appliedFixedValueKeys.has(fixedValueKey) ) {
                         appliedFixedValueKeys.add(fixedValueKey);
-                        appliedFixedValues.push({ objectApiName: keptObject.objectApiName, fieldApiName: scannedField.fieldApiName, ...fixedValue });
+                        appliedFixedValues.push({ objectApiName: keptObject.objectApiName, ...( scopeNickname !== undefined ? { nickname: scopeNickname } : {} ), fieldApiName: scannedField.fieldApiName, ...fixedValue });
                     }
                     return;
                 }
@@ -3066,15 +3114,16 @@ export class RecipeCockpitRecipeWriter {
                     const isRuleWritten = ruleWrittenLines.length === scannedField.endIndex - scannedField.startIndex
                                             && ruleWrittenLines.every((ruleWrittenLine, lineOffset) => lines[scannedField.startIndex + lineOffset] === ruleWrittenLine);
                     if ( !isRuleWritten ) {
-                        unconstrainedMismatch = unconstrainedMismatch ?? { objectApiName: keptObject.objectApiName, fieldApiName: scannedField.fieldApiName };
+                        unconstrainedMismatch = unconstrainedMismatch ?? { objectApiName: keptObject.objectApiName, ...( scopeOf(unconstrainedValuesByObject) !== undefined ? { nickname: scopeOf(unconstrainedValuesByObject) } : {} ), fieldApiName: scannedField.fieldApiName };
                         return;
                     }
                     unconstrainedFieldsByLineIndex.set(scannedField.startIndex, { fieldApiName: scannedField.fieldApiName, value: unconstrainedValue.unconstrainedValue });
                     removeFieldLines(scannedField, scannedField.startIndex + 1);
-                    const unconstrainedKey = `${keptObject.objectApiName}\n${scannedField.fieldApiName}`;
+                    const scopeNickname = scopeOf(unconstrainedValuesByObject);
+                    const unconstrainedKey = `${this.buildOccurrenceKey(keptObject.objectApiName, scopeNickname)}\n${scannedField.fieldApiName}`;
                     if ( !appliedUnconstrainedKeys.has(unconstrainedKey) ) {
                         appliedUnconstrainedKeys.add(unconstrainedKey);
-                        appliedUnconstrainedValues.push({ objectApiName: keptObject.objectApiName, fieldApiName: scannedField.fieldApiName });
+                        appliedUnconstrainedValues.push({ objectApiName: keptObject.objectApiName, ...( scopeNickname !== undefined ? { nickname: scopeNickname } : {} ), fieldApiName: scannedField.fieldApiName });
                     }
                     return;
                 }
@@ -3115,7 +3164,7 @@ export class RecipeCockpitRecipeWriter {
                 isFiltered: false,
                 refusal: {
                     reason: 'unsupported-filter-layout',
-                    message: `${unconstrainedMismatch.objectApiName}.${unconstrainedMismatch.fieldApiName} in the recipe is not the value its validation rules wrote, so they could not be switched off.`,
+                    message: `${this.describeObject(unconstrainedMismatch.objectApiName, unconstrainedMismatch.nickname)}.${unconstrainedMismatch.fieldApiName} in the recipe is not the value its validation rules wrote, so they could not be switched off.`,
                     objectApiName: unconstrainedMismatch.objectApiName,
                     fieldApiName: unconstrainedMismatch.fieldApiName
                 }
@@ -3232,16 +3281,18 @@ export class RecipeCockpitRecipeWriter {
             .filter(scannedObject => droppedHeaderIndexes.has(scannedObject.headerIndex))
             .map(scannedObject => scannedObject.objectApiName))];
 
+        // AN OCCURRENCE'S OWN CHANGE NAMES IT (#467): "Account (Account_child_NickName).Name"
+        const describeScoped = (scoped: { objectApiName: string; nickname?: string }) => ( scoped.nickname === undefined ? scoped.objectApiName : `${scoped.objectApiName} (${scoped.nickname})` );
         const leftOutParts = [
             ...( droppedObjectApiNames.length > 0 ? [droppedObjectApiNames.join(', ')] : [] ),
-            ...( droppedFields.length > 0 ? [`fields ${droppedFields.map(droppedField => `${droppedField.objectApiName}.${droppedField.fieldApiName}`).join(', ')}`] : [] )
+            ...( droppedFields.length > 0 ? [`fields ${droppedFields.map(droppedField => `${describeScoped(droppedField)}.${droppedField.fieldApiName}`).join(', ')}`] : [] )
         ];
         const headerParts = [
             ...( leftOutParts.length > 0 ? [`leaving out: ${leftOutParts.join('; ')}`] : [] ),
-            ...( appliedCounts.length > 0 ? [`with counts: ${appliedCounts.map(appliedCount => `${appliedCount.objectApiName} ${appliedCount.count}`).join(', ')}`] : [] ),
-            ...( appliedFixedValues.length > 0 ? [`with fixed values: ${appliedFixedValues.map(appliedFixedValue => `${appliedFixedValue.objectApiName}.${appliedFixedValue.fieldApiName}`).join(', ')}`] : [] ),
+            ...( appliedCounts.length > 0 ? [`with counts: ${appliedCounts.map(appliedCount => `${describeScoped(appliedCount)} ${appliedCount.count}`).join(', ')}`] : [] ),
+            ...( appliedFixedValues.length > 0 ? [`with fixed values: ${appliedFixedValues.map(appliedFixedValue => `${describeScoped(appliedFixedValue)}.${appliedFixedValue.fieldApiName}`).join(', ')}`] : [] ),
             ...( appliedConstrainedExpressions.length > 0 ? [`with constrained fields: ${appliedConstrainedExpressions.map(appliedExpression => `${appliedExpression.objectApiName}.${appliedExpression.fieldApiName}`).join(', ')}`] : [] ),
-            ...( appliedUnconstrainedValues.length > 0 ? [`with validation rules off: ${appliedUnconstrainedValues.map(appliedValue => `${appliedValue.objectApiName}.${appliedValue.fieldApiName}`).join(', ')}`] : [] )
+            ...( appliedUnconstrainedValues.length > 0 ? [`with validation rules off: ${appliedUnconstrainedValues.map(appliedValue => `${describeScoped(appliedValue)}.${appliedValue.fieldApiName}`).join(', ')}`] : [] )
         ];
         emit(`# Recipe Cockpit -- a filtered copy of this tree's recipe, ${headerParts.join('; ')}`);
 
@@ -3502,15 +3553,17 @@ export class RecipeCockpitRecipeWriter {
         const actual = filteredObjects.map(describeFiltered).sort();
 
         return !filteredObjects.some(filteredObject => excludedObjectApiNames.has(filteredObject.objectApiName))
-                && !filteredObjects.some(filteredObject => filteredObject.fields.some(scannedField => excludedFieldsByObject.get(filteredObject.objectApiName)?.has(scannedField.fieldApiName)))
+                && !filteredObjects.some(filteredObject => filteredObject.fields.some(scannedField => this.pickForOccurrence(excludedFieldsByObject, filteredObject)?.has(scannedField.fieldApiName)))
                 && expected.length === actual.length
                 && expected.every((description, index) => description === actual[index])
                 && appliedCounts.every(appliedCount => {
-                    const countedObject = filteredObjects.find(filteredObject => filteredObject.objectApiName === appliedCount.objectApiName);
+                    const countedObject = appliedCount.nickname === undefined
+                        ? filteredObjects.find(filteredObject => filteredObject.objectApiName === appliedCount.objectApiName)
+                        : this.findOccurrenceByNickname(filteredObjects, appliedCount.objectApiName, appliedCount.nickname);
                     return !!countedObject && this.readObjectCount(filteredLines, countedObject) === appliedCount.count;
                 })
                 && filteredObjects.every(filteredObject => {
-                    const fixedValuesByField = fixedValuesByObject.get(filteredObject.objectApiName);
+                    const fixedValuesByField = this.pickForOccurrence(fixedValuesByObject, filteredObject);
                     const fieldIndent = this.getObjectLayout(filteredObject.objectIndent).fieldIndent;
                     return !fixedValuesByField || filteredObject.fields
                         .filter(scannedField => fixedValuesByField.has(scannedField.fieldApiName))
@@ -3518,18 +3571,23 @@ export class RecipeCockpitRecipeWriter {
                                                 && filteredLines[scannedField.startIndex] === this.buildFixedValueFieldLine(fieldIndent, scannedField.fieldApiName, fixedValuesByField.get(scannedField.fieldApiName) as IRecipeFixedValue));
                 })
                 && filteredObjects.every(filteredObject => {
-                    const expressionsByField = constrainedExpressionsByObject.get(filteredObject.objectApiName);
+                    const expressionsByField = this.pickForOccurrence(constrainedExpressionsByObject, filteredObject);
+                    const fixedValuesByField = this.pickForOccurrence(fixedValuesByObject, filteredObject);
                     const fieldIndent = this.getObjectLayout(filteredObject.objectIndent).fieldIndent;
                     return !expressionsByField || filteredObject.fields
-                        .filter(scannedField => expressionsByField.has(scannedField.fieldApiName))
+                        .filter(scannedField => expressionsByField.has(scannedField.fieldApiName) && !fixedValuesByField?.has(scannedField.fieldApiName))
                         .every(scannedField => scannedField.endIndex === scannedField.startIndex + 1
                                                 && filteredLines[scannedField.startIndex] === this.buildConstrainedExpressionFieldLine(fieldIndent, scannedField.fieldApiName, expressionsByField.get(scannedField.fieldApiName) as string));
                 })
                 && filteredObjects.every(filteredObject => {
-                    const unconstrainedByField = unconstrainedValuesByObject.get(filteredObject.objectApiName);
+                    const unconstrainedByField = this.pickForOccurrence(unconstrainedValuesByObject, filteredObject);
+                    const fixedValuesByField = this.pickForOccurrence(fixedValuesByObject, filteredObject);
+                    const expressionsByField = this.pickForOccurrence(constrainedExpressionsByObject, filteredObject);
                     const layout = this.getObjectLayout(filteredObject.objectIndent);
                     return !unconstrainedByField || filteredObject.fields
-                        .filter(scannedField => unconstrainedByField.has(scannedField.fieldApiName))
+                        .filter(scannedField => unconstrainedByField.has(scannedField.fieldApiName)
+                                                && !fixedValuesByField?.has(scannedField.fieldApiName)
+                                                && !expressionsByField?.has(scannedField.fieldApiName))
                         .every(scannedField => {
                             const expectedLines = this.buildFieldLines(scannedField.fieldApiName, ( unconstrainedByField.get(scannedField.fieldApiName) as IRecipeUnconstrainedValue ).unconstrainedValue, layout) as string[];
                             return expectedLines.length === scannedField.endIndex - scannedField.startIndex
@@ -3537,6 +3595,50 @@ export class RecipeCockpitRecipeWriter {
                         });
                 });
 
+    }
+
+    /*
+        The key an OCCURRENCE's own entry is kept under (#467), in the filter request's maps and in
+        the cockpit's stored selections: "<Object>\n<Nickname>". Without a nickname it is the object
+        api name, the key every entry had before, which still applies to every occurrence.
+    */
+    static buildOccurrenceKey(objectApiName: string, nickname?: string): string {
+        return nickname === undefined ? objectApiName : `${objectApiName}\n${nickname}`;
+    }
+
+    static parseOccurrenceKey(occurrenceKey: string): { objectApiName: string; nickname?: string } {
+        const [objectApiName, nickname] = occurrenceKey.split('\n');
+        return nickname === undefined ? { objectApiName: objectApiName } : { objectApiName: objectApiName, nickname: nickname };
+    }
+
+    // AN OBJECT API NAME, OR ONE AND A NICKNAME THAT IS AN API NAME TOO -- NOTHING ELSE CAN REACH THE COPY'S HEADER COMMENT
+    static isOccurrenceKey(candidate: string): boolean {
+        const keyParts = candidate.split('\n');
+        return keyParts.length <= 2 && keyParts.every(keyPart => API_NAME_PATTERN.test(keyPart));
+    }
+
+    // AN OCCURRENCE'S OWN ENTRY WHEN IT HAS ONE NICKNAME AND THE MAP HOLDS ONE FOR IT, ELSE ITS OBJECT'S
+    private static pickForOccurrence<T>(scopedMap: ReadonlyMap<string, T>, scannedObject: IScannedObject): T | undefined {
+        if ( scannedObject.nicknames.length === 1 ) {
+            const occurrenceEntry = scopedMap.get(this.buildOccurrenceKey(scannedObject.objectApiName, scannedObject.nicknames[0]));
+            if ( occurrenceEntry !== undefined ) {
+                return occurrenceEntry;
+            }
+        }
+        return scopedMap.get(scannedObject.objectApiName);
+    }
+
+    // THE NICKNAME pickForOccurrence TOOK THE OCCURRENCE'S OWN ENTRY BY, OR undefined WHEN IT TOOK THE OBJECT'S
+    private static findOccurrenceScope(scopedMap: ReadonlyMap<string, unknown>, scannedObject: IScannedObject): string | undefined {
+        return scannedObject.nicknames.length === 1 && scopedMap.has(this.buildOccurrenceKey(scannedObject.objectApiName, scannedObject.nicknames[0]))
+            ? scannedObject.nicknames[0]
+            : undefined;
+    }
+
+    // THE ONE OCCURRENCE OF THE OBJECT WHOSE ONE NICKNAME IT IS, OR undefined WHEN NONE OR SEVERAL HOLD IT
+    private static findOccurrenceByNickname(scannedObjects: IScannedObject[], objectApiName: string, nickname: string): IScannedObject | undefined {
+        const holders = scannedObjects.filter(scannedObject => scannedObject.objectApiName === objectApiName && scannedObject.nicknames.length === 1 && scannedObject.nicknames[0] === nickname);
+        return holders.length === 1 ? holders[0] : undefined;
     }
 
     // THE "# Object (...)" COMMENT LINES DIRECTLY ABOVE AN OBJECT'S HEADER, AT ITS COLUMN, BELONG TO IT

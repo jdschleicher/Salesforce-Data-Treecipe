@@ -378,7 +378,7 @@ export class ExtensionCommandService {
             && fieldListMap !== null
             && !Array.isArray(fieldListMap)
             && Object.entries(fieldListMap).every(([objectApiName, fieldApiNames]) => (
-                SalesforceApiName.isApiName(objectApiName)
+                SalesforceApiName.isOccurrenceKey(objectApiName)
                 && Array.isArray(fieldApiNames)
                 && fieldApiNames.every(fieldApiName => SalesforceApiName.isApiName(fieldApiName))
             ))
@@ -395,7 +395,7 @@ export class ExtensionCommandService {
             && objectCountsByObject !== null
             && !Array.isArray(objectCountsByObject)
             && Object.entries(objectCountsByObject).every(([objectApiName, objectCount]) => (
-                SalesforceApiName.isApiName(objectApiName)
+                SalesforceApiName.isOccurrenceKey(objectApiName)
                 && typeof objectCount === 'number'
                 && Number.isSafeInteger(objectCount)
                 && objectCount >= 1
@@ -407,7 +407,7 @@ export class ExtensionCommandService {
             && fixedValuesByObject !== null
             && !Array.isArray(fixedValuesByObject)
             && Object.entries(fixedValuesByObject).every(([objectApiName, fixedValuesByField]) => (
-                SalesforceApiName.isApiName(objectApiName)
+                SalesforceApiName.isOccurrenceKey(objectApiName)
                 && typeof fixedValuesByField === 'object'
                 && fixedValuesByField !== null
                 && !Array.isArray(fixedValuesByField)

@@ -50,6 +50,7 @@ These settings change what is generated, but the recipe file stays exactly as Ge
 - **Unticked fields**: the field is left out. **All fields**, above an object's fields, ticks or unticks them all.
 - **Record counts**: each object's row says what is created, such as Create 5 ✎ Contact records per Account (a friend's count is records per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe's says changed.
 - **The rules box**: a field generated without the limits its validation rules set.
+- **Nested copies**: an object written more than once, such as the copy under a self-lookup, a friend added under it or a record type block, is a row of its own, indented under the row it is nested in. Each copy keeps its own unticked fields, count, rules box and edit, so changing one leaves the others as they are. A setting saved before copies had their own still applies to every copy until you change one.
 
 ![A card with one object excluded, a field unticked and a count changed](images/recipe-cockpit/changes-without-editing-the-yaml.png)
 
@@ -62,7 +63,7 @@ These buttons rewrite the recipe file itself, because the change belongs in the 
 - **Use existing &lt;parent&gt; from org…**, beside it: pick any connected org, then **Search &lt;parent&gt;** or **Enter a record Id**, which is checked in that org. The Id is written as the lookup's value and the row shows `org record · <org>`; the insert checks the Id exists in the org it inserts into. **Clear**, under the pencil, puts the TODO back.
 - **+ Add friend** beside the copy of an object nested under itself: adds one of the object's friends under that copy. The card draws each nested copy, and its friends, indented right under the row it is nested in.
 - **Remove TODO** (in the **Troubleshooting** tab's **TODO's** list): takes a TODO comment out of the recipe and lists it under **Removed**, where **Restore** puts it back exactly. The line is kept in a `.removedTodos.json` file beside the recipe. A TODO that is a field's whole value, such as a lookup's, stays.
-- **Edit** (the pencil on a field): opens the field's faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a `.fixedValues.json` file beside the recipe, and **Clear** puts them back exactly.
+- **Edit** (the pencil on a field): opens the field's faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. On an object written more than once, it changes only the copy whose row you edit. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a `.fixedValues.json` file beside the recipe, and **Clear** puts them back exactly.
 
 Others write other files: **Remember this selection** saves record types to `treecipe.config.json`, and on a card's **Troubleshooting** tab, **Generate permission set** (under **Permissions**) writes a permission set into your project. **Retrieve validation rules**, **Retrieve fields**, **Retrieve record types** and **Retrieve global value sets**, each under its own area, copy that part of an org you pick into your project, and change nothing in the org.
 

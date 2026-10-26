@@ -779,7 +779,11 @@ describe('RecipeCockpitFixedValueStore (#342)', () => {
         expect(pinnedOverHandEdit).toEqual([entry('Account', 'Name', 'Initech', [occurrence(0, '    Name: "Initech"', '    Name: hand edited', 'Account_1')])]);
 
         expect(RecipeCockpitFixedValueStore.removeEntry(repinned, 'Account', 'Name')).toEqual([]);
-        expect(RecipeCockpitFixedValueStore.listValuesByObject(repinned)).toEqual(new Map([['Account', new Map([['Name', 'Initech']])]]));
+        // UNDER ITS OBJECT, AND UNDER THE OCCURRENCE IT HOLDS BY NICKNAME, WHICH A CARD READS FOR AN OBJECT WITH iterations (#467)
+        expect(RecipeCockpitFixedValueStore.listValuesByObject(repinned)).toEqual(new Map([
+            ['Account', new Map([['Name', 'Initech']])],
+            ['Account\nAccount_1', new Map([['Name', 'Initech']])]
+        ]));
 
     });
 

@@ -40,8 +40,14 @@ export interface IFixedValueOrgRecord {
     parentObjectApiName: string;
 }
 
+/*
+    scopeNickname is set on a pin of ONE occurrence of an object written more than once (#467): the
+    nickname of the occurrence it was written into, which is its only recorded occurrence. Without it
+    the entry is a pin of every occurrence its occurrences list, as every entry before #467 was.
+*/
 export interface IFixedValueEntry {
     objectApiName: string;
+    scopeNickname?: string;
     fieldApiName: string;
     value: string;
     orgRecord?: IFixedValueOrgRecord;
@@ -89,9 +95,16 @@ export class RecipeCockpitFixedValueStore {
                 return;
             }
 
-            const entryKey = this.buildEntryKey(storedEntry.objectApiName, storedEntry.fieldApiName);
+            // A SCOPED PIN NAMES ONE OCCURRENCE BY AN API-NAME NICKNAME AND RECORDS THAT ONE ONLY; ANYTHING ELSE IS NOT A PIN THIS FILE WROTE
+            if ( storedEntry.scopeNickname !== undefined && !SalesforceApiName.isApiName(storedEntry.scopeNickname) ) {
+                return;
+            }
+            const scopeNickname = storedEntry.scopeNickname as string | undefined;
+
+            const entryKey = this.buildEntryKey(storedEntry.objectApiName, storedEntry.fieldApiName, scopeNickname);
             const occurrences = this.readOccurrences(storedEntry.occurrences, storedEntry.fieldApiName, storedEntry.value);
-            if ( seenKeys.has(entryKey) || occurrences.length === 0 ) {
+            if ( seenKeys.has(entryKey) || occurrences.length === 0
+                    || ( scopeNickname !== undefined && ( occurrences.length !== 1 || occurrences[0].nickname !== scopeNickname ) ) ) {
                 return;
             }
 
@@ -99,6 +112,7 @@ export class RecipeCockpitFixedValueStore {
             const orgRecord = this.readOrgRecord(storedEntry.orgRecord, storedEntry.value);
             entries.push({
                 objectApiName: storedEntry.objectApiName,
+                ...( scopeNickname !== undefined ? { scopeNickname: scopeNickname } : {} ),
                 fieldApiName: storedEntry.fieldApiName,
                 value: storedEntry.value,
                 ...( orgRecord ? { orgRecord: orgRecord } : {} ),
@@ -115,12 +129,15 @@ export class RecipeCockpitFixedValueStore {
     static serialize(entries: readonly IFixedValueEntry[]): string {
 
         const byText = (left: string, right: string) => ( left < right ? -1 : left > right ? 1 : 0 );
-        const sortedEntries = [...entries].sort((left, right) => byText(left.objectApiName, right.objectApiName) || byText(left.fieldApiName, right.fieldApiName));
+        const sortedEntries = [...entries].sort((left, right) => byText(left.objectApiName, right.objectApiName)
+                                                                    || byText(left.fieldApiName, right.fieldApiName)
+                                                                    || byText(left.scopeNickname ?? '', right.scopeNickname ?? ''));
 
         return `${JSON.stringify({
             version: RECIPE_COCKPIT_FIXED_VALUE_FILE_VERSION,
             fields: sortedEntries.map(entry => ({
                 objectApiName: entry.objectApiName,
+                ...( entry.scopeNickname !== undefined ? { scopeNickname: entry.scopeNickname } : {} ),
                 fieldApiName: entry.fieldApiName,
                 value: entry.value,
                 ...( entry.orgRecord ? {
@@ -143,8 +160,23 @@ export class RecipeCockpitFixedValueStore {
 
     }
 
-    static findEntry(entries: readonly IFixedValueEntry[], objectApiName: string, fieldApiName: string): IFixedValueEntry | undefined {
-        return entries.find(entry => entry.objectApiName === objectApiName && entry.fieldApiName === fieldApiName);
+    // THE ENTRY OF ONE SCOPE: A PIN OF THE OCCURRENCE NAMED, OR -- WITH NO NICKNAME -- A PIN OF EVERY OCCURRENCE IT RECORDS
+    static findEntry(entries: readonly IFixedValueEntry[], objectApiName: string, fieldApiName: string, scopeNickname?: string): IFixedValueEntry | undefined {
+        return entries.find(entry => entry.objectApiName === objectApiName && entry.fieldApiName === fieldApiName && entry.scopeNickname === scopeNickname);
+    }
+
+    /*
+        The entry whose pin one occurrence's field holds now (#467): its own scoped pin, else a pin of
+        every occurrence that recorded it by that nickname. An occurrence of an object written once
+        has no nickname to scope by and is held by its object's one entry.
+    */
+    static findHoldingEntry(entries: readonly IFixedValueEntry[], objectApiName: string, fieldApiName: string, occurrenceNickname?: string): IFixedValueEntry | undefined {
+        if ( occurrenceNickname === undefined ) {
+            return this.findEntry(entries, objectApiName, fieldApiName);
+        }
+        return this.findEntry(entries, objectApiName, fieldApiName, occurrenceNickname)
+            ?? entries.find(entry => entry.objectApiName === objectApiName && entry.fieldApiName === fieldApiName && entry.scopeNickname === undefined
+                                        && entry.occurrences.some(occurrence => occurrence.nickname === occurrenceNickname));
     }
 
     /*
@@ -152,10 +184,17 @@ export class RecipeCockpitFixedValueStore {
         occurrence whose lines were exactly the line the earlier pin wrote takes that pin's original,
         so Clear goes back to what Generate Treecipe wrote rather than to the earlier fixed value.
     */
+    /*
+        A pin of ONE occurrence over a field a pin of every occurrence holds there takes that
+        occurrence out of the wider pin -- its original with it -- so each line is held by one entry,
+        and Clear of either puts back only what it holds; a wider pin left holding nothing is dropped.
+    */
     static upsertEntry(entries: readonly IFixedValueEntry[], pinnedEntry: IFixedValueEntry): IFixedValueEntry[] {
 
-        const previousEntry = this.findEntry(entries, pinnedEntry.objectApiName, pinnedEntry.fieldApiName);
-        const previousOccurrences = previousEntry?.occurrences ?? [];
+        const previousEntry = this.findEntry(entries, pinnedEntry.objectApiName, pinnedEntry.fieldApiName, pinnedEntry.scopeNickname);
+        const widerEntry = pinnedEntry.scopeNickname === undefined ? undefined : this.findEntry(entries, pinnedEntry.objectApiName, pinnedEntry.fieldApiName);
+        const carvedOccurrences = ( widerEntry?.occurrences ?? [] ).filter(occurrence => occurrence.nickname === pinnedEntry.scopeNickname);
+        const previousOccurrences = [...( previousEntry?.occurrences ?? [] ), ...carvedOccurrences];
         const occurrences = pinnedEntry.occurrences.map(occurrence => {
             const { originalText: currentText, ...occurrenceWithoutOriginal } = occurrence;
             // THE SAME OCCURRENCE BY NICKNAME, ELSE BY PLACE; OR A COPY OF A PINNED BLOCK MADE SINCE (Add friend), WHICH HOLDS A PINNED LINE AT ANOTHER DEPTH
@@ -175,25 +214,44 @@ export class RecipeCockpitFixedValueStore {
             return previousOriginal !== undefined ? { ...occurrenceWithoutOriginal, originalText: previousOriginal } : occurrenceWithoutOriginal;
         });
 
+        const narrowedWiderEntry = widerEntry && carvedOccurrences.length > 0
+            ? { ...widerEntry, occurrences: widerEntry.occurrences.filter(occurrence => !carvedOccurrences.includes(occurrence)) }
+            : widerEntry;
+
         return [
-            ...entries.filter(entry => entry !== previousEntry),
+            ...entries.filter(entry => entry !== previousEntry && entry !== widerEntry),
+            ...( narrowedWiderEntry && narrowedWiderEntry.occurrences.length > 0 ? [narrowedWiderEntry] : [] ),
             { ...pinnedEntry, occurrences: occurrences }
         ];
 
     }
 
-    static removeEntry(entries: readonly IFixedValueEntry[], objectApiName: string, fieldApiName: string): IFixedValueEntry[] {
-        return entries.filter(entry => !( entry.objectApiName === objectApiName && entry.fieldApiName === fieldApiName ));
+    static removeEntry(entries: readonly IFixedValueEntry[], objectApiName: string, fieldApiName: string, scopeNickname?: string): IFixedValueEntry[] {
+        return entries.filter(entry => !( entry.objectApiName === objectApiName && entry.fieldApiName === fieldApiName && entry.scopeNickname === scopeNickname ));
     }
 
-    // FIELD → VALUE BY OBJECT, WHAT A CARD DRAWS AS PINNED
+    /*
+        FIELD → VALUE BY OBJECT, WHAT A CARD DRAWS AS PINNED. A pin is listed under its object AND
+        under the occurrence key (RecipeCockpitRecipeWriter.buildOccurrenceKey) of each occurrence it
+        holds by nickname (#467): a card reads an object written once by the object, and each
+        occurrence of an object written more than once by its own key, so a pin of one occurrence
+        is drawn on that row alone.
+    */
     static listValuesByObject(entries: readonly IFixedValueEntry[]): Map<string, Map<string, string>> {
 
         const valuesByObject = new Map<string, Map<string, string>>();
-        entries.forEach(entry => {
-            const valuesByField = valuesByObject.get(entry.objectApiName) ?? new Map<string, string>();
+        const setValue = (objectKey: string, entry: IFixedValueEntry) => {
+            const valuesByField = valuesByObject.get(objectKey) ?? new Map<string, string>();
             valuesByField.set(entry.fieldApiName, entry.value);
-            valuesByObject.set(entry.objectApiName, valuesByField);
+            valuesByObject.set(objectKey, valuesByField);
+        };
+        // EVERY WIDER PIN FIRST, SO A SCOPED ONE OF THE SAME OCCURRENCE IS WHAT ITS KEY SAYS
+        [...entries].sort((left, right) => Number(left.scopeNickname !== undefined) - Number(right.scopeNickname !== undefined)).forEach(entry => {
+            if ( entry.scopeNickname === undefined ) {
+                setValue(entry.objectApiName, entry);
+            }
+            new Set(entry.occurrences.flatMap(occurrence => ( occurrence.nickname !== undefined ? [occurrence.nickname] : [] )))
+                .forEach(nickname => setValue(RecipeCockpitRecipeWriter.buildOccurrenceKey(entry.objectApiName, nickname), entry));
         });
         return valuesByObject;
 
@@ -277,8 +335,8 @@ export class RecipeCockpitFixedValueStore {
         return typeof candidate === 'string' && candidate !== '' && candidate.length <= MAX_ORG_NAME_LENGTH && !/[\p{Cc}\u0085\u2028\u2029]/u.test(candidate);
     }
 
-    private static buildEntryKey(objectApiName: string, fieldApiName: string): string {
-        return `${objectApiName}\n${fieldApiName}`;
+    private static buildEntryKey(objectApiName: string, fieldApiName: string, scopeNickname?: string): string {
+        return `${objectApiName}\n${fieldApiName}\n${scopeNickname ?? ''}`;
     }
 
     private static isPlainRecord(candidate: unknown): candidate is Record<string, unknown> {

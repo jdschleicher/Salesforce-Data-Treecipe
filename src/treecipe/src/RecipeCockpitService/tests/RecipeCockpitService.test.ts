@@ -1232,6 +1232,8 @@ describe('RecipeCockpitService', () => {
             expect(accountObject.iterations).toEqual([{
                 nickname: 'Account_child_NickName',
                 lineNumber: selfLookupLines.indexOf('      nickname: Account_child_NickName'),
+                // ITS OWN "count:", WHICH ITS COUNT BOX SETS (#467)
+                recordCount: 1,
                 parentObjectApiName: 'Account',
                 parentNickname: 'Account_NickName',
                 fields: [
@@ -1246,7 +1248,7 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('a card lists each iteration right after its object, and counts the object\'s fields once', () => {
+        it('a card lists each iteration right under the occurrence holding it, one level deeper, and counts the object\'s fields once', () => {
 
             const objects = attachSelfLookupRecipe();
             const parentLookupsByObjectApiName = new Map([

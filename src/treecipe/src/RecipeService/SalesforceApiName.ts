@@ -13,4 +13,15 @@ export class SalesforceApiName {
 
     }
 
+    // AN OBJECT API NAME, OR ONE AND THE NICKNAME OF ONE OF ITS OCCURRENCES ("<Object>\n<Nickname>", #467), EACH AN API NAME
+    static isOccurrenceKey(key: unknown): key is string {
+
+        if ( typeof key !== 'string' ) {
+            return false;
+        }
+        const keyParts = key.split('\n');
+        return keyParts.length <= 2 && keyParts.every(keyPart => SalesforceApiName.pattern.test(keyPart));
+
+    }
+
 }
