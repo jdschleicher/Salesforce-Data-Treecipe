@@ -261,7 +261,9 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
         typeIntoFilter: (searchText: string, treeCard?: any) => typeIntoSearch(findAll(treeCard || treeCards()[0], 'treeStructure')[0], searchText),
         // THE DATA-BY-ORG TAB'S OBJECT ROWS, OF EVERY CARD WHOSE TAB IS BUILT
         postToPanel: (hostMessage: any) => windowListenersByType['message']({ data: hostMessage }),
-        raiseWindowError: (errorEvent: any) => windowListenersByType['error'](errorEvent)
+        raiseWindowError: (errorEvent: any) => windowListenersByType['error'](errorEvent),
+        // THERE IS NO LAYOUT: A TEST SETS scrollWidth/clientWidth ON AN ELEMENT, THEN RESIZES SO THE PANEL MEASURES AGAIN (#464)
+        resizeWindow: () => windowListenersByType['resize']({ type: 'resize' })
     };
 
 }

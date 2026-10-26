@@ -22,7 +22,9 @@ import {
     RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH,
     RECIPE_COCKPIT_TREECIPES_SEARCH_NO_MATCH_OPTION_SUFFIX,
     RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT,
-    RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS
+    RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS,
+    RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL,
+    RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS
 } from '../RecipeCockpitService';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 
@@ -89,7 +91,14 @@ const objectNamed = (panel: Panel, treeKey: string, objectApiName: string) => pa
 const selectedTabOf = (panel: Panel, treeKey: string) => panel.findAll(cardOf(panel, treeKey), 'treeTab')
     .find((tabElement: any) => tabElement.classList.contains('selected'))?.textContent;
 const objectsLineOf = (panel: Panel) => panel.findAll(panel.cockpitBodyElement, 'treePickerObjects')[0];
-const objectsLineText = (panel: Panel) => objectsLineOf(panel).children.map((element: any) => element.textContent).join('');
+// THE LINE AS READ: EVERY TEXT BUT THE TOGGLE'S, WHICH IS A CONTROL RATHER THAN A PART OF THE LIST (#464)
+const lineTextOf = (element: any): string => element.classList.contains('treePickerObjectsToggle') ? ''
+    : element.children.length === 0 ? element.textContent : element.children.map(lineTextOf).join('');
+const objectsLineText = (panel: Panel) => lineTextOf(objectsLineOf(panel));
+const objectsListOf = (panel: Panel) => panel.findAll(objectsLineOf(panel), 'treePickerObjectsList')[0];
+const objectsToggleOf = (panel: Panel) => panel.findAll(objectsLineOf(panel), 'treePickerObjectsToggle')[0];
+const cutObjectsList = (panel: Panel) => { Object.assign(objectsListOf(panel), { scrollWidth: 900, clientWidth: 300 }); panel.resizeWindow(); };
+const fitObjectsList = (panel: Panel) => { Object.assign(objectsListOf(panel), { scrollWidth: 300, clientWidth: 300 }); panel.resizeWindow(); };
 const excludedObjectsOf = (panel: Panel) => panel.findAll(objectsLineOf(panel), 'treePickerObject')
     .filter((element: any) => element.classList.contains('excluded'))
     .map((element: any) => element.textContent);
@@ -514,6 +523,108 @@ describe('RecipeCockpitService, the Treecipes dropdown and section search (#374)
 
             expect(objectsLineText(panel)).toBe('Insert order:Lead → __proto__ → <img src=x> · 3 objects');
             expect(panel.findAll(objectsLineOf(panel), 'treePickerObject').every((element: any) => element.children.length === 0)).toBe(true);
+
+        });
+
+    });
+
+    describe('the objects line cut to one line (#464)', () => {
+
+        it('draws no toggle while the list fits on one line', () => {
+
+            const { panel } = drawRecipe();
+
+            expect(panel.isHidden(objectsToggleOf(panel))).toBe(true);
+            fitObjectsList(panel);
+            expect(panel.isHidden(objectsToggleOf(panel))).toBe(true);
+            expect(objectsListOf(panel).classList.contains('expanded')).toBe(false);
+            expect(objectsLineText(panel)).toBe(ACCOUNT_TREE_LINE);
+
+        });
+
+        it('given a list wider than its line, cuts it and offers Show all, with the count still beside it', () => {
+
+            const { panel } = drawRecipe();
+            cutObjectsList(panel);
+
+            const toggleElement = objectsToggleOf(panel);
+            expect(panel.isHidden(toggleElement)).toBe(false);
+            expect(toggleElement.tagName).toBe('button');
+            expect(toggleElement.className).toBe('sdtButton sdtButton-secondary sdtButton-compact treePickerObjectsToggle');
+            expect(toggleElement.textContent).toBe(RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL);
+            expect(toggleElement.attributes['aria-expanded']).toBe('false');
+            expect(toggleElement.attributes['aria-controls']).toBe(objectsListOf(panel).attributes.id);
+            expect(objectsListOf(panel).classList.contains('expanded')).toBe(false);
+            expect(objectsLineOf(panel).children.map((element: any) => element.className.split(' ')[0]))
+                .toEqual(['treePickerObjectsLabel', 'treePickerObjectsList', 'treePickerObjectsCount', 'sdtButton']);
+
+        });
+
+        it('opens and closes the whole list, and keeps the toggle while open', () => {
+
+            const { panel } = drawRecipe();
+            cutObjectsList(panel);
+
+            objectsToggleOf(panel).dispatch('click');
+            expect(objectsListOf(panel).classList.contains('expanded')).toBe(true);
+            expect(objectsToggleOf(panel).textContent).toBe(RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS);
+            expect(objectsToggleOf(panel).attributes['aria-expanded']).toBe('true');
+
+            // AN OPENED LIST WRAPS, SO IT NO LONGER OVERFLOWS; IT STILL HAS TO BE CLOSABLE
+            fitObjectsList(panel);
+            expect(panel.isHidden(objectsToggleOf(panel))).toBe(false);
+
+            // CLOSED AGAIN, THE ONE LINE OVERFLOWS AS IT DID BEFORE
+            Object.assign(objectsListOf(panel), { scrollWidth: 900, clientWidth: 300 });
+            objectsToggleOf(panel).dispatch('click');
+            expect(panel.isHidden(objectsToggleOf(panel))).toBe(false);
+            expect(objectsListOf(panel).classList.contains('expanded')).toBe(false);
+            expect(objectsToggleOf(panel).textContent).toBe(RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL);
+            expect(objectsToggleOf(panel).attributes['aria-expanded']).toBe('false');
+
+        });
+
+        it('measures again when the panel is resized', () => {
+
+            const { panel } = drawRecipe();
+            cutObjectsList(panel);
+            expect(panel.isHidden(objectsToggleOf(panel))).toBe(false);
+
+            fitObjectsList(panel);
+            expect(panel.isHidden(objectsToggleOf(panel))).toBe(true);
+
+        });
+
+        it('keeps the list open when the same card\'s selection is redrawn, and closes it for another card', () => {
+
+            const { panel } = drawRecipe();
+            cutObjectsList(panel);
+            objectsToggleOf(panel).dispatch('click');
+
+            panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 1 });
+            expect(objectsListOf(panel).classList.contains('expanded')).toBe(true);
+            expect(objectsToggleOf(panel).textContent).toBe(RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS);
+
+            choose(panel, 'Lead-ONLY');
+            expect(objectsListOf(panel).classList.contains('expanded')).toBe(false);
+            expect(panel.isHidden(objectsToggleOf(panel))).toBe(true);
+
+            choose(panel, ACCOUNT_TREE_KEY);
+            expect(objectsListOf(panel).classList.contains('expanded')).toBe(false);
+
+        });
+
+        it('posts nothing and saves nothing new in the place when toggled', () => {
+
+            const { panel } = drawRecipe();
+            cutObjectsList(panel);
+            const postedCount = panel.postedHostMessages.length;
+            const savedBefore = JSON.stringify(panel.savedState());
+
+            objectsToggleOf(panel).dispatch('click');
+
+            expect(panel.postedHostMessages.length).toBe(postedCount);
+            expect(JSON.stringify(panel.savedState())).toBe(savedBefore);
 
         });
 

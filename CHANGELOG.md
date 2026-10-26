@@ -1,5 +1,14 @@
 # Change Log
 
+## [3.154.0] - Recipe Cockpit: the Treecipes "Insert order:" line keeps to one line, with Show all
+
+[#464](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/464). The line under the Treecipes dropdown (#385) wrapped freely, so a tree with many objects, or with friend chips, took several lines and pushed the chosen card down.
+
+- **One line, cut with "…".** The objects now sit in their own `treePickerObjectsList` span, kept to one line with `text-overflow: ellipsis`, between the `Insert order:` label and the `· N objects` count, which stays visible.
+- **Show all / Show less.** When the list is wider than its line, a `secondary` compact `treePickerObjectsToggle` button follows the count (`RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL`), with `aria-expanded` and `aria-controls` naming the list. A click wraps the whole list and relabels it `Show less` (`RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS`). A list that fits draws no toggle.
+- **Measured, not counted.** Whether the line is cut is the rendered width (`scrollWidth > clientWidth`), read on every draw, on a `ResizeObserver` of the list and on the window's `resize`, so a narrow and a wide panel both show one line.
+- **Panel only.** Choosing another card closes the list; an `objectSelection` redraw of the same card keeps it open. Nothing is posted and the place is unchanged.
+
 ## [3.153.0] - Recipe Cockpit: confirmations open on a short summary, with the detail folded into sections
 
 [#457](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/457). Every in-panel confirmation (#349) drew its detail as one flat list of lines: the org, the record counts, the lookup rules, the rollback and the recipe file all at the same weight, so the one line that mattered could be the last.

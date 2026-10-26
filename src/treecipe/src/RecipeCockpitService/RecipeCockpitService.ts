@@ -476,6 +476,9 @@ export const RECIPE_COCKPIT_TREE_PICKER_NO_OBJECTS = 'No objects';
 export const RECIPE_COCKPIT_TREE_PICKER_EXCLUDED_SUFFIX = ' (excluded)';
 export const RECIPE_COCKPIT_TREE_PICKER_AUTO_EXCLUDED_SUFFIX = ' (auto-excluded)';
 export const RECIPE_COCKPIT_TREE_PICKER_IMPACTED_SUFFIX = ' (impacted)';
+// A LIST LONGER THAN ONE LINE IS CUT WITH "…" AND OPENED BY ITS TOGGLE (#464)
+export const RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL = 'Show all';
+export const RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS = 'Show less';
 // HOW MANY RESULT ROWS THE SECTION SEARCH DRAWS; THE REST IS ONE "N more" LINE
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT = 50;
 export const RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX = ' more — type more of the name to narrow the search';
@@ -17869,10 +17872,14 @@ ${this.buildPaletteCustomProperties()}
         padding: 0.3rem;
         max-width: 100%;
     }
-    .treePickerObjects { display: flex; flex-wrap: wrap; align-items: baseline; padding: 0 0 0.4rem 0; overflow-wrap: anywhere; }
-    .treePickerObjectsLabel { font-weight: 600; margin-right: 0.4rem; }
-    /* A FLEX ITEM DROPS ITS EDGE SPACES, SO THE SEPARATOR AND THE COUNT KEEP THEIRS */
+    .treePickerObjects { display: flex; align-items: baseline; padding: 0 0 0.4rem 0; }
+    .treePickerObjectsLabel { flex: none; font-weight: 600; margin-right: 0.4rem; }
+    /* ONE LINE, CUT WITH "…", UNTIL THE TOGGLE OPENS IT (#464); THE COUNT AND THE TOGGLE STAY BESIDE IT */
+    .treePickerObjectsList { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .treePickerObjectsList.expanded { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
     .treePickerObjectSeparator, .treePickerObjectsCount { white-space: pre; }
+    .treePickerObjectsCount { flex: none; }
+    .treePickerObjectsToggle { flex: none; margin-left: 0.4rem; }
     .treePickerObject.excluded { color: var(--sdt-muted); text-decoration: line-through; }
     .treePickerSelect:disabled { color: var(--sdt-disabled-text); background-color: var(--sdt-disabled-bg); cursor: not-allowed; }
     .notice {
@@ -18821,6 +18828,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const TREE_PICKER_EXCLUDED_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_EXCLUDED_SUFFIX)};
     const TREE_PICKER_AUTO_EXCLUDED_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_AUTO_EXCLUDED_SUFFIX)};
     const TREE_PICKER_IMPACTED_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_IMPACTED_SUFFIX)};
+    const TREE_PICKER_OBJECTS_SHOW_ALL = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL)};
+    const TREE_PICKER_OBJECTS_SHOW_LESS = ${JSON.stringify(RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS)};
     const TREECIPES_SEARCH_RESULT_LIMIT = ${RECIPE_COCKPIT_TREECIPES_SEARCH_RESULT_LIMIT};
     const TREECIPES_SEARCH_MORE_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_TREECIPES_SEARCH_MORE_SUFFIX)};
     const REGENERATE_WITH_RECORD_TYPES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL)};
@@ -18993,6 +19002,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     let treePickerElement = null;
     let treePickerTreeStates = [];
     let treePickerObjectsElement = null;
+    let treePickerObjectsListElement = null;
+    let treePickerObjectsToggleElement = null;
+    let isTreePickerObjectsExpanded = false;
+    let treePickerObjectsResizeObserver = null;
     let treePickerShownTreeState = null;
     let treecipesSearch = null;
     let treecipesSearchText = '';
@@ -19442,6 +19455,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         // A KEYSTROKE IN THE SECTION SEARCH COMES THROUGH HERE TOO, SO THE LINE IS REDRAWN ONLY FOR ANOTHER CARD
         if (shownTreeState !== treePickerShownTreeState) {
             treePickerShownTreeState = shownTreeState;
+            isTreePickerObjectsExpanded = false;
             drawTreePickerObjects();
         }
 
@@ -19473,9 +19487,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         });
 
         treePickerObjectsElement.appendChild(createElement('span', 'treePickerObjectsLabel', TREE_PICKER_OBJECTS_LABEL));
+        const listElement = createElement('span', isTreePickerObjectsExpanded ? 'treePickerObjectsList expanded' : 'treePickerObjectsList');
+        listElement.setAttribute('id', 'treePickerObjectsList');
+        treePickerObjectsElement.appendChild(listElement);
+        treePickerObjectsListElement = listElement;
 
         if (objectApiNames.length === 0) {
-            treePickerObjectsElement.appendChild(createElement('span', 'treePickerNoObjects muted', TREE_PICKER_NO_OBJECTS));
+            listElement.appendChild(createElement('span', 'treePickerNoObjects muted', TREE_PICKER_NO_OBJECTS));
             return;
         }
 
@@ -19483,16 +19501,54 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const impactsByObjectApiName = indexObjectImpacts(shownTreeState.tree);
         const friendLabelsByObjectApiName = listFriendLabelsByObjectApiName(shownTreeState);
         objectApiNames.forEach(function (objectApiName, objectIndex) {
-            if (objectIndex > 0) { treePickerObjectsElement.appendChild(createElement('span', 'treePickerObjectSeparator muted', TREE_PICKER_OBJECTS_SEPARATOR)); }
+            if (objectIndex > 0) { listElement.appendChild(createElement('span', 'treePickerObjectSeparator muted', TREE_PICKER_OBJECTS_SEPARATOR)); }
             const exclusion = Object.prototype.hasOwnProperty.call(exclusionsByObjectApiName, objectApiName) ? exclusionsByObjectApiName[objectApiName] : null;
             const suffix = !exclusion ? ( hasOwnKey(impactsByObjectApiName, objectApiName) ? TREE_PICKER_IMPACTED_SUFFIX : '' )
                 : exclusion.kind === 'autoExcluded' ? TREE_PICKER_AUTO_EXCLUDED_SUFFIX : TREE_PICKER_EXCLUDED_SUFFIX;
             const friendLabels = hasOwnKey(friendLabelsByObjectApiName, objectApiName) ? friendLabelsByObjectApiName[objectApiName] : [];
             const friendText = friendLabels.length > 0 ? ' (' + friendLabels.join(', ') + ')' : '';
-            treePickerObjectsElement.appendChild(createElement('span', exclusion ? 'treePickerObject excluded' : 'treePickerObject', objectApiName + friendText + suffix));
+            listElement.appendChild(createElement('span', exclusion ? 'treePickerObject excluded' : 'treePickerObject', objectApiName + friendText + suffix));
         });
 
         treePickerObjectsElement.appendChild(createElement('span', 'treePickerObjectsCount muted', ' · ' + pluralize(objectApiNames.length, 'object', 'objects')));
+
+        const toggleElement = createButton('secondary', 'treePickerObjectsToggle hidden', TREE_PICKER_OBJECTS_SHOW_ALL, 'compact');
+        toggleElement.setAttribute('aria-controls', 'treePickerObjectsList');
+        toggleElement.addEventListener('click', function () {
+            isTreePickerObjectsExpanded = !isTreePickerObjectsExpanded;
+            if (isTreePickerObjectsExpanded) { listElement.classList.add('expanded'); } else { listElement.classList.remove('expanded'); }
+            drawTreePickerObjectsToggle();
+        });
+        treePickerObjectsElement.appendChild(toggleElement);
+        treePickerObjectsToggleElement = toggleElement;
+        drawTreePickerObjectsToggle();
+
+        // THE LIST IS ONLY MEASURABLE ONCE IT IS LAID OUT, WHICH A DRAW DURING A RENDER CAN COME BEFORE
+        if (typeof ResizeObserver === 'function') {
+            treePickerObjectsResizeObserver = treePickerObjectsResizeObserver || new ResizeObserver(drawTreePickerObjectsToggle);
+            treePickerObjectsResizeObserver.disconnect();
+            treePickerObjectsResizeObserver.observe(listElement);
+        }
+
+    }
+
+    /*
+        Whether the one-line list is cut is a fact about the rendered width, not about a character
+        count (#464), so it is measured: on every draw and whenever the panel's width changes. An
+        opened list keeps its toggle so it can be closed again.
+    */
+    function drawTreePickerObjectsToggle() {
+
+        if (!treePickerObjectsToggleElement || !treePickerObjectsListElement) { return; }
+
+        treePickerObjectsToggleElement.textContent = isTreePickerObjectsExpanded ? TREE_PICKER_OBJECTS_SHOW_LESS : TREE_PICKER_OBJECTS_SHOW_ALL;
+        treePickerObjectsToggleElement.setAttribute('aria-expanded', isTreePickerObjectsExpanded ? 'true' : 'false');
+        const isCut = treePickerObjectsListElement.scrollWidth > treePickerObjectsListElement.clientWidth;
+        if (isTreePickerObjectsExpanded || isCut) {
+            treePickerObjectsToggleElement.classList.remove('hidden');
+        } else {
+            treePickerObjectsToggleElement.classList.add('hidden');
+        }
 
     }
 
@@ -27984,6 +28040,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         treePickerElement = null;
         treePickerTreeStates = [];
         treePickerObjectsElement = null;
+        treePickerObjectsListElement = null;
+        treePickerObjectsToggleElement = null;
+        isTreePickerObjectsExpanded = false;
         treePickerShownTreeState = null;
         treecipesSearch = null;
         treecipesSearchIndex = null;
@@ -28740,6 +28799,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (isElementWithin(clickEvent.target, openNicknameMenu.menuElement) || isElementWithin(clickEvent.target, openNicknameMenu.treeObjectState.nicknameChipElement)) { return; }
         closeNicknameMenu(false);
     }, true);
+
+    // A NARROWER OR WIDER PANEL CAN CUT THE INSERT ORDER LINE, OR STOP CUTTING IT (#464)
+    window.addEventListener('resize', drawTreePickerObjectsToggle);
 
     // A SCROLL FIRES PER FRAME, AND A SAVE WALKS EVERY CARD, SO A RUN OF THEM IS SAVED ONCE
     window.addEventListener('scroll', function () {
