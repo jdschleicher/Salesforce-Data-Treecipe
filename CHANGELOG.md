@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.154.0] - Recipe Cockpit: each data set row says how its last insert ended, and opens its results
+## [3.155.0] - Recipe Cockpit: each data set row says how its last insert ended, and opens its results
 
 [#469](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/469). A row in **Previously Used Data Sets** never said whether its data set had reached an org, or whether it worked: the outcome was only in a notification. Each insert already saved its results in the data set's `InsertAttempts/` folder, but that file cannot say how the insert ended: a cancel and an all-or-none rollback leave the deleted records under `SuccessResults`, and it names no org.
 
@@ -11,6 +11,15 @@
 - **In place.** A tree insert's new row (`datasetAdded`, #226) arrives with its status, and its View results joins the pending allow-list only.
 - **Cost.** One directory listing and one small summary read per data set when a model is built; nothing per record is posted.
 - **Help.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say where an insert's outcome is kept and what each row status means, under **Where your changes are stored**; its picture is re-taken.
+
+## [3.154.0] - Recipe Cockpit: the Treecipes "Insert order:" line keeps to one line, with Show all
+
+[#464](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/464). The line under the Treecipes dropdown (#385) wrapped freely, so a tree with many objects, or with friend chips, took several lines and pushed the chosen card down.
+
+- **One line, cut with "…".** The objects now sit in their own `treePickerObjectsList` span, kept to one line with `text-overflow: ellipsis`, between the `Insert order:` label and the `· N objects` count, which stays visible.
+- **Show all / Show less.** When the list is wider than its line, a `secondary` compact `treePickerObjectsToggle` button follows the count (`RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_ALL`), with `aria-expanded` and `aria-controls` naming the list. A click wraps the whole list and relabels it `Show less` (`RECIPE_COCKPIT_TREE_PICKER_OBJECTS_SHOW_LESS`). A list that fits draws no toggle.
+- **Measured, not counted.** Whether the line is cut is the rendered width (`scrollWidth > clientWidth`), so a narrow and a wide panel both show one line. A `ResizeObserver` watches the list on screen, and its callback only schedules the measure for the next frame (`scheduleTreePickerObjectsToggle`), because showing the toggle changes the list's own width and a size changed inside the callback is a "ResizeObserver loop" error, which the panel's `error` listener would report to the user. Without an observer the list is measured on each draw and on the window's `resize`. The observer lets go of the list on every redraw and on a reset (`releaseTreePickerObjectsList`).
+- **Panel only.** Choosing another card closes the list; an `objectSelection` redraw of the same card keeps it open. Nothing is posted and the place is unchanged.
 
 ## [3.153.0] - Recipe Cockpit: confirmations open on a short summary, with the detail folded into sections
 
