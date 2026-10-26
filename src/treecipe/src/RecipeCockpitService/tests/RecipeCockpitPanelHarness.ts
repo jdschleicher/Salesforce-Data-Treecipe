@@ -22,6 +22,8 @@ export interface IPanelScriptOptions {
     isStateApiMissing?: boolean;
     // WHAT window.matchMedia('(prefers-reduced-motion: reduce)') ANSWERS; LEFT OUT, THE WINDOW HAS NO matchMedia AT ALL
     prefersReducedMotion?: boolean;
+    // GIVES THE WINDOW A FAKE ResizeObserver AND requestAnimationFrame (#464); LEFT OUT, IT HAS NEITHER
+    hasResizeObserver?: boolean;
 }
 
 export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
@@ -131,6 +133,20 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
         scrollTo(scrollX: number, scrollY: number) { scrollToCalls.push(scrollY); this.scrollY = scrollY; },
         addEventListener: (eventType: string, listener: Function) => { windowListenersByType[eventType] = listener; }
     };
+    // EACH OBSERVER KEEPS WHAT IT OBSERVES; A DELIVERY CALLS EVERY OBSERVER, AND A FRAME RUNS ONLY WHEN A TEST RUNS IT
+    const resizeObservers: Array<{ callback: Function, observedElements: any[] }> = [];
+    const animationFrameCallbacks: Function[] = [];
+    if ( panelScriptOptions.hasResizeObserver ) {
+        fakeWindow.ResizeObserver = function (callback: Function) {
+            const observer = { callback: callback, observedElements: [] as any[] };
+            resizeObservers.push(observer);
+            return {
+                observe: (element: any) => { observer.observedElements.push(element); },
+                disconnect: () => { observer.observedElements.length = 0; }
+            };
+        };
+        fakeWindow.requestAnimationFrame = (callback: Function) => { animationFrameCallbacks.push(callback); };
+    }
     if ( panelScriptOptions.prefersReducedMotion !== undefined ) {
         fakeWindow.matchMedia = (mediaQuery: string) => ({ matches: mediaQuery === '(prefers-reduced-motion: reduce)' && !!panelScriptOptions.prefersReducedMotion });
     }
@@ -261,7 +277,17 @@ export function runPanelScript(panelScriptOptions: IPanelScriptOptions = {}) {
         typeIntoFilter: (searchText: string, treeCard?: any) => typeIntoSearch(findAll(treeCard || treeCards()[0], 'treeStructure')[0], searchText),
         // THE DATA-BY-ORG TAB'S OBJECT ROWS, OF EVERY CARD WHOSE TAB IS BUILT
         postToPanel: (hostMessage: any) => windowListenersByType['message']({ data: hostMessage }),
-        raiseWindowError: (errorEvent: any) => windowListenersByType['error'](errorEvent)
+        raiseWindowError: (errorEvent: any) => windowListenersByType['error'](errorEvent),
+        // THERE IS NO LAYOUT: A TEST SETS scrollWidth/clientWidth ON AN ELEMENT, THEN RESIZES SO THE PANEL MEASURES AGAIN (#464)
+        resizeWindow: () => windowListenersByType['resize']({ type: 'resize' }),
+        hasWindowListener: (eventType: string) => !!windowListenersByType[eventType],
+        resizeObservers,
+        // WHAT A BROWSER DOES WHEN AN OBSERVED ELEMENT IS LAID OUT OR CHANGES SIZE
+        deliverResizeObservations: () => resizeObservers.forEach(observer => {
+            if ( observer.observedElements.length > 0 ) { observer.callback(observer.observedElements.map(element => ({ target: element }))); }
+        }),
+        pendingAnimationFrameCount: () => animationFrameCallbacks.length,
+        runAnimationFrames: () => animationFrameCallbacks.splice(0).forEach(callback => callback(0))
     };
 
 }
