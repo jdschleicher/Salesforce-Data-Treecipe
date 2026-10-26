@@ -952,3 +952,26 @@ describe('FakerJSRecipeFakerService.buildRegexExpression (#324)', () => {
     });
 
 });
+
+describe('FakerJSRecipeFakerService.buildPicklistChoiceExpression (#465)', () => {
+
+    const fakerJSRecipeFakerService = new FakerJSRecipeFakerService();
+
+    it('is the one-line choice generation writes for a picklist and a multi-select, over the values given', () => {
+
+        expect(fakerJSRecipeFakerService.buildPicklistChoiceExpression(['Hot', 'Cold'], false)).toBe('${{ faker.helpers.arrayElement([`Hot`,`Cold`]) }}');
+        expect(fakerJSRecipeFakerService.buildPicklistChoiceExpression(['Hot', 'Cold'], true)).toBe("${{ (faker.helpers.arrayElements([`Hot`,`Cold`])).join(';') }}");
+        expect(fakerJSRecipeFakerService.buildPicklistChoiceExpression(['Hot', 'Cold'], false)).toBe(fakerJSRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(['Hot', 'Cold'], {}, 'Rating__c'));
+        expect(fakerJSRecipeFakerService.buildPicklistChoiceExpression(['Hot', 'Cold'], true)).toBe(fakerJSRecipeFakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(['Hot', 'Cold'], {}, 'Regions__c'));
+
+    });
+
+    it('escapes every value through the picklist escaper', () => {
+
+        const breakoutAttempt = 'a`,globalThis.injected=true,`b';
+        expect(fakerJSRecipeFakerService.buildPicklistChoiceExpression([breakoutAttempt], false))
+            .toBe(`\${{ faker.helpers.arrayElement([\`${FakerJSRecipeFakerService.escapePicklistValueForJavaScriptString(breakoutAttempt, '`')}\`]) }}`);
+
+    });
+
+});

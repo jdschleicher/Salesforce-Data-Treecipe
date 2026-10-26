@@ -1034,3 +1034,26 @@ describe('SnowfakeryRecipeFakerService.buildRegexExpression (#324)', () => {
     });
 
 });
+
+describe('SnowfakeryRecipeFakerService.buildPicklistChoiceExpression (#465)', () => {
+
+    const snowfakeryRecipeFakerService = new SnowfakeryRecipeFakerService();
+
+    it('is the one-line choice generation writes for a picklist and a multi-select, over the values given', () => {
+
+        expect(snowfakeryRecipeFakerService.buildPicklistChoiceExpression(['Hot', 'Cold'], false)).toBe("${{ random_choice('Hot', 'Cold') }}");
+        expect(snowfakeryRecipeFakerService.buildPicklistChoiceExpression(['Hot', 'Cold'], true)).toBe("${{ (';').join((fake.random_sample(elements=('Hot', 'Cold')))) }}");
+        expect(snowfakeryRecipeFakerService.buildPicklistChoiceExpression(['Hot', 'Cold'], false)).toBe(snowfakeryRecipeFakerService.buildPicklistRecipeValueByXMLFieldDetail(['Hot', 'Cold'], {}, 'Rating__c'));
+        expect(snowfakeryRecipeFakerService.buildPicklistChoiceExpression(['Hot', 'Cold'], true)).toBe(snowfakeryRecipeFakerService.buildMultiSelectPicklistRecipeValueByXMLFieldDetail(['Hot', 'Cold'], {}, 'Regions__c'));
+
+    });
+
+    it('writes one value of a multi-select as a tuple, and escapes every value as a Jinja literal', () => {
+
+        expect(snowfakeryRecipeFakerService.buildPicklistChoiceExpression(['Hot'], true)).toBe("${{ (';').join((fake.random_sample(elements=('Hot',)))) }}");
+        expect(snowfakeryRecipeFakerService.buildPicklistChoiceExpression(["x' or True or '"], false))
+            .toBe(`\${{ random_choice('${SnowfakeryRecipeFakerService.escapePicklistValueForJinjaStringLiteral("x' or True or '")}') }}`);
+
+    });
+
+});
