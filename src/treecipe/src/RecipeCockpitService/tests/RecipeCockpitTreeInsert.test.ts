@@ -743,7 +743,9 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
                     generatedAtLabel: '2026-10-07 12:00:00 UTC',
                     fakerService: 'faker-js',
                     runFolderName: FAKER_JS_RUN,
-                    recordCounts: [{ objectApiName: 'Account', recordCount: 2 }, { objectApiName: 'Contact', recordCount: 6 }, { objectApiName: 'OtherChildObject__c', recordCount: 6 }]
+                    recordCounts: [{ objectApiName: 'Account', recordCount: 2 }, { objectApiName: 'Contact', recordCount: 6 }, { objectApiName: 'OtherChildObject__c', recordCount: 6 }],
+                    // THE INSERT'S OWN SUMMARY, READ BACK FOR THE ROW (#469): NEVER THE RESULTS FILE'S PATH
+                    lastInsert: { status: 'succeeded', attemptedAtLabel: '2026-10-07 12:00:00 UTC', orgLabel: 'qa', savedRecordCount: 14, failedRecordCount: 0, hasResultsFile: true }
                 },
                 renderSequence: lastRenderSequence(),
                 updateSequence: 1
@@ -862,7 +864,9 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             expect(datasetFolderPath).toBe(path.join(fakeDataSetsFolderPath(), datasetFolderNames()[0]));
             expect(insertConnection).toBe(connection);
             expect(allOrNone).toBe(true);
-            expect(Object.keys(insertOptions)).toEqual(['prepareRecords', 'isFailureReportedByCaller']);
+            expect(Object.keys(insertOptions)).toEqual(['prepareRecords', 'isFailureReportedByCaller', 'orgUsername', 'orgAlias']);
+            // THE ORG THE DATA SET ROW NAMES ITS LAST INSERT BY (#469)
+            expect(insertOptions).toMatchObject({ orgUsername: SANDBOX_ORG.username, orgAlias: SANDBOX_ORG.alias });
             // THE CARD'S OWN NOTIFICATION SAYS HOW IT ENDED, SO THE SHARED INSERT SHOWS NONE OF ITS OWN (#310)
             expect(insertOptions.isFailureReportedByCaller).toBe(true);
             expect(typeof insertOptions.prepareRecords).toBe('function');
