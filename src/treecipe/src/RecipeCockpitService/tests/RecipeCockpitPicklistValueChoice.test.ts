@@ -298,6 +298,12 @@ describe('routePanelMessage setPicklistValueChoice (#465)', () => {
         expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).not.toHaveProperty('chosenPicklistValues');
         statusField.recipeValue = '"not json';
         expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).not.toHaveProperty('chosenPicklistValues');
+        statusField.recipeValue = '"not json"x"';
+        expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).not.toHaveProperty('chosenPicklistValues');
+        delete ( statusField as Partial<IRecipeCockpitFieldViewModel> ).recipeValue;
+        expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).not.toHaveProperty('chosenPicklistValues');
+        expect(RecipeCockpitService.readPicklistValueChoice(panelState.recipeDataMessage?.recipe as IRecipeCockpitRecipeViewModel, LEAD_TREE_KEY, 'Gone__c', 'Status', ['Open']))
+            .toEqual({ treeKey: LEAD_TREE_KEY });
 
         // AN EDIT OF A FIELD THE MODEL NO LONGER LISTS TICKS NOTHING IT CAN NAME
         expect(RecipeCockpitService.readPicklistValueChoice(panelState.recipeDataMessage?.recipe as IRecipeCockpitRecipeViewModel, LEAD_TREE_KEY, 'Lead', 'Gone__c', ['Open']))

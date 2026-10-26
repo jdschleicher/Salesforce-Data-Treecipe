@@ -4529,9 +4529,9 @@ export class RecipeCockpitService {
         if ( valueLine.length < 2 || !valueLine.startsWith('"') || !valueLine.endsWith('"') ) {
             return valueLine;
         }
+        // A LINE OPENING AND CLOSING ON A DOUBLE QUOTE PARSES ONLY AS A STRING, OR NOT AT ALL
         try {
-            const unquoted: unknown = JSON.parse(valueLine);
-            return typeof unquoted === 'string' ? unquoted : valueLine;
+            return String(JSON.parse(valueLine));
         } catch {
             return valueLine;
         }
