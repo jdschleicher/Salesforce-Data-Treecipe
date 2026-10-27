@@ -5,6 +5,7 @@ import * as os from 'os';
 import { ConfigurationService } from '../ConfigurationService/ConfigurationService';
 import { IAuthenticatedOrgDetail } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
+import { RecipeCockpitRunArtifacts } from '../RecipeCockpitService/RecipeCockpitRunArtifacts';
 import { RecipeYamlScalar } from '../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 
 // WHAT A FAKER-JS RUN FOLDER AND ITS RECIPE FILES ARE NAMED WITH, AND A SNOWFAKERY ONE IS NOT
@@ -623,8 +624,9 @@ export class VSCodeWorkspaceService {
                     detail: fullFilePathName
                 });
 
-            } else if ( entry.isDirectory()) {
-                
+            } else if ( entry.isDirectory() && !RecipeCockpitRunArtifacts.isRunArtifactsFolderName(entry.name) ) {
+
+                // A TREE'S RunArtifacts (#470) HOLDS RUN FILES, NEVER A RECIPE
                 const recipeDirectoryPathToParseUri = path.join(folderPathToParse, entry.name);
 
                 const isFakerJSDirectoryWithSnowfakerySelectedAsFakerService = (selectedDataFakerService === 'snowfakery' && recipeDirectoryPathToParseUri.includes(expectedFakerJSRecipeFileIndicator));

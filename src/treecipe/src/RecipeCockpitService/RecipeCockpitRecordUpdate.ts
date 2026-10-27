@@ -4,6 +4,7 @@ import * as path from 'path';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { RecipeCockpitQuery } from './RecipeCockpitQuery';
+import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from './RecipeCockpitRunArtifacts';
 
 /*
     The Treecipe Adapter's update (#418): which chosen field an org lets the reader change, the
@@ -271,12 +272,12 @@ export class RecipeCockpitRecordUpdate {
     }
 
     /*
-        Writes the snapshot to treecipe/UpdateAttempts/<tree folder>/<yyyyMMdd-HHmmss>-before.json,
-        "wx" so an earlier snapshot is never overwritten, and answers where it and the results file
-        beside it go -- or undefined when the folder name is not plain, a path leaves the workspace
-        or the write fails, in which case NOTHING may be updated.
+        Writes the snapshot to <tree folder>/RunArtifacts/UpdateAttempts/<yyyyMMdd-HHmmss>-before.json
+        (#470), "wx" so an earlier snapshot is never overwritten, and answers where it and the
+        results file beside it go -- or undefined when a name is not plain, a path leaves the
+        workspace or the write fails, in which case NOTHING may be updated.
     */
-    static writeSnapshot(workspaceRoot: string, snapshot: IUpdateSnapshot, date: Date): IUpdateAttemptFiles | undefined {
+    static writeSnapshot(runArtifactsLocation: IRecipeCockpitRunArtifactsLocation, snapshot: IUpdateSnapshot, date: Date): IUpdateAttemptFiles | undefined {
 
         if ( !FOLDER_NAME_PATTERN.test(snapshot.treeFolderName)
                 || WINDOWS_RESERVED_FOLDER_NAME_PATTERN.test(snapshot.treeFolderName)
@@ -284,30 +285,10 @@ export class RecipeCockpitRecordUpdate {
             return undefined;
         }
 
-        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
-        const attemptsFolderPath = path.join(resolvedWorkspaceRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME);
-        const treeFolderPath = path.join(attemptsFolderPath, snapshot.treeFolderName);
+        const attemptsFolderPath = RecipeCockpitRunArtifacts.buildKindFolderPath(runArtifactsLocation, 'UpdateAttempts');
 
-        if ( !SfdxProjectService.isPathContainedInWorkspace(treeFolderPath, resolvedWorkspaceRoot) ) {
+        if ( !RecipeCockpitRunArtifacts.makeFolder(runArtifactsLocation, attemptsFolderPath) ) {
             return undefined;
-        }
-
-        try {
-            fs.mkdirSync(treeFolderPath, { recursive: true });
-        } catch {
-            return undefined;
-        }
-
-        // AGAIN ONCE THE FOLDERS EXIST: ONE OF THEM COULD HAVE BEEN A LINK MADE IN BETWEEN
-        if ( !SfdxProjectService.isPathContainedInWorkspace(treeFolderPath, resolvedWorkspaceRoot) ) {
-            return undefined;
-        }
-
-        try {
-            // THE SNAPSHOTS HOLD THE ORG'S DATA: NOT FOR A COMMIT
-            fs.writeFileSync(path.join(attemptsFolderPath, '.gitignore'), '*\n', { encoding: 'utf-8', flag: 'wx' });
-        } catch {
-            // ALREADY THERE -- OR NOT WRITABLE, WHICH THE SNAPSHOT'S OWN WRITE WILL SAY
         }
 
         const snapshotText = `${JSON.stringify(snapshot)}\n`;
@@ -315,10 +296,10 @@ export class RecipeCockpitRecordUpdate {
 
         for ( let attempt = 1; attempt <= UPDATE_ATTEMPT_FILE_ATTEMPTS; attempt++ ) {
             const attemptPrefix = attempt === 1 ? timestamp : `${timestamp}-${attempt}`;
-            const snapshotFilePath = path.join(treeFolderPath, `${attemptPrefix}-before.json`);
+            const snapshotFilePath = path.join(attemptsFolderPath, `${attemptPrefix}-before.json`);
             try {
                 fs.writeFileSync(snapshotFilePath, snapshotText, { encoding: 'utf-8', flag: 'wx' });
-                return { snapshotFilePath: snapshotFilePath, resultsFilePath: path.join(treeFolderPath, `${attemptPrefix}-results.json`) };
+                return { snapshotFilePath: snapshotFilePath, resultsFilePath: path.join(attemptsFolderPath, `${attemptPrefix}-results.json`) };
             } catch (writeError) {
                 if ( ( writeError as NodeJS.ErrnoException )?.code !== 'EEXIST' ) {
                     return undefined;
@@ -327,17 +308,6 @@ export class RecipeCockpitRecordUpdate {
         }
 
         return undefined;
-
-    }
-
-    /*
-        Whether treecipe/UpdateAttempts/.gitignore still ignores everything under it, read back as
-        the Query tab reads its own: the snapshots and results hold the org's data, and a file the
-        repository already carried is not trusted for having been there.
-    */
-    static isUpdateAttemptsFolderGitIgnored(workspaceRoot: string): boolean {
-
-        return RecipeCockpitQuery.isFolderWhollyGitIgnored(path.join(path.resolve(workspaceRoot), 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME));
 
     }
 
@@ -359,31 +329,32 @@ export class RecipeCockpitRecordUpdate {
 
 
     /*
-        The tree's snapshots (#419), newest first: the files under treecipe/UpdateAttempts/<tree
-        folder>/ whose names writeSnapshot writes, each a file and never a link. A tree with no such
-        folder has none; a folder name that is not plain, or a folder outside the workspace, lists
-        nothing.
+        The tree's snapshots (#419), newest first: the files whose names writeSnapshot writes, each a
+        file and never a link, in the tree's RunArtifacts/UpdateAttempts (#470) and in the folder
+        snapshots were written to before it, treecipe/UpdateAttempts/<tree folder>/. A name both
+        hold is listed once, and resolveSnapshotFilePath answers the newer folder's file. A folder
+        name that is not plain, or a folder outside the workspace, lists nothing.
     */
-    static listSnapshots(workspaceRoot: string, treeFolderName: string): IUpdateSnapshotList {
+    static listSnapshots(workspaceRoot: string, treeFolderName: string, runArtifactsLocation?: IRecipeCockpitRunArtifactsLocation): IUpdateSnapshotList {
 
-        const emptyList: IUpdateSnapshotList = { snapshotFileNames: [], hiddenSnapshotCount: 0 };
-        const treeFolderPath = this.resolveTreeAttemptsFolderPath(workspaceRoot, treeFolderName);
+        const snapshotsByFileName = new Map<string, { fileName: string; timestamp: string; attempt: number }>();
 
-        if ( !treeFolderPath ) {
-            return emptyList;
-        }
-
-        let directoryEntries: fs.Dirent[];
-        try {
-            directoryEntries = fs.readdirSync(treeFolderPath, { withFileTypes: true });
-        } catch {
-            return emptyList;
-        }
-
-        const snapshots = directoryEntries.flatMap(directoryEntry => {
-            const nameMatch = directoryEntry.isFile() ? SNAPSHOT_FILE_NAME_PATTERN.exec(directoryEntry.name) : null;
-            return nameMatch ? [{ fileName: directoryEntry.name, timestamp: nameMatch[1], attempt: nameMatch[2] ? Number(nameMatch[2]) : 1 }] : [];
+        this.resolveSnapshotFolderPaths(workspaceRoot, treeFolderName, runArtifactsLocation).forEach(snapshotFolderPath => {
+            let directoryEntries: fs.Dirent[];
+            try {
+                directoryEntries = fs.readdirSync(snapshotFolderPath, { withFileTypes: true });
+            } catch {
+                return;
+            }
+            directoryEntries.forEach(directoryEntry => {
+                const nameMatch = directoryEntry.isFile() ? SNAPSHOT_FILE_NAME_PATTERN.exec(directoryEntry.name) : null;
+                if ( nameMatch && !snapshotsByFileName.has(directoryEntry.name) ) {
+                    snapshotsByFileName.set(directoryEntry.name, { fileName: directoryEntry.name, timestamp: nameMatch[1], attempt: nameMatch[2] ? Number(nameMatch[2]) : 1 });
+                }
+            });
         });
+
+        const snapshots = [...snapshotsByFileName.values()];
 
         snapshots.sort((left, right) => left.timestamp !== right.timestamp
             ? ( left.timestamp < right.timestamp ? 1 : -1 )
@@ -397,37 +368,50 @@ export class RecipeCockpitRecordUpdate {
     }
 
     // WHERE A LISTED SNAPSHOT IS, CHECKED AGAIN WHEN IT IS READ: A NAME writeSnapshot WRITES, A FILE AND NOT A LINK, INSIDE THE WORKSPACE
-    static resolveSnapshotFilePath(workspaceRoot: string, treeFolderName: string, snapshotFileName: string): string | undefined {
+    static resolveSnapshotFilePath(workspaceRoot: string, treeFolderName: string, snapshotFileName: string, runArtifactsLocation?: IRecipeCockpitRunArtifactsLocation): string | undefined {
 
-        const treeFolderPath = SNAPSHOT_FILE_NAME_PATTERN.test(snapshotFileName) ? this.resolveTreeAttemptsFolderPath(workspaceRoot, treeFolderName) : undefined;
-        if ( !treeFolderPath ) {
+        if ( !SNAPSHOT_FILE_NAME_PATTERN.test(snapshotFileName) ) {
             return undefined;
         }
 
-        const snapshotFilePath = path.join(treeFolderPath, snapshotFileName);
-
-        try {
-            if ( !fs.lstatSync(snapshotFilePath).isFile() ) {
-                return undefined;
+        for ( const snapshotFolderPath of this.resolveSnapshotFolderPaths(workspaceRoot, treeFolderName, runArtifactsLocation) ) {
+            const snapshotFilePath = path.join(snapshotFolderPath, snapshotFileName);
+            try {
+                if ( !fs.lstatSync(snapshotFilePath).isFile() ) {
+                    continue;
+                }
+            } catch {
+                continue;
             }
-        } catch {
-            return undefined;
+            if ( SfdxProjectService.isPathContainedInWorkspace(snapshotFilePath, path.resolve(workspaceRoot)) ) {
+                return snapshotFilePath;
+            }
         }
 
-        return SfdxProjectService.isPathContainedInWorkspace(snapshotFilePath, path.resolve(workspaceRoot)) ? snapshotFilePath : undefined;
+        return undefined;
 
     }
 
-    private static resolveTreeAttemptsFolderPath(workspaceRoot: string, treeFolderName: string): string | undefined {
+    // THE TREE'S RunArtifacts/UpdateAttempts FIRST, THEN THE FOLDER USED BEFORE #470; ONLY FOLDERS THAT EXIST, ARE NOT LINKS AND ARE INSIDE THE WORKSPACE
+    private static resolveSnapshotFolderPaths(workspaceRoot: string, treeFolderName: string, runArtifactsLocation?: IRecipeCockpitRunArtifactsLocation): string[] {
 
         if ( !FOLDER_NAME_PATTERN.test(treeFolderName) || WINDOWS_RESERVED_FOLDER_NAME_PATTERN.test(treeFolderName) ) {
-            return undefined;
+            return [];
         }
 
         const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
-        const treeFolderPath = path.join(resolvedWorkspaceRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, treeFolderName);
+        const candidateFolderPaths = [
+            ...( runArtifactsLocation ? [RecipeCockpitRunArtifacts.buildKindFolderPath(runArtifactsLocation, 'UpdateAttempts')] : [] ),
+            path.join(resolvedWorkspaceRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, treeFolderName)
+        ];
 
-        return fs.existsSync(treeFolderPath) && SfdxProjectService.isPathContainedInWorkspace(treeFolderPath, resolvedWorkspaceRoot) ? treeFolderPath : undefined;
+        return candidateFolderPaths.filter(folderPath => {
+            try {
+                return fs.lstatSync(folderPath).isDirectory() && SfdxProjectService.isPathContainedInWorkspace(folderPath, resolvedWorkspaceRoot);
+            } catch {
+                return false;
+            }
+        });
 
     }
 

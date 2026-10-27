@@ -102,6 +102,7 @@ import {
     RecipeCockpitQuery,
     RecipeCockpitQueryExportFormat
 } from './RecipeCockpitQuery';
+import { IRecipeCockpitRunArtifactsLocation, RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME, RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE, RecipeCockpitRunArtifacts } from './RecipeCockpitRunArtifacts';
 import { IUpdateRecordResult, IUpdateRecordValues, IUpdateRequestRecord, IUpdateSnapshotObject, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RECIPE_COCKPIT_UPDATE_REQUEST_RECORD_LIMIT, RecipeCockpitRecordUpdate } from './RecipeCockpitRecordUpdate';
 import { IRecipeCockpitUpdaterObjectRequest, IRecipeCockpitUpdaterTreeObject, RECIPE_COCKPIT_UPDATER_WHERE_MAX_LENGTH, RecipeCockpitTreeUpdaterQuery } from './RecipeCockpitTreeUpdaterQuery';
 import { IOrgChangeHints, IOrgFieldFileCopy, IOrgNewFieldDetail, IOrgObjectChanges, IOrgStagedFieldDetail, ORG_CHANGE_RETRIEVE_OPERATION_NAME, RecipeCockpitOrgChangeDetection } from './RecipeCockpitOrgChangeDetection';
@@ -601,8 +602,8 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of an org you pick into your project, and change nothing in the org.',
             'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
-            'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.',
-            'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Retrieve latest metadata, beside the filter, retrieves those objects from the org into treecipe/OrgOperations (never your package directories) and marks each field new in org or changed in org against your project, with new child objects in the org and the org\'s recent changes as hints; Apply retrieved files to project asks first, then copies those files into your project. A field only the org holds can be ticked too: its new values come from the faker expression the recipe\'s backend writes for its type, or, when it writes none, a fixed value you type, and a lookup, a formula and the rest stay locked. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the parent records step 1\'s WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with the fields you ticked, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to treecipe/UpdateAttempts first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. An update that lands also writes an adapted data set, FakeDataSets/<tree folder>-adapted-<time>, holding the loaded records with their new values and listed under Previously Used Data Sets as adapted, and an adapted recipe beside the original (which is never changed), every adapted line ending in # ADAPTED with the date and the org; its notification opens either. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
+            'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under RunArtifacts in the tree folder, which git ignores.',
+            'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Retrieve latest metadata, beside the filter, retrieves those objects from the org into RunArtifacts in the tree folder (never your package directories) and marks each field new in org or changed in org against your project, with new child objects in the org and the org\'s recent changes as hints; Apply retrieved files to project asks first, then copies those files into your project. A field only the org holds can be ticked too: its new values come from the faker expression the recipe\'s backend writes for its type, or, when it writes none, a fixed value you type, and a lookup, a formula and the rest stay locked. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the parent records step 1\'s WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with the fields you ticked, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to RunArtifacts in the tree folder first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. An update that lands also writes an adapted data set, FakeDataSets/<tree folder>-adapted-<time>, holding the loaded records with their new values and listed under Previously Used Data Sets as adapted, and an adapted recipe beside the original (which is never changed), every adapted line ending in # ADAPTED with the date and the org; its notification opens either. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
         ]
     },
     {
@@ -611,6 +612,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The settings that leave the YAML alone are kept by VS Code for this workspace on this machine, per tree. They carry over when you regenerate the same objects, but they are not in your repository, so a teammate or a fresh clone starts without them. Switching to another run while a tree on screen has settings asks first: Reset selections clears them, Apply same selections keeps them for the trees of that run with the same folder, and Cancel stays on the run.',
             'When you generate, the cockpit applies them to a copy of the recipe. The data set keeps that copy as filteredRecipe-… beside originalRecipe-… in its BaseArtifactFiles folder, and datasetSource.json lists what was changed.',
             'Each insert of a data set saves its results, and how it ended, in the data set\'s InsertAttempts folder. Under Previously Used Data Sets, each row shows its last insert: Inserted, Partly inserted, Insert failed, Insert cancelled or Insert outcome unknown (no outcome was saved for it, as for an insert from before this was added), with when, which org and how many records in its tooltip. View results opens that insert\'s results file.',
+            'What the Troubleshooting and Treecipe Adapter tabs run for a tree is kept with its recipe, in a RunArtifacts folder inside the tree folder of the run: the package.xml and CLI answer of each deploy, retrieve and permission set assignment, a record of each Generate permission set, the Adapter\'s retrieved metadata, its update snapshots and results, and query exports. Git ignores that folder, and a notification says so when its .gitignore no longer ignores everything. Files written before this, under treecipe/OrgOperations, treecipe/UpdateAttempts and treecipe/QueryResults, stay where they are, and Restore previous values… still lists the snapshots there. A scratch org is not made for one tree, so its output stays in treecipe/OrgOperations.',
             'Reset selection on a card clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field\'s pencil.',
             'Edits on the Query tab are kept the same way, per tree; Reset beside a query puts back the generated text.'
         ]
@@ -638,7 +640,7 @@ export const RECIPE_COCKPIT_PREVIEW_WARNING_MESSAGE = 'The Recipe Cockpit is an 
 */
 export const RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL = `Every Recipe Cockpit slice ships behind this flag while the panel is being built, so what you are turning on is unfinished on purpose: it traverses a generated recipe, writes back into a recipe only when you add a friend to a nested self-lookup iteration (and asks first), and its layout, its messages and the shape of what it shows will change between releases.
 
-It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", "Retrieve fields…", "Retrieve record types…" and "Retrieve global value sets…", on every tree, ask every time in the command palette for any connected org, production included, and retrieve that tree's validation rules, custom fields, record types or the global value sets its fields name from it into this project after a confirmation: they only read from that org and deploy nothing. The Query tab, on every tree, runs a query you can edit against the org chosen in Target Org Manager, or asks once for one when none is chosen; that is any org the picker lists, the CLI's default org included even when it is production, and no other production org: a query only reads, and what it returns is written only when you export it, under treecipe/QueryResults. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields…" (the tree's custom fields and the custom objects that hold them, plus, only if you tick its confirmation's box, every tree object's validation rules, record types and global value sets; never a standard field, a standard object or a layout), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under treecipe/OrgOperations, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
+It CAN WRITE TO AN ORG: the Treecipe tab's "Generate fake data and insert" generates a whole relationship tree and inserts it into the org you choose there. That picker never lists or connects to production: it offers only orgs the Salesforce CLI knows as a sandbox or a scratch org and reports as connected (to answer that, the CLI pings each authorized org's token, once per session or per ⟳; Treecipe itself connects only to the org you select), and the insert is offered only for an org that reports itself as a sandbox and asks you to confirm each time. It inserts the way Insert Data Set by Directory does: you choose all-or-none, and Cancel deletes what that insert saved. The Treecipe tab's "+ New scratch org" creates a scratch org through the Dev Hub you pick from the connected Dev Hubs (every time, even when there is only one) and selects it, after you confirm; it deploys nothing to it, and the cockpit never deletes an org. "Assign permission sets to me…", on every tree's Troubleshooting tab, assigns the permission sets you pick from this workspace's source that grant access to that tree's objects to the user the org selected there is authorized as, or the user of a sandbox or scratch org you pick when none is, after a confirmation, and only once the org answers again that it is a sandbox. It deploys nothing: a permission set the org does not hold yet is named in a warning for you to deploy. "Generate permission set…" writes a permission set granting Create and Read on a tree's objects into this project's permissionsets/SDT_Treecipe folder, after a confirmation, and deploys nothing either. "Retrieve validation rules…", "Retrieve fields…", "Retrieve record types…" and "Retrieve global value sets…", on every tree, ask every time in the command palette for any connected org, production included, and retrieve that tree's validation rules, custom fields, record types or the global value sets its fields name from it into this project after a confirmation: they only read from that org and deploy nothing. The Query tab, on every tree, runs a query you can edit against the org chosen in Target Org Manager, or asks once for one when none is chosen; that is any org the picker lists, the CLI's default org included even when it is production, and no other production org: a query only reads, and what it returns is written only when you export it, under RunArtifacts in the tree folder. The Troubleshooting tab's deploy buttons ARE the cockpit's only metadata deploys: "Deploy permission set…", "Deploy fields…" (the tree's custom fields and the custom objects that hold them, plus, only if you tick its confirmation's box, every tree object's validation rules, record types and global value sets; never a standard field, a standard object or a layout), "Deploy global value sets…" and "Deploy record types…" each deploy just those components, through a package.xml the cockpit writes under RunArtifacts in the tree folder, to the sandbox or scratch org selected in the Org section or one you pick, after a confirmation that lists every component, and only once that org answers again that it is a sandbox. They never reach production.
 
 Enabling applies to THIS WORKSPACE only, and nothing else in Treecipe changes. Turn it off at any time in Settings under "salesforce-data-treecipe.recipeCockpitEnabled".
 
@@ -2125,8 +2127,8 @@ export const RECIPE_COCKPIT_STANDALONE_ACTION_CARDS: Readonly<Record<RecipeCockp
     regenerateWithRecordTypes: { verb: 'regenerate', why: 'Write the run again with the record types ticked above, one block each.' },
     regenerateWithDefaultRecordTypes: { verb: 'regenerate', why: 'Write the run again with each object\'s default record type, as Generate Treecipe does.' },
     runQuery: { verb: 'run', why: 'Read what this query returns from the org chosen in Target Org Manager. It only reads.' },
-    exportQueryJson: { verb: 'export', why: 'Write every record the last run returned to treecipe/QueryResults as JSON.' },
-    exportQueryCsv: { verb: 'export', why: 'Write every record the last run returned to treecipe/QueryResults as CSV.' },
+    exportQueryJson: { verb: 'export', why: 'Write every record the last run returned to RunArtifacts in the tree folder as JSON.' },
+    exportQueryCsv: { verb: 'export', why: 'Write every record the last run returned to RunArtifacts in the tree folder as CSV.' },
     loadUpdaterRecords: { verb: 'retrieve', why: 'Read this tree\'s records, with the chosen fields, from the selected sandbox. It only reads.' },
     generateUpdaterValues: { verb: 'generateData', why: 'Make a new value for each chosen field of every loaded record. Nothing is written yet.' },
     updateUpdaterRecords: { verb: 'update', why: 'Write the new values to the loaded records by Id. Their old values are saved first.' }
@@ -2253,7 +2255,7 @@ export const RECIPE_COCKPIT_QUERY_TAB_LABEL = 'Query';
     Adapter cannot change is disabled with the reason.
 */
 export const RECIPE_COCKPIT_UPDATER_TAB_LABEL = 'Treecipe Adapter';
-export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads the parent records and only the records under them, with those fields, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with ✎. Update records writes those values to the records by Id, after saving their old values to treecipe/UpdateAttempts, and Restore previous values… puts saved ones back.';
+export const RECIPE_COCKPIT_UPDATER_INTRO = 'Choose the fields to fill on records an org already holds, then Load records reads the parent records and only the records under them, with those fields, from the sandbox or scratch org chosen in Target Org Manager. Generate values makes a new value for each of them, from the field\'s faker expression or a value you type with ✎. Update records writes those values to the records by Id, after saving their old values to RunArtifacts in the tree folder, and Restore previous values… puts saved ones back.';
 export const RECIPE_COCKPIT_UPDATER_SEARCH_PLACEHOLDER = 'Filter by fields & objects to add';
 /*
     The Adapter's two steps (#443): step 1 chooses the parent object and the WHERE for the parent
@@ -2270,7 +2272,7 @@ export const RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NOTE_PREFIX = 'Parent records: 
 export const RECIPE_COCKPIT_UPDATER_PARENT_WHERE_NONE_NOTE = 'Parent records: every record (no WHERE in step 1)';
 export const RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_LABEL = 'Retrieve latest metadata';
 export const RECIPE_COCKPIT_UPDATER_RETRIEVING_METADATA_LABEL = 'Retrieving…';
-export const RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_TITLE = 'Retrieve the latest metadata of these objects from the sandbox or scratch org chosen in Target Org Manager, into treecipe/OrgOperations, and mark the fields that are new or changed in the org. Nothing in the project changes.';
+export const RECIPE_COCKPIT_UPDATER_RETRIEVE_METADATA_TITLE = 'Retrieve the latest metadata of these objects from the sandbox or scratch org chosen in Target Org Manager, into RunArtifacts in the tree folder, and mark the fields that are new or changed in the org. Nothing in the project changes.';
 export const RECIPE_COCKPIT_ADAPTER_RETRIEVE_BUSY_REFUSAL = 'Nothing was retrieved: another run is using the org selection. Try again when it ends.';
 export const RECIPE_COCKPIT_ADAPTER_RETRIEVE_ORG_PLACEHOLDER = 'Select the sandbox or scratch org to retrieve the latest metadata from';
 export const RECIPE_COCKPIT_ADAPTER_NEW_IN_ORG_LABEL = 'new in org';
@@ -2344,8 +2346,8 @@ export const RECIPE_COCKPIT_UPDATER_UPDATE_CONFIRM_LABEL = 'Update records';
 export const RECIPE_COCKPIT_UPDATER_UPDATE_BUSY_REFUSAL = 'Nothing was updated: another run is using the org selection. Try again when it ends.';
 export const RECIPE_COCKPIT_UPDATER_NOT_GENERATED_REFUSAL = 'Nothing was updated: generate values for the loaded records first. The update writes the values the last Generate values made.';
 export const RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE = 'A picklist value is the field\'s default list, not its record type\'s: a record whose record type does not allow the value is rejected by the org, and its error is in the results file.';
-export const RECIPE_COCKPIT_UPDATER_NOT_GIT_IGNORED_NOTE = 'treecipe/UpdateAttempts/.gitignore does not ignore everything in that folder, so these files of org data could be committed: check them before you commit.';
-export const RECIPE_COCKPIT_UPDATER_SNAPSHOT_FAILED_REFUSAL = 'Nothing was updated: the old values could not be saved to treecipe/UpdateAttempts, and an update never runs without them.';
+export const RECIPE_COCKPIT_UPDATER_NOT_GIT_IGNORED_NOTE = RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE;
+export const RECIPE_COCKPIT_UPDATER_SNAPSHOT_FAILED_REFUSAL = 'Nothing was updated: the old values could not be saved to RunArtifacts in the tree folder, and an update never runs without them.';
 // THE RESTORE (#419): A SNAPSHOT AN UPDATE SAVED, WRITTEN BACK TO ITS RECORDS BY Id, IN THE SANDBOX IT WAS TAKEN IN
 export const RECIPE_COCKPIT_UPDATER_SNAPSHOTS_HEADING = 'Previous updates';
 export const RECIPE_COCKPIT_UPDATER_NO_SNAPSHOTS_NOTE = 'No update of this tree has saved old values yet.';
@@ -2353,7 +2355,7 @@ export const RECIPE_COCKPIT_UPDATER_RESTORE_LABEL = 'Restore previous values…'
 export const RECIPE_COCKPIT_UPDATER_RESTORING_LABEL = 'Restoring…';
 export const RECIPE_COCKPIT_UPDATER_RESTORE_CONFIRM_LABEL = 'Restore values';
 export const RECIPE_COCKPIT_UPDATER_RESTORE_BUSY_REFUSAL = 'Nothing was restored: another run is using the org selection. Try again when it ends.';
-export const RECIPE_COCKPIT_UPDATER_RESTORE_SNAPSHOT_FAILED_REFUSAL = 'Nothing was restored: the values the records hold now could not be saved to treecipe/UpdateAttempts, and a restore never runs without them.';
+export const RECIPE_COCKPIT_UPDATER_RESTORE_SNAPSHOT_FAILED_REFUSAL = 'Nothing was restored: the values the records hold now could not be saved to RunArtifacts in the tree folder, and a restore never runs without them.';
 
 export const RECIPE_COCKPIT_QUERY_INTRO = 'The SOQL Generate Treecipe wrote for this tree. Edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks), then export what it returned as JSON or CSV. A query only reads.';
 
@@ -2365,7 +2367,7 @@ export const RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL = 'Open file';
 
 export const RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE = 'Log in to it again with sf org login web, then run the query again.';
 
-export const RECIPE_COCKPIT_QUERY_NOT_GIT_IGNORED_NOTE = 'treecipe/QueryResults/.gitignore does not ignore everything in that folder, so this file of org data could be committed: check it before you commit.';
+export const RECIPE_COCKPIT_QUERY_NOT_GIT_IGNORED_NOTE = RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE;
 
 // THE READER'S EDITS OF A TREE'S QUERIES (#367), BY TREE FOLDER, THEN QUERY KEY
 export const RECIPE_COCKPIT_QUERY_EDITS_STATE_KEY = 'treecipe.recipeCockpit.queryEdits';
@@ -8788,7 +8790,8 @@ export class RecipeCockpitService {
                 treeLabel,
                 objectApiNames,
                 assignSelection ? async () => assignSelection.orgDetail : async () => this.promptForPermissionSetOrg(),
-                (orgDetail, coveredObjectApiNames) => { cliStartedFor = { orgDetail: orgDetail, objectApiNames: coveredObjectApiNames }; }
+                (orgDetail, coveredObjectApiNames) => { cliStartedFor = { orgDetail: orgDetail, objectApiNames: coveredObjectApiNames }; },
+                panelState.recipeDataMessage ? this.resolveTreeRunArtifactsLocation(panelState.workspaceRoot, panelState.recipeDataMessage.recipe, tree) : undefined
             );
 
         } finally {
@@ -9862,6 +9865,24 @@ export class RecipeCockpitService {
     }
 
     // THE BACKEND A CARD'S RECIPE WAS WRITTEN FOR, FROM ITS PATH, OR UNDEFINED WHEN IT HAS NO SINGLE RECIPE OR THE PATH DOES NOT SAY
+    /*
+        Where a tree's run files go (#470): GeneratedRecipes/<run on screen>/<tree folder>/RunArtifacts.
+        Undefined for a card with no folder, or one whose folder is not a real folder inside the
+        workspace, and then a writer writes nothing.
+    */
+    static resolveTreeRunArtifactsLocation(workspaceRoot: string,
+                                            recipeViewModel: Pick<IRecipeCockpitRecipeViewModel, 'selectedRunFolderName'>,
+                                            tree: Pick<IRecipeCockpitTreeViewModel, 'folderName'>): IRecipeCockpitRunArtifactsLocation | undefined {
+
+        return RecipeCockpitRunArtifacts.resolveTreeLocation(
+            workspaceRoot,
+            path.join(workspaceRoot, ConfigurationService.getGeneratedRecipesFolderPath()),
+            recipeViewModel.selectedRunFolderName,
+            tree.folderName
+        );
+
+    }
+
     private static readTreeFakerService(panelState: IRecipeCockpitPanelState, treeKey: string): 'faker-js' | 'snowfakery' | undefined {
 
         const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey);
@@ -10190,7 +10211,7 @@ export class RecipeCockpitService {
         "Retrieve latest metadata" (#445): one run per window, sharing the load's lock. The org is the
         Target Org Manager selection once it answered it is a sandbox, or, with none, the load's own
         prompt. The objects are retrieved as CustomObject members into a STAGING folder under
-        treecipe/OrgOperations -- never a package directory -- and compared with the project's field
+        the tree's RunArtifacts/OrgOperations -- never a package directory -- and compared with the project's field
         files. What is posted is names and one-line differences; the staged files stay on the host
         for a later Apply. How it went is ONE notification.
     */
@@ -10267,17 +10288,18 @@ export class RecipeCockpitService {
         // NO PARENTHESES: A NOTIFICATION ESCAPES THEM
         const orgLabel = dataOrgSelection.orgDetail.alias ? `${dataOrgSelection.orgDetail.alias} · ${orgUsername}` : orgUsername;
         const treeTitle = tree.customName ?? tree.title;
+        const runArtifactsLocation = this.resolveTreeRunArtifactsLocation(workspaceRoot, clickedRecipeDataMessage.recipe, tree);
         let retrieveArguments: string[];
         let stagingFolderPath: string | undefined;
         try {
             const packageXml = RecipeCockpitOrgChangeDetection.buildObjectRetrievePackageXml(objectApiNames, this.readSourceApiVersion(workspaceRoot));
-            const plannedStagingFolderPath = RecipeCockpitOrgChangeDetection.buildStagingFolderPath(workspaceRoot, orgUsername, new Date());
-            stagingFolderPath = plannedStagingFolderPath ? RecipeCockpitOrgChangeDetection.makeStagingFolder(workspaceRoot, plannedStagingFolderPath) : undefined;
-            const writtenPackageXmlFilePath = stagingFolderPath
-                ? RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, RecipeCockpitOrgChangeDetection.buildPackageXmlFilePath(stagingFolderPath), packageXml)
+            const plannedStagingFolderPath = runArtifactsLocation ? RecipeCockpitOrgChangeDetection.buildStagingFolderPath(runArtifactsLocation, orgUsername, new Date()) : undefined;
+            stagingFolderPath = runArtifactsLocation && plannedStagingFolderPath ? RecipeCockpitOrgChangeDetection.makeStagingFolder(runArtifactsLocation, plannedStagingFolderPath) : undefined;
+            const writtenPackageXmlFilePath = runArtifactsLocation && stagingFolderPath
+                ? RecipeCockpitMetadataDeploy.writePackageXml(runArtifactsLocation, RecipeCockpitOrgChangeDetection.buildPackageXmlFilePath(stagingFolderPath), packageXml)
                 : undefined;
             if ( !stagingFolderPath || !writtenPackageXmlFilePath ) {
-                warn(`Nothing was retrieved: the staging folder could not be made under treecipe/${ORG_OPERATIONS_FOLDER_NAME} in this workspace.`);
+                warn(`Nothing was retrieved: the staging folder could not be made under the tree's ${RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME} folder in this workspace.`);
                 return;
             }
             retrieveArguments = RecipeCockpitOrgChangeDetection.buildRetrieveArguments(
@@ -10307,7 +10329,7 @@ export class RecipeCockpitService {
         const retrievePayload = ScratchOrgService.readCliJsonPayload(retrieveRun.invocation);
         const retrieveOutputFilePath = retrieveRun.invocation.spawnError || retrieveRun.invocation.isOutputTooLarge
             ? undefined
-            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgUsername, ORG_CHANGE_RETRIEVE_OPERATION_NAME, retrieveRun.invocation, new Date(), retrievePayload);
+            : runArtifactsLocation && ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgUsername, ORG_CHANGE_RETRIEVE_OPERATION_NAME, retrieveRun.invocation, new Date(), retrievePayload, runArtifactsLocation);
         const retrieveRead = RecipeCockpitOrgChangeDetection.readRetrieveSucceeded(retrieveRun.invocation, retrievePayload);
 
         // A FAILED RETRIEVE KEEPS WHAT THE LAST ONE MARKED ON SCREEN
@@ -10365,7 +10387,7 @@ export class RecipeCockpitService {
     /*
         "Add to data set" (#447), first half: the new child object's metadata retrieved on its own
         from the sandbox the parent records came from, into a NEW staging folder under
-        treecipe/OrgOperations -- never a package directory -- and every field its files hold offered
+        the tree's RunArtifacts/OrgOperations -- never a package directory -- and every field its files hold offered
         as the Adapter offers a field only the org holds (#446): the expression the recipe's own
         backend writes for its type, a fixed value only, or why it is locked. The lookup to the
         parent is locked, since each record's is a loaded parent's Id. Shares the load's lock.
@@ -10436,17 +10458,18 @@ export class RecipeCockpitService {
 
         const orgUsername = heldRecords.orgUsername;
         const orgLabel = orgDetail.alias ? `${orgDetail.alias} · ${orgUsername}` : orgUsername;
+        const runArtifactsLocation = this.resolveTreeRunArtifactsLocation(workspaceRoot, clickedRecipeDataMessage.recipe, tree);
         let retrieveArguments: string[];
         let stagingFolderPath: string | undefined;
         try {
             const packageXml = RecipeCockpitOrgChangeDetection.buildObjectRetrievePackageXml([childObjectApiName], this.readSourceApiVersion(workspaceRoot));
-            const plannedStagingFolderPath = RecipeCockpitOrgChangeDetection.buildStagingFolderPath(workspaceRoot, orgUsername, new Date());
-            stagingFolderPath = plannedStagingFolderPath ? RecipeCockpitOrgChangeDetection.makeStagingFolder(workspaceRoot, plannedStagingFolderPath) : undefined;
-            const writtenPackageXmlFilePath = stagingFolderPath
-                ? RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, RecipeCockpitOrgChangeDetection.buildPackageXmlFilePath(stagingFolderPath), packageXml)
+            const plannedStagingFolderPath = runArtifactsLocation ? RecipeCockpitOrgChangeDetection.buildStagingFolderPath(runArtifactsLocation, orgUsername, new Date()) : undefined;
+            stagingFolderPath = runArtifactsLocation && plannedStagingFolderPath ? RecipeCockpitOrgChangeDetection.makeStagingFolder(runArtifactsLocation, plannedStagingFolderPath) : undefined;
+            const writtenPackageXmlFilePath = runArtifactsLocation && stagingFolderPath
+                ? RecipeCockpitMetadataDeploy.writePackageXml(runArtifactsLocation, RecipeCockpitOrgChangeDetection.buildPackageXmlFilePath(stagingFolderPath), packageXml)
                 : undefined;
             if ( !stagingFolderPath || !writtenPackageXmlFilePath ) {
-                refuse(`the staging folder could not be made under treecipe/${ORG_OPERATIONS_FOLDER_NAME} in this workspace.`);
+                refuse(`the staging folder could not be made under the tree's ${RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME} folder in this workspace.`);
                 return;
             }
             retrieveArguments = RecipeCockpitOrgChangeDetection.buildRetrieveArguments(
@@ -10475,7 +10498,7 @@ export class RecipeCockpitService {
         const retrievePayload = ScratchOrgService.readCliJsonPayload(retrieveRun.invocation);
         const retrieveOutputFilePath = retrieveRun.invocation.spawnError || retrieveRun.invocation.isOutputTooLarge
             ? undefined
-            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgUsername, ORG_CHANGE_RETRIEVE_OPERATION_NAME, retrieveRun.invocation, new Date(), retrievePayload);
+            : runArtifactsLocation && ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgUsername, ORG_CHANGE_RETRIEVE_OPERATION_NAME, retrieveRun.invocation, new Date(), retrievePayload, runArtifactsLocation);
         const retrieveRead = RecipeCockpitOrgChangeDetection.readRetrieveSucceeded(retrieveRun.invocation, retrievePayload);
 
         if ( 'failureMessage' in retrieveRead ) {
@@ -11714,9 +11737,10 @@ export class RecipeCockpitService {
         }
 
         const startedAt = new Date();
+        const runArtifactsLocation = this.resolveTreeRunArtifactsLocation(panelState.workspaceRoot, clickedRecipeDataMessage.recipe, tree);
         const snapshotObjects = plannedObjects.map(plannedObject => RecipeCockpitRecordUpdate.buildSnapshotObject(plannedObject.objectApiName, plannedObject.fieldApiNames, plannedObject.loadedRecords,
                                                                                                                   heldValues.orgOnlyFieldApiNamesByObjectApiName.get(plannedObject.objectApiName)));
-        const attemptFiles = RecipeCockpitRecordUpdate.writeSnapshot(panelState.workspaceRoot, {
+        const attemptFiles = runArtifactsLocation && RecipeCockpitRecordUpdate.writeSnapshot(runArtifactsLocation, {
             orgUsername: orgUsername,
             treeFolderName: tree.folderName,
             takenAt: startedAt.toISOString(),
@@ -11745,7 +11769,7 @@ export class RecipeCockpitService {
 
         const adaptedRun = await this.writeAdaptedRunAfterUpdate(panelState, treeKey, tree.folderName, heldRecords, heldValues, sendResult, orgDetail, startedAt);
 
-        this.showUpdaterUpdateNotification(sendResult, treeTitle, orgLabel, path.basename(attemptFiles.snapshotFilePath), isResultsWritten ? attemptFiles.resultsFilePath : undefined, panelState.workspaceRoot, 'update', adaptedRun);
+        this.showUpdaterUpdateNotification(sendResult, treeTitle, orgLabel, path.basename(attemptFiles.snapshotFilePath), isResultsWritten ? attemptFiles.resultsFilePath : undefined, panelState.workspaceRoot, 'update', adaptedRun, runArtifactsLocation);
 
         // IN PLACE (#226), ONLY ON THE PANEL AND MODEL THE UPDATE WAS CLICKED ON; THE NEXT RELOAD LISTS IT EITHER WAY
         if ( adaptedRun && 'datasetFolderPath' in adaptedRun
@@ -11891,10 +11915,11 @@ export class RecipeCockpitService {
             return;
         }
 
-        const snapshotList = RecipeCockpitRecordUpdate.listSnapshots(panelState.workspaceRoot, tree.folderName);
+        const runArtifactsLocation = this.resolveTreeRunArtifactsLocation(panelState.workspaceRoot, recipeDataMessage.recipe, tree);
+        const snapshotList = RecipeCockpitRecordUpdate.listSnapshots(panelState.workspaceRoot, tree.folderName, runArtifactsLocation);
         const snapshotPathsByName = new Map<string, string>();
         snapshotList.snapshotFileNames.forEach(snapshotFileName => {
-            const snapshotFilePath = RecipeCockpitRecordUpdate.resolveSnapshotFilePath(panelState.workspaceRoot, tree.folderName as string, snapshotFileName);
+            const snapshotFilePath = RecipeCockpitRecordUpdate.resolveSnapshotFilePath(panelState.workspaceRoot, tree.folderName as string, snapshotFileName, runArtifactsLocation);
             if ( snapshotFilePath ) {
                 snapshotPathsByName.set(snapshotFileName, snapshotFilePath);
             }
@@ -11993,9 +12018,10 @@ export class RecipeCockpitService {
 
         // RESOLVED AGAIN, NOT TAKEN FROM THE LIST: IT MAY HAVE GONE, OR BECOME A LINK, SINCE IT WAS LISTED
         const listedSnapshotPath = panelState.restorableSnapshots.get(treeKey)?.get(snapshotName);
-        const snapshotFilePath = RecipeCockpitRecordUpdate.resolveSnapshotFilePath(panelState.workspaceRoot, tree.folderName, snapshotName);
+        const snapshotFilePath = RecipeCockpitRecordUpdate.resolveSnapshotFilePath(panelState.workspaceRoot, tree.folderName, snapshotName,
+                                                                                    this.resolveTreeRunArtifactsLocation(panelState.workspaceRoot, clickedRecipeDataMessage.recipe, tree));
         if ( !listedSnapshotPath || snapshotFilePath !== listedSnapshotPath ) {
-            return refuse(`Nothing was restored: ${snapshotName} is no longer in treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${tree.folderName}/.`);
+            return refuse(`Nothing was restored: ${snapshotName} is no longer where it was listed from.`);
         }
 
         const snapshot = RecipeCockpitRecordUpdate.readSnapshotFile(snapshotFilePath);
@@ -12158,9 +12184,10 @@ export class RecipeCockpitService {
         }
 
         const startedAt = new Date();
+        const runArtifactsLocation = this.resolveTreeRunArtifactsLocation(panelState.workspaceRoot, clickedRecipeDataMessage.recipe, tree);
         const currentSnapshotObjects = restoredObjects.map(plannedObject => RecipeCockpitRecordUpdate.buildSnapshotObject(plannedObject.objectApiName, plannedObject.fieldApiNames, plannedObject.currentRecords,
                                                                                                                             snapshotObjects.find(snapshotObject => snapshotObject.objectApiName === plannedObject.objectApiName)?.orgOnlyFieldApiNames));
-        const attemptFiles = RecipeCockpitRecordUpdate.writeSnapshot(panelState.workspaceRoot, {
+        const attemptFiles = runArtifactsLocation && RecipeCockpitRecordUpdate.writeSnapshot(runArtifactsLocation, {
             orgUsername: orgUsername,
             treeFolderName: tree.folderName,
             takenAt: startedAt.toISOString(),
@@ -12190,7 +12217,7 @@ export class RecipeCockpitService {
             objects: sendResult.objectResults
         });
 
-        this.showUpdaterUpdateNotification(sendResult, treeTitle, orgLabel, path.basename(attemptFiles.snapshotFilePath), isResultsWritten ? attemptFiles.resultsFilePath : undefined, panelState.workspaceRoot, 'restore');
+        this.showUpdaterUpdateNotification(sendResult, treeTitle, orgLabel, path.basename(attemptFiles.snapshotFilePath), isResultsWritten ? attemptFiles.resultsFilePath : undefined, panelState.workspaceRoot, 'restore', undefined, runArtifactsLocation);
 
         return sendResult.isAnyRequestSent;
 
@@ -12412,7 +12439,8 @@ export class RecipeCockpitService {
                                             resultsFilePath: string | undefined,
                                             workspaceRoot: string,
                                             operation: 'update' | 'restore' = 'update',
-                                            adaptedRun?: RecipeCockpitAdaptedRunWrite) {
+                                            adaptedRun?: RecipeCockpitAdaptedRunWrite,
+                                            runArtifactsLocation?: IRecipeCockpitRunArtifactsLocation) {
 
         const updatedWord = operation === 'restore' ? 'restored' : 'updated';
         const describeRecords = (recordCount: number) => `${recordCount} ${recordCount === 1 ? 'record' : 'records'}`;
@@ -12450,7 +12478,7 @@ export class RecipeCockpitService {
             notificationText += ` Setting back ${putBack.requestFailureDetail}`;
         }
 
-        if ( !RecipeCockpitRecordUpdate.isUpdateAttemptsFolderGitIgnored(workspaceRoot) ) {
+        if ( !runArtifactsLocation || !RecipeCockpitRunArtifacts.isGitIgnored(runArtifactsLocation) ) {
             notificationText += ` ${RECIPE_COCKPIT_UPDATER_NOT_GIT_IGNORED_NOTE}`;
             severity = severity === 'information' ? 'warning' : severity;
         }
@@ -12591,7 +12619,7 @@ export class RecipeCockpitService {
 
     /*
         "Export JSON" / "Export CSV" (#367): the result held for the same tree folder and query, and
-        nothing else, written under treecipe/QueryResults/<folder>/. The panel posts only names; the
+        nothing else, written under <tree folder>/RunArtifacts/QueryResults/. The panel posts only names; the
         path is the host's and opened only through the notification's "Open file".
     */
     private static exportTreeQueryResult(treeKey: string, queryKey: string, exportFormat: RecipeCockpitQueryExportFormat) {
@@ -12607,19 +12635,21 @@ export class RecipeCockpitService {
             return;
         }
 
+        const recipeViewModel = this.recipeCockpitPanelState.recipeDataMessage?.recipe;
+        const runArtifactsLocation = recipeViewModel && tree ? this.resolveTreeRunArtifactsLocation(workspaceRoot, recipeViewModel, tree) : undefined;
         let exportFilePath: string | undefined;
         try {
             const exportContent = exportFormat === 'json'
                 ? RecipeCockpitQuery.buildJsonExport(heldResult.records)
                 : RecipeCockpitQuery.buildCsvExport(heldResult.records);
-            exportFilePath = RecipeCockpitQuery.writeQueryExport(workspaceRoot, heldResult.folderName, heldResult.objectApiName, heldResult.kind, exportFormat, exportContent, new Date());
+            exportFilePath = runArtifactsLocation && RecipeCockpitQuery.writeQueryExport(runArtifactsLocation, heldResult.objectApiName, heldResult.kind, exportFormat, exportContent, new Date());
         } catch (exportError) {
             VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Nothing was exported: the ${exportFormat.toUpperCase()} file could not be built: ${this.describeThrown(exportError)}`));
             return;
         }
 
         if ( !exportFilePath ) {
-            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Nothing was exported: the ${exportFormat.toUpperCase()} file could not be written under treecipe/QueryResults in this workspace.`));
+            VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`Nothing was exported: the ${exportFormat.toUpperCase()} file could not be written under the tree's ${RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME}/QueryResults folder in this workspace.`));
             return;
         }
 
@@ -12627,7 +12657,7 @@ export class RecipeCockpitService {
         const relativeFilePath = path.relative(workspaceRoot, exportFilePath).split(path.sep).join('/');
         const exportedText = `Exported ${recordCount} ${recordCount === 1 ? 'record' : 'records'} from ${heldResult.orgLabel} to ${relativeFilePath}.`;
         // ORG DATA, POSSIBLY PRODUCTION'S, IN A FOLDER GIT DOES NOT IGNORE IS SAID, SO IT IS NOT COMMITTED UNSEEN
-        const isGitIgnored = RecipeCockpitQuery.isQueryResultsFolderGitIgnored(workspaceRoot);
+        const isGitIgnored = runArtifactsLocation !== undefined && RecipeCockpitRunArtifacts.isGitIgnored(runArtifactsLocation);
         const shown = isGitIgnored
             ? vscode.window.showInformationMessage(RecipeYamlScalar.escapeForNotification(exportedText), RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL)
             : vscode.window.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${exportedText} ${RECIPE_COCKPIT_QUERY_NOT_GIT_IGNORED_NOTE}`), RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL);
@@ -12886,13 +12916,14 @@ export class RecipeCockpitService {
 
         const operationName = METADATA_DEPLOY_OPERATION_BY_KIND[deployKind];
         const operationDate = new Date();
+        const runArtifactsLocation = this.resolveTreeRunArtifactsLocation(workspaceRoot, recipeViewModel, tree);
         let deployArguments: string[];
         try {
             const packageXml = RecipeCockpitMetadataDeploy.buildPackageXml(components, this.readSourceApiVersion(workspaceRoot));
-            const packageXmlFilePath = RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(workspaceRoot, orgDetail.username, operationName, operationDate);
-            const writtenFilePath = packageXmlFilePath ? RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, packageXmlFilePath, packageXml) : undefined;
+            const packageXmlFilePath = runArtifactsLocation ? RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(runArtifactsLocation, orgDetail.username, operationName, operationDate) : undefined;
+            const writtenFilePath = runArtifactsLocation && packageXmlFilePath ? RecipeCockpitMetadataDeploy.writePackageXml(runArtifactsLocation, packageXmlFilePath, packageXml) : undefined;
             if ( !writtenFilePath ) {
-                return refuse(`Nothing was deployed: the package.xml could not be written under treecipe/${ORG_OPERATIONS_FOLDER_NAME} in this workspace.`);
+                return refuse(`Nothing was deployed: the package.xml could not be written under the tree's ${RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME} folder in this workspace.`);
             }
             deployArguments = RecipeCockpitMetadataDeploy.buildMetadataDeployArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, writtenFilePath), orgDetail.username);
         } catch (argumentError) {
@@ -12917,7 +12948,7 @@ export class RecipeCockpitService {
         const deployOutcome: MetadataDeployOutcome = RecipeCockpitMetadataDeploy.parseMetadataDeployOutput(deployRun.invocation, deployPayload);
         const deployOutputFilePath = deployRun.invocation.spawnError || deployRun.invocation.isOutputTooLarge
             ? undefined
-            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, operationName, deployRun.invocation, operationDate, deployPayload);
+            : runArtifactsLocation && ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, operationName, deployRun.invocation, operationDate, deployPayload, runArtifactsLocation);
 
         switch ( deployOutcome.kind ) {
 
@@ -12982,6 +13013,7 @@ export class RecipeCockpitService {
             ...( outputFilePath ? [RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL] : [] ),
             ...( assignFollowUp ? [RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL] : [] )
         ];
+        ({ severity, notificationText } = this.withRunArtifactsGitIgnoreNote(severity, notificationText, outputFilePath));
         const escapedText = RecipeYamlScalar.escapeForNotification(notificationText);
         const shown = severity === 'information'
             ? vscode.window.showInformationMessage(escapedText, ...actions)
@@ -13222,13 +13254,14 @@ export class RecipeCockpitService {
             return refuse(RECIPE_COCKPIT_ADAPTER_APPLY_RUNNING_REFUSAL);
         }
 
+        const runArtifactsLocation = this.resolveTreeRunArtifactsLocation(workspaceRoot, recipeViewModel, tree);
         let retrieveArguments: string[];
         try {
             const packageXml = RecipeCockpitMetadataRetrieve.buildRetrievePackageXml(manifestComponents, this.readSourceApiVersion(workspaceRoot));
-            const packageXmlFilePath = RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(workspaceRoot, orgDetail.username, METADATA_RETRIEVE_OPERATION_BY_KIND[retrieveKind], new Date());
-            const writtenFilePath = packageXmlFilePath ? RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, packageXmlFilePath, packageXml) : undefined;
+            const packageXmlFilePath = runArtifactsLocation ? RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(runArtifactsLocation, orgDetail.username, METADATA_RETRIEVE_OPERATION_BY_KIND[retrieveKind], new Date()) : undefined;
+            const writtenFilePath = runArtifactsLocation && packageXmlFilePath ? RecipeCockpitMetadataDeploy.writePackageXml(runArtifactsLocation, packageXmlFilePath, packageXml) : undefined;
             if ( !writtenFilePath ) {
-                return refuse(`No ${manyNoun} were retrieved: the package.xml could not be written under treecipe/${ORG_OPERATIONS_FOLDER_NAME} in this workspace.`);
+                return refuse(`No ${manyNoun} were retrieved: the package.xml could not be written under the tree's ${RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME} folder in this workspace.`);
             }
             retrieveArguments = RecipeCockpitMetadataRetrieve.buildManifestRetrieveArguments(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, writtenFilePath), orgDetail.username);
         } catch (argumentError) {
@@ -13253,7 +13286,7 @@ export class RecipeCockpitService {
         const retrieveOutcome: MetadataRetrieveOutcome = RecipeCockpitMetadataRetrieve.parseRetrieveOutput(retrieveKind, retrieveRun.invocation, askedNames, retrievePayload);
         const retrieveOutputFilePath = retrieveRun.invocation.spawnError || retrieveRun.invocation.isOutputTooLarge
             ? undefined
-            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, METADATA_RETRIEVE_OPERATION_BY_KIND[retrieveKind], retrieveRun.invocation, new Date(), retrievePayload);
+            : runArtifactsLocation && ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, METADATA_RETRIEVE_OPERATION_BY_KIND[retrieveKind], retrieveRun.invocation, new Date(), retrievePayload, runArtifactsLocation);
         const refusedText = describeSkipped();
 
         switch ( retrieveOutcome.kind ) {
@@ -13325,6 +13358,7 @@ export class RecipeCockpitService {
             ...( isGenerateOffered ? [RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL] : [] ),
             ...( outputFilePath ? [RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL] : [] )
         ];
+        ({ severity, notificationText } = this.withRunArtifactsGitIgnoreNote(severity, notificationText, outputFilePath));
         const escapedText = RecipeYamlScalar.escapeForNotification(notificationText);
         const shown = severity === 'information'
             ? vscode.window.showInformationMessage(escapedText, ...actions)
@@ -13515,13 +13549,32 @@ export class RecipeCockpitService {
             .filter(([count]) => count > 0)
             .map(([count, noun, reason]) => `${describeCount(count, noun)}${reason}`);
 
+        const writtenAt = new Date();
+        const runArtifactsLocation = this.resolveTreeRunArtifactsLocation(workspaceRoot, recipeViewModel, tree);
+        const resultFilePath = runArtifactsLocation && RecipeCockpitPermissionSetGenerate.writeGenerateResult(runArtifactsLocation, {
+            operation: 'permission-set-generate',
+            writtenAt: writtenAt.toISOString(),
+            treeFolderName: tree.folderName,
+            permissionSetName: permissionSetName,
+            permissionSetFile: relativeFilePath,
+            isOverwrite: isOverwrite,
+            objectApiNames: plan.objectApiNames,
+            fieldPermissionCount: plan.fieldPermissions.length,
+            skippedNameCount: plan.skippedNameCount,
+            unreadableFieldCount: plan.unreadableFieldCount,
+            notGrantableFieldCount: plan.notGrantableFieldCount,
+            requiredUnknownFieldCount: plan.requiredUnknownFieldCount
+        }, writtenAt);
+        const generatedNotice = this.withRunArtifactsGitIgnoreNote('information', `Wrote ${permissionSetName} to ${relativeFilePath}: Create and Read on ${objectCountText}, access to ${fieldCountText}.${leftOutTexts.length > 0 ? ` Left out: ${leftOutTexts.join('; ')}.` : ''} Deploy it, then assign it.`, resultFilePath);
+
         this.showGeneratedPermissionSetNotification(
-            RecipeYamlScalar.escapeForNotification(`Wrote ${permissionSetName} to ${relativeFilePath}: Create and Read on ${objectCountText}, access to ${fieldCountText}.${leftOutTexts.length > 0 ? ` Left out: ${leftOutTexts.join('; ')}.` : ''} Deploy it, then assign it.`),
+            RecipeYamlScalar.escapeForNotification(generatedNotice.notificationText),
             permissionSetName,
             permissionSetFilePath,
             workspaceRoot,
             cockpitPanel,
-            treeKey
+            treeKey,
+            generatedNotice.severity
         );
 
     }
@@ -13532,9 +13585,10 @@ export class RecipeCockpitService {
                                                             permissionSetFilePath: string,
                                                             workspaceRoot: string,
                                                             cockpitPanel: vscode.WebviewPanel,
-                                                            treeKey: string) {
+                                                            treeKey: string,
+                                                            severity: 'information' | 'warning' = 'information') {
 
-        Promise.resolve(vscode.window.showInformationMessage(
+        Promise.resolve(( severity === 'information' ? vscode.window.showInformationMessage : vscode.window.showWarningMessage )(
             notificationText,
             RECIPE_COCKPIT_GENERATE_PERMISSION_SET_OPEN_LABEL,
             RECIPE_COCKPIT_GENERATE_PERMISSION_SET_COPY_LABEL,
@@ -13602,7 +13656,8 @@ export class RecipeCockpitService {
                                                     treeLabel: string,
                                                     objectApiNames: string[],
                                                     resolveOrgDetail: () => Promise<IAuthenticatedOrgDetail | undefined>,
-                                                    onCliStarted: (orgDetail: IAuthenticatedOrgDetail, coveredObjectApiNames: string[]) => void): Promise<IRecipeCockpitPermissionSetClosingState> {
+                                                    onCliStarted: (orgDetail: IAuthenticatedOrgDetail, coveredObjectApiNames: string[]) => void,
+                                                    runArtifactsLocation?: IRecipeCockpitRunArtifactsLocation): Promise<IRecipeCockpitPermissionSetClosingState> {
 
         const refuse = (refusalText: string, closingState: IRecipeCockpitPermissionSetClosingState = {}): IRecipeCockpitPermissionSetClosingState => {
             this.showPermissionSetNotification(refusalText, undefined, workspaceRoot);
@@ -13729,7 +13784,7 @@ export class RecipeCockpitService {
         const assignOutcome: PermissionSetAssignOutcome = RecipeCockpitPermissionSetAssign.parsePermissionSetAssignOutput(assignRun.invocation, permissionSetNames, assignPayload);
         const assignOutputFilePath = assignRun.invocation.spawnError || assignRun.invocation.isOutputTooLarge
             ? undefined
-            : ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, 'permission-set-assign', assignRun.invocation, new Date(), assignPayload);
+            : runArtifactsLocation && ScratchOrgService.writeOrgOperationResult(workspaceRoot, orgDetail.username, 'permission-set-assign', assignRun.invocation, new Date(), assignPayload, runArtifactsLocation);
 
         switch ( assignOutcome.kind ) {
 
@@ -13737,7 +13792,12 @@ export class RecipeCockpitService {
                 const alreadyText = assignOutcome.alreadyAssignedNames.length > 0
                     ? ` ${assignOutcome.alreadyAssignedNames.join(', ')} ${assignOutcome.alreadyAssignedNames.length === 1 ? 'was' : 'were'} already assigned.`
                     : '';
-                VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(`Assigned ${permissionSetText} for ${treeLabel} to ${orgDetail.username} in ${orgLabel}.${alreadyText}`));
+                const assignedText = `Assigned ${permissionSetText} for ${treeLabel} to ${orgDetail.username} in ${orgLabel}.${alreadyText}`;
+                if ( assignOutputFilePath && RecipeCockpitRunArtifacts.isRunFileExposedToGit(assignOutputFilePath) ) {
+                    this.showPermissionSetNotification(assignedText, assignOutputFilePath, workspaceRoot);
+                } else {
+                    VSCodeWorkspaceService.showInformationMessage(RecipeYamlScalar.escapeForNotification(assignedText));
+                }
                 return { ...confirmed, isAssigned: true };
             }
 
@@ -13772,11 +13832,27 @@ export class RecipeCockpitService {
         "View output" button when the CLI left a result file. NOT AWAITED: the run ends, and gives the
         panel its button back, without waiting for the reader to dismiss it.
     */
+    /*
+        A run file written into a tree's RunArtifacts folder whose .gitignore no longer ignores
+        everything (#470) is said in the notification, which is then at least a warning, as the
+        Query and Adapter flows say it.
+    */
+    private static withRunArtifactsGitIgnoreNote<Severity extends 'information' | 'warning'>(severity: Severity,
+                                                                                            notificationText: string,
+                                                                                            outputFilePath: string | undefined): { severity: Severity | 'warning'; notificationText: string } {
+
+        return outputFilePath && RecipeCockpitRunArtifacts.isRunFileExposedToGit(outputFilePath)
+            ? { severity: 'warning', notificationText: `${notificationText} ${RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE}` }
+            : { severity: severity, notificationText: notificationText };
+
+    }
+
     private static showPermissionSetNotification(notificationText: string, outputFilePath: string | undefined, workspaceRoot: string) {
 
         const actions = outputFilePath ? [RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL] : [];
+        const notedText = this.withRunArtifactsGitIgnoreNote('warning', notificationText, outputFilePath).notificationText;
 
-        Promise.resolve(vscode.window.showWarningMessage(RecipeYamlScalar.escapeForNotification(notificationText), ...actions))
+        Promise.resolve(vscode.window.showWarningMessage(RecipeYamlScalar.escapeForNotification(notedText), ...actions))
             .then(chosenAction => chosenAction === RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL && outputFilePath
                 ? this.openPermissionSetOutput(outputFilePath, workspaceRoot)
                 : undefined)
@@ -25892,7 +25968,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                     queryState.runCard.titleElement.textContent = runLabel;
                 }
                 queryState.exportCards.forEach(function (exportCard) {
-                    drawActionCardState(exportCard, isTreeQueryRunning ? 'A query is running.' : queryState.hasResult ? '' : 'Run this query first', 'Write what this query returned to treecipe/QueryResults');
+                    drawActionCardState(exportCard, isTreeQueryRunning ? 'A query is running.' : queryState.hasResult ? '' : 'Run this query first', 'Write what this query returned to RunArtifacts in the tree folder');
                 });
             });
         });
@@ -26841,7 +26917,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         });
 
         if (hiddenSnapshotCount > 0) {
-            listElement.appendChild(createElement('div', 'updaterSnapshotsNote muted', hiddenSnapshotCount + ' older not shown: they are in treecipe/UpdateAttempts.'));
+            listElement.appendChild(createElement('div', 'updaterSnapshotsNote muted', hiddenSnapshotCount + ' older not shown: they are in RunArtifacts/UpdateAttempts in the tree folder, or in treecipe/UpdateAttempts for updates made before it.'));
         }
 
         drawUpdaterLoadButtons();
@@ -26974,7 +27050,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                 const isThisRestoring = isThisCardLoading && updaterRunKind === 'restore' && updaterRestoringSnapshotName === snapshotButton.snapshotName;
                 snapshotButton.element.disabled = updaterLoadRunningTreeKey !== null;
                 snapshotButton.element.textContent = isThisRestoring ? UPDATER_RESTORING_LABEL : UPDATER_RESTORE_LABEL;
-                snapshotButton.element.setAttribute('title', 'Set each record this update changed back to the value it held before, by Id, in the sandbox selected in Target Org Manager. The values they hold now are saved to treecipe/UpdateAttempts first.');
+                snapshotButton.element.setAttribute('title', 'Set each record this update changed back to the value it held before, by Id, in the sandbox selected in Target Org Manager. The values they hold now are saved to RunArtifacts in the tree folder first.');
             });
 
             if (!treeState.updaterGenerateCard) { return; }
@@ -27000,7 +27076,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                     ? 'Update ' + pluralize(valueRecordCount, 'record', 'records') + (orgLabel ? ' in ' + orgLabel : '')
                     : UPDATER_UPDATE_LABEL);
             drawActionCardState(treeState.updaterUpdateCard, updateReason || busyReason,
-                'Write the new values to these records by Id, in the sandbox they were loaded from. Their old values are saved to treecipe/UpdateAttempts first.');
+                'Write the new values to these records by Id, in the sandbox they were loaded from. Their old values are saved to RunArtifacts in the tree folder first.');
         });
 
     }

@@ -8,6 +8,7 @@ jest.mock('vscode', () => ({ workspace: { getConfiguration: jest.fn() }, window:
 
 import { IComparedField, RecipeCockpitOrgChangeDetection } from '../RecipeCockpitOrgChangeDetection';
 import { SfdxProjectService } from '../../SfdxProjectService/SfdxProjectService';
+import { buildTreeRunArtifactsLocation, FIXTURE_RUN_FOLDER_NAME, FIXTURE_TREE_FOLDER_NAME, makeTreeRunArtifactsLocation } from './RecipeCockpitRunArtifactsFixture';
 
 const WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'orgChangeWorkspace');
 const STAGING_FOLDER_PATH = path.join(WORKSPACE_ROOT, 'treecipe', 'OrgOperations', 'qa@example.com.qa', '20261023-100000-adapter-retrieve');
@@ -283,14 +284,16 @@ describe('RecipeCockpitOrgChangeDetection (#445)', () => {
 
         });
 
-        it('stages under treecipe/OrgOperations/<username>/, the package.xml beside it, and refuses a folder name that could be another folder', () => {
+        it('stages under the tree\'s RunArtifacts/OrgOperations/<username>/, the package.xml beside it, and refuses a folder name that could be another folder', () => {
 
-            const stagingFolderPath = RecipeCockpitOrgChangeDetection.buildStagingFolderPath('/workspace', 'qa@example.com.qa', new Date(2026, 9, 23, 10, 0, 0));
+            const location = buildTreeRunArtifactsLocation('/workspace');
+            const stagingFolderPath = RecipeCockpitOrgChangeDetection.buildStagingFolderPath(location, 'qa@example.com.qa', new Date(2026, 9, 23, 10, 0, 0));
 
-            expect(stagingFolderPath).toBe(path.join('/workspace', 'treecipe', 'OrgOperations', 'qa@example.com.qa', '20261023-100000-adapter-retrieve'));
+            expect(stagingFolderPath).toBe(path.join(location.treeFolderPath, 'RunArtifacts', 'OrgOperations', 'qa@example.com.qa', '20261023-100000-adapter-retrieve'));
             expect(RecipeCockpitOrgChangeDetection.buildPackageXmlFilePath(stagingFolderPath!)).toBe(`${stagingFolderPath}-package.xml`);
-            expect(RecipeCockpitOrgChangeDetection.buildStagingFolderPath('/workspace', '..', new Date())).toBeUndefined();
-            expect(RecipeCockpitOrgChangeDetection.buildStagingFolderPath('/workspace', 'a/b', new Date())).toBeUndefined();
+            expect(RecipeCockpitOrgChangeDetection.toOutputDirectoryArgument('/workspace', stagingFolderPath!)).toBe(`treecipe/GeneratedRecipes/${FIXTURE_RUN_FOLDER_NAME}/${FIXTURE_TREE_FOLDER_NAME}/RunArtifacts/OrgOperations/qa@example.com.qa/20261023-100000-adapter-retrieve`);
+            expect(RecipeCockpitOrgChangeDetection.buildStagingFolderPath(location, '..', new Date())).toBeUndefined();
+            expect(RecipeCockpitOrgChangeDetection.buildStagingFolderPath(location, 'a/b', new Date())).toBeUndefined();
 
         });
 
@@ -314,15 +317,17 @@ describe('RecipeCockpitOrgChangeDetection (#445)', () => {
 
         });
 
-        it('makes a new staging folder each time, the next free name when one is there', () => {
+        it('makes a new staging folder each time, the next free name when one is there, with a .gitignore in RunArtifacts', () => {
 
             const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-org-change-'));
             try {
-                const plannedFolderPath = RecipeCockpitOrgChangeDetection.buildStagingFolderPath(temporaryRoot, 'qa@example.com.qa', new Date())!;
-                expect(RecipeCockpitOrgChangeDetection.makeStagingFolder(temporaryRoot, plannedFolderPath)).toBe(plannedFolderPath);
+                const location = makeTreeRunArtifactsLocation(temporaryRoot);
+                const plannedFolderPath = RecipeCockpitOrgChangeDetection.buildStagingFolderPath(location, 'qa@example.com.qa', new Date())!;
+                expect(RecipeCockpitOrgChangeDetection.makeStagingFolder(location, plannedFolderPath)).toBe(plannedFolderPath);
                 expect(fs.statSync(plannedFolderPath).isDirectory()).toBe(true);
-                expect(fs.readFileSync(path.join(temporaryRoot, 'treecipe', 'OrgOperations', '.gitignore'), 'utf-8')).toBe('*\n');
-                expect(RecipeCockpitOrgChangeDetection.makeStagingFolder(temporaryRoot, plannedFolderPath)).toBe(`${plannedFolderPath}-2`);
+                expect(fs.readFileSync(path.join(location.folderPath, '.gitignore'), 'utf-8')).toBe('*\n');
+                expect(fs.existsSync(path.join(temporaryRoot, 'treecipe', 'OrgOperations'))).toBe(false);
+                expect(RecipeCockpitOrgChangeDetection.makeStagingFolder(location, plannedFolderPath)).toBe(`${plannedFolderPath}-2`);
             } finally {
                 fs.rmSync(temporaryRoot, { recursive: true, force: true });
             }
@@ -333,10 +338,11 @@ describe('RecipeCockpitOrgChangeDetection (#445)', () => {
 
             const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-org-change-'));
             try {
-                const plannedFolderPath = RecipeCockpitOrgChangeDetection.buildStagingFolderPath(temporaryRoot, 'qa@example.com.qa', new Date())!;
+                const location = makeTreeRunArtifactsLocation(temporaryRoot);
+                const plannedFolderPath = RecipeCockpitOrgChangeDetection.buildStagingFolderPath(location, 'qa@example.com.qa', new Date())!;
                 jest.spyOn(SfdxProjectService, 'isPathContainedInWorkspace').mockReturnValue(false);
-                expect(RecipeCockpitOrgChangeDetection.buildStagingFolderPath(temporaryRoot, 'qa@example.com.qa', new Date())).toBeUndefined();
-                expect(RecipeCockpitOrgChangeDetection.makeStagingFolder(temporaryRoot, plannedFolderPath)).toBeUndefined();
+                expect(RecipeCockpitOrgChangeDetection.buildStagingFolderPath(location, 'qa@example.com.qa', new Date())).toBeUndefined();
+                expect(RecipeCockpitOrgChangeDetection.makeStagingFolder(location, plannedFolderPath)).toBeUndefined();
             } finally {
                 fs.rmSync(temporaryRoot, { recursive: true, force: true });
             }
@@ -347,23 +353,26 @@ describe('RecipeCockpitOrgChangeDetection (#445)', () => {
 
             const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-org-change-'));
             try {
-                fs.writeFileSync(path.join(temporaryRoot, 'treecipe'), 'a file where the folder would be');
-                expect(RecipeCockpitOrgChangeDetection.makeStagingFolder(temporaryRoot, path.join(temporaryRoot, 'treecipe', 'OrgOperations', 'qa', 'x'))).toBeUndefined();
-                fs.rmSync(path.join(temporaryRoot, 'treecipe'));
+                const location = makeTreeRunArtifactsLocation(temporaryRoot);
+                fs.writeFileSync(location.folderPath, 'a file where the folder would be');
+                expect(RecipeCockpitOrgChangeDetection.makeStagingFolder(location, path.join(location.folderPath, 'OrgOperations', 'qa', 'x'))).toBeUndefined();
+                fs.rmSync(location.folderPath);
 
-                const plannedFolderPath = RecipeCockpitOrgChangeDetection.buildStagingFolderPath(temporaryRoot, 'qa@example.com.qa', new Date())!;
+                const plannedFolderPath = RecipeCockpitOrgChangeDetection.buildStagingFolderPath(location, 'qa@example.com.qa', new Date())!;
+                expect(fs.existsSync(path.dirname(plannedFolderPath))).toBe(false);
+                fs.mkdirSync(path.dirname(plannedFolderPath), { recursive: true });
                 const realMkdirSync = fs.mkdirSync;
                 const mkdirSpy = jest.spyOn(fs, 'mkdirSync').mockImplementation(((folderPath: fs.PathLike, options?: any) => {
-                    if ( options?.recursive ) { return (realMkdirSync as any)(folderPath, options); }
+                    if ( String(folderPath) !== plannedFolderPath && !String(folderPath).startsWith(`${plannedFolderPath}-`) ) { return (realMkdirSync as any)(folderPath, options); }
                     throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
                 }) as any);
-                expect(RecipeCockpitOrgChangeDetection.makeStagingFolder(temporaryRoot, plannedFolderPath)).toBeUndefined();
+                expect(RecipeCockpitOrgChangeDetection.makeStagingFolder(location, plannedFolderPath)).toBeUndefined();
 
                 mkdirSpy.mockImplementation(((folderPath: fs.PathLike, options?: any) => {
-                    if ( options?.recursive ) { return (realMkdirSync as any)(folderPath, options); }
+                    if ( String(folderPath) !== plannedFolderPath && !String(folderPath).startsWith(`${plannedFolderPath}-`) ) { return (realMkdirSync as any)(folderPath, options); }
                     throw Object.assign(new Error('EEXIST'), { code: 'EEXIST' });
                 }) as any);
-                expect(RecipeCockpitOrgChangeDetection.makeStagingFolder(temporaryRoot, plannedFolderPath)).toBeUndefined();
+                expect(RecipeCockpitOrgChangeDetection.makeStagingFolder(location, plannedFolderPath)).toBeUndefined();
             } finally {
                 fs.rmSync(temporaryRoot, { recursive: true, force: true });
             }

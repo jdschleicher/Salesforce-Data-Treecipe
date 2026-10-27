@@ -53,6 +53,8 @@ import {
     RECIPE_COCKPIT_PERMISSION_SET_ACTION_LABEL,
     RECIPE_COCKPIT_PREVIEW_WARNING_DETAIL
 } from '../RecipeCockpitService';
+import { RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE } from '../RecipeCockpitRunArtifacts';
+import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
 import { IPermissionSetGeneratePlan, PERMISSION_SET_GENERATED_FOLDER_NAME, RecipeCockpitPermissionSetGenerate } from '../RecipeCockpitPermissionSetGenerate';
 import { RecipeCockpitPermissionSetAssign } from '../RecipeCockpitPermissionSetAssign';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
@@ -488,6 +490,56 @@ describe('RecipeCockpitService, "Generate permission set…" in the Treecipe tab
 
             const discovery = await RecipeCockpitPermissionSetAssign.discoverPermissionSets(['Account'], workspaceRoot, ['unpackaged', 'force-app']);
             expect(discovery.permissionSets.map(permissionSet => [permissionSet.name, permissionSet.relativeFilePath])).toEqual([[ACCOUNT_TREE_PERMISSION_SET_NAME, ACCOUNT_TREE_FILE_PATH]]);
+
+        });
+
+        it('records what it wrote with the tree\'s other run files, in its RunArtifacts/PermissionSets, and says so when git would not ignore it (#470)', async () => {
+
+            const runArtifactsFolderPath = path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', ACCOUNT_TREE_KEY, 'RunArtifacts');
+
+            await openCockpit();
+            await generate();
+
+            const resultFileNames = fs.readdirSync(path.join(runArtifactsFolderPath, 'PermissionSets'));
+            expect(resultFileNames).toEqual([expect.stringMatching(/^\d{8}-\d{6}-permission-set-generate\.json$/)]);
+            expect(JSON.parse(fs.readFileSync(path.join(runArtifactsFolderPath, 'PermissionSets', resultFileNames[0]), 'utf8'))).toEqual({
+                operation: 'permission-set-generate',
+                writtenAt: expect.any(String),
+                treeFolderName: ACCOUNT_TREE_KEY,
+                permissionSetName: ACCOUNT_TREE_PERMISSION_SET_NAME,
+                permissionSetFile: ACCOUNT_TREE_FILE_PATH,
+                isOverwrite: false,
+                objectApiNames: ACCOUNT_TREE_PLAN.objectApiNames,
+                fieldPermissionCount: ACCOUNT_TREE_PLAN.fieldPermissions.length,
+                skippedNameCount: ACCOUNT_TREE_PLAN.skippedNameCount,
+                unreadableFieldCount: ACCOUNT_TREE_PLAN.unreadableFieldCount,
+                notGrantableFieldCount: ACCOUNT_TREE_PLAN.notGrantableFieldCount,
+                requiredUnknownFieldCount: ACCOUNT_TREE_PLAN.requiredUnknownFieldCount
+            });
+            expect(fs.readFileSync(path.join(runArtifactsFolderPath, '.gitignore'), 'utf8')).toBe('*\n');
+            expect(informationCalls()[0][0]).not.toContain(RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE);
+
+            fs.writeFileSync(path.join(runArtifactsFolderPath, '.gitignore'), '*\n!*.json\n');
+            await generate();
+
+            expect(fs.readdirSync(path.join(runArtifactsFolderPath, 'PermissionSets'))).toHaveLength(2);
+            expect(informationCalls()).toHaveLength(1);
+            expect(warningTexts().at(-1)).toContain(`Wrote ${ACCOUNT_TREE_PERMISSION_SET_NAME} to ${ACCOUNT_TREE_FILE_PATH}`);
+            expect(warningTexts().at(-1)).toContain(RecipeYamlScalar.escapeForNotification(RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE));
+
+        });
+
+        it('still writes the permission set when its record cannot be written', async () => {
+
+            const runArtifactsFolderPath = path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', ACCOUNT_TREE_KEY, 'RunArtifacts');
+            fs.writeFileSync(runArtifactsFolderPath, 'a file where the folder goes');
+
+            await openCockpit();
+            await generate();
+
+            expect(fs.existsSync(generatedFilePath())).toBe(true);
+            expect(informationCalls()).toHaveLength(1);
+            expect(informationCalls()[0][0]).toContain(`Wrote ${ACCOUNT_TREE_PERMISSION_SET_NAME} to ${ACCOUNT_TREE_FILE_PATH}`);
 
         });
 

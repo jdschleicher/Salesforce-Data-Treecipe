@@ -4,7 +4,8 @@ import * as xml2js from 'xml2js';
 
 import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
-import { ORG_OPERATIONS_FOLDER_NAME, ORG_OPERATION_RESULT_FILE_ATTEMPTS, ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
+import { ORG_OPERATION_RESULT_FILE_ATTEMPTS, ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
+import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from './RecipeCockpitRunArtifacts';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { METADATA_DEPLOY_PACKAGE_XML_SUFFIX, METADATA_DEPLOY_SUMMARY_YIELD_EVERY_FILES, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
 
@@ -185,7 +186,7 @@ export interface IOrgStagedFieldDetail extends IOrgNewFieldDetail {
 
 /*
     "Retrieve latest metadata" for the Treecipe Adapter (#445): the tree's objects retrieved from
-    the target org into a STAGING folder under treecipe/OrgOperations, never into a package
+    the target org into a STAGING folder under the tree's RunArtifacts/OrgOperations, never into a package
     directory, and each retrieved field file compared with the project's own. The file diff is the
     source of truth: a field is NEW when it is a custom field the project holds no file for, and
     CHANGED when its type, length, precision, scale, required, referenceTo, value set or picklist
@@ -231,20 +232,19 @@ export class RecipeCockpitOrgChangeDetection {
     }
 
     /*
-        treecipe/OrgOperations/<username>/<yyyyMMdd-HHmmss>-adapter-retrieve: where a staging folder
-        is made. Undefined when the folder name could name another folder or the path would land
-        outside the workspace.
+        <tree folder>/RunArtifacts/OrgOperations/<username>/<yyyyMMdd-HHmmss>-adapter-retrieve
+        (#470): where a staging folder is made. Undefined when the folder name could name another
+        folder or the path would land outside the workspace.
     */
-    static buildStagingFolderPath(workspaceRoot: string, orgUsername: string, date: Date): string | undefined {
+    static buildStagingFolderPath(runArtifactsLocation: IRecipeCockpitRunArtifactsLocation, orgUsername: string, date: Date): string | undefined {
 
         if ( !ScratchOrgService.isUsableOrgOperationFolderName(orgUsername) ) {
             return undefined;
         }
 
-        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
-        const stagingFolderPath = path.join(resolvedWorkspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME, orgUsername, `${ScratchOrgService.buildCompactTimestamp(date)}-${ORG_CHANGE_RETRIEVE_OPERATION_NAME}`);
+        const stagingFolderPath = path.join(RecipeCockpitRunArtifacts.buildKindFolderPath(runArtifactsLocation, 'OrgOperations'), orgUsername, `${ScratchOrgService.buildCompactTimestamp(date)}-${ORG_CHANGE_RETRIEVE_OPERATION_NAME}`);
 
-        return SfdxProjectService.isPathContainedInWorkspace(stagingFolderPath, resolvedWorkspaceRoot) ? stagingFolderPath : undefined;
+        return SfdxProjectService.isPathContainedInWorkspace(stagingFolderPath, runArtifactsLocation.workspaceRoot) ? stagingFolderPath : undefined;
 
     }
 
@@ -253,14 +253,9 @@ export class RecipeCockpitOrgChangeDetection {
         retrieves in one second), since a folder already there could be a link or hold another
         retrieve's files. Undefined when none could be made inside the workspace.
     */
-    static makeStagingFolder(workspaceRoot: string, stagingFolderPath: string): string | undefined {
+    static makeStagingFolder(runArtifactsLocation: IRecipeCockpitRunArtifactsLocation, stagingFolderPath: string): string | undefined {
 
-        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
-
-        try {
-            fs.mkdirSync(path.dirname(stagingFolderPath), { recursive: true });
-            ScratchOrgService.writeOrgOperationsGitignore(resolvedWorkspaceRoot);
-        } catch {
+        if ( !RecipeCockpitRunArtifacts.makeFolder(runArtifactsLocation, path.dirname(stagingFolderPath)) ) {
             return undefined;
         }
 
@@ -274,7 +269,7 @@ export class RecipeCockpitOrgChangeDetection {
                 }
                 return undefined;
             }
-            return SfdxProjectService.isPathContainedInWorkspace(attemptFolderPath, resolvedWorkspaceRoot) ? attemptFolderPath : undefined;
+            return SfdxProjectService.isPathContainedInWorkspace(attemptFolderPath, runArtifactsLocation.workspaceRoot) ? attemptFolderPath : undefined;
         }
 
         return undefined;

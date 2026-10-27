@@ -16,6 +16,7 @@ import {
     RecipeCockpitMetadataDeploy
 } from '../RecipeCockpitMetadataDeploy';
 import { ORG_OPERATIONS_FOLDER_NAME } from '../../ScratchOrgService/ScratchOrgService';
+import { FIXTURE_RUN_FOLDER_NAME, FIXTURE_TREE_FOLDER_NAME, makeTreeRunArtifactsLocation } from './RecipeCockpitRunArtifactsFixture';
 import { RecipeCockpitConfirmContent } from '../RecipeCockpitConfirmContent';
 
 const METADATA_DEPLOY_WORKSPACE_ROOT = path.join(__dirname, 'mocks', 'metadataDeployWorkspace');
@@ -480,31 +481,35 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
 
         const deployDate = new Date(2026, 9, 16, 9, 5, 7);
 
-        it('goes to treecipe/OrgOperations/<username>/<timestamp>-<operation>-package.xml, written with a .gitignore beside it, and a second in the same second takes -2', () => {
+        it('goes to the tree\'s RunArtifacts/OrgOperations/<username>/<timestamp>-<operation>-package.xml, with a .gitignore in RunArtifacts, and a second in the same second takes -2', () => {
 
-            const packageXmlFilePath = RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(workspaceRoot, QA_USERNAME, 'field-deploy', deployDate) as string;
+            const location = makeTreeRunArtifactsLocation(workspaceRoot);
+            const packageXmlFilePath = RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(location, QA_USERNAME, 'field-deploy', deployDate) as string;
 
-            expect(packageXmlFilePath).toBe(path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME, '20261016-090507-field-deploy-package.xml'));
-            expect(RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, packageXmlFilePath, '<Package/>')).toBe(packageXmlFilePath);
-            expect(RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, packageXmlFilePath, '<Package/>')).toBe(packageXmlFilePath.replace(/-package\.xml$/, '-2-package.xml'));
-            expect(fs.readFileSync(path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, '.gitignore'), 'utf-8')).toBe('*\n');
-            expect(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, packageXmlFilePath)).toBe(`treecipe/${ORG_OPERATIONS_FOLDER_NAME}/${QA_USERNAME}/20261016-090507-field-deploy-package.xml`);
+            expect(packageXmlFilePath).toBe(path.join(location.folderPath, ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME, '20261016-090507-field-deploy-package.xml'));
+            expect(RecipeCockpitMetadataDeploy.writePackageXml(location, packageXmlFilePath, '<Package/>')).toBe(packageXmlFilePath);
+            expect(RecipeCockpitMetadataDeploy.writePackageXml(location, packageXmlFilePath, '<Package/>')).toBe(packageXmlFilePath.replace(/-package\.xml$/, '-2-package.xml'));
+            expect(fs.readFileSync(path.join(location.folderPath, '.gitignore'), 'utf-8')).toBe('*\n');
+            expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME))).toBe(false);
+            expect(RecipeCockpitMetadataDeploy.toManifestRelativePath(workspaceRoot, packageXmlFilePath))
+                .toBe(`treecipe/GeneratedRecipes/${FIXTURE_RUN_FOLDER_NAME}/${FIXTURE_TREE_FOLDER_NAME}/RunArtifacts/${ORG_OPERATIONS_FOLDER_NAME}/${QA_USERNAME}/20261016-090507-field-deploy-package.xml`);
 
         });
 
         it('answers undefined when the folder cannot be made, or a hundred files already hold the name', () => {
 
-            const packageXmlFilePath = RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(workspaceRoot, QA_USERNAME, 'field-deploy', deployDate) as string;
+            const location = makeTreeRunArtifactsLocation(workspaceRoot);
+            const packageXmlFilePath = RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(location, QA_USERNAME, 'field-deploy', deployDate) as string;
             fs.mkdirSync(path.dirname(packageXmlFilePath), { recursive: true });
             fs.writeFileSync(packageXmlFilePath, '');
             for ( let attempt = 2; attempt <= 100; attempt++ ) {
                 fs.writeFileSync(packageXmlFilePath.replace(/-package\.xml$/, `-${attempt}-package.xml`), '');
             }
 
-            expect(RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, packageXmlFilePath, '<Package/>')).toBeUndefined();
+            expect(RecipeCockpitMetadataDeploy.writePackageXml(location, packageXmlFilePath, '<Package/>')).toBeUndefined();
 
-            fs.writeFileSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME, 'blocked'), '');
-            expect(RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, 'blocked', 'x-package.xml'), '<Package/>')).toBeUndefined();
+            fs.writeFileSync(path.join(location.folderPath, ORG_OPERATIONS_FOLDER_NAME, 'blocked'), '');
+            expect(RecipeCockpitMetadataDeploy.writePackageXml(location, path.join(location.folderPath, ORG_OPERATIONS_FOLDER_NAME, 'blocked', 'x-package.xml'), '<Package/>')).toBeUndefined();
 
             const realWriteFileSync = fs.writeFileSync;
             jest.spyOn(fs, 'writeFileSync').mockImplementation((...writeArguments: any[]) => {
@@ -513,25 +518,29 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
                 }
                 return (realWriteFileSync as any)(...writeArguments);
             });
-            expect(RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, packageXmlFilePath.replace('field-deploy', 'record-type-deploy'), '<Package/>')).toBeUndefined();
+            expect(RecipeCockpitMetadataDeploy.writePackageXml(location, packageXmlFilePath.replace('field-deploy', 'record-type-deploy'), '<Package/>')).toBeUndefined();
 
         });
 
-        it('refuses a username that could name another folder, and a folder linked out of the workspace', () => {
+        it('refuses a username that could name another folder, a folder linked out of the workspace, and a path outside RunArtifacts', () => {
+
+            const location = makeTreeRunArtifactsLocation(workspaceRoot);
 
             ['', '.', '..', 'a/b', 'a\\b'].forEach(username => {
-                expect(RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(workspaceRoot, username, 'field-deploy', deployDate)).toBeUndefined();
+                expect(RecipeCockpitMetadataDeploy.buildPackageXmlFilePath(location, username, 'field-deploy', deployDate)).toBeUndefined();
             });
 
             const outsideFolderPath = path.join(temporaryRoot, 'outside');
             fs.mkdirSync(outsideFolderPath);
-            fs.mkdirSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME), { recursive: true });
-            fs.symlinkSync(outsideFolderPath, path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME));
+            fs.mkdirSync(path.join(location.folderPath, ORG_OPERATIONS_FOLDER_NAME), { recursive: true });
+            fs.symlinkSync(outsideFolderPath, path.join(location.folderPath, ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME));
 
-            const linkedFilePath = path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME, 'x-field-deploy-package.xml');
-            expect(RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, linkedFilePath, '<Package/>')).toBeUndefined();
+            const linkedFilePath = path.join(location.folderPath, ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME, 'x-field-deploy-package.xml');
+            expect(RecipeCockpitMetadataDeploy.writePackageXml(location, linkedFilePath, '<Package/>')).toBeUndefined();
             expect(fs.readdirSync(outsideFolderPath)).toEqual([]);
-            expect(RecipeCockpitMetadataDeploy.writePackageXml(workspaceRoot, path.join(temporaryRoot, 'x-package.xml'), '<Package/>')).toBeUndefined();
+            expect(RecipeCockpitMetadataDeploy.writePackageXml(location, path.join(temporaryRoot, 'x-package.xml'), '<Package/>')).toBeUndefined();
+            expect(RecipeCockpitMetadataDeploy.writePackageXml(location, path.join(location.treeFolderPath, 'x-package.xml'), '<Package/>')).toBeUndefined();
+            expect(fs.existsSync(path.join(location.treeFolderPath, 'x-package.xml'))).toBe(false);
 
         });
 

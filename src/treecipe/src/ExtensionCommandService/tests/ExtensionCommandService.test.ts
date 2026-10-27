@@ -2773,7 +2773,8 @@ describe('ExtensionCommandService', () => {
                 { description: 'a recipe inside the workspace but outside GeneratedRecipes', relativeFilePath: 'elsewhere/recipe-fakerjs--Account-2026-09-01T08-00-00.yml' },
                 { description: 'a path that climbs out of GeneratedRecipes', relativeFilePath: 'treecipe/GeneratedRecipes/../recipe-fakerjs--Account-2026-09-01T08-00-00.yml' },
                 { description: 'a .yaml file', relativeFilePath: 'treecipe/GeneratedRecipes/recipe-fakerjs-2026-09-01T08-00-00/Account-thru-Contact/recipe-fakerjs--Account-2026-09-01T08-00-00.yaml' },
-                { description: 'a file that is not a recipe', relativeFilePath: 'treecipe/GeneratedRecipes/recipe-fakerjs-2026-09-01T08-00-00/treecipeObjectsWrapper-2026-09-01T08-00-00.json' }
+                { description: 'a file that is not a recipe', relativeFilePath: 'treecipe/GeneratedRecipes/recipe-fakerjs-2026-09-01T08-00-00/treecipeObjectsWrapper-2026-09-01T08-00-00.json' },
+                { description: 'a .yml in a tree\'s RunArtifacts folder (#470)', relativeFilePath: 'treecipe/GeneratedRecipes/recipe-fakerjs-2026-09-01T08-00-00/Account-thru-Contact/RunArtifacts/OrgOperations/qa/recipe-fakerjs--Account-2026-09-01T08-00-00.yml' }
             ])('refuses $description and runs nothing', async ({ relativeFilePath }) => {
 
                 const [fakerJsCase] = backendCases;

@@ -5,6 +5,7 @@ import * as xml2js from 'xml2js';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { ISfdxPackageDirectory, SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { PERMISSION_SET_FILE_SUFFIX } from './RecipeCockpitPermissionSetAssign';
+import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from './RecipeCockpitRunArtifacts';
 
 /*
     "Generate permission set…" (#306): one permission set per relationship tree, granting Create and
@@ -74,7 +75,56 @@ export interface IPermissionSetGeneratePlan {
     requiredUnknownFieldCount: number;
 }
 
+// WHAT ONE "Generate permission set…" WROTE (#470), KEPT WITH THE TREE'S OTHER RUN FILES
+export interface IPermissionSetGenerateResult {
+    operation: 'permission-set-generate';
+    writtenAt: string;
+    treeFolderName: string;
+    permissionSetName: string;
+    permissionSetFile: string;
+    isOverwrite: boolean;
+    objectApiNames: string[];
+    fieldPermissionCount: number;
+    skippedNameCount: number;
+    unreadableFieldCount: number;
+    notGrantableFieldCount: number;
+    requiredUnknownFieldCount: number;
+}
+
+const PERMISSION_SET_GENERATE_RESULT_FILE_ATTEMPTS = 100;
+
 export class RecipeCockpitPermissionSetGenerate {
+
+    static buildCompactTimestamp(date: Date): string {
+
+        const twoDigits = (value: number) => String(value).padStart(2, '0');
+
+        return `${date.getFullYear()}${twoDigits(date.getMonth() + 1)}${twoDigits(date.getDate())}-${twoDigits(date.getHours())}${twoDigits(date.getMinutes())}${twoDigits(date.getSeconds())}`;
+
+    }
+
+    /*
+        <tree folder>/RunArtifacts/PermissionSets/<yyyyMMdd-HHmmss>-permission-set-generate.json:
+        what was written, so the tree's run files say it. "wx", the first free of <name>, <name>-2,
+        ...; answers the path, or undefined when nothing could be written, which changes nothing
+        the generate reports.
+    */
+    static writeGenerateResult(runArtifactsLocation: IRecipeCockpitRunArtifactsLocation, result: IPermissionSetGenerateResult, date: Date): string | undefined {
+
+        const resultFolderPath = RecipeCockpitRunArtifacts.buildKindFolderPath(runArtifactsLocation, 'PermissionSets');
+
+        if ( !RecipeCockpitRunArtifacts.makeFolder(runArtifactsLocation, resultFolderPath) ) {
+            return undefined;
+        }
+
+        return RecipeCockpitRunArtifacts.writeNewFile(
+            path.join(resultFolderPath, `${this.buildCompactTimestamp(date)}-${result.operation}.json`),
+            `${JSON.stringify(result, null, 2)}\n`,
+            '.json',
+            PERMISSION_SET_GENERATE_RESULT_FILE_ATTEMPTS
+        );
+
+    }
 
     /*
         SDT_ and the tree's folder name with every character outside [A-Za-z0-9] made "_", runs of

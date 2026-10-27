@@ -102,8 +102,10 @@ const buildRetrieveAnswer = (files: unknown[], overrides: Record<string, unknown
 answerInPanelConfirmationsThroughWarningMock();
 
 // THE HOST'S RETRIEVE OF A TREE'S VALIDATION RULES (#326), DRIVEN DIRECTLY: A TREE NAMED BY ITS LABEL AND OBJECTS
+// THE TREE'S FOLDER IS treeWorkspace's, SO ITS RUN FILES HAVE A RunArtifacts FOLDER TO GO TO (#470)
 const performTreeRetrieve = (workspaceRoot: string, treeLabel: string, objectApiNames: string[]) =>
-    (RecipeCockpitService as any).performMetadataRetrieve(workspaceRoot, { objects: [], trees: [] }, { title: treeLabel, objects: objectApiNames.map(objectApiName => ({ objectApiName: objectApiName })) }, 'validationRules');
+    (RecipeCockpitService as any).performMetadataRetrieve(workspaceRoot, { objects: [], trees: [], selectedRunFolderName: 'recipe-2026-09-20T10-00-00' },
+        { title: treeLabel, folderName: 'Account-thru-OtherChildObject__c', objects: objectApiNames.map(objectApiName => ({ objectApiName: objectApiName })) }, 'validationRules');
 
 describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#326)', () => {
 
@@ -461,7 +463,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
         const retrieveCalls = () => cliCalls.filter(argumentList => argumentList[0] === 'project');
         const listCalls = () => cliCalls.filter(argumentList => argumentList[0] === 'org' && argumentList[2] === 'metadata');
         const packageXmlFiles = () => {
-            const folderPath = path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, PROD_USERNAME);
+            const folderPath = path.join(path.resolve(workspaceRoot), 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', 'Account-thru-OtherChildObject__c', 'RunArtifacts', ORG_OPERATIONS_FOLDER_NAME, PROD_USERNAME);
             return fs.existsSync(folderPath) ? fs.readdirSync(folderPath).filter(fileName => fileName.endsWith('-package.xml')) : [];
         };
         const flushAsyncWork = () => new Promise(resolve => setImmediate(resolve));
@@ -592,7 +594,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             expect(retrieveCalls()).toHaveLength(1);
             const [retrieveArguments] = retrieveCalls();
             expect(retrieveArguments.slice(0, 7)).toEqual(['project', 'retrieve', 'start', '--json', '--target-org', PROD_USERNAME, '--manifest']);
-            expect(retrieveArguments[7]).toMatch(new RegExp(`^treecipe/${ORG_OPERATIONS_FOLDER_NAME}/${PROD_USERNAME.replace('.', '\\.')}/\\d{8}-\\d{6}-validation-rule-retrieve-package\\.xml$`));
+            expect(retrieveArguments[7]).toMatch(new RegExp(`^treecipe/GeneratedRecipes/recipe-2026-09-20T10-00-00/${ACCOUNT_TREE_KEY}/RunArtifacts/${ORG_OPERATIONS_FOLDER_NAME}/${PROD_USERNAME.replace('.', '\\.')}/\\d{8}-\\d{6}-validation-rule-retrieve-package\\.xml$`));
             expect(retrieveArguments).toHaveLength(8);
             expect(retrieveArguments).not.toContain('--metadata');
             expect(fs.readFileSync(path.join(path.resolve(workspaceRoot), retrieveArguments[7]), 'utf-8')).toContain([
@@ -619,7 +621,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
                 { command: 'metadataRetrieveState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, retrieveKind: 'validationRules' }
             ]);
 
-            const resultFiles = fs.readdirSync(path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, PROD_USERNAME));
+            const resultFiles = fs.readdirSync(path.join(path.resolve(workspaceRoot), 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', 'Account-thru-OtherChildObject__c', 'RunArtifacts', ORG_OPERATIONS_FOLDER_NAME, PROD_USERNAME));
             expect(resultFiles.filter(fileName => fileName.endsWith('-validation-rule-retrieve.json'))).toHaveLength(1);
 
         });

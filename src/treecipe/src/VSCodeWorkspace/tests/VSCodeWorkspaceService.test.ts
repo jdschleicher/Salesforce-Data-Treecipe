@@ -1390,6 +1390,23 @@ describe('Shared VSCodeWorkspaceService unit tests', () => {
 
         });
 
+        test.each(['faker-js', 'snowfakery'])('given %s selected, never offers a file in a tree\'s RunArtifacts folder (#470)', async (selectedFakerService) => {
+
+            jest.spyOn(ConfigurationService, 'getSelectedDataFakerServiceConfig').mockReturnValue(selectedFakerService);
+            const offeredBefore = (await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory([], generatedRecipesFolderPath)).map(quickPickItem => quickPickItem.detail).sort();
+
+            ['recipe-2026-09-20T10-00-00/Lead-ONLY', 'recipe-fakerjs-2026-09-10T00-00-00/Lead-ONLY'].forEach(treeRelativePath => {
+                const runArtifactsFolderPath = path.join(generatedRecipesFolderPath, treeRelativePath, 'RunArtifacts', 'OrgOperations', 'qa');
+                fs.mkdirSync(runArtifactsFolderPath, { recursive: true });
+                fs.writeFileSync(path.join(runArtifactsFolderPath, 'recipe--Planted.yml'), '- object: Lead\n');
+                fs.writeFileSync(path.join(runArtifactsFolderPath, 'recipe-fakerjs--Planted.yml'), '- object: Lead\n');
+            });
+
+            const offeredAfter = (await VSCodeWorkspaceService.getAvailableRecipeFileQuickPickItemsByDirectory([], generatedRecipesFolderPath)).map(quickPickItem => quickPickItem.detail).sort();
+            expect(offeredAfter).toEqual(offeredBefore);
+
+        });
+
     });
 
     describe('getAvailableRecipeFileQuickPickItemsByDirectory', () => {

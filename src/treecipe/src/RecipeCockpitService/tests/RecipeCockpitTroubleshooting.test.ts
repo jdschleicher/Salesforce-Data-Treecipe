@@ -65,6 +65,8 @@ import {
 import { RecipeCockpitMetadataDeploy } from '../RecipeCockpitMetadataDeploy';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { SalesforceOrgService } from '../../SalesforceOrgService/SalesforceOrgService';
+import { RecipeYamlScalar } from '../../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar';
+import { RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE } from '../RecipeCockpitRunArtifacts';
 import { ORG_OPERATIONS_FOLDER_NAME, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES } from '../../ScratchOrgService/ScratchOrgService';
 import { VSCodeWorkspaceService } from '../../VSCodeWorkspace/VSCodeWorkspaceService';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
@@ -318,7 +320,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             .filter(([, options]) => !( options && typeof options === 'object' && options.inPanel ))
             .map(([warningText, ...actions]) => ({ text: warningText as string, actions: actions as string[] }));
         const lastWarning = () => notificationWarnings().at(-1);
-        const operationsFolderPath = () => path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME);
+        const operationsFolderPath = () => path.join(path.resolve(workspaceRoot), 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', 'Account-thru-OtherChildObject__c', 'RunArtifacts', ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME);
         const operationFiles = () => fs.existsSync(operationsFolderPath()) ? fs.readdirSync(operationsFolderPath()) : [];
         const packageXmlFiles = () => operationFiles().filter(fileName => fileName.endsWith('-package.xml'));
 
@@ -480,7 +482,7 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             expect(deployCalls()).toHaveLength(1);
             const [deployArgv] = deployCalls();
             expect(deployArgv.slice(0, 7)).toEqual(['project', 'deploy', 'start', '--json', '--target-org', QA_USERNAME, '--manifest']);
-            expect(deployArgv[7]).toMatch(new RegExp(`^treecipe/${ORG_OPERATIONS_FOLDER_NAME}/${QA_USERNAME.replace(/\./g, '\\.')}/\\d{8}-\\d{6}-field-deploy-package\\.xml$`));
+            expect(deployArgv[7]).toMatch(new RegExp(`^treecipe/GeneratedRecipes/recipe-2026-09-20T10-00-00/Account-thru-OtherChildObject__c/RunArtifacts/${ORG_OPERATIONS_FOLDER_NAME}/${QA_USERNAME.replace(/\./g, '\\.')}/\\d{8}-\\d{6}-field-deploy-package\\.xml$`));
             expect(deployArgv).not.toContain('--ignore-errors');
             expect(deployArgv).not.toContain('--metadata');
 
@@ -508,6 +510,24 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             // A DEPLOY THAT LANDED DROPS THE DEPLOYED OBJECTS' DESCRIBES AND RE-CHECKS THE CARDS LISTING THEM
             ['Account', 'OtherChildObject__c'].forEach(objectApiName => expect(clearSpy).toHaveBeenCalledWith(QA_USERNAME, objectApiName));
             expect(describeCalls.slice(describesBefore)).toEqual(expect.arrayContaining(['Account', 'OtherChildObject__c']));
+
+        });
+
+        it('says a landed deploy\'s files could be committed, as a warning, when the tree\'s RunArtifacts/.gitignore no longer ignores everything (#470)', async () => {
+
+            const runArtifactsFolderPath = path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', ACCOUNT_TREE_KEY, 'RunArtifacts');
+            fs.mkdirSync(runArtifactsFolderPath, { recursive: true });
+            fs.writeFileSync(path.join(runArtifactsFolderPath, '.gitignore'), '*\n!*.json\n');
+            await openCockpitWithQaSelected();
+
+            await deploy('deployTreeFields');
+
+            expect(informationCalls().filter(([text]) => String(text).startsWith('Deployed'))).toEqual([]);
+            expect(lastWarning()).toEqual({
+                text: RecipeYamlScalar.escapeForNotification(`Deployed 7 components for Account-thru-OtherChildObject__c to qa · ${QA_USERNAME}. ${RECIPE_COCKPIT_RUN_ARTIFACTS_NOT_GIT_IGNORED_NOTE}`),
+                actions: [RECIPE_COCKPIT_DEPLOY_VIEW_OUTPUT_LABEL]
+            });
+            expect(fs.readFileSync(path.join(runArtifactsFolderPath, '.gitignore'), 'utf8')).toBe('*\n!*.json\n');
 
         });
 
@@ -971,14 +991,13 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
 
         it('deploys nothing when the package.xml cannot be written', async () => {
 
-            fs.mkdirSync(path.join(workspaceRoot, 'treecipe'), { recursive: true });
-            fs.writeFileSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME), 'a file where the folder goes');
+            fs.writeFileSync(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', 'Account-thru-OtherChildObject__c', 'RunArtifacts'), 'a file where the folder goes');
             await openCockpitWithQaSelected();
 
             await deploy('deployTreeRecordTypes');
 
             expect(deployCalls()).toEqual([]);
-            expect(lastWarning()?.text).toBe(`Nothing was deployed: the package.xml could not be written under treecipe/${ORG_OPERATIONS_FOLDER_NAME} in this workspace.`);
+            expect(lastWarning()?.text).toBe('Nothing was deployed: the package.xml could not be written under the tree\'s RunArtifacts folder in this workspace.');
 
         });
 

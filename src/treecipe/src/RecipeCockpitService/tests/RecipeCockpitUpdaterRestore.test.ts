@@ -67,6 +67,7 @@ import {
     RECIPE_COCKPIT_UPDATE_SNAPSHOT_MAX_BYTES,
     RecipeCockpitRecordUpdate
 } from '../RecipeCockpitRecordUpdate';
+import { makeTreeRunArtifactsLocation } from './RecipeCockpitRunArtifactsFixture';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
@@ -133,7 +134,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
             const snapshot = validSnapshot();
             expect(RecipeCockpitRecordUpdate.parseSnapshot(JSON.stringify(snapshot))).toEqual(snapshot);
 
-            const files = RecipeCockpitRecordUpdate.writeSnapshot(temporaryRoot, snapshot, new Date(2026, 9, 23, 10, 0, 0));
+            const files = RecipeCockpitRecordUpdate.writeSnapshot(makeTreeRunArtifactsLocation(temporaryRoot), snapshot, new Date(2026, 9, 23, 10, 0, 0));
             expect(RecipeCockpitRecordUpdate.readSnapshotFile(files!.snapshotFilePath)).toEqual(snapshot);
 
         });
@@ -206,6 +207,50 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
 
         });
 
+        it('lists the snapshots in the tree\'s RunArtifacts and those written before #470 together, newest first, a name both hold once and resolved to RunArtifacts', () => {
+
+            const location = makeTreeRunArtifactsLocation(temporaryRoot, 'recipe-2026-09-20T10-00-00', ACCOUNT_TREE_KEY);
+            const newFolderPath = path.join(location.folderPath, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME);
+            fs.mkdirSync(newFolderPath, { recursive: true });
+            writeSnapshotFile('20261022-090000-before.json');
+            writeSnapshotFile('20261024-090000-before.json');
+            fs.writeFileSync(path.join(newFolderPath, '20261023-100000-before.json'), '{}');
+            fs.writeFileSync(path.join(newFolderPath, '20261024-090000-before.json'), '{}');
+
+            expect(RecipeCockpitRecordUpdate.listSnapshots(temporaryRoot, ACCOUNT_TREE_KEY, location)).toEqual({
+                snapshotFileNames: ['20261024-090000-before.json', '20261023-100000-before.json', '20261022-090000-before.json'],
+                hiddenSnapshotCount: 0
+            });
+            expect(RecipeCockpitRecordUpdate.resolveSnapshotFilePath(temporaryRoot, ACCOUNT_TREE_KEY, '20261024-090000-before.json', location)).toBe(path.join(newFolderPath, '20261024-090000-before.json'));
+            expect(RecipeCockpitRecordUpdate.resolveSnapshotFilePath(temporaryRoot, ACCOUNT_TREE_KEY, '20261022-090000-before.json', location)).toBe(path.join(treeFolderPath, '20261022-090000-before.json'));
+            // WITHOUT THE LOCATION ONLY THE OLD FOLDER IS READ
+            expect(RecipeCockpitRecordUpdate.listSnapshots(temporaryRoot, ACCOUNT_TREE_KEY).snapshotFileNames).toEqual(['20261024-090000-before.json', '20261022-090000-before.json']);
+
+            // A FOLDER THAT CANNOT BE LISTED LISTS NOTHING, AND THE OTHER IS STILL READ
+            const realReaddirSync = fs.readdirSync;
+            const readdirSpy = jest.spyOn(fs, 'readdirSync').mockImplementation(((folderPath: fs.PathLike, options?: any) => {
+                if ( String(folderPath) === newFolderPath ) {
+                    throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
+                }
+                return (realReaddirSync as any)(folderPath, options);
+            }) as any);
+            expect(RecipeCockpitRecordUpdate.listSnapshots(temporaryRoot, ACCOUNT_TREE_KEY, location).snapshotFileNames).toEqual(['20261024-090000-before.json', '20261022-090000-before.json']);
+            readdirSpy.mockRestore();
+
+            // A RunArtifacts/UpdateAttempts THAT IS A LINK IS NOT READ
+            fs.rmSync(newFolderPath, { recursive: true });
+            const outsideFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-outside-snapshots-'));
+            try {
+                fs.writeFileSync(path.join(outsideFolderPath, '20261025-090000-before.json'), '{}');
+                fs.symlinkSync(outsideFolderPath, newFolderPath);
+                expect(RecipeCockpitRecordUpdate.listSnapshots(temporaryRoot, ACCOUNT_TREE_KEY, location).snapshotFileNames).toEqual(['20261024-090000-before.json', '20261022-090000-before.json']);
+                expect(RecipeCockpitRecordUpdate.resolveSnapshotFilePath(temporaryRoot, ACCOUNT_TREE_KEY, '20261025-090000-before.json', location)).toBeUndefined();
+            } finally {
+                fs.rmSync(outsideFolderPath, { recursive: true, force: true });
+            }
+
+        });
+
         it('lists at most the newest fifty and counts the rest, and nothing for a folder name that is not plain or a tree with none', () => {
 
             for ( let snapshotIndex = 0; snapshotIndex < RECIPE_COCKPIT_UPDATE_SNAPSHOT_LIST_LIMIT + 3; snapshotIndex++ ) {
@@ -275,8 +320,10 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
         const panelState = (): IRecipeCockpitPanelState => (RecipeCockpitService as any).recipeCockpitPanelState;
         const warnings = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([, options]) => !options?.inPanel).map(([warningText]) => warningText);
         const restoreConfirmations = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([title, options]) => options?.inPanel && String(title).startsWith('Restore '));
-        const attemptsFolderPath = () => path.join(workspaceRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, ACCOUNT_TREE_KEY);
-        const attemptFiles = () => fs.existsSync(attemptsFolderPath()) ? fs.readdirSync(attemptsFolderPath()).sort() : [];
+        const attemptsFolderPath = () => path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', TREE_RUN_FOLDER_NAME, ACCOUNT_TREE_KEY, 'RunArtifacts', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME);
+        // WHERE SNAPSHOTS WENT BEFORE #470, WHICH A RESTORE STILL FINDS
+        const legacyAttemptsFolderPath = () => path.join(workspaceRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, ACCOUNT_TREE_KEY);
+        const attemptFiles = () => [attemptsFolderPath(), legacyAttemptsFolderPath()].flatMap(folderPath => fs.existsSync(folderPath) ? fs.readdirSync(folderPath) : []).sort();
         const orgValues = (objectApiName: string, fieldApiName: string) => [...orgRecords[objectApiName].values()].map(record => record[fieldApiName]);
 
         const send = async (panelMessage: Record<string, unknown>) => {
@@ -330,9 +377,9 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
             return snapshotsMessage;
         };
 
-        const writeWorkspaceSnapshot = (fileName: string, snapshotText: string) => {
-            fs.mkdirSync(attemptsFolderPath(), { recursive: true });
-            fs.writeFileSync(path.join(attemptsFolderPath(), fileName), snapshotText);
+        const writeWorkspaceSnapshot = (fileName: string, snapshotText: string, folderPath: string = legacyAttemptsFolderPath()) => {
+            fs.mkdirSync(folderPath, { recursive: true });
+            fs.writeFileSync(path.join(folderPath, fileName), snapshotText);
         };
 
         const requestRestore = (snapshotName: string) => send({ command: 'restoreUpdaterSnapshot', treeKey: ACCOUNT_TREE_KEY, snapshotName: snapshotName });
@@ -544,7 +591,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
             [
                 route('20261023-100001-before.json'),
                 route('../../../../etc/passwd'),
-                route(path.join(attemptsFolderPath(), '20261023-100000-before.json')),
+                route(path.join(legacyAttemptsFolderPath(), '20261023-100000-before.json')),
                 route(42),
                 route('20261023-100000-before.json', 'Lead-ONLY')
             ].forEach(routed => expect(routed).toMatchObject({ kind: 'refuseUpdaterLoad', hostMessage: { isRunning: false } }));
@@ -634,12 +681,12 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
             writeWorkspaceSnapshot('20261023-100000-before.json', JSON.stringify(validSnapshot()));
             await listAndAcknowledgeSnapshots();
 
-            fs.rmSync(path.join(attemptsFolderPath(), '20261023-100000-before.json'));
+            fs.rmSync(path.join(legacyAttemptsFolderPath(), '20261023-100000-before.json'));
             fs.writeFileSync(path.join(temporaryRoot, 'outside.json'), JSON.stringify(validSnapshot()));
-            fs.symlinkSync(path.join(temporaryRoot, 'outside.json'), path.join(attemptsFolderPath(), '20261023-100000-before.json'));
+            fs.symlinkSync(path.join(temporaryRoot, 'outside.json'), path.join(legacyAttemptsFolderPath(), '20261023-100000-before.json'));
             await requestRestore('20261023-100000-before.json');
 
-            expect(warnings()).toContain(`Nothing was restored: 20261023-100000-before.json is no longer in treecipe/${RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME}/${ACCOUNT_TREE_KEY}/.`);
+            expect(warnings()).toContain('Nothing was restored: 20261023-100000-before.json is no longer where it was listed from.');
             expect(updateCalls).toEqual([]);
 
         });
@@ -913,7 +960,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
             panel.postToPanel(snapshotsMessage);
             expect(postedNamed(panel, 'updaterSnapshotsRendered')).toEqual([{ command: 'updaterSnapshotsRendered', renderSequence: 1, treeKey: ACCOUNT_TREE_KEY, snapshotsSequence: 4 }]);
             expect(panel.findAll(updaterPanel, 'updaterSnapshotName').map((nameElement: any) => nameElement.textContent)).toEqual(snapshotsMessage.snapshotNames);
-            expect(panel.findAll(updaterPanel, 'updaterSnapshotsNote').map((noteElement: any) => noteElement.textContent)).toEqual(['3 older not shown: they are in treecipe/UpdateAttempts.']);
+            expect(panel.findAll(updaterPanel, 'updaterSnapshotsNote').map((noteElement: any) => noteElement.textContent)).toEqual(['3 older not shown: they are in RunArtifacts/UpdateAttempts in the tree folder, or in treecipe/UpdateAttempts for updates made before it.']);
 
             const restoreButtons = panel.findAll(updaterPanel, 'updaterRestore');
             expect(restoreButtons.map((restoreButton: any) => restoreButton.textContent)).toEqual([RECIPE_COCKPIT_UPDATER_RESTORE_LABEL, RECIPE_COCKPIT_UPDATER_RESTORE_LABEL]);
