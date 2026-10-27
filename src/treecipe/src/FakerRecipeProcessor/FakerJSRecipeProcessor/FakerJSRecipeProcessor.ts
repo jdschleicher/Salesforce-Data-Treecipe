@@ -72,9 +72,10 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 ? `${nickname}_${parentIterationIndex}`
                 : nickname;
 
-            let fieldApiNameByFakerJSEvaluations: Record<string, string> = {};
-            for (const [yamlFieldName, yamlFieldValue] of Object.entries(fieldsTemplate)) {
+            const fieldApiNameByFakerJSEvaluations: Record<string, string> = {};
+            for (const yamlFieldName of this.orderFieldNamesControllingPicklistsFirst(fieldsTemplate)) {
 
+                const yamlFieldValue = fieldsTemplate[yamlFieldName];
                 try {
 
                     fieldApiNameByFakerJSEvaluations[yamlFieldName] = await this.evaluateProvidedYamlPropertyValue(yamlFieldValue,
@@ -103,11 +104,16 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
             }
 
+            const fieldsInRecipeOrder: Record<string, string> = {};
+            Object.keys(fieldsTemplate).forEach(yamlFieldName => {
+                fieldsInRecipeOrder[yamlFieldName] = fieldApiNameByFakerJSEvaluations[yamlFieldName];
+            });
+
             const newFieldConfigurationToObject: GeneratedRecord = {
                 id: parentIterationIndex,
                 object: objectType,
                 nickname: effectiveNickname,
-                fields: fieldApiNameByFakerJSEvaluations,
+                fields: fieldsInRecipeOrder,
             };
 
             processedYamlWrapper.GeneratedRecordContexts ??= [];
@@ -504,17 +510,82 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
     }
 
 
+    /*
+        Generate Treecipe writes an object's fields in file-name order, so a dependent picklist can come
+        before its controlling field (DependentPicklist__c before Picklist__c), and a dependent can
+        itself control another. A dependent is evaluated after the field its first "when:" names, when
+        that field is in the same block; anything else, a cycle included, keeps its recipe order and
+        fails as it did before.
+    */
+    orderFieldNamesControllingPicklistsFirst(fieldsTemplate: Record<string, unknown>): string[] {
+
+        const fieldNames = Object.keys(fieldsTemplate);
+        const controllingFieldNameByFieldName = new Map<string, string>();
+        fieldNames.forEach(fieldName => {
+            const controllingFieldName = this.readDependentPicklistControllingFieldName(fieldsTemplate[fieldName]);
+            if ( controllingFieldName !== undefined
+                    && controllingFieldName !== fieldName
+                    && Object.prototype.hasOwnProperty.call(fieldsTemplate, controllingFieldName) ) {
+                controllingFieldNameByFieldName.set(fieldName, controllingFieldName);
+            }
+        });
+
+        if ( controllingFieldNameByFieldName.size === 0 ) {
+            return fieldNames;
+        }
+
+        const orderedFieldNames: string[] = [];
+        const placedFieldNames = new Set<string>();
+        const fieldNamesBeingPlaced = new Set<string>();
+        const placeFieldName = (fieldName: string) => {
+            if ( placedFieldNames.has(fieldName) || fieldNamesBeingPlaced.has(fieldName) ) {
+                return;
+            }
+            fieldNamesBeingPlaced.add(fieldName);
+            const controllingFieldName = controllingFieldNameByFieldName.get(fieldName);
+            if ( controllingFieldName !== undefined ) {
+                placeFieldName(controllingFieldName);
+            }
+            fieldNamesBeingPlaced.delete(fieldName);
+            placedFieldNames.add(fieldName);
+            orderedFieldNames.push(fieldName);
+        };
+        fieldNames.forEach(placeFieldName);
+
+        return orderedFieldNames;
+
+    }
+
+    readDependentPicklistControllingFieldName(yamlFieldValue: unknown): string | undefined {
+
+        if ( !this.isDependentPicklistYamlValue(yamlFieldValue) ) {
+            return undefined;
+        }
+        const choices = (yamlFieldValue as { if: unknown }).if;
+        if ( !Array.isArray(choices) || choices.length === 0 ) {
+            return undefined;
+        }
+        const whenCondition = this.parseWhenCondition(choices[0]?.choice?.when);
+        return whenCondition?.controllingFieldApiName;
+
+    }
+
+    isDependentPicklistYamlValue(yamlFieldValue: unknown): boolean {
+
+        // A COMMENT-ONLY FIELD (A "### TODO" VALUE) LOADS AS null, AND "in" THROWS ON null AND ON NUMBERS
+        return typeof yamlFieldValue === 'object'
+                && yamlFieldValue !== null
+                && ('if' in yamlFieldValue)
+                && Object.keys(yamlFieldValue).length === 1;
+
+    }
+
     handleNonFakerJSExpressionSyntaxValueScenarios(providedYamlPropertyValue: any,
                                                     fieldApiNameByFakerJSEvaluations,
                                                     yamlPropertyFieldApiNameToEvaluate): any {
 
         let evaluatedYamlPropertyValue = null;
-        const dependentPicklistKeyIndicator = "if";
-        // A COMMENT-ONLY FIELD (A "### TODO" VALUE) LOADS AS null, AND "in" THROWS ON null AND ON NUMBERS
-        if ( (typeof providedYamlPropertyValue === 'object')
-                && (providedYamlPropertyValue !== null)
-                && (dependentPicklistKeyIndicator in providedYamlPropertyValue) 
-                && Object.keys(providedYamlPropertyValue).length === 1 ) {
+        if ( this.isDependentPicklistYamlValue(providedYamlPropertyValue) ) {
     
                 const evaluatedRandomChoiceFromAvailablePicklistDependencyOptions = this.evaluateDependentPicklistFakerJSExpression(providedYamlPropertyValue, 
                                                                                                                                     fieldApiNameByFakerJSEvaluations, 
@@ -555,7 +626,8 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         }
     
         let expectedExistingControllingFieldApiNameForDependentPicklist = firstWhenCondition.controllingFieldApiName;
-        if (!fieldApiNameByFakerJSEvaluations || !fieldApiNameByFakerJSEvaluations[expectedExistingControllingFieldApiNameForDependentPicklist]) {
+        if (!fieldApiNameByFakerJSEvaluations
+                || !Object.prototype.hasOwnProperty.call(fieldApiNameByFakerJSEvaluations, expectedExistingControllingFieldApiNameForDependentPicklist)) {
             throw new Error(`Field "${expectedExistingControllingFieldApiNameForDependentPicklist}" not found in existing field evaluations`);
         }
 
