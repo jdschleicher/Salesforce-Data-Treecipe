@@ -64,6 +64,9 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
         const hasActiveFriendsBlock = friends && Array.isArray(friends) && friends.length > 0;
         const requiresPerIterationNickname = hasActiveFriendsBlock && count > 1;
+        const recipeOrderFieldNames = Object.keys(fieldsTemplate);
+        const evaluationOrderFieldNames = this.orderFieldNamesControllingPicklistsFirst(fieldsTemplate);
+        const isEvaluatedInRecipeOrder = evaluationOrderFieldNames.every((fieldName, fieldIndex) => fieldName === recipeOrderFieldNames[fieldIndex]);
 
         for (let i = 0; i < count; i++) {
 
@@ -73,7 +76,7 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
                 : nickname;
 
             const fieldApiNameByFakerJSEvaluations: Record<string, string> = {};
-            for (const yamlFieldName of this.orderFieldNamesControllingPicklistsFirst(fieldsTemplate)) {
+            for (const yamlFieldName of evaluationOrderFieldNames) {
 
                 const yamlFieldValue = fieldsTemplate[yamlFieldName];
                 try {
@@ -104,10 +107,13 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
             }
 
-            const fieldsInRecipeOrder: Record<string, string> = {};
-            Object.keys(fieldsTemplate).forEach(yamlFieldName => {
-                fieldsInRecipeOrder[yamlFieldName] = fieldApiNameByFakerJSEvaluations[yamlFieldName];
-            });
+            let fieldsInRecipeOrder: Record<string, string> = fieldApiNameByFakerJSEvaluations;
+            if ( !isEvaluatedInRecipeOrder ) {
+                fieldsInRecipeOrder = {};
+                recipeOrderFieldNames.forEach(yamlFieldName => {
+                    fieldsInRecipeOrder[yamlFieldName] = fieldApiNameByFakerJSEvaluations[yamlFieldName];
+                });
+            }
 
             const newFieldConfigurationToObject: GeneratedRecord = {
                 id: parentIterationIndex,
@@ -514,8 +520,9 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
         Generate Treecipe writes an object's fields in file-name order, so a dependent picklist can come
         before its controlling field (DependentPicklist__c before Picklist__c), and a dependent can
         itself control another. A dependent is evaluated after the field its first "when:" names, when
-        that field is in the same block; anything else, a cycle included, keeps its recipe order and
-        fails as it did before.
+        that field is in the same block; every other field keeps its recipe order. A cycle lists each of
+        its fields once, and its dependent still fails as it did before. The chain is walked in a loop,
+        not by recursion, so a long hand-written chain cannot overflow the stack.
     */
     orderFieldNamesControllingPicklistsFirst(fieldsTemplate: Record<string, unknown>): string[] {
 
@@ -536,21 +543,20 @@ export class FakerJSRecipeProcessor implements IFakerRecipeProcessor {
 
         const orderedFieldNames: string[] = [];
         const placedFieldNames = new Set<string>();
-        const fieldNamesBeingPlaced = new Set<string>();
-        const placeFieldName = (fieldName: string) => {
-            if ( placedFieldNames.has(fieldName) || fieldNamesBeingPlaced.has(fieldName) ) {
-                return;
+        fieldNames.forEach(fieldName => {
+            const unplacedChain: string[] = [];
+            const chainFieldNames = new Set<string>();
+            let chainFieldName: string | undefined = fieldName;
+            while ( chainFieldName !== undefined && !placedFieldNames.has(chainFieldName) && !chainFieldNames.has(chainFieldName) ) {
+                unplacedChain.push(chainFieldName);
+                chainFieldNames.add(chainFieldName);
+                chainFieldName = controllingFieldNameByFieldName.get(chainFieldName);
             }
-            fieldNamesBeingPlaced.add(fieldName);
-            const controllingFieldName = controllingFieldNameByFieldName.get(fieldName);
-            if ( controllingFieldName !== undefined ) {
-                placeFieldName(controllingFieldName);
+            for ( let chainIndex = unplacedChain.length - 1; chainIndex >= 0; chainIndex-- ) {
+                placedFieldNames.add(unplacedChain[chainIndex]);
+                orderedFieldNames.push(unplacedChain[chainIndex]);
             }
-            fieldNamesBeingPlaced.delete(fieldName);
-            placedFieldNames.add(fieldName);
-            orderedFieldNames.push(fieldName);
-        };
-        fieldNames.forEach(placeFieldName);
+        });
 
         return orderedFieldNames;
 

@@ -1429,9 +1429,23 @@ describe('FakerJSRecipeProcessor evaluates a dependent picklist after its contro
                 Name: 'fixed'
             };
 
+            expect(fakerJSRecipeProcessor.orderFieldNamesControllingPicklistsFirst(fields)).toEqual(['B__c', 'A__c', 'Name']);
+
+        });
+
+        test('a chain far longer than any object allows is ordered without overflowing the stack', () => {
+
+            const chainLength = 50000;
+            const fields: Record<string, unknown> = {};
+            for ( let fieldIndex = 0; fieldIndex < chainLength - 1; fieldIndex++ ) {
+                fields[`F${fieldIndex}__c`] = { if: [{ choice: { when: `\${{ F${fieldIndex + 1}__c == 'x' }}`, pick: { random_choice: ['x'] } } }] };
+            }
+            fields[`F${chainLength - 1}__c`] = 'x';
+
             const orderedFieldNames = fakerJSRecipeProcessor.orderFieldNamesControllingPicklistsFirst(fields);
 
-            expect([...orderedFieldNames].sort()).toEqual(['A__c', 'B__c', 'Name']);
+            expect(orderedFieldNames[0]).toBe(`F${chainLength - 1}__c`);
+            expect(orderedFieldNames[chainLength - 1]).toBe('F0__c');
 
         });
 

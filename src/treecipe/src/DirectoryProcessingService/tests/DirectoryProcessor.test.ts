@@ -1206,9 +1206,20 @@ describe('DirectoryProcessor.orderControllingFieldsBeforeDependents', () => {
 
     const fieldInfos = [buildField('A__c', 'B__c'), buildField('Name__c'), buildField('B__c', 'A__c')];
 
-    const orderedFieldInfos = directoryProcessor.orderControllingFieldsBeforeDependents(fieldInfos);
+    expect(namesOf(directoryProcessor.orderControllingFieldsBeforeDependents(fieldInfos))).toEqual(['B__c', 'A__c', 'Name__c']);
 
-    expect([...namesOf(orderedFieldInfos)].sort()).toEqual(['A__c', 'B__c', 'Name__c']);
+  });
+
+  test('a chain far longer than any object allows is ordered without overflowing the stack', () => {
+
+    const chainLength = 50000;
+    const fieldInfos = Array.from({ length: chainLength }, (unusedValue, fieldIndex) =>
+      buildField(`F${fieldIndex}__c`, fieldIndex < chainLength - 1 ? `F${fieldIndex + 1}__c` : undefined));
+
+    const orderedNames = namesOf(directoryProcessor.orderControllingFieldsBeforeDependents(fieldInfos));
+
+    expect(orderedNames[0]).toBe(`F${chainLength - 1}__c`);
+    expect(orderedNames[chainLength - 1]).toBe('F0__c');
 
   });
 

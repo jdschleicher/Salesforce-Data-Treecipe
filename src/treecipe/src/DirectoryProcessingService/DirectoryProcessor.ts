@@ -487,7 +487,8 @@ export class DirectoryProcessor {
     faker-js then cannot find the controller's value and snowfakery picks a dependent value the
     controller does not allow (#462). Each controller is moved directly above the first dependent it
     controls, through a chain, matched case-insensitively as a formula is; every other field keeps its
-    place, so an object with no such dependent is written exactly as before. A cycle lists each field once.
+    place, so an object with no such dependent is written exactly as before. A cycle lists each field once,
+    and the chain is walked in a loop, so its length cannot overflow the stack.
   */
   orderControllingFieldsBeforeDependents(fieldInfoDetails: FieldInfo[]): FieldInfo[] {
 
@@ -518,21 +519,20 @@ export class DirectoryProcessor {
 
     const orderedFieldInfos: FieldInfo[] = [];
     const placedFieldInfos = new Set<FieldInfo>();
-    const fieldInfosBeingPlaced = new Set<FieldInfo>();
-    const placeFieldInfo = (fieldInfo: FieldInfo): void => {
-      if ( placedFieldInfos.has(fieldInfo) || fieldInfosBeingPlaced.has(fieldInfo) ) {
-        return;
+    fieldInfoDetails.forEach((fieldInfo) => {
+      const unplacedChain: FieldInfo[] = [];
+      const chainFieldInfos = new Set<FieldInfo>();
+      let chainFieldInfo: FieldInfo | undefined = fieldInfo;
+      while ( chainFieldInfo !== undefined && !placedFieldInfos.has(chainFieldInfo) && !chainFieldInfos.has(chainFieldInfo) ) {
+        unplacedChain.push(chainFieldInfo);
+        chainFieldInfos.add(chainFieldInfo);
+        chainFieldInfo = findControllingFieldInfo(chainFieldInfo);
       }
-      fieldInfosBeingPlaced.add(fieldInfo);
-      const controllingFieldInfo = findControllingFieldInfo(fieldInfo);
-      if ( controllingFieldInfo !== undefined ) {
-        placeFieldInfo(controllingFieldInfo);
+      for ( let chainIndex = unplacedChain.length - 1; chainIndex >= 0; chainIndex-- ) {
+        placedFieldInfos.add(unplacedChain[chainIndex]);
+        orderedFieldInfos.push(unplacedChain[chainIndex]);
       }
-      fieldInfosBeingPlaced.delete(fieldInfo);
-      placedFieldInfos.add(fieldInfo);
-      orderedFieldInfos.push(fieldInfo);
-    };
-    fieldInfoDetails.forEach(placeFieldInfo);
+    });
 
     return orderedFieldInfos;
 
