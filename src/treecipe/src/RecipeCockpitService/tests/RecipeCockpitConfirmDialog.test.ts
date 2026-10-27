@@ -336,6 +336,7 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
             const QA_ORG = { alias: 'qa', username: 'qa@example.com' };
             const RESTART = { restartMessage: { command: 'resetTreeSelection', treeKey: LEAD_TREE_KEY }, isSandboxOnly: true };
+            const RETRIEVE_CLICK = { command: 'retrieveTreeFields', treeKey: LEAD_TREE_KEY };
 
             /*
                 Runs one routed panel action whose executor asks a confirmation offering "Change org…",
@@ -351,7 +352,8 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
                     events.push('action ended');
                 });
 
-                const actionDone = receivedMessageHandler({ command: 'resetTreeSelection', treeKey: LEAD_TREE_KEY });
+                // A RETRIEVE IS ONE OF THE ACTIONS WHOSE CONFIRMATION CAN OFFER THE BUTTON
+                const actionDone = receivedMessageHandler(RETRIEVE_CLICK);
                 await flushMicrotasks();
                 return { actionDone: actionDone, answer: () => answer };
 
@@ -373,13 +375,46 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
                 jest.spyOn(RecipeCockpitService as any, 'executePanelAction').mockImplementationOnce(async () => {
                     await RecipeCockpitService.confirmInPanel('Deploy?', { summary: ['x'], changeOrg: RESTART }, 'Deploy');
                 });
-                const actionDone = receivedMessageHandler({ command: 'resetTreeSelection', treeKey: LEAD_TREE_KEY });
+                const actionDone = receivedMessageHandler(RETRIEVE_CLICK);
                 await flushMicrotasks();
                 expect(lastPosted('confirmRequest').canChangeOrg).toBeUndefined();
                 expect(lastPosted('confirmRequest').org).toBeUndefined();
                 await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: null, changeOrg: true });
                 await actionDone;
                 expect(restartSpy).not.toHaveBeenCalled();
+
+            });
+
+            it('offers no button on an action that cannot start again on another org, which runs outside any context', async () => {
+
+                await openAndDraw();
+                const restartSpy = jest.spyOn(RecipeCockpitService as any, 'changeOrgAndRestart').mockResolvedValue(undefined);
+                const runSpy = jest.spyOn(( RecipeCockpitService as any ).panelActionContextStorage, 'run');
+                let storeInsideAction: unknown = 'not read';
+                jest.spyOn(RecipeCockpitService as any, 'executePanelAction').mockImplementationOnce(async () => {
+                    storeInsideAction = ( RecipeCockpitService as any ).panelActionContextStorage.getStore();
+                    await RecipeCockpitService.confirmInPanel('Reset?', { summary: ['x'], org: QA_ORG, changeOrg: RESTART }, 'Reset');
+                });
+
+                const actionDone = receivedMessageHandler({ command: 'resetTreeSelection', treeKey: LEAD_TREE_KEY });
+                await flushMicrotasks();
+                expect(lastPosted('confirmRequest').canChangeOrg).toBeUndefined();
+                await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: null, changeOrg: true });
+                await actionDone;
+
+                expect(storeInsideAction).toBeUndefined();
+                expect(runSpy).not.toHaveBeenCalled();
+                expect(restartSpy).not.toHaveBeenCalled();
+
+            });
+
+            // A FOLLOW-UP RUN STRAIGHT THROUGH executePanelAction INHERITS THE ENDED ACTION'S CONTEXT, AND ITS "Change org…" ONLY CANCELS
+            it('runs every action, a notification\'s follow-up included, through runPanelAction', () => {
+
+                const serviceSource = fs.readFileSync(SERVICE_SOURCE_PATH, 'utf8');
+                expect(serviceSource.match(/this\.executePanelAction\(/g) ?? []).toHaveLength(2);
+                expect(serviceSource).toContain('this.panelActionContextStorage.run(actionContext, () => this.executePanelAction(cockpitPanel, panelAction))');
+                expect(serviceSource).toContain('this.panelActionContextStorage.exit(() => this.executePanelAction(cockpitPanel, panelAction))');
 
             });
 

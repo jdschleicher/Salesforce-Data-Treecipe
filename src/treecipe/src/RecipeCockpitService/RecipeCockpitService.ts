@@ -2478,6 +2478,9 @@ export const RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL = 'Before you confirm';
 // A CONFIRMATION ASKED WHILE THE COCKPIT IS HIDDEN (#349): ITS DOCUMENT IS GONE, SO NOTHING COULD SHOW IT
 export const RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL = 'The Recipe Cockpit was in the background, so it could not ask you to confirm, and nothing was done. It is shown now: start the action again.';
 
+// THE ACTIONS WHOSE CONFIRMATION OFFERS "Change org…" (#480): THE RETRIEVES, THE DEPLOYS, THE ASSIGNMENT AND THE TREE INSERT
+const RECIPE_COCKPIT_ORG_CHANGE_ACTION_KINDS: ReadonlySet<string> = new Set(['retrieveTreeMetadata', 'deployTreeMetadataComponents', 'assignTreePermissionSets', 'insertTree', 'promptInsertOrg']);
+
 // THE BUTTON BESIDE A CONFIRMATION'S ORG (#480), AND WHAT IT SAYS WHEN THE ACTION IS NOT STARTED AGAIN
 export const RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL = 'Change org…';
 export const RECIPE_COCKPIT_CHANGE_ORG_PLACEHOLDER = 'Choose the org to run this on: it becomes the Target Org Manager selection';
@@ -6974,8 +6977,15 @@ export class RecipeCockpitService {
 
         const actionContext: IRecipeCockpitPanelActionContext = {};
 
+        /*
+            Only an action whose confirmation can offer "Change org…" gets a context: the first run()
+            turns on Node's async context tracking for the whole extension host, so every other
+            action runs outside one (exit() never turns it on) and asks nothing that offers it.
+        */
         try {
-            await this.panelActionContextStorage.run(actionContext, () => this.executePanelAction(cockpitPanel, panelAction));
+            await ( RECIPE_COCKPIT_ORG_CHANGE_ACTION_KINDS.has(panelAction.kind)
+                ? this.panelActionContextStorage.run(actionContext, () => this.executePanelAction(cockpitPanel, panelAction))
+                : this.panelActionContextStorage.exit(() => this.executePanelAction(cockpitPanel, panelAction)) );
         } catch (actionError) {
             ErrorHandlingService.handleCapturedError(actionError, 'openRecipeCockpit');
         }
@@ -13182,7 +13192,8 @@ export class RecipeCockpitService {
                         ...( isDeployedOrgSelected && panelState.dataOrgSelection ? { orgIndex: panelState.dataOrgSelection.orgIndex } : {} )
                     }, panelState);
                     if ( assignAction ) {
-                        await this.executePanelAction(assignFollowUp.cockpitPanel, assignAction);
+                        // ITS OWN ACTION, NOT THE ENDED DEPLOY'S: ITS "Change org…" (#480) STARTS THE ASSIGNMENT AGAIN
+                        await this.runPanelAction(assignFollowUp.cockpitPanel, assignAction);
                     }
                 }
             })
@@ -13747,7 +13758,8 @@ export class RecipeCockpitService {
                         ...( panelState.dataOrgSelection ? { orgIndex: panelState.dataOrgSelection.orgIndex } : {} )
                     }, panelState);
                     if ( assignAction ) {
-                        await this.executePanelAction(cockpitPanel, assignAction);
+                        // ITS OWN ACTION, NOT THE ENDED GENERATE'S: ITS "Change org…" (#480) STARTS THE ASSIGNMENT AGAIN
+                        await this.runPanelAction(cockpitPanel, assignAction);
                     }
                 }
 
