@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.158.0] - Recipe Cockpit: a "Standard fields" box and an object's own "TODOs only" beside "All fields"
+## [3.159.0] - Recipe Cockpit: a "Standard fields" box and an object's own "TODOs only" beside "All fields"
 
 [#477](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/477). Leaving out an object's standard fields meant unticking them one at a time, and finding one object's TODO rows meant the card-wide **TODOs only** (#354), which narrows every object on the card.
 
@@ -10,6 +10,15 @@
 - **The row.** It is built for any expanded object with a selectable field or a TODO, and each box hides on its own, so an object whose fields are all locked still offers its TODO filter.
 - **From the review of #478.** A standard controlling field whose custom dependent stays ticked is no longer stored as unticked by **Standard fields** (unticking the dependent later would have dropped it unseen); only **All fields**, which unticks the dependents in the same click, frees it. A click on one object's **TODOs only** redraws that object's rows and the tab's count alone (`filterTreeObjectRows`, `drawStructureMatchCount`), never the card's expand budget, so no other object folds or opens; the tab's count now says `N of M fields` whenever any object's own filter hides a row. A test holds the panel's standard-field rule to the host's.
 - **Unchanged.** **All fields**, the card-wide **TODOs only**, the recipe file and both faker backends. Tests: `RecipeCockpitStandardFieldsAndObjectTodos.test.ts`.
+
+## [3.158.0] - Recipe Cockpit: a picklist's Edit values has its own Reset to generated, and Save waits for a change
+
+[#479](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/479). The value tiles (#465) and their Save confirmation said "Clear puts it back", but Clear lives in the pencil's editor, not under the tiles. Save was also enabled before anything changed, and an unchanged Save was refused with "every value is ticked" even when the field generates fewer values than it declares.
+
+- **Reset to generated.** While the field has an edit (`isEdited` on the `picklistValues` answer, set by `readPicklistValueChoice` for a choice of values or any other edit), the tiles draw **Reset to generated** (`secondary`, compact) between Save and Cancel. It posts `resetPicklistValueChoice {treeKey, objectApiName, nickname?, fieldApiName}`, routed like `setPicklistValueChoice` (a drawn, free picklist in `selectableFieldKeys`, its occurrence on screen) and carrying no value. The host runs the edit's own Clear (`setFieldFixedValue` with `''`): same write lock, same confirmation, same fixed-values file, and the recipe comes back byte for byte. Its refusals are answered under the tiles. A field with no edit is answered `RECIPE_COCKPIT_PICKLIST_RESET_NOTHING_REFUSAL`, and nothing is asked or written.
+- **Save waits for a change.** Save is disabled until the ticks differ from what the tiles opened with, and is disabled again when they are put back. Over another kind of edit (`isOtherEdit`) the tiles do not show what the field holds, so any choice is a change and Save starts enabled. The existing reasons (nothing ticked, a lock, a save in progress) still apply.
+- **Wording.** The tiles' hint and the Save confirmation name **Reset to generated** ("How Reset to generated puts it back") instead of a Clear the tiles do not have; the pencil editor's wording is unchanged. `RECIPE_COCKPIT_PICKLIST_CHOICE_UNCHANGED_REFUSAL` now reads "Nothing to save: the ticked values are what the field already generates." The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` say the same.
+- **Tests.** `RecipeCockpitPicklistValueChoice.test.ts`: the router (names only, every refusal case), Reset after a saved choice and over another edit putting the recipe back byte for byte, a cancelled Reset, Reset with no edit, `isEdited` on the answer, and in the panel Save's enabled state across changes, Reset drawn only for an edited field, its posted names, its lock while the host answers, and disabled on a locked picklist.
 
 ## [3.157.1] - Generating fake data no longer fails when a dependent picklist sorts before its controlling field
 
