@@ -406,7 +406,9 @@ export const RECIPE_COCKPIT_FAVORITES_ONLY_LABEL = 'Favorites only';
 // THE TREECIPE TAB'S CHECK (#320), AND WHY IT IS DISABLED ON A CARD WITH NO RECORD TYPES TO CHOOSE FROM
 export const RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL = 'Record type fields only';
 export const RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL = 'Edit values';
-export const RECIPE_COCKPIT_PICKLIST_CHOICE_UNCHANGED_REFUSAL = 'Nothing to save: every value is ticked, which is what the field already generates.';
+export const RECIPE_COCKPIT_PICKLIST_CHOICE_UNCHANGED_REFUSAL = 'Nothing to save: the ticked values are what the field already generates.';
+export const RECIPE_COCKPIT_PICKLIST_RESET_LABEL = 'Reset to generated';
+export const RECIPE_COCKPIT_PICKLIST_RESET_NOTHING_REFUSAL = 'Nothing to reset: the field has no edit, so it already generates what Generate Treecipe wrote.';
 export const RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON = 'Tick at least one value to save.';
 export const RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE = 'This field has an edit that is not a choice of its values. Saving a choice replaces it.';
 export const RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE = 'No object in this tree has more than one record type, so no field depends on one.';
@@ -596,7 +598,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             '+ Add friend beside the copy of an object nested under itself: adds one of the object\'s friends under that copy. The card draws each nested copy, and its friends, indented right under the row it is nested in.',
             'Remove TODO (in the Troubleshooting tab\'s TODO\'s list): takes a TODO comment out of the recipe and lists it under Removed, where Restore puts it back exactly. The line is kept in a .removedTodos.json file beside the recipe. A TODO that is a field\'s whole value, such as a lookup\'s, stays.',
             'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. On an object written more than once, it changes only the copy whose row you edit. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.',
-            'Edit values (under a picklist\'s faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save: the field\'s expression is rewritten to choose only the ticked ones, by the recipe\'s own backend, and saved like an edit, so the pencil\'s Clear puts the old lines back. Cancel, × and Escape close it without saving. Each record type\'s own values are listed under the tiles; saving replaces the field\'s commented record type lines until Clear puts them back.'
+            'Edit values (under a picklist\'s faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save, which is enabled once the ticks change: the field\'s expression is rewritten to choose only the ticked ones, by the recipe\'s own backend, and saved like an edit. Once the field has an edit, Reset to generated, beside Save, puts the old lines back. Cancel, × and Escape close it without saving. Each record type\'s own values are listed under the tiles; saving replaces the field\'s commented record type lines until Reset to generated puts them back.'
         ],
         closingParagraphs: [
             'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of the org chosen in Target Org Manager into your project (with none chosen, they ask once and the pick becomes the selection), and change nothing in the org.',
@@ -1435,6 +1437,8 @@ export interface IRecipeCockpitPicklistValuesMessage extends IRecipeCockpitPickl
     chosenPicklistValues?: string[];
     // THE FIELD HAS AN EDIT THAT IS NOT A CHOICE OF ITS VALUES, WHICH A SAVE FROM THE TILES REPLACES
     isOtherEdit?: true;
+    // THE FIELD HAS AN EDIT OF ANY KIND, WHICH THE TILES' RESET TO GENERATED CLEARS (#479)
+    isEdited?: true;
 }
 
 // A LEGACY DATA SET'S RECORD COUNTS, READ FROM ITS COLLECTIONS API FILES WHEN IT WAS EXPANDED
@@ -2693,6 +2697,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'setObjectCount'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; count: number }
     | { kind: 'setFieldFixedValue'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; value: string }
     | { kind: 'setPicklistValueChoice'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; picklistValues: string[] }
+    | { kind: 'resetPicklistValueChoice'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string }
     | { kind: 'setFieldValidationRuleApplied'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; isApplied: boolean }
     | { kind: 'persistPlace'; place: IRecipeCockpitPanelPlace }
     | { kind: 'createScratchOrg' }
@@ -4802,7 +4807,7 @@ export class RecipeCockpitService {
             // A PIN OF AN OBJECT WITH iterations IS WRITTEN INTO THE ROW'S OCCURRENCE ALONE (#467)
             const writeOutcome = panelAction.value === ''
                 ? await this.clearFixedValueFromRecipe(recipeFilePath, panelState.workspaceRoot, drawnField.objectViewModel, drawnField.generatedFieldViewModel, panelAction.nickname)
-                : await this.writeFixedValueToRecipe(recipeFilePath, panelState.workspaceRoot, panelAction.objectApiName, panelAction.fieldApiName, { value: panelAction.value, kind: this.resolveFixedValueKind(panelAction.value, drawnField.fieldViewModel) }, panelAction.nickname);
+                : await this.writeFixedValueToRecipe(recipeFilePath, panelState.workspaceRoot, panelAction.objectApiName, panelAction.fieldApiName, { value: panelAction.value, kind: this.resolveFixedValueKind(panelAction.value, drawnField.fieldViewModel) }, panelAction.nickname, edit);
             writeRefusal = writeOutcome.refusal;
             return writeOutcome.isWritten;
         });
@@ -4861,6 +4866,33 @@ export class RecipeCockpitService {
         }
 
         await this.setFieldFixedValue(cockpitPanel, panelState, { ...panelAction, kind: 'setFieldFixedValue', value: value }, 'picklistValues');
+
+    }
+
+    /*
+        A picklist's Reset to generated (#479): the tiles' own way back, the same Clear the edit
+        button's editor posts -- lock, confirmation, fixed-values file -- answered under the tiles.
+        A field with no edit has nothing to reset and is told so, asking and writing nothing.
+    */
+    private static async resetPicklistValueChoice(cockpitPanel: vscode.WebviewPanel,
+                                                    panelState: IRecipeCockpitPanelState,
+                                                    panelAction: Extract<RecipeCockpitPanelAction, { kind: 'resetPicklistValueChoice' }>) {
+
+        const drawnField = this.recipeCockpitPanelState === panelState
+            ? this.findDrawnOccurrenceField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname, panelAction.fieldApiName)
+            : undefined;
+        if ( !drawnField ) {
+            return;
+        }
+
+        const occurrenceNickname = drawnField.occurrence.nickname;
+        const hasEdit = ( drawnField.tree.fixedValues ?? [] ).some(fixedValue => fixedValue.objectApiName === panelAction.objectApiName && fixedValue.nickname === occurrenceNickname && fixedValue.fieldApiName === panelAction.fieldApiName);
+        if ( !hasEdit ) {
+            this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'picklistValues', RECIPE_COCKPIT_PICKLIST_RESET_NOTHING_REFUSAL);
+            return;
+        }
+
+        await this.setFieldFixedValue(cockpitPanel, panelState, { ...panelAction, kind: 'setFieldFixedValue', value: '' }, 'picklistValues');
 
     }
 
@@ -4935,7 +4967,8 @@ export class RecipeCockpitService {
                                                     objectApiName: string,
                                                     fieldApiName: string,
                                                     fixedValue: IRecipeFixedValue,
-                                                    scopeNickname?: string): Promise<{ isWritten: boolean; refusal?: string }> {
+                                                    scopeNickname?: string,
+                                                    edit: RecipeCockpitFieldEdit = 'fixedValue'): Promise<{ isWritten: boolean; refusal?: string }> {
 
         const fixedValueFilePath = RecipeCockpitFixedValueStore.buildFilePath(recipeFilePath);
         const recipeFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath));
@@ -4954,8 +4987,11 @@ export class RecipeCockpitService {
             `Write ${editLabel} into ${dialogFieldLabel}?`,
             {
                 summary: [`This writes to "${path.basename(recipeFilePath)}": ${dialogFieldLabel} becomes ${RecipeCockpitRecipeWriter.toFixedValueScalar(fixedValue)} ${whereWritten}, so Run Faker by Recipe generates it from the palette too. Every other line of the file is left as it is.`],
+                // THE TILES HAVE NO CLEAR: THEIR WAY BACK IS RESET TO GENERATED (#479)
                 sections: [
-                    { title: 'How Clear puts it back', lines: [`The lines it replaces are kept in "${path.basename(fixedValueFilePath)}" beside the recipe, so Clear can put them back exactly.`] }
+                    edit === 'picklistValues'
+                        ? { title: `How ${RECIPE_COCKPIT_PICKLIST_RESET_LABEL} puts it back`, lines: [`The lines it replaces are kept in "${path.basename(fixedValueFilePath)}" beside the recipe, so ${RECIPE_COCKPIT_PICKLIST_RESET_LABEL} under Edit values can put them back exactly.`] }
+                        : { title: 'How Clear puts it back', lines: [`The lines it replaces are kept in "${path.basename(fixedValueFilePath)}" beside the recipe, so Clear can put them back exactly.`] }
                 ]
             },
             RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL
@@ -5765,7 +5801,7 @@ export class RecipeCockpitService {
                                     objectApiName: string,
                                     fieldApiName: string,
                                     declaredPicklistValues: readonly string[],
-                                    nickname?: string): { treeKey?: string; chosenPicklistValues?: string[]; isOtherEdit?: true } {
+                                    nickname?: string): { treeKey?: string; chosenPicklistValues?: string[]; isOtherEdit?: true; isEdited?: true } {
 
         const tree = recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === treeKey);
         if ( !tree ) {
@@ -5786,7 +5822,7 @@ export class RecipeCockpitService {
         }
 
         const chosenPicklistValues = fixedValue.kind === 'expression' ? this.recoverPicklistValueChoice(fixedValue.value, declaredPicklistValues, fieldViewModel) : undefined;
-        return chosenPicklistValues ? { treeKey: treeKey, chosenPicklistValues: chosenPicklistValues } : { treeKey: treeKey, isOtherEdit: true };
+        return chosenPicklistValues ? { treeKey: treeKey, chosenPicklistValues: chosenPicklistValues, isEdited: true } : { treeKey: treeKey, isOtherEdit: true, isEdited: true };
 
     }
 
@@ -7376,6 +7412,11 @@ export class RecipeCockpitService {
             case 'setPicklistValueChoice':
 
                 await this.setPicklistValueChoice(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'resetPicklistValueChoice':
+
+                await this.resetPicklistValueChoice(cockpitPanel, panelState, panelAction);
                 return;
 
             case 'setFieldValidationRuleApplied':
@@ -16142,6 +16183,38 @@ export class RecipeCockpitService {
 
 
             /*
+                A picklist's Reset to generated (#479): the value tiles' names only, held to the same
+                drawn, free picklist a choice is. What it clears is the host's to find.
+            */
+            case 'resetPicklistValueChoice': {
+
+                const { treeKey, objectApiName, nickname, fieldApiName } = panelMessage;
+
+                if ( typeof treeKey !== 'string' || !SalesforceApiName.isApiName(objectApiName) || !SalesforceApiName.isApiName(fieldApiName)
+                        || ( nickname !== undefined && typeof nickname !== 'string' )
+                        || !panelState.recipeDataMessage
+                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(this.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
+                    return undefined;
+                }
+
+                const drawnField = this.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
+                if ( !drawnField || !drawnField.fieldViewModel.isPicklist || !drawnField.tree.folderName
+                        || this.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) !== undefined ) {
+                    return undefined;
+                }
+
+                return {
+                    kind: 'resetPicklistValueChoice',
+                    treeKey: treeKey,
+                    folderName: drawnField.tree.folderName,
+                    objectApiName: objectApiName,
+                    ...this.withOccurrenceNickname(drawnField.occurrence),
+                    fieldApiName: fieldApiName
+                };
+
+            }
+
+            /*
                 A field's validation-rule checkbox (#325): the same three names as its other controls,
                 matched against the same allow-list, and whether the rules should apply. A field with
                 no applied rule, or one a lock holds back, writes nothing.
@@ -19884,6 +19957,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const PICKLIST_EDIT_VALUES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL)};
     const PICKLIST_CHOICE_EMPTY_REASON = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON)};
     const PICKLIST_OTHER_EDIT_NOTE = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE)};
+    const PICKLIST_RESET_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_RESET_LABEL)};
     const NO_RECORD_TYPE_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE)};
     const TODOS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODOS_ONLY_LABEL)};
     const TODO_IN_VALUE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODO_IN_VALUE_LABEL)};
@@ -22845,12 +22919,17 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         refusalElement.setAttribute('role', 'alert');
         const saveElement = createButton('primary', 'picklistEditorSave', 'Save', 'compact');
         const cancelElement = createButton('secondary', 'picklistEditorCancel', 'Cancel', 'compact');
+        // THE TILES' OWN WAY BACK (#479), DRAWN ONLY WHILE THE FIELD HAS AN EDIT TO CLEAR
+        const resetElement = picklistValuesMessage.isEdited ? createButton('secondary', 'picklistEditorReset', PICKLIST_RESET_LABEL, 'compact') : null;
 
         let isSaving = false;
         const drawChoice = function () {
             const chosenCount = tileStates.filter(function (tileState) { return tileState.isChosen; }).length;
+            // ANOTHER KIND OF EDIT IS NOT WHAT THE TILES START FROM, SO ANY CHOICE OF THEM CHANGES THE FIELD
+            const isChanged = !!picklistValuesMessage.isOtherEdit || tileStates.some(function (tileState) { return tileState.isChosen !== tileState.isStartChosen; });
             const reason = lockReason || ( picklistValues.length > 0 && chosenCount === 0 ? PICKLIST_CHOICE_EMPTY_REASON : '' );
-            saveElement.disabled = isSaving || !!reason || picklistValues.length === 0;
+            saveElement.disabled = isSaving || !!reason || picklistValues.length === 0 || !isChanged;
+            if (resetElement) { resetElement.disabled = isSaving || !!lockReason; }
             reasonElement.textContent = reason;
             if (reason) { reasonElement.classList.remove('hidden'); } else { reasonElement.classList.add('hidden'); }
         };
@@ -22863,7 +22942,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
             picklistValues.forEach(function (picklistValue) {
 
-                const tileState = { value: picklistValue, isChosen: startValues.indexOf(picklistValue) !== -1, tileElement: null, checkElement: null };
+                const isStartChosen = startValues.indexOf(picklistValue) !== -1;
+                const tileState = { value: picklistValue, isChosen: isStartChosen, isStartChosen: isStartChosen, tileElement: null, checkElement: null };
                 const tileElement = createElement('div', 'picklistTile');
                 const checkElement = createButton('check', 'picklistTileCheck');
                 const valueElement = createElement('span', 'picklistValue', picklistValue);
@@ -22921,10 +23001,32 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             savePanelPlace();
             vscodeApi.postMessage(message);
         });
+        if (resetElement) {
+            resetElement.setAttribute('title', 'Put back the lines ' + field.fieldApiName + ' had before it was edited, after a confirmation');
+            resetElement.addEventListener('click', function (event) {
+                event.stopPropagation();
+                if (resetElement.disabled) { return; }
+                const message = {
+                    command: 'resetPicklistValueChoice',
+                    treeKey: treeObjectState.tree.treeKey,
+                    objectApiName: object.objectApiName,
+                    fieldApiName: field.fieldApiName
+                };
+                if (object.nickname) { message.nickname = object.nickname; }
+                refusalElement.textContent = '';
+                refusalElement.classList.add('hidden');
+                isSaving = true;
+                drawChoice();
+                fieldState.isPicklistExpanded = false;
+                savePanelPlace();
+                vscodeApi.postMessage(message);
+            });
+        }
         cancelElement.addEventListener('click', function (event) { event.stopPropagation(); closeEditor(); });
 
         const actionsElement = createElement('div', 'fieldEditorActions');
         actionsElement.appendChild(saveElement);
+        if (resetElement) { actionsElement.appendChild(resetElement); }
         actionsElement.appendChild(cancelElement);
         editorElement.appendChild(reasonElement);
         editorElement.appendChild(refusalElement);
@@ -23096,7 +23198,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             editorElement.setAttribute('aria-label', 'Edit values of ' + fieldLabel);
             closeButtonElement.setAttribute('aria-label', 'Close the values of ' + field.fieldApiName);
             closeButtonElement.setAttribute('title', 'Close without saving');
-            editorHeaderElement.appendChild(createElement('span', 'fieldEditorHint muted', 'Tick the values ' + field.fieldApiName + ' generates. Save writes them into the recipe file; the edit button\\'s Clear puts back the lines the field had.'));
+            editorHeaderElement.appendChild(createElement('span', 'fieldEditorHint muted', 'Tick the values ' + field.fieldApiName + ' generates. Save writes them into the recipe file; ' + PICKLIST_RESET_LABEL + ' puts back the lines the field had.'));
             editorHeaderElement.appendChild(closeButtonElement);
             editorElement.appendChild(editorHeaderElement);
             editorElement.appendChild(editorBodyElement);
