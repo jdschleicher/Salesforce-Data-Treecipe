@@ -31,7 +31,7 @@ A friend, an object nested under another's `friends:` in a faker-js recipe, show
 Each chip reads the parent's nickname and the friend's place among that parent's friends (**Account_NickName-2**); click it to jump to that parent.
 
 Generate Treecipe marks what still needs a hand edit with a TODO comment, such as a lookup with no parent yet or a validation rule it could not apply.
-Tick **TODOs only** on a card's Treecipe tab to see just the fields and objects with one, or open its **Troubleshooting** tab, whose **TODO's** list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line (**↗ yml**).
+Tick **TODOs only** on a card's Treecipe tab to see just the fields and objects with one (or the **TODOs only** beside an opened object's **All fields** for that object alone), or open its **Troubleshooting** tab, whose **TODO's** list shows them all: one card per object, which you click to open, then each TODO under its field with a link to its line (**↗ yml**).
 Its **Open** list holds the TODOs still in the recipe, and **Removed** the ones you took out.
 
 The **Troubleshooting** tab shows one area at a time: **TODO's**, **Fields**, **Permissions**, **Validation Rules**, **Record Types** and **Global Value Sets**, each with its own search.
@@ -47,7 +47,7 @@ Each action there is a card you click anywhere on, saying when you would need it
 These settings change what is generated, but the recipe file stays exactly as Generate Treecipe wrote it, so it always shows what was generated from your metadata:
 
 - **Excluded objects** (the chain link): the object and its children are left out. A child that another included parent keeps shows a half-broken link and names the excluded parent: it is still generated, without its lookup to that parent.
-- **Unticked fields**: the field is left out. **All fields**, above an object's fields, ticks or unticks them all.
+- **Unticked fields**: the field is left out. **All fields**, above an object's fields, ticks or unticks them all, and **Standard fields** beside it does the same for the fields whose name does not end in `__c`, leaving your custom fields as they are.
 - **Record counts**: each object's row says what is created, such as Create 5 ✎ Contact records per Account (a friend's count is records per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe's says changed.
 - **The rules box**: a field generated without the limits its validation rules set.
 - **Nested copies**: an object written more than once, such as the copy under a self-lookup, a friend added under it or a record type block, is a row of its own, indented under the row it is nested in. Each copy keeps its own unticked fields, count, rules box and edit, so changing one leaves the others as they are. A setting saved before copies had their own still applies to every copy until you change one.
