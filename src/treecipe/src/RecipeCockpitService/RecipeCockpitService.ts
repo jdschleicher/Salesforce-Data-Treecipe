@@ -15361,8 +15361,10 @@ export class RecipeCockpitService {
 
     /*
         What the card leaves out of the insert, one object at a time (#483): each excluded object on
-        its own line, then each occurrence with unticked fields as a lead-in with one field per line
-        under it, in the card's insert order. Nothing left out is no lines, so the section is dropped.
+        its own line, then each occurrence with a field left out as a lead-in with one field per line
+        under it, in the card's insert order. A field left out is one the reader unticked or a lookup
+        an excluded parent cut, the same rows "Hide unselected" hides. Nothing left out is no lines,
+        so the section is dropped.
     */
     static buildInsertLeftOutLines(tree: IRecipeCockpitTreeViewModel): { objectCount: number; lines: string[] } {
 
@@ -15375,16 +15377,31 @@ export class RecipeCockpitService {
 
         const exclusionLines = byInsertOrder(tree.objectSelection?.exclusions ?? [], exclusion => exclusion.objectApiName)
             .map(exclusion => exclusion.kind === 'autoExcluded'
-                ? `${exclusion.objectApiName}: not generated, auto-excluded with its parent ${exclusion.excludedParentObjectApiName ?? ''}`.trimEnd()
+                ? `${exclusion.objectApiName}: not generated, ${exclusion.excludedParentObjectApiName ? `auto-excluded with its parent ${exclusion.excludedParentObjectApiName}` : 'auto-excluded with its parent'}`
                 : `${exclusion.objectApiName}: not generated, excluded`);
 
-        const fieldEntries = byInsertOrder([...this.listExcludedFieldApiNamesByOccurrence(tree)].map(([occurrenceKey, fieldApiNames]) => ({
-            ...RecipeCockpitRecipeWriter.parseOccurrenceKey(occurrenceKey),
-            fieldApiNames
-        })), fieldEntry => fieldEntry.objectApiName);
+        const excludedObjectApiNames = new Set(this.listExcludedObjectApiNames(tree));
+        const cutParentByLookupKey = new Map(( tree.objectSelection?.disabledLookups ?? [] )
+            .map(disabledLookup => [`${disabledLookup.objectApiName}\n${disabledLookup.fieldApiName}`, disabledLookup.parentObjectApiName]));
+        const fieldEntries = byInsertOrder(( tree.fieldSelection?.objects ?? [] )
+            .filter(objectFieldSelection => !excludedObjectApiNames.has(objectFieldSelection.objectApiName))
+            .map(objectFieldSelection => {
+                const untickedFieldApiNames = new Set(objectFieldSelection.excludedFieldApiNames);
+                const fieldLines = [
+                    ...objectFieldSelection.excludedFieldApiNames.map(fieldApiName => `  ${fieldApiName}`),
+                    ...objectFieldSelection.lockedFields
+                        .filter(lockedField => lockedField.reason === RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON && !untickedFieldApiNames.has(lockedField.fieldApiName))
+                        .map(lockedField => {
+                            const parentObjectApiName = cutParentByLookupKey.get(`${objectFieldSelection.objectApiName}\n${lockedField.fieldApiName}`);
+                            return `  ${lockedField.fieldApiName}, cut: parent ${parentObjectApiName ?? 'object'} excluded`;
+                        })
+                ];
+                return { objectApiName: objectFieldSelection.objectApiName, nickname: objectFieldSelection.nickname, fieldLines };
+            })
+            .filter(fieldEntry => fieldEntry.fieldLines.length > 0), fieldEntry => fieldEntry.objectApiName);
         const fieldLines = fieldEntries.flatMap(fieldEntry => [
-            `${this.describeOccurrence(fieldEntry.objectApiName, fieldEntry.nickname)}, ${fieldEntry.fieldApiNames.length === 1 ? '1 field' : `${fieldEntry.fieldApiNames.length} fields`} unticked, not sent:`,
-            ...fieldEntry.fieldApiNames.map(fieldApiName => `  ${fieldApiName}`)
+            `${this.describeOccurrence(fieldEntry.objectApiName, fieldEntry.nickname)}, ${fieldEntry.fieldLines.length === 1 ? '1 field' : `${fieldEntry.fieldLines.length} fields`} left out, not sent:`,
+            ...fieldEntry.fieldLines
         ]);
 
         return { objectCount: exclusionLines.length + fieldEntries.length, lines: [...exclusionLines, ...fieldLines] };
@@ -22280,7 +22297,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         includeElement.setAttribute('aria-checked', isExcluded ? 'false' : 'true');
         includeElement.disabled = isObjectExcluded || !!lockReason;
 
-        const title = isObjectExcluded ? objectApiName + ' is excluded, so its fields are read-only'
+        const title = isObjectExcluded ? describeExcludedObjectFields(objectApiName)
             : lockReason ? 'Cannot be unticked: ' + lockReason
             : isExcluded ? 'Unticked — click to generate this field'
             : 'Ticked — click to leave this field out';
@@ -22694,7 +22711,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         toggleElement.disabled = isObjectExcluded;
         if (isObjectExcluded) { checkElement.classList.add('disabled'); } else { checkElement.classList.remove('disabled'); }
 
-        const title = isObjectExcluded ? objectApiName + ' is excluded, so its fields are read-only'
+        const title = isObjectExcluded ? describeExcludedObjectFields(objectApiName)
             : checkedState === 'true' ? 'Every ' + singular + ' ticked — click to leave every ' + singular + ' out that can be unticked'
             : checkedState === 'mixed' ? count.ticked + ' of ' + count.untickable + ' ' + plural + ' ticked — click to tick every ' + singular
             : 'No ' + singular + ' ticked — click to tick every ' + singular;
@@ -22785,9 +22802,19 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
+    function describeExcludedObjectFields(objectApiName) {
+        return objectApiName + ' is excluded, so its fields are read-only';
+    }
+
+    // THE REASON IT IS OFF, OR '' WITH HOW MANY ROWS IT HIDES: ONE COUNT PER DRAW
+    function readHideUnselectedState(treeObjectState) {
+        if (findObjectExclusion(treeObjectState.tree, treeObjectState.object.objectApiName)) { return { reason: describeExcludedObjectFields(treeObjectState.object.objectApiName), unselectedCount: 0 }; }
+        const unselectedCount = countUnselectedFields(treeObjectState);
+        return { reason: unselectedCount === 0 ? NO_UNSELECTED_FIELDS_NOTE : '', unselectedCount: unselectedCount };
+    }
+
     function findHideUnselectedReason(treeObjectState) {
-        if (findObjectExclusion(treeObjectState.tree, treeObjectState.object.objectApiName)) { return treeObjectState.object.objectApiName + ' is excluded, so its fields are read-only'; }
-        return countUnselectedFields(treeObjectState) === 0 ? NO_UNSELECTED_FIELDS_NOTE : '';
+        return readHideUnselectedState(treeObjectState).reason;
     }
 
     function isObjectHidingUnselectedIn(treeObjectState) {
@@ -22827,14 +22854,15 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
-    function drawHideUnselectedToggle(treeObjectState) {
+    function drawHideUnselectedToggle(treeObjectState, hideUnselectedState) {
 
         const toggleElement = treeObjectState.hideUnselectedToggleElement;
         if (!toggleElement) { return; }
 
-        const reason = findHideUnselectedReason(treeObjectState);
+        const state = hideUnselectedState || readHideUnselectedState(treeObjectState);
+        const reason = state.reason;
+        const unselectedCount = state.unselectedCount;
         const isChecked = isObjectHidingUnselectedIn(treeObjectState);
-        const unselectedCount = reason ? 0 : countUnselectedFields(treeObjectState);
         const title = reason || ( isChecked
             ? 'Hiding ' + pluralize(unselectedCount, 'unticked field', 'unticked fields') + ' of ' + treeObjectState.object.objectApiName + ' — click to show them'
             : 'Hide the ' + pluralize(unselectedCount, 'unticked field', 'unticked fields') + ' of ' + treeObjectState.object.objectApiName );
@@ -22856,8 +22884,15 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     function refreshHideUnselectedFields(treeObjectState) {
 
         const wasHiding = isObjectHidingUnselectedIn(treeObjectState);
-        if (wasHiding && findHideUnselectedReason(treeObjectState)) { treeObjectState.isHidingUnselected = false; }
-        drawHideUnselectedToggle(treeObjectState);
+        if (!wasHiding && !treeObjectState.hideUnselectedToggleElement) { return false; }
+
+        const hideUnselectedState = readHideUnselectedState(treeObjectState);
+        if (wasHiding && hideUnselectedState.reason) {
+            treeObjectState.isHidingUnselected = false;
+            // A SAVED KEY WOULD TURN IT BACK ON AT THE NEXT RESTORE, OVER ROWS THE READER SAW SHOWN
+            savePanelPlace();
+        }
+        drawHideUnselectedToggle(treeObjectState, hideUnselectedState);
 
         if (!wasHiding || !treeObjectState.treeState || !treeObjectState.treeState.structureSearch) { return false; }
 

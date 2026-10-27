@@ -200,6 +200,36 @@ describe('RecipeCockpitService, an object\'s own "Hide unselected" (#483)', () =
 
         });
 
+        it('counts the tab\'s rows while only it narrows them, and again after the host\'s answer', () => {
+
+            const panel = drawRecipe(recipe => untick(recipe, { Contact: ['LastName'] }));
+            const contact = expanded(panel, 'Contact');
+            const matchCount = () => panel.findAll(panel.treeCards()[0], 'tabMatchCount')[0].textContent;
+            const totalBefore = matchCount();
+            const total = Number(/^(\d+) fields$/.exec(totalBefore)?.[1]);
+
+            hideOf(panel, contact).dispatch('click');
+            expect(matchCount()).toBe(`${total - 1} of ${totalBefore}`);
+
+            answerSelection(panel, [{ objectApiName: 'Contact', excludedFieldApiNames: ['LastName', 'AccountId'], lockedFields: [] }]);
+            expect(matchCount()).toBe(`${total - 2} of ${totalBefore}`);
+
+        });
+
+        // FROM THE REVIEW OF #484: A FILTER THAT TURNS ITSELF OFF IS SAVED OFF, OR THE NEXT RESTORE TURNS IT BACK ON
+        it('saves the place when it turns itself off', () => {
+
+            const panel = drawRecipe(recipe => untick(recipe, { Contact: ['LastName'] }));
+            const contact = expanded(panel, 'Contact');
+            hideOf(panel, contact).dispatch('click');
+            expect(savedTreeOf(panel).hideUnselectedObjectKeys).toEqual(['Contact\n']);
+
+            answerSelection(panel, [{ objectApiName: 'Contact', excludedFieldApiNames: [], lockedFields: [] }]);
+
+            expect(savedTreeOf(panel) ?? {}).not.toHaveProperty('hideUnselectedObjectKeys');
+
+        });
+
         it('is saved in the place by object key and restored in the next document', () => {
 
             const firstPanel = drawRecipe(recipe => untick(recipe, { Account: ['Legacy_Code__c'] }));
@@ -282,10 +312,10 @@ describe('RecipeCockpitService, an object\'s own "Hide unselected" (#483)', () =
                 title: RECIPE_COCKPIT_INSERT_LEFT_OUT_SECTION_TITLE,
                 count: 2,
                 lines: [
-                    'Account, 2 fields unticked, not sent:',
+                    'Account, 2 fields left out, not sent:',
                     '  Name',
                     '  Legacy_Code__c',
-                    'Contact, 1 field unticked, not sent:',
+                    'Contact, 1 field left out, not sent:',
                     '  LastName'
                 ]
             });
@@ -299,9 +329,47 @@ describe('RecipeCockpitService, an object\'s own "Hide unselected" (#483)', () =
             const section = leftOutOf(recipe);
 
             expect(section?.lines[0]).toBe('Contact: not generated, excluded');
-            expect(section?.lines).toContain('Account, 1 field unticked, not sent:');
+            expect(section?.lines).toContain('Account, 1 field left out, not sent:');
             expect(section?.lines).not.toContain('  LastName');
             expect(section?.count).toBe(section?.lines.filter(line => !line.startsWith('  ')).length);
+
+        });
+
+        // FROM THE REVIEW OF #484: THE SECTION LISTS THE SAME ROWS "Hide unselected" HIDES, A LOOKUP AN EXCLUDED PARENT CUT INCLUDED
+        it('lists a lookup an excluded parent cut under its object, once, naming the parent', () => {
+
+            const recipe = loadRecipe();
+            const tree = treeOf(recipe, ACCOUNT_TREE_KEY);
+            tree.objectSelection = {
+                exclusions: [{ objectApiName: 'Account', kind: 'excluded' }],
+                disabledLookups: [{ objectApiName: 'OtherChildObject__c', fieldApiName: 'Account__c', parentObjectApiName: 'Account' }],
+                includedObjectCount: 2,
+                objectCount: 3
+            };
+            tree.fieldSelection = { objects: [
+                { objectApiName: 'OtherChildObject__c', excludedFieldApiNames: ['Notes__c'], lockedFields: [{ fieldApiName: 'Account__c', reason: RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON }] },
+                { objectApiName: 'Contact', excludedFieldApiNames: [], lockedFields: [{ fieldApiName: 'AccountId', reason: RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON }] },
+                { objectApiName: 'Lead', excludedFieldApiNames: [], lockedFields: [{ fieldApiName: 'RecordTypeId', reason: 'record-type sections depend on it' }] }
+            ] };
+
+            expect(leftOutOf(recipe)?.lines).toEqual([
+                'Account: not generated, excluded',
+                'Contact, 1 field left out, not sent:',
+                '  AccountId, cut: parent object excluded',
+                'OtherChildObject__c, 2 fields left out, not sent:',
+                '  Notes__c',
+                '  Account__c, cut: parent Account excluded'
+            ]);
+            expect(leftOutOf(recipe)?.count).toBe(3);
+
+        });
+
+        it('says "with its parent" when an auto-exclusion names no parent', () => {
+
+            const recipe = loadRecipe();
+            treeOf(recipe, ACCOUNT_TREE_KEY).objectSelection = { exclusions: [{ objectApiName: 'Contact', kind: 'autoExcluded' }], disabledLookups: [], includedObjectCount: 2, objectCount: 3 };
+
+            expect(leftOutOf(recipe)?.lines).toEqual(['Contact: not generated, auto-excluded with its parent']);
 
         });
 

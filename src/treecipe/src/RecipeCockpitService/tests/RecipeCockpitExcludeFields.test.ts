@@ -522,7 +522,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
             untick(recipe, { Account: ['Legacy_Code__c'], Contact: ['LastName'] });
 
             // ONE LEAD-IN PER OBJECT, ITS FIELDS UNDER IT (#483)
-            expect(buildDetail()).toContain(['Account, 1 field unticked, not sent:', '  Legacy_Code__c', 'Contact, 1 field unticked, not sent:', '  LastName'].join('\n'));
+            expect(buildDetail()).toContain(['Account, 1 field left out, not sent:', '  Legacy_Code__c', 'Contact, 1 field left out, not sent:', '  LastName'].join('\n'));
 
         });
 
