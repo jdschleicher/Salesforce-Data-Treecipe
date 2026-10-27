@@ -299,6 +299,11 @@ export const RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE = 'standard';
 // THE OBJECT'S OWN "TODOs only" FILTER (#477), BESIDE ITS "All fields" BOX
 export const RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL = 'TODOs only';
 export const RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE = 'This object has no TODO comment in the recipe.';
+// THE OBJECT'S OWN "Hide unselected" FILTER (#483), BESIDE ITS "All fields" BOX
+export const RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL = 'Hide unselected';
+export const RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE = 'Every field of this object is ticked, so there is nothing to hide.';
+// THE INSERT CONFIRMATION'S SECTION OF WHAT THE CARD LEAVES OUT, ONE OBJECT AT A TIME (#483)
+export const RECIPE_COCKPIT_INSERT_LEFT_OUT_SECTION_TITLE = 'Left out, per object';
 export const RECIPE_COCKPIT_RESET_SELECTION_LABEL = 'Reset selection';
 
 /*
@@ -587,7 +592,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         ],
         items: [
             'Excluded objects (the chain link): the object and its children are left out. A child that another included parent keeps shows a half-broken link and names the excluded parent: it is still generated, without its lookup to that parent.',
-            'Unticked fields: the field is left out. All fields, above an object\'s fields, ticks or unticks them all, and Standard fields beside it does the same for the fields whose name does not end in __c. TODOs only beside them shows that object\'s fields with a TODO.',
+            'Unticked fields: the field is left out. All fields, above an object\'s fields, ticks or unticks them all, and Standard fields beside it does the same for the fields whose name does not end in __c. Hide unselected beside them hides that object\'s unticked fields, and TODOs only shows its fields with a TODO. The insert\'s confirmation lists what is left out, object by object.',
             'Record counts: each object\'s row says what is created, such as Create 5 ✎ Contact records per Account (a friend\'s count is records per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe\'s says changed.',
             'The rules box: a field generated without the limits its validation rules set.',
             'Nested copies: an object written more than once, such as the copy under a self-lookup, a friend added under it or a record type block, is a row of its own, indented under the row it is nested in. Each copy keeps its own unticked fields, count, rules box and edit, so changing one leaves the others as they are. A setting saved before copies had their own still applies to every copy until you change one.'
@@ -1360,6 +1365,8 @@ export interface IRecipeCockpitPanelTreePlace {
     isTodosOnly?: true;
     // EACH OBJECT'S OWN "TODOs only" (#477), BY OBJECT PLACE KEY, ONLY WHEN ONE IS ON
     todosOnlyObjectKeys?: string[];
+    // EACH OBJECT'S OWN "Hide unselected" (#483), BY OBJECT PLACE KEY, ONLY WHEN ONE IS ON
+    hideUnselectedObjectKeys?: string[];
     // THE TROUBLESHOOTING SUB-TAB (#365), ONLY WHEN IT IS NOT THE FIRST, AND EACH SUB-TAB'S SEARCH, ONLY WHEN THERE IS ONE
     troubleshootingSubTab?: RecipeCockpitTroubleshootingSubTab;
     troubleshootingSearchQueries?: Partial<Record<RecipeCockpitTroubleshootingSubTab, string>>;
@@ -3031,6 +3038,7 @@ export class RecipeCockpitService {
             const storedSubTabQueries = this.isPlainRecord(candidateTree.troubleshootingSearchQueries) ? candidateTree.troubleshootingSearchQueries : {};
             const troubleshootingSearchQueries: Partial<Record<RecipeCockpitTroubleshootingSubTab, string>> = {};
             const todosOnlyObjectKeys = this.normalizePlaceNames(candidateTree.todosOnlyObjectKeys);
+            const hideUnselectedObjectKeys = this.normalizePlaceNames(candidateTree.hideUnselectedObjectKeys);
             const updaterChosenFieldKeys = this.normalizePlaceNames(candidateTree.updaterChosenFieldKeys);
             const updaterExpandedObjectKeys = this.normalizePlaceNames(candidateTree.updaterExpandedObjectKeys);
             const updaterParentObjectApiName = SalesforceApiName.isApiName(candidateTree.updaterParentObjectApiName) ? candidateTree.updaterParentObjectApiName as string : undefined;
@@ -3057,6 +3065,7 @@ export class RecipeCockpitService {
                 ...( candidateTree.isRecordTypeFieldsOnly === true ? { isRecordTypeFieldsOnly: true as const } : {} ),
                 ...( candidateTree.isTodosOnly === true ? { isTodosOnly: true as const } : {} ),
                 ...( todosOnlyObjectKeys.length > 0 ? { todosOnlyObjectKeys: todosOnlyObjectKeys } : {} ),
+                ...( hideUnselectedObjectKeys.length > 0 ? { hideUnselectedObjectKeys: hideUnselectedObjectKeys } : {} ),
                 ...( troubleshootingSubTab !== undefined ? { troubleshootingSubTab: troubleshootingSubTab } : {} ),
                 ...( Object.keys(troubleshootingSearchQueries).length > 0 ? { troubleshootingSearchQueries: troubleshootingSearchQueries } : {} ),
                 ...( candidateTree.todosView === 'removed' ? { todosView: 'removed' as const } : {} ),
@@ -15293,7 +15302,7 @@ export class RecipeCockpitService {
             const { objectApiName, nickname } = RecipeCockpitRecipeWriter.parseOccurrenceKey(occurrenceKey);
             return this.describeOccurrence(objectApiName, nickname);
         };
-        const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByOccurrence(tree);
+        const leftOutLines = this.buildInsertLeftOutLines(tree);
         // AN ORG RECORD'S Id IS LISTED ON ITS OWN LINE, WITH THE ORG IT CAME FROM
         const fixedValues = ( tree.fixedValues ?? [] ).filter(fixedValue => !fixedValue.orgRecord);
         const validationRulesOff = [...this.listUnconstrainedValuesByObject(recipeViewModel, tree)]
@@ -15326,12 +15335,10 @@ export class RecipeCockpitService {
             sections: [
                 { title: 'Records, inserted parents first', count: objectLines.length, lines: objectLines },
                 { title: 'Lookups', lines: ['Any other lookup to an object this tree does not insert is left blank.'] },
+                { title: RECIPE_COCKPIT_INSERT_LEFT_OUT_SECTION_TITLE, count: leftOutLines.objectCount, lines: leftOutLines.lines },
                 {
                     title: 'Fields changed on this card',
                     lines: [
-                        ...( excludedFieldApiNamesByObject.size > 0
-                            ? [`Unticked, not sent: ${[...excludedFieldApiNamesByObject].map(([occurrenceKey, fieldApiNames]) => fieldApiNames.map(fieldApiName => `${describeKey(occurrenceKey)}.${fieldApiName}`).join(', ')).join(', ')}`]
-                            : [] ),
                         ...( fixedValues.length > 0
                             ? [`Edited fields: ${fixedValues.map(fixedValue => `${this.describeOccurrence(fixedValue.objectApiName, fixedValue.nickname)}.${fixedValue.fieldApiName} = ${fixedValue.value}`).join(', ')}`]
                             : [] )
@@ -15349,6 +15356,38 @@ export class RecipeCockpitService {
                 { title: 'What happens next', lines: ['The data set is written to FakeDataSets as Run Faker by Recipe writes it.', 'It is then inserted the way Insert Data Set by Directory inserts.', 'You choose all-or-none next.'] }
             ]
         };
+
+    }
+
+    /*
+        What the card leaves out of the insert, one object at a time (#483): each excluded object on
+        its own line, then each occurrence with unticked fields as a lead-in with one field per line
+        under it, in the card's insert order. Nothing left out is no lines, so the section is dropped.
+    */
+    static buildInsertLeftOutLines(tree: IRecipeCockpitTreeViewModel): { objectCount: number; lines: string[] } {
+
+        const objectOrder = new Map(tree.objects.map((treeObject, objectIndex) => [treeObject.objectApiName, objectIndex]));
+        const orderOf = (objectApiName: string) => objectOrder.get(objectApiName) ?? objectOrder.size;
+        const byInsertOrder = <T>(entries: T[], objectApiNameOf: (entry: T) => string) => entries
+            .map((entry, entryIndex) => ({ entry, entryIndex }))
+            .sort((first, second) => ( orderOf(objectApiNameOf(first.entry)) - orderOf(objectApiNameOf(second.entry)) ) || ( first.entryIndex - second.entryIndex ))
+            .map(({ entry }) => entry);
+
+        const exclusionLines = byInsertOrder(tree.objectSelection?.exclusions ?? [], exclusion => exclusion.objectApiName)
+            .map(exclusion => exclusion.kind === 'autoExcluded'
+                ? `${exclusion.objectApiName}: not generated, auto-excluded with its parent ${exclusion.excludedParentObjectApiName ?? ''}`.trimEnd()
+                : `${exclusion.objectApiName}: not generated, excluded`);
+
+        const fieldEntries = byInsertOrder([...this.listExcludedFieldApiNamesByOccurrence(tree)].map(([occurrenceKey, fieldApiNames]) => ({
+            ...RecipeCockpitRecipeWriter.parseOccurrenceKey(occurrenceKey),
+            fieldApiNames
+        })), fieldEntry => fieldEntry.objectApiName);
+        const fieldLines = fieldEntries.flatMap(fieldEntry => [
+            `${this.describeOccurrence(fieldEntry.objectApiName, fieldEntry.nickname)}, ${fieldEntry.fieldApiNames.length === 1 ? '1 field' : `${fieldEntry.fieldApiNames.length} fields`} unticked, not sent:`,
+            ...fieldEntry.fieldApiNames.map(fieldApiName => `  ${fieldApiName}`)
+        ]);
+
+        return { objectCount: exclusionLines.length + fieldEntries.length, lines: [...exclusionLines, ...fieldLines] };
 
     }
 
@@ -20048,6 +20087,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const STANDARD_FIELDS_SCOPE = ${JSON.stringify(RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE)};
     const OBJECT_TODOS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL)};
     const NO_OBJECT_TODOS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE)};
+    const HIDE_UNSELECTED_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL)};
+    const NO_UNSELECTED_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE)};
     const RESET_SELECTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RESET_SELECTION_LABEL)};
     const REFRESH_ORGS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REFRESH_ORGS_LABEL)};
     const OPEN_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OPEN_ORG_LABEL)};
@@ -22197,6 +22238,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         return !!record && Object.prototype.hasOwnProperty.call(record, key);
     }
 
+    // A FIELD'S BOX READS UNTICKED WHEN THE READER UNTICKED IT OR AN EXCLUDED PARENT CUT IT (#220); "Hide unselected" (#483) READS THE SAME
+    function isTreeFieldUnticked(objectFieldSelection, fieldApiName) {
+        if (!objectFieldSelection) { return false; }
+        const lockReason = hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : '';
+        return lockReason === FIELD_PARENT_EXCLUDED_REASON || hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName);
+    }
+
     /*
         One field row's checkbox, dimming and note (#220), all drawn from the host's answer. The
         state is never colour alone: the box's mark, aria-checked, the title and the note all say it.
@@ -22211,7 +22259,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
         const isObjectExcluded = !!findObjectExclusion(tree, objectApiName);
         const lockReason = objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : '';
-        const isExcluded = lockReason === FIELD_PARENT_EXCLUDED_REASON || ( !!objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName) );
+        const isExcluded = isTreeFieldUnticked(objectFieldSelection, fieldApiName);
 
         if (isExcluded) { fieldState.rowElement.classList.add('fieldExcluded'); } else { fieldState.rowElement.classList.remove('fieldExcluded'); }
 
@@ -22525,10 +22573,12 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         treeObjectState.fieldWarningElement.textContent = isEveryFieldExcluded ? EVERY_FIELD_UNTICKED_WARNING : '';
         if (isEveryFieldExcluded) { treeObjectState.fieldWarningElement.classList.remove('hidden'); } else { treeObjectState.fieldWarningElement.classList.add('hidden'); }
 
-        if (!treeObjectState.isBodyBuilt) { return; }
+        if (treeObjectState.isBodyBuilt) {
+            treeObjectState.fieldStates.forEach(function (fieldState) { drawFieldRowSelection(treeObjectState, fieldState); });
+            drawSelectAllFields(treeObjectState);
+        }
 
-        treeObjectState.fieldStates.forEach(function (fieldState) { drawFieldRowSelection(treeObjectState, fieldState); });
-        drawSelectAllFields(treeObjectState);
+        return refreshHideUnselectedFields(treeObjectState);
 
     }
 
@@ -22553,6 +22603,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             treeObjectState.selectStandardCheckElement = selectStandard.checkElement;
             treeObjectState.selectStandardElement = selectStandard.toggleElement;
             rowElement.appendChild(selectStandard.checkElement);
+            rowElement.appendChild(buildHideUnselectedToggle(treeObjectState));
         }
 
         rowElement.appendChild(buildObjectTodosToggle(treeObjectState));
@@ -22715,8 +22766,113 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
+    /*
+        The object's own "Hide unselected" (#483): hides THIS object's rows whose box is unticked, the
+        ones an excluded parent cut included, with the search and every "TODOs only". Panel-only: it
+        posts nothing, and only the host's answer unticks a field, so a row hides once that answer is
+        drawn. With nothing unticked, or the object excluded, it is off and disabled.
+    */
+    function countUnselectedFields(treeObjectState) {
+
+        if (!treeObjectState.canSelectFields) { return 0; }
+
+        const objectFieldSelection = findObjectFieldSelection(treeObjectState.tree, treeObjectState.object.objectApiName, occurrenceNicknameOf(treeObjectState.object));
+        if (!objectFieldSelection) { return 0; }
+
+        return treeObjectState.fieldStates.filter(function (fieldState) {
+            return !!fieldState.field.lineNumber && isTreeFieldUnticked(objectFieldSelection, fieldState.field.fieldApiName);
+        }).length;
+
+    }
+
+    function findHideUnselectedReason(treeObjectState) {
+        if (findObjectExclusion(treeObjectState.tree, treeObjectState.object.objectApiName)) { return treeObjectState.object.objectApiName + ' is excluded, so its fields are read-only'; }
+        return countUnselectedFields(treeObjectState) === 0 ? NO_UNSELECTED_FIELDS_NOTE : '';
+    }
+
+    function isObjectHidingUnselectedIn(treeObjectState) {
+        return treeObjectState.isHidingUnselected === true;
+    }
+
+    function buildHideUnselectedToggle(treeObjectState) {
+
+        const objectApiName = treeObjectState.object.objectApiName;
+        const checkElement = createElement('span', 'treeFieldSelectAllCheck treeHideUnselectedCheck');
+        const toggleElement = createButton('check', 'treeHideUnselectedToggle');
+        const labelElement = createElement('span', 'treeHideUnselectedLabel', HIDE_UNSELECTED_FIELDS_LABEL);
+        toggleElement.setAttribute('role', 'checkbox');
+        toggleElement.setAttribute('aria-label', HIDE_UNSELECTED_FIELDS_LABEL + ' (' + objectApiName + ')');
+
+        const toggleHideUnselected = function () {
+            if (toggleElement.disabled) { return; }
+            treeObjectState.isHidingUnselected = !treeObjectState.isHidingUnselected;
+            if (treeObjectState.treeState.structureSearch) {
+                filterTreeObjectRows(treeObjectState.treeState, treeObjectState);
+                drawStructureMatchCount(treeObjectState.treeState);
+            }
+            drawHideUnselectedToggle(treeObjectState);
+            savePanelPlace();
+        };
+        toggleElement.addEventListener('click', toggleHideUnselected);
+        labelElement.addEventListener('click', toggleHideUnselected);
+
+        treeObjectState.hideUnselectedCheckElement = checkElement;
+        treeObjectState.hideUnselectedLabelElement = labelElement;
+        treeObjectState.hideUnselectedToggleElement = toggleElement;
+        checkElement.appendChild(toggleElement);
+        checkElement.appendChild(labelElement);
+        drawHideUnselectedToggle(treeObjectState);
+
+        return checkElement;
+
+    }
+
+    function drawHideUnselectedToggle(treeObjectState) {
+
+        const toggleElement = treeObjectState.hideUnselectedToggleElement;
+        if (!toggleElement) { return; }
+
+        const reason = findHideUnselectedReason(treeObjectState);
+        const isChecked = isObjectHidingUnselectedIn(treeObjectState);
+        const unselectedCount = reason ? 0 : countUnselectedFields(treeObjectState);
+        const title = reason || ( isChecked
+            ? 'Hiding ' + pluralize(unselectedCount, 'unticked field', 'unticked fields') + ' of ' + treeObjectState.object.objectApiName + ' — click to show them'
+            : 'Hide the ' + pluralize(unselectedCount, 'unticked field', 'unticked fields') + ' of ' + treeObjectState.object.objectApiName );
+
+        toggleElement.textContent = isChecked ? '✓' : '';
+        toggleElement.setAttribute('aria-checked', isChecked ? 'true' : 'false');
+        toggleElement.disabled = !!reason;
+        toggleElement.setAttribute('title', title);
+        treeObjectState.hideUnselectedLabelElement.setAttribute('title', title);
+        if (reason) { treeObjectState.hideUnselectedCheckElement.classList.add('disabled'); } else { treeObjectState.hideUnselectedCheckElement.classList.remove('disabled'); }
+
+    }
+
+    /*
+        After the host's answer: a filter with nothing left to hide turns itself off, so the next
+        untick shows its row until the reader asks again. True when the object's rows were filtered
+        again, so the caller redraws the tab's count once.
+    */
+    function refreshHideUnselectedFields(treeObjectState) {
+
+        const wasHiding = isObjectHidingUnselectedIn(treeObjectState);
+        if (wasHiding && findHideUnselectedReason(treeObjectState)) { treeObjectState.isHidingUnselected = false; }
+        drawHideUnselectedToggle(treeObjectState);
+
+        if (!wasHiding || !treeObjectState.treeState || !treeObjectState.treeState.structureSearch) { return false; }
+
+        filterTreeObjectRows(treeObjectState.treeState, treeObjectState);
+        return true;
+
+    }
+
     function drawFieldSelection(treeState) {
-        treeState.objectStates.forEach(drawObjectFieldSelection);
+        let isAnyObjectRefiltered = false;
+        treeState.objectStates.forEach(function (treeObjectState) {
+            if (drawObjectFieldSelection(treeObjectState)) { isAnyObjectRefiltered = true; }
+        });
+        // ONE COUNT FOR THE TAB, HOWEVER MANY OBJECTS HIDE THEIR UNSELECTED FIELDS
+        if (isAnyObjectRefiltered) { drawStructureMatchCount(treeState); }
     }
 
     function hasTreeSelection(tree) {
@@ -23716,7 +23872,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                 treeObjectState.bodyElement.appendChild(fieldState.rowElement);
             });
             treeObjectState.isBodyBuilt = true;
-            drawObjectFieldSelection(treeObjectState);
+            if (drawObjectFieldSelection(treeObjectState)) { drawStructureMatchCount(treeObjectState.treeState); }
         }
 
         setShownWithMotion(treeObjectState.bodyElement, isExpanded, isAnimated);
@@ -23960,6 +24116,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             // THE TODO COMMENTS OF THE BLOCK THAT SIT ON NO FIELD, AND EVERY TODO OF THE OCCURRENCE (#354)
             objectTodos: Array.isArray(object.todos) ? object.todos : [],
             todoCount: 0,
+            // THE OBJECT'S OWN "Hide unselected" (#483), PANEL-ONLY
+            isHidingUnselected: false,
+            hideUnselectedCheckElement: null,
+            hideUnselectedLabelElement: null,
+            hideUnselectedToggleElement: null,
             // SET BY renderTree ONCE THE CARD'S STATE EXISTS; THE NICKNAME INDEX IS THE CARD'S (#380)
             treeState: null,
             headerElement: objectHeaderElement,
@@ -28881,12 +29042,19 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const isRecordTypeFieldsOnly = isRecordTypeFieldsOnlyIn(treeState);
         // "TODOs only" (#354), THE CARD'S OR THE OBJECT'S OWN, NARROWS THE SAME WAY, AND AN OBJECT'S OWN TODOS COUNT AS A MATCH SO IT STILL OPENS
         const isObjectTodosOnly = isTodosOnlyIn(treeState) || isObjectTodosOnlyIn(treeObjectState);
-        const isObjectFiltered = !!searchQuery || isRecordTypeFieldsOnly || isObjectTodosOnly;
+        // "Hide unselected" (#483) IS THE OBJECT'S OWN AND NARROWS THE SAME WAY
+        const isHidingUnselected = isObjectHidingUnselectedIn(treeObjectState);
+        const isObjectFiltered = !!searchQuery || isRecordTypeFieldsOnly || isObjectTodosOnly || isHidingUnselected;
         const isObjectNameMatch = !searchQuery || treeObjectState.objectSearchText.indexOf(searchQuery) !== -1 || treeObjectState.friendSearchText.indexOf(searchQuery) !== -1;
         let objectMatchingFieldCount = 0;
+        let selectedFieldCount = 0;
+        const objectFieldSelection = isHidingUnselected ? findObjectFieldSelection(treeObjectState.tree, treeObjectState.object.objectApiName, occurrenceNicknameOf(treeObjectState.object)) : null;
 
         treeObjectState.fieldStates.forEach(function (fieldState) {
-            fieldState.isMatch = (!isRecordTypeFieldsOnly || fieldState.recordTypeDeveloperNames !== null)
+            const isSelected = !isHidingUnselected || !fieldState.field.lineNumber || !isTreeFieldUnticked(objectFieldSelection, fieldState.field.fieldApiName);
+            if (isSelected) { selectedFieldCount++; }
+            fieldState.isMatch = isSelected
+                && (!isRecordTypeFieldsOnly || fieldState.recordTypeDeveloperNames !== null)
                 && (!isObjectTodosOnly || fieldState.todos.length > 0)
                 && (isObjectNameMatch || isFieldTextMatch(fieldState, searchQuery));
             if (fieldState.isMatch) { objectMatchingFieldCount++; }
@@ -28899,7 +29067,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         treeObjectState.hasMatchingObjectTodos = hasMatchingObjectTodos;
         treeObjectState.isFilteredByStructure = isObjectFiltered;
 
-        if (!isObjectFiltered || (isObjectNameMatch && !isRecordTypeFieldsOnly && !isObjectTodosOnly)) {
+        if (!isObjectFiltered || (isObjectNameMatch && !isRecordTypeFieldsOnly && !isObjectTodosOnly && !isHidingUnselected)) {
             treeObjectState.countElement.textContent = pluralize(objectFieldCount, 'field', 'fields');
         } else if (isObjectTodosOnly && treeObjectState.todoCount === 0) {
             treeObjectState.countElement.textContent = 'no TODOs';
@@ -28911,6 +29079,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             treeObjectState.countElement.textContent = 'no record type fields';
         } else if (hasMatchingObjectTodos) {
             treeObjectState.countElement.textContent = pluralize(treeObjectState.objectTodos.length, 'TODO', 'TODOs') + ' on the object';
+        } else if (isHidingUnselected && selectedFieldCount === 0) {
+            treeObjectState.countElement.textContent = 'no selected fields';
         } else {
             treeObjectState.countElement.textContent = 'no matching fields';
         }
@@ -29250,12 +29420,14 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const expandedObjectKeys = [];
         const openPicklistKeys = [];
         const todosOnlyObjectKeys = [];
+        const hideUnselectedObjectKeys = [];
         const searchQueries = {};
         let hasSearch = false;
 
         treeState.objectStates.forEach(function (treeObjectState) {
             if (treeObjectState.isExpandedByReader) { expandedObjectKeys.push(buildObjectPlaceKey(treeObjectState)); }
             if (isObjectTodosOnlyIn(treeObjectState)) { todosOnlyObjectKeys.push(buildObjectPlaceKey(treeObjectState)); }
+            if (isObjectHidingUnselectedIn(treeObjectState)) { hideUnselectedObjectKeys.push(buildObjectPlaceKey(treeObjectState)); }
             // ONLY A BUILT ROW CAN HAVE BEEN OPENED, SO AN OBJECT NOBODY EXPANDED COSTS NOTHING HERE
             if (!treeObjectState.isBodyBuilt) { return; }
             treeObjectState.fieldStates.forEach(function (fieldState) {
@@ -29297,7 +29469,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         if (selectedTab === 'treecipe' && !hasSearch && !treeState.isDatasetFavoritesOnly && !treeState.isRecordTypesExpanded
                 && !isRecordTypeFieldsOnlyIn(treeState) && !isTodosOnlyIn(treeState) && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0
-                && todosOnlyObjectKeys.length === 0) {
+                && todosOnlyObjectKeys.length === 0 && hideUnselectedObjectKeys.length === 0) {
             return null;
         }
 
@@ -29315,6 +29487,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (isRecordTypeFieldsOnlyIn(treeState)) { treePlace.isRecordTypeFieldsOnly = true; }
         if (isTodosOnlyIn(treeState)) { treePlace.isTodosOnly = true; }
         if (todosOnlyObjectKeys.length > 0) { treePlace.todosOnlyObjectKeys = todosOnlyObjectKeys; }
+        if (hideUnselectedObjectKeys.length > 0) { treePlace.hideUnselectedObjectKeys = hideUnselectedObjectKeys; }
         if (troubleshootingSubTab) { treePlace.troubleshootingSubTab = troubleshootingSubTab; }
         if (hasTroubleshootingSearch) { treePlace.troubleshootingSearchQueries = troubleshootingSearchQueries; }
         if (isRemovedTodosView) { treePlace.todosView = 'removed'; }
@@ -29515,6 +29688,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             const expandedObjectKeys = toStringSet(savedTree.expandedObjectKeys);
             const openPicklistKeys = toStringSet(savedTree.openPicklistKeys);
             const todosOnlyObjectKeys = toStringSet(savedTree.todosOnlyObjectKeys);
+            const hideUnselectedObjectKeys = toStringSet(savedTree.hideUnselectedObjectKeys);
             const savedSearchQueries = savedTree.searchQueries && typeof savedTree.searchQueries === 'object' ? savedTree.searchQueries : {};
 
             // BEFORE ANY TAB IS BUILT: A TAB READS ITS SEARCH, AND APPLIES IT, WHEN IT IS BUILT
@@ -29570,6 +29744,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                 // A KEY NAMING AN OBJECT WITH NO TODO NOW IS DROPPED: THE FILTER WOULD HIDE NOTHING AND ITS BOX IS DISABLED
                 treeObjectState.isTodosOnly = hasString(todosOnlyObjectKeys, buildObjectPlaceKey(treeObjectState)) && treeObjectState.todoCount > 0;
                 drawObjectTodosToggle(treeObjectState);
+                // A KEY NAMING AN OBJECT WITH NOTHING UNTICKED NOW, OR EXCLUDED, IS DROPPED THE SAME WAY (#483)
+                treeObjectState.isHidingUnselected = hasString(hideUnselectedObjectKeys, buildObjectPlaceKey(treeObjectState)) && !findHideUnselectedReason(treeObjectState);
+                drawHideUnselectedToggle(treeObjectState);
                 // A PICKLIST KEY IS BUILT PER FIELD, SO A PLACE THAT OPENED NONE BUILDS NONE
                 if (!hasOpenPicklists) { return; }
                 treeObjectState.fieldStates.forEach(function (fieldState) {
