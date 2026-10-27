@@ -109,7 +109,7 @@ describe('RecipeCockpitService, standalone action cards (#384)', () => {
             const panelScript = panelScriptOf(shellHtml());
             const primaryClassNames = Array.from(panelScript.matchAll(/createButton\('primary', '([A-Za-z ]+)'/g), match => match[1]);
 
-            expect([...new Set(primaryClassNames)].sort()).toEqual(['adapterChildGenerate', 'dataOrgLoad', 'dataOrgNewScratch', 'favoritesToggle', 'fieldEditorSave', 'helpGuideOpen', 'helpToggle', 'treeInsert', 'updaterNext'].sort());
+            expect([...new Set(primaryClassNames)].sort()).toEqual(['adapterChildGenerate', 'dataOrgLoad', 'dataOrgNewScratch', 'favoritesToggle', 'fieldEditorSave', 'picklistEditorSave', 'helpGuideOpen', 'helpToggle', 'treeInsert', 'updaterNext'].sort());
 
         });
 

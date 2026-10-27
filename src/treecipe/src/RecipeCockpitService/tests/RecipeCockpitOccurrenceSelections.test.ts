@@ -265,6 +265,49 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
 
         });
 
+        describe('a picklist\'s value tiles (#465) on an object written more than once', () => {
+
+            const buildPicklistPanelState = (fixedValues?: { nickname: string; value: string }[]): IRecipeCockpitPanelState => {
+                const recipe = loadModel();
+                recipe.objects.find(objectViewModel => objectViewModel.objectApiName === 'Account')!
+                    .fields.find(fieldViewModel => fieldViewModel.fieldApiName === 'Name')!.isPicklist = true;
+                if ( fixedValues ) {
+                    treeOf(recipe).fixedValues = fixedValues.map(fixedValue => ({ objectApiName: 'Account', fieldApiName: 'Name', kind: 'expression', ...fixedValue })) as any;
+                }
+                const panelState = RecipeCockpitService.buildInitialPanelState(workspaceRoot);
+                panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 1 };
+                panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+                panelState.picklistDisplayValuesByObjectApiName = new Map([['Account', new Map([['Name', { picklistValues: ['Acme', 'Globex'], recordTypePicklistValues: [] }]])]]);
+                panelState.loadablePicklistKeys = new Set([RecipeCockpitService.buildPicklistKey('Account', 'Name')]);
+                return panelState;
+            };
+
+            it('routes a choice on the iteration with its nickname, and the first occurrence with its own', () => {
+
+                const panelState = buildPicklistPanelState();
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'setPicklistValueChoice', treeKey: TREE_KEY, objectApiName: 'Account', nickname: ITERATION_NICKNAME, fieldApiName: 'Name', picklistValues: ['Globex'] }, panelState))
+                    .toMatchObject({ kind: 'setPicklistValueChoice', objectApiName: 'Account', nickname: ITERATION_NICKNAME, fieldApiName: 'Name', picklistValues: ['Globex'] });
+                expect(RecipeCockpitService.routePanelMessage({ command: 'setPicklistValueChoice', treeKey: TREE_KEY, objectApiName: 'Account', nickname: FIRST_NICKNAME, fieldApiName: 'Name', picklistValues: ['Acme'] }, panelState))
+                    .toMatchObject({ kind: 'setPicklistValueChoice', nickname: FIRST_NICKNAME });
+                expect(RecipeCockpitService.routePanelMessage({ command: 'setPicklistValueChoice', treeKey: TREE_KEY, objectApiName: 'Account', nickname: 'Forged_NickName', fieldApiName: 'Name', picklistValues: ['Acme'] }, panelState))
+                    .toBeUndefined();
+
+            });
+
+            it('ticks the tiles from the occurrence\'s own edit, and answers with its nickname', () => {
+
+                const panelState = buildPicklistPanelState([{ nickname: ITERATION_NICKNAME, value: RecipeCockpitService.buildPicklistChoiceExpression('faker-js', ['Globex'], { fieldType: 'Picklist' } as any) }]);
+                const loadFor = (nickname: string) => RecipeCockpitService.routePanelMessage({ command: 'loadPicklistValues', treeKey: TREE_KEY, objectApiName: 'Account', nickname: nickname, fieldApiName: 'Name' }, panelState) as any;
+
+                expect(loadFor(ITERATION_NICKNAME).hostMessage).toMatchObject({ nickname: ITERATION_NICKNAME, chosenPicklistValues: ['Globex'] });
+                expect(loadFor(FIRST_NICKNAME).hostMessage.nickname).toBe(FIRST_NICKNAME);
+                expect(loadFor(FIRST_NICKNAME).hostMessage.chosenPicklistValues).not.toEqual(['Globex']);
+
+            });
+
+        });
+
         it('routes an object written once with no nickname, as before', () => {
 
             expect(RecipeCockpitService.routePanelMessage({ command: 'setFieldIncluded', treeKey: TREE_KEY, objectApiName: 'Contact', fieldApiName: 'LastName', included: false }, buildPanelState()))

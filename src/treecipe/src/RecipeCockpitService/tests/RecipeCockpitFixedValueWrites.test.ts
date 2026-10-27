@@ -232,6 +232,39 @@ describe.each([
 
 });
 
+describe.each([
+    ['faker-js', () => new FakerJSRecipeFakerService()],
+    ['snowfakery', () => new SnowfakeryRecipeFakerService()]
+] as const)('choosing the values of every picklist Generate Treecipe writes with the %s backend (#465)', (_backend, createFakerService) => {
+
+    // A PICKLIST'S FIELD LINES, AS THE TILES' SAVE REPLACES THEM: A CHOICE OVER ITS VALUES, RECORD TYPE VARIANTS INCLUDED
+    it('writes the choice on every occurrence, loads it as that one string, and Clear puts back every picklist byte for byte', async () => {
+
+        const fakerService = createFakerService();
+        const recipeTexts = await generateRecipeTexts(createFakerService);
+        const originalTexts: string[] = [];
+
+        recipeTexts.forEach(recipeText => {
+            const { lines } = RecipeCockpitRecipeWriter.splitRecipeLines(recipeText);
+            RecipeCockpitRecipeWriter.scanRecipeObjects(lines).forEach(scannedObject => scannedObject.fields.forEach(scannedField => {
+                const fieldLine = lines[scannedField.startIndex];
+                const isMultiSelect = /arrayElements\(|random_sample\(/.test(fieldLine);
+                if ( !isMultiSelect && !/arrayElement\(|random_choice\(/.test(fieldLine) || /when:|\.lower\(\)/.test(fieldLine) ) {
+                    return;
+                }
+                const choice: IRecipeFixedValue = { value: fakerService.buildPicklistChoiceExpression(['Chosen One', "Rock 'n' Roll"], isMultiSelect), kind: 'expression' };
+                expect(RecipeCockpitRecipeWriter.checkFixedValue(choice)).toBeUndefined();
+                originalTexts.push(...expectRoundTrip(recipeText, scannedObject.objectApiName, scannedField.fieldApiName, choice));
+            }));
+        });
+
+        expect(originalTexts.length).toBeGreaterThan(3);
+        expect(originalTexts.join('\n')).toContain('### TODO: -- RecordType Options --');
+
+    });
+
+});
+
 describe('an edited expression generates (#356)', () => {
 
     const ONE_OBJECT_RECIPE = [

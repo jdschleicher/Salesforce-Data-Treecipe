@@ -50,4 +50,10 @@ export interface IRecipeFakerService {
         regex generator -- which reports the rule as not applied rather than approximating it.
     */
     buildRegexExpression(regexAtoms: IValidationRuleRegexAtom[]): string | undefined
+    /*
+        The ONE-LINE expression a picklist generates with once the Recipe Cockpit narrows it to the
+        values the reader ticked (#465): the same choice the backend generates, over those values
+        only, each through the backend's escaper.
+    */
+    buildPicklistChoiceExpression(picklistValues: string[], isMultiSelect: boolean): string
 }

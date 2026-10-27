@@ -1445,7 +1445,7 @@ describe('RecipeCockpitService -- fixed values (#262)', () => {
 
         });
 
-        it('opens a picklist\'s editor under its faker value and above its Show values, whether or not the values are open (#398)', () => {
+        it('opens a picklist\'s editor under its faker value and above its Edit values, whether or not the values are open (#398)', () => {
 
             const panel = drawRecipe();
             panel.postToPanel({ command: 'rendered' });
