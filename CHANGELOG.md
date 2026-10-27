@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.158.0] - Recipe Cockpit: a "Standard fields" box and an object's own "TODOs only" beside "All fields"
+
+[#477](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/477). Leaving out an object's standard fields meant unticking them one at a time, and finding one object's TODO rows meant the card-wide **TODOs only** (#354), which narrows every object on the card.
+
+- **Standard fields.** An expanded object draws a **Standard fields** box right of **All fields** (#410), the same tri-state `role="checkbox"` `check` button over the fields whose api name does not end in `__c` (case-insensitive; `RecipeCockpitService.isStandardFieldApiName`, the panel injecting the same `RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX`). It counts the standard fields with a recipe line that no lock holds, is hidden when there is none, disabled on an excluded object, and redraws only from the host's answer.
+- **Names only, the host decides.** A click posts `setAllFieldsIncluded` with `fieldScope: 'standard'`; the router refuses any other scope and matches the object as before. Unticking stores every standard field the "All fields" rule may untick beside the custom fields already unticked; ticking removes only the standard ones, so a custom field's tick is never changed either way. A locked field (`RecordTypeId` while record type sections exist, a parent-excluded lookup) stays as it is.
+- **TODOs only, per object.** The same row ends with a **TODOs only (N)** check that narrows that object's rows to the fields with a TODO, together with the Treecipe search, **Record type fields only** and the card-wide check; the object's own TODOs and header stay. It posts nothing, is disabled with `RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE` on an object with no TODO, and is saved in the place as the optional `todosOnlyObjectKeys` (object place keys), so the place version did not change; a saved key naming an object with no TODO now is dropped.
+- **The row.** It is built for any expanded object with a selectable field or a TODO, and each box hides on its own, so an object whose fields are all locked still offers its TODO filter.
+- **Unchanged.** **All fields**, the card-wide **TODOs only**, the recipe file and both faker backends. Tests: `RecipeCockpitStandardFieldsAndObjectTodos.test.ts`.
+
 ## [3.157.0] - Recipe Cockpit: a nested copy of an object is edited on its own row, drawn under the copy that holds it, with "+ Add friend"
 
 [#467](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/467). Under a self-lookup (#188) the nested copy of an object (`Account_child_NickName`) was a row whose checkbox, ✎, rules box and count all said "Follows Account above", and an edit on the parent row was written into every copy. The button that adds friends under it (#197) read `+`, and a friend added there was drawn under the object's first row rather than under the copy it is nested in.
