@@ -466,6 +466,10 @@ describe('RecipeCockpitService, the Troubleshooting tab (#346)', () => {
             expect(modalAction).toBe(RECIPE_COCKPIT_DEPLOY_CONFIRM_LABEL);
             expect(modalOptions.isDestructive).toBe(true);
             expect(modalOptions.checkboxLabel).toBe(RECIPE_COCKPIT_DEPLOY_FULL_SET_CHECKBOX_LABEL);
+            // #480: THE ORG IS ITS OWN PART, AND "Change org…" STARTS THE SAME DEPLOY AGAIN ON THE NEW SELECTION'S INDEX, A SANDBOX ONLY
+            const [, deployConfirmOptions] = (RecipeCockpitService.confirmInPanelWithCheckbox as unknown as jest.Mock).mock.calls[0];
+            expect(deployConfirmOptions.org).toEqual({ alias: 'qa', username: QA_USERNAME });
+            expect(deployConfirmOptions.changeOrg).toEqual({ restartMessage: { command: 'deployTreeFields', treeKey: ACCOUNT_TREE_KEY, orgIndex: null }, isSandboxOnly: true });
             expect(modalOptions.detail).toContain('1 CustomObject: OtherChildObject__c');
             expect(modalOptions.detail).toContain('Deploying a custom object overwrites the org\'s settings for it');
             expect(modalOptions.detail).toContain('Ticking the box below also deploys, in the same package.xml · 5');

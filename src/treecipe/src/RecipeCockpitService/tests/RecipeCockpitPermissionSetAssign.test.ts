@@ -317,7 +317,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
 
         it('names the tree, the org, the user and every pick with what it covers in the confirmation, each on one line', () => {
 
-            const detail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitPermissionSetAssign.buildConfirmationContent('Tree\nTwo', `qa · ${QA_USERNAME}`, QA_USERNAME, [
+            const detail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitPermissionSetAssign.buildConfirmationContent('Tree\nTwo', { alias: 'qa', username: QA_USERNAME }, [
                 { name: 'Account_Tree_Access', relativeFilePath: ACCOUNT_TREE_ACCESS_PATH, coveredObjectApiNames: ['Account', 'OtherChildObject__c'], grantedObjectApiNames: ['Account', 'OtherChildObject__c'] }
             ], 3));
 
@@ -632,6 +632,11 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             const [modalMessage, modalOptions, modalAction] = modalCalls()[0];
             expect(modalMessage).toBe(`Assign 2 permission sets for Account-thru-OtherChildObject__c to ${QA_USERNAME} in qa · ${QA_USERNAME}?`);
             expect(modalOptions.detail).toContain(`Org: qa · ${QA_USERNAME}`);
+            // #480: THE ORG IS ITS OWN PART, AND "Change org…" STARTS THE SAME ASSIGNMENT AGAIN, A SANDBOX ONLY
+            const [, assignConfirmOptions] = (RecipeCockpitService.confirmInPanel as unknown as jest.Mock).mock.calls[0];
+            expect(assignConfirmOptions.org).toEqual({ alias: 'qa', username: QA_USERNAME });
+            expect(assignConfirmOptions.summary.join('\n')).not.toContain('Org:');
+            expect(assignConfirmOptions.changeOrg).toEqual({ restartMessage: { command: 'assignTreePermissionSets', treeKey: ACCOUNT_TREE_KEY, orgIndex: null }, isSandboxOnly: true });
             expect(modalOptions.detail).toContain('  Account_Tree_Access — partial, 2 of 3: Account, OtherChildObject__c');
             expect(modalOptions.detail).toContain('Nothing is deployed.');
             expect(modalAction).toBe(RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL);
