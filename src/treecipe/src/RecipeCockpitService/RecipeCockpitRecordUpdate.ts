@@ -330,16 +330,18 @@ export class RecipeCockpitRecordUpdate {
 
     /*
         The tree's snapshots (#419), newest first: the files whose names writeSnapshot writes, each a
-        file and never a link, in the tree's RunArtifacts/UpdateAttempts (#470) and in the folder
-        snapshots were written to before it, treecipe/UpdateAttempts/<tree folder>/. A name both
-        hold is listed once, and resolveSnapshotFilePath answers the newer folder's file. A folder
-        name that is not plain, or a folder outside the workspace, lists nothing.
+        file and never a link, in the RunArtifacts/UpdateAttempts of each location given (#470: the
+        tree folder of every run, the run on screen first, so a regeneration does not hide an
+        update's snapshot) and in the folder snapshots were written to before it,
+        treecipe/UpdateAttempts/<tree folder>/. A name more than one holds is listed once, and
+        resolveSnapshotFilePath answers the first folder's file. A folder name that is not plain,
+        or a folder outside the workspace, lists nothing.
     */
-    static listSnapshots(workspaceRoot: string, treeFolderName: string, runArtifactsLocation?: IRecipeCockpitRunArtifactsLocation): IUpdateSnapshotList {
+    static listSnapshots(workspaceRoot: string, treeFolderName: string, runArtifactsLocations: readonly IRecipeCockpitRunArtifactsLocation[] = []): IUpdateSnapshotList {
 
         const snapshotsByFileName = new Map<string, { fileName: string; timestamp: string; attempt: number }>();
 
-        this.resolveSnapshotFolderPaths(workspaceRoot, treeFolderName, runArtifactsLocation).forEach(snapshotFolderPath => {
+        this.resolveSnapshotFolderPaths(workspaceRoot, treeFolderName, runArtifactsLocations).forEach(snapshotFolderPath => {
             let directoryEntries: fs.Dirent[];
             try {
                 directoryEntries = fs.readdirSync(snapshotFolderPath, { withFileTypes: true });
@@ -368,13 +370,13 @@ export class RecipeCockpitRecordUpdate {
     }
 
     // WHERE A LISTED SNAPSHOT IS, CHECKED AGAIN WHEN IT IS READ: A NAME writeSnapshot WRITES, A FILE AND NOT A LINK, INSIDE THE WORKSPACE
-    static resolveSnapshotFilePath(workspaceRoot: string, treeFolderName: string, snapshotFileName: string, runArtifactsLocation?: IRecipeCockpitRunArtifactsLocation): string | undefined {
+    static resolveSnapshotFilePath(workspaceRoot: string, treeFolderName: string, snapshotFileName: string, runArtifactsLocations: readonly IRecipeCockpitRunArtifactsLocation[] = []): string | undefined {
 
         if ( !SNAPSHOT_FILE_NAME_PATTERN.test(snapshotFileName) ) {
             return undefined;
         }
 
-        for ( const snapshotFolderPath of this.resolveSnapshotFolderPaths(workspaceRoot, treeFolderName, runArtifactsLocation) ) {
+        for ( const snapshotFolderPath of this.resolveSnapshotFolderPaths(workspaceRoot, treeFolderName, runArtifactsLocations) ) {
             const snapshotFilePath = path.join(snapshotFolderPath, snapshotFileName);
             try {
                 if ( !fs.lstatSync(snapshotFilePath).isFile() ) {
@@ -392,8 +394,8 @@ export class RecipeCockpitRecordUpdate {
 
     }
 
-    // THE TREE'S RunArtifacts/UpdateAttempts FIRST, THEN THE FOLDER USED BEFORE #470; ONLY FOLDERS THAT EXIST, ARE NOT LINKS AND ARE INSIDE THE WORKSPACE
-    private static resolveSnapshotFolderPaths(workspaceRoot: string, treeFolderName: string, runArtifactsLocation?: IRecipeCockpitRunArtifactsLocation): string[] {
+    // EACH LOCATION'S RunArtifacts/UpdateAttempts IN ORDER, THEN THE FOLDER USED BEFORE #470; ONLY FOLDERS THAT EXIST, ARE NOT LINKS AND ARE INSIDE THE WORKSPACE
+    private static resolveSnapshotFolderPaths(workspaceRoot: string, treeFolderName: string, runArtifactsLocations: readonly IRecipeCockpitRunArtifactsLocation[]): string[] {
 
         if ( !FOLDER_NAME_PATTERN.test(treeFolderName) || WINDOWS_RESERVED_FOLDER_NAME_PATTERN.test(treeFolderName) ) {
             return [];
@@ -401,7 +403,7 @@ export class RecipeCockpitRecordUpdate {
 
         const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
         const candidateFolderPaths = [
-            ...( runArtifactsLocation ? [RecipeCockpitRunArtifacts.buildKindFolderPath(runArtifactsLocation, 'UpdateAttempts')] : [] ),
+            ...runArtifactsLocations.map(runArtifactsLocation => RecipeCockpitRunArtifacts.buildKindFolderPath(runArtifactsLocation, 'UpdateAttempts')),
             path.join(resolvedWorkspaceRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, treeFolderName)
         ];
 

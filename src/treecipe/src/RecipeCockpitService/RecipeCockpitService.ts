@@ -91,7 +91,7 @@ import {
 } from './RecipeCockpitTreeHistory';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { RunFakerConfirmation } from '../ExtensionCommandService/RunFakerConfirmation';
-import { IScratchOrgAliasChoice, IScratchOrgPlan, ORG_OPERATIONS_FOLDER_NAME, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
+import { IScratchOrgAliasChoice, IScratchOrgPlan, SCRATCH_ORG_DEPLOY_MAX_BUFFER_BYTES, ScratchOrgService, ScratchOrgSetupOutcome, ScratchOrgSetupPhase } from '../ScratchOrgService/ScratchOrgService';
 import { INotificationCommandAction, VSCodeWorkspaceService } from '../VSCodeWorkspace/VSCodeWorkspaceService';
 import {
     RECIPE_COCKPIT_QUERY_EXPORT_FORMATS,
@@ -612,7 +612,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'The settings that leave the YAML alone are kept by VS Code for this workspace on this machine, per tree. They carry over when you regenerate the same objects, but they are not in your repository, so a teammate or a fresh clone starts without them. Switching to another run while a tree on screen has settings asks first: Reset selections clears them, Apply same selections keeps them for the trees of that run with the same folder, and Cancel stays on the run.',
             'When you generate, the cockpit applies them to a copy of the recipe. The data set keeps that copy as filteredRecipe-… beside originalRecipe-… in its BaseArtifactFiles folder, and datasetSource.json lists what was changed.',
             'Each insert of a data set saves its results, and how it ended, in the data set\'s InsertAttempts folder. Under Previously Used Data Sets, each row shows its last insert: Inserted, Partly inserted, Insert failed, Insert cancelled or Insert outcome unknown (no outcome was saved for it, as for an insert from before this was added), with when, which org and how many records in its tooltip. View results opens that insert\'s results file.',
-            'What the Troubleshooting and Treecipe Adapter tabs run for a tree is kept with its recipe, in a RunArtifacts folder inside the tree folder of the run: the package.xml and CLI answer of each deploy, retrieve and permission set assignment, a record of each Generate permission set, the Adapter\'s retrieved metadata, its update snapshots and results, and query exports. Git ignores that folder, and a notification says so when its .gitignore no longer ignores everything. Files written before this, under treecipe/OrgOperations, treecipe/UpdateAttempts and treecipe/QueryResults, stay where they are, and Restore previous values… still lists the snapshots there. A scratch org is not made for one tree, so its output stays in treecipe/OrgOperations.',
+            'What the Troubleshooting and Treecipe Adapter tabs run for a tree is kept with its recipe, in a RunArtifacts folder inside the tree folder of the run: the package.xml and CLI answer of each deploy, retrieve and permission set assignment, a record of each Generate permission set, the Adapter\'s retrieved metadata, its update snapshots and results, and query exports. Git ignores that folder, and a notification says so when its .gitignore no longer ignores everything. Files written before this, under treecipe/OrgOperations, treecipe/UpdateAttempts and treecipe/QueryResults, stay where they are. Restore previous values… lists the tree\'s snapshots from every run, so a regeneration hides none, and still lists the older ones there. A scratch org is not made for one tree, so its output stays in treecipe/OrgOperations.',
             'Reset selection on a card clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field\'s pencil.',
             'Edits on the Query tab are kept the same way, per tree; Reset beside a query puts back the generated text.'
         ]
@@ -9864,7 +9864,6 @@ export class RecipeCockpitService {
 
     }
 
-    // THE BACKEND A CARD'S RECIPE WAS WRITTEN FOR, FROM ITS PATH, OR UNDEFINED WHEN IT HAS NO SINGLE RECIPE OR THE PATH DOES NOT SAY
     /*
         Where a tree's run files go (#470): GeneratedRecipes/<run on screen>/<tree folder>/RunArtifacts.
         Undefined for a card with no folder, or one whose folder is not a real folder inside the
@@ -9883,6 +9882,24 @@ export class RecipeCockpitService {
 
     }
 
+    /*
+        Where a tree's update snapshots are listed from (#470): its RunArtifacts in the run on
+        screen first, then in every other run that has the tree's folder, newest first, so an
+        update made before a regeneration can still be restored from the run drawn now.
+    */
+    static resolveTreeSnapshotLocations(workspaceRoot: string,
+                                        recipeViewModel: Pick<IRecipeCockpitRecipeViewModel, 'selectedRunFolderName' | 'runs'>,
+                                        tree: Pick<IRecipeCockpitTreeViewModel, 'folderName'>): IRecipeCockpitRunArtifactsLocation[] {
+
+        const runFolderNames = [...new Set([recipeViewModel.selectedRunFolderName, ...recipeViewModel.runs.map(run => run.runFolderName)])];
+
+        return runFolderNames
+            .map(runFolderName => this.resolveTreeRunArtifactsLocation(workspaceRoot, { selectedRunFolderName: runFolderName }, tree))
+            .filter((location): location is IRecipeCockpitRunArtifactsLocation => location !== undefined);
+
+    }
+
+    // THE BACKEND A CARD'S RECIPE WAS WRITTEN FOR, FROM ITS PATH, OR UNDEFINED WHEN IT HAS NO SINGLE RECIPE OR THE PATH DOES NOT SAY
     private static readTreeFakerService(panelState: IRecipeCockpitPanelState, treeKey: string): 'faker-js' | 'snowfakery' | undefined {
 
         const recipeFilePath = panelState.treeHistoryTargets.runFakerRecipeFilePathsByTreeKey.get(treeKey);
@@ -11915,11 +11932,11 @@ export class RecipeCockpitService {
             return;
         }
 
-        const runArtifactsLocation = this.resolveTreeRunArtifactsLocation(panelState.workspaceRoot, recipeDataMessage.recipe, tree);
-        const snapshotList = RecipeCockpitRecordUpdate.listSnapshots(panelState.workspaceRoot, tree.folderName, runArtifactsLocation);
+        const snapshotLocations = this.resolveTreeSnapshotLocations(panelState.workspaceRoot, recipeDataMessage.recipe, tree);
+        const snapshotList = RecipeCockpitRecordUpdate.listSnapshots(panelState.workspaceRoot, tree.folderName, snapshotLocations);
         const snapshotPathsByName = new Map<string, string>();
         snapshotList.snapshotFileNames.forEach(snapshotFileName => {
-            const snapshotFilePath = RecipeCockpitRecordUpdate.resolveSnapshotFilePath(panelState.workspaceRoot, tree.folderName as string, snapshotFileName, runArtifactsLocation);
+            const snapshotFilePath = RecipeCockpitRecordUpdate.resolveSnapshotFilePath(panelState.workspaceRoot, tree.folderName as string, snapshotFileName, snapshotLocations);
             if ( snapshotFilePath ) {
                 snapshotPathsByName.set(snapshotFileName, snapshotFilePath);
             }
@@ -12019,7 +12036,7 @@ export class RecipeCockpitService {
         // RESOLVED AGAIN, NOT TAKEN FROM THE LIST: IT MAY HAVE GONE, OR BECOME A LINK, SINCE IT WAS LISTED
         const listedSnapshotPath = panelState.restorableSnapshots.get(treeKey)?.get(snapshotName);
         const snapshotFilePath = RecipeCockpitRecordUpdate.resolveSnapshotFilePath(panelState.workspaceRoot, tree.folderName, snapshotName,
-                                                                                    this.resolveTreeRunArtifactsLocation(panelState.workspaceRoot, clickedRecipeDataMessage.recipe, tree));
+                                                                                    this.resolveTreeSnapshotLocations(panelState.workspaceRoot, clickedRecipeDataMessage.recipe, tree));
         if ( !listedSnapshotPath || snapshotFilePath !== listedSnapshotPath ) {
             return refuse(`Nothing was restored: ${snapshotName} is no longer where it was listed from.`);
         }
@@ -13828,11 +13845,6 @@ export class RecipeCockpitService {
     }
 
     /*
-        Every outcome but a success is a WARNING, and its only follow-up is the notification's own
-        "View output" button when the CLI left a result file. NOT AWAITED: the run ends, and gives the
-        panel its button back, without waiting for the reader to dismiss it.
-    */
-    /*
         A run file written into a tree's RunArtifacts folder whose .gitignore no longer ignores
         everything (#470) is said in the notification, which is then at least a warning, as the
         Query and Adapter flows say it.
@@ -13847,6 +13859,11 @@ export class RecipeCockpitService {
 
     }
 
+    /*
+        Every outcome but a success is a WARNING, and its only follow-up is the notification's own
+        "View output" button when the CLI left a result file. NOT AWAITED: the run ends, and gives the
+        panel its button back, without waiting for the reader to dismiss it.
+    */
     private static showPermissionSetNotification(notificationText: string, outputFilePath: string | undefined, workspaceRoot: string) {
 
         const actions = outputFilePath ? [RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL] : [];

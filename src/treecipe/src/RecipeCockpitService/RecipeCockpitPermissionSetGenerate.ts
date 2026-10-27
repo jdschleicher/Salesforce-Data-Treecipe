@@ -5,6 +5,7 @@ import * as xml2js from 'xml2js';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { ISfdxPackageDirectory, SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { PERMISSION_SET_FILE_SUFFIX } from './RecipeCockpitPermissionSetAssign';
+import { RecipeCockpitQuery } from './RecipeCockpitQuery';
 import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from './RecipeCockpitRunArtifacts';
 
 /*
@@ -95,14 +96,6 @@ const PERMISSION_SET_GENERATE_RESULT_FILE_ATTEMPTS = 100;
 
 export class RecipeCockpitPermissionSetGenerate {
 
-    static buildCompactTimestamp(date: Date): string {
-
-        const twoDigits = (value: number) => String(value).padStart(2, '0');
-
-        return `${date.getFullYear()}${twoDigits(date.getMonth() + 1)}${twoDigits(date.getDate())}-${twoDigits(date.getHours())}${twoDigits(date.getMinutes())}${twoDigits(date.getSeconds())}`;
-
-    }
-
     /*
         <tree folder>/RunArtifacts/PermissionSets/<yyyyMMdd-HHmmss>-permission-set-generate.json:
         what was written, so the tree's run files say it. "wx", the first free of <name>, <name>-2,
@@ -118,7 +111,7 @@ export class RecipeCockpitPermissionSetGenerate {
         }
 
         return RecipeCockpitRunArtifacts.writeNewFile(
-            path.join(resultFolderPath, `${this.buildCompactTimestamp(date)}-${result.operation}.json`),
+            path.join(resultFolderPath, `${RecipeCockpitQuery.buildCompactTimestamp(date)}-${result.operation}.json`),
             `${JSON.stringify(result, null, 2)}\n`,
             '.json',
             PERMISSION_SET_GENERATE_RESULT_FILE_ATTEMPTS

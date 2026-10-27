@@ -217,12 +217,12 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
             fs.writeFileSync(path.join(newFolderPath, '20261023-100000-before.json'), '{}');
             fs.writeFileSync(path.join(newFolderPath, '20261024-090000-before.json'), '{}');
 
-            expect(RecipeCockpitRecordUpdate.listSnapshots(temporaryRoot, ACCOUNT_TREE_KEY, location)).toEqual({
+            expect(RecipeCockpitRecordUpdate.listSnapshots(temporaryRoot, ACCOUNT_TREE_KEY, [location])).toEqual({
                 snapshotFileNames: ['20261024-090000-before.json', '20261023-100000-before.json', '20261022-090000-before.json'],
                 hiddenSnapshotCount: 0
             });
-            expect(RecipeCockpitRecordUpdate.resolveSnapshotFilePath(temporaryRoot, ACCOUNT_TREE_KEY, '20261024-090000-before.json', location)).toBe(path.join(newFolderPath, '20261024-090000-before.json'));
-            expect(RecipeCockpitRecordUpdate.resolveSnapshotFilePath(temporaryRoot, ACCOUNT_TREE_KEY, '20261022-090000-before.json', location)).toBe(path.join(treeFolderPath, '20261022-090000-before.json'));
+            expect(RecipeCockpitRecordUpdate.resolveSnapshotFilePath(temporaryRoot, ACCOUNT_TREE_KEY, '20261024-090000-before.json', [location])).toBe(path.join(newFolderPath, '20261024-090000-before.json'));
+            expect(RecipeCockpitRecordUpdate.resolveSnapshotFilePath(temporaryRoot, ACCOUNT_TREE_KEY, '20261022-090000-before.json', [location])).toBe(path.join(treeFolderPath, '20261022-090000-before.json'));
             // WITHOUT THE LOCATION ONLY THE OLD FOLDER IS READ
             expect(RecipeCockpitRecordUpdate.listSnapshots(temporaryRoot, ACCOUNT_TREE_KEY).snapshotFileNames).toEqual(['20261024-090000-before.json', '20261022-090000-before.json']);
 
@@ -234,7 +234,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
                 }
                 return (realReaddirSync as any)(folderPath, options);
             }) as any);
-            expect(RecipeCockpitRecordUpdate.listSnapshots(temporaryRoot, ACCOUNT_TREE_KEY, location).snapshotFileNames).toEqual(['20261024-090000-before.json', '20261022-090000-before.json']);
+            expect(RecipeCockpitRecordUpdate.listSnapshots(temporaryRoot, ACCOUNT_TREE_KEY, [location]).snapshotFileNames).toEqual(['20261024-090000-before.json', '20261022-090000-before.json']);
             readdirSpy.mockRestore();
 
             // A RunArtifacts/UpdateAttempts THAT IS A LINK IS NOT READ
@@ -243,11 +243,35 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s restore (#419)', () => {
             try {
                 fs.writeFileSync(path.join(outsideFolderPath, '20261025-090000-before.json'), '{}');
                 fs.symlinkSync(outsideFolderPath, newFolderPath);
-                expect(RecipeCockpitRecordUpdate.listSnapshots(temporaryRoot, ACCOUNT_TREE_KEY, location).snapshotFileNames).toEqual(['20261024-090000-before.json', '20261022-090000-before.json']);
-                expect(RecipeCockpitRecordUpdate.resolveSnapshotFilePath(temporaryRoot, ACCOUNT_TREE_KEY, '20261025-090000-before.json', location)).toBeUndefined();
+                expect(RecipeCockpitRecordUpdate.listSnapshots(temporaryRoot, ACCOUNT_TREE_KEY, [location]).snapshotFileNames).toEqual(['20261024-090000-before.json', '20261022-090000-before.json']);
+                expect(RecipeCockpitRecordUpdate.resolveSnapshotFilePath(temporaryRoot, ACCOUNT_TREE_KEY, '20261025-090000-before.json', [location])).toBeUndefined();
             } finally {
                 fs.rmSync(outsideFolderPath, { recursive: true, force: true });
             }
+
+        });
+
+        it('lists the snapshots of the tree\'s folder in every run, the run on screen first, so a regeneration does not hide an update\'s snapshot', () => {
+
+            const currentLocation = makeTreeRunArtifactsLocation(temporaryRoot, 'recipe-2026-09-20T10-00-00', ACCOUNT_TREE_KEY);
+            const earlierLocation = makeTreeRunArtifactsLocation(temporaryRoot, 'recipe-2026-09-01T00-00-00', ACCOUNT_TREE_KEY);
+            [[currentLocation, '20261023-100000-before.json'], [earlierLocation, '20261024-100000-before.json'], [earlierLocation, '20261023-100000-before.json']].forEach(([location, fileName]: any) => {
+                fs.mkdirSync(path.join(location.folderPath, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME), { recursive: true });
+                fs.writeFileSync(path.join(location.folderPath, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, fileName), '{}');
+            });
+
+            const locations = RecipeCockpitService.resolveTreeSnapshotLocations(temporaryRoot, {
+                selectedRunFolderName: 'recipe-2026-09-20T10-00-00',
+                runs: [{ runFolderName: 'recipe-2026-09-20T10-00-00', label: '' }, { runFolderName: 'recipe-2026-09-01T00-00-00', label: '' }, { runFolderName: 'recipe-with-no-such-tree', label: '' }]
+            }, { folderName: ACCOUNT_TREE_KEY });
+
+            expect(locations).toEqual([currentLocation, earlierLocation]);
+            expect(RecipeCockpitRecordUpdate.listSnapshots(temporaryRoot, ACCOUNT_TREE_KEY, locations).snapshotFileNames).toEqual(['20261024-100000-before.json', '20261023-100000-before.json']);
+            // A NAME TWO RUNS HOLD IS THE RUN ON SCREEN'S
+            expect(RecipeCockpitRecordUpdate.resolveSnapshotFilePath(temporaryRoot, ACCOUNT_TREE_KEY, '20261023-100000-before.json', locations))
+                .toBe(path.join(currentLocation.folderPath, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, '20261023-100000-before.json'));
+            expect(RecipeCockpitRecordUpdate.resolveSnapshotFilePath(temporaryRoot, ACCOUNT_TREE_KEY, '20261024-100000-before.json', locations))
+                .toBe(path.join(earlierLocation.folderPath, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, '20261024-100000-before.json'));
 
         });
 

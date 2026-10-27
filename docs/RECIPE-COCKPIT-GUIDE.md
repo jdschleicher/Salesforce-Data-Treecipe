@@ -101,7 +101,7 @@ Under **Previously Used Data Sets**, each row shows its last insert: ✅ **Inser
 **View results** opens that insert's results file.
 What the **Troubleshooting** and **Treecipe Adapter** tabs run for a tree is kept with its recipe, in `GeneratedRecipes/<run>/<tree folder>/RunArtifacts/`: the package.xml and CLI answer of each deploy, retrieve and permission set assignment (`OrgOperations/<username>/`), a record of each **Generate permission set…** (`PermissionSets/`), the Adapter's retrieved metadata (`OrgOperations/<username>/`), its update snapshots and results (`UpdateAttempts/`), and query exports (`QueryResults/`).
 Git ignores that folder through its own `.gitignore`, and a notification says so when that file no longer ignores everything.
-Files written before this, under `treecipe/OrgOperations`, `treecipe/UpdateAttempts` and `treecipe/QueryResults`, stay where they are, and **Restore previous values…** still lists the snapshots there.
+Files written before this, under `treecipe/OrgOperations`, `treecipe/UpdateAttempts` and `treecipe/QueryResults`, stay where they are. **Restore previous values…** lists the tree's snapshots from every run, so a regeneration hides none, and still lists the older ones there.
 A scratch org is not made for one tree, so its output stays in `treecipe/OrgOperations`.
 **Reset selection** on a card clears its settings. An edit is in the recipe file, so Reset leaves it: clear it with the field's pencil.
 Edits on the **Query** tab are kept the same way, per tree; **Reset** beside a query puts back the generated text.
