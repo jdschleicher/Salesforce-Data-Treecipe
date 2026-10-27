@@ -6,7 +6,7 @@ import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
-import { IRecipeCockpitConfirmContent } from './RecipeCockpitConfirmContent';
+import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg } from './RecipeCockpitConfirmContent';
 
 /*
     "Assign permission sets to me…" (#274, #302): the project's permission sets that grant anything
@@ -428,16 +428,16 @@ export class RecipeCockpitPermissionSetAssign {
 
     // WHAT THE IN-PANEL CONFIRMATION SAYS (#457): THE TREE, THE ORG AND THE USER ON SCREEN, EVERY PICK WITH WHAT IT COVERS IN A
     // FOLDED SECTION, EACH ON ONE LINE
-    static buildConfirmationContent(treeLabel: string, orgLabel: string, orgUsername: string, permissionSets: readonly IPermissionSetCandidate[], treeObjectCount: number): IRecipeCockpitConfirmContent {
+    static buildConfirmationContent(treeLabel: string, org: IRecipeCockpitConfirmOrg, permissionSets: readonly IPermissionSetCandidate[], treeObjectCount: number): IRecipeCockpitConfirmContent {
 
         const toSingleLine = (text: string) => String(text).replace(/[\r\n\u0085\u2028\u2029]+/g, ' ');
 
         return {
             summary: [
                 `Tree: ${toSingleLine(treeLabel)}`,
-                `Org: ${toSingleLine(orgLabel)}`,
-                `Assigned to: ${toSingleLine(orgUsername)}, the user this org is authorized as`
+                `Assigned to: ${toSingleLine(org.username)}, the user this org is authorized as`
             ],
+            org: org,
             sections: [
                 {
                     title: permissionSets.length === 1 ? 'Permission set' : 'Permission sets',

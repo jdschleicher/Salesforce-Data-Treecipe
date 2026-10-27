@@ -119,7 +119,7 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
                 expect(summary.unreadableCustomObjects).toEqual(['Gadget__c', 'OtherChildObject__c']);
                 expect(summary.missingCustomObjects).toEqual(['Sprocket__c', 'Widget__c']);
 
-                const detail = RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('fields', 'T', 'qa', 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields'), summary));
+                const detail = RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('fields', 'T', { username: 'qa' }, 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields'), summary));
                 expect(detail).toContain('Not deployed: 2 custom objects not in this project — the org must already have them, or their fields fail: Sprocket__c, Widget__c');
                 expect(detail).toContain('Not deployed: 2 custom objects whose .object-meta.xml could not be read: Gadget__c, OtherChildObject__c');
                 expect(detail).not.toContain('overwrites');
@@ -280,7 +280,7 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
             expect(summary.skippedNameCount).toBe(2);
             expect(summary.recordTypes).toEqual(['Account.Business', 'Account.Partner']);
             expect(summary.unreadableFields).toEqual(['Account.Folder__c']);
-            expect(RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('recordTypes', 'T', 'qa', 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'recordTypes'), summary)))
+            expect(RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('recordTypes', 'T', { username: 'qa' }, 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'recordTypes'), summary)))
                 .toContain('Skipped: 2 names that are not a Salesforce api name.');
 
         });
@@ -291,10 +291,10 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
 
             expect(summary.customFields).toEqual(['Account.Annual_Budget__c']);
             expect(summary.recordTypes).toEqual(['Account.Business', 'Account.Partner']);
-            const detail = RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('fields', 'T', 'qa', 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields'), { ...summary, missingGlobalValueSets: ['Only_Set'] }));
+            const detail = RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('fields', 'T', { username: 'qa' }, 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields'), { ...summary, missingGlobalValueSets: ['Only_Set'] }));
             expect(detail).toContain('Not deployed: 1 custom field whose source file is missing or could not be read: Account.Regions__c');
             expect(detail).toContain('Skipped: 1 name that is not a Salesforce api name.');
-            expect(RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('globalValueSets', 'T', 'qa', 'force-app', [{ type: 'GlobalValueSet', member: 'A_Set' }], { ...summary, missingGlobalValueSets: ['Only_Set'] })))
+            expect(RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('globalValueSets', 'T', { username: 'qa' }, 'force-app', [{ type: 'GlobalValueSet', member: 'A_Set' }], { ...summary, missingGlobalValueSets: ['Only_Set'] })))
                 .toContain('Not deployed: 1 global value set a field names that this project does not hold: Only_Set');
 
         });
@@ -629,7 +629,7 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
         it('names the tree, the org, the package directory and every component up to a cap, then counts the rest', () => {
 
             const components = Array.from({ length: METADATA_DEPLOY_CONFIRMATION_SHOWN + 3 }, (_unused, componentIndex) => ({ type: 'CustomField' as const, member: `Account.F${String(componentIndex).padStart(2, '0')}__c` }));
-            const detail = RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('fields', 'Tree\nOne', 'qa · qa@example.com', 'force-app', components));
+            const detail = RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('fields', 'Tree\nOne', { alias: 'qa', username: 'qa@example.com' }, 'force-app', components));
 
             expect(detail).toContain('Tree: Tree One');
             expect(detail).toContain('Org: qa · qa@example.com');
@@ -645,17 +645,17 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
 
             const components = [{ type: 'RecordType' as const, member: 'Account.Business' }];
 
-            expect(RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('recordTypes', 'T', 'qa', 'force-app', components, undefined, true)))
+            expect(RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('recordTypes', 'T', { username: 'qa' }, 'force-app', components, undefined, true)))
                 .toContain('sfdx-project.json has "replacements" that copy local files or environment variables into the deployed metadata.');
-            expect(RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('recordTypes', 'T', 'qa', 'force-app', components))).not.toContain('replacements');
+            expect(RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('recordTypes', 'T', { username: 'qa' }, 'force-app', components))).not.toContain('replacements');
 
         });
 
         it('lists standard fields as not deployed on purpose, and counts fields with no readable source and value sets the project lacks', async () => {
 
             const summary = await summarize();
-            const fieldsDetail = RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('fields', 'T', 'qa', 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields'), summary));
-            const valueSetDetail = RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('globalValueSets', 'T', 'qa', 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'globalValueSets'), summary));
+            const fieldsDetail = RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('fields', 'T', { username: 'qa' }, 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields'), summary));
+            const valueSetDetail = RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('globalValueSets', 'T', { username: 'qa' }, 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'globalValueSets'), summary));
 
             expect(fieldsDetail).toContain('Not deployed: standard fields — the org enables these through a feature or setting: Account.OwnerId, Account.ParentId, Contact.AccountId, Contact.LastName');
             expect(fieldsDetail).toContain('Not deployed: 2 custom fields whose source file is missing or could not be read: Account.Legacy_Code__c, Account.Regions__c');
@@ -672,7 +672,7 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
                 { objectApiName: 'Gadget__c', fieldApiNames: [] },
                 { objectApiName: 'Widget__c', fieldApiNames: [] }
             ]);
-            const detail = RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('fields', 'T', 'qa', 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields'), summary));
+            const detail = RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('fields', 'T', { username: 'qa' }, 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields'), summary));
 
             expect(detail).toContain('6 CustomField: Account.Annual_Budget__c');
             expect(detail).toContain('1 CustomObject: OtherChildObject__c');
@@ -687,13 +687,13 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
         it('says so when every object is standard, and describes the full set the box adds below the deploy\'s own components', async () => {
 
             const standardSummary = await summarize([{ objectApiName: 'Account', fieldApiNames: ['Annual_Budget__c'] }]);
-            const standardDetail = RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('fields', 'T', 'qa', 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(standardSummary, 'fields'), standardSummary));
+            const standardDetail = RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('fields', 'T', { username: 'qa' }, 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(standardSummary, 'fields'), standardSummary));
 
             expect(standardDetail).toContain('Every object of this tree is a standard object, so no CustomObject is deployed.');
             expect(standardDetail).not.toContain('overwrites');
 
             const summary = await summarize();
-            const detail = RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('fields', 'T', 'qa', 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields'), summary, false, RecipeCockpitMetadataDeploy.listFullSetComponents(summary)));
+            const detail = RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('fields', 'T', { username: 'qa' }, 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'fields'), summary, false, RecipeCockpitMetadataDeploy.listFullSetComponents(summary)));
             const lines = detail.split('\n');
             // #457: THE FULL SET IS ITS OWN FOLDED SECTION, AFTER THE DEPLOY'S OWN COMPONENTS
             const boxLineIndex = lines.indexOf('Ticking the box below also deploys, in the same package.xml · 5');
@@ -704,7 +704,7 @@ describe('RecipeCockpitMetadataDeploy (#346)', () => {
                 '2 RecordType: Account.Business, Account.Partner',
                 '2 ValidationRule: Account.Budget_Not_Negative, OtherChildObject__c.Score_In_Range'
             ]);
-            expect(RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('recordTypes', 'T', 'qa', 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'recordTypes'), summary)))
+            expect(RecipeCockpitConfirmContent.flatten(RecipeCockpitMetadataDeploy.buildConfirmationContent('recordTypes', 'T', { username: 'qa' }, 'force-app', RecipeCockpitMetadataDeploy.listSummaryComponents(summary, 'recordTypes'), summary)))
                 .not.toContain('CustomObject');
 
         });

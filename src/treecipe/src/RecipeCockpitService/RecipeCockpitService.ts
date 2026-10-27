@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -17,7 +18,7 @@ import {
     RecipeCockpitPermissionSetAssign
 } from './RecipeCockpitPermissionSetAssign';
 import { RecipeCockpitPermissionSetGenerate } from './RecipeCockpitPermissionSetGenerate';
-import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmRequestParts, IRecipeCockpitConfirmSection, RecipeCockpitConfirmContent } from './RecipeCockpitConfirmContent';
+import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg, IRecipeCockpitConfirmRequestParts, IRecipeCockpitConfirmSection, RecipeCockpitConfirmContent } from './RecipeCockpitConfirmContent';
 import { IValidationRuleListObject, IValidationRuleListRunRecord, RecipeCockpitValidationRuleList } from './RecipeCockpitValidationRuleList';
 import {
     IMetadataDeployComponent,
@@ -598,8 +599,8 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Edit values (under a picklist\'s faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save: the field\'s expression is rewritten to choose only the ticked ones, by the recipe\'s own backend, and saved like an edit, so the pencil\'s Clear puts the old lines back. Cancel, × and Escape close it without saving. Each record type\'s own values are listed under the tiles; saving replaces the field\'s commented record type lines until Clear puts them back.'
         ],
         closingParagraphs: [
-            'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of an org you pick into your project, and change nothing in the org.',
-            'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
+            'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of the org chosen in Target Org Manager into your project (with none chosen, they ask once and the pick becomes the selection), and change nothing in the org.',
+            'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them. Every confirmation that acts on an org shows its alias in bold and its username beside it; Change org… there picks another org, makes it the one chosen in Target Org Manager, and starts the action again.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under treecipe/QueryResults, which git ignores.',
             'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Retrieve latest metadata, beside the filter, retrieves those objects from the org into treecipe/OrgOperations (never your package directories) and marks each field new in org or changed in org against your project, with new child objects in the org and the org\'s recent changes as hints; Apply retrieved files to project asks first, then copies those files into your project. A field only the org holds can be ticked too: its new values come from the faker expression the recipe\'s backend writes for its type, or, when it writes none, a fixed value you type, and a lookup, a formula and the rest stay locked. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the parent records step 1\'s WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with the fields you ticked, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to treecipe/UpdateAttempts first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. An update that lands also writes an adapted data set, FakeDataSets/<tree folder>-adapted-<time>, holding the loaded records with their new values and listed under Previously Used Data Sets as adapted, and an adapted recipe beside the original (which is never changed), every adapted line ending in # ADAPTED with the date and the org; its notification opens either. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
@@ -1296,6 +1297,8 @@ export interface IRecipeCockpitPanelMessage {
     choice?: unknown;
     // WHETHER ITS CHECKBOX WAS TICKED (#402); ANYTHING BUT A BOOLEAN IS READ AS CANCEL
     isChecked?: unknown;
+    // "Change org…" ON A CONFIRMATION (#480): THE READER ASKED FOR ANOTHER ORG RATHER THAN A BUTTON'S ANSWER
+    changeOrg?: unknown;
 }
 
 export interface IRecipeCockpitLoadPhaseMessage {
@@ -2048,6 +2051,11 @@ export const RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND: Readonly<Record<MetadataRe
     globalValueSets: 'retrieveTreeGlobalValueSets'
 });
 
+// A RETRIEVE READS FROM THE TARGET ORG MANAGER SELECTION (#480); THESE ARE SAID WHEN IT CANNOT
+export const RECIPE_COCKPIT_RETRIEVE_ORG_BUSY_REFUSAL = 'Nothing was retrieved: no org is selected in Target Org Manager, and another run is holding the selection. Try again once it has finished.';
+export const RECIPE_COCKPIT_RETRIEVE_CONNECTION_FAILED_ADVICE = 'Log in to it again with sf org login web, or choose another org in Target Org Manager, then retrieve again.';
+
+// ASKED ONLY WHEN TARGET ORG MANAGER HAS NO ORG SELECTED (#480); THE PICK BECOMES THE SELECTION
 export const RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS: Readonly<Record<MetadataRetrieveKind, string>> = Object.freeze({
     validationRules: RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER,
     fields: 'Choose the org to retrieve this tree\'s custom fields from',
@@ -2450,10 +2458,14 @@ export interface IRecipeCockpitConfirmRequestMessage {
     renderSequence: number;
     title: string;
     summary: string[];
+    // THE ORG THE ACTION ACTS ON (#480), DRAWN APART FROM THE SUMMARY: ITS ALIAS AND USERNAME EACH IN THEIR OWN STYLE
+    org?: IRecipeCockpitConfirmOrg;
     badge?: string;
     warnings: string[];
     sections: IRecipeCockpitConfirmSection[];
     buttons: string[];
+    // "Change org…" BESIDE THE ORG (#480), SET ONLY WHEN THE HOST CAN START THE ACTION AGAIN ON ANOTHER ORG
+    canChangeOrg?: boolean;
     // role="alertdialog" FOR AN ACTION THAT WRITES TO AN ORG OR OVERWRITES FILES WITH NO UNDO
     isDestructive: boolean;
     // ONE UNTICKED CHECKBOX UNDER THE LINES (#402), SET ONLY WHEN THE HOST ASKS FOR ONE; THE PANEL ANSWERS isChecked WITH ITS CHOICE
@@ -2466,10 +2478,38 @@ export const RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL = 'Before you confirm';
 // A CONFIRMATION ASKED WHILE THE COCKPIT IS HIDDEN (#349): ITS DOCUMENT IS GONE, SO NOTHING COULD SHOW IT
 export const RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL = 'The Recipe Cockpit was in the background, so it could not ask you to confirm, and nothing was done. It is shown now: start the action again.';
 
-export type { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmRequestParts, IRecipeCockpitConfirmSection };
+// THE BUTTON BESIDE A CONFIRMATION'S ORG (#480), AND WHAT IT SAYS WHEN THE ACTION IS NOT STARTED AGAIN
+export const RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL = 'Change org…';
+export const RECIPE_COCKPIT_CHANGE_ORG_PLACEHOLDER = 'Choose the org to run this on: it becomes the Target Org Manager selection';
+export const RECIPE_COCKPIT_CHANGE_ORG_REFUSAL_PREFIX = 'The action was not started again';
+export const RECIPE_COCKPIT_CHANGE_ORG_SANDBOX_ONLY_REASON = 'this action writes to the org, so it runs only in a sandbox or scratch org';
+export const RECIPE_COCKPIT_CHANGE_ORG_BUSY_REFUSAL = 'The org was not changed: another run is holding the Target Org Manager selection. Try again once it has finished.';
+
+export type { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg, IRecipeCockpitConfirmRequestParts, IRecipeCockpitConfirmSection };
+
+/*
+    What "Change org…" starts again once the reader has picked another org (#480): the panel message
+    the action was routed from, which is routed again through every guard a click meets, and whether
+    the action writes, in which case only a pick that answered it is a sandbox starts it again.
+*/
+export interface IRecipeCockpitConfirmChangeOrg {
+    restartMessage: IRecipeCockpitPanelMessage;
+    isSandboxOnly: boolean;
+}
 
 export interface IRecipeCockpitConfirmOptions extends IRecipeCockpitConfirmContent {
     isDestructive?: boolean;
+    changeOrg?: IRecipeCockpitConfirmChangeOrg;
+}
+
+/*
+    One panel action as it runs (#480), carried by AsyncLocalStorage through every await of its
+    executor. A confirmation it asks records where "Change org…" was chosen, and the action's own
+    listener reads it only once the action has ENDED, its run locks released, so the action routed
+    again is never refused as still running.
+*/
+interface IRecipeCockpitPanelActionContext {
+    orgChange?: IRecipeCockpitConfirmChangeOrg;
 }
 
 export interface IRecipeCockpitConfirmWithCheckboxOptions extends IRecipeCockpitConfirmOptions {
@@ -2487,6 +2527,9 @@ interface IRecipeCockpitPendingConfirmation {
     buttonLabels: string[];
     hasCheckbox: boolean;
     resolve: (answer: IRecipeCockpitConfirmAnswer) => void;
+    // SET ONLY WHEN "Change org…" WAS DRAWN: WHAT IT STARTS AGAIN, AND THE ACTION THAT ASKED
+    changeOrg?: IRecipeCockpitConfirmChangeOrg;
+    actionContext?: IRecipeCockpitPanelActionContext;
 }
 
 /*
@@ -2687,7 +2730,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
     | { kind: 'postOrgOpenState'; hostMessage: IRecipeCockpitOrgOpenStateMessage }
     | { kind: 'openChangelog' }
-    | { kind: 'answerConfirmation'; confirmationId: string; choice: unknown; isChecked: unknown };
+    | { kind: 'answerConfirmation'; confirmationId: string; choice: unknown; isChecked: unknown; isChangeOrg: boolean };
 
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened --
@@ -2778,6 +2821,8 @@ export interface IRecipeCockpitPanelState {
     isUpdaterOrgPromptOpen?: boolean;
     // SET WHILE A QUERY ASKS FOR AN ORG AND CHECKS THE PICK (#439), HOLDING THE SELECTION AS isUpdaterOrgPromptOpen DOES
     isQueryOrgPromptOpen?: boolean;
+    // SET WHILE A RETRIEVE (#480) OR A CONFIRMATION'S "Change org…" ASKS FOR AN ORG AND CHECKS THE PICK, HOLDING THE SELECTION THE SAME WAY
+    isOrgPromptOpen?: boolean;
     // THE LAST RECORDS IT POSTED, REPLAYED WHILE ITS MODEL IS THE ONE ON SCREEN
     updaterRecordsMessage?: IRecipeCockpitUpdaterRecordsMessage;
     // THE LAST "Retrieve latest metadata" (#445): WHAT IT POSTED, REPLAYED WHILE ITS MODEL IS ON SCREEN, AND THE STAGING FOLDER IT READ (HOST-ONLY)
@@ -2876,6 +2921,8 @@ export class RecipeCockpitService {
         state, because answering it Cancel is what replacing that state means.
     */
     private static pendingConfirmation: IRecipeCockpitPendingConfirmation | undefined;
+
+    private static readonly panelActionContextStorage = new AsyncLocalStorage<IRecipeCockpitPanelActionContext>();
 
     /*
         Which load is the current one. A run chosen while another is still loading supersedes it,
@@ -5128,9 +5175,9 @@ export class RecipeCockpitService {
             `Point ${objectApiName}.${fieldApiName} at an existing ${parentObjectApiName} record?`,
             {
                 summary: [
-                    `Record: ${chosenRecord.recordName ? `${chosenRecord.recordName} · ` : ''}${chosenRecord.recordId}`,
-                    `Org: ${orgText}`
+                    `Record: ${chosenRecord.recordName ? `${chosenRecord.recordName} · ` : ''}${chosenRecord.recordId}`
                 ],
+                org: this.buildConfirmOrg(orgDetail),
                 warnings: [`The Id exists only in ${orgText}. The tree insert checks it exists in the org it inserts into, and inserts nothing when it does not.`],
                 sections: [
                     {
@@ -6652,10 +6699,19 @@ export class RecipeCockpitService {
         }
 
         const confirmationId = crypto.randomBytes(16).toString('hex');
+        // "Change org…" ONLY INSIDE A PANEL ACTION, WHICH IS WHAT CAN START THE ACTION AGAIN ONCE IT HAS ENDED
+        const actionContext = this.panelActionContextStorage.getStore();
+        const changeOrg = actionContext && confirmOptions.changeOrg && confirmOptions.org ? confirmOptions.changeOrg : undefined;
 
         return new Promise(resolve => {
 
-            this.pendingConfirmation = { confirmationId: confirmationId, buttonLabels: [...buttonLabels], hasCheckbox: checkboxLabel !== undefined, resolve: resolve };
+            this.pendingConfirmation = {
+                confirmationId: confirmationId,
+                buttonLabels: [...buttonLabels],
+                hasCheckbox: checkboxLabel !== undefined,
+                resolve: resolve,
+                ...( changeOrg ? { changeOrg: changeOrg, actionContext: actionContext } : {} )
+            };
 
             this.postToPanel(cockpitPanel, {
                 command: 'confirmRequest',
@@ -6665,7 +6721,8 @@ export class RecipeCockpitService {
                 ...this.buildConfirmRequestContent(confirmOptions),
                 buttons: [...buttonLabels],
                 isDestructive: confirmOptions.isDestructive === true,
-                ...( checkboxLabel !== undefined ? { checkboxLabel: checkboxLabel } : {} )
+                ...( checkboxLabel !== undefined ? { checkboxLabel: checkboxLabel } : {} ),
+                ...( changeOrg ? { canChangeOrg: true } : {} )
             });
 
         });
@@ -6689,8 +6746,13 @@ export class RecipeCockpitService {
 
     }
 
-    // SPENT ONCE; AN INDEX THE HOST DID NOT OFFER IS CANCEL, AND SO IS AN isChecked THAT IS NEITHER ABSENT NOR A BOOLEAN
-    private static settlePendingConfirmation(confirmationId: string, choice: unknown, isChecked?: unknown) {
+    /*
+        SPENT ONCE; AN INDEX THE HOST DID NOT OFFER IS CANCEL, AND SO IS AN isChecked THAT IS NEITHER
+        ABSENT NOR A BOOLEAN. "Change org…" (#480) is Cancel to the action that asked, and is kept on
+        that action's context only when the host drew the button; the action is started again once
+        it has ended (runPanelAction).
+    */
+    private static settlePendingConfirmation(confirmationId: string, choice: unknown, isChecked?: unknown, isChangeOrg = false) {
 
         const pendingConfirmation = this.pendingConfirmation;
 
@@ -6699,6 +6761,14 @@ export class RecipeCockpitService {
         }
 
         this.pendingConfirmation = undefined;
+
+        if ( isChangeOrg ) {
+            if ( pendingConfirmation.changeOrg && pendingConfirmation.actionContext ) {
+                pendingConfirmation.actionContext.orgChange = pendingConfirmation.changeOrg;
+            }
+            pendingConfirmation.resolve({ chosenLabel: undefined, isChecked: false });
+            return;
+        }
 
         const isOfferedChoice = typeof choice === 'number' && Number.isInteger(choice) && choice >= 0 && choice < pendingConfirmation.buttonLabels.length;
         const isReadableCheck = isChecked === undefined || typeof isChecked === 'boolean';
@@ -6888,14 +6958,102 @@ export class RecipeCockpitService {
                 return;
             }
 
-            try {
-                await this.executePanelAction(cockpitPanel, panelAction);
-            } catch (actionError) {
-                ErrorHandlingService.handleCapturedError(actionError, 'openRecipeCockpit');
-            }
+            await this.runPanelAction(cockpitPanel, panelAction);
 
         });
 
+    }
+
+    /*
+        One routed action, run inside its own context (#480). Once it has ENDED -- every run lock
+        released in its own finally -- a "Change org…" chosen on one of its confirmations asks for
+        the org, makes the pick the Target Org Manager selection, and routes the action's message
+        again, so the action starts over against the new org through every guard a click meets.
+    */
+    private static async runPanelAction(cockpitPanel: vscode.WebviewPanel, panelAction: RecipeCockpitPanelAction) {
+
+        const actionContext: IRecipeCockpitPanelActionContext = {};
+
+        try {
+            await this.panelActionContextStorage.run(actionContext, () => this.executePanelAction(cockpitPanel, panelAction));
+        } catch (actionError) {
+            ErrorHandlingService.handleCapturedError(actionError, 'openRecipeCockpit');
+        }
+
+        if ( !actionContext.orgChange ) {
+            return;
+        }
+
+        try {
+            await this.changeOrgAndRestart(cockpitPanel, actionContext.orgChange);
+        } catch (changeError) {
+            ErrorHandlingService.handleCapturedError(changeError, 'openRecipeCockpit');
+        }
+
+    }
+
+    /*
+        "Change org…" (#480): the org is asked for over the Target Org Manager's own listing and made
+        the selection, checked and remembered as a pick in the dropdown is. An action that writes is
+        started again only on an org that answered it is a sandbox; one that reads, on any org that
+        could be connected to. A dismissed pick, a new model, a selection made meanwhile or a run
+        that holds the selection starts nothing. An action that posts the org's index (a deploy, an
+        assignment) is sent the new selection's.
+    */
+    private static async changeOrgAndRestart(cockpitPanel: vscode.WebviewPanel, orgChange: IRecipeCockpitConfirmChangeOrg) {
+
+        const panelState = this.recipeCockpitPanelState;
+        const clickedRecipeDataMessage = panelState.recipeDataMessage;
+
+        if ( this.recipeCockpitPanel !== cockpitPanel || !clickedRecipeDataMessage ) {
+            return;
+        }
+
+        if ( panelState.insertStateMessage
+                || this.isSelectionHeldByPromptOrUpdater(panelState)
+                || panelState.scratchOrgStateMessage?.isRunning
+                || panelState.permissionSetAssignStateMessage?.isRunning
+                || panelState.metadataDeployStateMessage?.isRunning ) {
+            VSCodeWorkspaceService.showWarningMessage(RECIPE_COCKPIT_CHANGE_ORG_BUSY_REFUSAL);
+            return;
+        }
+
+        const isClickStillCurrent = () => this.recipeCockpitPanel === cockpitPanel
+                                            && this.recipeCockpitPanelState === panelState
+                                            && panelState.recipeDataMessage === clickedRecipeDataMessage;
+
+        let isOrgSelected = false;
+        panelState.isOrgPromptOpen = true;
+        try {
+            isOrgSelected = await this.promptAndSelectDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
+                RECIPE_COCKPIT_CHANGE_ORG_PLACEHOLDER,
+                RECIPE_COCKPIT_CHANGE_ORG_REFUSAL_PREFIX,
+                orgChange.isSandboxOnly ? RECIPE_COCKPIT_CHANGE_ORG_SANDBOX_ONLY_REASON : undefined,
+                panelState.dataOrgSelection);
+        } finally {
+            panelState.isOrgPromptOpen = false;
+        }
+
+        const dataOrgSelection = panelState.dataOrgSelection;
+
+        if ( !isOrgSelected || !dataOrgSelection || !isClickStillCurrent() ) {
+            return;
+        }
+
+        const restartMessage: IRecipeCockpitPanelMessage = 'orgIndex' in orgChange.restartMessage
+            ? { ...orgChange.restartMessage, orgIndex: dataOrgSelection.orgIndex }
+            : orgChange.restartMessage;
+        const restartAction = this.routePanelMessage(restartMessage, panelState);
+
+        if ( restartAction ) {
+            await this.runPanelAction(cockpitPanel, restartAction);
+        }
+
+    }
+
+    // A CONFIRMATION'S ORG PART (#480): ITS ALIAS AND USERNAME, DRAWN APART FROM THE SUMMARY
+    static buildConfirmOrg(orgDetail: { alias?: string; username: string }): IRecipeCockpitConfirmOrg {
+        return { ...( orgDetail.alias ? { alias: orgDetail.alias } : {} ), username: orgDetail.username };
     }
 
     private static async executePanelAction(cockpitPanel: vscode.WebviewPanel, panelAction: RecipeCockpitPanelAction) {
@@ -6961,7 +7119,7 @@ export class RecipeCockpitService {
                 return;
 
             case 'answerConfirmation':
-                this.settlePendingConfirmation(panelAction.confirmationId, panelAction.choice, panelAction.isChecked);
+                this.settlePendingConfirmation(panelAction.confirmationId, panelAction.choice, panelAction.isChecked, panelAction.isChangeOrg);
                 return;
 
             case 'reportRenderFailure': {
@@ -8788,7 +8946,8 @@ export class RecipeCockpitService {
                 treeLabel,
                 objectApiNames,
                 assignSelection ? async () => assignSelection.orgDetail : async () => this.promptForPermissionSetOrg(),
-                (orgDetail, coveredObjectApiNames) => { cliStartedFor = { orgDetail: orgDetail, objectApiNames: coveredObjectApiNames }; }
+                (orgDetail, coveredObjectApiNames) => { cliStartedFor = { orgDetail: orgDetail, objectApiNames: coveredObjectApiNames }; },
+                { restartMessage: { command: 'assignTreePermissionSets', treeKey: treeKey, orgIndex: null }, isSandboxOnly: true }
             );
 
         } finally {
@@ -9511,10 +9670,27 @@ export class RecipeCockpitService {
     */
     private static async resolveTreeQueryOrg(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState): Promise<IAuthenticatedOrgDetail | undefined> {
 
-        const refusalPrefix = 'The query was not run';
+        return this.resolveSelectedReadOrg(cockpitPanel, panelState, 'The query was not run', RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER, RECIPE_COCKPIT_QUERY_BUSY_REFUSAL, RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE, 'isQueryOrgPromptOpen');
+
+    }
+
+    /*
+        The org an action that only READS runs against (a query, #439; a retrieve, #480): the Target
+        Org Manager selection as it is at the click, of any type, unless no connection could be
+        opened to it. With none it asks once over the dropdown's own listing, holding the selection
+        under the flag named while it asks, and the pick becomes the selection.
+    */
+    private static async resolveSelectedReadOrg(cockpitPanel: vscode.WebviewPanel,
+                                                    panelState: IRecipeCockpitPanelState,
+                                                    refusalPrefix: string,
+                                                    placeholder: string,
+                                                    busyRefusal: string,
+                                                    connectionFailedAdvice: string,
+                                                    promptFlag: 'isQueryOrgPromptOpen' | 'isOrgPromptOpen'): Promise<IAuthenticatedOrgDetail | undefined> {
+
         const usableSelectedOrg = (dataOrgSelection: IRecipeCockpitDataOrgSelection) => {
             if ( dataOrgSelection.isConnectionFailed ) {
-                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${refusalPrefix}: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} could not be connected to. ${RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE}`));
+                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${refusalPrefix}: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} could not be connected to. ${connectionFailedAdvice}`));
                 return undefined;
             }
             return dataOrgSelection.orgDetail;
@@ -9535,7 +9711,7 @@ export class RecipeCockpitService {
                 || panelState.scratchOrgStateMessage?.isRunning
                 || panelState.permissionSetAssignStateMessage?.isRunning
                 || panelState.metadataDeployStateMessage?.isRunning ) {
-            VSCodeWorkspaceService.showWarningMessage(RECIPE_COCKPIT_QUERY_BUSY_REFUSAL);
+            VSCodeWorkspaceService.showWarningMessage(busyRefusal);
             return undefined;
         }
 
@@ -9544,12 +9720,12 @@ export class RecipeCockpitService {
                                             && panelState.recipeDataMessage === clickedRecipeDataMessage;
 
         let isOrgSelected = false;
-        panelState.isQueryOrgPromptOpen = true;
+        panelState[promptFlag] = true;
         try {
             isOrgSelected = await this.promptAndSelectDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
-                RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER, refusalPrefix);
+                placeholder, refusalPrefix);
         } finally {
-            panelState.isQueryOrgPromptOpen = false;
+            panelState[promptFlag] = false;
         }
 
         return isOrgSelected && panelState.dataOrgSelection ? panelState.dataOrgSelection.orgDetail : undefined;
@@ -9562,13 +9738,14 @@ export class RecipeCockpitService {
     }
 
     /*
-        Whether a prompt or the Treecipe Adapter holds the org selection: the Adapter's load (#416) or
-        a query (#439) asking for an org, or an update (#418) or a restore (#419) writing to the org selected. Every route that would change the selection, or
+        Whether a prompt or the Treecipe Adapter holds the org selection: the Adapter's load (#416), a
+        query (#439), a retrieve or a confirmation's "Change org…" (#480) asking for an org, or an update (#418) or a restore (#419) writing to the org selected. Every route that would change the selection, or
         write to it, refuses while it does.
     */
     static isSelectionHeldByPromptOrUpdater(panelState: IRecipeCockpitPanelState): boolean {
         return panelState.isUpdaterOrgPromptOpen === true
             || panelState.isQueryOrgPromptOpen === true
+            || panelState.isOrgPromptOpen === true
             || ( panelState.updaterLoadStateMessage?.isRunning === true
                     && ( panelState.updaterLoadStateMessage.runKind === 'update' || panelState.updaterLoadStateMessage.runKind === 'restore' ) );
     }
@@ -10356,6 +10533,7 @@ export class RecipeCockpitService {
 
         return Boolean(panelState.insertStateMessage
                         || panelState.isQueryOrgPromptOpen
+                        || panelState.isOrgPromptOpen
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning);
@@ -11670,7 +11848,8 @@ export class RecipeCockpitService {
         const answer = await this.confirmInPanel(
             `Update ${describeRecords(recordTotal)} of ${treeTitle} in ${orgLabel}?`,
             {
-                summary: [`Org: ${orgLabel}`],
+                summary: [],
+                org: this.buildConfirmOrg(dataOrgSelection.orgDetail),
                 badge: SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail, dataOrgSelection.orgDisplayDetail),
                 warnings: hasRecordTypePicklist ? [RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE] : [],
                 sections: [
@@ -12118,7 +12297,8 @@ export class RecipeCockpitService {
         const answer = await this.confirmInPanel(
             `Restore ${describeRecords(recordTotal)} of ${treeTitle} in ${orgLabel}?`,
             {
-                summary: [`Org: ${orgLabel}`, `Back to the values ${snapshotName} saved on ${snapshot.takenAt}.`],
+                summary: [`Back to the values ${snapshotName} saved on ${snapshot.takenAt}.`],
+                org: this.buildConfirmOrg(dataOrgSelection.orgDetail),
                 badge: SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail, dataOrgSelection.orgDisplayDetail),
                 warnings: restoreWarnings,
                 sections: [
@@ -12838,8 +13018,9 @@ export class RecipeCockpitService {
         const describeComponentCount = (componentCount: number) => `${componentCount} ${componentCount === 1 ? 'component' : 'components'}`;
         const confirmTitle = `Deploy ${describeComponentCount(components.length)} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgLabel)}?`;
         const confirmOptions = {
-            ...RecipeCockpitMetadataDeploy.buildConfirmationContent(deployKind, treeLabel, orgLabel, packageDirectoryRelativePath, components, summary, SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot), fullSetComponents),
-            isDestructive: true
+            ...RecipeCockpitMetadataDeploy.buildConfirmationContent(deployKind, treeLabel, this.buildConfirmOrg(orgDetail), packageDirectoryRelativePath, components, summary, SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot), fullSetComponents),
+            isDestructive: true,
+            changeOrg: { restartMessage: { command: RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND[deployKind], treeKey: tree.treeKey, orgIndex: null }, isSandboxOnly: true }
         };
 
         const confirmation = fullSetComponents.length > 0
@@ -13035,8 +13216,8 @@ export class RecipeCockpitService {
 
     /*
         The Troubleshooting tab's retrieves (#326, #382), for one tree of the model on screen: the org
-        is ALWAYS asked for in the command palette, over every connected org (a retrieve only reads),
-        even when the Treecipe tab has one selected; then a confirmation names what is retrieved, the
+        is the Target Org Manager selection, of any type since a retrieve only reads, asked for once
+        and made the selection only when there is none (#480); then a confirmation names what is retrieved, the
         org, where new files go and how many local files the org's version overwrites; then one
         "sf project retrieve start --manifest" runs in project mode, cancellable. Validation rules and
         record types are first LISTED in the org ("sf org list metadata", #401), after the prompt
@@ -13045,6 +13226,16 @@ export class RecipeCockpitService {
         whatever its kind.
     */
     private static async retrieveTreeMetadataFromPanel(cockpitPanel: vscode.WebviewPanel, treeKey: string, retrieveKind: MetadataRetrieveKind) {
+
+        const resolveOrgDetail = () => this.resolveSelectedReadOrg(
+            cockpitPanel,
+            this.recipeCockpitPanelState,
+            'Nothing was retrieved',
+            RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS[retrieveKind],
+            RECIPE_COCKPIT_RETRIEVE_ORG_BUSY_REFUSAL,
+            RECIPE_COCKPIT_RETRIEVE_CONNECTION_FAILED_ADVICE,
+            'isOrgPromptOpen'
+        );
 
         const panelState = this.recipeCockpitPanelState;
         const recipeViewModel = panelState.recipeDataMessage?.recipe;
@@ -13062,7 +13253,7 @@ export class RecipeCockpitService {
         // ONLY A CLI THAT RAN CAN HAVE WRITTEN FILES, AND ONLY A VALIDATION RULE RETRIEVE WRITES WHAT THE RULE LISTS READ
         let isCliStarted = false;
         try {
-            isCliStarted = await this.performMetadataRetrieve(panelState.workspaceRoot, recipeViewModel, tree, retrieveKind);
+            isCliStarted = await this.performMetadataRetrieve(panelState.workspaceRoot, recipeViewModel, tree, retrieveKind, resolveOrgDetail);
         } finally {
             this.isMetadataRetrieveInFlight = false;
             this.setMetadataRetrieveState({ command: 'metadataRetrieveState', isRunning: false, treeKey: treeKey, retrieveKind: retrieveKind });
@@ -13079,7 +13270,8 @@ export class RecipeCockpitService {
     private static async performMetadataRetrieve(workspaceRoot: string,
                                                     recipeViewModel: IRecipeCockpitRecipeViewModel,
                                                     tree: IRecipeCockpitTreeViewModel,
-                                                    retrieveKind: MetadataRetrieveKind): Promise<boolean> {
+                                                    retrieveKind: MetadataRetrieveKind,
+                                                    resolveOrgDetail: () => Promise<IAuthenticatedOrgDetail | undefined>): Promise<boolean> {
 
         const treeLabel = tree.customName || tree.title;
         const manyNoun = RecipeCockpitMetadataRetrieve.componentNoun(retrieveKind, 2);
@@ -13123,7 +13315,7 @@ export class RecipeCockpitService {
 
         let orgDetail: IAuthenticatedOrgDetail | undefined;
         try {
-            orgDetail = await SalesforceOrgService.promptForAuthorizedOrg(RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS[retrieveKind]);
+            orgDetail = await resolveOrgDetail();
         } catch (listError) {
             return refuse(`No ${manyNoun} were retrieved: ${this.describeThrown(listError)}`);
         }
@@ -13203,8 +13395,9 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             confirmationTitle,
             {
-                ...RecipeCockpitMetadataRetrieve.buildConfirmationContent(retrieveKind, treeLabel, orgLabel, askedNames, packageDirectoryRelativePath, localFileCount),
-                isDestructive: true
+                ...RecipeCockpitMetadataRetrieve.buildConfirmationContent(retrieveKind, treeLabel, this.buildConfirmOrg(orgDetail), askedNames, packageDirectoryRelativePath, localFileCount),
+                isDestructive: true,
+                changeOrg: { restartMessage: { command: RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND[retrieveKind], treeKey: tree.treeKey }, isSandboxOnly: false }
             },
             RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL
         );
@@ -13602,7 +13795,8 @@ export class RecipeCockpitService {
                                                     treeLabel: string,
                                                     objectApiNames: string[],
                                                     resolveOrgDetail: () => Promise<IAuthenticatedOrgDetail | undefined>,
-                                                    onCliStarted: (orgDetail: IAuthenticatedOrgDetail, coveredObjectApiNames: string[]) => void): Promise<IRecipeCockpitPermissionSetClosingState> {
+                                                    onCliStarted: (orgDetail: IAuthenticatedOrgDetail, coveredObjectApiNames: string[]) => void,
+                                                    changeOrg?: IRecipeCockpitConfirmChangeOrg): Promise<IRecipeCockpitPermissionSetClosingState> {
 
         const refuse = (refusalText: string, closingState: IRecipeCockpitPermissionSetClosingState = {}): IRecipeCockpitPermissionSetClosingState => {
             this.showPermissionSetNotification(refusalText, undefined, workspaceRoot);
@@ -13660,8 +13854,9 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             `Assign ${describePermissionSets(pickedPermissionSets.length)} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgDetail.username)} in ${this.toSingleLine(orgLabel)}?`,
             {
-                ...RecipeCockpitPermissionSetAssign.buildConfirmationContent(treeLabel, orgLabel, orgDetail.username, pickedPermissionSets, objectApiNames.length),
-                isDestructive: true
+                ...RecipeCockpitPermissionSetAssign.buildConfirmationContent(treeLabel, this.buildConfirmOrg(orgDetail), pickedPermissionSets, objectApiNames.length),
+                isDestructive: true,
+                ...( changeOrg ? { changeOrg: changeOrg } : {} )
             },
             RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL
         );
@@ -14482,7 +14677,8 @@ export class RecipeCockpitService {
                                                         isClickStillCurrent: () => boolean,
                                                         placeholder: string,
                                                         refusalPrefix: string,
-                                                        sandboxOnlyReason?: string): Promise<boolean> {
+                                                        sandboxOnlyReason?: string,
+                                                        selectionBeforePrompt?: IRecipeCockpitDataOrgSelection): Promise<boolean> {
 
         let dataOrgListing: IDataOrgListing | undefined;
         let chosenOrgDetail: IDataOrgDetail | undefined;
@@ -14504,8 +14700,9 @@ export class RecipeCockpitService {
         }
 
         // A DISMISSED PICK, A NEW MODEL, OR AN ORG CHOSEN IN THE DROPDOWN MEANWHILE: NOTHING MORE IS DONE
+        // ("Change org…", #480, REPLACES THE SELECTION IT WAS ASKED OVER, AND ONLY THAT ONE)
         const orgIndex = chosenOrgDetail && dataOrgListing ? dataOrgListing.orgDetails.findIndex(orgDetail => orgDetail.username === chosenOrgDetail.username) : -1;
-        if ( orgIndex < 0 || !isClickStillCurrent() || panelState.dataOrgSelection ) {
+        if ( orgIndex < 0 || !isClickStillCurrent() || panelState.dataOrgSelection !== selectionBeforePrompt ) {
             return false;
         }
 
@@ -14630,7 +14827,12 @@ export class RecipeCockpitService {
 
         const confirmation = await this.confirmInPanel(
             `Generate ${treeLabel} and insert it into ${orgLabel}?`,
-            { ...this.buildInsertConfirmationContent(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups, dataOrgSelection.orgDisplayDetail), isDestructive: true },
+            {
+                ...this.buildInsertConfirmationContent(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups, dataOrgSelection.orgDisplayDetail),
+                org: this.buildConfirmOrg(dataOrgSelection.orgDetail),
+                isDestructive: true,
+                changeOrg: { restartMessage: { command: 'insertTree', treeKey: treeKey }, isSandboxOnly: true }
+            },
             RECIPE_COCKPIT_INSERT_CONFIRM_LABEL
         );
 
@@ -15094,7 +15296,7 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                return { kind: 'answerConfirmation', confirmationId: this.pendingConfirmation.confirmationId, choice: panelMessage.choice, isChecked: panelMessage.isChecked };
+                return { kind: 'answerConfirmation', confirmationId: this.pendingConfirmation.confirmationId, choice: panelMessage.choice, isChecked: panelMessage.isChecked, isChangeOrg: panelMessage.changeOrg === true };
 
             /*
                 The panel's place, kept in workspaceState too (#230). Only for the model the panel
@@ -16061,8 +16263,8 @@ export class RecipeCockpitService {
 
             /*
                 The Troubleshooting tab's retrieves (#326, #382) post the tree's KEY and nothing else:
-                what is retrieved is the host's, and the org is ALWAYS asked for in the command
-                palette, so an org index the message carries is never read. One retrieve per window,
+                what is retrieved is the host's, and the org is the Target Org Manager selection the
+                host holds (#480), so an org index the message carries is never read. One retrieve per window,
                 whatever its kind; it waits for an insert, a permission set assignment and a metadata
                 deploy to end, and a scratch org run, which deploys nothing (#358), does not hold it.
                 Every refusal gives the clicked button back, and a busy one says why.
@@ -16298,6 +16500,7 @@ export class RecipeCockpitService {
                 // AN INSERT OR A RUN THAT IS ABOUT TO CHANGE THE SELECTION HOLDS THE ORG THE LOAD WOULD READ FROM, AS A QUERY'S OPEN PROMPT DOES (#439)
                 if ( panelState.insertStateMessage
                         || panelState.isQueryOrgPromptOpen
+                        || panelState.isOrgPromptOpen
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning ) {
@@ -16618,6 +16821,7 @@ export class RecipeCockpitService {
                 if ( panelState.insertStateMessage
                         || panelState.isUpdaterOrgPromptOpen
                         || panelState.isQueryOrgPromptOpen
+                        || panelState.isOrgPromptOpen
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning ) {
@@ -16682,6 +16886,7 @@ export class RecipeCockpitService {
                 if ( panelState.insertStateMessage
                         || panelState.isUpdaterOrgPromptOpen
                         || panelState.isQueryOrgPromptOpen
+                        || panelState.isOrgPromptOpen
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning ) {
@@ -19454,6 +19659,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     .confirmWarnings .confirmBullet::marker { color: var(--sdt-changed); }
     .confirmGap { height: 0.6rem; }
     .confirmSummary { margin: 0.5rem 0; font-size: 1.02rem; }
+    .confirmOrg { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.45rem; margin: 0.5rem 0; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
+    .confirmOrgLabel { color: var(--sdt-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .confirmOrgAlias { font-weight: 700; color: var(--sdt-accent); overflow-wrap: anywhere; }
+    .confirmOrgSeparator { color: var(--sdt-muted); }
+    .confirmOrgUsername { font-family: var(--vscode-editor-font-family), monospace; color: var(--sdt-muted); overflow-wrap: anywhere; }
+    .confirmOrg .confirmBadge { margin-top: 0; }
+    .confirmChangeOrg { margin-left: auto; }
     .confirmBadge { display: inline-block; margin-top: 0.3rem; padding: 0.1rem 0.55rem; border-radius: 999px; font-size: 0.85rem; font-weight: 600; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); }
     .confirmWarnings { margin: 0.6rem 0; padding: 0.45rem 0.7rem; color: var(--sdt-text); background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-left: 4px solid var(--sdt-changed); border-radius: 6px; }
     .confirmWarningsHeading { margin-bottom: 0.15rem; font-weight: 600; color: var(--sdt-changed); }
@@ -19686,6 +19898,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const PARENT_NICKNAME_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI)};
     const TOGGLE_COLLAPSED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH)};
     const CONFIRM_WARNINGS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL)};
+    const CONFIRM_CHANGE_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL)};
     const SEARCH_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_SEARCH_GLYPH_PATH)};
     const MOTION_REVEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS};
     const MOTION_CONCEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS};
@@ -29378,7 +29591,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         dialogElement.setAttribute('aria-labelledby', 'confirmTitle');
         dialogElement.setAttribute('aria-describedby', 'confirmBody');
 
-        const sectionToggleElements = drawConfirmContent(bodyElement, content);
+        const sectionToggleElements = drawConfirmContent(bodyElement, content, hostMessage.canChangeOrg === true);
 
         const buttonElements = buttonLabels.map(function (label, labelIndex) {
             const buttonElement = createButton(labelIndex === 0 ? 'primary' : 'secondary', 'confirmChoice', label);
@@ -29468,6 +29681,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         if (!isStringList(hostMessage.summary) || !isStringList(hostMessage.warnings) || !Array.isArray(hostMessage.sections)) { return null; }
         if (hostMessage.badge !== undefined && typeof hostMessage.badge !== 'string') { return null; }
+        const org = hostMessage.org;
+        if (org !== undefined && !(org && typeof org === 'object' && typeof org.username === 'string' && !!org.username && (org.alias === undefined || typeof org.alias === 'string'))) { return null; }
 
         const isReadableSection = function (section) {
             return !!section && typeof section === 'object' && typeof section.title === 'string' && !!section.title && isStringList(section.lines)
@@ -29477,6 +29692,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         return {
             summary: hostMessage.summary,
+            org: org ? { alias: org.alias || '', username: org.username } : null,
             badge: hostMessage.badge || '',
             warnings: hostMessage.warnings.filter(function (warning) { return warning.trim() !== ''; }),
             sections: hostMessage.sections.filter(function (section) { return section.lines.some(function (line) { return line.trim() !== ''; }); })
@@ -29544,17 +29760,41 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
 
     /*
-        Summary first, with the org type's badge; then the warnings in one callout that is always on
-        screen; then each section folded under a toggle that names it and its count. A section's
-        lines are built the first time it opens, since a long one (every component of a deploy) costs
-        nothing until the reader asks for it. Returns the toggles, in order, for the Tab cycle.
+        Summary first; then the org (#480), its alias and username each in their own style so neither
+        reads as part of the sentence around it, with the org type's badge and, when the host offered
+        it, "Change org…"; then the warnings in one callout that is always on screen; then each
+        section folded under a toggle that names it and its count. A section's lines are built the
+        first time it opens, since a long one (every component of a deploy) costs nothing until the
+        reader asks for it. Returns the org's button and the toggles, in order, for the Tab cycle.
     */
-    function drawConfirmContent(bodyElement, content) {
+    function drawConfirmContent(bodyElement, content, canChangeOrg) {
 
         const summaryElement = createElement('div', 'confirmSummary');
         drawConfirmLines(summaryElement, content.summary, countConfirmStatements(content.summary) > 1);
-        if (content.badge) { summaryElement.appendChild(createElement('span', 'confirmBadge', content.badge)); }
         bodyElement.appendChild(summaryElement);
+
+        let changeOrgElement = null;
+
+        if (content.org) {
+            const orgElement = createElement('div', 'confirmOrg');
+            orgElement.appendChild(createElement('span', 'confirmOrgLabel', 'Org'));
+            if (content.org.alias) {
+                orgElement.appendChild(createElement('span', 'confirmOrgAlias', content.org.alias));
+                const separatorElement = createElement('span', 'confirmOrgSeparator', '·');
+                separatorElement.setAttribute('aria-hidden', 'true');
+                orgElement.appendChild(separatorElement);
+            }
+            orgElement.appendChild(createElement('span', 'confirmOrgUsername', content.org.username));
+            if (content.badge) { orgElement.appendChild(createElement('span', 'confirmBadge', content.badge)); }
+            if (canChangeOrg) {
+                changeOrgElement = createButton('secondary', 'confirmChangeOrg', CONFIRM_CHANGE_ORG_LABEL, 'compact');
+                changeOrgElement.addEventListener('click', function () { answerConfirmChangeOrg(); });
+                orgElement.appendChild(changeOrgElement);
+            }
+            bodyElement.appendChild(orgElement);
+        } else if (content.badge) {
+            summaryElement.appendChild(createElement('span', 'confirmBadge', content.badge));
+        }
 
         if (content.warnings.length > 0) {
             const warningsElement = createElement('div', 'confirmWarnings');
@@ -29565,7 +29805,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             bodyElement.appendChild(warningsElement);
         }
 
-        return content.sections.map(function (section, sectionIndex) {
+        const sectionToggleElements = content.sections.map(function (section, sectionIndex) {
 
             const sectionElement = createElement('div', 'confirmSection');
             const toggleElement = createButton('secondary', 'confirmSectionToggle');
@@ -29607,6 +29847,17 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             return toggleElement;
 
         });
+
+        return (changeOrgElement ? [changeOrgElement] : []).concat(sectionToggleElements);
+
+    }
+
+    // "Change org…" (#480): NOT A BUTTON'S ANSWER -- THE HOST CANCELS THE ACTION, ASKS FOR THE ORG, AND STARTS THE ACTION AGAIN
+    function answerConfirmChangeOrg() {
+
+        if (!confirmDialog) { return; }
+        vscodeApi.postMessage({ command: 'confirmResponse', confirmationId: confirmDialog.confirmationId, choice: null, changeOrg: true });
+        closeConfirmDialog(true);
 
     }
 

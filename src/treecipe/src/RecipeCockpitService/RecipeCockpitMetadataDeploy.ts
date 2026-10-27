@@ -6,7 +6,7 @@ import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { ORG_OPERATIONS_FOLDER_NAME, ORG_OPERATION_RESULT_FILE_ATTEMPTS, ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
-import { IRecipeCockpitConfirmContent } from './RecipeCockpitConfirmContent';
+import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg } from './RecipeCockpitConfirmContent';
 
 /*
     The Troubleshooting tab's deploys (#346): what one relationship tree would deploy -- its custom
@@ -744,7 +744,7 @@ export class RecipeCockpitMetadataDeploy {
     // WHAT THE IN-PANEL CONFIRMATION SAYS (#457): EACH VALUE ON ONE LINE, AND WHAT CANNOT BE UNDONE OR IS LEFT OUT AMONG THE WARNINGS, ON SCREEN
     static buildConfirmationContent(deployKind: MetadataDeployKind,
                                     treeLabel: string,
-                                    orgLabel: string,
+                                    org: IRecipeCockpitConfirmOrg,
                                     packageDirectoryRelativePath: string,
                                     components: readonly IMetadataDeployComponent[],
                                     summary?: IMetadataDeploySummary,
@@ -791,9 +791,9 @@ export class RecipeCockpitMetadataDeploy {
         return {
             summary: [
                 `Tree: ${toSingleLine(treeLabel)}`,
-                `Org: ${toSingleLine(orgLabel)}`,
                 `From: ${toSingleLine(packageDirectoryRelativePath)}`
             ],
+            org: org,
             warnings: warnings,
             sections: [
                 { title: 'Components', count: components.length, lines: this.describeComponentsByType(components) },

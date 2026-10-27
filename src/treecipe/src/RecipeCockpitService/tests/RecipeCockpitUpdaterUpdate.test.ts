@@ -617,7 +617,10 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             expect(updateConfirmations()).toHaveLength(1);
             // #457: THE ORG'S TYPE IS THE CONFIRMATION'S BADGE
             const [, confirmOptions] = (RecipeCockpitService.confirmInPanel as unknown as jest.Mock).mock.calls.find(([title]) => String(title).startsWith('Update '));
-            expect(confirmOptions.summary).toEqual(['Org: qa · qa@example.com.qa']);
+            // #480: THE ORG IS ITS OWN PART, ITS ALIAS AND USERNAME DRAWN APART FROM THE SUMMARY
+            expect(confirmOptions.summary).toEqual([]);
+            expect(confirmOptions.org).toEqual({ alias: 'qa', username: 'qa@example.com.qa' });
+            expect(confirmOptions.changeOrg).toBeUndefined();
             expect(confirmOptions.badge).toBe('Scratch org · expires 2026-11-01');
 
         });

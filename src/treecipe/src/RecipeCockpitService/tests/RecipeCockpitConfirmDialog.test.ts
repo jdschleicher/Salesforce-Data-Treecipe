@@ -16,6 +16,11 @@ import {
     RecipeCockpitService,
     IRecipeCockpitPanelState,
     RECIPE_COCKPIT_BUTTON_KINDS,
+    RECIPE_COCKPIT_CHANGE_ORG_BUSY_REFUSAL,
+    RECIPE_COCKPIT_CHANGE_ORG_PLACEHOLDER,
+    RECIPE_COCKPIT_CHANGE_ORG_REFUSAL_PREFIX,
+    RECIPE_COCKPIT_CHANGE_ORG_SANDBOX_ONLY_REASON,
+    RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL,
     RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL,
     RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL,
     RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY,
@@ -173,7 +178,7 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
             expect(RecipeCockpitService.routePanelMessage({ command: 'confirmResponse', confirmationId: 'f'.repeat(32), choice: 0 }, panelState())).toBeUndefined();
             expect(RecipeCockpitService.routePanelMessage({ command: 'confirmResponse', confirmationId: confirmationId, choice: 0 }, panelState()))
-                .toEqual({ kind: 'answerConfirmation', confirmationId: confirmationId, choice: 0 });
+                .toEqual({ kind: 'answerConfirmation', confirmationId: confirmationId, choice: 0, isChangeOrg: false });
 
             await receivedMessageHandler({ command: 'confirmResponse', confirmationId: confirmationId, choice: null });
             await resetDone;
@@ -327,6 +332,191 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
         });
 
+        describe('"Change org…" (#480)', () => {
+
+            const QA_ORG = { alias: 'qa', username: 'qa@example.com' };
+            const RESTART = { restartMessage: { command: 'resetTreeSelection', treeKey: LEAD_TREE_KEY }, isSandboxOnly: true };
+
+            /*
+                Runs one routed panel action whose executor asks a confirmation offering "Change org…",
+                the way a retrieve, deploy, assignment or insert does, and records when it ENDS, so a
+                test can tell the restart came after the action released everything it held.
+            */
+            const startActionAskingWithChangeOrg = async (events: string[]) => {
+
+                let answer: Promise<string | undefined> | undefined;
+                jest.spyOn(RecipeCockpitService as any, 'executePanelAction').mockImplementationOnce(async () => {
+                    answer = RecipeCockpitService.confirmInPanel('Deploy?', { summary: ['Deploy 2 components.'], org: QA_ORG, badge: 'Sandbox', changeOrg: RESTART }, 'Deploy');
+                    events.push(`answered ${String(await answer)}`);
+                    events.push('action ended');
+                });
+
+                const actionDone = receivedMessageHandler({ command: 'resetTreeSelection', treeKey: LEAD_TREE_KEY });
+                await flushMicrotasks();
+                return { actionDone: actionDone, answer: () => answer };
+
+            };
+
+            it('posts the org as its own part, and offers the button only inside a panel action whose confirmation names what to start again', async () => {
+
+                await openAndDraw();
+
+                // OUTSIDE A PANEL ACTION NOTHING CAN START IT AGAIN, SO NO BUTTON
+                const outsideAnswer = RecipeCockpitService.confirmInPanel('Deploy?', { summary: ['x'], org: QA_ORG, changeOrg: RESTART }, 'Deploy');
+                expect(lastPosted('confirmRequest')).toMatchObject({ org: QA_ORG });
+                expect(lastPosted('confirmRequest').canChangeOrg).toBeUndefined();
+                ( RecipeCockpitService as any ).settlePendingConfirmation(lastPosted('confirmRequest').confirmationId, null, undefined, true);
+                await expect(outsideAnswer).resolves.toBeUndefined();
+
+                // NO ORG, NO BUTTON
+                const restartSpy = jest.spyOn(RecipeCockpitService as any, 'changeOrgAndRestart').mockResolvedValue(undefined);
+                jest.spyOn(RecipeCockpitService as any, 'executePanelAction').mockImplementationOnce(async () => {
+                    await RecipeCockpitService.confirmInPanel('Deploy?', { summary: ['x'], changeOrg: RESTART }, 'Deploy');
+                });
+                const actionDone = receivedMessageHandler({ command: 'resetTreeSelection', treeKey: LEAD_TREE_KEY });
+                await flushMicrotasks();
+                expect(lastPosted('confirmRequest').canChangeOrg).toBeUndefined();
+                expect(lastPosted('confirmRequest').org).toBeUndefined();
+                await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: null, changeOrg: true });
+                await actionDone;
+                expect(restartSpy).not.toHaveBeenCalled();
+
+            });
+
+            it('is Cancel to the action that asked, and starts it again only once that action has ended', async () => {
+
+                await openAndDraw();
+                const events: string[] = [];
+                const restartSpy = jest.spyOn(RecipeCockpitService as any, 'changeOrgAndRestart').mockImplementation(async (_panel: unknown, orgChange: unknown) => {
+                    events.push('restart');
+                    expect(orgChange).toEqual(RESTART);
+                });
+
+                const { actionDone } = await startActionAskingWithChangeOrg(events);
+                const confirmRequest = lastPosted('confirmRequest');
+                expect(confirmRequest).toMatchObject({ org: QA_ORG, badge: 'Sandbox', canChangeOrg: true, buttons: ['Deploy'] });
+
+                expect(RecipeCockpitService.routePanelMessage({ command: 'confirmResponse', confirmationId: confirmRequest.confirmationId, choice: null, changeOrg: true }, panelState()))
+                    .toEqual({ kind: 'answerConfirmation', confirmationId: confirmRequest.confirmationId, choice: null, isChecked: undefined, isChangeOrg: true });
+
+                await receivedMessageHandler({ command: 'confirmResponse', confirmationId: confirmRequest.confirmationId, choice: null, changeOrg: true });
+                await actionDone;
+
+                expect(events).toEqual(['answered undefined', 'action ended', 'restart']);
+                expect(restartSpy).toHaveBeenCalledTimes(1);
+
+            });
+
+            it('starts nothing again for a button\'s answer, Cancel, or a "Change org…" answer under another id', async () => {
+
+                await openAndDraw();
+                const restartSpy = jest.spyOn(RecipeCockpitService as any, 'changeOrgAndRestart').mockResolvedValue(undefined);
+
+                for ( const response of [{ choice: 0 }, { choice: null }] ) {
+                    const events: string[] = [];
+                    const { actionDone } = await startActionAskingWithChangeOrg(events);
+                    await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, ...response });
+                    await actionDone;
+                    expect(events[0]).toBe(response.choice === 0 ? 'answered Deploy' : 'answered undefined');
+                }
+
+                const events: string[] = [];
+                const { actionDone } = await startActionAskingWithChangeOrg(events);
+                await receivedMessageHandler({ command: 'confirmResponse', confirmationId: 'f'.repeat(32), choice: null, changeOrg: true });
+                await receivedMessageHandler({ command: 'confirmResponse', confirmationId: lastPosted('confirmRequest').confirmationId, choice: null });
+                await actionDone;
+
+                expect(restartSpy).not.toHaveBeenCalled();
+
+            });
+
+            describe('choosing the org and starting the action again', () => {
+
+                const SELECTED_ORG = { targetOrgIdentifier: 'dev', alias: 'dev', username: 'dev@example.com' };
+                let promptSpy: jest.SpyInstance;
+                let routeSpy: jest.SpyInstance;
+                let runSpy: jest.SpyInstance;
+
+                beforeEach(() => {
+                    promptSpy = jest.spyOn(RecipeCockpitService as any, 'promptAndSelectDataOrg').mockImplementation(async (...promptArguments: any[]) => {
+                        const promptPanelState = promptArguments[1] as IRecipeCockpitPanelState;
+                        expect(promptPanelState.isOrgPromptOpen).toBeTrue();
+                        promptPanelState.dataOrgSelection = { orgIndex: 3, orgDetail: SELECTED_ORG } as any;
+                        return true;
+                    });
+                    routeSpy = jest.spyOn(RecipeCockpitService, 'routePanelMessage');
+                    runSpy = jest.spyOn(RecipeCockpitService as any, 'runPanelAction');
+                    jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation(() => undefined);
+                });
+
+                // ONLY WHAT THE RESTART ROUTES: THE OPEN'S OWN ready AND rendered ARE ROUTED TOO
+                const changeOrg = (orgChange: unknown) => ( RecipeCockpitService as any ).changeOrgAndRestart(createdPanel, orgChange);
+                const openAndDrawThenWatch = async () => { await openAndDraw(); routeSpy.mockClear(); };
+
+                it('asks over the Target Org Manager listing, holding the selection, and for a write only accepts a sandbox', async () => {
+
+                    await openAndDrawThenWatch();
+                    const selectionBefore = { orgIndex: 0, orgDetail: { username: 'old@example.com' } } as any;
+                    panelState().dataOrgSelection = selectionBefore;
+                    routeSpy.mockReturnValueOnce(undefined);
+
+                    await changeOrg(RESTART);
+
+                    expect(promptSpy).toHaveBeenCalledTimes(1);
+                    const promptArguments = promptSpy.mock.calls[0];
+                    expect(promptArguments.slice(4)).toEqual([RECIPE_COCKPIT_CHANGE_ORG_PLACEHOLDER, RECIPE_COCKPIT_CHANGE_ORG_REFUSAL_PREFIX, RECIPE_COCKPIT_CHANGE_ORG_SANDBOX_ONLY_REASON, selectionBefore]);
+                    expect(panelState().isOrgPromptOpen).toBeFalse();
+
+                    await changeOrg({ ...RESTART, isSandboxOnly: false });
+                    expect(promptSpy.mock.calls[1][6]).toBeUndefined();
+
+                });
+
+                it('routes the action\'s message again, with the new selection\'s index for an action that posts one', async () => {
+
+                    await openAndDrawThenWatch();
+                    routeSpy.mockReturnValue(undefined);
+
+                    await changeOrg({ restartMessage: { command: 'deployTreeFields', treeKey: LEAD_TREE_KEY, orgIndex: null }, isSandboxOnly: true });
+                    await changeOrg({ restartMessage: { command: 'retrieveTreeFields', treeKey: LEAD_TREE_KEY }, isSandboxOnly: false });
+
+                    expect(routeSpy.mock.calls.map(call => call[0])).toEqual([
+                        { command: 'deployTreeFields', treeKey: LEAD_TREE_KEY, orgIndex: 3 },
+                        { command: 'retrieveTreeFields', treeKey: LEAD_TREE_KEY }
+                    ]);
+
+                    routeSpy.mockReturnValueOnce({ kind: 'activateDatasetActions' });
+                    runSpy.mockResolvedValueOnce(undefined);
+                    await changeOrg(RESTART);
+                    expect(runSpy).toHaveBeenCalledWith(createdPanel, { kind: 'activateDatasetActions' });
+
+                });
+
+                it('starts nothing again on a dismissed or refused pick, a new model, or while another run holds the selection', async () => {
+
+                    await openAndDrawThenWatch();
+
+                    promptSpy.mockResolvedValueOnce(false);
+                    await changeOrg(RESTART);
+                    expect(routeSpy).not.toHaveBeenCalled();
+
+                    promptSpy.mockImplementationOnce(async () => { panelState().recipeDataMessage = { ...panelState().recipeDataMessage } as any; return true; });
+                    await changeOrg(RESTART);
+                    expect(routeSpy).not.toHaveBeenCalled();
+
+                    panelState().insertStateMessage = { command: 'insertState', isRunning: true, treeKey: LEAD_TREE_KEY } as any;
+                    promptSpy.mockClear();
+                    await changeOrg(RESTART);
+                    expect(promptSpy).not.toHaveBeenCalled();
+                    expect(VSCodeWorkspaceService.showWarningMessage).toHaveBeenCalledWith(RECIPE_COCKPIT_CHANGE_ORG_BUSY_REFUSAL);
+                    expect(routeSpy).not.toHaveBeenCalled();
+
+                });
+
+            });
+
+        });
+
         it('asks with a checkbox only when told to, and answers whether it was ticked under the button chosen (#402)', async () => {
 
             await openAndDraw();
@@ -414,6 +604,14 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
         });
 
+        it('posts the org as one line each of alias and username, leaving out an empty alias and an org with no username (#480)', () => {
+
+            expect(RecipeCockpitService.buildConfirmRequestContent({ summary: ['s'], org: { alias: 'qa\nTwo', username: ' qa@example.com\r\n' } }).org).toEqual({ alias: 'qa Two', username: 'qa@example.com' });
+            expect(RecipeCockpitService.buildConfirmRequestContent({ summary: ['s'], org: { alias: '', username: 'qa@example.com' } }).org).toEqual({ username: 'qa@example.com' });
+            expect(RecipeCockpitService.buildConfirmRequestContent({ summary: ['s'], org: { alias: 'qa', username: '' } })).not.toHaveProperty('org');
+
+        });
+
         it('posts every part even when the host gave only a summary, and no badge when it gave none', () => {
 
             expect(RecipeCockpitService.buildConfirmRequestContent({ summary: ['Only this'] })).toEqual({ summary: ['Only this'], warnings: [], sections: [] });
@@ -428,6 +626,9 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
                 warnings: ['Warning'],
                 sections: [{ title: 'Records', count: 2, lines: ['a', 'b'] }, { title: 'Next', lines: ['c'] }]
             })).toBe('Summary\nWarning\n\nRecords · 2\na\nb\n\nNext\nc');
+
+            expect(RecipeCockpitService.flattenConfirmContent({ summary: ['Summary'], org: { alias: 'qa', username: 'qa@example.com' }, warnings: ['Warning'] })).toBe('Summary\nOrg: qa · qa@example.com\nWarning');
+            expect(RecipeCockpitService.flattenConfirmContent({ summary: ['Summary'], org: { username: 'qa@example.com' } })).toBe('Summary\nOrg: qa@example.com');
 
         });
 
@@ -726,6 +927,68 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
 
         });
 
+        it('draws the org on its own line, alias and username apart from the text, with the badge and, when offered, "Change org…" (#480)', () => {
+
+            const panel = drawnPanel();
+            panel.postToPanel(confirmRequest({ org: { alias: 'qa', username: 'qa@example.com' }, canChangeOrg: true }));
+
+            const dialogElement = dialogOf(panel);
+            const [bodyElement] = panel.findAll(dialogElement, 'confirmBody');
+            expect(bodyElement.children.map((childElement: any) => childElement.className.split(' ')[0])).toEqual(['confirmSummary', 'confirmOrg', 'confirmWarnings', 'confirmSection', 'confirmSection']);
+
+            const [orgElement] = panel.findAll(bodyElement, 'confirmOrg');
+            expect(orgElement.children.map((childElement: any) => [childElement.className.split(' ').filter((className: string) => className.startsWith('confirm')).join(' '), childElement.textContent]))
+                .toEqual([['confirmOrgLabel', 'Org'], ['confirmOrgAlias', 'qa'], ['confirmOrgSeparator', '·'], ['confirmOrgUsername', 'qa@example.com'], ['confirmBadge', 'Sandbox'], ['confirmChangeOrg', RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL]]);
+            expect(panel.findAll(bodyElement, 'confirmOrgSeparator')[0].attributes['aria-hidden']).toBe('true');
+            expect(panel.findAll(panel.findAll(bodyElement, 'confirmSummary')[0], 'confirmBadge')).toEqual([]);
+
+            const [changeOrgElement] = panel.findAll(orgElement, 'confirmChangeOrg');
+            expect(changeOrgElement.classList.contains('sdtButton-secondary')).toBeTrue();
+
+            // IN THE TAB CYCLE, BETWEEN THE BODY AND THE SECTION TOGGLES
+            bodyElement.focus();
+            dialogElement.dispatch('keydown', { key: 'Tab' });
+            expect(panel.activeElement()).toBe(changeOrgElement);
+            dialogElement.dispatch('keydown', { key: 'Tab' });
+            expect(panel.activeElement()).toBe(panel.findAll(dialogElement, 'confirmSectionToggle')[0]);
+
+            changeOrgElement.dispatch('click');
+            expect(responses(panel)).toEqual([{ command: 'confirmResponse', confirmationId: 'c'.repeat(32), choice: null, changeOrg: true }]);
+            expect(dialogOf(panel)).toBeUndefined();
+
+        });
+
+        it('draws no alias or separator for an org without an alias, no button unless offered, and the badge in the summary with no org (#480)', () => {
+
+            const panel = drawnPanel();
+            panel.postToPanel(confirmRequest({ org: { username: 'qa@example.com' } }));
+            const [orgElement] = panel.findAll(dialogOf(panel), 'confirmOrg');
+            expect(panel.findAll(orgElement, 'confirmOrgAlias')).toEqual([]);
+            expect(panel.findAll(orgElement, 'confirmOrgSeparator')).toEqual([]);
+            expect(panel.findAll(orgElement, 'confirmOrgUsername')[0].textContent).toBe('qa@example.com');
+            expect(panel.findAll(orgElement, 'confirmChangeOrg')).toEqual([]);
+
+            panel.postToPanel(confirmRequest({ confirmationId: 'd'.repeat(32), canChangeOrg: true }));
+            expect(panel.findAll(dialogOf(panel), 'confirmOrg')).toEqual([]);
+            expect(panel.findAll(dialogOf(panel), 'confirmChangeOrg')).toEqual([]);
+            expect(panel.findAll(panel.findAll(dialogOf(panel), 'confirmSummary')[0], 'confirmBadge')[0].textContent).toBe('Sandbox');
+
+        });
+
+        it.each([
+            ['an org with no username', { alias: 'qa' }],
+            ['an org with an empty username', { username: '' }],
+            ['an alias that is not text', { alias: 7, username: 'qa@example.com' }],
+            ['an org that is not an object', 'qa@example.com']
+        ])('answers Cancel without drawing %s (#480)', (_description, org) => {
+
+            const panel = drawnPanel();
+            panel.postToPanel(confirmRequest({ org: org }));
+            expect(dialogOf(panel)).toBeUndefined();
+            expect(responses(panel)).toEqual([{ command: 'confirmResponse', confirmationId: 'c'.repeat(32), choice: null }]);
+
+        });
+
         it('answers Cancel without drawing a request for a model that is not the one on screen, or one it cannot read', () => {
 
             const panel = drawnPanel();
@@ -867,6 +1130,18 @@ describe('RecipeCockpitService, confirmations inside the panel (#349)', () => {
             expect(ruleFor('\\.confirmWarningsHeading')).toContain('color: var(--sdt-changed);');
             expect(ruleFor('\\.confirmSectionCount')).toContain('color: var(--sdt-chip-text);');
             expect(ruleFor('\\.confirmSectionToggle')).not.toContain('color');
+
+        });
+
+        // #480: accent ON surface AND muted ON surface, PAIRS THE CONTRAST TEST ALREADY HOLDS
+        it('draws the alias bold in the accent and the username in a monospace muted font, apart from the summary text (#480)', () => {
+
+            expect(ruleFor('\\.confirmOrgAlias')).toContain('font-weight: 700;');
+            expect(ruleFor('\\.confirmOrgAlias')).toContain('color: var(--sdt-accent);');
+            expect(ruleFor('\\.confirmOrgUsername')).toContain('font-family: var(--vscode-editor-font-family), monospace;');
+            expect(ruleFor('\\.confirmOrgUsername')).toContain('color: var(--sdt-muted);');
+            expect(ruleFor('\\.confirmSummary')).not.toContain('color');
+            expect(ruleFor('\\.confirmOrg')).toContain('border: 1px solid var(--sdt-border);');
 
         });
 

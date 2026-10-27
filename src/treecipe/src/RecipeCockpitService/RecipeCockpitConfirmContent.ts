@@ -3,7 +3,9 @@
     always on screen, and each SECTION is folded under its title until the reader opens it. The
     summary says what will happen and to which org (the badge, when there is one, is the org's
     type); a warning is anything with no undo or anything surprising; a section is the detail a
-    reader checks only when they want to. Every string is the host's. An empty string in a list of
+    reader checks only when they want to. The ORG, when the action has one (#480), is its own part
+    rather than words of the summary, so the panel can draw its alias and username apart from the
+    text around them. Every string is the host's. An empty string in a list of
     lines is a gap. Its own file, importing nothing, so the vscode-free helpers that word a
     confirmation can build one without importing the cockpit.
 */
@@ -13,8 +15,15 @@ export interface IRecipeCockpitConfirmSection {
     count?: number;
 }
 
+// THE ORG A CONFIRMATION ACTS ON (#480): ITS ALIAS, WHEN IT HAS ONE, AND ITS USERNAME
+export interface IRecipeCockpitConfirmOrg {
+    alias?: string;
+    username: string;
+}
+
 export interface IRecipeCockpitConfirmContent {
     summary: string[];
+    org?: IRecipeCockpitConfirmOrg;
     badge?: string;
     warnings?: string[];
     sections?: IRecipeCockpitConfirmSection[];
@@ -23,6 +32,7 @@ export interface IRecipeCockpitConfirmContent {
 // WHAT IS POSTED: EVERY PART PRESENT, NO LINE HOLDING A LINE BREAK, NO EMPTY SECTION OR BLANK WARNING
 export interface IRecipeCockpitConfirmRequestParts {
     summary: string[];
+    org?: IRecipeCockpitConfirmOrg;
     badge?: string;
     warnings: string[];
     sections: IRecipeCockpitConfirmSection[];
@@ -48,6 +58,7 @@ export class RecipeCockpitConfirmContent {
 
         return {
             summary: this.trimGaps(this.splitLines(confirmContent.summary)),
+            ...( this.buildOrg(confirmContent.org) ?? {} ),
             ...( confirmContent.badge ? { badge: confirmContent.badge } : {} ),
             warnings: this.splitLines(confirmContent.warnings ?? []).filter(warning => warning.trim() !== ''),
             sections: sections
@@ -66,9 +77,26 @@ export class RecipeCockpitConfirmContent {
 
         return [
             ...parts.summary,
+            ...( parts.org ? [`Org: ${parts.org.alias ? `${parts.org.alias} · ` : ''}${parts.org.username}`] : [] ),
             ...parts.warnings,
             ...parts.sections.flatMap(section => ['', section.count !== undefined ? `${section.title} · ${section.count}` : section.title, ...section.lines])
         ].join('\n');
+
+    }
+
+    // ONE LINE EACH, AN EMPTY ALIAS LEFT OUT, NO ORG AT ALL WITHOUT A USERNAME
+    private static buildOrg(org: IRecipeCockpitConfirmOrg | undefined): { org: IRecipeCockpitConfirmOrg } | undefined {
+
+        const toOneLine = (text: string) => text.split(/\r\n|\r|\n/).join(' ').trim();
+        const username = org ? toOneLine(org.username) : '';
+
+        if ( !org || username === '' ) {
+            return undefined;
+        }
+
+        const alias = org.alias ? toOneLine(org.alias) : '';
+
+        return { org: { ...( alias ? { alias: alias } : {} ), username: username } };
 
     }
 

@@ -52,6 +52,8 @@ import {
     RECIPE_COCKPIT_METADATA_RETRIEVE_BUSY_REFUSAL,
     RECIPE_COCKPIT_RETRIEVE_ACTION_LABELS,
     RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND,
+    RECIPE_COCKPIT_RETRIEVE_CONNECTION_FAILED_ADVICE,
+    RECIPE_COCKPIT_RETRIEVE_ORG_BUSY_REFUSAL,
     RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS,
     RECIPE_COCKPIT_TROUBLESHOOTING_ACTION_CARDS,
     RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL,
@@ -301,7 +303,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
         it('names the tree, the org, what is asked for, where new files go and what is overwritten in each kind\'s confirmation, each on one line', () => {
 
-            const fieldsDetail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('fields', 'Tree\nTwo', `prod · ${PROD_USERNAME}`, ACCOUNT_RETRIEVE_FIELDS, 'force-app', 7));
+            const fieldsDetail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('fields', 'Tree\nTwo', { alias: 'prod', username: PROD_USERNAME }, ACCOUNT_RETRIEVE_FIELDS, 'force-app', 7));
             expect(fieldsDetail).toContain('Tree: Tree Two');
             expect(fieldsDetail).toContain(`8 custom fields\n${ACCOUNT_RETRIEVE_FIELDS.join(', ')}`);
             expect(fieldsDetail).toContain('New field files are written under: force-app');
@@ -309,16 +311,16 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
             expect(fieldsDetail).toContain('Nothing is deployed.');
             expect(fieldsDetail).not.toMatch(/[()]/);
 
-            const valueSetDetail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('globalValueSets', 'T', 'o', ['Account_Ratings'], 'force-app', 0));
+            const valueSetDetail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('globalValueSets', 'T', { username: 'o' }, ['Account_Ratings'], 'force-app', 0));
             expect(valueSetDetail).toContain('1 global value set\nAccount_Ratings\n');
             expect(valueSetDetail).toContain('This project holds no global value set file for these value sets yet.');
 
-            const recordTypeDetail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('recordTypes', 'T', 'o', ['Account.Business', 'Account.Wholesale'], 'force-app', 1));
+            const recordTypeDetail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('recordTypes', 'T', { username: 'o' }, ['Account.Business', 'Account.Wholesale'], 'force-app', 1));
             expect(recordTypeDetail).toContain('2 record types\nAccount.Business, Account.Wholesale');
             expect(recordTypeDetail).toContain('1 existing local record type file for these objects will be overwritten');
 
             const longList = Array.from({ length: 25 }, (_value, index) => `Account.Field${index}__c`);
-            expect(RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('fields', 'T', 'o', longList, 'force-app', 0))).toContain('and 5 more');
+            expect(RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('fields', 'T', { username: 'o' }, longList, 'force-app', 0))).toContain('and 5 more');
 
         });
 
@@ -399,7 +401,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
         let listHandler: (argumentList: string[]) => { stdout: string; error?: unknown };
         let retrieveHandler: (argumentList: string[]) => { stdout: string; error?: unknown };
         let cancellationToken: { isCancellationRequested: boolean; onCancellationRequested: (listener: () => void) => void };
-        let promptSpy: jest.SpyInstance;
+        let promptSpy: jest.Mock;
         let modalAnswer: string | undefined;
         let workspaceState: { get: jest.Mock; update: jest.Mock };
 
@@ -497,7 +499,9 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
             jest.spyOn(VSCodeWorkspaceService, 'createStatusBarPhaseItem').mockImplementation(() => ({ text: '', dispose: jest.fn() }) as any);
             jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation((warningText: string) => { vscode.window.showWarningMessage(warningText); });
-            promptSpy = jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg').mockResolvedValue(PROD_ORG);
+            // #480: THE ORG COMES FROM resolveSelectedReadOrg (THE SELECTION, OR A PROMPT WHEN THERE IS NONE); ITS OWN TESTS ARE IN RecipeCockpitMetadataRetrieve.test.ts
+            promptSpy = jest.fn().mockResolvedValue(PROD_ORG);
+            jest.spyOn(RecipeCockpitService as any, 'resolveSelectedReadOrg').mockImplementation((...resolveArguments: unknown[]) => promptSpy(resolveArguments[3]));
 
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;
             (RecipeCockpitService as any).recipeCockpitMessageSubscription = undefined;
@@ -597,6 +601,113 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
                 '        <name>RecordType</name>'
             ].join('\n'));
             expect(notifications()[0].text).toBe(`Retrieved 2 record types for 1 of 3 objects of Account-thru-OtherChildObject__c from prod · ${PROD_USERNAME}: Account. Generate Treecipe can then use them in the recipe.`);
+
+        });
+
+        describe('the org it reads from: the Target Org Manager selection (#480)', () => {
+
+            const QA_ORG = { targetOrgIdentifier: 'qa', username: 'qa@example.com', alias: 'qa' };
+            const panelState = () => (RecipeCockpitService as any).recipeCockpitPanelState as IRecipeCockpitPanelState;
+            let selectPromptSpy: jest.SpyInstance;
+
+            beforeEach(() => {
+                jest.spyOn(RecipeCockpitService as any, 'resolveSelectedReadOrg').mockRestore();
+                selectPromptSpy = jest.spyOn(RecipeCockpitService as any, 'promptAndSelectDataOrg').mockImplementation(async (...promptArguments: any[]) => {
+                    expect((promptArguments[1] as IRecipeCockpitPanelState).isOrgPromptOpen).toBeTrue();
+                    (promptArguments[1] as IRecipeCockpitPanelState).dataOrgSelection = { orgIndex: 1, orgDetail: PROD_ORG } as any;
+                    return true;
+                });
+            });
+
+            it('retrieves from the org selected, of any type, asking nothing, and offers "Change org…" that starts the same retrieve again', async () => {
+
+                retrieveHandler = () => ({ stdout: buildRetrieveAnswer([retrievedFile('CustomField', 'Account.Rating__c')]) });
+                await openCockpit();
+                panelState().dataOrgSelection = { orgIndex: 0, orgDetail: QA_ORG, orgTypeDetail: { isSandbox: false } } as any;
+
+                await retrieve('fields');
+
+                expect(selectPromptSpy).not.toHaveBeenCalled();
+                expect(retrieveCalls()[0].slice(4, 6)).toEqual(['--target-org', 'qa@example.com']);
+
+                const [title, confirmOptions] = (RecipeCockpitService.confirmInPanel as unknown as jest.Mock).mock.calls[0];
+                expect(title).toBe('Retrieve 8 custom fields of Account-thru-OtherChildObject__c from qa · qa@example.com?');
+                expect(confirmOptions.org).toEqual({ alias: 'qa', username: 'qa@example.com' });
+                expect(confirmOptions.summary.join('\n')).not.toContain('Org:');
+                expect(confirmOptions.changeOrg).toEqual({ restartMessage: { command: 'retrieveTreeFields', treeKey: ACCOUNT_TREE_KEY }, isSandboxOnly: false });
+
+            });
+
+            it('asks once when none is selected, over the Target Org Manager listing with no sandbox rule, and the pick becomes the selection', async () => {
+
+                await openCockpit();
+                panelState().dataOrgSelection = undefined;
+
+                await retrieve('recordTypes');
+                await retrieve('validationRules');
+
+                expect(selectPromptSpy).toHaveBeenCalledTimes(1);
+                const promptArguments = selectPromptSpy.mock.calls[0];
+                expect(promptArguments.slice(4)).toEqual([RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS.recordTypes, 'Nothing was retrieved']);
+                expect(panelState().isOrgPromptOpen).toBeFalse();
+                expect(cliCalls.filter(argumentList => argumentList[2] === 'metadata').map(argumentList => argumentList[5])).toEqual([PROD_USERNAME, PROD_USERNAME]);
+
+            });
+
+            it('retrieves nothing from a selection no connection could be opened to, and says how to fix it', async () => {
+
+                await openCockpit();
+                panelState().dataOrgSelection = { orgIndex: 0, orgDetail: QA_ORG, isConnectionFailed: true } as any;
+
+                await retrieve('fields');
+
+                expect(selectPromptSpy).not.toHaveBeenCalled();
+                expect(retrieveCalls()).toEqual([]);
+                expect(notifications().map(notification => notification.text)).toEqual([`Nothing was retrieved: qa could not be connected to. ${RECIPE_COCKPIT_RETRIEVE_CONNECTION_FAILED_ADVICE}`]);
+
+            });
+
+            it('asks nothing, and retrieves nothing, when none is selected and another run holds the selection', async () => {
+
+                await openCockpit();
+                panelState().dataOrgSelection = undefined;
+                panelState().scratchOrgStateMessage = { command: 'scratchOrgState', isRunning: true } as any;
+
+                await retrieve('fields');
+
+                expect(selectPromptSpy).not.toHaveBeenCalled();
+                expect(retrieveCalls()).toEqual([]);
+                expect(notifications().map(notification => notification.text)).toEqual([RECIPE_COCKPIT_RETRIEVE_ORG_BUSY_REFUSAL]);
+
+            });
+
+            it('is a quiet cancel when the pick is dismissed', async () => {
+
+                await openCockpit();
+                panelState().dataOrgSelection = undefined;
+                selectPromptSpy.mockResolvedValueOnce(false);
+
+                await retrieve('fields');
+
+                expect(retrieveCalls()).toEqual([]);
+                expect(modalCalls()).toEqual([]);
+                expect(notifications()).toEqual([]);
+
+            });
+
+            it('never opens the command palette list of every connected org', async () => {
+
+                const paletteSpy = jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg');
+                await openCockpit();
+                panelState().dataOrgSelection = undefined;
+
+                for ( const retrieveKind of ['validationRules', 'fields', 'recordTypes', 'globalValueSets'] as MetadataRetrieveKind[] ) {
+                    await retrieve(retrieveKind);
+                }
+
+                expect(paletteSpy).not.toHaveBeenCalled();
+
+            });
 
         });
 
