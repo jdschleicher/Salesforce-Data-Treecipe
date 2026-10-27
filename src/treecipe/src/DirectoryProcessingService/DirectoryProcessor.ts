@@ -477,7 +477,64 @@ export class DirectoryProcessor {
 
     });
 
-    return fieldInfoDetails;
+    return this.orderControllingFieldsBeforeDependents(fieldInfoDetails);
+
+  }
+
+  /*
+    Fields arrive in readDirectory's order, so a dependent picklist can sort above its controller
+    (DependentPicklist__c before Picklist__c). Both backends evaluate a record's fields top to bottom:
+    faker-js then cannot find the controller's value and snowfakery picks a dependent value the
+    controller does not allow (#462). Each controller is moved directly above the first dependent it
+    controls, through a chain, matched case-insensitively as a formula is; every other field keeps its
+    place, so an object with no such dependent is written exactly as before. A cycle lists each field once,
+    and the chain is walked in a loop, so its length cannot overflow the stack.
+  */
+  orderControllingFieldsBeforeDependents(fieldInfoDetails: FieldInfo[]): FieldInfo[] {
+
+    const fieldInfoByLowerCaseName = new Map<string, FieldInfo>();
+    const fieldIndexByFieldInfo = new Map<FieldInfo, number>();
+    fieldInfoDetails.forEach((fieldInfo, fieldIndex) => {
+      fieldIndexByFieldInfo.set(fieldInfo, fieldIndex);
+      if ( typeof fieldInfo.fieldName === 'string' && !fieldInfoByLowerCaseName.has(fieldInfo.fieldName.toLowerCase()) ) {
+        fieldInfoByLowerCaseName.set(fieldInfo.fieldName.toLowerCase(), fieldInfo);
+      }
+    });
+
+    const findControllingFieldInfo = (fieldInfo: FieldInfo): FieldInfo | undefined => {
+      if ( typeof fieldInfo.controllingField !== 'string' || !fieldInfo.controllingField ) {
+        return undefined;
+      }
+      const controllingFieldInfo = fieldInfoByLowerCaseName.get(fieldInfo.controllingField.toLowerCase());
+      return controllingFieldInfo === fieldInfo ? undefined : controllingFieldInfo;
+    };
+
+    const hasDependentAboveController = fieldInfoDetails.some((fieldInfo, fieldIndex) => {
+      const controllingFieldInfo = findControllingFieldInfo(fieldInfo);
+      return controllingFieldInfo !== undefined && fieldIndexByFieldInfo.get(controllingFieldInfo) > fieldIndex;
+    });
+    if ( !hasDependentAboveController ) {
+      return fieldInfoDetails;
+    }
+
+    const orderedFieldInfos: FieldInfo[] = [];
+    const placedFieldInfos = new Set<FieldInfo>();
+    fieldInfoDetails.forEach((fieldInfo) => {
+      const unplacedChain: FieldInfo[] = [];
+      const chainFieldInfos = new Set<FieldInfo>();
+      let chainFieldInfo: FieldInfo | undefined = fieldInfo;
+      while ( chainFieldInfo !== undefined && !placedFieldInfos.has(chainFieldInfo) && !chainFieldInfos.has(chainFieldInfo) ) {
+        unplacedChain.push(chainFieldInfo);
+        chainFieldInfos.add(chainFieldInfo);
+        chainFieldInfo = findControllingFieldInfo(chainFieldInfo);
+      }
+      for ( let chainIndex = unplacedChain.length - 1; chainIndex >= 0; chainIndex-- ) {
+        placedFieldInfos.add(unplacedChain[chainIndex]);
+        orderedFieldInfos.push(unplacedChain[chainIndex]);
+      }
+    });
+
+    return orderedFieldInfos;
 
   }
 
