@@ -4686,6 +4686,14 @@ export class RecipeCockpitService {
                 ?.lockedFields
                 .filter(lockedField => !lockedField.reason.startsWith(RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX))
                 .map(lockedField => lockedField.fieldApiName) ?? []);
+            // A CONTROLLING FIELD IS FREED ONLY WHEN THIS CLICK UNTICKS EVERY TICKED DEPENDENT TOO: "Standard fields" LEAVES A CUSTOM ONE TICKED (#477)
+            const selectableFieldApiNames = new Set(this.listSelectableFieldApiNames(objectViewModel));
+            objectViewModel.fields.forEach(fieldViewModel => {
+                if ( fieldViewModel.controllingField && selectableFieldApiNames.has(fieldViewModel.fieldApiName)
+                        && !isInScope(fieldViewModel.fieldApiName) && !outOfScopeExcludedFieldApiNames.includes(fieldViewModel.fieldApiName) ) {
+                    heldFieldApiNames.add(fieldViewModel.controllingField);
+                }
+            });
             const inScopeFieldApiNames = this.listSelectableFieldApiNames(objectViewModel).filter(fieldApiName => isInScope(fieldApiName) && !heldFieldApiNames.has(fieldApiName));
             excludedFieldsByObject.set(selectionKey, new Set([...outOfScopeExcludedFieldApiNames, ...inScopeFieldApiNames]));
         }
@@ -22370,7 +22378,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             const toggleTodosOnly = function () {
                 if (toggleElement.disabled) { return; }
                 treeObjectState.isTodosOnly = !treeObjectState.isTodosOnly;
-                applyStructureFilter(treeObjectState.treeState);
+                if (treeObjectState.treeState.structureSearch) {
+                    filterTreeObjectRows(treeObjectState.treeState, treeObjectState);
+                    drawStructureMatchCount(treeObjectState.treeState);
+                }
                 drawObjectTodosToggle(treeObjectState);
                 savePanelPlace();
             };
@@ -28507,66 +28518,15 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         if (!treeState.structureSearch) { return; }
 
-        const searchQuery = treeState.searchQueries.treecipe;
-        // "Record type fields only" (#320) NARROWS WHAT THE SEARCH MATCHES: A FIELD SHOWS ONLY IF IT PASSES BOTH
-        const isRecordTypeFieldsOnly = isRecordTypeFieldsOnlyIn(treeState);
-        // "TODOs only" (#354) NARROWS THE SAME WAY, AND AN OBJECT'S OWN TODOS COUNT AS A MATCH SO IT STILL OPENS
-        const isTodosOnly = isTodosOnlyIn(treeState);
-        const isFiltered = !!searchQuery || isRecordTypeFieldsOnly || isTodosOnly;
-        let totalFieldCount = 0;
-        let matchingFieldCount = 0;
-
         drawRecordTypeFieldsToggle(treeState);
         drawTodosToggle(treeState);
 
-        treeState.objectStates.forEach(function (treeObjectState) {
-
-            const isObjectNameMatch = !searchQuery || treeObjectState.objectSearchText.indexOf(searchQuery) !== -1 || treeObjectState.friendSearchText.indexOf(searchQuery) !== -1;
-            // THE OBJECT'S OWN "TODOs only" (#477) NARROWS ITS ROWS AS THE CARD'S DOES, FOR THIS OBJECT ONLY
-            const isObjectTodosOnly = isTodosOnly || isObjectTodosOnlyIn(treeObjectState);
-            const isObjectFiltered = isFiltered || isObjectTodosOnly;
-            let objectMatchingFieldCount = 0;
-
-            treeObjectState.fieldStates.forEach(function (fieldState) {
-                fieldState.isMatch = (!isRecordTypeFieldsOnly || fieldState.recordTypeDeveloperNames !== null)
-                    && (!isObjectTodosOnly || fieldState.todos.length > 0)
-                    && (isObjectNameMatch || isFieldTextMatch(fieldState, searchQuery));
-                if (fieldState.isMatch) { objectMatchingFieldCount++; }
-                applyTreeFieldVisibility(fieldState);
-            });
-
-            const objectFieldCount = treeObjectState.fieldStates.length;
-            const hasMatchingObjectTodos = isObjectTodosOnly && !isRecordTypeFieldsOnly && isObjectNameMatch && treeObjectState.objectTodos.length > 0;
-            treeObjectState.matchingFieldCount = objectMatchingFieldCount;
-            treeObjectState.hasMatchingObjectTodos = hasMatchingObjectTodos;
-            totalFieldCount += objectFieldCount;
-            matchingFieldCount += objectMatchingFieldCount;
-
-            if (!isObjectFiltered || (isObjectNameMatch && !isRecordTypeFieldsOnly && !isObjectTodosOnly)) {
-                treeObjectState.countElement.textContent = pluralize(objectFieldCount, 'field', 'fields');
-            } else if (isObjectTodosOnly && treeObjectState.todoCount === 0) {
-                treeObjectState.countElement.textContent = 'no TODOs';
-            } else if (isObjectTodosOnly && !searchQuery && !isRecordTypeFieldsOnly) {
-                treeObjectState.countElement.textContent = pluralize(treeObjectState.todoCount, 'TODO', 'TODOs');
-            } else if (objectMatchingFieldCount > 0) {
-                treeObjectState.countElement.textContent = objectMatchingFieldCount + ' of ' + pluralize(objectFieldCount, 'field', 'fields');
-            } else if (isRecordTypeFieldsOnly && treeObjectState.recordTypeFieldCount === 0) {
-                treeObjectState.countElement.textContent = 'no record type fields';
-            } else if (hasMatchingObjectTodos) {
-                treeObjectState.countElement.textContent = pluralize(treeObjectState.objectTodos.length, 'TODO', 'TODOs') + ' on the object';
-            } else {
-                treeObjectState.countElement.textContent = 'no matching fields';
-            }
-
-        });
-
-        treeState.structureSearch.matchCountElement.textContent = !isFiltered
-            ? pluralize(totalFieldCount, 'field', 'fields')
-            : matchingFieldCount > 0 ? matchingFieldCount + ' of ' + pluralize(totalFieldCount, 'field', 'fields') : 'no matches';
+        treeState.objectStates.forEach(function (treeObjectState) { filterTreeObjectRows(treeState, treeObjectState); });
+        drawStructureMatchCount(treeState);
 
         applyRecordTypesFilter(treeState);
 
-        if (!isFiltered) {
+        if (!isStructureFilteredIn(treeState)) {
             treeState.objectStates.forEach(function (treeObjectState) { setTreeObjectExpanded(treeObjectState, treeObjectState.isExpandedByReader); });
             return;
         }
@@ -28575,6 +28535,77 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             function (treeObjectState) { return treeObjectState.matchingFieldCount + (treeObjectState.hasMatchingObjectTodos ? 1 : 0); },
             function (treeObjectState) { return treeObjectState.fieldStates.length; },
             setTreeObjectExpanded);
+
+    }
+
+    function isStructureFilteredIn(treeState) {
+        return !!treeState.searchQueries.treecipe || isRecordTypeFieldsOnlyIn(treeState) || isTodosOnlyIn(treeState);
+    }
+
+    /*
+        One object's rows and count under the card's filters and its own "TODOs only" (#477). The
+        object's own filter calls this alone, never applyStructureFilter, so a click on one object
+        neither folds nor opens any other.
+    */
+    function filterTreeObjectRows(treeState, treeObjectState) {
+
+        const searchQuery = treeState.searchQueries.treecipe;
+        // "Record type fields only" (#320) NARROWS WHAT THE SEARCH MATCHES: A FIELD SHOWS ONLY IF IT PASSES BOTH
+        const isRecordTypeFieldsOnly = isRecordTypeFieldsOnlyIn(treeState);
+        // "TODOs only" (#354), THE CARD'S OR THE OBJECT'S OWN, NARROWS THE SAME WAY, AND AN OBJECT'S OWN TODOS COUNT AS A MATCH SO IT STILL OPENS
+        const isObjectTodosOnly = isTodosOnlyIn(treeState) || isObjectTodosOnlyIn(treeObjectState);
+        const isObjectFiltered = !!searchQuery || isRecordTypeFieldsOnly || isObjectTodosOnly;
+        const isObjectNameMatch = !searchQuery || treeObjectState.objectSearchText.indexOf(searchQuery) !== -1 || treeObjectState.friendSearchText.indexOf(searchQuery) !== -1;
+        let objectMatchingFieldCount = 0;
+
+        treeObjectState.fieldStates.forEach(function (fieldState) {
+            fieldState.isMatch = (!isRecordTypeFieldsOnly || fieldState.recordTypeDeveloperNames !== null)
+                && (!isObjectTodosOnly || fieldState.todos.length > 0)
+                && (isObjectNameMatch || isFieldTextMatch(fieldState, searchQuery));
+            if (fieldState.isMatch) { objectMatchingFieldCount++; }
+            applyTreeFieldVisibility(fieldState);
+        });
+
+        const objectFieldCount = treeObjectState.fieldStates.length;
+        const hasMatchingObjectTodos = isObjectTodosOnly && !isRecordTypeFieldsOnly && isObjectNameMatch && treeObjectState.objectTodos.length > 0;
+        treeObjectState.matchingFieldCount = objectMatchingFieldCount;
+        treeObjectState.hasMatchingObjectTodos = hasMatchingObjectTodos;
+        treeObjectState.isFilteredByStructure = isObjectFiltered;
+
+        if (!isObjectFiltered || (isObjectNameMatch && !isRecordTypeFieldsOnly && !isObjectTodosOnly)) {
+            treeObjectState.countElement.textContent = pluralize(objectFieldCount, 'field', 'fields');
+        } else if (isObjectTodosOnly && treeObjectState.todoCount === 0) {
+            treeObjectState.countElement.textContent = 'no TODOs';
+        } else if (isObjectTodosOnly && !searchQuery && !isRecordTypeFieldsOnly) {
+            treeObjectState.countElement.textContent = pluralize(treeObjectState.todoCount, 'TODO', 'TODOs');
+        } else if (objectMatchingFieldCount > 0) {
+            treeObjectState.countElement.textContent = objectMatchingFieldCount + ' of ' + pluralize(objectFieldCount, 'field', 'fields');
+        } else if (isRecordTypeFieldsOnly && treeObjectState.recordTypeFieldCount === 0) {
+            treeObjectState.countElement.textContent = 'no record type fields';
+        } else if (hasMatchingObjectTodos) {
+            treeObjectState.countElement.textContent = pluralize(treeObjectState.objectTodos.length, 'TODO', 'TODOs') + ' on the object';
+        } else {
+            treeObjectState.countElement.textContent = 'no matching fields';
+        }
+
+    }
+
+    // THE TAB'S COUNT: "N of M fields" WHENEVER ANY FILTER, A CARD'S OR ONE OBJECT'S OWN, HIDES A ROW
+    function drawStructureMatchCount(treeState) {
+
+        let totalFieldCount = 0;
+        let matchingFieldCount = 0;
+        let isAnyObjectFiltered = false;
+
+        treeState.objectStates.forEach(function (treeObjectState) {
+            totalFieldCount += treeObjectState.fieldStates.length;
+            matchingFieldCount += treeObjectState.matchingFieldCount;
+            if (treeObjectState.isFilteredByStructure) { isAnyObjectFiltered = true; }
+        });
+
+        treeState.structureSearch.matchCountElement.textContent = !isAnyObjectFiltered
+            ? pluralize(totalFieldCount, 'field', 'fields')
+            : matchingFieldCount > 0 ? matchingFieldCount + ' of ' + pluralize(totalFieldCount, 'field', 'fields') : 'no matches';
 
     }
 

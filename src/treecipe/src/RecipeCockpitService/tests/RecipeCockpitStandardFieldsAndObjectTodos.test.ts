@@ -254,6 +254,34 @@ describe('RecipeCockpitService, the "Standard fields" box and an object\'s own "
 
         });
 
+        // FROM THE REVIEW OF #478: A STANDARD CONTROLLER WITH A CUSTOM DEPENDENT IS NOT STORED, SO UNTICKING THE DEPENDENT LATER CANNOT DROP IT
+        it('leaves a standard controlling field of a custom dependent out of what it stores', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            await openAndDraw(workspaceState);
+            const panelState = ( RecipeCockpitService as any ).recipeCockpitPanelState as IRecipeCockpitPanelState;
+            const subRating = objectOf(panelState.recipeDataMessage!.recipe, 'Account').fields.find(field => field.fieldApiName === 'Sub_Rating__c')!;
+            subRating.controllingField = 'Name';
+
+            await setStandard(false);
+            expect(storedOf(workspaceState)).toEqual(storedSelections({}, { [ACCOUNT_TREE_KEY]: { Account: ['ParentId', 'OwnerId'] } }));
+
+            await receivedMessageHandler({ command: 'setFieldIncluded', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Sub_Rating__c', included: false });
+            expect(postedAccountExclusions()).toEqual(['Sub_Rating__c', 'ParentId', 'OwnerId']);
+
+        });
+
+        it('still frees a controlling field through "All fields", which unticks its dependents too', async () => {
+
+            const workspaceState = buildWorkspaceState();
+            await openAndDraw(workspaceState);
+
+            await receivedMessageHandler({ command: 'setAllFieldsIncluded', treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', included: false });
+
+            expect(postedAccountExclusions()).toContain('Rating__c');
+
+        });
+
         it('writes nothing for an excluded object', async () => {
 
             const workspaceState = buildWorkspaceState({ [RECIPE_COCKPIT_OBJECT_SELECTION_STATE_KEY]: storedSelections({ [ACCOUNT_TREE_KEY]: ['Contact'] }) });
@@ -370,6 +398,31 @@ describe('RecipeCockpitService, the "Standard fields" box and an object\'s own "
 
             });
 
+            // FROM THE REVIEW OF #478: THE PANEL'S RULE IS HELD TO THE HOST'S
+            it('counts exactly the fields the host reads as standard', () => {
+
+                const names = ['Name', 'Thing__C', 'Person__pc', 'Spot__Latitude__s', 'ns__Item__c', 'Legacy_Code__c'];
+                const panel = drawRecipe(recipe => {
+                    const account = objectOf(recipe, 'Account');
+                    const template = account.fields[0];
+                    account.fields = names.map((fieldApiName, fieldIndex) => ({ ...template, fieldApiName, controllingField: '', lineNumber: 100 + fieldIndex }));
+                });
+                const standardElement = standardOf(panel, expanded(panel, 'Account'));
+                const standardNames = names.filter(fieldApiName => RecipeCockpitService.isStandardFieldApiName(fieldApiName));
+
+                expect(standardNames).toEqual(['Name', 'Person__pc', 'Spot__Latitude__s']);
+                expect(standardElement.attributes.title).toBe('Every standard field ticked — click to leave every standard field out that can be unticked');
+
+                const mixedPanel = drawRecipe(recipe => {
+                    const account = objectOf(recipe, 'Account');
+                    const template = account.fields[0];
+                    account.fields = names.map((fieldApiName, fieldIndex) => ({ ...template, fieldApiName, controllingField: '', lineNumber: 100 + fieldIndex }));
+                    untick(recipe, { Account: ['Name'] });
+                });
+                expect(standardOf(mixedPanel, expanded(mixedPanel, 'Account')).attributes.title).toBe(`2 of ${standardNames.length} standard fields ticked — click to tick every standard field`);
+
+            });
+
             it('is disabled while the object is excluded', () => {
 
                 const panel = drawRecipe(recipe => RecipeCockpitService.applyObjectSelections(recipe, new Map([[ACCOUNT_TREE_KEY, new Set(['Contact'])]]), new Map()));
@@ -431,6 +484,46 @@ describe('RecipeCockpitService, the "Standard fields" box and an object\'s own "
                 panel.typeIntoFilter('parent');
 
                 expect(panel.visibleFieldNamesOf(account)).toEqual(['ParentId']);
+
+            });
+
+            // FROM THE REVIEW OF #478: ONE OBJECT'S CLICK NEVER RE-RUNS THE CARD'S EXPAND BUDGET
+            it('folds and opens no other object, under a search or with none', () => {
+
+                const panel = drawRecipe();
+                const account = expanded(panel, 'Account');
+                const contact = expanded(panel, 'Contact');
+                panel.typeIntoFilter('name');
+                const isOpen = (objectElement: any) => !panel.isHidden(panel.objectBodyOf(objectElement));
+                const openBefore = panel.objectElements().map(isOpen);
+                panel.expandObject(contact);
+                const openAfterReader = panel.objectElements().map(isOpen);
+
+                todosOf(panel, account).dispatch('click');
+
+                expect(panel.objectElements().map(isOpen)).toEqual(openAfterReader);
+                expect(isOpen(account)).toBeTrue();
+                expect(openBefore.length).toBe(openAfterReader.length);
+
+            });
+
+            it('combines with the card-wide "TODOs only", and counts its hidden rows in the tab\'s count', () => {
+
+                const panel = drawRecipe();
+                const account = expanded(panel, 'Account');
+                const matchCount = () => panel.findAll(panel.treeCards()[0], 'tabMatchCount')[0].textContent;
+                const totalBefore = matchCount();
+
+                todosOf(panel, account).dispatch('click');
+                expect(matchCount()).not.toBe(totalBefore);
+                expect(matchCount()).toMatch(/^\d+ of /);
+
+                panel.findAll(panel.treeCards()[0], 'treeTodosToggle')[0].dispatch('click');
+                expect(panel.visibleFieldNamesOf(account)).toEqual(['Regions__c', 'ParentId', 'OwnerId']);
+
+                todosOf(panel, account).dispatch('click');
+                expect(panel.visibleFieldNamesOf(account)).toEqual(['Regions__c', 'ParentId', 'OwnerId']);
+                expect(todosOf(panel, account).attributes['aria-checked']).toBe('false');
 
             });
 
