@@ -1155,3 +1155,72 @@ describe('DirectoryProcessor FakerJS FakerService Implementation compound geoloc
   });
 
 });
+
+// #462: BOTH BACKENDS EVALUATE A RECORD'S FIELDS TOP TO BOTTOM, SO A CONTROLLER HAS TO BE WRITTEN ABOVE ITS DEPENDENTS
+describe('DirectoryProcessor.orderControllingFieldsBeforeDependents', () => {
+
+  let directoryProcessor: DirectoryProcessor;
+
+  beforeEach(() => {
+    jest.spyOn(ConfigurationService, 'getFakerImplementationByExtensionConfigSelection').mockImplementation(() => new FakerJSRecipeFakerService());
+    directoryProcessor = new DirectoryProcessor();
+  });
+
+  const buildField = (fieldName: string, controllingField?: string): FieldInfo =>
+    FieldInfo.create('Example__c', fieldName, fieldName, 'Picklist', [], controllingField, undefined, 'value');
+  const namesOf = (fieldInfos: FieldInfo[]) => fieldInfos.map(fieldInfo => fieldInfo.fieldName);
+
+  test('moves a chain of controllers above the first dependent, every other field in its place', () => {
+
+    const fieldInfos = [
+      buildField('Alpha__c'),
+      buildField('SuperDependent__c', 'DependentPicklist__c'),
+      buildField('DependentPicklist__c', 'Picklist__c'),
+      buildField('Name__c'),
+      buildField('Picklist__c'),
+      buildField('Zulu__c')
+    ];
+
+    expect(namesOf(directoryProcessor.orderControllingFieldsBeforeDependents(fieldInfos)))
+      .toEqual(['Alpha__c', 'Picklist__c', 'DependentPicklist__c', 'SuperDependent__c', 'Name__c', 'Zulu__c']);
+
+  });
+
+  test('matches the controlling field case-insensitively', () => {
+
+    const fieldInfos = [buildField('Dependent__c', 'picklist__C'), buildField('Picklist__c')];
+
+    expect(namesOf(directoryProcessor.orderControllingFieldsBeforeDependents(fieldInfos))).toEqual(['Picklist__c', 'Dependent__c']);
+
+  });
+
+  test('returns the same list when every controller is already above its dependents or is not in the block', () => {
+
+    const fieldInfos = [buildField('Picklist__c'), buildField('Dependent__c', 'Picklist__c'), buildField('Orphan__c', 'Missing__c'), buildField('Self__c', 'Self__c')];
+
+    expect(directoryProcessor.orderControllingFieldsBeforeDependents(fieldInfos)).toBe(fieldInfos);
+
+  });
+
+  test('a cycle lists each field once', () => {
+
+    const fieldInfos = [buildField('A__c', 'B__c'), buildField('Name__c'), buildField('B__c', 'A__c')];
+
+    expect(namesOf(directoryProcessor.orderControllingFieldsBeforeDependents(fieldInfos))).toEqual(['B__c', 'A__c', 'Name__c']);
+
+  });
+
+  test('a chain far longer than any object allows is ordered without overflowing the stack', () => {
+
+    const chainLength = 50000;
+    const fieldInfos = Array.from({ length: chainLength }, (unusedValue, fieldIndex) =>
+      buildField(`F${fieldIndex}__c`, fieldIndex < chainLength - 1 ? `F${fieldIndex + 1}__c` : undefined));
+
+    const orderedNames = namesOf(directoryProcessor.orderControllingFieldsBeforeDependents(fieldInfos));
+
+    expect(orderedNames[0]).toBe(`F${chainLength - 1}__c`);
+    expect(orderedNames[chainLength - 1]).toBe('F0__c');
+
+  });
+
+});
