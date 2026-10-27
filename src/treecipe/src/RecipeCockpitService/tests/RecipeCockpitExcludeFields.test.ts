@@ -1054,7 +1054,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
             });
 
-            it('is not drawn on a self-lookup\'s iteration, whose boxes follow its object', () => {
+            it('is drawn on a self-lookup\'s iteration too, which keeps fields of its own (#467)', () => {
 
                 const panel = drawRecipe(recipe => {
                     const accountObject = objectOf(recipe, 'Account');
@@ -1068,7 +1068,7 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
                 expect(panel.findAll(panel.objectBodyOf(account), 'treeFieldSelectAll')).toHaveLength(1);
                 expect(panel.findAll(panel.objectBodyOf(iteration), 'treeField').length).toBeGreaterThan(0);
-                expect(panel.findAll(panel.objectBodyOf(iteration), 'treeFieldSelectAll')).toEqual([]);
+                expect(panel.findAll(panel.objectBodyOf(iteration), 'treeFieldSelectAll')).toHaveLength(1);
 
             });
 

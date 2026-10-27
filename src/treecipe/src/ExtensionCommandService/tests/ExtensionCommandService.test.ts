@@ -2334,6 +2334,30 @@ describe('ExtensionCommandService', () => {
                     expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], validationRulesOffByObject })).toBeFalse();
                 });
 
+                // ONE OCCURRENCE'S OWN SETTINGS (#467): "<Object>\n<Nickname>", EACH PART AN API NAME, IN EVERY OBJECT-KEYED MAP
+                test('accepts occurrence keys in the unticked fields, counts, fixed values and switched-off rules (#467)', () => {
+                    const occurrenceKey = 'Account\nAccount_child_NickName';
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({
+                        recipeText: countedRecipeText,
+                        excludedObjectApiNames: [],
+                        excludedFieldApiNamesByObject: { [occurrenceKey]: ['Name'] },
+                        objectCountsByObject: { [occurrenceKey]: 3 },
+                        fixedValuesByObject: { [occurrenceKey]: { Name: 'Child Co' } },
+                        validationRulesOffByObject: { [occurrenceKey]: ['NumberOfEmployees'] }
+                    })).toBeTrue();
+                });
+
+                test.each([
+                    ['a nickname that is not an api name', 'Account\nnot a name'],
+                    ['a third key part', 'Account\nA\nB'],
+                    ['an empty nickname', 'Account\n'],
+                    ['a line of YAML for a nickname', 'Account\n- object: Evil']
+                ])('refuses an occurrence key with %s (#467)', (_description, occurrenceKey) => {
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], excludedFieldApiNamesByObject: { [occurrenceKey]: ['Name'] } })).toBeFalse();
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], objectCountsByObject: { [occurrenceKey]: 3 } })).toBeFalse();
+                    expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], fixedValuesByObject: { [occurrenceKey]: { Name: 'x' } } })).toBeFalse();
+                });
+
                 test('accepts a copy carrying only fixed values (#262)', () => {
                     expect(ExtensionCommandService.isRunFakerFilteredRecipe({ recipeText: countedRecipeText, excludedObjectApiNames: [], fixedValuesByObject: { Account: { Name: 'Acme "Ltd"', Active__c: 'true' } } })).toBeTrue();
                 });

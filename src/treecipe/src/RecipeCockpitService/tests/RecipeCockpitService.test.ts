@@ -1231,6 +1231,8 @@ describe('RecipeCockpitService', () => {
             expect(accountObject.iterations).toEqual([{
                 nickname: 'Account_child_NickName',
                 lineNumber: selfLookupLines.indexOf('      nickname: Account_child_NickName'),
+                // ITS OWN "count:", WHICH ITS COUNT BOX SETS (#467)
+                recordCount: 1,
                 parentObjectApiName: 'Account',
                 parentNickname: 'Account_NickName',
                 fields: [
@@ -1245,7 +1247,7 @@ describe('RecipeCockpitService', () => {
 
         });
 
-        it('a card lists each iteration right after its object, and counts the object\'s fields once', () => {
+        it('a card lists each iteration right under the occurrence holding it, one level deeper, and counts the object\'s fields once', () => {
 
             const objects = attachSelfLookupRecipe();
             const parentLookupsByObjectApiName = new Map([
@@ -1259,7 +1261,7 @@ describe('RecipeCockpitService', () => {
 
             expect(treeBuild.trees[0].objects).toEqual([
                 { objectApiName: 'Account', parentLookups: [{ fieldApiName: 'ParentId', parentObjectApiName: 'Account' }] },
-                { objectApiName: 'Account', parentLookups: [{ fieldApiName: 'ParentId', parentObjectApiName: 'Account' }], iterationNickname: 'Account_child_NickName' },
+                { objectApiName: 'Account', parentLookups: [{ fieldApiName: 'ParentId', parentObjectApiName: 'Account' }], iterationNickname: 'Account_child_NickName', nestingDepth: 1 },
                 { objectApiName: 'Contact', parentLookups: [{ fieldApiName: 'AccountId', parentObjectApiName: 'Account' }] }
             ]);
             expect(treeBuild.trees[0].fieldCount).toBe(4);

@@ -422,7 +422,10 @@ export const RECIPE_COCKPIT_INSERT_DATASET_COMMAND = 'treecipe.insertDataSetBySe
 export const RECIPE_COCKPIT_RUN_FAKER_COMMAND = 'treecipe.runFakerByRecipe';
 
 // A SELF-LOOKUP ITERATION'S "+" ADDS ONE OF ITS OBJECT'S FRIENDS BENEATH IT (#197)
-export const RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = '+';
+export const RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL = '+ Add friend';
+// THE DEEPEST friends: LEVEL A NESTED ROW IS INDENTED FOR (#467); A DEEPER ONE IS DRAWN AT THIS INDENT, SO A CARD NEVER RUNS OFF A NARROW PANEL
+export const RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH = 8;
+export const RECIPE_COCKPIT_NESTING_INDENT_REM = 1.25;
 export const RECIPE_COCKPIT_ADD_FRIEND_CONFIRM_LABEL = 'Add';
 export const RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL = 'Wire to…';
 // AN EMPTY LOOKUP'S TWO DECISIONS (#421), EACH NAMING THE PARENT BETWEEN ITS PREFIX AND SUFFIX
@@ -576,7 +579,8 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Excluded objects (the chain link): the object and its children are left out. A child that another included parent keeps shows a half-broken link and names the excluded parent: it is still generated, without its lookup to that parent.',
             'Unticked fields: the field is left out. All fields, above an object\'s fields, ticks or unticks them all.',
             'Record counts: each object\'s row says what is created, such as Create 5 ✎ Contact records per Account (a friend\'s count is records per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe\'s says changed.',
-            'The rules box: a field generated without the limits its validation rules set.'
+            'The rules box: a field generated without the limits its validation rules set.',
+            'Nested copies: an object written more than once, such as the copy under a self-lookup, a friend added under it or a record type block, is a row of its own, indented under the row it is nested in. Each copy keeps its own unticked fields, count, rules box and edit, so changing one leaves the others as they are. A setting saved before copies had their own still applies to every copy until you change one.'
         ]
     },
     {
@@ -588,9 +592,9 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             'Wire to… and Wire TODO lookups: fill a lookup\'s TODO with its parent\'s nickname.',
             'Create <parent> in recipe, on a lookup that is still a TODO: adds a standard parent object, such as Account, above the child that needs it. In a faker-js recipe it can instead become the parent of the child\'s whole block, which moves under it. A parent with no template, such as a custom object, draws it disabled and says why.',
             'Use existing <parent> from org…, beside it: pick any connected org, then search the parent or enter a record Id, which is checked in that org. The Id is written as the lookup\'s value and the row shows org record and the org; the insert checks the Id exists in the org it inserts into. Clear, under the pencil, puts the TODO back.',
-            '+ beside an object that looks up to itself: adds a child record under it.',
+            '+ Add friend beside the copy of an object nested under itself: adds one of the object\'s friends under that copy. The card draws each nested copy, and its friends, indented right under the row it is nested in.',
             'Remove TODO (in the Troubleshooting tab\'s TODO\'s list): takes a TODO comment out of the recipe and lists it under Removed, where Restore puts it back exactly. The line is kept in a .removedTodos.json file beside the recipe. A TODO that is a field\'s whole value, such as a lookup\'s, stays.',
-            'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.',
+            'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. On an object written more than once, it changes only the copy whose row you edit. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.',
             'Edit values (under a picklist\'s faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save: the field\'s expression is rewritten to choose only the ticked ones, by the recipe\'s own backend, and saved like an edit, so the pencil\'s Clear puts the old lines back. Cancel, × and Escape close it without saving. Each record type\'s own values are listed under the tiles; saving replaces the field\'s commented record type lines until Clear puts them back.'
         ],
         closingParagraphs: [
@@ -744,7 +748,21 @@ export interface IRecipeCockpitValidationRuleNotAppliedViewModel {
 // A FIELD OF A CARD, BY NAME
 export interface IRecipeCockpitFieldReferenceViewModel {
     objectApiName: string;
+    nickname?: string;
     fieldApiName: string;
+}
+
+/*
+    One occurrence of a card's object as its own settings see it (#467): the first, or one of its
+    iterations the card lists, with that occurrence's own field lines, values and count. nickname
+    is set for every occurrence of an object with iterations, and never for an object written once,
+    whose settings stay keyed by the object alone -- so a card with no iteration posts and stores
+    exactly what it did.
+*/
+export interface IRecipeCockpitTreeOccurrence {
+    objectApiName: string;
+    nickname?: string;
+    objectViewModel: IRecipeCockpitObjectViewModel;
 }
 
 export interface IRecipeCockpitRecordTypePicklistValuesViewModel {
@@ -782,6 +800,8 @@ export interface IRecipeCockpitObjectViewModel {
     iterations?: IRecipeCockpitObjectIterationViewModel[];
     // WRITTEN MORE THAN ONCE WITH NO NICKNAME TO TELL THE OCCURRENCES APART, SO ITS TREE ICON IS REFUSED (#219)
     hasIndistinctOccurrences?: true;
+    // HOST-ONLY, NEVER POSTED: AN ITERATION BUILT AS ITS OWN OBJECT BY buildIterationObjectViewModel (#467)
+    isIterationOccurrence?: true;
     // A FIELD OTHER THAN RecordTypeId CARRIES A RECORD-TYPE SECTION, SO RecordTypeId STAYS TICKED (#220)
     hasRecordTypeSections?: true;
     /*
@@ -845,6 +865,8 @@ export interface IRecipeCockpitObjectIterationFieldViewModel {
 export interface IRecipeCockpitObjectIterationViewModel {
     nickname: string;
     lineNumber: number;
+    // THE OCCURRENCE'S OWN ONE PLAIN WHOLE-NUMBER "count:" (#467), WHICH ITS COUNT BOX SETS
+    recordCount?: number;
     parentObjectApiName?: string;
     parentNickname?: string;
     fields: IRecipeCockpitObjectIterationFieldViewModel[];
@@ -933,6 +955,8 @@ export interface IRecipeCockpitTreeObjectViewModel {
     parentLookups: IRecipeCockpitParentLookupViewModel[];
     // SET ON THE ENTRY FOR ONE OF THE OBJECT'S iterations, WHICH THE PANEL FINDS BY THIS NICKNAME
     iterationNickname?: string;
+    // HOW MANY friends: LEVELS UNDER THE OCCURRENCE IT IS LISTED BENEATH (#467); SET ONLY ON AN ITERATION DRAWN INDENTED
+    nestingDepth?: number;
 }
 
 /*
@@ -988,6 +1012,8 @@ export interface IRecipeCockpitTreeViewModel {
 // THE VALUE THE READER TYPED FOR A FIELD (#262), OR THE "${{ ... }}" THEY EDITED (#356); kind IS THE HOST'S AND DECIDES HOW IT IS WRITTEN
 export interface IRecipeCockpitFixedValueViewModel {
     objectApiName: string;
+    // THE OCCURRENCE IT IS SET ON (#467): SET FOR EVERY ENTRY OF AN OBJECT WITH iterations, NEVER FOR ONE WITHOUT
+    nickname?: string;
     fieldApiName: string;
     value: string;
     kind: RecipeFixedValueKind;
@@ -997,6 +1023,7 @@ export interface IRecipeCockpitFixedValueViewModel {
 
 export interface IRecipeCockpitObjectCountViewModel {
     objectApiName: string;
+    nickname?: string;
     count: number;
 }
 
@@ -1014,6 +1041,7 @@ export interface IRecipeCockpitLockedFieldViewModel {
 */
 export interface IRecipeCockpitObjectFieldSelectionViewModel {
     objectApiName: string;
+    nickname?: string;
     excludedFieldApiNames: string[];
     lockedFields: IRecipeCockpitLockedFieldViewModel[];
     isEveryFieldExcluded?: true;
@@ -1183,6 +1211,7 @@ export interface IRecipeSourceObjectEntry {
 export interface IRecipeSourceObjectIterationEntry {
     nickname: string;
     lineNumber: number;
+    recordCount?: number;
     parentObjectApiName?: string;
     parentNickname?: string;
     fieldEntries: Map<string, IRecipeSourceFieldEntry>;
@@ -2612,13 +2641,13 @@ export type RecipeCockpitPanelAction =
     | { kind: 'renameDataset'; datasetFolderName: string }
     | { kind: 'toggleFavoriteDataset'; datasetFolderName: string }
     | { kind: 'setObjectIncluded'; treeKey: string; folderName: string; objectApiName: string; isIncluded: boolean }
-    | { kind: 'setFieldIncluded'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string; isIncluded: boolean }
-    | { kind: 'setAllFieldsIncluded'; treeKey: string; folderName: string; objectApiName: string; isIncluded: boolean }
+    | { kind: 'setFieldIncluded'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; isIncluded: boolean }
+    | { kind: 'setAllFieldsIncluded'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; isIncluded: boolean }
     | { kind: 'resetTreeSelection'; folderName: string }
-    | { kind: 'setObjectCount'; treeKey: string; folderName: string; objectApiName: string; count: number }
-    | { kind: 'setFieldFixedValue'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string; value: string }
-    | { kind: 'setPicklistValueChoice'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string; picklistValues: string[] }
-    | { kind: 'setFieldValidationRuleApplied'; treeKey: string; folderName: string; objectApiName: string; fieldApiName: string; isApplied: boolean }
+    | { kind: 'setObjectCount'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; count: number }
+    | { kind: 'setFieldFixedValue'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; value: string }
+    | { kind: 'setPicklistValueChoice'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; picklistValues: string[] }
+    | { kind: 'setFieldValidationRuleApplied'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; isApplied: boolean }
     | { kind: 'persistPlace'; place: IRecipeCockpitPanelPlace }
     | { kind: 'createScratchOrg' }
     | { kind: 'postScratchOrgState'; hostMessage: IRecipeCockpitScratchOrgStateMessage }
@@ -3443,7 +3472,8 @@ export class RecipeCockpitService {
                 const fieldNamesByObject = new Map<string, Set<string>>();
                 Object.keys(storedByObject).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(objectApiName => {
                     const fieldApiNames = this.normalizePlaceNames(storedByObject[objectApiName]).filter(fieldApiName => SalesforceApiName.isApiName(fieldApiName));
-                    if ( SalesforceApiName.isApiName(objectApiName) && fieldApiNames.length > 0 ) {
+                    // AN OBJECT'S KEY, OR ONE OCCURRENCE'S "<Object>\n<Nickname>" (#467)
+                    if ( SalesforceApiName.isOccurrenceKey(objectApiName) && fieldApiNames.length > 0 ) {
                         fieldNamesByObject.set(objectApiName, new Set(fieldApiNames));
                     }
                 });
@@ -3464,7 +3494,7 @@ export class RecipeCockpitService {
                 const countsByObject = new Map<string, number>();
                 Object.keys(storedByObject).slice(0, RECIPE_COCKPIT_PANEL_PLACE_MAX_ENTRIES).forEach(objectApiName => {
                     const recordCount = storedByObject[objectApiName];
-                    if ( SalesforceApiName.isApiName(objectApiName) && RecipeCockpitRecipeWriter.isRecordCount(recordCount) ) {
+                    if ( SalesforceApiName.isOccurrenceKey(objectApiName) && RecipeCockpitRecipeWriter.isRecordCount(recordCount) ) {
                         countsByObject.set(objectApiName, recordCount);
                     }
                 });
@@ -3698,7 +3728,7 @@ export class RecipeCockpitService {
             fieldApiName: entry.fieldApiName,
             restoreRequests: this.buildPinnedFieldRestoreRequests(entry, undefined)
         })));
-        const changedFieldLabels = fixedValueRead.entries.filter((_entry, entryIndex) => changedFlags[entryIndex]).map(entry => `${entry.objectApiName}.${entry.fieldApiName}`);
+        const changedFieldLabels = fixedValueRead.entries.filter((_entry, entryIndex) => changedFlags[entryIndex]).map(entry => `${this.describeOccurrence(entry.objectApiName, entry.scopeNickname)}.${entry.fieldApiName}`);
         const currentEntries = fixedValueRead.entries.filter((_entry, entryIndex) => !changedFlags[entryIndex]);
 
         return {
@@ -3838,7 +3868,7 @@ export class RecipeCockpitService {
             return RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON;
         }
 
-        const objectFieldSelection = ( tree.fieldSelection?.objects ?? [] ).find(candidate => candidate.objectApiName === objectViewModel.objectApiName);
+        const objectFieldSelection = this.findObjectFieldSelection(tree, objectViewModel);
         const lockedField = objectFieldSelection?.lockedFields.find(candidate => candidate.fieldApiName === fieldViewModel.fieldApiName);
 
         if ( lockedField ) {
@@ -3880,10 +3910,10 @@ export class RecipeCockpitService {
             return [];
         }
 
-        return this.collectSelectableObjectApiNames(objectsByApiName, tree).flatMap(objectApiName => {
+        return this.listTreeOccurrences(objectsByApiName, tree).flatMap(({ objectApiName, nickname, objectViewModel }) => {
 
-            const storedByField = storedFixedValuesByObject.get(objectApiName);
-            const objectViewModel = objectsByApiName.get(objectApiName) as IRecipeCockpitObjectViewModel;
+            // A PIN IS IN THE RECIPE FILE, SO AN OCCURRENCE OF AN OBJECT WITH iterations IS PINNED ONLY WHERE THE FILE SAYS IT IS (#467)
+            const storedByField = storedFixedValuesByObject.get(RecipeCockpitRecipeWriter.buildOccurrenceKey(objectApiName, nickname));
 
             if ( !storedByField ) {
                 return [];
@@ -3901,6 +3931,7 @@ export class RecipeCockpitService {
                     const value = storedByField.get(fieldViewModel.fieldApiName) as string;
                     return {
                         objectApiName: objectApiName,
+                        ...( nickname !== undefined ? { nickname: nickname } : {} ),
                         fieldApiName: fieldViewModel.fieldApiName,
                         value: value,
                         // AN Id IS TEXT, SO BOTH BACKENDS LOAD THE DOUBLE-QUOTED LINE AS A STRING
@@ -3912,6 +3943,168 @@ export class RecipeCockpitService {
 
         });
 
+    }
+
+    /*
+        A card's objects, each occurrence that takes its own settings once (#467): the first
+        occurrence of every selectable object, then each of its iterations the card lists, built as
+        the panel builds an iteration's row (buildIterationObjectViewModel). An object with no
+        iteration is one occurrence with no nickname.
+    */
+    /*
+        Built once per tree and objects map, and reused while both are the same: a load builds every
+        card's field selection, counts, fixed values, rule switches and allow-lists from it, and each
+        rebuilt it, copying every iteration's fields, five times per tree. onlyObjectApiName narrows a
+        message about one object to that object's occurrences, never the whole model's.
+    */
+    private static readonly treeOccurrencesByTree = new WeakMap<IRecipeCockpitTreeViewModel, { objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>; occurrences: IRecipeCockpitTreeOccurrence[] }>();
+
+    static listTreeOccurrences(objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>, tree: IRecipeCockpitTreeViewModel, onlyObjectApiName?: string): IRecipeCockpitTreeOccurrence[] {
+
+        const cached = onlyObjectApiName === undefined ? this.treeOccurrencesByTree.get(tree) : undefined;
+        if ( cached && cached.objectsByApiName === objectsByApiName ) {
+            return cached.occurrences;
+        }
+
+        const listedIterationKeys = new Set(tree.objects
+            .filter(treeObject => treeObject.iterationNickname !== undefined && ( onlyObjectApiName === undefined || treeObject.objectApiName === onlyObjectApiName ))
+            .map(treeObject => RecipeCockpitRecipeWriter.buildOccurrenceKey(treeObject.objectApiName, treeObject.iterationNickname)));
+        const objectApiNames = onlyObjectApiName === undefined
+            ? this.collectSelectableObjectApiNames(objectsByApiName, tree)
+            : this.collectSelectableObjectApiNames(objectsByApiName, tree).filter(objectApiName => objectApiName === onlyObjectApiName);
+
+        const occurrences = objectApiNames.flatMap(objectApiName => {
+            const objectViewModel = objectsByApiName.get(objectApiName) as IRecipeCockpitObjectViewModel;
+            const firstNickname = this.readOccurrenceNickname(objectViewModel);
+            return [
+                { objectApiName: objectApiName, ...( firstNickname !== undefined ? { nickname: firstNickname } : {} ), objectViewModel: objectViewModel },
+                ...( firstNickname === undefined ? [] : objectViewModel.iterations ?? [] )
+                    .filter(iteration => listedIterationKeys.has(RecipeCockpitRecipeWriter.buildOccurrenceKey(objectApiName, iteration.nickname)))
+                    .map(iteration => ({ objectApiName: objectApiName, nickname: iteration.nickname, objectViewModel: this.buildIterationObjectViewModel(objectViewModel, iteration) }))
+            ];
+        });
+
+        if ( onlyObjectApiName === undefined ) {
+            this.treeOccurrencesByTree.set(tree, { objectsByApiName: objectsByApiName, occurrences: occurrences });
+        }
+
+        return occurrences;
+
+    }
+
+    /*
+        The occurrence a setting is kept for: an object with iterations has one per nickname, one
+        without none (#467). A hand-edited recipe whose nicknames are not all api names keeps its
+        object's settings, as before #467: an occurrence key of such a nickname is one the filtered
+        copy refuses.
+    */
+    static readOccurrenceNickname(objectViewModel: IRecipeCockpitObjectViewModel): string | undefined {
+        if ( objectViewModel.isIterationOccurrence ) {
+            return objectViewModel.nickname;
+        }
+        return objectViewModel.nickname !== undefined && ( objectViewModel.iterations?.length ?? 0 ) > 0
+                && SalesforceApiName.isApiName(objectViewModel.nickname)
+                && ( objectViewModel.iterations ?? [] ).every(iteration => SalesforceApiName.isApiName(iteration.nickname))
+            ? objectViewModel.nickname
+            : undefined;
+    }
+
+    /*
+        An iteration as its own object (#467), as the panel's buildIterationObject draws its row:
+        every field of the object, with the iteration's line and value where it writes the field and
+        no line where it does not, then the fields only it writes. Its count and parent are its own.
+    */
+    static buildIterationObjectViewModel(objectViewModel: IRecipeCockpitObjectViewModel, iteration: IRecipeCockpitObjectIterationViewModel): IRecipeCockpitObjectViewModel {
+
+        // HOST-ONLY COPIES BUILT PER ITERATION ON EVERY LOAD: Object.assign AND PLAIN ASSIGNMENTS, SINCE AN ES6 TARGET TURNS OBJECT REST INTO A KEY-BY-KEY HELPER (~0.5 s AT 11,000 ITERATIONS)
+        const iterationFieldsByApiName = new Map(iteration.fields.map(iterationField => [iterationField.fieldApiName, iterationField]));
+        const objectFieldApiNames = new Set<string>();
+        const fields: IRecipeCockpitFieldViewModel[] = objectViewModel.fields.map(fieldViewModel => {
+            objectFieldApiNames.add(fieldViewModel.fieldApiName);
+            const iterationField = iterationFieldsByApiName.get(fieldViewModel.fieldApiName);
+            const occurrenceField: IRecipeCockpitFieldViewModel = Object.assign({}, fieldViewModel);
+            occurrenceField.lineNumber = iterationField?.lineNumber;
+            occurrenceField.todos = undefined;
+            if ( iterationField ) {
+                occurrenceField.recipeValue = iterationField.recipeValue;
+            }
+            return occurrenceField;
+        });
+        iteration.fields
+            .filter(iterationField => !objectFieldApiNames.has(iterationField.fieldApiName))
+            .forEach(iterationField => fields.push({
+                fieldApiName: iterationField.fieldApiName,
+                fieldLabel: '',
+                fieldType: '',
+                fieldTypeWithSize: '',
+                recipeValue: iterationField.recipeValue,
+                controllingField: '',
+                isOnlyInRecipeFile: true,
+                lineNumber: iterationField.lineNumber
+            } as IRecipeCockpitFieldViewModel));
+
+        const occurrenceObject: IRecipeCockpitObjectViewModel = Object.assign({}, objectViewModel);
+        occurrenceObject.lineNumber = iteration.lineNumber;
+        occurrenceObject.nickname = iteration.nickname;
+        occurrenceObject.isIterationOccurrence = true;
+        occurrenceObject.fields = fields;
+        occurrenceObject.recordCount = iteration.recordCount;
+        occurrenceObject.countParentObjectApiName = iteration.parentObjectApiName;
+        occurrenceObject.parentNickname = iteration.parentNickname;
+        occurrenceObject.iterations = undefined;
+        occurrenceObject.recipeNickname = undefined;
+        occurrenceObject.todos = undefined;
+
+        return occurrenceObject;
+
+    }
+
+    // THE OCCURRENCE OF THE CARD'S OBJECT A MESSAGE NAMES: ITS FIRST WITHOUT A NICKNAME, ELSE THE ONE WITH THAT NICKNAME THE CARD LISTS (#467)
+    static findTreeOccurrence(objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>,
+                                tree: IRecipeCockpitTreeViewModel,
+                                objectApiName: string,
+                                nickname: string | undefined): IRecipeCockpitTreeOccurrence | undefined {
+
+        const occurrences = this.listTreeOccurrences(objectsByApiName, tree, objectApiName);
+        if ( nickname === undefined ) {
+            return occurrences[0];
+        }
+        // AN OBJECT WRITTEN ONCE KEEPS NO NICKNAME FOR ITS SETTINGS, BUT A MESSAGE MAY STILL NAME THE ONE IT IS DRAWN WITH
+        return occurrences.find(occurrence => occurrence.nickname === nickname)
+            ?? ( occurrences.length === 1 && occurrences[0].nickname === undefined && occurrences[0].objectViewModel.nickname === nickname ? occurrences[0] : undefined );
+
+    }
+
+    // AN OCCURRENCE'S OWN STORED ENTRY, ELSE ITS OBJECT'S -- AN ENTRY STORED BEFORE #467 APPLIES TO EVERY OCCURRENCE
+    static pickStoredForOccurrence<T>(storedByKey: ReadonlyMap<string, T> | undefined, objectApiName: string, nickname: string | undefined): T | undefined {
+        const occurrenceKey = RecipeCockpitRecipeWriter.buildOccurrenceKey(objectApiName, nickname);
+        return nickname !== undefined && storedByKey?.has(occurrenceKey) ? storedByKey.get(occurrenceKey) : storedByKey?.get(objectApiName);
+    }
+
+    /*
+        Before one occurrence's entry is written, an entry its object holds from before #467 -- which
+        applies to every occurrence -- is copied to each occurrence that has none and dropped, so
+        changing one occurrence leaves every other exactly as it was, and no later write can fall back
+        to it.
+    */
+    static splitObjectWideEntry<T>(storedByKey: Map<string, T>, objectApiName: string, occurrenceNicknames: readonly string[], copyEntry: (entry: T) => T): void {
+        if ( !storedByKey.has(objectApiName) ) {
+            return;
+        }
+        const objectWideEntry = storedByKey.get(objectApiName) as T;
+        occurrenceNicknames.forEach(occurrenceNickname => {
+            const occurrenceKey = RecipeCockpitRecipeWriter.buildOccurrenceKey(objectApiName, occurrenceNickname);
+            if ( !storedByKey.has(occurrenceKey) ) {
+                storedByKey.set(occurrenceKey, copyEntry(objectWideEntry));
+            }
+        });
+        storedByKey.delete(objectApiName);
+    }
+
+    // THE FIELD SELECTION THE HOST DECIDED FOR ONE OCCURRENCE (#467), OR ITS OBJECT'S WHEN THE OBJECT HAS ONE OCCURRENCE
+    static findObjectFieldSelection(tree: IRecipeCockpitTreeViewModel, objectViewModel: IRecipeCockpitObjectViewModel): IRecipeCockpitObjectFieldSelectionViewModel | undefined {
+        const nickname = this.readOccurrenceNickname(objectViewModel);
+        return ( tree.fieldSelection?.objects ?? [] ).find(candidate => candidate.objectApiName === objectViewModel.objectApiName && candidate.nickname === nickname);
     }
 
     // WHETHER THE CARD GENERATES THE FIELD WITH AN ORG RECORD'S Id (#421)
@@ -3938,14 +4131,15 @@ export class RecipeCockpitService {
 
     }
 
-    // WHAT A CARD GENERATES WITH, BY OBJECT THEN FIELD
+    // WHAT A CARD GENERATES WITH, BY OBJECT -- OR OCCURRENCE KEY, FOR AN OBJECT WITH iterations (#467) -- THEN FIELD
     static listFixedValuesByObject(tree: IRecipeCockpitTreeViewModel | undefined): Map<string, Map<string, IRecipeFixedValue>> {
 
         const fixedValuesByObject = new Map<string, Map<string, IRecipeFixedValue>>();
         ( tree?.fixedValues ?? [] ).forEach(fixedValue => {
-            const fixedValuesByField = fixedValuesByObject.get(fixedValue.objectApiName) ?? new Map<string, IRecipeFixedValue>();
+            const occurrenceKey = RecipeCockpitRecipeWriter.buildOccurrenceKey(fixedValue.objectApiName, fixedValue.nickname);
+            const fixedValuesByField = fixedValuesByObject.get(occurrenceKey) ?? new Map<string, IRecipeFixedValue>();
             fixedValuesByField.set(fixedValue.fieldApiName, { value: fixedValue.value, kind: fixedValue.kind });
-            fixedValuesByObject.set(fixedValue.objectApiName, fixedValuesByField);
+            fixedValuesByObject.set(occurrenceKey, fixedValuesByField);
         });
         return fixedValuesByObject;
 
@@ -3967,7 +4161,7 @@ export class RecipeCockpitService {
             return RECIPE_COCKPIT_FIXED_VALUE_OBJECT_EXCLUDED_REASON;
         }
 
-        const objectFieldSelection = ( tree.fieldSelection?.objects ?? [] ).find(candidate => candidate.objectApiName === objectViewModel.objectApiName);
+        const objectFieldSelection = this.findObjectFieldSelection(tree, objectViewModel);
         const lockedField = objectFieldSelection?.lockedFields.find(candidate => candidate.fieldApiName === fieldViewModel.fieldApiName);
 
         if ( lockedField?.reason === RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON ) {
@@ -3976,7 +4170,8 @@ export class RecipeCockpitService {
         if ( objectFieldSelection?.excludedFieldApiNames.includes(fieldViewModel.fieldApiName) ) {
             return RECIPE_COCKPIT_FIXED_VALUE_UNTICKED_REASON;
         }
-        if ( ( tree.fixedValues ?? [] ).some(fixedValue => fixedValue.objectApiName === objectViewModel.objectApiName && fixedValue.fieldApiName === fieldViewModel.fieldApiName) ) {
+        if ( ( tree.fixedValues ?? [] ).some(fixedValue => fixedValue.objectApiName === objectViewModel.objectApiName && fixedValue.nickname === this.readOccurrenceNickname(objectViewModel)
+                                                            && fixedValue.fieldApiName === fieldViewModel.fieldApiName) ) {
             return RECIPE_COCKPIT_VALIDATION_RULE_FIXED_VALUE_REASON;
         }
         return undefined;
@@ -3992,6 +4187,50 @@ export class RecipeCockpitService {
         const fieldViewModel = objectViewModel?.fields.find(candidateField => candidateField.fieldApiName === fieldApiName && candidateField.lineNumber !== undefined);
 
         return tree && objectViewModel && fieldViewModel ? { tree: tree, objectViewModel: objectViewModel, fieldViewModel: fieldViewModel } : undefined;
+
+    }
+
+    /*
+        The occurrence of a card's object a panel message names (#467), as the model on screen draws
+        it: no nickname is the object's first occurrence; a nickname must be one of its occurrences the
+        card lists. nickname in the answer is the one its settings are kept by -- undefined for an
+        object written once.
+    */
+    static resolvePostedOccurrence(recipeViewModel: IRecipeCockpitRecipeViewModel | undefined, treeKey: string, objectApiName: string, postedNickname: unknown):
+        { tree: IRecipeCockpitTreeViewModel; occurrence: IRecipeCockpitTreeOccurrence } | undefined {
+
+        if ( !recipeViewModel || ( postedNickname !== undefined && typeof postedNickname !== 'string' ) ) {
+            return undefined;
+        }
+
+        const tree = recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === treeKey);
+        const occurrence = tree ? this.findTreeOccurrence(this.buildObjectsByApiName(recipeViewModel), tree, objectApiName, postedNickname as string | undefined) : undefined;
+
+        return tree && occurrence ? { tree: tree, occurrence: occurrence } : undefined;
+
+    }
+
+    // HOW A DIALOG OR NOTIFICATION NAMES ONE OCCURRENCE: "Account · Account_child_NickName", OR THE OBJECT ALONE -- NO PARENTHESES, WHICH A NOTIFICATION ESCAPES
+    static describeOccurrence(objectApiName: string, nickname: string | undefined): string {
+        return nickname === undefined ? objectApiName : `${objectApiName} · ${nickname}`;
+    }
+
+    // THE nickname AN ACTION CARRIES: SET ONLY FOR AN OCCURRENCE OF AN OBJECT WITH iterations, SO AN OBJECT WRITTEN ONCE ROUTES AS IT DID
+    static withOccurrenceNickname(occurrence: IRecipeCockpitTreeOccurrence): { nickname?: string } {
+        return occurrence.nickname !== undefined ? { nickname: occurrence.nickname } : {};
+    }
+
+    // A FIELD OF ONE OCCURRENCE AS THE MODEL ON SCREEN DRAWS IT -- WITH A LINE IN THAT OCCURRENCE -- AND THE OBJECT'S OWN FIELD, WHICH HOLDS WHAT GENERATE TREECIPE WROTE
+    static findDrawnOccurrenceField(recipeViewModel: IRecipeCockpitRecipeViewModel | undefined, treeKey: string, objectApiName: string, postedNickname: unknown, fieldApiName: string):
+        { tree: IRecipeCockpitTreeViewModel; occurrence: IRecipeCockpitTreeOccurrence; objectViewModel: IRecipeCockpitObjectViewModel; fieldViewModel: IRecipeCockpitFieldViewModel; generatedFieldViewModel: IRecipeCockpitFieldViewModel } | undefined {
+
+        const resolved = this.resolvePostedOccurrence(recipeViewModel, treeKey, objectApiName, postedNickname);
+        const fieldViewModel = resolved?.occurrence.objectViewModel.fields.find(candidateField => candidateField.fieldApiName === fieldApiName && candidateField.lineNumber !== undefined);
+        const generatedFieldViewModel = recipeViewModel?.objects.find(candidateObject => candidateObject.objectApiName === objectApiName)?.fields.find(candidateField => candidateField.fieldApiName === fieldApiName);
+
+        return resolved && fieldViewModel
+            ? { tree: resolved.tree, occurrence: resolved.occurrence, objectViewModel: resolved.occurrence.objectViewModel, fieldViewModel: fieldViewModel, generatedFieldViewModel: generatedFieldViewModel ?? fieldViewModel }
+            : undefined;
 
     }
 
@@ -4012,10 +4251,9 @@ export class RecipeCockpitService {
             return [];
         }
 
-        return this.collectSelectableObjectApiNames(objectsByApiName, tree).flatMap(objectApiName => {
+        return this.listTreeOccurrences(objectsByApiName, tree).flatMap(({ objectApiName, nickname, objectViewModel }) => {
 
-            const objectViewModel = objectsByApiName.get(objectApiName) as IRecipeCockpitObjectViewModel;
-            const storedFieldApiNames = storedRulesOffByObject.get(objectApiName);
+            const storedFieldApiNames = this.pickStoredForOccurrence(storedRulesOffByObject, objectApiName, nickname);
             const listedFieldApiNames = new Set<string>();
 
             // THE CHEAP "IS IT SWITCHED OFF" TEST FIRST, SO A CARD WITH NOTHING OFF NEVER SCANS ITS FIELDS FOR DUPLICATES
@@ -4025,7 +4263,7 @@ export class RecipeCockpitService {
                                             && !listedFieldApiNames.has(fieldViewModel.fieldApiName)
                                             && this.findValidationRuleLockReason(tree, objectViewModel, fieldViewModel) === undefined
                                             && !!listedFieldApiNames.add(fieldViewModel.fieldApiName))
-                .map(fieldViewModel => ({ objectApiName: objectApiName, fieldApiName: fieldViewModel.fieldApiName }));
+                .map(fieldViewModel => ({ objectApiName: objectApiName, ...( nickname !== undefined ? { nickname: nickname } : {} ), fieldApiName: fieldViewModel.fieldApiName }));
 
         });
 
@@ -4045,9 +4283,10 @@ export class RecipeCockpitService {
                     || validationRules.recipeValue === validationRules.unconstrainedRecipeValue ) {
                 return;
             }
-            const valuesByField = unconstrainedValuesByObject.get(fieldReference.objectApiName) ?? new Map<string, IRecipeUnconstrainedValue>();
+            const occurrenceKey = RecipeCockpitRecipeWriter.buildOccurrenceKey(fieldReference.objectApiName, fieldReference.nickname);
+            const valuesByField = unconstrainedValuesByObject.get(occurrenceKey) ?? new Map<string, IRecipeUnconstrainedValue>();
             valuesByField.set(fieldReference.fieldApiName, { constrainedValue: validationRules.recipeValue, unconstrainedValue: validationRules.unconstrainedRecipeValue });
-            unconstrainedValuesByObject.set(fieldReference.objectApiName, valuesByField);
+            unconstrainedValuesByObject.set(occurrenceKey, valuesByField);
         });
 
         return unconstrainedValuesByObject;
@@ -4176,24 +4415,29 @@ export class RecipeCockpitService {
             return [];
         }
 
-        return this.collectSelectableObjectApiNames(objectsByApiName, tree)
-            .filter(objectApiName => {
-                const recordCount = objectsByApiName.get(objectApiName)?.recordCount;
-                const storedCount = storedCountsByObject.get(objectApiName);
-                return recordCount !== undefined && storedCount !== undefined && storedCount !== recordCount;
-            })
-            .map(objectApiName => ({ objectApiName: objectApiName, count: storedCountsByObject.get(objectApiName) as number }));
+        // A COUNT STORED BEFORE #467 WAS THE FIRST OCCURRENCE'S "count:" AND NEVER AN ITERATION'S, SO IT STILL IS
+        return this.listTreeOccurrences(objectsByApiName, tree)
+            .map(({ objectApiName, nickname, objectViewModel }) => ({
+                objectApiName: objectApiName,
+                nickname: nickname,
+                recordCount: objectViewModel.recordCount,
+                storedCount: objectViewModel.isIterationOccurrence
+                    ? storedCountsByObject.get(RecipeCockpitRecipeWriter.buildOccurrenceKey(objectApiName, nickname))
+                    : this.pickStoredForOccurrence(storedCountsByObject, objectApiName, nickname)
+            }))
+            .filter(({ recordCount, storedCount }) => recordCount !== undefined && storedCount !== undefined && storedCount !== recordCount)
+            .map(({ objectApiName, nickname, storedCount }) => ({ objectApiName: objectApiName, ...( nickname !== undefined ? { nickname: nickname } : {} ), count: storedCount as number }));
 
     }
 
-    // WHAT A CARD GENERATES WITH: ITS CHANGED COUNTS, NEVER AN EXCLUDED OBJECT'S, WHICH IS NOT GENERATED AT ALL
+    // WHAT A CARD GENERATES WITH: ITS CHANGED COUNTS, BY OBJECT OR OCCURRENCE KEY (#467), NEVER AN EXCLUDED OBJECT'S, WHICH IS NOT GENERATED AT ALL
     static listObjectCountsByObject(tree: IRecipeCockpitTreeViewModel | undefined): Map<string, number> {
 
         const excludedObjectApiNames = new Set(this.listExcludedObjectApiNames(tree));
 
         return new Map(( tree?.objectCounts ?? [] )
             .filter(objectCount => !excludedObjectApiNames.has(objectCount.objectApiName))
-            .map(objectCount => [objectCount.objectApiName, objectCount.count]));
+            .map(objectCount => [RecipeCockpitRecipeWriter.buildOccurrenceKey(objectCount.objectApiName, objectCount.nickname), objectCount.count]));
 
     }
 
@@ -4258,8 +4502,11 @@ export class RecipeCockpitService {
 
         const isEveryFieldExcluded = excludedFieldApiNames.length > 0 && selectableFieldApiNames.every(fieldApiName => !isTickedForGeneration(fieldApiName));
 
+        const nickname = this.readOccurrenceNickname(objectViewModel);
+
         return {
             objectApiName: objectViewModel.objectApiName,
+            ...( nickname !== undefined ? { nickname: nickname } : {} ),
             excludedFieldApiNames: excludedFieldApiNames,
             lockedFields: lockedFields,
             ...( isEveryFieldExcluded ? { isEveryFieldExcluded: true as const } : {} )
@@ -4278,10 +4525,10 @@ export class RecipeCockpitService {
             parentExcludedFieldsByObject.set(disabledLookup.objectApiName, parentExcludedFieldApiNames);
         });
 
-        const objectFieldSelections = this.collectSelectableObjectApiNames(objectsByApiName, tree)
-            .map(objectApiName => this.buildObjectFieldSelection(
-                objectsByApiName.get(objectApiName) as IRecipeCockpitObjectViewModel,
-                storedFieldsByObject?.get(objectApiName),
+        const objectFieldSelections = this.listTreeOccurrences(objectsByApiName, tree)
+            .map(({ objectApiName, nickname, objectViewModel }) => this.buildObjectFieldSelection(
+                objectViewModel,
+                this.pickStoredForOccurrence(storedFieldsByObject, objectApiName, nickname),
                 parentExcludedFieldsByObject.get(objectApiName) ?? new Set()
             ))
             .filter((objectFieldSelection): objectFieldSelection is IRecipeCockpitObjectFieldSelectionViewModel => !!objectFieldSelection);
@@ -4290,14 +4537,31 @@ export class RecipeCockpitService {
 
     }
 
-    // EVERY FIELD A CARD LEAVES OUT OF GENERATION BY OBJECT, NEVER AN EXCLUDED OBJECT'S, WHICH GOES WHOLE
+    /*
+        Every field a card leaves out of generation by object, never an excluded object's, which goes
+        whole. An object with iterations lists every field ANY of its occurrences leaves out (#467):
+        what the insert's readiness reads, which refuses an unticked field the org requires wherever
+        it is unticked.
+    */
     static listExcludedFieldApiNamesByObject(tree: IRecipeCockpitTreeViewModel | undefined): Map<string, string[]> {
+
+        const excludedFieldApiNamesByObject = new Map<string, string[]>();
+        this.listExcludedFieldApiNamesByOccurrence(tree).forEach((fieldApiNames, occurrenceKey) => {
+            const objectApiName = RecipeCockpitRecipeWriter.parseOccurrenceKey(occurrenceKey).objectApiName;
+            excludedFieldApiNamesByObject.set(objectApiName, [...new Set([...( excludedFieldApiNamesByObject.get(objectApiName) ?? [] ), ...fieldApiNames])]);
+        });
+        return excludedFieldApiNamesByObject;
+
+    }
+
+    // WHAT THE FILTERED COPY LEAVES OUT, BY OBJECT OR, FOR AN OBJECT WITH iterations, BY OCCURRENCE KEY (#467)
+    static listExcludedFieldApiNamesByOccurrence(tree: IRecipeCockpitTreeViewModel | undefined): Map<string, string[]> {
 
         const excludedObjectApiNames = new Set(this.listExcludedObjectApiNames(tree));
 
         return new Map(( tree?.fieldSelection?.objects ?? [] )
             .filter(objectFieldSelection => objectFieldSelection.excludedFieldApiNames.length > 0 && !excludedObjectApiNames.has(objectFieldSelection.objectApiName))
-            .map(objectFieldSelection => [objectFieldSelection.objectApiName, [...objectFieldSelection.excludedFieldApiNames]]));
+            .map(objectFieldSelection => [RecipeCockpitRecipeWriter.buildOccurrenceKey(objectFieldSelection.objectApiName, objectFieldSelection.nickname), [...objectFieldSelection.excludedFieldApiNames]]));
 
     }
 
@@ -4337,14 +4601,14 @@ export class RecipeCockpitService {
                                             panelState: IRecipeCockpitPanelState,
                                             panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setFieldIncluded' }>) {
 
-        const tree = panelState.recipeDataMessage?.recipe.trees.find(candidateTree => candidateTree.treeKey === panelAction.treeKey);
+        const resolved = this.resolvePostedOccurrence(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname);
+        const tree = resolved?.tree;
 
         if ( !tree || this.listExcludedObjectApiNames(tree).includes(panelAction.objectApiName) ) {
             return;
         }
 
-        const isLocked = ( tree.fieldSelection?.objects ?? [] )
-            .find(objectFieldSelection => objectFieldSelection.objectApiName === panelAction.objectApiName)
+        const isLocked = this.findObjectFieldSelection(tree, resolved.occurrence.objectViewModel)
             ?.lockedFields.some(lockedField => lockedField.fieldApiName === panelAction.fieldApiName);
 
         if ( !panelAction.isIncluded && isLocked ) {
@@ -4353,14 +4617,15 @@ export class RecipeCockpitService {
 
         const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
         const excludedFieldsByObject = treeSelections.excludedFieldApiNamesByFolderName.get(panelAction.folderName) ?? new Map<string, Set<string>>();
-        const excludedFieldApiNames = excludedFieldsByObject.get(panelAction.objectApiName) ?? new Set<string>();
+        const selectionKey = this.prepareOccurrenceSelectionKey(excludedFieldsByObject, panelState, tree, panelAction.objectApiName, panelAction.nickname, fieldApiNames => new Set(fieldApiNames));
+        const excludedFieldApiNames = excludedFieldsByObject.get(selectionKey) ?? new Set<string>();
 
         if ( panelAction.isIncluded ) {
             excludedFieldApiNames.delete(panelAction.fieldApiName);
         } else {
             excludedFieldApiNames.add(panelAction.fieldApiName);
         }
-        excludedFieldsByObject.set(panelAction.objectApiName, excludedFieldApiNames);
+        excludedFieldsByObject.set(selectionKey, excludedFieldApiNames);
         treeSelections.excludedFieldApiNamesByFolderName.set(panelAction.folderName, excludedFieldsByObject);
 
         await this.saveAndPostTreeSelections(cockpitPanel, panelState, panelAction.folderName, treeSelections);
@@ -4377,8 +4642,9 @@ export class RecipeCockpitService {
                                                 panelState: IRecipeCockpitPanelState,
                                                 panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setAllFieldsIncluded' }>) {
 
-        const tree = panelState.recipeDataMessage?.recipe.trees.find(candidateTree => candidateTree.treeKey === panelAction.treeKey);
-        const objectViewModel = panelState.recipeDataMessage?.recipe.objects.find(candidateObject => candidateObject.objectApiName === panelAction.objectApiName);
+        const resolved = this.resolvePostedOccurrence(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname);
+        const tree = resolved?.tree;
+        const objectViewModel = resolved?.occurrence.objectViewModel;
 
         if ( !tree || !objectViewModel || this.listExcludedObjectApiNames(tree).includes(panelAction.objectApiName) ) {
             return;
@@ -4386,16 +4652,16 @@ export class RecipeCockpitService {
 
         const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
         const excludedFieldsByObject = treeSelections.excludedFieldApiNamesByFolderName.get(panelAction.folderName) ?? new Map<string, Set<string>>();
+        const selectionKey = this.prepareOccurrenceSelectionKey(excludedFieldsByObject, panelState, tree, panelAction.objectApiName, panelAction.nickname, fieldApiNames => new Set(fieldApiNames));
 
         if ( panelAction.isIncluded ) {
-            excludedFieldsByObject.delete(panelAction.objectApiName);
+            excludedFieldsByObject.delete(selectionKey);
         } else {
-            const heldFieldApiNames = new Set(( tree.fieldSelection?.objects ?? [] )
-                .find(objectFieldSelection => objectFieldSelection.objectApiName === panelAction.objectApiName)
+            const heldFieldApiNames = new Set(this.findObjectFieldSelection(tree, objectViewModel)
                 ?.lockedFields
                 .filter(lockedField => !lockedField.reason.startsWith(RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX))
                 .map(lockedField => lockedField.fieldApiName) ?? []);
-            excludedFieldsByObject.set(panelAction.objectApiName, new Set(this.listSelectableFieldApiNames(objectViewModel).filter(fieldApiName => !heldFieldApiNames.has(fieldApiName))));
+            excludedFieldsByObject.set(selectionKey, new Set(this.listSelectableFieldApiNames(objectViewModel).filter(fieldApiName => !heldFieldApiNames.has(fieldApiName))));
         }
         treeSelections.excludedFieldApiNamesByFolderName.set(panelAction.folderName, excludedFieldsByObject);
 
@@ -4411,14 +4677,20 @@ export class RecipeCockpitService {
                                         panelState: IRecipeCockpitPanelState,
                                         panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setObjectCount' }>) {
 
-        const recordCount = panelState.recipeDataMessage?.recipe.objects.find(candidateObject => candidateObject.objectApiName === panelAction.objectApiName)?.recordCount;
+        const resolved = this.resolvePostedOccurrence(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname);
+        if ( !resolved ) {
+            return;
+        }
+
+        const recordCount = resolved.occurrence.objectViewModel.recordCount;
         const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
         const countsByObject = treeSelections.objectCountsByFolderName.get(panelAction.folderName) ?? new Map<string, number>();
+        const selectionKey = this.prepareOccurrenceSelectionKey(countsByObject, panelState, resolved.tree, panelAction.objectApiName, panelAction.nickname, storedCount => storedCount, true);
 
         if ( panelAction.count === recordCount ) {
-            countsByObject.delete(panelAction.objectApiName);
+            countsByObject.delete(selectionKey);
         } else {
-            countsByObject.set(panelAction.objectApiName, panelAction.count);
+            countsByObject.set(selectionKey, panelAction.count);
         }
         treeSelections.objectCountsByFolderName.set(panelAction.folderName, countsByObject);
 
@@ -4443,7 +4715,7 @@ export class RecipeCockpitService {
                                             edit: RecipeCockpitFieldEdit = 'fixedValue') {
 
         const drawnField = this.recipeCockpitPanelState === panelState
-            ? this.findDrawnField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.fieldApiName)
+            ? this.findDrawnOccurrenceField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname, panelAction.fieldApiName)
             : undefined;
         const isOrgRecordValue = !!drawnField && this.isOrgRecordFixedValue(drawnField.tree, panelAction.objectApiName, panelAction.fieldApiName);
         if ( !drawnField || drawnField.tree.folderName !== panelAction.folderName || drawnField.fieldViewModel.lineNumber === undefined
@@ -4477,9 +4749,10 @@ export class RecipeCockpitService {
 
         let writeRefusal: string | undefined;
         await this.runRecipeLookupWrite(cockpitPanel, panelState, panelAction.treeKey, async () => {
+            // A PIN OF AN OBJECT WITH iterations IS WRITTEN INTO THE ROW'S OCCURRENCE ALONE (#467)
             const writeOutcome = panelAction.value === ''
-                ? await this.clearFixedValueFromRecipe(recipeFilePath, panelState.workspaceRoot, drawnField.objectViewModel, drawnField.fieldViewModel)
-                : await this.writeFixedValueToRecipe(recipeFilePath, panelState.workspaceRoot, panelAction.objectApiName, panelAction.fieldApiName, { value: panelAction.value, kind: this.resolveFixedValueKind(panelAction.value, drawnField.fieldViewModel) });
+                ? await this.clearFixedValueFromRecipe(recipeFilePath, panelState.workspaceRoot, drawnField.objectViewModel, drawnField.generatedFieldViewModel, panelAction.nickname)
+                : await this.writeFixedValueToRecipe(recipeFilePath, panelState.workspaceRoot, panelAction.objectApiName, panelAction.fieldApiName, { value: panelAction.value, kind: this.resolveFixedValueKind(panelAction.value, drawnField.fieldViewModel) }, panelAction.nickname);
             writeRefusal = writeOutcome.refusal;
             return writeOutcome.isWritten;
         });
@@ -4502,14 +4775,15 @@ export class RecipeCockpitService {
                                                 panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setPicklistValueChoice' }>) {
 
         const drawnField = this.recipeCockpitPanelState === panelState
-            ? this.findDrawnField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.fieldApiName)
+            ? this.findDrawnOccurrenceField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname, panelAction.fieldApiName)
             : undefined;
         const declaredPicklistValues = panelState.picklistDisplayValuesByObjectApiName.get(panelAction.objectApiName)?.get(panelAction.fieldApiName)?.picklistValues;
         if ( !drawnField || !declaredPicklistValues ) {
             return;
         }
 
-        const hasEdit = ( drawnField.tree.fixedValues ?? [] ).some(fixedValue => fixedValue.objectApiName === panelAction.objectApiName && fixedValue.fieldApiName === panelAction.fieldApiName);
+        const occurrenceNickname = drawnField.occurrence.nickname;
+        const hasEdit = ( drawnField.tree.fixedValues ?? [] ).some(fixedValue => fixedValue.objectApiName === panelAction.objectApiName && fixedValue.nickname === occurrenceNickname && fixedValue.fieldApiName === panelAction.fieldApiName);
         // WHAT GENERATION CHOSE FROM -- NARROWER THAN THE DECLARED VALUES WHEN A VALIDATION RULE OR A SELECTED RECORD TYPE NARROWED IT
         // A LINE THAT IS NOT A CHOICE THE BACKEND BUILDS SAYS NOTHING, SO IT IS TAKEN AS THE DECLARED VALUES, WHICH THE TILES START FROM
         const generatedChoice = this.readGeneratedPicklistChoice(drawnField.fieldViewModel, declaredPicklistValues) ?? declaredPicklistValues;
@@ -4610,23 +4884,26 @@ export class RecipeCockpitService {
                                                     workspaceRoot: string,
                                                     objectApiName: string,
                                                     fieldApiName: string,
-                                                    fixedValue: IRecipeFixedValue): Promise<{ isWritten: boolean; refusal?: string }> {
+                                                    fixedValue: IRecipeFixedValue,
+                                                    scopeNickname?: string): Promise<{ isWritten: boolean; refusal?: string }> {
 
         const fixedValueFilePath = RecipeCockpitFixedValueStore.buildFilePath(recipeFilePath);
         const recipeFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath));
         const fixedValueFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(fixedValueFilePath));
-        const fieldLabel = `${RecipeYamlScalar.escapeForNotification(objectApiName)}.${RecipeYamlScalar.escapeForNotification(fieldApiName)}`;
+        const fieldLabel = `${RecipeYamlScalar.escapeForNotification(this.describeOccurrence(objectApiName, scopeNickname))}.${RecipeYamlScalar.escapeForNotification(fieldApiName)}`;
 
-        const planned = this.planFixedValueWrite(recipeFilePath, workspaceRoot, objectApiName, fieldApiName, fixedValue);
+        const planned = this.planFixedValueWrite(recipeFilePath, workspaceRoot, objectApiName, fieldApiName, fixedValue, undefined, scopeNickname);
         if ( 'refusal' in planned ) {
             return { isWritten: false, refusal: planned.refusal };
         }
 
         const editLabel = fixedValue.kind === 'expression' ? 'an edited faker expression' : 'a fixed value';
+        const dialogFieldLabel = `${this.describeOccurrence(objectApiName, scopeNickname)}.${fieldApiName}`;
+        const whereWritten = scopeNickname === undefined ? `on every ${objectApiName} in it` : `on that ${objectApiName} only, every other ${objectApiName} in it keeping its own value`;
         const confirmation = await this.confirmInPanel(
-            `Write ${editLabel} into ${objectApiName}.${fieldApiName}?`,
+            `Write ${editLabel} into ${dialogFieldLabel}?`,
             {
-                summary: [`This writes to "${path.basename(recipeFilePath)}": ${objectApiName}.${fieldApiName} becomes ${RecipeCockpitRecipeWriter.toFixedValueScalar(fixedValue)} on every ${objectApiName} in it, so Run Faker by Recipe generates it from the palette too. Every other line of the file is left as it is.`],
+                summary: [`This writes to "${path.basename(recipeFilePath)}": ${dialogFieldLabel} becomes ${RecipeCockpitRecipeWriter.toFixedValueScalar(fixedValue)} ${whereWritten}, so Run Faker by Recipe generates it from the palette too. Every other line of the file is left as it is.`],
                 sections: [
                     { title: 'How Clear puts it back', lines: [`The lines it replaces are kept in "${path.basename(fixedValueFilePath)}" beside the recipe, so Clear can put them back exactly.`] }
                 ]
@@ -4639,7 +4916,7 @@ export class RecipeCockpitService {
         }
 
         // PLANNED AGAIN AFTER THE MODAL: EITHER FILE CAN HAVE CHANGED WHILE IT WAS OPEN
-        const confirmed = this.planFixedValueWrite(recipeFilePath, workspaceRoot, objectApiName, fieldApiName, fixedValue);
+        const confirmed = this.planFixedValueWrite(recipeFilePath, workspaceRoot, objectApiName, fieldApiName, fixedValue, undefined, scopeNickname);
         if ( 'refusal' in confirmed ) {
             return { isWritten: false, refusal: confirmed.refusal };
         }
@@ -4659,7 +4936,8 @@ export class RecipeCockpitService {
                                         objectApiName: string,
                                         fieldApiName: string,
                                         fixedValue: IRecipeFixedValue,
-                                        orgRecord?: IFixedValueOrgRecord): { recipeText: string; entries: IFixedValueEntry[] } | { refusal: string } {
+                                        orgRecord?: IFixedValueOrgRecord,
+                                        scopeNickname?: string): { recipeText: string; entries: IFixedValueEntry[] } | { refusal: string } {
 
         const fixedValueFilePath = RecipeCockpitFixedValueStore.buildFilePath(recipeFilePath);
         const located = this.readFixedValueTarget(recipeFilePath, fixedValueFilePath, workspaceRoot);
@@ -4667,7 +4945,7 @@ export class RecipeCockpitService {
             return located;
         }
 
-        const pinResult = RecipeCockpitRecipeWriter.pinField(located.recipeText, objectApiName, fieldApiName, fixedValue);
+        const pinResult = RecipeCockpitRecipeWriter.pinField(located.recipeText, objectApiName, fieldApiName, fixedValue, scopeNickname);
         if ( 'refusal' in pinResult ) {
             return { refusal: `Not saved: ${pinResult.refusal.message}` };
         }
@@ -4676,6 +4954,7 @@ export class RecipeCockpitService {
             recipeText: pinResult.recipeText,
             entries: RecipeCockpitFixedValueStore.upsertEntry(located.entries, {
                 objectApiName: objectApiName,
+                ...( scopeNickname !== undefined ? { scopeNickname: scopeNickname } : {} ),
                 fieldApiName: fieldApiName,
                 value: fixedValue.value,
                 ...( orgRecord ? { orgRecord: orgRecord } : {} ),
@@ -4927,21 +5206,22 @@ export class RecipeCockpitService {
     private static async clearFixedValueFromRecipe(recipeFilePath: string,
                                                     workspaceRoot: string,
                                                     objectViewModel: IRecipeCockpitObjectViewModel,
-                                                    fieldViewModel: IRecipeCockpitFieldViewModel): Promise<{ isWritten: boolean; refusal?: string }> {
+                                                    fieldViewModel: IRecipeCockpitFieldViewModel,
+                                                    occurrenceNickname?: string): Promise<{ isWritten: boolean; refusal?: string }> {
 
         const fixedValueFilePath = RecipeCockpitFixedValueStore.buildFilePath(recipeFilePath);
         const recipeFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath));
         const fixedValueFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(fixedValueFilePath));
-        const fieldLabel = `${RecipeYamlScalar.escapeForNotification(objectViewModel.objectApiName)}.${RecipeYamlScalar.escapeForNotification(fieldViewModel.fieldApiName)}`;
+        const fieldLabel = `${RecipeYamlScalar.escapeForNotification(this.describeOccurrence(objectViewModel.objectApiName, occurrenceNickname))}.${RecipeYamlScalar.escapeForNotification(fieldViewModel.fieldApiName)}`;
         const fallbackValueText = this.resolveFixedValueFallback(recipeFilePath, workspaceRoot, objectViewModel.objectApiName, fieldViewModel);
 
-        const planned = this.planFixedValueClear(recipeFilePath, workspaceRoot, objectViewModel.objectApiName, fieldViewModel.fieldApiName, fallbackValueText);
+        const planned = this.planFixedValueClear(recipeFilePath, workspaceRoot, objectViewModel.objectApiName, fieldViewModel.fieldApiName, fallbackValueText, occurrenceNickname);
         if ( 'refusal' in planned ) {
             return { isWritten: false, refusal: planned.refusal };
         }
 
         // THE DIALOG WRITES ITS TEXT WITH textContent (#349): NOT ESCAPED THERE, AS THE NOTIFICATIONS STILL ARE
-        const dialogFieldLabel = `${objectViewModel.objectApiName}.${fieldViewModel.fieldApiName}`;
+        const dialogFieldLabel = `${this.describeOccurrence(objectViewModel.objectApiName, occurrenceNickname)}.${fieldViewModel.fieldApiName}`;
         const confirmation = await this.confirmInPanel(
             `Clear the edit of ${dialogFieldLabel}?`,
             {
@@ -4962,7 +5242,7 @@ export class RecipeCockpitService {
             return { isWritten: false, refusal: RECIPE_COCKPIT_FIELD_EDIT_CANCELLED_REFUSAL };
         }
 
-        const confirmed = this.planFixedValueClear(recipeFilePath, workspaceRoot, objectViewModel.objectApiName, fieldViewModel.fieldApiName, fallbackValueText);
+        const confirmed = this.planFixedValueClear(recipeFilePath, workspaceRoot, objectViewModel.objectApiName, fieldViewModel.fieldApiName, fallbackValueText, occurrenceNickname);
         if ( 'refusal' in confirmed ) {
             return { isWritten: false, refusal: confirmed.refusal };
         }
@@ -4984,7 +5264,8 @@ export class RecipeCockpitService {
                                         workspaceRoot: string,
                                         objectApiName: string,
                                         fieldApiName: string,
-                                        fallbackValueText: string | undefined): { recipeText: string; entries: IFixedValueEntry[]; isRederived: boolean; previewText: string } | { refusal: string } {
+                                        fallbackValueText: string | undefined,
+                                        occurrenceNickname?: string): { recipeText: string; entries: IFixedValueEntry[]; isRederived: boolean; previewText: string } | { refusal: string } {
 
         const fixedValueFilePath = RecipeCockpitFixedValueStore.buildFilePath(recipeFilePath);
         const located = this.readFixedValueTarget(recipeFilePath, fixedValueFilePath, workspaceRoot);
@@ -4992,7 +5273,8 @@ export class RecipeCockpitService {
             return located;
         }
 
-        const entry = RecipeCockpitFixedValueStore.findEntry(located.entries, objectApiName, fieldApiName);
+        // THE PIN THIS ROW HOLDS (#467): ITS OCCURRENCE'S OWN, ELSE ONE OF EVERY OCCURRENCE, WHICH CLEAR PUTS BACK EVERYWHERE IT WROTE
+        const entry = RecipeCockpitFixedValueStore.findHoldingEntry(located.entries, objectApiName, fieldApiName, occurrenceNickname);
         if ( !entry ) {
             return { refusal: `Not saved: "${path.basename(fixedValueFilePath)}" holds no fixed value for ${objectApiName}.${fieldApiName}.` };
         }
@@ -5002,14 +5284,19 @@ export class RecipeCockpitService {
             return { refusal: `Not saved: "${path.basename(fixedValueFilePath)}" has no recorded lines for ${objectApiName}.${fieldApiName}, and there is no value Generate Treecipe wrote for it to put back instead.` };
         }
 
-        const restoreResult = RecipeCockpitRecipeWriter.restorePinnedField(located.recipeText, objectApiName, fieldApiName, this.buildPinnedFieldRestoreRequests(entry, fallbackValueText));
+        // A PIN OF EVERY OCCURRENCE NEVER PUTS BACK ONE AN OCCURRENCE'S OWN PIN HOLDS NOW
+        const scopedNicknames = located.entries
+            .filter(candidate => candidate.objectApiName === objectApiName && candidate.fieldApiName === fieldApiName && candidate.scopeNickname !== undefined)
+            .map(candidate => candidate.scopeNickname as string);
+        const restoreResult = RecipeCockpitRecipeWriter.restorePinnedField(located.recipeText, objectApiName, fieldApiName, this.buildPinnedFieldRestoreRequests(entry, fallbackValueText),
+                                                                            entry.scopeNickname !== undefined, scopedNicknames);
         if ( 'refusal' in restoreResult ) {
             return { refusal: `Not saved: ${restoreResult.refusal.message}` };
         }
 
         return {
             recipeText: restoreResult.recipeText,
-            entries: RecipeCockpitFixedValueStore.removeEntry(located.entries, objectApiName, fieldApiName),
+            entries: RecipeCockpitFixedValueStore.removeEntry(located.entries, objectApiName, fieldApiName, entry.scopeNickname),
             isRederived: isRederived,
             // WHAT THE MODAL SHOWS: THE FIRST RECORDED LINES, ELSE THE RE-DERIVED VALUE -- A CHANGE ONLY TO THE FIXED-VALUES FILE IS NOT PUT BACK UNSEEN
             previewText: entry.occurrences.find(occurrence => occurrence.originalText !== undefined)?.originalText ?? `${fieldApiName}: ${fallbackValueText}`
@@ -5363,14 +5650,50 @@ export class RecipeCockpitService {
                                                         panelState: IRecipeCockpitPanelState,
                                                         panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setFieldValidationRuleApplied' }>) {
 
+        const resolved = this.resolvePostedOccurrence(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname);
+        if ( !resolved ) {
+            return;
+        }
+
         const treeSelections = this.readTreeSelections(this.recipeCockpitWorkspaceState);
-        this.setStoredValidationRuleOff(treeSelections, panelAction.folderName, panelAction.objectApiName, panelAction.fieldApiName, !panelAction.isApplied);
+        const rulesOffByObject = treeSelections.validationRulesOffByFolderName.get(panelAction.folderName) ?? new Map<string, Set<string>>();
+        const selectionKey = this.prepareOccurrenceSelectionKey(rulesOffByObject, panelState, resolved.tree, panelAction.objectApiName, panelAction.nickname, fieldApiNames => new Set(fieldApiNames));
+        treeSelections.validationRulesOffByFolderName.set(panelAction.folderName, rulesOffByObject);
+        this.setStoredValidationRuleOff(treeSelections, panelAction.folderName, selectionKey, panelAction.fieldApiName, !panelAction.isApplied);
 
         // THE RULES SHAPE A VALUE, NEVER WHICH FIELDS THE INSERT SENDS, SO THE ORG'S READINESS NEED NOT BE CHECKED AGAIN
         await this.saveAndPostTreeSelections(cockpitPanel, panelState, panelAction.folderName, treeSelections, false);
 
     }
 
+    /*
+        The key one occurrence's setting is stored under (#467): its object's for an object written
+        once, else "<Object>\n<Nickname>", after splitting off an entry its object holds from before
+        #467 so every other occurrence keeps what it had.
+    */
+    static prepareOccurrenceSelectionKey<T>(storedByKey: Map<string, T>,
+                                            panelState: IRecipeCockpitPanelState,
+                                            tree: IRecipeCockpitTreeViewModel,
+                                            objectApiName: string,
+                                            nickname: string | undefined,
+                                            copyEntry: (entry: T) => T,
+                                            isFirstOccurrenceOnly = false): string {
+
+        if ( nickname === undefined || !panelState.recipeDataMessage ) {
+            return objectApiName;
+        }
+
+        // A COUNT STORED BEFORE #467 MEANT THE FIRST OCCURRENCE ONLY, SO IT IS SPLIT ONTO THAT ONE ALONE
+        const occurrenceNicknames = this.listTreeOccurrences(this.buildObjectsByApiName(panelState.recipeDataMessage.recipe), tree, objectApiName)
+            .filter(occurrence => occurrence.nickname !== undefined && !( isFirstOccurrenceOnly && occurrence.objectViewModel.isIterationOccurrence ))
+            .map(occurrence => occurrence.nickname as string);
+        this.splitObjectWideEntry(storedByKey, objectApiName, occurrenceNicknames, copyEntry);
+
+        return RecipeCockpitRecipeWriter.buildOccurrenceKey(objectApiName, nickname);
+
+    }
+
+    // objectApiName IS THE KEY THE SETTING IS STORED UNDER: AN OBJECT, OR AN OCCURRENCE'S KEY (#467)
     static setStoredValidationRuleOff(treeSelections: IRecipeCockpitTreeSelections, folderName: string, objectApiName: string, fieldApiName: string, isOff: boolean) {
 
         const rulesOffByObject = treeSelections.validationRulesOffByFolderName.get(folderName) ?? new Map<string, Set<string>>();
@@ -5391,18 +5714,22 @@ export class RecipeCockpitService {
                                     treeKey: string,
                                     objectApiName: string,
                                     fieldApiName: string,
-                                    declaredPicklistValues: readonly string[]): { treeKey?: string; chosenPicklistValues?: string[]; isOtherEdit?: true } {
+                                    declaredPicklistValues: readonly string[],
+                                    nickname?: string): { treeKey?: string; chosenPicklistValues?: string[]; isOtherEdit?: true } {
 
         const tree = recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === treeKey);
         if ( !tree ) {
             return {};
         }
 
-        const fixedValue = ( tree.fixedValues ?? [] ).find(candidate => candidate.objectApiName === objectApiName && candidate.fieldApiName === fieldApiName);
-        const fieldViewModel = recipeViewModel.objects.find(candidateObject => candidateObject.objectApiName === objectApiName)?.fields.find(candidateField => candidateField.fieldApiName === fieldApiName);
-        if ( !fieldViewModel ) {
+        // THE OCCURRENCE THE TILES WERE OPENED ON (#467): ITS OWN EDIT AND ITS OWN GENERATED LINE
+        const drawnField = this.findDrawnOccurrenceField(recipeViewModel, treeKey, objectApiName, nickname, fieldApiName);
+        if ( !drawnField ) {
             return { treeKey: treeKey };
         }
+        const fieldViewModel = drawnField.fieldViewModel;
+        const occurrenceNickname = drawnField.occurrence.nickname;
+        const fixedValue = ( tree.fixedValues ?? [] ).find(candidate => candidate.objectApiName === objectApiName && candidate.nickname === occurrenceNickname && candidate.fieldApiName === fieldApiName);
         if ( !fixedValue ) {
             const generatedChoice = this.readGeneratedPicklistChoice(fieldViewModel, declaredPicklistValues);
             return generatedChoice ? { treeKey: treeKey, chosenPicklistValues: generatedChoice } : { treeKey: treeKey };
@@ -5676,7 +6003,7 @@ export class RecipeCockpitService {
                                         recipeViewModel: IRecipeCockpitRecipeViewModel): IRecipeCockpitRunFakerFilteredRecipe | { refusalMessage: string } {
 
         const excludedObjectApiNames = this.listExcludedObjectApiNames(tree);
-        const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByObject(tree);
+        const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByOccurrence(tree);
         const objectCountsByObject = this.listObjectCountsByObject(tree);
         const fixedValuesByObject = this.listFixedValuesByObject(tree);
         const unconstrainedValuesByObject = this.listUnconstrainedValuesByObject(recipeViewModel, tree);
@@ -5825,9 +6152,10 @@ export class RecipeCockpitService {
 
             if ( tree.folderName !== '' ) {
                 treeHistoryAllowLists.nameableTreeKeys.add(tree.treeKey);
-                this.collectSelectableObjectApiNames(objectsByApiName, tree).forEach(objectApiName => {
+                // EVERY OCCURRENCE'S FIELDS (#467): A FIELD ONLY AN ITERATION WRITES HAS A CHECKBOX ON THAT ROW
+                this.listTreeOccurrences(objectsByApiName, tree).forEach(({ objectApiName, objectViewModel }) => {
                     treeHistoryAllowLists.selectableObjectKeys.add(this.buildSelectableObjectKey(tree.treeKey, objectApiName));
-                    this.listSelectableFieldApiNames(objectsByApiName.get(objectApiName) as IRecipeCockpitObjectViewModel)
+                    this.listSelectableFieldApiNames(objectViewModel)
                         .forEach(fieldApiName => treeHistoryAllowLists.selectableFieldKeys.add(this.buildSelectableFieldKey(tree.treeKey, objectApiName, fieldApiName)));
                 });
             }
@@ -8526,12 +8854,41 @@ export class RecipeCockpitService {
     static listTreeDeployObjects(recipeViewModel: IRecipeCockpitRecipeViewModel, tree: IRecipeCockpitTreeViewModel): IMetadataDeployObject[] {
 
         const insertObjectApiNames = new Set(this.listTreeInsertObjectApiNames(recipeViewModel, tree));
-        const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByObject(tree);
+        const objectsByApiName = this.buildObjectsByApiName(recipeViewModel);
+        /*
+            A field is left out of a deploy only when EVERY occurrence of its object leaves it out
+            (#467): one occurrence still sending it needs it in the org. Occurrences and selections are
+            each indexed once, so the list stays linear in the tree.
+        */
+        const occurrenceCountsByObject = new Map<string, number>();
+        tree.objects.forEach(treeObject => {
+            const objectViewModel = objectsByApiName.get(treeObject.objectApiName);
+            const isOwnOccurrence = treeObject.iterationNickname === undefined || ( !!objectViewModel && this.readOccurrenceNickname(objectViewModel) !== undefined );
+            if ( isOwnOccurrence ) {
+                occurrenceCountsByObject.set(treeObject.objectApiName, ( occurrenceCountsByObject.get(treeObject.objectApiName) ?? 0 ) + 1);
+            }
+        });
+        const exclusionsByObject = new Map<string, string[][]>();
+        ( tree.fieldSelection?.objects ?? [] ).forEach(objectFieldSelection => {
+            const exclusions = exclusionsByObject.get(objectFieldSelection.objectApiName) ?? [];
+            exclusions.push(objectFieldSelection.excludedFieldApiNames);
+            exclusionsByObject.set(objectFieldSelection.objectApiName, exclusions);
+        });
+        const listExcludedEverywhere = (objectApiName: string): string[] => {
+            const exclusions = exclusionsByObject.get(objectApiName) ?? [];
+            if ( exclusions.length === 0 || exclusions.length < ( occurrenceCountsByObject.get(objectApiName) ?? 1 ) ) {
+                return [];
+            }
+            return exclusions.reduce((excludedEverywhere, excludedHere) => {
+                const excludedHereSet = new Set(excludedHere);
+                return excludedEverywhere.filter(fieldApiName => excludedHereSet.has(fieldApiName));
+            });
+        };
 
         return recipeViewModel.objects
             .filter(objectViewModel => insertObjectApiNames.has(objectViewModel.objectApiName))
             .map(objectViewModel => {
-                const excludedFieldApiNames = new Set(excludedFieldApiNamesByObject.get(objectViewModel.objectApiName) ?? []);
+                const excludedFieldApiNames = new Set(listExcludedEverywhere(objectViewModel.objectApiName));
                 return {
                     objectApiName: objectViewModel.objectApiName,
                     fieldApiNames: objectViewModel.fields
@@ -10900,7 +11257,10 @@ export class RecipeCockpitService {
             }
         });
         // A FIELD EDITED ON THE TREECIPE TAB (#342, #356) HOLDS ITS EDIT IN THE RECIPE FILE, WHICH WINS OVER THE WRAPPER'S EXPRESSION
-        const recipeFileEditsByFieldKey = new Map(( tree.fixedValues ?? [] ).map(fixedValue => [`${fixedValue.objectApiName}\n${fixedValue.fieldApiName}`, fixedValue] as const));
+        // THE OBJECT'S FIRST OCCURRENCE'S EDIT: A LATER OCCURRENCE'S OWN (#467) IS NOT WHAT THE ADAPTER'S ONE ROW PER OBJECT SHOWS
+        const recipeFileEditsByFieldKey = new Map(( tree.fixedValues ?? [] )
+            .filter(fixedValue => fixedValue.nickname === undefined || fixedValue.nickname === objectViewModelsByApiName.get(fixedValue.objectApiName)?.nickname)
+            .map(fixedValue => [`${fixedValue.objectApiName}\n${fixedValue.fieldApiName}`, fixedValue] as const));
 
         for ( const fieldRequest of fieldRequests ) {
 
@@ -14375,10 +14735,16 @@ export class RecipeCockpitService {
     // THE LOOKUPS SET TO AN EXISTING ORG RECORD (#421) THAT THE INSERT SENDS: ONLY AN OBJECT IT INSERTS, AND ONLY WHAT NO LOCK HOLDS BACK
     static listTreeInsertOrgRecordLookups(tree: IRecipeCockpitTreeViewModel, insertObjectApiNames: ReadonlySet<string>): IRecipeCockpitOrgRecordLookupViewModel[] {
 
+        // AN ORG RECORD'S PIN HOLDS EVERY OCCURRENCE, SO AN OBJECT WITH iterations LISTS IT PER OCCURRENCE (#467); IT IS ONE LOOKUP
+        const listedFieldKeys = new Set<string>();
         return ( tree.fixedValues ?? [] ).flatMap(fixedValue => {
-            const orgRecordLookup = fixedValue.orgRecord && insertObjectApiNames.has(fixedValue.objectApiName)
+            const fieldKey = `${fixedValue.objectApiName}\n${fixedValue.fieldApiName}`;
+            const orgRecordLookup = fixedValue.orgRecord && insertObjectApiNames.has(fixedValue.objectApiName) && !listedFieldKeys.has(fieldKey)
                 ? this.findOrgRecordLookup(tree, fixedValue.objectApiName, fixedValue.fieldApiName, fixedValue.value)
                 : undefined;
+            if ( orgRecordLookup ) {
+                listedFieldKeys.add(fieldKey);
+            }
             return orgRecordLookup ? [orgRecordLookup] : [];
         });
 
@@ -14625,17 +14991,24 @@ export class RecipeCockpitService {
 
         const objectLines = [...recordTotalsByObject].map(([objectApiName, objectTotal]) => {
             const objectViewModel = objectsByApiName.get(objectApiName);
-            const perParentCount = objectCountsByObject.get(objectApiName) ?? objectViewModel?.recordCount;
+            // THE FIRST OCCURRENCE'S COUNT: ITS OWN KEY'S FOR AN OBJECT WITH iterations (#467)
+            const firstNickname = objectViewModel ? this.readOccurrenceNickname(objectViewModel) : undefined;
+            const perParentCount = objectCountsByObject.get(RecipeCockpitRecipeWriter.buildOccurrenceKey(objectApiName, firstNickname)) ?? objectViewModel?.recordCount;
             const perParentText = objectViewModel?.countParentObjectApiName && perParentCount !== undefined
                 ? ` (${perParentCount} per ${objectViewModel.countParentObjectApiName})`
                 : '';
             return `  ${objectApiName}: ${objectTotal}${perParentText}`;
         });
-        const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByObject(tree);
+        // AN OCCURRENCE'S OWN CHANGE NAMES IT (#467)
+        const describeKey = (occurrenceKey: string) => {
+            const { objectApiName, nickname } = RecipeCockpitRecipeWriter.parseOccurrenceKey(occurrenceKey);
+            return this.describeOccurrence(objectApiName, nickname);
+        };
+        const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByOccurrence(tree);
         // AN ORG RECORD'S Id IS LISTED ON ITS OWN LINE, WITH THE ORG IT CAME FROM
         const fixedValues = ( tree.fixedValues ?? [] ).filter(fixedValue => !fixedValue.orgRecord);
         const validationRulesOff = [...this.listUnconstrainedValuesByObject(recipeViewModel, tree)]
-            .flatMap(([objectApiName, valuesByField]) => [...valuesByField.keys()].map(fieldApiName => `${objectApiName}.${fieldApiName}`));
+            .flatMap(([occurrenceKey, valuesByField]) => [...valuesByField.keys()].map(fieldApiName => `${describeKey(occurrenceKey)}.${fieldApiName}`));
 
         const orgTypeLabel = SalesforceOrgService.buildOrgTypeLabel(orgTypeDetail, orgDisplayDetail);
 
@@ -14668,10 +15041,10 @@ export class RecipeCockpitService {
                     title: 'Fields changed on this card',
                     lines: [
                         ...( excludedFieldApiNamesByObject.size > 0
-                            ? [`Unticked, not sent: ${[...excludedFieldApiNamesByObject].map(([objectApiName, fieldApiNames]) => fieldApiNames.map(fieldApiName => `${objectApiName}.${fieldApiName}`).join(', ')).join(', ')}`]
+                            ? [`Unticked, not sent: ${[...excludedFieldApiNamesByObject].map(([occurrenceKey, fieldApiNames]) => fieldApiNames.map(fieldApiName => `${describeKey(occurrenceKey)}.${fieldApiName}`).join(', ')).join(', ')}`]
                             : [] ),
                         ...( fixedValues.length > 0
-                            ? [`Edited fields: ${fixedValues.map(fixedValue => `${fixedValue.objectApiName}.${fixedValue.fieldApiName} = ${fixedValue.value}`).join(', ')}`]
+                            ? [`Edited fields: ${fixedValues.map(fixedValue => `${this.describeOccurrence(fixedValue.objectApiName, fixedValue.nickname)}.${fixedValue.fieldApiName} = ${fixedValue.value}`).join(', ')}`]
                             : [] )
                     ]
                 },
@@ -14908,10 +15281,11 @@ export class RecipeCockpitService {
             */
             case 'loadPicklistValues': {
 
-                const { objectApiName, fieldApiName, treeKey } = panelMessage;
+                const { objectApiName, fieldApiName, treeKey, nickname } = panelMessage;
 
                 if ( typeof objectApiName !== 'string' || typeof fieldApiName !== 'string' || !panelState.recipeDataMessage
-                        || ( treeKey !== undefined && typeof treeKey !== 'string' ) ) {
+                        || ( treeKey !== undefined && typeof treeKey !== 'string' )
+                        || ( nickname !== undefined && typeof nickname !== 'string' ) ) {
                     return undefined;
                 }
 
@@ -14931,7 +15305,8 @@ export class RecipeCockpitService {
                         picklistValues: picklistDisplayValues.picklistValues,
                         recordTypePicklistValues: picklistDisplayValues.recordTypePicklistValues,
                         renderSequence: panelState.recipeDataMessage.renderSequence,
-                        ...( typeof treeKey === 'string' ? this.readPicklistValueChoice(panelState.recipeDataMessage.recipe, treeKey, objectApiName, fieldApiName, picklistDisplayValues.picklistValues) : {} )
+                        ...( typeof nickname === 'string' ? { nickname: nickname } : {} ),
+                        ...( typeof treeKey === 'string' ? this.readPicklistValueChoice(panelState.recipeDataMessage.recipe, treeKey, objectApiName, fieldApiName, picklistDisplayValues.picklistValues, typeof nickname === 'string' ? nickname : undefined) : {} )
                     }
                 };
 
@@ -15421,16 +15796,12 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                const recipeViewModel = panelState.recipeDataMessage.recipe;
-                const drawnNickname = recipeViewModel.objects.find(objectViewModel => objectViewModel.objectApiName === objectApiName)?.nickname;
-                if ( nickname !== undefined && nickname !== drawnNickname ) {
-                    return undefined;
-                }
-
-                const folderName = recipeViewModel.trees.find(tree => tree.treeKey === treeKey)?.folderName;
+                // THE OCCURRENCE THE ROW DRAWS (#467): ITS FIELD MUST HAVE A LINE THERE
+                const drawnField = this.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
+                const folderName = drawnField?.tree.folderName;
 
                 return folderName
-                    ? { kind: 'setFieldIncluded', treeKey: treeKey, folderName: folderName, objectApiName: objectApiName, fieldApiName: fieldApiName, isIncluded: included }
+                    ? { kind: 'setFieldIncluded', treeKey: treeKey, folderName: folderName, objectApiName: objectApiName, ...this.withOccurrenceNickname(drawnField.occurrence), fieldApiName: fieldApiName, isIncluded: included }
                     : undefined;
 
             }
@@ -15447,15 +15818,10 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                const recipeViewModel = panelState.recipeDataMessage.recipe;
-                const drawnNickname = recipeViewModel.objects.find(objectViewModel => objectViewModel.objectApiName === objectApiName)?.nickname;
-                if ( nickname !== undefined && nickname !== drawnNickname ) {
-                    return undefined;
-                }
+                const resolved = this.resolvePostedOccurrence(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname);
+                const folderName = resolved?.tree.folderName;
 
-                const folderName = recipeViewModel.trees.find(tree => tree.treeKey === treeKey)?.folderName;
-
-                return folderName ? { kind: 'setAllFieldsIncluded', treeKey: treeKey, folderName: folderName, objectApiName: objectApiName, isIncluded: included } : undefined;
+                return folderName ? { kind: 'setAllFieldsIncluded', treeKey: treeKey, folderName: folderName, objectApiName: objectApiName, ...this.withOccurrenceNickname(resolved.occurrence), isIncluded: included } : undefined;
 
             }
 
@@ -15476,15 +15842,15 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                const recipeViewModel = panelState.recipeDataMessage.recipe;
-                const objectViewModel = recipeViewModel.objects.find(candidateObject => candidateObject.objectApiName === objectApiName);
-                const tree = recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === treeKey);
-                if ( !objectViewModel || objectViewModel.recordCount === undefined || ( nickname !== undefined && nickname !== objectViewModel.nickname )
+                // THE OCCURRENCE'S OWN "count:" (#467): A LATER ONE'S IS ITS OWN, NEVER THE FIRST'S
+                const resolved = this.resolvePostedOccurrence(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname);
+                const tree = resolved?.tree;
+                if ( !resolved || resolved.occurrence.objectViewModel.recordCount === undefined
                         || !tree?.folderName || this.listExcludedObjectApiNames(tree).includes(objectApiName) ) {
                     return undefined;
                 }
 
-                return { kind: 'setObjectCount', treeKey: treeKey, folderName: tree.folderName, objectApiName: objectApiName, count: count };
+                return { kind: 'setObjectCount', treeKey: treeKey, folderName: tree.folderName, objectApiName: objectApiName, ...this.withOccurrenceNickname(resolved.occurrence), count: count };
 
             }
 
@@ -15508,17 +15874,14 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                const recipeViewModel = panelState.recipeDataMessage.recipe;
-                const objectViewModel = recipeViewModel.objects.find(candidateObject => candidateObject.objectApiName === objectApiName);
-                const fieldViewModel = objectViewModel?.fields.find(candidateField => candidateField.fieldApiName === fieldApiName && candidateField.lineNumber !== undefined);
-                const tree = recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === treeKey);
+                const drawnField = this.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
 
-                if ( !objectViewModel || !fieldViewModel || !tree?.folderName || ( nickname !== undefined && nickname !== objectViewModel.nickname )
-                        || this.findFixedValueLockReason(tree, objectViewModel, fieldViewModel, this.isOrgRecordFixedValue(tree, objectApiName, fieldApiName)) !== undefined ) {
+                if ( !drawnField || !drawnField.tree.folderName
+                        || this.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel, this.isOrgRecordFixedValue(drawnField.tree, objectApiName, fieldApiName)) !== undefined ) {
                     return undefined;
                 }
 
-                return { kind: 'setFieldFixedValue', treeKey: treeKey, folderName: tree.folderName, objectApiName: objectApiName, fieldApiName: fieldApiName, value: value };
+                return { kind: 'setFieldFixedValue', treeKey: treeKey, folderName: drawnField.tree.folderName, objectApiName: objectApiName, ...this.withOccurrenceNickname(drawnField.occurrence), fieldApiName: fieldApiName, value: value };
 
             }
 
@@ -15543,22 +15906,20 @@ export class RecipeCockpitService {
                 }
 
                 const declaredPicklistValues = panelState.picklistDisplayValuesByObjectApiName.get(objectApiName)?.get(fieldApiName)?.picklistValues;
-                const recipeViewModel = panelState.recipeDataMessage.recipe;
-                const objectViewModel = recipeViewModel.objects.find(candidateObject => candidateObject.objectApiName === objectApiName);
-                const fieldViewModel = objectViewModel?.fields.find(candidateField => candidateField.fieldApiName === fieldApiName && candidateField.lineNumber !== undefined);
-                const tree = recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === treeKey);
+                const drawnField = this.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
 
                 if ( !declaredPicklistValues || !picklistValues.every(picklistValue => declaredPicklistValues.includes(picklistValue))
-                        || !objectViewModel || !fieldViewModel?.isPicklist || !tree?.folderName || ( nickname !== undefined && nickname !== objectViewModel.nickname )
-                        || this.findFixedValueLockReason(tree, objectViewModel, fieldViewModel) !== undefined ) {
+                        || !drawnField || !drawnField.fieldViewModel.isPicklist || !drawnField.tree.folderName
+                        || this.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) !== undefined ) {
                     return undefined;
                 }
 
                 return {
                     kind: 'setPicklistValueChoice',
                     treeKey: treeKey,
-                    folderName: tree.folderName,
+                    folderName: drawnField.tree.folderName,
                     objectApiName: objectApiName,
+                    ...this.withOccurrenceNickname(drawnField.occurrence),
                     fieldApiName: fieldApiName,
                     picklistValues: declaredPicklistValues.filter(declaredValue => picklistValues.includes(declaredValue))
                 };
@@ -15583,14 +15944,14 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                const drawnField = this.findDrawnField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, fieldApiName);
+                const drawnField = this.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
 
-                if ( !drawnField || !drawnField.tree.folderName || ( nickname !== undefined && nickname !== drawnField.objectViewModel.nickname )
+                if ( !drawnField || !drawnField.tree.folderName
                         || this.findValidationRuleLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) !== undefined ) {
                     return undefined;
                 }
 
-                return { kind: 'setFieldValidationRuleApplied', treeKey: treeKey, folderName: drawnField.tree.folderName, objectApiName: objectApiName, fieldApiName: fieldApiName, isApplied: applied };
+                return { kind: 'setFieldValidationRuleApplied', treeKey: treeKey, folderName: drawnField.tree.folderName, objectApiName: objectApiName, ...this.withOccurrenceNickname(drawnField.occurrence), fieldApiName: fieldApiName, isApplied: applied };
 
             }
 
@@ -17508,18 +17869,13 @@ export class RecipeCockpitService {
 
                 treeObjects.push({ objectApiName: objectApiName, parentLookups: parentLookups });
 
-                // EACH LATER OCCURRENCE IS LISTED RIGHT AFTER ITS OBJECT, SO THE CARD READS "Account, then the Account nested under it" (#188)
-                ( objectsByApiName.get(objectApiName).iterations ?? [] ).forEach(iteration => {
-                    treeObjects.push({ objectApiName: objectApiName, parentLookups: parentLookups, iterationNickname: iteration.nickname });
-                });
-
             });
 
             trees.push(this.buildTreeViewModel(
                 this.claimTreeKey(treeSource.folderName, treeIndex, usedTreeKeys),
                 this.claimTreeTitle(treeSource.folderName, titleCountsByFolderName),
                 treeSource.folderName,
-                treeObjects,
+                this.placeTreeIterations(treeObjects, objectsByApiName),
                 objectsByApiName
             ));
 
@@ -17547,6 +17903,72 @@ export class RecipeCockpitService {
         const treeKey = usedTreeKeys.has(folderName) ? `${folderName}#${treeIndex + 1}` : folderName;
         usedTreeKeys.add(treeKey);
         return treeKey;
+
+    }
+
+    /*
+        Where a card lists each LATER occurrence of an object (#467): right under the occurrence whose
+        friends: block holds it, one level deeper, after what is already listed under that one -- so a
+        friend added under a self-lookup iteration is drawn under the iteration, and its own friends
+        under it in turn. Occurrences are placed in file order, so a parent is listed before what it
+        holds. A later block sharing its first occurrence's parent (a record type block, #194) is that
+        occurrence's sibling and follows it at its depth, as does an occurrence whose parent the card
+        cannot name. First occurrences keep insert order and draw no indent.
+    */
+    static placeTreeIterations(treeObjects: IRecipeCockpitTreeObjectViewModel[],
+                                objectsByApiName: ReadonlyMap<string, IRecipeCockpitObjectViewModel>): IRecipeCockpitTreeObjectViewModel[] {
+
+        interface ITreeObjectPlace { entry: IRecipeCockpitTreeObjectViewModel; depth: number; children: ITreeObjectPlace[]; followers: ITreeObjectPlace[] }
+
+        const roots: ITreeObjectPlace[] = treeObjects.map(entry => ({ entry: entry, depth: 0, children: [], followers: [] }));
+        const placesByNickname = new Map<string, ITreeObjectPlace>();
+        const claimNickname = (nickname: string | undefined, place: ITreeObjectPlace) => {
+            if ( nickname !== undefined && !placesByNickname.has(nickname) ) {
+                placesByNickname.set(nickname, place);
+            }
+        };
+
+        const laterOccurrences: { place: ITreeObjectPlace; root: ITreeObjectPlace; iteration: IRecipeCockpitObjectIterationViewModel }[] = [];
+        roots.forEach(root => {
+            const objectViewModel = objectsByApiName.get(root.entry.objectApiName);
+            claimNickname(objectViewModel?.nickname ?? objectViewModel?.recipeNickname, root);
+            ( objectViewModel?.iterations ?? [] ).forEach(iteration => laterOccurrences.push({
+                place: { entry: { objectApiName: root.entry.objectApiName, parentLookups: root.entry.parentLookups, iterationNickname: iteration.nickname }, depth: 0, children: [], followers: [] },
+                root: root,
+                iteration: iteration
+            }));
+        });
+
+        if ( laterOccurrences.length === 0 ) {
+            return treeObjects;
+        }
+
+        laterOccurrences
+            .sort((first, second) => first.iteration.lineNumber - second.iteration.lineNumber)
+            .forEach(({ place, root, iteration }) => {
+                const firstOccurrence = objectsByApiName.get(root.entry.objectApiName);
+                const isSiblingOfFirst = iteration.parentNickname === undefined
+                    || ( iteration.parentNickname === firstOccurrence?.parentNickname && iteration.parentObjectApiName === firstOccurrence?.countParentObjectApiName );
+                const parentPlace = isSiblingOfFirst ? undefined : placesByNickname.get(iteration.parentNickname as string);
+                if ( parentPlace ) {
+                    place.depth = parentPlace.depth + 1;
+                    parentPlace.children.push(place);
+                } else {
+                    place.depth = root.depth;
+                    root.followers.push(place);
+                }
+                claimNickname(iteration.nickname, place);
+            });
+
+        const placedTreeObjects: IRecipeCockpitTreeObjectViewModel[] = [];
+        const listPlace = (place: ITreeObjectPlace) => {
+            placedTreeObjects.push(place.depth > 0 ? { ...place.entry, nestingDepth: place.depth } : place.entry);
+            place.children.forEach(listPlace);
+            place.followers.forEach(listPlace);
+        };
+        roots.forEach(listPlace);
+
+        return placedTreeObjects;
 
     }
 
@@ -17842,9 +18264,11 @@ export class RecipeCockpitService {
 
             const parentScannedObject = scannedObjectsByHeaderIndex.get(scannedObject.parentHeaderIndex);
             const insertableFriendObjectApiNames = RecipeCockpitRecipeWriter.listInsertableFriendObjectApiNames(scannedObjects, scannedObject, scannedFriendIndex);
+            const iterationRecordCount = RecipeCockpitRecipeWriter.readObjectCount(lines, scannedObject);
             firstObjectEntry.iterations = [...(firstObjectEntry.iterations ?? []), {
                 nickname: nickname,
                 lineNumber: scannedObject.headerIndex + 1,
+                ...( iterationRecordCount !== undefined ? { recordCount: iterationRecordCount } : {} ),
                 ...( parentScannedObject ? { parentObjectApiName: parentScannedObject.objectApiName } : {} ),
                 ...( parentScannedObject?.nicknames.length === 1 ? { parentNickname: parentScannedObject.nicknames[0] } : {} ),
                 fieldEntries: this.readRecipeSourceFieldEntries(scannedObject, lines),
@@ -18019,6 +18443,7 @@ export class RecipeCockpitService {
                     iterations: objectEntry.iterations.map(iteration => ({
                         nickname: iteration.nickname,
                         lineNumber: iteration.lineNumber,
+                        ...( iteration.recordCount !== undefined ? { recordCount: iteration.recordCount } : {} ),
                         ...( iteration.parentObjectApiName !== undefined ? { parentObjectApiName: iteration.parentObjectApiName } : {} ),
                         ...( iteration.parentNickname !== undefined ? { parentNickname: iteration.parentNickname } : {} ),
                         fields: Array.from(iteration.fieldEntries, ([fieldApiName, fieldEntry]) => ({
@@ -18461,6 +18886,8 @@ ${this.buildPaletteCustomProperties()}
     .troubleshootingSubTabs.noMotion .troubleshootingSubTab::after { transition: none; }
     .treeObjectHeader { padding: 0.35rem 0.6rem; align-items: center; }
     .treeObject { position: relative; }
+    .treeObject.treeObjectNested { border-left: 2px solid var(--sdt-border); }
+${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, depthIndex) => `    .treeObject.treeObjectDepth${depthIndex + 1} { margin-left: ${( depthIndex + 1 ) * RECIPE_COCKPIT_NESTING_INDENT_REM}rem; }`).join('\n')}
     .treeObject.excluded::after {
         content: '';
         position: absolute;
@@ -19076,6 +19503,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const CHOOSE_INSERT_ORG_NOTE = ${JSON.stringify(RECIPE_COCKPIT_CHOOSE_INSERT_ORG_NOTE)};
     const CANNOT_INSERT_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_CANNOT_INSERT_PREFIX)};
     const ADD_FRIEND_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_ADD_FRIEND_ACTION_LABEL)};
+    const MAX_DRAWN_NESTING_DEPTH = ${JSON.stringify(RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH)};
     const WIRE_LOOKUP_ACTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_WIRE_LOOKUP_ACTION_LABEL)};
     const CREATE_PARENT_ACTION_PREFIX = ${JSON.stringify(RECIPE_COCKPIT_CREATE_PARENT_ACTION_PREFIX)};
     const CREATE_PARENT_ACTION_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_CREATE_PARENT_ACTION_SUFFIX)};
@@ -21384,7 +21812,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                 .forEach(function (fieldApiName) { excludedFieldApiNames[fieldApiName] = true; });
             ( Array.isArray(objectFieldSelection.lockedFields) ? objectFieldSelection.lockedFields : [] )
                 .forEach(function (lockedField) { lockReasonsByFieldApiName[lockedField.fieldApiName] = String(lockedField.reason); });
-            selectionsByObjectApiName[objectFieldSelection.objectApiName] = {
+            selectionsByObjectApiName[objectFieldSelection.objectApiName + '\\n' + ( objectFieldSelection.nickname || '' )] = {
                 excludedFieldApiNames: excludedFieldApiNames,
                 lockReasonsByFieldApiName: lockReasonsByFieldApiName,
                 excludedFieldCount: Object.keys(excludedFieldApiNames).length,
@@ -21398,12 +21826,26 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
-    function findObjectFieldSelection(tree, objectApiName) {
+    // ONE OCCURRENCE'S SELECTION (#467): THE HOST KEYS EVERY OCCURRENCE OF AN OBJECT WITH iterations BY ITS NICKNAME
+    function findObjectFieldSelection(tree, objectApiName, nickname) {
 
         const selectionsByObjectApiName = indexFieldSelection(tree);
+        const selectionKey = objectApiName + '\\n' + ( nickname || '' );
 
-        return Object.prototype.hasOwnProperty.call(selectionsByObjectApiName, objectApiName) ? selectionsByObjectApiName[objectApiName] : null;
+        return Object.prototype.hasOwnProperty.call(selectionsByObjectApiName, selectionKey) ? selectionsByObjectApiName[selectionKey] : null;
 
+    }
+
+    /*
+        The occurrence a row's own settings are kept for (#467), the host's readOccurrenceNickname:
+        every occurrence of an object with iterations has its nickname, an object written once none.
+    */
+    function occurrenceNicknameOf(object) {
+        return object.iteration || ( Array.isArray(object.iterations) && object.iterations.length > 0 ) ? ( object.nickname || '' ) : '';
+    }
+
+    function isSameOccurrence(candidate, objectApiName, nickname) {
+        return candidate.objectApiName === objectApiName && ( candidate.nickname || '' ) === ( nickname || '' );
     }
 
     function hasOwnKey(record, key) {
@@ -21421,7 +21863,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const tree = treeObjectState.tree;
         const objectApiName = treeObjectState.object.objectApiName;
         const fieldApiName = fieldState.field.fieldApiName;
-        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName);
+        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
         const isObjectExcluded = !!findObjectExclusion(tree, objectApiName);
         const lockReason = objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : '';
         const isExcluded = lockReason === FIELD_PARENT_EXCLUDED_REASON || ( !!objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName) );
@@ -21443,10 +21885,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         fieldState.isIncluded = !isExcluded;
         includeElement.textContent = isExcluded ? '' : '✓';
         includeElement.setAttribute('aria-checked', isExcluded ? 'false' : 'true');
-        includeElement.disabled = isObjectExcluded || treeObjectState.isIteration || !!lockReason;
+        includeElement.disabled = isObjectExcluded || !!lockReason;
 
         const title = isObjectExcluded ? objectApiName + ' is excluded, so its fields are read-only'
-            : treeObjectState.isIteration ? 'Follows ' + objectApiName + ' above'
             : lockReason ? 'Cannot be unticked: ' + lockReason
             : isExcluded ? 'Unticked — click to generate this field'
             : 'Ticked — click to leave this field out';
@@ -21456,10 +21897,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
 
     // THE VALUE THE HOST SAYS THIS CARD GENERATES THE FIELD WITH (#262), OR null
-    function findFixedValue(tree, objectApiName, fieldApiName) {
+    function findFixedValue(tree, objectApiName, fieldApiName, nickname) {
 
         const fixedValues = Array.isArray(tree.fixedValues) ? tree.fixedValues : [];
-        const fixedValue = fixedValues.find(function (candidate) { return candidate.objectApiName === objectApiName && candidate.fieldApiName === fieldApiName; });
+        const fixedValue = fixedValues.find(function (candidate) { return isSameOccurrence(candidate, objectApiName, nickname) && candidate.fieldApiName === fieldApiName; });
 
         return fixedValue ? String(fixedValue.value) : null;
 
@@ -21491,7 +21932,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const tree = treeObjectState.tree;
         const objectApiName = treeObjectState.object.objectApiName;
         const field = fieldState.field;
-        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName);
+        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
 
         if (findObjectExclusion(tree, objectApiName)) { return FIXED_VALUE_OBJECT_EXCLUDED_REASON; }
         if (objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, field.fieldApiName)) { return objectFieldSelection.lockReasonsByFieldApiName[field.fieldApiName]; }
@@ -21507,9 +21948,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
 
     // THE ORG A LOOKUP'S PINNED Id CAME FROM (#421), AS THE HOST SAYS; null FOR ANY OTHER FIXED VALUE
-    function findFixedValueOrgRecord(tree, objectApiName, fieldApiName) {
+    function findFixedValueOrgRecord(tree, objectApiName, fieldApiName, nickname) {
         const fixedValues = Array.isArray(tree.fixedValues) ? tree.fixedValues : [];
-        const fixedValue = fixedValues.find(function (candidate) { return candidate.objectApiName === objectApiName && candidate.fieldApiName === fieldApiName; });
+        const fixedValue = fixedValues.find(function (candidate) { return isSameOccurrence(candidate, objectApiName, nickname) && candidate.fieldApiName === fieldApiName; });
         return fixedValue && fixedValue.orgRecord ? fixedValue.orgRecord : null;
     }
 
@@ -21533,9 +21974,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         card generates with, else the first "\${{ ... }}" line of its recipe value (a picklist's
         record type variants follow it as comments), else that value's first line.
     */
-    function findEditorStartValue(tree, objectApiName, field) {
+    function findEditorStartValue(tree, object, field) {
 
-        const fixedValue = findFixedValue(tree, objectApiName, field.fieldApiName);
+        const fixedValue = findFixedValue(tree, object.objectApiName, field.fieldApiName, occurrenceNicknameOf(object));
         if (fixedValue !== null) { return fixedValue; }
 
         const valueLines = String(field.recipeValue || '').split('\\n').map(function (valueLine) { return unquoteExpressionLine(valueLine.trim()); });
@@ -21551,9 +21992,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         const objectApiName = treeObjectState.object.objectApiName;
         const fieldApiName = fieldState.field.fieldApiName;
-        const fixedValue = findFixedValue(treeObjectState.tree, objectApiName, fieldApiName);
+        const nickname = occurrenceNicknameOf(treeObjectState.object);
+        const fixedValue = findFixedValue(treeObjectState.tree, objectApiName, fieldApiName, nickname);
         const isFixed = fixedValue !== null;
-        const orgRecord = isFixed ? findFixedValueOrgRecord(treeObjectState.tree, objectApiName, fieldApiName) : null;
+        const orgRecord = isFixed ? findFixedValueOrgRecord(treeObjectState.tree, objectApiName, fieldApiName, nickname) : null;
 
         if (fieldState.fixedValueElement) {
             fieldState.fixedValueElement.textContent = isFixed ? fixedValue : '';
@@ -21578,14 +22020,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const buttonElement = fieldState.fixedValueButtonElement;
         if (!buttonElement) { return; }
 
-        const lockReason = treeObjectState.isIteration ? '' : findFixedValueLockReason(treeObjectState, fieldState, !!orgRecord);
-        buttonElement.disabled = treeObjectState.isIteration || !!lockReason;
+        const lockReason = findFixedValueLockReason(treeObjectState, fieldState, !!orgRecord);
+        buttonElement.disabled = !!lockReason;
         buttonElement.setAttribute('aria-pressed', isFixed ? 'true' : 'false');
         buttonElement.setAttribute('aria-expanded', fieldState.editorEdit === 'fixedValue' ? 'true' : 'false');
         if (buttonElement.disabled && fieldState.editorEdit === 'fixedValue') { closeFieldEditor(fieldState); }
 
-        const title = treeObjectState.isIteration ? 'Follows ' + objectApiName + ' above'
-            : lockReason ? 'Cannot be edited: ' + lockReason
+        const title = lockReason ? 'Cannot be edited: ' + lockReason
             : orgRecord ? 'Existing ' + orgRecord.parentObjectApiName + ' record of ' + orgRecord.orgLabel + ' — click to clear it'
             : isFixed ? ( isExpressionValue(fixedValue) ? 'Edited expression' : 'Fixed value' ) + ' — click to change or clear it'
             : 'Edit the faker expression, or give the field a fixed value';
@@ -21599,9 +22040,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
 
     // WHETHER THE HOST SAYS THIS CARD GENERATES THE FIELD WITHOUT ITS VALIDATION RULES (#325)
-    function isValidationRuleOff(tree, objectApiName, fieldApiName) {
+    function isValidationRuleOff(tree, objectApiName, fieldApiName, nickname) {
         const validationRulesOff = Array.isArray(tree.validationRulesOff) ? tree.validationRulesOff : [];
-        return validationRulesOff.some(function (candidate) { return candidate.objectApiName === objectApiName && candidate.fieldApiName === fieldApiName; });
+        return validationRulesOff.some(function (candidate) { return isSameOccurrence(candidate, objectApiName, nickname) && candidate.fieldApiName === fieldApiName; });
     }
 
     /*
@@ -21614,12 +22055,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const tree = treeObjectState.tree;
         const objectApiName = treeObjectState.object.objectApiName;
         const fieldApiName = fieldState.field.fieldApiName;
-        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName);
+        const nickname = occurrenceNicknameOf(treeObjectState.object);
+        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, nickname);
 
         if (findObjectExclusion(tree, objectApiName)) { return FIXED_VALUE_OBJECT_EXCLUDED_REASON; }
         if (objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) && objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] === FIELD_PARENT_EXCLUDED_REASON) { return FIELD_PARENT_EXCLUDED_REASON; }
         if (objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName)) { return FIXED_VALUE_UNTICKED_REASON; }
-        if (findFixedValue(tree, objectApiName, fieldApiName) !== null) { return VALIDATION_RULE_FIXED_VALUE_REASON; }
+        if (findFixedValue(tree, objectApiName, fieldApiName, nickname) !== null) { return VALIDATION_RULE_FIXED_VALUE_REASON; }
 
         return '';
 
@@ -21638,17 +22080,16 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (!buttonElement) { return; }
 
         const objectApiName = treeObjectState.object.objectApiName;
-        const lockReason = treeObjectState.isIteration ? '' : findValidationRuleLockReason(treeObjectState, fieldState);
-        const isApplied = !lockReason && !isValidationRuleOff(treeObjectState.tree, objectApiName, field.fieldApiName);
+        const lockReason = findValidationRuleLockReason(treeObjectState, fieldState);
+        const isApplied = !lockReason && !isValidationRuleOff(treeObjectState.tree, objectApiName, field.fieldApiName, occurrenceNicknameOf(treeObjectState.object));
         const ruleNames = field.validationRules.appliedRuleNames.join(', ');
 
         fieldState.isValidationRuleApplied = isApplied;
         buttonElement.textContent = isApplied ? '✓' : '';
         buttonElement.setAttribute('aria-checked', isApplied ? 'true' : 'false');
-        buttonElement.disabled = treeObjectState.isIteration || !!lockReason;
+        buttonElement.disabled = !!lockReason;
 
-        const title = treeObjectState.isIteration ? 'Follows ' + objectApiName + ' above'
-            : lockReason ? 'Validation rules ' + ruleNames + ' cannot be switched: ' + lockReason
+        const title = lockReason ? 'Validation rules ' + ruleNames + ' cannot be switched: ' + lockReason
             : isApplied ? 'Validation rules applied: ' + ruleNames + ' — untick to generate without them'
             : 'Validation rules not applied: ' + ruleNames + ' — tick to apply them';
         buttonElement.setAttribute('title', title);
@@ -21732,7 +22173,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         const tree = treeObjectState.tree;
         const objectApiName = treeObjectState.object.objectApiName;
-        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName);
+        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
         const isObjectExcluded = !!findObjectExclusion(tree, objectApiName);
         const isEveryFieldExcluded = !!objectFieldSelection && objectFieldSelection.isEveryFieldExcluded && !isObjectExcluded;
 
@@ -21793,7 +22234,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         const tree = treeObjectState.tree;
         const objectApiName = treeObjectState.object.objectApiName;
-        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName);
+        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
         const isObjectExcluded = !!findObjectExclusion(tree, objectApiName);
         let untickableCount = 0;
         let tickedCount = 0;
@@ -21960,7 +22401,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         let collectTyped = null;
 
         editorElement.setAttribute('aria-label', 'Edit ' + fieldLabel);
-        const valueElement = buildFieldEditorInput(FIXED_VALUE_MAX_LENGTH, findEditorStartValue(tree, object.objectApiName, field), 'Value or faker expression for ' + fieldLabel, '');
+        const valueElement = buildFieldEditorInput(FIXED_VALUE_MAX_LENGTH, findEditorStartValue(tree, object, field), 'Value or faker expression for ' + fieldLabel, '');
         inputElements.push(valueElement);
         inputsElement.appendChild(valueElement);
         collectTyped = function (isClearing) {
@@ -22096,8 +22537,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     }
 
-    function buildPicklistKey(objectApiName, fieldApiName, treeKey) {
-        return objectApiName + '\\n' + fieldApiName + '\\n' + treeKey;
+    function buildPicklistKey(objectApiName, fieldApiName, treeKey, nickname) {
+        return objectApiName + '\\n' + fieldApiName + '\\n' + treeKey + '\\n' + (nickname || '');
     }
 
     /*
@@ -22105,16 +22546,18 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         and says so until the host answers. The answer is handed to the callback of the editor that
         asked, which draws it only if that editor is still open.
     */
-    function requestPicklistValues(treeKey, objectApiName, fieldApiName, onValues) {
+    function requestPicklistValues(treeKey, objectApiName, nickname, fieldApiName, onValues) {
 
-        const picklistKey = buildPicklistKey(objectApiName, fieldApiName, treeKey);
+        const picklistKey = buildPicklistKey(objectApiName, fieldApiName, treeKey, nickname);
 
         // A HAND-EDITED WRAPPER CAN REPEAT A FIELD, AND EVERY ROW THAT ASKED IS ANSWERED, NOT ONLY THE LAST
         if (!Object.prototype.hasOwnProperty.call(pendingPicklistValueElements, picklistKey)) {
             pendingPicklistValueElements[picklistKey] = [];
         }
         pendingPicklistValueElements[picklistKey].push(onValues);
-        vscodeApi.postMessage({ command: 'loadPicklistValues', objectApiName: objectApiName, fieldApiName: fieldApiName, treeKey: treeKey });
+        const message = { command: 'loadPicklistValues', objectApiName: objectApiName, fieldApiName: fieldApiName, treeKey: treeKey };
+        if (nickname) { message.nickname = nickname; }
+        vscodeApi.postMessage(message);
 
     }
 
@@ -22123,7 +22566,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         if (picklistValuesMessage.renderSequence !== renderedSequence || typeof picklistValuesMessage.treeKey !== 'string') { return; }
 
-        const picklistKey = buildPicklistKey(picklistValuesMessage.objectApiName, picklistValuesMessage.fieldApiName, picklistValuesMessage.treeKey);
+        const picklistKey = buildPicklistKey(picklistValuesMessage.objectApiName, picklistValuesMessage.fieldApiName, picklistValuesMessage.treeKey, picklistValuesMessage.nickname);
 
         if (!Object.prototype.hasOwnProperty.call(pendingPicklistValueElements, picklistKey)) { return; }
 
@@ -22141,7 +22584,6 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     function findPicklistChoiceLockReason(treeObjectState, fieldState) {
 
         if (!treeObjectState.canSelectFields || !fieldState.field.lineNumber) { return 'Values can be chosen only on a card with its own recipe file.'; }
-        if (treeObjectState.isIteration) { return 'Follows ' + treeObjectState.object.objectApiName + ' above.'; }
         const lockReason = findFixedValueLockReason(treeObjectState, fieldState, false);
         return lockReason ? 'Cannot be edited: ' + lockReason : '';
 
@@ -22441,7 +22883,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                 fieldState.endPicklistSave = null;
                 if (isExpanding) {
                     editorBodyElement.appendChild(createElement('div', 'picklistLoading muted', 'Loading values…'));
-                    requestPicklistValues(treeObjectState.tree.treeKey, treeObjectState.object.objectApiName, field.fieldApiName, function (picklistValuesMessage) {
+                    requestPicklistValues(treeObjectState.tree.treeKey, treeObjectState.object.objectApiName, treeObjectState.object.nickname, field.fieldApiName, function (picklistValuesMessage) {
                         if (editorElement.classList.contains('hidden')) { return; }
                         drawPicklistValueEditor(treeObjectState, fieldState, editorBodyElement, picklistValuesMessage, function () {
                             setPicklistExpanded(false, true);
@@ -22507,7 +22949,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const addFriendsElement = createElement('div', 'treeAddFriends hidden');
 
         addFriendElement.setAttribute('title', 'Add one of the friends of ' + object.objectApiName + ' under ' + object.nickname);
-        addFriendElement.setAttribute('aria-label', 'Add a friend under ' + object.nickname);
+        addFriendElement.setAttribute('aria-label', 'Add friend under ' + object.nickname);
         addFriendElement.setAttribute('aria-expanded', 'false');
         addFriendElement.addEventListener('click', function () {
             const isOpening = addFriendsElement.classList.contains('hidden');
@@ -22706,7 +23148,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const tree = treeObjectState.tree;
         const objectApiName = treeObjectState.object.objectApiName;
         const fieldApiName = fieldState.field.fieldApiName;
-        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName);
+        const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
         const lockReason = objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : '';
         const isParentExcluded = lockReason === FIELD_PARENT_EXCLUDED_REASON || !!findObjectExclusion(tree, decision.emptyLookup.parentObjectApiName);
 
@@ -22789,7 +23231,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             if (treeObjectState.objectTodos.length > 0) {
                 treeObjectState.bodyElement.appendChild(buildTodoListElement(treeObjectState.object.recipeFilePath, treeObjectState.objectTodos));
             }
-            if (treeObjectState.canSelectFields && !treeObjectState.isIteration && treeObjectState.fieldStates.some(function (fieldState) { return !!fieldState.field.lineNumber; })) {
+            if (treeObjectState.canSelectFields && treeObjectState.fieldStates.some(function (fieldState) { return !!fieldState.field.lineNumber; })) {
                 treeObjectState.bodyElement.appendChild(buildSelectAllFieldsElement(treeObjectState));
             }
             treeObjectState.fieldStates.forEach(function (fieldState) {
@@ -22982,7 +23424,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     function currentRecordCountOf(treeObjectState) {
 
         const objectCounts = Array.isArray(treeObjectState.tree.objectCounts) ? treeObjectState.tree.objectCounts : [];
-        const storedCount = objectCounts.find(function (objectCount) { return objectCount.objectApiName === treeObjectState.object.objectApiName; });
+        const nickname = occurrenceNicknameOf(treeObjectState.object);
+        const storedCount = objectCounts.find(function (objectCount) { return isSameOccurrence(objectCount, treeObjectState.object.objectApiName, nickname); });
 
         return storedCount ? storedCount.count : treeObjectState.object.recordCount;
 
@@ -22997,6 +23440,12 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const objectElement = createElement('div', 'treeObject');
         const objectHeaderElement = createElement('div', 'treeObjectHeader');
         const toggleElement = buildToggleElement('treeObjectToggle');
+
+        // A LATER OCCURRENCE IS INDENTED UNDER THE ONE WHOSE friends: BLOCK HOLDS IT (#467)
+        if (typeof treeObject.nestingDepth === 'number' && treeObject.nestingDepth > 0) {
+            objectElement.classList.add('treeObjectNested');
+            objectElement.classList.add('treeObjectDepth' + Math.min(Math.floor(treeObject.nestingDepth), MAX_DRAWN_NESTING_DEPTH));
+        }
 
         const treeObjectState = {
             treeObject: treeObject,
@@ -23019,7 +23468,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             glyphElement: null,
             glyphPathElement: null,
             tree: tree,
-            // A CARD WITH A FOLDER KEEPS ITS UNTICKED FIELDS (#220); AN ITERATION'S BOXES FOLLOW ITS OBJECT AND ARE DRAWN DISABLED
+            // A CARD WITH A FOLDER KEEPS ITS UNTICKED FIELDS (#220); AN ITERATION KEEPS ITS OWN (#467)
             canSelectFields: !!tree.folderName && !object.hasIndistinctOccurrences,
             recordCountElement: null,
             countButtonElement: null,
@@ -23097,8 +23546,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             objectHeaderElement.appendChild(treeObjectState.friendSlotElement);
         }
 
-        // A COUNT BOX ONLY WHERE THE HOST CAN STORE ONE: A CARD WITH A FOLDER, AN OBJECT TOLD APART, WITH A READABLE "count:" (#255)
-        if (tree.folderName && !object.iteration && !object.hasIndistinctOccurrences && typeof object.recordCount === 'number') {
+        // A COUNT BOX ONLY WHERE THE HOST CAN STORE ONE: A CARD WITH A FOLDER, AN OBJECT TOLD APART, WITH A READABLE "count:" (#255); AN ITERATION HAS ITS OWN (#467)
+        if (tree.folderName && !object.hasIndistinctOccurrences && typeof object.recordCount === 'number') {
             objectHeaderElement.appendChild(buildRecordCountElement(treeObjectState));
         }
 
@@ -24336,7 +24785,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             nickname: iteration.nickname,
             iteration: iteration,
             fields: fields,
-            todos: Array.isArray(iteration.todos) ? iteration.todos : undefined
+            todos: Array.isArray(iteration.todos) ? iteration.todos : undefined,
+            // ITS OWN "count:" AND THE OBJECT IT IS RECORDS PER (#467), SO ITS COUNT BOX READS AND SETS THAT OCCURRENCE
+            recordCount: typeof iteration.recordCount === 'number' ? iteration.recordCount : undefined,
+            countParentObjectApiName: iteration.parentObjectApiName,
+            hasRecordTypeSections: object.hasRecordTypeSections
         };
 
     }
@@ -26163,9 +26616,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
 
     // WHAT A FIELD GENERATES FROM WITH NOTHING TYPED, AS THE HOST READS IT: A TREECIPE-TAB EDIT IN THE RECIPE FILE, ELSE THE FIRST EXPRESSION LINE
-    function findUpdaterRecipeStartValue(tree, objectApiName, field) {
+    // THE ADAPTER DRAWS EACH OBJECT ONCE, SO IT READS THE FIRST OCCURRENCE'S EDIT (#467)
+    function findUpdaterRecipeStartValue(tree, object, field) {
 
-        const recipeFileEdit = findFixedValue(tree, objectApiName, field.fieldApiName);
+        const recipeFileEdit = findFixedValue(tree, object.objectApiName, field.fieldApiName, occurrenceNicknameOf(object));
         if (recipeFileEdit !== null) { return recipeFileEdit; }
 
         const valueLines = String(field.recipeValue || '').split('\\n').map(function (valueLine) { return unquoteExpressionLine(valueLine.trim()); });
@@ -26179,7 +26633,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         if (hasOwnKey(treeState.updaterEditedValues, fieldState.fieldKey)) { return treeState.updaterEditedValues[fieldState.fieldKey]; }
 
-        return findUpdaterRecipeStartValue(treeState.tree, updaterObjectState.object.objectApiName, fieldState.field);
+        return findUpdaterRecipeStartValue(treeState.tree, updaterObjectState.object, fieldState.field);
 
     }
 
@@ -26189,7 +26643,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         const field = fieldState.field;
         const fieldLabel = updaterObjectState.object.objectApiName + '.' + field.fieldApiName;
-        const recipeStartValue = findUpdaterRecipeStartValue(treeState.tree, updaterObjectState.object.objectApiName, field);
+        const recipeStartValue = findUpdaterRecipeStartValue(treeState.tree, updaterObjectState.object, field);
 
         // BUILT ONCE PER ROW AND EMPTIED ON CLOSE, AS THE TREECIPE TAB'S EDITOR IS
         if (!fieldState.editorElement) {
