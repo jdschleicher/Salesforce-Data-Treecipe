@@ -44,6 +44,14 @@ export class SnowfakeryRecipeFakerService implements IRecipeFakerService {
 
     }
 
+    buildPicklistChoiceExpression(picklistValues: string[], isMultiSelect: boolean): string {
+
+        return isMultiSelect
+            ? `${this.openingRecipeSyntax} (';').join((fake.random_sample(elements=${SnowfakeryRecipeFakerService.buildRandomSampleElementsTuple(picklistValues)}))) ${this.closingRecipeSyntax}`
+            : `${this.openingRecipeSyntax} random_choice('${SnowfakeryRecipeFakerService.buildEscapedCommaJoinedPicklistChoices(picklistValues)}') ${this.closingRecipeSyntax}`;
+
+    }
+
     buildMultiSelectPicklistRecipeValueByXMLFieldDetail(availablePicklistChoices: string[],
                                                         recordTypeNameByRecordTypeWrapper: Record<string, RecordTypeWrapper>,
                                                         associatedFieldApiName
