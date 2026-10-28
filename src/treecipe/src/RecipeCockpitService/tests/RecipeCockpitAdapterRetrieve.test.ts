@@ -414,7 +414,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
             fs.rmSync(temporaryRoot, { recursive: true, force: true });
         });
 
-        it('retrieves the objects into a staging folder under treecipe/OrgOperations, never a package directory', async () => {
+        it('retrieves the objects into a staging folder under the tree\'s RunArtifacts/OrgOperations, never a package directory or treecipe/OrgOperations', async () => {
 
             await openCockpit();
             selectSandbox();
@@ -427,7 +427,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
             const outputDirectory = cliArguments[cliArguments.indexOf('--output-dir') + 1];
             const manifestPath = cliArguments[cliArguments.indexOf('--manifest') + 1];
             expect(cliArguments.slice(0, 6)).toEqual(['project', 'retrieve', 'start', '--json', '--target-org', SANDBOX_ORG.username]);
-            expect(outputDirectory).toMatch(/^treecipe\/OrgOperations\/qa@example\.com\.qa\/\d{8}-\d{6}-adapter-retrieve$/);
+            expect(outputDirectory).toMatch(new RegExp(`^treecipe/GeneratedRecipes/${TREE_RUN_FOLDER_NAME}/${ACCOUNT_TREE_KEY.replace(/[.]/g, '\\.')}/RunArtifacts/OrgOperations/qa@example\\.com\\.qa/\\d{8}-\\d{6}-adapter-retrieve$`));
+            expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'OrgOperations'))).toBe(false);
             expect(manifestPath).toBe(`${outputDirectory}-package.xml`);
             expect(fs.readFileSync(path.join(workspaceRoot, manifestPath), 'utf-8')).toContain('<members>Account</members>\n        <members>Contact</members>\n        <members>OtherChildObject__c</members>\n        <name>CustomObject</name>');
             expect(packageDirectoryFiles()).toEqual(packageDirectoryBefore);
@@ -578,7 +579,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
 
             const makeSpy = jest.spyOn(RecipeCockpitOrgChangeDetection, 'makeStagingFolder').mockReturnValue(undefined);
             await send(retrieveRequest(lastRenderSequence()));
-            expect(warnings().at(-1)).toBe('Nothing was retrieved: the staging folder could not be made under treecipe/OrgOperations in this workspace.');
+            expect(warnings().at(-1)).toBe('Nothing was retrieved: the staging folder could not be made under the tree\'s RunArtifacts folder in this workspace.');
             makeSpy.mockRestore();
 
             jest.spyOn(RecipeCockpitOrgChangeDetection, 'buildRetrieveArguments').mockImplementation(() => { throw new Error('The staging folder is not under treecipe/, so nothing was retrieved.'); });
@@ -664,7 +665,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s Retrieve latest metadata
             await send(retrieveRequest(lastRenderSequence()));
 
             expect((vscode.window.showWarningMessage as jest.Mock).mock.calls.at(-1)).toEqual([expect.stringContaining('could not be retrieved')]);
-            expect(fs.readdirSync(path.join(workspaceRoot, 'treecipe', 'OrgOperations', SANDBOX_ORG.username)).filter(fileName => fileName.endsWith('.json'))).toEqual([]);
+            expect(fs.readdirSync(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', TREE_RUN_FOLDER_NAME, ACCOUNT_TREE_KEY, 'RunArtifacts', 'OrgOperations', SANDBOX_ORG.username)).filter(fileName => fileName.endsWith('.json'))).toEqual([]);
 
         });
 

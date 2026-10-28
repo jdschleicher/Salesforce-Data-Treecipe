@@ -1,10 +1,10 @@
-import * as fs from 'fs';
 import * as path from 'path';
 
 import { ObjectInfoWrapper } from '../ObjectInfoWrapper/ObjectInfoWrapper';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { ISOQLTreeQuery, SOQLQueryKind, SOQLTemplateService } from '../SOQLTemplateService/SOQLTemplateService';
+import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from './RecipeCockpitRunArtifacts';
 
 /*
     The Query tab (#367): a tree's generated SOQL, the check an edited query is held to before it is
@@ -48,7 +48,6 @@ const CSV_QUOTED_CHARACTER_PATTERN = /[",\r\n]/;
 // ONE LINE BREAK OR TAB IS LAYOUT; ANY OTHER CONTROL CHARACTER IN A QUERY IS A PASTE GONE WRONG
 const QUERY_CONTROL_CHARACTER_PATTERN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u0085\u2028\u2029]/;
 
-export const RECIPE_COCKPIT_QUERY_RESULTS_FOLDER_NAME = 'QueryResults';
 
 // TWO EXPORTS OF ONE QUERY IN ONE SECOND TAKE <name>-2, <name>-3, ... RATHER THAN OVERWRITE THE FIRST
 const QUERY_EXPORT_FILE_ATTEMPTS = 20;
@@ -292,92 +291,32 @@ export class RecipeCockpitQuery {
     }
 
     /*
-        treecipe/QueryResults/<tree folder>/<yyyyMMdd-HHmmss>-<object>-<kind>.<json|csv>, inside the
-        workspace or not at all. Org data is not meant to be committed by accident, so the folder
-        gets a .gitignore that ignores everything in it, written once and never overwritten, and the
-        file is written with "wx", so a link planted at its name is never followed. Answers the path
-        written, or undefined when nothing could be.
+        <tree folder>/RunArtifacts/QueryResults/<yyyyMMdd-HHmmss>-<object>-<kind>.<json|csv> (#470),
+        inside the workspace or not at all. Org data is not meant to be committed by accident, so
+        RunArtifacts gets a .gitignore that ignores everything in it, written once and never
+        overwritten, and the file is written with "wx", so a link planted at its name is never
+        followed. Answers the path written, or undefined when nothing could be.
     */
-    static writeQueryExport(workspaceRoot: string,
-                            treeFolderName: string,
+    static writeQueryExport(runArtifactsLocation: IRecipeCockpitRunArtifactsLocation,
                             objectApiName: string,
                             queryKind: SOQLQueryKind,
                             exportFormat: RecipeCockpitQueryExportFormat,
                             exportContent: string,
                             date: Date): string | undefined {
 
-        if ( !this.isUsableFolderName(treeFolderName) || !SalesforceApiName.isApiName(objectApiName) ) {
+        if ( !SalesforceApiName.isApiName(objectApiName) ) {
             return undefined;
         }
 
-        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
-        const resultsFolderPath = path.join(resolvedWorkspaceRoot, 'treecipe', RECIPE_COCKPIT_QUERY_RESULTS_FOLDER_NAME);
-        const exportFolderPath = path.join(resultsFolderPath, treeFolderName);
+        const exportFolderPath = RecipeCockpitRunArtifacts.buildKindFolderPath(runArtifactsLocation, 'QueryResults');
         const exportFilePath = path.join(exportFolderPath, `${this.buildCompactTimestamp(date)}-${objectApiName}-${queryKind}.${exportFormat}`);
 
-        if ( !SfdxProjectService.isPathContainedInWorkspace(exportFilePath, resolvedWorkspaceRoot) ) {
+        if ( !SfdxProjectService.isPathContainedInWorkspace(exportFilePath, runArtifactsLocation.workspaceRoot)
+                || !RecipeCockpitRunArtifacts.makeFolder(runArtifactsLocation, exportFolderPath) ) {
             return undefined;
         }
 
-        try {
-            fs.mkdirSync(exportFolderPath, { recursive: true });
-        } catch {
-            return undefined;
-        }
-
-        // AGAIN ONCE THE FOLDERS EXIST: ONE OF THEM COULD HAVE BEEN A LINK MADE IN BETWEEN
-        if ( !SfdxProjectService.isPathContainedInWorkspace(exportFolderPath, resolvedWorkspaceRoot) ) {
-            return undefined;
-        }
-
-        try {
-            fs.writeFileSync(path.join(resultsFolderPath, '.gitignore'), '*\n', { encoding: 'utf-8', flag: 'wx' });
-        } catch {
-            // ALREADY THERE -- OR NOT WRITABLE, WHICH THE EXPORT'S OWN WRITE WILL SAY
-        }
-
-        for ( let attempt = 1; attempt <= QUERY_EXPORT_FILE_ATTEMPTS; attempt++ ) {
-            const attemptFilePath = attempt === 1 ? exportFilePath : exportFilePath.replace(new RegExp(`\\.${exportFormat}$`), `-${attempt}.${exportFormat}`);
-            try {
-                fs.writeFileSync(attemptFilePath, exportContent, { encoding: 'utf-8', flag: 'wx' });
-                return attemptFilePath;
-            } catch (writeError) {
-                if ( ( writeError as NodeJS.ErrnoException )?.code !== 'EEXIST' ) {
-                    return undefined;
-                }
-            }
-        }
-
-        return undefined;
-
-    }
-
-    /*
-        Whether treecipe/QueryResults/.gitignore still ignores everything under it. The writer only
-        ever creates it ("wx"), so a file the repository already carried, or one edited since, is
-        read rather than trusted: it ignores everything only as a plain file whose lines are a "*"
-        and nothing that un-ignores ("!") a path.
-    */
-    static isQueryResultsFolderGitIgnored(workspaceRoot: string): boolean {
-
-        return this.isFolderWhollyGitIgnored(path.join(path.resolve(workspaceRoot), 'treecipe', RECIPE_COCKPIT_QUERY_RESULTS_FOLDER_NAME));
-
-    }
-
-    // WHETHER THE .gitignore IN A FOLDER IS A PLAIN FILE WHOSE LINES IGNORE EVERYTHING ("*") AND UN-IGNORE NOTHING ("!")
-    static isFolderWhollyGitIgnored(folderPath: string): boolean {
-
-        const gitignoreFilePath = path.join(folderPath, '.gitignore');
-
-        try {
-            if ( !fs.lstatSync(gitignoreFilePath).isFile() ) {
-                return false;
-            }
-            const ignoreLines = fs.readFileSync(gitignoreFilePath, 'utf-8').split(/\r?\n/).map(line => line.trim()).filter(line => line !== '' && !line.startsWith('#'));
-            return ignoreLines.includes('*') && !ignoreLines.some(line => line.startsWith('!'));
-        } catch {
-            return false;
-        }
+        return RecipeCockpitRunArtifacts.writeNewFile(exportFilePath, exportContent, `.${exportFormat}`, QUERY_EXPORT_FILE_ATTEMPTS);
 
     }
 
@@ -534,18 +473,12 @@ export class RecipeCockpitQuery {
 
     }
 
-    // yyyyMMdd-HHmmss IN LOCAL TIME, AS EVERY treecipe/OrgOperations RESULT FILE IS NAMED
+    // yyyyMMdd-HHmmss IN LOCAL TIME, AS EVERY OrgOperations RESULT FILE IS NAMED
     static buildCompactTimestamp(date: Date): string {
 
         const twoDigits = (value: number) => String(value).padStart(2, '0');
 
         return `${date.getFullYear()}${twoDigits(date.getMonth() + 1)}${twoDigits(date.getDate())}-${twoDigits(date.getHours())}${twoDigits(date.getMinutes())}${twoDigits(date.getSeconds())}`;
-
-    }
-
-    private static isUsableFolderName(folderName: string): boolean {
-
-        return folderName !== '' && folderName !== '.' && folderName !== '..' && folderName.length <= 255 && !/[\\/\u0000]/.test(folderName);
 
     }
 

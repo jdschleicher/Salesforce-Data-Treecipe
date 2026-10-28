@@ -694,7 +694,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
 
                 const stagingSpy = jest.spyOn(RecipeCockpitOrgChangeDetection, 'makeStagingFolder').mockReturnValueOnce(undefined);
                 await prepareDirectly();
-                expect(lastWarning()).toBe(`${CHILD_OBJECT} was not added: the staging folder could not be made under treecipe/OrgOperations in this workspace.`);
+                expect(lastWarning()).toBe(`${CHILD_OBJECT} was not added: the staging folder could not be made under the tree's RunArtifacts folder in this workspace.`);
                 stagingSpy.mockRestore();
 
                 jest.spyOn(RecipeCockpitOrgChangeDetection, 'buildRetrieveArguments').mockImplementationOnce(() => { throw new Error('refused argument'); });
@@ -932,7 +932,7 @@ describe('RecipeCockpitService, the Treecipe Adapter adds a new child object und
 
                 const stagingPathSpy = jest.spyOn(RecipeCockpitOrgChangeDetection, 'buildStagingFolderPath').mockReturnValueOnce(undefined);
                 await prepareDirectly();
-                expect(lastWarning()).toBe(`${CHILD_OBJECT} was not added: the staging folder could not be made under treecipe/OrgOperations in this workspace.`);
+                expect(lastWarning()).toBe(`${CHILD_OBJECT} was not added: the staging folder could not be made under the tree's RunArtifacts folder in this workspace.`);
                 stagingPathSpy.mockRestore();
 
                 const cliSpy = PicklistDependencyCheckService.runSalesforceCli as unknown as jest.SpyInstance;

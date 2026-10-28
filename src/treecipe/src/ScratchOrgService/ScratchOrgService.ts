@@ -4,6 +4,7 @@ import * as path from 'path';
 import { ISalesforceCliInvocationResult, ISalesforceCliProjectOptions, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { IDevHubOrgDetail } from '../SalesforceOrgService/SalesforceOrgService';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
+import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from '../RecipeCockpitService/RecipeCockpitRunArtifacts';
 
 // AN ALIAS THE CLI KEEPS IN ~/.sfdx/alias.json AND THE READER TYPES BACK: LONG ENOUGH FOR A NAME, SHORT ENOUGH FOR A PICKER
 export const SCRATCH_ORG_ALIAS_MAX_LENGTH = 80;
@@ -453,18 +454,22 @@ export class ScratchOrgService {
     }
 
     /*
-        treecipe/OrgOperations/<username or alias>/<timestamp>-<operation>.json, one shared folder
-        for every CLI result the cockpit saves. Built here, never from a panel message, and
-        undefined when it would land outside the workspace.
+        <OrgOperations>/<username or alias>/<timestamp>-<operation>.json. A run made for a tree
+        passes that tree's RunArtifacts location (#470) and lands in its RunArtifacts/OrgOperations;
+        a run tied to no tree (scratch org creation) lands in treecipe/OrgOperations. Built here,
+        never from a panel message, and undefined when it would land outside the workspace.
     */
-    static buildOrgOperationResultFilePath(workspaceRoot: string, folderName: string, operationName: OrgOperationName, date: Date): string | undefined {
+    static buildOrgOperationResultFilePath(workspaceRoot: string, folderName: string, operationName: OrgOperationName, date: Date, runArtifactsLocation?: IRecipeCockpitRunArtifactsLocation): string | undefined {
 
         if ( !this.isUsableOrgOperationFolderName(folderName) ) {
             return undefined;
         }
 
         const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
-        const resultFilePath = path.join(resolvedWorkspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME, folderName, `${this.buildCompactTimestamp(date)}-${operationName}.json`);
+        const operationsFolderPath = runArtifactsLocation
+            ? RecipeCockpitRunArtifacts.buildKindFolderPath(runArtifactsLocation, 'OrgOperations')
+            : path.join(resolvedWorkspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME);
+        const resultFilePath = path.join(operationsFolderPath, folderName, `${this.buildCompactTimestamp(date)}-${operationName}.json`);
 
         return SfdxProjectService.isPathContainedInWorkspace(resultFilePath, resolvedWorkspaceRoot) ? resultFilePath : undefined;
 
@@ -487,9 +492,10 @@ export class ScratchOrgService {
                                     operationName: OrgOperationName,
                                     invocationResult: ISalesforceCliInvocationResult,
                                     date: Date,
-                                    payload: Record<string, unknown> | undefined = this.readCliJsonPayload(invocationResult)): string | undefined {
+                                    payload: Record<string, unknown> | undefined = this.readCliJsonPayload(invocationResult),
+                                    runArtifactsLocation?: IRecipeCockpitRunArtifactsLocation): string | undefined {
 
-        const resultFilePath = this.buildOrgOperationResultFilePath(workspaceRoot, folderName, operationName, date);
+        const resultFilePath = this.buildOrgOperationResultFilePath(workspaceRoot, folderName, operationName, date, runArtifactsLocation);
 
         if ( !resultFilePath ) {
             return undefined;
@@ -499,11 +505,17 @@ export class ScratchOrgService {
             ? JSON.stringify(this.redactSecrets(payload), null, 2)
             : JSON.stringify({ stdout: this.redactSecretText(invocationResult.stdout), stderr: this.redactSecretText(invocationResult.stderr), exitCode: invocationResult.exitCode }, null, 2);
 
-        try {
-            fs.mkdirSync(path.dirname(resultFilePath), { recursive: true });
-            this.writeOrgOperationsGitignore(workspaceRoot);
-        } catch {
-            return undefined;
+        if ( runArtifactsLocation ) {
+            if ( !RecipeCockpitRunArtifacts.makeFolder(runArtifactsLocation, path.dirname(resultFilePath)) ) {
+                return undefined;
+            }
+        } else {
+            try {
+                fs.mkdirSync(path.dirname(resultFilePath), { recursive: true });
+                this.writeOrgOperationsGitignore(workspaceRoot);
+            } catch {
+                return undefined;
+            }
         }
 
         // TWO OPERATIONS IN ONE SECOND (A SECOND ASSIGNMENT) TAKE THE FIRST FREE OF <name>, <name>-2, ... RATHER THAN LOSE THE LATER RESULT

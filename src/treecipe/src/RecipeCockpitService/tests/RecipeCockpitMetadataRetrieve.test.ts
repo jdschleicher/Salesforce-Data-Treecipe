@@ -533,7 +533,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
             expect(retrieveCalls()).toHaveLength(1);
             const [retrieveArgv] = retrieveCalls();
             expect(retrieveArgv.slice(0, 7)).toEqual(['project', 'retrieve', 'start', '--json', '--target-org', PROD_USERNAME, '--manifest']);
-            expect(retrieveArgv[7]).toMatch(new RegExp(`^treecipe/${ORG_OPERATIONS_FOLDER_NAME}/admin@example\\.com/\\d{8}-\\d{6}-field-retrieve-package\\.xml$`));
+            expect(retrieveArgv[7]).toMatch(new RegExp(`^treecipe/GeneratedRecipes/recipe-2026-09-20T10-00-00/Account-thru-OtherChildObject__c/RunArtifacts/${ORG_OPERATIONS_FOLDER_NAME}/admin@example\\.com/\\d{8}-\\d{6}-field-retrieve-package\\.xml$`));
             expect(retrieveArgv).not.toContain('--metadata');
             expect(cliCalls.some(argumentList => argumentList.includes('deploy'))).toBe(false);
 
@@ -551,7 +551,7 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
                 { command: 'metadataRetrieveState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, retrieveKind: 'fields' }
             ]);
 
-            const resultFiles = fs.readdirSync(path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, PROD_USERNAME));
+            const resultFiles = fs.readdirSync(path.join(path.resolve(workspaceRoot), 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', 'Account-thru-OtherChildObject__c', 'RunArtifacts', ORG_OPERATIONS_FOLDER_NAME, PROD_USERNAME));
             expect(resultFiles.filter(fileName => fileName.endsWith('-field-retrieve.json'))).toHaveLength(1);
             // THE COUNTS THE CARDS DRAW ARE READ AGAIN AFTER A RETRIEVE
             expect(postedNamed('troubleshootingSummary').length).toBeGreaterThanOrEqual(1);
@@ -749,8 +749,19 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
             expect(ruleListRefreshSpy).not.toHaveBeenCalled();
             expect(retrieveCalls()).toEqual([]);
             expect(notifications()).toEqual([]);
-            expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME, PROD_USERNAME))).toBe(false);
+            expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', 'Account-thru-OtherChildObject__c', 'RunArtifacts', ORG_OPERATIONS_FOLDER_NAME, PROD_USERNAME))).toBe(false);
             expect(postedNamed('metadataRetrieveState').at(-1)).toEqual({ command: 'metadataRetrieveState', isRunning: false, treeKey: ACCOUNT_TREE_KEY, retrieveKind: 'globalValueSets' });
+
+        });
+
+        it('retrieves nothing when the package.xml cannot be written into the tree\'s RunArtifacts folder (#470)', async () => {
+
+            fs.writeFileSync(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', ACCOUNT_TREE_KEY, 'RunArtifacts'), 'a file where the folder goes');
+            await openCockpit();
+            await retrieve('fields');
+
+            expect(retrieveCalls()).toEqual([]);
+            expect(notifications().at(-1)).toEqual({ severity: 'warning', text: 'No custom fields were retrieved: the package.xml could not be written under the tree\'s RunArtifacts folder in this workspace.', actions: [] });
 
         });
 

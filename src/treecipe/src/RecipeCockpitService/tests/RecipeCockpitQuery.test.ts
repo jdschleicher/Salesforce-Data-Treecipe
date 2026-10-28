@@ -7,6 +7,7 @@ import {
     RecipeCockpitQuery
 } from '../RecipeCockpitQuery';
 import { SOQLTemplateService } from '../../SOQLTemplateService/SOQLTemplateService';
+import { makeTreeRunArtifactsLocation } from './RecipeCockpitRunArtifactsFixture';
 import { ObjectInfoWrapper } from '../../ObjectInfoWrapper/ObjectInfoWrapper';
 
 import * as matchers from 'jest-extended';
@@ -187,44 +188,6 @@ describe('RecipeCockpitQuery bounds what one run holds by its values, not only i
 
 });
 
-describe('RecipeCockpitQuery.isQueryResultsFolderGitIgnored (#367)', () => {
-
-    let workspaceRoot: string;
-
-    beforeEach(() => {
-        workspaceRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'treecipe-query-gitignore-'));
-        fs.mkdirSync(path.join(workspaceRoot, 'treecipe', 'QueryResults'), { recursive: true });
-    });
-
-    afterEach(() => {
-        fs.rmSync(workspaceRoot, { recursive: true, force: true });
-    });
-
-    const withGitignore = (gitignoreText: string) => {
-        fs.writeFileSync(path.join(workspaceRoot, 'treecipe', 'QueryResults', '.gitignore'), gitignoreText);
-        return RecipeCockpitQuery.isQueryResultsFolderGitIgnored(workspaceRoot);
-    };
-
-    it('answers true only for a file whose lines ignore everything and un-ignore nothing', () => {
-
-        expect(withGitignore('*\n')).toBe(true);
-        expect(withGitignore('# org data\r\n  *  \r\n')).toBe(true);
-        expect(withGitignore('*\n!*.csv\n')).toBe(false);
-        expect(withGitignore('*.json\n')).toBe(false);
-        expect(withGitignore('')).toBe(false);
-
-    });
-
-    it('answers false with no file, or with a folder where the file goes', () => {
-
-        expect(RecipeCockpitQuery.isQueryResultsFolderGitIgnored(workspaceRoot)).toBe(false);
-        fs.mkdirSync(path.join(workspaceRoot, 'treecipe', 'QueryResults', '.gitignore'));
-        expect(RecipeCockpitQuery.isQueryResultsFolderGitIgnored(workspaceRoot)).toBe(false);
-
-    });
-
-});
-
 describe('RecipeCockpitQuery exports (#367)', () => {
 
     const records: Record<string, unknown>[] = [
@@ -312,46 +275,44 @@ describe('RecipeCockpitQuery.writeQueryExport (#367)', () => {
         fs.rmSync(temporaryRoot, { recursive: true, force: true });
     });
 
-    const write = (treeFolderName = 'Account-thru-Contact', objectApiName = 'Account') =>
-        RecipeCockpitQuery.writeQueryExport(workspaceRoot, treeFolderName, objectApiName, 'base', 'csv', 'Id\r\n', exportDate);
+    const write = (objectApiName = 'Account') =>
+        RecipeCockpitQuery.writeQueryExport(makeTreeRunArtifactsLocation(workspaceRoot), objectApiName, 'base', 'csv', 'Id\r\n', exportDate);
 
-    it('writes under treecipe/QueryResults/<folder> with a timestamped name, a git ignore beside it, and the next free suffix after that', () => {
+    it('writes under the tree\'s RunArtifacts/QueryResults with a timestamped name, a git ignore in RunArtifacts, and the next free suffix after that', () => {
 
+        const location = makeTreeRunArtifactsLocation(workspaceRoot);
         const firstPath = write();
         const secondPath = write();
 
-        expect(firstPath).toBe(path.join(workspaceRoot, 'treecipe', 'QueryResults', 'Account-thru-Contact', '20261018-090507-Account-base.csv'));
-        expect(secondPath).toBe(path.join(workspaceRoot, 'treecipe', 'QueryResults', 'Account-thru-Contact', '20261018-090507-Account-base-2.csv'));
+        expect(firstPath).toBe(path.join(location.folderPath, 'QueryResults', '20261018-090507-Account-base.csv'));
+        expect(secondPath).toBe(path.join(location.folderPath, 'QueryResults', '20261018-090507-Account-base-2.csv'));
         expect(fs.readFileSync(firstPath as string, 'utf-8')).toBe('Id\r\n');
-        expect(fs.readFileSync(path.join(workspaceRoot, 'treecipe', 'QueryResults', '.gitignore'), 'utf-8')).toBe('*\n');
+        expect(fs.readFileSync(path.join(location.folderPath, '.gitignore'), 'utf-8')).toBe('*\n');
+        expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'QueryResults'))).toBe(false);
 
     });
 
-    it.each([
-        ['', 'Account'],
-        ['..', 'Account'],
-        ['a/b', 'Account'],
-        ['a\\b', 'Account'],
-        ['Tree', 'Not An Api Name']
-    ])('writes nothing for the folder %p and object %p', (treeFolderName, objectApiName) => {
+    it('writes nothing for an object that is not an api name', () => {
 
-        expect(write(treeFolderName, objectApiName)).toBeUndefined();
-        expect(fs.existsSync(path.join(workspaceRoot, 'treecipe'))).toBe(false);
+        const location = makeTreeRunArtifactsLocation(workspaceRoot);
+        expect(write('Not An Api Name')).toBeUndefined();
+        expect(fs.existsSync(location.folderPath)).toBe(false);
 
     });
 
     it('writes nothing through a link out of the workspace, or where a folder cannot be made', () => {
 
+        const location = makeTreeRunArtifactsLocation(workspaceRoot);
         const outsidePath = path.join(temporaryRoot, 'outside');
         fs.mkdirSync(outsidePath);
-        fs.mkdirSync(path.join(workspaceRoot, 'treecipe'));
-        fs.symlinkSync(outsidePath, path.join(workspaceRoot, 'treecipe', 'QueryResults'));
+        fs.mkdirSync(location.folderPath);
+        fs.symlinkSync(outsidePath, path.join(location.folderPath, 'QueryResults'));
 
         expect(write()).toBeUndefined();
         expect(fs.readdirSync(outsidePath)).toEqual([]);
 
-        fs.rmSync(path.join(workspaceRoot, 'treecipe', 'QueryResults'));
-        fs.writeFileSync(path.join(workspaceRoot, 'treecipe', 'QueryResults'), 'a file, not a folder');
+        fs.rmSync(path.join(location.folderPath, 'QueryResults'));
+        fs.writeFileSync(path.join(location.folderPath, 'QueryResults'), 'a file, not a folder');
         expect(write()).toBeUndefined();
 
     });

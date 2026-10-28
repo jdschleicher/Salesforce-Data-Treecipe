@@ -382,7 +382,7 @@ describe('RecipeCockpitService, the Treecipe Adapter fills fields only the org h
         const panelState = (): IRecipeCockpitPanelState => (RecipeCockpitService as any).recipeCockpitPanelState;
         const warnings = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([, options]) => !options?.inPanel).map(([warningText]) => warningText);
         const confirmations = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([, options]) => options?.inPanel);
-        const attemptsFolderPath = () => path.join(workspaceRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, ACCOUNT_TREE_KEY);
+        const attemptsFolderPath = () => path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', TREE_RUN_FOLDER_NAME, ACCOUNT_TREE_KEY, 'RunArtifacts', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME);
         const attemptFiles = () => fs.existsSync(attemptsFolderPath()) ? fs.readdirSync(attemptsFolderPath()).sort() : [];
         const readAttemptFiles = (suffix: string) => attemptFiles().filter(fileName => fileName.endsWith(suffix)).map(fileName => JSON.parse(fs.readFileSync(path.join(attemptsFolderPath(), fileName), 'utf8')));
 

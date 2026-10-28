@@ -4,7 +4,8 @@ import * as xml2js from 'xml2js';
 
 import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '../PicklistDependencyCheckService/PicklistDependencyCheckService';
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
-import { ORG_OPERATIONS_FOLDER_NAME, ORG_OPERATION_RESULT_FILE_ATTEMPTS, ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
+import { ORG_OPERATION_RESULT_FILE_ATTEMPTS, ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
+import { IRecipeCockpitRunArtifactsLocation, RecipeCockpitRunArtifacts } from './RecipeCockpitRunArtifacts';
 import { SfdxProjectService } from '../SfdxProjectService/SfdxProjectService';
 import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg } from './RecipeCockpitConfirmContent';
 
@@ -573,63 +574,37 @@ export class RecipeCockpitMetadataDeploy {
     }
 
     /*
-        treecipe/OrgOperations/<username>/<yyyyMMdd-HHmmss>-<operation>-package.xml, beside the CLI
-        results the cockpit saves. Built here, never from a panel message; undefined when the folder
-        name could name another folder or the path would land outside the workspace.
+        <tree folder>/RunArtifacts/OrgOperations/<username>/<yyyyMMdd-HHmmss>-<operation>-package.xml
+        (#470), beside the CLI results the cockpit saves for that tree. Built here, never from a
+        panel message; undefined when the folder name could name another folder or the path would
+        land outside the workspace.
     */
-    static buildPackageXmlFilePath(workspaceRoot: string, orgUsername: string, operationName: MetadataDeployOperationName | MetadataPackageXmlRetrieveOperationName, date: Date): string | undefined {
+    static buildPackageXmlFilePath(runArtifactsLocation: IRecipeCockpitRunArtifactsLocation, orgUsername: string, operationName: MetadataDeployOperationName | MetadataPackageXmlRetrieveOperationName, date: Date): string | undefined {
 
         if ( !ScratchOrgService.isUsableOrgOperationFolderName(orgUsername) ) {
             return undefined;
         }
 
-        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
-        const packageXmlFilePath = path.join(resolvedWorkspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME, orgUsername, `${ScratchOrgService.buildCompactTimestamp(date)}-${operationName}${METADATA_DEPLOY_PACKAGE_XML_SUFFIX}`);
+        const packageXmlFilePath = path.join(RecipeCockpitRunArtifacts.buildKindFolderPath(runArtifactsLocation, 'OrgOperations'), orgUsername, `${ScratchOrgService.buildCompactTimestamp(date)}-${operationName}${METADATA_DEPLOY_PACKAGE_XML_SUFFIX}`);
 
-        return SfdxProjectService.isPathContainedInWorkspace(packageXmlFilePath, resolvedWorkspaceRoot) ? packageXmlFilePath : undefined;
+        return SfdxProjectService.isPathContainedInWorkspace(packageXmlFilePath, runArtifactsLocation.workspaceRoot) ? packageXmlFilePath : undefined;
 
     }
 
     /*
-        Writes the package.xml and answers where, or undefined when it could not. The folder is made
-        and then checked again, since a link in its place would take the write out of the workspace;
-        the file is written with "wx", so a link planted at its name is never followed, and two
-        deploys in one second take the first free of <name>, <name>-2, ...
+        Writes the package.xml and answers where, or undefined when it could not. Its folders are
+        made by RecipeCockpitRunArtifacts.makeFolder, which follows no link and checks the path
+        again once they exist; the file is written with "wx", so a link planted at its name is never
+        followed, and two deploys in one second take the first free of <name>, <name>-2, ...
     */
-    static writePackageXml(workspaceRoot: string, packageXmlFilePath: string, packageXml: string): string | undefined {
+    static writePackageXml(runArtifactsLocation: IRecipeCockpitRunArtifactsLocation, packageXmlFilePath: string, packageXml: string): string | undefined {
 
-        const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
-
-        if ( !SfdxProjectService.isPathContainedInWorkspace(packageXmlFilePath, resolvedWorkspaceRoot) ) {
+        if ( !SfdxProjectService.isPathContainedInWorkspace(packageXmlFilePath, runArtifactsLocation.workspaceRoot)
+                || !RecipeCockpitRunArtifacts.makeFolder(runArtifactsLocation, path.dirname(packageXmlFilePath)) ) {
             return undefined;
         }
 
-        try {
-            fs.mkdirSync(path.dirname(packageXmlFilePath), { recursive: true });
-            ScratchOrgService.writeOrgOperationsGitignore(resolvedWorkspaceRoot);
-        } catch {
-            return undefined;
-        }
-
-        if ( !SfdxProjectService.isPathContainedInWorkspace(path.dirname(packageXmlFilePath), resolvedWorkspaceRoot) ) {
-            return undefined;
-        }
-
-        for ( let attempt = 1; attempt <= ORG_OPERATION_RESULT_FILE_ATTEMPTS; attempt++ ) {
-            const attemptFilePath = attempt === 1
-                ? packageXmlFilePath
-                : packageXmlFilePath.slice(0, -METADATA_DEPLOY_PACKAGE_XML_SUFFIX.length) + `-${attempt}${METADATA_DEPLOY_PACKAGE_XML_SUFFIX}`;
-            try {
-                fs.writeFileSync(attemptFilePath, packageXml, { encoding: 'utf-8', flag: 'wx' });
-                return attemptFilePath;
-            } catch (writeError) {
-                if ( ( writeError as NodeJS.ErrnoException )?.code !== 'EEXIST' ) {
-                    return undefined;
-                }
-            }
-        }
-
-        return undefined;
+        return RecipeCockpitRunArtifacts.writeNewFile(packageXmlFilePath, packageXml, METADATA_DEPLOY_PACKAGE_XML_SUFFIX, ORG_OPERATION_RESULT_FILE_ATTEMPTS);
 
     }
 

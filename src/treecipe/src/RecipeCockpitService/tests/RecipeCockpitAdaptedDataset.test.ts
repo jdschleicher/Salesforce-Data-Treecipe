@@ -791,6 +791,20 @@ describe('the Treecipe Adapter\'s adapted data set and recipe (#448)', () => {
                 fs.rmSync(temporaryFolderPath, { recursive: true, force: true });
             }
 
+            // NOR A FILE IN A TREE'S RunArtifacts FOLDER (#470), WHICH NEITHER READS AS A RECIPE OR A TREE
+            const runFolderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'treecipe-run-artifacts-tree-'));
+            try {
+                const treeFolderPath = path.join(runFolderPath, 'Tree');
+                fs.mkdirSync(path.join(treeFolderPath, 'RunArtifacts', 'OrgOperations'), { recursive: true });
+                fs.writeFileSync(path.join(treeFolderPath, 'recipe--Tree.yml'), '');
+                fs.writeFileSync(path.join(treeFolderPath, 'RunArtifacts', 'recipe--Planted.yml'), '');
+                fs.writeFileSync(path.join(treeFolderPath, 'RunArtifacts', 'OrgOperations', 'recipe--Planted.yml'), '');
+                expect(RecipeCockpitTreeHistory.findTreeRecipeFilePath(treeFolderPath)).toBe(path.join(treeFolderPath, 'recipe--Tree.yml'));
+                expect(RecipeCockpitService.collectRecipeFilePaths(runFolderPath)).toEqual([path.join(treeFolderPath, 'recipe--Tree.yml')]);
+            } finally {
+                fs.rmSync(runFolderPath, { recursive: true, force: true });
+            }
+
             expect(RecipeCockpitAdaptedDataset.isAdaptedRecipeFileName('recipe--my-adapted-tree.yml')).toBe(false);
             expect(RecipeCockpitAdaptedDataset.isAdaptedRecipeFileName('recipe--Tree-adapted-20261025-143005.yaml')).toBe(true);
 

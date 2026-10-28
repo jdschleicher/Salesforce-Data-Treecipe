@@ -663,7 +663,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
                 { command: 'permissionSetAssignState', isRunning: false, treeKey: ACCOUNT_TREE_KEY }
             ]);
 
-            const operationsFolderPath = path.join(path.resolve(workspaceRoot), 'treecipe', ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME);
+            const operationsFolderPath = path.join(path.resolve(workspaceRoot), 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', 'Account-thru-OtherChildObject__c', 'RunArtifacts', ORG_OPERATIONS_FOLDER_NAME, QA_USERNAME);
             const resultFiles = fs.readdirSync(operationsFolderPath);
             expect(resultFiles.filter(fileName => fileName.endsWith('-permission-set-assign.json'))).toHaveLength(1);
             expect(resultFiles.filter(fileName => fileName.includes('deploy'))).toEqual([]);
@@ -692,6 +692,24 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             // ONLY WHAT AN ASSIGNED PICK GRANTS ON IS DROPPED
             expect(clearSpy).toHaveBeenCalledWith(QA_USERNAME, 'Account');
             expect(clearSpy).not.toHaveBeenCalledWith(QA_USERNAME, 'Contact');
+
+        });
+
+        it('says the assignment\'s result could be committed, as a warning with View output, when the tree\'s RunArtifacts/.gitignore no longer ignores everything (#470)', async () => {
+
+            orgPermissionSetNames = ['account_tree_access'];
+            const runArtifactsFolderPath = path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', 'Account-thru-OtherChildObject__c', 'RunArtifacts');
+            fs.mkdirSync(runArtifactsFolderPath, { recursive: true });
+            fs.writeFileSync(path.join(runArtifactsFolderPath, '.gitignore'), '');
+            await openCockpitWithQaSelected();
+
+            await assignPermissionSets();
+
+            expect(notificationInformationSpy).not.toHaveBeenCalledWith(expect.stringMatching(/^Assigned /));
+            expect(notificationWarnings()).toContainEqual({
+                text: expect.stringMatching(/^Assigned 1 permission set for Account-thru-OtherChildObject__c to .* could be committed: check them before you commit\.$/),
+                actions: [RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL]
+            });
 
         });
 
@@ -1138,7 +1156,7 @@ describe('RecipeCockpitService, "Assign permission sets to me…" in the Treecip
             ));
 
             await assignPermissionSets();
-            fs.rmSync(path.join(workspaceRoot, 'treecipe', ORG_OPERATIONS_FOLDER_NAME), { recursive: true, force: true });
+            fs.rmSync(path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', 'recipe-2026-09-20T10-00-00', 'Account-thru-OtherChildObject__c', 'RunArtifacts', ORG_OPERATIONS_FOLDER_NAME), { recursive: true, force: true });
             chooseViewOutput(RECIPE_COCKPIT_PERMISSION_SET_VIEW_OUTPUT_LABEL);
             await flushAsyncWork();
 

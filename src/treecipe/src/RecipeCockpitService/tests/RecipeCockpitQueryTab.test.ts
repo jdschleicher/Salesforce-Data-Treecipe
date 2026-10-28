@@ -201,7 +201,8 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             ...(vscode.window.showInformationMessage as jest.Mock).mock.calls.map(([text, ...actions]) => ({ severity: 'information', text: text, actions: actions })),
             ...(vscode.window.showWarningMessage as jest.Mock).mock.calls.map(([text, ...actions]) => ({ severity: 'warning', text: text, actions: actions }))
         ];
-        const resultsFolderPath = () => path.join(path.resolve(workspaceRoot), 'treecipe', 'QueryResults');
+        const runArtifactsFolderPath = () => path.join(path.resolve(workspaceRoot), 'treecipe', 'GeneratedRecipes', TREE_RUN_FOLDER_NAME, ACCOUNT_TREE_KEY, 'RunArtifacts');
+        const resultsFolderPath = () => path.join(runArtifactsFolderPath(), 'QueryResults');
 
         const openCockpit = async () => {
             await RecipeCockpitService.openRecipeCockpitPanel(workspaceRoot, workspaceState);
@@ -658,7 +659,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
 
         });
 
-        it('exports the result it holds as JSON and CSV under treecipe/QueryResults/<folder>, ignored by git, and opens it from the notification', async () => {
+        it('exports the result it holds as JSON and CSV under the tree\'s RunArtifacts/QueryResults, ignored by git, and opens it from the notification', async () => {
 
             const openSpy = jest.spyOn(VSCodeWorkspaceService, 'openWorkspaceResultFile').mockResolvedValue(undefined);
             await openCockpit();
@@ -670,12 +671,13 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             await send({ command: 'exportTreeQueryResult', treeKey: ACCOUNT_TREE_KEY, queryKey: 'Contact:base:0', exportFormat: 'csv' });
             await flushAsyncWork();
 
-            const exportFolderPath = path.join(resultsFolderPath(), ACCOUNT_TREE_KEY);
+            const exportFolderPath = resultsFolderPath();
+            expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', 'QueryResults'))).toBe(false);
             const exportFileNames = fs.readdirSync(exportFolderPath).sort();
             expect(exportFileNames).toHaveLength(2);
             expect(exportFileNames[0]).toMatch(/^\d{8}-\d{6}-Contact-base\.csv$/);
             expect(exportFileNames[1]).toMatch(/^\d{8}-\d{6}-Contact-base\.json$/);
-            expect(fs.readFileSync(path.join(resultsFolderPath(), '.gitignore'), 'utf-8')).toBe('*\n');
+            expect(fs.readFileSync(path.join(runArtifactsFolderPath(), '.gitignore'), 'utf-8')).toBe('*\n');
 
             expect(JSON.parse(fs.readFileSync(path.join(exportFolderPath, exportFileNames[1]), 'utf-8'))).toEqual([
                 { Id: '003000000000001AAA', LastName: 'Smith', AccountId: null },
@@ -687,7 +689,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             const exportNotices = notifications().filter(notice => notice.text.startsWith('Exported'));
             expect(exportNotices).toHaveLength(2);
             expect(exportNotices[0]).toMatchObject({ severity: 'information', actions: [RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL] });
-            expect(exportNotices[0].text).toContain(`Exported 2 records from prod · ${PROD_USERNAME} to treecipe/QueryResults/${ACCOUNT_TREE_KEY}/`);
+            expect(exportNotices[0].text).toContain(`Exported 2 records from prod · ${PROD_USERNAME} to treecipe/GeneratedRecipes/${TREE_RUN_FOLDER_NAME}/${ACCOUNT_TREE_KEY}/RunArtifacts/QueryResults/`);
             expect(openSpy).toHaveBeenCalledTimes(2);
             expect(openSpy.mock.calls.map(([filePath]) => path.basename(filePath)).sort()).toEqual(exportFileNames);
 
@@ -706,20 +708,20 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
 
         });
 
-        it('warns, and still writes the file, when treecipe/QueryResults/.gitignore does not ignore everything', async () => {
+        it('warns, and still writes the file, when the tree\'s RunArtifacts/.gitignore does not ignore everything', async () => {
 
             await openCockpit();
             await loadQueries();
             await run();
-            fs.mkdirSync(resultsFolderPath(), { recursive: true });
-            fs.writeFileSync(path.join(resultsFolderPath(), '.gitignore'), '*\n!*.csv\n');
+            fs.mkdirSync(runArtifactsFolderPath(), { recursive: true });
+            fs.writeFileSync(path.join(runArtifactsFolderPath(), '.gitignore'), '*\n!*.csv\n');
 
             await send({ command: 'exportTreeQueryResult', treeKey: ACCOUNT_TREE_KEY, queryKey: 'Contact:base:0', exportFormat: 'csv' });
 
             const exportNotice = notifications().find(notice => notice.text.startsWith('Exported'));
             expect(exportNotice).toMatchObject({ severity: 'warning', actions: [RECIPE_COCKPIT_QUERY_OPEN_FILE_LABEL] });
             expect(exportNotice?.text).toContain('could be committed');
-            expect(fs.readdirSync(path.join(resultsFolderPath(), ACCOUNT_TREE_KEY))).toHaveLength(1);
+            expect(fs.readdirSync(resultsFolderPath())).toHaveLength(1);
 
         });
 
@@ -858,7 +860,7 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
 
             notificationAnswer = undefined;
             await send({ command: 'exportTreeQueryResult', treeKey: ACCOUNT_TREE_KEY, queryKey: 'Contact:base:0', exportFormat: 'json' });
-            expect(informationTexts().at(-1)).toStartWith(`Exported 1 record from ${PROD_USERNAME} to treecipe/QueryResults/`);
+            expect(informationTexts().at(-1)).toStartWith(`Exported 1 record from ${PROD_USERNAME} to treecipe/GeneratedRecipes/${TREE_RUN_FOLDER_NAME}/${ACCOUNT_TREE_KEY}/RunArtifacts/QueryResults/`);
 
         });
 
@@ -870,9 +872,10 @@ describe('RecipeCockpitService, the Query tab (#367)', () => {
             await loadQueries();
             await run();
 
+            fs.mkdirSync(runArtifactsFolderPath(), { recursive: true });
             fs.writeFileSync(resultsFolderPath(), 'a file where the folder goes');
             await send({ command: 'exportTreeQueryResult', treeKey: ACCOUNT_TREE_KEY, queryKey: 'Contact:base:0', exportFormat: 'csv' });
-            expect(notifications().at(-1)?.text).toBe('Nothing was exported: the CSV file could not be written under treecipe/QueryResults in this workspace.');
+            expect(notifications().at(-1)?.text).toBe('Nothing was exported: the CSV file could not be written under the tree\'s RunArtifacts/QueryResults folder in this workspace.');
 
             fs.rmSync(resultsFolderPath());
             jest.spyOn(VSCodeWorkspaceService, 'openWorkspaceResultFile').mockRejectedValue(new Error('editor gone'));

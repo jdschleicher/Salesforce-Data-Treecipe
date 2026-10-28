@@ -12,6 +12,7 @@ import { FakerJSRecipeProcessor } from "../FakerRecipeProcessor/FakerJSRecipePro
 import { GlobalValueSetSingleton } from "../GlobalValueSetSingleton/GlobalValueSetSingleton";
 import { DatasetSourceService, IDatasetSourceFieldConstraint } from "../DatasetSourceService/DatasetSourceService";
 import { SfdxProjectService } from "../SfdxProjectService/SfdxProjectService";
+import { RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME, RecipeCockpitRunArtifacts } from '../RecipeCockpitService/RecipeCockpitRunArtifacts';
 import { SalesforceApiName } from "../RecipeService/SalesforceApiName";
 import { RecipeYamlScalar } from "../RecipeFakerService.ts/RecipeYamlScalar/RecipeYamlScalar";
 import { PicklistDependencyTestService, ISpecsChangePlan, IPlannedSpecsFile, IPicklistDependencySpecDetail, IPicklistDependencySkippedField, IPicklistDependencyGenerationProgress, IPicklistDependencyGenerationSummaryDetail } from "../PicklistDependencyTestService/PicklistDependencyTestService";
@@ -573,6 +574,11 @@ export class ExtensionCommandService {
 
         if ( !isInsideGeneratedRecipes ) {
             return `"${recipeFileName}" is not a recipe inside this workspace's GeneratedRecipes folder, so no data was generated.`;
+        }
+
+        // A TREE'S RunArtifacts (#470) HOLDS RUN FILES, NEVER A RECIPE
+        if ( path.relative(path.resolve(generatedRecipesFolderPath), path.dirname(resolvedRecipeFilePath)).split(path.sep).some(folderName => RecipeCockpitRunArtifacts.isRunArtifactsFolderName(folderName)) ) {
+            return `"${recipeFileName}" is a run file in a tree's ${RECIPE_COCKPIT_RUN_ARTIFACTS_FOLDER_NAME} folder, not a recipe, so no data was generated.`;
         }
 
         if ( !fs.existsSync(resolvedRecipeFilePath) || !fs.statSync(resolvedRecipeFilePath).isFile() ) {

@@ -63,6 +63,8 @@ import {
     RECIPE_COCKPIT_UPDATER_UPDATING_LABEL
 } from '../RecipeCockpitService';
 import { IUpdateObjectDescribe, IUpdateRequestRecord, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, RecipeCockpitRecordUpdate } from '../RecipeCockpitRecordUpdate';
+import { makeTreeRunArtifactsLocation } from './RecipeCockpitRunArtifactsFixture';
+import { RecipeCockpitRunArtifacts } from '../RecipeCockpitRunArtifacts';
 import { runPanelScript } from './RecipeCockpitPanelHarness';
 import { answerInPanelConfirmationsThroughWarningMock } from './RecipeCockpitConfirmationAnswers';
 import { CollectionsApiService } from '../../CollectionsApiService/CollectionsApiService';
@@ -218,14 +220,15 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         });
 
-        it('writes the snapshot under UpdateAttempts, never over an earlier one, with a .gitignore of everything beside it', () => {
+        it('writes the snapshot under the tree\'s RunArtifacts/UpdateAttempts, never over an earlier one, with a .gitignore of everything in RunArtifacts', () => {
 
+            const location = makeTreeRunArtifactsLocation(temporaryRoot);
             const snapshot = { orgUsername: 'qa@example.com.qa', treeFolderName: 'Account-thru-Contact', takenAt: '2026-10-22T10:00:00.000Z', objects: [] };
             const date = new Date(2026, 9, 22, 10, 0, 5);
-            const attemptFolderPath = path.join(temporaryRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, 'Account-thru-Contact');
+            const attemptFolderPath = path.join(location.folderPath, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME);
 
-            const firstFiles = RecipeCockpitRecordUpdate.writeSnapshot(temporaryRoot, snapshot, date);
-            const secondFiles = RecipeCockpitRecordUpdate.writeSnapshot(temporaryRoot, snapshot, date);
+            const firstFiles = RecipeCockpitRecordUpdate.writeSnapshot(location, snapshot, date);
+            const secondFiles = RecipeCockpitRecordUpdate.writeSnapshot(location, snapshot, date);
 
             expect(firstFiles).toEqual({
                 snapshotFilePath: path.join(attemptFolderPath, '20261022-100005-before.json'),
@@ -233,7 +236,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             });
             expect(secondFiles?.snapshotFilePath).toBe(path.join(attemptFolderPath, '20261022-100005-2-before.json'));
             expect(JSON.parse(fs.readFileSync(firstFiles!.snapshotFilePath, 'utf8'))).toEqual(snapshot);
-            expect(fs.readFileSync(path.join(temporaryRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, '.gitignore'), 'utf8')).toBe('*\n');
+            expect(fs.readFileSync(path.join(location.folderPath, '.gitignore'), 'utf8')).toBe('*\n');
+            expect(fs.existsSync(path.join(temporaryRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME))).toBe(false);
 
             expect(RecipeCockpitRecordUpdate.writeResults(firstFiles!.resultsFilePath, temporaryRoot, { outcome: 'completed' })).toBe(true);
             expect(JSON.parse(fs.readFileSync(firstFiles!.resultsFilePath, 'utf8'))).toEqual({ outcome: 'completed' });
@@ -251,21 +255,23 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
             ['an object that is not an api name', { treeFolderName: 'Account', objects: [{ objectApiName: 'Account/../x', fieldApiNames: [], records: [] }] }]
         ])('writes nothing for %s', (_description, snapshotFields) => {
 
-            const files = RecipeCockpitRecordUpdate.writeSnapshot(temporaryRoot, { orgUsername: 'qa', takenAt: '', ...snapshotFields }, new Date());
+            const location = makeTreeRunArtifactsLocation(temporaryRoot);
+            const files = RecipeCockpitRecordUpdate.writeSnapshot(location, { orgUsername: 'qa', takenAt: '', ...snapshotFields }, new Date());
             expect(files).toBeUndefined();
-            expect(fs.existsSync(path.join(temporaryRoot, 'treecipe'))).toBe(false);
+            expect(fs.existsSync(location.folderPath)).toBe(false);
 
         });
 
         it('writes nothing when a folder leaves the workspace, before or after it is made, or when a write fails for another reason than a clash', () => {
 
+            const location = makeTreeRunArtifactsLocation(temporaryRoot);
             const snapshot = { orgUsername: 'qa', treeFolderName: 'Account', takenAt: '', objects: [] };
             const containmentSpy = jest.spyOn(SfdxProjectService, 'isPathContainedInWorkspace').mockReturnValueOnce(false);
-            expect(RecipeCockpitRecordUpdate.writeSnapshot(temporaryRoot, snapshot, new Date())).toBeUndefined();
-            expect(fs.existsSync(path.join(temporaryRoot, 'treecipe'))).toBe(false);
+            expect(RecipeCockpitRecordUpdate.writeSnapshot(location, snapshot, new Date())).toBeUndefined();
+            expect(fs.existsSync(location.folderPath)).toBe(false);
 
             containmentSpy.mockReturnValueOnce(true).mockReturnValueOnce(false);
-            expect(RecipeCockpitRecordUpdate.writeSnapshot(temporaryRoot, snapshot, new Date())).toBeUndefined();
+            expect(RecipeCockpitRecordUpdate.writeSnapshot(location, snapshot, new Date())).toBeUndefined();
             containmentSpy.mockRestore();
 
             const realWriteFileSync = fs.writeFileSync;
@@ -275,16 +281,17 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
                 }
                 return ( realWriteFileSync as any )(filePath, ...rest);
             }) as typeof fs.writeFileSync);
-            expect(RecipeCockpitRecordUpdate.writeSnapshot(temporaryRoot, snapshot, new Date())).toBeUndefined();
+            expect(RecipeCockpitRecordUpdate.writeSnapshot(location, snapshot, new Date())).toBeUndefined();
 
         });
 
         it('answers undefined when the folder cannot be made', () => {
 
-            fs.mkdirSync(path.join(temporaryRoot, 'treecipe'));
-            fs.writeFileSync(path.join(temporaryRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME), 'a file, not a folder');
+            const location = makeTreeRunArtifactsLocation(temporaryRoot);
+            fs.mkdirSync(location.folderPath);
+            fs.writeFileSync(path.join(location.folderPath, RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME), 'a file, not a folder');
 
-            expect(RecipeCockpitRecordUpdate.writeSnapshot(temporaryRoot, { orgUsername: 'qa', treeFolderName: 'Account', takenAt: '', objects: [] }, new Date())).toBeUndefined();
+            expect(RecipeCockpitRecordUpdate.writeSnapshot(location, { orgUsername: 'qa', treeFolderName: 'Account', takenAt: '', objects: [] }, new Date())).toBeUndefined();
 
         });
 
@@ -347,7 +354,8 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
         const warnings = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([, options]) => !options?.inPanel).map(([warningText]) => warningText);
         const confirmations = () => (vscode.window.showWarningMessage as jest.Mock).mock.calls.filter(([, options]) => options?.inPanel);
         const updateConfirmations = () => confirmations().filter(([title]) => String(title).startsWith('Update '));
-        const attemptsFolderPath = () => path.join(workspaceRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, ACCOUNT_TREE_KEY);
+        const runArtifactsFolderPath = () => path.join(workspaceRoot, 'treecipe', 'GeneratedRecipes', TREE_RUN_FOLDER_NAME, ACCOUNT_TREE_KEY, 'RunArtifacts');
+        const attemptsFolderPath = () => path.join(runArtifactsFolderPath(), RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME);
         const attemptFiles = () => fs.existsSync(attemptsFolderPath()) ? fs.readdirSync(attemptsFolderPath()).sort() : [];
         // WHAT AN UPDATE THAT LANDED ADDS TO ITS NOTIFICATION (#448): THE ADAPTED DATA SET AND RECIPE IT WROTE
         const adaptedDatasetFolderNames = () => fs.readdirSync(path.join(workspaceRoot, 'treecipe', 'FakeDataSets')).filter(folderName => folderName.includes('-adapted-')).sort();
@@ -1055,16 +1063,17 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         });
 
-        it('warns when treecipe/UpdateAttempts/.gitignore does not ignore everything, even after a full success', async () => {
+        it('warns when the tree\'s RunArtifacts/.gitignore does not ignore everything, even after a full success', async () => {
 
-            fs.mkdirSync(path.join(workspaceRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME), { recursive: true });
-            fs.writeFileSync(path.join(workspaceRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME, '.gitignore'), '*\n!*.json\n');
+            fs.mkdirSync(runArtifactsFolderPath(), { recursive: true });
+            fs.writeFileSync(path.join(runArtifactsFolderPath(), '.gitignore'), '*\n!*.json\n');
             await openCockpitLoadAndGenerate();
             await acknowledgeValues();
             await requestUpdate();
 
             expect(updateCalls).toHaveLength(2);
-            expect(RecipeCockpitRecordUpdate.isUpdateAttemptsFolderGitIgnored(workspaceRoot)).toBe(false);
+            expect(RecipeCockpitRunArtifacts.isFolderWhollyGitIgnored(runArtifactsFolderPath())).toBe(false);
+            expect(fs.existsSync(path.join(workspaceRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME))).toBe(false);
             expect(warnings().at(-1)).toBe(RecipeYamlScalar.escapeForNotification(`5 records of Account-thru-OtherChildObject__c were updated in qa · qa@example.com.qa. Their old values are in ${attemptFiles()[0]}. ${RECIPE_COCKPIT_UPDATER_NOT_GIT_IGNORED_NOTE}${adaptedNote()}`));
 
         });
@@ -1149,7 +1158,7 @@ describe('RecipeCockpitService, the Treecipe Adapter\'s update (#418)', () => {
 
         it('sends nothing when the old values cannot be saved', async () => {
 
-            fs.writeFileSync(path.join(workspaceRoot, 'treecipe', RECIPE_COCKPIT_UPDATE_ATTEMPTS_FOLDER_NAME), 'a file where the folder goes');
+            fs.writeFileSync(runArtifactsFolderPath(), 'a file where the folder goes');
             await openCockpitLoadAndGenerate();
             await acknowledgeValues();
             await requestUpdate();
