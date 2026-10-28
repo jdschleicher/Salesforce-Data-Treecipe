@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.166.0] - Picklist Dependency Check: the deployed-check asks the org through a connection, not the sf CLI
+## [3.167.0] - Picklist Dependency Check: the deployed-check asks the org through a connection, not the sf CLI
 
 [#497](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/497), the first slice of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496) (replace Salesforce CLI calls with `@salesforce/core` where it makes sense). Before deploying, **Run Picklist Dependency Check** asks whether the generated test suite and its class are in the org. That question started an `sf data query --use-tooling-api` process, which took seconds and needed `sf` on PATH.
 
@@ -9,6 +9,15 @@
 - **A guard on every remaining sf call.** `SalesforceCliCallSites.test.ts` lists each place that still starts an `sf` process, by file and method (13 after this change, plus the Recipe Cockpit's cancellable wrapper), and fails on a new one, a removed one left listed, a new file importing `child_process`, or a direct `jsforce` import (`jsforce` is a devDependency; the connection `@salesforce/core` returns is the API that ships). Each #496 slice deletes its entry.
 - **Docs.** `docs/PICKLIST-DEPENDENCY-TECHNICAL-DESIGN.md` no longer says every org interaction goes through the CLI: its architecture diagram, trust boundaries, credential posture (the access token is now read into the extension host, where `@salesforce/core` may keep it in memory, and is never written, logged or posted), sinks and §9.1 permissions row (which still named the older `ApexClass` query) say what the check does. `PICKLIST-DEPENDENCY-FLOW.md`'s run diagram names the current method and the connection. CLAUDE.md adds the rule that org work goes through a `@salesforce/core` connection.
 - **Tests.** `PicklistDependencyCheckService.test.ts`: true for a record, false for none, for a rejected query, for a connection that does not open and for four malformed answers; the query goes through `tooling.query` on the named org with the suite and class names; no `execFile`; an unusable identifier opens no connection.
+
+## [3.166.0] - Recipe Cockpit: an expanded object's controls and fields sit in two bordered boxes, checkboxes under the ▸
+
+[#494](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/494). An expanded object's controls row and field rows ran straight into the next object's header, so nothing showed where one object's fields ended, and the field checkboxes were indented a fixed 2.1rem, about 1.6rem left of the object's ▸.
+
+- **Two boxes.** The controls row (All fields · Standard fields · Hide unselected · TODOs only) is a bordered box, and every field row of the object now sits in a second one, `treeFieldsBox`. Both are drawn in `--sdt-border`, padded on every side, with space between them and around them, so no checkbox, row hover or excluded-field overlay touches an edge. A fields box whose rows are all hidden by a search or filter is not drawn (`:has()`); the same rule guards the controls row, which today always holds TODOs only. The unticked-field overlay takes the row's rounded corners.
+- **Checkboxes under the ▸.** The header's padding, the chain-link width and the header gap are now named constants (`RECIPE_COCKPIT_TREE_OBJECT_HEADER_PADDING_REM`, `RECIPE_COCKPIT_TREE_OBJECT_INCLUDE_WIDTH_REM`, `RECIPE_COCKPIT_TREE_HEADER_GAP_REM`), and the boxes' margin is derived from them (`RECIPE_COCKPIT_TREE_FIELD_BOX_MARGIN_LEFT`), so each field's checkbox and the All fields box start where the ▸ does, at every nesting depth, on an iteration and on the ungrouped card.
+- **Layout only.** No message, model or place field changed, and no colour pair was added.
+- **Tests.** `RecipeCockpitFieldBoxes.test.ts` (the fields box holds every field row, after the controls row; a never-expanded object builds neither box; the stylesheet's offsets add up to the ▸'s, the padding and border rules, the empty-box rule); `RecipeCockpitExcludeFields.test.ts` reads a field row inside the box.
 
 ## [3.165.0] - Recipe Cockpit: the Treecipe tab's filters and "Manage record types" sit in one tile under the search, and a count says "record(s)"
 
