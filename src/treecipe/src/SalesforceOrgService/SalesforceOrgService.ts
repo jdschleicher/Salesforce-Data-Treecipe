@@ -145,9 +145,6 @@ export const SCRATCH_ORG_TYPE_LABEL = 'Scratch org';
 
 export const SANDBOX_ORG_TYPE_LABEL = 'Sandbox';
 
-// AuthInfo TREATS A USERNAME OF THIS SHAPE AS AN ACCESS TOKEN RATHER THAN READING A FILE
-const ACCESS_TOKEN_SHAPED_USERNAME_PATTERN = /^00D\w{12,15}!/;
-
 const AUTHORIZATION_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})/;
 
 // MATCHED EXACTLY: A CASE OR WHITESPACE VARIANT IS NOT AN ANSWER THE ORG GIVES, SO IT IS REFUSED
@@ -680,7 +677,8 @@ export class SalesforceOrgService {
     */
     static async readScratchOrgDetail(username: string): Promise<IScratchOrgDetail | undefined> {
 
-        if ( !PicklistDependencyCheckService.isValidTargetOrgIdentifier(username) || ACCESS_TOKEN_SHAPED_USERNAME_PATTERN.test(username) ) {
+        // ALSO REFUSES EVERY "!", SO AuthInfo NEVER TAKES THE USERNAME FOR AN ACCESS TOKEN ("00D…!…")
+        if ( !PicklistDependencyCheckService.isValidTargetOrgIdentifier(username) ) {
             return undefined;
         }
 
@@ -694,10 +692,10 @@ export class SalesforceOrgService {
     }
 
     /*
-        The authorization file is untrusted. The file records a scratch org by devHubUsername (which
-        is what AuthInfo.listAllAuthorizations and "sf org display" both read it from); isScratchOrg
-        is accepted too, should a later @salesforce/core record it. A date that is not a real
-        yyyy-MM-dd is no date, never a refusal.
+        The authorization file is untrusted. A scratch org's file records devHubUsername (which is
+        what AuthInfo.listAllAuthorizations derives isScratchOrg from) and, when its Dev Hub found
+        it, isScratch: true; either is read. A date that is not a real yyyy-MM-dd is no date, never
+        a refusal.
     */
     static parseScratchOrgAuthorizationFields(authorizationFields: unknown): IScratchOrgDetail | undefined {
 
@@ -707,7 +705,7 @@ export class SalesforceOrgService {
             return undefined;
         }
 
-        const isScratchOrg = fields.isScratchOrg === true || ( typeof fields.devHubUsername === 'string' && fields.devHubUsername.trim() !== '' );
+        const isScratchOrg = fields.isScratch === true || ( typeof fields.devHubUsername === 'string' && fields.devHubUsername.trim() !== '' );
         const expirationDate = isScratchOrg ? this.readAuthorizationDate(fields.expirationDate) : undefined;
 
         return expirationDate ? { isScratchOrg: isScratchOrg, expirationDate: expirationDate } : { isScratchOrg: isScratchOrg };

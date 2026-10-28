@@ -2068,7 +2068,7 @@ describe('SalesforceOrgService', () => {
 
         });
 
-        it('reads no file for a username that is not a usable target org, or that AuthInfo would take as an access token', async () => {
+        it('reads no file for a username that is not a usable target org, an access-token-shaped one ("!") included', async () => {
 
             expect(await SalesforceOrgService.readScratchOrgDetail('--json')).toBeUndefined();
             expect(await SalesforceOrgService.readScratchOrgDetail('00D000000000001AAA!fixture.token')).toBeUndefined();
@@ -2088,12 +2088,12 @@ describe('SalesforceOrgService', () => {
 
         });
 
-        it('reads an empty or mistyped devHubUsername as not a scratch org, and an isScratchOrg of exactly true as one', () => {
+        it('reads an empty or mistyped devHubUsername as not a scratch org, and an isScratch of exactly true as one', () => {
 
             expect(SalesforceOrgService.parseScratchOrgAuthorizationFields({ devHubUsername: '  ', expirationDate: '2026-11-01' })).toEqual({ isScratchOrg: false });
             expect(SalesforceOrgService.parseScratchOrgAuthorizationFields({ devHubUsername: true })).toEqual({ isScratchOrg: false });
-            expect(SalesforceOrgService.parseScratchOrgAuthorizationFields({ isScratchOrg: 'true' })).toEqual({ isScratchOrg: false });
-            expect(SalesforceOrgService.parseScratchOrgAuthorizationFields({ isScratchOrg: true, expirationDate: '2026-11-01' })).toEqual({ isScratchOrg: true, expirationDate: '2026-11-01' });
+            expect(SalesforceOrgService.parseScratchOrgAuthorizationFields({ isScratch: 'true' })).toEqual({ isScratchOrg: false });
+            expect(SalesforceOrgService.parseScratchOrgAuthorizationFields({ isScratch: true, expirationDate: '2026-11-01' })).toEqual({ isScratchOrg: true, expirationDate: '2026-11-01' });
 
         });
 

@@ -2088,7 +2088,7 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
 
         });
 
-        it('names a scratch org, and when it expires, from what "sf org display" answered (#458)', () => {
+        it('names a scratch org, and when it expires, from its local authorization (#458, #499)', () => {
 
             const recipe = RecipeCockpitService.loadRecipeRunByRuns(recipeRuns(), TREE_WORKSPACE_ROOT, SNOWFAKERY_RUN).recipeViewModel;
             const accountTree = recipe.trees.find(tree => tree.treeKey === ACCOUNT_TREE_KEY);
