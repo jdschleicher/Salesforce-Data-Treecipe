@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.165.0] - Recipe Cockpit: the Treecipe tab's filters and "Manage record types" sit in one tile under the search, and a count says "record(s)"
+
+[#490](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/490). The Treecipe tab squeezed its two filter checks into the search row, the Record types section opened from a ▸ header that did not read as clickable, and an object's count said "record" or "records" depending on the number.
+
+- **Search on its own row, then a filter tile.** Under **Generate fake data and insert**, the Treecipe search box now has its row to itself. Under it, one tile (`treecipeFilterTile`, a `role="group"`) holds, one per row: **Click to show record type impacted fields only** (#320's check), **Click to show fields with open TODOs** (#354's, still with the card's TODO count), and **Manage record types**. The checks filter exactly as before and are still saved in the place as `isRecordTypeFieldsOnly` / `isTodosOnly`; a check that is disabled still says why beside it.
+- **Manage record types is a button.** It replaces the section's ▸ header line: a `secondary` button carrying `aria-expanded`, `aria-controls` (the body) and `aria-describedby` (the summary beside it, still `1 object · changed` and so on). The Record types body opens under the tile, above the first object. A card with no object offering two or more record types draws the button disabled, with the reason as its tooltip and beside it, and no body (#338). A saved `isRecordTypesExpanded`, a regenerate's focus, **Change record types** and a section-search result open it as before.
+- **"record(s)".** An object row's count reads `Create [5 ✎] Contact record(s)`, and a faker-js friend's `… record(s) per Account`, whatever the count; the button's and the number box's accessible names say `record(s)` too, the parent still `per Account record`. Notifications and confirmations keep their own wording.
+- **Help and guide.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` name the new check label and the count wording.
+- **Tests.** `RecipeCockpitRecordTypes.test.ts` (the tile's place between the search and the body, the button's kind, label and ARIA, the disabled button with its reason, a click on the disabled button, its row or the tile saving nothing), `RecipeCockpitRecordTypeFields.test.ts` and `RecipeCockpitTodos.test.ts` (each check in the tile, not the search row, with its new label), `RecipeCockpitObjectCounts.test.ts` and `RecipeCockpitOccurrenceSelections.test.ts` (`record(s)`), `RecipeCockpitButtonKinds.test.ts` (opens the section through the button).
+
 ## [3.164.0] - Recipe Cockpit: the version and GitHub icon are one CHANGELOG button, and the help closes with ✕
 
 [#487](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/487). Only the GitHub icon at the top right opened the CHANGELOG, though the version beside it read as part of the link; the open help could only be closed from **?**; and **?** was taller than its neighbours and looked the same open or closed.

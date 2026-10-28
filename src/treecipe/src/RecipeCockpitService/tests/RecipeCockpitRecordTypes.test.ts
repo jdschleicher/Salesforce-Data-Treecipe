@@ -18,6 +18,7 @@ import {
     RECIPE_COCKPIT_PANEL_PLACE_VERSION,
     RECIPE_COCKPIT_RECORD_TYPES_INTRO,
     RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY,
+    RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL,
     RECIPE_COCKPIT_RECORD_TYPE_SELECTION_NOT_SAVED_MESSAGE,
     RECIPE_COCKPIT_REMEMBER_RECORD_TYPES_LABEL,
     RECIPE_COCKPIT_REGENERATE_WITH_RECORD_TYPES_LABEL,
@@ -641,13 +642,12 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
         };
 
         const accountCardOf = (panel: ReturnType<typeof runPanelScript>) => panel.treeCards()[0];
-        const sectionHeaderOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(accountCardOf(panel), 'recordTypesSectionHeader')[0];
         const sectionBodyOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(accountCardOf(panel), 'recordTypesSectionBody')[0];
         const sectionSummaryOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(accountCardOf(panel), 'recordTypesSectionSummary')[0].textContent;
         const sectionToggleOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(accountCardOf(panel), 'recordTypesSectionToggle')[0];
         const openRecordTypesTab = (panel: ReturnType<typeof runPanelScript>) => {
             panel.expandAllTrees();
-            if (sectionToggleOf(panel).attributes['aria-expanded'] !== 'true') { sectionHeaderOf(panel).dispatch('click'); }
+            if (sectionToggleOf(panel).attributes['aria-expanded'] !== 'true') { sectionToggleOf(panel).dispatch('click'); }
             return sectionBodyOf(panel);
         };
         const checkboxNamed = (panel: ReturnType<typeof runPanelScript>, developerName: string) => panel.findAll(sectionBodyOf(panel), 'recordTypeInclude')
@@ -655,48 +655,54 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
         const regenerateMessages = (panel: ReturnType<typeof runPanelScript>) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'regenerateWithRecordTypes');
         const buttonOf = (panel: ReturnType<typeof runPanelScript>, className: string) => panel.findAll(sectionBodyOf(panel), className)[0];
 
-        it('draws no Record types tab, and the section on every card, enabled only on one listing an object with record types (#321, #338)', () => {
+        it('draws no Record types tab, and a Manage record types button on every card, enabled only on one listing an object with record types (#321, #338, #490)', () => {
 
             const panel = drawRecipe();
             panel.expandAllTrees();
 
             const tabLabels = (treeCard: any) => panel.findAll(treeCard, 'treeTab').map((tabElement: any) => tabElement.textContent);
+            const toggleOfCard = (treeCard: any) => panel.findAll(treeCard, 'recordTypesSectionToggle');
             expect(tabLabels(panel.treeCards()[0])).not.toContain('Record types');
-            expect(panel.findAll(panel.treeCards()[0], 'recordTypesSection')).toHaveLength(1);
-            expect(panel.findAll(panel.treeCards()[0], 'recordTypesSection')[0].classList.contains('disabled')).toBe(false);
-            expect(panel.findAll(panel.treeCards()[1], 'recordTypesSection')).toHaveLength(1);
-            expect(panel.findAll(panel.treeCards()[1], 'recordTypesSection')[0].classList.contains('disabled')).toBe(true);
-            expect(sectionToggleOf(panel).classList.contains('chevronToggle')).toBe(true);
+            expect(toggleOfCard(panel.treeCards()[0])).toHaveLength(1);
+            expect(toggleOfCard(panel.treeCards()[0])[0].disabled).toBe(false);
+            expect(toggleOfCard(panel.treeCards()[1])).toHaveLength(1);
+            expect(toggleOfCard(panel.treeCards()[1])[0].disabled).toBe(true);
+            expect(sectionToggleOf(panel).textContent).toBe(RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL);
+            expect(sectionToggleOf(panel).classList.contains('sdtButton-secondary')).toBe(true);
+            expect(sectionToggleOf(panel).classList.contains('chevronToggle')).toBe(false);
+            expect(panel.findAll(panel.cockpitBodyElement, 'recordTypesSectionHeader')).toHaveLength(0);
+            expect(panel.findAll(panel.cockpitBodyElement, 'toggleGlyph').filter((glyphElement: any) => panel.findAll(panel.treeCards()[0], 'recordTypesSectionToggle')[0].children.includes(glyphElement))).toHaveLength(0);
 
         });
 
         describe('on a card with no object offering two or more record types (#338)', () => {
 
             const leadCardOf = (panel: ReturnType<typeof runPanelScript>) => panel.treeCards()[1];
-            const leadSectionOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(leadCardOf(panel), 'recordTypesSection')[0];
-            const leadHeaderOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(leadCardOf(panel), 'recordTypesSectionHeader')[0];
+            const leadRowOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(leadCardOf(panel), 'recordTypesManageRow')[0];
             const leadToggleOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(leadCardOf(panel), 'recordTypesSectionToggle')[0];
             const leadSummaryOf = (panel: ReturnType<typeof runPanelScript>) => panel.findAll(leadCardOf(panel), 'recordTypesSectionSummary')[0].textContent;
             const leadPlaceOf = (panel: ReturnType<typeof runPanelScript>) => (panel.savedState()?.trees || []).find((treePlace: any) => treePlace.treeKey === LEAD_TREE_KEY);
 
-            it('draws the header disabled under the Treecipe search box, saying why, with no body to open', () => {
+            it('draws Manage record types disabled in the filter tile under the Treecipe search box, saying why, with no body to open (#490)', () => {
 
                 const panel = drawRecipe();
                 panel.expandAllTrees();
 
                 const structureChildren = panel.tabPanelOf(leadCardOf(panel), 'treeStructure').children;
                 const searchIndex = structureChildren.findIndex((element: any) => element.classList.contains('tabSearch'));
-                const sectionIndex = structureChildren.findIndex((element: any) => element.classList.contains('recordTypesSection'));
+                const tileIndex = structureChildren.findIndex((element: any) => element.classList.contains('treecipeFilterTile'));
+                const firstObjectIndex = structureChildren.findIndex((element: any) => element.classList.contains('treeObject'));
 
-                expect(sectionIndex).toBe(searchIndex + 1);
-                expect(panel.findAll(leadCardOf(panel), 'recordTypesSectionTitle')[0].textContent).toBe('Record types');
+                expect(tileIndex).toBe(searchIndex + 1);
+                expect(firstObjectIndex).toBe(tileIndex + 1);
+                expect(structureChildren[tileIndex].children).toContain(leadRowOf(panel));
+                expect(leadRowOf(panel).classList.contains('disabled')).toBe(true);
+                expect(leadToggleOf(panel).textContent).toBe(RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL);
                 expect(leadSummaryOf(panel)).toBe(RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY);
-                expect(leadSectionOf(panel).attributes['aria-disabled']).toBe('true');
-                expect(leadHeaderOf(panel).attributes['aria-disabled']).toBe('true');
                 expect(leadToggleOf(panel).disabled).toBe(true);
+                expect(leadToggleOf(panel).attributes['title']).toBe(RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY);
                 expect(leadToggleOf(panel).attributes).not.toHaveProperty('aria-expanded');
                 expect(leadToggleOf(panel).attributes).not.toHaveProperty('aria-controls');
-                expect(leadSectionOf(panel).attributes['role']).toBe('group');
                 expect(leadToggleOf(panel).attributes['aria-describedby']).toBe(panel.findAll(leadCardOf(panel), 'recordTypesSectionSummary')[0].attributes['id']);
                 expect(panel.findAll(leadCardOf(panel), 'recordTypesSectionBody')).toHaveLength(0);
 
@@ -708,21 +714,23 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
                 panel.expandAllTrees();
 
                 panel.treeCards().forEach((treeCard: any) => {
-                    const sectionElement = panel.findAll(treeCard, 'recordTypesSection')[0];
-                    expect(sectionElement.classList.contains('disabled')).toBe(true);
+                    expect(panel.findAll(treeCard, 'recordTypesSectionToggle')[0].disabled).toBe(true);
                     expect(panel.findAll(treeCard, 'recordTypesSectionSummary')[0].textContent).toBe(RECIPE_COCKPIT_RECORD_TYPES_UNAVAILABLE_SUMMARY);
                 });
 
             });
 
-            it('opens nothing and saves nothing on a click on its header, title or ▸', () => {
+            it('opens nothing and saves nothing on a click on its button, its row or the tile', () => {
 
                 const panel = drawRecipe();
                 panel.expandAllTrees();
+                const savedStateCount = panel.setStateCalls.length;
 
-                leadHeaderOf(panel).dispatch('click');
-                panel.findAll(leadCardOf(panel), 'recordTypesSectionTitle')[0].dispatch('click');
                 leadToggleOf(panel).dispatch('click');
+                leadRowOf(panel).dispatch('click');
+                panel.findAll(leadCardOf(panel), 'treecipeFilterTile')[0].dispatch('click');
+
+                expect(panel.setStateCalls.length).toBe(savedStateCount);
 
                 expect(panel.findAll(leadCardOf(panel), 'recordTypeObject')).toHaveLength(0);
                 expect(leadToggleOf(panel).attributes).not.toHaveProperty('aria-expanded');
@@ -759,7 +767,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
                     const selectedTabs = panel.findAll(leadCardOf(panel), 'treeTab').filter((tabElement: any) => tabElement.attributes['aria-selected'] === 'true');
                     expect(selectedTabs.map((tabElement: any) => tabElement.textContent)).toEqual(['Treecipe']);
-                    expect(leadSectionOf(panel).classList.contains('disabled')).toBe(true);
+                    expect(leadToggleOf(panel).disabled).toBe(true);
                     expect(panel.findAll(leadCardOf(panel), 'recordTypeObject')).toHaveLength(0);
                     expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'renderFailed')).toHaveLength(0);
 
@@ -773,7 +781,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
                 panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 6, focusTree: { treeKey: LEAD_TREE_KEY, tab: 'treecipe', recordTypes: {} } });
                 panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 7, focusTree: { treeKey: LEAD_TREE_KEY, tab: 'treecipe', recordTypes: { objectApiName: 'Lead' } } });
 
-                expect(leadSectionOf(panel).classList.contains('disabled')).toBe(true);
+                expect(leadToggleOf(panel).disabled).toBe(true);
                 expect(panel.findAll(leadCardOf(panel), 'recordTypeObject')).toHaveLength(0);
                 expect(leadPlaceOf(panel)?.isRecordTypesExpanded).toBeUndefined();
                 expect(panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'renderFailed')).toHaveLength(0);
@@ -782,28 +790,34 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         });
 
-        it('places the section under the Treecipe search box and above the first object, collapsed (#321)', () => {
+        it('puts Manage record types in the filter tile under the search box, and the section under the tile and above the first object, collapsed (#321, #490)', () => {
 
             const panel = drawRecipe();
             panel.expandAllTrees();
 
             const structureChildren = panel.tabPanelOf(accountCardOf(panel), 'treeStructure').children;
             const searchIndex = structureChildren.findIndex((element: any) => element.classList.contains('tabSearch'));
-            const sectionIndex = structureChildren.findIndex((element: any) => element.classList.contains('recordTypesSection'));
+            const tileIndex = structureChildren.findIndex((element: any) => element.classList.contains('treecipeFilterTile'));
+            const bodyIndex = structureChildren.findIndex((element: any) => element.classList.contains('recordTypesSectionBody'));
             const firstObjectIndex = structureChildren.findIndex((element: any) => element.classList.contains('treeObject'));
+            const rowElement = panel.findAll(accountCardOf(panel), 'recordTypesManageRow')[0];
 
-            expect(sectionIndex).toBe(searchIndex + 1);
-            expect(firstObjectIndex).toBe(sectionIndex + 1);
+            expect(tileIndex).toBe(searchIndex + 1);
+            expect(bodyIndex).toBe(tileIndex + 1);
+            expect(firstObjectIndex).toBe(bodyIndex + 1);
+            expect(structureChildren[tileIndex].children).toContain(rowElement);
+            expect(rowElement.children).toEqual([sectionToggleOf(panel), panel.findAll(accountCardOf(panel), 'recordTypesSectionSummary')[0]]);
             expect(panel.isHidden(sectionBodyOf(panel))).toBe(true);
             expect(sectionToggleOf(panel).attributes['aria-expanded']).toBe('false');
-            expect(panel.findAll(accountCardOf(panel), 'recordTypesSectionTitle')[0].textContent).toBe('Record types');
+            expect(sectionToggleOf(panel).attributes['aria-controls']).toBe(sectionBodyOf(panel).attributes['id']);
+            expect(sectionToggleOf(panel).textContent).toBe(RECIPE_COCKPIT_MANAGE_RECORD_TYPES_LABEL);
             expect(sectionSummaryOf(panel)).toBe('1 object · generated by default');
             // ITS ROWS ARE BUILT ON FIRST EXPAND
             expect(panel.findAll(sectionBodyOf(panel), 'recordTypeObject')).toHaveLength(0);
 
         });
 
-        it('expands and collapses from a click anywhere on its header, the ▸ included (#321)', () => {
+        it('expands and collapses from a click on Manage record types (#321, #490)', () => {
 
             const panel = drawRecipe();
             panel.expandAllTrees();
@@ -813,7 +827,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             expect(sectionToggleOf(panel).attributes['aria-expanded']).toBe('true');
             expect(panel.findAll(sectionBodyOf(panel), 'recordTypeObject')).toHaveLength(1);
 
-            panel.findAll(accountCardOf(panel), 'recordTypesSectionTitle')[0].dispatch('click');
+            sectionToggleOf(panel).dispatch('click');
             expect(panel.isHidden(sectionBodyOf(panel))).toBe(true);
             expect(sectionToggleOf(panel).attributes['aria-expanded']).toBe('false');
 
@@ -1046,7 +1060,7 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
             expect(savedTree().isRecordTypesExpanded).toBe(true);
             expect(savedTree().searchQueries).not.toHaveProperty('recordTypes');
 
-            sectionHeaderOf(panel).dispatch('click');
+            sectionToggleOf(panel).dispatch('click');
             // A CARD BACK AT ITS DEFAULT IS NOT WRITTEN AT ALL (#374)
             expect(savedTree() ?? {}).not.toHaveProperty('isRecordTypesExpanded');
 
@@ -1219,14 +1233,14 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
         });
 
-        it('animates only a click on its header, never a restore or a focus (#321)', () => {
+        it('animates only a click on Manage record types, never a restore or a focus (#321)', () => {
 
             const panel = runPanelScript({ prefersReducedMotion: false });
             panel.postToPanel({ command: 'recipeData', recipe: loadRecipe(), renderSequence: 3, focusTree: { treeKey: ACCOUNT_TREE_KEY, tab: 'treecipe', recordTypes: {} } });
             expect(sectionBodyOf(panel).classList.contains('motionReveal')).toBe(false);
 
-            sectionHeaderOf(panel).dispatch('click');
-            sectionHeaderOf(panel).dispatch('click');
+            sectionToggleOf(panel).dispatch('click');
+            sectionToggleOf(panel).dispatch('click');
             expect(sectionBodyOf(panel).classList.contains('motionReveal')).toBe(true);
 
         });

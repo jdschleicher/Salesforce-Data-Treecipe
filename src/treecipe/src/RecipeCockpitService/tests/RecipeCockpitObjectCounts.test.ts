@@ -932,7 +932,7 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
 
         });
 
-        it('reads "<Object> records per <Parent>" for a nested friend and "<Object> records" for a root, "record" for one, and names the button by the whole sentence', () => {
+        it('reads "<Object> record(s) per <Parent>" for a nested friend and "<Object> record(s)" for a root, whatever the count, and names the button by the whole sentence (#490)', () => {
 
             const panel = drawRecipe(recipe => {
                 objectOf(recipe, 'Contact').countParentObjectApiName = 'Account';
@@ -940,15 +940,15 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             });
             panel.postToPanel({ command: 'rendered' });
 
-            expect(countLabelOf(panel, objectNamed(panel, 'Contact')).textContent).toBe('Contact records per Account');
-            expect(countButtonOf(panel, objectNamed(panel, 'Contact')).attributes['aria-label']).toBe('Create 3 Contact records per Account record, changed from the recipe\'s 1, edit count');
-            expect(openCount(panel, objectNamed(panel, 'Contact')).attributes['aria-label']).toBe('Contact records per Account record');
-            expect(countLabelOf(panel, objectNamed(panel, 'Account')).textContent).toBe('Account record');
-            expect(countButtonOf(panel, objectNamed(panel, 'Account')).attributes['aria-label']).toBe('Create 1 Account record, edit count');
-            expect(countLabelOf(panel, objectNamed(panel, 'OtherChildObject__c')).textContent).toBe('OtherChildObject__c record');
+            expect(countLabelOf(panel, objectNamed(panel, 'Contact')).textContent).toBe('Contact record(s) per Account');
+            expect(countButtonOf(panel, objectNamed(panel, 'Contact')).attributes['aria-label']).toBe('Create 3 Contact record(s) per Account record, changed from the recipe\'s 1, edit count');
+            expect(openCount(panel, objectNamed(panel, 'Contact')).attributes['aria-label']).toBe('Contact record(s) per Account record');
+            expect(countLabelOf(panel, objectNamed(panel, 'Account')).textContent).toBe('Account record(s)');
+            expect(countButtonOf(panel, objectNamed(panel, 'Account')).attributes['aria-label']).toBe('Create 1 Account record(s), edit count');
+            expect(countLabelOf(panel, objectNamed(panel, 'OtherChildObject__c')).textContent).toBe('OtherChildObject__c record(s)');
 
             panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3, objectCounts: [{ objectApiName: 'Contact', count: 1 }] });
-            expect(countLabelOf(panel, objectNamed(panel, 'Contact')).textContent).toBe('Contact record per Account');
+            expect(countLabelOf(panel, objectNamed(panel, 'Contact')).textContent).toBe('Contact record(s) per Account');
 
         });
 
@@ -1201,8 +1201,8 @@ describe('RecipeCockpitService -- record counts (#255)', () => {
             expect(panel.isHidden(countChangedOf(panel, contact))).toBeFalse();
             expect(countChangedOf(panel, contact).textContent).toBe('changed');
             expect(countButtonOf(panel, contact).attributes.title).toBe('recipe: 1. Click to change the count.');
-            expect(countButtonOf(panel, contact).attributes['aria-label']).toBe('Create 7 Contact records, changed from the recipe\'s 1, edit count');
-            expect(countLabelOf(panel, contact).textContent).toBe('Contact records');
+            expect(countButtonOf(panel, contact).attributes['aria-label']).toBe('Create 7 Contact record(s), changed from the recipe\'s 1, edit count');
+            expect(countLabelOf(panel, contact).textContent).toBe('Contact record(s)');
             expect(panel.isHidden(resetElement)).toBeFalse();
 
             // AN UNCHANGED COUNT POSTS NOTHING; THE HOST'S STORE IS WHAT THE BUTTON SHOWS
