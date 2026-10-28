@@ -1,6 +1,7 @@
 import { PicklistDependencyTestService } from '../PicklistDependencyTestService/PicklistDependencyTestService';
 
 import { OrgAuthorization } from '@salesforce/core';
+import { SalesforceOrgService } from '../SalesforceOrgService/SalesforceOrgService';
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -70,7 +71,6 @@ export interface ISalesforceCliJsonPayload {
     message?: string;
     result?: {
         tests?: ISalesforceApexTestMethodResult[];
-        totalSize?: number;
         success?: boolean;
         numberComponentsDeployed?: number;
         details?: {
@@ -577,8 +577,9 @@ export class PicklistDependencyCheckService {
         TestSuiteMembership answers "is the suite there AND does it still contain the generated test
         class", which is the only state in which the check is meaningful.
 
-        TestSuiteMembership is a Tooling API object, so this query -- unlike the ApexClass one it
-        replaced -- needs --use-tooling-api.
+        TestSuiteMembership is a Tooling API object, so it is asked through the connection's tooling
+        query rather than its plain one. The connection is @salesforce/core's (#497): no sf process.
+        A failed connection or query, or an answer with no records list, is read as "not deployed".
     */
     static async isSpecsTestSuiteDeployedInOrg(targetOrgIdentifier: string): Promise<boolean> {
 
@@ -588,23 +589,14 @@ export class PicklistDependencyCheckService {
                                             + ` WHERE ApexTestSuite.TestSuiteName = '${this.getSpecsTestSuiteName()}'`
                                             + ` AND ApexClass.Name = '${this.getSpecsTestClassName()}' LIMIT 1`;
 
-        const salesforceCliArguments = [
-            'data', 'query',
-            '--query', testSuiteMembershipQuery,
-            '--use-tooling-api',
-            '--target-org', targetOrgIdentifier,
-            '--json'
-        ];
-
-        const invocationResult = await this.runSalesforceCli(salesforceCliArguments);
-
-        if ( invocationResult.spawnError || !invocationResult.stdout ) {
-            return false;
-        }
-
         try {
-            const parsedCliOutput = JSON.parse(invocationResult.stdout) as ISalesforceCliJsonPayload;
-            return (parsedCliOutput?.result?.totalSize ?? 0) > 0;
+
+            const connection = await SalesforceOrgService.getConnection(targetOrgIdentifier);
+            const queryResult: unknown = await connection.tooling.query(testSuiteMembershipQuery);
+            const records = queryResult !== null && typeof queryResult === 'object' ? (queryResult as { records?: unknown }).records : undefined;
+
+            return Array.isArray(records) && records.length > 0;
+
         } catch {
             return false;
         }
