@@ -19664,8 +19664,8 @@ ${this.buildPaletteCustomProperties()}
     .treeAddFriends { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding-left: 1.5rem; }
     .treeBody { border-top: 1px solid var(--sdt-border); }
     .treeTabs { display: flex; gap: 0.5rem; padding: 0.4rem 0.6rem 0 0.6rem; }
-    .treeTab { color: var(--sdt-muted); border-color: transparent; border-radius: 6px 6px 0 0; }
-    .treeTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; }
+    .treeTab { color: var(--sdt-muted); background-color: var(--sdt-row-hover); border-color: transparent; border-radius: 6px 6px 0 0; }
+    .treeTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; font-weight: 600; text-decoration: underline; }
     .treeTab.selected { color: var(--sdt-text); font-weight: 600; }
     .treeTab:active:not(:disabled) { background-color: var(--sdt-row-hover); }
     /*
@@ -19718,8 +19718,8 @@ ${this.buildPaletteCustomProperties()}
     .treeTabs.noMotion .treeTab::after { transition: none; }
     /* THE TROUBLESHOOTING SUB-TABS (#365) LOOK AND MOVE LIKE A CARD'S TABS */
     .troubleshootingSubTabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0.6rem; padding: 0.4rem 0 0 0; }
-    .troubleshootingSubTab { color: var(--sdt-muted); border-color: transparent; border-radius: 6px 6px 0 0; }
-    .troubleshootingSubTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; }
+    .troubleshootingSubTab { color: var(--sdt-muted); background-color: var(--sdt-row-hover); border-color: transparent; border-radius: 6px 6px 0 0; }
+    .troubleshootingSubTab:hover:not(:disabled):not(.selected) { background-color: var(--sdt-row-hover); border-color: transparent; font-weight: 600; text-decoration: underline; }
     .troubleshootingSubTab.selected { color: var(--sdt-text); font-weight: 600; }
     .troubleshootingSubTab:active:not(:disabled) { background-color: var(--sdt-row-hover); }
     .troubleshootingSubTab { position: relative; }
@@ -19740,6 +19740,21 @@ ${this.buildPaletteCustomProperties()}
     .troubleshootingSubTabs.movingRight .troubleshootingSubTab::after, .troubleshootingSubTabs.movingLeft .troubleshootingSubTab.selected::after { transform-origin: right; }
     .troubleshootingSubTabs.movingLeft .troubleshootingSubTab::after, .troubleshootingSubTabs.movingRight .troubleshootingSubTab.selected::after { transform-origin: left; }
     .troubleshootingSubTabs.noMotion .troubleshootingSubTab::after { transition: none; }
+    /*
+        An unselected tab rests in the mint fill and goes bold and underlined on hover (#493). A
+        hidden bold copy of its label (data-label, kept by setTabLabel) is as wide as the bold text,
+        so the hover changes no tab's width and the strip does not move. The copy is generated
+        content, so its alternative text is empty and a screen reader reads the label once.
+    */
+    .treeTab, .troubleshootingSubTab { display: inline-flex; flex-direction: column; align-items: center; }
+    .treeTab::before, .troubleshootingSubTab::before {
+        content: attr(data-label) / '';
+        height: 0;
+        overflow: hidden;
+        visibility: hidden;
+        font-weight: 600;
+        pointer-events: none;
+    }
     .treeObjectHeader { padding: 0.35rem 0.6rem; align-items: center; }
     .treeObject { position: relative; }
     .treeObject.treeObjectNested { border-left: 2px solid var(--sdt-border); }
@@ -20758,6 +20773,12 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const buttonClassName = 'sdtButton sdtButton-' + kind + (size === 'compact' ? ' sdtButton-compact' : '') + (className ? ' ' + className : '');
         return createElement('button', buttonClassName, textContent);
 
+    }
+
+    // A TAB'S LABEL AND THE HIDDEN BOLD COPY THAT HOLDS ITS WIDTH (#493), ALWAYS WRITTEN TOGETHER
+    function setTabLabel(tabElement, label) {
+        tabElement.textContent = label;
+        tabElement.setAttribute('data-label', label);
     }
 
     let actionCardCount = 0;
@@ -24820,7 +24841,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     function addTreeTab(treeState, tabsElement, tabName, tabLabel, panelElement) {
 
         const isSelected = tabName === treeState.selectedTab;
-        const tabElement = createButton('secondary', isSelected ? 'treeTab selected' : 'treeTab', tabLabel);
+        const tabElement = createButton('secondary', isSelected ? 'treeTab selected' : 'treeTab');
+        setTabLabel(tabElement, tabLabel);
 
         tabElement.setAttribute('role', 'tab');
         tabElement.setAttribute('aria-selected', isSelected ? 'true' : 'false');
@@ -26316,7 +26338,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     function addTroubleshootingSubTab(treeState, subTab, panelElement) {
 
         const label = TROUBLESHOOTING_SUB_TAB_LABELS[subTab];
-        const tabElement = createButton('secondary', 'troubleshootingSubTab troubleshootingSubTab-' + subTab, label);
+        const tabElement = createButton('secondary', 'troubleshootingSubTab troubleshootingSubTab-' + subTab);
+        setTabLabel(tabElement, label);
         const subPanelElement = createElement('div', 'troubleshootingSubPanel troubleshootingSubPanel-' + subTab + ' hidden');
         const searchKey = troubleshootingSearchKey(subTab);
 
@@ -26457,7 +26480,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         });
 
         const todoCount = subTabState.todoGroups.reduce(function (count, groupState) { return count + groupState.entries.length; }, 0);
-        subTabState.tabElement.textContent = todoCount > 0 ? TROUBLESHOOTING_SUB_TAB_LABELS.todos + ' (' + todoCount + ')' : TROUBLESHOOTING_SUB_TAB_LABELS.todos;
+        setTabLabel(subTabState.tabElement, todoCount > 0 ? TROUBLESHOOTING_SUB_TAB_LABELS.todos + ' (' + todoCount + ')' : TROUBLESHOOTING_SUB_TAB_LABELS.todos);
 
         if (todoCount === 0) {
             subTabState.listElement.appendChild(createElement('div', 'treeEmpty muted', NO_TREE_TODOS_NOTE));

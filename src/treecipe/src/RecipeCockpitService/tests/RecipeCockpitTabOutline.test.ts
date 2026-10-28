@@ -155,6 +155,72 @@ describe('RecipeCockpitService, the selected tab\'s outline and the search icon 
 
     });
 
+    describe('an unselected tab at rest and on hover (#493)', () => {
+
+        const TAB_CLASSES = ['treeTab', 'troubleshootingSubTab'];
+
+        it.each(TAB_CLASSES)('draws an unselected .%s in the mint fill with its rounded top at rest', (tabClass) => {
+
+            const restRule = styleSheet.match(new RegExp('\\n\\s*\\.' + tabClass + ' \\{ color[^}]*\\}'))![0];
+            expect(restRule).toContain('color: var(--sdt-muted);');
+            expect(restRule).toContain('background-color: var(--sdt-row-hover);');
+            expect(restRule).toContain('border-color: transparent;');
+            expect(restRule).toContain('border-radius: 6px 6px 0 0;');
+
+        });
+
+        it.each(TAB_CLASSES)('bolds and underlines an unselected, enabled .%s on hover, keeping the fill and drawing no border', (tabClass) => {
+
+            const hoverRule = styleSheet.match(new RegExp('\\.' + tabClass + ':hover:not\\(:disabled\\):not\\(\\.selected\\) \\{[^}]*\\}'))![0];
+            expect(hoverRule).toContain('font-weight: 600;');
+            expect(hoverRule).toContain('text-decoration: underline;');
+            expect(hoverRule).toContain('background-color: var(--sdt-row-hover);');
+            expect(hoverRule).toContain('border-color: transparent;');
+
+        });
+
+        it('reserves the bold label\'s width with a hidden copy a screen reader skips, so a hover moves nothing', () => {
+
+            expect(styleSheet).toContain('.treeTab, .troubleshootingSubTab { display: inline-flex; flex-direction: column; align-items: center; }');
+            const copyRule = styleSheet.match(/\.treeTab::before, \.troubleshootingSubTab::before \{[^}]*\}/)![0];
+            ["content: attr(data-label) / '';", 'height: 0;', 'overflow: hidden;', 'visibility: hidden;', 'font-weight: 600;']
+                .forEach(declaration => expect(copyRule).toContain(declaration));
+
+        });
+
+        it('keeps the selected tab as it was: no underline, and still outranking the unselected hover', () => {
+
+            const selectedRule = styleSheet.match(/\.treeTab\.selected \{[^}]*\}/)![0];
+            expect(selectedRule).toContain('font-weight: 600;');
+            expect(selectedRule).not.toContain('underline');
+            // EVERY TAB RULE THAT UNDERLINES IS HELD TO AN UNSELECTED TAB
+            const underliningTabSelectors = (styleSheet.match(/[^{}]*\{[^}]*text-decoration: underline[^}]*\}/g) || [])
+                .map(rule => rule.substring(0, rule.indexOf('{')).trim())
+                .filter(selector => /\.(treeTab|troubleshootingSubTab)\b/.test(selector));
+            expect(underliningTabSelectors).toEqual([
+                '.treeTab:hover:not(:disabled):not(.selected)',
+                '.troubleshootingSubTab:hover:not(:disabled):not(.selected)'
+            ]);
+
+        });
+
+        it('gives every tab and sub-tab a data-label that is its label, the TODO\'s count included', () => {
+
+            const panel = drawRecipe(loadHistoryRecipe());
+            openEverySearch(panel);
+
+            const tabElements = panel.treeCards().flatMap((treeCard: any) =>
+                [...panel.findAll(treeCard, 'treeTab'), ...panel.findAll(treeCard, 'troubleshootingSubTab')]);
+            expect(tabElements.length).toBeGreaterThan(5);
+            tabElements.forEach((tabElement: any) => {
+                expect(tabElement.textContent.length).toBeGreaterThan(0);
+                expect(tabElement.attributes['data-label']).toBe(tabElement.textContent);
+            });
+
+        });
+
+    });
+
     describe('the search icon', () => {
 
         it('puts one hidden magnifier, built as SVG, at the left of every search box, and leaves the input\'s name alone', () => {

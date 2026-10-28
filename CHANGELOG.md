@@ -1,5 +1,15 @@
 # Change Log
 
+## [3.165.0] - Recipe Cockpit: unselected tabs rest in the mint fill, and hover makes them bold and underlined
+
+[#493](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/493). An unselected card tab or Troubleshooting sub-tab was bare muted text until hovered, so the strip did not read as tabs, and the hover only added the fill.
+
+- **At rest.** An unselected `.treeTab` and `.troubleshootingSubTab` draw `--sdt-row-hover` with their 6px rounded top, the look hover used to add. No border line is drawn. Muted text on that fill was already held to 4.5:1 by the contrast test.
+- **On hover.** An unselected, enabled tab keeps the fill and its label goes bold (600) and underlined. A selected tab is unchanged, on hover too, and still outranks every hover rule; a disabled tab draws the disabled pair as before.
+- **Nothing moves.** Each tab carries its label in `data-label` (`setTabLabel`, which also rewrites the TODO's count), and a hidden bold copy of it (`::before`, alternative text empty, so a screen reader reads the label once) sets the tab's width, so going bold changes no tab's width or position. Measured in Chromium: identical widths and offsets at rest and on hover.
+- **Guide.** The guide's screenshots were re-taken, so their tab strips show the new resting look.
+- **Tests.** `RecipeCockpitTabOutline.test.ts`: the rest and hover rules for both tab classes, the width-reserving copy, only unselected tabs underlining, and every tab's `data-label` equal to its label.
+
 ## [3.164.0] - Recipe Cockpit: the version and GitHub icon are one CHANGELOG button, and the help closes with ✕
 
 [#487](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/487). Only the GitHub icon at the top right opened the CHANGELOG, though the version beside it read as part of the link; the open help could only be closed from **?**; and **?** was taller than its neighbours and looked the same open or closed.
