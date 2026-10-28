@@ -368,12 +368,18 @@ describe('RecipeCockpitService, nicknames and the fields that point to them (#38
 
             const menuElement = openMenuOf(panel, objectElementNamed(panel, 'Account_NickName').children[0]);
             const hintElement = menuElement.children[0];
+            const itemsElement = menuElement.children[1];
             expect(hintElement.classList.contains('treeNicknameMenuHint')).toBe(true);
             expect(hintElement.textContent).toBe(RECIPE_COCKPIT_CHILD_REFERENCE_MENU_HINT);
             expect(hintElement.tagName.toLowerCase()).toBe('span');
             expect(hintElement.attributes.tabindex).toBeUndefined();
-            expect(menuElement.attributes['aria-labelledby']).toBe(hintElement.attributes.id);
-            expect(menuElement.attributes['aria-label']).toBeUndefined();
+            expect(hintElement.attributes.role).toBeUndefined();
+
+            // A MENU OWNS ONLY ITS ITEMS, SO THE HINT IS ITS SIBLING AND NAMES IT
+            expect(menuElement.attributes.role).toBeUndefined();
+            expect(itemsElement.attributes.role).toBe('menu');
+            expect(itemsElement.attributes['aria-labelledby']).toBe(hintElement.attributes.id);
+            expect(itemsElement.children.every((itemElement: any) => itemElement.attributes.role === 'menuitem')).toBe(true);
 
             const items = menuItemsOf(panel, 'Account_NickName');
             expect(panel.activeElement()).toBe(items[0]);
@@ -388,9 +394,9 @@ describe('RecipeCockpitService, nicknames and the fields that point to them (#38
 
             const panel = renderModel(loadModel());
             nicknameChipOf(panel, 'Account_NickName').dispatch('click');
-            const firstId = openMenuOf(panel, objectElementNamed(panel, 'Account_NickName').children[0]).attributes['aria-labelledby'];
+            const firstId = openMenuOf(panel, objectElementNamed(panel, 'Account_NickName').children[0]).children[1].attributes['aria-labelledby'];
             nicknameChipOf(panel, 'Contact_NickName').dispatch('click');
-            const secondId = openMenuOf(panel, objectElementNamed(panel, 'Contact_NickName').children[0]).attributes['aria-labelledby'];
+            const secondId = openMenuOf(panel, objectElementNamed(panel, 'Contact_NickName').children[0]).children[1].attributes['aria-labelledby'];
 
             expect(secondId).not.toBe(firstId);
 
@@ -414,7 +420,8 @@ describe('RecipeCockpitService, nicknames and the fields that point to them (#38
             expect(contactElement.scrolledIntoViewCount || 0).toBe(0);
             const menuElement = openMenuOf(panel, panel.fieldRowNamed(caseElement, 'ContactId'));
             expect(menuElement.children[0].textContent).toBe(RECIPE_COCKPIT_PARENT_REFERENCE_MENU_HINT);
-            expect(menuElement.attributes['aria-labelledby']).toBe(menuElement.children[0].attributes.id);
+            expect(menuElement.children[1].attributes.role).toBe('menu');
+            expect(menuElement.children[1].attributes['aria-labelledby']).toBe(menuElement.children[0].attributes.id);
             const items = backLinkMenuItemsOf(panel, 'Case_NickName', 'ContactId');
             expect(items.map((itemElement: any) => itemElement.textContent)).toEqual(['Contact']);
             expect(items[0].attributes.role).toBe('menuitem');

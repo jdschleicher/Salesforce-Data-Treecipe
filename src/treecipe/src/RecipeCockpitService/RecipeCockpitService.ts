@@ -19930,6 +19930,7 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
         z-index: 2;
     }
     .treeNicknameMenuHint { color: var(--sdt-muted); }
+    .treeNicknameMenuItems { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; }
     .treeNicknameBackLink { font-size: 0.85em; }
     .treeFriendSlot { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
     .treeFriendChip { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85em; }
@@ -21818,7 +21819,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     /*
         ONE LIST OPEN AT A TIME, ON A LINE OF ITS OWN UNDER THE ROW THAT OPENED IT; BUILT ON EVERY OPEN, SO AN
         EXCLUSION SINCE IS SHOWN. ITS FIRST LINE SAYS WHERE A CLICK GOES (#491): TEXT THE KEYS NEVER STOP ON,
-        AND THE LIST'S NAME
+        AND THE LIST'S NAME. IT SITS BESIDE THE role="menu" ELEMENT, NOT IN IT, SINCE A MENU OWNS ONLY ITS ITEMS
     */
     function openReferenceMenu(menuOwner, hostElement, openerOf, hintText, entries) {
 
@@ -21826,7 +21827,6 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         if (!menuOwner.nicknameMenuElement) {
             menuOwner.nicknameMenuElement = createElement('div', 'treeNicknameMenu hidden');
-            menuOwner.nicknameMenuElement.setAttribute('role', 'menu');
             hostElement.appendChild(menuOwner.nicknameMenuElement);
         }
 
@@ -21837,8 +21837,12 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const hintId = 'treeNicknameMenuHint' + nicknameMenuHintSequence;
         const hintElement = createElement('span', 'treeNicknameMenuHint', hintText);
         hintElement.setAttribute('id', hintId);
-        menuElement.setAttribute('aria-labelledby', hintId);
         menuElement.appendChild(hintElement);
+
+        const itemsElement = createElement('div', 'treeNicknameMenuItems');
+        itemsElement.setAttribute('role', 'menu');
+        itemsElement.setAttribute('aria-labelledby', hintId);
+        menuElement.appendChild(itemsElement);
 
         const itemElements = entries.map(function (entry, entryIndex) {
 
@@ -21847,7 +21851,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             itemElement.setAttribute('tabindex', entryIndex === 0 ? '0' : '-1');
             itemElement.addEventListener('click', function () { entry.choose(); });
             itemElement.addEventListener('keydown', function (event) { handleNicknameMenuKey(event, entryIndex); });
-            menuElement.appendChild(itemElement);
+            itemsElement.appendChild(itemElement);
 
             return itemElement;
 
