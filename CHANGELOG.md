@@ -1,5 +1,16 @@
 # Change Log
 
+## [3.168.0] - Recipe Cockpit: "Open in browser" opens the org through a one-time login address, without the Salesforce CLI
+
+[#501](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/501), part of [#496](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/496). **Open in browser** in the Target Org Manager ran `sf org open --target-org <username> --url-only --json` for every click.
+
+- **One-time address, no CLI.** The open now asks the org itself: `SalesforceOrgService.requestOrgFrontDoorUrl` connects by the selected org's USERNAME, refreshes its authorization (the endpoint answers an expired token with 403, which jsforce does not refresh on), and calls Salesforce's single-access endpoint (`GET /services/oauth2/singleaccess`), the one recent `sf` versions use. Its `frontdoor_uri` logs the reader in once and carries no access token, so the long-lived token never reaches the browser's history. `AuthInfo.getOrgFrontDoorUrl()` (`frontdoor.jsp?sid=<token>`) was the other option and is deliberately not used.
+- **Same guards.** Only the SELECTED org opens and every router check is unchanged; only an `https:` address is opened; it goes to `openExternal` and nowhere else; one open per window, as before.
+- **Fixed-text failures.** A failure is one error notification naming the org and one fixed reason (its authorization could not be used, Salesforce gave no one-time address, the answer had no address or was not https, or no answer in time). It never quotes the error, the URL or a token.
+- **Removed.** `ScratchOrgService.buildOrgOpenArguments`, `resolveOrgOpenUrl`, `parseOrgOpenOutput`, `OrgOpenParseResult`, `ORG_OPEN_URL_PROTOCOL` and `ORG_OPEN_TIMEOUT_MILLISECONDS`, and the "Salesforce CLI is required to open an org" message.
+- **Docs.** README and the CLAUDE.md "Open in browser" bullet describe the new path.
+- **Tests.** `SalesforceOrgService.test.ts` (username, refresh before the request, the endpoint, no CLI, no token in the address or the source, fixed texts for each failure, the timeout, https only); `RecipeCockpitOpenOrg.test.ts` (runs no CLI, the URL and the token reach no posted message or written file, one fixed-text notification per failure); `ScratchOrgService.test.ts` (no `sf org open` argv is left).
+
 ## [3.167.0] - Recipe Cockpit: a picklist's Edit values is hidden while its tiles are open, so Save or Cancel ends the edit
 
 [#495](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/495). **Edit values** stayed on screen, unchanged, above its own open tiles, and a second click on it closed them and dropped any unsaved ticks without saying so, so it looked like a second way to finish the edit.
