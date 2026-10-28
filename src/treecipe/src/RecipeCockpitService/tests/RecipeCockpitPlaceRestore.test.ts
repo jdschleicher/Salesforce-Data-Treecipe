@@ -118,6 +118,10 @@ describe('RecipeCockpitService, the reader\'s place', () => {
             expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c').textContent).toBe(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL);
             expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Regions__c').attributes['aria-expanded']).toBe('false');
             expect(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Regions__c').textContent).toBe(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL);
+            // AN OPEN EDITOR HIDES ITS EDIT VALUES (#495), A CLOSED ONE SHOWS IT
+            expect(panel.isHidden(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Rating__c'))).toBe(true);
+            expect(panel.isHidden(panel.findAll(panel.fieldRowNamed(objectNamed(panel, ACCOUNT_TREE_KEY, 'Account'), 'Rating__c'), 'picklistEditor')[0])).toBe(false);
+            expect(panel.isHidden(picklistToggleOf(panel, ACCOUNT_TREE_KEY, 'Account', 'Regions__c'))).toBe(false);
 
             expect(isCardOpen(panel, LEAD_TREE_KEY)).toBe(true);
             expect(selectedTabOf(panel, LEAD_TREE_KEY)).toBe('Previously Used Data Sets');
