@@ -1,6 +1,6 @@
 # Change Log
 
-## [3.165.0] - Recipe Cockpit: a picklist's Edit values is hidden while its tiles are open, so Save or Cancel ends the edit
+## [3.166.0] - Recipe Cockpit: a picklist's Edit values is hidden while its tiles are open, so Save or Cancel ends the edit
 
 [#495](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/495). **Edit values** stayed on screen, unchanged, above its own open tiles, and a second click on it closed them and dropped any unsaved ticks without saying so, so it looked like a second way to finish the edit.
 
@@ -8,6 +8,16 @@
 - **× and Escape stay.** They still close the tiles without saving, and are the way out while "Loading values…" is drawn, before Save and Cancel exist.
 - **Help and guide.** The ? help's Edit values note and `docs/RECIPE-COCKPIT-GUIDE.md` say the button is hidden while editing and that Save or Cancel ends the edit.
 - **Tests.** `RecipeCockpitPicklistValueChoice.test.ts`: the button hidden while open and back with focus after Cancel and an accepted Save, kept hidden by a refusal and an unanswered Save, × and Escape while the values load, and a locked picklist's Cancel; `RecipeCockpitPlaceRestore.test.ts`: a restored open editor keeps the button hidden.
+
+## [3.165.0] - Recipe Cockpit: the Treecipe tab's filters and "Manage record types" sit in one tile under the search, and a count says "record(s)"
+
+[#490](https://github.com/jdschleicher/Salesforce-Data-Treecipe/issues/490). The Treecipe tab squeezed its two filter checks into the search row, the Record types section opened from a ▸ header that did not read as clickable, and an object's count said "record" or "records" depending on the number.
+
+- **Search on its own row, then a filter tile.** Under **Generate fake data and insert**, the Treecipe search box now has its row to itself. Under it, one tile (`treecipeFilterTile`, a `role="group"`) holds, one per row: **Click to show record type impacted fields only** (#320's check), **Click to show fields with open TODOs** (#354's, still with the card's TODO count), and **Manage record types**. The checks filter exactly as before and are still saved in the place as `isRecordTypeFieldsOnly` / `isTodosOnly`; a check that is disabled still says why beside it.
+- **Manage record types is a button.** It replaces the section's ▸ header line: a `secondary` button carrying `aria-expanded`, `aria-controls` (the body) and `aria-describedby` (the summary beside it, still `1 object · changed` and so on). The Record types body opens under the tile, above the first object. A card with no object offering two or more record types draws the button disabled, with the reason as its tooltip and beside it, and no body (#338). A saved `isRecordTypesExpanded`, a regenerate's focus, **Change record types** and a section-search result open it as before.
+- **"record(s)".** An object row's count reads `Create [5 ✎] Contact record(s)`, and a faker-js friend's `… record(s) per Account`, whatever the count; the button's and the number box's accessible names say `record(s)` too, the parent still `per Account record`. Notifications and confirmations keep their own wording.
+- **Help, guide, README and CLAUDE.md.** The ? help and `docs/RECIPE-COCKPIT-GUIDE.md` name both new check labels, **Manage record types** and the count wording; the README and the CLAUDE.md record types bullet describe the tile and the button.
+- **Tests.** `RecipeCockpitRecordTypes.test.ts` (the tile's place between the search and the body, the button's kind, label and ARIA, the disabled button with its reason, a click on the disabled button, its row or the tile saving nothing, a card with no objects drawing the tile with both checks and the button disabled and posting nothing), `RecipeCockpitRecordTypeFields.test.ts` and `RecipeCockpitTodos.test.ts` (each check in the tile, not the search row, with its new label), `RecipeCockpitObjectCounts.test.ts` and `RecipeCockpitOccurrenceSelections.test.ts` (`record(s)`), `RecipeCockpitButtonKinds.test.ts` (opens the section through the button).
 
 ## [3.164.0] - Recipe Cockpit: the version and GitHub icon are one CHANGELOG button, and the help closes with ✕
 

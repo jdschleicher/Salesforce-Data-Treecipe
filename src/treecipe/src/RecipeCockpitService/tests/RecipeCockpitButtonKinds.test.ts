@@ -68,7 +68,7 @@ const renderEverything = (): Panel => {
     panel.treeCards().forEach(treeCard => panel.findAll(treeCard, 'treeTab').forEach((tabElement: any) => tabElement.dispatch('click')));
     panel.treeCards().forEach(treeCard => panel.openTab(treeCard, 'Treecipe'));
     panel.objectElements().forEach(objectElement => panel.expandObject(objectElement));
-    panel.findAll(panel.cockpitBodyElement, 'recordTypesSectionHeader').forEach((headerElement: any) => headerElement.dispatch('click'));
+    panel.findAll(panel.cockpitBodyElement, 'recordTypesSectionToggle').filter((toggleElement: any) => !toggleElement.disabled).forEach((toggleElement: any) => toggleElement.dispatch('click'));
     panel.findAll(panel.cockpitMetaElement, 'helpToggle').forEach((toggleElement: any) => toggleElement.dispatch('click'));
     const editButton = panel.findAll(panel.cockpitBodyElement, 'treeFieldFixedValue').find((buttonElement: any) => !buttonElement.disabled);
     editButton.dispatch('click');
