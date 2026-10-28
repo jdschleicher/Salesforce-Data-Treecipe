@@ -641,8 +641,8 @@ describe('RecipeCockpitService, settings of one occurrence (#467)', () => {
             const [firstButton] = panel.findAll(panel.objectElements()[0].children[0], 'treeRecordCountButton');
             const [iterationButton] = panel.findAll(iterationElementOf(panel).children[0], 'treeRecordCountButton');
 
-            expect(firstButton.attributes['aria-label']).toBe('Create 2 Account records, edit count');
-            expect(iterationButton.attributes['aria-label']).toBe('Create 9 Account records per Account record, changed from the recipe\'s 2, edit count');
+            expect(firstButton.attributes['aria-label']).toBe('Create 2 Account record(s), edit count');
+            expect(iterationButton.attributes['aria-label']).toBe('Create 9 Account record(s) per Account record, changed from the recipe\'s 2, edit count');
 
         });
 
