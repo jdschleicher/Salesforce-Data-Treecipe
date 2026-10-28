@@ -234,6 +234,7 @@ sequenceDiagram
     participant Cmd as ExtensionCommandService
     participant Chk as PicklistDependencyCheckService
     participant CLI as sf CLI child process
+    participant Core as @salesforce/core connection
     participant Org as Target org
     participant Disk as treecipe/PicklistDependencyResults
 
@@ -247,10 +248,11 @@ sequenceDiagram
     rect rgb(240, 240, 250)
         Note over Cmd,Org: withProgress, cancellable
         alt alwaysDeploy is false
-            Cmd->>Chk: isSpecsTestClassDeployedInOrg
-            Chk->>CLI: sf data query ApexClass
-            Note over Chk,CLI: no cancellation hook on this probe —<br/>cancelling is honoured after it returns
-            CLI-->>Chk: present or absent
+            Cmd->>Chk: isSpecsTestSuiteDeployedInOrg
+            Chk->>Core: SalesforceOrgService.getConnection
+            Core->>Org: Tooling API query TestSuiteMembership
+            Note over Chk,Org: no sf process (#497) and no cancellation hook —<br/>cancelling is honoured after it returns;<br/>any failure reads as "not deployed"
+            Org-->>Chk: present or absent
         end
         alt deploy required
             Cmd-->>User: modal naming each file found on disk<br/>framework + per-object + aggregator + test

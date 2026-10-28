@@ -22,7 +22,6 @@ import { execFile } from 'child_process';
 import {
     IScratchOrgAliasChoice,
     IScratchOrgPlan,
-    ORG_OPEN_TIMEOUT_MILLISECONDS,
     ORG_OPERATIONS_FOLDER_NAME,
     ORG_OPERATION_RESULT_FILE_ATTEMPTS,
     SCRATCH_ORG_ALIAS_MAX_LENGTH,
@@ -356,51 +355,15 @@ describe('ScratchOrgService (#200)', () => {
 
     });
 
-    describe('opening an org in the browser (#279)', () => {
+    describe('opening an org in the browser (#279, #501)', () => {
 
-        const ORG_OPEN_URL = 'https://acme--uat.sandbox.my.salesforce.com/secur/frontdoor.jsp?sid=00D000000000001!AQEAQsecret';
+        // #501: THE SELECTED ORG OPENS THROUGH SalesforceOrgService's ONE-TIME FRONTDOOR, NOT "sf org open"
+        it('builds no "sf org open" argv any more', () => {
 
-        it('asks for the URL only, by USERNAME, as JSON', () => {
-
-            expect(ScratchOrgService.buildOrgOpenArguments('uat@example.com')).toEqual(['org', 'open', '--target-org', 'uat@example.com', '--url-only', '--json']);
-            expect(() => ScratchOrgService.buildOrgOpenArguments('--json')).toThrow('is not a usable Salesforce org alias or username');
-
-        });
-
-        it('opens an https: URL the CLI answered with on status 0', () => {
-
-            expect(ScratchOrgService.parseOrgOpenOutput(invocation(JSON.stringify({ status: 0, result: { orgId: '00D000000000001', url: ORG_OPEN_URL, username: 'uat@example.com' } }))))
-                .toEqual({ isOpenable: true, url: ORG_OPEN_URL });
-
-        });
-
-        it('opens nothing that is not https:', () => {
-
-            ['http://acme.my.salesforce.com/', 'javascript:alert(1)', 'file:///etc/passwd', 'command:workbench.action.terminal.new', 'not a url'].forEach(url => {
-                const parseResult = ScratchOrgService.parseOrgOpenOutput(invocation(JSON.stringify({ status: 0, result: { url } })));
-                expect(parseResult).toEqual({ isOpenable: false, failureMessage: 'The Salesforce CLI answered with an address that is not https, so it was not opened.' });
-            });
-
-        });
-
-        it('opens nothing for an answer with no URL, a non-zero status or output that is not JSON', () => {
-
-            expect(ScratchOrgService.parseOrgOpenOutput(invocation(JSON.stringify({ status: 0, result: { url: 42 } }))))
-                .toEqual({ isOpenable: false, failureMessage: 'The Salesforce CLI answered without an address to open.' });
-            expect(ScratchOrgService.parseOrgOpenOutput(invocation(JSON.stringify({ status: 0, result: [ORG_OPEN_URL] }))))
-                .toEqual({ isOpenable: false, failureMessage: 'The Salesforce CLI answered without an address to open.' });
-            expect(ScratchOrgService.parseOrgOpenOutput(invocation(JSON.stringify({ status: 1, name: 'NoAuthInfoFound', message: 'No authorization information found for uat@example.com.' }), 1)))
-                .toEqual({ isOpenable: false, failureMessage: 'NoAuthInfoFound: No authorization information found for uat@example.com.' });
-            expect(ScratchOrgService.parseOrgOpenOutput(invocation('not json', 1)).isOpenable).toBe(false);
-
-        });
-
-        it('never quotes a session id from the output in a failure message', () => {
-
-            const parseResult = ScratchOrgService.parseOrgOpenOutput({ stdout: 'not json', stderr: `Opening ${ORG_OPEN_URL}`, exitCode: 1 });
-
-            expect(parseResult.isOpenable).toBe(false);
-            expect(JSON.stringify(parseResult)).not.toContain('AQEAQsecret');
+            expect(fs.readFileSync(path.join(__dirname, '..', 'ScratchOrgService.ts'), 'utf-8')).not.toMatch(/['"]org['"]\s*,\s*['"]open['"]/);
+            expect(ScratchOrgService).not.toHaveProperty('buildOrgOpenArguments');
+            expect(ScratchOrgService).not.toHaveProperty('resolveOrgOpenUrl');
+            expect(ScratchOrgService).not.toHaveProperty('parseOrgOpenOutput');
 
         });
 
@@ -411,32 +374,6 @@ describe('ScratchOrgService (#200)', () => {
                 expect(redactedText).toBe(`failed to open ${ORG_OPERATION_REDACTED_VALUE} in time`);
             });
             expect(ScratchOrgService.redactSecretText('see https://help.salesforce.com/s/?language=en_US')).toBe('see https://help.salesforce.com/s/?language=en_US');
-
-        });
-
-        it('says the CLI is required when it is not installed, and says a timeout is one', () => {
-
-            expect(ScratchOrgService.parseOrgOpenOutput({ stdout: '', stderr: '', exitCode: null, spawnError: Object.assign(new Error('spawn sf ENOENT'), { code: 'ENOENT' }) }))
-                .toEqual({ isOpenable: false, failureMessage: expect.stringContaining('is required to open an org') });
-            expect(ScratchOrgService.parseOrgOpenOutput({ stdout: '', stderr: '', exitCode: null, timedOut: true }))
-                .toEqual({ isOpenable: false, failureMessage: 'The Salesforce CLI did not answer in time.' });
-
-        });
-
-        it('runs "sf org open" with no working directory, not in project mode', async () => {
-
-            const cliCalls: Array<{ argumentList: string[]; options: Record<string, unknown> }> = [];
-            (execFile as unknown as jest.Mock).mockImplementation((_command: string, argumentList: string[], options: Record<string, unknown>, callback: Function) => {
-                cliCalls.push({ argumentList, options });
-                setImmediate(() => callback(null, JSON.stringify({ status: 0, result: { url: ORG_OPEN_URL } }), ''));
-                return { kill: jest.fn() };
-            });
-
-            await expect(ScratchOrgService.resolveOrgOpenUrl('uat@example.com')).resolves.toEqual({ isOpenable: true, url: ORG_OPEN_URL });
-            expect(cliCalls).toHaveLength(1);
-            expect(cliCalls[0].argumentList).toEqual(['org', 'open', '--target-org', 'uat@example.com', '--url-only', '--json']);
-            expect(cliCalls[0].options.cwd).toBeUndefined();
-            expect(ORG_OPEN_TIMEOUT_MILLISECONDS).toBeGreaterThan(0);
 
         });
 
