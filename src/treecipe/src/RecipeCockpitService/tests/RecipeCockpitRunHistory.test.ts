@@ -292,6 +292,30 @@ describe('RecipeCockpitRunHistory (#485)', () => {
 
         });
 
+        it('pairs each older manifest with the first unpaired result of its step at or after it, oldest first', () => {
+
+            const folderPath = orgOperationsFolder();
+            const earlyResult = writeRunFile(folderPath, '20261020-080000-field-deploy.json');
+            const firstManifest = writeRunFile(folderPath, '20261020-090000-field-deploy-package.xml');
+            const secondManifest = writeRunFile(folderPath, '20261020-090000-field-deploy-2-package.xml');
+            const firstResult = writeRunFile(folderPath, '20261020-090010-field-deploy.json');
+            const secondResult = writeRunFile(folderPath, '20261020-090020-field-deploy.json');
+            const otherStepResult = writeRunFile(folderPath, '20261020-090030-record-type-deploy.json');
+            const lateManifest = writeRunFile(folderPath, '20261020-100000-field-deploy-package.xml');
+
+            const { rows } = RecipeCockpitRunHistory.listTreeHistory([location]);
+
+            expect(rows.map(row => row.filePaths)).toEqual([
+                [lateManifest],
+                [otherStepResult],
+                // SAME SECOND: "-2-package.xml" SORTS FIRST, SO IT TAKES THE FIRST RESULT
+                [firstManifest, secondResult],
+                [secondManifest, firstResult],
+                [earlyResult]
+            ]);
+
+        });
+
         it('lists a summary out of shape as "unreadable", with the summary as its file, and never believes it', () => {
 
             const summaryFilePath = writeRunFile(orgOperationsFolder(), '20261028-101530-field-deploy-summary.json', JSON.stringify({ schemaVersion: 1, step: 'field-deploy', outcome: 'succeeded' }));
@@ -305,6 +329,23 @@ describe('RecipeCockpitRunHistory (#485)', () => {
 
             expect(rows.map(row => row.status)).toEqual(['unreadable', 'unreadable']);
             expect(rows[1].filePaths).toEqual([summaryFilePath]);
+
+        });
+
+        it('lets a summary for another step than its name hide no other row\'s files', () => {
+
+            const resultFilePath = writeRunFile(orgOperationsFolder(), '20261028-100000-field-deploy.json');
+            writeRunFile(orgOperationsFolder(), '20261028-110000-field-deploy-summary.json', JSON.stringify({
+                schemaVersion: 1, step: 'record-type-deploy', outcome: 'succeeded', orgUsername: null,
+                startedAt: '2026-10-28T10:15:30.000Z', finishedAt: '2026-10-28T10:15:30.000Z', fileNames: ['20261028-100000-field-deploy.json']
+            }));
+
+            const { rows } = RecipeCockpitRunHistory.listTreeHistory([location]);
+
+            expect(rows.map(row => [row.status, row.filePaths.map(filePath => path.basename(filePath))])).toEqual([
+                ['unreadable', ['20261028-110000-field-deploy-summary.json']],
+                ['unrecorded', [path.basename(resultFilePath)]]
+            ]);
 
         });
 

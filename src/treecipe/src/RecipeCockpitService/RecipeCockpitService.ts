@@ -13829,7 +13829,7 @@ export class RecipeCockpitService {
             case 'retrieved': {
                 const { componentCount, namesWithComponents, failureMessages } = retrieveOutcome;
                 const retrievedText = this.describeRetrieved(retrieveKind, componentCount, namesWithComponents, askedNames, objectApiNames, treeLabel, orgLabel);
-                recordStep(failureMessages.length > 0 ? 'partial' : 'succeeded', {
+                recordStep(failureMessages.length === 0 ? 'succeeded' : componentCount > 0 ? 'partial' : 'failed', {
                     succeededCount: componentCount,
                     ...( failureMessages.length > 0 ? { failedCount: failureMessages.length, detail: RecipeCockpitMetadataDeploy.describeCappedList(failureMessages) } : {} )
                 });
@@ -24843,7 +24843,9 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
     function versionLabelOf(treeState, runFolderName) {
 
-        const version = runFolderName === null ? null : treeState.tree.history.versions.find(function (candidateVersion) {
+        // A CARD WITH NO HISTORY STILL DRAWS TROUBLESHOOTING, AND ITS HISTORY SUB-TAB (#485) NAMES RUNS TOO
+        const versions = treeState.tree.history && Array.isArray(treeState.tree.history.versions) ? treeState.tree.history.versions : [];
+        const version = runFolderName === null ? null : versions.find(function (candidateVersion) {
             return candidateVersion.runFolderName === runFolderName;
         });
 

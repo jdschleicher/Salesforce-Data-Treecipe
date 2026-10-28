@@ -158,6 +158,26 @@ describe('RecipeCockpitService, the Troubleshooting tab\'s History (#485)', () =
 
         });
 
+        it('draws on a card with no history of its own, naming every run "version unknown"', () => {
+
+            const recipe = loadRecipe();
+            recipe.trees.forEach(tree => { delete tree.history; });
+            const panel = runPanelScript({});
+            panel.postToPanel({ command: 'recipeData', recipe: recipe, renderSequence: 3 });
+            panel.postToPanel({ command: 'rendered' });
+            panel.expandAllTrees();
+            openHistory(panel);
+
+            panel.postToPanel(historyMessage());
+            sortButtonOf(panel, 'run').dispatch('click');
+
+            expect(rowsOf(panel)).toHaveLength(3);
+            expect(rowsOf(panel).map((rowElement: any) => panel.findAll(rowElement, 'historyRun')[0].textContent)).toEqual(['version unknown', 'version unknown', 'version unknown']);
+            expect(postedNamed(panel, 'troubleshootingHistoryRendered')).toHaveLength(1);
+            expect(postedNamed(panel, 'renderFailed')).toEqual([]);
+
+        });
+
         it('opens a file by its index in the rows it acknowledged, never by a path', () => {
 
             const panel = drawRecipe();

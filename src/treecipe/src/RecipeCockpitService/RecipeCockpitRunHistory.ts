@@ -145,6 +145,8 @@ interface IRowCandidate {
     folderPath: string;
     folderOrgUsername?: string;
     summaryFileName?: string;
+    // THE SUMMARY AS READ ONCE TO LEARN THE FILES IT CLAIMS, null WHEN IT IS OUT OF SHAPE; THE ROW REUSES IT
+    summary?: IRunHistorySummary | null;
     fileNames: string[];
 }
 
@@ -293,7 +295,7 @@ export class RecipeCockpitRunHistory {
     /*
         Every step of a tree, newest first, from each location's RunArtifacts in the order given (the
         run on screen first), at most rowLimit with the rest counted. Rows are placed by their file
-        names; only the summaries of the rows kept are read.
+        names; every summary is read once, for the files it claims, and kept for its row.
     */
     static listTreeHistory(locations: readonly IRecipeCockpitRunArtifactsLocation[], rowLimit: number = RUN_HISTORY_ROW_LIMIT): IRunHistoryListing {
 
@@ -396,11 +398,13 @@ export class RecipeCockpitRunHistory {
             candidates.push(candidate);
         });
 
-        // A SUMMARY NAMES ITS OWN FILES, READ HERE ONLY FOR THE NAMES IT CLAIMS; THE ROW READS IT AGAIN, CHECKED, IF IT IS KEPT
+        // A SUMMARY NAMES ITS OWN FILES: READ ONCE HERE FOR THE NAMES IT CLAIMS, AND KEPT FOR ITS ROW
+        const folderFileNames = new Set(parsedFiles.map(file => file.fileName));
         candidates.forEach(candidate => {
-            const summary = this.readSummaryFile(path.join(folderPath, candidate.summaryFileName as string));
-            ( summary?.fileNames ?? [] ).forEach(fileName => {
-                if ( !claimedFileNames.has(fileName) && parsedFiles.some(file => file.fileName === fileName) ) {
+            candidate.summary = this.readSummaryFile(path.join(folderPath, candidate.summaryFileName as string)) ?? null;
+            // A SUMMARY FOR ANOTHER STEP THAN ITS NAME SAYS IS UNREADABLE, AND HIDES NO OTHER ROW'S FILES
+            ( candidate.summary?.step === candidate.step ? candidate.summary.fileNames : [] ).forEach(fileName => {
+                if ( folderFileNames.has(fileName) ) {
                     claimedFileNames.add(fileName);
                 }
             });
@@ -410,15 +414,24 @@ export class RecipeCockpitRunHistory {
         const resultCandidates = unclaimedResults.map(file => {
             const candidate = buildCandidate(file);
             candidate.fileNames.push(file.fileName);
-            return { file: file, candidate: candidate, hasManifest: false };
+            return { file: file, candidate: candidate };
+        });
+
+        // PER STEP, OLDEST FIRST WITH A CURSOR: A MANIFEST (ALSO OLDEST FIRST) TAKES THE FIRST UNPAIRED RESULT AT OR AFTER IT
+        const resultQueuesByStep = new Map<RunHistoryStep, { results: typeof resultCandidates; nextIndex: number }>();
+        resultCandidates.forEach(resultCandidate => {
+            const queue = resultQueuesByStep.get(resultCandidate.file.parsed.step) ?? { results: [], nextIndex: 0 };
+            queue.results.push(resultCandidate);
+            resultQueuesByStep.set(resultCandidate.file.parsed.step, queue);
         });
 
         parsedFiles.filter(file => file.parsed.kind === 'package' && !claimedFileNames.has(file.fileName)).forEach(file => {
-            const joined = resultCandidates.find(resultCandidate => !resultCandidate.hasManifest
-                && resultCandidate.file.parsed.step === file.parsed.step
-                && resultCandidate.file.parsed.timestamp >= file.parsed.timestamp);
+            const queue = resultQueuesByStep.get(file.parsed.step);
+            while ( queue && queue.nextIndex < queue.results.length && queue.results[queue.nextIndex].file.parsed.timestamp < file.parsed.timestamp ) {
+                queue.nextIndex++;
+            }
+            const joined = queue && queue.nextIndex < queue.results.length ? queue.results[queue.nextIndex++] : undefined;
             if ( joined ) {
-                joined.hasManifest = true;
                 joined.candidate.fileNames.unshift(file.fileName);
             } else {
                 const candidate = buildCandidate(file);
@@ -454,8 +467,7 @@ export class RecipeCockpitRunHistory {
             };
         }
 
-        const summaryFilePath = path.join(candidate.folderPath, candidate.summaryFileName);
-        const summary = this.readSummaryFile(summaryFilePath);
+        const summary = candidate.summary ?? undefined;
 
         // A SUMMARY OUT OF SHAPE, OR ONE FOR ANOTHER STEP THAN ITS NAME SAYS, IS A ROW -- NEVER LEFT OUT, NEVER BELIEVED
         if ( !summary || summary.step !== candidate.step ) {

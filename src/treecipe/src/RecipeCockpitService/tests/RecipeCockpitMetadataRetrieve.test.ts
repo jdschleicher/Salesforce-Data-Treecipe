@@ -643,6 +643,15 @@ describe('RecipeCockpitService, retrieving fields, record types and global value
 
             expect(summaries().map(summary => summary.outcome).sort()).toEqual(['failed', 'failed', 'succeeded']);
 
+            // EVERY RECORD TYPE CAME BACK FAILED: NOTHING WAS RETRIEVED, SO THE STEP FAILED RATHER THAN PARTLY SUCCEEDED
+            (RecipeCockpitService as any).isMetadataRetrieveInFlight = false;
+            listHandler = () => ({ stdout: buildListAnswer([listedRecordType('Account.Business')]) });
+            retrieveHandler = () => ({ stdout: buildRetrieveAnswer([retrievedFile('RecordType', 'Account.Business', { state: 'Failed', problemType: 'Error', error: 'Not found' })]) });
+            await retrieve('recordTypes');
+
+            expect(summaries().map(summary => summary.outcome).sort()).toEqual(['failed', 'failed', 'failed', 'succeeded']);
+            expect(summaries().find(summary => summary.failedCount === 1)).toEqual(expect.objectContaining({ outcome: 'failed', succeededCount: 0 }));
+
         });
 
         describe('the org it reads from: the Target Org Manager selection (#480)', () => {
