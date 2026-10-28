@@ -737,6 +737,28 @@ describe('RecipeCockpitService, the Record types tab (#195)', () => {
 
             });
 
+            it('still draws the tile on a card with no objects, both checks and the button disabled, and posts nothing from it (#490)', () => {
+
+                const panel = drawRecipe(recipe => { recipe.trees.find(tree => tree.treeKey === LEAD_TREE_KEY)!.objects = []; });
+                panel.expandAllTrees();
+                const tileElement = panel.findAll(leadCardOf(panel), 'treecipeFilterTile')[0];
+                const checkElements = [...panel.findAll(tileElement, 'treeRecordTypeFieldsToggle'), ...panel.findAll(tileElement, 'treeTodosToggle')];
+                const postedCount = panel.postedHostMessages.length;
+                const savedStateCount = panel.setStateCalls.length;
+
+                expect(panel.findAll(leadCardOf(panel), 'treeEmpty').map((element: any) => element.textContent)).toEqual(['This tree has no objects with a recipe.']);
+                expect(checkElements).toHaveLength(2);
+                expect(checkElements.every((checkElement: any) => checkElement.disabled)).toBe(true);
+                expect(leadToggleOf(panel).disabled).toBe(true);
+
+                [...checkElements, leadToggleOf(panel), tileElement].forEach((element: any) => element.dispatch('click'));
+
+                expect(checkElements.map((checkElement: any) => checkElement.attributes['aria-checked'])).toEqual(['false', 'false']);
+                expect(panel.postedHostMessages.length).toBe(postedCount);
+                expect(panel.setStateCalls.length).toBe(savedStateCount);
+
+            });
+
             it('keeps its summary through a Treecipe search', () => {
 
                 const panel = drawRecipe();
