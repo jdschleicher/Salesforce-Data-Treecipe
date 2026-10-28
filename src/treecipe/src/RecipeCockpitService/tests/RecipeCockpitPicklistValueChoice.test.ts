@@ -25,7 +25,9 @@ import {
     RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON,
     RECIPE_COCKPIT_PICKLIST_CHOICE_UNCHANGED_REFUSAL,
     RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL,
-    RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE
+    RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE,
+    RECIPE_COCKPIT_PICKLIST_RESET_LABEL,
+    RECIPE_COCKPIT_PICKLIST_RESET_NOTHING_REFUSAL
 } from '../RecipeCockpitService';
 import { RecipeCockpitRecipeWriter } from '../RecipeCockpitRecipeWriter';
 import { RecipeCockpitFixedValueStore } from '../RecipeCockpitFixedValueStore';
@@ -278,13 +280,14 @@ describe('routePanelMessage setPicklistValueChoice (#465)', () => {
         expect(load({}).hostMessage).not.toHaveProperty('treeKey');
         expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).toMatchObject({ treeKey: LEAD_TREE_KEY, picklistValues: ['Open', 'Closed'] });
         expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).not.toHaveProperty('chosenPicklistValues');
+        expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).not.toHaveProperty('isEdited');
         expect(load({ treeKey: 7 })).toBeUndefined();
 
         ( leadTree as any ).fixedValues = [{ objectApiName: 'Lead', fieldApiName: 'Status', value: "${{ random_choice('Closed') }}", kind: 'expression' }];
-        expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).toMatchObject({ chosenPicklistValues: ['Closed'] });
+        expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).toMatchObject({ chosenPicklistValues: ['Closed'], isEdited: true });
 
         ( leadTree as any ).fixedValues = [{ objectApiName: 'Lead', fieldApiName: 'Status', value: 'Open', kind: 'text' }];
-        expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).toMatchObject({ isOtherEdit: true });
+        expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).toMatchObject({ isOtherEdit: true, isEdited: true });
         expect(load({ treeKey: LEAD_TREE_KEY }).hostMessage).not.toHaveProperty('chosenPicklistValues');
 
         // WITH NO EDIT, A GENERATED LINE THE BACKEND BUILDS STARTS THE TILES FROM WHAT IT CHOOSES; ONE IT DOES NOT BUILD STARTS THEM ALL TICKED
@@ -311,6 +314,57 @@ describe('routePanelMessage setPicklistValueChoice (#465)', () => {
 
         // A CARD NOT ON SCREEN IS ANSWERED THE VALUES ALONE
         expect(load({ treeKey: 'Gone-Tree' }).hostMessage).not.toHaveProperty('treeKey');
+
+    });
+
+});
+
+describe('routePanelMessage resetPicklistValueChoice (#479)', () => {
+
+    const buildDrawnPanelState = (): IRecipeCockpitPanelState => {
+        const panelState = RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT);
+        const loadedRecipe = loadRecipeRun();
+        const recipe: IRecipeCockpitRecipeViewModel = loadedRecipe.recipeViewModel;
+        RecipeCockpitService.applyObjectSelections(recipe, new Map(), new Map(), undefined, new Map(), new Map());
+        panelState.recipeDataMessage = { command: 'recipeData', recipe: recipe, renderSequence: 4 };
+        panelState.picklistDisplayValuesByObjectApiName = loadedRecipe.picklistDisplayValuesByObjectApiName;
+        panelState.treeHistoryAllowLists = RecipeCockpitService.collectTreeHistoryAllowLists(recipe);
+        return panelState;
+    };
+
+    const route = (payload: Record<string, unknown>, panelState = buildDrawnPanelState()) =>
+        RecipeCockpitService.routePanelMessage({ command: 'resetPicklistValueChoice', treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status', ...payload } as any, panelState);
+
+    it('routes a drawn, free picklist by its names alone, ignoring any values posted with them', () => {
+
+        expect(route({ picklistValues: ['Closed'], value: 'x' })).toEqual({ kind: 'resetPicklistValueChoice', treeKey: LEAD_TREE_KEY, folderName: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status' });
+
+    });
+
+    it.each([
+        ['a field that is not a picklist', { fieldApiName: 'Company' }],
+        ['a dependent picklist', { treeKey: ACCOUNT_TREE_KEY, objectApiName: 'Account', fieldApiName: 'Sub_Rating__c' }],
+        ['a field of another card', { treeKey: ACCOUNT_TREE_KEY }],
+        ['a nickname the object is not drawn with', { nickname: 'Lead_Other_NickName' }],
+        ['a nickname that is not a string', { nickname: 7 }],
+        ['a key that is not a string', { treeKey: 7 }],
+        ['an object name that is not an api name', { objectApiName: 'Lead Name' }],
+        ['a field name that is not an api name', { fieldApiName: '__proto__ x' }]
+    ])('does nothing for %s', (_caseName, payload) => {
+
+        expect(route(payload)).toBeUndefined();
+
+    });
+
+    it('does nothing before "rendered", or with no model', () => {
+
+        const undrawnPanelState = buildDrawnPanelState();
+        undrawnPanelState.treeHistoryAllowLists = RecipeCockpitService.buildEmptyTreeHistoryAllowLists();
+        const modelLessPanelState = buildDrawnPanelState();
+        modelLessPanelState.recipeDataMessage = undefined;
+
+        expect(route({}, undrawnPanelState)).toBeUndefined();
+        expect(route({}, modelLessPanelState)).toBeUndefined();
 
     });
 
@@ -510,6 +564,66 @@ describe('openRecipeCockpitPanel: saving a choice of values (#465)', () => {
 
     });
 
+    const reset = () =>
+        receivedMessageHandler({ command: 'resetPicklistValueChoice', treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status' });
+
+    it('puts a saved choice back byte for byte with Reset to generated, through the Clear confirmation, answered under the tiles (#479)', async () => {
+
+        await openAndDraw();
+        showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL);
+        await choose(['Closed']);
+        expect(showWarningMessage.mock.calls[0][1].detail).toContain(`How ${RECIPE_COCKPIT_PICKLIST_RESET_LABEL} puts it back`);
+        expect(showWarningMessage.mock.calls[0][1].detail).not.toContain('Clear');
+        await acknowledgeLatest();
+        expect(await askForValues()).toMatchObject({ isEdited: true });
+
+        showWarningMessage.mockResolvedValueOnce(undefined);
+        await reset();
+        expect(showWarningMessage.mock.calls[1][0]).toStartWith('Clear the edit of ');
+        expect(lastPosted('fieldEditResult')).toMatchObject({ edit: 'picklistValues', refusal: expect.any(String) });
+        expect(fs.readFileSync(LEAD_RECIPE_FILE_PATH, 'utf8')).not.toBe(committedRecipe);
+
+        showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL);
+        postedPanelMessages = [];
+        await reset();
+        expect(lastPosted('fieldEditResult')).toBeUndefined();
+        expect(fs.readFileSync(LEAD_RECIPE_FILE_PATH, 'utf8')).toBe(committedRecipe);
+        expect(fs.existsSync(LEAD_FIXED_VALUE_FILE_PATH)).toBeFalse();
+        await acknowledgeLatest();
+        expect(await askForValues()).not.toHaveProperty('isEdited');
+
+    });
+
+    it('clears an edit that is not a choice of values with Reset to generated (#479)', async () => {
+
+        const restore = pinFieldInRecipeFile(LEAD_RECIPE_FILE_PATH, 'Lead', 'Status', { value: '${{ random_choice("Open") }}', kind: 'expression' });
+        try {
+            await openAndDraw();
+            showWarningMessage.mockResolvedValueOnce(RECIPE_COCKPIT_FIXED_VALUE_CLEAR_CONFIRM_LABEL);
+            await reset();
+            expect(fs.readFileSync(LEAD_RECIPE_FILE_PATH, 'utf8')).toBe(committedRecipe);
+        } finally {
+            restore();
+        }
+
+    });
+
+    it('answers Reset to generated on a field with no edit as nothing to reset, under the tiles, and asks and writes nothing (#479)', async () => {
+
+        await openAndDraw();
+        await reset();
+
+        expect(showWarningMessage).not.toHaveBeenCalled();
+        expect(lastPosted('fieldEditResult')).toMatchObject({ treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status', edit: 'picklistValues', refusal: RECIPE_COCKPIT_PICKLIST_RESET_NOTHING_REFUSAL });
+        expect(fs.readFileSync(LEAD_RECIPE_FILE_PATH, 'utf8')).toBe(committedRecipe);
+
+        postedPanelMessages = [];
+        const action = { kind: 'resetPicklistValueChoice', treeKey: LEAD_TREE_KEY, folderName: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status' };
+        await (RecipeCockpitService as any).resetPicklistValueChoice(buildWebviewPanel(), RecipeCockpitService.buildInitialPanelState(HISTORY_WORKSPACE_ROOT), action);
+        expect(postedPanelMessages).toEqual([]);
+
+    });
+
     it('says a field edited some other way has an edit a choice replaces', async () => {
 
         const restore = pinFieldInRecipeFile(LEAD_RECIPE_FILE_PATH, 'Lead', 'Status', { value: '${{ random_choice("Open") }}', kind: 'expression' });
@@ -561,6 +675,8 @@ describe('the panel script: a picklist\'s value tiles (#465)', () => {
         .map((tileElement: any) => [panel.findAll(tileElement, 'picklistValue')[0].textContent, panel.findAll(tileElement, 'picklistTileCheck')[0].attributes['aria-checked']]);
     const choiceMessages = (panel: any) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'setPicklistValueChoice');
     const saveOf = (panel: any, editorElement: any) => panel.findAll(editorElement, 'picklistEditorSave')[0];
+    const resetOf = (panel: any, editorElement: any) => panel.findAll(editorElement, 'picklistEditorReset')[0];
+    const resetMessages = (panel: any) => panel.postedHostMessages.filter((hostMessage: any) => hostMessage.command === 'resetPicklistValueChoice');
 
     it('opens the tiles under the faker value with every value ticked, each tile a check box named by its value', () => {
 
@@ -577,7 +693,11 @@ describe('the panel script: a picklist\'s value tiles (#465)', () => {
             expect(checkElement.classList.contains('sdtButton-check')).toBe(true);
             expect(checkElement.attributes.role).toBe('checkbox');
         });
-        expect(saveOf(panel, editorElement).disabled).toBe(false);
+        // NOTHING CHANGED YET, SO NOTHING TO SAVE (#479)
+        expect(saveOf(panel, editorElement).disabled).toBe(true);
+        expect(panel.isHidden(panel.findAll(editorElement, 'picklistEditorReason')[0])).toBe(true);
+        expect(resetOf(panel, editorElement)).toBeUndefined();
+        expect(panel.findAll(editorElement, 'fieldEditorHint')[0].textContent).toBe(`Tick the values Status generates. Save writes them into the recipe file; ${RECIPE_COCKPIT_PICKLIST_RESET_LABEL} puts back the lines the field had.`);
         expect(rowElement.children[rowElement.children.length - 1].classList.contains('picklistSection')).toBe(true);
 
     });
@@ -602,6 +722,74 @@ describe('the panel script: a picklist\'s value tiles (#465)', () => {
         expect(saveOf(panel, editorElement).disabled).toBe(true);
         saveOf(panel, editorElement).dispatch('click');
         expect(choiceMessages(panel)).toHaveLength(1);
+
+    });
+
+    it('enables Save only while the ticks differ from what the tiles opened with (#479)', () => {
+
+        const { panel, editorElement } = openEditor({ chosenPicklistValues: ['Closed'] });
+        const [openTile, closedTile] = tilesOf(panel, editorElement);
+        expect(saveOf(panel, editorElement).disabled).toBe(true);
+
+        openTile.dispatch('click');
+        expect(saveOf(panel, editorElement).disabled).toBe(false);
+        openTile.dispatch('click');
+        expect(saveOf(panel, editorElement).disabled).toBe(true);
+
+        // A DIFFERENT SET OF THE SAME SIZE IS A CHANGE
+        openTile.dispatch('click');
+        closedTile.dispatch('click');
+        expect(saveOf(panel, editorElement).disabled).toBe(false);
+        saveOf(panel, editorElement).dispatch('click');
+        expect(choiceMessages(panel)).toEqual([{ command: 'setPicklistValueChoice', treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status', picklistValues: ['Open'] }]);
+
+    });
+
+    it('enables Save from the start over another kind of edit, which any choice replaces (#479)', () => {
+
+        const { panel, editorElement } = openEditor({ isOtherEdit: true, isEdited: true });
+        expect(saveOf(panel, editorElement).disabled).toBe(false);
+
+    });
+
+    it('draws Reset to generated only for an edited field, posting its names and holding Save and Reset until the host answers (#479)', () => {
+
+        const { panel, editorElement } = openEditor({ chosenPicklistValues: ['Closed'], isEdited: true });
+        const resetElement = resetOf(panel, editorElement);
+
+        expect(resetElement.textContent).toBe(RECIPE_COCKPIT_PICKLIST_RESET_LABEL);
+        expect(resetElement.classList.contains('sdtButton-secondary')).toBe(true);
+        expect(resetElement.classList.contains('sdtButton-compact')).toBe(true);
+        expect(resetElement.disabled).toBe(false);
+        const actionClasses = panel.findAll(editorElement, 'fieldEditorActions')[0].children.map((element: any) => element.classList.contains('picklistEditorSave') ? 'save' : element.classList.contains('picklistEditorReset') ? 'reset' : 'cancel');
+        expect(actionClasses).toEqual(['save', 'reset', 'cancel']);
+
+        tilesOf(panel, editorElement)[0].dispatch('click');
+        resetElement.dispatch('click');
+        expect(resetMessages(panel)).toEqual([{ command: 'resetPicklistValueChoice', treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status' }]);
+        expect(choiceMessages(panel)).toEqual([]);
+        expect(resetElement.disabled).toBe(true);
+        expect(saveOf(panel, editorElement).disabled).toBe(true);
+        resetElement.dispatch('click');
+        expect(resetMessages(panel)).toHaveLength(1);
+
+        // A REFUSAL GIVES BOTH BACK, UNDER THE TILES
+        panel.postToPanel({ command: 'fieldEditResult', renderSequence: 1, treeKey: LEAD_TREE_KEY, objectApiName: 'Lead', fieldApiName: 'Status', edit: 'picklistValues', refusal: 'Not saved: cancelled.' });
+        expect(panel.findAll(editorElement, 'fieldEditorRefusal')[0].textContent).toBe('Not saved: cancelled.');
+        expect(resetElement.disabled).toBe(false);
+        expect(saveOf(panel, editorElement).disabled).toBe(false);
+
+    });
+
+    it('draws Reset to generated over another kind of edit too, and disabled on a locked picklist (#479)', () => {
+
+        const other = openEditor({ isOtherEdit: true, isEdited: true });
+        expect(resetOf(other.panel, other.editorElement).disabled).toBe(false);
+
+        const locked = openEditor({ picklistValues: ['Very Hot'], isEdited: true }, [ACCOUNT_TREE_KEY, 'Account', 'Sub_Rating__c']);
+        expect(resetOf(locked.panel, locked.editorElement).disabled).toBe(true);
+        resetOf(locked.panel, locked.editorElement).dispatch('click');
+        expect(resetMessages(locked.panel)).toEqual([]);
 
     });
 

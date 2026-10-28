@@ -105,7 +105,8 @@ answerInPanelConfirmationsThroughWarningMock();
 // THE TREE'S FOLDER IS treeWorkspace's, SO ITS RUN FILES HAVE A RunArtifacts FOLDER TO GO TO (#470)
 const performTreeRetrieve = (workspaceRoot: string, treeLabel: string, objectApiNames: string[]) =>
     (RecipeCockpitService as any).performMetadataRetrieve(workspaceRoot, { objects: [], trees: [], selectedRunFolderName: 'recipe-2026-09-20T10-00-00' },
-        { title: treeLabel, folderName: 'Account-thru-OtherChildObject__c', objects: objectApiNames.map(objectApiName => ({ objectApiName: objectApiName })) }, 'validationRules');
+        { title: treeLabel, folderName: 'Account-thru-OtherChildObject__c', objects: objectApiNames.map(objectApiName => ({ objectApiName: objectApiName })) }, 'validationRules',
+        () => (RecipeCockpitService as any).resolveSelectedReadOrg(undefined, undefined, 'Nothing was retrieved', RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER));
 
 describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#326)', () => {
 
@@ -361,7 +362,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
         it('names the tree, the org, every object, where new files go and how many local files are overwritten in the confirmation, each on one line', () => {
 
-            const detail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('validationRules', 'Tree\nTwo', `prod · ${PROD_USERNAME}`, ['Account.Name_Required', 'Account.Phone_Format', 'Contact.Email_Required'], 'force-app', 2));
+            const detail = RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('validationRules', 'Tree\nTwo', { alias: 'prod', username: PROD_USERNAME }, ['Account.Name_Required', 'Account.Phone_Format', 'Contact.Email_Required'], 'force-app', 2));
 
             expect(detail).toContain('Tree: Tree Two');
             expect(detail).toContain(`Org: prod · ${PROD_USERNAME}`);
@@ -371,10 +372,10 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             expect(detail).toContain('Nothing is deployed.');
             expect(detail).not.toMatch(/[()]/);
 
-            expect(RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('validationRules', 'T', 'o', ['Account.One'], 'force-app', 0))).toContain('1 validation rule\nAccount.One\n');
-            expect(RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('validationRules', 'T', 'o', ['Account.One'], 'force-app', 0))).toContain('This project holds no validation rule file for these objects yet.');
-            expect(RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('validationRules', 'T', 'o', ['Account.One'], 'force-app', 1))).toContain('1 existing local validation rule file for');
-            expect(RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('validationRules', 'T', 'o', Array.from({ length: 25 }, (_value, index) => `Account.Rule_${index}`), 'force-app', 0)))
+            expect(RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('validationRules', 'T', { username: 'o' }, ['Account.One'], 'force-app', 0))).toContain('1 validation rule\nAccount.One\n');
+            expect(RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('validationRules', 'T', { username: 'o' }, ['Account.One'], 'force-app', 0))).toContain('This project holds no validation rule file for these objects yet.');
+            expect(RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('validationRules', 'T', { username: 'o' }, ['Account.One'], 'force-app', 1))).toContain('1 existing local validation rule file for');
+            expect(RecipeCockpitService.flattenConfirmContent(RecipeCockpitMetadataRetrieve.buildConfirmationContent('validationRules', 'T', { username: 'o' }, Array.from({ length: 25 }, (_value, index) => `Account.Rule_${index}`), 'force-app', 0)))
                 .toContain('25 validation rules\nAccount.Rule_0, Account.Rule_1');
 
         });
@@ -453,7 +454,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
         let retrieveHandler: (argumentList: string[]) => { stdout: string; error?: unknown };
         let listHandler: (argumentList: string[]) => { stdout: string; error?: unknown };
         let cancellationToken: { isCancellationRequested: boolean; onCancellationRequested: (listener: () => void) => void };
-        let promptSpy: jest.SpyInstance;
+        let promptSpy: jest.Mock;
         let modalAnswer: string | undefined;
         let notificationAnswer: string | undefined;
         let workspaceState: { get: jest.Mock; update: jest.Mock };
@@ -559,7 +560,9 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
             jest.spyOn(VSCodeWorkspaceService, 'createStatusBarPhaseItem').mockImplementation(() => ({ text: '', dispose: jest.fn() }) as any);
             jest.spyOn(VSCodeWorkspaceService, 'showWarningMessage').mockImplementation((warningText: string) => { vscode.window.showWarningMessage(warningText); });
             jest.spyOn(VSCodeWorkspaceService, 'openFileInEditor').mockResolvedValue(undefined);
-            promptSpy = jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg').mockResolvedValue(PROD_ORG);
+            // #480: THE ORG COMES FROM resolveSelectedReadOrg (THE SELECTION, OR A PROMPT WHEN THERE IS NONE); ITS OWN TESTS ARE IN RecipeCockpitMetadataRetrieve.test.ts
+            promptSpy = jest.fn().mockResolvedValue(PROD_ORG);
+            jest.spyOn(RecipeCockpitService as any, 'resolveSelectedReadOrg').mockImplementation((...resolveArguments: unknown[]) => promptSpy(resolveArguments[3]));
 
             (RecipeCockpitService as any).recipeCockpitPanel = undefined;
             (RecipeCockpitService as any).recipeCockpitMessageSubscription = undefined;
@@ -845,7 +848,7 @@ describe('RecipeCockpitService, "Retrieve validation rules…" on a tree card (#
 
             notificationAnswer = RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_GENERATE_LABEL;
             await openCockpit();
-            jest.spyOn(SalesforceOrgService, 'promptForAuthorizedOrg').mockImplementation(async () => {
+            promptSpy.mockImplementation(async () => {
                 panelState().insertStateMessage = { command: 'insertState', isRunning: true, treeKey: 'Lead-ONLY' };
                 return PROD_ORG;
             });

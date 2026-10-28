@@ -152,6 +152,11 @@
                     ${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}
         Date__c: |
                     ${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}
+        Picklist__c: ${{ faker.helpers.arrayElement([`cle`,`eastlake`,`madison`,`mentor`,`wickliffe`,`willoughby`]) }}
+                        ### TODO: -- RecordType Options -- OneRecType -- Below is the faker recipe for the record type OneRecType for the field Picklist__c
+                        # ${{ faker.helpers.arrayElement([`cle`,`eastlake`]) }}
+                        ### TODO: -- RecordType Options -- TwoRecType -- Below is the faker recipe for the record type TwoRecType for the field Picklist__c
+                        # ${{ faker.helpers.arrayElement([`cle`,`willoughby`]) }}
         DependentPicklist__c: 
           if:
             - choice:
@@ -286,11 +291,6 @@
                 ${{ faker.finance.amount({min: 0, max: 9999999999999999, dec: 2}) }}
         Phone__c: |
                     ${{ faker.phone.number({style:'national'}) }}
-        Picklist__c: ${{ faker.helpers.arrayElement([`cle`,`eastlake`,`madison`,`mentor`,`wickliffe`,`willoughby`]) }}
-                        ### TODO: -- RecordType Options -- OneRecType -- Below is the faker recipe for the record type OneRecType for the field Picklist__c
-                        # ${{ faker.helpers.arrayElement([`cle`,`eastlake`]) }}
-                        ### TODO: -- RecordType Options -- TwoRecType -- Below is the faker recipe for the record type TwoRecType for the field Picklist__c
-                        # ${{ faker.helpers.arrayElement([`cle`,`willoughby`]) }}
         PlanetGlobalValuePicklist__c: ### TODO: This picklist field needs manually updated with either a standard value set list or global value set
         RichTextAreaHtml__c: ${{ faker.lorem.text(131072).substring(0, 131072) }}
         SuperDependent__c: 
@@ -372,6 +372,11 @@
                         ${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}
             Date__c: |
                         ${{ faker.date.between({ from: new Date('2023-01-01'), to: new Date() }).toISOString().split('T')[0] }}
+            Picklist__c: ${{ faker.helpers.arrayElement([`cle`,`eastlake`,`madison`,`mentor`,`wickliffe`,`willoughby`]) }}
+                            ### TODO: -- RecordType Options -- OneRecType -- Below is the faker recipe for the record type OneRecType for the field Picklist__c
+                            # ${{ faker.helpers.arrayElement([`cle`,`eastlake`]) }}
+                            ### TODO: -- RecordType Options -- TwoRecType -- Below is the faker recipe for the record type TwoRecType for the field Picklist__c
+                            # ${{ faker.helpers.arrayElement([`cle`,`willoughby`]) }}
             DependentPicklist__c: 
               if:
                 - choice:
@@ -506,11 +511,6 @@
                     ${{ faker.finance.amount({min: 0, max: 9999999999999999, dec: 2}) }}
             Phone__c: |
                         ${{ faker.phone.number({style:'national'}) }}
-            Picklist__c: ${{ faker.helpers.arrayElement([`cle`,`eastlake`,`madison`,`mentor`,`wickliffe`,`willoughby`]) }}
-                            ### TODO: -- RecordType Options -- OneRecType -- Below is the faker recipe for the record type OneRecType for the field Picklist__c
-                            # ${{ faker.helpers.arrayElement([`cle`,`eastlake`]) }}
-                            ### TODO: -- RecordType Options -- TwoRecType -- Below is the faker recipe for the record type TwoRecType for the field Picklist__c
-                            # ${{ faker.helpers.arrayElement([`cle`,`willoughby`]) }}
             PlanetGlobalValuePicklist__c: ### TODO: This picklist field needs manually updated with either a standard value set list or global value set
             RichTextAreaHtml__c: ${{ faker.lorem.text(131072).substring(0, 131072) }}
             SuperDependent__c: 

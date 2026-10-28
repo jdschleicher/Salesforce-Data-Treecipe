@@ -686,6 +686,10 @@ describe('RecipeCockpitService, Generate fake data and insert a whole tree (#255
             expect(modalMessage).toBe('Generate Account-thru-OtherChildObject__c and insert it into qa (qa@example.com.qa)?');
             expect(modalOptions.inPanel).toBe(true);
             expect(modalAction).toBe(RECIPE_COCKPIT_INSERT_CONFIRM_LABEL);
+            // #480: THE ORG IS ITS OWN PART, AND "Change org…" STARTS THE SAME INSERT AGAIN, A SANDBOX ONLY
+            const [, insertConfirmOptions] = (RecipeCockpitService.confirmInPanel as unknown as jest.Mock).mock.calls[0];
+            expect(insertConfirmOptions.org).toEqual({ alias: 'qa', username: 'qa@example.com.qa' });
+            expect(insertConfirmOptions.changeOrg).toEqual({ restartMessage: { command: 'insertTree', treeKey: ACCOUNT_TREE_KEY }, isSandboxOnly: true });
             expect(modalOptions.detail.split('\n')).toIncludeAllMembers([
                 'Org: qa (qa@example.com.qa)',
                 'Type: Sandbox',

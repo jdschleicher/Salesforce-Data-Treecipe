@@ -3,7 +3,7 @@ import { ISalesforceCliInvocationResult, PicklistDependencyCheckService } from '
 import { SalesforceApiName } from '../RecipeService/SalesforceApiName';
 import { ScratchOrgService } from '../ScratchOrgService/ScratchOrgService';
 import { IMetadataDeployComponent, IMetadataDeployObject, IMetadataDeploySummary, METADATA_RETRIEVE_PACKAGE_XML_TYPES, RecipeCockpitMetadataDeploy } from './RecipeCockpitMetadataDeploy';
-import { IRecipeCockpitConfirmContent } from './RecipeCockpitConfirmContent';
+import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg } from './RecipeCockpitConfirmContent';
 
 /*
     The Troubleshooting tab's retrieves (#326, #382): the argv that brings one relationship tree's
@@ -419,7 +419,7 @@ export class RecipeCockpitMetadataRetrieve {
     // WHAT THE IN-PANEL CONFIRMATION SAYS (#457): EACH VALUE ON ONE LINE, AND WHAT CANNOT BE UNDONE OR IS LEFT OUT AMONG THE WARNINGS, ON SCREEN
     static buildConfirmationContent(retrieveKind: MetadataRetrieveKind,
                                     treeLabel: string,
-                                    orgLabel: string,
+                                    org: IRecipeCockpitConfirmOrg,
                                     askedNames: readonly string[],
                                     packageDirectoryRelativePath: string,
                                     localFileCount: number): IRecipeCockpitConfirmContent {
@@ -431,9 +431,9 @@ export class RecipeCockpitMetadataRetrieve {
         return {
             summary: [
                 `Tree: ${toSingleLine(treeLabel)}`,
-                `Org: ${toSingleLine(orgLabel)}`,
                 ...( localFileCount === 0 ? [`This project holds no ${words.fileNoun} file for these ${words.scope} yet.`] : [] )
             ],
+            org: org,
             warnings: localFileCount === 0 ? [] : [overwriteLine],
             sections: [
                 { title: this.describeComponents(retrieveKind, askedNames.length), lines: [RecipeCockpitMetadataDeploy.describeCappedList(askedNames)] },

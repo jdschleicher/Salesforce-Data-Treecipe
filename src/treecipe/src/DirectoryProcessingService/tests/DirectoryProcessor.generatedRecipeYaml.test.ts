@@ -631,8 +631,6 @@ describe('a faker-js recipe from the mock metadata inserts with every wired look
 
         const recipeContent = recipeFile.content.replace(/^( *count:) 1$/gm, '$1 2');
         jest.spyOn(fs, 'readFileSync').mockReturnValueOnce(recipeContent);
-        // THE GENERATOR WRITES Example_Everything__c's DEPENDENT PICKLIST ABOVE ITS CONTROLLING FIELD, WHICH RUN FAKER CANNOT EVALUATE -- NOT WHAT THIS TEST IS ABOUT
-        jest.spyOn(FakerJSRecipeProcessor.prototype, 'evaluateDependentPicklistFakerJSExpression').mockReturnValue(Promise.resolve('dependent'));
         const fakerJSRecipeProcessor = new FakerJSRecipeProcessor();
         const fakerJson = await fakerJSRecipeProcessor.generateFakeDataBySelectedRecipeFile('recipe.yml');
         const collectionsByObject = fakerJSRecipeProcessor.transformFakerJsonDataToCollectionApiFormattedFilesBySObject(fakerJson);
@@ -730,6 +728,71 @@ describe.each([
         const recipeTexts = recipeFiles.map(recipeFile => recipeFile.content);
 
         expect(PythonTestHarness.loadWithPyYaml(recipeTexts)).toEqual(recipeTexts.map(recipeText => yaml.load(recipeText)));
+
+    });
+
+});
+
+/*
+    #462. Both backends evaluate a record's fields top to bottom, so a dependent picklist written
+    above its controlling field failed every faker-js record of its object and gave snowfakery
+    values the controller does not allow. readDirectory lists DependentPicklist__c before
+    Picklist__c, so the mock metadata wrote exactly that. Every block of every recipe, in both
+    backends and with several record type blocks, must list each controller above its dependents.
+*/
+describe.each([
+    ['faker-js', () => new FakerJSRecipeFakerService()],
+    ['snowfakery', () => new SnowfakeryRecipeFakerService()]
+] as const)('Generate Treecipe with the %s backend writes every controlling field above its dependent picklists (#462)', (unusedBackend, createFakerService) => {
+
+    const findDependentsAboveControllers = (objectInfoWrapper: ObjectInfoWrapper): { checkedPairCount: number, misorderedPairs: string[] } => {
+
+        const controllingFieldByObjectAndField = new Map<string, string>();
+        Object.entries(objectInfoWrapper.ObjectToObjectInfoMap).forEach(([objectApiName, objectInfo]) => {
+            (objectInfo.Fields ?? []).forEach(fieldInfo => {
+                if ( fieldInfo.controllingField ) {
+                    controllingFieldByObjectAndField.set(`${objectApiName}.${fieldInfo.fieldName.toLowerCase()}`, fieldInfo.controllingField.toLowerCase());
+                }
+            });
+        });
+
+        let checkedPairCount = 0;
+        const misorderedPairs: string[] = [];
+        const loadedObjectRecipes = flattenObjectRecipes(objectInfoWrapper.RecipeFiles.flatMap(recipeFile => yaml.load(recipeFile.content) as LoadedObjectRecipe[]));
+        loadedObjectRecipes.forEach(objectRecipe => {
+            const lowerCaseFieldNames = Object.keys(objectRecipe.fields ?? {}).map(fieldName => fieldName.toLowerCase());
+            lowerCaseFieldNames.forEach((fieldName, fieldIndex) => {
+                const controllingFieldName = controllingFieldByObjectAndField.get(`${objectRecipe.object}.${fieldName}`);
+                const controllingFieldIndex = controllingFieldName === undefined ? -1 : lowerCaseFieldNames.indexOf(controllingFieldName);
+                if ( controllingFieldIndex === -1 ) {
+                    return;
+                }
+                checkedPairCount++;
+                if ( controllingFieldIndex > fieldIndex ) {
+                    misorderedPairs.push(`${objectRecipe.object}: ${fieldName} above ${controllingFieldName}`);
+                }
+            });
+        });
+        return { checkedPairCount, misorderedPairs };
+
+    };
+
+    test('with the default record type', async () => {
+
+        const { checkedPairCount, misorderedPairs } = findDependentsAboveControllers(await processMockMetadata(createFakerService));
+
+        expect(misorderedPairs).toEqual([]);
+        expect(checkedPairCount).toBeGreaterThanOrEqual(2);
+
+    });
+
+    test('in every record type block', async () => {
+
+        const objectInfoWrapper = await processMockMetadata(createFakerService, new RecordTypeSelection([['Example_Everything__c', ['TwoRecType', 'OneRecType']]]));
+        const { checkedPairCount, misorderedPairs } = findDependentsAboveControllers(objectInfoWrapper);
+
+        expect(misorderedPairs).toEqual([]);
+        expect(checkedPairCount).toBeGreaterThanOrEqual(4);
 
     });
 

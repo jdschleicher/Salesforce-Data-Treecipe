@@ -521,7 +521,8 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
 
             untick(recipe, { Account: ['Legacy_Code__c'], Contact: ['LastName'] });
 
-            expect(buildDetail()).toContain('Unticked, not sent: Account.Legacy_Code__c, Contact.LastName');
+            // ONE LEAD-IN PER OBJECT, ITS FIELDS UNDER IT (#483)
+            expect(buildDetail()).toContain(['Account, 1 field left out, not sent:', '  Legacy_Code__c', 'Contact, 1 field left out, not sent:', '  LastName'].join('\n'));
 
         });
 
@@ -1015,10 +1016,13 @@ describe('RecipeCockpitService, unticking fields in the Treecipe tab (#220)', ()
                 const panel = drawRecipe(drawnRecipe => { treeOf(drawnRecipe, ACCOUNT_TREE_KEY).fieldSelection = lockEveryContactField; });
                 panel.postToPanel({ command: 'rendered' });
                 const contact = expanded(panel, 'Contact');
-                expect(panel.isHidden(selectAllRowOf(panel, contact))).toBeTrue();
+                // THE ROW STAYS FOR CONTACT'S OWN "TODOs only" (#477); THE BOX ITSELF HIDES
+                const selectAllCheckOf = () => panel.findAll(selectAllRowOf(panel, contact), 'treeFieldSelectAllCheck')[0];
+                expect(panel.isHidden(selectAllRowOf(panel, contact))).toBeFalse();
+                expect(panel.isHidden(selectAllCheckOf())).toBeTrue();
 
                 panel.postToPanel({ command: 'objectSelection', treeKey: ACCOUNT_TREE_KEY, renderSequence: 3 });
-                expect(panel.isHidden(selectAllRowOf(panel, contact))).toBeFalse();
+                expect(panel.isHidden(selectAllCheckOf())).toBeFalse();
                 expect(selectAllOf(panel, contact).attributes['aria-checked']).toBe('true');
 
             });

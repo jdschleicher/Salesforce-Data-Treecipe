@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -17,7 +18,7 @@ import {
     RecipeCockpitPermissionSetAssign
 } from './RecipeCockpitPermissionSetAssign';
 import { RecipeCockpitPermissionSetGenerate } from './RecipeCockpitPermissionSetGenerate';
-import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmRequestParts, IRecipeCockpitConfirmSection, RecipeCockpitConfirmContent } from './RecipeCockpitConfirmContent';
+import { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg, IRecipeCockpitConfirmRequestParts, IRecipeCockpitConfirmSection, RecipeCockpitConfirmContent } from './RecipeCockpitConfirmContent';
 import { IValidationRuleListObject, IValidationRuleListRunRecord, RecipeCockpitValidationRuleList } from './RecipeCockpitValidationRuleList';
 import {
     IMetadataDeployComponent,
@@ -292,6 +293,18 @@ export const RECIPE_COCKPIT_FIELD_RECORD_TYPE_REASON = 'record-type sections dep
 export const RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX = 'controls ';
 export const RECIPE_COCKPIT_EVERY_FIELD_UNTICKED_WARNING = 'every field unticked — records are generated with no fields set';
 export const RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL = 'All fields';
+// THE OBJECT'S "Standard fields" BOX (#477): EVERY FIELD WHOSE API NAME DOES NOT END IN THE CUSTOM SUFFIX
+export const RECIPE_COCKPIT_STANDARD_FIELDS_LABEL = 'Standard fields';
+export const RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX = '__c';
+export const RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE = 'standard';
+// THE OBJECT'S OWN "TODOs only" FILTER (#477), BESIDE ITS "All fields" BOX
+export const RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL = 'TODOs only';
+export const RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE = 'This object has no TODO comment in the recipe.';
+// THE OBJECT'S OWN "Hide unselected" FILTER (#483), BESIDE ITS "All fields" BOX
+export const RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL = 'Hide unselected';
+export const RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE = 'Every field of this object is ticked, so there is nothing to hide.';
+// THE INSERT CONFIRMATION'S SECTION OF WHAT THE CARD LEAVES OUT, ONE OBJECT AT A TIME (#483)
+export const RECIPE_COCKPIT_INSERT_LEFT_OUT_SECTION_TITLE = 'Left out, per object';
 export const RECIPE_COCKPIT_RESET_SELECTION_LABEL = 'Reset selection';
 
 /*
@@ -406,7 +419,9 @@ export const RECIPE_COCKPIT_FAVORITES_ONLY_LABEL = 'Favorites only';
 // THE TREECIPE TAB'S CHECK (#320), AND WHY IT IS DISABLED ON A CARD WITH NO RECORD TYPES TO CHOOSE FROM
 export const RECIPE_COCKPIT_RECORD_TYPE_FIELDS_ONLY_LABEL = 'Record type fields only';
 export const RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL = 'Edit values';
-export const RECIPE_COCKPIT_PICKLIST_CHOICE_UNCHANGED_REFUSAL = 'Nothing to save: every value is ticked, which is what the field already generates.';
+export const RECIPE_COCKPIT_PICKLIST_CHOICE_UNCHANGED_REFUSAL = 'Nothing to save: the ticked values are what the field already generates.';
+export const RECIPE_COCKPIT_PICKLIST_RESET_LABEL = 'Reset to generated';
+export const RECIPE_COCKPIT_PICKLIST_RESET_NOTHING_REFUSAL = 'Nothing to reset: the field has no edit, so it already generates what Generate Treecipe wrote.';
 export const RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON = 'Tick at least one value to save.';
 export const RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE = 'This field has an edit that is not a choice of its values. Saving a choice replaces it.';
 export const RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE = 'No object in this tree has more than one record type, so no field depends on one.';
@@ -578,7 +593,7 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
         ],
         items: [
             'Excluded objects (the chain link): the object and its children are left out. A child that another included parent keeps shows a half-broken link and names the excluded parent: it is still generated, without its lookup to that parent.',
-            'Unticked fields: the field is left out. All fields, above an object\'s fields, ticks or unticks them all.',
+            'Unticked fields: the field is left out. All fields, above an object\'s fields, ticks or unticks them all, and Standard fields beside it does the same for the fields whose name does not end in __c. Hide unselected beside them hides that object\'s unticked fields, and TODOs only shows its fields with a TODO. The insert\'s confirmation lists what is left out, object by object.',
             'Record counts: each object\'s row says what is created, such as Create 5 ✎ Contact records per Account (a friend\'s count is records per parent record). Click the count to change it: Enter keeps it, Escape cancels. A count that differs from the recipe\'s says changed.',
             'The rules box: a field generated without the limits its validation rules set.',
             'Nested copies: an object written more than once, such as the copy under a self-lookup, a friend added under it or a record type block, is a row of its own, indented under the row it is nested in. Each copy keeps its own unticked fields, count, rules box and edit, so changing one leaves the others as they are. A setting saved before copies had their own still applies to every copy until you change one.'
@@ -596,11 +611,11 @@ export const RECIPE_COCKPIT_HELP_SECTIONS: readonly IRecipeCockpitHelpSection[] 
             '+ Add friend beside the copy of an object nested under itself: adds one of the object\'s friends under that copy. The card draws each nested copy, and its friends, indented right under the row it is nested in.',
             'Remove TODO (in the Troubleshooting tab\'s TODO\'s list): takes a TODO comment out of the recipe and lists it under Removed, where Restore puts it back exactly. The line is kept in a .removedTodos.json file beside the recipe. A TODO that is a field\'s whole value, such as a lookup\'s, stays.',
             'Edit (the pencil on a field): opens the field\'s faker expression to change its arguments or call another faker method, or to replace it with one fixed value for every record. On an object written more than once, it changes only the copy whose row you edit. It is written into the recipe so Run Faker by Recipe uses it too. The lines it replaced are kept in a .fixedValues.json file beside the recipe, and Clear puts them back exactly.',
-            'Edit values (under a picklist\'s faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save: the field\'s expression is rewritten to choose only the ticked ones, by the recipe\'s own backend, and saved like an edit, so the pencil\'s Clear puts the old lines back. Cancel, × and Escape close it without saving. Each record type\'s own values are listed under the tiles; saving replaces the field\'s commented record type lines until Clear puts them back.'
+            'Edit values (under a picklist\'s faker value): opens a tile for each of its values, ticked for what the field generates now. Untick the values you do not want and Save, which is enabled once the ticks change: the field\'s expression is rewritten to choose only the ticked ones, by the recipe\'s own backend, and saved like an edit. Once the field has an edit, Reset to generated, beside Save, puts the old lines back. Cancel, × and Escape close it without saving. Each record type\'s own values are listed under the tiles; saving replaces the field\'s commented record type lines until Reset to generated puts them back.'
         ],
         closingParagraphs: [
-            'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of an org you pick into your project, and change nothing in the org.',
-            'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them.',
+            'Others write other files: Remember this selection saves record types to treecipe.config.json, and on a card\'s Troubleshooting tab, Generate permission set (under Permissions) writes a permission set into your project. Retrieve validation rules, Retrieve fields, Retrieve record types and Retrieve global value sets, each under its own area, copy that part of the org chosen in Target Org Manager into your project (with none chosen, they ask once and the pick becomes the selection), and change nothing in the org.',
+            'The Troubleshooting tab also deploys to a sandbox or scratch org, never production: Deploy permission set (Permissions), Deploy fields (Fields: custom fields and the custom objects that hold them, with an optional box for every tree object\'s validation rules, record types and global value sets), Deploy record types (Record Types) and Deploy global value sets (Global Value Sets) each send just those parts of your project, after a confirmation that lists them. Every confirmation that acts on an org shows its alias in bold and its username beside it; Change org… there picks another org, makes it the one chosen in Target Org Manager, and starts the action again.',
             'Each of these asks first, in a box over the cockpit. Scroll it to read everything it will do; Cancel or Escape does nothing.',
             'The Query tab writes no recipe either. It lists the SOQL Generate Treecipe wrote for the tree; edit a query, run it against the org chosen in Target Org Manager (with none chosen, it asks once and the pick becomes the selection; a query only reads), and export what came back as JSON or CSV under RunArtifacts in the tree folder, which git ignores.',
             'The Treecipe Adapter tab, after Query, opens on two steps. First choose the parent object (it starts on the tree\'s root) and, if you want, a WHERE for the parent records you expect, then Next. The tab then draws that object and every object under it as the Treecipe tab does, under a filter for the fields and objects to add; Change parent goes back. Retrieve latest metadata, beside the filter, retrieves those objects from the org into RunArtifacts in the tree folder (never your package directories) and marks each field new in org or changed in org against your project, with new child objects in the org and the org\'s recent changes as hints; Apply retrieved files to project asks first, then copies those files into your project. A field only the org holds can be ticked too: its new values come from the faker expression the recipe\'s backend writes for its type, or, when it writes none, a fixed value you type, and a lookup, a formula and the rest stay locked. Tick the fields you want to fill on records an org already holds; a lookup, RecordTypeId, a dependent picklist, an auto number or roll-up summary field and a field read only from the recipe file cannot be chosen. Load records reads the parent records step 1\'s WHERE asks for, then, a level at a time, only the records under those already loaded (an optional WHERE under each object narrows them further), with the fields you ticked, from the sandbox or scratch org chosen in Target Org Manager (with none chosen, it asks), and shows how many each object has and the first rows. Generate values then makes a new value for every loaded record of each ticked field, from its faker expression (the ✎ edits it, or takes a fixed value for every record) with the recipe\'s own backend, and shows the first rows as Id, current and new value. Update records then writes those values to the loaded records by Id, in the sandbox they were loaded from: their old values are saved to RunArtifacts in the tree folder first, the confirmation and the all-or-none question are the insert\'s, and with all-or-none a failed request sets back what the update had already changed. An update that lands also writes an adapted data set, FakeDataSets/<tree folder>-adapted-<time>, holding the loaded records with their new values and listed under Previously Used Data Sets as adapted, and an adapted recipe beside the original (which is never changed), every adapted line ending in # ADAPTED with the date and the org; its notification opens either. Under Previous updates, Restore previous values… writes a saved snapshot\'s values back to its records the same way, in the sandbox it was taken in, after saving the values they hold now.'
@@ -1282,6 +1297,8 @@ export interface IRecipeCockpitPanelMessage {
     place?: unknown;
     nickname?: unknown;
     included?: unknown;
+    // "Standard fields" (#477): setAllFieldsIncluded OVER THE STANDARD FIELDS ONLY
+    fieldScope?: unknown;
     applied?: unknown;
     updateSequence?: unknown;
     requestSequence?: unknown;
@@ -1298,6 +1315,8 @@ export interface IRecipeCockpitPanelMessage {
     choice?: unknown;
     // WHETHER ITS CHECKBOX WAS TICKED (#402); ANYTHING BUT A BOOLEAN IS READ AS CANCEL
     isChecked?: unknown;
+    // "Change org…" ON A CONFIRMATION (#480): THE READER ASKED FOR ANOTHER ORG RATHER THAN A BUTTON'S ANSWER
+    changeOrg?: unknown;
 }
 
 export interface IRecipeCockpitLoadPhaseMessage {
@@ -1346,6 +1365,10 @@ export interface IRecipeCockpitPanelTreePlace {
     isRecordTypeFieldsOnly?: true;
     // THE TREECIPE TAB'S "TODOs only" CHECK (#354); A PLACE SAVED BEFORE IT HAS NONE AND READS AS OFF
     isTodosOnly?: true;
+    // EACH OBJECT'S OWN "TODOs only" (#477), BY OBJECT PLACE KEY, ONLY WHEN ONE IS ON
+    todosOnlyObjectKeys?: string[];
+    // EACH OBJECT'S OWN "Hide unselected" (#483), BY OBJECT PLACE KEY, ONLY WHEN ONE IS ON
+    hideUnselectedObjectKeys?: string[];
     // THE TROUBLESHOOTING SUB-TAB (#365), ONLY WHEN IT IS NOT THE FIRST, AND EACH SUB-TAB'S SEARCH, ONLY WHEN THERE IS ONE
     troubleshootingSubTab?: RecipeCockpitTroubleshootingSubTab;
     troubleshootingSearchQueries?: Partial<Record<RecipeCockpitTroubleshootingSubTab, string>>;
@@ -1434,6 +1457,8 @@ export interface IRecipeCockpitPicklistValuesMessage extends IRecipeCockpitPickl
     chosenPicklistValues?: string[];
     // THE FIELD HAS AN EDIT THAT IS NOT A CHOICE OF ITS VALUES, WHICH A SAVE FROM THE TILES REPLACES
     isOtherEdit?: true;
+    // THE FIELD HAS AN EDIT OF ANY KIND, WHICH THE TILES' RESET TO GENERATED CLEARS (#479)
+    isEdited?: true;
 }
 
 // A LEGACY DATA SET'S RECORD COUNTS, READ FROM ITS COLLECTIONS API FILES WHEN IT WAS EXPANDED
@@ -2050,6 +2075,11 @@ export const RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND: Readonly<Record<MetadataRe
     globalValueSets: 'retrieveTreeGlobalValueSets'
 });
 
+// A RETRIEVE READS FROM THE TARGET ORG MANAGER SELECTION (#480); THESE ARE SAID WHEN IT CANNOT
+export const RECIPE_COCKPIT_RETRIEVE_ORG_BUSY_REFUSAL = 'Nothing was retrieved: no org is selected in Target Org Manager, and another run is holding the selection. Try again once it has finished.';
+export const RECIPE_COCKPIT_RETRIEVE_CONNECTION_FAILED_ADVICE = 'Log in to it again with sf org login web, or choose another org in Target Org Manager, then retrieve again.';
+
+// ASKED ONLY WHEN TARGET ORG MANAGER HAS NO ORG SELECTED (#480); THE PICK BECOMES THE SELECTION
 export const RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS: Readonly<Record<MetadataRetrieveKind, string>> = Object.freeze({
     validationRules: RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_ORG_PLACEHOLDER,
     fields: 'Choose the org to retrieve this tree\'s custom fields from',
@@ -2452,10 +2482,14 @@ export interface IRecipeCockpitConfirmRequestMessage {
     renderSequence: number;
     title: string;
     summary: string[];
+    // THE ORG THE ACTION ACTS ON (#480), DRAWN APART FROM THE SUMMARY: ITS ALIAS AND USERNAME EACH IN THEIR OWN STYLE
+    org?: IRecipeCockpitConfirmOrg;
     badge?: string;
     warnings: string[];
     sections: IRecipeCockpitConfirmSection[];
     buttons: string[];
+    // "Change org…" BESIDE THE ORG (#480), SET ONLY WHEN THE HOST CAN START THE ACTION AGAIN ON ANOTHER ORG
+    canChangeOrg?: boolean;
     // role="alertdialog" FOR AN ACTION THAT WRITES TO AN ORG OR OVERWRITES FILES WITH NO UNDO
     isDestructive: boolean;
     // ONE UNTICKED CHECKBOX UNDER THE LINES (#402), SET ONLY WHEN THE HOST ASKS FOR ONE; THE PANEL ANSWERS isChecked WITH ITS CHOICE
@@ -2468,10 +2502,41 @@ export const RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL = 'Before you confirm';
 // A CONFIRMATION ASKED WHILE THE COCKPIT IS HIDDEN (#349): ITS DOCUMENT IS GONE, SO NOTHING COULD SHOW IT
 export const RECIPE_COCKPIT_CONFIRM_HIDDEN_REFUSAL = 'The Recipe Cockpit was in the background, so it could not ask you to confirm, and nothing was done. It is shown now: start the action again.';
 
-export type { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmRequestParts, IRecipeCockpitConfirmSection };
+// THE ACTIONS WHOSE CONFIRMATION OFFERS "Change org…" (#480): THE RETRIEVES, THE DEPLOYS, THE ASSIGNMENT AND THE TREE INSERT
+const RECIPE_COCKPIT_ORG_CHANGE_ACTION_KINDS: ReadonlySet<string> = new Set(['retrieveTreeMetadata', 'deployTreeMetadataComponents', 'assignTreePermissionSets', 'insertTree', 'promptInsertOrg']);
+
+// THE BUTTON BESIDE A CONFIRMATION'S ORG (#480), AND WHAT IT SAYS WHEN THE ACTION IS NOT STARTED AGAIN
+export const RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL = 'Change org…';
+export const RECIPE_COCKPIT_CHANGE_ORG_PLACEHOLDER = 'Choose the org to run this on: it becomes the Target Org Manager selection';
+export const RECIPE_COCKPIT_CHANGE_ORG_REFUSAL_PREFIX = 'The action was not started again';
+export const RECIPE_COCKPIT_CHANGE_ORG_SANDBOX_ONLY_REASON = 'this action writes to the org, so it runs only in a sandbox or scratch org';
+export const RECIPE_COCKPIT_CHANGE_ORG_BUSY_REFUSAL = 'The org was not changed: another run is holding the Target Org Manager selection. Try again once it has finished.';
+
+export type { IRecipeCockpitConfirmContent, IRecipeCockpitConfirmOrg, IRecipeCockpitConfirmRequestParts, IRecipeCockpitConfirmSection };
+
+/*
+    What "Change org…" starts again once the reader has picked another org (#480): the panel message
+    the action was routed from, which is routed again through every guard a click meets, and whether
+    the action writes, in which case only a pick that answered it is a sandbox starts it again.
+*/
+export interface IRecipeCockpitConfirmChangeOrg {
+    restartMessage: IRecipeCockpitPanelMessage;
+    isSandboxOnly: boolean;
+}
 
 export interface IRecipeCockpitConfirmOptions extends IRecipeCockpitConfirmContent {
     isDestructive?: boolean;
+    changeOrg?: IRecipeCockpitConfirmChangeOrg;
+}
+
+/*
+    One panel action as it runs (#480), carried by AsyncLocalStorage through every await of its
+    executor. A confirmation it asks records where "Change org…" was chosen, and the action's own
+    listener reads it only once the action has ENDED, its run locks released, so the action routed
+    again is never refused as still running.
+*/
+interface IRecipeCockpitPanelActionContext {
+    orgChange?: IRecipeCockpitConfirmChangeOrg;
 }
 
 export interface IRecipeCockpitConfirmWithCheckboxOptions extends IRecipeCockpitConfirmOptions {
@@ -2489,6 +2554,9 @@ interface IRecipeCockpitPendingConfirmation {
     buttonLabels: string[];
     hasCheckbox: boolean;
     resolve: (answer: IRecipeCockpitConfirmAnswer) => void;
+    // SET ONLY WHEN "Change org…" WAS DRAWN: WHAT IT STARTS AGAIN, AND THE ACTION THAT ASKED
+    changeOrg?: IRecipeCockpitConfirmChangeOrg;
+    actionContext?: IRecipeCockpitPanelActionContext;
 }
 
 /*
@@ -2644,11 +2712,12 @@ export type RecipeCockpitPanelAction =
     | { kind: 'toggleFavoriteDataset'; datasetFolderName: string }
     | { kind: 'setObjectIncluded'; treeKey: string; folderName: string; objectApiName: string; isIncluded: boolean }
     | { kind: 'setFieldIncluded'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; isIncluded: boolean }
-    | { kind: 'setAllFieldsIncluded'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; isIncluded: boolean }
+    | { kind: 'setAllFieldsIncluded'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; isIncluded: boolean; fieldScope?: typeof RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE }
     | { kind: 'resetTreeSelection'; folderName: string }
     | { kind: 'setObjectCount'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; count: number }
     | { kind: 'setFieldFixedValue'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; value: string }
     | { kind: 'setPicklistValueChoice'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; picklistValues: string[] }
+    | { kind: 'resetPicklistValueChoice'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string }
     | { kind: 'setFieldValidationRuleApplied'; treeKey: string; folderName: string; objectApiName: string; nickname?: string; fieldApiName: string; isApplied: boolean }
     | { kind: 'persistPlace'; place: IRecipeCockpitPanelPlace }
     | { kind: 'createScratchOrg' }
@@ -2689,7 +2758,7 @@ export type RecipeCockpitPanelAction =
     | { kind: 'openDataOrg'; orgDetail: IAuthenticatedOrgDetail }
     | { kind: 'postOrgOpenState'; hostMessage: IRecipeCockpitOrgOpenStateMessage }
     | { kind: 'openChangelog' }
-    | { kind: 'answerConfirmation'; confirmationId: string; choice: unknown; isChecked: unknown };
+    | { kind: 'answerConfirmation'; confirmationId: string; choice: unknown; isChecked: unknown; isChangeOrg: boolean };
 
 /*
     Everything the host holds for the one panel, replaced wholesale when the panel is (re)opened --
@@ -2780,6 +2849,8 @@ export interface IRecipeCockpitPanelState {
     isUpdaterOrgPromptOpen?: boolean;
     // SET WHILE A QUERY ASKS FOR AN ORG AND CHECKS THE PICK (#439), HOLDING THE SELECTION AS isUpdaterOrgPromptOpen DOES
     isQueryOrgPromptOpen?: boolean;
+    // SET WHILE A RETRIEVE (#480) OR A CONFIRMATION'S "Change org…" ASKS FOR AN ORG AND CHECKS THE PICK, HOLDING THE SELECTION THE SAME WAY
+    isOrgPromptOpen?: boolean;
     // THE LAST RECORDS IT POSTED, REPLAYED WHILE ITS MODEL IS THE ONE ON SCREEN
     updaterRecordsMessage?: IRecipeCockpitUpdaterRecordsMessage;
     // THE LAST "Retrieve latest metadata" (#445): WHAT IT POSTED, REPLAYED WHILE ITS MODEL IS ON SCREEN, AND THE STAGING FOLDER IT READ (HOST-ONLY)
@@ -2879,6 +2950,8 @@ export class RecipeCockpitService {
     */
     private static pendingConfirmation: IRecipeCockpitPendingConfirmation | undefined;
 
+    private static readonly panelActionContextStorage = new AsyncLocalStorage<IRecipeCockpitPanelActionContext>();
+
     /*
         Which load is the current one. A run chosen while another is still loading supersedes it,
         and the superseded load must not render over the one the reader asked for last.
@@ -2966,6 +3039,8 @@ export class RecipeCockpitService {
             const troubleshootingSubTab = RECIPE_COCKPIT_TROUBLESHOOTING_SUB_TABS.slice(1).find(subTab => subTab === candidateTree.troubleshootingSubTab);
             const storedSubTabQueries = this.isPlainRecord(candidateTree.troubleshootingSearchQueries) ? candidateTree.troubleshootingSearchQueries : {};
             const troubleshootingSearchQueries: Partial<Record<RecipeCockpitTroubleshootingSubTab, string>> = {};
+            const todosOnlyObjectKeys = this.normalizePlaceNames(candidateTree.todosOnlyObjectKeys);
+            const hideUnselectedObjectKeys = this.normalizePlaceNames(candidateTree.hideUnselectedObjectKeys);
             const updaterChosenFieldKeys = this.normalizePlaceNames(candidateTree.updaterChosenFieldKeys);
             const updaterExpandedObjectKeys = this.normalizePlaceNames(candidateTree.updaterExpandedObjectKeys);
             const updaterParentObjectApiName = SalesforceApiName.isApiName(candidateTree.updaterParentObjectApiName) ? candidateTree.updaterParentObjectApiName as string : undefined;
@@ -2991,6 +3066,8 @@ export class RecipeCockpitService {
                 ...( candidateTree.isRecordTypesExpanded === true || candidateTree.selectedTab === 'recordTypes' ? { isRecordTypesExpanded: true as const } : {} ),
                 ...( candidateTree.isRecordTypeFieldsOnly === true ? { isRecordTypeFieldsOnly: true as const } : {} ),
                 ...( candidateTree.isTodosOnly === true ? { isTodosOnly: true as const } : {} ),
+                ...( todosOnlyObjectKeys.length > 0 ? { todosOnlyObjectKeys: todosOnlyObjectKeys } : {} ),
+                ...( hideUnselectedObjectKeys.length > 0 ? { hideUnselectedObjectKeys: hideUnselectedObjectKeys } : {} ),
                 ...( troubleshootingSubTab !== undefined ? { troubleshootingSubTab: troubleshootingSubTab } : {} ),
                 ...( Object.keys(troubleshootingSearchQueries).length > 0 ? { troubleshootingSearchQueries: troubleshootingSearchQueries } : {} ),
                 ...( candidateTree.todosView === 'removed' ? { todosView: 'removed' as const } : {} ),
@@ -4638,8 +4715,13 @@ export class RecipeCockpitService {
         An object's "All fields" box (#410, which replaced #220's All / None that #343 hid), held to the
         object's allow-list. Unticking all stores every field with a line in the recipe except those a lock
         holds for a reason of its own (RecordTypeId, a parent-excluded lookup); a controlling field is
-        stored too, because unticking every dependent with it is what frees it.
+        stored too, because unticking every dependent with it is what frees it. The "Standard fields"
+        box (#477) is the same over the standard fields only: a custom field's tick is never changed.
     */
+    static isStandardFieldApiName(fieldApiName: string): boolean {
+        return !fieldApiName.toLowerCase().endsWith(RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX);
+    }
+
     private static async setAllFieldsIncluded(cockpitPanel: vscode.WebviewPanel,
                                                 panelState: IRecipeCockpitPanelState,
                                                 panelAction: Extract<RecipeCockpitPanelAction, { kind: 'setAllFieldsIncluded' }>) {
@@ -4656,14 +4738,30 @@ export class RecipeCockpitService {
         const excludedFieldsByObject = treeSelections.excludedFieldApiNamesByFolderName.get(panelAction.folderName) ?? new Map<string, Set<string>>();
         const selectionKey = this.prepareOccurrenceSelectionKey(excludedFieldsByObject, panelState, tree, panelAction.objectApiName, panelAction.nickname, fieldApiNames => new Set(fieldApiNames));
 
+        const isInScope = (fieldApiName: string) => panelAction.fieldScope !== RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE || this.isStandardFieldApiName(fieldApiName);
+        const outOfScopeExcludedFieldApiNames = [...( excludedFieldsByObject.get(selectionKey) ?? [] )].filter(fieldApiName => !isInScope(fieldApiName));
+
         if ( panelAction.isIncluded ) {
-            excludedFieldsByObject.delete(selectionKey);
+            if ( outOfScopeExcludedFieldApiNames.length > 0 ) {
+                excludedFieldsByObject.set(selectionKey, new Set(outOfScopeExcludedFieldApiNames));
+            } else {
+                excludedFieldsByObject.delete(selectionKey);
+            }
         } else {
             const heldFieldApiNames = new Set(this.findObjectFieldSelection(tree, objectViewModel)
                 ?.lockedFields
                 .filter(lockedField => !lockedField.reason.startsWith(RECIPE_COCKPIT_FIELD_CONTROLS_REASON_PREFIX))
                 .map(lockedField => lockedField.fieldApiName) ?? []);
-            excludedFieldsByObject.set(selectionKey, new Set(this.listSelectableFieldApiNames(objectViewModel).filter(fieldApiName => !heldFieldApiNames.has(fieldApiName))));
+            // A CONTROLLING FIELD IS FREED ONLY WHEN THIS CLICK UNTICKS EVERY TICKED DEPENDENT TOO: "Standard fields" LEAVES A CUSTOM ONE TICKED (#477)
+            const selectableFieldApiNames = new Set(this.listSelectableFieldApiNames(objectViewModel));
+            objectViewModel.fields.forEach(fieldViewModel => {
+                if ( fieldViewModel.controllingField && selectableFieldApiNames.has(fieldViewModel.fieldApiName)
+                        && !isInScope(fieldViewModel.fieldApiName) && !outOfScopeExcludedFieldApiNames.includes(fieldViewModel.fieldApiName) ) {
+                    heldFieldApiNames.add(fieldViewModel.controllingField);
+                }
+            });
+            const inScopeFieldApiNames = this.listSelectableFieldApiNames(objectViewModel).filter(fieldApiName => isInScope(fieldApiName) && !heldFieldApiNames.has(fieldApiName));
+            excludedFieldsByObject.set(selectionKey, new Set([...outOfScopeExcludedFieldApiNames, ...inScopeFieldApiNames]));
         }
         treeSelections.excludedFieldApiNamesByFolderName.set(panelAction.folderName, excludedFieldsByObject);
 
@@ -4754,7 +4852,7 @@ export class RecipeCockpitService {
             // A PIN OF AN OBJECT WITH iterations IS WRITTEN INTO THE ROW'S OCCURRENCE ALONE (#467)
             const writeOutcome = panelAction.value === ''
                 ? await this.clearFixedValueFromRecipe(recipeFilePath, panelState.workspaceRoot, drawnField.objectViewModel, drawnField.generatedFieldViewModel, panelAction.nickname)
-                : await this.writeFixedValueToRecipe(recipeFilePath, panelState.workspaceRoot, panelAction.objectApiName, panelAction.fieldApiName, { value: panelAction.value, kind: this.resolveFixedValueKind(panelAction.value, drawnField.fieldViewModel) }, panelAction.nickname);
+                : await this.writeFixedValueToRecipe(recipeFilePath, panelState.workspaceRoot, panelAction.objectApiName, panelAction.fieldApiName, { value: panelAction.value, kind: this.resolveFixedValueKind(panelAction.value, drawnField.fieldViewModel) }, panelAction.nickname, edit);
             writeRefusal = writeOutcome.refusal;
             return writeOutcome.isWritten;
         });
@@ -4813,6 +4911,33 @@ export class RecipeCockpitService {
         }
 
         await this.setFieldFixedValue(cockpitPanel, panelState, { ...panelAction, kind: 'setFieldFixedValue', value: value }, 'picklistValues');
+
+    }
+
+    /*
+        A picklist's Reset to generated (#479): the tiles' own way back, the same Clear the edit
+        button's editor posts -- lock, confirmation, fixed-values file -- answered under the tiles.
+        A field with no edit has nothing to reset and is told so, asking and writing nothing.
+    */
+    private static async resetPicklistValueChoice(cockpitPanel: vscode.WebviewPanel,
+                                                    panelState: IRecipeCockpitPanelState,
+                                                    panelAction: Extract<RecipeCockpitPanelAction, { kind: 'resetPicklistValueChoice' }>) {
+
+        const drawnField = this.recipeCockpitPanelState === panelState
+            ? this.findDrawnOccurrenceField(panelState.recipeDataMessage?.recipe, panelAction.treeKey, panelAction.objectApiName, panelAction.nickname, panelAction.fieldApiName)
+            : undefined;
+        if ( !drawnField ) {
+            return;
+        }
+
+        const occurrenceNickname = drawnField.occurrence.nickname;
+        const hasEdit = ( drawnField.tree.fixedValues ?? [] ).some(fixedValue => fixedValue.objectApiName === panelAction.objectApiName && fixedValue.nickname === occurrenceNickname && fixedValue.fieldApiName === panelAction.fieldApiName);
+        if ( !hasEdit ) {
+            this.postFieldEditResult(cockpitPanel, panelState, panelAction, 'picklistValues', RECIPE_COCKPIT_PICKLIST_RESET_NOTHING_REFUSAL);
+            return;
+        }
+
+        await this.setFieldFixedValue(cockpitPanel, panelState, { ...panelAction, kind: 'setFieldFixedValue', value: '' }, 'picklistValues');
 
     }
 
@@ -4887,7 +5012,8 @@ export class RecipeCockpitService {
                                                     objectApiName: string,
                                                     fieldApiName: string,
                                                     fixedValue: IRecipeFixedValue,
-                                                    scopeNickname?: string): Promise<{ isWritten: boolean; refusal?: string }> {
+                                                    scopeNickname?: string,
+                                                    edit: RecipeCockpitFieldEdit = 'fixedValue'): Promise<{ isWritten: boolean; refusal?: string }> {
 
         const fixedValueFilePath = RecipeCockpitFixedValueStore.buildFilePath(recipeFilePath);
         const recipeFileLabel = RecipeYamlScalar.escapeForNotification(path.basename(recipeFilePath));
@@ -4906,8 +5032,11 @@ export class RecipeCockpitService {
             `Write ${editLabel} into ${dialogFieldLabel}?`,
             {
                 summary: [`This writes to "${path.basename(recipeFilePath)}": ${dialogFieldLabel} becomes ${RecipeCockpitRecipeWriter.toFixedValueScalar(fixedValue)} ${whereWritten}, so Run Faker by Recipe generates it from the palette too. Every other line of the file is left as it is.`],
+                // THE TILES HAVE NO CLEAR: THEIR WAY BACK IS RESET TO GENERATED (#479)
                 sections: [
-                    { title: 'How Clear puts it back', lines: [`The lines it replaces are kept in "${path.basename(fixedValueFilePath)}" beside the recipe, so Clear can put them back exactly.`] }
+                    edit === 'picklistValues'
+                        ? { title: `How ${RECIPE_COCKPIT_PICKLIST_RESET_LABEL} puts it back`, lines: [`The lines it replaces are kept in "${path.basename(fixedValueFilePath)}" beside the recipe, so ${RECIPE_COCKPIT_PICKLIST_RESET_LABEL} under Edit values can put them back exactly.`] }
+                        : { title: 'How Clear puts it back', lines: [`The lines it replaces are kept in "${path.basename(fixedValueFilePath)}" beside the recipe, so Clear can put them back exactly.`] }
                 ]
             },
             RECIPE_COCKPIT_FIXED_VALUE_SAVE_CONFIRM_LABEL
@@ -5130,9 +5259,9 @@ export class RecipeCockpitService {
             `Point ${objectApiName}.${fieldApiName} at an existing ${parentObjectApiName} record?`,
             {
                 summary: [
-                    `Record: ${chosenRecord.recordName ? `${chosenRecord.recordName} · ` : ''}${chosenRecord.recordId}`,
-                    `Org: ${orgText}`
+                    `Record: ${chosenRecord.recordName ? `${chosenRecord.recordName} · ` : ''}${chosenRecord.recordId}`
                 ],
+                org: this.buildConfirmOrg(orgDetail),
                 warnings: [`The Id exists only in ${orgText}. The tree insert checks it exists in the org it inserts into, and inserts nothing when it does not.`],
                 sections: [
                     {
@@ -5717,7 +5846,7 @@ export class RecipeCockpitService {
                                     objectApiName: string,
                                     fieldApiName: string,
                                     declaredPicklistValues: readonly string[],
-                                    nickname?: string): { treeKey?: string; chosenPicklistValues?: string[]; isOtherEdit?: true } {
+                                    nickname?: string): { treeKey?: string; chosenPicklistValues?: string[]; isOtherEdit?: true; isEdited?: true } {
 
         const tree = recipeViewModel.trees.find(candidateTree => candidateTree.treeKey === treeKey);
         if ( !tree ) {
@@ -5738,7 +5867,7 @@ export class RecipeCockpitService {
         }
 
         const chosenPicklistValues = fixedValue.kind === 'expression' ? this.recoverPicklistValueChoice(fixedValue.value, declaredPicklistValues, fieldViewModel) : undefined;
-        return chosenPicklistValues ? { treeKey: treeKey, chosenPicklistValues: chosenPicklistValues } : { treeKey: treeKey, isOtherEdit: true };
+        return chosenPicklistValues ? { treeKey: treeKey, chosenPicklistValues: chosenPicklistValues, isEdited: true } : { treeKey: treeKey, isOtherEdit: true, isEdited: true };
 
     }
 
@@ -6654,10 +6783,19 @@ export class RecipeCockpitService {
         }
 
         const confirmationId = crypto.randomBytes(16).toString('hex');
+        // "Change org…" ONLY INSIDE A PANEL ACTION, WHICH IS WHAT CAN START THE ACTION AGAIN ONCE IT HAS ENDED
+        const actionContext = this.panelActionContextStorage.getStore();
+        const changeOrg = actionContext && confirmOptions.changeOrg && confirmOptions.org ? confirmOptions.changeOrg : undefined;
 
         return new Promise(resolve => {
 
-            this.pendingConfirmation = { confirmationId: confirmationId, buttonLabels: [...buttonLabels], hasCheckbox: checkboxLabel !== undefined, resolve: resolve };
+            this.pendingConfirmation = {
+                confirmationId: confirmationId,
+                buttonLabels: [...buttonLabels],
+                hasCheckbox: checkboxLabel !== undefined,
+                resolve: resolve,
+                ...( changeOrg ? { changeOrg: changeOrg, actionContext: actionContext } : {} )
+            };
 
             this.postToPanel(cockpitPanel, {
                 command: 'confirmRequest',
@@ -6667,7 +6805,8 @@ export class RecipeCockpitService {
                 ...this.buildConfirmRequestContent(confirmOptions),
                 buttons: [...buttonLabels],
                 isDestructive: confirmOptions.isDestructive === true,
-                ...( checkboxLabel !== undefined ? { checkboxLabel: checkboxLabel } : {} )
+                ...( checkboxLabel !== undefined ? { checkboxLabel: checkboxLabel } : {} ),
+                ...( changeOrg ? { canChangeOrg: true } : {} )
             });
 
         });
@@ -6691,8 +6830,13 @@ export class RecipeCockpitService {
 
     }
 
-    // SPENT ONCE; AN INDEX THE HOST DID NOT OFFER IS CANCEL, AND SO IS AN isChecked THAT IS NEITHER ABSENT NOR A BOOLEAN
-    private static settlePendingConfirmation(confirmationId: string, choice: unknown, isChecked?: unknown) {
+    /*
+        SPENT ONCE; AN INDEX THE HOST DID NOT OFFER IS CANCEL, AND SO IS AN isChecked THAT IS NEITHER
+        ABSENT NOR A BOOLEAN. "Change org…" (#480) is Cancel to the action that asked, and is kept on
+        that action's context only when the host drew the button; the action is started again once
+        it has ended (runPanelAction).
+    */
+    private static settlePendingConfirmation(confirmationId: string, choice: unknown, isChecked?: unknown, isChangeOrg = false) {
 
         const pendingConfirmation = this.pendingConfirmation;
 
@@ -6701,6 +6845,14 @@ export class RecipeCockpitService {
         }
 
         this.pendingConfirmation = undefined;
+
+        if ( isChangeOrg ) {
+            if ( pendingConfirmation.changeOrg && pendingConfirmation.actionContext ) {
+                pendingConfirmation.actionContext.orgChange = pendingConfirmation.changeOrg;
+            }
+            pendingConfirmation.resolve({ chosenLabel: undefined, isChecked: false });
+            return;
+        }
 
         const isOfferedChoice = typeof choice === 'number' && Number.isInteger(choice) && choice >= 0 && choice < pendingConfirmation.buttonLabels.length;
         const isReadableCheck = isChecked === undefined || typeof isChecked === 'boolean';
@@ -6890,14 +7042,109 @@ export class RecipeCockpitService {
                 return;
             }
 
-            try {
-                await this.executePanelAction(cockpitPanel, panelAction);
-            } catch (actionError) {
-                ErrorHandlingService.handleCapturedError(actionError, 'openRecipeCockpit');
-            }
+            await this.runPanelAction(cockpitPanel, panelAction);
 
         });
 
+    }
+
+    /*
+        One routed action, run inside its own context (#480). Once it has ENDED -- every run lock
+        released in its own finally -- a "Change org…" chosen on one of its confirmations asks for
+        the org, makes the pick the Target Org Manager selection, and routes the action's message
+        again, so the action starts over against the new org through every guard a click meets.
+    */
+    private static async runPanelAction(cockpitPanel: vscode.WebviewPanel, panelAction: RecipeCockpitPanelAction) {
+
+        const actionContext: IRecipeCockpitPanelActionContext = {};
+
+        /*
+            Only an action whose confirmation can offer "Change org…" gets a context: the first run()
+            turns on Node's async context tracking for the whole extension host, so every other
+            action runs outside one (exit() never turns it on) and asks nothing that offers it.
+        */
+        try {
+            await ( RECIPE_COCKPIT_ORG_CHANGE_ACTION_KINDS.has(panelAction.kind)
+                ? this.panelActionContextStorage.run(actionContext, () => this.executePanelAction(cockpitPanel, panelAction))
+                : this.panelActionContextStorage.exit(() => this.executePanelAction(cockpitPanel, panelAction)) );
+        } catch (actionError) {
+            ErrorHandlingService.handleCapturedError(actionError, 'openRecipeCockpit');
+        }
+
+        if ( !actionContext.orgChange ) {
+            return;
+        }
+
+        try {
+            await this.changeOrgAndRestart(cockpitPanel, actionContext.orgChange);
+        } catch (changeError) {
+            ErrorHandlingService.handleCapturedError(changeError, 'openRecipeCockpit');
+        }
+
+    }
+
+    /*
+        "Change org…" (#480): the org is asked for over the Target Org Manager's own listing and made
+        the selection, checked and remembered as a pick in the dropdown is. An action that writes is
+        started again only on an org that answered it is a sandbox; one that reads, on any org that
+        could be connected to. A dismissed pick, a new model, a selection made meanwhile or a run
+        that holds the selection starts nothing. An action that posts the org's index (a deploy, an
+        assignment) is sent the new selection's.
+    */
+    private static async changeOrgAndRestart(cockpitPanel: vscode.WebviewPanel, orgChange: IRecipeCockpitConfirmChangeOrg) {
+
+        const panelState = this.recipeCockpitPanelState;
+        const clickedRecipeDataMessage = panelState.recipeDataMessage;
+
+        if ( this.recipeCockpitPanel !== cockpitPanel || !clickedRecipeDataMessage ) {
+            return;
+        }
+
+        if ( panelState.insertStateMessage
+                || this.isSelectionHeldByPromptOrUpdater(panelState)
+                || panelState.scratchOrgStateMessage?.isRunning
+                || panelState.permissionSetAssignStateMessage?.isRunning
+                || panelState.metadataDeployStateMessage?.isRunning ) {
+            VSCodeWorkspaceService.showWarningMessage(RECIPE_COCKPIT_CHANGE_ORG_BUSY_REFUSAL);
+            return;
+        }
+
+        const isClickStillCurrent = () => this.recipeCockpitPanel === cockpitPanel
+                                            && this.recipeCockpitPanelState === panelState
+                                            && panelState.recipeDataMessage === clickedRecipeDataMessage;
+
+        let isOrgSelected = false;
+        panelState.isOrgPromptOpen = true;
+        try {
+            isOrgSelected = await this.promptAndSelectDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
+                RECIPE_COCKPIT_CHANGE_ORG_PLACEHOLDER,
+                RECIPE_COCKPIT_CHANGE_ORG_REFUSAL_PREFIX,
+                orgChange.isSandboxOnly ? RECIPE_COCKPIT_CHANGE_ORG_SANDBOX_ONLY_REASON : undefined,
+                panelState.dataOrgSelection);
+        } finally {
+            panelState.isOrgPromptOpen = false;
+        }
+
+        const dataOrgSelection = panelState.dataOrgSelection;
+
+        if ( !isOrgSelected || !dataOrgSelection || !isClickStillCurrent() ) {
+            return;
+        }
+
+        const restartMessage: IRecipeCockpitPanelMessage = 'orgIndex' in orgChange.restartMessage
+            ? { ...orgChange.restartMessage, orgIndex: dataOrgSelection.orgIndex }
+            : orgChange.restartMessage;
+        const restartAction = this.routePanelMessage(restartMessage, panelState);
+
+        if ( restartAction ) {
+            await this.runPanelAction(cockpitPanel, restartAction);
+        }
+
+    }
+
+    // A CONFIRMATION'S ORG PART (#480): ITS ALIAS AND USERNAME, DRAWN APART FROM THE SUMMARY
+    static buildConfirmOrg(orgDetail: { alias?: string; username: string }): IRecipeCockpitConfirmOrg {
+        return { ...( orgDetail.alias ? { alias: orgDetail.alias } : {} ), username: orgDetail.username };
     }
 
     private static async executePanelAction(cockpitPanel: vscode.WebviewPanel, panelAction: RecipeCockpitPanelAction) {
@@ -6963,7 +7210,7 @@ export class RecipeCockpitService {
                 return;
 
             case 'answerConfirmation':
-                this.settlePendingConfirmation(panelAction.confirmationId, panelAction.choice, panelAction.isChecked);
+                this.settlePendingConfirmation(panelAction.confirmationId, panelAction.choice, panelAction.isChecked, panelAction.isChangeOrg);
                 return;
 
             case 'reportRenderFailure': {
@@ -7210,6 +7457,11 @@ export class RecipeCockpitService {
             case 'setPicklistValueChoice':
 
                 await this.setPicklistValueChoice(cockpitPanel, panelState, panelAction);
+                return;
+
+            case 'resetPicklistValueChoice':
+
+                await this.resetPicklistValueChoice(cockpitPanel, panelState, panelAction);
                 return;
 
             case 'setFieldValidationRuleApplied':
@@ -8791,6 +9043,7 @@ export class RecipeCockpitService {
                 objectApiNames,
                 assignSelection ? async () => assignSelection.orgDetail : async () => this.promptForPermissionSetOrg(),
                 (orgDetail, coveredObjectApiNames) => { cliStartedFor = { orgDetail: orgDetail, objectApiNames: coveredObjectApiNames }; },
+                { restartMessage: { command: 'assignTreePermissionSets', treeKey: treeKey, orgIndex: null }, isSandboxOnly: true },
                 panelState.recipeDataMessage ? this.resolveTreeRunArtifactsLocation(panelState.workspaceRoot, panelState.recipeDataMessage.recipe, tree) : undefined
             );
 
@@ -9514,10 +9767,27 @@ export class RecipeCockpitService {
     */
     private static async resolveTreeQueryOrg(cockpitPanel: vscode.WebviewPanel, panelState: IRecipeCockpitPanelState): Promise<IAuthenticatedOrgDetail | undefined> {
 
-        const refusalPrefix = 'The query was not run';
+        return this.resolveSelectedReadOrg(cockpitPanel, panelState, 'The query was not run', RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER, RECIPE_COCKPIT_QUERY_BUSY_REFUSAL, RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE, 'isQueryOrgPromptOpen');
+
+    }
+
+    /*
+        The org an action that only READS runs against (a query, #439; a retrieve, #480): the Target
+        Org Manager selection as it is at the click, of any type, unless no connection could be
+        opened to it. With none it asks once over the dropdown's own listing, holding the selection
+        under the flag named while it asks, and the pick becomes the selection.
+    */
+    private static async resolveSelectedReadOrg(cockpitPanel: vscode.WebviewPanel,
+                                                    panelState: IRecipeCockpitPanelState,
+                                                    refusalPrefix: string,
+                                                    placeholder: string,
+                                                    busyRefusal: string,
+                                                    connectionFailedAdvice: string,
+                                                    promptFlag: 'isQueryOrgPromptOpen' | 'isOrgPromptOpen'): Promise<IAuthenticatedOrgDetail | undefined> {
+
         const usableSelectedOrg = (dataOrgSelection: IRecipeCockpitDataOrgSelection) => {
             if ( dataOrgSelection.isConnectionFailed ) {
-                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${refusalPrefix}: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} could not be connected to. ${RECIPE_COCKPIT_QUERY_CONNECTION_FAILED_ADVICE}`));
+                VSCodeWorkspaceService.showWarningMessage(RecipeYamlScalar.escapeForNotification(`${refusalPrefix}: ${this.buildDataOrgLabel(dataOrgSelection.orgDetail)} could not be connected to. ${connectionFailedAdvice}`));
                 return undefined;
             }
             return dataOrgSelection.orgDetail;
@@ -9538,7 +9808,7 @@ export class RecipeCockpitService {
                 || panelState.scratchOrgStateMessage?.isRunning
                 || panelState.permissionSetAssignStateMessage?.isRunning
                 || panelState.metadataDeployStateMessage?.isRunning ) {
-            VSCodeWorkspaceService.showWarningMessage(RECIPE_COCKPIT_QUERY_BUSY_REFUSAL);
+            VSCodeWorkspaceService.showWarningMessage(busyRefusal);
             return undefined;
         }
 
@@ -9547,12 +9817,12 @@ export class RecipeCockpitService {
                                             && panelState.recipeDataMessage === clickedRecipeDataMessage;
 
         let isOrgSelected = false;
-        panelState.isQueryOrgPromptOpen = true;
+        panelState[promptFlag] = true;
         try {
             isOrgSelected = await this.promptAndSelectDataOrg(cockpitPanel, panelState, clickedRecipeDataMessage, isClickStillCurrent,
-                RECIPE_COCKPIT_QUERY_ORG_PLACEHOLDER, refusalPrefix);
+                placeholder, refusalPrefix);
         } finally {
-            panelState.isQueryOrgPromptOpen = false;
+            panelState[promptFlag] = false;
         }
 
         return isOrgSelected && panelState.dataOrgSelection ? panelState.dataOrgSelection.orgDetail : undefined;
@@ -9565,13 +9835,14 @@ export class RecipeCockpitService {
     }
 
     /*
-        Whether a prompt or the Treecipe Adapter holds the org selection: the Adapter's load (#416) or
-        a query (#439) asking for an org, or an update (#418) or a restore (#419) writing to the org selected. Every route that would change the selection, or
+        Whether a prompt or the Treecipe Adapter holds the org selection: the Adapter's load (#416), a
+        query (#439), a retrieve or a confirmation's "Change org…" (#480) asking for an org, or an update (#418) or a restore (#419) writing to the org selected. Every route that would change the selection, or
         write to it, refuses while it does.
     */
     static isSelectionHeldByPromptOrUpdater(panelState: IRecipeCockpitPanelState): boolean {
         return panelState.isUpdaterOrgPromptOpen === true
             || panelState.isQueryOrgPromptOpen === true
+            || panelState.isOrgPromptOpen === true
             || ( panelState.updaterLoadStateMessage?.isRunning === true
                     && ( panelState.updaterLoadStateMessage.runKind === 'update' || panelState.updaterLoadStateMessage.runKind === 'restore' ) );
     }
@@ -10395,6 +10666,7 @@ export class RecipeCockpitService {
 
         return Boolean(panelState.insertStateMessage
                         || panelState.isQueryOrgPromptOpen
+                        || panelState.isOrgPromptOpen
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning);
@@ -11710,7 +11982,8 @@ export class RecipeCockpitService {
         const answer = await this.confirmInPanel(
             `Update ${describeRecords(recordTotal)} of ${treeTitle} in ${orgLabel}?`,
             {
-                summary: [`Org: ${orgLabel}`],
+                summary: [],
+                org: this.buildConfirmOrg(dataOrgSelection.orgDetail),
                 badge: SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail, dataOrgSelection.orgDisplayDetail),
                 warnings: hasRecordTypePicklist ? [RECIPE_COCKPIT_UPDATER_RECORD_TYPE_PICKLIST_NOTE] : [],
                 sections: [
@@ -12161,7 +12434,8 @@ export class RecipeCockpitService {
         const answer = await this.confirmInPanel(
             `Restore ${describeRecords(recordTotal)} of ${treeTitle} in ${orgLabel}?`,
             {
-                summary: [`Org: ${orgLabel}`, `Back to the values ${snapshotName} saved on ${snapshot.takenAt}.`],
+                summary: [`Back to the values ${snapshotName} saved on ${snapshot.takenAt}.`],
+                org: this.buildConfirmOrg(dataOrgSelection.orgDetail),
                 badge: SalesforceOrgService.buildOrgTypeLabel(dataOrgSelection.orgTypeDetail, dataOrgSelection.orgDisplayDetail),
                 warnings: restoreWarnings,
                 sections: [
@@ -12885,8 +13159,9 @@ export class RecipeCockpitService {
         const describeComponentCount = (componentCount: number) => `${componentCount} ${componentCount === 1 ? 'component' : 'components'}`;
         const confirmTitle = `Deploy ${describeComponentCount(components.length)} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgLabel)}?`;
         const confirmOptions = {
-            ...RecipeCockpitMetadataDeploy.buildConfirmationContent(deployKind, treeLabel, orgLabel, packageDirectoryRelativePath, components, summary, SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot), fullSetComponents),
-            isDestructive: true
+            ...RecipeCockpitMetadataDeploy.buildConfirmationContent(deployKind, treeLabel, this.buildConfirmOrg(orgDetail), packageDirectoryRelativePath, components, summary, SfdxProjectService.hasFileOrEnvironmentReplacements(workspaceRoot), fullSetComponents),
+            isDestructive: true,
+            changeOrg: { restartMessage: { command: RECIPE_COCKPIT_DEPLOY_COMMAND_BY_KIND[deployKind], treeKey: tree.treeKey, orgIndex: null }, isSandboxOnly: true }
         };
 
         const confirmation = fullSetComponents.length > 0
@@ -13050,7 +13325,8 @@ export class RecipeCockpitService {
                         ...( isDeployedOrgSelected && panelState.dataOrgSelection ? { orgIndex: panelState.dataOrgSelection.orgIndex } : {} )
                     }, panelState);
                     if ( assignAction ) {
-                        await this.executePanelAction(assignFollowUp.cockpitPanel, assignAction);
+                        // ITS OWN ACTION, NOT THE ENDED DEPLOY'S: ITS "Change org…" (#480) STARTS THE ASSIGNMENT AGAIN
+                        await this.runPanelAction(assignFollowUp.cockpitPanel, assignAction);
                     }
                 }
             })
@@ -13084,8 +13360,8 @@ export class RecipeCockpitService {
 
     /*
         The Troubleshooting tab's retrieves (#326, #382), for one tree of the model on screen: the org
-        is ALWAYS asked for in the command palette, over every connected org (a retrieve only reads),
-        even when the Treecipe tab has one selected; then a confirmation names what is retrieved, the
+        is the Target Org Manager selection, of any type since a retrieve only reads, asked for once
+        and made the selection only when there is none (#480); then a confirmation names what is retrieved, the
         org, where new files go and how many local files the org's version overwrites; then one
         "sf project retrieve start --manifest" runs in project mode, cancellable. Validation rules and
         record types are first LISTED in the org ("sf org list metadata", #401), after the prompt
@@ -13094,6 +13370,16 @@ export class RecipeCockpitService {
         whatever its kind.
     */
     private static async retrieveTreeMetadataFromPanel(cockpitPanel: vscode.WebviewPanel, treeKey: string, retrieveKind: MetadataRetrieveKind) {
+
+        const resolveOrgDetail = () => this.resolveSelectedReadOrg(
+            cockpitPanel,
+            this.recipeCockpitPanelState,
+            'Nothing was retrieved',
+            RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS[retrieveKind],
+            RECIPE_COCKPIT_RETRIEVE_ORG_BUSY_REFUSAL,
+            RECIPE_COCKPIT_RETRIEVE_CONNECTION_FAILED_ADVICE,
+            'isOrgPromptOpen'
+        );
 
         const panelState = this.recipeCockpitPanelState;
         const recipeViewModel = panelState.recipeDataMessage?.recipe;
@@ -13111,7 +13397,7 @@ export class RecipeCockpitService {
         // ONLY A CLI THAT RAN CAN HAVE WRITTEN FILES, AND ONLY A VALIDATION RULE RETRIEVE WRITES WHAT THE RULE LISTS READ
         let isCliStarted = false;
         try {
-            isCliStarted = await this.performMetadataRetrieve(panelState.workspaceRoot, recipeViewModel, tree, retrieveKind);
+            isCliStarted = await this.performMetadataRetrieve(panelState.workspaceRoot, recipeViewModel, tree, retrieveKind, resolveOrgDetail);
         } finally {
             this.isMetadataRetrieveInFlight = false;
             this.setMetadataRetrieveState({ command: 'metadataRetrieveState', isRunning: false, treeKey: treeKey, retrieveKind: retrieveKind });
@@ -13128,7 +13414,8 @@ export class RecipeCockpitService {
     private static async performMetadataRetrieve(workspaceRoot: string,
                                                     recipeViewModel: IRecipeCockpitRecipeViewModel,
                                                     tree: IRecipeCockpitTreeViewModel,
-                                                    retrieveKind: MetadataRetrieveKind): Promise<boolean> {
+                                                    retrieveKind: MetadataRetrieveKind,
+                                                    resolveOrgDetail: () => Promise<IAuthenticatedOrgDetail | undefined>): Promise<boolean> {
 
         const treeLabel = tree.customName || tree.title;
         const manyNoun = RecipeCockpitMetadataRetrieve.componentNoun(retrieveKind, 2);
@@ -13172,7 +13459,7 @@ export class RecipeCockpitService {
 
         let orgDetail: IAuthenticatedOrgDetail | undefined;
         try {
-            orgDetail = await SalesforceOrgService.promptForAuthorizedOrg(RECIPE_COCKPIT_RETRIEVE_ORG_PLACEHOLDERS[retrieveKind]);
+            orgDetail = await resolveOrgDetail();
         } catch (listError) {
             return refuse(`No ${manyNoun} were retrieved: ${this.describeThrown(listError)}`);
         }
@@ -13252,8 +13539,9 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             confirmationTitle,
             {
-                ...RecipeCockpitMetadataRetrieve.buildConfirmationContent(retrieveKind, treeLabel, orgLabel, askedNames, packageDirectoryRelativePath, localFileCount),
-                isDestructive: true
+                ...RecipeCockpitMetadataRetrieve.buildConfirmationContent(retrieveKind, treeLabel, this.buildConfirmOrg(orgDetail), askedNames, packageDirectoryRelativePath, localFileCount),
+                isDestructive: true,
+                changeOrg: { restartMessage: { command: RECIPE_COCKPIT_RETRIEVE_COMMAND_BY_KIND[retrieveKind], treeKey: tree.treeKey }, isSandboxOnly: false }
             },
             RECIPE_COCKPIT_VALIDATION_RULE_RETRIEVE_CONFIRM_LABEL
         );
@@ -13625,7 +13913,8 @@ export class RecipeCockpitService {
                         ...( panelState.dataOrgSelection ? { orgIndex: panelState.dataOrgSelection.orgIndex } : {} )
                     }, panelState);
                     if ( assignAction ) {
-                        await this.executePanelAction(cockpitPanel, assignAction);
+                        // ITS OWN ACTION, NOT THE ENDED GENERATE'S: ITS "Change org…" (#480) STARTS THE ASSIGNMENT AGAIN
+                        await this.runPanelAction(cockpitPanel, assignAction);
                     }
                 }
 
@@ -13674,6 +13963,7 @@ export class RecipeCockpitService {
                                                     objectApiNames: string[],
                                                     resolveOrgDetail: () => Promise<IAuthenticatedOrgDetail | undefined>,
                                                     onCliStarted: (orgDetail: IAuthenticatedOrgDetail, coveredObjectApiNames: string[]) => void,
+                                                    changeOrg?: IRecipeCockpitConfirmChangeOrg,
                                                     runArtifactsLocation?: IRecipeCockpitRunArtifactsLocation): Promise<IRecipeCockpitPermissionSetClosingState> {
 
         const refuse = (refusalText: string, closingState: IRecipeCockpitPermissionSetClosingState = {}): IRecipeCockpitPermissionSetClosingState => {
@@ -13732,8 +14022,9 @@ export class RecipeCockpitService {
         const confirmation = await this.confirmInPanel(
             `Assign ${describePermissionSets(pickedPermissionSets.length)} for ${this.toSingleLine(treeLabel)} to ${this.toSingleLine(orgDetail.username)} in ${this.toSingleLine(orgLabel)}?`,
             {
-                ...RecipeCockpitPermissionSetAssign.buildConfirmationContent(treeLabel, orgLabel, orgDetail.username, pickedPermissionSets, objectApiNames.length),
-                isDestructive: true
+                ...RecipeCockpitPermissionSetAssign.buildConfirmationContent(treeLabel, this.buildConfirmOrg(orgDetail), pickedPermissionSets, objectApiNames.length),
+                isDestructive: true,
+                ...( changeOrg ? { changeOrg: changeOrg } : {} )
             },
             RECIPE_COCKPIT_PERMISSION_SET_CONFIRM_LABEL
         );
@@ -14575,7 +14866,8 @@ export class RecipeCockpitService {
                                                         isClickStillCurrent: () => boolean,
                                                         placeholder: string,
                                                         refusalPrefix: string,
-                                                        sandboxOnlyReason?: string): Promise<boolean> {
+                                                        sandboxOnlyReason?: string,
+                                                        selectionBeforePrompt?: IRecipeCockpitDataOrgSelection): Promise<boolean> {
 
         let dataOrgListing: IDataOrgListing | undefined;
         let chosenOrgDetail: IDataOrgDetail | undefined;
@@ -14597,8 +14889,9 @@ export class RecipeCockpitService {
         }
 
         // A DISMISSED PICK, A NEW MODEL, OR AN ORG CHOSEN IN THE DROPDOWN MEANWHILE: NOTHING MORE IS DONE
+        // ("Change org…", #480, REPLACES THE SELECTION IT WAS ASKED OVER, AND ONLY THAT ONE)
         const orgIndex = chosenOrgDetail && dataOrgListing ? dataOrgListing.orgDetails.findIndex(orgDetail => orgDetail.username === chosenOrgDetail.username) : -1;
-        if ( orgIndex < 0 || !isClickStillCurrent() || panelState.dataOrgSelection ) {
+        if ( orgIndex < 0 || !isClickStillCurrent() || panelState.dataOrgSelection !== selectionBeforePrompt ) {
             return false;
         }
 
@@ -14723,7 +15016,12 @@ export class RecipeCockpitService {
 
         const confirmation = await this.confirmInPanel(
             `Generate ${treeLabel} and insert it into ${orgLabel}?`,
-            { ...this.buildInsertConfirmationContent(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups, dataOrgSelection.orgDisplayDetail), isDestructive: true },
+            {
+                ...this.buildInsertConfirmationContent(orgLabel, dataOrgSelection.orgTypeDetail, tree, recipeDataMessage.recipe, recordTotalsByObject, outsideParentObjectApiNames, selectedFakerService, recipeFileLabel, orgRecordLookups, dataOrgSelection.orgDisplayDetail),
+                org: this.buildConfirmOrg(dataOrgSelection.orgDetail),
+                isDestructive: true,
+                changeOrg: { restartMessage: { command: 'insertTree', treeKey: treeKey }, isSandboxOnly: true }
+            },
             RECIPE_COCKPIT_INSERT_CONFIRM_LABEL
         );
 
@@ -15097,7 +15395,7 @@ export class RecipeCockpitService {
             const { objectApiName, nickname } = RecipeCockpitRecipeWriter.parseOccurrenceKey(occurrenceKey);
             return this.describeOccurrence(objectApiName, nickname);
         };
-        const excludedFieldApiNamesByObject = this.listExcludedFieldApiNamesByOccurrence(tree);
+        const leftOutLines = this.buildInsertLeftOutLines(tree);
         // AN ORG RECORD'S Id IS LISTED ON ITS OWN LINE, WITH THE ORG IT CAME FROM
         const fixedValues = ( tree.fixedValues ?? [] ).filter(fixedValue => !fixedValue.orgRecord);
         const validationRulesOff = [...this.listUnconstrainedValuesByObject(recipeViewModel, tree)]
@@ -15130,12 +15428,10 @@ export class RecipeCockpitService {
             sections: [
                 { title: 'Records, inserted parents first', count: objectLines.length, lines: objectLines },
                 { title: 'Lookups', lines: ['Any other lookup to an object this tree does not insert is left blank.'] },
+                { title: RECIPE_COCKPIT_INSERT_LEFT_OUT_SECTION_TITLE, count: leftOutLines.objectCount, lines: leftOutLines.lines },
                 {
                     title: 'Fields changed on this card',
                     lines: [
-                        ...( excludedFieldApiNamesByObject.size > 0
-                            ? [`Unticked, not sent: ${[...excludedFieldApiNamesByObject].map(([occurrenceKey, fieldApiNames]) => fieldApiNames.map(fieldApiName => `${describeKey(occurrenceKey)}.${fieldApiName}`).join(', ')).join(', ')}`]
-                            : [] ),
                         ...( fixedValues.length > 0
                             ? [`Edited fields: ${fixedValues.map(fixedValue => `${this.describeOccurrence(fixedValue.objectApiName, fixedValue.nickname)}.${fixedValue.fieldApiName} = ${fixedValue.value}`).join(', ')}`]
                             : [] )
@@ -15153,6 +15449,55 @@ export class RecipeCockpitService {
                 { title: 'What happens next', lines: ['The data set is written to FakeDataSets as Run Faker by Recipe writes it.', 'It is then inserted the way Insert Data Set by Directory inserts.', 'You choose all-or-none next.'] }
             ]
         };
+
+    }
+
+    /*
+        What the card leaves out of the insert, one object at a time (#483): each excluded object on
+        its own line, then each occurrence with a field left out as a lead-in with one field per line
+        under it, in the card's insert order. A field left out is one the reader unticked or a lookup
+        an excluded parent cut, the same rows "Hide unselected" hides. Nothing left out is no lines,
+        so the section is dropped.
+    */
+    static buildInsertLeftOutLines(tree: IRecipeCockpitTreeViewModel): { objectCount: number; lines: string[] } {
+
+        const objectOrder = new Map(tree.objects.map((treeObject, objectIndex) => [treeObject.objectApiName, objectIndex]));
+        const orderOf = (objectApiName: string) => objectOrder.get(objectApiName) ?? objectOrder.size;
+        const byInsertOrder = <T>(entries: T[], objectApiNameOf: (entry: T) => string) => entries
+            .map((entry, entryIndex) => ({ entry, entryIndex }))
+            .sort((first, second) => ( orderOf(objectApiNameOf(first.entry)) - orderOf(objectApiNameOf(second.entry)) ) || ( first.entryIndex - second.entryIndex ))
+            .map(({ entry }) => entry);
+
+        const exclusionLines = byInsertOrder(tree.objectSelection?.exclusions ?? [], exclusion => exclusion.objectApiName)
+            .map(exclusion => exclusion.kind === 'autoExcluded'
+                ? `${exclusion.objectApiName}: not generated, ${exclusion.excludedParentObjectApiName ? `auto-excluded with its parent ${exclusion.excludedParentObjectApiName}` : 'auto-excluded with its parent'}`
+                : `${exclusion.objectApiName}: not generated, excluded`);
+
+        const excludedObjectApiNames = new Set(this.listExcludedObjectApiNames(tree));
+        const cutParentByLookupKey = new Map(( tree.objectSelection?.disabledLookups ?? [] )
+            .map(disabledLookup => [`${disabledLookup.objectApiName}\n${disabledLookup.fieldApiName}`, disabledLookup.parentObjectApiName]));
+        const fieldEntries = byInsertOrder(( tree.fieldSelection?.objects ?? [] )
+            .filter(objectFieldSelection => !excludedObjectApiNames.has(objectFieldSelection.objectApiName))
+            .map(objectFieldSelection => {
+                const untickedFieldApiNames = new Set(objectFieldSelection.excludedFieldApiNames);
+                const fieldLines = [
+                    ...objectFieldSelection.excludedFieldApiNames.map(fieldApiName => `  ${fieldApiName}`),
+                    ...objectFieldSelection.lockedFields
+                        .filter(lockedField => lockedField.reason === RECIPE_COCKPIT_FIELD_PARENT_EXCLUDED_REASON && !untickedFieldApiNames.has(lockedField.fieldApiName))
+                        .map(lockedField => {
+                            const parentObjectApiName = cutParentByLookupKey.get(`${objectFieldSelection.objectApiName}\n${lockedField.fieldApiName}`);
+                            return `  ${lockedField.fieldApiName}, cut: parent ${parentObjectApiName ?? 'object'} excluded`;
+                        })
+                ];
+                return { objectApiName: objectFieldSelection.objectApiName, nickname: objectFieldSelection.nickname, fieldLines };
+            })
+            .filter(fieldEntry => fieldEntry.fieldLines.length > 0), fieldEntry => fieldEntry.objectApiName);
+        const fieldLines = fieldEntries.flatMap(fieldEntry => [
+            `${this.describeOccurrence(fieldEntry.objectApiName, fieldEntry.nickname)}, ${fieldEntry.fieldLines.length === 1 ? '1 field' : `${fieldEntry.fieldLines.length} fields`} left out, not sent:`,
+            ...fieldEntry.fieldLines
+        ]);
+
+        return { objectCount: exclusionLines.length + fieldEntries.length, lines: [...exclusionLines, ...fieldLines] };
 
     }
 
@@ -15187,7 +15532,7 @@ export class RecipeCockpitService {
                     return undefined;
                 }
 
-                return { kind: 'answerConfirmation', confirmationId: this.pendingConfirmation.confirmationId, choice: panelMessage.choice, isChecked: panelMessage.isChecked };
+                return { kind: 'answerConfirmation', confirmationId: this.pendingConfirmation.confirmationId, choice: panelMessage.choice, isChecked: panelMessage.isChecked, isChangeOrg: panelMessage.changeOrg === true };
 
             /*
                 The panel's place, kept in workspaceState too (#230). Only for the model the panel
@@ -15902,10 +16247,12 @@ export class RecipeCockpitService {
             // "All fields" OF ONE OBJECT (#410): THE OBJECT'S KEY, AS FOR ITS TREE ICON; WHICH FIELDS THAT TOUCHES IS THE HOST'S
             case 'setAllFieldsIncluded': {
 
-                const { treeKey, objectApiName, nickname, included } = panelMessage;
+                const { treeKey, objectApiName, nickname, included, fieldScope } = panelMessage;
 
+                // "Standard fields" (#477) IS THE SAME BOX OVER THE STANDARD FIELDS ONLY; ANY OTHER SCOPE IS REFUSED
                 if ( typeof treeKey !== 'string' || typeof objectApiName !== 'string' || typeof included !== 'boolean'
                         || ( nickname !== undefined && typeof nickname !== 'string' )
+                        || ( fieldScope !== undefined && fieldScope !== RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE )
                         || !panelState.recipeDataMessage
                         || !panelState.treeHistoryAllowLists.selectableObjectKeys.has(this.buildSelectableObjectKey(treeKey, objectApiName)) ) {
                     return undefined;
@@ -15914,7 +16261,12 @@ export class RecipeCockpitService {
                 const resolved = this.resolvePostedOccurrence(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname);
                 const folderName = resolved?.tree.folderName;
 
-                return folderName ? { kind: 'setAllFieldsIncluded', treeKey: treeKey, folderName: folderName, objectApiName: objectApiName, ...this.withOccurrenceNickname(resolved.occurrence), isIncluded: included } : undefined;
+                return folderName
+                    ? {
+                        kind: 'setAllFieldsIncluded', treeKey: treeKey, folderName: folderName, objectApiName: objectApiName, ...this.withOccurrenceNickname(resolved.occurrence), isIncluded: included,
+                        ...( fieldScope === RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE ? { fieldScope: RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE } : {} )
+                    }
+                    : undefined;
 
             }
 
@@ -16019,6 +16371,38 @@ export class RecipeCockpitService {
 
             }
 
+
+            /*
+                A picklist's Reset to generated (#479): the value tiles' names only, held to the same
+                drawn, free picklist a choice is. What it clears is the host's to find.
+            */
+            case 'resetPicklistValueChoice': {
+
+                const { treeKey, objectApiName, nickname, fieldApiName } = panelMessage;
+
+                if ( typeof treeKey !== 'string' || !SalesforceApiName.isApiName(objectApiName) || !SalesforceApiName.isApiName(fieldApiName)
+                        || ( nickname !== undefined && typeof nickname !== 'string' )
+                        || !panelState.recipeDataMessage
+                        || !panelState.treeHistoryAllowLists.selectableFieldKeys.has(this.buildSelectableFieldKey(treeKey, objectApiName, fieldApiName)) ) {
+                    return undefined;
+                }
+
+                const drawnField = this.findDrawnOccurrenceField(panelState.recipeDataMessage.recipe, treeKey, objectApiName, nickname, fieldApiName);
+                if ( !drawnField || !drawnField.fieldViewModel.isPicklist || !drawnField.tree.folderName
+                        || this.findFixedValueLockReason(drawnField.tree, drawnField.objectViewModel, drawnField.fieldViewModel) !== undefined ) {
+                    return undefined;
+                }
+
+                return {
+                    kind: 'resetPicklistValueChoice',
+                    treeKey: treeKey,
+                    folderName: drawnField.tree.folderName,
+                    objectApiName: objectApiName,
+                    ...this.withOccurrenceNickname(drawnField.occurrence),
+                    fieldApiName: fieldApiName
+                };
+
+            }
 
             /*
                 A field's validation-rule checkbox (#325): the same three names as its other controls,
@@ -16154,8 +16538,8 @@ export class RecipeCockpitService {
 
             /*
                 The Troubleshooting tab's retrieves (#326, #382) post the tree's KEY and nothing else:
-                what is retrieved is the host's, and the org is ALWAYS asked for in the command
-                palette, so an org index the message carries is never read. One retrieve per window,
+                what is retrieved is the host's, and the org is the Target Org Manager selection the
+                host holds (#480), so an org index the message carries is never read. One retrieve per window,
                 whatever its kind; it waits for an insert, a permission set assignment and a metadata
                 deploy to end, and a scratch org run, which deploys nothing (#358), does not hold it.
                 Every refusal gives the clicked button back, and a busy one says why.
@@ -16391,6 +16775,7 @@ export class RecipeCockpitService {
                 // AN INSERT OR A RUN THAT IS ABOUT TO CHANGE THE SELECTION HOLDS THE ORG THE LOAD WOULD READ FROM, AS A QUERY'S OPEN PROMPT DOES (#439)
                 if ( panelState.insertStateMessage
                         || panelState.isQueryOrgPromptOpen
+                        || panelState.isOrgPromptOpen
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning ) {
@@ -16711,6 +17096,7 @@ export class RecipeCockpitService {
                 if ( panelState.insertStateMessage
                         || panelState.isUpdaterOrgPromptOpen
                         || panelState.isQueryOrgPromptOpen
+                        || panelState.isOrgPromptOpen
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning ) {
@@ -16775,6 +17161,7 @@ export class RecipeCockpitService {
                 if ( panelState.insertStateMessage
                         || panelState.isUpdaterOrgPromptOpen
                         || panelState.isQueryOrgPromptOpen
+                        || panelState.isOrgPromptOpen
                         || panelState.scratchOrgStateMessage?.isRunning
                         || panelState.permissionSetAssignStateMessage?.isRunning
                         || panelState.metadataDeployStateMessage?.isRunning ) {
@@ -19165,7 +19552,7 @@ ${Array.from({ length: RECIPE_COCKPIT_MAX_DRAWN_NESTING_DEPTH }, (unusedDepth, d
     .treeChipEmoji { flex: none; }
     .treeObjectBody { padding-bottom: 0.25rem; }
     .treeField { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
-    .treeFieldSelectAllRow { padding: 0.25rem 0.6rem 0.25rem 2.1rem; }
+    .treeFieldSelectAllRow { padding: 0.25rem 0.6rem 0.25rem 2.1rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1.2rem; }
     .treeFieldSelectAllCheck { display: inline-flex; align-items: center; gap: 0.4rem; }
     .treeFieldSelectAllLabel { cursor: pointer; }
     .treeFieldSelectAllCheck.disabled .treeFieldSelectAllLabel { color: var(--sdt-muted); cursor: not-allowed; }
@@ -19547,6 +19934,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     .confirmWarnings .confirmBullet::marker { color: var(--sdt-changed); }
     .confirmGap { height: 0.6rem; }
     .confirmSummary { margin: 0.5rem 0; font-size: 1.02rem; }
+    .confirmOrg { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.45rem; margin: 0.5rem 0; padding: 0.4rem 0.6rem; border: 1px solid var(--sdt-border); border-radius: 6px; }
+    .confirmOrgLabel { color: var(--sdt-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .confirmOrgAlias { font-weight: 700; color: var(--sdt-accent); overflow-wrap: anywhere; }
+    .confirmOrgSeparator { color: var(--sdt-muted); }
+    .confirmOrgUsername { font-family: var(--vscode-editor-font-family), monospace; color: var(--sdt-muted); overflow-wrap: anywhere; }
+    .confirmOrg .confirmBadge { margin-top: 0; }
+    .confirmChangeOrg { margin-left: auto; }
     .confirmBadge { display: inline-block; margin-top: 0.3rem; padding: 0.1rem 0.55rem; border-radius: 999px; font-size: 0.85rem; font-weight: 600; color: var(--sdt-chip-text); background-color: var(--sdt-chip-bg); }
     .confirmWarnings { margin: 0.6rem 0; padding: 0.45rem 0.7rem; color: var(--sdt-text); background-color: var(--sdt-surface); border: 1px solid var(--sdt-border); border-left: 4px solid var(--sdt-changed); border-radius: 6px; }
     .confirmWarningsHeading { margin-bottom: 0.15rem; font-weight: 600; color: var(--sdt-changed); }
@@ -19753,6 +20147,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const PICKLIST_EDIT_VALUES_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_EDIT_VALUES_LABEL)};
     const PICKLIST_CHOICE_EMPTY_REASON = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_CHOICE_EMPTY_REASON)};
     const PICKLIST_OTHER_EDIT_NOTE = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_OTHER_EDIT_NOTE)};
+    const PICKLIST_RESET_LABEL = ${JSON.stringify(RECIPE_COCKPIT_PICKLIST_RESET_LABEL)};
     const NO_RECORD_TYPE_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_RECORD_TYPE_FIELDS_NOTE)};
     const TODOS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODOS_ONLY_LABEL)};
     const TODO_IN_VALUE_LABEL = ${JSON.stringify(RECIPE_COCKPIT_TODO_IN_VALUE_LABEL)};
@@ -19779,6 +20174,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const PARENT_NICKNAME_EMOJI = ${JSON.stringify(RECIPE_COCKPIT_PARENT_NICKNAME_EMOJI)};
     const TOGGLE_COLLAPSED_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_TOGGLE_COLLAPSED_GLYPH_PATH)};
     const CONFIRM_WARNINGS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CONFIRM_WARNINGS_LABEL)};
+    const CONFIRM_CHANGE_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_CONFIRM_CHANGE_ORG_LABEL)};
     const SEARCH_GLYPH_PATH = ${JSON.stringify(RECIPE_COCKPIT_SEARCH_GLYPH_PATH)};
     const MOTION_REVEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_REVEAL_MILLISECONDS};
     const MOTION_CONCEAL_MILLISECONDS = ${RECIPE_COCKPIT_MOTION_CONCEAL_MILLISECONDS};
@@ -19796,6 +20192,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     const VALIDATION_RULE_NOT_APPLIED_LABEL = ${JSON.stringify(RECIPE_COCKPIT_VALIDATION_RULE_NOT_APPLIED_LABEL)};
     const EVERY_FIELD_UNTICKED_WARNING = ${JSON.stringify(RECIPE_COCKPIT_EVERY_FIELD_UNTICKED_WARNING)};
     const SELECT_ALL_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_SELECT_ALL_FIELDS_LABEL)};
+    const STANDARD_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_STANDARD_FIELDS_LABEL)};
+    const CUSTOM_FIELD_SUFFIX = ${JSON.stringify(RECIPE_COCKPIT_CUSTOM_FIELD_SUFFIX)};
+    const STANDARD_FIELDS_SCOPE = ${JSON.stringify(RECIPE_COCKPIT_STANDARD_FIELDS_SCOPE)};
+    const OBJECT_TODOS_ONLY_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OBJECT_TODOS_ONLY_LABEL)};
+    const NO_OBJECT_TODOS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_OBJECT_TODOS_NOTE)};
+    const HIDE_UNSELECTED_FIELDS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_HIDE_UNSELECTED_FIELDS_LABEL)};
+    const NO_UNSELECTED_FIELDS_NOTE = ${JSON.stringify(RECIPE_COCKPIT_NO_UNSELECTED_FIELDS_NOTE)};
     const RESET_SELECTION_LABEL = ${JSON.stringify(RECIPE_COCKPIT_RESET_SELECTION_LABEL)};
     const REFRESH_ORGS_LABEL = ${JSON.stringify(RECIPE_COCKPIT_REFRESH_ORGS_LABEL)};
     const OPEN_ORG_LABEL = ${JSON.stringify(RECIPE_COCKPIT_OPEN_ORG_LABEL)};
@@ -21945,6 +22348,13 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         return !!record && Object.prototype.hasOwnProperty.call(record, key);
     }
 
+    // A FIELD'S BOX READS UNTICKED WHEN THE READER UNTICKED IT OR AN EXCLUDED PARENT CUT IT (#220); "Hide unselected" (#483) READS THE SAME
+    function isTreeFieldUnticked(objectFieldSelection, fieldApiName) {
+        if (!objectFieldSelection) { return false; }
+        const lockReason = hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : '';
+        return lockReason === FIELD_PARENT_EXCLUDED_REASON || hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName);
+    }
+
     /*
         One field row's checkbox, dimming and note (#220), all drawn from the host's answer. The
         state is never colour alone: the box's mark, aria-checked, the title and the note all say it.
@@ -21959,7 +22369,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
         const isObjectExcluded = !!findObjectExclusion(tree, objectApiName);
         const lockReason = objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName) ? objectFieldSelection.lockReasonsByFieldApiName[fieldApiName] : '';
-        const isExcluded = lockReason === FIELD_PARENT_EXCLUDED_REASON || ( !!objectFieldSelection && hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName) );
+        const isExcluded = isTreeFieldUnticked(objectFieldSelection, fieldApiName);
 
         if (isExcluded) { fieldState.rowElement.classList.add('fieldExcluded'); } else { fieldState.rowElement.classList.remove('fieldExcluded'); }
 
@@ -21980,7 +22390,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         includeElement.setAttribute('aria-checked', isExcluded ? 'false' : 'true');
         includeElement.disabled = isObjectExcluded || !!lockReason;
 
-        const title = isObjectExcluded ? objectApiName + ' is excluded, so its fields are read-only'
+        const title = isObjectExcluded ? describeExcludedObjectFields(objectApiName)
             : lockReason ? 'Cannot be unticked: ' + lockReason
             : isExcluded ? 'Unticked — click to generate this field'
             : 'Ticked — click to leave this field out';
@@ -22273,10 +22683,12 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         treeObjectState.fieldWarningElement.textContent = isEveryFieldExcluded ? EVERY_FIELD_UNTICKED_WARNING : '';
         if (isEveryFieldExcluded) { treeObjectState.fieldWarningElement.classList.remove('hidden'); } else { treeObjectState.fieldWarningElement.classList.add('hidden'); }
 
-        if (!treeObjectState.isBodyBuilt) { return; }
+        if (treeObjectState.isBodyBuilt) {
+            treeObjectState.fieldStates.forEach(function (fieldState) { drawFieldRowSelection(treeObjectState, fieldState); });
+            drawSelectAllFields(treeObjectState);
+        }
 
-        treeObjectState.fieldStates.forEach(function (fieldState) { drawFieldRowSelection(treeObjectState, fieldState); });
-        drawSelectAllFields(treeObjectState);
+        return refreshHideUnselectedFields(treeObjectState);
 
     }
 
@@ -22286,84 +22698,309 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         "untick all" the box reads unticked while RecordTypeId and the like stay ticked. A click posts
         setAllFieldsIncluded with NAMES only; which fields it touches is the host's decision.
     */
-    function buildSelectAllFieldsElement(treeObjectState) {
+    function buildSelectAllFieldsElement(treeObjectState, hasSelectableFields) {
 
-        const object = treeObjectState.object;
         const rowElement = createElement('div', 'treeFieldSelectAllRow');
-        const checkElement = createElement('span', 'treeFieldSelectAllCheck');
-        const toggleElement = createButton('check', 'treeFieldInclude treeFieldSelectAll');
-        const labelElement = createElement('span', 'treeFieldSelectAllLabel', SELECT_ALL_FIELDS_LABEL);
-        toggleElement.setAttribute('role', 'checkbox');
-
-        const toggleAllFields = function () {
-            if (toggleElement.disabled) { return; }
-            const message = {
-                command: 'setAllFieldsIncluded',
-                treeKey: treeObjectState.tree.treeKey,
-                objectApiName: object.objectApiName,
-                included: treeObjectState.selectAllCheckedState !== 'true'
-            };
-            if (object.nickname) { message.nickname = object.nickname; }
-            vscodeApi.postMessage(message);
-        };
-        toggleElement.addEventListener('click', toggleAllFields);
-        labelElement.addEventListener('click', toggleAllFields);
-
-        checkElement.appendChild(toggleElement);
-        checkElement.appendChild(labelElement);
-        rowElement.appendChild(checkElement);
         treeObjectState.selectAllRowElement = rowElement;
-        treeObjectState.selectAllCheckElement = checkElement;
-        treeObjectState.selectAllElement = toggleElement;
+
+        if (hasSelectableFields) {
+            const selectAll = buildFieldScopeCheck(treeObjectState, 'treeFieldInclude treeFieldSelectAll', 'treeFieldSelectAllLabel', SELECT_ALL_FIELDS_LABEL, undefined, 'selectAllCheckedState');
+            treeObjectState.selectAllCheckElement = selectAll.checkElement;
+            treeObjectState.selectAllElement = selectAll.toggleElement;
+            rowElement.appendChild(selectAll.checkElement);
+            // "Standard fields" (#477): THE SAME BOX OVER THE FIELDS WHOSE API NAME DOES NOT END IN __c
+            const selectStandard = buildFieldScopeCheck(treeObjectState, 'treeFieldSelectStandard', 'treeFieldSelectStandardLabel', STANDARD_FIELDS_LABEL, STANDARD_FIELDS_SCOPE, 'selectStandardCheckedState');
+            treeObjectState.selectStandardCheckElement = selectStandard.checkElement;
+            treeObjectState.selectStandardElement = selectStandard.toggleElement;
+            rowElement.appendChild(selectStandard.checkElement);
+            rowElement.appendChild(buildHideUnselectedToggle(treeObjectState));
+        }
+
+        rowElement.appendChild(buildObjectTodosToggle(treeObjectState));
 
         return rowElement;
 
     }
 
+    function buildFieldScopeCheck(treeObjectState, toggleClassName, labelClassName, labelText, fieldScope, checkedStateKey) {
+
+        const object = treeObjectState.object;
+        const checkElement = createElement('span', 'treeFieldSelectAllCheck');
+        const toggleElement = createButton('check', toggleClassName);
+        const labelElement = createElement('span', labelClassName, labelText);
+        toggleElement.setAttribute('role', 'checkbox');
+
+        const toggleFields = function () {
+            if (toggleElement.disabled) { return; }
+            const message = {
+                command: 'setAllFieldsIncluded',
+                treeKey: treeObjectState.tree.treeKey,
+                objectApiName: object.objectApiName,
+                included: treeObjectState[checkedStateKey] !== 'true'
+            };
+            if (object.nickname) { message.nickname = object.nickname; }
+            if (fieldScope) { message.fieldScope = fieldScope; }
+            vscodeApi.postMessage(message);
+        };
+        toggleElement.addEventListener('click', toggleFields);
+        labelElement.addEventListener('click', toggleFields);
+
+        checkElement.appendChild(toggleElement);
+        checkElement.appendChild(labelElement);
+
+        return { checkElement: checkElement, toggleElement: toggleElement };
+
+    }
+
+    function isStandardFieldApiName(fieldApiName) {
+        const lowerCaseName = fieldApiName.toLowerCase();
+        return lowerCaseName.slice(lowerCaseName.length - CUSTOM_FIELD_SUFFIX.length) !== CUSTOM_FIELD_SUFFIX;
+    }
+
     function drawSelectAllFields(treeObjectState) {
 
-        const toggleElement = treeObjectState.selectAllElement;
-        if (!toggleElement) { return; }
+        if (!treeObjectState.selectAllElement) { return; }
 
         const tree = treeObjectState.tree;
         const objectApiName = treeObjectState.object.objectApiName;
         const objectFieldSelection = findObjectFieldSelection(tree, objectApiName, occurrenceNicknameOf(treeObjectState.object));
         const isObjectExcluded = !!findObjectExclusion(tree, objectApiName);
-        let untickableCount = 0;
-        let tickedCount = 0;
+        const counts = { all: { untickable: 0, ticked: 0 }, standard: { untickable: 0, ticked: 0 } };
 
         treeObjectState.fieldStates.forEach(function (fieldState) {
             const fieldApiName = fieldState.field.fieldApiName;
             if (!fieldState.field.lineNumber) { return; }
             if (objectFieldSelection && hasOwnKey(objectFieldSelection.lockReasonsByFieldApiName, fieldApiName)) { return; }
-            untickableCount++;
-            if (!objectFieldSelection || !hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName)) { tickedCount++; }
+            const isTicked = !objectFieldSelection || !hasOwnKey(objectFieldSelection.excludedFieldApiNames, fieldApiName);
+            counts.all.untickable++;
+            if (isTicked) { counts.all.ticked++; }
+            if (isStandardFieldApiName(fieldApiName)) {
+                counts.standard.untickable++;
+                if (isTicked) { counts.standard.ticked++; }
+            }
         });
 
-        if (untickableCount === 0) {
-            treeObjectState.selectAllRowElement.classList.add('hidden');
-            return;
-        }
-        treeObjectState.selectAllRowElement.classList.remove('hidden');
+        treeObjectState.selectAllCheckedState = drawFieldScopeCheck(treeObjectState.selectAllElement, treeObjectState.selectAllCheckElement, counts.all, isObjectExcluded, objectApiName, SELECT_ALL_FIELDS_LABEL, 'field', 'fields');
+        treeObjectState.selectStandardCheckedState = drawFieldScopeCheck(treeObjectState.selectStandardElement, treeObjectState.selectStandardCheckElement, counts.standard, isObjectExcluded, objectApiName, STANDARD_FIELDS_LABEL, 'standard field', 'standard fields');
 
-        const checkedState = tickedCount === untickableCount ? 'true' : tickedCount === 0 ? 'false' : 'mixed';
+    }
+
+    /*
+        A field box over a set of fields (#410, #477): ticked when every field of the set the reader can
+        untick is ticked, unticked when none is, mixed otherwise. Hidden when the set has no field the
+        reader can untick, and never toggled here: only the host's answer redraws it.
+    */
+    function drawFieldScopeCheck(toggleElement, checkElement, count, isObjectExcluded, objectApiName, labelText, singular, plural) {
+
+        if (count.untickable === 0) {
+            checkElement.classList.add('hidden');
+            return null;
+        }
+        checkElement.classList.remove('hidden');
+
+        const checkedState = count.ticked === count.untickable ? 'true' : count.ticked === 0 ? 'false' : 'mixed';
         toggleElement.textContent = checkedState === 'true' ? '✓' : checkedState === 'mixed' ? '−' : '';
-        treeObjectState.selectAllCheckedState = checkedState;
         toggleElement.setAttribute('aria-checked', checkedState);
         toggleElement.disabled = isObjectExcluded;
-        if (isObjectExcluded) { treeObjectState.selectAllCheckElement.classList.add('disabled'); } else { treeObjectState.selectAllCheckElement.classList.remove('disabled'); }
+        if (isObjectExcluded) { checkElement.classList.add('disabled'); } else { checkElement.classList.remove('disabled'); }
 
-        const title = isObjectExcluded ? objectApiName + ' is excluded, so its fields are read-only'
-            : checkedState === 'true' ? 'Every field ticked — click to leave every field out that can be unticked'
-            : checkedState === 'mixed' ? tickedCount + ' of ' + untickableCount + ' fields ticked — click to tick every field'
-            : 'No field ticked — click to tick every field';
+        const title = isObjectExcluded ? describeExcludedObjectFields(objectApiName)
+            : checkedState === 'true' ? 'Every ' + singular + ' ticked — click to leave every ' + singular + ' out that can be unticked'
+            : checkedState === 'mixed' ? count.ticked + ' of ' + count.untickable + ' ' + plural + ' ticked — click to tick every ' + singular
+            : 'No ' + singular + ' ticked — click to tick every ' + singular;
         toggleElement.setAttribute('title', title);
-        toggleElement.setAttribute('aria-label', SELECT_ALL_FIELDS_LABEL + ' of ' + objectApiName + ': ' + title);
+        toggleElement.setAttribute('aria-label', labelText + ' of ' + objectApiName + ': ' + title);
+
+        return checkedState;
+
+    }
+
+    /*
+        The object's own "TODOs only" (#477): narrows THIS object's rows to the fields whose recipe lines
+        carry a TODO, with the search and the card-wide check (#354). Panel-only: it posts nothing.
+    */
+    function isObjectTodosOnlyIn(treeObjectState) {
+        return treeObjectState.isTodosOnly === true && treeObjectState.todoCount > 0;
+    }
+
+    function buildObjectTodosToggle(treeObjectState) {
+
+        const objectApiName = treeObjectState.object.objectApiName;
+        const checkElement = createElement('span', 'treeFieldSelectAllCheck treeObjectTodosCheck');
+        const toggleElement = createButton('check', 'treeObjectTodosToggle');
+        const labelText = treeObjectState.todoCount > 0 ? OBJECT_TODOS_ONLY_LABEL + ' (' + treeObjectState.todoCount + ')' : OBJECT_TODOS_ONLY_LABEL;
+        const labelElement = createElement('span', 'treeObjectTodosLabel', labelText);
+        toggleElement.setAttribute('role', 'checkbox');
+        toggleElement.setAttribute('aria-label', OBJECT_TODOS_ONLY_LABEL + ' (' + objectApiName + ')');
+
+        if (treeObjectState.todoCount > 0) {
+            const title = 'Show only the fields of ' + objectApiName + ' with a TODO comment in the recipe (' + pluralize(treeObjectState.todoCount, 'TODO', 'TODOs') + ')';
+            const toggleTodosOnly = function () {
+                if (toggleElement.disabled) { return; }
+                treeObjectState.isTodosOnly = !treeObjectState.isTodosOnly;
+                if (treeObjectState.treeState.structureSearch) {
+                    filterTreeObjectRows(treeObjectState.treeState, treeObjectState);
+                    drawStructureMatchCount(treeObjectState.treeState);
+                }
+                drawObjectTodosToggle(treeObjectState);
+                savePanelPlace();
+            };
+            toggleElement.setAttribute('title', title);
+            labelElement.setAttribute('title', title);
+            toggleElement.addEventListener('click', toggleTodosOnly);
+            labelElement.addEventListener('click', toggleTodosOnly);
+        } else {
+            toggleElement.disabled = true;
+            toggleElement.setAttribute('title', NO_OBJECT_TODOS_NOTE);
+            labelElement.setAttribute('title', NO_OBJECT_TODOS_NOTE);
+            checkElement.classList.add('disabled');
+        }
+
+        treeObjectState.todosToggleElement = toggleElement;
+        checkElement.appendChild(toggleElement);
+        checkElement.appendChild(labelElement);
+        drawObjectTodosToggle(treeObjectState);
+
+        return checkElement;
+
+    }
+
+    function drawObjectTodosToggle(treeObjectState) {
+
+        const toggleElement = treeObjectState.todosToggleElement;
+        if (!toggleElement) { return; }
+
+        const isChecked = isObjectTodosOnlyIn(treeObjectState);
+        toggleElement.textContent = isChecked ? '✓' : '';
+        toggleElement.setAttribute('aria-checked', isChecked ? 'true' : 'false');
+
+    }
+
+    /*
+        The object's own "Hide unselected" (#483): hides THIS object's rows whose box is unticked, the
+        ones an excluded parent cut included, with the search and every "TODOs only". Panel-only: it
+        posts nothing, and only the host's answer unticks a field, so a row hides once that answer is
+        drawn. With nothing unticked, or the object excluded, it is off and disabled.
+    */
+    function countUnselectedFields(treeObjectState) {
+
+        if (!treeObjectState.canSelectFields) { return 0; }
+
+        const objectFieldSelection = findObjectFieldSelection(treeObjectState.tree, treeObjectState.object.objectApiName, occurrenceNicknameOf(treeObjectState.object));
+        if (!objectFieldSelection) { return 0; }
+
+        return treeObjectState.fieldStates.filter(function (fieldState) {
+            return !!fieldState.field.lineNumber && isTreeFieldUnticked(objectFieldSelection, fieldState.field.fieldApiName);
+        }).length;
+
+    }
+
+    function describeExcludedObjectFields(objectApiName) {
+        return objectApiName + ' is excluded, so its fields are read-only';
+    }
+
+    // THE REASON IT IS OFF, OR '' WITH HOW MANY ROWS IT HIDES: ONE COUNT PER DRAW
+    function readHideUnselectedState(treeObjectState) {
+        if (findObjectExclusion(treeObjectState.tree, treeObjectState.object.objectApiName)) { return { reason: describeExcludedObjectFields(treeObjectState.object.objectApiName), unselectedCount: 0 }; }
+        const unselectedCount = countUnselectedFields(treeObjectState);
+        return { reason: unselectedCount === 0 ? NO_UNSELECTED_FIELDS_NOTE : '', unselectedCount: unselectedCount };
+    }
+
+    function findHideUnselectedReason(treeObjectState) {
+        return readHideUnselectedState(treeObjectState).reason;
+    }
+
+    function isObjectHidingUnselectedIn(treeObjectState) {
+        return treeObjectState.isHidingUnselected === true;
+    }
+
+    function buildHideUnselectedToggle(treeObjectState) {
+
+        const objectApiName = treeObjectState.object.objectApiName;
+        const checkElement = createElement('span', 'treeFieldSelectAllCheck treeHideUnselectedCheck');
+        const toggleElement = createButton('check', 'treeHideUnselectedToggle');
+        const labelElement = createElement('span', 'treeHideUnselectedLabel', HIDE_UNSELECTED_FIELDS_LABEL);
+        toggleElement.setAttribute('role', 'checkbox');
+        toggleElement.setAttribute('aria-label', HIDE_UNSELECTED_FIELDS_LABEL + ' (' + objectApiName + ')');
+
+        const toggleHideUnselected = function () {
+            if (toggleElement.disabled) { return; }
+            treeObjectState.isHidingUnselected = !treeObjectState.isHidingUnselected;
+            if (treeObjectState.treeState.structureSearch) {
+                filterTreeObjectRows(treeObjectState.treeState, treeObjectState);
+                drawStructureMatchCount(treeObjectState.treeState);
+            }
+            drawHideUnselectedToggle(treeObjectState);
+            savePanelPlace();
+        };
+        toggleElement.addEventListener('click', toggleHideUnselected);
+        labelElement.addEventListener('click', toggleHideUnselected);
+
+        treeObjectState.hideUnselectedCheckElement = checkElement;
+        treeObjectState.hideUnselectedLabelElement = labelElement;
+        treeObjectState.hideUnselectedToggleElement = toggleElement;
+        checkElement.appendChild(toggleElement);
+        checkElement.appendChild(labelElement);
+        drawHideUnselectedToggle(treeObjectState);
+
+        return checkElement;
+
+    }
+
+    function drawHideUnselectedToggle(treeObjectState, hideUnselectedState) {
+
+        const toggleElement = treeObjectState.hideUnselectedToggleElement;
+        if (!toggleElement) { return; }
+
+        const state = hideUnselectedState || readHideUnselectedState(treeObjectState);
+        const reason = state.reason;
+        const unselectedCount = state.unselectedCount;
+        const isChecked = isObjectHidingUnselectedIn(treeObjectState);
+        const title = reason || ( isChecked
+            ? 'Hiding ' + pluralize(unselectedCount, 'unticked field', 'unticked fields') + ' of ' + treeObjectState.object.objectApiName + ' — click to show them'
+            : 'Hide the ' + pluralize(unselectedCount, 'unticked field', 'unticked fields') + ' of ' + treeObjectState.object.objectApiName );
+
+        toggleElement.textContent = isChecked ? '✓' : '';
+        toggleElement.setAttribute('aria-checked', isChecked ? 'true' : 'false');
+        toggleElement.disabled = !!reason;
+        toggleElement.setAttribute('title', title);
+        treeObjectState.hideUnselectedLabelElement.setAttribute('title', title);
+        if (reason) { treeObjectState.hideUnselectedCheckElement.classList.add('disabled'); } else { treeObjectState.hideUnselectedCheckElement.classList.remove('disabled'); }
+
+    }
+
+    /*
+        After the host's answer: a filter with nothing left to hide turns itself off, so the next
+        untick shows its row until the reader asks again. True when the object's rows were filtered
+        again, so the caller redraws the tab's count once.
+    */
+    function refreshHideUnselectedFields(treeObjectState) {
+
+        const wasHiding = isObjectHidingUnselectedIn(treeObjectState);
+        if (!wasHiding && !treeObjectState.hideUnselectedToggleElement) { return false; }
+
+        const hideUnselectedState = readHideUnselectedState(treeObjectState);
+        if (wasHiding && hideUnselectedState.reason) {
+            treeObjectState.isHidingUnselected = false;
+            // A SAVED KEY WOULD TURN IT BACK ON AT THE NEXT RESTORE, OVER ROWS THE READER SAW SHOWN
+            savePanelPlace();
+        }
+        drawHideUnselectedToggle(treeObjectState, hideUnselectedState);
+
+        if (!wasHiding || !treeObjectState.treeState || !treeObjectState.treeState.structureSearch) { return false; }
+
+        filterTreeObjectRows(treeObjectState.treeState, treeObjectState);
+        return true;
 
     }
 
     function drawFieldSelection(treeState) {
-        treeState.objectStates.forEach(drawObjectFieldSelection);
+        let isAnyObjectRefiltered = false;
+        treeState.objectStates.forEach(function (treeObjectState) {
+            if (drawObjectFieldSelection(treeObjectState)) { isAnyObjectRefiltered = true; }
+        });
+        // ONE COUNT FOR THE TAB, HOWEVER MANY OBJECTS HIDE THEIR UNSELECTED FIELDS
+        if (isAnyObjectRefiltered) { drawStructureMatchCount(treeState); }
     }
 
     function hasTreeSelection(tree) {
@@ -22713,12 +23350,17 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         refusalElement.setAttribute('role', 'alert');
         const saveElement = createButton('primary', 'picklistEditorSave', 'Save', 'compact');
         const cancelElement = createButton('secondary', 'picklistEditorCancel', 'Cancel', 'compact');
+        // THE TILES' OWN WAY BACK (#479), DRAWN ONLY WHILE THE FIELD HAS AN EDIT TO CLEAR
+        const resetElement = picklistValuesMessage.isEdited ? createButton('secondary', 'picklistEditorReset', PICKLIST_RESET_LABEL, 'compact') : null;
 
         let isSaving = false;
         const drawChoice = function () {
             const chosenCount = tileStates.filter(function (tileState) { return tileState.isChosen; }).length;
+            // ANOTHER KIND OF EDIT IS NOT WHAT THE TILES START FROM, SO ANY CHOICE OF THEM CHANGES THE FIELD
+            const isChanged = !!picklistValuesMessage.isOtherEdit || tileStates.some(function (tileState) { return tileState.isChosen !== tileState.isStartChosen; });
             const reason = lockReason || ( picklistValues.length > 0 && chosenCount === 0 ? PICKLIST_CHOICE_EMPTY_REASON : '' );
-            saveElement.disabled = isSaving || !!reason || picklistValues.length === 0;
+            saveElement.disabled = isSaving || !!reason || picklistValues.length === 0 || !isChanged;
+            if (resetElement) { resetElement.disabled = isSaving || !!lockReason; }
             reasonElement.textContent = reason;
             if (reason) { reasonElement.classList.remove('hidden'); } else { reasonElement.classList.add('hidden'); }
         };
@@ -22731,7 +23373,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
             picklistValues.forEach(function (picklistValue) {
 
-                const tileState = { value: picklistValue, isChosen: startValues.indexOf(picklistValue) !== -1, tileElement: null, checkElement: null };
+                const isStartChosen = startValues.indexOf(picklistValue) !== -1;
+                const tileState = { value: picklistValue, isChosen: isStartChosen, isStartChosen: isStartChosen, tileElement: null, checkElement: null };
                 const tileElement = createElement('div', 'picklistTile');
                 const checkElement = createButton('check', 'picklistTileCheck');
                 const valueElement = createElement('span', 'picklistValue', picklistValue);
@@ -22789,10 +23432,32 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             savePanelPlace();
             vscodeApi.postMessage(message);
         });
+        if (resetElement) {
+            resetElement.setAttribute('title', 'Put back the lines ' + field.fieldApiName + ' had before it was edited, after a confirmation');
+            resetElement.addEventListener('click', function (event) {
+                event.stopPropagation();
+                if (resetElement.disabled) { return; }
+                const message = {
+                    command: 'resetPicklistValueChoice',
+                    treeKey: treeObjectState.tree.treeKey,
+                    objectApiName: object.objectApiName,
+                    fieldApiName: field.fieldApiName
+                };
+                if (object.nickname) { message.nickname = object.nickname; }
+                refusalElement.textContent = '';
+                refusalElement.classList.add('hidden');
+                isSaving = true;
+                drawChoice();
+                fieldState.isPicklistExpanded = false;
+                savePanelPlace();
+                vscodeApi.postMessage(message);
+            });
+        }
         cancelElement.addEventListener('click', function (event) { event.stopPropagation(); closeEditor(); });
 
         const actionsElement = createElement('div', 'fieldEditorActions');
         actionsElement.appendChild(saveElement);
+        if (resetElement) { actionsElement.appendChild(resetElement); }
         actionsElement.appendChild(cancelElement);
         editorElement.appendChild(reasonElement);
         editorElement.appendChild(refusalElement);
@@ -22964,7 +23629,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             editorElement.setAttribute('aria-label', 'Edit values of ' + fieldLabel);
             closeButtonElement.setAttribute('aria-label', 'Close the values of ' + field.fieldApiName);
             closeButtonElement.setAttribute('title', 'Close without saving');
-            editorHeaderElement.appendChild(createElement('span', 'fieldEditorHint muted', 'Tick the values ' + field.fieldApiName + ' generates. Save writes them into the recipe file; the edit button\\'s Clear puts back the lines the field had.'));
+            editorHeaderElement.appendChild(createElement('span', 'fieldEditorHint muted', 'Tick the values ' + field.fieldApiName + ' generates. Save writes them into the recipe file; ' + PICKLIST_RESET_LABEL + ' puts back the lines the field had.'));
             editorHeaderElement.appendChild(closeButtonElement);
             editorElement.appendChild(editorHeaderElement);
             editorElement.appendChild(editorBodyElement);
@@ -23324,8 +23989,10 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             if (treeObjectState.objectTodos.length > 0) {
                 treeObjectState.bodyElement.appendChild(buildTodoListElement(treeObjectState.object.recipeFilePath, treeObjectState.objectTodos));
             }
-            if (treeObjectState.canSelectFields && treeObjectState.fieldStates.some(function (fieldState) { return !!fieldState.field.lineNumber; })) {
-                treeObjectState.bodyElement.appendChild(buildSelectAllFieldsElement(treeObjectState));
+            // THE ROW HOLDS THE FIELD BOXES (#410, #477) AND THE OBJECT'S OWN TODO FILTER (#477); EACH HIDES ON ITS OWN
+            const hasSelectableFields = treeObjectState.canSelectFields && treeObjectState.fieldStates.some(function (fieldState) { return !!fieldState.field.lineNumber; });
+            if (hasSelectableFields || treeObjectState.todoCount > 0) {
+                treeObjectState.bodyElement.appendChild(buildSelectAllFieldsElement(treeObjectState, hasSelectableFields));
             }
             treeObjectState.fieldStates.forEach(function (fieldState) {
                 fieldState.rowElement = buildTreeFieldRow(treeObjectState, fieldState);
@@ -23333,7 +24000,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
                 treeObjectState.bodyElement.appendChild(fieldState.rowElement);
             });
             treeObjectState.isBodyBuilt = true;
-            drawObjectFieldSelection(treeObjectState);
+            if (drawObjectFieldSelection(treeObjectState)) { drawStructureMatchCount(treeObjectState.treeState); }
         }
 
         setShownWithMotion(treeObjectState.bodyElement, isExpanded, isAnimated);
@@ -23577,6 +24244,11 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             // THE TODO COMMENTS OF THE BLOCK THAT SIT ON NO FIELD, AND EVERY TODO OF THE OCCURRENCE (#354)
             objectTodos: Array.isArray(object.todos) ? object.todos : [],
             todoCount: 0,
+            // THE OBJECT'S OWN "Hide unselected" (#483), PANEL-ONLY
+            isHidingUnselected: false,
+            hideUnselectedCheckElement: null,
+            hideUnselectedLabelElement: null,
+            hideUnselectedToggleElement: null,
             // SET BY renderTree ONCE THE CARD'S STATE EXISTS; THE NICKNAME INDEX IS THE CARD'S (#380)
             treeState: null,
             headerElement: objectHeaderElement,
@@ -28462,63 +29134,15 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         if (!treeState.structureSearch) { return; }
 
-        const searchQuery = treeState.searchQueries.treecipe;
-        // "Record type fields only" (#320) NARROWS WHAT THE SEARCH MATCHES: A FIELD SHOWS ONLY IF IT PASSES BOTH
-        const isRecordTypeFieldsOnly = isRecordTypeFieldsOnlyIn(treeState);
-        // "TODOs only" (#354) NARROWS THE SAME WAY, AND AN OBJECT'S OWN TODOS COUNT AS A MATCH SO IT STILL OPENS
-        const isTodosOnly = isTodosOnlyIn(treeState);
-        const isFiltered = !!searchQuery || isRecordTypeFieldsOnly || isTodosOnly;
-        let totalFieldCount = 0;
-        let matchingFieldCount = 0;
-
         drawRecordTypeFieldsToggle(treeState);
         drawTodosToggle(treeState);
 
-        treeState.objectStates.forEach(function (treeObjectState) {
-
-            const isObjectNameMatch = !searchQuery || treeObjectState.objectSearchText.indexOf(searchQuery) !== -1 || treeObjectState.friendSearchText.indexOf(searchQuery) !== -1;
-            let objectMatchingFieldCount = 0;
-
-            treeObjectState.fieldStates.forEach(function (fieldState) {
-                fieldState.isMatch = (!isRecordTypeFieldsOnly || fieldState.recordTypeDeveloperNames !== null)
-                    && (!isTodosOnly || fieldState.todos.length > 0)
-                    && (isObjectNameMatch || isFieldTextMatch(fieldState, searchQuery));
-                if (fieldState.isMatch) { objectMatchingFieldCount++; }
-                applyTreeFieldVisibility(fieldState);
-            });
-
-            const objectFieldCount = treeObjectState.fieldStates.length;
-            const hasMatchingObjectTodos = isTodosOnly && !isRecordTypeFieldsOnly && isObjectNameMatch && treeObjectState.objectTodos.length > 0;
-            treeObjectState.matchingFieldCount = objectMatchingFieldCount;
-            treeObjectState.hasMatchingObjectTodos = hasMatchingObjectTodos;
-            totalFieldCount += objectFieldCount;
-            matchingFieldCount += objectMatchingFieldCount;
-
-            if (!isFiltered || (isObjectNameMatch && !isRecordTypeFieldsOnly && !isTodosOnly)) {
-                treeObjectState.countElement.textContent = pluralize(objectFieldCount, 'field', 'fields');
-            } else if (isTodosOnly && treeObjectState.todoCount === 0) {
-                treeObjectState.countElement.textContent = 'no TODOs';
-            } else if (isTodosOnly && !searchQuery && !isRecordTypeFieldsOnly) {
-                treeObjectState.countElement.textContent = pluralize(treeObjectState.todoCount, 'TODO', 'TODOs');
-            } else if (objectMatchingFieldCount > 0) {
-                treeObjectState.countElement.textContent = objectMatchingFieldCount + ' of ' + pluralize(objectFieldCount, 'field', 'fields');
-            } else if (isRecordTypeFieldsOnly && treeObjectState.recordTypeFieldCount === 0) {
-                treeObjectState.countElement.textContent = 'no record type fields';
-            } else if (hasMatchingObjectTodos) {
-                treeObjectState.countElement.textContent = pluralize(treeObjectState.objectTodos.length, 'TODO', 'TODOs') + ' on the object';
-            } else {
-                treeObjectState.countElement.textContent = 'no matching fields';
-            }
-
-        });
-
-        treeState.structureSearch.matchCountElement.textContent = !isFiltered
-            ? pluralize(totalFieldCount, 'field', 'fields')
-            : matchingFieldCount > 0 ? matchingFieldCount + ' of ' + pluralize(totalFieldCount, 'field', 'fields') : 'no matches';
+        treeState.objectStates.forEach(function (treeObjectState) { filterTreeObjectRows(treeState, treeObjectState); });
+        drawStructureMatchCount(treeState);
 
         applyRecordTypesFilter(treeState);
 
-        if (!isFiltered) {
+        if (!isStructureFilteredIn(treeState)) {
             treeState.objectStates.forEach(function (treeObjectState) { setTreeObjectExpanded(treeObjectState, treeObjectState.isExpandedByReader); });
             return;
         }
@@ -28527,6 +29151,86 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             function (treeObjectState) { return treeObjectState.matchingFieldCount + (treeObjectState.hasMatchingObjectTodos ? 1 : 0); },
             function (treeObjectState) { return treeObjectState.fieldStates.length; },
             setTreeObjectExpanded);
+
+    }
+
+    function isStructureFilteredIn(treeState) {
+        return !!treeState.searchQueries.treecipe || isRecordTypeFieldsOnlyIn(treeState) || isTodosOnlyIn(treeState);
+    }
+
+    /*
+        One object's rows and count under the card's filters and its own "TODOs only" (#477). The
+        object's own filter calls this alone, never applyStructureFilter, so a click on one object
+        neither folds nor opens any other.
+    */
+    function filterTreeObjectRows(treeState, treeObjectState) {
+
+        const searchQuery = treeState.searchQueries.treecipe;
+        // "Record type fields only" (#320) NARROWS WHAT THE SEARCH MATCHES: A FIELD SHOWS ONLY IF IT PASSES BOTH
+        const isRecordTypeFieldsOnly = isRecordTypeFieldsOnlyIn(treeState);
+        // "TODOs only" (#354), THE CARD'S OR THE OBJECT'S OWN, NARROWS THE SAME WAY, AND AN OBJECT'S OWN TODOS COUNT AS A MATCH SO IT STILL OPENS
+        const isObjectTodosOnly = isTodosOnlyIn(treeState) || isObjectTodosOnlyIn(treeObjectState);
+        // "Hide unselected" (#483) IS THE OBJECT'S OWN AND NARROWS THE SAME WAY
+        const isHidingUnselected = isObjectHidingUnselectedIn(treeObjectState);
+        const isObjectFiltered = !!searchQuery || isRecordTypeFieldsOnly || isObjectTodosOnly || isHidingUnselected;
+        const isObjectNameMatch = !searchQuery || treeObjectState.objectSearchText.indexOf(searchQuery) !== -1 || treeObjectState.friendSearchText.indexOf(searchQuery) !== -1;
+        let objectMatchingFieldCount = 0;
+        let selectedFieldCount = 0;
+        const objectFieldSelection = isHidingUnselected ? findObjectFieldSelection(treeObjectState.tree, treeObjectState.object.objectApiName, occurrenceNicknameOf(treeObjectState.object)) : null;
+
+        treeObjectState.fieldStates.forEach(function (fieldState) {
+            const isSelected = !isHidingUnselected || !fieldState.field.lineNumber || !isTreeFieldUnticked(objectFieldSelection, fieldState.field.fieldApiName);
+            if (isSelected) { selectedFieldCount++; }
+            fieldState.isMatch = isSelected
+                && (!isRecordTypeFieldsOnly || fieldState.recordTypeDeveloperNames !== null)
+                && (!isObjectTodosOnly || fieldState.todos.length > 0)
+                && (isObjectNameMatch || isFieldTextMatch(fieldState, searchQuery));
+            if (fieldState.isMatch) { objectMatchingFieldCount++; }
+            applyTreeFieldVisibility(fieldState);
+        });
+
+        const objectFieldCount = treeObjectState.fieldStates.length;
+        const hasMatchingObjectTodos = isObjectTodosOnly && !isRecordTypeFieldsOnly && isObjectNameMatch && treeObjectState.objectTodos.length > 0;
+        treeObjectState.matchingFieldCount = objectMatchingFieldCount;
+        treeObjectState.hasMatchingObjectTodos = hasMatchingObjectTodos;
+        treeObjectState.isFilteredByStructure = isObjectFiltered;
+
+        if (!isObjectFiltered || (isObjectNameMatch && !isRecordTypeFieldsOnly && !isObjectTodosOnly && !isHidingUnselected)) {
+            treeObjectState.countElement.textContent = pluralize(objectFieldCount, 'field', 'fields');
+        } else if (isObjectTodosOnly && treeObjectState.todoCount === 0) {
+            treeObjectState.countElement.textContent = 'no TODOs';
+        } else if (isObjectTodosOnly && !searchQuery && !isRecordTypeFieldsOnly) {
+            treeObjectState.countElement.textContent = pluralize(treeObjectState.todoCount, 'TODO', 'TODOs');
+        } else if (objectMatchingFieldCount > 0) {
+            treeObjectState.countElement.textContent = objectMatchingFieldCount + ' of ' + pluralize(objectFieldCount, 'field', 'fields');
+        } else if (isRecordTypeFieldsOnly && treeObjectState.recordTypeFieldCount === 0) {
+            treeObjectState.countElement.textContent = 'no record type fields';
+        } else if (hasMatchingObjectTodos) {
+            treeObjectState.countElement.textContent = pluralize(treeObjectState.objectTodos.length, 'TODO', 'TODOs') + ' on the object';
+        } else if (isHidingUnselected && selectedFieldCount === 0) {
+            treeObjectState.countElement.textContent = 'no selected fields';
+        } else {
+            treeObjectState.countElement.textContent = 'no matching fields';
+        }
+
+    }
+
+    // THE TAB'S COUNT: "N of M fields" WHENEVER ANY FILTER, A CARD'S OR ONE OBJECT'S OWN, HIDES A ROW
+    function drawStructureMatchCount(treeState) {
+
+        let totalFieldCount = 0;
+        let matchingFieldCount = 0;
+        let isAnyObjectFiltered = false;
+
+        treeState.objectStates.forEach(function (treeObjectState) {
+            totalFieldCount += treeObjectState.fieldStates.length;
+            matchingFieldCount += treeObjectState.matchingFieldCount;
+            if (treeObjectState.isFilteredByStructure) { isAnyObjectFiltered = true; }
+        });
+
+        treeState.structureSearch.matchCountElement.textContent = !isAnyObjectFiltered
+            ? pluralize(totalFieldCount, 'field', 'fields')
+            : matchingFieldCount > 0 ? matchingFieldCount + ' of ' + pluralize(totalFieldCount, 'field', 'fields') : 'no matches';
 
     }
 
@@ -28843,11 +29547,15 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         const expandedObjectKeys = [];
         const openPicklistKeys = [];
+        const todosOnlyObjectKeys = [];
+        const hideUnselectedObjectKeys = [];
         const searchQueries = {};
         let hasSearch = false;
 
         treeState.objectStates.forEach(function (treeObjectState) {
             if (treeObjectState.isExpandedByReader) { expandedObjectKeys.push(buildObjectPlaceKey(treeObjectState)); }
+            if (isObjectTodosOnlyIn(treeObjectState)) { todosOnlyObjectKeys.push(buildObjectPlaceKey(treeObjectState)); }
+            if (isObjectHidingUnselectedIn(treeObjectState)) { hideUnselectedObjectKeys.push(buildObjectPlaceKey(treeObjectState)); }
             // ONLY A BUILT ROW CAN HAVE BEEN OPENED, SO AN OBJECT NOBODY EXPANDED COSTS NOTHING HERE
             if (!treeObjectState.isBodyBuilt) { return; }
             treeObjectState.fieldStates.forEach(function (fieldState) {
@@ -28888,7 +29596,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         const selectedTab = treeState.selectedTab || 'treecipe';
 
         if (selectedTab === 'treecipe' && !hasSearch && !treeState.isDatasetFavoritesOnly && !treeState.isRecordTypesExpanded
-                && !isRecordTypeFieldsOnlyIn(treeState) && !isTodosOnlyIn(treeState) && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0) {
+                && !isRecordTypeFieldsOnlyIn(treeState) && !isTodosOnlyIn(treeState) && expandedObjectKeys.length === 0 && openPicklistKeys.length === 0
+                && todosOnlyObjectKeys.length === 0 && hideUnselectedObjectKeys.length === 0) {
             return null;
         }
 
@@ -28905,6 +29614,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         if (treeState.isRecordTypesExpanded) { treePlace.isRecordTypesExpanded = true; }
         if (isRecordTypeFieldsOnlyIn(treeState)) { treePlace.isRecordTypeFieldsOnly = true; }
         if (isTodosOnlyIn(treeState)) { treePlace.isTodosOnly = true; }
+        if (todosOnlyObjectKeys.length > 0) { treePlace.todosOnlyObjectKeys = todosOnlyObjectKeys; }
+        if (hideUnselectedObjectKeys.length > 0) { treePlace.hideUnselectedObjectKeys = hideUnselectedObjectKeys; }
         if (troubleshootingSubTab) { treePlace.troubleshootingSubTab = troubleshootingSubTab; }
         if (hasTroubleshootingSearch) { treePlace.troubleshootingSearchQueries = troubleshootingSearchQueries; }
         if (isRemovedTodosView) { treePlace.todosView = 'removed'; }
@@ -29104,6 +29815,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
             const expandedObjectKeys = toStringSet(savedTree.expandedObjectKeys);
             const openPicklistKeys = toStringSet(savedTree.openPicklistKeys);
+            const todosOnlyObjectKeys = toStringSet(savedTree.todosOnlyObjectKeys);
+            const hideUnselectedObjectKeys = toStringSet(savedTree.hideUnselectedObjectKeys);
             const savedSearchQueries = savedTree.searchQueries && typeof savedTree.searchQueries === 'object' ? savedTree.searchQueries : {};
 
             // BEFORE ANY TAB IS BUILT: A TAB READS ITS SEARCH, AND APPLIES IT, WHEN IT IS BUILT
@@ -29156,6 +29869,12 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
             treeState.objectStates.forEach(function (treeObjectState) {
                 if (hasString(expandedObjectKeys, buildObjectPlaceKey(treeObjectState))) { treeObjectState.isExpandedByReader = true; }
+                // A KEY NAMING AN OBJECT WITH NO TODO NOW IS DROPPED: THE FILTER WOULD HIDE NOTHING AND ITS BOX IS DISABLED
+                treeObjectState.isTodosOnly = hasString(todosOnlyObjectKeys, buildObjectPlaceKey(treeObjectState)) && treeObjectState.todoCount > 0;
+                drawObjectTodosToggle(treeObjectState);
+                // A KEY NAMING AN OBJECT WITH NOTHING UNTICKED NOW, OR EXCLUDED, IS DROPPED THE SAME WAY (#483)
+                treeObjectState.isHidingUnselected = hasString(hideUnselectedObjectKeys, buildObjectPlaceKey(treeObjectState)) && !findHideUnselectedReason(treeObjectState);
+                drawHideUnselectedToggle(treeObjectState);
                 // A PICKLIST KEY IS BUILT PER FIELD, SO A PLACE THAT OPENED NONE BUILDS NONE
                 if (!hasOpenPicklists) { return; }
                 treeObjectState.fieldStates.forEach(function (fieldState) {
@@ -29471,7 +30190,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
         dialogElement.setAttribute('aria-labelledby', 'confirmTitle');
         dialogElement.setAttribute('aria-describedby', 'confirmBody');
 
-        const sectionToggleElements = drawConfirmContent(bodyElement, content);
+        const sectionToggleElements = drawConfirmContent(bodyElement, content, hostMessage.canChangeOrg === true);
 
         const buttonElements = buttonLabels.map(function (label, labelIndex) {
             const buttonElement = createButton(labelIndex === 0 ? 'primary' : 'secondary', 'confirmChoice', label);
@@ -29561,6 +30280,8 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         if (!isStringList(hostMessage.summary) || !isStringList(hostMessage.warnings) || !Array.isArray(hostMessage.sections)) { return null; }
         if (hostMessage.badge !== undefined && typeof hostMessage.badge !== 'string') { return null; }
+        const org = hostMessage.org;
+        if (org !== undefined && !(org && typeof org === 'object' && typeof org.username === 'string' && !!org.username && (org.alias === undefined || typeof org.alias === 'string'))) { return null; }
 
         const isReadableSection = function (section) {
             return !!section && typeof section === 'object' && typeof section.title === 'string' && !!section.title && isStringList(section.lines)
@@ -29570,6 +30291,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
 
         return {
             summary: hostMessage.summary,
+            org: org ? { alias: org.alias || '', username: org.username } : null,
             badge: hostMessage.badge || '',
             warnings: hostMessage.warnings.filter(function (warning) { return warning.trim() !== ''; }),
             sections: hostMessage.sections.filter(function (section) { return section.lines.some(function (line) { return line.trim() !== ''; }); })
@@ -29637,17 +30359,41 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
     }
 
     /*
-        Summary first, with the org type's badge; then the warnings in one callout that is always on
-        screen; then each section folded under a toggle that names it and its count. A section's
-        lines are built the first time it opens, since a long one (every component of a deploy) costs
-        nothing until the reader asks for it. Returns the toggles, in order, for the Tab cycle.
+        Summary first; then the org (#480), its alias and username each in their own style so neither
+        reads as part of the sentence around it, with the org type's badge and, when the host offered
+        it, "Change org…"; then the warnings in one callout that is always on screen; then each
+        section folded under a toggle that names it and its count. A section's lines are built the
+        first time it opens, since a long one (every component of a deploy) costs nothing until the
+        reader asks for it. Returns the org's button and the toggles, in order, for the Tab cycle.
     */
-    function drawConfirmContent(bodyElement, content) {
+    function drawConfirmContent(bodyElement, content, canChangeOrg) {
 
         const summaryElement = createElement('div', 'confirmSummary');
         drawConfirmLines(summaryElement, content.summary, countConfirmStatements(content.summary) > 1);
-        if (content.badge) { summaryElement.appendChild(createElement('span', 'confirmBadge', content.badge)); }
         bodyElement.appendChild(summaryElement);
+
+        let changeOrgElement = null;
+
+        if (content.org) {
+            const orgElement = createElement('div', 'confirmOrg');
+            orgElement.appendChild(createElement('span', 'confirmOrgLabel', 'Org'));
+            if (content.org.alias) {
+                orgElement.appendChild(createElement('span', 'confirmOrgAlias', content.org.alias));
+                const separatorElement = createElement('span', 'confirmOrgSeparator', '·');
+                separatorElement.setAttribute('aria-hidden', 'true');
+                orgElement.appendChild(separatorElement);
+            }
+            orgElement.appendChild(createElement('span', 'confirmOrgUsername', content.org.username));
+            if (content.badge) { orgElement.appendChild(createElement('span', 'confirmBadge', content.badge)); }
+            if (canChangeOrg) {
+                changeOrgElement = createButton('secondary', 'confirmChangeOrg', CONFIRM_CHANGE_ORG_LABEL, 'compact');
+                changeOrgElement.addEventListener('click', function () { answerConfirmChangeOrg(); });
+                orgElement.appendChild(changeOrgElement);
+            }
+            bodyElement.appendChild(orgElement);
+        } else if (content.badge) {
+            summaryElement.appendChild(createElement('span', 'confirmBadge', content.badge));
+        }
 
         if (content.warnings.length > 0) {
             const warningsElement = createElement('div', 'confirmWarnings');
@@ -29658,7 +30404,7 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             bodyElement.appendChild(warningsElement);
         }
 
-        return content.sections.map(function (section, sectionIndex) {
+        const sectionToggleElements = content.sections.map(function (section, sectionIndex) {
 
             const sectionElement = createElement('div', 'confirmSection');
             const toggleElement = createButton('secondary', 'confirmSectionToggle');
@@ -29700,6 +30446,17 @@ ${Object.entries(RECIPE_COCKPIT_VERB_BUTTON_VERBS).map(([className, verb]) => ` 
             return toggleElement;
 
         });
+
+        return (changeOrgElement ? [changeOrgElement] : []).concat(sectionToggleElements);
+
+    }
+
+    // "Change org…" (#480): NOT A BUTTON'S ANSWER -- THE HOST CANCELS THE ACTION, ASKS FOR THE ORG, AND STARTS THE ACTION AGAIN
+    function answerConfirmChangeOrg() {
+
+        if (!confirmDialog) { return; }
+        vscodeApi.postMessage({ command: 'confirmResponse', confirmationId: confirmDialog.confirmationId, choice: null, changeOrg: true });
+        closeConfirmDialog(true);
 
     }
 
