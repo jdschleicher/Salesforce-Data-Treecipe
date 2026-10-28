@@ -574,6 +574,27 @@ describe('SalesforceOrgService', () => {
 
         });
 
+        it('clears its timer on success, and drops an address that arrives after the timeout', async () => {
+
+            jest.useFakeTimers();
+            try {
+                answerOrg(jest.fn().mockResolvedValue({ frontdoor_uri: FRONT_DOOR_URI }));
+                await expect(SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa')).resolves.toMatchObject({ isOpenable: true });
+                expect(jest.getTimerCount()).toBe(0);
+
+                let answerLate: (response: unknown) => void = () => undefined;
+                answerOrg(jest.fn().mockImplementation(() => new Promise(resolve => { answerLate = resolve; })));
+                const pendingResult = SalesforceOrgService.requestOrgFrontDoorUrl('qa@example.com.qa');
+                await jest.advanceTimersByTimeAsync(ORG_FRONT_DOOR_TIMEOUT_MILLISECONDS);
+                answerLate({ frontdoor_uri: FRONT_DOOR_URI });
+                await expect(pendingResult).resolves.toMatchObject({ isOpenable: false, failure: 'timedOut' });
+                expect(jest.getTimerCount()).toBe(0);
+            } finally {
+                jest.useRealTimers();
+            }
+
+        });
+
         it('opens nothing but an https: frontdoor_uri string', () => {
 
             ['http://acme.my.salesforce.com/', 'javascript:alert(1)', 'file:///etc/passwd', 'command:workbench.action.terminal.new', 'not a url'].forEach(frontdoor_uri => {

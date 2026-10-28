@@ -657,6 +657,7 @@ export class SalesforceOrgService {
             timeoutHandle = setTimeout(() => resolve(this.buildOrgFrontDoorFailure('timedOut')), ORG_FRONT_DOOR_TIMEOUT_MILLISECONDS);
         });
 
+        // A FETCH THE TIMEOUT BEAT IS LEFT TO SETTLE ON ITS OWN: IT CATCHES EVERYTHING, AND ITS ADDRESS GOES NOWHERE
         try {
             return await Promise.race([this.fetchOrgFrontDoorUrl(username), timedOut]);
         } finally {
